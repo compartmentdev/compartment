@@ -4,9 +4,13 @@ import { join } from 'node:path';
 
 export async function readExtractedRepositoryRoot(extractionDirectory: string): Promise<string> {
   const entries: Dirent[] = await readdir(extractionDirectory, { withFileTypes: true });
-  const root: Dirent | undefined = entries.find((entry: Dirent): boolean => entry.isDirectory());
+  const roots: Dirent[] = entries.filter((entry: Dirent): boolean => entry.isDirectory());
+  const [root]: Dirent[] = roots;
   if (root === undefined) {
     throw new Error('GitHub repository archive did not contain a repository root directory.');
+  }
+  if (roots.length > 1) {
+    throw new Error('GitHub repository archive contained multiple repository root directories.');
   }
 
   return join(extractionDirectory, root.name);
