@@ -1,0 +1,16 @@
+name: multi-service
+
+services:
+  web:
+    path: ./services/web
+    readiness:
+      type: http
+      path: /healthz
+      timeoutMs: 30000
+  backoffice:
+    kind: api
+    path: ./services/backoffice
+    readiness:
+      type: http
+      path: /ready
+      timeoutMs: 30000

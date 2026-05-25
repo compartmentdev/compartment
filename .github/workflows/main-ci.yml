@@ -1,0 +1,40 @@
+name: Main CI
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: main-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  db-integration:
+    name: main:ci / db
+    uses: ./.github/workflows/_db-integration.yml
+    with:
+      runner_labels_json: '["compartment-ci-deploy-e2e","hetzner-x86-container-dind-libatomic-5slot"]'
+
+  self-hosted-image-cache:
+    name: main:ci / build and check images
+    uses: ./.github/workflows/_self-hosted-image-cache.yml
+    with:
+      runner_labels_json: '["compartment-ci-deploy-e2e","hetzner-x86-container-dind-libatomic-5slot"]'
+
+  console-e2e:
+    name: main:ci / console-e2e
+    needs:
+      - self-hosted-image-cache
+    uses: ./.github/workflows/_system-user-flow-e2e.yml
+    with:
+      install_console_playwright: true
+      self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
+      runner_labels_json: '["compartment-ci-deploy-e2e","hetzner-x86-container-dind-libatomic-5slot"]'
+      suite_name: console
+      suite_slug: console
+      test_file: test/console.e2e.test.ts

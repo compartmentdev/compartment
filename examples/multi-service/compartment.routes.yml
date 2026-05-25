@@ -1,0 +1,7 @@
+version: 1
+
+routes:
+  - on: web
+    path: /api/*
+    to: backoffice
+    stripPrefix: /api

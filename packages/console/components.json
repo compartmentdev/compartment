@@ -1,0 +1,16 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "iconLibrary": "lucide",
+  "tailwind": {
+    "baseColor": "stone",
+    "css": "src/styles.css",
+    "cssVariables": true
+  },
+  "aliases": {
+    "components": "@/components",
+    "lib": "@/lib",
+    "ui": "@/components/ui",
+    "utils": "@/lib/utils"
+  }
+}

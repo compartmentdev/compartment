@@ -1,0 +1,26 @@
+title = "Compartment GitLeaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Generated test build output is ignored by git and may contain compiled test fixtures."
+paths = ['''(^|/)dist-test/''']
+
+[[allowlists]]
+description = "API tests use local-only PEM private keys for TLS and pending-certificate fixtures."
+condition = "AND"
+rules = ["private-key"]
+paths = [
+  '''^packages/api/test/api\.system-domain\.integration\.test\.ts$''',
+  '''^packages/api/test/support/local-https-server\.ts$''',
+  '''^packages/api/test/system-domain-pending-certificate\.service\.test\.ts$''',
+]
+regexes = ['''-----BEGIN PRIVATE KEY-----''']
+
+[[allowlists]]
+description = "CLI OIDC tests use a fake claim expression that resembles an API key assignment."
+condition = "AND"
+rules = ["generic-api-key"]
+paths = ['''^packages/cli/test/sso-oidc-identity-verification\.command\.test\.ts$''']
+regexes = ['''xms_edov=true''']

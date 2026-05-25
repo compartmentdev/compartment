@@ -1,0 +1,9 @@
+{
+  "name": "railpack",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node default-server.mjs",
+    "start:override": "node server.mjs"
+  }
+}

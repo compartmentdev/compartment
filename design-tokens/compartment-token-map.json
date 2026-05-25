@@ -1,0 +1,226 @@
+{
+  "source": {
+    "figmaFrameNodeId": "44530:24822",
+    "figmaCollection": "☀️  Mode",
+    "cssEntry": "packages/console/src/styles.css"
+  },
+  "strategy": {
+    "sourceOfTruth": "figma",
+    "runtimeOutput": "packages/console/src/styles/tokens.generated.css",
+    "notes": [
+      "Map token names, not raw hex values.",
+      "Keep shadcn-compatible CSS variable names for runtime compatibility.",
+      "Figma theme/primary is neutral ink, while current blue code tokens should map to theme/info."
+    ]
+  },
+  "theme": {
+    "background": {
+      "figma": "theme/background",
+      "css": "--background",
+      "tailwind": "bg-background"
+    },
+    "foreground": {
+      "figma": "theme/foreground",
+      "css": "--foreground",
+      "tailwind": "text-foreground"
+    },
+    "card": {
+      "figma": "theme/card",
+      "css": "--card",
+      "tailwind": "bg-card"
+    },
+    "cardForeground": {
+      "figma": "theme/card-foreground",
+      "css": "--card-foreground",
+      "tailwind": "text-card-foreground"
+    },
+    "popover": {
+      "figma": "theme/popover",
+      "css": "--popover",
+      "tailwind": "bg-popover"
+    },
+    "popoverForeground": {
+      "figma": "theme/popover-foreground",
+      "css": "--popover-foreground",
+      "tailwind": "text-popover-foreground"
+    },
+    "primary": {
+      "figma": "theme/primary",
+      "css": "--primary",
+      "tailwind": "bg-primary text-primary"
+    },
+    "primaryForeground": {
+      "figma": "theme/primary-foreground",
+      "css": "--primary-foreground",
+      "tailwind": "text-primary-foreground"
+    },
+    "secondary": {
+      "figma": "theme/secondary",
+      "css": "--secondary",
+      "tailwind": "bg-secondary text-secondary"
+    },
+    "secondaryForeground": {
+      "figma": "theme/secondary-foreground",
+      "css": "--secondary-foreground",
+      "tailwind": "text-secondary-foreground"
+    },
+    "muted": {
+      "figma": "theme/muted",
+      "css": "--muted",
+      "tailwind": "bg-muted"
+    },
+    "mutedForeground": {
+      "figma": "theme/muted-foreground",
+      "css": "--muted-foreground",
+      "tailwind": "text-muted-foreground"
+    },
+    "accent": {
+      "figma": "theme/accent",
+      "css": "--accent",
+      "tailwind": "bg-accent text-accent"
+    },
+    "accentForeground": {
+      "figma": "theme/accent-foreground",
+      "css": "--accent-foreground",
+      "tailwind": "text-accent-foreground"
+    },
+    "destructive": {
+      "figma": "theme/destructive",
+      "css": "--destructive",
+      "tailwind": "bg-destructive text-destructive"
+    },
+    "border": {
+      "figma": "theme/border",
+      "css": "--border",
+      "tailwind": "border-border"
+    },
+    "input": {
+      "figma": "theme/input",
+      "css": "--input",
+      "tailwind": "border-input"
+    },
+    "ring": {
+      "figma": "theme/ring",
+      "css": "--ring",
+      "tailwind": "ring-ring"
+    }
+  },
+  "status": {
+    "info": {
+      "figma": "theme/info",
+      "css": "--info"
+    },
+    "success": {
+      "figma": "theme/success",
+      "css": "--success"
+    },
+    "warning": {
+      "figma": "theme/warning",
+      "css": "--warning"
+    },
+    "destructive": {
+      "figma": "theme/destructive",
+      "css": "--destructive"
+    }
+  },
+  "opacity": {
+    "primaryLighter": {
+      "figma": "opacity/primary/10",
+      "css": "--opacity-primary-lighter"
+    },
+    "primaryMain": {
+      "figma": "opacity/primary/20",
+      "css": "--opacity-primary-main"
+    }
+  },
+  "sidebar": {
+    "surface": {
+      "figma": "theme/sidebar",
+      "css": "--sidebar"
+    },
+    "foreground": {
+      "figma": "theme/sidebar-foreground",
+      "css": "--sidebar-foreground"
+    },
+    "accent": {
+      "figma": "theme/sidebar-accent",
+      "css": "--sidebar-accent"
+    },
+    "accentForeground": {
+      "figma": "theme/sidebar-accent-foreground",
+      "css": "--sidebar-accent-foreground"
+    },
+    "border": {
+      "figma": "theme/sidebar-border",
+      "css": "--sidebar-border"
+    },
+    "ring": {
+      "figma": "theme/sidebar-ring",
+      "css": "--sidebar-ring"
+    },
+    "primary": {
+      "figma": "theme/sidebar-primary",
+      "css": "--sidebar-primary"
+    },
+    "primaryForeground": {
+      "figma": "theme/sidebar-primary-foreground",
+      "css": "--sidebar-primary-foreground"
+    }
+  },
+  "chart": {
+    "chart1": {
+      "figma": "theme/chart-1",
+      "css": "--chart-1"
+    },
+    "chart2": {
+      "figma": "theme/chart-2",
+      "css": "--chart-2"
+    },
+    "chart3": {
+      "figma": "theme/chart-3",
+      "css": "--chart-3"
+    },
+    "chart4": {
+      "figma": "theme/chart-4",
+      "css": "--chart-4"
+    },
+    "chart5": {
+      "figma": "theme/chart-5",
+      "css": "--chart-5"
+    }
+  },
+  "legacyComponentCandidates": {
+    "authPrimary": {
+      "currentCss": "--auth-primary-bg",
+      "recommendedFigma": "theme/info",
+      "reason": "Current auth primary is blue; Figma theme/primary is neutral ink."
+    },
+    "tagPrimary": {
+      "currentCss": "--tag-text-primary",
+      "recommendedFigma": "theme/info",
+      "reason": "Current tag primary is blue; it is semantically closer to info."
+    },
+    "tagSuccess": {
+      "currentCss": "--tag-text-success",
+      "recommendedFigma": "theme/success"
+    },
+    "tagWarning": {
+      "currentCss": "--tag-text-warning",
+      "recommendedFigma": "theme/warning"
+    },
+    "tagError": {
+      "currentCss": "--tag-text-error",
+      "recommendedFigma": "theme/destructive"
+    }
+  },
+  "missingFigmaDecisions": [
+    {
+      "css": "--destructive-foreground",
+      "decisionNeeded": "Add theme/destructive-foreground in Figma or derive it from theme/primary-foreground."
+    },
+    {
+      "css": "--app-page-bg",
+      "decisionNeeded": "Use theme/background or create an explicit surface/page token in Figma."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+name: railpack-monorepo
+
+services:
+  web:
+    path: .
+    build:
+      include:
+        - ../../package.json
+        - ../../shared
+    run:
+      command: node apps/web/server.mjs
+    readiness:
+      type: http
+      path: /ready
+      timeoutMs: 30000

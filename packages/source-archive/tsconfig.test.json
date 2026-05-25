@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "../..",
+    "outDir": "dist-test",
+    "paths": {
+      "@compartment/contracts": ["../contracts/src/index.ts"],
+      "@compartment/utils": ["../utils/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

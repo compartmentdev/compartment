@@ -1,0 +1,7 @@
+vulnerabilities:
+  - id: CVE-2026-34040
+    paths:
+      - usr/libexec/docker/cli-plugins/docker-buildx
+    purls:
+      - pkg:golang/github.com/docker/docker@v28.5.2%2Bincompatible
+    statement: Docker Buildx v0.34.1 is the current upstream release, but Trivy maps github.com/docker/docker to a non-existent v29 module tag.

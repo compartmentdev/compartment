@@ -1,0 +1,564 @@
+import {
+  compartmentDeploymentRunLogsPathname,
+  deploymentInspectResponseSchema,
+  deploymentListResponseSchema,
+  deploymentRunLogsResponseSchema,
+  deploymentLogsResponseSchema,
+  deploymentStatusResponseSchema,
+  deployResponseSchema,
+  errorResponseSchema,
+  type DeploymentLogLine,
+  type DeploymentLogsResponse,
+  type DeploymentInspectResponse,
+  type DeploymentListResponse,
+  type DeploymentRunLogsResponse,
+  type DeploymentRunStepSummary,
+  type DeploymentStatusResponse,
+  type DeploymentSummary,
+  type DeployResponse,
+  type InstallResponse,
+  type WorkerClaimDeploymentResponse,
+  type WorkerAppendDeploymentEventRequest,
+  type WorkerClaimedDeployment,
+  compartmentCurrentOrganizationHeaderName,
+  workerAppendDeploymentEventPathname,
+} from '@compartment/contracts';
+import type { LightMyRequestResponse } from 'fastify';
+import { rm, writeFile } from 'node:fs/promises';
+import type { Pool } from 'pg';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { eq } from 'drizzle-orm';
+import type { ApiApp } from '../src/app.types';
+import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
+
+import { buildArtifacts, deployments, environments, projectServices, projects } from '../src/db/schema';
+
+import {
+  buildOrganizationAuthorizationHeaders,
+  claimNextQueuedDeployment,
+  createSourceArchive,
+  injectDeployRequest,
+  installCompartment,
+  registerLocalNode,
+  requireClaimedDeployment,
+  requireDeployResponseDeployment,
+  requireSingleDeployment,
+  setVariable,
+} from './api-integration.harness';
+import {
+  createApiIntegrationApps,
+  createApiIntegrationTestContext,
+  cleanupApiIntegrationRuntime,
+  cleanupApiIntegrationTlsDirectory,
+  configureApiRuntimeWithPublicIngress,
+  resetApiIntegrationTlsDirectory,
+} from './api-app-test.harness';
+import { useApiDatabaseTestHarness } from './api-db-test.harness';
+
+type InvalidateEdgeAppAccessSessions = () => Promise<void>;
+type SynchronizeEdgeAppAccessState = () => Promise<void>;
+type ResolveDnsRecord = (hostname: string) => Promise<string[]>;
+type ResolveTxtRecord = (hostname: string) => Promise<string[][]>;
+
+interface AppAccessEdgeServiceMocks {
+  invalidateEdgeAppAccessSessions: Mock<InvalidateEdgeAppAccessSessions>;
+  synchronizeEdgeAppAccessState: Mock<SynchronizeEdgeAppAccessState>;
+}
+
+interface DnsPromiseMocks {
+  resolve4: Mock<ResolveDnsRecord>;
+  resolve6: Mock<ResolveDnsRecord>;
+  resolveCname: Mock<ResolveDnsRecord>;
+  resolveTxt: Mock<ResolveTxtRecord>;
+}
+
+const appAccessEdgeServiceMocks: AppAccessEdgeServiceMocks = vi.hoisted(
+  (): AppAccessEdgeServiceMocks => ({
+    invalidateEdgeAppAccessSessions: vi.fn<InvalidateEdgeAppAccessSessions>(),
+    synchronizeEdgeAppAccessState: vi.fn<SynchronizeEdgeAppAccessState>(),
+  }),
+);
+
+const dnsPromiseMocks: DnsPromiseMocks = vi.hoisted(
+  (): DnsPromiseMocks => ({
+    resolve4: vi.fn<ResolveDnsRecord>(),
+    resolve6: vi.fn<ResolveDnsRecord>(),
+    resolveCname: vi.fn<ResolveDnsRecord>(),
+    resolveTxt: vi.fn<ResolveTxtRecord>(),
+  }),
+);
+
+vi.mock(
+  '../src/services/app-access-edge.service',
+  (): AppAccessEdgeServiceMocks => ({
+    invalidateEdgeAppAccessSessions: appAccessEdgeServiceMocks.invalidateEdgeAppAccessSessions,
+    synchronizeEdgeAppAccessState: appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState,
+  }),
+);
+
+vi.mock(
+  'node:dns/promises',
+  (): DnsPromiseMocks => ({
+    resolve4: dnsPromiseMocks.resolve4,
+    resolve6: dnsPromiseMocks.resolve6,
+    resolveCname: dnsPromiseMocks.resolveCname,
+    resolveTxt: dnsPromiseMocks.resolveTxt,
+  }),
+);
+
+const {
+  apiConfig: defaultApiConfig,
+  databaseUrl: apiIntegrationDatabaseUrl,
+  testCustomTlsDirectory,
+} = createApiIntegrationTestContext('api_integration_deployment_status', 'api-integration-deployment-status');
+let pool!: Pool;
+let db!: Database;
+let app!: ApiApp;
+let systemApp!: ApiApp;
+let hasInitializedApiIntegrationRuntime: boolean = false;
+
+describe('Phase 0 API integration deployment status', (): void => {
+  useApiDatabaseTestHarness(apiIntegrationDatabaseUrl);
+
+  beforeEach(async (): Promise<void> => {
+    appAccessEdgeServiceMocks.invalidateEdgeAppAccessSessions.mockReset();
+    appAccessEdgeServiceMocks.invalidateEdgeAppAccessSessions.mockResolvedValue(undefined);
+    appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockReset();
+    appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockResolvedValue(undefined);
+    dnsPromiseMocks.resolve4.mockReset();
+    dnsPromiseMocks.resolve4.mockResolvedValue(['203.0.113.10']);
+    dnsPromiseMocks.resolve6.mockReset();
+    dnsPromiseMocks.resolve6.mockRejectedValue(new Error('No AAAA record.'));
+    dnsPromiseMocks.resolveCname.mockReset();
+    dnsPromiseMocks.resolveCname.mockRejectedValue(new Error('No CNAME record.'));
+    dnsPromiseMocks.resolveTxt.mockReset();
+    dnsPromiseMocks.resolveTxt.mockRejectedValue(new Error('No TXT record.'));
+    await resetApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    pool = createDatabasePool(apiIntegrationDatabaseUrl);
+    db = createDatabase(pool);
+    ({ app, systemApp } = await createApiIntegrationApps(defaultApiConfig, db, pool));
+    configureApiRuntimeWithPublicIngress(defaultApiConfig, db);
+    hasInitializedApiIntegrationRuntime = true;
+  });
+  afterAll(async (): Promise<void> => {
+    await cleanupApiIntegrationTlsDirectory(testCustomTlsDirectory);
+  });
+  afterEach(async (): Promise<void> => {
+    vi.unstubAllGlobals();
+    if (!hasInitializedApiIntegrationRuntime) {
+      return;
+    }
+
+    hasInitializedApiIntegrationRuntime = false;
+    await cleanupApiIntegrationRuntime(app, systemApp, pool);
+  });
+  it('does not sync service metadata when build env validation fails for an existing target', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await registerLocalNode(app);
+
+    const initialDeployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      {
+        descriptor: {
+          name: 'smoke-web',
+          services: {
+            web: {
+              path: './legacy-web',
+            },
+          },
+        },
+        sourceArchive: await createSourceArchive({
+          'compartment.yml': 'name: smoke-web\nservices:\n  web:\n    path: ./legacy-web\n',
+          'legacy-web/package.json': '{"name":"legacy-web"}\n',
+        }),
+      },
+    );
+    expect(initialDeployResponse.statusCode).toBe(200);
+    await setVariable(app, installPayload.sessionToken, 'acme-dev', {
+      keyName: 'DATABASE_URL',
+      projectName: 'smoke-web',
+      sensitivity: 'sensitive',
+      value: 'postgres://sensitive-build',
+    });
+
+    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      {
+        descriptor: {
+          name: 'smoke-web',
+          services: {
+            web: {
+              build: {
+                env: ['DATABASE_URL'],
+                strategy: 'railpack',
+              },
+              path: './services/web',
+            },
+          },
+        },
+        sourceArchive: await createSourceArchive({
+          'compartment.yml':
+            'name: smoke-web\nservices:\n  web:\n    path: ./services/web\n    build:\n      strategy: railpack\n      env:\n        - DATABASE_URL\n',
+          'services/web/package.json': '{"name":"web"}\n',
+        }),
+      },
+    );
+
+    expect(deployResponse.statusCode).toBe(400);
+    expect(errorResponseSchema.parse(deployResponse.json()).error.code).toBe('invalid_deploy_config');
+    expect(await db.select().from(deployments)).toHaveLength(1);
+    expect(await db.select().from(buildArtifacts)).toHaveLength(1);
+    expect(await db.select().from(projects)).toHaveLength(1);
+    expect(await db.select().from(environments)).toHaveLength(1);
+    expect(await db.select().from(projectServices)).toEqual([
+      expect.objectContaining({
+        kind: 'web',
+        name: 'web',
+        path: './legacy-web',
+      }),
+    ]);
+  });
+
+  it('requires current organization context to read deployment status and logs', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+
+    const statusResponse: LightMyRequestResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/deployments/status?projectName=smoke-web',
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+      },
+    });
+    expect(statusResponse.statusCode).toBe(400);
+    expect(errorResponseSchema.parse(statusResponse.json()).error.code).toBe('missing_current_organization');
+
+    const logsResponse: LightMyRequestResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/deployments/logs?projectName=smoke-web',
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+      },
+    });
+    expect(logsResponse.statusCode).toBe(400);
+    expect(errorResponseSchema.parse(logsResponse.json()).error.code).toBe('missing_current_organization');
+  });
+  it('returns not found when a deployment id belongs to a different organization scope', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await registerLocalNode(app);
+    const acmeDeployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    expect(acmeDeployResponse.statusCode).toBe(200);
+    const acmeDeployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse(acmeDeployResponse.json()),
+    );
+    const acmeDeploymentRunId: string = deployResponseSchema.parse(acmeDeployResponse.json()).deploymentRunId;
+
+    const createOrganizationResponse: LightMyRequestResponse = await app.inject({
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+      },
+      method: 'POST',
+      payload: {
+        name: 'Beta Dev',
+        slug: 'beta-dev',
+      },
+      url: '/v1/organizations',
+    });
+    expect(createOrganizationResponse.statusCode).toBe(200);
+    expect((await injectDeployRequest(app, installPayload.sessionToken, 'beta-dev')).statusCode).toBe(200);
+
+    const statusResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken, 'beta-dev'),
+      method: 'GET',
+      url: `/v1/deployments/status?projectName=smoke-web&deploymentId=${encodeURIComponent(acmeDeployment.id)}`,
+    });
+
+    expect(statusResponse.statusCode).toBe(404);
+    expect(errorResponseSchema.parse(statusResponse.json()).error.code).toBe('deployment_not_found');
+
+    const runLogsResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken, 'beta-dev'),
+      method: 'GET',
+      url: `${compartmentDeploymentRunLogsPathname}?projectName=smoke-web&selector=run&deploymentRunId=${encodeURIComponent(acmeDeploymentRunId)}`,
+    });
+    expect(runLogsResponse.statusCode).toBe(404);
+    expect(errorResponseSchema.parse(runLogsResponse.json()).error.code).toBe('deployment_not_found');
+  });
+  it('queues, claims, completes, and serves deployment status and logs for the default production environment', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await registerLocalNode(app);
+    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      {
+        label: '  release=1;hotfix  ',
+      },
+    );
+    expect(deployResponse.statusCode).toBe(200);
+    const deployPayload: DeployResponse = deployResponseSchema.parse(deployResponse.json());
+    const deployment: DeploymentSummary = requireDeployResponseDeployment(deployPayload);
+    expect(deployPayload.environment.name).toBe('production');
+    expect(deployment.label).toBe('release=1;hotfix');
+    const claimedPayload: WorkerClaimDeploymentResponse = await claimNextQueuedDeployment(app);
+    const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(claimedPayload);
+    expect(claimedDeployment.deploymentId).toBe(deployment.id);
+    expect(claimedDeployment.artifact.sourceDigest).toBeTruthy();
+    const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
+      headers: {
+        authorization: 'Bearer test-runtime-control-token',
+      },
+      method: 'GET',
+      url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
+    });
+    expect(sourceArchiveResponse.statusCode).toBe(200);
+    expect(sourceArchiveResponse.headers['content-type']).toContain('application/gzip');
+    expect(sourceArchiveResponse.body.length).toBeGreaterThan(0);
+    const completedResponse: LightMyRequestResponse = await app.inject({
+      headers: {
+        authorization: 'Bearer test-runtime-control-token',
+      },
+      method: 'POST',
+      url: '/internal/deployments/complete',
+      payload: {
+        containerId: 'container_123',
+        deploymentId: deployment.id,
+        imageRef: 'sha256:image',
+        routeHost: claimedDeployment.routeHost,
+        upstreamHost: '127.0.0.1',
+        upstreamPort: 31000,
+      },
+    });
+    expect(completedResponse.statusCode).toBe(200);
+    await appendWorkerDeploymentEvent(app, {
+      deploymentId: deployment.id,
+      deploymentRunId: deployPayload.deploymentRunId,
+      level: 'info',
+      message: 'build output hidden from deployment logs',
+      stepKey: 'building_image',
+      stream: 'stdout',
+      timestamp: '2026-03-23T11:59:58.000Z',
+    });
+    await appendWorkerDeploymentEvent(app, {
+      deploymentId: deployment.id,
+      deploymentRunId: deployPayload.deploymentRunId,
+      level: 'info',
+      message: 'release output visible in deployment logs',
+      stepKey: 'release',
+      stream: 'stdout',
+      timestamp: '2026-03-23T11:59:59.000Z',
+    });
+    const retainedArchiveResponse: LightMyRequestResponse = await app.inject({
+      headers: {
+        authorization: 'Bearer test-runtime-control-token',
+      },
+      method: 'GET',
+      url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
+    });
+    expect(retainedArchiveResponse.statusCode).toBe(200);
+    const statusResponse: LightMyRequestResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/deployments/status?projectName=smoke-web',
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
+      },
+    });
+    expect(statusResponse.statusCode).toBe(200);
+    const statusPayload: DeploymentStatusResponse = deploymentStatusResponseSchema.parse(statusResponse.json());
+    expect(requireSingleDeployment(statusPayload.deployments).status).toBe('succeeded');
+    expect(requireSingleDeployment(statusPayload.deployments).label).toBe('release=1;hotfix');
+    expect(requireSingleDeployment(statusPayload.activeDeployments).routeUrl).toBe('http://smoke-web.localhost');
+    const deploymentListResponse: LightMyRequestResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/deployments?projectName=smoke-web',
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
+      },
+    });
+    expect(deploymentListResponse.statusCode).toBe(200);
+    const deploymentListPayload: DeploymentListResponse = deploymentListResponseSchema.parse(
+      deploymentListResponse.json(),
+    );
+    expect(requireSingleDeployment(deploymentListPayload.deployments).label).toBe('release=1;hotfix');
+    expect(requireSingleDeployment(deploymentListPayload.deployments).deploymentRunId).toBe(
+      deployPayload.deploymentRunId,
+    );
+    const inspectResponse: LightMyRequestResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/deployments/inspect?projectName=smoke-web',
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
+      },
+    });
+    expect(inspectResponse.statusCode).toBe(200);
+    const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
+    expect(requireSingleDeployment(inspectPayload.deployments).label).toBe('release=1;hotfix');
+    const logsResponse: LightMyRequestResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/deployments/logs?projectName=smoke-web',
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
+      },
+    });
+    expect(logsResponse.statusCode).toBe(200);
+    const logsPayload: DeploymentLogsResponse = deploymentLogsResponseSchema.parse(logsResponse.json());
+    expect(requireSingleDeployment(logsPayload.deployments).serviceName).toBe('web');
+    expect(logsPayload.deployments).toHaveLength(1);
+    const logMessages: string[] = logsPayload.lines.map((line: DeploymentLogLine): string => line.message);
+    expect(logMessages).toContain('release output visible in deployment logs');
+    expect(logMessages).toContain('boot complete');
+    expect(logMessages).not.toContain('build output hidden from deployment logs');
+    expect(
+      logsPayload.lines.find(
+        (line: DeploymentLogLine): boolean => line.message === 'release output visible in deployment logs',
+      )?.stream,
+    ).toBe('stdout');
+    const latestRunLogsResponse: LightMyRequestResponse = await app.inject({
+      method: 'GET',
+      url: `${compartmentDeploymentRunLogsPathname}?projectName=smoke-web&selector=latest&tailLines=1`,
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
+      },
+    });
+    expect(latestRunLogsResponse.statusCode).toBe(200);
+    const latestRunLogsPayload: DeploymentRunLogsResponse = deploymentRunLogsResponseSchema.parse(
+      latestRunLogsResponse.json(),
+    );
+    expect(latestRunLogsPayload.deployment.id).toBe(deployPayload.deploymentRunId);
+    expect(latestRunLogsPayload.lines).toHaveLength(1);
+    expect(latestRunLogsPayload.lines[0]?.stepKey).toBe('switching_route');
+    const runLogsResponse: LightMyRequestResponse = await app.inject({
+      method: 'GET',
+      url: `${compartmentDeploymentRunLogsPathname}?projectName=smoke-web&selector=run&deploymentRunId=${deployPayload.deploymentRunId}&tailLines=1`,
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
+      },
+    });
+    expect(runLogsResponse.statusCode).toBe(200);
+    const runLogsPayload: DeploymentRunLogsResponse = deploymentRunLogsResponseSchema.parse(runLogsResponse.json());
+    expect(runLogsPayload.deployment.id).toBe(deployPayload.deploymentRunId);
+    expect(runLogsPayload.lines).toHaveLength(1);
+    expect(runLogsPayload.lines[0]?.stepKey).toBe('switching_route');
+    expect(runLogsPayload.steps.map((step: DeploymentRunStepSummary): string => step.stepKey)).toEqual(
+      expect.arrayContaining(['queued', 'switching_route']),
+    );
+    const runLogsSinceResponse: LightMyRequestResponse = await app.inject({
+      method: 'GET',
+      url: `${compartmentDeploymentRunLogsPathname}?projectName=smoke-web&selector=run&deploymentRunId=${deployPayload.deploymentRunId}&since=${encodeURIComponent(runLogsPayload.lines[0]!.timestamp)}&tailLines=1`,
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
+      },
+    });
+    expect(runLogsSinceResponse.statusCode).toBe(200);
+    const runLogsSincePayload: DeploymentRunLogsResponse = deploymentRunLogsResponseSchema.parse(
+      runLogsSinceResponse.json(),
+    );
+    expect(runLogsSincePayload.lines).toHaveLength(1);
+    expect(runLogsSincePayload.lines[0]?.stepKey).toBe('switching_route');
+    expect(runLogsSincePayload.steps.map((step: DeploymentRunStepSummary): string => step.stepKey)).toEqual(
+      expect.arrayContaining(['queued', 'switching_route']),
+    );
+    vi.unstubAllGlobals();
+
+    const secondDeployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    expect(secondDeployResponse.statusCode).toBe(200);
+    const secondDeployPayload: DeployResponse = deployResponseSchema.parse(secondDeployResponse.json());
+    const secondDeployment: DeploymentSummary = requireDeployResponseDeployment(secondDeployPayload);
+
+    const scopedStatusResponse: LightMyRequestResponse = await app.inject({
+      method: 'GET',
+      url: `/v1/deployments/status?projectName=smoke-web&deploymentId=${secondDeployment.id}&serviceName=web`,
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
+      },
+    });
+    expect(scopedStatusResponse.statusCode).toBe(200);
+    const scopedStatusPayload: DeploymentStatusResponse = deploymentStatusResponseSchema.parse(
+      scopedStatusResponse.json(),
+    );
+    expect(requireSingleDeployment(scopedStatusPayload.deployments).id).toBe(secondDeployment.id);
+    expect(requireSingleDeployment(scopedStatusPayload.activeDeployments).id).toBe(deployment.id);
+  });
+  it('does not serve per-artifact archives for non-source-resolution deployments', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await registerLocalNode(app);
+    const sourceArchive: Buffer = await createSourceArchive({
+      'compartment.yml': 'name: smoke-web\nservices:\n  web: .\n',
+      'package.json': '{"name":"smoke-web"}\n',
+    });
+    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      {
+        sourceArchive,
+      },
+    );
+    const deployPayload: DeployResponse = deployResponseSchema.parse(deployResponse.json());
+    const deployment: DeploymentSummary = requireDeployResponseDeployment(deployPayload);
+    const claimedPayload: WorkerClaimDeploymentResponse = await claimNextQueuedDeployment(app);
+    const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(claimedPayload);
+    const legacyArchivePath: string = `${defaultApiConfig.sourceArchiveDirectory}/${claimedDeployment.artifact.id}.tgz`;
+
+    expect(claimedDeployment.deploymentId).toBe(deployment.id);
+
+    await db
+      .update(buildArtifacts)
+      .set({
+        sourceUploadId: null,
+      })
+      .where(eq(buildArtifacts.id, claimedDeployment.artifact.id));
+    await writeFile(legacyArchivePath, sourceArchive);
+
+    try {
+      const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
+        headers: {
+          authorization: 'Bearer test-runtime-control-token',
+        },
+        method: 'GET',
+        url: `/internal/artifacts/${claimedDeployment.artifact.id}/source-archive`,
+      });
+
+      expect(sourceArchiveResponse.statusCode).toBe(404);
+      expect(sourceArchiveResponse.json()).toMatchObject({
+        error: {
+          code: 'source_archive_not_found',
+        },
+      });
+    } finally {
+      await rm(legacyArchivePath, { force: true });
+    }
+  });
+});
+
+async function appendWorkerDeploymentEvent(apiApp: ApiApp, payload: WorkerAppendDeploymentEventRequest): Promise<void> {
+  const response: LightMyRequestResponse = await apiApp.inject({
+    headers: {
+      authorization: 'Bearer test-runtime-control-token',
+    },
+    method: 'POST',
+    payload,
+    url: workerAppendDeploymentEventPathname,
+  });
+
+  expect(response.statusCode, response.body).toBe(200);
+}

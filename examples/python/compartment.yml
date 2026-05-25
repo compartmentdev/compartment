@@ -1,0 +1,13 @@
+name: python
+
+services:
+  web:
+    path: .
+    build:
+      packages:
+        runtime:
+          - ffmpeg
+    readiness:
+      type: http
+      path: /ready
+      timeoutMs: 30000

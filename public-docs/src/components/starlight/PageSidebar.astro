@@ -1,0 +1,46 @@
+---
+import TableOfContents from '@astrojs/starlight/components/TableOfContents.astro';
+---
+
+{
+  Astro.locals.starlightRoute.toc && (
+    <div class="right-sidebar-panel">
+      <div class="sl-container">
+        <TableOfContents />
+      </div>
+    </div>
+  )
+}
+
+<style>
+  @layer starlight.core {
+    .right-sidebar-panel {
+      width: 100%;
+      padding: 0 var(--sl-sidebar-pad-x) 0.75rem;
+    }
+
+    .sl-container {
+      width: 100%;
+    }
+
+    .right-sidebar-panel :global(h2) {
+      color: var(--sl-color-white);
+      font-size: var(--sl-text-h5);
+      font-weight: 600;
+      line-height: var(--sl-line-height-headings);
+      margin-bottom: 0.5rem;
+    }
+
+    .right-sidebar-panel :global(:where(a)) {
+      display: block;
+      overflow-wrap: anywhere;
+      color: var(--sl-color-gray-3);
+      font-size: var(--sl-text-xs);
+      text-decoration: none;
+    }
+
+    .right-sidebar-panel :global(:where(a):hover) {
+      color: var(--sl-color-white);
+    }
+  }
+</style>

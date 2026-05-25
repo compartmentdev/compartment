@@ -1,0 +1,4 @@
+.astro/
+.generated/
+dist/
+src/content/docs/reference/generated/

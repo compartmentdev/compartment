@@ -1,0 +1,6 @@
+{
+  "name": "railpack-pnpm-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.6.3",
+  "type": "module"
+}

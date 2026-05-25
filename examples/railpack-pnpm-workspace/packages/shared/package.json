@@ -1,0 +1,6 @@
+{
+  "name": "@compartment-e2e/pnpm-shared",
+  "private": true,
+  "type": "module",
+  "exports": "./message.mjs"
+}

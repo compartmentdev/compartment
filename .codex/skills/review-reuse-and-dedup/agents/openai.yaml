@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Review Reuse and Dedup'
+  short_description: 'Review helper reuse and duplication'
+  default_prompt: 'Use $review-reuse-and-dedup to review the current compartment repo diff for existing utilities, extractable helpers, duplicated logic, and hardcoded repeated values.'

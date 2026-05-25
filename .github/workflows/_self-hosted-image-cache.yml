@@ -1,0 +1,138 @@
+name: Self-hosted image cache reusable
+
+on:
+  workflow_call:
+    inputs:
+      runner_labels_json:
+        required: true
+        type: string
+      scan_vulnerabilities:
+        default: false
+        required: false
+        type: boolean
+    outputs:
+      cache_key:
+        value: ${{ jobs.build-and-check-images.outputs.cache_key }}
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build-and-check-images:
+    name: build and check images
+    runs-on: ${{ fromJson(inputs.runner_labels_json) }}
+    timeout-minutes: 45
+    outputs:
+      cache_key: ${{ steps.cache-key.outputs.value }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Resolve self-hosted image build cache key
+        id: cache-key
+        run: echo "value=${{ runner.os }}-self-hosted-images-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore self-hosted image build cache
+        id: self-hosted-image-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ./.compartment/self-hosted-image-cache
+          key: ${{ steps.cache-key.outputs.value }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        env:
+          AGENT_TOOLSDIRECTORY: ${{ runner.temp }}/tool-cache
+          RUNNER_TOOL_CACHE: ${{ runner.temp }}/tool-cache
+        with:
+          node-version-file: .nvmrc
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-config
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-config
+        with:
+          name: compartment-${{ github.run_id }}-self-hosted-image-cache
+          cleanup: false
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+
+      - name: Set up Trivy
+        if: inputs.scan_vulnerabilities
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514
+        with:
+          version: v0.70.0
+
+      - name: Prepare self-hosted image env
+        if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'
+        env:
+          PRIMARY_TAG: sha-${{ github.sha }}
+        run: |
+          node ./scripts/deploy/render-self-hosted-env.mjs \
+            --primary-tag "$PRIMARY_TAG" \
+            --output ./.compartment/self-hosted-image-cache/.env.self-hosted
+
+      - name: Build self-hosted images
+        if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'
+        env:
+          COMPARTMENT_CADDY_BUILDER_IMAGE: public.ecr.aws/docker/library/caddy:2.11.3-builder
+          COMPARTMENT_CADDY_RUNTIME_IMAGE: public.ecr.aws/docker/library/caddy:2.11.3
+          COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.3-bookworm
+          COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.14.0-bookworm
+          COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.14.0-bookworm-slim
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-config
+        run: |
+          node ./scripts/deploy/build-self-hosted-images.mjs --env-file ./.compartment/self-hosted-image-cache/.env.self-hosted
+
+      - name: Save self-hosted images to cache directory
+        if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'
+        run: |
+          set -a
+          . ./.compartment/self-hosted-image-cache/.env.self-hosted
+          set +a
+
+          docker save "$COMPARTMENT_API_IMAGE" --output ./.compartment/self-hosted-image-cache/api.tar
+          docker save "$COMPARTMENT_CADDY_IMAGE" --output ./.compartment/self-hosted-image-cache/caddy.tar
+          docker save "$COMPARTMENT_EDGE_IMAGE" --output ./.compartment/self-hosted-image-cache/edge.tar
+          docker save "$COMPARTMENT_RUNTIME_PROBE_IMAGE" --output ./.compartment/self-hosted-image-cache/runtime-probe.tar
+          docker save "$COMPARTMENT_WORKER_IMAGE" --output ./.compartment/self-hosted-image-cache/worker.tar
+
+      - name: Load cached self-hosted images
+        if: steps.self-hosted-image-cache.outputs.cache-hit == 'true'
+        run: |
+          for service in api caddy edge worker runtime-probe; do
+            docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
+          done
+
+      - name: Check self-hosted image vulnerabilities
+        if: inputs.scan_vulnerabilities
+        run: node ./scripts/deploy/secure-self-hosted-images.mjs --scan-only "sha-${{ github.sha }}"
+
+      - name: Check self-hosted runtime surface
+        run: node ./scripts/deploy/check-self-hosted-runtime-surface.mjs ./.compartment/self-hosted-image-cache/.env.self-hosted
+
+      - name: Save self-hosted image build cache
+        if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ./.compartment/self-hosted-image-cache
+          key: ${{ steps.cache-key.outputs.value }}
+
+      - name: Clean up Docker builders
+        if: ${{ always() && steps.self-hosted-image-cache.outputs.cache-hit != 'true' }}
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-config
+        run: |
+          timeout 60s docker buildx rm --force compartment-${{ github.run_id }}-self-hosted-image-cache || true

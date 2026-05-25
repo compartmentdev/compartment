@@ -1,0 +1,6 @@
+{
+  "name": "@railpack-monorepo/shared",
+  "private": true,
+  "type": "module",
+  "exports": "./message.mjs"
+}

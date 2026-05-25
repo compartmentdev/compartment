@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Compartment Smoke Test'
+  short_description: 'Browser-use local compartment smoke workflow'
+  default_prompt: 'Use $compartment-smoke-test to run or, when policy allows from a broader task, delegate a browser-use local compartment smoke pass; if you are already the smoke subagent, run it directly without re-delegating.'

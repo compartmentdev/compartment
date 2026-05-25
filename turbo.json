@@ -1,0 +1,39 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    "eslint.config.mjs",
+    "eslint.duplicates.config.mjs",
+    "lint-staged.config.mjs",
+    "prettier.config.mjs",
+    "tsconfig.base.json",
+    "tsconfig.build.base.json",
+    "vitest.config.mts",
+    "vitest.setup.mts"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "browser-dist/**"]
+    },
+    "build:test": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist-test/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^lint"],
+      "outputs": []
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^test"],
+      "outputs": []
+    }
+  }
+}

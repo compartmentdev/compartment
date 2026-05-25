@@ -1,0 +1,12 @@
+name: railpack
+
+services:
+  web:
+    path: .
+    # Railpack-only runtime start override through compartment.yml.
+    run:
+      command: npm run start:override
+    readiness:
+      type: http
+      path: /ready
+      timeoutMs: 30000

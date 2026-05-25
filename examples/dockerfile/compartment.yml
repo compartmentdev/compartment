@@ -1,0 +1,12 @@
+name: dockerfile
+
+services:
+  web:
+    path: .
+    release:
+      command: >-
+        node -e "if (!process.env.PORT) process.exit(1); console.log('dockerfile release completed')"
+    readiness:
+      type: http
+      path: /healthz
+      timeoutMs: 30000

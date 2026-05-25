@@ -1,0 +1,15 @@
+services:
+  api-migrate:
+    pull_policy: never
+
+  api:
+    pull_policy: never
+
+  edge:
+    pull_policy: never
+
+  caddy:
+    pull_policy: never
+
+  worker:
+    pull_policy: never

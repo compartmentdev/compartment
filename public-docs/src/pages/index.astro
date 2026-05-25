@@ -1,0 +1,23 @@
+---
+import { docsHomePath } from '../../site-config.mjs';
+
+const redirectTo: string = docsHomePath;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content={`0;url=${redirectTo}`} />
+    <meta name="robots" content="noindex" />
+    <link rel="canonical" href={redirectTo} />
+    <script is:inline define:vars={{ redirectTo }}>
+      window.location.replace(redirectTo);
+    </script>
+  </head>
+  <body>
+    <noscript>
+      <a href={redirectTo}>Continue to Compartment docs</a>
+    </noscript>
+  </body>
+</html>

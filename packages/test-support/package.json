@@ -1,0 +1,32 @@
+{
+  "name": "@compartment/test-support",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:test": "tsc -p tsconfig.test.json",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.test.json --noEmit --rootDir ../..",
+    "test": "vitest run --config ../../vitest.config.mts --passWithNoTests"
+  },
+  "dependencies": {
+    "@compartment/docker": "workspace:*",
+    "@compartment/utils": "workspace:*",
+    "dockerode": "^5.0.0",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.13.3"
+  },
+  "devDependencies": {
+    "@compartment/eslint-config": "workspace:*",
+    "@types/dockerode": "^4.0.1",
+    "@types/pg": "^8.20.0"
+  }
+}

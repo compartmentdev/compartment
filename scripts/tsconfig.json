@@ -1,0 +1,23 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "checkJs": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noImplicitAny": false,
+    "noUncheckedIndexedAccess": false,
+    "paths": {
+      "@compartment/contracts": ["../packages/contracts/src/index.ts"],
+      "@compartment/sdk": ["../packages/sdk/src/index.ts"],
+      "@compartment/source-archive": ["../packages/source-archive/src/index.ts"],
+      "@compartment/utils": ["../packages/utils/src/index.ts"]
+    },
+    "strict": false,
+    "useUnknownInCatchVariables": false,
+    "noEmit": true
+  },
+  "include": ["./**/*.mjs", "../.codex/skills/**/scripts/**/*.mjs"]
+}

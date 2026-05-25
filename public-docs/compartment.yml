@@ -1,0 +1,19 @@
+name: compartment-docs
+
+services:
+  web:
+    accessMode: public
+    kind: static
+    path: .
+    build:
+      command: pnpm docs:build
+      outputDirectory: dist
+      include:
+        - ../.husky
+        - ../package.json
+        - ../packages
+        - ../pnpm-lock.yaml
+        - ../pnpm-workspace.yaml
+        - ../prettier.config.mjs
+        - ../scripts
+        - ../tsconfig.base.json

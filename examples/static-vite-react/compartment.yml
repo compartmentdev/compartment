@@ -1,0 +1,11 @@
+name: static-vite-react
+
+services:
+  web:
+    kind: static
+    path: .
+    build:
+      command: node build.mjs
+      outputDirectory: dist
+      env:
+        - VITE_PUBLIC_GREETING

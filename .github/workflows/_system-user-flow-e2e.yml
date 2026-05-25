@@ -1,0 +1,165 @@
+name: Self-hosted e2e reusable
+
+on:
+  workflow_call:
+    inputs:
+      install_console_playwright:
+        default: false
+        required: false
+        type: boolean
+      self_hosted_image_cache_key:
+        required: true
+        type: string
+      runner_labels_json:
+        required: true
+        type: string
+      suite_name:
+        required: true
+        type: string
+      suite_slug:
+        required: true
+        type: string
+      test_file:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  run-system-user-flow-e2e:
+    name: run ${{ inputs.suite_name }} e2e
+    runs-on: ${{ fromJson(inputs.runner_labels_json) }}
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
+        env:
+          npm_config_cache: ${{ runner.temp }}/npm-cache
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+          version: 10.6.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        env:
+          AGENT_TOOLSDIRECTORY: ${{ runner.temp }}/tool-cache
+          RUNNER_TOOL_CACHE: ${{ runner.temp }}/tool-cache
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-config
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Docker Compose plugin for ${{ inputs.suite_name }}
+        env:
+          DOCKER_COMPOSE_VERSION: v2.40.3
+        run: |
+          sudo install -m 0755 -d /usr/local/lib/docker/cli-plugins
+          curl --fail --location --show-error \
+            "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" \
+            --output /tmp/docker-compose
+          sudo install -m 0755 /tmp/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose
+          docker_host="$(docker context inspect --format '{{ .Endpoints.docker.Host }}')"
+          if [[ "$docker_host" == unix://* && "$docker_host" != unix:///var/run/docker.sock ]]; then
+            sudo rm -f /var/run/docker.sock
+            sudo ln -s "${docker_host#unix://}" /var/run/docker.sock
+          fi
+          docker compose version
+          sudo -n docker compose version
+          docker ps
+          sudo -n docker ps
+
+      - name: Install OS packages
+        run: |
+          for attempt in 1 2 3; do
+            sudo rm -rf /var/lib/apt/lists/*
+            if sudo apt-get update -o Acquire::Retries=3 && sudo apt-get install --yes build-essential caddy iptables nftables; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              exit 1
+            fi
+            sleep 15
+          done
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install console Playwright browser
+        if: ${{ inputs.install_console_playwright }}
+        run: pnpm --filter @compartment/console test:e2e:install
+
+      - name: Install cosign for CLI artifact build
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
+        with:
+          cosign-release: v2.6.1
+
+      - name: Build CLI artifact for ${{ inputs.suite_name }}
+        env:
+          BUILD_COMMIT_SHA: ${{ github.sha }}
+          PRIMARY_TAG: sha-${{ github.sha }}
+        run: |
+          pnpm cli:build:sea \
+            --distribution-channel source \
+            --default-registry-image-tag "$PRIMARY_TAG" \
+            --build-commit-sha "$BUILD_COMMIT_SHA" \
+            --output-dir ./.compartment/cli-dist
+
+      - name: Prepare ${{ inputs.suite_name }} image env
+        env:
+          PRIMARY_TAG: sha-${{ github.sha }}
+          SUITE_SLUG: ${{ inputs.suite_slug }}
+        run: |
+          node ./scripts/deploy/render-self-hosted-env.mjs \
+            --primary-tag "$PRIMARY_TAG" \
+            --output "./.compartment/${SUITE_SLUG}/.env.self-hosted"
+
+      - name: Restore self-hosted image cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ./.compartment/self-hosted-image-cache
+          key: ${{ inputs.self_hosted_image_cache_key }}
+          fail-on-cache-miss: true
+
+      - name: Load self-hosted images
+        run: |
+          for service in api caddy edge worker runtime-probe; do
+            docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
+          done
+
+      - name: Prepare ${{ inputs.suite_name }} runtime dependency images
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-config
+        run: |
+          docker pull ghcr.io/compartmentdev/compartment-ci-postgres:16
+          docker pull ghcr.io/compartmentdev/compartment-ci-registry:2
+          docker tag ghcr.io/compartmentdev/compartment-ci-postgres:16 postgres:16
+          docker tag ghcr.io/compartmentdev/compartment-ci-registry:2 registry:2
+          sudo -n docker image inspect postgres:16 registry:2 >/dev/null
+
+      - name: Check ${{ inputs.suite_name }} runtime surface
+        env:
+          SUITE_SLUG: ${{ inputs.suite_slug }}
+        run: node ./scripts/deploy/check-self-hosted-runtime-surface.mjs "./.compartment/${SUITE_SLUG}/.env.self-hosted"
+
+      - name: Run ${{ inputs.suite_name }} end-to-end checks
+        env:
+          COMPARTMENT_DEPLOY_E2E_INCLUDE: ${{ inputs.test_file }}
+          COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E: '1'
+          COMPARTMENT_SELF_HOSTED_USER_SETUP_VERSION: sha-${{ github.sha }}
+          COMPARTMENT_TEST_APP_NODE_IMAGE: public.ecr.aws/docker/library/node:24.14.0-bookworm
+          COMPARTMENT_TEST_POSTGRES_IMAGE: public.ecr.aws/docker/library/postgres:16-alpine
+          DOCKER_CONFIG: ${{ runner.temp }}/docker-config
+        run: pnpm --filter @compartment/cli test:e2e

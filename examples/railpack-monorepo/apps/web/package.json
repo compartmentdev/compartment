@@ -1,0 +1,11 @@
+{
+  "name": "railpack-monorepo-web",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@railpack-monorepo/shared": "file:../../shared"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

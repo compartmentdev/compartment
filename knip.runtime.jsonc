@@ -1,0 +1,62 @@
+{
+  // Runtime-only dead code check.
+  // This intentionally ignores test usage and looks only at production/runtime entrypoints.
+  "includeEntryExports": true,
+  "entry": ["scripts/dev/run-compartment-cli.mjs!", "packages/contracts/src/index.browser.ts!"],
+  "ignore": [
+    "packages/*/dist/**",
+    // Browser-safe utils entry is consumed through the Vite alias in packages/console/vite.config.ts.
+    "packages/utils/src/browser.ts",
+  ],
+  "ignoreBinaries": ["astro", "dotenv"],
+  "ignoreDependencies": ["dotenv-cli"],
+  "ignoreWorkspaces": ["packages/test-support", "packages/eslint-config", "packages/eslint-plugin"],
+  "workspaces": {
+    "packages/api": {
+      "entry": ["src/server.ts!", "src/db/check.ts!", "src/db/migrate.ts!", "src/db/reset.ts!"],
+      "project": ["src/**/*.ts!", "drizzle.config.ts!", "!test/**!"],
+    },
+    "packages/docker": {
+      "entry": ["src/index.ts!"],
+      "project": ["src/**/*.ts!", "!test/**!"],
+    },
+    "packages/cli": {
+      "entry": ["src/bin.ts!"],
+      "project": ["src/**/*.ts!", "!test/**!"],
+    },
+    "packages/contracts": {
+      "entry": ["src/index.ts!"],
+      "project": ["src/**/*.ts!", "!test/**!"],
+    },
+    "packages/source-archive": {
+      "entry": ["src/index.ts!"],
+      "project": ["src/**/*.ts!", "!test/**!"],
+    },
+    "packages/console": {
+      // Runtime entry points are declared explicitly below, so Knip does not need to execute Vite config here.
+      "vite": false,
+      "entry": ["src/index.ts!", "src/main.tsx!", "src/auth-main.tsx!"],
+      "project": ["src/**/*.ts!", "src/**/*.tsx!", "!test/**!"],
+    },
+    "packages/node": {
+      "entry": ["src/index.ts!", "src/server.ts!"],
+      "project": ["src/**/*.ts!", "!test/**!"],
+    },
+    "packages/edge": {
+      "entry": ["src/server.ts!", "scripts/sync-caddyfile.mjs!", "scripts/sync-caddyfile.impl.ts!"],
+      "project": ["src/**/*.ts!", "scripts/sync-caddyfile.impl.ts!", "scripts/**/*.mjs!", "!test/**!"],
+    },
+    "packages/worker": {
+      "entry": ["src/index.ts!", "src/server.ts!", "src/registry-auth-proxy.ts!"],
+      "project": ["src/**/*.ts!", "!test/**!"],
+    },
+    "packages/sdk": {
+      "entry": ["src/index.ts!"],
+      "project": ["src/**/*.ts!"],
+    },
+    "packages/utils": {
+      "entry": ["src/index.ts!", "src/browser.ts!", "src/text.ts!"],
+      "project": ["src/**/*.ts!"],
+    },
+  },
+}

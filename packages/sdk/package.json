@@ -1,0 +1,33 @@
+{
+  "name": "@compartment/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.d.ts",
+    "!dist/**/*.map"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:test": "tsc -p tsconfig.test.json",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.test.json --noEmit --rootDir ../..",
+    "test": "vitest run --config ../../vitest.config.mts --passWithNoTests"
+  },
+  "dependencies": {
+    "@compartment/contracts": "workspace:*",
+    "@compartment/utils": "workspace:*",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@compartment/eslint-config": "workspace:*"
+  }
+}

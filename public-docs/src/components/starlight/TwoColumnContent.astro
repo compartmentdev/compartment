@@ -1,0 +1,187 @@
+<div class="docs-layout" data-docs-layout>
+  {
+    Astro.locals.starlightRoute.toc && (
+      <aside class="right-sidebar-container print:hidden" data-sidebar-state="pending">
+        <div class="right-sidebar">
+          <slot name="right-sidebar" />
+        </div>
+      </aside>
+    )
+  }
+  <div class="main-pane"><slot /></div>
+</div>
+
+<noscript>
+  <style>
+    @media (min-width: 84rem) {
+      .right-sidebar-container[data-sidebar-state='pending'] {
+        opacity: 1;
+        visibility: visible;
+      }
+    }
+  </style>
+</noscript>
+
+<script>
+  const docsLayout = document.querySelector('[data-docs-layout]');
+
+  if (docsLayout instanceof HTMLElement) {
+    const mainPane = docsLayout.querySelector('.main-pane');
+    if (mainPane instanceof HTMLElement) {
+      const rightSidebar = docsLayout.querySelector('.right-sidebar-container');
+      const leftSidebarScroller = document.getElementById('starlight__sidebar');
+      const persistLeftSidebarState = (): void => {
+        if (!(leftSidebarScroller instanceof HTMLElement)) {
+          return;
+        }
+
+        const sidebarStateRoot = leftSidebarScroller.querySelector('sl-sidebar-state-persist');
+
+        if (!(sidebarStateRoot instanceof HTMLElement)) {
+          return;
+        }
+
+        let open: Array<boolean | null> = [];
+        const hash = sidebarStateRoot.dataset.hash ?? '';
+
+        try {
+          const rawStoredState = sessionStorage.getItem('sl-sidebar-state');
+          const storedState = JSON.parse(rawStoredState ?? '{}') as {
+            hash?: string;
+            open?: Array<boolean | null>;
+          };
+
+          if (Array.isArray(storedState.open) && storedState.hash === hash) {
+            open = storedState.open;
+          }
+        } catch {}
+
+        try {
+          sessionStorage.setItem(
+            'sl-sidebar-state',
+            JSON.stringify({ hash, open, scroll: leftSidebarScroller.scrollTop }),
+          );
+        } catch {}
+      };
+
+      const setRightSidebarOffset = (): void => {
+        const secondPanel =
+          mainPane.querySelector('main > .content-panel:nth-of-type(2)') ??
+          mainPane.querySelector('main > .content-panel:first-of-type');
+
+        if (!(secondPanel instanceof HTMLElement)) {
+          docsLayout.style.removeProperty('--cpt-right-sidebar-offset');
+          return;
+        }
+
+        const panelContent = secondPanel.querySelector('.sl-container');
+        const layoutTop = docsLayout.getBoundingClientRect().top;
+        const panelTop =
+          panelContent instanceof HTMLElement
+            ? panelContent.getBoundingClientRect().top
+            : secondPanel.getBoundingClientRect().top;
+        const offset = Math.max(0, panelTop - layoutTop);
+
+        docsLayout.style.setProperty('--cpt-right-sidebar-offset', `${offset}px`);
+
+        if (rightSidebar instanceof HTMLElement) {
+          rightSidebar.dataset.sidebarState = 'ready';
+        }
+      };
+
+      setRightSidebarOffset();
+      window.addEventListener('load', setRightSidebarOffset, { once: true });
+      window.addEventListener('pagehide', persistLeftSidebarState);
+      window.addEventListener('resize', setRightSidebarOffset);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          persistLeftSidebarState();
+        }
+      });
+
+      const resizeObserver = new ResizeObserver((): void => {
+        window.requestAnimationFrame(setRightSidebarOffset);
+      });
+
+      resizeObserver.observe(docsLayout);
+      resizeObserver.observe(mainPane);
+
+      if (leftSidebarScroller instanceof HTMLElement) {
+        let scrollStateTimeoutId: number | undefined;
+
+        leftSidebarScroller.addEventListener(
+          'scroll',
+          () => {
+            leftSidebarScroller.dataset.scrollState = 'scrolling';
+
+            if (scrollStateTimeoutId !== undefined) {
+              window.clearTimeout(scrollStateTimeoutId);
+            }
+
+            scrollStateTimeoutId = window.setTimeout(() => {
+              delete leftSidebarScroller.dataset.scrollState;
+            }, 180);
+          },
+          { passive: true },
+        );
+      }
+    }
+  }
+</script>
+
+<style>
+  @layer starlight.core {
+    .docs-layout {
+      display: block;
+    }
+
+    .main-pane {
+      isolation: isolate;
+      width: 100%;
+    }
+
+    .right-sidebar-container {
+      display: none;
+    }
+
+    @media (min-width: 84rem) {
+      .docs-layout {
+        display: flex;
+      }
+
+      .right-sidebar-container {
+        display: block;
+        order: 2;
+        position: relative;
+        align-self: stretch;
+        padding-top: var(--cpt-right-sidebar-offset, 0px);
+        width: calc(
+          var(--sl-sidebar-width) + (100% - var(--sl-content-width) - var(--sl-sidebar-width)) / 2
+        );
+      }
+
+      .right-sidebar-container[data-sidebar-state='pending'] {
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      .right-sidebar {
+        position: sticky;
+        top: calc(var(--sl-nav-height) + 0.05rem);
+        width: 100%;
+        height: calc(100vh - var(--sl-nav-height) - 0.05rem);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        border-inline-start: 1px solid var(--sl-color-hairline);
+        scrollbar-width: none;
+      }
+
+      .main-pane {
+        order: 1;
+        width: calc(
+          var(--sl-content-width) + (100% - var(--sl-content-width) - var(--sl-sidebar-width)) / 2
+        );
+      }
+    }
+  }
+</style>

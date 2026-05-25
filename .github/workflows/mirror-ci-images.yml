@@ -1,0 +1,63 @@
+name: Mirror CI Images
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 3 * * 1'
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/mirror-ci-images.yml
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: mirror-ci-images
+  cancel-in-progress: false
+
+jobs:
+  mirror-images:
+    name: mirror ${{ matrix.source_image }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - source_image: docker.io/library/postgres:16
+            target_image: ghcr.io/compartmentdev/compartment-ci-postgres:16
+          - source_image: docker.io/library/registry:2
+            target_image: ghcr.io/compartmentdev/compartment-ci-registry:2
+          - source_image: docker.io/library/nginx:alpine
+            target_image: ghcr.io/compartmentdev/compartment-ci-nginx:alpine
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Mirror image
+        env:
+          SOURCE_IMAGE: ${{ matrix.source_image }}
+          TARGET_IMAGE: ${{ matrix.target_image }}
+        run: |
+          set -euo pipefail
+
+          for attempt in 1 2 3; do
+            if docker pull --platform linux/amd64 "${SOURCE_IMAGE}"; then
+              break
+            fi
+            if [ "${attempt}" -eq 3 ]; then
+              exit 1
+            fi
+            sleep 30
+          done
+
+          docker image inspect "${SOURCE_IMAGE}" --format 'source={{index .RepoDigests 0}}'
+          docker tag "${SOURCE_IMAGE}" "${TARGET_IMAGE}"
+          docker push "${TARGET_IMAGE}"

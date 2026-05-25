@@ -1,0 +1,64 @@
+import type { Stats } from 'node:fs';
+import { lstat } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { isMissingFileSystemEntryError } from '@compartment/utils';
+
+interface AssertNoExistingSelfHostedDirectorySymlinksInput {
+  directoryPath: string;
+  label: string;
+  managedRoots: readonly string[];
+}
+
+export async function assertNoExistingSelfHostedDirectorySymlinks({
+  directoryPath,
+  label,
+  managedRoots,
+}: AssertNoExistingSelfHostedDirectorySymlinksInput): Promise<void> {
+  for (const checkedPath of readSelfHostedDirectoryCheckPaths(directoryPath, managedRoots)) {
+    const stats: Stats | null = await readOptionalPathStats(checkedPath);
+    if (stats === null) {
+      continue;
+    }
+    if (stats.isSymbolicLink()) {
+      throw new Error(`${label} ${checkedPath} must be a real directory.`);
+    }
+  }
+}
+
+export async function assertRealSelfHostedDirectory(directoryPath: string, label: string): Promise<void> {
+  const stats: Stats = await lstat(directoryPath);
+  if (stats.isSymbolicLink() || !stats.isDirectory()) {
+    throw new Error(`${label} ${directoryPath} must be a real directory.`);
+  }
+}
+
+async function readOptionalPathStats(path: string): Promise<Stats | null> {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (error instanceof Error && isMissingFileSystemEntryError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function readSelfHostedDirectoryCheckPaths(directoryPath: string, managedRoots: readonly string[]): string[] {
+  const resolvedDirectoryPath: string = resolve(directoryPath);
+  const rootPath: string | undefined = managedRoots.find(
+    (candidateRootPath: string): boolean =>
+      resolvedDirectoryPath === candidateRootPath || resolvedDirectoryPath.startsWith(`${candidateRootPath}/`),
+  );
+  if (rootPath === undefined) {
+    return [resolvedDirectoryPath];
+  }
+
+  const relativePath: string = resolvedDirectoryPath.slice(rootPath.length);
+  const relativeParts: string[] = relativePath.split('/').filter((part: string): boolean => part.length > 0);
+  const checkedPaths: string[] = [rootPath];
+  for (const relativePart of relativeParts) {
+    checkedPaths.push(resolve(checkedPaths[checkedPaths.length - 1]!, relativePart));
+  }
+
+  return checkedPaths;
+}

@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1.7
+
+ARG COMPARTMENT_NODE_BUILD_IMAGE=node:24.14.0-bookworm
+ARG COMPARTMENT_NODE_RUNTIME_IMAGE=node:24.14.0-bookworm-slim
+
+FROM ${COMPARTMENT_NODE_BUILD_IMAGE} AS build
+
+RUN corepack enable
+WORKDIR /workspace
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.build.base.json ./
+COPY .husky/install.mjs ./.husky/install.mjs
+COPY packages ./packages
+
+RUN HUSKY=0 pnpm install --frozen-lockfile
+RUN pnpm --filter=@compartment/edge... build
+RUN HUSKY=0 NODE_ENV=production pnpm --filter=@compartment/edge deploy --legacy --prod /runtime
+
+FROM ${COMPARTMENT_NODE_RUNTIME_IMAGE} AS runtime
+
+ENV NODE_ENV=production
+
+LABEL org.opencontainers.image.source="https://github.com/compartmentdev/compartment"
+
+RUN apt-get update \
+  && apt-get upgrade --yes --no-install-recommends \
+  && apt-get install --yes --no-install-recommends ca-certificates dumb-init \
+  && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=build /runtime /app
+
+USER node
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/server.js"]

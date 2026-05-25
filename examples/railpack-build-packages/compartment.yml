@@ -1,0 +1,14 @@
+name: railpack-build-packages
+
+services:
+  web:
+    path: .
+    build:
+      strategy: railpack
+      packages:
+        runtime:
+          - jq
+    readiness:
+      type: http
+      path: /ready
+      timeoutMs: 30000

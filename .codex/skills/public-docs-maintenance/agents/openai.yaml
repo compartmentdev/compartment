@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Public Docs Maintenance'
+  short_description: 'Update public docs for material Compartment workflow changes'
+  default_prompt: 'Use $public-docs-maintenance to update public docs only for material changes to shipped Compartment workflows, keeping guides concise and focused on user actions or operator decisions while relying on generated reference for deterministic surfaces.'

@@ -1,0 +1,19 @@
+name: railpack-pnpm-workspace
+
+services:
+  web:
+    path: packages/api
+    build:
+      strategy: railpack
+      command: pnpm --filter @compartment-e2e/pnpm-api build
+      include:
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - packages/shared
+    run:
+      command: pnpm --filter @compartment-e2e/pnpm-api start
+    readiness:
+      type: http
+      path: /ready
+      timeoutMs: 30000

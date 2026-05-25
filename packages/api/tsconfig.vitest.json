@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "paths": {
+      "@compartment/contracts/browser": ["../contracts/src/index.browser.ts"],
+      "@compartment/contracts": ["../contracts/src/index.ts"],
+      "@compartment/console": ["../console/src/index.ts"],
+      "@compartment/docker": ["../docker/src/index.ts"],
+      "@compartment/sdk": ["../sdk/src/index.ts"],
+      "@compartment/test-support": ["../test-support/src/index.ts"],
+      "@compartment/utils": ["../utils/src/index.ts"]
+    }
+  },
+  "include": ["vitest.package.config.mts"]
+}

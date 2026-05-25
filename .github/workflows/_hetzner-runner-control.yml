@@ -1,0 +1,73 @@
+name: Hetzner runner control reusable
+
+on:
+  workflow_call:
+    inputs:
+      command:
+        required: true
+        type: string
+    secrets:
+      CI_RUNNER_APP_ID:
+        required: true
+      CI_RUNNER_APP_PRIVATE_KEY:
+        required: true
+      HCLOUD_CI_TOKEN:
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  control:
+    name: manage Hetzner runners
+    runs-on: ubuntu-latest
+    concurrency:
+      group: hetzner-runner-control-deploy-e2e
+      cancel-in-progress: false
+    timeout-minutes: 25
+    steps:
+      - name: Checkout trusted runner control
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: .nvmrc
+
+      - name: Create runner administration token
+        id: runner-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3
+        with:
+          app-id: ${{ secrets.CI_RUNNER_APP_ID }}
+          owner: ${{ github.repository_owner }}
+          permission-administration: write
+          private-key: ${{ secrets.CI_RUNNER_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Run Hetzner runner control
+        env:
+          GITHUB_TOKEN: ${{ steps.runner-token.outputs.token }}
+          GITHUB_ACTIONS_TOKEN: ${{ github.token }}
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_CI_TOKEN }}
+          HETZNER_RUNNER_CLASS: hetzner-x86-container-dind-libatomic-5slot
+          HETZNER_RUNNER_COMMAND: ${{ inputs.command }}
+          HETZNER_RUNNER_DIR: /actions-runner
+          HETZNER_RUNNER_IMAGE: ubuntu-24.04
+          HETZNER_RUNNER_LOCATIONS: nbg1,fsn1,hel1
+          HETZNER_RUNNER_MAX_SERVERS: 4
+          HETZNER_RUNNER_POOL: deploy-e2e
+          HETZNER_RUNNER_REQUESTED_SLOTS: 5
+          HETZNER_RUNNER_SERVER_TYPE: cpx62
+          HETZNER_RUNNER_SSH_KEY_IDS: ${{ vars.HCLOUD_CI_SSH_KEY_IDS }}
+          HETZNER_RUNNER_SLOT_COUNT: 5
+          HETZNER_RUNNER_VERSION: latest
+        run: |
+          case "$HETZNER_RUNNER_COMMAND" in
+            ensure-fleet | cleanup | reconcile) ;;
+            *) echo "Unsupported Hetzner runner command: $HETZNER_RUNNER_COMMAND" >&2; exit 1 ;;
+          esac
+
+          node ./scripts/ci/hetzner-runner.mjs "$HETZNER_RUNNER_COMMAND"

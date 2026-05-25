@@ -1,0 +1,1 @@
+export { getEdgeConfig } from './runtime';

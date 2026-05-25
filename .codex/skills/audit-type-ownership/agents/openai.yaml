@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Type Ownership Review'
+  short_description: 'Heuristic review helper for repo type ownership and move planning'
+  default_prompt: 'Use $audit-type-ownership as a review helper to audit type ownership in this repo, starting with api, and return policy, concrete findings, a move list, and a phased refactor plan. Cross-check the result against AGENTS.md, docs/specs/type-placement.md, the relevant layer docs, and the enforced lint/check commands before concluding.'

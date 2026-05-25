@@ -1,0 +1,385 @@
+name: Publish Self-Hosted Images (Release)
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-self-hosted-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-release-images:
+    name: build release image artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      release_version: ${{ steps.release.outputs.value }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+
+      - name: Ensure tagged commit is on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"; then
+            echo "Release tags must point to a commit reachable from origin/main." >&2
+            exit 1
+          fi
+
+      - name: Resolve release version
+        id: release
+        run: |
+          release_version="${GITHUB_REF_NAME#v}"
+          echo "value=${release_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: .nvmrc
+
+      - name: Check release version files
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.value }}
+        run: node ./scripts/release/check-release-version.mjs --version "$RELEASE_VERSION"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Prepare self-hosted build env
+        env:
+          PRIMARY_TAG: ${{ steps.release.outputs.value }}
+        run: |
+          mkdir -p ./.compartment/release-assets
+          node ./scripts/deploy/render-self-hosted-env.mjs \
+            --primary-tag "$PRIMARY_TAG" \
+            --output ./.compartment/.env.self-hosted
+
+      - name: Build self-hosted images
+        env:
+          COMPARTMENT_CADDY_BUILDER_IMAGE: public.ecr.aws/docker/library/caddy:2.11.3-builder
+          COMPARTMENT_CADDY_RUNTIME_IMAGE: public.ecr.aws/docker/library/caddy:2.11.3
+          COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.3-bookworm
+          COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.14.0-bookworm
+          COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.14.0-bookworm-slim
+        run: |
+          node ./scripts/deploy/build-self-hosted-images.mjs --env-file ./.compartment/.env.self-hosted
+
+      - name: Check self-hosted runtime surface
+        run: node ./scripts/deploy/check-self-hosted-runtime-surface.mjs ./.compartment/.env.self-hosted
+
+      - name: Archive self-hosted images
+        run: |
+          docker image save \
+            docker.io/compartmentdev/compartment-api:${{ steps.release.outputs.value }} \
+            docker.io/compartmentdev/compartment-caddy:${{ steps.release.outputs.value }} \
+            docker.io/compartmentdev/compartment-edge:${{ steps.release.outputs.value }} \
+            docker.io/compartmentdev/compartment-runtime-probe:${{ steps.release.outputs.value }} \
+            docker.io/compartmentdev/compartment-worker:${{ steps.release.outputs.value }} \
+            | gzip -1 > ./.compartment/release-assets/self-hosted-images.tar.gz
+
+      - name: Upload self-hosted image artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          include-hidden-files: true
+          name: self-hosted-images-release
+          path: ./.compartment/release-assets/self-hosted-images.tar.gz
+
+  publish-release-images:
+    name: publish version + latest
+    needs: build-release-images
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+      - name: Set up Cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
+        with:
+          cosign-release: v2.6.1
+
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514
+        with:
+          version: v0.70.0
+
+      - name: Download self-hosted image artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: self-hosted-images-release
+          path: ./.compartment/release-assets
+
+      - name: Load self-hosted images
+        run: gunzip -c ./.compartment/release-assets/self-hosted-images.tar.gz | docker load
+
+      - name: Scan self-hosted images before publish
+        env:
+          RELEASE_VERSION: ${{ needs.build-release-images.outputs.release_version }}
+        run: |
+          node ./scripts/deploy/secure-self-hosted-images.mjs \
+            --scan-only \
+            "$RELEASE_VERSION"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push self-hosted images
+        env:
+          COMPARTMENT_BUILDKIT_VERSION: v0.30.0
+          COMPARTMENT_CADDY_BUILDER_IMAGE: public.ecr.aws/docker/library/caddy:2.11.3-builder
+          COMPARTMENT_CADDY_RUNTIME_IMAGE: public.ecr.aws/docker/library/caddy:2.11.3
+          COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.3-bookworm
+          COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.14.0-bookworm
+          COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.14.0-bookworm-slim
+          MUTABLE_TAG: latest
+          PRIMARY_TAG: ${{ needs.build-release-images.outputs.release_version }}
+          STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+        run: |
+          common_args=(--push --provenance=mode=max --sbom=true)
+          node_args=(
+            --build-arg "COMPARTMENT_NODE_BUILD_IMAGE=${COMPARTMENT_NODE_BUILD_IMAGE}"
+            --build-arg "COMPARTMENT_NODE_RUNTIME_IMAGE=${COMPARTMENT_NODE_RUNTIME_IMAGE}"
+          )
+          worker_args=(
+            "${node_args[@]}"
+            --build-arg "COMPARTMENT_BUILDKIT_VERSION=${COMPARTMENT_BUILDKIT_VERSION}"
+            --build-arg "COMPARTMENT_GO_BUILD_IMAGE=${COMPARTMENT_GO_BUILD_IMAGE}"
+          )
+          caddy_args=(
+            --build-arg "COMPARTMENT_CADDY_BUILDER_IMAGE=${COMPARTMENT_CADDY_BUILDER_IMAGE}"
+            --build-arg "COMPARTMENT_CADDY_RUNTIME_IMAGE=${COMPARTMENT_CADDY_RUNTIME_IMAGE}"
+          )
+          runtime_probe_args=(
+            --build-arg "COMPARTMENT_NODE_RUNTIME_IMAGE=${COMPARTMENT_NODE_RUNTIME_IMAGE}"
+          )
+
+          push_dockerhub_image() {
+            local image_name="$1"
+            local dockerfile="$2"
+            shift 2
+            docker buildx build "${common_args[@]}" "$@" \
+              --tag "docker.io/compartmentdev/${image_name}:${STAGING_TAG}" \
+              --file "$dockerfile" .
+          }
+
+          promote_dockerhub_image() {
+            local image_name="$1"
+            docker buildx imagetools create \
+              --tag "docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}" \
+              --tag "docker.io/compartmentdev/${image_name}:${MUTABLE_TAG}" \
+              "docker.io/compartmentdev/${image_name}:${STAGING_TAG}"
+          }
+
+          push_dockerhub_image compartment-api packages/api/Dockerfile.self-hosted "${node_args[@]}"
+          push_dockerhub_image compartment-caddy packages/edge/Dockerfile.caddy.self-hosted "${caddy_args[@]}"
+          push_dockerhub_image compartment-edge packages/edge/Dockerfile.self-hosted "${node_args[@]}"
+          push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
+          push_dockerhub_image compartment-runtime-probe packages/node/Dockerfile.runtime-probe.self-hosted "${runtime_probe_args[@]}"
+
+          node ./scripts/deploy/secure-self-hosted-images.mjs --scan-only "$STAGING_TAG"
+
+          promote_dockerhub_image compartment-api
+          promote_dockerhub_image compartment-caddy
+          promote_dockerhub_image compartment-edge
+          promote_dockerhub_image compartment-worker
+          promote_dockerhub_image compartment-runtime-probe
+
+          for service in api caddy edge worker runtime-probe; do
+            image_ref="docker.io/compartmentdev/compartment-${service}:${PRIMARY_TAG}"
+            docker tag "${image_ref}" "ghcr.io/compartmentdev/compartment-${service}:${PRIMARY_TAG}"
+            docker push "ghcr.io/compartmentdev/compartment-${service}:${PRIMARY_TAG}"
+            docker tag "${image_ref}" "ghcr.io/compartmentdev/compartment-${service}:latest"
+            docker push "ghcr.io/compartmentdev/compartment-${service}:latest"
+          done
+
+      - name: Secure self-hosted image digests
+        env:
+          RELEASE_VERSION: ${{ needs.build-release-images.outputs.release_version }}
+        run: |
+          node ./scripts/deploy/secure-self-hosted-images.mjs \
+            --output-dir ./.compartment/release-assets/self-hosted-sboms/dockerhub \
+            "$RELEASE_VERSION" \
+            latest
+          node ./scripts/deploy/secure-self-hosted-images.mjs \
+            --repository-prefix ghcr.io/compartmentdev \
+            --output-dir ./.compartment/release-assets/self-hosted-sboms/ghcr \
+            "$RELEASE_VERSION" \
+            latest
+
+      - name: Upload self-hosted SBOM artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          include-hidden-files: true
+          name: self-hosted-sboms-release
+          path: ./.compartment/release-assets/self-hosted-sboms/**/*.spdx.json
+
+      - name: Upload self-hosted provenance artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          include-hidden-files: true
+          name: self-hosted-provenance-release
+          path: ./.compartment/release-assets/self-hosted-sboms/**/*.slsa-v1-provenance.json
+
+  build-release-cli:
+    name: build CLI ${{ matrix.artifact_name }}
+    needs:
+      - build-release-images
+      - publish-release-images
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact_name: compartment-darwin-arm64.tar.gz
+            runner: macos-14
+          - artifact_name: compartment-darwin-x64.tar.gz
+            runner: macos-15-intel
+          - artifact_name: compartment-linux-arm64.tar.gz
+            runner: ubuntu-24.04-arm
+          - artifact_name: compartment-linux-x64.tar.gz
+            runner: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
+        with:
+          version: 10.6.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up Cosign
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
+        with:
+          cosign-release: v2.6.1
+
+      - name: Build stable CLI binary
+        run: |
+          pnpm cli:build:sea \
+            --build-commit-sha "${{ github.sha }}" \
+            --distribution-channel release \
+            --default-registry-image-tag "${{ needs.build-release-images.outputs.release_version }}" \
+            --output-dir ./.compartment/cli-dist
+
+      - name: Smoke test CLI binary
+        run: |
+          ./.compartment/cli-dist/compartment --version
+          ./.compartment/cli-dist/compartment --help
+
+      - name: Archive CLI binary
+        run: |
+          mkdir -p ./.compartment/release-assets
+          tar -C ./.compartment/cli-dist -czf "./.compartment/release-assets/${{ matrix.artifact_name }}" compartment
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          include-hidden-files: true
+          name: ${{ matrix.artifact_name }}
+          path: ./.compartment/release-assets/${{ matrix.artifact_name }}
+
+  publish-release-cli:
+    name: publish stable CLI release
+    needs:
+      - build-release-images
+      - build-release-cli
+      - publish-release-images
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_REPOSITORY: ${{ github.repository }}
+      RELEASE_VERSION: ${{ needs.build-release-images.outputs.release_version }}
+    steps:
+      - name: Ensure release version
+        run: |
+          if [ -z "$RELEASE_VERSION" ]; then
+            echo "Expected a resolved release version." >&2
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: .nvmrc
+
+      - name: Download CLI artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          merge-multiple: true
+          pattern: compartment-*.tar.gz
+          path: ./.compartment/release-assets
+
+      - name: Build release checksums
+        run: |
+          cd ./.compartment/release-assets
+          sha256sum compartment-*.tar.gz > checksums.txt
+
+      - name: Write stable release notes
+        run: |
+          node ./scripts/release/write-release-notes.mjs \
+            --version "$RELEASE_VERSION" \
+            --fallback-notes "Manual compartment release ${RELEASE_VERSION}." \
+            --output ./.compartment/release-assets/release-notes.md
+
+      - name: Ensure stable release exists
+        run: |
+          release_tag="v${RELEASE_VERSION}"
+          if gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$release_tag" --repo "$RELEASE_REPOSITORY" --title "compartment ${RELEASE_VERSION}" --notes-file ./.compartment/release-assets/release-notes.md --prerelease=false --draft=false
+          else
+            gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "compartment ${RELEASE_VERSION}" --notes-file ./.compartment/release-assets/release-notes.md --verify-tag
+          fi
+
+      - name: Upload stable CLI artifacts
+        run: |
+          gh release upload "v${RELEASE_VERSION}" ./.compartment/release-assets/compartment-*.tar.gz ./.compartment/release-assets/checksums.txt ./install.sh \
+            --repo "$RELEASE_REPOSITORY" \
+            --clobber

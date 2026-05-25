@@ -1,0 +1,16 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+  .: {}
+
+  packages/api:
+    dependencies:
+      '@compartment-e2e/pnpm-shared':
+        specifier: workspace:*
+        version: link:../shared
+
+  packages/shared: {}

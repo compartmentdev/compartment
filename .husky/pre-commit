@@ -1,0 +1,7 @@
+failed=0
+
+pnpm lint-staged --relative --concurrent false || failed=1
+pnpm check || failed=1
+pnpm check:duplicates || failed=1
+
+exit "$failed"

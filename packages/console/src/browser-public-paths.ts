@@ -1,0 +1,67 @@
+import {
+  compartmentBrowserActivatePathname,
+  compartmentBrowserAuditPathname,
+  compartmentBrowserGroupsPathname,
+  compartmentBrowserHomePathname,
+  compartmentBrowserLoginSuccessRedirectSearchParamName,
+  compartmentBrowserLoginPathname,
+  compartmentBrowserLoginSsoPathname,
+  compartmentBrowserOnboardingPathname,
+  compartmentBrowserProjectCreatePathname,
+  compartmentBrowserProjectsPathname,
+  compartmentBrowserResetPasswordPathname,
+  compartmentBrowserRolesPathname,
+  compartmentBrowserSelectedOrganizationSearchParamName,
+  compartmentBrowserStartOnboardingSearchParamName,
+  compartmentBrowserUsersPathname,
+  compartmentConsoleOrganizationAuditPathnameTemplate,
+  compartmentConsoleOrganizationGroupsPathnameTemplate,
+  compartmentConsoleOrganizationOnboardingPathnameTemplate,
+  compartmentConsoleOrganizationProjectCreatePathnameTemplate,
+  compartmentConsoleOrganizationProjectOverviewPathnameTemplate,
+  compartmentConsoleOrganizationProjectDeploymentDetailsPathnameTemplate,
+  compartmentConsoleOrganizationProjectDeploymentsPathnameTemplate,
+  compartmentConsoleOrganizationProjectsPathnameTemplate,
+  compartmentConsoleOrganizationRolesPathnameTemplate,
+  compartmentConsoleOrganizationUsersPathnameTemplate,
+} from '@compartment/contracts/browser';
+
+export const browserActivatePathname: string = compartmentBrowserActivatePathname;
+export const browserAuditPathname: string = compartmentBrowserAuditPathname;
+export const browserGroupsPathname: string = compartmentBrowserGroupsPathname;
+export const browserHomePathname: string = compartmentBrowserHomePathname;
+export const browserLoginSuccessRedirectSearchParamName: string = compartmentBrowserLoginSuccessRedirectSearchParamName;
+export const browserLoginPathname: string = compartmentBrowserLoginPathname;
+export const browserLoginSsoPathname: string = compartmentBrowserLoginSsoPathname;
+export const browserOnboardingPathname: string = compartmentBrowserOnboardingPathname;
+export const browserResetPasswordPathname: string = compartmentBrowserResetPasswordPathname;
+export const browserStartOnboardingSearchParamName: string = compartmentBrowserStartOnboardingSearchParamName;
+export const browserSelectedOrganizationSearchParamName: string = compartmentBrowserSelectedOrganizationSearchParamName;
+export const browserProjectCreatePathname: string = compartmentBrowserProjectCreatePathname;
+export const browserProjectsPathname: string = compartmentBrowserProjectsPathname;
+export const browserOrganizationAuditPathnameTemplate: string = compartmentConsoleOrganizationAuditPathnameTemplate;
+export const browserOrganizationGroupsPathnameTemplate: string = compartmentConsoleOrganizationGroupsPathnameTemplate;
+export const browserOrganizationOnboardingPathnameTemplate: string =
+  compartmentConsoleOrganizationOnboardingPathnameTemplate;
+export const browserOrganizationProjectCreatePathnameTemplate: string =
+  compartmentConsoleOrganizationProjectCreatePathnameTemplate;
+export const browserOrganizationProjectsPathnameTemplate: string =
+  compartmentConsoleOrganizationProjectsPathnameTemplate;
+export const browserOrganizationProjectOverviewPathnameTemplate: string =
+  compartmentConsoleOrganizationProjectOverviewPathnameTemplate;
+export const browserOrganizationProjectDeploymentsPathnameTemplate: string =
+  compartmentConsoleOrganizationProjectDeploymentsPathnameTemplate;
+export const browserOrganizationProjectDeploymentDetailsPathnameTemplate: string =
+  compartmentConsoleOrganizationProjectDeploymentDetailsPathnameTemplate;
+export const browserOrganizationRolesPathnameTemplate: string = compartmentConsoleOrganizationRolesPathnameTemplate;
+export const browserOrganizationUsersPathnameTemplate: string = compartmentConsoleOrganizationUsersPathnameTemplate;
+export const browserRolesPathname: string = compartmentBrowserRolesPathname;
+export const browserUsersPathname: string = compartmentBrowserUsersPathname;
+export {
+  buildCompartmentConsoleOrganizationOnboardingPathname as buildBrowserOrganizationOnboardingPathname,
+  buildCompartmentConsoleOrganizationProjectDeploymentDetailsPathname as buildBrowserOrganizationProjectDeploymentDetailsPathname,
+  buildCompartmentConsoleOrganizationScopedPathname as buildBrowserOrganizationScopedPathname,
+  buildCompartmentConsoleProjectOverviewPathname as buildBrowserProjectOverviewPathname,
+  buildCompartmentConsoleProjectDeploymentDetailsPathname as buildBrowserProjectDeploymentDetailsPathname,
+  buildCompartmentConsoleProjectDeploymentsPathname as buildBrowserProjectDeploymentsPathname,
+} from '@compartment/contracts/browser';

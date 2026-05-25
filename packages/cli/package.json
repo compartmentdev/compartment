@@ -1,0 +1,44 @@
+{
+  "name": "@compartment/cli",
+  "version": "0.1.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {},
+  "bin": {
+    "compartment": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- tsx --tsconfig tsconfig.json src/bin.ts",
+    "watch": "dotenv -e ../../.env -- tsx --tsconfig tsconfig.json watch src/bin.ts --help",
+    "build": "tsc -p tsconfig.build.json && node ./scripts/copy-assets.mjs",
+    "build:test": "tsc -p tsconfig.test.json",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.test.json --noEmit --rootDir ../..",
+    "test": "vitest run --config ../../vitest.config.mts --no-file-parallelism",
+    "test:e2e": "pnpm --filter @compartment/console build && dotenv -e ../../.env -e ../../.env.test.local -- vitest run --config ../../vitest.deploy-e2e.config.mts"
+  },
+  "dependencies": {
+    "@compartment/contracts": "workspace:*",
+    "@compartment/node": "workspace:*",
+    "@compartment/source-archive": "workspace:*",
+    "@compartment/sdk": "workspace:*",
+    "@compartment/utils": "workspace:*",
+    "commander": "^14.0.3",
+    "dotenv": "^16.6.1",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@compartment/eslint-config": "workspace:*",
+    "@compartment/test-support": "workspace:*",
+    "zod": "^3.24.2"
+  }
+}

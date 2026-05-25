@@ -1,0 +1,156 @@
+{
+  "source": {
+    "figmaCollection": "☀️  Mode",
+    "exportedFromFrameNodeId": "44528:11911"
+  },
+  "modes": {
+    "light": "☀️  Light",
+    "dark": "🌑 Dark"
+  },
+  "tokens": {
+    "theme/accent": {
+      "light": "#F4F4F6",
+      "dark": "#363C42"
+    },
+    "theme/accent-foreground": {
+      "light": "#121417",
+      "dark": "#FFFFFF"
+    },
+    "theme/background": {
+      "light": "#FAFAFA",
+      "dark": "#090A0B"
+    },
+    "theme/border": {
+      "light": "#4D565E1A",
+      "dark": "#4D565E80"
+    },
+    "theme/card": {
+      "light": "#FFFFFF",
+      "dark": "#121417"
+    },
+    "theme/card-foreground": {
+      "light": "#121417",
+      "dark": "#E6E8EA"
+    },
+    "theme/chart-1": {
+      "light": "#1E65AC",
+      "dark": "#5798DB"
+    },
+    "theme/chart-2": {
+      "light": "#7A4AB6",
+      "dark": "#B282E1"
+    },
+    "theme/chart-3": {
+      "light": "#879D12",
+      "dark": "#CFE84F"
+    },
+    "theme/chart-4": {
+      "light": "#E08112",
+      "dark": "#FBBF5C"
+    },
+    "theme/chart-5": {
+      "light": "#1C882C",
+      "dark": "#3BBA50"
+    },
+    "theme/destructive": {
+      "light": "#C0412C",
+      "dark": "#D75B42"
+    },
+    "theme/foreground": {
+      "light": "#121417",
+      "dark": "#F4F4F6"
+    },
+    "theme/info": {
+      "light": "#3480C8",
+      "dark": "#5798DB"
+    },
+    "theme/input": {
+      "light": "#E6E8EA",
+      "dark": "#24282C"
+    },
+    "theme/muted": {
+      "light": "#E6E8EA",
+      "dark": "#121417"
+    },
+    "theme/muted-foreground": {
+      "light": "#9CA4AB",
+      "dark": "#737E87"
+    },
+    "opacity/primary/10": {
+      "light": "#1214171A",
+      "dark": "#FAFAFA1A"
+    },
+    "opacity/primary/20": {
+      "light": "#12141733",
+      "dark": "#FAFAFA33"
+    },
+    "theme/popover": {
+      "light": "#FFFFFF",
+      "dark": "#24282C"
+    },
+    "theme/popover-foreground": {
+      "light": "#121417",
+      "dark": "#F4F4F6"
+    },
+    "theme/primary": {
+      "light": "#121417",
+      "dark": "#E6E8EA"
+    },
+    "theme/primary-foreground": {
+      "light": "#FFFFFF",
+      "dark": "#121417"
+    },
+    "theme/ring": {
+      "light": "#9CA4AB",
+      "dark": "#737E87"
+    },
+    "theme/secondary": {
+      "light": "#BDD92E",
+      "dark": "#A7C11F"
+    },
+    "theme/secondary-foreground": {
+      "light": "#121417",
+      "dark": "#FFFFFF"
+    },
+    "theme/sidebar": {
+      "light": "#FAFAFA",
+      "dark": "#121417"
+    },
+    "theme/sidebar-accent": {
+      "light": "#1214170D",
+      "dark": "#FAFAFA1A"
+    },
+    "theme/sidebar-accent-foreground": {
+      "light": "#121417",
+      "dark": "#F4F4F6"
+    },
+    "theme/sidebar-border": {
+      "light": "#4D565E1A",
+      "dark": "#4D565E80"
+    },
+    "theme/sidebar-foreground": {
+      "light": "#121417",
+      "dark": "#F4F4F6"
+    },
+    "theme/sidebar-primary": {
+      "light": "#BDD92E",
+      "dark": "#CFE84F"
+    },
+    "theme/sidebar-primary-foreground": {
+      "light": "#FFFFFF",
+      "dark": "#121417"
+    },
+    "theme/sidebar-ring": {
+      "light": "#D2D6DA",
+      "dark": "#9CA4AB"
+    },
+    "theme/success": {
+      "light": "#28A23C",
+      "dark": "#3BBA50"
+    },
+    "theme/warning": {
+      "light": "#D0AA25",
+      "dark": "#DFC740"
+    }
+  }
+}

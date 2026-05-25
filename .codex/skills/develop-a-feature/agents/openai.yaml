@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Develop a Feature'
+  short_description: 'Implementation workflow with required preflight subagent'
+  default_prompt: 'Use $develop-a-feature to implement a repo change by starting with the required $preflight-feature-review subagent, then edit the smallest owning surface on one canonical path, update tests in the same diff, and run only the diff-triggered checks.'

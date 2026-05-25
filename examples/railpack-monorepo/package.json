@@ -1,0 +1,8 @@
+{
+  "name": "railpack-monorepo",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@railpack-monorepo/shared": "file:./shared"
+  }
+}

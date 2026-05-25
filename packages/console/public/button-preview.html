@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Compartment button preview</title>
+    <link rel="stylesheet" href="/browser-assets/styles.css" />
+    <style>
+      :root {
+        --accent: #f4f4f6;
+        --accent-foreground: #121417;
+        --background: #fafafa;
+        --border: #4d565e1a;
+        --card: #ffffff;
+        --foreground: #121417;
+        --muted: #e6e8ea;
+        --muted-foreground: #9ca4ab;
+        --opacity-primary-lighter: #1214171a;
+        --opacity-primary-main: #12141733;
+        --primary: #121417;
+        --primary-foreground: #ffffff;
+        --ring: #9ca4ab;
+        --secondary: #bdd92e;
+        --secondary-foreground: #121417;
+        --auth-page-bg: #ffffff;
+        --auth-primary-bg: #3480c8;
+        --auth-primary-bg-hover: #1e65ac;
+        --auth-primary-bg-active: #266098;
+        --auth-primary-fg: #ffffff;
+        --auth-primary-focus: #3480c859;
+        --auth-secondary-bg: #111212;
+        --auth-secondary-bg-hover: #1e2023;
+        --auth-secondary-bg-active: #262a2f;
+        --auth-secondary-border: #cfd0d0;
+        --auth-secondary-focus: #00000038;
+        --auth-secondary-fg: #ffffff;
+        --auth-muted-foreground: #8f98a1;
+        --auth-secondary-foreground: #485259;
+        --auth-link-color: #707e0a;
+        --auth-link-hover-color: #566106;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background: var(--app-page-bg, linear-gradient(164deg, var(--background) 1%, var(--muted) 100%));
+        color: var(--foreground);
+        font-family: 'DM Sans', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+      }
+
+      .page {
+        width: min(1180px, calc(100vw - 48px));
+        margin: 0 auto;
+        padding: 40px 0 64px;
+      }
+
+      .hero {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 30px;
+        font-weight: 600;
+        line-height: 38px;
+      }
+
+      h2 {
+        font-size: 18px;
+        font-weight: 600;
+        line-height: 26px;
+      }
+
+      h3 {
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 20px;
+      }
+
+      .muted {
+        color: var(--muted-foreground);
+        font-size: 13px;
+        line-height: 20px;
+      }
+
+      .toolbar,
+      .panel {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--card);
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        padding: 12px;
+        margin-bottom: 16px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .panel {
+        overflow: hidden;
+      }
+
+      .panel-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .panel-body {
+        padding: 16px;
+      }
+
+      .button-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(150px, 1fr));
+        gap: 12px;
+      }
+
+      .button-cell {
+        display: grid;
+        align-content: start;
+        min-height: 112px;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--background) 78%, transparent);
+      }
+
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .code-name {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        border-radius: 999px;
+        background: var(--muted);
+        color: var(--foreground);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+        font-size: 11px;
+        line-height: 16px;
+        padding: 2px 7px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        white-space: nowrap;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 20px;
+        cursor: pointer;
+        text-decoration: none;
+        outline: none;
+        transition:
+          background-color 120ms ease,
+          background-image 120ms ease,
+          border-color 120ms ease,
+          color 120ms ease,
+          opacity 120ms ease,
+          box-shadow 120ms ease;
+      }
+
+      .button svg {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        pointer-events: none;
+      }
+
+      .button-size-default {
+        height: 36px;
+        padding: 8px 14px;
+      }
+
+      .button-size-lg {
+        height: 40px;
+        padding: 8px 18px;
+      }
+
+      .button-size-sm {
+        height: 32px;
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+
+      .button-size-xs {
+        height: 24px;
+        gap: 6px;
+        padding: 3px 8px;
+        font-size: 12px;
+      }
+
+      .button-variant-default {
+        background: var(--primary);
+        color: var(--primary-foreground);
+      }
+
+      .button-variant-default:hover,
+      .button-variant-default.is-hover {
+        background: color-mix(in srgb, var(--primary) 92%, transparent);
+      }
+
+      .button-variant-soft,
+      .button-variant-secondary {
+        background-image:
+          linear-gradient(90deg, var(--opacity-primary-lighter) 0%, var(--opacity-primary-lighter) 100%),
+          linear-gradient(90deg, var(--card) 0%, var(--card) 100%);
+        color: var(--primary);
+      }
+
+      .button-variant-soft:hover,
+      .button-variant-soft.is-hover,
+      .button-variant-secondary:hover,
+      .button-variant-secondary.is-hover {
+        background-image:
+          linear-gradient(90deg, var(--opacity-primary-main) 0%, var(--opacity-primary-main) 100%),
+          linear-gradient(90deg, var(--card) 0%, var(--card) 100%);
+        opacity: 0.8;
+      }
+
+      .button-variant-outline {
+        border-color: var(--border);
+        background: var(--background);
+        color: var(--foreground);
+      }
+
+      .button-variant-outline:hover,
+      .button-variant-outline.is-hover {
+        background: var(--muted);
+        opacity: 0.9;
+      }
+
+      .button-variant-ghost {
+        background: transparent;
+        color: var(--foreground);
+      }
+
+      .button-variant-ghost:hover,
+      .button-variant-ghost.is-hover {
+        background: var(--accent);
+        color: var(--accent-foreground);
+      }
+
+      .button-variant-accent {
+        border-color: var(--secondary);
+        background: var(--secondary);
+        color: var(--secondary-foreground);
+        box-shadow:
+          0 10px 15px -3px color-mix(in srgb, var(--secondary) 10%, transparent),
+          0 4px 6px -4px color-mix(in srgb, var(--secondary) 10%, transparent);
+      }
+
+      .button-variant-accent:hover,
+      .button-variant-accent.is-hover,
+      .button-variant-accent:active,
+      .button-variant-accent.is-active {
+        box-shadow: none;
+        opacity: 0.8;
+      }
+
+      .button-variant-accent:focus,
+      .button-variant-accent.is-focus {
+        border-color: var(--ring);
+        box-shadow: 0 0 0 3px rgb(163 163 163 / 24%);
+      }
+
+      .button.is-focus {
+        box-shadow:
+          0 0 0 2px var(--background),
+          0 0 0 4px color-mix(in srgb, var(--ring) 60%, transparent);
+      }
+
+      .button:disabled,
+      .button.is-disabled {
+        cursor: default;
+        pointer-events: none;
+        opacity: 0.5;
+      }
+
+      .button-table-action {
+        height: 28px;
+        padding-right: 8px;
+        padding-left: 8px;
+        font-size: 12px;
+      }
+
+      .button-icon-only {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+      }
+
+      .auth-text-link {
+        color: var(--auth-muted-foreground);
+        font-size: 12px;
+        text-decoration: underline;
+        text-underline-offset: 4px;
+      }
+
+      .auth-text-link:hover,
+      .auth-text-link.is-hover {
+        color: var(--auth-secondary-foreground);
+      }
+
+      .auth-hint-link {
+        color: var(--auth-link-color);
+        font-size: 14px;
+        line-height: 20px;
+        text-decoration: none;
+      }
+
+      .auth-hint-link:hover,
+      .auth-hint-link.is-hover {
+        color: var(--auth-link-hover-color);
+      }
+
+      .theme-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: currentColor;
+      }
+
+      @media (max-width: 860px) {
+        .button-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 560px) {
+        .page {
+          width: min(100vw - 24px, 1180px);
+          padding-top: 24px;
+        }
+
+        .button-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <div>
+          <h1>Compartment buttons</h1>
+          <p class="muted">Existing button variants, sizes, aliases, and product-specific button classes.</p>
+        </div>
+        <button class="button button-size-sm button-variant-outline" id="theme-toggle" type="button">
+          Dark preview
+        </button>
+      </header>
+
+      <section class="toolbar" aria-label="Code names">
+        <span class="code-name">Button</span>
+        <span class="code-name">buttonVariants()</span>
+        <span class="code-name">default</span>
+        <span class="code-name">accent</span>
+        <span class="code-name">secondary = soft</span>
+        <span class="code-name">outline</span>
+        <span class="code-name">ghost</span>
+      </section>
+
+      <div class="grid">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Core variants</h2>
+              <p class="muted">Names are the `variant` values from `components/ui/button.tsx`.</p>
+            </div>
+          </div>
+          <div class="panel-body button-grid">
+            <article class="button-cell">
+              <h3>default</h3>
+              <span class="code-name">variant="default"</span>
+              <button class="button button-size-default button-variant-default" type="button">Create project</button>
+              <button class="button button-size-default button-variant-default is-hover" type="button">Hover</button>
+              <button class="button button-size-default button-variant-default is-disabled" type="button">
+                Disabled
+              </button>
+            </article>
+
+            <article class="button-cell">
+              <h3>accent</h3>
+              <span class="code-name">variant="accent"</span>
+              <button class="button button-size-default button-variant-accent" type="button">Create project</button>
+              <button class="button button-size-default button-variant-accent is-hover" type="button">Hover</button>
+              <button class="button button-size-default button-variant-accent is-disabled" type="button">
+                Disabled
+              </button>
+            </article>
+
+            <article class="button-cell">
+              <h3>secondary = soft</h3>
+              <span class="code-name">variant="secondary"</span>
+              <span class="code-name">alias: variant="soft"</span>
+              <button class="button button-size-default button-variant-secondary" type="button">Open project</button>
+              <button class="button button-size-default button-variant-secondary is-hover" type="button">Hover</button>
+              <button class="button button-size-default button-variant-secondary is-disabled" type="button">
+                Disabled
+              </button>
+            </article>
+
+            <article class="button-cell">
+              <h3>outline</h3>
+              <span class="code-name">variant="outline"</span>
+              <button class="button button-size-default button-variant-outline" type="button">Cancel</button>
+              <button class="button button-size-default button-variant-outline is-hover" type="button">Hover</button>
+              <button class="button button-size-default button-variant-outline is-focus" type="button">Focus</button>
+            </article>
+
+            <article class="button-cell">
+              <h3>ghost</h3>
+              <span class="code-name">variant="ghost"</span>
+              <button class="button button-size-default button-variant-ghost" type="button">More actions</button>
+              <button class="button button-size-default button-variant-ghost is-hover" type="button">Hover</button>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Sizes</h2>
+              <p class="muted">Names are the `size` values from `components/ui/button.tsx`.</p>
+            </div>
+          </div>
+          <div class="panel-body button-row">
+            <button class="button button-size-lg button-variant-default" type="button">lg</button>
+            <button class="button button-size-default button-variant-default" type="button">default</button>
+            <button class="button button-size-sm button-variant-default" type="button">sm</button>
+            <button class="button button-size-xs button-variant-default" type="button">xs</button>
+            <button class="button button-size-sm button-variant-outline" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" />
+              </svg>
+              With icon
+            </button>
+            <button
+              class="button button-size-xs button-variant-outline button-icon-only"
+              type="button"
+              aria-label="Icon only"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" />
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Product usages</h2>
+              <p class="muted">Reusable names from console screens and tables.</p>
+            </div>
+          </div>
+          <div class="panel-body button-grid">
+            <article class="button-cell">
+              <h3>table action</h3>
+              <span class="code-name">readServerTableActionControlClassName()</span>
+              <button class="button button-size-sm button-variant-secondary button-table-action" type="button">
+                Open
+              </button>
+              <button class="button button-size-sm button-variant-secondary button-table-action is-hover" type="button">
+                Manage
+              </button>
+            </article>
+
+            <article class="button-cell">
+              <h3>pagination</h3>
+              <span class="code-name">size="xs" variant="outline"</span>
+              <div class="button-row">
+                <button
+                  class="button button-size-xs button-variant-outline button-icon-only is-disabled"
+                  type="button"
+                  aria-label="Previous page"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M15 18l-6-6 6-6"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-linecap="round"
+                      stroke-width="2"
+                    />
+                  </svg>
+                </button>
+                <button
+                  class="button button-size-xs button-variant-outline button-icon-only"
+                  type="button"
+                  aria-label="Next page"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M9 18l6-6-6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" />
+                  </svg>
+                </button>
+              </div>
+            </article>
+
+            <article class="button-cell">
+              <h3>link button</h3>
+              <span class="code-name">buttonVariants() on &lt;a&gt;</span>
+              <a class="button button-size-sm button-variant-outline" href="#product-usages">View details</a>
+              <a class="button button-size-sm button-variant-secondary" href="#product-usages">Open route</a>
+            </article>
+
+            <article class="button-cell">
+              <h3>destructive action shell</h3>
+              <span class="code-name">outline + action text</span>
+              <button class="button button-size-sm button-variant-outline" type="button">Block user</button>
+              <button class="button button-size-sm button-variant-outline is-disabled" type="button">Remove</button>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Auth screen mappings</h2>
+              <p class="muted">Auth screens now use the same button variants as the rest of the console.</p>
+            </div>
+          </div>
+          <div class="panel-body button-grid">
+            <article class="button-cell">
+              <h3>activate/reset submit</h3>
+              <span class="code-name">Button variant="default"</span>
+              <button class="button button-size-default button-variant-default" type="button">Reset password</button>
+              <button class="button button-size-default button-variant-default is-hover" type="button">Hover</button>
+            </article>
+
+            <article class="button-cell">
+              <h3>login submit</h3>
+              <span class="code-name">Button variant="default"</span>
+              <button class="button button-size-default button-variant-default" type="button">Continue</button>
+              <button class="button button-size-default button-variant-default is-hover" type="button">Hover</button>
+            </article>
+
+            <article class="button-cell">
+              <h3>auth secondary action</h3>
+              <span class="code-name">Button variant="secondary"</span>
+              <button class="button button-size-lg button-variant-secondary" type="button">Go to login</button>
+              <button class="button button-size-lg button-variant-secondary is-hover" type="button">Hover</button>
+            </article>
+
+            <article class="button-cell">
+              <h3>auth links</h3>
+              <span class="code-name">authTertiaryActionClassName</span>
+              <a class="auth-text-link" href="#auth-screen-mappings">Back to login</a>
+              <span class="code-name">authHintLinkClassName</span>
+              <a class="auth-hint-link" href="#auth-screen-mappings">Open documentation</a>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const toggle = document.querySelector('#theme-toggle');
+
+      toggle.addEventListener('click', () => {
+        document.documentElement.classList.toggle('dark');
+        toggle.textContent = document.documentElement.classList.contains('dark') ? 'Light preview' : 'Dark preview';
+      });
+    </script>
+  </body>
+</html>

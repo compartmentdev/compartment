@@ -1,0 +1,57 @@
+import {
+  buildFastifyResponseSchemas,
+  compartmentOrganizationsPathname,
+  createOrganizationRequestSchema,
+  createOrganizationResponseSchema,
+  type FastifyResponseSchemas,
+  type CreateOrganizationRequest,
+  type CreateOrganizationResponse,
+  type OrganizationSummary,
+} from '@compartment/contracts';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { ApiApp } from '../../app.types';
+import { parseRequestValue } from '../../http/validation';
+import { requireAnySessionVisibleOrganizationAdminAccess } from '../../services/access-scope.service';
+import { createOrganization } from '../../services/create-organization.service';
+import type { CreateOrganizationResult } from '../../services/create-organization.service.types';
+import { buildOrganizationSummaries } from '../presenters/organization.presenter';
+import { buildOperationSummary } from '../presenters/operation.presenter';
+
+interface CreateOrganizationRouteOptions {
+  schema: {
+    response: FastifyResponseSchemas;
+  };
+}
+
+export function registerPostCreateOrganizationRoute(app: ApiApp): void {
+  app.post(compartmentOrganizationsPathname, createOrganizationRouteOptions, handlePostCreateOrganization);
+}
+
+const createOrganizationRouteOptions: CreateOrganizationRouteOptions = {
+  schema: {
+    response: buildFastifyResponseSchemas({
+      200: createOrganizationResponseSchema,
+    }),
+  },
+};
+
+async function handlePostCreateOrganization(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  await requireAnySessionVisibleOrganizationAdminAccess(request.actor.authSession);
+  const input: CreateOrganizationRequest = parseRequestValue(
+    createOrganizationRequestSchema,
+    request.body,
+    'invalid_create_organization_request',
+  );
+  const result: CreateOrganizationResult = await createOrganization({
+    name: input.name,
+    principalId: request.actor.principalId,
+    slug: input.slug,
+  });
+  const organization: OrganizationSummary | undefined = buildOrganizationSummaries([result.organization])[0];
+  const response: CreateOrganizationResponse = createOrganizationResponseSchema.parse({
+    operation: buildOperationSummary(result.operation),
+    organization,
+  });
+
+  return await reply.send(response);
+}

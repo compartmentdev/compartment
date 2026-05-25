@@ -1,0 +1,278 @@
+import { eq, sql } from 'drizzle-orm';
+import type { Pool } from 'pg';
+import { describe, expect, it } from 'vitest';
+import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
+import type { ApiConfig } from '../src/config';
+import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
+import {
+  environments,
+  nodes,
+  operations,
+  organizations,
+  principals,
+  projectResources,
+  projects,
+} from '../src/db/schema';
+import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
+import {
+  completeResourceBackupWithExecutor,
+  createResourceBackupWithExecutor,
+  failResourceBackupWithExecutor,
+  findResourceBackupById,
+  listResourceBackups,
+  markResourceBackupRetentionDeletedWithExecutor,
+} from '../src/queries/resource-backups.query';
+import { listScheduledResourceOperationCandidates } from '../src/queries/resource-operation-scheduler.query';
+import type { ResourceBackupRow } from '../src/queries/resource-backups.query.types';
+import { findProjectResourceByName, lockProjectResourceReferenceByName } from '../src/queries/resources.query';
+import type { ProjectResourceRow, ResourceTransaction } from '../src/queries/resources.query.types';
+import { parseStoredResourceOperations } from '../src/services/resources.service.storage';
+import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
+import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
+
+const { testDatabaseUrl } = readDatabaseTestMode();
+const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'resource_backups_query_db');
+const apiConfig: ApiConfig = {
+  baseDomain: 'localhost',
+  bindHost: '127.0.0.1',
+  caddyTlsMode: 'internal',
+  controlPlaneHost: 'console.localhost',
+  customTlsDirectory: '/etc/compartment/tls',
+  databaseUrl,
+  edgeToken: 'test-edge-token',
+  edgeUrl: 'http://127.0.0.1:9081',
+  logLevel: 'silent',
+  port: 9443,
+  publicHttpPort: 9080,
+  publicHttpsPort: 443,
+  publicProtocol: 'http',
+  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
+  auditRetentionDays: 90,
+  auditRetentionCleanupBatchSize: 1000,
+  auditRetentionCleanupCron: '0 3 * * *',
+  auditRetentionCleanupMaxBatches: 100,
+  auditFileSink: defaultAuditFileSinkConfig,
+  rollbackRetentionLimit: null,
+  runtimeControlToken: 'test-runtime-control-token',
+  runtimeDefaultUpstreamHost: '127.0.0.1',
+  sessionSecret: 'test-secret',
+  sessionTtlMs: 604_800_000,
+  sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
+  sourceArchiveMaxBytes: 104_857_600,
+  throttle: defaultApiAuthThrottleConfig,
+  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
+  systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
+  systemToken: 'test-system-token',
+  trustedOutboundHosts: [],
+  variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
+};
+const pool: Pool = createDatabasePool(databaseUrl);
+const db: Database = createDatabase(pool);
+
+describe('resource backup queries', (): void => {
+  useApiRuntimeDatabaseTestHarness({
+    apiConfig,
+    databaseUrl,
+    db,
+    pool,
+    setup: seedResourceBackupScope,
+  });
+
+  it('persists backup status transitions and manifest metadata', async (): Promise<void> => {
+    const backup: ResourceBackupRow = await createResourceBackupWithExecutor(db, {
+      createdByPrincipalId: 'prn_resource_backups',
+      id: 'rbak_query_123',
+      operationId: 'op_resource_backup',
+      projectResourceId: 'res_postgres',
+      purpose: 'manual',
+      status: 'running',
+    });
+
+    expect(backup.status).toBe('running');
+
+    const completed: ResourceBackupRow = await completeResourceBackupWithExecutor(db, {
+      artifactLocation: '/tmp/compartment-test-resource-backups/rbak_query_123',
+      backupId: backup.id,
+      checksum: 'sha256:abc123',
+      completedAt: new Date('2026-05-06T12:00:00.000Z'),
+      manifestJson: '{"backupId":"rbak_query_123","status":"succeeded"}',
+      resourceDefinitionJson: '{"image":"postgres:16"}',
+      sizeBytes: 128,
+      stderrSummary: '',
+      stdoutSummary: 'dumped',
+    });
+
+    expect(completed).toMatchObject({
+      artifactLocation: '/tmp/compartment-test-resource-backups/rbak_query_123',
+      checksum: 'sha256:abc123',
+      manifestJson: '{"backupId":"rbak_query_123","status":"succeeded"}',
+      resourceDefinitionJson: '{"image":"postgres:16"}',
+      sizeBytes: 128,
+      status: 'succeeded',
+      stdoutSummary: 'dumped',
+    });
+    const deleted: ResourceBackupRow = await markResourceBackupRetentionDeletedWithExecutor(db, {
+      backupId: backup.id,
+      retentionDeletedAt: new Date('2026-05-07T12:00:00.000Z'),
+      retentionReason: 'retention keepLast=1',
+    });
+
+    expect(deleted).toMatchObject({
+      artifactLocation: null,
+      retentionReason: 'retention keepLast=1',
+      status: 'deleted',
+    });
+    await expect(findResourceBackupById(backup.id)).resolves.toMatchObject({ status: 'deleted' });
+    await expect(listResourceBackups('res_postgres')).resolves.toHaveLength(1);
+  });
+
+  it('persists failed backup summaries', async (): Promise<void> => {
+    await createResourceBackupWithExecutor(db, {
+      createdByPrincipalId: 'prn_resource_backups',
+      id: 'rbak_failed_123',
+      operationId: 'op_resource_backup',
+      projectResourceId: 'res_postgres',
+      purpose: 'pre_restore',
+      status: 'running',
+    });
+
+    const failed: ResourceBackupRow = await failResourceBackupWithExecutor(db, {
+      backupId: 'rbak_failed_123',
+      completedAt: new Date('2026-05-06T12:00:00.000Z'),
+      failureSummary: 'operation failed',
+      stderrSummary: 'psql error',
+      stdoutSummary: '',
+    });
+
+    expect(failed).toMatchObject({
+      failureSummary: 'operation failed',
+      purpose: 'pre_restore',
+      status: 'failed',
+      stderrSummary: 'psql error',
+    });
+  });
+
+  it('normalizes migrated resources with no operation commands', async (): Promise<void> => {
+    const resource: ProjectResourceRow | undefined = await findProjectResourceByName('env_production', 'postgres');
+
+    expect(resource).not.toBeUndefined();
+    expect(parseStoredResourceOperations(resource!)).toEqual({
+      backup: null,
+      restore: null,
+    });
+  });
+
+  it('lists only resources with scheduled backup operations as scheduler candidates', async (): Promise<void> => {
+    await expect(listScheduledResourceOperationCandidates()).resolves.toEqual([]);
+
+    await db
+      .update(projectResources)
+      .set({
+        operationsJson:
+          '{"backup":{"command":"pg_dump","env":[],"image":null,"schedule":{"interval":"daily"}},"restore":null}',
+      })
+      .where(eq(projectResources.id, 'res_postgres'));
+
+    await expect(listScheduledResourceOperationCandidates()).resolves.toMatchObject([
+      {
+        resource: {
+          id: 'res_postgres',
+          name: 'postgres',
+        },
+      },
+    ]);
+  });
+
+  it('locks resource references without blocking backup foreign key inserts', async (): Promise<void> => {
+    await db.transaction(async (tx: ResourceTransaction): Promise<void> => {
+      const resource: ProjectResourceRow | undefined = await lockProjectResourceReferenceByName(
+        tx,
+        'env_production',
+        'postgres',
+      );
+
+      expect(resource).toMatchObject({ id: 'res_postgres', name: 'postgres' });
+      expect(resource?.createdAt).toBeInstanceOf(Date);
+      expect(resource?.updatedAt).toBeInstanceOf(Date);
+
+      const backup: ResourceBackupRow = await db.transaction(
+        async (insertTx: ResourceTransaction): Promise<ResourceBackupRow> => {
+          await insertTx.execute(sql`set local lock_timeout = '250ms'`);
+          return await createResourceBackupWithExecutor(insertTx, {
+            createdByPrincipalId: 'prn_resource_backups',
+            id: 'rbak_reference_lock_123',
+            operationId: 'op_resource_backup',
+            projectResourceId: 'res_postgres',
+            purpose: 'manual',
+            status: 'running',
+          });
+        },
+      );
+
+      expect(backup).toMatchObject({
+        id: 'rbak_reference_lock_123',
+        projectResourceId: 'res_postgres',
+        status: 'running',
+      });
+    });
+  });
+});
+
+async function seedResourceBackupScope(): Promise<void> {
+  await db.insert(organizations).values({ id: 'org_resource_backups', name: 'Acme Dev', slug: 'acme-dev' });
+  await db.insert(principals).values({
+    email: 'admin@example.com',
+    id: 'prn_resource_backups',
+    type: 'user',
+  });
+  await db.insert(nodes).values({
+    id: 'node_resource_backups',
+    name: 'node-resource-backups',
+    nodeUrl: '/tmp/compartment/api-test/node/resource-backups.sock',
+    nodeSocketPath: '/tmp/compartment/api-test/node/resource-backups.sock',
+    nodeVersion: '0.1.0',
+  });
+  await db.insert(projects).values({
+    id: 'prj_internal_tools',
+    name: 'internal-tools',
+    organizationId: 'org_resource_backups',
+  });
+  await db.insert(environments).values({
+    id: 'env_production',
+    name: 'production',
+    nodeId: 'node_resource_backups',
+    projectId: 'prj_internal_tools',
+  });
+  await seedResourceBackupOperation();
+  await seedProjectResource();
+}
+
+async function seedResourceBackupOperation(): Promise<void> {
+  await db.insert(operations).values({
+    id: 'op_resource_backup',
+    status: 'running',
+    summary: 'Resource postgres backup is running.',
+    targetId: 'res_postgres',
+    targetType: 'resource',
+    type: 'resource.backup',
+  });
+}
+
+async function seedProjectResource(): Promise<void> {
+  await db.insert(projectResources).values({
+    commandJson: '[]',
+    envJson: '[]',
+    environmentId: 'env_production',
+    hostname: 'postgres.production.internal-tools.resource.internal',
+    id: 'res_postgres',
+    image: 'postgres:16',
+    name: 'postgres',
+    portsJson: '[5432]',
+    readinessJson: 'null',
+    restartPolicy: 'unless-stopped',
+    runtimeDefinitionHash: 'runtime_hash_123',
+    status: 'running',
+    volumesJson: '[{"name":"postgres-data","mountPath":"/var/lib/postgresql/data"}]',
+  });
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Review a Change'
+  short_description: 'Parallel compartment code review workflow'
+  default_prompt: 'Use $review-a-change to review the current compartment repo diff with mandatory separate subagent passes and no main-agent-only fallback.'

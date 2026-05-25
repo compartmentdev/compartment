@@ -1,0 +1,41 @@
+import type { ApiDatabaseTransaction } from '../db/client.types';
+import type { Database } from '../db/client';
+import type { projects } from '../db/schema';
+
+export type ProjectsMutationTransaction = ApiDatabaseTransaction;
+export type ProjectsReadExecutor = Pick<Database, 'select'>;
+export type ProjectsWriteExecutor = Database | ApiDatabaseTransaction;
+export type PersistedProjectRow = typeof projects.$inferSelect;
+
+export interface ProjectRow {
+  archivedAt: Date | null;
+  createdAt: Date;
+  id: string;
+  name: string;
+  organizationId: string;
+  updatedAt: Date;
+}
+
+export interface CreateProjectInput {
+  id: string;
+  name: string;
+  organizationId: string;
+  updatedAt: Date;
+}
+
+export interface DeleteProjectResult {
+  projectName: string;
+  status: 'blocked' | 'deleted' | 'requires_archive';
+}
+
+export interface RenameProjectInput {
+  name: string;
+  projectId: string;
+  updatedAt: Date;
+}
+
+export interface SetProjectArchivedAtInput {
+  archivedAt: Date | null;
+  projectId: string;
+  updatedAt: Date;
+}

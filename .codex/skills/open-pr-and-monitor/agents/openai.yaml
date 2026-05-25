@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Open PR and Monitor'
+  short_description: 'Open or reuse a PR first, print the link, then monitor checks, merge state, and feedback'
+  default_prompt: 'Use $open-pr-and-monitor to open or reuse a repo PR first, print the clickable PR link immediately, keep its title and body repo-shaped, and stay in the monitor loop through fix waves until all visible checks and review feedback on the current PR head are clear or the run is blocked or redirected.'

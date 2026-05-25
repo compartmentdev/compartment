@@ -1,0 +1,12 @@
+name: dockerfile-monorepo
+
+services:
+  web:
+    path: .
+    build:
+      include:
+        - ../../shared
+    readiness:
+      type: http
+      path: /healthz
+      timeoutMs: 30000

@@ -1,0 +1,1 @@
+export const ssoOidcProviderOrganizationKeyUniqueConstraintName: string = 'sso_oidc_providers_organization_key_unique';

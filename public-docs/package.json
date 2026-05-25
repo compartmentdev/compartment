@@ -1,0 +1,26 @@
+{
+  "name": "@compartment/public-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "docs:build": "pnpm --dir .. docs:generate && pnpm build",
+    "lint:code": "eslint . --max-warnings 0",
+    "lint:format": "pnpm --dir .. exec prettier --check public-docs --ignore-path public-docs/.prettierignore",
+    "lint": "pnpm lint:code && pnpm lint:format",
+    "typecheck": "astro check",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.38.4",
+    "astro": "^6.3.7",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@compartment/eslint-config": "workspace:*",
+    "@astrojs/check": "^0.9.9",
+    "typescript": "^5.8.2"
+  }
+}

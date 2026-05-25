@@ -1,0 +1,328 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migration-count:
+    name: check:ci / migration-count
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+
+      - name: Check pull request migration count
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+
+          merge_base="$(git merge-base "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
+          node ./scripts/ci/check-drizzle-migration-count.mjs "${merge_base}" "${{ github.event.pull_request.head.sha }}"
+
+      - name: Check pull request Drizzle journals
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+
+          merge_base="$(git merge-base "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
+          node ./scripts/ci/check-drizzle-journal.mjs "${merge_base}" "${{ github.event.pull_request.head.sha }}"
+
+  standard-checks:
+    name: check:ci / standard
+    needs: migration-count
+    runs-on:
+      - compartment-ci-deploy-e2e
+      - hetzner-x86-container-dind-libatomic-5slot
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
+        with:
+          version: 10.6.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Restore Turbo cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: .turbo/cache
+          key: ${{ runner.os }}-turbo-standard-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-standard-${{ github.ref_name }}-
+            ${{ runner.os }}-turbo-standard-main-
+            ${{ runner.os }}-turbo-standard-
+            ${{ runner.os }}-turbo-static-${{ github.ref_name }}-
+            ${{ runner.os }}-turbo-unit-${{ github.ref_name }}-
+            ${{ runner.os }}-turbo-static-main-
+            ${{ runner.os }}-turbo-unit-main-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run root lint
+        run: pnpm lint:root
+
+      - name: Run examples lint
+        run: pnpm lint:examples
+
+      - name: Run eslint plugin lint
+        run: pnpm --filter @compartment/eslint-plugin lint
+
+      - name: Run eslint config lint
+        run: pnpm --filter @compartment/eslint-config lint
+
+      - name: Run contracts lint
+        run: pnpm --filter @compartment/contracts lint
+
+      - name: Run docker lint
+        run: pnpm --filter @compartment/docker lint
+
+      - name: Run utils lint
+        run: pnpm --filter @compartment/utils lint
+
+      - name: Run public docs lint
+        run: pnpm --filter @compartment/public-docs lint
+
+      - name: Run console lint
+        run: pnpm --filter @compartment/console lint
+
+      - name: Run SDK lint
+        run: pnpm --filter @compartment/sdk lint
+
+      - name: Run source archive lint
+        run: pnpm --filter @compartment/source-archive lint
+
+      - name: Run test support lint
+        run: pnpm --filter @compartment/test-support lint
+
+      - name: Run API source lint
+        run: pnpm --filter @compartment/api exec eslint src --max-warnings 0
+
+      - name: Run API test lint
+        run: pnpm --filter @compartment/api exec eslint test --max-warnings 0
+
+      - name: Run CLI lint
+        run: pnpm --filter @compartment/cli lint
+
+      - name: Run edge lint
+        run: pnpm --filter @compartment/edge lint
+
+      - name: Run node lint
+        run: pnpm --filter @compartment/node lint
+
+      - name: Run worker lint
+        run: pnpm --filter @compartment/worker lint
+
+      - name: Run typecheck
+        run: pnpm typecheck
+
+      - name: Run build
+        run: pnpm build
+
+      - name: Run test build
+        run: pnpm build:test
+
+      - name: Check commitlint wiring
+        run: pnpm check:commitlint
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Check public docs
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PUBLIC_DOCS_BASE_SHA="${{ github.event.pull_request.base.sha }}" \
+            PUBLIC_DOCS_HEAD_SHA="${{ github.event.pull_request.head.sha }}" \
+            pnpm docs:check
+          else
+            pnpm docs:check
+          fi
+
+      - name: Check unused files
+        run: pnpm check:unused
+
+      - name: Check runtime exports
+        run: pnpm check:unused:runtime
+
+      - name: Check duplicates
+        run: pnpm check:duplicates
+
+      - name: Install cosign for standalone CLI build
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
+        with:
+          cosign-release: v2.6.1
+
+      - name: Check self-hosted provenance cosign parser
+        run: node ./scripts/deploy/secure-self-hosted-images.mjs --validate-provenance-attestation
+
+      - name: Smoke test the standalone CLI build
+        run: |
+          pnpm cli:build:sea --distribution-channel source --default-registry-image-tag latest --output-dir ./.compartment/cli-dist-ci
+          ./.compartment/cli-dist-ci/compartment --version
+          ./.compartment/cli-dist-ci/compartment --help
+
+      - name: Run fast tests
+        run: pnpm test:fast:ci
+
+      - name: Run docker boundary check
+        run: pnpm --filter @compartment/node test:docker-boundary
+
+  semgrep:
+    name: check:ci / semgrep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    container:
+      image: semgrep/semgrep:1.136.0
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Run Semgrep OWASP scan
+        run: |
+          semgrep scan \
+            --config p/owasp-top-ten \
+            --exclude-rule javascript.express.security.audit.xss.direct-response-write.direct-response-write \
+            --severity ERROR \
+            --error \
+            --metrics off \
+            --disable-version-check
+
+  gitleaks:
+    name: check:ci / gitleaks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Install GitLeaks
+        run: |
+          curl -fsSLo /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          mkdir -p /tmp/gitleaks
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp/gitleaks gitleaks
+          echo "/tmp/gitleaks" >> "${GITHUB_PATH}"
+
+      - name: Run GitLeaks secret scan
+        run: |
+          gitleaks dir . \
+            --config .gitleaks.toml \
+            --redact \
+            --no-banner \
+            --verbose
+
+  db-integration:
+    name: check:ci / db
+    needs: migration-count
+    uses: ./.github/workflows/_db-integration.yml
+    with:
+      runner_labels_json: '["compartment-ci-deploy-e2e","hetzner-x86-container-dind-libatomic-5slot"]'
+
+  self-hosted-image-cache:
+    name: check:ci / build and check images
+    needs:
+      - migration-count
+    uses: ./.github/workflows/_self-hosted-image-cache.yml
+    with:
+      runner_labels_json: '["compartment-ci-deploy-e2e","hetzner-x86-container-dind-libatomic-5slot"]'
+      scan_vulnerabilities: ${{ github.event_name == 'pull_request' }}
+
+  system-user-flow-e2e:
+    name: check:ci / system-user-flow-e2e
+    needs:
+      - self-hosted-image-cache
+    uses: ./.github/workflows/_system-user-flow-e2e.yml
+    with:
+      self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
+      runner_labels_json: '["compartment-ci-deploy-e2e","hetzner-x86-container-dind-libatomic-5slot"]'
+      suite_name: system user flow
+      suite_slug: system-user-flow
+      test_file: test/system-user-flow.e2e.test.ts
+
+  console-e2e:
+    name: check:ci / console-e2e
+    needs:
+      - self-hosted-image-cache
+    uses: ./.github/workflows/_system-user-flow-e2e.yml
+    with:
+      install_console_playwright: true
+      self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
+      runner_labels_json: '["compartment-ci-deploy-e2e","hetzner-x86-container-dind-libatomic-5slot"]'
+      suite_name: console
+      suite_slug: console
+      test_file: test/console.e2e.test.ts
+
+  system-build-matrix-e2e:
+    name: check:ci / system-build-matrix-e2e
+    needs:
+      - self-hosted-image-cache
+    uses: ./.github/workflows/_system-user-flow-e2e.yml
+    with:
+      self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
+      runner_labels_json: '["compartment-ci-deploy-e2e","hetzner-x86-container-dind-libatomic-5slot"]'
+      suite_name: system build matrix
+      suite_slug: system-build-matrix
+      test_file: test/system-build-matrix.e2e.test.ts
+
+  check-ci:
+    name: check:ci
+    if: ${{ always() }}
+    needs:
+      - gitleaks
+      - semgrep
+      - standard-checks
+      - db-integration
+      - self-hosted-image-cache
+      - system-user-flow-e2e
+      - console-e2e
+      - system-build-matrix-e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify all CI jobs passed
+        run: |
+          if [[ "${{ needs.standard-checks.result }}" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "${{ needs.semgrep.result }}" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "${{ needs.gitleaks.result }}" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "${{ needs.db-integration.result }}" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "${{ needs.self-hosted-image-cache.result }}" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "${{ needs.system-user-flow-e2e.result }}" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "${{ needs.console-e2e.result }}" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "${{ needs.system-build-matrix-e2e.result }}" != "success" ]]; then
+            exit 1
+          fi

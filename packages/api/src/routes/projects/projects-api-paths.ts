@@ -1,0 +1,9 @@
+export {
+  compartmentProjectApiPathnameTemplate as projectApiPathname,
+  compartmentProjectArchiveApiPathnameTemplate as projectArchiveApiPathname,
+  compartmentProjectOverviewApiPathnameTemplate as projectOverviewApiPathname,
+  compartmentProjectsApiPathname as projectsApiPathname,
+  compartmentProjectStartApiPathnameTemplate as projectStartApiPathname,
+  compartmentProjectStopApiPathnameTemplate as projectStopApiPathname,
+  compartmentProjectUnarchiveApiPathnameTemplate as projectUnarchiveApiPathname,
+} from '@compartment/contracts/browser';

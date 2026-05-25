@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@compartment/contracts/browser": ["../contracts/src/index.browser.ts"],
+      "@compartment/contracts": ["../contracts/src/index.ts"],
+      "@compartment/utils": ["../utils/src/index.ts"]
+    }
+  },
+  "include": ["src/index.ts"]
+}

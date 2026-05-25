@@ -1,0 +1,21 @@
+{
+  "name": "@compartment/eslint-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test ./test/**/*.test.mjs"
+  },
+  "dependencies": {
+    "eslint": "^9.22.0",
+    "typescript-eslint": "^8.59.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}

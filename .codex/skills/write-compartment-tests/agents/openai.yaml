@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Review Compartment Tests'
+  short_description: 'Review-first test workflow with a fast subagent pass'
+  default_prompt: 'Use $write-compartment-tests to review the test surface first with a fast subagent when policy allows, otherwise in the main agent, then add, refactor, or delete the smallest behavior-first coverage in this repo with the correct package-owned harness and no implementation-mirror tests.'

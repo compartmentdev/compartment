@@ -1,0 +1,24 @@
+{
+  "gitignore": true,
+  "ignore": [
+    "**/dist/**",
+    "**/browser-dist/**",
+    "**/dist-test/**",
+    "**/coverage/**",
+    "**/node_modules/**",
+    "**/.astro/**",
+    "**/.turbo/**",
+    "**/drizzle/**",
+    "**/test/**",
+    "**/*.d.ts",
+    "examples/**",
+    "public-docs/src/assets/**",
+    "public-docs/src/content/docs/reference/generated/**"
+  ],
+  "minLines": 8,
+  "minTokens": 60,
+  "mode": "weak",
+  "output": "coverage/jscpd",
+  "reporters": ["console", "json"],
+  "threshold": 0
+}

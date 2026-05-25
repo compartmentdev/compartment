@@ -1,0 +1,14 @@
+.git
+.github
+.compartment
+.turbo
+.vscode
+coverage
+dist
+dist-test
+node_modules
+tmp
+*.log
+.env
+.env.*
+!.env.example

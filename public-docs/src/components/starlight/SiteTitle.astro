@@ -1,0 +1,91 @@
+---
+import darkMark from '../../assets/compartment-mark-dark.svg?raw';
+import lightMark from '../../assets/compartment-mark-light.svg?raw';
+import { docsHintLabel, productSiteHref, productSiteLabel } from '../../../site-config.mjs';
+---
+
+<div class="site-title-group">
+  <a href={productSiteHref} class="site-title-logo" aria-label={productSiteLabel}>
+    <span class="logo-mark light:sl-hidden print:hidden" aria-hidden="true" set:html={darkMark} />
+    <span class="logo-mark dark:sl-hidden print:block" aria-hidden="true" set:html={lightMark} />
+  </a>
+  <span class="site-title-copy">
+    <a href={productSiteHref} class="site-title-link" translate="no">{productSiteLabel}</a>
+    <span class="docs-hint" translate="no">{docsHintLabel}</span>
+  </span>
+</div>
+
+<style>
+  @layer starlight.core {
+    .site-title-group {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-width: 0;
+    }
+
+    .site-title-logo {
+      display: flex;
+      flex: 0 0 auto;
+      color: var(--cpt-text-primary);
+      text-decoration: none;
+    }
+
+    .site-title-copy {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      min-width: 0;
+    }
+
+    .site-title-link {
+      font-size: var(--sl-text-h4);
+      font-weight: 600;
+      color: var(--cpt-text-primary);
+      text-decoration: none;
+      white-space: nowrap;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .logo-mark {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+    }
+
+    .logo-mark :global(svg) {
+      height: 1.5rem;
+      width: auto;
+      max-width: 100%;
+      object-fit: contain;
+      object-position: 0 50%;
+    }
+
+    .docs-hint {
+      flex: 0 0 auto;
+      color: color-mix(in srgb, var(--sl-color-gray-2) 38%, var(--sl-color-gray-3) 62%);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      line-height: 1;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 40rem) {
+      .site-title-group {
+        gap: 0.55rem;
+      }
+
+      .site-title-copy {
+        gap: 0.4rem;
+      }
+
+      .docs-hint {
+        font-size: 0.68rem;
+      }
+    }
+  }
+</style>

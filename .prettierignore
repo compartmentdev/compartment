@@ -1,0 +1,2 @@
+schemas/json-schema/*.json
+schemas/openapi/*.json

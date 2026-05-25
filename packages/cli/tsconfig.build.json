@@ -1,0 +1,14 @@
+{
+  "extends": ["./tsconfig.json", "../../tsconfig.build.base.json"],
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "@compartment/node/agent": ["../node/dist/agent.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["test/**/*.ts"]
+}

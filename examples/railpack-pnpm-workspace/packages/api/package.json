@@ -1,0 +1,12 @@
+{
+  "name": "@compartment-e2e/pnpm-api",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@compartment-e2e/pnpm-shared": "workspace:*"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node server.mjs"
+  }
+}

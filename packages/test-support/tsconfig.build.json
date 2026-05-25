@@ -1,0 +1,13 @@
+{
+  "extends": ["./tsconfig.json", "../../tsconfig.build.base.json"],
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "@compartment/docker": ["../docker/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}
