@@ -13,7 +13,6 @@ import type {
   NodeResourceOperationResponse,
   NodeResourceReadiness,
 } from '@compartment/contracts';
-import type { RuntimeDeployConfig } from './runtime.types';
 import { canConnectToRuntimeHost } from './runtime-resource-connectivity.service';
 import {
   buildResourceContainerName,
@@ -24,21 +23,24 @@ import { resolveResourceReadinessHost, resourceReadinessPollIntervalMs } from '.
 import { environmentIdLabelName, projectIdLabelName } from './runtime-container-labels';
 import { resourceNameLabelName } from './runtime-resource-labels';
 import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
+import { resolveRuntimeResourceBackupArtifactHostPath } from './runtime-resource-backup-path.service';
+import type { RuntimeResourceOperationConfig } from './runtime.types';
 
 const backupContainerPath: string = '/backup';
+type RuntimeResourceOperationMountMode = 'read-only' | 'read-write';
 
 export async function runRuntimeResourceBackupOperation(
   input: NodeResourceOperationRequest,
-  config: RuntimeDeployConfig,
+  config: RuntimeResourceOperationConfig,
 ): Promise<NodeResourceOperationResponse> {
-  return await runRuntimeResourceOperation(input, config);
+  return await runRuntimeResourceOperation(input, config, 'read-write');
 }
 
 export async function runRuntimeResourceRestoreOperation(
   input: NodeResourceOperationRequest,
-  config: RuntimeDeployConfig,
+  config: RuntimeResourceOperationConfig,
 ): Promise<NodeResourceOperationResponse> {
-  const response: NodeResourceOperationResponse = await runRuntimeResourceOperation(input, config);
+  const response: NodeResourceOperationResponse = await runRuntimeResourceOperation(input, config, 'read-only');
   await waitForResourceReadiness(input, config);
 
   return response;
@@ -46,8 +48,11 @@ export async function runRuntimeResourceRestoreOperation(
 
 async function runRuntimeResourceOperation(
   input: NodeResourceOperationRequest,
-  config: RuntimeDeployConfig,
+  config: RuntimeResourceOperationConfig,
+  mountMode: RuntimeResourceOperationMountMode,
 ): Promise<NodeResourceOperationResponse> {
+  // Fail cheap before setup, then rebuild mounts immediately before Docker create below.
+  await buildResourceOperationMounts(input, config.resourceBackupDirectory, mountMode);
   await ensureDockerImageAvailable({
     imageRef: input.definition.image,
     registryCredentials: config.runtimeRegistryCredentials,
@@ -56,9 +61,8 @@ async function runRuntimeResourceOperation(
     dockerNamespace: config.dockerNamespace,
     networkName: buildRuntimeResourceNetworkName(input, config.dockerNamespace),
   });
-  const result: DockerRunContainerToCompletionResult = await runDockerContainerToCompletion(
-    buildResourceOperationContainerInput(input, config),
-  );
+  const containerInput: DockerRunContainerInput = await buildResourceOperationContainerInput(input, config, mountMode);
+  const result: DockerRunContainerToCompletionResult = await runDockerContainerToCompletion(containerInput);
 
   return {
     stderr: result.stderr,
@@ -66,17 +70,18 @@ async function runRuntimeResourceOperation(
   };
 }
 
-function buildResourceOperationContainerInput(
+async function buildResourceOperationContainerInput(
   input: NodeResourceOperationRequest,
-  config: RuntimeDeployConfig,
-): DockerRunContainerInput {
+  config: RuntimeResourceOperationConfig,
+  mountMode: RuntimeResourceOperationMountMode,
+): Promise<DockerRunContainerInput> {
   return {
     command: ['sh', '-lc', input.definition.command],
     containerName: buildResourceOperationContainerName(input, config.dockerNamespace),
     env: buildResourceOperationEnv(input),
     imageRef: input.definition.image,
     labels: buildResourceOperationLabels(input, config),
-    mounts: buildResourceOperationMounts(input),
+    mounts: await buildResourceOperationMounts(input, config.resourceBackupDirectory, mountMode),
     network: {
       aliases: [],
       name: buildRuntimeResourceNetworkName(input, config.dockerNamespace),
@@ -85,11 +90,18 @@ function buildResourceOperationContainerInput(
   };
 }
 
-function buildResourceOperationMounts(input: NodeResourceOperationRequest): DockerBindMount[] {
+async function buildResourceOperationMounts(
+  input: NodeResourceOperationRequest,
+  resourceBackupDirectory: string,
+  mountMode: RuntimeResourceOperationMountMode,
+): Promise<DockerBindMount[]> {
+  const hostPath: string = await resolveRuntimeResourceBackupArtifactHostPath(input.backupId, resourceBackupDirectory);
+
   return [
     {
       containerPath: backupContainerPath,
-      hostPath: input.artifactHostPath,
+      hostPath,
+      ...(mountMode === 'read-only' ? { readOnly: true } : {}),
     },
   ];
 }
@@ -97,13 +109,13 @@ function buildResourceOperationMounts(input: NodeResourceOperationRequest): Dock
 function buildResourceOperationSecurityProfile(): DockerContainerSecurityProfile {
   return {
     name: 'restricted-writable',
-    writableRootFilesystemReason: 'Resource backup and restore commands write to the mounted backup directory.',
+    writableRootFilesystemReason: 'Resource operation commands may need local scratch space during backup or restore.',
   };
 }
 
 function buildResourceOperationLabels(
   input: NodeResourceOperationRequest,
-  config: RuntimeDeployConfig,
+  config: RuntimeResourceOperationConfig,
 ): Record<string, string> {
   return {
     ...buildDockerNamespaceLabels(config.dockerNamespace),
@@ -130,7 +142,7 @@ function buildResourceOperationEnv(input: NodeResourceOperationRequest): Record<
 
 async function waitForResourceReadiness(
   input: NodeResourceOperationRequest,
-  config: RuntimeDeployConfig,
+  config: RuntimeResourceOperationConfig,
 ): Promise<void> {
   if (input.readiness === null) {
     return;

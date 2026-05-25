@@ -27,7 +27,7 @@ import type {
 } from '../src/services/resource-backup-artifact.service';
 import type {
   buildResourceOperationRequest,
-  requireBackupArtifactHostPath,
+  requireBackupArtifactId,
   resolveBackupOperationContext,
   resolveResourceOperationContext,
   resolveRestoreOperationContext,
@@ -43,7 +43,7 @@ type FailResourceBackupWithExecutor = typeof failResourceBackupWithExecutor;
 type GetApiDatabase = typeof getApiDatabase;
 type InsertOperationRecordWithExecutor = typeof insertOperationRecordWithExecutor;
 type PrepareResourceBackupArtifactDirectory = typeof prepareResourceBackupArtifactDirectory;
-type RequireBackupArtifactHostPath = typeof requireBackupArtifactHostPath;
+type RequireBackupArtifactId = typeof requireBackupArtifactId;
 type ResolveBackupOperationContext = typeof resolveBackupOperationContext;
 type ResolveResourceOperationContext = typeof resolveResourceOperationContext;
 type ResolveRestoreOperationContext = typeof resolveRestoreOperationContext;
@@ -58,7 +58,7 @@ interface ResourceBackupExecutionMocks {
   getApiDatabase: Mock<GetApiDatabase>;
   insertOperationRecordWithExecutor: Mock<InsertOperationRecordWithExecutor>;
   prepareResourceBackupArtifactDirectory: Mock<PrepareResourceBackupArtifactDirectory>;
-  requireBackupArtifactHostPath: Mock<RequireBackupArtifactHostPath>;
+  requireBackupArtifactId: Mock<RequireBackupArtifactId>;
   resolveBackupOperationContext: Mock<ResolveBackupOperationContext>;
   resolveResourceOperationContext: Mock<ResolveResourceOperationContext>;
   resolveRestoreOperationContext: Mock<ResolveRestoreOperationContext>;
@@ -88,7 +88,7 @@ interface ResourceBackupArtifactMockModule {
 
 interface ResourceBackupOperationContextMockModule {
   buildResourceOperationRequest: Mock<BuildResourceOperationRequest>;
-  requireBackupArtifactHostPath: Mock<RequireBackupArtifactHostPath>;
+  requireBackupArtifactId: Mock<RequireBackupArtifactId>;
   resolveBackupOperationContext: Mock<ResolveBackupOperationContext>;
   resolveResourceOperationContext: Mock<ResolveResourceOperationContext>;
   resolveRestoreOperationContext: Mock<ResolveRestoreOperationContext>;
@@ -103,7 +103,7 @@ const mocks: ResourceBackupExecutionMocks = vi.hoisted(
     getApiDatabase: vi.fn<GetApiDatabase>(),
     insertOperationRecordWithExecutor: vi.fn<InsertOperationRecordWithExecutor>(),
     prepareResourceBackupArtifactDirectory: vi.fn<PrepareResourceBackupArtifactDirectory>(),
-    requireBackupArtifactHostPath: vi.fn<RequireBackupArtifactHostPath>(),
+    requireBackupArtifactId: vi.fn<RequireBackupArtifactId>(),
     resolveBackupOperationContext: vi.fn<ResolveBackupOperationContext>(),
     resolveResourceOperationContext: vi.fn<ResolveResourceOperationContext>(),
     resolveRestoreOperationContext: vi.fn<ResolveRestoreOperationContext>(),
@@ -148,7 +148,7 @@ vi.mock(
   '../src/services/resource-backups.operation-context.service',
   (): ResourceBackupOperationContextMockModule => ({
     buildResourceOperationRequest: mocks.buildResourceOperationRequest,
-    requireBackupArtifactHostPath: mocks.requireBackupArtifactHostPath,
+    requireBackupArtifactId: mocks.requireBackupArtifactId,
     resolveBackupOperationContext: mocks.resolveBackupOperationContext,
     resolveResourceOperationContext: mocks.resolveResourceOperationContext,
     resolveRestoreOperationContext: mocks.resolveRestoreOperationContext,

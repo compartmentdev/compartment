@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import type * as CompartmentSdk from '@compartment/sdk';
@@ -152,6 +153,7 @@ describe('resource backup restore-as route integration', (): void => {
     });
     expect(payload.restoredBackup.id).toBe('rbak_restore_as');
     expect(sdkMocks.runNodeResourceRestoreOperation).toHaveBeenCalledTimes(1);
+    expectRestoreOperationBackupId('rbak_restore_as');
   });
 
   it('copies source resource direct variables into the restored resource runtime', async (): Promise<void> => {
@@ -266,6 +268,8 @@ async function postRestoreAs(installPayload: InstallResponse, backupId: string):
 }
 
 async function seedRestoreRouteScenario(input: RestoreRouteScenarioInput): Promise<void> {
+  const backupId: string = input.backupId ?? 'rbak_restore_as';
+
   await db.insert(nodes).values({
     id: 'node_restore_as',
     name: 'node-restore-as',
@@ -297,13 +301,13 @@ async function seedRestoreRouteScenario(input: RestoreRouteScenarioInput): Promi
     type: 'resource.backup',
   });
   await db.insert(resourceBackups).values({
-    artifactLocation: '/tmp/compartment-test-resource-backups/rbak_restore_as',
+    artifactLocation: join(apiConfig.resourceBackupDirectory, backupId),
     checksum: 'sha256:abc123',
     completedAt: new Date('2026-05-08T12:05:00.000Z'),
     createdAt: new Date('2026-05-08T12:00:00.000Z'),
     createdByPrincipalId: null,
-    id: input.backupId ?? 'rbak_restore_as',
-    manifestJson: '{"backupId":"rbak_restore_as","status":"succeeded"}',
+    id: backupId,
+    manifestJson: JSON.stringify({ backupId, status: 'succeeded' }),
     operationId: 'op_restore_as_backup',
     projectResourceId: 'res_postgres',
     purpose: 'manual',
@@ -473,6 +477,12 @@ function expectRestoreOperationEnv(keyName: string, value: string): void {
       },
     ]),
   );
+}
+
+function expectRestoreOperationBackupId(backupId: string): void {
+  const request: NodeResourceOperationRequest | undefined = sdkMocks.runNodeResourceRestoreOperation.mock.calls[0]?.[1];
+
+  expect(request?.backupId).toBe(backupId);
 }
 
 async function expectResourceVariableTargets(keyName: string, targetResourceNames: string[]): Promise<void> {

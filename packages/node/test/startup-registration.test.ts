@@ -138,6 +138,7 @@ function createNodeConfig(): NodeConfig {
     logLevel: 'info',
     name: 'local-node',
     nodeSocketPath: '/tmp/compartment/node-test/node/agent.sock',
+    resourceBackupDirectory: '/var/lib/compartment/resource-backups',
     runtimeConnectivityMode: 'loopback',
     runtimeDefaultUpstreamHost: '127.0.0.1',
     runtimeRegistryCredentials: {
