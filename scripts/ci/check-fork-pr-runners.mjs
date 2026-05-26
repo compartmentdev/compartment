@@ -6,8 +6,70 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 
 const repoRoot = readRepositoryRoot(import.meta.url, 2);
 const workflowDir = '.github/workflows';
-const forbiddenRunsOn =
-  /\bruns-on:\s*(?:\[.*\b(?:self-hosted|compartment-ci-deploy-e2e|hetzner-x86-container-dind-libatomic-5slot)\b.*]|\b(?:self-hosted|compartment-ci-deploy-e2e|hetzner-x86-container-dind-libatomic-5slot)\b)/;
+const runsOnKey = /^(\s*)runs-on:\s*(.*)$/;
+const forbiddenRunnerLabel = /\b(?:self-hosted|compartment-ci-deploy-e2e|hetzner-x86-container-dind-libatomic-5slot)\b/;
+
+function findForbiddenRunsOnLine(content) {
+  const lines = content.split('\n');
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = stripYamlComment(lines[index] ?? '');
+    const runsOnMatch = runsOnKey.exec(line);
+    if (runsOnMatch === null) {
+      continue;
+    }
+
+    const [, indent, inlineValue] = runsOnMatch;
+    if (hasForbiddenRunnerLabel(inlineValue)) {
+      return line.trim();
+    }
+
+    if (!startsRunsOnBlock(inlineValue)) {
+      continue;
+    }
+
+    for (let blockIndex = index + 1; blockIndex < lines.length; blockIndex += 1) {
+      const blockLine = stripYamlComment(lines[blockIndex] ?? '');
+      if (blockLine.trim() === '') {
+        continue;
+      }
+
+      if (readIndent(blockLine) <= indent.length) {
+        break;
+      }
+
+      if (hasForbiddenRunnerLabel(blockLine)) {
+        return `${line.trim()} ${blockLine.trim()}`;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function hasForbiddenRunnerLabel(line) {
+  return forbiddenRunnerLabel.test(line);
+}
+
+function startsRunsOnBlock(inlineValue) {
+  const value = inlineValue.trim();
+  return value === '' || hasUnclosedFlowCollection(value);
+}
+
+function hasUnclosedFlowCollection(value) {
+  const opening = (value.match(/[[{]/g) ?? []).length;
+  const closing = (value.match(/[\]}]/g) ?? []).length;
+  return opening > closing;
+}
+
+function readIndent(line) {
+  return line.length - line.trimStart().length;
+}
+
+function stripYamlComment(line) {
+  const commentIndex = line.indexOf('#');
+  return commentIndex === -1 ? line : line.slice(0, commentIndex);
+}
 
 function main() {
   const errors = [];
@@ -19,7 +81,7 @@ function main() {
 
     const path = `${workflowDir}/${entry}`;
     const content = readFileSync(join(repoRoot, path), 'utf8');
-    const badLine = content.split('\n').find((line) => forbiddenRunsOn.test(line));
+    const badLine = findForbiddenRunsOnLine(content);
 
     if (badLine !== undefined) {
       errors.push(`${path}: self-hosted runner must be selected dynamically, not hard-coded: ${badLine.trim()}`);
