@@ -87,7 +87,7 @@ describe('browser access action visibility', (): void => {
 
     const html: string = renderToStaticMarkup(
       React.createElement(GroupsPageContent, {
-        state: createGroupsPageState(['organization.group.read', 'organization.group.manage']),
+        state: createGroupsPageState(['organization.group.read', 'organization.group.manage'], [createGroup()]),
       }),
     );
 
@@ -95,6 +95,44 @@ describe('browser access action visibility', (): void => {
     expect(html).toContain('button-accent-surface');
     expect(html).toContain('lucide-users-round');
     expect(html).not.toContain('Manage shared access groups and their members.');
+  });
+
+  it('renders a users empty state action with the accent button', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(UsersView, {
+        data: createUsersPageResult(['organization.user.read', 'organization.user.invite'], {
+          totalUsers: 0,
+          users: [],
+        }),
+        onNavigate: vi.fn<BrowserSoftNavigateHandler>(),
+        onUserAction: vi.fn<UserActionHandler>(),
+        setData: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('You do not have any users in the Compartment.');
+    expect(html).toContain('Invite user');
+    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('lucide-user-round');
+    expect(html).toContain('lucide-plus');
+  });
+
+  it('renders a groups empty state action with the accent button', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(GroupsPageContent, {
+        state: createGroupsPageState(['organization.group.read', 'organization.group.manage']),
+      }),
+    );
+
+    expect(html).toContain('You do not have any groups in the Compartment.');
+    expect(html).toContain('Create group');
+    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('lucide-users-round');
+    expect(html).toContain('lucide-plus');
   });
 
   it('hides role create and delete actions from read-only role viewers', (): void => {
@@ -123,6 +161,22 @@ describe('browser access action visibility', (): void => {
     expect(html).toContain('button-accent-surface');
     expect(html).toContain('lucide-shield-plus');
     expect(html).not.toContain('Define permission sets for organization access.');
+  });
+
+  it('renders a roles empty state action with the accent button', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(RolesPageContent, {
+        state: createRolesPageState(['organization.role.read', 'organization.role.manage'], { roles: [] }),
+      }),
+    );
+
+    expect(html).toContain('You do not have any roles in the Compartment.');
+    expect(html).toContain('Create role');
+    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('lucide-drama');
+    expect(html).toContain('lucide-plus');
   });
 
   it('renders a users back action when roles page has a valid users return target', (): void => {
@@ -160,7 +214,10 @@ describe('browser access action visibility', (): void => {
   });
 });
 
-function createUsersPageResult(currentOrganizationPermissions: PermissionKey[]): BrowserUsersPageResult {
+function createUsersPageResult(
+  currentOrganizationPermissions: PermissionKey[],
+  overrides: Partial<BrowserUsersPageResult> = {},
+): BrowserUsersPageResult {
   return {
     availableGroups: [],
     availableRoles: [],
@@ -184,6 +241,7 @@ function createUsersPageResult(currentOrganizationPermissions: PermissionKey[]):
     totalPages: 1,
     totalUsers: 1,
     users: [createUser()],
+    ...overrides,
   };
 }
 

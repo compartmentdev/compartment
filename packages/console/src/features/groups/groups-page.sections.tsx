@@ -7,10 +7,12 @@ import {
   browserConsolePageHeaderClassName,
 } from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
+import { EmptyStateCard } from '../../components/empty-state-card';
+import type { EmptyStateCardAction } from '../../components/empty-state-card.types';
 import { ServerSearch } from '../../components/server-search';
 import { ServerTableFrame } from '../../components/server-table';
 import { ToolbarPrimaryActionButton } from '../../components/toolbar-primary-action';
-import { UsersRound } from '../../components/ui/icons';
+import { Plus, UsersRound } from '../../components/ui/icons';
 import { AccessPageHeader } from '../access/access-ui';
 import { canManageBrowserGroups } from '../console/console-access';
 import { BrowserConsoleOrganizationContextPanel } from '../console/console-organization-context-panel';
@@ -22,6 +24,28 @@ import type { GroupsPageState } from './groups-page.state';
 import { GroupsTable, readGroupSearchText } from './groups-page.table';
 
 interface GroupsPageContentProps {
+  state: GroupsPageState;
+}
+
+interface GroupsPageBodyProps {
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
+  state: GroupsPageState;
+}
+
+interface GroupsPageHeaderProps {
+  showCreateAction: boolean;
+  state: GroupsPageState;
+}
+
+interface GroupsPageToolbarProps {
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
+}
+
+interface GroupsTableSectionProps {
+  groups: AccessGroupListRow[];
+  showEmptyState: boolean;
   state: GroupsPageState;
 }
 
@@ -51,14 +75,10 @@ export function GroupsPageContent({ state }: Readonly<GroupsPageContentProps>): 
   );
 }
 
-function GroupsPageBody({
-  searchQuery,
-  setSearchQuery,
-  state,
-}: Readonly<{ searchQuery: string; setSearchQuery: (value: string) => void; state: GroupsPageState }>): JSX.Element {
+function GroupsPageBody({ searchQuery, setSearchQuery, state }: Readonly<GroupsPageBodyProps>): JSX.Element {
   return (
     <div className={browserConsolePageClassName}>
-      <GroupsPageHeader state={state} />
+      <GroupsPageHeader showCreateAction={!shouldRenderGroupsEmptyState(state, searchQuery)} state={state} />
       <div className={browserConsolePageBodyClassName}>
         <DismissibleAlert message={state.data.noticeMessage} variant="notice" />
         <DismissibleAlert message={state.data.errorMessage} variant="error" />
@@ -84,26 +104,34 @@ function renderGroupsPageContent(
     );
   }
 
+  return renderSelectedGroupsPageContent(searchQuery, setSearchQuery, state);
+}
+
+function renderSelectedGroupsPageContent(
+  searchQuery: string,
+  setSearchQuery: (value: string) => void,
+  state: GroupsPageState,
+): JSX.Element {
+  const visibleGroups: AccessGroupListRow[] = readVisibleGroups(state.data.groups, searchQuery);
+  const showEmptyState: boolean = shouldRenderGroupsEmptyState(state, searchQuery);
+
   return (
     <>
       <GroupsPageToolbar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
-      <GroupsTableSection groups={readVisibleGroups(state.data.groups, searchQuery)} state={state} />
+      <GroupsTableSection groups={visibleGroups} showEmptyState={showEmptyState} state={state} />
     </>
   );
 }
 
-function GroupsPageHeader({ state }: Readonly<{ state: GroupsPageState }>): JSX.Element {
+function GroupsPageHeader({ showCreateAction, state }: Readonly<GroupsPageHeaderProps>): JSX.Element {
   return (
     <header className={browserConsolePageHeaderClassName}>
-      <AccessPageHeader action={<CreateGroupButton state={state} />} title="Groups" />
+      <AccessPageHeader action={<CreateGroupButton showCreateAction={showCreateAction} state={state} />} title="Groups" />
     </header>
   );
 }
 
-function GroupsPageToolbar({
-  searchQuery,
-  setSearchQuery,
-}: Readonly<{ searchQuery: string; setSearchQuery: (value: string) => void }>): JSX.Element {
+function GroupsPageToolbar({ searchQuery, setSearchQuery }: Readonly<GroupsPageToolbarProps>): JSX.Element {
   return (
     <header>
       <ServerSearch
@@ -118,8 +146,8 @@ function GroupsPageToolbar({
   );
 }
 
-function CreateGroupButton({ state }: Readonly<{ state: GroupsPageState }>): JSX.Element | null {
-  if (!canManageBrowserGroups(state.data.currentOrganizationPermissions)) {
+function CreateGroupButton({ showCreateAction, state }: Readonly<GroupsPageHeaderProps>): JSX.Element | null {
+  if (!showCreateAction || !canManageBrowserGroups(state.data.currentOrganizationPermissions)) {
     return null;
   }
 
@@ -137,15 +165,42 @@ function CreateGroupButton({ state }: Readonly<{ state: GroupsPageState }>): JSX
   );
 }
 
-function GroupsTableSection({
-  groups,
-  state,
-}: Readonly<{ groups: AccessGroupListRow[]; state: GroupsPageState }>): JSX.Element {
+function GroupsTableSection({ groups, showEmptyState, state }: Readonly<GroupsTableSectionProps>): JSX.Element {
+  if (showEmptyState) {
+    return (
+      <EmptyStateCard
+        action={readCreateGroupEmptyStateAction(state)}
+        icon={UsersRound}
+        iconClassName="text-[var(--success)]"
+        message="You do not have any groups in the Compartment."
+      />
+    );
+  }
+
   return (
     <ServerTableFrame>
       <GroupsTable groups={groups} state={state} />
     </ServerTableFrame>
   );
+}
+
+function readCreateGroupEmptyStateAction(state: GroupsPageState): EmptyStateCardAction | undefined {
+  if (!canManageBrowserGroups(state.data.currentOrganizationPermissions)) {
+    return undefined;
+  }
+
+  return {
+    icon: Plus,
+    kind: 'button',
+    label: 'Create group',
+    onClick: (): void => {
+      state.onNavigate(buildGroupsPageHref(state.data, null, 'create'));
+    },
+  };
+}
+
+function shouldRenderGroupsEmptyState(state: GroupsPageState, searchQuery: string): boolean {
+  return searchQuery.trim() === '' && state.data.groups.length === 0;
 }
 
 function readOrganizationControl(state: GroupsPageState): JSX.Element | null {
