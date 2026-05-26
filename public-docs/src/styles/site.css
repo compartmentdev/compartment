@@ -205,6 +205,50 @@
     border-inline-end-color: var(--cpt-border-default);
   }
 
+  header.header .github-star-widget {
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 2rem;
+    padding: 0 0.7rem;
+    border: 1px solid var(--cpt-border-default);
+    border-radius: 999px;
+    background: var(--cpt-overlay-1);
+    color: var(--cpt-text-secondary);
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    transition:
+      border-color 180ms ease,
+      background-color 180ms ease,
+      color 180ms ease;
+  }
+
+  header.header .github-star-widget:hover {
+    border-color: var(--cpt-border-strong);
+    background: var(--cpt-overlay-2);
+    color: var(--cpt-text-primary);
+  }
+
+  header.header .github-star-widget svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  header.header .github-star-count {
+    margin-inline-start: 0.1rem;
+    padding-inline-start: 0.45rem;
+    border-inline-start: 1px solid var(--cpt-border-default);
+    color: var(--cpt-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  header.header .github-star-count[hidden] {
+    display: none;
+  }
+
   header.header label,
   button[data-open-modal] {
     border: 1px solid var(--cpt-border-default);

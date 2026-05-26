@@ -1,0 +1,170 @@
+---
+import config from 'virtual:starlight/user-config';
+
+import { Icon } from '@astrojs/starlight/components';
+import LanguageSelect from '@astrojs/starlight/components/LanguageSelect.astro';
+import Search from '@astrojs/starlight/components/Search.astro';
+import SocialIcons from '@astrojs/starlight/components/SocialIcons.astro';
+import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro';
+import SiteTitle from './SiteTitle.astro';
+
+const shouldRenderSearch =
+  config.pagefind || config.components.Search !== '@astrojs/starlight/components/Search.astro';
+---
+
+<div class="header">
+  <div class="title-wrapper sl-flex">
+    <SiteTitle />
+  </div>
+  <div class="sl-flex print:hidden">
+    {shouldRenderSearch && <Search />}
+  </div>
+  <div class="sl-hidden md:sl-flex print:hidden right-group">
+    <a
+      class="github-star-widget sl-flex"
+      href="https://github.com/compartmentdev/compartment"
+      rel="me"
+      data-github-star-widget
+      aria-label="Star compartmentdev/compartment on GitHub"
+    >
+      <Icon name="star" />
+      <span>Star</span>
+      <span class="github-star-count" data-github-star-count hidden></span>
+    </a>
+    <div class="sl-flex social-icons">
+      <SocialIcons />
+    </div>
+    <ThemeSelect />
+    <LanguageSelect />
+  </div>
+</div>
+
+<script>
+  const starCountElement = document.querySelector('[data-github-star-count]');
+  const starWidgetElement = document.querySelector('[data-github-star-widget]');
+  const starCountCacheKey = 'compartment.githubStarCount';
+  const starCountCacheMaxAgeMs = 60 * 60 * 1000;
+  const starCountFormatter = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 1,
+    notation: 'compact',
+  });
+
+  const showStarCount = (count: number): void => {
+    if (!(starCountElement instanceof HTMLElement)) {
+      return;
+    }
+
+    const formattedCount = starCountFormatter.format(count);
+    starCountElement.textContent = formattedCount;
+    starCountElement.hidden = false;
+    starWidgetElement?.setAttribute(
+      'aria-label',
+      `Star compartmentdev/compartment on GitHub (${formattedCount} stars)`,
+    );
+  };
+
+  const readCachedStarCount = (): void => {
+    try {
+      const cached = JSON.parse(localStorage.getItem(starCountCacheKey) ?? 'null') as {
+        count?: number;
+        updatedAt?: number;
+      } | null;
+
+      if (
+        typeof cached?.count === 'number' &&
+        typeof cached.updatedAt === 'number' &&
+        Date.now() - cached.updatedAt < starCountCacheMaxAgeMs
+      ) {
+        showStarCount(cached.count);
+      }
+    } catch {}
+  };
+
+  const refreshStarCount = async (): Promise<void> => {
+    try {
+      const response = await fetch('https://api.github.com/repos/compartmentdev/compartment', {
+        headers: { Accept: 'application/vnd.github+json' },
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const repo = (await response.json()) as { stargazers_count?: number };
+
+      if (typeof repo.stargazers_count !== 'number') {
+        return;
+      }
+
+      localStorage.setItem(
+        starCountCacheKey,
+        JSON.stringify({ count: repo.stargazers_count, updatedAt: Date.now() }),
+      );
+      showStarCount(repo.stargazers_count);
+    } catch {}
+  };
+
+  readCachedStarCount();
+  void refreshStarCount();
+</script>
+
+<style>
+  @layer starlight.core {
+    .header {
+      display: flex;
+      gap: var(--sl-nav-gap);
+      justify-content: space-between;
+      align-items: center;
+      height: 100%;
+    }
+
+    .title-wrapper {
+      overflow: clip;
+      padding: 0.25rem;
+      margin: -0.25rem;
+      min-width: 0;
+    }
+
+    .right-group,
+    .social-icons {
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .social-icons::after {
+      content: '';
+      height: 2rem;
+      border-inline-end: 1px solid var(--sl-color-gray-5);
+    }
+
+    @media (min-width: 50rem) {
+      :global(:root[data-has-sidebar]) {
+        --__sidebar-pad: calc(2 * var(--sl-nav-pad-x));
+      }
+
+      :global(:root:not([data-has-toc])) {
+        --__toc-width: 0rem;
+      }
+
+      .header {
+        --__sidebar-width: max(0rem, var(--sl-content-inline-start, 0rem) - var(--sl-nav-pad-x));
+        --__main-column-fr: calc(
+          (
+              100% + var(--__sidebar-pad, 0rem) - var(--__toc-width, var(--sl-sidebar-width)) -
+                (2 * var(--__toc-width, var(--sl-nav-pad-x))) - var(--sl-content-inline-start, 0rem) -
+                var(--sl-content-width)
+            ) / 2
+        );
+        display: grid;
+        grid-template-columns:
+          minmax(
+            calc(var(--__sidebar-width) + max(0rem, var(--__main-column-fr) - var(--sl-nav-gap))),
+            auto
+          )
+          1fr
+          auto;
+        align-content: center;
+      }
+    }
+  }
+</style>
