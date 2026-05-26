@@ -39,8 +39,9 @@ describe('browser projects view', (): void => {
     expect(html).toContain('Add project');
     expect(html).toContain('href="/orgs/acme-dev/projects/create"');
     expect(html).toContain('button-accent-surface');
-    expect(html).toContain('lucide-boxes');
+    expect(html).toContain('empty-states/projects.svg');
     expect(html).toContain('lucide-plus');
+    expect(html).not.toContain('Search projects');
     expect(html).not.toContain('No projects found.');
     expect(html).not.toContain('Deploy my first project');
   });
@@ -132,6 +133,7 @@ describe('browser projects view', (): void => {
     );
 
     expect(html).not.toContain('Add project');
+    expect(html).toContain('min-h-9');
   });
 
   it('keeps project open targets behind the row actions menu', (): void => {

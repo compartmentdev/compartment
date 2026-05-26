@@ -103,9 +103,6 @@ function DeploymentHistoryHeader({ data, onNavigate }: Readonly<DeploymentHistor
           iconTone="purple"
           title="Deployments"
         />
-        <p className="mt-2 max-w-3xl text-[13px] leading-5 text-muted-foreground">
-          {readDeploymentHistoryDescription(data)}
-        </p>
       </div>
     </header>
   );
@@ -251,14 +248,6 @@ function handleOrganizationChange(
   );
 }
 
-function readDeploymentHistoryDescription(data: BrowserDeploymentHistoryPageResult): string {
-  return `Deployment runs, release history, and rollback status for ${readDeploymentHistoryEnvironmentLabel(data)}.`;
-}
-
 function readDeploymentHistoryEnvironmentBadgeLabel(data: BrowserDeploymentHistoryPageResult): string {
   return readBrowserConsoleEnvironmentLabel(data.environmentName, 'Environment');
-}
-
-function readDeploymentHistoryEnvironmentLabel(data: BrowserDeploymentHistoryPageResult): string {
-  return data.environmentName ?? 'the selected environment';
 }
