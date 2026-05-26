@@ -693,7 +693,7 @@ describe('browser deployment pages', (): void => {
     expect(cleanedHistoryViewHtml).toContain('aria-current="page"');
     expect(cleanedHistoryViewHtml).toContain('title="Deployments">Deployments</span>');
     expect(cleanedHistoryViewHtml).toContain('lucide-box');
-    expect(cleanedHistoryViewHtml).toContain('aria-label="Deployment environment"');
+    expect(cleanedHistoryViewHtml).toContain('aria-label="Environment"');
     expect(cleanedHistoryViewHtml).toContain('>Production</span>');
     expect(cleanedHistoryViewHtml).toContain('Deployment runs, release history, and rollback status for production.');
     expect(cleanedHistoryViewHtml).toContain('aria-label="Open actions for release 42"');
@@ -801,7 +801,7 @@ describe('browser deployment pages', (): void => {
     );
     expect(html).toContain('Deployment run details');
     expect(html).toContain('lucide-file-box');
-    expect(html).toContain('aria-label="Deployment environment"');
+    expect(html).toContain('aria-label="Environment"');
     expect(html).toContain('>Production</span>');
     expect(html).toContain('aria-label="Breadcrumb"');
     expect(html).toContain('href="/orgs/acme-dev/projects"');

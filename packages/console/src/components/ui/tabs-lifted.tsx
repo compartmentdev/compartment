@@ -64,7 +64,7 @@ export function readTabsLiftedTriggerClassName(widthClassName: string): string {
   return cn(
     widthClassName,
     "group relative z-10 box-border inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-b-none rounded-t-[6px] border-0 border-solid bg-transparent px-2.5 py-1.5 text-[13px] font-medium leading-5 tracking-normal text-[#111212] no-underline shadow-none transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 after:absolute after:inset-x-0 after:bottom-[-1px] after:hidden after:h-px after:bg-[var(--tabs-lifted-bg)] after:content-['']",
-    'data-[state=active]:z-20 data-[state=active]:border-x! data-[state=active]:border-b-0! data-[state=active]:border-t! data-[state=active]:border-[var(--tabs-lifted-border)]! data-[state=active]:bg-[var(--tabs-lifted-bg)] data-[state=active]:shadow-none data-[state=active]:after:block',
+    'data-[state=active]:z-20 data-[state=active]:!border-x data-[state=active]:!border-b-0 data-[state=active]:!border-t data-[state=active]:!border-[var(--tabs-lifted-border)] data-[state=active]:bg-[var(--tabs-lifted-bg)] data-[state=active]:shadow-none data-[state=active]:after:block',
     'hover:text-foreground',
   );
 }

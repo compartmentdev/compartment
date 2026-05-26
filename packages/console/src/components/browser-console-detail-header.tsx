@@ -32,7 +32,7 @@ export function BrowserConsoleDetailTitle({
 function BrowserConsoleEnvironmentBadge({ label }: Readonly<BrowserConsoleEnvironmentBadgeProps>): JSX.Element {
   return (
     <span
-      aria-label="Deployment environment"
+      aria-label="Environment"
       className="button-soft-surface ml-4 inline-flex h-6 shrink-0 items-center justify-center rounded-[8px] border border-border px-2 py-1 text-[13px] font-semibold leading-5 text-primary"
       style={browserConsoleEnvironmentBadgeStyle}
     >
