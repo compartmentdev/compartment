@@ -22,8 +22,7 @@ import {
 } from '../../services/browser-cli-login-flow.service';
 import { startCliBrowserLogin } from '../../services/cli-login.service';
 import type { CliBrowserLoginAttempt } from '../../services/cli-login.service.types';
-import { readSsoOidcCallbackKind, type SsoOidcCallbackKind } from '../../services/sso-oidc/sso-oidc-callback.service';
-import { completeBrowserSsoLogin, startBrowserSsoLogin } from '../../services/sso-oidc/sso-oidc-login.service';
+import { startBrowserSsoLogin } from '../../services/sso-oidc/sso-oidc-login.service';
 import { authRateLimitRouteOptions } from '../auth/auth-rate-limit.route';
 import { browserNoReferrerPolicy } from './browser-anti-framing.headers';
 import {
@@ -34,15 +33,13 @@ import {
 import type { BrowserFlowTargetOrNull, BrowserSsoQuery } from './browser-flow.types';
 import { browserSsoQuerySchema, readFlowTarget } from './browser-flow.helpers';
 import { buildSsoErrorLoginUrl } from './browser-login-error-redirect';
-import { buildCurrentBrowserUrl } from './browser-login-response.helpers';
+import {
+  buildCurrentBrowserUrl,
+  sendBrowserSsoCallbackResponse,
+  sendSsoErrorRedirect,
+} from './browser-login-response.helpers';
 import { renderBrowserLoginPage } from './browser-login.page';
 import { assertSafeBrowserSsoRedirectUrl } from './browser-sso-redirect-url.helpers';
-import {
-  sendBrowserSsoCallbackErrorResult,
-  sendBrowserSsoFailureCallbackResult,
-  sendBrowserSsoCallbackResult,
-  sendSsoErrorRedirect,
-} from './browser-sso-callback-response.helpers';
 import {
   type BrowserCliCompletedQuery,
   type BrowserCliStartBody,
@@ -161,24 +158,7 @@ async function handleBrowserCliLoginPost(request: FastifyRequest, reply: Fastify
 
 async function handleBrowserSsoCallbackGet(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   await requireInstalledCompartment();
-  const currentUrl: URL = buildCurrentBrowserUrl(request);
-  const callbackKind: SsoOidcCallbackKind | null = readSsoOidcCallbackKind(currentUrl);
-  if (callbackKind === null) {
-    return await sendSsoErrorRedirect(reply, null);
-  }
-  if (callbackKind === 'failure') {
-    return await sendBrowserSsoFailureCallbackResult(currentUrl, reply);
-  }
-
-  try {
-    return await sendBrowserSsoCallbackResult(reply, await completeBrowserSsoLogin(currentUrl));
-  } catch (error) {
-    if (!(error instanceof Error)) {
-      throw error;
-    }
-
-    return await sendBrowserSsoCallbackErrorResult(currentUrl, reply, error);
-  }
+  return await sendBrowserSsoCallbackResponse(buildCurrentBrowserUrl(request), reply);
 }
 
 async function sendBrowserCliLoginStartResponse(reply: FastifyReply, body: BrowserCliStartBody): Promise<FastifyReply> {
