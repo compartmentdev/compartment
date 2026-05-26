@@ -1,5 +1,8 @@
 import type { JSX } from 'react';
-import type { GitHubAccountDiscoveryAccount } from '@compartment/contracts/browser';
+import type {
+  GitHubAccountDiscoveryAccount,
+  GitHubAccountDiscoveryAppInstallationStatus,
+} from '@compartment/contracts/browser';
 import { LoaderCircle, UserRound, Users, type LucideIcon } from '../../components/ui/icons';
 
 export type GitAccountDiscoveryLoadStatus = 'failed' | 'idle' | 'loading' | 'ready';
@@ -45,8 +48,8 @@ export function GitAccountPicker({
       <div>
         <h2 className="text-[24px] font-semibold leading-8">Choose GitHub account</h2>
         <p className="mt-2 max-w-2xl text-[14px] leading-6 text-[#485259]">
-          Select the personal account or organization that owns the repository. GitHub will open the app installation
-          page for that account.
+          Select the personal account or organization that owns the repository. If Compartment is already installed for
+          that account, continue to repository selection. Otherwise GitHub will open the app installation page.
         </p>
       </div>
       {renderGitAccountPickerContent(status, accounts, installingAccountLogin, onAccountSelected)}
@@ -140,12 +143,16 @@ function GitAccountInstallAction({
     return (
       <span className="ml-auto inline-flex items-center gap-2 text-[13px] text-[#485259]">
         <LoaderCircle aria-hidden="true" className="animate-spin" size={14} />
-        Opening GitHub
+        {readGitAccountLoadingLabel(account.appInstallationStatus)}
       </span>
     );
   }
 
-  return <span className="ml-auto text-[13px] text-[#485259]">Install app</span>;
+  return (
+    <span className="ml-auto text-[13px] text-[#485259]">
+      {readGitAccountActionLabel(account.appInstallationStatus)}
+    </span>
+  );
 }
 
 function GitAccountAvatar({ account }: Readonly<GitAccountAvatarProps>): JSX.Element {
@@ -159,4 +166,12 @@ function GitAccountAvatar({ account }: Readonly<GitAccountAvatarProps>): JSX.Ele
       <Icon aria-hidden="true" size={16} />
     </span>
   );
+}
+
+function readGitAccountActionLabel(status: GitHubAccountDiscoveryAppInstallationStatus): string {
+  return status === 'installed' ? 'Open repositories' : 'Install app';
+}
+
+function readGitAccountLoadingLabel(status: GitHubAccountDiscoveryAppInstallationStatus): string {
+  return status === 'installed' ? 'Continuing' : 'Opening GitHub';
 }

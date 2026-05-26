@@ -20,6 +20,8 @@ import {
 } from '../../services/git-source/github-account-discovery.service';
 import { createCurrentOrganizationRouteResponseOptions } from '../protected/current-organization-route';
 
+const gitHubAccountDiscoveryProviderHost: string = 'github.com';
+
 export function registerGitHubAccountDiscoveryRoutes(app: ApiApp): void {
   app.post(
     compartmentGitHubProviderAccountDiscoveryPathname,
@@ -52,7 +54,11 @@ async function handleGitHubAccountDiscoveryResult(request: FastifyRequest, reply
     gitSourceInvalidRequestErrorCode,
   );
   const response: GitHubAccountDiscoveryResultResponse = gitHubAccountDiscoveryResultResponseSchema.parse(
-    await readGitHubAccountDiscoveryResult(body),
+    await readGitHubAccountDiscoveryResult({
+      organizationId: request.currentOrganization.id,
+      providerHost: gitHubAccountDiscoveryProviderHost,
+      request: body,
+    }),
   );
   return await reply.send(response);
 }

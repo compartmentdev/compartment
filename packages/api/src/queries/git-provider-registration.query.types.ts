@@ -103,6 +103,12 @@ export interface FindGitProviderRegistrationByStatusInput {
   status: string;
 }
 
+export interface FindActiveGitProviderRegistrationsByRepositoryOwnersInput {
+  organizationId: string;
+  providerHost: string;
+  repositoryOwners: string[];
+}
+
 export interface ReopenActiveGitProviderRegistrationBootstrapInput {
   bootstrapStateId: string;
   id: string;

@@ -211,6 +211,14 @@ describe('git source descriptor and discovery routes', (): void => {
         'acme',
         'admin',
       ]);
+      expect(mocks.readGitHubAccountDiscoveryResult).toHaveBeenCalledWith({
+        organizationId: 'org_123',
+        providerHost: 'github.com',
+        request: {
+          resultToken: 'result_123',
+          sessionId: 'gad_123',
+        },
+      });
     });
   });
 
@@ -433,17 +441,20 @@ function createGitHubAccountDiscoveryResultResponsePayload(): GitHubAccountDisco
   return {
     accounts: [
       {
+        appInstallationStatus: 'installed',
         avatarUrl: 'https://avatars.example/acme.png',
         login: 'acme',
         type: 'organization',
       },
       {
+        appInstallationStatus: 'not_installed',
         avatarUrl: null,
         login: 'admin',
         type: 'user',
       },
     ],
     user: {
+      appInstallationStatus: 'not_installed',
       avatarUrl: null,
       login: 'admin',
       type: 'user',
