@@ -7,6 +7,7 @@ import type {
   BrowserAuditEventFilters,
   BrowserAuditEventsPageResult,
 } from '../src/services/browser-audit-events.service.types';
+import type { BrowserConsoleOrganizationContext } from '../src/services/browser-organization-context.service.types';
 import { AuditEventsTable } from '../src/features/audit-events/audit-events-table';
 import { AuditEventsView } from '../src/features/audit-events/audit-events-view';
 import { loadAuditEventsPageData } from '../src/features/audit-events/audit-events-loader';
@@ -26,6 +27,8 @@ const browserProjectCountPath: string =
 
 interface CreateAuditEventsPageResultOptions {
   filters?: Partial<BrowserAuditEventFilters>;
+  organizationContext?: BrowserConsoleOrganizationContext;
+  selectedOrganizationSlug?: string | null;
 }
 
 describe('browser audit events page', (): void => {
@@ -106,19 +109,26 @@ describe('browser audit events page', (): void => {
     expect(html).toContain('inviteEmail');
   });
 
-  it('renders the same access page header styling used by other access screens', (): void => {
+  it('keeps the audit header ahead of organization recovery content', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
       React.createElement(AuditEventsView, {
-        data: createAuditEventsPageResult(),
+        data: createAuditEventsPageResult({
+          organizationContext: {
+            kind: 'organization_required',
+            requestedOrganizationSlug: null,
+            selectedOrganizationSlug: null,
+          },
+          selectedOrganizationSlug: null,
+        }),
         onNavigate: vi.fn(),
       }),
     );
 
     expect(html).toContain('Audit logs</h1>');
-    expect(html).toContain('text-2xl');
-    expect(html).toContain('font-semibold');
+    expect(html).toContain('Choose an organization');
+    expect(html.indexOf('Audit logs')).toBeLessThan(html.indexOf('Choose an organization'));
   });
 
   it('renders the target filter as a curated audit target control', (): void => {
@@ -171,7 +181,7 @@ function createAuditEventsPageResult(options: CreateAuditEventsPageResultOptions
       to: '',
       ...options.filters,
     },
-    organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
+    organizationContext: options.organizationContext ?? { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [
       {
         id: 'org_123',
@@ -184,7 +194,7 @@ function createAuditEventsPageResult(options: CreateAuditEventsPageResultOptions
     pageSizeOptions: [10, 20, 50],
     principalEmail: 'admin@example.com',
     projectCount: 1,
-    selectedOrganizationSlug: 'acme-dev',
+    selectedOrganizationSlug: options.selectedOrganizationSlug ?? 'acme-dev',
     showOrganizationSelector: false,
     totalEvents: 1,
     totalPages: 1,

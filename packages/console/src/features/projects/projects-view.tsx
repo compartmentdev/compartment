@@ -121,7 +121,7 @@ function readOrganizationControl(
 }
 
 function ProjectsPageHeader({ action }: Readonly<{ action: JSX.Element }>): JSX.Element {
-  return <AccessPageHeader action={action} description="All projects you run with Compartment." title="Projects" />;
+  return <AccessPageHeader action={action} title="Projects" />;
 }
 
 function ProjectsToolbar({ data, onNavigate }: Readonly<ProjectsToolbarProps>): JSX.Element {

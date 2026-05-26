@@ -113,11 +113,7 @@ function RolesPageHeader({ state }: Readonly<{ state: RolesPageState }>): JSX.El
     <header className={browserConsolePageHeaderClassName}>
       <div className="flex flex-col gap-5">
         {renderRolesBackBreadcrumb(backLink, state)}
-        <AccessPageHeader
-          action={<CreateRoleButton state={state} />}
-          description="Define permission sets for organization access."
-          title="Roles"
-        />
+        <AccessPageHeader action={<CreateRoleButton state={state} />} title="Roles" />
       </div>
     </header>
   );
