@@ -33,7 +33,7 @@ export function AccessDrawerListRow({ children, className }: Readonly<AccessDraw
   return (
     <div
       className={cn(
-        'grid h-9 gap-2 border-t border-[var(--cpt-border-default,rgba(0,0,0,0.08))] px-3 first:border-t-0 md:items-center',
+        'grid min-h-9 gap-2 border-t border-[var(--cpt-border-default,rgba(0,0,0,0.08))] px-3 py-2 first:border-t-0 md:items-center',
         className,
       )}
       role="listitem"
