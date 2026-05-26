@@ -31,7 +31,6 @@ import {
   assertRegistryUpdateMatchesPackagedNodeAgent,
   createPreparedSelfHostedUpdateDecisionContext,
   resolveSelfHostedUpdateImageSource,
-  shouldSkipPreparedSelfHostedUpdate,
 } from './update-decision';
 import type {
   SelfHostedUpdateInput,
@@ -95,7 +94,7 @@ async function prepareSelfHostedUpdate(
     preparedEnvironment,
   );
   assertRegistryUpdateMatchesPackagedNodeAgent(preparedEnvironment, preparedContext);
-  if (preparedContext.updateDecision.action === 'skip' && shouldSkipPreparedSelfHostedUpdate(preparedContext)) {
+  if (preparedContext.updateDecision.action === 'skip') {
     return createPreparedSkippedSelfHostedUpdatePlan(
       paths,
       preparedEnvironment,

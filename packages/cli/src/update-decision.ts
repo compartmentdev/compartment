@@ -44,10 +44,6 @@ export function createPreparedSelfHostedUpdateDecisionContext(
   );
 }
 
-export function shouldSkipPreparedSelfHostedUpdate(preparedContext: PreparedSelfHostedUpdateDecisionContext): boolean {
-  return preparedContext.updateDecision.action === 'skip';
-}
-
 export function assertRegistryUpdateMatchesPackagedNodeAgent(
   preparedEnvironment: PreparedSelfHostedUpdateEnvironment,
   preparedContext: PreparedSelfHostedUpdateDecisionContext,
