@@ -268,10 +268,15 @@
   }
 
   header.header label:hover,
+  header.header label:focus-within,
   button[data-open-modal]:hover {
     border-color: var(--cpt-border-strong);
     background: var(--cpt-overlay-2);
     color: var(--cpt-text-primary);
+  }
+
+  header.header label:focus-within {
+    box-shadow: 0 0 0 3px var(--cpt-primary-muted);
   }
 
   header.header label {
