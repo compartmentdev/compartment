@@ -77,13 +77,14 @@ export default defineConfig({
     starlight({
       title: 'Compartment Docs',
       components: {
+        Header: './src/components/starlight/Header.astro',
         PageSidebar: './src/components/starlight/PageSidebar.astro',
         SiteTitle: './src/components/starlight/SiteTitle.astro',
         TwoColumnContent: './src/components/starlight/TwoColumnContent.astro',
       },
       customCss: ['/src/styles/site.css'],
       head: faviconHead,
-      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/compartmentdev/compartment' }],
+      social: [{ icon: 'discord', label: 'Discord', href: 'https://discord.gg/uNxsg9vT' }],
       sidebar: [
         {
           label: 'Quickstart',
