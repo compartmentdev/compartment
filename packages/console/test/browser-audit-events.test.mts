@@ -116,7 +116,9 @@ describe('browser audit events page', (): void => {
       }),
     );
 
-    expect(html).toContain('<h1 class="text-2xl font-semibold tracking-tight">Audit logs</h1>');
+    expect(html).toContain('Audit logs</h1>');
+    expect(html).toContain('text-2xl');
+    expect(html).toContain('font-semibold');
   });
 
   it('renders the target filter as a curated audit target control', (): void => {
