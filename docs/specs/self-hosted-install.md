@@ -93,7 +93,7 @@ Registry installs and updates must use the runtime tag embedded in the packaged 
 
 `--image-source local` keeps the same tag selection and skips pulling from the registry, so the selected tag must already exist in the local Docker daemon.
 
-Registry image refs use `ghcr.io/compartmentdev` by default. Use `--image-registry docker-hub` on `compartment install` or `compartment system update` to select `docker.io/compartmentdev` instead. New installs persist the selected image registry in `install-state.json`; older registry states without a stored registry move registry updates to the GitHub default unless Docker Hub is selected explicitly. Older local-image states without a stored registry keep Docker Hub-style local image names unless another registry is selected explicitly.
+`--image-registry github` selects `ghcr.io/compartmentdev`; `--image-registry docker-hub` selects `docker.io/compartmentdev`. New installs persist the selected image registry in `install-state.json`. States created before `imageRegistry` existed default registry updates to GHCR; local-image states keep Docker Hub-style names unless explicitly changed.
 
 ## Host Dependencies
 
