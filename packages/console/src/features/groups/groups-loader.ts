@@ -13,6 +13,7 @@ import type { BrowserApiRequestOptions } from '../../lib/browser-api';
 import { BrowserRedirect, readBrowserApiRedirect } from '../../lib/browser-redirect';
 import {
   loadBrowserConsoleContext,
+  loadSidebarProjectCount,
   readBrowserErrorMessage,
   readBrowserNoticeMessage,
   type BrowserConsoleContext,
@@ -98,6 +99,7 @@ function buildEmptyGroupsPageResult(
     organizationContext: context.organizationContext,
     organizations: context.organizations,
     principalEmail: context.principalEmail,
+    projectCount: 0,
     roles: [],
     scopeProjects: [],
     selectedGroupId: null,
@@ -113,7 +115,10 @@ async function loadSelectedOrganizationGroupsPageData(
 ): Promise<BrowserGroupsPageResult> {
   const currentOrganization: string = requireBrowserAccessSelectedOrganizationSlug(context.selectedOrganizationSlug);
   const permissions: PermissionKey[] = context.currentOrganizationPermissions;
-  const pageResponses: GroupsPageResponses = await loadGroupsPageResponses(currentOrganization, permissions, options);
+  const [projectCount, pageResponses]: [number, GroupsPageResponses] = await Promise.all([
+    loadSidebarProjectCount(currentOrganization, options),
+    loadGroupsPageResponses(currentOrganization, permissions, options),
+  ]);
   const selectedGroupId: string | null = readSelectedGroupId(searchParams, pageResponses.groupsResponse);
   const members: AccessGroupMemberSummary[] = await loadSelectedGroupMembers(
     currentOrganization,
@@ -122,7 +127,7 @@ async function loadSelectedOrganizationGroupsPageData(
   );
   const mode: 'create' | 'detail' | 'list' = readGroupsMode(searchParams, selectedGroupId, permissions);
 
-  return buildGroupsPageResult(context, searchParams, pageResponses, members, mode, selectedGroupId);
+  return buildGroupsPageResult(context, searchParams, projectCount, pageResponses, members, mode, selectedGroupId);
 }
 
 async function loadGroupsPageResponses(
@@ -154,6 +159,7 @@ async function loadGroupsPageResponses(
 function buildGroupsPageResult(
   context: BrowserConsoleContext,
   searchParams: URLSearchParams,
+  projectCount: number,
   pageResponses: GroupsPageResponses,
   members: AccessGroupMemberSummary[],
   mode: 'create' | 'detail' | 'list',
@@ -165,6 +171,7 @@ function buildGroupsPageResult(
     groups: pageResponses.groupsResponse.groups,
     mode,
     members,
+    projectCount,
     roles: pageResponses.rolesResponse.roles,
     scopeProjects: pageResponses.scopeOptionsResponse.projects,
     selectedGroupId,
@@ -184,6 +191,7 @@ function readGroupsPageBaseResult(
   | 'organizationContext'
   | 'organizations'
   | 'principalEmail'
+  | 'projectCount'
 > {
   return {
     currentOrganizationPermissions: context.currentOrganizationPermissions,
@@ -192,6 +200,7 @@ function readGroupsPageBaseResult(
     organizationContext: context.organizationContext,
     organizations: context.organizations,
     principalEmail: context.principalEmail,
+    projectCount: 0,
   };
 }
 

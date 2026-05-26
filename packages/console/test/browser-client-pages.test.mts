@@ -772,6 +772,9 @@ describe('browser client pages', (): void => {
         if (path === '/v1/whoami') {
           return createJsonResponse(createWhoamiResponse(['organization.group.read']));
         }
+        if (path === browserProjectCountPath) {
+          return createJsonResponse(createProjectCountResponse());
+        }
         if (path === '/v1/groups') {
           return createJsonResponse({ groups: [] });
         }
@@ -788,11 +791,13 @@ describe('browser client pages', (): void => {
     if (result instanceof Response) throw new Error('Expected groups page result.');
     expect(result.mode).toBe('list');
     expect(result.assignments).toEqual([]);
+    expect(result.projectCount).toBe(1);
     expect(result.roles).toEqual([]);
     expect(result.scopeProjects).toEqual([]);
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).toEqual([
       '/v1/orgs',
       '/v1/whoami',
+      browserProjectCountPath,
       '/v1/groups',
     ]);
   });
@@ -808,6 +813,9 @@ describe('browser client pages', (): void => {
         }
         if (path === '/v1/whoami') {
           return createJsonResponse(createWhoamiResponse(['organization.role.read']));
+        }
+        if (path === browserProjectCountPath) {
+          return createJsonResponse(createProjectCountResponse());
         }
         if (path === '/v1/roles') {
           return createJsonResponse({
@@ -837,10 +845,12 @@ describe('browser client pages', (): void => {
 
     if (result instanceof Response) throw new Error('Expected roles page result.');
     expect(result.mode).toBe('list');
+    expect(result.projectCount).toBe(1);
     expect(result.roles).toHaveLength(1);
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).toEqual([
       '/v1/orgs',
       '/v1/whoami',
+      browserProjectCountPath,
       '/v1/roles',
     ]);
   });

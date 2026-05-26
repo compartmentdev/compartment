@@ -1,22 +1,16 @@
 import type { JSX } from 'react';
 import type { UseMutationResult } from '@tanstack/react-query';
 import type { BrowserProjectSummary, BrowserProjectsPageResult } from '../../services/browser-projects.service.types';
-import { readServerTableActionControlClassName } from '../../components/server-table';
-import { Button } from '../../components/ui/button';
-import { ChevronDown } from '../../components/ui/icons';
+import { ServerTableActionsMenu } from '../../components/server-table-actions-menu';
 import { useBrowserMutation } from '../../lib/browser-query-client';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../../components/ui/dropdown-menu';
+import { DropdownMenuItem } from '../../components/ui/dropdown-menu';
 import {
   readProjectActionConfirmationMessage,
   runProjectAction,
   type ProjectAction,
   type ProjectActionHandler,
 } from './project-actions';
+import { renderProjectOpenMenuItems } from './project-open-action';
 
 interface ProjectRowActionsDropdownProps {
   data: BrowserProjectsPageResult;
@@ -48,28 +42,24 @@ export function ProjectRowActionsDropdown({
     return null;
   }
 
-  const actions: ProjectRowMenuAction[] = listProjectRowMenuActions(data, project);
-  if (actions.length === 0) {
+  const openItems: JSX.Element[] = renderProjectOpenMenuItems({ project });
+  const actions: ProjectRowMenuAction[] = listProjectRowMenuActions(project);
+  if (openItems.length === 0 && actions.length === 0) {
     return null;
   }
 
   return (
-    <DropdownMenu>
-      <ProjectRowActionsTrigger />
-      <DropdownMenuContent align="end">
-        {renderProjectActionMenuItems(actions, onProjectAction, data.selectedOrganizationSlug, project.name)}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ServerTableActionsMenu ariaLabel={`Open actions for ${project.name}`}>
+      {openItems}
+      {renderProjectActionMenuItems(actions, onProjectAction, data.selectedOrganizationSlug, project.name)}
+    </ServerTableActionsMenu>
   );
 }
 
-function listProjectRowMenuActions(
-  data: BrowserProjectsPageResult,
-  project: BrowserProjectSummary,
-): ProjectRowMenuAction[] {
+function listProjectRowMenuActions(project: BrowserProjectSummary): ProjectRowMenuAction[] {
   const actions: ProjectRowMenuAction[] = [];
   appendProjectLifecycleMenuAction(actions, project);
-  appendProjectArchiveMenuActions(actions, data, project);
+  appendProjectArchiveMenuActions(actions, project);
   return actions;
 }
 
@@ -84,15 +74,11 @@ function appendProjectLifecycleMenuAction(actions: ProjectRowMenuAction[], proje
   });
 }
 
-function appendProjectArchiveMenuActions(
-  actions: ProjectRowMenuAction[],
-  data: BrowserProjectsPageResult,
-  project: BrowserProjectSummary,
-): void {
+function appendProjectArchiveMenuActions(actions: ProjectRowMenuAction[], project: BrowserProjectSummary): void {
   if (!project.canManageArchive) {
     return;
   }
-  if (data.archiveState === 'archived') {
+  if (project.status === 'archived') {
     appendArchivedProjectMenuActions(actions);
     return;
   }
@@ -113,17 +99,6 @@ function appendArchivedProjectMenuActions(actions: ProjectRowMenuAction[]): void
       action: 'delete',
       label: 'Remove',
     },
-  );
-}
-
-function ProjectRowActionsTrigger(): JSX.Element {
-  return (
-    <DropdownMenuTrigger asChild>
-      <Button className={readServerTableActionControlClassName()} size="sm" type="button" variant="secondary">
-        Actions
-        <ChevronDown className="size-3.5" />
-      </Button>
-    </DropdownMenuTrigger>
   );
 }
 

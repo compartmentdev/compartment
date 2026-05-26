@@ -11,6 +11,7 @@ export interface BrowserRolesPageResult {
   organizations: BrowserOrganizationOption[];
   permissionKeys: PermissionKey[];
   principalEmail: string;
+  projectCount?: number | undefined;
   role: AccessRoleSummary | null;
   roleId: string | null;
   roles: AccessRoleListRow[];

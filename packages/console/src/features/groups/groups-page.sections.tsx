@@ -1,6 +1,11 @@
 import type { AccessGroupListRow } from '@compartment/contracts/browser';
 import { type JSX, useState } from 'react';
-import { BrowserConsoleShell } from '../../components/browser-console-header';
+import {
+  BrowserConsoleShell,
+  browserConsolePageBodyClassName,
+  browserConsolePageClassName,
+  browserConsolePageHeaderClassName,
+} from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import { ServerSearch } from '../../components/server-search';
 import { ServerTableFrame } from '../../components/server-table';
@@ -30,6 +35,7 @@ export function GroupsPageContent({ state }: Readonly<GroupsPageContentProps>): 
       onNavigate={state.onNavigate}
       page="groups"
       principalEmail={state.data.principalEmail}
+      projectCount={state.data.projectCount}
       selectedOrganizationSlug={state.data.selectedOrganizationSlug}
     >
       <GroupsPageBody searchQuery={searchQuery} setSearchQuery={setSearchQuery} state={state} />
@@ -51,10 +57,13 @@ function GroupsPageBody({
   state,
 }: Readonly<{ searchQuery: string; setSearchQuery: (value: string) => void; state: GroupsPageState }>): JSX.Element {
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-5">
-      <DismissibleAlert message={state.data.noticeMessage} variant="notice" />
-      <DismissibleAlert message={state.data.errorMessage} variant="error" />
-      {renderGroupsPageContent(searchQuery, setSearchQuery, state)}
+    <div className={browserConsolePageClassName}>
+      <GroupsPageHeader state={state} />
+      <div className={browserConsolePageBodyClassName}>
+        <DismissibleAlert message={state.data.noticeMessage} variant="notice" />
+        <DismissibleAlert message={state.data.errorMessage} variant="error" />
+        {renderGroupsPageContent(searchQuery, setSearchQuery, state)}
+      </div>
     </div>
   );
 }
@@ -77,37 +86,58 @@ function renderGroupsPageContent(
 
   return (
     <>
-      <GroupsPageHeader />
-      <GroupsPageToolbar searchQuery={searchQuery} setSearchQuery={setSearchQuery} state={state} />
+      <GroupsPageToolbar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
       <GroupsTableSection groups={readVisibleGroups(state.data.groups, searchQuery)} state={state} />
     </>
   );
 }
 
-function GroupsPageHeader(): JSX.Element {
-  return <AccessPageHeader title="Groups" />;
+function GroupsPageHeader({ state }: Readonly<{ state: GroupsPageState }>): JSX.Element {
+  return (
+    <header className={browserConsolePageHeaderClassName}>
+      <AccessPageHeader
+        action={<CreateGroupButton state={state} />}
+        description="Manage shared access groups and their members."
+        title="Groups"
+      />
+    </header>
+  );
 }
 
 function GroupsPageToolbar({
   searchQuery,
   setSearchQuery,
-  state,
-}: Readonly<{ searchQuery: string; setSearchQuery: (value: string) => void; state: GroupsPageState }>): JSX.Element {
+}: Readonly<{ searchQuery: string; setSearchQuery: (value: string) => void }>): JSX.Element {
   return (
-    <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <ServerSearch label="Search groups" onSearch={setSearchQuery} placeholder="Search groups" value={searchQuery} />
-      {canManageBrowserGroups(state.data.currentOrganizationPermissions) ? (
-        <ToolbarPrimaryActionButton
-          icon={UsersRound}
-          onClick={(): void => {
-            state.onNavigate(buildGroupsPageHref(state.data, null, 'create'));
-          }}
-          type="button"
-        >
-          Create group
-        </ToolbarPrimaryActionButton>
-      ) : null}
+    <header>
+      <ServerSearch
+        className="w-full max-w-none"
+        hasLeadingSearchIcon
+        label="Search groups"
+        onSearch={setSearchQuery}
+        placeholder="Search groups"
+        value={searchQuery}
+      />
     </header>
+  );
+}
+
+function CreateGroupButton({ state }: Readonly<{ state: GroupsPageState }>): JSX.Element | null {
+  if (!canManageBrowserGroups(state.data.currentOrganizationPermissions)) {
+    return null;
+  }
+
+  return (
+    <ToolbarPrimaryActionButton
+      icon={UsersRound}
+      onClick={(): void => {
+        state.onNavigate(buildGroupsPageHref(state.data, null, 'create'));
+      }}
+      type="button"
+      variant="accent"
+    >
+      Create group
+    </ToolbarPrimaryActionButton>
   );
 }
 

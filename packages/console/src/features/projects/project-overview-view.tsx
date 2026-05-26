@@ -1,12 +1,17 @@
 import type { JSX } from 'react';
-import { BrowserConsoleShell } from '../../components/browser-console-header';
+import {
+  BrowserConsoleShell,
+  browserConsolePageBodyClassName,
+  browserConsolePageClassName,
+  browserConsolePageGutterClassName,
+} from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import type { BrowserProjectOverviewPageResult } from '../../services/browser-project-overview.service.types';
 import type { BrowserConsoleOrganizationIssue } from '../../services/browser-organization-context.service.types';
 import { BrowserConsoleOrganizationContextPanel } from '../console/console-organization-context-panel';
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
-import { ProjectOverviewEnvironmentSwitcher, ProjectOverviewHeader } from './project-overview-sections';
+import { ProjectOverviewDetailsHeader, ProjectOverviewHeader } from './project-overview-sections';
 import { ProjectOverviewServicesTable } from './project-overview-services-table';
 import { buildProjectOverviewHref } from './project-overview-query';
 
@@ -31,12 +36,10 @@ export function ProjectOverviewView({ data, onNavigate }: Readonly<ProjectOvervi
       onNavigate={onNavigate}
       page="projects"
       principalEmail={data.principalEmail}
+      projectCount={data.projectCount}
       selectedOrganizationSlug={data.selectedOrganizationSlug}
     >
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5">
-        <DismissibleAlert message={data.errorMessage} variant="error" />
-        {renderProjectOverviewContent(data, onNavigate)}
-      </div>
+      {renderProjectOverviewContent(data, onNavigate)}
     </BrowserConsoleShell>
   );
 }
@@ -46,17 +49,38 @@ function renderProjectOverviewContent(
   onNavigate: BrowserSoftNavigateHandler,
 ): JSX.Element {
   if (data.organizationContext.kind !== 'selected') {
-    return (
-      <ProjectOverviewOrganizationContextPanel context={data.organizationContext} data={data} onNavigate={onNavigate} />
-    );
+    return renderProjectOverviewOrganizationContext(data.organizationContext, data, onNavigate);
   }
 
+  return renderSelectedProjectOverviewContent(data, onNavigate);
+}
+
+function renderProjectOverviewOrganizationContext(
+  context: BrowserConsoleOrganizationIssue,
+  data: BrowserProjectOverviewPageResult,
+  onNavigate: BrowserSoftNavigateHandler,
+): JSX.Element {
   return (
-    <>
+    <div className={browserConsolePageBodyClassName}>
+      <DismissibleAlert message={data.errorMessage} variant="error" />
+      <ProjectOverviewOrganizationContextPanel context={context} data={data} onNavigate={onNavigate} />
+    </div>
+  );
+}
+
+function renderSelectedProjectOverviewContent(
+  data: BrowserProjectOverviewPageResult,
+  onNavigate: BrowserSoftNavigateHandler,
+): JSX.Element {
+  return (
+    <div className={browserConsolePageClassName}>
       <ProjectOverviewHeader data={data} onNavigate={onNavigate} />
-      <ProjectOverviewEnvironmentSwitcher data={data} onNavigate={onNavigate} />
-      <ProjectOverviewServicesTable data={data} />
-    </>
+      <section className={`flex flex-1 flex-col gap-3 bg-background py-8 ${browserConsolePageGutterClassName}`}>
+        <DismissibleAlert message={data.errorMessage} variant="error" />
+        <ProjectOverviewDetailsHeader data={data} onNavigate={onNavigate} />
+        <ProjectOverviewServicesTable data={data} />
+      </section>
+    </div>
   );
 }
 

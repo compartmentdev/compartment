@@ -1,5 +1,10 @@
 import type { JSX } from 'react';
-import { BrowserConsoleShell } from '../../components/browser-console-header';
+import {
+  BrowserConsoleShell,
+  browserConsolePageBodyClassName,
+  browserConsolePageClassName,
+  browserConsolePageHeaderClassName,
+} from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import { ServerSearch } from '../../components/server-search';
 import { ServerTableFrame } from '../../components/server-table';
@@ -70,10 +75,13 @@ function UsersPageBody({
   onUserAction,
 }: Readonly<Pick<UsersViewProps, 'data' | 'onNavigate' | 'onUserAction'>>): JSX.Element {
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-5">
-      <DismissibleAlert message={data.noticeMessage} variant="notice" />
-      <DismissibleAlert message={data.errorMessage} variant="error" />
-      {renderUsersContent(data, onNavigate, onUserAction)}
+    <div className={browserConsolePageClassName}>
+      <UsersPageHeader data={data} onNavigate={onNavigate} />
+      <div className={browserConsolePageBodyClassName}>
+        <DismissibleAlert message={data.noticeMessage} variant="notice" />
+        <DismissibleAlert message={data.errorMessage} variant="error" />
+        {renderUsersContent(data, onNavigate, onUserAction)}
+      </div>
     </div>
   );
 }
@@ -89,7 +97,6 @@ function renderUsersContent(
 
   return (
     <>
-      <UsersPageHeader />
       <UsersToolbar data={data} onNavigate={onNavigate} />
       <UsersTableSection data={data} onNavigate={onNavigate} onUserAction={onUserAction} />
     </>
@@ -120,8 +127,16 @@ function readUsersOrganizationHref(data: BrowserUsersPageResult, organizationSlu
   });
 }
 
-function UsersPageHeader(): JSX.Element {
-  return <AccessPageHeader title="Users" />;
+function UsersPageHeader({ data, onNavigate }: Readonly<UsersToolbarProps>): JSX.Element {
+  return (
+    <header className={browserConsolePageHeaderClassName}>
+      <AccessPageHeader
+        action={<InviteUserButton data={data} onNavigate={onNavigate} />}
+        description="Manage organization members, direct grants, and shared access through groups."
+        title="Users"
+      />
+    </header>
+  );
 }
 
 function readOrganizationControl(
@@ -140,8 +155,10 @@ function readOrganizationControl(
 
 function UsersToolbar({ data, onNavigate }: Readonly<UsersToolbarProps>): JSX.Element {
   return (
-    <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <header>
       <ServerSearch
+        className="w-full max-w-none"
+        hasLeadingSearchIcon
         label="Search users"
         onSearch={(searchQuery: string): void => {
           handleSearchChange(data, onNavigate, searchQuery);
@@ -149,7 +166,6 @@ function UsersToolbar({ data, onNavigate }: Readonly<UsersToolbarProps>): JSX.El
         placeholder="Search users"
         value={data.searchQuery}
       />
-      <InviteUserButton data={data} onNavigate={onNavigate} />
     </header>
   );
 }
@@ -166,6 +182,7 @@ function InviteUserButton({ data, onNavigate }: Readonly<UsersToolbarProps>): JS
         onNavigate(buildUsersHref(data, { mode: 'create', page: 1, selectedUserEmail: null }));
       }}
       type="button"
+      variant="accent"
     >
       Invite user
     </ToolbarPrimaryActionButton>

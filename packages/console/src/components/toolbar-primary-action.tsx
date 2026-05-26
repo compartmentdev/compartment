@@ -2,13 +2,14 @@ import type { AnchorHTMLAttributes, ButtonHTMLAttributes, JSX, ReactNode } from 
 import type { BrowserSoftNavigateHandler } from '../browser-soft-navigation';
 import { cn } from '../lib/utils';
 import { BrowserSoftNavigationLink } from './browser-soft-navigation-link';
-import { buttonVariants } from './ui/button';
+import { buttonVariants, type ButtonVariant } from './ui/button';
 import { type LucideIcon } from './ui/icons';
 
 interface ToolbarPrimaryActionSharedProps {
   children: ReactNode;
   className?: string | undefined;
   icon: LucideIcon;
+  variant?: ButtonVariant | undefined;
 }
 
 interface ToolbarPrimaryActionLinkProps
@@ -28,11 +29,12 @@ export function ToolbarPrimaryActionLink({
   href,
   icon,
   onNavigate,
+  variant,
   ...props
 }: Readonly<ToolbarPrimaryActionLinkProps>): JSX.Element {
   return (
     <BrowserSoftNavigationLink
-      className={readToolbarPrimaryActionClassName(className)}
+      className={readToolbarPrimaryActionClassName(className, variant)}
       href={href}
       onNavigate={onNavigate}
       {...props}
@@ -46,10 +48,11 @@ export function ToolbarPrimaryActionButton({
   children,
   className,
   icon,
+  variant,
   ...props
 }: Readonly<ToolbarPrimaryActionButtonProps>): JSX.Element {
   return (
-    <button className={readToolbarPrimaryActionClassName(className)} {...props}>
+    <button className={readToolbarPrimaryActionClassName(className, variant)} {...props}>
       <ToolbarPrimaryActionContent icon={icon}>{children}</ToolbarPrimaryActionContent>
     </button>
   );
@@ -67,9 +70,9 @@ function ToolbarPrimaryActionContent({
   );
 }
 
-function readToolbarPrimaryActionClassName(className?: string): string {
+function readToolbarPrimaryActionClassName(className: string | undefined, variant: ButtonVariant = 'default'): string {
   return buttonVariants({
     className: cn('justify-center no-underline', className),
-    variant: 'default',
+    variant,
   });
 }

@@ -5,7 +5,12 @@ import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import { UsersView } from './users-view';
 import { loadUsersPageData } from './users-loader';
 import type { UserActionHandler } from './user-actions';
-import { setBrowserPageError, useBrowserPageData, useBrowserSoftNavigateHandler } from '../console/console-page';
+import {
+  setBrowserPageError,
+  useBrowserDocumentTitle,
+  useBrowserPageData,
+  useBrowserSoftNavigateHandler,
+} from '../console/console-page';
 import { invalidateUsersListQueries } from './users-query-invalidation';
 import { useUsersPageQueryData } from './users-query-state';
 
@@ -14,6 +19,7 @@ export async function loadUsersPage(args: LoaderFunctionArgs): Promise<BrowserUs
 }
 
 export function UsersPage(): JSX.Element {
+  useBrowserDocumentTitle('Users');
   const loaderData: BrowserUsersPageResult = useLoaderData();
   const queryData: BrowserUsersPageResult = useUsersPageQueryData(loaderData);
   const [data, setData] = useBrowserPageData(queryData);

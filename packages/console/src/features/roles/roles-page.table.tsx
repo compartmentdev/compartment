@@ -11,14 +11,9 @@ import {
   ServerTableRow,
   readServerTableActionControlClassName,
 } from '../../components/server-table';
+import { ServerTableActionsMenu } from '../../components/server-table-actions-menu';
 import { Button } from '../../components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../../components/ui/dropdown-menu';
-import { MoreHorizontal } from '../../components/ui/icons';
+import { DropdownMenuItem } from '../../components/ui/dropdown-menu';
 import { useBrowserMutation } from '../../lib/browser-query-client';
 import { formatRolePermissionSummary, formatRoleUsageSummary } from '../access/access-display';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
@@ -122,28 +117,9 @@ function RoleRowActionsMenu({
   state,
 }: Readonly<RoleRowProps & { setErrorMessage: (value: string | undefined) => void }>): JSX.Element {
   return (
-    <DropdownMenu>
-      <RoleActionsTrigger role={role} />
-      <DropdownMenuContent align="end">
-        <RoleRemoveMenuItem role={role} setErrorMessage={setErrorMessage} state={state} />
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function RoleActionsTrigger({ role }: Readonly<{ role: AccessRoleListRow }>): JSX.Element {
-  return (
-    <DropdownMenuTrigger asChild>
-      <Button
-        aria-label={`Open actions for ${role.name}`}
-        className="size-7 px-0 text-muted-foreground"
-        size="sm"
-        type="button"
-        variant="secondary"
-      >
-        <MoreHorizontal className="size-3.5" />
-      </Button>
-    </DropdownMenuTrigger>
+    <ServerTableActionsMenu ariaLabel={`Open actions for ${role.name}`}>
+      <RoleRemoveMenuItem role={role} setErrorMessage={setErrorMessage} state={state} />
+    </ServerTableActionsMenu>
   );
 }
 

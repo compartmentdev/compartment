@@ -54,13 +54,23 @@ function useSeedProjectsSidebarProjectCount(data: BrowserProjectsPageResult): vo
       return;
     }
 
-    queryClient.setQueryData(
-      readBrowserConsoleProjectCountQueryKey(data.selectedOrganizationSlug),
-      readActiveProjectsCount(data),
-    );
+    const activeProjectCount: number | null = readActiveProjectsCount(data);
+    if (activeProjectCount === null) {
+      return;
+    }
+
+    queryClient.setQueryData(readBrowserConsoleProjectCountQueryKey(data.selectedOrganizationSlug), activeProjectCount);
   }, [data, queryClient]);
 }
 
-function readActiveProjectsCount(data: BrowserProjectsPageResult): number {
-  return data.archiveState === 'active' ? data.totalProjects : Math.max(0, data.projectCount - data.totalProjects);
+function readActiveProjectsCount(data: BrowserProjectsPageResult): number | null {
+  if (data.searchQuery !== '' || data.archiveState === 'all') {
+    return null;
+  }
+
+  if (data.archiveState === 'active') {
+    return data.totalProjects;
+  }
+
+  return Math.max(0, data.projectCount - data.totalProjects);
 }

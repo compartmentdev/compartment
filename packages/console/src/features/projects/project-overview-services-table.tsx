@@ -9,6 +9,7 @@ import {
   ServerTableHeading,
   ServerTableRow,
 } from '../../components/server-table';
+import { ServerTableControls } from '../../components/server-table-controls';
 import type {
   BrowserProjectOverviewPageResult,
   BrowserProjectOverviewService,
@@ -27,7 +28,16 @@ interface ProjectOverviewServiceRowProps {
 
 export function ProjectOverviewServicesTable({ data }: Readonly<ProjectOverviewServicesTableProps>): JSX.Element {
   return (
-    <ServerTableFrame>
+    <ServerTableFrame className="flex min-h-[calc(100vh-300px)] flex-1 flex-col">
+      {renderProjectOverviewServicesTable(data)}
+      {renderProjectOverviewServicesControls(data.services.length)}
+    </ServerTableFrame>
+  );
+}
+
+function renderProjectOverviewServicesTable(data: BrowserProjectOverviewPageResult): JSX.Element {
+  return (
+    <div className="flex-1">
       <ServerTable minWidthClassName="min-w-[760px]">
         <thead className="bg-background">
           <tr>
@@ -40,8 +50,29 @@ export function ProjectOverviewServicesTable({ data }: Readonly<ProjectOverviewS
         </thead>
         <tbody>{renderProjectOverviewServiceRows(data)}</tbody>
       </ServerTable>
-    </ServerTableFrame>
+    </div>
   );
+}
+
+function renderProjectOverviewServicesControls(totalServices: number): JSX.Element {
+  return (
+    <ServerTableControls
+      currentPage={1}
+      itemLabel="service"
+      nextPageHref={null}
+      onPageSizeChange={ignoreProjectOverviewPageSizeChange}
+      pageSize={String(totalServices)}
+      pageSizeOptions={[]}
+      previousPageHref={null}
+      showPageSize={false}
+      totalItems={totalServices}
+      totalPages={1}
+    />
+  );
+}
+
+function ignoreProjectOverviewPageSizeChange(): void {
+  return;
 }
 
 function renderProjectOverviewServiceRows(data: BrowserProjectOverviewPageResult): JSX.Element[] {

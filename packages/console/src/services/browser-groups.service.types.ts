@@ -20,6 +20,7 @@ export interface BrowserGroupsPageResult {
   organizationContext: BrowserConsoleOrganizationContext;
   organizations: BrowserOrganizationOption[];
   principalEmail: string;
+  projectCount?: number | undefined;
   roles: AccessRoleListRow[];
   scopeProjects: AccessAssignmentScopeProjectOption[];
   selectedGroupId: string | null;

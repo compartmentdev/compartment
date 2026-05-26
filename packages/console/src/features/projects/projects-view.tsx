@@ -1,12 +1,17 @@
 import type { JSX } from 'react';
 import { browserOnboardingPathname, browserProjectCreatePathname } from '../../browser-public-paths';
-import { BrowserConsoleShell } from '../../components/browser-console-header';
+import {
+  BrowserConsoleShell,
+  browserConsolePageBodyClassName,
+  browserConsolePageClassName,
+  browserConsolePageHeaderClassName,
+} from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import { ServerSearch } from '../../components/server-search';
 import { ServerTableFrame } from '../../components/server-table';
 import { ServerTableControls } from '../../components/server-table-controls';
 import { ToolbarPrimaryActionLink } from '../../components/toolbar-primary-action';
-import { FolderPlus } from '../../components/ui/icons';
+import { Plus } from '../../components/ui/icons';
 import { readBrowserTablePageSize } from '../../lib/server-table-query';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import type { BrowserProjectsPageResult } from '../../services/browser-projects.service.types';
@@ -26,7 +31,6 @@ interface ProjectsViewProps {
 }
 
 interface ProjectsToolbarProps {
-  createProjectHref: string | null;
   data: BrowserProjectsPageResult;
   onNavigate: BrowserSoftNavigateHandler;
 }
@@ -54,12 +58,25 @@ export function ProjectsView({ data, onNavigate, onProjectAction }: Readonly<Pro
       principalEmail={data.principalEmail}
       selectedOrganizationSlug={data.selectedOrganizationSlug}
     >
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5">
-        <DismissibleAlert message={data.errorMessage} variant="error" />
-        <DismissibleAlert message={data.noticeMessage} variant="notice" />
-        {renderProjectsContent(data, onNavigate, onProjectAction)}
+      <div className={browserConsolePageClassName}>
+        {renderProjectsHeader(data, onNavigate)}
+        <div className={browserConsolePageBodyClassName}>
+          <DismissibleAlert message={data.errorMessage} variant="error" />
+          <DismissibleAlert message={data.noticeMessage} variant="notice" />
+          {renderProjectsContent(data, onNavigate, onProjectAction)}
+        </div>
       </div>
     </BrowserConsoleShell>
+  );
+}
+
+function renderProjectsHeader(data: BrowserProjectsPageResult, onNavigate: BrowserSoftNavigateHandler): JSX.Element {
+  return (
+    <header className={browserConsolePageHeaderClassName}>
+      <ProjectsPageHeader
+        action={<ProjectsToolbarActions createProjectHref={readCreateProjectHref(data)} onNavigate={onNavigate} />}
+      />
+    </header>
   );
 }
 
@@ -83,8 +100,7 @@ function renderProjectsContent(
 
   return (
     <>
-      <ProjectsPageHeader />
-      <ProjectsToolbar createProjectHref={readCreateProjectHref(data)} data={data} onNavigate={onNavigate} />
+      <ProjectsToolbar data={data} onNavigate={onNavigate} />
       <ProjectsTableSection data={data} onNavigate={onNavigate} onProjectAction={onProjectAction} />
     </>
   );
@@ -104,27 +120,23 @@ function readOrganizationControl(
   );
 }
 
-function ProjectsPageHeader(): JSX.Element {
-  return <AccessPageHeader title="Projects" />;
+function ProjectsPageHeader({ action }: Readonly<{ action: JSX.Element }>): JSX.Element {
+  return <AccessPageHeader action={action} description="All projects you run with Compartment." title="Projects" />;
 }
 
-function ProjectsToolbar({ createProjectHref, data, onNavigate }: Readonly<ProjectsToolbarProps>): JSX.Element {
+function ProjectsToolbar({ data, onNavigate }: Readonly<ProjectsToolbarProps>): JSX.Element {
   return (
-    <header className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-3 md:min-w-0 md:flex-1 md:flex-row md:items-center md:gap-4">
-          <ServerSearch
-            label="Search projects"
-            onSearch={(searchQuery: string): void => {
-              handleSearchChange(data, onNavigate, searchQuery);
-            }}
-            placeholder="Search projects"
-            value={data.searchQuery}
-          />
-          <ProjectArchiveStateSwitch data={data} onNavigate={onNavigate} />
-        </div>
-        <ProjectsToolbarActions createProjectHref={createProjectHref} onNavigate={onNavigate} />
-      </div>
+    <header>
+      <ServerSearch
+        className="w-full max-w-none"
+        hasLeadingSearchIcon
+        label="Search projects"
+        onSearch={(searchQuery: string): void => {
+          handleSearchChange(data, onNavigate, searchQuery);
+        }}
+        placeholder="Search projects"
+        value={data.searchQuery}
+      />
     </header>
   );
 }
@@ -133,7 +145,7 @@ function ProjectsToolbarActions({ createProjectHref, onNavigate }: Readonly<Proj
   return (
     <div className="flex flex-col gap-3 md:items-center">
       {createProjectHref === null ? null : (
-        <ToolbarPrimaryActionLink href={createProjectHref} icon={FolderPlus} onNavigate={onNavigate}>
+        <ToolbarPrimaryActionLink href={createProjectHref} icon={Plus} onNavigate={onNavigate} variant="accent">
           Add project
         </ToolbarPrimaryActionLink>
       )}
@@ -143,23 +155,38 @@ function ProjectsToolbarActions({ createProjectHref, onNavigate }: Readonly<Proj
 
 function ProjectsTableSection({ data, onNavigate, onProjectAction }: Readonly<ProjectsTableSectionProps>): JSX.Element {
   return (
-    <ServerTableFrame>
-      <ProjectsTable data={data} onNavigate={onNavigate} onProjectAction={onProjectAction} />
-      <ServerTableControls
-        currentPage={data.page}
-        itemLabel="project"
-        nextPageHref={readNextPageHref(data)}
-        onNavigate={onNavigate}
-        onPageSizeChange={(value: string): void => {
-          handlePageSizeChange(data, onNavigate, value);
-        }}
-        pageSize={String(data.pageSize)}
-        pageSizeOptions={data.pageSizeOptions.map(String)}
-        previousPageHref={readPreviousPageHref(data)}
-        totalItems={data.totalProjects}
-        totalPages={data.totalPages}
-      />
-    </ServerTableFrame>
+    <div className="flex flex-col">
+      <ProjectArchiveStateSwitch data={data} onNavigate={onNavigate} />
+      <ServerTableFrame className="flex min-h-[calc(100vh-288px)] flex-col">
+        <div className="flex-1">
+          <ProjectsTable data={data} onNavigate={onNavigate} onProjectAction={onProjectAction} />
+        </div>
+        {renderProjectsTableControls(data, onNavigate)}
+      </ServerTableFrame>
+    </div>
+  );
+}
+
+function renderProjectsTableControls(
+  data: BrowserProjectsPageResult,
+  onNavigate: BrowserSoftNavigateHandler,
+): JSX.Element {
+  return (
+    <ServerTableControls
+      currentPage={data.page}
+      itemLabel="project"
+      nextPageHref={readNextPageHref(data)}
+      onNavigate={onNavigate}
+      onPageSizeChange={(value: string): void => {
+        handlePageSizeChange(data, onNavigate, value);
+      }}
+      pageSize={String(data.pageSize)}
+      pageSizeOptions={data.pageSizeOptions.map(String)}
+      previousPageHref={readPreviousPageHref(data)}
+      showPageSize={false}
+      totalItems={data.totalProjects}
+      totalPages={data.totalPages}
+    />
   );
 }
 
@@ -196,7 +223,7 @@ function readNextPageHref(data: BrowserProjectsPageResult): string | null {
 }
 
 function readCreateProjectHref(data: BrowserProjectsPageResult): string | null {
-  if (data.organizationContext.kind !== 'selected' || data.archiveState !== 'active' || data.projectCount === 0) {
+  if (data.organizationContext.kind !== 'selected' || data.archiveState === 'archived' || data.projectCount === 0) {
     return null;
   }
 

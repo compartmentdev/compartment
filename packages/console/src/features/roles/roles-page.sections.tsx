@@ -1,6 +1,11 @@
 import type { AccessRoleListRow } from '@compartment/contracts/browser';
 import { type JSX, useState } from 'react';
-import { BrowserConsoleShell } from '../../components/browser-console-header';
+import {
+  BrowserConsoleShell,
+  browserConsolePageBodyClassName,
+  browserConsolePageClassName,
+  browserConsolePageHeaderClassName,
+} from '../../components/browser-console-header';
 import { BrowserSoftNavigationLink } from '../../components/browser-soft-navigation-link';
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import { ServerSearch } from '../../components/server-search';
@@ -37,6 +42,7 @@ export function RolesPageContent({ state }: Readonly<RolesPageContentProps>): JS
       onNavigate={state.onNavigate}
       page="roles"
       principalEmail={state.data.principalEmail}
+      projectCount={state.data.projectCount}
       selectedOrganizationSlug={state.data.selectedOrganizationSlug}
     >
       <RolesPageBody searchQuery={searchQuery} setSearchQuery={setSearchQuery} state={state} />
@@ -65,10 +71,13 @@ function RolesPageBody({
   state,
 }: Readonly<{ searchQuery: string; setSearchQuery: (value: string) => void; state: RolesPageState }>): JSX.Element {
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-5">
-      <DismissibleAlert message={state.data.noticeMessage} variant="notice" />
-      <DismissibleAlert message={state.data.errorMessage} variant="error" />
-      {renderRolesPageContent(searchQuery, setSearchQuery, state)}
+    <div className={browserConsolePageClassName}>
+      <RolesPageHeader state={state} />
+      <div className={browserConsolePageBodyClassName}>
+        <DismissibleAlert message={state.data.noticeMessage} variant="notice" />
+        <DismissibleAlert message={state.data.errorMessage} variant="error" />
+        {renderRolesPageContent(searchQuery, setSearchQuery, state)}
+      </div>
     </div>
   );
 }
@@ -91,20 +100,25 @@ function renderRolesPageContent(
 
   return (
     <>
-      <RolesPageHeader state={state} />
-      <RolesPageToolbar searchQuery={searchQuery} setSearchQuery={setSearchQuery} state={state} />
+      <RolesPageToolbar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
       <RolesTableSection roles={readVisibleRoles(state.data.roles, searchQuery)} state={state} />
     </>
   );
 }
 
-function RolesPageHeader({ state }: Readonly<RolesPageContentProps>): JSX.Element {
+function RolesPageHeader({ state }: Readonly<{ state: RolesPageState }>): JSX.Element {
   const backLink: RolesBackLink | null = readRolesBackLink(state.data.backHref, state.data.selectedOrganizationSlug);
 
   return (
-    <header className="flex flex-col gap-3">
-      {renderRolesBackBreadcrumb(backLink, state)}
-      <AccessPageHeader title="Roles" />
+    <header className={browserConsolePageHeaderClassName}>
+      <div className="flex flex-col gap-5">
+        {renderRolesBackBreadcrumb(backLink, state)}
+        <AccessPageHeader
+          action={<CreateRoleButton state={state} />}
+          description="Define permission sets for organization access."
+          title="Roles"
+        />
+      </div>
     </header>
   );
 }
@@ -139,23 +153,37 @@ function renderRolesBackBreadcrumb(
 function RolesPageToolbar({
   searchQuery,
   setSearchQuery,
-  state,
-}: Readonly<{ searchQuery: string; setSearchQuery: (value: string) => void; state: RolesPageState }>): JSX.Element {
+}: Readonly<{ searchQuery: string; setSearchQuery: (value: string) => void }>): JSX.Element {
   return (
-    <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <ServerSearch label="Search roles" onSearch={setSearchQuery} placeholder="Search roles" value={searchQuery} />
-      {canManageBrowserRoles(state.data.currentOrganizationPermissions) ? (
-        <ToolbarPrimaryActionButton
-          icon={ShieldPlus}
-          onClick={(): void => {
-            state.onNavigate(buildRolesPageHref(state.data, { mode: 'create' }));
-          }}
-          type="button"
-        >
-          Create role
-        </ToolbarPrimaryActionButton>
-      ) : null}
+    <header>
+      <ServerSearch
+        className="w-full max-w-none"
+        hasLeadingSearchIcon
+        label="Search roles"
+        onSearch={setSearchQuery}
+        placeholder="Search roles"
+        value={searchQuery}
+      />
     </header>
+  );
+}
+
+function CreateRoleButton({ state }: Readonly<{ state: RolesPageState }>): JSX.Element | null {
+  if (!canManageBrowserRoles(state.data.currentOrganizationPermissions)) {
+    return null;
+  }
+
+  return (
+    <ToolbarPrimaryActionButton
+      icon={ShieldPlus}
+      onClick={(): void => {
+        state.onNavigate(buildRolesPageHref(state.data, { mode: 'create' }));
+      }}
+      type="button"
+      variant="accent"
+    >
+      Create role
+    </ToolbarPrimaryActionButton>
   );
 }
 

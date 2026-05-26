@@ -13,6 +13,7 @@ import { requestBrowserApi, type BrowserApiRequestOptions } from '../../lib/brow
 import { BrowserRedirect, readBrowserApiRedirect } from '../../lib/browser-redirect';
 import {
   loadBrowserConsoleContext,
+  loadSidebarProjectCount,
   readBrowserErrorMessage,
   readBrowserNoticeMessage,
   type BrowserConsoleContext,
@@ -24,6 +25,8 @@ import {
 } from '../console/console-access';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import { readRolesBackHref } from './roles-page.query';
+
+type BrowserRolesPageBaseResult = Omit<BrowserRolesPageResult, 'projectCount' | 'role' | 'roleId' | 'roles'>;
 
 export async function loadRolesPageData({ request }: LoaderFunctionArgs): Promise<BrowserRolesPageResult> {
   const url: URL = new URL(request.url);
@@ -79,6 +82,7 @@ function buildEmptyRolesPageResult(
     organizations: context.organizations,
     permissionKeys: listGrantableRolePermissionKeys(context.currentOrganizationPermissions),
     principalEmail: context.principalEmail,
+    projectCount: 0,
     role: null,
     roleId: null,
     roles: [],
@@ -93,12 +97,16 @@ async function loadSelectedOrganizationRolesPageData(
   options: BrowserApiRequestOptions,
 ): Promise<BrowserRolesPageResult> {
   const currentOrganization: string = requireBrowserAccessSelectedOrganizationSlug(context.selectedOrganizationSlug);
-  const response: AccessRoleListResponse = await fetchRolesResponse(currentOrganization, options);
+  const [projectCount, response]: [number, AccessRoleListResponse] = await Promise.all([
+    loadSidebarProjectCount(currentOrganization, options),
+    fetchRolesResponse(currentOrganization, options),
+  ]);
   const roleId: string | null = readRoleId(searchParams, response);
 
   return buildRolesPageResult(
     context,
     searchParams,
+    projectCount,
     response,
     roleId,
     await readSelectedRole(currentOrganization, roleId, options),
@@ -108,10 +116,25 @@ async function loadSelectedOrganizationRolesPageData(
 function buildRolesPageResult(
   context: BrowserConsoleContext,
   searchParams: URLSearchParams,
+  projectCount: number,
   response: AccessRoleListResponse,
   roleId: string | null,
   role: AccessRoleResponse | null,
 ): BrowserRolesPageResult {
+  return {
+    ...buildRolesPageBaseResult(context, searchParams, roleId),
+    projectCount,
+    role: role?.role ?? null,
+    roleId,
+    roles: response.roles,
+  };
+}
+
+function buildRolesPageBaseResult(
+  context: BrowserConsoleContext,
+  searchParams: URLSearchParams,
+  roleId: string | null,
+): BrowserRolesPageBaseResult {
   return {
     backHref: readRolesBackHref(searchParams, context.selectedOrganizationSlug),
     currentOrganizationPermissions: context.currentOrganizationPermissions,
@@ -122,9 +145,6 @@ function buildRolesPageResult(
     organizations: context.organizations,
     permissionKeys: listGrantableRolePermissionKeys(context.currentOrganizationPermissions),
     principalEmail: context.principalEmail,
-    role: role?.role ?? null,
-    roleId,
-    roles: response.roles,
     selectedOrganizationSlug: context.selectedOrganizationSlug,
     showOrganizationSelector: context.showOrganizationSelector,
   };

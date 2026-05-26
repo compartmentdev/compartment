@@ -22,7 +22,7 @@ export class DeploymentHistoryPage {
   constructor(page: Page, organizationSlug: string) {
     this.organizationSlug = organizationSlug;
     this.page = page;
-    this.projectDeploymentsLink = page.getByRole('link', { name: 'Project Deployments' });
+    this.projectDeploymentsLink = page.getByRole('link', { name: /Deployments$/ });
   }
 
   async openFromProjectOverview(projectName: string): Promise<void> {
@@ -61,7 +61,7 @@ export class DeploymentHistoryPage {
 
   async openDeploymentDetails(deploymentRunId: string): Promise<void> {
     const row: Locator = this.getDeploymentRunRow(deploymentRunId);
-    await row.getByRole('button', { name: /Actions/ }).click();
+    await row.getByRole('button', { name: /actions/i }).click();
     await expect(this.page.getByRole('menuitem', { name: 'Details' })).toBeVisible();
     await this.page.getByRole('menuitem', { name: 'Details' }).click();
   }

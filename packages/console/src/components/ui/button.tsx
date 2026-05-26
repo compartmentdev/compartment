@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, JSX } from 'react';
 import { cn } from '../../lib/utils';
 
-type ButtonVariant = 'accent' | 'default' | 'ghost' | 'outline' | 'secondary' | 'soft';
+export type ButtonVariant = 'accent' | 'default' | 'ghost' | 'outline' | 'secondary' | 'soft';
 type ButtonSize = 'default' | 'lg' | 'sm' | 'xs';
 
 interface ButtonVariantInput {

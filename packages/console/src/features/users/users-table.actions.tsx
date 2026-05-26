@@ -5,9 +5,8 @@ import {
   ServerTableActionError,
   ServerTableActions,
 } from '../../components/server-table';
+import { ServerTableActionsMenu } from '../../components/server-table-actions-menu';
 import { Button } from '../../components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '../../components/ui/dropdown-menu';
-import { MoreHorizontal } from '../../components/ui/icons';
 import type { BrowserUsersPageResult, BrowserUsersUser } from '../../services/browser-users.service.types';
 import type { UserActionHandler } from './user-actions';
 import { UserAccessMenuItem, UserRemoveMenuItem } from './users-table.actions.menu-items';
@@ -76,15 +75,10 @@ function readUserActionsMenu(
 function UserActionsMenu(props: Readonly<UserActionsMenuProps>): JSX.Element {
   const { user } = props;
   return (
-    <DropdownMenu>
-      <UserActionsTrigger email={user.email} />
-      <UserActionsMenuContent {...props} />
-    </DropdownMenu>
+    <ServerTableActionsMenu ariaLabel={`Open actions for ${user.email}`}>
+      {renderUserActionsMenuItems(props, props.menuState)}
+    </ServerTableActionsMenu>
   );
-}
-
-function UserActionsMenuContent(props: Readonly<UserActionsMenuProps>): JSX.Element {
-  return <DropdownMenuContent align="end">{renderUserActionsMenuItems(props, props.menuState)}</DropdownMenuContent>;
 }
 
 function renderUserActionsMenuItems(
@@ -120,22 +114,6 @@ function renderUserRemoveMenuItem(props: Readonly<UserActionsMenuProps>, canRemo
       setErrorMessage={props.setErrorMessage}
       user={props.user}
     />
-  );
-}
-
-function UserActionsTrigger({ email }: Readonly<{ email: string }>): JSX.Element {
-  return (
-    <DropdownMenuTrigger asChild>
-      <Button
-        aria-label={`Open actions for ${email}`}
-        className="size-7 px-0 text-muted-foreground"
-        size="sm"
-        type="button"
-        variant="secondary"
-      >
-        <MoreHorizontal className="size-3.5" />
-      </Button>
-    </DropdownMenuTrigger>
   );
 }
 

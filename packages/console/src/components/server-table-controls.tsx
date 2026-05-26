@@ -17,6 +17,7 @@ interface ServerTableControlsProps {
   pageSize: string;
   pageSizeOptions: string[];
   previousPageHref: string | null;
+  showPageSize?: boolean | undefined;
   totalItems: number;
   totalPages: number;
 }
@@ -34,6 +35,7 @@ interface RowsPerPageSectionProps {
   onPageSizeChange: (value: string) => void;
   pageSize: string;
   pageSizeOptions: string[];
+  showPageSize: boolean;
   totalItems: number;
 }
 
@@ -57,29 +59,10 @@ interface RowsPerPageSelectProps {
   pageSizeOptions: string[];
 }
 
-export function ServerTableControls({
-  currentPage,
-  itemLabel,
-  nextPageHref,
-  onNavigate,
-  onPageSizeChange,
-  pageSize,
-  pageSizeOptions,
-  previousPageHref,
-  totalItems,
-  totalPages,
-}: Readonly<ServerTableControlsProps>): JSX.Element {
+export function ServerTableControls(props: Readonly<ServerTableControlsProps>): JSX.Element {
   return renderControlsLayout({
-    currentPage,
-    itemLabel,
-    nextPageHref,
-    onNavigate,
-    onPageSizeChange,
-    pageSize,
-    pageSizeOptions,
-    previousPageHref,
-    totalItems,
-    totalPages,
+    ...props,
+    showPageSize: props.showPageSize ?? true,
   });
 }
 
@@ -130,15 +113,22 @@ function RowsPerPageSection({
   onPageSizeChange,
   pageSize,
   pageSizeOptions,
+  showPageSize,
   totalItems,
 }: Readonly<RowsPerPageSectionProps>): JSX.Element {
   return (
     <div className="flex flex-col gap-2 text-[13px] text-muted-foreground md:flex-row md:items-center md:gap-4">
       <p>{formatItemsCount(totalItems, itemLabel)}</p>
-      <label className="flex items-center gap-2">
-        <span>Rows</span>
-        <RowsPerPageSelect onPageSizeChange={onPageSizeChange} pageSize={pageSize} pageSizeOptions={pageSizeOptions} />
-      </label>
+      {showPageSize ? (
+        <label className="flex items-center gap-2">
+          <span>Rows</span>
+          <RowsPerPageSelect
+            onPageSizeChange={onPageSizeChange}
+            pageSize={pageSize}
+            pageSizeOptions={pageSizeOptions}
+          />
+        </label>
+      ) : null}
     </div>
   );
 }
@@ -227,6 +217,7 @@ function renderControlsLayout(props: Readonly<ServerTableControlsProps>): JSX.El
         onPageSizeChange={props.onPageSizeChange}
         pageSize={props.pageSize}
         pageSizeOptions={props.pageSizeOptions}
+        showPageSize={props.showPageSize ?? true}
         totalItems={props.totalItems}
       />
       <PaginationSection

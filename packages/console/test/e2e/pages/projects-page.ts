@@ -21,7 +21,7 @@ export class ProjectsPage {
     this.emptyProjectsMessage = page.getByText('No projects found.');
     this.page = page;
     this.primaryNavigation = page.getByRole('navigation', { name: 'Primary' });
-    this.projectOverviewHeading = page.getByRole('heading', { name: 'Project Overview' });
+    this.projectOverviewHeading = page.getByRole('heading', { name: 'Overview' });
     this.projectOverviewServicesTable = page.getByRole('table').filter({
       has: page.getByRole('columnheader', { exact: true, name: 'Service' }),
     });
@@ -71,7 +71,7 @@ export class ProjectsPage {
     await Promise.all([
       this.page.waitForResponse((response: Response): boolean => this.isProjectOverviewResponse(response, projectName)),
       this.page.waitForURL((url: URL): boolean => this.isProjectOverviewUrl(url, projectName)),
-      this.projectRow(projectName).getByRole('link', { name: 'Overview' }).click(),
+      this.projectRow(projectName).getByRole('link', { name: 'Details' }).click(),
     ]);
   }
 

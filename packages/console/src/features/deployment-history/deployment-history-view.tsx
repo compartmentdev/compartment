@@ -2,9 +2,20 @@ import { useState, type JSX } from 'react';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import { BrowserBreadcrumbs } from '../../components/browser-breadcrumbs';
 import type { BrowserBreadcrumbItem } from '../../components/browser-breadcrumbs.types';
-import { BrowserConsoleShell } from '../../components/browser-console-header';
+import {
+  BrowserConsoleDetailTitle,
+  readBrowserConsoleEnvironmentLabel,
+} from '../../components/browser-console-detail-header';
+import {
+  BrowserConsoleShell,
+  browserConsoleDetailPageHeaderClassName,
+  browserConsolePageBodyClassName,
+  browserConsolePageClassName,
+  browserConsolePageGutterClassName,
+} from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import { ServerTableFrame } from '../../components/server-table';
+import { Box } from '../../components/ui/icons';
 import type { BrowserDeploymentHistoryPageResult } from '../../services/browser-deployment-history.service.types';
 import type { BrowserConsoleOrganizationIssue } from '../../services/browser-organization-context.service.types';
 import { BrowserConsoleOrganizationContextPanel } from '../console/console-organization-context-panel';
@@ -83,11 +94,18 @@ function readOrganizationControl(
 
 function DeploymentHistoryHeader({ data, onNavigate }: Readonly<DeploymentHistoryHeaderProps>): JSX.Element {
   return (
-    <header className="flex flex-col gap-2">
-      <BrowserBreadcrumbs items={readDeploymentHistoryBreadcrumbItems(data)} onNavigate={onNavigate} />
-      <div className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold text-foreground">Deployments</h1>
-        <p className="text-[13px] text-muted-foreground">{readScopeLabel(data)}</p>
+    <header className={browserConsoleDetailPageHeaderClassName}>
+      <div className="pb-6">
+        <BrowserBreadcrumbs items={readDeploymentHistoryBreadcrumbItems(data)} onNavigate={onNavigate} />
+        <BrowserConsoleDetailTitle
+          badgeLabel={readDeploymentHistoryEnvironmentBadgeLabel(data)}
+          icon={Box}
+          iconTone="purple"
+          title="Deployments"
+        />
+        <p className="mt-2 max-w-3xl text-[13px] leading-5 text-muted-foreground">
+          {readDeploymentHistoryDescription(data)}
+        </p>
       </div>
     </header>
   );
@@ -121,36 +139,52 @@ function DeploymentHistoryContent({
   onNavigate,
   onRollback,
 }: Readonly<DeploymentHistoryContentProps>): JSX.Element {
-  return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5">
-      <DismissibleAlert message={actionErrorMessage ?? data.errorMessage} variant="error" />
-      {renderDeploymentHistoryContent(data, onNavigate, onRollback)}
-    </div>
-  );
+  return renderDeploymentHistoryContent(actionErrorMessage ?? data.errorMessage, data, onNavigate, onRollback);
 }
 
 function renderDeploymentHistoryContent(
+  errorMessage: string | undefined,
   data: BrowserDeploymentHistoryPageResult,
   onNavigate: BrowserSoftNavigateHandler,
   onRollback: DeploymentHistoryRollbackHandler,
 ): JSX.Element {
   if (data.organizationContext.kind !== 'selected') {
-    return (
-      <DeploymentHistoryOrganizationContextPanel
-        context={data.organizationContext}
-        data={data}
-        onNavigate={onNavigate}
-      />
-    );
+    return renderDeploymentHistoryOrganizationContext(errorMessage, data.organizationContext, data, onNavigate);
   }
 
+  return renderSelectedDeploymentHistoryContent(errorMessage, data, onNavigate, onRollback);
+}
+
+function renderDeploymentHistoryOrganizationContext(
+  errorMessage: string | undefined,
+  context: BrowserConsoleOrganizationIssue,
+  data: BrowserDeploymentHistoryPageResult,
+  onNavigate: BrowserSoftNavigateHandler,
+): JSX.Element {
   return (
-    <>
+    <div className={browserConsolePageBodyClassName}>
+      <DismissibleAlert message={errorMessage} variant="error" />
+      <DeploymentHistoryOrganizationContextPanel context={context} data={data} onNavigate={onNavigate} />
+    </div>
+  );
+}
+
+function renderSelectedDeploymentHistoryContent(
+  errorMessage: string | undefined,
+  data: BrowserDeploymentHistoryPageResult,
+  onNavigate: BrowserSoftNavigateHandler,
+  onRollback: DeploymentHistoryRollbackHandler,
+): JSX.Element {
+  return (
+    <div className={browserConsolePageClassName}>
       <DeploymentHistoryHeader data={data} onNavigate={onNavigate} />
-      <ServerTableFrame>
-        <DeploymentHistoryTable data={data} onNavigate={onNavigate} onRollback={onRollback} />
-      </ServerTableFrame>
-    </>
+      <section className={`flex flex-1 flex-col gap-5 bg-background py-8 ${browserConsolePageGutterClassName}`}>
+        <DismissibleAlert message={errorMessage} variant="error" />
+        <ServerTableFrame className="flex flex-1 flex-col">
+          <DeploymentHistoryTable data={data} onNavigate={onNavigate} onRollback={onRollback} />
+        </ServerTableFrame>
+      </section>
+    </div>
   );
 }
 
@@ -195,6 +229,7 @@ function DeploymentHistoryShell({
       onNavigate={onNavigate}
       page="projects"
       principalEmail={data.principalEmail}
+      projectCount={data.projectCount}
       selectedOrganizationSlug={data.selectedOrganizationSlug}
     >
       {children}
@@ -216,6 +251,14 @@ function handleOrganizationChange(
   );
 }
 
-function readScopeLabel(data: BrowserDeploymentHistoryPageResult): string {
-  return data.environmentName ?? 'environment required';
+function readDeploymentHistoryDescription(data: BrowserDeploymentHistoryPageResult): string {
+  return `Deployment runs, release history, and rollback status for ${readDeploymentHistoryEnvironmentLabel(data)}.`;
+}
+
+function readDeploymentHistoryEnvironmentBadgeLabel(data: BrowserDeploymentHistoryPageResult): string {
+  return readBrowserConsoleEnvironmentLabel(data.environmentName, 'Environment');
+}
+
+function readDeploymentHistoryEnvironmentLabel(data: BrowserDeploymentHistoryPageResult): string {
+  return data.environmentName ?? 'the selected environment';
 }

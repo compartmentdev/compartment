@@ -16,6 +16,13 @@ describe('browser projects live refresh', (): void => {
     expect(
       shouldRefreshProjectsPage(
         createProjectsPageResult({
+          archiveState: 'all',
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldRefreshProjectsPage(
+        createProjectsPageResult({
           archiveState: 'archived',
         }),
       ),
@@ -113,6 +120,29 @@ describe('browser projects live refresh', (): void => {
     vi.stubGlobal('fetch', fetchMock);
 
     const result: BrowserProjectsPageResult = await refreshProjectStatuses(createProjectsPageResult());
+
+    expect(result.projects).toEqual([]);
+    expect(result.totalProjects).toBe(0);
+    expect(result.totalPages).toBe(1);
+  });
+
+  it('drops missing rows from the all projects page during status refresh', async (): Promise<void> => {
+    const fetchMock: Mock<FetchImplementation> = vi
+      .fn<FetchImplementation>()
+      .mockImplementation(async (): Promise<Response> => {
+        return await Promise.resolve(
+          createJsonResponse({
+            detail: 'status',
+            projects: [],
+          }),
+        );
+      });
+    vi.stubGlobal('document', { cookie: '' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result: BrowserProjectsPageResult = await refreshProjectStatuses(
+      createProjectsPageResult({ archiveState: 'all' }),
+    );
 
     expect(result.projects).toEqual([]);
     expect(result.totalProjects).toBe(0);

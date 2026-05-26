@@ -48,15 +48,15 @@ const AccessDrawerCloseContext: React.Context<(() => void) | null> = createConte
 
 export function AccessPageHeader({ action, description, title }: Readonly<AccessPageHeaderProps>): JSX.Element {
   return (
-    <header className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+    <header>
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold leading-8 tracking-normal text-foreground">{title}</h1>
           {description === undefined || description === null ? null : (
-            <p className="max-w-3xl text-[13px] leading-6 text-muted-foreground">{description}</p>
+            <p className="max-w-3xl text-[13px] leading-5 text-muted-foreground">{description}</p>
           )}
         </div>
-        {action}
+        {action === undefined || action === null ? null : <div className="shrink-0">{action}</div>}
       </div>
     </header>
   );
