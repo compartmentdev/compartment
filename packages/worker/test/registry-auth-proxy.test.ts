@@ -275,6 +275,8 @@ describe('registry auth proxy', (): void => {
       'http://user:password@registry.example:5000/v2/repo/blobs/uploads/upload-id',
       'http://registry.example:5000.evil/v2/repo/blobs/uploads/upload-id',
       'http:registry.example:5000/v2/repo/blobs/uploads/upload-id',
+      'http://registry.example:5000/v1/%2e%2e/v2/repo/blobs/uploads/upload-id',
+      'http://registry.example:5000/x/../v2/repo/blobs/uploads/upload-id',
       '/v2/repo\r\nx',
       '/v2/repo\u007f',
       '/v2/repo\u0085',

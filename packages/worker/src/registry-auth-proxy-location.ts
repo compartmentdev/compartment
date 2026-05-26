@@ -10,22 +10,20 @@ export function rewriteRegistryLocationHeader(location: string, targetUrl: URL):
     return parseSafeRegistryOriginFormPath(location, targetUrl);
   }
 
-  const parsedLocation: URL | null = parseRegistryOriginAbsoluteLocation(location, targetUrl);
-  if (parsedLocation === null) {
+  const originFormLocation: string | null = parseRegistryOriginAbsoluteLocation(location, targetUrl);
+  if (originFormLocation === null) {
     return null;
   }
 
-  return parseSafeRegistryOriginFormPath(
-    `${parsedLocation.pathname}${parsedLocation.search}${parsedLocation.hash}`,
-    targetUrl,
-  );
+  return parseSafeRegistryOriginFormPath(originFormLocation, targetUrl);
 }
 
-function parseRegistryOriginAbsoluteLocation(location: string, targetUrl: URL): URL | null {
+function parseRegistryOriginAbsoluteLocation(location: string, targetUrl: URL): string | null {
   if (!absoluteUrlPattern.test(location)) {
     return null;
   }
 
+  const originFormLocation: string = readAbsoluteUrlOriginFormLocation(location);
   let parsedLocation: URL;
   try {
     parsedLocation = new URL(location);
@@ -37,7 +35,7 @@ function parseRegistryOriginAbsoluteLocation(location: string, targetUrl: URL): 
     return null;
   }
 
-  return parsedLocation;
+  return originFormLocation;
 }
 
 function parseSafeRegistryOriginFormPath(location: string, targetUrl: URL): string | null {
@@ -73,6 +71,14 @@ function readLocationPathname(location: string): string {
   }
 
   return pathnameEndIndex === -1 ? location : location.slice(0, pathnameEndIndex);
+}
+
+function readAbsoluteUrlOriginFormLocation(location: string): string {
+  const authorityStartIndex: number = location.indexOf('://') + 3;
+  const authoritySuffix: string = location.slice(authorityStartIndex);
+  const pathStartOffset: number = authoritySuffix.search(/[/?#]/u);
+
+  return pathStartOffset === -1 ? '' : location.slice(authorityStartIndex + pathStartOffset);
 }
 
 function isOriginFormLocation(location: string): boolean {
