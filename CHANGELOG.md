@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/compartmentdev/compartment/compare/v0.4.0...v0.4.1) (2026-05-26)
+
+
+### Bug Fixes
+
+* **auth:** validate SSO callback query shape ([#29](https://github.com/compartmentdev/compartment/issues/29)) ([34ce297](https://github.com/compartmentdev/compartment/commit/34ce297933508946230320dabe803d0cfdcd7d62))
+
 ## [0.4.0](https://github.com/compartmentdev/compartment/compare/v0.3.0...v0.4.0) (2026-05-26)
 
 
