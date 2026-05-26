@@ -21,11 +21,7 @@ What they do:
 
 Existing installs created before this version may not have an `imageRegistry` value in `install-state.json`. For those installs, registry-based updates default to GitHub Container Registry unless you pass `--image-registry docker-hub`. Local-image installs keep their existing Docker Hub-style image names unless you choose another registry explicitly.
 
-New installs store the self-hosted env file as `.env.self-hosted`. Installs created by older CLI versions may still use `.env.onprem`; `system update` reads that legacy file when it is the active install state.
-
 For registry image sources, `system update` verifies Compartment runtime image signatures with the bundled CLI verifier before pulling images and before replacing active runtime files. `system restart` verifies signatures before starting containers. A missing or invalid signature stops the affected registry runtime image from running.
-
-The verified runtime image set includes `api`, `caddy`, `edge`, `worker`, and `runtime-probe`.
 
 If `system status` shows `node` as failed or missing, deployments, runtime logs, resource operations, and runtime
 reconciliation will not run until the host node agent is healthy again. Use `sudo compartment system restart` after

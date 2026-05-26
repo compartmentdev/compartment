@@ -120,7 +120,7 @@ To update an existing self-hosted install after upgrading the CLI binary, run:
 sudo compartment system update
 ```
 
-The CLI reads the current image source and image registry from `/var/lib/compartment/self-hosted/install-state.json`, falling back to `/var/lib/compartment/onprem/install-state.json` and `.env.onprem` for legacy installs. It stores any `--image-source registry`, `--image-source local`, or `--image-registry <registry>` override in the active state file for subsequent updates, and skips the update when the requested release version is not newer than the installed one and the runtime image selection is unchanged.
+The CLI reads the current image source and image registry from `/var/lib/compartment/self-hosted/install-state.json`. It stores any `--image-source registry`, `--image-source local`, or `--image-registry <registry>` override in that state file for subsequent updates, and skips the update when the requested release version is not newer than the installed one and the runtime image selection is unchanged.
 
 `system update` also refreshes the host node-agent binary and systemd unit, restarts the agent before recreating Docker runtime services so their bind mount sees the current agent socket directory, then waits for the agent socket to become healthy.
 

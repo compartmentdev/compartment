@@ -17,9 +17,7 @@ With no explicit mode flags, `compartment install` allocates a managed base doma
 
 Registry installs verify Compartment runtime image signatures with the bundled CLI verifier before pulling images and before activating runtime files or starting containers. A failed verification leaves the install directory retryable.
 
-Registry installs pull Compartment runtime images from GitHub Container Registry by default. Use `--image-registry docker-hub` when you need Docker Hub image refs instead. The selected registry is stored for later `system update` runs.
-
-The self-hosted runtime image set is `api`, `caddy`, `edge`, `worker`, and `runtime-probe`.
+Registry installs pull the `api`, `caddy`, `edge`, `worker`, and `runtime-probe` images from GitHub Container Registry by default. Use `--image-registry docker-hub` when you need Docker Hub image refs instead. The selected registry is stored for later `system update` runs.
 
 Use other modes only when you need a different ownership model:
 
@@ -28,7 +26,7 @@ Use other modes only when you need a different ownership model:
 - `--dev`: point the CLI at a local development API from this repository.
 - `--broker-url <url>`: override the managed-domain broker, usually for broker development.
 
-Use `--image-source local` when you want the install to use images already built into the local Docker daemon. Local image installs skip registry signature verification, so all runtime images must already exist locally under the selected registry-style names.
+Use `--image-source local` when you want the install to use images already built into the local Docker daemon. Local image installs skip registry signature verification, so all runtime images must already exist locally.
 
 ## CLI bootstrap options
 
