@@ -1,4 +1,4 @@
-import { hasText } from '@compartment/utils';
+import { hasDuplicateSearchParam, hasText, readSingleSearchParam } from '@compartment/utils';
 import { browserLoginSsoCallbackPathname } from '../../browser-public-paths';
 import { createInvalidSsoLoginError } from '../../errors/api-business-error';
 import { createId, hashToken } from '../../lib/tokens';
@@ -25,6 +25,8 @@ import { requireSsoOidcProviderById, resolveBrowserSsoStartInput } from './sso-o
 
 const ssoOidcFlowTtlMs: number = 10 * 60 * 1000;
 const ssoOidcCallbackPath: string = browserLoginSsoCallbackPathname;
+const ssoOidcCallbackCodeSearchParamName: string = 'code';
+const ssoOidcCallbackStateSearchParamName: string = 'state';
 
 export async function startBrowserSsoLogin(input: StartBrowserSsoLoginInput): Promise<string> {
   const { flowTarget, provider } = await resolveBrowserSsoStartInput(input);
@@ -43,6 +45,7 @@ export async function startBrowserSsoLogin(input: StartBrowserSsoLoginInput): Pr
 }
 
 export async function completeBrowserSsoLogin(currentUrl: URL): Promise<CompleteSsoOidcLoginResult> {
+  assertSingleSsoOidcCallbackSearchParams(currentUrl);
   const flow: SsoOidcFlowRow = await consumeCallbackFlow(readSsoOidcState(currentUrl));
   const provider: SsoOidcProviderRow = await requireSsoOidcProviderById(flow.providerId);
   const claims: OidcIdentityClaims = await readOidcCallbackClaims(buildOidcCallbackInput(currentUrl, flow, provider));
@@ -56,13 +59,22 @@ export async function completeBrowserSsoLogin(currentUrl: URL): Promise<Complete
 }
 
 export async function findCliLoginAttemptIdForBrowserSsoCallback(currentUrl: URL): Promise<string | undefined> {
-  const state: string | null = currentUrl.searchParams.get('state');
+  const state: string | null = readSingleSearchParam(currentUrl.searchParams, ssoOidcCallbackStateSearchParamName);
   if (!hasText(state)) {
     return undefined;
   }
 
   const flow: SsoOidcFlowRow | undefined = await findSsoOidcFlowByStateHash(hashSsoOidcState(state));
   return flow?.cliLoginAttemptId ?? undefined;
+}
+
+function assertSingleSsoOidcCallbackSearchParams(currentUrl: URL): void {
+  if (
+    hasDuplicateSearchParam(currentUrl.searchParams, ssoOidcCallbackCodeSearchParamName) ||
+    hasDuplicateSearchParam(currentUrl.searchParams, ssoOidcCallbackStateSearchParamName)
+  ) {
+    throw createInvalidSsoLoginError();
+  }
 }
 
 function buildOidcCallbackInput(
@@ -111,7 +123,7 @@ function decryptSsoOidcProviderSecret(provider: SsoOidcProviderRow): string {
 }
 
 function readSsoOidcState(currentUrl: URL): string {
-  const state: string | null = currentUrl.searchParams.get('state');
+  const state: string | null = readSingleSearchParam(currentUrl.searchParams, ssoOidcCallbackStateSearchParamName);
   if (!hasText(state)) {
     throw createInvalidSsoLoginError();
   }
