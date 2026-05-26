@@ -12,17 +12,16 @@ export function appendOptionalSearchParam(
 
 export function hasDuplicateSearchParamName(searchParams: URLSearchParams): boolean {
   const names: Set<string> = new Set<string>();
-  let hasDuplicateName: boolean = false;
 
-  searchParams.forEach((_value: string, name: string): void => {
+  for (const name of searchParams.keys()) {
     if (names.has(name)) {
-      hasDuplicateName = true;
-    } else {
-      names.add(name);
+      return true;
     }
-  });
 
-  return hasDuplicateName;
+    names.add(name);
+  }
+
+  return false;
 }
 
 export function readSingleSearchParam(searchParams: URLSearchParams, name: string): string | null {

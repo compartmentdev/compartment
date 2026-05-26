@@ -160,6 +160,7 @@ async function handleBrowserCliLoginPost(request: FastifyRequest, reply: Fastify
 }
 
 async function handleBrowserSsoCallbackGet(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  await requireInstalledCompartment();
   const currentUrl: URL = buildCurrentBrowserUrl(request);
   const callbackKind: SsoOidcCallbackKind | null = readSsoOidcCallbackKind(currentUrl);
   if (callbackKind === null) {
