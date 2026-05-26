@@ -17,6 +17,7 @@ import type {
   BrowserAuditEventFilters,
   BrowserAuditEventsPageResult,
 } from '../../services/browser-audit-events.service.types';
+import { AccessPageHeader } from '../access/access-ui';
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
 import { AuditEventsOrganizationContextPanel } from './audit-events-organization-context-panel';
 import { auditTargetTypeOptions, type AuditTargetTypeOption } from './audit-events-filter-options';
@@ -74,10 +75,15 @@ function renderAuditEventsContent(
 
   return (
     <>
+      <AuditEventsPageHeader />
       <AuditEventsFilterForm data={data} key={readAuditEventsFilterFormKey(data.filters)} onNavigate={onNavigate} />
       <AuditEventsTableSection data={data} onNavigate={onNavigate} />
     </>
   );
+}
+
+function AuditEventsPageHeader(): JSX.Element {
+  return <AccessPageHeader title="Audit logs" />;
 }
 
 function readOrganizationControl(
