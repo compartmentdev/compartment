@@ -70,33 +70,32 @@ describe('CLI onboarding panel', (): void => {
     }
   });
 
-  it('defaults project creation to the install command while showing both mode choices', async (): Promise<void> => {
+  it('defaults project creation to the installed CLI command while showing both mode choices', async (): Promise<void> => {
     const mountedPanel: MountedCliOnboardingPanel = await mountCliOnboardingPanel(
       createCliOnboardingPanelElement(browserProjectCreatePathname),
     );
 
     try {
-      expect(mountedPanel.container.textContent).toContain('Need to install CLI');
+      expect(mountedPanel.container.textContent).toContain('Log in with CLI');
       expect(mountedPanel.container.textContent).toContain('CLI already installed');
-      expect(readRenderedCommand(mountedPanel.container)).toContain('curl -fsSL https://compartment.dev/install.sh');
+      expect(mountedPanel.container.textContent).toContain('Need to install CLI');
+      expect(readRenderedCommand(mountedPanel.container)).toContain('compartment login --api-url');
     } finally {
       await mountedPanel.unmount();
     }
   });
 
-  it('switches project creation to the login-only command for installed CLIs', async (): Promise<void> => {
+  it('switches project creation to the install command when requested', async (): Promise<void> => {
     const mountedPanel: MountedCliOnboardingPanel = await mountCliOnboardingPanel(
       createCliOnboardingPanelElement(browserProjectCreatePathname),
     );
 
     try {
-      await clickButton(mountedPanel.container, 'CLI already installed');
+      await clickButton(mountedPanel.container, 'Need to install CLI');
 
-      expect(mountedPanel.container.textContent).toContain('Log in with CLI');
-      expect(readRenderedCommand(mountedPanel.container)).toContain('compartment login --api-url');
-      expect(readRenderedCommand(mountedPanel.container)).not.toContain(
-        'curl -fsSL https://compartment.dev/install.sh',
-      );
+      expect(mountedPanel.container.textContent).toContain('Install and log in with CLI');
+      expect(readRenderedCommand(mountedPanel.container)).toContain('curl -fsSL https://compartment.dev/install.sh');
+      expect(readRenderedCommand(mountedPanel.container)).not.toContain('compartment login --api-url');
     } finally {
       await mountedPanel.unmount();
     }

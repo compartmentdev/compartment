@@ -23,8 +23,8 @@ export function CliLoginModeSelector({ mode, onSelect }: Readonly<CliLoginModeSe
     <div className="grid gap-2">
       <p className="text-[12px] font-medium uppercase text-[#485259]">This machine</p>
       <div className="inline-flex w-fit items-center gap-1 rounded-lg border border-black/10 bg-[#f5f6f7] p-1">
-        <CliLoginModeButton label="Need to install CLI" mode={mode} onSelect={onSelect} value="install" />
         <CliLoginModeButton label="CLI already installed" mode={mode} onSelect={onSelect} value="installed" />
+        <CliLoginModeButton label="Need to install CLI" mode={mode} onSelect={onSelect} value="install" />
       </div>
     </div>
   );

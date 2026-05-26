@@ -98,10 +98,14 @@ function readCliWaitingStepProps(props: Readonly<CliOnboardingPanelProps>): CliW
 
 function CliLoginStep(props: Readonly<CliLoginStepProps>): JSX.Element {
   const showInstallChoice: boolean = props.flowPathname === browserProjectCreatePathname;
-  const [mode, setMode] = useState<CliLoginMode>('install');
+  const defaultMode: CliLoginMode = readDefaultCliLoginMode(props.flowPathname);
+  const [mode, setMode] = useState<CliLoginMode>(defaultMode);
   const selectedMode: CliLoginMode = showInstallChoice ? mode : 'install';
   const headerCopy: CliLoginHeaderCopy = readCliLoginHeaderCopy(selectedMode);
 
+  useEffect((): void => {
+    setMode(defaultMode);
+  }, [defaultMode]);
   useCliLoginStatusNavigation(props.selectedOrganizationSlug, props.sessionId, props.onLoginConfirmed);
 
   return (
@@ -118,6 +122,10 @@ function CliLoginStep(props: Readonly<CliLoginStepProps>): JSX.Element {
       <OnboardingStatus label="CLI login" onRefresh={readCliLoginRefreshHandler(props)} value="Waiting for CLI login" />
     </div>
   );
+}
+
+function readDefaultCliLoginMode(flowPathname: string): CliLoginMode {
+  return flowPathname === browserProjectCreatePathname ? 'installed' : 'install';
 }
 
 function readCliLoginRefreshHandler(props: Readonly<CliLoginStepProps>): () => Promise<void> {
