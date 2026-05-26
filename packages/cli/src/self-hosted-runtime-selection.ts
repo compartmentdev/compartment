@@ -23,6 +23,22 @@ export function buildPublishedSelfHostedRuntimeSelection(
   };
 }
 
+export function resolveCurrentSelfHostedRuntimeImageRegistry(
+  imageRegistry: SelfHostedRuntimeImageRegistry | undefined,
+  imageSource: SelfHostedImageSource,
+  environmentValues: Record<string, string>,
+): SelfHostedRuntimeImageRegistry {
+  if (imageRegistry !== undefined) {
+    return imageRegistry;
+  }
+
+  return (
+    readSelfHostedRuntimeImageRegistryFromImageRef(
+      readRequiredSelfHostedEnvironmentValue(environmentValues, 'COMPARTMENT_API_IMAGE'),
+    ) ?? resolveStoredSelfHostedRuntimeImageRegistry(imageRegistry, imageSource)
+  );
+}
+
 export function resolveStoredSelfHostedRuntimeImageRegistry(
   imageRegistry: SelfHostedRuntimeImageRegistry | undefined,
   imageSource: SelfHostedImageSource,
@@ -77,4 +93,15 @@ function buildSelfHostedImageRepositoryPrefix(imageRegistry: SelfHostedRuntimeIm
     case 'docker-hub':
       return dockerHubSelfHostedImageRepositoryPrefix;
   }
+}
+
+function readSelfHostedRuntimeImageRegistryFromImageRef(imageRef: string): SelfHostedRuntimeImageRegistry | undefined {
+  if (imageRef.startsWith(`${githubSelfHostedImageRepositoryPrefix}/`)) {
+    return 'github';
+  }
+  if (imageRef.startsWith(`${dockerHubSelfHostedImageRepositoryPrefix}/`)) {
+    return 'docker-hub';
+  }
+
+  return undefined;
 }

@@ -41,6 +41,7 @@ interface TemporaryInstallPaths {
 }
 
 interface CurrentEnvironmentTextOptions {
+  imageRegistry?: 'docker-hub' | 'github' | undefined;
   publicHttpPort?: number | undefined;
   publicHttpsPort?: number | undefined;
   publicProtocol?: 'http' | 'https' | undefined;
@@ -173,6 +174,21 @@ describe.sequential('system maintenance runtime', (): void => {
         nodeSocketPath: '/var/run/compartment/node/agent.sock',
       }),
     );
+  });
+
+  it('reports current Docker Hub registry from image refs when install state has no image registry', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths(temporaryDirectories);
+    await writeCurrentInstallFiles(
+      installPaths,
+      'registry',
+      createCurrentEnvironmentText({ imageRegistry: 'docker-hub' }),
+    );
+    mocks.inspectSelfHostedRuntimeServices.mockResolvedValueOnce(createServiceInspections({}));
+    const { getSelfHostedSystemStatus } = await import('../src/system-status');
+
+    const result: SystemStatusResponse = await getSelfHostedSystemStatus({});
+
+    expect(result.imageRegistry).toBe('docker-hub');
   });
 
   it('requires the node agent socket in status env files', async (): Promise<void> => {
@@ -389,6 +405,8 @@ async function writeCurrentInstallFiles(
 }
 
 function createCurrentEnvironmentText(options: CurrentEnvironmentTextOptions = {}): string {
+  const imageRepositoryPrefix: string =
+    options.imageRegistry === 'docker-hub' ? 'docker.io/compartmentdev' : 'ghcr.io/compartmentdev';
   const publicHttpPort: number = options.publicHttpPort ?? 80;
   const publicHttpsPort: number = options.publicHttpsPort ?? 443;
   const publicProtocol: 'http' | 'https' = options.publicProtocol ?? 'https';
@@ -399,11 +417,11 @@ COMPARTMENT_PUBLIC_PROTOCOL=${publicProtocol}
 COMPARTMENT_PUBLIC_HTTP_PORT=${publicHttpPort.toString()}
 COMPARTMENT_PUBLIC_HTTPS_PORT=${publicHttpsPort.toString()}
 COMPARTMENT_API_URL=http://127.0.0.1:39444
-COMPARTMENT_API_IMAGE=ghcr.io/compartmentdev/compartment-api:0.2.0
-COMPARTMENT_CADDY_IMAGE=ghcr.io/compartmentdev/compartment-caddy:0.2.0
-COMPARTMENT_EDGE_IMAGE=ghcr.io/compartmentdev/compartment-edge:0.2.0
-COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:0.2.0
-COMPARTMENT_WORKER_IMAGE=ghcr.io/compartmentdev/compartment-worker:0.2.0
+COMPARTMENT_API_IMAGE=${imageRepositoryPrefix}/compartment-api:0.2.0
+COMPARTMENT_CADDY_IMAGE=${imageRepositoryPrefix}/compartment-caddy:0.2.0
+COMPARTMENT_EDGE_IMAGE=${imageRepositoryPrefix}/compartment-edge:0.2.0
+COMPARTMENT_RUNTIME_PROBE_IMAGE=${imageRepositoryPrefix}/compartment-runtime-probe:0.2.0
+COMPARTMENT_WORKER_IMAGE=${imageRepositoryPrefix}/compartment-worker:0.2.0
 COMPARTMENT_NODE_VERSION=0.2.0
 COMPARTMENT_ROLLBACK_RETENTION_LIMIT=
 COMPARTMENT_NODE_AGENT_SOCKET=/var/run/compartment/node/agent.sock
