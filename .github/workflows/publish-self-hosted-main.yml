@@ -103,6 +103,20 @@ jobs:
         with:
           version: v0.70.0
 
+      - name: Set up Docker Scout
+        env:
+          DOCKER_SCOUT_CLI_SHA256: 07b075d532efd3ca04893a0a1845cb57df3b367e2c4b4717658e2425caa8e1f8
+          DOCKER_SCOUT_CLI_VERSION: 1.21.0
+        run: |
+          mkdir -p "$HOME/.docker/cli-plugins"
+          curl --fail --location --show-error \
+            "https://github.com/docker/scout-cli/releases/download/v${DOCKER_SCOUT_CLI_VERSION}/docker-scout_${DOCKER_SCOUT_CLI_VERSION}_linux_amd64.tar.gz" \
+            --output /tmp/docker-scout.tar.gz
+          echo "${DOCKER_SCOUT_CLI_SHA256}  /tmp/docker-scout.tar.gz" | sha256sum --check
+          tar -xzf /tmp/docker-scout.tar.gz -C /tmp docker-scout
+          install -m 0755 /tmp/docker-scout "$HOME/.docker/cli-plugins/docker-scout"
+          docker scout version
+
       - name: Download self-hosted image artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
@@ -112,17 +126,18 @@ jobs:
       - name: Load self-hosted images
         run: gunzip -c ./.compartment/release-assets/self-hosted-images.tar.gz | docker load
 
-      - name: Scan self-hosted images before publish
-        run: |
-          node ./scripts/deploy/secure-self-hosted-images.mjs \
-            --scan-only \
-            "sha-${GITHUB_SHA}"
-
       - name: Log in to Docker Hub
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Scan self-hosted images before publish
+        run: |
+          node ./scripts/deploy/secure-self-hosted-images.mjs \
+            --scan-only \
+            --docker-scout \
+            "sha-${GITHUB_SHA}"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
@@ -184,7 +199,7 @@ jobs:
           push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
           push_dockerhub_image compartment-runtime-probe packages/node/Dockerfile.runtime-probe.self-hosted "${runtime_probe_args[@]}"
 
-          node ./scripts/deploy/secure-self-hosted-images.mjs --scan-only "$STAGING_TAG"
+          node ./scripts/deploy/secure-self-hosted-images.mjs --scan-only --docker-scout "$STAGING_TAG"
 
           promote_dockerhub_image compartment-api
           promote_dockerhub_image compartment-caddy

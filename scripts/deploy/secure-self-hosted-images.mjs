@@ -36,6 +36,7 @@ async function main() {
 
   if (options.scanOnly) {
     scanSelfHostedImages({
+      dockerScout: options.dockerScout,
       repositoryPrefix: options.repositoryPrefix,
       repositoryRoot,
       tags: options.tags,
@@ -82,8 +83,9 @@ export async function secureSelfHostedImages(input) {
 }
 
 export function scanSelfHostedImages(input) {
-  const failedImageRefs = [];
+  const dockerScoutFailedImageRefs = [];
   const scannedImageRefs = new Set();
+  const trivyFailedImageRefs = [];
 
   for (const serviceName of selfHostedRuntimeImageArtifacts) {
     for (const tag of input.tags) {
@@ -97,17 +99,33 @@ export function scanSelfHostedImages(input) {
       try {
         scanSelfHostedImage(input.repositoryRoot, imageRef);
       } catch (error) {
-        failedImageRefs.push(imageRef);
+        trivyFailedImageRefs.push(imageRef);
         process.stderr.write(`Trivy scan failed for self-hosted image ${imageRef}: ${readErrorMessage(error)}\n`);
+      }
+
+      if (input.dockerScout === true) {
+        process.stdout.write(`Checking fixable self-hosted image vulnerabilities with Docker Scout for ${imageRef}.\n`);
+        try {
+          scanSelfHostedImageWithDockerScout(input.repositoryRoot, imageRef);
+        } catch (error) {
+          dockerScoutFailedImageRefs.push(imageRef);
+          process.stderr.write(
+            `Docker Scout scan failed for self-hosted image ${imageRef}: ${readErrorMessage(error)}\n`,
+          );
+        }
       }
       scannedImageRefs.add(imageRef);
     }
   }
 
-  reportSelfHostedImageScanFailures(failedImageRefs);
+  reportSelfHostedImageScanFailures({
+    dockerScoutFailedImageRefs,
+    trivyFailedImageRefs,
+  });
 }
 
 export function readSecureSelfHostedImageOptions(args) {
+  let dockerScout = false;
   const tags = [];
   let outputDirectory = defaultOutputDirectory;
   let repositoryPrefix = defaultRepositoryPrefix;
@@ -119,6 +137,11 @@ export function readSecureSelfHostedImageOptions(args) {
 
     if (argument === '--scan-only') {
       scanOnly = true;
+      continue;
+    }
+
+    if (argument === '--docker-scout') {
+      dockerScout = true;
       continue;
     }
 
@@ -153,6 +176,10 @@ export function readSecureSelfHostedImageOptions(args) {
     throw new Error('Cannot combine --validate-provenance-attestation with --scan-only.');
   }
 
+  if (dockerScout && !scanOnly) {
+    throw new Error('Can only use --docker-scout with --scan-only.');
+  }
+
   if (validateProvenanceAttestation && tags.length !== 0) {
     throw new Error('Expected no image tags with --validate-provenance-attestation.');
   }
@@ -164,6 +191,7 @@ export function readSecureSelfHostedImageOptions(args) {
   }
 
   return {
+    dockerScout,
     outputDirectory,
     repositoryPrefix,
     scanOnly,
@@ -288,42 +316,78 @@ function scanSelfHostedImage(repositoryRoot, imageRef) {
   );
 }
 
-function reportSelfHostedImageScanFailures(failedImageRefs) {
-  if (failedImageRefs.length === 0) {
+function scanSelfHostedImageWithDockerScout(repositoryRoot, imageRef) {
+  runCommand(
+    'docker',
+    ['scout', 'cves', '--only-fixed', '--only-severity', 'critical,high', '--exit-code', imageRef],
+    repositoryRoot,
+  );
+}
+
+function reportSelfHostedImageScanFailures(input) {
+  if (input.trivyFailedImageRefs.length === 0 && input.dockerScoutFailedImageRefs.length === 0) {
     return;
   }
 
-  const failureMessage = buildSelfHostedImageScanFailureMessage(failedImageRefs);
-  writeSelfHostedImageScanFailureSummary(failedImageRefs);
+  const failureMessage = buildSelfHostedImageScanFailureMessage(input);
+  writeSelfHostedImageScanFailureSummary(input);
   throw new Error(failureMessage);
 }
 
-function buildSelfHostedImageScanFailureMessage(failedImageRefs) {
-  const failureList = failedImageRefs.map((imageRef) => `- ${imageRef}`).join('\n');
-  return `Trivy reported fixable HIGH/CRITICAL vulnerabilities in ${failedImageRefs.length} self-hosted image(s):\n${failureList}`;
+function buildSelfHostedImageScanFailureMessage(input) {
+  return [
+    buildScannerFailureMessage('Trivy', input.trivyFailedImageRefs),
+    buildScannerFailureMessage('Docker Scout', input.dockerScoutFailedImageRefs),
+  ]
+    .filter((message) => message !== null)
+    .join('\n\n');
 }
 
-function writeSelfHostedImageScanFailureSummary(failedImageRefs) {
+function buildScannerFailureMessage(scannerName, failedImageRefs) {
+  if (failedImageRefs.length === 0) {
+    return null;
+  }
+
+  const failureList = failedImageRefs.map((imageRef) => `- ${imageRef}`).join('\n');
+  return `${scannerName} reported fixable HIGH/CRITICAL vulnerabilities in ${failedImageRefs.length} self-hosted image(s):\n${failureList}`;
+}
+
+function writeSelfHostedImageScanFailureSummary(input) {
   const summaryPath = process.env.GITHUB_STEP_SUMMARY?.trim();
   if (summaryPath === undefined || summaryPath === '') {
     return;
   }
 
-  const tableRows = failedImageRefs.map((imageRef) => `| \`${escapeMarkdownTableCell(imageRef)}\` |`).join('\n');
-  const summary = `### Self-hosted image vulnerability scan
+  const summary = [
+    buildScannerFailureSummary('Trivy', input.trivyFailedImageRefs),
+    buildScannerFailureSummary('Docker Scout', input.dockerScoutFailedImageRefs),
+  ]
+    .filter((section) => section !== null)
+    .join('\n\n');
 
-Trivy found fixable HIGH/CRITICAL vulnerabilities in ${failedImageRefs.length} self-hosted image(s).
+  try {
+    appendFileSync(summaryPath, `${summary}\n`, 'utf8');
+  } catch (error) {
+    process.stderr.write(`Failed to write image scan summary: ${readErrorMessage(error)}\n`);
+  }
+}
+
+function buildScannerFailureSummary(scannerName, failedImageRefs) {
+  if (failedImageRefs.length === 0) {
+    return null;
+  }
+
+  const tableRows = failedImageRefs.map((imageRef) => `| \`${escapeMarkdownTableCell(imageRef)}\` |`).join('\n');
+  const summary = `### ${scannerName} self-hosted image vulnerability scan
+
+${scannerName} found fixable HIGH/CRITICAL vulnerabilities in ${failedImageRefs.length} self-hosted image(s).
 
 | Image |
 | --- |
 ${tableRows}
 `;
 
-  try {
-    appendFileSync(summaryPath, summary, 'utf8');
-  } catch (error) {
-    process.stderr.write(`Failed to write Trivy scan summary: ${readErrorMessage(error)}\n`);
-  }
+  return summary;
 }
 
 function escapeMarkdownTableCell(value) {
