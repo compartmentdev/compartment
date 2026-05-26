@@ -9,6 +9,7 @@ import type { SsoOidcFlowRow, SsoOidcProviderRow } from '../../src/queries/sso-o
 import { clearApiRuntime, configureApiRuntime } from '../../src/runtime/runtime';
 import type { decryptVariableValueFromStorage } from '../../src/lib/variables-crypto';
 import type { readOidcCallbackClaims } from '../../src/services/sso-oidc/sso-oidc-client.adapter';
+import type { OidcCallbackInput } from '../../src/services/sso-oidc/sso-oidc-client.adapter.types';
 import type {
   completeCliBrowserSsoLogin,
   issueBrowserSsoLoginResult,
@@ -249,15 +250,15 @@ describe('SSO OIDC login service', (): void => {
     });
     mocks.issueBrowserSsoLoginResult.mockResolvedValueOnce(result);
 
-    await expect(completeBrowserSsoLogin(createSsoCallbackUrl('code=oidc-code&state=sso-state'))).resolves.toBe(result);
+    const currentUrl: URL = createSsoCallbackUrl('code=oidc-code&state=sso-state');
+
+    await expect(completeBrowserSsoLogin(currentUrl)).resolves.toBe(result);
 
     expect(mocks.consumeSsoOidcFlow).toHaveBeenCalledWith(flow.id, expect.any(Date));
-    expect(mocks.readOidcCallbackClaims).toHaveBeenCalledWith(
-      expect.objectContaining({
-        currentUrl: createSsoCallbackUrl('code=oidc-code&state=sso-state'),
-        expectedState: flow.oidcState,
-      }),
-    );
+    expect(mocks.readOidcCallbackClaims).toHaveBeenCalledTimes(1);
+    const oidcCallbackClaimsInput: OidcCallbackInput | undefined = mocks.readOidcCallbackClaims.mock.calls[0]?.[0];
+    expect(oidcCallbackClaimsInput?.currentUrl.href).toBe(currentUrl.href);
+    expect(oidcCallbackClaimsInput?.expectedState).toBe(flow.oidcState);
     expect(mocks.issueBrowserSsoLoginResult).toHaveBeenCalledWith(
       flow,
       {
