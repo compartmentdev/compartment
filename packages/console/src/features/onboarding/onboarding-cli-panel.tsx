@@ -1,7 +1,14 @@
-import { useEffect, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
+import { browserProjectCreatePathname } from '../../browser-public-paths';
 import type { OnboardingProcessStep } from './onboarding-page.types';
-import { readCliInstallerLoginCommand } from './onboarding-cli-command';
+import { readCliInstallerLoginCommand, readCliLoginCommand } from './onboarding-cli-command';
 import { readOnboardingDeployStatusState } from './onboarding-deploy-status-state';
+import {
+  CliLoginModeSelector,
+  readCliLoginHeaderCopy,
+  type CliLoginHeaderCopy,
+  type CliLoginMode,
+} from './onboarding-cli-login-mode-selector';
 import { OnboardingCommandBlock, OnboardingStatus } from './onboarding-shared';
 import {
   refreshCliLoginStatus,
@@ -13,6 +20,7 @@ import {
 
 interface CliOnboardingPanelProps {
   consoleOrigin: string;
+  flowPathname: string;
   onDeployCompleted: () => void;
   onDeployStarted: () => void;
   onLoginConfirmed: () => void;
@@ -24,6 +32,7 @@ interface CliOnboardingPanelProps {
 
 interface CliLoginStepProps {
   consoleOrigin: string;
+  flowPathname: string;
   onLoginConfirmed: () => void;
   principalEmail: string;
   selectedOrganizationSlug: string;
@@ -36,7 +45,13 @@ interface CliDeployCommandStepProps {
   sessionId: string | undefined;
 }
 
-type CliLoginCommandContentProps = Omit<CliLoginStepProps, 'onLoginConfirmed'>;
+interface CliLoginCommandContentProps {
+  consoleOrigin: string;
+  mode: CliLoginMode;
+  principalEmail: string;
+  selectedOrganizationSlug: string;
+  sessionId: string | undefined;
+}
 
 type CliWaitingStepProps = Pick<
   CliOnboardingPanelProps,
@@ -57,6 +72,7 @@ export function CliOnboardingPanel(props: Readonly<CliOnboardingPanelProps>): JS
 function readCliLoginStepProps(props: Readonly<CliOnboardingPanelProps>): CliLoginStepProps {
   return {
     consoleOrigin: props.consoleOrigin,
+    flowPathname: props.flowPathname,
     onLoginConfirmed: props.onLoginConfirmed,
     principalEmail: props.principalEmail,
     selectedOrganizationSlug: props.selectedOrganizationSlug,
@@ -81,13 +97,20 @@ function readCliWaitingStepProps(props: Readonly<CliOnboardingPanelProps>): CliW
 }
 
 function CliLoginStep(props: Readonly<CliLoginStepProps>): JSX.Element {
+  const showInstallChoice: boolean = props.flowPathname === browserProjectCreatePathname;
+  const [mode, setMode] = useState<CliLoginMode>('install');
+  const selectedMode: CliLoginMode = showInstallChoice ? mode : 'install';
+  const headerCopy: CliLoginHeaderCopy = readCliLoginHeaderCopy(selectedMode);
+
   useCliLoginStatusNavigation(props.selectedOrganizationSlug, props.sessionId, props.onLoginConfirmed);
 
   return (
     <div className="grid gap-5 p-5">
-      <CliLoginHeader />
+      <CliLoginHeader copy={headerCopy} />
+      {showInstallChoice ? <CliLoginModeSelector mode={selectedMode} onSelect={setMode} /> : null}
       <CliLoginCommandContent
         consoleOrigin={props.consoleOrigin}
+        mode={selectedMode}
         principalEmail={props.principalEmail}
         selectedOrganizationSlug={props.selectedOrganizationSlug}
         sessionId={props.sessionId}
@@ -105,6 +128,7 @@ function readCliLoginRefreshHandler(props: Readonly<CliLoginStepProps>): () => P
 
 function CliLoginCommandContent({
   consoleOrigin,
+  mode,
   principalEmail,
   selectedOrganizationSlug,
   sessionId,
@@ -115,7 +139,7 @@ function CliLoginCommandContent({
 
   return (
     <OnboardingCommandBlock
-      command={readCliInstallerLoginCommand({
+      command={readCliLoginCommandForMode(mode, {
         consoleOrigin,
         principalEmail,
         selectedOrganizationSlug,
@@ -125,13 +149,30 @@ function CliLoginCommandContent({
   );
 }
 
-function CliLoginHeader(): JSX.Element {
+function readCliLoginCommandForMode(
+  mode: CliLoginMode,
+  props: Readonly<Omit<CliLoginCommandContentProps, 'mode'>>,
+): string {
+  return mode === 'installed'
+    ? readCliLoginCommand({
+        consoleOrigin: props.consoleOrigin,
+        principalEmail: props.principalEmail,
+        selectedOrganizationSlug: props.selectedOrganizationSlug,
+        sessionId: props.sessionId!,
+      })
+    : readCliInstallerLoginCommand({
+        consoleOrigin: props.consoleOrigin,
+        principalEmail: props.principalEmail,
+        selectedOrganizationSlug: props.selectedOrganizationSlug,
+        sessionId: props.sessionId!,
+      });
+}
+
+function CliLoginHeader({ copy }: Readonly<{ copy: CliLoginHeaderCopy }>): JSX.Element {
   return (
     <div>
-      <h2 className="text-[24px] font-semibold leading-8">Install and log in with CLI</h2>
-      <p className="mt-2 max-w-2xl text-[14px] leading-6 text-[#485259]">
-        Install the local CLI, then finish the session-bound login for this runtime.
-      </p>
+      <h2 className="text-[24px] font-semibold leading-8">{copy.title}</h2>
+      <p className="mt-2 max-w-2xl text-[14px] leading-6 text-[#485259]">{copy.description}</p>
     </div>
   );
 }

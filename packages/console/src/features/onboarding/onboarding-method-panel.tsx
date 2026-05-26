@@ -5,6 +5,7 @@ import type { OnboardingProcessStep, OnboardingRouteNavigate, OnboardingRouteSta
 
 interface OnboardingMethodPanelProps {
   consoleOrigin: string;
+  flowPathname: string;
   principalEmail: string;
   selectedOrganizationSlug: string;
   navigate: OnboardingRouteNavigate;
@@ -13,6 +14,7 @@ interface OnboardingMethodPanelProps {
 
 interface CliOnboardingPanelAdapterProps {
   consoleOrigin: string;
+  flowPathname: string;
   navigate: OnboardingRouteNavigate;
   routeState: OnboardingRouteState;
   principalEmail: string;
@@ -53,6 +55,7 @@ export function OnboardingMethodPanel(props: Readonly<OnboardingMethodPanelProps
   ) : (
     <CliOnboardingPanelAdapter
       consoleOrigin={props.consoleOrigin}
+      flowPathname={props.flowPathname}
       navigate={props.navigate}
       principalEmail={props.principalEmail}
       routeState={props.routeState}
@@ -81,6 +84,7 @@ function GitOnboardingPanelAdapter({
 
 function CliOnboardingPanelAdapter({
   consoleOrigin,
+  flowPathname,
   navigate,
   principalEmail,
   routeState,
@@ -93,6 +97,7 @@ function CliOnboardingPanelAdapter({
   return (
     <CliOnboardingPanel
       consoleOrigin={consoleOrigin}
+      flowPathname={flowPathname}
       onDeployCompleted={handlers.onDeployCompleted}
       onDeployStarted={handlers.onDeployStarted}
       onLoginConfirmed={handlers.onLoginConfirmed}
