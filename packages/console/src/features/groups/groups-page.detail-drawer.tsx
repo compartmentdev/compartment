@@ -2,6 +2,7 @@ import { type AccessGroupListRow, type PermissionKey } from '@compartment/contra
 import type { UseMutationResult } from '@tanstack/react-query';
 import { type JSX, useEffect, useState } from 'react';
 import { Button } from '../../components/ui/button';
+import { Trash } from '../../components/ui/icons';
 import { useBrowserMutation } from '../../lib/browser-query-client';
 import { AccessAdditionalCard, readAccessDangerActionButtonClassName } from '../access/access-additional-card';
 import { AccessDrawerCollapsibleSection } from '../access/access-drawer-collapsible-section';
@@ -37,7 +38,6 @@ export function GroupDetailDrawer({ state }: Readonly<GroupDetailDrawerProps>): 
       closeHref={buildGroupsPageHref(state.data, null)}
       header={<GroupDrawerHeader isEditing={isEditing} setIsEditing={setIsEditing} state={state} />}
       onNavigate={state.onNavigate}
-      panelClassName="max-w-[920px]"
       subtitle="Review membership, shared assignments, and inherited permissions."
       title={state.selectedGroup?.name ?? 'Group'}
     >
@@ -168,8 +168,9 @@ function DeleteGroupButton({ state }: Readonly<GroupDetailDrawerProps>): JSX.Ele
       onClick={createDeleteGroupHandler(selectedGroup.name, mutation)}
       size="sm"
       type="button"
-      variant="outline"
+      variant="destructive"
     >
+      <Trash aria-hidden="true" />
       {mutation.isPending ? 'Deleting...' : 'Delete group'}
     </Button>
   );

@@ -38,7 +38,7 @@ export function ComboBox(props: Readonly<ComboBoxProps>): JSX.Element {
     <div className={cn('relative', props.className)}>
       <Input
         autoComplete="off"
-        className="h-7 w-full"
+        className="h-9 w-full"
         disabled={props.disabled}
         onBlur={createComboBoxInputBlurHandler(props.onFocusChange, setIsFocused)}
         onChange={createComboBoxInputChangeHandler(props.onInputChange)}

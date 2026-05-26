@@ -33,6 +33,7 @@ const legacyCompartmentAppSessionCookieName: string = 'compartment_app_session';
 const legacyCompartmentSessionCookieName: string = 'compartment_session';
 const reservedSecureCompartmentSessionCookieName: string = '__Secure-compartment_session';
 const appReservedCookieProbeName: string = 'app_reserved_cookie_probe';
+const selfHostedRouteRequestTimeoutMs: number = 30_000;
 
 interface PageResponseHeader {
   name: string;
@@ -189,13 +190,14 @@ async function createAppSessionToken(baseUrl: URL, routeUrl: string, account: Co
   try {
     const loginRedirectResponse: APIResponse = await api.get(new URL('/probe/whoami', routeUrl).toString(), {
       maxRedirects: 0,
+      timeout: selfHostedRouteRequestTimeoutMs,
     });
     expect(loginRedirectResponse.status()).toBe(302);
     const loginUrl: URL = readLocationUrl(loginRedirectResponse, 'compartment login redirect');
     const loginFlowState: string = readRequiredSearchParam(loginUrl, 'state');
     readSetCookieValue(loginRedirectResponse, readCompartmentAppFlowCookieName(loginFlowState));
 
-    const csrfResponse: APIResponse = await api.get(loginUrl.toString());
+    const csrfResponse: APIResponse = await api.get(loginUrl.toString(), { timeout: selfHostedRouteRequestTimeoutMs });
     expect(csrfResponse.status()).toBe(200);
     const csrfToken: string = readSetCookieValue(csrfResponse, compartmentCsrfCookieName);
 
@@ -217,7 +219,10 @@ async function createAppSessionToken(baseUrl: URL, routeUrl: string, account: Co
     expect(loginResponse.status()).toBe(200);
     const loginPayload: LoginResponse = loginResponseSchema.parse(await loginResponse.json());
 
-    const callbackResponse: APIResponse = await api.get(requireRedirectTo(loginPayload), { maxRedirects: 0 });
+    const callbackResponse: APIResponse = await api.get(requireRedirectTo(loginPayload), {
+      maxRedirects: 0,
+      timeout: selfHostedRouteRequestTimeoutMs,
+    });
     expect(callbackResponse.status()).toBe(302);
 
     return readSetCookieValue(callbackResponse, compartmentAppSessionCookieName);
@@ -312,6 +317,7 @@ async function expectAppPrincipalEmail(page: Page, routeUrl: string, expectedEma
 async function expectAppAccessRedirect(page: Page, routeUrl: string): Promise<void> {
   const response: APIResponse = await page.request.get(new URL('/probe/whoami', routeUrl).toString(), {
     maxRedirects: 0,
+    timeout: selfHostedRouteRequestTimeoutMs,
   });
   expect(response.status()).toBe(302);
   const location: string | undefined = response.headers().location;

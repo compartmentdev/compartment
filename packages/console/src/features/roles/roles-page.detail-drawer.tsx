@@ -1,16 +1,16 @@
 import type { AccessRoleListRow, PermissionKey } from '@compartment/contracts/browser';
 import type { UseMutationResult } from '@tanstack/react-query';
 import type { JSX } from 'react';
-import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
-import { Box } from '../../components/ui/icons';
+import { Button } from '../../components/ui/button';
+import { Box, Pencil, Trash } from '../../components/ui/icons';
 import { useBrowserMutation } from '../../lib/browser-query-client';
 import { AccessAdditionalCard, readAccessDangerActionButtonClassName } from '../access/access-additional-card';
 import { AccessDrawerCollapsibleSection } from '../access/access-drawer-collapsible-section';
 import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
-import { AccessDrawerSection, AccessDrawerShell } from '../access/access-ui';
+import { accessDrawerHeaderActionButtonClassName, AccessDrawerSection, AccessDrawerShell } from '../access/access-ui';
 import { PermissionFamiliesCard } from '../access/access-permission-families';
 import { canManageBrowserRoles } from '../console/console-access';
 import { handleRoleDelete, readRoleDeleteConfirmationMessage } from './roles-page.actions';
@@ -35,7 +35,6 @@ export function RoleDetailDrawer({ state }: Readonly<RoleDetailDrawerProps>): JS
       closeHref={buildRolesPageHref(state.data)}
       header={<RoleDetailHeader role={role} state={state} />}
       onNavigate={state.onNavigate}
-      panelClassName="max-w-[760px]"
       title={role.name}
     >
       <RoleDetailContent role={role} state={state} />
@@ -61,15 +60,16 @@ function RoleDetailHeader({ role, state }: Readonly<{ role: AccessRoleListRow; s
 function EditRoleButton({ roleId, state }: Readonly<{ roleId: string; state: RolesPageState }>): JSX.Element {
   return (
     <Button
-      className="h-7 px-2 text-[12px]"
+      className={accessDrawerHeaderActionButtonClassName}
       onClick={(): void => {
         state.onNavigate(buildRolesPageHref(state.data, { mode: 'edit', roleId }));
       }}
       size="sm"
       type="button"
-      variant="outline"
+      variant="soft"
     >
-      Edit role
+      <Pencil className="size-4" />
+      Edit
     </Button>
   );
 }
@@ -97,9 +97,7 @@ function RoleSummaryCard({ role }: Readonly<{ role: AccessRoleListRow }>): JSX.E
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <h3 className="text-[22px] font-semibold tracking-tight">{role.name}</h3>
-            <Badge variant={role.kind === 'system' ? 'outline' : 'default'}>
-              {role.kind === 'system' ? 'System' : 'Custom'}
-            </Badge>
+            <Badge variant="soft">{role.kind === 'system' ? 'System' : 'Custom'}</Badge>
           </div>
           <p className="text-[13px] text-muted-foreground">{readRoleDescription(role)}</p>
         </div>
@@ -152,8 +150,9 @@ function DeleteRoleButton({ role, state }: Readonly<{ role: AccessRoleListRow; s
       onClick={createRoleDeleteHandler(role.name, mutation)}
       size="sm"
       type="button"
-      variant="outline"
+      variant="destructive"
     >
+      <Trash aria-hidden="true" />
       {mutation.isPending ? 'Removing...' : 'Remove role'}
     </Button>
   );

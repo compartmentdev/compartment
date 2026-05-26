@@ -1,7 +1,8 @@
 import type { JSX } from 'react';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import { Button } from '../../components/ui/button';
-import { SquarePen } from '../../components/ui/icons';
+import { Drama } from '../../components/ui/icons';
+import { accessDrawerHeaderActionButtonClassName } from '../access/access-ui';
 import { buildRolesHref } from './roles-page.query';
 
 interface ManageRolesButtonProps {
@@ -18,9 +19,9 @@ export function ManageRolesButton({ onNavigate, organizationSlug }: Readonly<Man
       }}
       size="sm"
       type="button"
-      variant="outline"
+      variant="soft"
     >
-      <SquarePen className="size-3.5" />
+      <Drama className="size-4" />
       Manage roles
     </Button>
   );
@@ -34,7 +35,7 @@ function readManageRolesHref(organizationSlug: string | null): string {
 }
 
 function readManageRolesButtonClassName(): string {
-  return 'h-[22px] shrink-0 gap-1.5 rounded-md border-[#cfe0ff] bg-[#f5f9ff] px-2 text-[12px] font-medium leading-none text-[#2b6fe8] hover:bg-[#edf4ff]';
+  return accessDrawerHeaderActionButtonClassName;
 }
 
 function readCurrentRelativeHref(): string {

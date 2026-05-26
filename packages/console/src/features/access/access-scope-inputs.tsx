@@ -2,8 +2,10 @@ import {
   type AccessAssignmentScopeProjectOption,
   type AccessAssignmentScopeType,
 } from '@compartment/contracts/browser';
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { MultiComboBox, type MultiComboBoxOption } from '../../components/multi-combo-box';
+import { cn } from '../../lib/utils';
+import { accessDrawerFieldClassName, accessDrawerPrimaryActionButtonClassName } from './access-ui';
 import {
   type AccessScopeEnvironmentOption,
   readScopeEnvironmentOptions,
@@ -20,11 +22,19 @@ interface AccessScopeInputsProps {
   setProjectNames: (values: string[]) => void;
 }
 
+interface InheritedScopeFieldProps {
+  children: ReactNode;
+  className?: string | undefined;
+}
+
+const accessAssignmentMultiSelectTriggerClassName: string = accessDrawerFieldClassName;
+const accessAssignmentInheritedFieldClassName: string = 'md:pl-10';
+
 export const accessAssignmentPrimaryRowClassName: string =
-  'grid gap-2 md:grid-cols-[minmax(0,270px)_14px_minmax(0,219px)_160px] md:items-center md:gap-[14px]';
-const accessAssignmentSecondaryRowClassName: string =
-  'grid gap-2 md:col-span-4 md:grid-cols-[minmax(0,270px)_14px_minmax(0,219px)_160px] md:gap-[14px]';
-export const accessAssignmentSubmitButtonClassName: string = 'h-7 w-[160px] justify-center px-3';
+  'grid gap-2 md:grid-cols-[minmax(0,262px)_16px_minmax(0,219px)_auto] md:items-center';
+const accessAssignmentSecondaryRowClassName: string = 'grid gap-2 md:col-span-4 md:[grid-template-columns:subgrid]';
+export const accessAssignmentSelectClassName: string = cn('h-9 text-[13px]', accessDrawerFieldClassName);
+export const accessAssignmentSubmitButtonClassName: string = accessDrawerPrimaryActionButtonClassName;
 
 export function AccessScopeInputs(props: Readonly<AccessScopeInputsProps>): JSX.Element | null {
   if (props.scopeType === 'organization') {
@@ -56,15 +66,18 @@ export function isAccessScopeSelectionReady(
 
 function ProjectScopeSelect({ props }: Readonly<{ props: AccessScopeInputsProps }>): JSX.Element {
   return (
-    <MultiComboBox
-      className="w-full md:col-start-1"
-      emptyMessage="No matching projects."
-      onChange={createProjectChangeHandler(props)}
-      options={readProjectOptions(props.scopeProjects)}
-      placeholder="Select project"
-      searchPlaceholder="Search projects"
-      values={props.projectNames}
-    />
+    <InheritedScopeField className="md:col-start-1">
+      <MultiComboBox
+        className="w-full"
+        emptyMessage="No matching projects."
+        onChange={createProjectChangeHandler(props)}
+        options={readProjectOptions(props.scopeProjects)}
+        placeholder="Select project"
+        searchPlaceholder="Search projects"
+        triggerClassName={accessAssignmentMultiSelectTriggerClassName}
+        values={props.projectNames}
+      />
+    </InheritedScopeField>
   );
 }
 
@@ -74,16 +87,31 @@ function EnvironmentScopeSelect({ props }: Readonly<{ props: AccessScopeInputsPr
   }
 
   return (
-    <MultiComboBox
-      className="w-full md:col-start-3"
-      disabled={props.projectNames.length === 0}
-      emptyMessage={props.projectNames.length === 0 ? 'Select a project first.' : 'No matching environments.'}
-      onChange={props.setEnvironmentValues}
-      options={readEnvironmentOptions(props.scopeProjects, props.projectNames)}
-      placeholder={props.projectNames.length === 0 ? 'Select project first' : 'Select environment'}
-      searchPlaceholder="Search environments"
-      values={props.environmentValues}
-    />
+    <InheritedScopeField className="md:col-start-3">
+      <MultiComboBox
+        className="w-full"
+        disabled={props.projectNames.length === 0}
+        emptyMessage={props.projectNames.length === 0 ? 'Select a project first.' : 'No matching environments.'}
+        onChange={props.setEnvironmentValues}
+        options={readEnvironmentOptions(props.scopeProjects, props.projectNames)}
+        placeholder={props.projectNames.length === 0 ? 'Select project first' : 'Select environment'}
+        searchPlaceholder="Search environments"
+        triggerClassName={accessAssignmentMultiSelectTriggerClassName}
+        values={props.environmentValues}
+      />
+    </InheritedScopeField>
+  );
+}
+
+function InheritedScopeField({ children, className }: Readonly<InheritedScopeFieldProps>): JSX.Element {
+  return (
+    <div className={cn('relative w-full', accessAssignmentInheritedFieldClassName, className)}>
+      <div
+        className="pointer-events-none absolute left-0 top-[-8px] hidden h-[27px] w-10 rounded-bl-[10px] border-b border-l border-[var(--cpt-border-default,rgba(0,0,0,0.08))] md:block"
+        data-access-inherited-connector
+      />
+      {children}
+    </div>
   );
 }
 

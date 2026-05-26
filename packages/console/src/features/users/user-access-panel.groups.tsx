@@ -3,9 +3,14 @@ import { type ChangeEvent, type FormEvent, type JSX } from 'react';
 import type { BrowserUsersPageResult } from '../../services/browser-users.service.types';
 import { Select } from '../../components/select';
 import { Button } from '../../components/ui/button';
+import { Plus } from '../../components/ui/icons';
 import { formatGroupScopeSummary } from '../access/access-display';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
-import { AccessDrawerSection } from '../access/access-ui';
+import {
+  accessDrawerPrimaryActionButtonClassName,
+  accessDrawerRowActionButtonClassName,
+  AccessDrawerSection,
+} from '../access/access-ui';
 import { type UserAccessPanelSetter } from './user-access-panel.actions';
 import {
   type UserGroupMutation,
@@ -46,7 +51,7 @@ interface UserGroupMembershipRowProps {
 export function UserGroupMembershipsCard(props: Readonly<UserGroupMembershipsCardProps>): JSX.Element {
   return (
     <AccessDrawerSection title="Groups">
-      <div className="space-y-3">
+      <div className="space-y-4">
         {readUserGroupAddForm(props)}
         <UserGroupMembershipRows
           access={props.access}
@@ -95,7 +100,7 @@ function UserGroupAddForm(props: Readonly<UserGroupAddFormProps>): JSX.Element {
 function UserGroupSelect({ props }: Readonly<{ props: UserGroupAddFormProps }>): JSX.Element {
   return (
     <Select
-      className="h-7"
+      className="h-9"
       containerClassName="flex-1"
       onChange={(event: ChangeEvent<HTMLSelectElement>): void => props.setGroupId(event.target.value)}
       value={props.groupId}
@@ -116,8 +121,9 @@ function renderUserGroupOption(group: AccessGroupSummary): JSX.Element {
 
 function UserGroupAddButton({ disabled, isPending }: Readonly<{ disabled: boolean; isPending: boolean }>): JSX.Element {
   return (
-    <Button className="h-7 px-3" disabled={disabled} size="sm" type="submit" variant="default">
-      {isPending ? 'Adding...' : 'Add group'}
+    <Button className={accessDrawerPrimaryActionButtonClassName} disabled={disabled} type="submit" variant="default">
+      {isPending ? null : <Plus className="size-4" />}
+      {isPending ? 'Adding...' : 'Add user to group'}
     </Button>
   );
 }
@@ -194,7 +200,7 @@ function UserGroupMembershipRow(props: Readonly<UserGroupMembershipRowProps>): J
   );
 
   return (
-    <AccessDrawerListRow className="md:grid-cols-[120px_120px_minmax(0,1fr)_auto]">
+    <AccessDrawerListRow className="md:grid-cols-[144px_116px_minmax(0,1fr)_auto]">
       <div className="text-[13px] font-semibold leading-[18px]">{props.group.name}</div>
       <div className="text-[12px] leading-4 text-[var(--cpt-text-secondary,#485259)]">
         {readAssignmentCountLabel(props.group.assignmentCount)}
@@ -220,7 +226,7 @@ function UserGroupRemoveButton({ props }: Readonly<{ props: UserGroupMembershipR
 
   return (
     <Button
-      className="h-[22px] px-3 text-[12px]"
+      className={accessDrawerRowActionButtonClassName}
       disabled={mutation.isPending}
       onClick={createUserGroupRemoveHandler(mutation)}
       size="sm"

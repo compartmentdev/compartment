@@ -32,6 +32,7 @@ interface AutocompleteMultiSelectProps {
   options: AutocompleteMultiSelectOption[];
   placeholder: string;
   searchPlaceholder: string;
+  triggerClassName?: string | undefined;
   values: string[];
 }
 
@@ -41,6 +42,7 @@ interface AutocompleteMultiSelectTriggerProps {
   onClick: () => void;
   placeholder: string;
   selectedOptions: AutocompleteMultiSelectOption[];
+  triggerClassName?: string | undefined;
 }
 
 interface AutocompleteMultiSelectMenuProps {
@@ -75,6 +77,7 @@ export function AutocompleteMultiSelect(props: Readonly<AutocompleteMultiSelectP
         onClick={onToggle}
         placeholder={props.placeholder}
         selectedOptions={selectedOptions}
+        triggerClassName={props.triggerClassName}
       />
       {renderAutocompleteMultiSelectMenu(props, isOpen, query, setQuery, filteredOptions)}
     </div>
@@ -109,8 +112,11 @@ function AutocompleteMultiSelectTrigger(props: Readonly<AutocompleteMultiSelectT
   return (
     <button
       className={cn(
-        'flex h-7 w-full items-center justify-between gap-2 overflow-hidden rounded-md border border-input bg-background px-2.5 text-left text-[13px] text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50',
-        props.isOpen ? 'ring-2 ring-ring/60 ring-offset-2 ring-offset-background' : undefined,
+        'flex h-9 w-full items-center justify-between gap-2 overflow-hidden rounded-md border border-input bg-background px-3 text-left text-[13px] text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50',
+        props.isOpen && props.triggerClassName === undefined
+          ? 'ring-2 ring-ring/60 ring-offset-2 ring-offset-background'
+          : undefined,
+        props.triggerClassName,
       )}
       disabled={props.disabled}
       onClick={props.onClick}

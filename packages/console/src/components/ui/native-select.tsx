@@ -1,7 +1,7 @@
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { useEffect, useId, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react';
 import { cn } from '../../lib/utils';
-import { Check, ChevronsUpDown } from './icons';
+import { Check, ChevronDown } from './icons';
 import {
   emptySelectableOptionRadixValue,
   readNativeSelectItemKey,
@@ -158,7 +158,7 @@ function NativeSelectTrigger({ labelledBy, props, triggerRef }: Readonly<NativeS
     <SelectPrimitive.Trigger {...readNativeSelectTriggerProps(props, labelledBy, triggerRef)}>
       <SelectPrimitive.Value placeholder={props.placeholderLabel} />
       <SelectPrimitive.Icon asChild>
-        <ChevronsUpDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground opacity-70" />
+        <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );

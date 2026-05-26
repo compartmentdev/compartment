@@ -1,7 +1,15 @@
 import type { ButtonHTMLAttributes, JSX } from 'react';
 import { cn } from '../../lib/utils';
 
-export type ButtonVariant = 'accent' | 'default' | 'ghost' | 'outline' | 'secondary' | 'soft';
+export type ButtonVariant =
+  | 'accent'
+  | 'default'
+  | 'destructive'
+  | 'ghost'
+  | 'outline'
+  | 'secondary'
+  | 'soft'
+  | 'success';
 type ButtonSize = 'default' | 'lg' | 'sm' | 'xs';
 
 interface ButtonVariantInput {
@@ -47,6 +55,8 @@ function readButtonVariantClassName(variant: ButtonVariant): string {
       return 'button-accent-surface';
     case 'default':
       return 'bg-primary text-primary-foreground hover:bg-primary/92';
+    case 'destructive':
+      return 'button-destructive-surface';
     case 'ghost':
       return 'text-foreground hover:bg-accent hover:text-accent-foreground';
     case 'outline':
@@ -54,5 +64,7 @@ function readButtonVariantClassName(variant: ButtonVariant): string {
     case 'secondary':
     case 'soft':
       return 'button-soft-surface';
+    case 'success':
+      return 'button-success-surface';
   }
 }

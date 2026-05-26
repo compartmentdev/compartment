@@ -7,17 +7,19 @@ import {
 import { type ChangeEvent, type FormEvent, type JSX, type ReactNode } from 'react';
 import { Select } from '../../components/select';
 import { Button } from '../../components/ui/button';
+import { Plus } from '../../components/ui/icons';
 import type { BrowserGroupsPageResult } from '../../services/browser-groups.service.types';
 import { formatBrowserAccessAssignmentScope } from '../../lib/access-assignment-browser';
 import { formatAssignmentAccessSummary } from '../access/access-display';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
 import {
   accessAssignmentPrimaryRowClassName,
+  accessAssignmentSelectClassName,
   accessAssignmentSubmitButtonClassName,
   AccessScopeInputs,
   isAccessScopeSelectionReady,
 } from '../access/access-scope-inputs';
-import { AccessDrawerSection } from '../access/access-ui';
+import { accessDrawerRowActionButtonClassName, AccessDrawerSection } from '../access/access-ui';
 import type { GroupsPageSetter } from './groups-page.actions';
 import {
   type GroupAssignmentMutation,
@@ -106,7 +108,7 @@ function GroupAssignmentsForm(props: Readonly<GroupAssignmentsCardProps>): JSX.E
 function GroupScopeSelect(props: Readonly<GroupScopeSelectProps>): JSX.Element {
   return (
     <Select
-      className="h-7 text-[13px]"
+      className={accessAssignmentSelectClassName}
       containerClassName="w-full"
       onChange={(event: ChangeEvent<HTMLSelectElement>): void =>
         props.setScopeType(event.target.value as AccessAssignmentScopeType)
@@ -123,7 +125,7 @@ function GroupScopeSelect(props: Readonly<GroupScopeSelectProps>): JSX.Element {
 function GroupRoleSelect(props: Readonly<GroupRoleSelectProps>): JSX.Element {
   return (
     <Select
-      className="h-7 text-[13px]"
+      className={accessAssignmentSelectClassName}
       containerClassName="w-full"
       onChange={(event: ChangeEvent<HTMLSelectElement>): void => props.setRoleId(event.target.value)}
       required
@@ -153,6 +155,7 @@ function GroupAssignmentSubmitButton({
       type="submit"
       variant="default"
     >
+      {isPending ? null : <Plus className="size-4" />}
       {isPending ? 'Adding...' : 'Add assignment'}
     </Button>
   );
@@ -245,7 +248,7 @@ function GroupAssignmentRemoveButton({ props }: Readonly<{ props: GroupAssignmen
 
   return (
     <Button
-      className="h-[22px] px-3 text-[12px]"
+      className={accessDrawerRowActionButtonClassName}
       disabled={mutation.isPending}
       onClick={createGroupAssignmentDeleteHandler(mutation)}
       size="sm"

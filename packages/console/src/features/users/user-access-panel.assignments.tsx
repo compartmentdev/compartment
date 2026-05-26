@@ -9,15 +9,17 @@ import type { BrowserUsersPageResult } from '../../services/browser-users.servic
 import { Select } from '../../components/select';
 import { formatBrowserAccessAssignmentScope } from '../../lib/access-assignment-browser';
 import { Button } from '../../components/ui/button';
+import { Plus } from '../../components/ui/icons';
 import { formatAssignmentAccessSummary } from '../access/access-display';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
 import {
   accessAssignmentPrimaryRowClassName,
+  accessAssignmentSelectClassName,
   accessAssignmentSubmitButtonClassName,
   AccessScopeInputs,
   isAccessScopeSelectionReady,
 } from '../access/access-scope-inputs';
-import { AccessDrawerSection } from '../access/access-ui';
+import { accessDrawerRowActionButtonClassName, AccessDrawerSection } from '../access/access-ui';
 import type { UserAccessPanelSetter } from './user-access-panel.actions';
 import {
   type UserAssignmentMutation,
@@ -64,7 +66,7 @@ export interface UserDirectAssignmentRowProps {
 export function UserDirectAssignmentsCard(props: Readonly<UserDirectAssignmentsCardProps>): JSX.Element {
   return (
     <AccessDrawerSection actions={props.actions} title="Direct assignments">
-      <div className="space-y-3">
+      <div className="space-y-4">
         {props.canManageRoles ? <UserDirectAssignmentForm {...props} /> : null}
         <UserDirectAssignmentRows
           assignments={props.access.directAssignments}
@@ -111,6 +113,7 @@ function UserDirectAssignmentSubmitButton({
       type="submit"
       variant="default"
     >
+      {isPending ? null : <Plus className="size-4" />}
       {isPending ? 'Adding...' : 'Add assignment'}
     </Button>
   );
@@ -133,7 +136,7 @@ function createUserAssignmentSubmitHandler(
 function UserRoleSelect(props: Readonly<UserRoleSelectProps>): JSX.Element {
   return (
     <Select
-      className="h-7 text-[13px]"
+      className={accessAssignmentSelectClassName}
       containerClassName="w-full"
       onChange={(event: ChangeEvent<HTMLSelectElement>): void => props.setRoleId(event.target.value)}
       required
@@ -154,7 +157,7 @@ function UserRoleSelect(props: Readonly<UserRoleSelectProps>): JSX.Element {
 function UserScopeSelect(props: Readonly<UserScopeSelectProps>): JSX.Element {
   return (
     <Select
-      className="h-7 text-[13px]"
+      className={accessAssignmentSelectClassName}
       containerClassName="w-full"
       onChange={(event: ChangeEvent<HTMLSelectElement>): void =>
         props.setScopeType(event.target.value as AccessAssignmentScopeType)
@@ -215,7 +218,7 @@ function renderAssignmentRows(
 
 function UserDirectAssignmentRow(props: Readonly<UserDirectAssignmentRowProps>): JSX.Element {
   return (
-    <AccessDrawerListRow className="md:grid-cols-[120px_120px_minmax(0,1fr)_auto]">
+    <AccessDrawerListRow className="md:grid-cols-[144px_116px_minmax(0,1fr)_auto]">
       <div className="text-[13px] font-semibold leading-[18px]">{props.assignment.roleName}</div>
       <div className="text-[12px] leading-4 text-[var(--cpt-text-secondary,#485259)]">
         {formatBrowserAccessAssignmentScope(props.assignment.scope)}
@@ -240,7 +243,7 @@ function UserAssignmentRemoveButton({ props }: Readonly<{ props: UserDirectAssig
 
   return (
     <Button
-      className="h-[22px] px-3 text-[12px]"
+      className={accessDrawerRowActionButtonClassName}
       disabled={mutation.isPending}
       onClick={createUserAssignmentDeleteHandler(mutation)}
       size="sm"

@@ -79,7 +79,7 @@ describe('group detail edit draft state', (): void => {
     );
 
     try {
-      await clickButton(mountedProbe.container, 'Edit group');
+      await clickButton(mountedProbe.container, 'Edit');
       await updateFieldValue(requireNameInput(mountedProbe.container), 'Operators Plus');
       await updateFieldValue(requireDescriptionField(mountedProbe.container), 'Draft description');
 
@@ -99,12 +99,12 @@ describe('group detail edit draft state', (): void => {
     const mountedProbe: MountedGroupsEditorProbe = await mountGroupsEditorProbe(createGroupsPageResult(null));
 
     try {
-      await clickButton(mountedProbe.container, 'Edit group');
+      await clickButton(mountedProbe.container, 'Edit');
       await updateFieldValue(requireNameInput(mountedProbe.container), 'Operators Plus');
       await updateFieldValue(requireDescriptionField(mountedProbe.container), 'Draft description');
 
-      await clickButton(mountedProbe.container, 'Cancel edit');
-      await clickButton(mountedProbe.container, 'Edit group');
+      await clickButton(mountedProbe.container, 'Cancel');
+      await clickButton(mountedProbe.container, 'Edit');
 
       expect(requireNameInput(mountedProbe.container).value).toBe('Operators');
       expect(requireDescriptionField(mountedProbe.container).value).toBe('');

@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
+import { accessDrawerActionButtonClassName, accessDrawerFieldClassName } from '../access/access-ui';
 
 interface BaseVisibleUserInvitationState {
   email: string;
@@ -38,7 +39,7 @@ export function UserInvitationPanel({
     <div className="space-y-2">
       <UserInvitationDescription state={state} />
       {state.kind === 'activation_link' ? (
-        <Input className="h-7 text-[12px]" readOnly value={state.activationUrl} />
+        <Input className={`h-8 text-[12px] ${accessDrawerFieldClassName}`} readOnly value={state.activationUrl} />
       ) : null}
       <UserInvitationActions onCopy={onCopy} onDismiss={onDismiss} onOpen={onOpen} state={state} />
       <UserInvitationError state={state} />
@@ -83,7 +84,7 @@ function UserInvitationActionButton({
   }
 
   return (
-    <Button onClick={onClick} size="sm" type="button" variant="outline">
+    <Button className={accessDrawerActionButtonClassName} onClick={onClick} size="sm" type="button" variant="soft">
       {label}
     </Button>
   );

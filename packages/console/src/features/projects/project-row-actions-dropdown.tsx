@@ -138,7 +138,9 @@ function ProjectActionMenuItem({
 
   return (
     <DropdownMenuItem
-      className={action === 'delete' ? 'text-red-700 focus:text-red-800' : undefined}
+      className={
+        action === 'delete' ? 'text-destructive focus:text-destructive data-[highlighted]:text-destructive' : undefined
+      }
       disabled={mutation.isPending}
       onSelect={createProjectActionSelectHandler(action, projectName, mutation)}
     >

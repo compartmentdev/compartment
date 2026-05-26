@@ -1,12 +1,18 @@
 import { type ChangeEvent, type FormEvent, type JSX } from 'react';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { Button } from '../../components/ui/button';
-import { SquarePen, Users } from '../../components/ui/icons';
+import { Pencil, Users, X } from '../../components/ui/icons';
 import { Input } from '../../components/ui/input';
 import { useBrowserMutation } from '../../lib/browser-query-client';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
-import { AccessDrawerSection } from '../access/access-ui';
+import {
+  accessDrawerActionButtonClassName,
+  accessDrawerFieldClassName,
+  accessDrawerHeaderActionButtonClassName,
+  accessDrawerTextareaClassName,
+  AccessDrawerSection,
+} from '../access/access-ui';
 import { canManageBrowserGroups } from '../console/console-access';
 import { handleGroupRenameAction } from './groups-page.actions';
 import { buildGroupsPageHref } from './groups-page.href';
@@ -75,12 +81,18 @@ function GroupHeaderEditButton({
   setIsEditing: (value: boolean) => void;
   state: GroupsPageState;
 }>): JSX.Element {
-  const editLabel: string = isEditing ? 'Cancel edit' : 'Edit group';
+  const editLabel: string = isEditing ? 'Cancel' : 'Edit';
   const onEditToggle: () => void = createEditToggleHandler(isEditing, setIsEditing, state);
 
   return (
-    <Button className="h-7 px-2 text-[12px]" onClick={onEditToggle} size="sm" type="button" variant="outline">
-      <SquarePen className="size-3.5" />
+    <Button
+      className={accessDrawerHeaderActionButtonClassName}
+      onClick={onEditToggle}
+      size="sm"
+      type="button"
+      variant="soft"
+    >
+      {isEditing ? <X className="size-4" /> : <Pencil className="size-4" />}
       {editLabel}
     </Button>
   );
@@ -106,7 +118,7 @@ function GroupNameField({ state }: Readonly<{ state: GroupsPageState }>): JSX.El
     <label className="block text-[13px] font-medium">
       Name
       <Input
-        className="mt-1"
+        className={`mt-1 ${accessDrawerFieldClassName}`}
         onChange={(event: ChangeEvent<HTMLInputElement>): void => state.setGroupName(event.target.value)}
         required
         value={state.groupName}
@@ -120,7 +132,7 @@ function GroupDescriptionField({ state }: Readonly<{ state: GroupsPageState }>):
     <label className="block text-[13px] font-medium">
       Description
       <textarea
-        className="mt-1 min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-[13px] outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className={`mt-1 min-h-24 ${accessDrawerTextareaClassName}`}
         onChange={(event: ChangeEvent<HTMLTextAreaElement>): void => state.setGroupDescription(event.target.value)}
         value={state.groupDescription}
       />
@@ -134,13 +146,42 @@ function GroupSummaryActions({
 }: Readonly<{ isPending: boolean; onCancel: () => void }>): JSX.Element {
   return (
     <div className="flex items-center gap-2">
-      <Button disabled={isPending} size="sm" type="submit" variant="outline">
-        {isPending ? 'Saving...' : 'Save group'}
-      </Button>
-      <Button disabled={isPending} onClick={onCancel} size="sm" type="button" variant="outline">
-        Cancel
-      </Button>
+      <GroupSummarySaveButton isPending={isPending} />
+      <GroupSummaryCancelButton isPending={isPending} onCancel={onCancel} />
     </div>
+  );
+}
+
+function GroupSummarySaveButton({ isPending }: Readonly<{ isPending: boolean }>): JSX.Element {
+  return (
+    <Button
+      className={accessDrawerActionButtonClassName}
+      disabled={isPending}
+      size="sm"
+      type="submit"
+      variant="success"
+    >
+      {isPending ? 'Saving...' : 'Save group'}
+    </Button>
+  );
+}
+
+function GroupSummaryCancelButton({
+  isPending,
+  onCancel,
+}: Readonly<{ isPending: boolean; onCancel: () => void }>): JSX.Element {
+  return (
+    <Button
+      className={accessDrawerActionButtonClassName}
+      disabled={isPending}
+      onClick={onCancel}
+      size="sm"
+      type="button"
+      variant="soft"
+    >
+      <X className="size-4" />
+      Cancel
+    </Button>
   );
 }
 

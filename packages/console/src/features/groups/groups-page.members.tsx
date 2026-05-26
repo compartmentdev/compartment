@@ -2,12 +2,17 @@ import type { AccessGroupMemberSummary } from '@compartment/contracts/browser';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { type FormEvent, type JSX } from 'react';
 import { Button } from '../../components/ui/button';
+import { Plus } from '../../components/ui/icons';
 import { StatusTag } from '../../components/ui/status-tag';
 import type { BrowserGroupsPageResult } from '../../services/browser-groups.service.types';
 import { useBrowserMutation } from '../../lib/browser-query-client';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
-import { AccessDrawerSection } from '../access/access-ui';
+import {
+  accessDrawerPrimaryActionButtonClassName,
+  accessDrawerRowActionButtonClassName,
+  AccessDrawerSection,
+} from '../access/access-ui';
 import {
   handleGroupMemberAddAction,
   handleGroupMemberDeleteAction,
@@ -99,7 +104,13 @@ function GroupMemberAddForm(props: Readonly<GroupMemberAddFormProps>): JSX.Eleme
         organizationSlug={props.data.selectedOrganizationSlug}
         setMemberEmail={props.setMemberEmail}
       />
-      <Button className="h-7 px-3" disabled={mutation.isPending} size="sm" type="submit" variant="default">
+      <Button
+        className={accessDrawerPrimaryActionButtonClassName}
+        disabled={mutation.isPending}
+        type="submit"
+        variant="default"
+      >
+        {mutation.isPending ? null : <Plus className="size-4" />}
         {mutation.isPending ? 'Adding...' : 'Add member'}
       </Button>
     </form>
@@ -214,7 +225,7 @@ function GroupMemberRemoveButton({ props }: Readonly<{ props: GroupMemberRowProp
 
   return (
     <Button
-      className="h-[22px] px-3 text-[12px]"
+      className={accessDrawerRowActionButtonClassName}
       disabled={mutation.isPending}
       onClick={createGroupMemberRemoveHandler(mutation)}
       size="sm"

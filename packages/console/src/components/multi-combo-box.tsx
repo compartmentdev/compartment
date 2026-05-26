@@ -15,6 +15,7 @@ interface MultiComboBoxProps {
   options: MultiComboBoxOption[];
   placeholder: string;
   searchPlaceholder: string;
+  triggerClassName?: string | undefined;
   values: string[];
 }
 

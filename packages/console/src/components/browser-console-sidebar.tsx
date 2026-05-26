@@ -19,7 +19,12 @@ import {
 } from './browser-console-sidebar-navigation';
 import { BrowserConsoleUserBlock } from './browser-console-user-menu';
 import { DismissibleAlert } from './dismissible-alert';
-import { Box, ScrollText, type LucideIcon, UserRound, Users } from './ui/icons';
+import { Box, type LucideIcon } from './ui/icons';
+import {
+  SidebarAuditLogsIcon as AuditLogsIcon,
+  SidebarGroupsIcon as GroupsIcon,
+  SidebarUsersIcon as UsersIcon,
+} from './ui/sidebar-navigation-icons';
 
 const compartmentSidebarLogoUrl: string = new URL('../assets/compartment-sidebar-logo.svg', import.meta.url).href;
 
@@ -207,14 +212,16 @@ function readSecurityNavigationItems(
   const items: BrowserConsoleNavItem[] = [];
 
   if (canReadBrowserUsers(currentOrganizationPermissions) || canInviteBrowserUsers(currentOrganizationPermissions)) {
-    items.push(readSecurityNavigationItem(browserUsersPathname, selectedOrganizationSlug, UserRound, 'Users', 'users'));
+    items.push(readSecurityNavigationItem(browserUsersPathname, selectedOrganizationSlug, UsersIcon, 'Users', 'users'));
   }
   if (canReadBrowserGroups(currentOrganizationPermissions)) {
-    items.push(readSecurityNavigationItem(browserGroupsPathname, selectedOrganizationSlug, Users, 'Groups', 'groups'));
+    items.push(
+      readSecurityNavigationItem(browserGroupsPathname, selectedOrganizationSlug, GroupsIcon, 'Groups', 'groups'),
+    );
   }
   if (canReadBrowserAuditLogs(currentOrganizationPermissions)) {
     items.push(
-      readSecurityNavigationItem(browserAuditPathname, selectedOrganizationSlug, ScrollText, 'Audit logs', 'audit'),
+      readSecurityNavigationItem(browserAuditPathname, selectedOrganizationSlug, AuditLogsIcon, 'Audit logs', 'audit'),
     );
   }
 

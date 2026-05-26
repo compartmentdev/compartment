@@ -132,7 +132,7 @@ function RoleRemoveMenuItem({
 
   return (
     <DropdownMenuItem
-      className="text-red-700 focus:text-red-800"
+      className="text-destructive focus:text-destructive data-[highlighted]:text-destructive"
       disabled={mutation.isPending}
       onSelect={(): void => {
         if (!mutation.isPending && window.prompt(readRoleDeleteConfirmationMessage(role.name)) === role.name) {

@@ -2,6 +2,7 @@ import { inviteUserResponseSchema } from '@compartment/contracts/browser';
 import type { UseMutationResult } from '@tanstack/react-query';
 import type { ChangeEvent, FormEvent, JSX } from 'react';
 import { Button } from '../../components/ui/button';
+import { X } from '../../components/ui/icons';
 import { Input } from '../../components/ui/input';
 import { requestBrowserApi } from '../../lib/browser-api';
 import { normalizeBrowserActionErrorMessage, type BrowserActionFieldLabelMap } from '../../lib/browser-action-error';
@@ -10,7 +11,13 @@ import { usersApiPathname } from '../../routes/users/users-api-paths';
 import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
-import { AccessDrawerSection, AccessDrawerShell, useAccessDrawerCloseNavigation } from '../access/access-ui';
+import {
+  accessDrawerActionButtonClassName,
+  accessDrawerFieldClassName,
+  AccessDrawerSection,
+  AccessDrawerShell,
+  useAccessDrawerCloseNavigation,
+} from '../access/access-ui';
 import type { UserAccessPanelState } from './user-access-panel.state';
 import type { VisibleUserInvitationState } from './user-invitation';
 import { buildUsersHref } from './users-query';
@@ -82,7 +89,7 @@ function InviteEmailField({ state }: Readonly<InviteUserDrawerProps>): JSX.Eleme
         Email
       </span>
       <Input
-        className="h-7 text-[13px]"
+        className={accessDrawerFieldClassName}
         onChange={(event: ChangeEvent<HTMLInputElement>): void => state.setInviteEmail(event.target.value)}
         placeholder="name@example.com"
         required
@@ -105,13 +112,36 @@ function InviteDrawerActions({
 
   return (
     <div className="flex items-center justify-end gap-2">
-      <Button onClick={closeDrawer} size="sm" type="button" variant="outline">
-        Cancel
-      </Button>
-      <Button disabled={mutation.isPending} form={formId} size="sm" type="submit" variant="default">
-        {mutation.isPending ? 'Inviting...' : 'Invite user'}
-      </Button>
+      <InviteDrawerCancelButton closeDrawer={closeDrawer} />
+      <InviteDrawerSubmitButton formId={formId} isPending={mutation.isPending} />
     </div>
+  );
+}
+
+function InviteDrawerCancelButton({ closeDrawer }: Readonly<{ closeDrawer: () => void }>): JSX.Element {
+  return (
+    <Button className={accessDrawerActionButtonClassName} onClick={closeDrawer} size="sm" type="button" variant="soft">
+      <X className="size-4" />
+      Cancel
+    </Button>
+  );
+}
+
+function InviteDrawerSubmitButton({
+  formId,
+  isPending,
+}: Readonly<{ formId: string; isPending: boolean }>): JSX.Element {
+  return (
+    <Button
+      className={accessDrawerActionButtonClassName}
+      disabled={isPending}
+      form={formId}
+      size="sm"
+      type="submit"
+      variant="success"
+    >
+      {isPending ? 'Inviting...' : 'Invite user'}
+    </Button>
   );
 }
 

@@ -21,6 +21,8 @@ import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-
 
 const deploymentRunPollAttempts: number = 90;
 const deploymentRunPollDelayMs: number = 2_000;
+const blockedPublicControlPlanePollAttempts: number = 6;
+const blockedPublicControlPlanePollDelayMs: number = 1_000;
 const detachedDeploymentRunPattern: RegExp = /Run:\s+([A-Za-z0-9_]+)/u;
 const archivedProjectMessage: string = 'The requested project is archived.';
 const missingProjectMessage: string = 'The requested project was not found.';
@@ -56,17 +58,47 @@ interface StoppedDeploymentCandidate {
 
 export async function expectBlockedPublicControlPlanePaths(compartmentUrl: string): Promise<void> {
   for (const request of blockedPublicControlPlaneRequests) {
-    const response: CliHttpTextResponse = await sendCliHttpTextRequest(
-      new URL(request.pathname, compartmentUrl).toString(),
-      {
-        body: request.body,
-        headers: request.headers,
-        method: request.method,
-      },
-    );
-
-    expect(response.statusCode).toBe(404);
+    await expectBlockedPublicControlPlanePath(compartmentUrl, request);
   }
+}
+
+async function expectBlockedPublicControlPlanePath(
+  compartmentUrl: string,
+  request: BlockedPublicControlPlaneRequest,
+): Promise<void> {
+  let lastError: Error | null = null;
+  let lastStatusCode: number | null = null;
+
+  for (let attempt: number = 0; attempt < blockedPublicControlPlanePollAttempts; attempt += 1) {
+    try {
+      const response: CliHttpTextResponse = await sendCliHttpTextRequest(
+        new URL(request.pathname, compartmentUrl).toString(),
+        {
+          body: request.body,
+          headers: request.headers,
+          method: request.method,
+        },
+      );
+
+      if (response.statusCode === 404) {
+        return;
+      }
+      lastStatusCode = response.statusCode;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+
+    await sleep(blockedPublicControlPlanePollDelayMs);
+  }
+
+  if (lastStatusCode !== null) {
+    expect(lastStatusCode).toBe(404);
+  }
+  throw new Error(
+    `Timed out waiting for public control-plane path ${request.pathname} at ${compartmentUrl} to return 404. Last error: ${
+      lastError?.message ?? 'none'
+    }`,
+  );
 }
 
 export function requireDetachedDeploymentRunId(stdout: string): string {
