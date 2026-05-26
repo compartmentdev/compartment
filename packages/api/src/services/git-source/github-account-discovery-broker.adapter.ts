@@ -1,14 +1,14 @@
 import {
   buildCompartmentGitHubAccountDiscoveryResultPathname,
   compartmentGitHubAccountDiscoverySessionsPathname,
-  gitHubAccountDiscoveryResultResponseSchema,
   gitHubAccountDiscoveryStartResponseSchema,
+  type GitHubAccountDiscoveryAccountType,
   type GitHubAccountDiscoveryResultRequest,
-  type GitHubAccountDiscoveryResultResponse,
   type GitHubAccountDiscoveryStartRequest,
   type GitHubAccountDiscoveryStartResponse,
 } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
+import { z } from 'zod';
 import { createGitSourceRegistrationFailedError } from '../../errors/api-business-error';
 import { getApiConfig } from '../../runtime/runtime-access';
 import { fetchGitHubAccountDiscoveryBrokerHttp } from '../outbound-http.service';
@@ -16,6 +16,37 @@ import { fetchGitHubAccountDiscoveryBrokerHttp } from '../outbound-http.service'
 interface GitHubAccountDiscoveryBrokerConfig {
   token: string;
 }
+
+export interface GitHubAccountDiscoveryBrokerAccount {
+  avatarUrl: string | null;
+  login: string;
+  type: GitHubAccountDiscoveryAccountType;
+}
+
+export interface GitHubAccountDiscoveryBrokerResultResponse {
+  accounts: GitHubAccountDiscoveryBrokerAccount[];
+  user: GitHubAccountDiscoveryBrokerAccount;
+}
+
+const gitHubAccountDiscoveryBrokerAccountTypeSchema: z.ZodType<GitHubAccountDiscoveryAccountType> = z.enum([
+  'organization',
+  'user',
+]);
+
+const gitHubAccountDiscoveryBrokerAccountSchema: z.ZodType<GitHubAccountDiscoveryBrokerAccount> = z
+  .object({
+    avatarUrl: z.string().url().nullable(),
+    login: z.string().min(1),
+    type: gitHubAccountDiscoveryBrokerAccountTypeSchema,
+  })
+  .strict();
+
+const gitHubAccountDiscoveryBrokerResultResponseSchema: z.ZodType<GitHubAccountDiscoveryBrokerResultResponse> = z
+  .object({
+    accounts: z.array(gitHubAccountDiscoveryBrokerAccountSchema).min(1),
+    user: gitHubAccountDiscoveryBrokerAccountSchema,
+  })
+  .strict();
 
 export async function startGitHubAccountDiscoveryBrokerSession(
   input: GitHubAccountDiscoveryStartRequest,
@@ -35,13 +66,13 @@ export async function startGitHubAccountDiscoveryBrokerSession(
 
 export async function readGitHubAccountDiscoveryBrokerResult(
   input: GitHubAccountDiscoveryResultRequest,
-): Promise<GitHubAccountDiscoveryResultResponse> {
+): Promise<GitHubAccountDiscoveryBrokerResultResponse> {
   const brokerConfig: GitHubAccountDiscoveryBrokerConfig = requireGitHubAccountDiscoveryBrokerConfig();
   const response: JsonValue = await fetchBrokerJson(buildBrokerResultPath(input), {
     headers: buildBrokerAuthorizationHeader(brokerConfig.token),
   });
 
-  return gitHubAccountDiscoveryResultResponseSchema.parse(response);
+  return gitHubAccountDiscoveryBrokerResultResponseSchema.parse(response);
 }
 
 async function fetchBrokerJson(path: string, init?: RequestInit): Promise<JsonValue> {

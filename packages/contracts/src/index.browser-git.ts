@@ -23,6 +23,7 @@ export {
   gitHubAccountDiscoveryStartResponseSchema,
   gitHubAccountDiscoveryTokenSearchParamName,
   type GitHubAccountDiscoveryAccount,
+  type GitHubAccountDiscoveryAppInstallationStatus,
   type GitHubAccountDiscoveryResultRequest,
   type GitHubAccountDiscoveryResultResponse,
   type GitHubAccountDiscoveryStartRequest,

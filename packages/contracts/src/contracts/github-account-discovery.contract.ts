@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ContractSchema } from './schema.types';
 
 export type GitHubAccountDiscoveryAccountType = 'organization' | 'user';
+export type GitHubAccountDiscoveryAppInstallationStatus = 'installed' | 'not_installed';
 
 export interface GitHubAccountDiscoveryStartRequest {
   returnTo: string;
@@ -18,6 +19,7 @@ export interface GitHubAccountDiscoveryResultRequest {
 }
 
 export interface GitHubAccountDiscoveryAccount {
+  appInstallationStatus: GitHubAccountDiscoveryAppInstallationStatus;
   avatarUrl: string | null;
   login: string;
   type: GitHubAccountDiscoveryAccountType;
@@ -57,9 +59,12 @@ const gitHubAccountDiscoveryAccountTypeSchema: ContractSchema<GitHubAccountDisco
   'organization',
   'user',
 ]);
+const gitHubAccountDiscoveryAppInstallationStatusSchema: ContractSchema<GitHubAccountDiscoveryAppInstallationStatus> =
+  z.enum(['installed', 'not_installed']);
 
 const gitHubAccountDiscoveryAccountSchema: ContractSchema<GitHubAccountDiscoveryAccount> = z
   .object({
+    appInstallationStatus: gitHubAccountDiscoveryAppInstallationStatusSchema,
     avatarUrl: z.string().url().nullable(),
     login: z.string().min(1),
     type: gitHubAccountDiscoveryAccountTypeSchema,

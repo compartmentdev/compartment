@@ -14,10 +14,25 @@ describe('GitHub account discovery contract', (): void => {
     });
     const result: GitHubAccountDiscoveryResultResponse = gitHubAccountDiscoveryResultResponseSchema.parse({
       accounts: [
-        { avatarUrl: 'https://avatars.githubusercontent.com/u/1', login: 'octocat', type: 'user' },
-        { avatarUrl: null, login: 'example-labs', type: 'organization' },
+        {
+          appInstallationStatus: 'installed',
+          avatarUrl: 'https://avatars.githubusercontent.com/u/1',
+          login: 'octocat',
+          type: 'user',
+        },
+        {
+          appInstallationStatus: 'not_installed',
+          avatarUrl: null,
+          login: 'example-labs',
+          type: 'organization',
+        },
       ],
-      user: { avatarUrl: 'https://avatars.githubusercontent.com/u/1', login: 'octocat', type: 'user' },
+      user: {
+        appInstallationStatus: 'installed',
+        avatarUrl: 'https://avatars.githubusercontent.com/u/1',
+        login: 'octocat',
+        type: 'user',
+      },
     });
 
     expect(request.returnTo).toBe('https://console.example.com/sources/git/account-discovery');
