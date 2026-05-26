@@ -7,12 +7,12 @@ export async function resolveResourceReadinessHost(containerRef: string, resourc
 }
 
 export async function continueResourceReadinessPolling(deadline: number): Promise<boolean> {
-  if (Date.now() > deadline) {
+  if (Date.now() >= deadline) {
     return false;
   }
 
   await new Promise<void>((resolve: () => void): void => {
     setTimeout(resolve, resourceReadinessPollIntervalMs);
   });
-  return true;
+  return Date.now() < deadline;
 }

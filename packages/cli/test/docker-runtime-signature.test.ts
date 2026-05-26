@@ -196,6 +196,37 @@ describe('runtime image signature verification', (): void => {
       expect.any(Object),
     );
   });
+
+  it('matches Docker Hub local digests when Docker uses the index.docker.io host', async (): Promise<void> => {
+    mocks.runQuietDockerCommand.mockResolvedValueOnce(
+      createSuccessfulCommandResult(
+        JSON.stringify([`index.docker.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`]),
+      ),
+    );
+    mocks.runCommand.mockResolvedValueOnce(createSuccessfulCommandResult('verified'));
+
+    await expect(
+      verifyLocalSelfHostedRuntimeImageSignatures({
+        context: createDockerExecutionContext(),
+        imageRefs: createDockerHubImageRefs('0.2.0'),
+        services: ['api'],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mocks.runCommand).toHaveBeenCalledWith(
+      [
+        '/embedded/cosign',
+        'verify',
+        selfHostedRuntimeImageSignaturePolicy.cosignBundleFormatFlag,
+        '--certificate-oidc-issuer',
+        selfHostedRuntimeImageSignaturePolicy.certificateOidcIssuer,
+        '--certificate-identity-regexp',
+        selfHostedRuntimeImageSignaturePolicy.certificateIdentityRegexp,
+        `docker.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`,
+      ],
+      expect.any(Object),
+    );
+  });
 });
 
 function createSuccessfulCommandResult(stdout: string = ''): CommandResult {
