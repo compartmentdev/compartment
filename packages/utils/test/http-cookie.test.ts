@@ -36,10 +36,10 @@ describe('serializeCookie', (): void => {
   });
 
   it('rejects cookie values with header or cookie delimiters', (): void => {
-    expect((): string => serializeCookie('session', 'abc123; Path=/admin')).toThrow('Invalid cookie value.');
-    expect((): string => serializeCookie('session', 'abc123\r\nX-Injected: yes')).toThrow('Invalid cookie value.');
-    expect((): string => serializeCookie('session', 'abc123\u0001')).toThrow('Invalid cookie value.');
-    expect((): string => serializeCookie('session', 'abc123\u007f')).toThrow('Invalid cookie value.');
+    expect((): string => serializeCookie('session', 'abc123; Path=/admin')).toThrow(/^Invalid cookie value\.$/);
+    expect((): string => serializeCookie('session', 'abc123\r\nX-Injected: yes')).toThrow(/^Invalid cookie value\.$/);
+    expect((): string => serializeCookie('session', 'abc123\u0001')).toThrow(/^Invalid cookie value\.$/);
+    expect((): string => serializeCookie('session', 'abc123\u007f')).toThrow(/^Invalid cookie value\.$/);
   });
 
   it('rejects injected cookie Domain and Path attributes', (): void => {
