@@ -91,7 +91,7 @@ function renderTableRows(
 
 function ProjectsEmptyRow({ data, onNavigate }: Readonly<ProjectsEmptyRowProps>): JSX.Element {
   const onboardingLink: JSX.Element | null =
-    data.archiveState === 'active' && data.projectCount === 0 ? (
+    data.archiveState !== 'archived' && data.projectCount === 0 ? (
       <BrowserSoftNavigationLink
         className={buttonVariants({ variant: 'default' })}
         href={buildBrowserConsoleHref(browserProjectCreatePathname, data.selectedOrganizationSlug)}

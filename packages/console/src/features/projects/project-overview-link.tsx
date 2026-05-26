@@ -32,7 +32,7 @@ export function ProjectOverviewLink({
       })}
       onNavigate={onNavigate}
     >
-      Overview
+      Details
     </BrowserSoftNavigationLink>
   );
 }

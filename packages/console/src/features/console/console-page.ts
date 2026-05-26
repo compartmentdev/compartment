@@ -19,6 +19,12 @@ export function useBrowserPageData<T>(loaderData: T): [T, BrowserPageStateSetter
   return [data, setData];
 }
 
+export function useBrowserDocumentTitle(title: string): void {
+  useEffect((): void => {
+    document.title = title;
+  }, [title]);
+}
+
 export function useBrowserSoftNavigateHandler(): BrowserSoftNavigateHandler {
   const navigate: NavigateFunction = useNavigate();
 

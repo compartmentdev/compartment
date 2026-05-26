@@ -230,7 +230,15 @@ function mapProjectOrderBy(sortBy: BrowserProjectsSortBy): ProjectListOrderBy {
 }
 
 function readArchiveState(value: string | null): BrowserProjectsArchiveState {
-  return value === 'archived' ? 'archived' : 'active';
+  switch (value) {
+    case null:
+      return 'active';
+    case 'all':
+    case 'archived':
+      return value;
+    default:
+      return 'active';
+  }
 }
 
 function readSortBy(value: string | null): BrowserProjectsSortBy {

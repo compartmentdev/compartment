@@ -3,7 +3,7 @@ import { hasText } from '@compartment/utils';
 import type { FormEvent, JSX } from 'react';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import { BrowserSoftNavigationLink } from '../../components/browser-soft-navigation-link';
-import { BrowserConsoleShell } from '../../components/browser-console-header';
+import { BrowserConsoleShell, browserConsolePageBodyClassName } from '../../components/browser-console-header';
 import { Select } from '../../components/select';
 import { ServerTableFrame } from '../../components/server-table';
 import { ServerTableControls } from '../../components/server-table-controls';
@@ -53,11 +53,10 @@ export function AuditEventsView({ data, onNavigate }: Readonly<AuditEventsViewPr
       onNavigate={onNavigate}
       page="audit"
       principalEmail={data.principalEmail}
+      projectCount={data.projectCount}
       selectedOrganizationSlug={data.selectedOrganizationSlug}
     >
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5">
-        {renderAuditEventsContent(data, onNavigate)}
-      </div>
+      <div className={browserConsolePageBodyClassName}>{renderAuditEventsContent(data, onNavigate)}</div>
     </BrowserConsoleShell>
   );
 }

@@ -5,6 +5,12 @@ import { type BrowserConsoleShellData, useBrowserConsoleShellRouteData } from '.
 import { BrowserConsoleSidebar } from './browser-console-sidebar';
 
 export type BrowserConsolePage = 'audit' | 'groups' | 'projects' | 'roles' | 'users';
+const browserConsolePageFrameClassName: string = 'mx-auto min-h-screen w-full max-w-[1500px]';
+export const browserConsolePageClassName: string = 'flex min-h-screen w-full flex-col';
+export const browserConsolePageGutterClassName: string = 'px-4 sm:px-6 lg:px-8';
+export const browserConsolePageHeaderClassName: string = 'border-b border-border px-4 pb-6 pt-8 sm:px-6 lg:px-8';
+export const browserConsoleDetailPageHeaderClassName: string = 'border-b border-border px-4 pt-5 sm:px-6 lg:px-8';
+export const browserConsolePageBodyClassName: string = 'flex w-full flex-1 flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8';
 
 interface BrowserConsoleShellProps {
   children: ReactNode;
@@ -49,7 +55,9 @@ function BrowserConsoleShellBody(props: Readonly<BrowserConsoleShellBodyProps>):
         projectCount={props.projectCount}
         selectedOrganizationSlug={props.selectedOrganizationSlug}
       />
-      <main className="min-w-0 flex-1">{props.children}</main>
+      <main className="min-w-0 flex-1">
+        <div className={browserConsolePageFrameClassName}>{props.children}</div>
+      </main>
     </div>
   );
 }

@@ -2,11 +2,18 @@ import type { JSX } from 'react';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import { BrowserBreadcrumbs } from '../../components/browser-breadcrumbs';
 import type { BrowserBreadcrumbItem } from '../../components/browser-breadcrumbs.types';
-import { BrowserConsoleShell } from '../../components/browser-console-header';
-import { BrowserSoftNavigationLink } from '../../components/browser-soft-navigation-link';
+import {
+  BrowserConsoleDetailTitle,
+  readBrowserConsoleEnvironmentLabel,
+} from '../../components/browser-console-detail-header';
+import {
+  BrowserConsoleShell,
+  browserConsoleDetailPageHeaderClassName,
+  browserConsolePageBodyClassName,
+  browserConsolePageClassName,
+} from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
-import { buttonVariants } from '../../components/ui/button';
-import { cn } from '../../lib/utils';
+import { FileBox } from '../../components/ui/icons';
 import type { BrowserDeploymentDetailsPageResult } from '../../services/browser-deployment-history.service.types';
 import { buildBrowserConsoleProjectsHref } from '../console/console-hrefs';
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
@@ -25,10 +32,21 @@ interface DeploymentDetailsViewProps {
 }
 
 interface DeploymentDetailsPageHeaderProps {
-  backHref: string;
   onNavigate: BrowserSoftNavigateHandler;
   breadcrumbItems: BrowserBreadcrumbItem[];
-  scopeLabel: string;
+  environmentName: string;
+}
+
+interface DeploymentDetailsPageProps extends DeploymentDetailsViewProps {
+  organizationControl: JSX.Element | null;
+}
+
+interface DeploymentDetailsSectionsProps {
+  data: BrowserDeploymentDetailsPageResult;
+}
+
+interface DeploymentDetailsPageTitleProps {
+  environmentName: string;
 }
 
 export function DeploymentDetailsView({ data, onNavigate }: Readonly<DeploymentDetailsViewProps>): JSX.Element {
@@ -41,7 +59,7 @@ function DeploymentDetailsPage({
   data,
   onNavigate,
   organizationControl,
-}: Readonly<DeploymentDetailsViewProps & { organizationControl: JSX.Element | null }>): JSX.Element {
+}: Readonly<DeploymentDetailsPageProps>): JSX.Element {
   return (
     <BrowserConsoleShell
       currentOrganizationPermissions={data.currentOrganizationPermissions}
@@ -49,6 +67,7 @@ function DeploymentDetailsPage({
       onNavigate={onNavigate}
       page="projects"
       principalEmail={data.principalEmail}
+      projectCount={data.projectCount}
       selectedOrganizationSlug={data.selectedOrganizationSlug}
     >
       <DeploymentDetailsContent data={data} onNavigate={onNavigate} />
@@ -58,20 +77,21 @@ function DeploymentDetailsPage({
 
 function DeploymentDetailsContent({ data, onNavigate }: Readonly<DeploymentDetailsViewProps>): JSX.Element {
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5">
-      <DismissibleAlert message={data.errorMessage} variant="error" />
+    <div className={browserConsolePageClassName}>
       <DeploymentDetailsPageHeader
-        backHref={data.backHref}
         breadcrumbItems={readDeploymentDetailsBreadcrumbItems(data)}
+        environmentName={data.environmentName}
         onNavigate={onNavigate}
-        scopeLabel={data.environmentName}
       />
-      <DeploymentDetailsSections data={data} />
+      <section className={`${browserConsolePageBodyClassName} bg-background`}>
+        <DismissibleAlert message={data.errorMessage} variant="error" />
+        <DeploymentDetailsSections data={data} />
+      </section>
     </div>
   );
 }
 
-function DeploymentDetailsSections({ data }: Readonly<{ data: BrowserDeploymentDetailsPageResult }>): JSX.Element {
+function DeploymentDetailsSections({ data }: Readonly<DeploymentDetailsSectionsProps>): JSX.Element {
   return (
     <>
       <DeploymentDetailsSummarySection deployment={data.deployment} />
@@ -103,28 +123,28 @@ function readOrganizationControl(
 }
 
 function DeploymentDetailsPageHeader({
-  backHref,
   breadcrumbItems,
+  environmentName,
   onNavigate,
-  scopeLabel,
 }: Readonly<DeploymentDetailsPageHeaderProps>): JSX.Element {
   return (
-    <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-      <div className="flex min-w-0 flex-col gap-2">
+    <header className={browserConsoleDetailPageHeaderClassName}>
+      <div className="pb-6">
         <BrowserBreadcrumbs items={breadcrumbItems} onNavigate={onNavigate} />
-        <div className="flex flex-col gap-1">
-          <h1 className="text-lg font-semibold text-foreground">Deployment run details</h1>
-          <p className="text-[13px] text-muted-foreground">{scopeLabel}</p>
-        </div>
+        <DeploymentDetailsPageTitle environmentName={environmentName} />
       </div>
-      <BrowserSoftNavigationLink
-        className={cn(buttonVariants({ size: 'sm', variant: 'outline' }), 'w-fit')}
-        href={backHref}
-        onNavigate={onNavigate}
-      >
-        Deployments
-      </BrowserSoftNavigationLink>
     </header>
+  );
+}
+
+function DeploymentDetailsPageTitle({ environmentName }: Readonly<DeploymentDetailsPageTitleProps>): JSX.Element {
+  return (
+    <BrowserConsoleDetailTitle
+      badgeLabel={readDeploymentDetailsEnvironmentBadgeLabel(environmentName)}
+      icon={FileBox}
+      iconTone="blue"
+      title="Deployment run details"
+    />
   );
 }
 
@@ -152,4 +172,8 @@ function readDeploymentDetailsBreadcrumbItems(
       label: 'Run details',
     },
   ];
+}
+
+function readDeploymentDetailsEnvironmentBadgeLabel(environmentName: string): string {
+  return readBrowserConsoleEnvironmentLabel(environmentName, 'Environment');
 }

@@ -82,9 +82,12 @@ export class DeploymentDetailsPage {
     expect(response.steps.length).toBeGreaterThan(0);
     const step: DeploymentRunStepSummary = response.steps[0]!;
 
-    const timelineSection: Locator = this.page.locator('section').filter({
-      has: this.page.getByRole('heading', { name: 'Timeline' }),
-    });
+    const timelineSection: Locator = this.page
+      .locator('section')
+      .filter({
+        has: this.page.getByRole('heading', { name: 'Timeline' }),
+      })
+      .last();
     await expect(timelineSection).toBeVisible();
     await expect(timelineSection.getByText(step.message, { exact: true }).first()).toBeVisible();
     await expect(

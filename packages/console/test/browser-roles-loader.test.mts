@@ -3,6 +3,7 @@ import { loadRolesPageData } from '../src/features/roles/roles-loader';
 import {
   createLoaderArgs,
   createOrganizationListResponse,
+  createProjectCountResponse,
   createWhoamiResponse,
   readFetchPath,
   type BrowserFetchCall,
@@ -10,6 +11,9 @@ import {
   type FetchImplementation,
 } from './browser-client-pages.helpers';
 import { createJsonResponse } from './browser-test.fixtures';
+
+const browserProjectCountPath: string =
+  '/v1/projects?archiveState=active&detail=overview&orderBy=updatedAt&page=1&perPage=1&sort=desc';
 
 afterEach((): void => {
   vi.unstubAllGlobals();
@@ -32,6 +36,7 @@ describe('browser roles loader', (): void => {
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).toEqual([
       '/v1/orgs',
       '/v1/whoami',
+      browserProjectCountPath,
       '/v1/roles',
     ]);
   });
@@ -61,6 +66,9 @@ function createRolesFetchMock(): Mock<FetchImplementation> {
     }
     if (path === '/v1/whoami') {
       return createJsonResponse(createWhoamiResponse(['organization.role.read']));
+    }
+    if (path === browserProjectCountPath) {
+      return createJsonResponse(createProjectCountResponse());
     }
     if (path === '/v1/roles') {
       return createJsonResponse({

@@ -33,9 +33,9 @@ Open the browser control plane at `/`. Compartment redirects from that landing p
 
 Project pages are scoped by organization in the browser URL. For example, the Projects page for the `acme-dev` organization is `/orgs/acme-dev/projects`, and the project overview for `billing` is `/orgs/acme-dev/projects/billing`.
 
-The Projects table also exposes an `Open` action for live public routes. The primary `Open` target uses the project's canonical public route and prefers the browser-facing app entrypoint over API-style routes when a project exposes multiple live public targets. The browser also shows a menu so you can choose a specific environment or environment and service route.
+The Projects table exposes live public routes from each row's actions menu. When a project has one route, the menu item is `Open`. When it has multiple routes, choose the specific environment and service target from the menu.
 
-Project Overview opens on the environment that currently has the live route when that differs from the default environment. Use the environment tabs to switch scope. The `Project Deployments` action in that screen is scoped to the currently selected environment and opens run history for that environment.
+Project Overview opens on the environment that currently has the live route when that differs from the default environment. Use the environment tabs to switch scope. The Deployments action in that screen is scoped to the currently selected environment and opens run history for that environment.
 
 That run history stays environment-scoped. Use `Details` to inspect one deployment run, or `Rollback` on a historical succeeded run when you want to restore that recorded project rollout.
 

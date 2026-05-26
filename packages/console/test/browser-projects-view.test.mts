@@ -16,8 +16,10 @@ describe('browser projects view', (): void => {
 
     expect(html).toContain('Add project');
     expect(html).toContain('href="/orgs/acme-dev/projects/create"');
-    expect(html).toContain('bg-primary');
-    expect(html).toContain('lucide-folder-plus');
+    expect(html).toContain('button-accent-surface');
+    expect(html).not.toContain('shadow-sm');
+    expect(html).toContain('lucide-plus');
+    expect(html).not.toContain('lucide-folder-plus');
   });
 
   it('keeps the add project toolbar action for filtered empty results', (): void => {
@@ -58,7 +60,7 @@ describe('browser projects view', (): void => {
     expect(html).not.toContain('Deploy my first project');
   });
 
-  it('keeps the project state switch in the left control group and the CTA as the trailing action', (): void => {
+  it('renders the project header before full-width search and lifted state tabs', (): void => {
     const html: string = renderToStaticMarkup(
       createElement(ProjectsView, {
         data: createProjectsPageResult(),
@@ -70,9 +72,28 @@ describe('browser projects view', (): void => {
     expect(html).toContain('Search projects');
     expect(html).toContain('Active');
     expect(html).toContain('Archived');
+    expect(html).toContain('All');
     expect(html).toContain('Add project');
+    expect(html.indexOf('Projects')).toBeLessThan(html.indexOf('Add project'));
+    expect(html.indexOf('Add project')).toBeLessThan(html.indexOf('Search projects'));
     expect(html.indexOf('Search projects')).toBeLessThan(html.indexOf('Active'));
-    expect(html.indexOf('Archived')).toBeLessThan(html.indexOf('Add project'));
+    expect(html.indexOf('Archived')).toBeLessThan(html.indexOf('>All</span>'));
+  });
+
+  it('keeps the add project action on the all projects tab', (): void => {
+    const html: string = renderToStaticMarkup(
+      createElement(ProjectsView, {
+        data: createProjectsPageResult({
+          archiveState: 'all',
+        }),
+        onNavigate: (): void => undefined,
+        onProjectAction: async (): Promise<void> => await Promise.resolve(),
+      }),
+    );
+
+    expect(html).toContain('Add project');
+    expect(html).toContain('href="/orgs/acme-dev/projects/create"');
+    expect(html).toContain('href="/orgs/acme-dev/projects?archiveState=all"');
   });
 
   it('omits the add project toolbar action for archived projects', (): void => {
@@ -87,6 +108,35 @@ describe('browser projects view', (): void => {
     );
 
     expect(html).not.toContain('Add project');
+  });
+
+  it('keeps project open targets behind the row actions menu', (): void => {
+    const html: string = renderToStaticMarkup(
+      createElement(ProjectsView, {
+        data: createProjectsPageResult({
+          projects: [
+            createProjectSummary({
+              canManageArchive: false,
+              lifecycleAction: null,
+              openTargets: [
+                {
+                  environmentName: 'production',
+                  routeUrl: 'https://billing.apps.localhost',
+                  serviceName: 'web',
+                },
+              ],
+            }),
+          ],
+        }),
+        onNavigate: (): void => undefined,
+        onProjectAction: async (): Promise<void> => await Promise.resolve(),
+      }),
+    );
+
+    expect(html).toContain('Details');
+    expect(html).toContain('aria-label="Open actions for billing"');
+    expect(html).toContain('lucide-ellipsis');
+    expect(html).not.toContain('Choose environment to open');
   });
 });
 

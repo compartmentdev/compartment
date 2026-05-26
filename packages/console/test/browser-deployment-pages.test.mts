@@ -573,7 +573,8 @@ describe('browser deployment pages', (): void => {
     expect(historyHtml).toContain('drn_123');
     expect(historyHtml).toContain('web');
     expect(historyHtml).toContain('dep_123');
-    expect(historyHtml).toContain('>Actions<');
+    expect(historyHtml).toContain('aria-label="Open actions for release 42"');
+    expect(historyHtml).toContain('lucide-ellipsis');
     expect(historyHtml).toContain('aria-haspopup="menu"');
     expect(historyHtml).toContain('<colgroup>');
     expect(historyHtml).toContain('min-w-[1008px]');
@@ -691,7 +692,12 @@ describe('browser deployment pages', (): void => {
     expect(cleanedHistoryViewHtml).toContain('href="/orgs/acme-dev/projects/billing?environmentName=production"');
     expect(cleanedHistoryViewHtml).toContain('aria-current="page"');
     expect(cleanedHistoryViewHtml).toContain('title="Deployments">Deployments</span>');
-    expect(cleanedHistoryViewHtml).toContain('>Actions<');
+    expect(cleanedHistoryViewHtml).toContain('lucide-box');
+    expect(cleanedHistoryViewHtml).toContain('aria-label="Environment"');
+    expect(cleanedHistoryViewHtml).toContain('>Production</span>');
+    expect(cleanedHistoryViewHtml).toContain('Deployment runs, release history, and rollback status for production.');
+    expect(cleanedHistoryViewHtml).toContain('aria-label="Open actions for release 42"');
+    expect(cleanedHistoryViewHtml).toContain('lucide-ellipsis');
     expect(cleanedHistoryViewHtml).toContain('Rollback unavailable');
     expect(cleanedHistoryViewHtml).not.toContain('deployment_details_unavailable');
     const failedHtml: string = renderToStaticMarkup(
@@ -794,6 +800,9 @@ describe('browser deployment pages', (): void => {
       }),
     );
     expect(html).toContain('Deployment run details');
+    expect(html).toContain('lucide-file-box');
+    expect(html).toContain('aria-label="Environment"');
+    expect(html).toContain('>Production</span>');
     expect(html).toContain('aria-label="Breadcrumb"');
     expect(html).toContain('href="/orgs/acme-dev/projects"');
     expect(html).toContain('href="/orgs/acme-dev/projects/billing?environmentName=production"');

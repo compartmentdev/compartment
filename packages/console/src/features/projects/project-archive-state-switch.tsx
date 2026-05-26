@@ -5,8 +5,13 @@ import type {
 } from '../../services/browser-projects.service.types';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import { BrowserSoftNavigationLink } from '../../components/browser-soft-navigation-link';
+import {
+  TabsLiftedNavigation,
+  TabsLiftedTriggerContent,
+  readTabsLiftedTriggerClassName,
+} from '../../components/ui/tabs-lifted';
+import type { TabsLiftedIconName } from '../../components/ui/tabs-lifted.types';
 import { buildProjectsHref } from './projects-query';
-import { readProjectNavigationTabClassName } from './project-navigation-tabs';
 
 interface ProjectArchiveStateSwitchProps {
   data: BrowserProjectsPageResult;
@@ -16,10 +21,37 @@ interface ProjectArchiveStateSwitchProps {
 interface ProjectArchiveStateLinkProps {
   active: boolean;
   data: BrowserProjectsPageResult;
-  label: string;
   onNavigate: BrowserSoftNavigateHandler;
-  value: BrowserProjectsArchiveState;
+  tab: ProjectArchiveStateTab;
 }
+
+interface ProjectArchiveStateTab {
+  icon: TabsLiftedIconName;
+  label: string;
+  value: BrowserProjectsArchiveState;
+  widthClassName: string;
+}
+
+const projectArchiveStateTabs: readonly ProjectArchiveStateTab[] = [
+  {
+    icon: 'active',
+    label: 'Active',
+    value: 'active',
+    widthClassName: 'w-[79px]',
+  },
+  {
+    icon: 'archived',
+    label: 'Archived',
+    value: 'archived',
+    widthClassName: 'w-[95px]',
+  },
+  {
+    icon: 'all',
+    label: 'All',
+    value: 'all',
+    widthClassName: 'w-[56px]',
+  },
+];
 
 export function ProjectArchiveStateSwitch({
   data,
@@ -33,45 +65,42 @@ function renderProjectArchiveStateNavigation(
   onNavigate: BrowserSoftNavigateHandler,
 ): JSX.Element {
   return (
-    <nav aria-label="Project state" className="inline-flex shrink-0 items-center gap-5">
-      <ProjectArchiveStateLink
-        active={data.archiveState === 'active'}
-        data={data}
-        label="Active"
-        onNavigate={onNavigate}
-        value="active"
-      />
-      <ProjectArchiveStateLink
-        active={data.archiveState === 'archived'}
-        data={data}
-        label="Archived"
-        onNavigate={onNavigate}
-        value="archived"
-      />
-    </nav>
+    <TabsLiftedNavigation ariaLabel="Project state" className="shrink-0">
+      {projectArchiveStateTabs.map(
+        (tab: ProjectArchiveStateTab): JSX.Element => (
+          <ProjectArchiveStateLink
+            active={data.archiveState === tab.value}
+            data={data}
+            key={tab.value}
+            onNavigate={onNavigate}
+            tab={tab}
+          />
+        ),
+      )}
+    </TabsLiftedNavigation>
   );
 }
 
 function ProjectArchiveStateLink({
   active,
   data,
-  label,
   onNavigate,
-  value,
+  tab,
 }: Readonly<ProjectArchiveStateLinkProps>): JSX.Element {
   const href: string = buildProjectsHref(data, {
-    archiveState: value,
+    archiveState: tab.value,
     page: 1,
   });
 
   return (
     <BrowserSoftNavigationLink
       aria-current={active ? 'page' : undefined}
-      className={readProjectNavigationTabClassName(active)}
+      className={readTabsLiftedTriggerClassName(tab.widthClassName)}
+      data-state={active ? 'active' : 'inactive'}
       href={href}
       onNavigate={onNavigate}
     >
-      {label}
+      <TabsLiftedTriggerContent icon={tab.icon} label={tab.label} />
     </BrowserSoftNavigationLink>
   );
 }

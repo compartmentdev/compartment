@@ -16,7 +16,11 @@ describe('browser project overview', (): void => {
       }),
     );
 
-    expect(html).toContain('Project Overview');
+    expect(html).toContain('>Overview<');
+    expect(html).toContain('lucide-boxes');
+    expect(html).toContain('Project services, routes, and deployment status by environment.');
+    expect(html).toContain('>Production details<');
+    expect(html).toContain('gap-3 bg-background');
     expect(html).toContain('aria-label="Breadcrumb"');
     expect(html).toContain('href="/orgs/acme-dev/projects"');
     expect(html).toContain('aria-current="page"');
@@ -25,7 +29,7 @@ describe('browser project overview', (): void => {
     expect(html).toContain('href="/orgs/acme-dev/projects/billing?environmentName=staging"');
     expect(html).toContain('aria-label="Project environments"');
     expect(html).toContain('href="/orgs/acme-dev/projects/billing/deployments?environmentName=production"');
-    expect(html).toContain('>Project Deployments<');
+    expect(html).toContain('>Production Deployments<');
     expect(html).toContain('overflow-hidden rounded-lg border border-border bg-[var(--table-surface)]');
     expect(html).toContain('sm:flex-row');
     expect(html).toContain('sm:justify-between');
@@ -81,7 +85,7 @@ describe('browser project overview', (): void => {
       }),
     );
 
-    expect(html).not.toContain('>Project Deployments<');
+    expect(html).not.toContain('>Production Deployments<');
     expect(html).not.toContain('/projects/billing/deployments?');
   });
 });

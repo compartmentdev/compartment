@@ -3,7 +3,7 @@ import type { BrowserConsoleOrganizationContext } from './browser-organization-c
 import type { BrowserOrganizationOption } from './browser-organization.service.types';
 import type { BrowserTablePageSize, BrowserTableSortDirection } from './browser-table.service.types';
 
-export type BrowserProjectsArchiveState = 'active' | 'archived';
+export type BrowserProjectsArchiveState = 'active' | 'archived' | 'all';
 
 export type BrowserProjectStatus = 'archived' | 'healthy' | 'needs_attention' | 'not_deployed' | 'stopped' | 'updating';
 

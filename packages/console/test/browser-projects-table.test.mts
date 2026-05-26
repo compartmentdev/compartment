@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { compartmentCsrfCookieName, compartmentCsrfHeaderName } from '@compartment/contracts/browser';
+import type { ReactElement, ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createJsonResponse } from './browser-test.fixtures';
@@ -13,6 +14,46 @@ import {
 import { ProjectsTable } from '../src/features/projects/projects-table';
 
 type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+type MockDropdownMenuItemPropValue = ReactNode;
+
+interface MockDropdownMenuItemProps {
+  asChild?: boolean;
+  children?: ReactNode;
+  disabled?: boolean;
+  [key: string]: MockDropdownMenuItemPropValue;
+}
+
+vi.mock('../src/components/ui/dropdown-menu', async (importOriginal: () => Promise<object>): Promise<object> => {
+  const actual: object = await importOriginal();
+  const react: { createElement: typeof React.createElement } = await import('react');
+
+  function DropdownMenuPassthrough({ children, ...props }: Readonly<MockDropdownMenuItemProps>): ReactElement {
+    return react.createElement('div', props, children);
+  }
+
+  function DropdownMenuItem({
+    asChild,
+    children,
+    disabled,
+    ...props
+  }: Readonly<MockDropdownMenuItemProps>): ReactElement {
+    void asChild;
+    return react.createElement(
+      'div',
+      {
+        ...props,
+        'data-disabled': disabled === true ? 'true' : undefined,
+      },
+      children,
+    );
+  }
+
+  return {
+    ...actual,
+    DropdownMenuContent: DropdownMenuPassthrough,
+    DropdownMenuItem,
+  };
+});
 
 afterEach((): void => {
   vi.unstubAllGlobals();
@@ -32,11 +73,15 @@ describe('browser projects table', (): void => {
 
     expect(html).toContain('billing');
     expect(html).toContain('href="/orgs/acme-dev/projects/billing"');
-    expect(html).toContain('Overview');
-    expect(html).toContain('href="https://billing.apps.localhost" rel="noreferrer" target="_blank">Open</a>');
-    expect(html).toContain('>Open<');
-    expect(html).toContain('Choose environment to open');
-    expect(html).toContain('>Actions<');
+    expect(html).toContain('Details');
+    expect(html).toContain('aria-label="Open actions for billing"');
+    expect(html).toContain('lucide-ellipsis');
+    expect(html).toContain(
+      'href="https://billing.apps.localhost" rel="noreferrer" target="_blank">Open production / web</a>',
+    );
+    expect(html).toContain('>Archive<');
+    expect(html).not.toContain('Choose environment to open');
+    expect(html.indexOf('>Details</a>')).toBeLessThan(html.indexOf('aria-label="Open actions for billing"'));
     expect(html).toContain('block whitespace-nowrap');
   });
 
@@ -133,7 +178,7 @@ describe('browser projects table', (): void => {
     expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get(compartmentCsrfHeaderName)).toBe('csrf-token');
   });
 
-  it('keeps overview and open dropdown actions for viewer projects rows', (): void => {
+  it('keeps details and open dropdown actions for viewer projects rows', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
@@ -155,10 +200,14 @@ describe('browser projects table', (): void => {
     );
 
     expect(html).toContain('href="/orgs/acme-dev/projects/billing"');
-    expect(html).toContain('Overview');
+    expect(html).toContain('Details');
+    expect(html).toContain('aria-label="Open actions for billing"');
+    expect(html).toContain('lucide-ellipsis');
     expect(html).toContain('href="https://billing.apps.localhost"');
-    expect(html).toContain('>Open<');
-    expect(html).toContain('Choose environment to open');
+    expect(html).toContain('>Open production / web</a>');
+    expect(html.indexOf('>Details</a>')).toBeLessThan(html.indexOf('aria-label="Open actions for billing"'));
+    expect(html).not.toContain('Choose environment to open');
+    expect(html).not.toContain('>Archive<');
   });
 
   it('shows missing live routes with the summary environment label', (): void => {
@@ -183,12 +232,12 @@ describe('browser projects table', (): void => {
       }),
     );
 
-    expect(html).toContain('Overview');
+    expect(html).toContain('Details');
     expect(html).not.toContain('href="https://billing.apps.localhost"');
     expect(html).not.toContain('No live route');
   });
 
-  it('shows a no-route badge for running projects when the summary environment has no route', (): void => {
+  it('omits route badges from row actions when running projects have no live route', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
@@ -206,7 +255,7 @@ describe('browser projects table', (): void => {
       }),
     );
 
-    expect(html).toContain('No live route');
+    expect(html).not.toContain('No live route');
     expect(html).not.toContain('href="https://billing.apps.localhost"');
   });
 

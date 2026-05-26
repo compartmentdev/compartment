@@ -8,11 +8,14 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
+import { cn } from '../lib/utils';
 import { Input } from './ui/input';
-import { X } from './ui/icons';
+import { Search, X } from './ui/icons';
 
 interface ServerSearchProps {
   children?: ReactNode | undefined;
+  className?: string | undefined;
+  hasLeadingSearchIcon?: boolean | undefined;
   label: string;
   onSearch: ServerSearchSubmitHandler;
   placeholder: string;
@@ -36,6 +39,7 @@ interface ServerSearchFormProps extends ServerSearchProps {
 }
 
 interface ServerSearchInputProps {
+  hasLeadingSearchIcon: boolean;
   inputValue: string;
   label: string;
   onInputValueChange: ServerSearchValueChangeHandler;
@@ -49,7 +53,12 @@ interface ServerSearchClearButtonProps {
   visible: boolean;
 }
 
+interface ServerSearchLeadingIconProps {
+  visible: boolean;
+}
+
 interface ServerSearchTextInputProps {
+  hasLeadingSearchIcon: boolean;
   inputValue: string;
   onInputValueChange: ServerSearchValueChangeHandler;
   onSearch: ServerSearchSubmitHandler;
@@ -74,58 +83,49 @@ export function ServerSearch(props: Readonly<ServerSearchProps>): JSX.Element {
   );
 }
 
-function ServerSearchForm({
-  children,
-  inputValue,
-  label,
-  onInputValueChange,
-  onSearch,
-  placeholder,
-  timeoutRef,
-}: Readonly<ServerSearchFormProps>): JSX.Element {
-  const onSubmit: ServerSearchFormSubmitHandler = createServerSearchSubmitHandler(onSearch, timeoutRef);
+function ServerSearchForm(props: Readonly<ServerSearchFormProps>): JSX.Element {
+  const onSubmit: ServerSearchFormSubmitHandler = createServerSearchSubmitHandler(props.onSearch, props.timeoutRef);
 
   return (
-    <form className="w-full max-w-md" onSubmit={onSubmit} role="search">
-      {children}
-      <ServerSearchInput
-        inputValue={inputValue}
-        label={label}
-        onInputValueChange={onInputValueChange}
-        onSearch={onSearch}
-        placeholder={placeholder}
-        timeoutRef={timeoutRef}
-      />
+    <form className={cn('w-full max-w-md', props.className)} onSubmit={onSubmit} role="search">
+      {props.children}
+      <ServerSearchInput {...props} hasLeadingSearchIcon={props.hasLeadingSearchIcon ?? false} />
     </form>
   );
 }
 
-function ServerSearchInput({
-  inputValue,
-  label,
-  onInputValueChange,
-  onSearch,
-  placeholder,
-  timeoutRef,
-}: Readonly<ServerSearchInputProps>): JSX.Element {
-  const onClear: ServerSearchClearHandler = createServerSearchClearHandler(onSearch, onInputValueChange, timeoutRef);
+function ServerSearchInput(props: Readonly<ServerSearchInputProps>): JSX.Element {
+  const onClear: ServerSearchClearHandler = createServerSearchClearHandler(
+    props.onSearch,
+    props.onInputValueChange,
+    props.timeoutRef,
+  );
 
   return (
     <label className="relative block">
-      <span className="sr-only">{label}</span>
-      <ServerSearchTextInput
-        inputValue={inputValue}
-        onInputValueChange={onInputValueChange}
-        onSearch={onSearch}
-        placeholder={placeholder}
-        timeoutRef={timeoutRef}
-      />
-      <ServerSearchClearButton onClear={onClear} visible={inputValue !== ''} />
+      <span className="sr-only">{props.label}</span>
+      <ServerSearchLeadingIcon visible={props.hasLeadingSearchIcon} />
+      <ServerSearchTextInput {...props} />
+      <ServerSearchClearButton onClear={onClear} visible={props.inputValue !== ''} />
     </label>
   );
 }
 
+function ServerSearchLeadingIcon({ visible }: Readonly<ServerSearchLeadingIconProps>): JSX.Element | null {
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <Search
+      aria-hidden="true"
+      className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+    />
+  );
+}
+
 function ServerSearchTextInput({
+  hasLeadingSearchIcon,
   inputValue,
   onInputValueChange,
   onSearch,
@@ -134,7 +134,7 @@ function ServerSearchTextInput({
 }: Readonly<ServerSearchTextInputProps>): JSX.Element {
   return (
     <Input
-      className="pr-9"
+      className={cn('pr-9', hasLeadingSearchIcon ? 'pl-9' : undefined)}
       name="q"
       onChange={(event: ChangeEvent<HTMLInputElement>): void => {
         handleServerSearchInputChange(event, onSearch, onInputValueChange, timeoutRef);

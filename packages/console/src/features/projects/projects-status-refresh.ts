@@ -136,7 +136,14 @@ function shouldDropProjectFromCurrentView(
   archiveState: BrowserProjectsArchiveState,
   refreshedProject: ProjectStatusSummary | undefined,
 ): boolean {
-  return archiveState === 'active' && (refreshedProject === undefined || refreshedProject.status === 'archived');
+  switch (archiveState) {
+    case 'active':
+      return refreshedProject === undefined || refreshedProject.status === 'archived';
+    case 'all':
+      return refreshedProject === undefined;
+    case 'archived':
+      return refreshedProject?.status !== 'archived';
+  }
 }
 
 function mergeProjectStatus(

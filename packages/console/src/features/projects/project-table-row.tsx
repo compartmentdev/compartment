@@ -4,7 +4,6 @@ import { BrowserTimestampTableCell } from '../../components/browser-timestamp';
 import { ServerTableActions, ServerTableCell, ServerTableRow } from '../../components/server-table';
 import type { BrowserProjectSummary, BrowserProjectsPageResult } from '../../services/browser-projects.service.types';
 import type { ProjectActionHandler } from './project-actions';
-import { ProjectOpenAction } from './project-open-action';
 import { projectNoDeploymentsLabel } from './project-deployment-labels';
 import { ProjectOverviewLink } from './project-overview-link';
 import { ProjectRowActionsDropdown } from './project-row-actions-dropdown';
@@ -56,7 +55,6 @@ function ProjectActionsCell({
     <ServerTableCell align="right">
       <ServerTableActions>
         <ProjectOverviewLink data={data} onNavigate={onNavigate} project={project} />
-        <ProjectOpenAction project={project} />
         <ProjectRowActionsDropdown data={data} onProjectAction={onProjectAction} project={project} />
       </ServerTableActions>
     </ServerTableCell>

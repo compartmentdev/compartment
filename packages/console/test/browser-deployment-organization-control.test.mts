@@ -27,7 +27,13 @@ vi.mock('../src/components/browser-console-header', async (): Promise<object> =>
     return react.createElement('div', {}, children);
   }
 
-  return { BrowserConsoleShell };
+  return {
+    BrowserConsoleShell,
+    browserConsoleDetailPageHeaderClassName: '',
+    browserConsolePageBodyClassName: '',
+    browserConsolePageClassName: '',
+    browserConsolePageGutterClassName: '',
+  };
 });
 
 describe('browser deployment organization control', (): void => {

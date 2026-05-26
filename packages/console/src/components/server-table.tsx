@@ -10,6 +10,7 @@ interface ServerTableProps {
 
 interface ServerTableFrameProps {
   children: ReactNode;
+  className?: string | undefined;
 }
 
 interface ServerTableEmptyRowProps {
@@ -69,9 +70,11 @@ export function ServerTable({ children, minWidthClassName }: Readonly<ServerTabl
   );
 }
 
-export function ServerTableFrame({ children }: Readonly<ServerTableFrameProps>): JSX.Element {
+export function ServerTableFrame({ children, className }: Readonly<ServerTableFrameProps>): JSX.Element {
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-[var(--table-surface)]">{children}</section>
+    <section className={cn('overflow-hidden rounded-lg border border-border bg-[var(--table-surface)]', className)}>
+      {children}
+    </section>
   );
 }
 
