@@ -4,7 +4,7 @@ export {
   readCliInstallLoginApiUrl,
   type CliInstallLoginCommandInput,
 } from './cli-install-login-command';
-export { readBearerToken, readHeaderValue } from './http-header';
+export { assertHttpHeaderName, assertHttpHeaderValue, readBearerToken, readHeaderValue } from './http-header';
 export { parseHttpHostAuthority } from './http-host-authority';
 export { serializeCookie } from './http-cookie';
 export { buildGitHubApiBaseUrl } from './github';
