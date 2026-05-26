@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/compartmentdev/compartment/compare/v0.3.0...v0.4.0) (2026-05-26)
+
+
+### Features
+
+* **cli:** default self-hosted images to GHCR ([#27](https://github.com/compartmentdev/compartment/issues/27)) ([8f0e46c](https://github.com/compartmentdev/compartment/commit/8f0e46cff408ee24003b3937ac722a0dc9c7afb2))
+
+
+### Bug Fixes
+
+* **repo:** align access drawer panels ([#20](https://github.com/compartmentdev/compartment/issues/20)) ([9945bae](https://github.com/compartmentdev/compartment/commit/9945bae0c36655fa02b2db661123ac2832fbc652))
+* **repo:** polish audit logs header and table ([#25](https://github.com/compartmentdev/compartment/issues/25)) ([35c6aee](https://github.com/compartmentdev/compartment/commit/35c6aeecab95a5ad0906329d2304f683fa4a39b2))
+* **repo:** show installed GitHub account actions ([#24](https://github.com/compartmentdev/compartment/issues/24)) ([738ad3c](https://github.com/compartmentdev/compartment/commit/738ad3cd8c5bbe8aa8489094d2d2edd82ae6aa37))
+
 ## [0.3.0](https://github.com/compartmentdev/compartment/compare/v0.2.0...v0.3.0) (2026-05-26)
 
 
