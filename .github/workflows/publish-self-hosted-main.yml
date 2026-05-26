@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: publish-self-hosted-main-${{ github.ref }}
-  cancel-in-progress: true
+  queue: max
 
 jobs:
   build-main-images:
