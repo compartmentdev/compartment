@@ -18,7 +18,7 @@ Pull request CI scans the locally built or restored self-hosted test images with
 
 The root `.trivyignore.yaml` is the only allowed suppression point for self-hosted image scans. Current suppressions must include a statement and be scoped to the affected binary path.
 
-Before promoting Docker Hub tags, the publish job pushes each attested image to a workflow-scoped staging tag, scans every staged image with Docker Scout, and only then promotes the same image index to the public `main`, `sha-<commit>`, semver, or `latest` tags. The Scout gate fails only on fixable high or critical vulnerabilities. It does not gate on base image recommendation or policy results.
+Before publishing registry tags, the publish job scans the loaded image artifact that GHCR publishes, then pushes each attested Docker Hub image to a workflow-scoped staging tag and scans every staged image before promotion. The Scout gate fails only on fixable high or critical vulnerabilities. It does not gate on base image recommendation or policy results.
 
 After promoting a tag, the publish job resolves the tag to a concrete image digest and secures each unique runtime image digest:
 

@@ -129,6 +129,89 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Docker Scout api local image gate
+        id: scout-local-api
+        continue-on-error: true
+        uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
+        with:
+          command: cves
+          image: local://docker.io/compartmentdev/compartment-api:${{ env.PRIMARY_TAG }}
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+
+      - name: Docker Scout caddy local image gate
+        id: scout-local-caddy
+        continue-on-error: true
+        uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
+        with:
+          command: cves
+          image: local://docker.io/compartmentdev/compartment-caddy:${{ env.PRIMARY_TAG }}
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+
+      - name: Docker Scout edge local image gate
+        id: scout-local-edge
+        continue-on-error: true
+        uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
+        with:
+          command: cves
+          image: local://docker.io/compartmentdev/compartment-edge:${{ env.PRIMARY_TAG }}
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+
+      - name: Docker Scout worker local image gate
+        id: scout-local-worker
+        continue-on-error: true
+        uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
+        with:
+          command: cves
+          image: local://docker.io/compartmentdev/compartment-worker:${{ env.PRIMARY_TAG }}
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+
+      - name: Docker Scout runtime probe local image gate
+        id: scout-local-runtime-probe
+        continue-on-error: true
+        uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
+        with:
+          command: cves
+          image: local://docker.io/compartmentdev/compartment-runtime-probe:${{ env.PRIMARY_TAG }}
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+
+      - name: Check Docker Scout local image gate
+        env:
+          SCOUT_API_OUTCOME: ${{ steps.scout-local-api.outcome }}
+          SCOUT_CADDY_OUTCOME: ${{ steps.scout-local-caddy.outcome }}
+          SCOUT_EDGE_OUTCOME: ${{ steps.scout-local-edge.outcome }}
+          SCOUT_WORKER_OUTCOME: ${{ steps.scout-local-worker.outcome }}
+          SCOUT_RUNTIME_PROBE_OUTCOME: ${{ steps.scout-local-runtime-probe.outcome }}
+        run: |
+          failed_images=()
+          [ "$SCOUT_API_OUTCOME" = "failure" ] && failed_images+=(compartment-api)
+          [ "$SCOUT_CADDY_OUTCOME" = "failure" ] && failed_images+=(compartment-caddy)
+          [ "$SCOUT_EDGE_OUTCOME" = "failure" ] && failed_images+=(compartment-edge)
+          [ "$SCOUT_WORKER_OUTCOME" = "failure" ] && failed_images+=(compartment-worker)
+          [ "$SCOUT_RUNTIME_PROBE_OUTCOME" = "failure" ] && failed_images+=(compartment-runtime-probe)
+
+          if [ ${#failed_images[@]} -eq 0 ]; then
+            exit 0
+          fi
+
+          printf 'Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate for local self-hosted image artifact(s):\n' >&2
+          printf -- '- %s\n' "${failed_images[@]}" >&2
+          exit 1
+
       - name: Push staging self-hosted images
         env:
           COMPARTMENT_BUILDKIT_VERSION: v0.30.0
@@ -171,8 +254,8 @@ jobs:
           push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
           push_dockerhub_image compartment-runtime-probe packages/node/Dockerfile.runtime-probe.self-hosted "${runtime_probe_args[@]}"
 
-      - name: Docker Scout api image gate
-        id: scout-api
+      - name: Docker Scout api staging image gate
+        id: scout-staging-api
         continue-on-error: true
         uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
         with:
@@ -183,8 +266,8 @@ jobs:
           exit-code: true
           write-comment: false
 
-      - name: Docker Scout caddy image gate
-        id: scout-caddy
+      - name: Docker Scout caddy staging image gate
+        id: scout-staging-caddy
         continue-on-error: true
         uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
         with:
@@ -195,8 +278,8 @@ jobs:
           exit-code: true
           write-comment: false
 
-      - name: Docker Scout edge image gate
-        id: scout-edge
+      - name: Docker Scout edge staging image gate
+        id: scout-staging-edge
         continue-on-error: true
         uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
         with:
@@ -207,8 +290,8 @@ jobs:
           exit-code: true
           write-comment: false
 
-      - name: Docker Scout worker image gate
-        id: scout-worker
+      - name: Docker Scout worker staging image gate
+        id: scout-staging-worker
         continue-on-error: true
         uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
         with:
@@ -219,8 +302,8 @@ jobs:
           exit-code: true
           write-comment: false
 
-      - name: Docker Scout runtime probe image gate
-        id: scout-runtime-probe
+      - name: Docker Scout runtime probe staging image gate
+        id: scout-staging-runtime-probe
         continue-on-error: true
         uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
         with:
@@ -231,13 +314,13 @@ jobs:
           exit-code: true
           write-comment: false
 
-      - name: Check Docker Scout image gate
+      - name: Check Docker Scout staging image gate
         env:
-          SCOUT_API_OUTCOME: ${{ steps.scout-api.outcome }}
-          SCOUT_CADDY_OUTCOME: ${{ steps.scout-caddy.outcome }}
-          SCOUT_EDGE_OUTCOME: ${{ steps.scout-edge.outcome }}
-          SCOUT_WORKER_OUTCOME: ${{ steps.scout-worker.outcome }}
-          SCOUT_RUNTIME_PROBE_OUTCOME: ${{ steps.scout-runtime-probe.outcome }}
+          SCOUT_API_OUTCOME: ${{ steps.scout-staging-api.outcome }}
+          SCOUT_CADDY_OUTCOME: ${{ steps.scout-staging-caddy.outcome }}
+          SCOUT_EDGE_OUTCOME: ${{ steps.scout-staging-edge.outcome }}
+          SCOUT_WORKER_OUTCOME: ${{ steps.scout-staging-worker.outcome }}
+          SCOUT_RUNTIME_PROBE_OUTCOME: ${{ steps.scout-staging-runtime-probe.outcome }}
         run: |
           failed_images=()
           [ "$SCOUT_API_OUTCOME" = "failure" ] && failed_images+=(compartment-api)
@@ -250,7 +333,7 @@ jobs:
             exit 0
           fi
 
-          printf 'Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate for self-hosted image(s):\n' >&2
+          printf 'Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate for staged Docker Hub self-hosted image(s):\n' >&2
           printf -- '- %s\n' "${failed_images[@]}" >&2
           exit 1
 
