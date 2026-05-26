@@ -171,23 +171,6 @@ describe('SSO OIDC login service', (): void => {
   );
 
   it.each([
-    ['success callback with unknown key', 'code=oidc-code&state=sso-state&unknown=abc'],
-    ['success callback with tenant key', 'code=oidc-code&state=sso-state&tenant=acme'],
-    ['failure callback with tenant key', 'error=access_denied&state=sso-state&tenant=acme'],
-  ] as const)(
-    'rejects SSO callbacks with extra query parameters in a %s before consuming the flow',
-    async (_caseName: string, query: string): Promise<void> => {
-      await expect(completeBrowserSsoLogin(createSsoCallbackUrl(query))).rejects.toMatchObject({
-        code: 'invalid_sso_login',
-      });
-
-      expect(mocks.findSsoOidcFlowByStateHash).not.toHaveBeenCalled();
-      expect(mocks.consumeSsoOidcFlow).not.toHaveBeenCalled();
-      expect(mocks.readOidcCallbackClaims).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each([
     ['error', 'code=oidc-code&state=sso-state&error=access_denied'],
     ['error_description', 'code=oidc-code&state=sso-state&error_description=denied'],
     ['error_uri', 'code=oidc-code&state=sso-state&error_uri=https%3A%2F%2Fidp.example%2Ferror'],
@@ -207,7 +190,6 @@ describe('SSO OIDC login service', (): void => {
   it.each([
     ['duplicate state', 'code=oidc-code&state=sso-state&state=attacker-state'],
     ['duplicate unknown key', 'code=oidc-code&state=sso-state&unknown=abc&unknown=def'],
-    ['extra tenant key', 'error=access_denied&state=sso-state&tenant=acme'],
     ['mixed code and error', 'code=oidc-code&state=sso-state&error=access_denied'],
   ] as const)(
     'does not resolve a CLI login attempt from an invalid browser SSO callback with %s',
@@ -218,7 +200,7 @@ describe('SSO OIDC login service', (): void => {
     },
   );
 
-  it('completes a valid success callback', async (): Promise<void> => {
+  it('completes a valid success callback with an extension query parameter', async (): Promise<void> => {
     const flow: SsoOidcFlowRow = createSsoOidcFlow();
     const provider: SsoOidcProviderRow = createSsoOidcProvider();
     const result: BrowserSsoLoginResult = createBrowserSsoLoginResult();
@@ -250,7 +232,9 @@ describe('SSO OIDC login service', (): void => {
     });
     mocks.issueBrowserSsoLoginResult.mockResolvedValueOnce(result);
 
-    const currentUrl: URL = createSsoCallbackUrl('code=oidc-code&state=sso-state');
+    const currentUrl: URL = createSsoCallbackUrl(
+      'code=oidc-code&state=sso-state&iss=https%3A%2F%2Faccounts.google.com',
+    );
 
     await expect(completeBrowserSsoLogin(currentUrl)).resolves.toBe(result);
 
@@ -277,7 +261,9 @@ describe('SSO OIDC login service', (): void => {
     });
 
     await expect(
-      findCliLoginAttemptIdForBrowserSsoCallback(createSsoCallbackUrl('error=access_denied&state=sso-state')),
+      findCliLoginAttemptIdForBrowserSsoCallback(
+        createSsoCallbackUrl('error=access_denied&state=sso-state&iss=https%3A%2F%2Faccounts.google.com'),
+      ),
     ).resolves.toBe('cla_123');
 
     expect(mocks.findSsoOidcFlowByStateHash).toHaveBeenCalledTimes(1);

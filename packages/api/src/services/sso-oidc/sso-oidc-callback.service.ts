@@ -6,16 +6,6 @@ const ssoOidcCallbackStateSearchParamName: string = 'state';
 const ssoOidcCallbackErrorSearchParamName: string = 'error';
 const ssoOidcCallbackErrorDescriptionSearchParamName: string = 'error_description';
 const ssoOidcCallbackErrorUriSearchParamName: string = 'error_uri';
-const ssoOidcSuccessCallbackSearchParamNames: ReadonlySet<string> = new Set<string>([
-  ssoOidcCallbackCodeSearchParamName,
-  ssoOidcCallbackStateSearchParamName,
-]);
-const ssoOidcFailureCallbackSearchParamNames: ReadonlySet<string> = new Set<string>([
-  ssoOidcCallbackErrorSearchParamName,
-  ssoOidcCallbackErrorDescriptionSearchParamName,
-  ssoOidcCallbackErrorUriSearchParamName,
-  ssoOidcCallbackStateSearchParamName,
-]);
 
 export type SsoOidcCallbackKind = 'failure' | 'success';
 
@@ -61,28 +51,23 @@ export function readSsoOidcCallbackKind(currentUrl: URL): SsoOidcCallbackKind | 
 
 function hasValidSuccessCallbackSearchParams(searchParams: URLSearchParams): boolean {
   return (
-    hasOnlySearchParamNames(searchParams, ssoOidcSuccessCallbackSearchParamNames) &&
     hasText(readSingleSearchParam(searchParams, ssoOidcCallbackCodeSearchParamName)) &&
-    hasText(readSingleSearchParam(searchParams, ssoOidcCallbackStateSearchParamName))
+    hasText(readSingleSearchParam(searchParams, ssoOidcCallbackStateSearchParamName)) &&
+    !hasFailureSearchParam(searchParams)
   );
 }
 
 function hasValidFailureCallbackSearchParams(searchParams: URLSearchParams): boolean {
   return (
-    hasOnlySearchParamNames(searchParams, ssoOidcFailureCallbackSearchParamNames) &&
     hasText(readSingleSearchParam(searchParams, ssoOidcCallbackErrorSearchParamName)) &&
     !searchParams.has(ssoOidcCallbackCodeSearchParamName)
   );
 }
 
-function hasOnlySearchParamNames(searchParams: URLSearchParams, allowedNames: ReadonlySet<string>): boolean {
-  let hasOnlyAllowedNames: boolean = true;
-
-  searchParams.forEach((_value: string, name: string): void => {
-    if (!allowedNames.has(name)) {
-      hasOnlyAllowedNames = false;
-    }
-  });
-
-  return hasOnlyAllowedNames;
+function hasFailureSearchParam(searchParams: URLSearchParams): boolean {
+  return (
+    searchParams.has(ssoOidcCallbackErrorSearchParamName) ||
+    searchParams.has(ssoOidcCallbackErrorDescriptionSearchParamName) ||
+    searchParams.has(ssoOidcCallbackErrorUriSearchParamName)
+  );
 }

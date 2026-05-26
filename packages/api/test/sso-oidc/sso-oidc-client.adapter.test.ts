@@ -190,7 +190,6 @@ describe('SSO OIDC client adapter', (): void => {
       'duplicate unknown key',
       'https://compartment.localhost/login/sso/callback?code=one&state=sso-state&unknown=a&unknown=b',
     ],
-    ['extra tenant key', 'https://compartment.localhost/login/sso/callback?code=one&state=sso-state&tenant=acme'],
     [
       'mixed code and error',
       'https://compartment.localhost/login/sso/callback?code=one&state=sso-state&error=access_denied',
@@ -217,7 +216,13 @@ describe('SSO OIDC client adapter', (): void => {
       }),
     );
 
-    const claims: OidcIdentityClaims = await readOidcCallbackClaims(createOidcCallbackInput());
+    const claims: OidcIdentityClaims = await readOidcCallbackClaims(
+      createOidcCallbackInput({
+        currentUrl: new URL(
+          'https://compartment.localhost/login/sso/callback?code=oidc-code&state=sso-state&iss=https%3A%2F%2Faccounts.google.com',
+        ),
+      }),
+    );
 
     expect(claims).toEqual({
       email: 'admin@example.com',
