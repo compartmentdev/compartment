@@ -11,7 +11,7 @@ export { buildGitHubApiBaseUrl } from './github';
 export { buildInternalHttpUrl } from './internal-http-url';
 export { normalizeNanosecondZuluTimestamp } from './log-timestamp';
 export { normalizeDnsHostname } from './dns-hostname';
-export { appendOptionalSearchParam, readUrlOrigin } from './url';
+export { appendOptionalSearchParam, hasDuplicateSearchParam, readSingleSearchParam, readUrlOrigin } from './url';
 export { buildCompartmentArtifactRegistryAddress } from './artifact-registry-address';
 export { isUnsafePublicIpAddress } from './public-ip';
 export { createOutboundHttpFetch, fetchOutboundHttp } from './outbound-http/outbound-http-client';

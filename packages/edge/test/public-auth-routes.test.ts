@@ -423,6 +423,39 @@ describe('edge public auth routes', (): void => {
     }
   });
 
+  it.each([
+    ['code', `${compartmentAppCallbackPathname}?code=abc&code=def&state=flow`],
+    ['state', `${compartmentAppCallbackPathname}?code=abc&state=flow&state=attacker-flow`],
+  ] as const)(
+    'rejects callback requests with a duplicate %s query parameter before calling the API',
+    async (_queryName: string, url: string): Promise<void> => {
+      const fetchMock: Mock<FetchImplementation> = vi.fn<FetchImplementation>();
+      vi.stubGlobal('fetch', fetchMock);
+      const { app } = createEdgeTestApp({
+        snapshot: createAppAccessSnapshot(),
+      });
+
+      try {
+        const response: LightMyRequestResponse = await app.inject({
+          method: 'GET',
+          url,
+          headers: {
+            cookie: `${readCompartmentAppFlowCookieName('flow')}=1`,
+            host: 'billing.localhost',
+          },
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.json()).toEqual({ error: 'invalid_request' });
+        expect(response.headers.location).toBeUndefined();
+        expect(response.headers['set-cookie']).toBeUndefined();
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it('keeps overlapping login flow cookies isolated by state', async (): Promise<void> => {
     const fetchMock: Mock<FetchImplementation> = vi
       .fn<FetchImplementation>()
