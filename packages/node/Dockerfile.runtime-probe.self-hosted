@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG COMPARTMENT_NODE_RUNTIME_IMAGE=node:24.14.0-bookworm-slim
+ARG COMPARTMENT_NODE_RUNTIME_IMAGE=node:24.15.0-bookworm-slim
 
 FROM ${COMPARTMENT_NODE_RUNTIME_IMAGE}
 

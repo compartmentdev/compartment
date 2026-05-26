@@ -10,7 +10,8 @@ WORKDIR /src
 COPY packages/edge/caddy-dns-compartment-broker ./packages/edge/caddy-dns-compartment-broker
 
 RUN xcaddy build v2.11.3 \
-    --with github.com/compartmentdev/compartment/packages/edge/caddy-dns-compartment-broker=./packages/edge/caddy-dns-compartment-broker
+    --with github.com/compartmentdev/compartment/packages/edge/caddy-dns-compartment-broker=./packages/edge/caddy-dns-compartment-broker \
+    --replace github.com/go-jose/go-jose/v3=github.com/go-jose/go-jose/v3@v3.0.5
 
 FROM ${COMPARTMENT_CADDY_RUNTIME_IMAGE}
 

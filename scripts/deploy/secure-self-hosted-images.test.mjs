@@ -18,6 +18,7 @@ const testDigest = `sha256:${'a'.repeat(64)}`;
 describe('readSecureSelfHostedImageOptions', () => {
   it('reads unique tags and output directory', () => {
     expect(readSecureSelfHostedImageOptions(['--output-dir', './sboms', 'sha-123', 'main', 'main'])).toEqual({
+      dockerScout: false,
       outputDirectory: './sboms',
       repositoryPrefix: 'docker.io/compartmentdev',
       scanOnly: false,
@@ -28,6 +29,7 @@ describe('readSecureSelfHostedImageOptions', () => {
 
   it('reads scan-only mode', () => {
     expect(readSecureSelfHostedImageOptions(['--scan-only', 'sha-123'])).toEqual({
+      dockerScout: false,
       outputDirectory: './.compartment/release-assets/self-hosted-sboms',
       repositoryPrefix: 'docker.io/compartmentdev',
       scanOnly: true,
@@ -38,6 +40,7 @@ describe('readSecureSelfHostedImageOptions', () => {
 
   it('reads provenance attestation validation mode', () => {
     expect(readSecureSelfHostedImageOptions(['--validate-provenance-attestation'])).toEqual({
+      dockerScout: false,
       outputDirectory: './.compartment/release-assets/self-hosted-sboms',
       repositoryPrefix: 'docker.io/compartmentdev',
       scanOnly: false,
@@ -50,13 +53,28 @@ describe('readSecureSelfHostedImageOptions', () => {
     expect(
       readSecureSelfHostedImageOptions(['--repository-prefix', 'ghcr.io/compartmentdev', 'sha-123']),
     ).toMatchObject({
+      dockerScout: false,
       repositoryPrefix: 'ghcr.io/compartmentdev',
+      tags: ['sha-123'],
+    });
+  });
+
+  it('reads Docker Scout scan mode', () => {
+    expect(readSecureSelfHostedImageOptions(['--scan-only', '--docker-scout', 'sha-123'])).toMatchObject({
+      dockerScout: true,
+      scanOnly: true,
       tags: ['sha-123'],
     });
   });
 
   it('requires at least one image tag', () => {
     expect(() => readSecureSelfHostedImageOptions([])).toThrow('Expected at least one self-hosted image tag.');
+  });
+
+  it('requires scan-only mode for Docker Scout', () => {
+    expect(() => readSecureSelfHostedImageOptions(['--docker-scout', 'sha-123'])).toThrow(
+      'Can only use --docker-scout with --scan-only.',
+    );
   });
 });
 
@@ -86,42 +104,61 @@ describe('scanSelfHostedImages', () => {
   it('scans every self-hosted image before reporting failures', async () => {
     const tempDirectory = await mkdtemp(join(tmpdir(), 'compartment-trivy-test-'));
     const oldPath = process.env.PATH;
+    const oldDockerScoutArgsLog = process.env.DOCKER_SCOUT_ARGS_LOG;
     const oldTrivyArgsLog = process.env.TRIVY_ARGS_LOG;
     const oldGitHubStepSummary = process.env.GITHUB_STEP_SUMMARY;
 
     try {
+      const dockerPath = join(tempDirectory, 'docker');
+      const dockerScoutArgsLogPath = join(tempDirectory, 'docker-scout-args.log');
       const trivyPath = join(tempDirectory, 'trivy');
       const trivyArgsLogPath = join(tempDirectory, 'trivy-args.log');
       const stepSummaryPath = join(tempDirectory, 'step-summary.md');
 
+      await writeFile(dockerPath, renderFakeDockerScoutScript(), 'utf8');
       await writeFile(trivyPath, renderFakeTrivyScript(), 'utf8');
+      await chmod(dockerPath, 0o755);
       await chmod(trivyPath, 0o755);
 
       process.env.PATH = `${tempDirectory}:${oldPath ?? ''}`;
+      process.env.DOCKER_SCOUT_ARGS_LOG = dockerScoutArgsLogPath;
       process.env.TRIVY_ARGS_LOG = trivyArgsLogPath;
       process.env.GITHUB_STEP_SUMMARY = stepSummaryPath;
 
-      expect(() => scanSelfHostedImages({ repositoryRoot: tempDirectory, tags: ['sha-test'] })).toThrow(
-        'Trivy reported fixable HIGH/CRITICAL vulnerabilities in 1 self-hosted image(s):',
+      let scanError;
+      try {
+        scanSelfHostedImages({ dockerScout: true, repositoryRoot: tempDirectory, tags: ['sha-test'] });
+      } catch (error) {
+        scanError = error;
+      }
+
+      expect(scanError).toBeInstanceOf(Error);
+      expect(scanError.message).toContain(
+        'Trivy failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s):',
+      );
+      expect(scanError.message).toContain(
+        'Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s):',
       );
 
       const trivyCalls = parseCommandArgsLog(await readFile(trivyArgsLogPath, 'utf8'));
-      expect(trivyCalls.map((args) => args.at(-1))).toEqual(renderExpectedTrivyImageRefs());
-      expect(trivyCalls).toEqual(
-        expect.arrayContaining(
-          renderExpectedTrivyImageRefs().map((imageRef) =>
-            expect.arrayContaining(['--ignorefile', join(tempDirectory, '.trivyignore.yaml'), imageRef]),
-          ),
-        ),
-      );
+      expect(trivyCalls.map((args) => args.at(-1))).toEqual(renderExpectedScannedImageRefs());
+      const dockerScoutCalls = parseCommandArgsLog(await readFile(dockerScoutArgsLogPath, 'utf8'));
+      expect(dockerScoutCalls.map((args) => args.at(-1))).toEqual(renderExpectedScannedImageRefs());
       await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
-        'Trivy found fixable HIGH/CRITICAL vulnerabilities in 1 self-hosted image(s).',
+        'Trivy failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s).',
       );
       await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
         '`docker.io/compartmentdev/compartment-worker:sha-test`',
       );
+      await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
+        'Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s).',
+      );
+      await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
+        '`docker.io/compartmentdev/compartment-caddy:sha-test`',
+      );
     } finally {
       restoreEnv('PATH', oldPath);
+      restoreEnv('DOCKER_SCOUT_ARGS_LOG', oldDockerScoutArgsLog);
       restoreEnv('TRIVY_ARGS_LOG', oldTrivyArgsLog);
       restoreEnv('GITHUB_STEP_SUMMARY', oldGitHubStepSummary);
       await rm(tempDirectory, { force: true, recursive: true });
@@ -242,6 +279,19 @@ if (imageRef.includes('compartment-worker')) {
 `;
 }
 
+function renderFakeDockerScoutScript() {
+  return `#!/usr/bin/env node
+import { appendFileSync } from 'node:fs';
+
+const imageRef = process.argv.at(-1) ?? '';
+appendFileSync(process.env.DOCKER_SCOUT_ARGS_LOG, \`\${JSON.stringify(process.argv.slice(2))}\\n\`);
+
+if (imageRef.includes('compartment-caddy')) {
+  process.exit(2);
+}
+`;
+}
+
 function renderFakeDockerScript() {
   return `#!/usr/bin/env node
 import { appendFileSync } from 'node:fs';
@@ -274,7 +324,7 @@ appendFileSync(process.env.COMMAND_ARGS_LOG, JSON.stringify({ file: 'cosign', ar
 `;
 }
 
-function renderExpectedTrivyImageRefs() {
+function renderExpectedScannedImageRefs() {
   return [
     'docker.io/compartmentdev/compartment-api:sha-test',
     'docker.io/compartmentdev/compartment-caddy:sha-test',

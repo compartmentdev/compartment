@@ -6,9 +6,12 @@ set -eu
 : "${TARGETOS:?}"
 
 git clone --depth 1 --branch "${COMPARTMENT_BUILDKIT_VERSION}" https://github.com/moby/buildkit.git .
-# Keep this override until the selected BuildKit release embeds a fixed containerd version.
+# Keep these overrides until the selected BuildKit release embeds fixed vulnerable Go dependencies.
 export GOFLAGS=-mod=mod
-go get github.com/containerd/containerd/v2@v2.2.4
+go get \
+  github.com/containerd/containerd/v2@v2.2.4 \
+  golang.org/x/crypto@v0.52.0 \
+  golang.org/x/net@v0.55.0
 go mod tidy
 mkdir -p /out
 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/buildctl ./cmd/buildctl
