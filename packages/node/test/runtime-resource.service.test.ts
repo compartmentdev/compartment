@@ -9,7 +9,7 @@ import type {
   DockerRunContainerResult,
 } from '@compartment/docker';
 import type { NodeResourceDeleteRequest, NodeResourceRequest, NodeResourceResponse } from '@compartment/contracts';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
 import { reconcileRuntimeResource, startRuntimeResource } from '../src/services/runtime-resource.service';
 import { deleteRuntimeResource } from '../src/services/runtime-resource-lifecycle.service';
 import { buildRuntimeResourceLabels } from '../src/services/runtime-resource-labels';
@@ -374,6 +374,55 @@ describe('reconcileRuntimeResource', (): void => {
 });
 
 describe('startRuntimeResource', (): void => {
+  it('performs an initial readiness probe before the startup timeout expires', async (): Promise<void> => {
+    const server: Server = await listenOnLocalPort();
+    const address: AddressInfo | string | null = server.address();
+    const port: number = typeof address === 'object' && address !== null ? address.port : 0;
+    const readActualDateNow: () => number = Date.now;
+    const dateNowSpy: MockInstance<typeof Date.now> = vi
+      .spyOn(Date, 'now')
+      .mockImplementationOnce((): number => 1_000)
+      .mockImplementationOnce((): number => 1_001)
+      .mockImplementation((): number => readActualDateNow());
+    mocks.ensureDockerImageAvailable.mockResolvedValueOnce(undefined);
+    mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'resource_container_123' });
+    mocks.inspectDockerContainer.mockResolvedValueOnce({
+      containerId: 'resource_container_123',
+      imageRef: 'postgres:16',
+      isRunning: true,
+      labels: {},
+      networkAttachments: [
+        {
+          ipAddress: '127.0.0.1',
+          name: 'compartment-compartment-e2e-prj-smoke-env-production-resources',
+        },
+      ],
+      publishedPorts: [],
+    });
+
+    try {
+      await expect(
+        startRuntimeResource(
+          createResourceRequest({
+            readiness: {
+              port,
+              timeoutMs: 0,
+              type: 'tcp',
+            },
+          }),
+          createRuntimeDeployConfig(),
+        ),
+      ).resolves.toEqual({
+        containerId: 'resource_container_123',
+        hostname: 'postgres.production.smoke.local',
+        status: 'running',
+      });
+    } finally {
+      dateNowSpy.mockRestore();
+      await closeServer(server);
+    }
+  });
+
   it('waits for TCP readiness on the resource container network address', async (): Promise<void> => {
     const server: Server = await listenOnLocalPort();
     const address: AddressInfo | string | null = server.address();

@@ -1,7 +1,9 @@
 import type { AccessGroupListRow } from '@compartment/contracts/browser';
-import type { JSX } from 'react';
+import type { UseMutationResult } from '@tanstack/react-query';
+import { useEffect, useState, type JSX } from 'react';
 import {
   ServerTable,
+  ServerTableActionError,
   ServerTableActions,
   ServerTableCell,
   ServerTableEmptyRow,
@@ -10,7 +12,18 @@ import {
   readServerTableActionControlClassName,
 } from '../../components/server-table';
 import { Button } from '../../components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu';
+import { MoreHorizontal } from '../../components/ui/icons';
+import { useBrowserMutation } from '../../lib/browser-query-client';
 import { formatGroupAccessSummary, formatGroupScopeSummary } from '../access/access-display';
+import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
+import { canManageBrowserGroups } from '../console/console-access';
+import { handleGroupDeleteAction, readGroupDeleteConfirmationMessage } from './groups-page.actions';
 import { buildGroupsPageHref } from './groups-page.href';
 import type { GroupsPageState } from './groups-page.state';
 
@@ -23,6 +36,8 @@ interface GroupRowProps {
   group: AccessGroupListRow;
   state: GroupsPageState;
 }
+
+type GroupDeleteMutation = UseMutationResult<boolean, Error, void>;
 
 export function GroupsTable({ groups, state }: Readonly<GroupsTableProps>): JSX.Element {
   return (
@@ -74,21 +89,110 @@ function GroupRow({ group, state }: Readonly<GroupRowProps>): JSX.Element {
 }
 
 function GroupRowActions({ group, state }: Readonly<GroupRowProps>): JSX.Element {
+  const [actionErrorMessage, setActionErrorMessage] = useState<string | undefined>(undefined);
+
+  useEffect((): void => {
+    setActionErrorMessage(undefined);
+  }, [group.id]);
+
   return (
-    <ServerTableActions>
+    <div className="flex flex-col items-end gap-1.5">
+      <ServerTableActions>
+        <ManageGroupButton group={group} state={state} />
+        {canManageBrowserGroups(state.data.currentOrganizationPermissions) ? (
+          <GroupRowActionsMenu group={group} setErrorMessage={setActionErrorMessage} state={state} />
+        ) : null}
+      </ServerTableActions>
+      <ServerTableActionError message={actionErrorMessage} />
+    </div>
+  );
+}
+
+function ManageGroupButton({ group, state }: Readonly<GroupRowProps>): JSX.Element {
+  return (
+    <Button
+      className={readServerTableActionControlClassName()}
+      onClick={(): void => {
+        state.onNavigate(buildGroupsPageHref(state.data, group.id));
+      }}
+      size="sm"
+      type="button"
+      variant="secondary"
+    >
+      Manage
+    </Button>
+  );
+}
+
+function GroupRowActionsMenu({
+  group,
+  setErrorMessage,
+  state,
+}: Readonly<GroupRowProps & { setErrorMessage: (value: string | undefined) => void }>): JSX.Element {
+  return (
+    <DropdownMenu>
+      <GroupActionsTrigger group={group} />
+      <DropdownMenuContent align="end">
+        <GroupRemoveMenuItem group={group} setErrorMessage={setErrorMessage} state={state} />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function GroupActionsTrigger({ group }: Readonly<{ group: AccessGroupListRow }>): JSX.Element {
+  return (
+    <DropdownMenuTrigger asChild>
       <Button
-        className={readServerTableActionControlClassName()}
-        onClick={(): void => {
-          state.onNavigate(buildGroupsPageHref(state.data, group.id));
-        }}
+        aria-label={`Open actions for ${group.name}`}
+        className="size-7 px-0 text-muted-foreground"
         size="sm"
         type="button"
         variant="secondary"
       >
-        Manage
+        <MoreHorizontal className="size-3.5" />
       </Button>
-    </ServerTableActions>
+    </DropdownMenuTrigger>
   );
+}
+
+function GroupRemoveMenuItem({
+  group,
+  setErrorMessage,
+  state,
+}: Readonly<GroupRowProps & { setErrorMessage: (value: string | undefined) => void }>): JSX.Element {
+  const mutation: GroupDeleteMutation = useGroupDeleteMutation(group, setErrorMessage, state);
+
+  return (
+    <DropdownMenuItem
+      className="text-red-700 focus:text-red-800"
+      disabled={mutation.isPending}
+      onSelect={(): void => {
+        if (!mutation.isPending && window.prompt(readGroupDeleteConfirmationMessage(group.name)) === group.name) {
+          mutation.mutate();
+        }
+      }}
+    >
+      {mutation.isPending ? 'Removing...' : 'Remove'}
+    </DropdownMenuItem>
+  );
+}
+
+function useGroupDeleteMutation(
+  group: AccessGroupListRow,
+  setErrorMessage: (value: string | undefined) => void,
+  state: GroupsPageState,
+): GroupDeleteMutation {
+  const organizationSlug: string = requireBrowserAccessSelectedOrganizationSlug(state.data.selectedOrganizationSlug);
+  return useBrowserMutation<boolean>({
+    mutation: async (): Promise<boolean> =>
+      await handleGroupDeleteAction(state.data, group.id, state.setData, setErrorMessage),
+    mutationKey: ['console-access', 'groups', organizationSlug, group.id, 'delete'],
+    onSuccess: (didDelete: boolean): void => {
+      if (didDelete) {
+        state.onNavigate(buildGroupsPageHref(state.data, null));
+      }
+    },
+  });
 }
 
 function readGroupDescription(group: AccessGroupListRow): string {

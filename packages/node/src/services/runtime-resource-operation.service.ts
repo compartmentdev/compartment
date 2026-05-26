@@ -19,7 +19,7 @@ import {
   buildResourceOperationContainerName,
   buildRuntimeResourceNetworkName,
 } from './runtime-names.service';
-import { resolveResourceReadinessHost, resourceReadinessPollIntervalMs } from './runtime-resource-readiness.service';
+import { continueResourceReadinessPolling, resolveResourceReadinessHost } from './runtime-resource-readiness.service';
 import { environmentIdLabelName, projectIdLabelName } from './runtime-container-labels';
 import { resourceNameLabelName } from './runtime-resource-labels';
 import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
@@ -150,16 +150,30 @@ async function waitForResourceReadiness(
 
   const readiness: NodeResourceReadiness = input.readiness;
   const deadline: number = Date.now() + readiness.timeoutMs;
-  const resourceNetworkName: string = buildRuntimeResourceNetworkName(input, config.dockerNamespace);
-  const resourceContainerName: string = buildResourceContainerName(input, config.dockerNamespace);
-  while (Date.now() <= deadline) {
-    if (await canReachOperationReadinessPort(resourceContainerName, resourceNetworkName, readiness.port, deadline)) {
+  for (;;) {
+    if (await canReachRuntimeResourceOperationReadiness(input, config, readiness.port, deadline)) {
       return;
     }
-    await waitForResourceReadinessPoll();
+    if (!(await continueResourceReadinessPolling(deadline))) {
+      break;
+    }
   }
 
   throw new Error(`Resource ${input.resourceName} did not become ready after restore before ${readiness.timeoutMs}ms.`);
+}
+
+async function canReachRuntimeResourceOperationReadiness(
+  input: NodeResourceOperationRequest,
+  config: RuntimeResourceOperationConfig,
+  port: number,
+  deadline: number,
+): Promise<boolean> {
+  return await canReachOperationReadinessPort(
+    buildResourceContainerName(input, config.dockerNamespace),
+    buildRuntimeResourceNetworkName(input, config.dockerNamespace),
+    port,
+    deadline,
+  );
 }
 
 async function canReachOperationReadinessPort(
@@ -181,10 +195,4 @@ async function resolveOperationReadinessHost(
   } catch {
     return null;
   }
-}
-
-async function waitForResourceReadinessPoll(): Promise<void> {
-  await new Promise<void>((resolve: () => void): void => {
-    setTimeout(resolve, resourceReadinessPollIntervalMs);
-  });
 }

@@ -36,16 +36,17 @@ describe('browser access action visibility', (): void => {
     expect(html).not.toContain('Open actions for viewer@example.com');
   });
 
-  it('hides group create actions from read-only group viewers', (): void => {
+  it('hides group create and delete actions from read-only group viewers', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
       React.createElement(GroupsPageContent, {
-        state: createGroupsPageState(['organization.group.read']),
+        state: createGroupsPageState(['organization.group.read'], [createGroup()]),
       }),
     );
 
     expect(html).not.toContain('Create group');
+    expect(html).not.toContain('Open actions for Operators');
   });
 
   it('hides group assignments when role data is unavailable', (): void => {
@@ -198,11 +199,14 @@ function createUser(): BrowserUsersUser {
   };
 }
 
-function createGroupsPageState(currentOrganizationPermissions: PermissionKey[]): GroupsPageState {
+function createGroupsPageState(
+  currentOrganizationPermissions: PermissionKey[],
+  groups: AccessGroupListRow[] = [],
+): GroupsPageState {
   const data: BrowserGroupsPageResult = {
     assignments: [],
     currentOrganizationPermissions,
-    groups: [],
+    groups,
     members: [],
     mode: 'list',
     noticeMessage: undefined,

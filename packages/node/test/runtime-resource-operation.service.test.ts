@@ -1,3 +1,4 @@
+import { createServer, type AddressInfo, type Server } from 'node:net';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +9,7 @@ import type {
   DockerRunContainerToCompletionResult,
 } from '@compartment/docker';
 import type { NodeResourceOperationRequest } from '@compartment/contracts';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
 import {
   runRuntimeResourceBackupOperation,
   runRuntimeResourceRestoreOperation,
@@ -100,6 +101,52 @@ afterEach(async (): Promise<void> => {
 });
 
 describe('runRuntimeResourceRestoreOperation', (): void => {
+  it('performs an initial readiness probe before the restore timeout expires', async (): Promise<void> => {
+    const server: Server = await listenOnLocalPort();
+    const address: AddressInfo | string | null = server.address();
+    const port: number = typeof address === 'object' && address !== null ? address.port : 0;
+    const readActualDateNow: () => number = Date.now;
+    const dateNowSpy: MockInstance<typeof Date.now> = vi
+      .spyOn(Date, 'now')
+      .mockImplementationOnce((): number => 1_000)
+      .mockImplementationOnce((): number => 1_001)
+      .mockImplementation((): number => readActualDateNow());
+    const backupArtifact: RuntimeResourceBackupArtifactFixture = await createResourceBackupArtifactFixture();
+
+    mocks.inspectDockerContainer.mockResolvedValue({
+      containerId: 'resource_container_123',
+      imageRef: 'postgres:16',
+      isRunning: true,
+      labels: {},
+      networkAttachments: [{ ipAddress: '127.0.0.1', name: 'compartment-test-prj-123-env-123-resources' }],
+      publishedPorts: [],
+    });
+    mocks.runDockerContainerToCompletion.mockResolvedValue({
+      containerId: 'operation_container_123',
+      logs: [],
+      stderr: '',
+      stdout: 'ok',
+    });
+
+    try {
+      await expect(
+        runRuntimeResourceRestoreOperation(
+          createResourceOperationRequest({
+            backupId: backupArtifact.backupId,
+            readiness: { port, timeoutMs: 0, type: 'tcp' },
+          }),
+          createRuntimeConfig({ resourceBackupDirectory: backupArtifact.root }),
+        ),
+      ).resolves.toEqual({
+        stderr: '',
+        stdout: 'ok',
+      });
+    } finally {
+      dateNowSpy.mockRestore();
+      await closeServer(server);
+    }
+  });
+
   it('probes restore readiness through the resource container network address', async (): Promise<void> => {
     const resourceNetworkAddress: string = ['172', '20', '0', '15'].join('.');
     const backupArtifact: RuntimeResourceBackupArtifactFixture = await createResourceBackupArtifactFixture();
@@ -353,6 +400,21 @@ async function createResourceBackupRoot(): Promise<string> {
   temporaryDirectories.push(directory);
 
   return directory;
+}
+
+async function listenOnLocalPort(): Promise<Server> {
+  const server: Server = createServer();
+  await new Promise<void>((resolve: () => void): void => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+
+  return server;
+}
+
+async function closeServer(server: Server): Promise<void> {
+  await new Promise<void>((resolve: () => void): void => {
+    server.close((): void => resolve());
+  });
 }
 
 function createResourceOperationRequest(
