@@ -45,6 +45,7 @@ interface RuntimeCleanupFixtures extends ConsoleFixtures {
 }
 
 const dockerCleanupPollTimeoutMs: number = 15_000;
+const dockerVolumeCleanupPollTimeoutMs: number = 45_000;
 const dockerProjectIdLabelName: string = 'compartment.projectId';
 const projectDeleteMutationPollTimeoutMs: number = 30_000;
 
@@ -207,7 +208,7 @@ async function expectNoDockerProjectRuntimeResources(
     .toEqual([]);
   await expect
     .poll(async (): Promise<string[]> => await listDockerProjectVolumes(project), {
-      timeout: dockerCleanupPollTimeoutMs,
+      timeout: dockerVolumeCleanupPollTimeoutMs,
     })
     .toEqual([]);
   await expect
