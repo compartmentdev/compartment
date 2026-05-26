@@ -125,22 +125,33 @@ describe('scanSelfHostedImages', () => {
       process.env.TRIVY_ARGS_LOG = trivyArgsLogPath;
       process.env.GITHUB_STEP_SUMMARY = stepSummaryPath;
 
-      expect(() =>
-        scanSelfHostedImages({ dockerScout: true, repositoryRoot: tempDirectory, tags: ['sha-test'] }),
-      ).toThrow('Trivy reported fixable HIGH/CRITICAL vulnerabilities in 1 self-hosted image(s):');
+      let scanError;
+      try {
+        scanSelfHostedImages({ dockerScout: true, repositoryRoot: tempDirectory, tags: ['sha-test'] });
+      } catch (error) {
+        scanError = error;
+      }
+
+      expect(scanError).toBeInstanceOf(Error);
+      expect(scanError.message).toContain(
+        'Trivy failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s):',
+      );
+      expect(scanError.message).toContain(
+        'Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s):',
+      );
 
       const trivyCalls = parseCommandArgsLog(await readFile(trivyArgsLogPath, 'utf8'));
       expect(trivyCalls.map((args) => args.at(-1))).toEqual(renderExpectedScannedImageRefs());
       const dockerScoutCalls = parseCommandArgsLog(await readFile(dockerScoutArgsLogPath, 'utf8'));
       expect(dockerScoutCalls.map((args) => args.at(-1))).toEqual(renderExpectedScannedImageRefs());
       await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
-        'Trivy found fixable HIGH/CRITICAL vulnerabilities in 1 self-hosted image(s).',
+        'Trivy failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s).',
       );
       await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
         '`docker.io/compartmentdev/compartment-worker:sha-test`',
       );
       await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
-        'Docker Scout found fixable HIGH/CRITICAL vulnerabilities in 1 self-hosted image(s).',
+        'Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s).',
       );
       await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
         '`docker.io/compartmentdev/compartment-caddy:sha-test`',

@@ -349,7 +349,7 @@ function buildScannerFailureMessage(scannerName, failedImageRefs) {
   }
 
   const failureList = failedImageRefs.map((imageRef) => `- ${imageRef}`).join('\n');
-  return `${scannerName} reported fixable HIGH/CRITICAL vulnerabilities in ${failedImageRefs.length} self-hosted image(s):\n${failureList}`;
+  return `${scannerName} failed the fixable HIGH/CRITICAL vulnerability gate for ${failedImageRefs.length} self-hosted image(s):\n${failureList}`;
 }
 
 function writeSelfHostedImageScanFailureSummary(input) {
@@ -380,7 +380,7 @@ function buildScannerFailureSummary(scannerName, failedImageRefs) {
   const tableRows = failedImageRefs.map((imageRef) => `| \`${escapeMarkdownTableCell(imageRef)}\` |`).join('\n');
   const summary = `### ${scannerName} self-hosted image vulnerability scan
 
-${scannerName} found fixable HIGH/CRITICAL vulnerabilities in ${failedImageRefs.length} self-hosted image(s).
+${scannerName} failed the fixable HIGH/CRITICAL vulnerability gate for ${failedImageRefs.length} self-hosted image(s).
 
 | Image |
 | --- |
