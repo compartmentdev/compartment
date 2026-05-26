@@ -32,7 +32,7 @@ export {
   type ValidatedFileSystemEntry,
   type ValidatedFileSystemWriteTarget,
 } from './file-system-boundary';
-export { isMissingFileSystemEntryError, isPathWithinDirectory } from './file-system-path';
+export { isMissingFileSystemEntryError, isPathWithinDirectory, readRequiredAbsolutePath } from './file-system-path';
 export {
   assertValidUnixSocketPath,
   createCompartmentUnixSocketPathPolicy,

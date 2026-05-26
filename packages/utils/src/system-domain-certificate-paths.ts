@@ -1,4 +1,5 @@
 import { isAbsolute, resolve } from 'node:path';
+import { readRequiredAbsolutePath } from './file-system-path';
 
 export interface PendingSystemDomainCertificatePaths {
   certificatePath: string;
@@ -19,11 +20,7 @@ export function buildPendingSystemDomainCertificatePaths(
 }
 
 function readRequiredAbsoluteCustomTlsDirectory(customTlsDirectory: string): string {
-  if (isAbsolute(customTlsDirectory)) {
-    return customTlsDirectory;
-  }
-
-  throw new Error('COMPARTMENT_CUSTOM_TLS_DIR must be an absolute path.');
+  return readRequiredAbsolutePath(customTlsDirectory, 'COMPARTMENT_CUSTOM_TLS_DIR');
 }
 
 function readRequiredPendingOperationId(operationId: string): string {

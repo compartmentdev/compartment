@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { buildCompartmentArtifactRegistryAddress } from '@compartment/utils';
+import { buildCompartmentArtifactRegistryAddress, readRequiredAbsolutePath } from '@compartment/utils';
 import type { DockerRegistryCredentials } from '@compartment/docker';
 import { assertValidNodeAgentSocketPath } from './node-agent-socket-path';
 import type { RuntimeConnectivityMode } from './services/runtime.types';
@@ -16,6 +16,7 @@ interface NodeConfigEnvironment {
   COMPARTMENT_NODE_NAME: string;
   COMPARTMENT_NODE_AGENT_SOCKET: string;
   COMPARTMENT_NODE_VERSION: string;
+  COMPARTMENT_RESOURCE_BACKUP_DIR: string;
   COMPARTMENT_LOG_LEVEL: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: RuntimeConnectivityMode;
   COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: string;
@@ -36,6 +37,7 @@ type NodeConfigSchemaShape = z.ZodRawShape & {
   COMPARTMENT_NODE_AGENT_SOCKET: z.ZodString;
   COMPARTMENT_NODE_NAME: z.ZodString;
   COMPARTMENT_NODE_VERSION: z.ZodString;
+  COMPARTMENT_RESOURCE_BACKUP_DIR: z.ZodString;
   COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: z.ZodEnum<['loopback', 'network']>;
   COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: z.ZodString;
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.ZodString;
@@ -50,6 +52,7 @@ export interface NodeConfig {
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   name: string;
   nodeSocketPath: string;
+  resourceBackupDirectory: string;
   runtimeConnectivityMode: RuntimeConnectivityMode;
   runtimeDefaultUpstreamHost: string;
   runtimeRegistryCredentials: DockerRegistryCredentials;
@@ -70,6 +73,10 @@ export function readNodeConfig(env: NodeJS.ProcessEnv = process.env): NodeConfig
     logLevel: parsed.COMPARTMENT_LOG_LEVEL,
     name: parsed.COMPARTMENT_NODE_NAME,
     nodeSocketPath: parsed.COMPARTMENT_NODE_AGENT_SOCKET,
+    resourceBackupDirectory: readRequiredAbsolutePath(
+      parsed.COMPARTMENT_RESOURCE_BACKUP_DIR,
+      'COMPARTMENT_RESOURCE_BACKUP_DIR',
+    ),
     runtimeConnectivityMode: parsed.COMPARTMENT_RUNTIME_CONNECTIVITY_MODE,
     runtimeDefaultUpstreamHost: parsed.COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST,
     runtimeRegistryCredentials: readRuntimeRegistryCredentials(parsed),
@@ -112,6 +119,7 @@ function readNodeConfigSchemaShape(): NodeConfigSchemaShape {
     COMPARTMENT_NODE_AGENT_SOCKET: z.string().min(1),
     COMPARTMENT_NODE_NAME: z.string().min(1),
     COMPARTMENT_NODE_VERSION: z.string().min(1),
+    COMPARTMENT_RESOURCE_BACKUP_DIR: z.string().min(1),
     COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: z.enum(['loopback', 'network']),
     COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: z.string().min(1),
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),

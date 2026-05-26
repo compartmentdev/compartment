@@ -4,9 +4,9 @@ import {
   buildInternalHttpUrl,
   createCompartmentUnixSocketPathPolicy,
   parseOptionalTrustedOutboundHostList,
+  readRequiredAbsolutePath,
   type UnixSocketPathPolicy,
 } from '@compartment/utils';
-import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 import {
   auditFileSinkConfigEnvSchema,
@@ -15,7 +15,6 @@ import {
 } from './audit-file-sink-config';
 import { readApiAuthThrottleConfig, type ApiAuthThrottleConfig } from './auth-throttle-config';
 import type { ApiConfigEnv } from './config-env.types';
-import { resolveConfiguredPath } from './config-paths';
 import { parseOptionalAbsoluteUrl, parseOptionalPositiveInt, readRequiredCronExpression } from './config-parsers';
 import { parseVariablesMasterKey } from './lib/variables-crypto';
 import { readRequiredDurationMs } from './read-required-duration-ms';
@@ -226,7 +225,10 @@ function readApiRuntimeConfig(parsed: ApiConfigEnv): ApiRuntimeConfig {
       parsed.COMPARTMENT_ROLLBACK_RETENTION_LIMIT,
       'COMPARTMENT_ROLLBACK_RETENTION_LIMIT',
     ),
-    resourceBackupDirectory: resolveConfiguredPath(parsed.COMPARTMENT_RESOURCE_BACKUP_DIR),
+    resourceBackupDirectory: readRequiredAbsolutePath(
+      parsed.COMPARTMENT_RESOURCE_BACKUP_DIR,
+      'COMPARTMENT_RESOURCE_BACKUP_DIR',
+    ),
     runtimeDefaultUpstreamHost: parsed.COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST,
     sourceArchiveDirectory: parsed.COMPARTMENT_SOURCE_ARCHIVE_DIR,
     sourceArchiveMaxBytes: parsed.COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES,
@@ -252,14 +254,6 @@ function assertValidNodeAgentSocketPath(socketPath: string): void {
 
 function parseSessionTtl(value: string): number {
   return readRequiredDurationMs(value, 'COMPARTMENT_SESSION_TTL');
-}
-
-function readRequiredAbsolutePath(value: string, variableName: string): string {
-  if (isAbsolute(value)) {
-    return value;
-  }
-
-  throw new Error(`${variableName} must be an absolute path.`);
 }
 
 function normalizeApiHostValue(value: string): string {

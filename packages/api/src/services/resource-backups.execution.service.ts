@@ -20,7 +20,7 @@ import {
 import { buildResourceBackupManifest } from './resource-backup-manifest.service';
 import {
   buildResourceOperationRequest,
-  requireBackupArtifactHostPath,
+  requireBackupArtifactId,
   resolveBackupOperationContext,
   resolveResourceOperationContext,
   resolveRestoreOperationContext,
@@ -43,7 +43,7 @@ interface RunningResourceBackup {
 }
 
 interface ResourceBackupRuntimeState extends RunningResourceBackup {
-  artifactHostPath: string;
+  backupId: string;
 }
 
 interface CompleteResourceBackupOperationInput {
@@ -71,11 +71,11 @@ export async function runResourceBackup(
 
 export async function runResourceRestore(input: RunResourceRestoreInput): Promise<void> {
   const operationContext: ResourceBackupOperationContext = await resolveRestoreOperationContext(input);
-  const artifactHostPath: string = requireBackupArtifactHostPath(input.backup);
+  const backupId: string = requireBackupArtifactId(input.backup);
 
   await runNodeResourceRestoreOperation(
     await createResourceNodeRequester(input.context),
-    buildResourceOperationRequest(input.context, input.resource, operationContext, artifactHostPath),
+    buildResourceOperationRequest(input.context, input.resource, operationContext, backupId),
   );
 }
 
@@ -112,7 +112,7 @@ async function runBackupCommand(
 ): Promise<NodeResourceOperationResponse> {
   return await runNodeResourceBackupOperation(
     await createResourceNodeRequester(input.context),
-    buildResourceOperationRequest(input.context, input.resource, operationContext, runtimeState.artifactHostPath),
+    buildResourceOperationRequest(input.context, input.resource, operationContext, runtimeState.backupId),
   );
 }
 
@@ -136,9 +136,9 @@ async function createRunningResourceBackup(input: RunResourceBackupInput): Promi
 async function prepareRunningResourceBackupRuntimeState(
   runningBackup: RunningResourceBackup,
 ): Promise<ResourceBackupRuntimeState> {
-  const artifactHostPath: string = await prepareResourceBackupArtifactDirectory(runningBackup.backup.id);
+  await prepareResourceBackupArtifactDirectory(runningBackup.backup.id);
 
-  return { artifactHostPath, ...runningBackup };
+  return { backupId: runningBackup.backup.id, ...runningBackup };
 }
 
 async function createRunningResourceBackupOperationRecord(

@@ -66,6 +66,7 @@ export {
   nodeResourceLogsQuerySchema,
   nodeResourceLogsResponseSchema,
   nodeResourceOperationBackupPathname,
+  nodeResourceOperationBackupIdSchema,
   nodeResourceOperationRequestSchema,
   nodeResourceOperationResponseSchema,
   nodeResourceOperationRestorePathname,

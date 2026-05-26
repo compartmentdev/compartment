@@ -906,6 +906,7 @@ function createNodeConfig(overrides: Partial<NodeConfig> = {}): NodeConfig {
     logLevel: 'silent',
     name: 'local-node',
     nodeSocketPath: '/tmp/compartment/node-test/node/runtime.sock',
+    resourceBackupDirectory: '/var/lib/compartment/resource-backups',
     runtimeConnectivityMode: 'loopback',
     runtimeDefaultUpstreamHost: '127.0.0.1',
     runtimeRegistryCredentials: {

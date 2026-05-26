@@ -61,7 +61,7 @@ export interface NodeResourceRequest {
 }
 
 export interface NodeResourceOperationRequest {
-  artifactHostPath: string;
+  backupId: string;
   definition: NodeResourceOperationDefinition;
   environmentId: string;
   environmentName: string;
@@ -160,6 +160,10 @@ const nodeResourceOperationDefinitionSchema: ContractSchema<NodeResourceOperatio
     image: z.string().min(1),
   })
   .strict();
+export const nodeResourceOperationBackupIdSchema: ContractSchema<string> = z
+  .string()
+  .min(1)
+  .regex(/^[a-zA-Z0-9_-]+$/u);
 
 export const nodeResourceRequestSchema: ContractSchema<NodeResourceRequest> = z
   .object({
@@ -175,7 +179,7 @@ export const nodeResourceRequestSchema: ContractSchema<NodeResourceRequest> = z
   .strict();
 export const nodeResourceOperationRequestSchema: ContractSchema<NodeResourceOperationRequest> = z
   .object({
-    artifactHostPath: z.string().min(1),
+    backupId: nodeResourceOperationBackupIdSchema,
     definition: nodeResourceOperationDefinitionSchema,
     environmentId: z.string().min(1),
     environmentName: environmentNameSchema,

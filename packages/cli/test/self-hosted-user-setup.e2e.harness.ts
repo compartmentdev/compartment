@@ -66,6 +66,8 @@ const selfHostedUserSetupSystemctlShimDirectory: string = join(
   selfHostedUserSetupTempRootDirectory,
   `ouse-systemctl-${selfHostedUserSetupRunId}`,
 );
+const dindDockerSocketPath: string = '/runner-docker/docker.sock';
+const dindSharedResourceBackupDirectory: string = '/runner-docker/compartment/resource-backups';
 const selfHostedUserSetupSystemdStateDirectory: string = join(
   selfHostedUserSetupTempRootDirectory,
   `ouse-systemd-${selfHostedUserSetupRunId}`,
@@ -306,11 +308,85 @@ async function installSelfHostedRuntime(
   });
   const diagnostics: string = result.exitCode === 0 ? '' : await readSelfHostedDiagnostics();
   expectSuccessfulCommand(result, 'install', diagnostics);
+  await configureSelfHostedDindResourceBackupDirectory(env);
 
   return SelfHostedUserSetupRuntimeHandle.fromInstallResponse(
     parseSelfHostedUserSetupInstallResult(result.stdout),
     credentials,
   );
+}
+
+async function configureSelfHostedDindResourceBackupDirectory(env: NodeJS.ProcessEnv): Promise<void> {
+  const result: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'sudo',
+      '-n',
+      'env',
+      ...buildSelfHostedRootCliEnvArgs(env),
+      'sh',
+      '-c',
+      `
+set -eu
+if [ ! -S ${dindDockerSocketPath} ] || [ "$(readlink /var/run/docker.sock 2>/dev/null || true)" != "${dindDockerSocketPath}" ]; then
+  exit 0
+fi
+
+env_file=/etc/compartment/.env.self-hosted
+backup_dir=${dindSharedResourceBackupDirectory}
+install -d -m 0700 "$backup_dir"
+tmp_file="$(mktemp)"
+awk -v backup_dir="$backup_dir" '
+  BEGIN { updated = 0 }
+  $0 ~ /^COMPARTMENT_RESOURCE_BACKUP_DIR=/ {
+    print "COMPARTMENT_RESOURCE_BACKUP_DIR=" backup_dir
+    updated = 1
+    next
+  }
+  { print }
+  END {
+    if (updated == 0) {
+      print "COMPARTMENT_RESOURCE_BACKUP_DIR=" backup_dir
+    }
+  }
+' "$env_file" > "$tmp_file"
+install -m 0600 "$tmp_file" "$env_file"
+rm -f "$tmp_file"
+
+set -a
+. "$env_file"
+set +a
+systemctl restart compartment-node-agent.service
+waited=0
+while [ "$waited" -lt 60 ]; do
+  if curl --fail --silent --show-error --unix-socket "$COMPARTMENT_NODE_AGENT_SOCKET" http://localhost/healthz >/dev/null; then
+    break
+  fi
+  waited="$((waited + 2))"
+  sleep 2
+done
+if [ "$waited" -ge 60 ]; then
+  echo "Timed out waiting for node-agent readiness after dind resource backup directory update." >&2
+  exit 1
+fi
+
+${selfHostedComposeFilesScript}
+${selfHostedDockerComposeCommand} up -d --force-recreate api >/dev/null
+waited=0
+while [ "$waited" -lt 60 ]; do
+  if curl --fail --silent --show-error "$COMPARTMENT_API_URL/readyz" >/dev/null; then
+    exit 0
+  fi
+  waited="$((waited + 2))"
+  sleep 2
+done
+echo "Timed out waiting for API readiness after dind resource backup directory update." >&2
+exit 1
+`,
+    ],
+    timeoutMs: selfHostedUserSetupCommandTimeoutMs,
+  });
+  const diagnostics: string = result.exitCode === 0 ? '' : await readSelfHostedDiagnostics();
+  expectSuccessfulCommand(result, 'configure dind resource backup directory', diagnostics);
 }
 
 function parseSelfHostedUserSetupInstallResult(output: string): SelfHostedUserSetupInstallResult {
@@ -760,6 +836,7 @@ fi
 
 rm -f /usr/local/bin/compartment-node-agent /etc/systemd/system/compartment-node-agent.service
 rm -rf /etc/compartment /var/lib/compartment /var/run/compartment
+rm -rf /runner-docker/compartment
 `,
     ],
     timeoutMs: selfHostedUserSetupCommandTimeoutMs,
