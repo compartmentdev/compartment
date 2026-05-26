@@ -1,4 +1,3 @@
-import { createServer, type AddressInfo, type Server } from 'node:net';
 import type {
   DockerContainerSecurityProfile,
   DockerInspectContainerResult,
@@ -9,13 +8,14 @@ import type {
   DockerRunContainerResult,
 } from '@compartment/docker';
 import type { NodeResourceDeleteRequest, NodeResourceRequest, NodeResourceResponse } from '@compartment/contracts';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
 import { reconcileRuntimeResource, startRuntimeResource } from '../src/services/runtime-resource.service';
 import { deleteRuntimeResource } from '../src/services/runtime-resource-lifecycle.service';
 import { buildRuntimeResourceLabels } from '../src/services/runtime-resource-labels';
 import type { RuntimeDeployConfig } from '../src/services/runtime.types';
 
 type BuildDockerNamespaceLabels = (namespace: string) => Record<string, string>;
+type CanConnectToRuntimeHost = (host: string, port: number, deadline: number) => Promise<boolean>;
 type ConnectDockerContainerToNetwork = (input: { containerRef: string; networkName: string }) => Promise<void>;
 type DisconnectDockerContainerFromNetwork = (input: { containerRef: string; networkName: string }) => Promise<void>;
 type EnsureDockerImageAvailable = (input: { imageRef: string }) => Promise<void>;
@@ -63,8 +63,14 @@ interface TestNodeResourceRestart {
   policy: 'no' | 'on-failure' | 'unless-stopped';
 }
 
+interface RuntimeResourceConnectivityModule {
+  canConnectToRuntimeHost: CanConnectToRuntimeHost;
+  resolveRuntimeContainerNetworkHost: (containerRef: string, networkName: string) => Promise<string>;
+}
+
 interface RuntimeResourceServiceMocks {
   buildDockerNamespaceLabels: Mock<BuildDockerNamespaceLabels>;
+  canConnectToRuntimeHost: Mock<CanConnectToRuntimeHost>;
   connectDockerContainerToNetwork: Mock<ConnectDockerContainerToNetwork>;
   disconnectDockerContainerFromNetwork: Mock<DisconnectDockerContainerFromNetwork>;
   ensureDockerImageAvailable: Mock<EnsureDockerImageAvailable>;
@@ -90,6 +96,7 @@ const mocks: RuntimeResourceServiceMocks = vi.hoisted(
         'compartment.namespace': namespace,
       }),
     ),
+    canConnectToRuntimeHost: vi.fn<CanConnectToRuntimeHost>(),
     connectDockerContainerToNetwork: vi.fn<ConnectDockerContainerToNetwork>(),
     disconnectDockerContainerFromNetwork: vi.fn<DisconnectDockerContainerFromNetwork>(),
     ensureDockerImageAvailable: vi.fn<EnsureDockerImageAvailable>(),
@@ -107,6 +114,19 @@ const mocks: RuntimeResourceServiceMocks = vi.hoisted(
     stopDockerContainer: vi.fn<StopDockerContainer>(),
     syncDockerNetworkEgressDenyRules: vi.fn<SyncDockerNetworkEgressDenyRules>(),
   }),
+);
+
+vi.mock(
+  '../src/services/runtime-resource-connectivity.service',
+  async (
+    importOriginal: () => Promise<RuntimeResourceConnectivityModule>,
+  ): Promise<RuntimeResourceConnectivityModule> => {
+    const original: RuntimeResourceConnectivityModule = await importOriginal();
+    return {
+      ...original,
+      canConnectToRuntimeHost: mocks.canConnectToRuntimeHost.mockImplementation(original.canConnectToRuntimeHost),
+    };
+  },
 );
 
 vi.mock(
@@ -176,6 +196,7 @@ afterEach((): void => {
     process.env.HOSTNAME = originalHostname;
   }
   mocks.buildDockerNamespaceLabels.mockClear();
+  mocks.canConnectToRuntimeHost.mockClear();
   mocks.connectDockerContainerToNetwork.mockReset();
   mocks.disconnectDockerContainerFromNetwork.mockReset();
   mocks.ensureDockerImageAvailable.mockReset();
@@ -374,10 +395,12 @@ describe('reconcileRuntimeResource', (): void => {
 });
 
 describe('startRuntimeResource', (): void => {
-  it('waits for TCP readiness on the resource container network address', async (): Promise<void> => {
-    const server: Server = await listenOnLocalPort();
-    const address: AddressInfo | string | null = server.address();
-    const port: number = typeof address === 'object' && address !== null ? address.port : 0;
+  it('performs an initial readiness probe before the startup timeout expires', async (): Promise<void> => {
+    const dateNowSpy: MockInstance<typeof Date.now> = vi
+      .spyOn(Date, 'now')
+      .mockImplementationOnce((): number => 1_000)
+      .mockImplementation((): number => 1_001);
+    mocks.canConnectToRuntimeHost.mockResolvedValueOnce(true);
     mocks.ensureDockerImageAvailable.mockResolvedValueOnce(undefined);
     mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'resource_container_123' });
     mocks.inspectDockerContainer.mockResolvedValueOnce({
@@ -399,8 +422,8 @@ describe('startRuntimeResource', (): void => {
         startRuntimeResource(
           createResourceRequest({
             readiness: {
-              port,
-              timeoutMs: 500,
+              port: 5432,
+              timeoutMs: 0,
               type: 'tcp',
             },
           }),
@@ -412,9 +435,49 @@ describe('startRuntimeResource', (): void => {
         status: 'running',
       });
     } finally {
-      await closeServer(server);
+      dateNowSpy.mockRestore();
     }
 
+    expect(mocks.canConnectToRuntimeHost).toHaveBeenCalledTimes(1);
+    expect(mocks.canConnectToRuntimeHost.mock.calls[0]?.slice(0, 2)).toEqual(['127.0.0.1', 5432]);
+  });
+
+  it('waits for TCP readiness on the resource container network address', async (): Promise<void> => {
+    mocks.canConnectToRuntimeHost.mockResolvedValueOnce(true);
+    mocks.ensureDockerImageAvailable.mockResolvedValueOnce(undefined);
+    mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'resource_container_123' });
+    mocks.inspectDockerContainer.mockResolvedValueOnce({
+      containerId: 'resource_container_123',
+      imageRef: 'postgres:16',
+      isRunning: true,
+      labels: {},
+      networkAttachments: [
+        {
+          ipAddress: '127.0.0.1',
+          name: 'compartment-compartment-e2e-prj-smoke-env-production-resources',
+        },
+      ],
+      publishedPorts: [],
+    });
+
+    await expect(
+      startRuntimeResource(
+        createResourceRequest({
+          readiness: {
+            port: 5432,
+            timeoutMs: 500,
+            type: 'tcp',
+          },
+        }),
+        createRuntimeDeployConfig(),
+      ),
+    ).resolves.toEqual({
+      containerId: 'resource_container_123',
+      hostname: 'postgres.production.smoke.local',
+      status: 'running',
+    });
+
+    expect(mocks.canConnectToRuntimeHost).toHaveBeenCalledWith('127.0.0.1', 5432, expect.any(Number));
     expect(mocks.connectDockerContainerToNetwork).not.toHaveBeenCalled();
   });
 
@@ -574,21 +637,6 @@ function createResourceRequest(overrides: Partial<TestNodeResourceRuntimeDefinit
       },
     ],
   };
-}
-
-async function listenOnLocalPort(): Promise<Server> {
-  const server: Server = createServer();
-  await new Promise<void>((resolve: () => void): void => {
-    server.listen(0, '127.0.0.1', resolve);
-  });
-
-  return server;
-}
-
-async function closeServer(server: Server): Promise<void> {
-  await new Promise<void>((resolve: () => void): void => {
-    server.close((): void => resolve());
-  });
 }
 
 function createResourceDeleteRequest(): NodeResourceDeleteRequest {
