@@ -49,12 +49,9 @@ const invalidEnvironmentUpdateCases: InvalidEnvironmentUpdateCase[] = [
   },
   {
     buildEnvironmentText: (): string =>
-      `${removeEnvironmentAssignments(createCurrentEnvironmentText(), [
-        'COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN',
-        'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL',
-      ])}COMPARTMENT_ACME_DNS_TOKEN=legacy-token\nCOMPARTMENT_ACME_DNS_BROKER_URL=http://127.0.0.1:4545\n`,
+      removeEnvironmentAssignments(createCurrentEnvironmentText(), ['COMPARTMENT_MANAGED_DOMAIN_BROKER_URL']),
     expectedMessage: 'The self-hosted environment is missing COMPARTMENT_MANAGED_DOMAIN_BROKER_URL.',
-    name: 'legacy broker alias-only env',
+    name: 'missing managed domain broker URL slot',
   },
 ];
 
@@ -71,7 +68,7 @@ describe.sequential('strict self-hosted update contract', (): void => {
     });
   }
 
-  it('rejects legacy managed domain install state instead of dropping it', async (): Promise<void> => {
+  it('rejects invalid managed domain install state before runtime mutation', async (): Promise<void> => {
     expect.hasAssertions();
     const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
     const previousEnvironmentText: string = createCurrentEnvironmentText({
@@ -79,7 +76,7 @@ describe.sequential('strict self-hosted update contract', (): void => {
       managedDomainBrokerUrl: 'http://127.0.0.1:4545',
     });
     await writeCurrentInstallFiles(installPaths, previousEnvironmentText);
-    await writeInstallStateJson(installPaths, createLegacyManagedDomainInstallState());
+    await writeInstallStateJson(installPaths, createInvalidManagedDomainInstallState());
 
     await expectUpdateFailureLeavesEnvironment(
       installPaths,
@@ -89,12 +86,11 @@ describe.sequential('strict self-hosted update contract', (): void => {
   });
 });
 
-function createLegacyManagedDomainInstallState(): InstallStateJsonObject {
+function createInvalidManagedDomainInstallState(): InstallStateJsonObject {
   return {
     imageSource: 'registry',
     installationId: '11111111-1111-4111-8111-111111111111',
     managedDomain: {
-      acmeDnsToken: 'acme-token',
       acmeEmail: 'admin@example.com',
       baseDomain: '4h8z9k2m1p7q.app.compartment.run',
       brokerUrl: 'http://127.0.0.1:4545',

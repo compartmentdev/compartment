@@ -58,9 +58,8 @@ compartment install --image-source local --local-runtime
 - Public ports default to `80` and `443`.
 - Config, compose, and env files live in `/etc/compartment`.
 - State, install backups, and docker work files live in `/var/lib/compartment/self-hosted`.
-- The runtime contract uses only `.env.self-hosted`, `docker-compose.self-hosted.yml`, and
-  `/var/lib/compartment/self-hosted/install-state.json`; older `onprem` filenames or state directories are not
-  recognized.
+- Runtime files are `/etc/compartment/.env.self-hosted`, `/etc/compartment/docker-compose.self-hosted.yml`, and
+  `/var/lib/compartment/self-hosted/install-state.json`.
 - The runtime socket root is `/var/run/compartment`: System API uses `/var/run/compartment/api/system-api.sock`, and the host node agent uses `/var/run/compartment/node/agent.sock`.
 - `compartment install` stages `/usr/local/bin/compartment-node-agent` and `compartment-node-agent.service`; API and worker containers talk to that host service over the node-agent Unix socket.
 - The system install requires root privileges.
@@ -122,10 +121,6 @@ sudo compartment system update
 The CLI reads the current image source from `/var/lib/compartment/self-hosted/install-state.json`, stores any `--image-source registry` or `--image-source local` override there for subsequent updates, and skips the update when the requested release version is not newer than the installed one.
 
 `system update` also refreshes the host node-agent binary and systemd unit, restarts the agent before recreating Docker runtime services so their bind mount sees the current agent socket directory, then waits for the agent socket to become healthy.
-
-Self-hosted updates require the current env file to contain the canonical variable names and generated install secrets
-from a fresh `compartment install`. The update flow does not migrate old variable aliases, missing registry credentials,
-or non-canonical host socket paths.
 
 ## Install Domain Operations
 

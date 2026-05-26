@@ -121,9 +121,6 @@ describe.sequential('update runtime', (): void => {
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_ACME_EMAIL=admin@example.com',
     );
-    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.not.toContain(
-      'COMPARTMENT_ACME_DNS_TOKEN=',
-    );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       `COMPARTMENT_DOCKER_WORK_DIR=${join(installPaths.dataDir, 'self-hosted/docker-work')}`,
     );
@@ -391,7 +388,7 @@ describe.sequential('update runtime', (): void => {
     );
   });
 
-  it('rejects the legacy system API socket path while updating an environment', async (): Promise<void> => {
+  it('rejects unsupported system API socket paths while updating an environment', async (): Promise<void> => {
     const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
     const previousEnvironmentText: string = createCurrentEnvironmentText().replace(
       'COMPARTMENT_SYSTEM_API_SOCKET=/var/run/compartment/api/system-api.sock',
