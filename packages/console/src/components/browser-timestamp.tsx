@@ -16,7 +16,7 @@ function BrowserTimestamp({ value }: Readonly<BrowserTimestampProps>): JSX.Eleme
 
   return (
     <>
-      <span>{timestamp.date}</span>
+      <span className="block whitespace-nowrap">{timestamp.date}</span>
       <span className="block whitespace-nowrap">{timestamp.time}</span>
     </>
   );
@@ -27,7 +27,7 @@ export function BrowserTimestampTableCell({
   value,
 }: Readonly<BrowserTimestampTableCellProps>): JSX.Element {
   return (
-    <ServerTableCell className="text-[12px] leading-5">
+    <ServerTableCell className="min-w-[10.5rem] whitespace-nowrap text-[12px] leading-5">
       {value === null ? emptyLabel : <BrowserTimestamp value={value} />}
     </ServerTableCell>
   );

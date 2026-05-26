@@ -28,7 +28,7 @@ interface AuditMetadataEntry {
 }
 
 const auditEventColumns: ServerTableColumnDefinition[] = [
-  { className: 'w-[9.5rem]', key: 'time' },
+  { className: 'w-[10.5rem]', key: 'time' },
   { className: 'w-[15rem]', key: 'event' },
   { className: 'w-[14rem]', key: 'actor' },
   { className: 'w-[15rem]', key: 'target' },
@@ -85,7 +85,6 @@ function renderAuditEventTypeCell(event: AuditEventSummary): JSX.Element {
   return (
     <ServerTableCell>
       <span className="block text-[13px] font-semibold text-foreground">{formatAuditEventType(event.eventType)}</span>
-      <span className="mt-1 block font-mono text-[11px] leading-4 text-muted-foreground">{event.eventType}</span>
     </ServerTableCell>
   );
 }

@@ -98,11 +98,27 @@ describe('browser audit events page', (): void => {
     );
 
     expect(html).toContain('Organization user invited');
-    expect(html).toContain('organization.user.invited');
+    expect(html).toContain('min-w-[10.5rem]');
+    expect(html).not.toContain('organization.user.invited');
     expect(html).toContain('admin@example.com');
     expect(html).toContain('viewer@example.com');
     expect(html).toContain('Succeeded');
     expect(html).toContain('inviteEmail');
+  });
+
+  it('renders the same access page header styling used by other access screens', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(AuditEventsView, {
+        data: createAuditEventsPageResult(),
+        onNavigate: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('Audit logs</h1>');
+    expect(html).toContain('text-2xl');
+    expect(html).toContain('font-semibold');
   });
 
   it('renders the target filter as a curated audit target control', (): void => {
