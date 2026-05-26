@@ -242,6 +242,40 @@ textarea {
   opacity: 0.8;
 }
 
+.button-destructive-surface {
+  border: 1px solid transparent;
+  background: rgb(164 46 28 / 10%);
+  color: var(--destructive);
+}
+
+.button-destructive-surface:hover {
+  background: rgb(164 46 28 / 20%);
+}
+
+.button-destructive-surface:active {
+  background: rgb(164 46 28 / 10%);
+}
+
+.button-destructive-surface:focus-visible {
+  border-color: rgb(164 46 28 / 40%);
+  box-shadow: 0 0 0 3px rgb(164 46 28 / 20%);
+}
+
+.button-success-surface {
+  background: var(--success);
+  color: #ffffff;
+}
+
+.button-success-surface:hover,
+.button-success-surface:active {
+  opacity: 0.8;
+}
+
+.button-success-surface:focus-visible {
+  border: 1px solid rgb(28 136 44 / 40%);
+  box-shadow: 0 0 0 3px rgb(28 136 44 / 20%);
+}
+
 .button-accent-surface {
   border: 1px solid var(--secondary);
   background: var(--secondary);

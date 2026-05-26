@@ -7,7 +7,14 @@ import { useBrowserMutation } from '../../lib/browser-query-client';
 import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
-import { AccessDrawerSection, AccessDrawerShell, useAccessDrawerCloseNavigation } from '../access/access-ui';
+import {
+  accessDrawerActionButtonClassName,
+  accessDrawerFieldClassName,
+  accessDrawerTextareaClassName,
+  AccessDrawerSection,
+  AccessDrawerShell,
+  useAccessDrawerCloseNavigation,
+} from '../access/access-ui';
 import { handleRoleSubmit } from './roles-page.actions';
 import { closeRolesDrawerAfterMutation } from './roles-page.navigation';
 import { RolePermissionsCard as RolePermissionsEditorCard } from './roles-page.permissions';
@@ -37,7 +44,6 @@ export function RoleEditorDrawer({ state }: Readonly<RoleEditorDrawerProps>): JS
         />
       }
       onNavigate={state.onNavigate}
-      panelClassName="max-w-[760px]"
       title={readRoleEditorTitle(state)}
     >
       <form id={roleEditorFormId} onSubmit={createRoleSubmitHandler(mutation)}>
@@ -67,7 +73,7 @@ function RoleNameField({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element 
         Role name
       </span>
       <Input
-        className="h-7 text-[13px]"
+        className={accessDrawerFieldClassName}
         disabled={isSystemRole(state)}
         onChange={(event: ChangeEvent<HTMLInputElement>): void => state.setName(event.target.value)}
         placeholder="Custom role"
@@ -85,7 +91,7 @@ function RoleDescriptionField({ state }: Readonly<RoleEditorDrawerProps>): JSX.E
         Description
       </span>
       <textarea
-        className="min-h-[68px] w-full rounded-md border border-input bg-background px-3 py-2 text-[13px] outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className={`min-h-[68px] ${accessDrawerTextareaClassName}`}
         disabled={isSystemRole(state)}
         onChange={(event: ChangeEvent<HTMLTextAreaElement>): void => state.setDescription(event.target.value)}
         placeholder="Write a short reasonable description about the role"
@@ -121,12 +127,12 @@ function RoleDrawerActions({
     <div className="flex items-center justify-end gap-2">
       <RoleBackAction state={state} />
       <Button
-        className="h-[27px] rounded-md bg-[var(--cpt-button-success-bg,#28a23c)] px-3 text-[12px] font-medium text-[var(--cpt-button-success-text,white)] hover:bg-[#239035]"
+        className={accessDrawerActionButtonClassName}
         disabled={mutation.isPending}
         form={formId}
         size="sm"
         type="submit"
-        variant="default"
+        variant="success"
       >
         {readRoleSubmitLabel(state, mutation.isPending)}
       </Button>
@@ -138,14 +144,8 @@ function RoleBackAction({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element
   const closeDrawer: () => void = useAccessDrawerCloseNavigation(buildRolesPageHref(state.data), state.onNavigate);
 
   return (
-    <Button
-      className="h-[27px] gap-1.5 rounded-md px-3 text-[12px] font-medium"
-      onClick={closeDrawer}
-      size="sm"
-      type="button"
-      variant="outline"
-    >
-      {isSystemRole(state) ? null : <X className="size-3.5" />}
+    <Button className={accessDrawerActionButtonClassName} onClick={closeDrawer} size="sm" type="button" variant="soft">
+      {isSystemRole(state) ? null : <X className="size-4" />}
       {isSystemRole(state) ? 'Back' : 'Cancel'}
     </Button>
   );

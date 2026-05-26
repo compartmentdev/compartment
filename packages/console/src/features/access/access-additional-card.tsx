@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from 'react';
+import type { CSSProperties, JSX, ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 
 interface AccessAdditionalCardProps {
@@ -15,27 +15,73 @@ export function AccessAdditionalCard({
   tone = 'default',
 }: Readonly<AccessAdditionalCardProps>): JSX.Element {
   return (
-    <div className={readAccessAdditionalCardClassName(tone)}>
+    <div className={readAccessAdditionalCardClassName(tone)} style={readAccessAdditionalCardStyle(tone)}>
       <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <p className="text-sm font-semibold">{title}</p>
-          <p className="text-[12px] text-muted-foreground">{description}</p>
+        <div className="min-w-0 space-y-1">
+          <p className={readAccessAdditionalTitleClassName(tone)} style={readAccessAdditionalTitleStyle(tone)}>
+            {title}
+          </p>
+          <p
+            className={readAccessAdditionalDescriptionClassName(tone)}
+            style={readAccessAdditionalDescriptionStyle(tone)}
+          >
+            {description}
+          </p>
         </div>
-        {action}
+        {action === undefined || action === null ? null : <div className="shrink-0">{action}</div>}
       </div>
     </div>
   );
 }
 
 export function readAccessDangerActionButtonClassName(): string {
-  return 'bg-[var(--cpt-button-destructive-bg,#c0412c)] text-white hover:bg-[var(--cpt-button-destructive-bg,#c0412c)]/90';
+  return 'h-8 gap-1.5 rounded-[10px] px-2.5 text-[13px] leading-5 [&_svg]:size-4';
 }
 
 function readAccessAdditionalCardClassName(tone: 'default' | 'danger'): string {
   return cn(
-    'rounded-xl px-4 py-3',
+    'rounded-[10px] border p-3 shadow-[0_1px_1px_rgba(0,0,0,0.1)]',
     tone === 'danger'
-      ? 'border border-[rgba(192,65,44,0.18)] bg-[rgba(192,65,44,0.06)]'
-      : 'border border-border bg-background',
+      ? undefined
+      : 'border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-[var(--cpt-bg-card,#fafafa)]',
   );
+}
+
+function readAccessAdditionalCardStyle(tone: 'default' | 'danger'): CSSProperties | undefined {
+  if (tone === 'default') {
+    return undefined;
+  }
+
+  return {
+    backgroundColor: 'var(--sidebar,#fafafa)',
+    borderColor: 'rgba(164,46,28,0.1)',
+  };
+}
+
+function readAccessAdditionalTitleClassName(tone: 'default' | 'danger'): string {
+  return cn('text-[13px] font-semibold leading-5', tone === 'danger' ? undefined : 'text-foreground');
+}
+
+function readAccessAdditionalTitleStyle(tone: 'default' | 'danger'): CSSProperties | undefined {
+  if (tone === 'default') {
+    return undefined;
+  }
+
+  return {
+    color: 'var(--destructive,#c0412c)',
+  };
+}
+
+function readAccessAdditionalDescriptionClassName(tone: 'default' | 'danger'): string {
+  return cn('text-[12px] leading-4', tone === 'danger' ? undefined : 'text-muted-foreground');
+}
+
+function readAccessAdditionalDescriptionStyle(tone: 'default' | 'danger'): CSSProperties | undefined {
+  if (tone === 'default') {
+    return undefined;
+  }
+
+  return {
+    color: 'rgba(164,46,28,0.6)',
+  };
 }

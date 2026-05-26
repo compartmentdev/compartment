@@ -2,6 +2,7 @@ import type { UserAccessDetail } from '@compartment/contracts/browser';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { type FormEvent, type JSX } from 'react';
 import { Button } from '../../components/ui/button';
+import { Trash } from '../../components/ui/icons';
 import { useBrowserMutation } from '../../lib/browser-query-client';
 import { AccessAdditionalCard, readAccessDangerActionButtonClassName } from '../access/access-additional-card';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
@@ -26,8 +27,9 @@ export function UserRemoveCard({ access, state }: Readonly<UserRemoveCardProps>)
             disabled={mutation.isPending}
             size="sm"
             type="submit"
-            variant="outline"
+            variant="destructive"
           >
+            <Trash aria-hidden="true" />
             {mutation.isPending ? 'Removing...' : 'Remove user'}
           </Button>
         </form>

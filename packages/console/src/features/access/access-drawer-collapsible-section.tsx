@@ -87,8 +87,7 @@ function AccessDrawerCollapsibleHeaderText({
   );
 }
 
-const collapsibleHeadingClassName: string =
-  'block text-[18px] font-semibold tracking-[-0.03em] text-[var(--cpt-text-secondary,#485259)]';
+const collapsibleHeadingClassName: string = 'block text-[20px] font-semibold leading-7 tracking-normal text-foreground';
 
 function renderCollapsibleHeaderDescription(
   description: ReactNode | undefined,
@@ -99,7 +98,7 @@ function renderCollapsibleHeaderDescription(
   }
 
   return (
-    <span className="mt-2 block text-[12px] leading-4 text-[var(--cpt-text-secondary,#485259)]" id={descriptionId}>
+    <span className="mt-2 block text-[13px] leading-5 text-muted-foreground" id={descriptionId}>
       {description}
     </span>
   );

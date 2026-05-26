@@ -18,7 +18,7 @@ export function AccessDrawerHeader({
   title,
 }: Readonly<AccessDrawerHeaderProps>): JSX.Element {
   return (
-    <div className="border-b border-border px-5 py-4">
+    <div className="px-4 py-4">
       <div className="flex items-start justify-between gap-4">
         <AccessDrawerHeading eyebrow={eyebrow} subtitle={subtitle} title={title} />
         <AccessDrawerCloseButton onClose={onClose} />
@@ -48,11 +48,11 @@ function AccessDrawerCloseButton({ onClose }: Readonly<{ onClose: () => void }>)
   return (
     <Button
       aria-label="Close panel"
-      className="size-7 px-0"
+      className="size-7 border-0 bg-transparent p-0 hover:bg-muted"
       onClick={onClose}
       size="sm"
       type="button"
-      variant="outline"
+      variant="ghost"
     >
       <X className="size-3.5" />
     </Button>

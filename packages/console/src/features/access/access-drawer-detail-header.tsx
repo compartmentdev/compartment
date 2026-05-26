@@ -25,7 +25,7 @@ export function AccessDrawerDetailHeader({
   const hasStackedHeading: boolean = title !== undefined || (description !== undefined && description !== null);
 
   return (
-    <div className="border-b border-border px-4 py-3">
+    <div className="flex h-[60px] items-center px-4 py-4">
       <div className={readDetailHeaderRowClassName(hasStackedHeading)}>
         <AccessDrawerDetailHeading
           description={description}
@@ -48,7 +48,7 @@ function AccessDrawerDetailHeading({
   Pick<AccessDrawerDetailHeaderProps, 'description' | 'eyebrow' | 'title'> & { hasStackedHeading: boolean }
 >): JSX.Element {
   return (
-    <div className={hasStackedHeading ? 'space-y-1' : undefined}>
+    <div className={hasStackedHeading ? 'min-w-0 space-y-1' : 'min-w-0'}>
       {title === undefined ? (
         <CompactDetailHeading eyebrow={eyebrow} />
       ) : (
@@ -62,11 +62,7 @@ function AccessDrawerDetailHeading({
 }
 
 function CompactDetailHeading({ eyebrow }: Readonly<Pick<AccessDrawerDetailHeaderProps, 'eyebrow'>>): JSX.Element {
-  return (
-    <p className="text-[18px] font-semibold leading-[26px] tracking-[-0.03em] text-[var(--cpt-text-secondary,#485259)]">
-      {eyebrow}
-    </p>
-  );
+  return <p className="truncate text-[16px] font-medium leading-6 tracking-normal text-foreground">{eyebrow}</p>;
 }
 
 function StackedDetailHeading({
@@ -75,8 +71,8 @@ function StackedDetailHeading({
 }: Readonly<Pick<AccessDrawerDetailHeaderProps, 'eyebrow' | 'title'>>): JSX.Element {
   return (
     <>
-      <p className="text-[12px] font-semibold leading-4 text-[var(--cpt-text-muted,#8f98a1)]">{eyebrow}</p>
-      <h2 className="text-lg font-semibold">{title}</h2>
+      <p className="text-[12px] font-semibold leading-4 text-muted-foreground">{eyebrow}</p>
+      <h2 className="truncate text-[16px] font-medium leading-6 text-foreground">{title}</h2>
     </>
   );
 }
@@ -90,11 +86,11 @@ function AccessDrawerDetailActions({
       {action}
       <Button
         aria-label="Close panel"
-        className="h-[27px] w-8 border-transparent bg-transparent px-0 hover:bg-accent"
+        className="size-7 border-0 bg-transparent p-0 text-foreground hover:bg-muted"
         onClick={closeDrawer}
         size="sm"
         type="button"
-        variant="outline"
+        variant="ghost"
       >
         <X className="size-3.5" />
       </Button>
@@ -103,5 +99,7 @@ function AccessDrawerDetailActions({
 }
 
 function readDetailHeaderRowClassName(hasStackedHeading: boolean): string {
-  return hasStackedHeading ? 'flex items-start justify-between gap-4' : 'flex items-center justify-between gap-4';
+  return hasStackedHeading
+    ? 'flex w-full items-start justify-between gap-4'
+    : 'flex w-full items-center justify-between gap-4';
 }

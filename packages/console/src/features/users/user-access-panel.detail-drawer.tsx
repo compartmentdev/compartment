@@ -134,11 +134,13 @@ function UserSummaryCard({ access }: Readonly<{ access: UserAccessDetail }>): JS
 function UserSummaryHeader({ access }: Readonly<{ access: UserAccessDetail }>): JSX.Element {
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2">
-        <div className="flex size-[22px] items-center justify-center rounded-full border border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-[var(--color-secondary-400,#9662cd)] text-white shadow-[0px_2px_6px_rgba(10,11,15,0.05),0px_1px_3px_rgba(10,11,15,0.04)]">
-          <UserRound className="size-[10px]" />
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-[rgba(40,162,60,0.12)] text-[var(--success,#28a23c)]">
+          <UserRound className="size-4" />
         </div>
-        <p className="text-[22px] font-semibold leading-7 tracking-[-0.11px]">{access.user.email}</p>
+        <p className="min-w-0 truncate text-[24px] font-medium leading-8 tracking-normal text-foreground">
+          {access.user.email}
+        </p>
       </div>
       <UserStatusBadge access={access} />
     </div>
@@ -148,13 +150,20 @@ function UserSummaryHeader({ access }: Readonly<{ access: UserAccessDetail }>): 
 function UserStatusBadge({ access }: Readonly<{ access: UserAccessDetail }>): JSX.Element {
   const presentation: UserStatusTagPresentation = readUserStatusTagPresentation(access.user);
 
-  return <StatusTag icon={presentation.icon} label={presentation.label} variant={presentation.variant} />;
+  return (
+    <StatusTag
+      className="shrink-0"
+      icon={presentation.icon}
+      label={presentation.label}
+      variant={presentation.variant}
+    />
+  );
 }
 
 function UserPermissionsCard({ permissionKeys }: Readonly<{ permissionKeys: PermissionKey[] }>): JSX.Element {
   return (
     <AccessDrawerCollapsibleSection
-      defaultExpanded={false}
+      defaultExpanded={true}
       description="Resulting access from groups + direct assignments"
       summary={`${permissionKeys.length} effective permissions in total`}
       title="Effective permissions"

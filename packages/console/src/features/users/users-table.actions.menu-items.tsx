@@ -1,6 +1,6 @@
 import { type JSX } from 'react';
 import { DropdownMenuItem } from '../../components/ui/dropdown-menu';
-import type { BrowserUsersUser } from '../../services/browser-users.service.types';
+import type { BrowserUsersAccessState, BrowserUsersUser } from '../../services/browser-users.service.types';
 import type { UserActionHandler } from './user-actions';
 import {
   type UserAccessMutation,
@@ -40,7 +40,7 @@ export function UserAccessMenuItem(props: Readonly<UserAccessMenuItemProps>): JS
 
   return (
     <DropdownMenuItem
-      className={props.user.access === 'blocked' ? undefined : 'text-red-700 data-[highlighted]:text-red-800'}
+      className={readUserAccessMenuItemClassName(props.user.access)}
       disabled={mutation.isPending}
       onSelect={(): void => {
         if (!mutation.isPending) {
@@ -51,6 +51,12 @@ export function UserAccessMenuItem(props: Readonly<UserAccessMenuItemProps>): JS
       {mutation.isPending ? `${label}ing...` : label}
     </DropdownMenuItem>
   );
+}
+
+function readUserAccessMenuItemClassName(access: BrowserUsersAccessState): string | undefined {
+  return access === 'blocked'
+    ? undefined
+    : 'text-destructive focus:text-destructive data-[highlighted]:text-destructive';
 }
 
 export function UserRemoveMenuItem({
@@ -68,7 +74,7 @@ export function UserRemoveMenuItem({
 
   return (
     <DropdownMenuItem
-      className="text-red-700 data-[highlighted]:text-red-800"
+      className="text-destructive focus:text-destructive data-[highlighted]:text-destructive"
       disabled={mutation.isPending}
       onSelect={(): void => {
         if (!mutation.isPending && window.prompt(`Type ${user.email} to remove this user.`) === user.email) {

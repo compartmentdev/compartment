@@ -2,12 +2,20 @@ import type { AccessGroupResponse } from '@compartment/contracts/browser';
 import type { UseMutationResult } from '@tanstack/react-query';
 import type { ChangeEvent, FormEvent, JSX } from 'react';
 import { Button } from '../../components/ui/button';
+import { X } from '../../components/ui/icons';
 import { Input } from '../../components/ui/input';
 import { normalizeBrowserActionErrorMessage, type BrowserActionFieldLabelMap } from '../../lib/browser-action-error';
 import { useBrowserMutation } from '../../lib/browser-query-client';
 import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
-import { AccessDrawerSection, AccessDrawerShell, useAccessDrawerCloseNavigation } from '../access/access-ui';
+import {
+  accessDrawerActionButtonClassName,
+  accessDrawerFieldClassName,
+  accessDrawerTextareaClassName,
+  AccessDrawerSection,
+  AccessDrawerShell,
+  useAccessDrawerCloseNavigation,
+} from '../access/access-ui';
 import { handleGroupCreateAction } from './groups-page.actions';
 import { buildGroupsPageHref } from './groups-page.href';
 import type { GroupsPageState } from './groups-page.state';
@@ -60,7 +68,7 @@ function GroupNameField({ state }: Readonly<CreateGroupDrawerProps>): JSX.Elemen
         Name
       </span>
       <Input
-        className="h-7 text-[13px]"
+        className={accessDrawerFieldClassName}
         onChange={(event: ChangeEvent<HTMLInputElement>): void => state.setNewGroupName(event.target.value)}
         required
         value={state.newGroupName}
@@ -76,7 +84,7 @@ function GroupDescriptionField({ state }: Readonly<CreateGroupDrawerProps>): JSX
         Description
       </span>
       <textarea
-        className="min-h-[68px] w-full rounded-md border border-input bg-background px-3 py-2 text-[13px] outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className={`min-h-[68px] ${accessDrawerTextareaClassName}`}
         onChange={(event: ChangeEvent<HTMLTextAreaElement>): void => state.setNewGroupDescription(event.target.value)}
         value={state.newGroupDescription}
       />
@@ -96,13 +104,33 @@ function GroupDrawerActions({
 
   return (
     <div className="flex items-center justify-end gap-2">
-      <Button onClick={closeDrawer} size="sm" type="button" variant="outline">
-        Cancel
-      </Button>
-      <Button disabled={mutation.isPending} form={formId} size="sm" type="submit" variant="default">
-        {mutation.isPending ? 'Creating...' : 'Create group'}
-      </Button>
+      <GroupDrawerCancelButton closeDrawer={closeDrawer} />
+      <GroupDrawerSubmitButton formId={formId} isPending={mutation.isPending} />
     </div>
+  );
+}
+
+function GroupDrawerCancelButton({ closeDrawer }: Readonly<{ closeDrawer: () => void }>): JSX.Element {
+  return (
+    <Button className={accessDrawerActionButtonClassName} onClick={closeDrawer} size="sm" type="button" variant="soft">
+      <X className="size-4" />
+      Cancel
+    </Button>
+  );
+}
+
+function GroupDrawerSubmitButton({ formId, isPending }: Readonly<{ formId: string; isPending: boolean }>): JSX.Element {
+  return (
+    <Button
+      className={accessDrawerActionButtonClassName}
+      disabled={isPending}
+      form={formId}
+      size="sm"
+      type="submit"
+      variant="success"
+    >
+      {isPending ? 'Creating...' : 'Create group'}
+    </Button>
   );
 }
 

@@ -46,6 +46,18 @@ interface AccessDrawerPanelProps {
 
 const AccessDrawerCloseContext: React.Context<(() => void) | null> = createContext<(() => void) | null>(null);
 
+export const accessDrawerActionButtonClassName: string =
+  'h-8 gap-1.5 rounded-[8px] px-3 text-[13px] font-medium leading-5';
+export const accessDrawerFieldClassName: string =
+  'rounded-[10px] focus-visible:border-[rgba(77,86,94,0.18)] focus-visible:ring-0 focus-visible:ring-offset-0';
+export const accessDrawerHeaderActionButtonClassName: string =
+  'h-8 shrink-0 gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium leading-5';
+export const accessDrawerPrimaryActionButtonClassName: string =
+  'h-9 w-auto shrink-0 justify-center gap-1.5 rounded-[10px] px-3 text-[13px]';
+export const accessDrawerRowActionButtonClassName: string = 'h-[26px] gap-1 rounded-[8px] px-2 text-[12px]';
+export const accessDrawerTextareaClassName: string =
+  'w-full rounded-[10px] border border-input bg-background px-3 py-2 text-[13px] outline-none transition placeholder:text-muted-foreground focus-visible:border-[rgba(77,86,94,0.18)] focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50';
+
 export function AccessPageHeader({ action, description, title }: Readonly<AccessPageHeaderProps>): JSX.Element {
   return (
     <header>
@@ -114,15 +126,11 @@ function AccessDrawerSectionHeader({
 }
 
 function AccessDrawerSectionTitle({ children }: Readonly<{ children: ReactNode }>): JSX.Element {
-  return (
-    <h3 className="text-[18px] font-semibold tracking-[-0.03em] text-[var(--cpt-text-secondary,#485259)]">
-      {children}
-    </h3>
-  );
+  return <h3 className="text-[20px] font-semibold leading-7 tracking-normal text-foreground">{children}</h3>;
 }
 
 function AccessDrawerSectionDescription({ children }: Readonly<{ children: ReactNode }>): JSX.Element {
-  return <p className="text-[12px] leading-4 text-[var(--cpt-text-secondary,#485259)]">{children}</p>;
+  return <p className="text-[13px] leading-5 text-muted-foreground">{children}</p>;
 }
 
 function useDrawerCloseAnimation(
@@ -188,7 +196,7 @@ function AccessDrawerPanel({
         <AccessDrawerHeader actions={actions} eyebrow={eyebrow} onClose={onClose} subtitle={subtitle} title={title} />
       )}
       <AccessDrawerBody>{children}</AccessDrawerBody>
-      {footer === undefined ? null : <div className="border-t border-border px-5 py-4">{footer}</div>}
+      {footer === undefined ? null : <div className="border-t border-border px-4 py-4">{footer}</div>}
     </aside>
   );
 }
@@ -212,7 +220,7 @@ function AccessDrawerBackdrop({ onClose }: Readonly<{ onClose: () => void }>): J
 
 function readDrawerOverlayClassName(isClosing: boolean): string {
   return cn(
-    'fixed inset-0 z-40 flex justify-end',
+    'fixed inset-0 z-40 flex justify-end bg-[rgba(18,20,23,0.12)] backdrop-blur-[12px]',
     isClosing
       ? 'animate-out fade-out-0 duration-200 [animation-fill-mode:forwards]'
       : 'animate-in fade-in-0 duration-200',
@@ -221,7 +229,7 @@ function readDrawerOverlayClassName(isClosing: boolean): string {
 
 function readDrawerPanelClassName(isClosing: boolean, panelClassName: string | undefined): string {
   return cn(
-    'flex h-full w-full max-w-[704px] flex-col overflow-hidden border-l border-border bg-background shadow-[-16px_0_40px_rgba(15,23,42,0.05)]',
+    'flex h-full w-full flex-col overflow-hidden border-l border-border bg-popover shadow-[0_10px_15px_-3px_rgba(0,0,0,0.1),0_4px_6px_-4px_rgba(0,0,0,0.1)] md:w-[46vw] md:max-w-none',
     isClosing
       ? 'animate-out slide-out-to-right-full duration-200 [animation-fill-mode:forwards]'
       : 'animate-in slide-in-from-right-full duration-200',
