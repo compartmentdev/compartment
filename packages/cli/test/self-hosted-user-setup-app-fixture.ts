@@ -30,7 +30,7 @@ const serviceName: string = 'web';
 const variableGroupName: string = 'self-hosted-e2e-runtime';
 const importedVariableFileName: string = '.env.self-hosted-e2e-import';
 const importedGroupFileName: string = '.env.self-hosted-e2e-group-import';
-const probeNodeImageRef: string = process.env.COMPARTMENT_TEST_APP_NODE_IMAGE ?? 'node:24.14.0-bookworm';
+const probeNodeImageRef: string = process.env.COMPARTMENT_TEST_APP_NODE_IMAGE ?? 'node:24.15.0-bookworm';
 const probePostgresImageRef: string = process.env.COMPARTMENT_TEST_POSTGRES_IMAGE ?? 'postgres:16-alpine';
 
 export const selfHostedUserSetupAppListeningLogText: string = 'self-hosted-e2e-app listening';

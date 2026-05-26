@@ -5,8 +5,8 @@ services:
       dockerfile: packages/api/Dockerfile.self-hosted
       args:
         BUILDKIT_SYNTAX: ${COMPARTMENT_DOCKERFILE_SYNTAX_IMAGE:-docker/dockerfile:1.7}
-        COMPARTMENT_NODE_BUILD_IMAGE: ${COMPARTMENT_NODE_BUILD_IMAGE:-node:24.14.0-bookworm}
-        COMPARTMENT_NODE_RUNTIME_IMAGE: ${COMPARTMENT_NODE_RUNTIME_IMAGE:-node:24.14.0-bookworm-slim}
+        COMPARTMENT_NODE_BUILD_IMAGE: ${COMPARTMENT_NODE_BUILD_IMAGE:-node:24.15.0-bookworm}
+        COMPARTMENT_NODE_RUNTIME_IMAGE: ${COMPARTMENT_NODE_RUNTIME_IMAGE:-node:24.15.0-bookworm-slim}
 
   edge:
     build:
@@ -14,8 +14,8 @@ services:
       dockerfile: packages/edge/Dockerfile.self-hosted
       args:
         BUILDKIT_SYNTAX: ${COMPARTMENT_DOCKERFILE_SYNTAX_IMAGE:-docker/dockerfile:1.7}
-        COMPARTMENT_NODE_BUILD_IMAGE: ${COMPARTMENT_NODE_BUILD_IMAGE:-node:24.14.0-bookworm}
-        COMPARTMENT_NODE_RUNTIME_IMAGE: ${COMPARTMENT_NODE_RUNTIME_IMAGE:-node:24.14.0-bookworm-slim}
+        COMPARTMENT_NODE_BUILD_IMAGE: ${COMPARTMENT_NODE_BUILD_IMAGE:-node:24.15.0-bookworm}
+        COMPARTMENT_NODE_RUNTIME_IMAGE: ${COMPARTMENT_NODE_RUNTIME_IMAGE:-node:24.15.0-bookworm-slim}
 
   caddy:
     build:
@@ -34,8 +34,8 @@ services:
         BUILDKIT_SYNTAX: ${COMPARTMENT_DOCKERFILE_SYNTAX_IMAGE:-docker/dockerfile:1.7}
         COMPARTMENT_BUILDKIT_VERSION: ${COMPARTMENT_BUILDKIT_VERSION:-v0.30.0}
         COMPARTMENT_GO_BUILD_IMAGE: ${COMPARTMENT_GO_BUILD_IMAGE:-golang:1.26.3-bookworm}
-        COMPARTMENT_NODE_BUILD_IMAGE: ${COMPARTMENT_NODE_BUILD_IMAGE:-node:24.14.0-bookworm}
-        COMPARTMENT_NODE_RUNTIME_IMAGE: ${COMPARTMENT_NODE_RUNTIME_IMAGE:-node:24.14.0-bookworm-slim}
+        COMPARTMENT_NODE_BUILD_IMAGE: ${COMPARTMENT_NODE_BUILD_IMAGE:-node:24.15.0-bookworm}
+        COMPARTMENT_NODE_RUNTIME_IMAGE: ${COMPARTMENT_NODE_RUNTIME_IMAGE:-node:24.15.0-bookworm-slim}
 
   runtime-probe:
     profiles:
@@ -46,4 +46,4 @@ services:
       dockerfile: packages/node/Dockerfile.runtime-probe.self-hosted
       args:
         BUILDKIT_SYNTAX: ${COMPARTMENT_DOCKERFILE_SYNTAX_IMAGE:-docker/dockerfile:1.7}
-        COMPARTMENT_NODE_RUNTIME_IMAGE: ${COMPARTMENT_NODE_RUNTIME_IMAGE:-node:24.14.0-bookworm-slim}
+        COMPARTMENT_NODE_RUNTIME_IMAGE: ${COMPARTMENT_NODE_RUNTIME_IMAGE:-node:24.15.0-bookworm-slim}

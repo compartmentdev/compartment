@@ -11,8 +11,8 @@ const defaultBaseImages = Object.freeze({
   COMPARTMENT_CADDY_BUILDER_IMAGE: 'caddy:2.11.3-builder',
   COMPARTMENT_CADDY_RUNTIME_IMAGE: 'caddy:2.11.3',
   COMPARTMENT_GO_BUILD_IMAGE: 'golang:1.26.3-bookworm',
-  COMPARTMENT_NODE_BUILD_IMAGE: 'node:24.14.0-bookworm',
-  COMPARTMENT_NODE_RUNTIME_IMAGE: 'node:24.14.0-bookworm-slim',
+  COMPARTMENT_NODE_BUILD_IMAGE: 'node:24.15.0-bookworm',
+  COMPARTMENT_NODE_RUNTIME_IMAGE: 'node:24.15.0-bookworm-slim',
 });
 const dockerRateLimitRetryDelaysMs = Object.freeze([90_000, 180_000, 300_000]);
 const capturedOutputTailMaxLength = 96_000;

@@ -83,7 +83,7 @@ const executeFileAsync: (
 const runtimeControlToken: string = 'test-runtime-control-token';
 const boundaryAlpineImage: string = 'public.ecr.aws/docker/library/alpine:3.20';
 const boundaryNginxImage: string = 'public.ecr.aws/docker/library/nginx:alpine';
-const boundaryNodeImage: string = process.env.COMPARTMENT_TEST_APP_NODE_IMAGE ?? 'node:24.14.0-bookworm-slim';
+const boundaryNodeImage: string = process.env.COMPARTMENT_TEST_APP_NODE_IMAGE ?? 'node:24.15.0-bookworm-slim';
 
 describe.sequential('runtime network boundary', (): void => {
   const cleanupTasks: (() => Promise<void>)[] = [];
