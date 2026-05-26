@@ -1,4 +1,3 @@
-import { createServer, type AddressInfo, type Server } from 'node:net';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,6 +15,7 @@ import {
 } from '../src/services/runtime-resource-operation.service';
 import type { RuntimeResourceOperationConfig } from '../src/services/runtime.types';
 
+type CanConnectToRuntimeHost = (host: string, port: number, deadline: number) => Promise<boolean>;
 type ConnectDockerContainerToNetwork = (input: { containerRef: string; networkName: string }) => Promise<void>;
 type EnsureDockerImageAvailable = (input: { imageRef: string }) => Promise<void>;
 type EnsureDockerNetwork = (input: DockerEnsureNetworkInput) => Promise<void>;
@@ -28,7 +28,13 @@ interface DockerEnsureNetworkInput {
   networkName: string;
 }
 
+interface RuntimeResourceConnectivityModule {
+  canConnectToRuntimeHost: CanConnectToRuntimeHost;
+  resolveRuntimeContainerNetworkHost: (containerRef: string, networkName: string) => Promise<string>;
+}
+
 interface RuntimeResourceOperationMocks {
+  canConnectToRuntimeHost: Mock<CanConnectToRuntimeHost>;
   connectDockerContainerToNetwork: Mock<ConnectDockerContainerToNetwork>;
   ensureDockerImageAvailable: Mock<EnsureDockerImageAvailable>;
   ensureDockerNetwork: Mock<EnsureDockerNetwork>;
@@ -39,6 +45,7 @@ interface RuntimeResourceOperationMocks {
 
 const mocks: RuntimeResourceOperationMocks = vi.hoisted(
   (): RuntimeResourceOperationMocks => ({
+    canConnectToRuntimeHost: vi.fn<CanConnectToRuntimeHost>(),
     connectDockerContainerToNetwork: vi.fn<ConnectDockerContainerToNetwork>(),
     ensureDockerImageAvailable: vi.fn<EnsureDockerImageAvailable>(),
     ensureDockerNetwork: vi.fn<EnsureDockerNetwork>(),
@@ -46,6 +53,19 @@ const mocks: RuntimeResourceOperationMocks = vi.hoisted(
     inspectDockerNetwork: vi.fn<InspectDockerNetwork>(),
     runDockerContainerToCompletion: vi.fn<RunDockerContainerToCompletion>(),
   }),
+);
+
+vi.mock(
+  '../src/services/runtime-resource-connectivity.service',
+  async (
+    importOriginal: () => Promise<RuntimeResourceConnectivityModule>,
+  ): Promise<RuntimeResourceConnectivityModule> => {
+    const original: RuntimeResourceConnectivityModule = await importOriginal();
+    return {
+      ...original,
+      canConnectToRuntimeHost: mocks.canConnectToRuntimeHost.mockImplementation(original.canConnectToRuntimeHost),
+    };
+  },
 );
 
 vi.mock(
@@ -82,6 +102,7 @@ beforeEach((): void => {
 });
 
 afterEach(async (): Promise<void> => {
+  mocks.canConnectToRuntimeHost.mockClear();
   if (originalHostname === undefined) {
     delete process.env.HOSTNAME;
   } else {
@@ -102,16 +123,12 @@ afterEach(async (): Promise<void> => {
 
 describe('runRuntimeResourceRestoreOperation', (): void => {
   it('performs an initial readiness probe before the restore timeout expires', async (): Promise<void> => {
-    const server: Server = await listenOnLocalPort();
-    const address: AddressInfo | string | null = server.address();
-    const port: number = typeof address === 'object' && address !== null ? address.port : 0;
-    const readActualDateNow: () => number = Date.now;
     const dateNowSpy: MockInstance<typeof Date.now> = vi
       .spyOn(Date, 'now')
       .mockImplementationOnce((): number => 1_000)
-      .mockImplementationOnce((): number => 1_001)
-      .mockImplementation((): number => readActualDateNow());
+      .mockImplementation((): number => 1_001);
     const backupArtifact: RuntimeResourceBackupArtifactFixture = await createResourceBackupArtifactFixture();
+    mocks.canConnectToRuntimeHost.mockResolvedValueOnce(true);
 
     mocks.inspectDockerContainer.mockResolvedValue({
       containerId: 'resource_container_123',
@@ -133,7 +150,7 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
         runRuntimeResourceRestoreOperation(
           createResourceOperationRequest({
             backupId: backupArtifact.backupId,
-            readiness: { port, timeoutMs: 0, type: 'tcp' },
+            readiness: { port: 5432, timeoutMs: 0, type: 'tcp' },
           }),
           createRuntimeConfig({ resourceBackupDirectory: backupArtifact.root }),
         ),
@@ -143,8 +160,10 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
       });
     } finally {
       dateNowSpy.mockRestore();
-      await closeServer(server);
     }
+
+    expect(mocks.canConnectToRuntimeHost).toHaveBeenCalledTimes(1);
+    expect(mocks.canConnectToRuntimeHost.mock.calls[0]?.slice(0, 2)).toEqual(['127.0.0.1', 5432]);
   });
 
   it('probes restore readiness through the resource container network address', async (): Promise<void> => {
@@ -400,21 +419,6 @@ async function createResourceBackupRoot(): Promise<string> {
   temporaryDirectories.push(directory);
 
   return directory;
-}
-
-async function listenOnLocalPort(): Promise<Server> {
-  const server: Server = createServer();
-  await new Promise<void>((resolve: () => void): void => {
-    server.listen(0, '127.0.0.1', resolve);
-  });
-
-  return server;
-}
-
-async function closeServer(server: Server): Promise<void> {
-  await new Promise<void>((resolve: () => void): void => {
-    server.close((): void => resolve());
-  });
 }
 
 function createResourceOperationRequest(
