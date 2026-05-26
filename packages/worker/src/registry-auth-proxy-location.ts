@@ -1,6 +1,11 @@
 const malformedPercentEncodingPattern: RegExp = /%(?![0-9A-Fa-f]{2})/u;
 const absoluteUrlPattern: RegExp = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//u;
 
+interface AbsoluteUrlAuthorityParts {
+  authority: string;
+  originFormLocation: string;
+}
+
 export function rewriteRegistryLocationHeader(location: string, targetUrl: URL): string | null {
   if (hasUnsafeRegistryLocationValue(location)) {
     return null;
@@ -23,7 +28,11 @@ function parseRegistryOriginAbsoluteLocation(location: string, targetUrl: URL): 
     return null;
   }
 
-  const originFormLocation: string = readAbsoluteUrlOriginFormLocation(location);
+  const authorityParts: AbsoluteUrlAuthorityParts = readAbsoluteUrlAuthorityParts(location);
+  if (authorityParts.authority.includes('@')) {
+    return null;
+  }
+
   let parsedLocation: URL;
   try {
     parsedLocation = new URL(location);
@@ -35,7 +44,7 @@ function parseRegistryOriginAbsoluteLocation(location: string, targetUrl: URL): 
     return null;
   }
 
-  return originFormLocation;
+  return authorityParts.originFormLocation;
 }
 
 function parseSafeRegistryOriginFormPath(location: string, targetUrl: URL): string | null {
@@ -73,12 +82,21 @@ function readLocationPathname(location: string): string {
   return pathnameEndIndex === -1 ? location : location.slice(0, pathnameEndIndex);
 }
 
-function readAbsoluteUrlOriginFormLocation(location: string): string {
+function readAbsoluteUrlAuthorityParts(location: string): AbsoluteUrlAuthorityParts {
   const authorityStartIndex: number = location.indexOf('://') + 3;
   const authoritySuffix: string = location.slice(authorityStartIndex);
   const pathStartOffset: number = authoritySuffix.search(/[/?#]/u);
+  if (pathStartOffset === -1) {
+    return {
+      authority: authoritySuffix,
+      originFormLocation: '',
+    };
+  }
 
-  return pathStartOffset === -1 ? '' : location.slice(authorityStartIndex + pathStartOffset);
+  return {
+    authority: authoritySuffix.slice(0, pathStartOffset),
+    originFormLocation: location.slice(authorityStartIndex + pathStartOffset),
+  };
 }
 
 function isOriginFormLocation(location: string): boolean {

@@ -273,6 +273,7 @@ describe('registry auth proxy', (): void => {
     const targetUrl: URL = new URL('http://registry.example:5000');
     const unsafeLocations: string[] = [
       'http://user:password@registry.example:5000/v2/repo/blobs/uploads/upload-id',
+      'http://@registry.example:5000/v2/repo/blobs/uploads/upload-id',
       'http://registry.example:5000.evil/v2/repo/blobs/uploads/upload-id',
       'http:registry.example:5000/v2/repo/blobs/uploads/upload-id',
       'http://registry.example:5000/v1/%2e%2e/v2/repo/blobs/uploads/upload-id',
