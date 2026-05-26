@@ -100,6 +100,10 @@ jobs:
       packages: write
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      MUTABLE_TAG: latest
+      PRIMARY_TAG: ${{ needs.build-release-images.outputs.release_version }}
+      STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -133,14 +137,6 @@ jobs:
       - name: Load self-hosted images
         run: gunzip -c ./.compartment/release-assets/self-hosted-images.tar.gz | docker load
 
-      - name: Scan self-hosted images before publish
-        env:
-          RELEASE_VERSION: ${{ needs.build-release-images.outputs.release_version }}
-        run: |
-          node ./scripts/deploy/secure-self-hosted-images.mjs \
-            --scan-only \
-            "$RELEASE_VERSION"
-
       - name: Log in to Docker Hub
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
         with:
@@ -154,7 +150,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push self-hosted images
+      - name: Push staging self-hosted images
         env:
           COMPARTMENT_BUILDKIT_VERSION: v0.30.0
           COMPARTMENT_CADDY_BUILDER_IMAGE: public.ecr.aws/docker/library/caddy:2.11.3-builder
@@ -162,9 +158,6 @@ jobs:
           COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.3-bookworm
           COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.14.0-bookworm
           COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.14.0-bookworm-slim
-          MUTABLE_TAG: latest
-          PRIMARY_TAG: ${{ needs.build-release-images.outputs.release_version }}
-          STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
         run: |
           common_args=(--push --provenance=mode=max --sbom=true)
           node_args=(
@@ -193,6 +186,97 @@ jobs:
               --file "$dockerfile" .
           }
 
+          push_dockerhub_image compartment-api packages/api/Dockerfile.self-hosted "${node_args[@]}"
+          push_dockerhub_image compartment-caddy packages/edge/Dockerfile.caddy.self-hosted "${caddy_args[@]}"
+          push_dockerhub_image compartment-edge packages/edge/Dockerfile.self-hosted "${node_args[@]}"
+          push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
+          push_dockerhub_image compartment-runtime-probe packages/node/Dockerfile.runtime-probe.self-hosted "${runtime_probe_args[@]}"
+
+      - name: Docker Scout api image gate
+        id: scout-api
+        continue-on-error: true
+        uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
+        with:
+          command: cves
+          image: registry://docker.io/compartmentdev/compartment-api:${{ env.STAGING_TAG }}
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+
+      - name: Docker Scout caddy image gate
+        id: scout-caddy
+        continue-on-error: true
+        uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
+        with:
+          command: cves
+          image: registry://docker.io/compartmentdev/compartment-caddy:${{ env.STAGING_TAG }}
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+
+      - name: Docker Scout edge image gate
+        id: scout-edge
+        continue-on-error: true
+        uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
+        with:
+          command: cves
+          image: registry://docker.io/compartmentdev/compartment-edge:${{ env.STAGING_TAG }}
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+
+      - name: Docker Scout worker image gate
+        id: scout-worker
+        continue-on-error: true
+        uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
+        with:
+          command: cves
+          image: registry://docker.io/compartmentdev/compartment-worker:${{ env.STAGING_TAG }}
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+
+      - name: Docker Scout runtime probe image gate
+        id: scout-runtime-probe
+        continue-on-error: true
+        uses: docker/scout-action@cd72f264beff1cd72735de31148b9d3244a0234a
+        with:
+          command: cves
+          image: registry://docker.io/compartmentdev/compartment-runtime-probe:${{ env.STAGING_TAG }}
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+
+      - name: Check Docker Scout image gate
+        env:
+          SCOUT_API_OUTCOME: ${{ steps.scout-api.outcome }}
+          SCOUT_CADDY_OUTCOME: ${{ steps.scout-caddy.outcome }}
+          SCOUT_EDGE_OUTCOME: ${{ steps.scout-edge.outcome }}
+          SCOUT_WORKER_OUTCOME: ${{ steps.scout-worker.outcome }}
+          SCOUT_RUNTIME_PROBE_OUTCOME: ${{ steps.scout-runtime-probe.outcome }}
+        run: |
+          failed_images=()
+          [ "$SCOUT_API_OUTCOME" = "failure" ] && failed_images+=(compartment-api)
+          [ "$SCOUT_CADDY_OUTCOME" = "failure" ] && failed_images+=(compartment-caddy)
+          [ "$SCOUT_EDGE_OUTCOME" = "failure" ] && failed_images+=(compartment-edge)
+          [ "$SCOUT_WORKER_OUTCOME" = "failure" ] && failed_images+=(compartment-worker)
+          [ "$SCOUT_RUNTIME_PROBE_OUTCOME" = "failure" ] && failed_images+=(compartment-runtime-probe)
+
+          if [ ${#failed_images[@]} -eq 0 ]; then
+            exit 0
+          fi
+
+          printf 'Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate for self-hosted image(s):\n' >&2
+          printf -- '- %s\n' "${failed_images[@]}" >&2
+          exit 1
+
+      - name: Promote self-hosted images
+        run: |
           promote_dockerhub_image() {
             local image_name="$1"
             docker buildx imagetools create \
@@ -200,14 +284,6 @@ jobs:
               --tag "docker.io/compartmentdev/${image_name}:${MUTABLE_TAG}" \
               "docker.io/compartmentdev/${image_name}:${STAGING_TAG}"
           }
-
-          push_dockerhub_image compartment-api packages/api/Dockerfile.self-hosted "${node_args[@]}"
-          push_dockerhub_image compartment-caddy packages/edge/Dockerfile.caddy.self-hosted "${caddy_args[@]}"
-          push_dockerhub_image compartment-edge packages/edge/Dockerfile.self-hosted "${node_args[@]}"
-          push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
-          push_dockerhub_image compartment-runtime-probe packages/node/Dockerfile.runtime-probe.self-hosted "${runtime_probe_args[@]}"
-
-          node ./scripts/deploy/secure-self-hosted-images.mjs --scan-only "$STAGING_TAG"
 
           promote_dockerhub_image compartment-api
           promote_dockerhub_image compartment-caddy

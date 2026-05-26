@@ -12,15 +12,13 @@ Publishing requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. Stable semver ta
 come from release-please; the tag publish workflow validates the tag version against
 checked-in release metadata before building images.
 
-Before pushing a tag, the publish job scans each self-hosted runtime image artifact with Trivy and fails before publication on fixable high or critical vulnerabilities. The scan does not stop on the first failing image; it reports every failing image before exiting.
-
 The published image artifact set includes the long-running runtime services (`api`, `caddy`, `edge`, `worker`) and the one-shot `runtime-probe` image used by the node agent for readiness and network probes.
 
-Pull request CI also scans the locally built or restored self-hosted test images with the same Trivy policy before those images are used by the self-hosted e2e jobs.
+Pull request CI scans the locally built or restored self-hosted test images with Trivy before those images are used by the self-hosted e2e jobs. That CI-only scan fails on fixable high or critical vulnerabilities.
 
 The root `.trivyignore.yaml` is the only allowed suppression point for self-hosted image scans. Current suppressions must include a statement and be scoped to the affected binary path.
 
-Before promoting Docker Hub tags, the publish job pushes each attested image to a workflow-scoped staging tag, scans that staged image with Trivy, and only then promotes the same image index to the public `main`, `sha-<commit>`, semver, or `latest` tags.
+Before promoting Docker Hub tags, the publish job pushes each attested image to a workflow-scoped staging tag, scans every staged image with Docker Scout, and only then promotes the same image index to the public `main`, `sha-<commit>`, semver, or `latest` tags. The Scout gate fails only on fixable high or critical vulnerabilities. It does not gate on base image recommendation or policy results.
 
 After promoting a tag, the publish job resolves the tag to a concrete image digest and secures each unique runtime image digest:
 
