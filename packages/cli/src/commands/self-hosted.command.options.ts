@@ -1,6 +1,8 @@
 import { readCliBuildInfo } from '../cli-build-info';
 import type { CliBuildInfo, CliDistributionChannel } from '../cli-build-info.types';
 import type { InstallImageSource } from '../install.types';
+import { defaultSelfHostedRuntimeImageRegistry } from '../self-hosted-env';
+import type { SelfHostedRuntimeImageRegistry } from '../self-hosted-env.types';
 
 const mainBuildVersionPattern: RegExp = /^sha-[0-9a-f]{7,40}$/iu;
 
@@ -23,6 +25,27 @@ export function readSelfHostedImageSource(value: string | undefined): InstallIma
   }
 
   throw new Error('Install image source must be `registry` or `local` when provided.');
+}
+
+export function readOptionalSelfHostedImageRegistry(
+  value: string | undefined,
+): SelfHostedRuntimeImageRegistry | undefined {
+  return value === undefined ? undefined : readSelfHostedImageRegistry(value);
+}
+
+export function readSelfHostedImageRegistry(value: string | undefined): SelfHostedRuntimeImageRegistry {
+  if (value === undefined) {
+    return defaultSelfHostedRuntimeImageRegistry;
+  }
+
+  if (value === 'github') {
+    return 'github';
+  }
+  if (value === 'docker-hub') {
+    return 'docker-hub';
+  }
+
+  throw new Error('Self-hosted image registry must be `github` or `docker-hub` when provided.');
 }
 
 export function resolveSelfHostedVersionSelection(value: string | undefined): SelfHostedVersionSelection {

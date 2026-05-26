@@ -136,6 +136,7 @@ describe('contract schemas system and domain', (): void => {
       configDir: '/etc/compartment',
       currentVersion: '0.1.0',
       dataDir: '/var/lib/compartment',
+      imageRegistry: 'github',
       imageSource: 'registry',
       skipReason: null,
       status: 'updated',
@@ -151,6 +152,7 @@ describe('contract schemas system and domain', (): void => {
       configDir: '/etc/compartment',
       currentVersion: '0.2.0',
       dataDir: '/var/lib/compartment',
+      imageRegistry: 'docker-hub',
       imageSource: 'registry',
       skipReason: 'downgrade-not-supported',
       status: 'skipped',
@@ -170,6 +172,7 @@ describe('contract schemas system and domain', (): void => {
         controlPlaneUrl: 'https://console.customer.example.com',
       },
       dockerNamespace: 'compartment-prod',
+      imageRegistry: 'github',
       imageSource: 'registry',
       overallStatus: 'running',
       rollbackRetention: {

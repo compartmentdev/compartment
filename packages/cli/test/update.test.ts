@@ -77,13 +77,14 @@ describe.sequential('update runtime', (): void => {
     expect(result.status).toBe('updated');
     expect(result.currentVersion).toBe('0.1.0');
     expect(result.targetVersion).toBe('1.2.3');
+    expect(result.imageRegistry).toBe('github');
     expect(result.imageSource).toBe('registry');
     expect(result.skipReason).toBeNull();
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_NODE_VERSION=1.2.3',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
-      'COMPARTMENT_RUNTIME_PROBE_IMAGE=docker.io/compartmentdev/compartment-runtime-probe:1.2.3',
+      'COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:1.2.3',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_LOG_LEVEL=debug',
@@ -136,6 +137,9 @@ describe.sequential('update runtime', (): void => {
     await expect(readMode(join(installPaths.configDir, '.env.self-hosted'))).resolves.toBe(0o600);
     await expect(readMode(backupDirectory)).resolves.toBe(0o700);
     await expect(readMode(join(backupDirectory, '.env.self-hosted'))).resolves.toBe(0o600);
+    await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
+      '"imageRegistry": "github"',
+    );
     await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
       '"imageSource": "registry"',
     );
@@ -193,6 +197,147 @@ describe.sequential('update runtime', (): void => {
       previousStateText,
     );
     await expect(stat(join(installPaths.dataDir, 'self-hosted/backups'))).rejects.toThrow();
+  });
+
+  it('updates current registry installs to Docker Hub when explicitly selected', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
+    await writeCurrentInstallFiles(
+      installPaths,
+      createCurrentEnvironmentText({
+        includeVariablesMasterKey: true,
+        nodeVersion: '1.2.3',
+        variablesMasterKey: 'd'.repeat(64),
+      }),
+    );
+    await writeInstallState(installPaths, {
+      imageRegistry: 'github',
+      imageSource: 'registry',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      stateVersion: 1,
+    });
+    const { updateSelfHosted } = await import('../src/update');
+
+    const result: SelfHostedUpdateResult = await updateSelfHosted({
+      options: {
+        imageRegistry: 'docker-hub',
+        version: '1.2.3',
+      },
+    });
+
+    expect(result.status).toBe('updated');
+    expect(result.currentVersion).toBe('1.2.3');
+    expect(result.targetVersion).toBe('1.2.3');
+    expect(result.imageRegistry).toBe('docker-hub');
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:1.2.3',
+    );
+    await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
+      '"imageRegistry": "docker-hub"',
+    );
+  });
+
+  it('persists explicit Docker Hub selection on legacy current registry states', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
+    await writeCurrentInstallFiles(
+      installPaths,
+      createCurrentEnvironmentText({
+        includeVariablesMasterKey: true,
+        nodeVersion: '1.2.3',
+        variablesMasterKey: 'e'.repeat(64),
+      }),
+    );
+    await writeInstallState(installPaths, {
+      imageSource: 'registry',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      stateVersion: 1,
+    });
+    const { updateSelfHosted } = await import('../src/update');
+
+    const result: SelfHostedUpdateResult = await updateSelfHosted({
+      options: {
+        imageRegistry: 'docker-hub',
+        version: '1.2.3',
+      },
+    });
+
+    expect(result.status).toBe('updated');
+    expect(result.currentVersion).toBe('1.2.3');
+    expect(result.targetVersion).toBe('1.2.3');
+    expect(result.imageRegistry).toBe('docker-hub');
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:1.2.3',
+    );
+    await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
+      '"imageRegistry": "docker-hub"',
+    );
+  });
+
+  it('migrates legacy registry states to GitHub without an override', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
+    await writeCurrentInstallFiles(
+      installPaths,
+      createCurrentEnvironmentText({
+        includeVariablesMasterKey: true,
+        nodeVersion: '1.2.3',
+        variablesMasterKey: 'g'.repeat(64),
+      }),
+    );
+    await writeInstallState(installPaths, {
+      imageSource: 'registry',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      stateVersion: 1,
+    });
+    const { updateSelfHosted } = await import('../src/update');
+
+    const result: SelfHostedUpdateResult = await updateSelfHosted({
+      options: {
+        version: '1.2.3',
+      },
+    });
+
+    expect(result.status).toBe('updated');
+    expect(result.currentVersion).toBe('1.2.3');
+    expect(result.targetVersion).toBe('1.2.3');
+    expect(result.imageRegistry).toBe('github');
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_API_IMAGE=ghcr.io/compartmentdev/compartment-api:1.2.3',
+    );
+    await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
+      '"imageRegistry": "github"',
+    );
+  });
+
+  it('reuses stored Docker Hub image registry without an override', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
+    await writeCurrentInstallFiles(
+      installPaths,
+      createCurrentEnvironmentText({
+        includeVariablesMasterKey: true,
+        variablesMasterKey: 'b'.repeat(64),
+      }),
+    );
+    await writeInstallState(installPaths, {
+      imageRegistry: 'docker-hub',
+      imageSource: 'registry',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      stateVersion: 1,
+    });
+    const { updateSelfHosted } = await import('../src/update');
+
+    const result: SelfHostedUpdateResult = await updateSelfHosted({
+      options: {
+        version: '1.2.3',
+      },
+    });
+
+    expect(result.status).toBe('updated');
+    expect(result.imageRegistry).toBe('docker-hub');
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:1.2.3',
+    );
+    await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
+      '"imageRegistry": "docker-hub"',
+    );
   });
 
   it('rejects registry update versions that do not match the packaged node agent binary', async (): Promise<void> => {
@@ -272,6 +417,12 @@ describe.sequential('update runtime', (): void => {
     expect(result.skipReason).toBeNull();
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       `COMPARTMENT_VARIABLES_MASTER_KEY=${'f'.repeat(64)}`,
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:1.2.3',
+    );
+    await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
+      '"imageRegistry": "docker-hub"',
     );
     await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
       '"imageSource": "local"',
@@ -515,6 +666,7 @@ describe.sequential('update runtime', (): void => {
     expect(result).toEqual({
       backupDir: null,
       currentVersion: '1.2.4',
+      imageRegistry: 'github',
       imageSource: 'registry',
       ...installPaths,
       skipReason: 'downgrade-not-supported',
@@ -550,6 +702,7 @@ describe.sequential('update runtime', (): void => {
     expect(result).toEqual({
       backupDir: null,
       currentVersion: '1.2.4',
+      imageRegistry: 'github',
       imageSource: 'registry',
       ...installPaths,
       skipReason: 'downgrade-not-supported',

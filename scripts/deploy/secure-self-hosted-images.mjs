@@ -11,12 +11,12 @@ import { readRequiredOptionValue } from '../lib/options.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import {
   buildSelfHostedImageRefForRepository,
-  selfHostedImageRepositoryPrefixes,
+  defaultSelfHostedImageRepositoryPrefix,
   selfHostedRuntimeImageArtifacts,
 } from './self-hosted-runtime-services.mjs';
 
 const defaultOutputDirectory = './.compartment/release-assets/self-hosted-sboms';
-const defaultRepositoryPrefix = selfHostedImageRepositoryPrefixes[0];
+const defaultRepositoryPrefix = defaultSelfHostedImageRepositoryPrefix;
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const slsaProvenanceV1FileSuffix = '.slsa-v1-provenance.json';
 const slsaProvenanceV1AttestationType = 'slsaprovenance1';

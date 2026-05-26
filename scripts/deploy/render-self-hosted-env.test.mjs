@@ -17,14 +17,28 @@ COMPARTMENT_PUBLIC_PORT=443
 # comment
 `,
       }),
-    ).toBe(`COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:sha-123
-COMPARTMENT_CADDY_IMAGE=docker.io/compartmentdev/compartment-caddy:sha-123
-COMPARTMENT_EDGE_IMAGE=docker.io/compartmentdev/compartment-edge:sha-123
+    ).toBe(`COMPARTMENT_API_IMAGE=ghcr.io/compartmentdev/compartment-api:sha-123
+COMPARTMENT_CADDY_IMAGE=ghcr.io/compartmentdev/compartment-caddy:sha-123
+COMPARTMENT_EDGE_IMAGE=ghcr.io/compartmentdev/compartment-edge:sha-123
 COMPARTMENT_NODE_VERSION=sha-123
-COMPARTMENT_RUNTIME_PROBE_IMAGE=docker.io/compartmentdev/compartment-runtime-probe:sha-123
-COMPARTMENT_WORKER_IMAGE=docker.io/compartmentdev/compartment-worker:sha-123
+COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:sha-123
+COMPARTMENT_WORKER_IMAGE=ghcr.io/compartmentdev/compartment-worker:sha-123
 COMPARTMENT_PUBLIC_PORT=443
 # comment
+`);
+  });
+
+  it('renders Docker Hub image variables when requested', () => {
+    expect(
+      renderSelfHostedEnv({
+        primaryTag: 'sha-123',
+        repositoryPrefix: 'docker.io/compartmentdev',
+        templateText: `COMPARTMENT_API_IMAGE=old-api
+COMPARTMENT_NODE_VERSION=old-version
+`,
+      }),
+    ).toBe(`COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:sha-123
+COMPARTMENT_NODE_VERSION=sha-123
 `);
   });
 });

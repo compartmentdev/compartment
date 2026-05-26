@@ -1,7 +1,11 @@
 export { createErrorResponse } from './error-response';
 export { errorResponseSchema } from './contracts/error.contract';
 export { type HealthResponse, healthResponseSchema } from './contracts/health.contract';
-export { type SelfHostedImageSource } from './contracts/self-hosted.contract';
+export {
+  type SelfHostedImageSource,
+  type SelfHostedRuntimeImageRegistry,
+  selfHostedRuntimeImageRegistrySchema,
+} from './contracts/self-hosted.contract';
 export {
   type SelfHostedRuntimeImageSignaturePolicy,
   selfHostedRuntimeImageSignaturePolicy,

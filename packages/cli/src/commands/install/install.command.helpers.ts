@@ -103,10 +103,11 @@ export function readInstallImageSelectionMessage(
   options: SelfHostedInstallPreflightOptions,
   versionSelection: InstallVersionSelection,
 ): string {
+  const imageRegistryLabel: string = options.imageRegistry === 'github' ? 'GitHub Container Registry' : 'Docker Hub';
   const imageSelectionMessage: string =
     options.imageSource === 'local'
-      ? `Using local self-hosted image tag ${options.version} from the local Docker daemon`
-      : `Using published self-hosted image tag ${options.version}`;
+      ? `Using local self-hosted image tag ${options.version} from the local Docker daemon with ${imageRegistryLabel} image names`
+      : `Using published self-hosted image tag ${options.version} from ${imageRegistryLabel}`;
   const implicitVersionReason: string | undefined = readImplicitInstallVersionReason(versionSelection);
 
   return implicitVersionReason === undefined

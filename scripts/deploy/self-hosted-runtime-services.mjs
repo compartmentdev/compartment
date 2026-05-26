@@ -1,13 +1,18 @@
 const selfHostedRuntimeServices = Object.freeze(['api', 'caddy', 'edge', 'worker']);
 export const selfHostedRuntimeImageArtifacts = Object.freeze([...selfHostedRuntimeServices, 'runtime-probe']);
-export const selfHostedImageRepositoryPrefixes = Object.freeze(['docker.io/compartmentdev', 'ghcr.io/compartmentdev']);
+export const defaultSelfHostedImageRepositoryPrefix = 'ghcr.io/compartmentdev';
+const dockerHubSelfHostedImageRepositoryPrefix = 'docker.io/compartmentdev';
+export const selfHostedImageRepositoryPrefixes = Object.freeze([
+  defaultSelfHostedImageRepositoryPrefix,
+  dockerHubSelfHostedImageRepositoryPrefix,
+]);
 
 const runtimeImageVariableNames = Object.freeze({
   'runtime-probe': 'COMPARTMENT_RUNTIME_PROBE_IMAGE',
 });
 
-export function buildSelfHostedImageRef(serviceName, tag) {
-  return buildSelfHostedImageRefForRepository(serviceName, tag, selfHostedImageRepositoryPrefixes[0]);
+export function buildSelfHostedImageRef(serviceName, tag, repositoryPrefix = defaultSelfHostedImageRepositoryPrefix) {
+  return buildSelfHostedImageRefForRepository(serviceName, tag, repositoryPrefix);
 }
 
 export function buildSelfHostedImageRefForRepository(serviceName, tag, repositoryPrefix) {

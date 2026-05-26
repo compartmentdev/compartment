@@ -25,6 +25,7 @@ export const defaultNodeAgentSocketPath: string = '/var/run/compartment/node/age
 export const defaultSystemApiSocketPath: string = '/var/run/compartment/api/system-api.sock';
 export {
   buildPublishedSelfHostedRuntimeSelection,
+  defaultSelfHostedRuntimeImageRegistry,
   readSelfHostedImageRefsFromEnvironmentText,
 } from './self-hosted-runtime-selection';
 

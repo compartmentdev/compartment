@@ -164,6 +164,7 @@ describe.sequential('system maintenance runtime', (): void => {
       controlPlaneUrl: 'https://console.customer.example.com',
     });
     expect(result.dockerNamespace).toBe('compartment-prod');
+    expect(result.imageRegistry).toBe('github');
     expect(result.imageSource).toBe('registry');
     expect(result.services[0]?.uptimeSeconds).toBe(3600);
     expect(mocks.inspectSelfHostedRuntimeServices).toHaveBeenCalledWith(

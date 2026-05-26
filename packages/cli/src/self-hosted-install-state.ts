@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { isMissingFileSystemEntryError } from '@compartment/utils';
+import { selfHostedRuntimeImageRegistrySchema } from '@compartment/contracts';
+import type { SafeParseReturnType } from 'zod';
 import { writeSelfHostedPrivateFile } from './self-hosted-file-permissions';
 import { buildSelfHostedInstallPaths } from './self-hosted-install-paths';
 import type { SelfHostedInstallPaths, SelfHostedPathSelection } from './self-hosted-install-paths.types';
@@ -8,6 +10,7 @@ import type {
   SelfHostedInstallState,
   SelfHostedInstallStateVersion,
 } from './self-hosted-install-state.types';
+import type { SelfHostedRuntimeImageRegistry } from './self-hosted-env.types';
 
 const selfHostedInstallStateVersion: SelfHostedInstallStateVersion = 1;
 
@@ -18,11 +21,20 @@ interface ParsedJsonObject {
 }
 
 interface SelfHostedInstallStateCandidate extends ParsedJsonObject {
+  imageRegistry?: ParsedJsonValue | undefined;
   imageSource?: ParsedJsonValue | undefined;
   installationId?: ParsedJsonValue | undefined;
   managedDomain?: ParsedJsonValue | undefined;
   stateVersion?: ParsedJsonValue | undefined;
 }
+
+interface ValidSelfHostedInstallStateCandidate extends SelfHostedInstallStateCandidate {
+  imageSource: 'registry' | 'local';
+  installationId: string;
+  stateVersion: SelfHostedInstallStateVersion;
+}
+
+type OptionalSelfHostedRuntimeImageRegistry = SelfHostedRuntimeImageRegistry | null | undefined;
 
 export async function readSelfHostedInstallStateFromInstallPaths(
   installPaths: SelfHostedInstallPaths,
@@ -69,26 +81,64 @@ function readCurrentSelfHostedInstallStateValue(value: ParsedJsonValue): SelfHos
     return undefined;
   }
 
-  if (
-    value.stateVersion !== selfHostedInstallStateVersion ||
-    (value.imageSource !== 'registry' && value.imageSource !== 'local') ||
-    typeof value.installationId !== 'string' ||
-    value.installationId === ''
-  ) {
+  if (!hasRequiredSelfHostedInstallStateValues(value)) {
     return undefined;
   }
-  const managedDomain: ManagedDomainInstallState | undefined =
-    value.managedDomain === undefined ? undefined : readManagedDomainInstallState(value.managedDomain);
-  if (value.managedDomain !== undefined && managedDomain === undefined) {
+
+  const managedDomain: ManagedDomainInstallState | null | undefined = readOptionalManagedDomainInstallState(value);
+  if (managedDomain === null) {
+    return undefined;
+  }
+
+  const imageRegistry: OptionalSelfHostedRuntimeImageRegistry = readOptionalSelfHostedRuntimeImageRegistry(value);
+  if (imageRegistry === null) {
     return undefined;
   }
 
   return {
+    ...(imageRegistry === undefined ? {} : { imageRegistry }),
     imageSource: value.imageSource,
     installationId: value.installationId,
     ...(managedDomain === undefined ? {} : { managedDomain }),
     stateVersion: selfHostedInstallStateVersion,
   };
+}
+
+function hasRequiredSelfHostedInstallStateValues(
+  value: SelfHostedInstallStateCandidate,
+): value is ValidSelfHostedInstallStateCandidate {
+  return (
+    value.stateVersion === selfHostedInstallStateVersion &&
+    (value.imageSource === 'registry' || value.imageSource === 'local') &&
+    typeof value.installationId === 'string' &&
+    value.installationId !== ''
+  );
+}
+
+function readOptionalManagedDomainInstallState(
+  value: SelfHostedInstallStateCandidate,
+): ManagedDomainInstallState | null | undefined {
+  if (value.managedDomain === undefined) {
+    return undefined;
+  }
+
+  return readManagedDomainInstallState(value.managedDomain) ?? null;
+}
+
+function readOptionalSelfHostedRuntimeImageRegistry(
+  value: SelfHostedInstallStateCandidate,
+): OptionalSelfHostedRuntimeImageRegistry {
+  if (value.imageRegistry === undefined) {
+    return undefined;
+  }
+
+  return readSelfHostedRuntimeImageRegistry(value.imageRegistry) ?? null;
+}
+
+function readSelfHostedRuntimeImageRegistry(value: ParsedJsonValue): SelfHostedRuntimeImageRegistry | undefined {
+  const result: SafeParseReturnType<SelfHostedRuntimeImageRegistry, SelfHostedRuntimeImageRegistry> =
+    selfHostedRuntimeImageRegistrySchema.safeParse(value);
+  return result.success ? result.data : undefined;
 }
 
 function readManagedDomainInstallState(value: ParsedJsonValue): ManagedDomainInstallState | undefined {

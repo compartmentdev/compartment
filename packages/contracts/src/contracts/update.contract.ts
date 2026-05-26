@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { selfHostedImageSourceSchema, type SelfHostedImageSource } from './self-hosted.contract';
+import {
+  selfHostedImageSourceSchema,
+  selfHostedRuntimeImageRegistrySchema,
+  type SelfHostedImageSource,
+  type SelfHostedRuntimeImageRegistry,
+} from './self-hosted.contract';
 import type { ContractSchema } from './schema.types';
 
 const updateStatusValues: readonly ['updated', 'skipped'] = ['updated', 'skipped'];
@@ -16,6 +21,7 @@ export interface UpdateResponse {
   configDir: string;
   currentVersion: string;
   dataDir: string;
+  imageRegistry: SelfHostedRuntimeImageRegistry;
   imageSource: SelfHostedImageSource;
   skipReason: UpdateSkipReason | null;
   status: UpdateStatus;
@@ -31,6 +37,7 @@ export const updateResponseSchema: ContractSchema<UpdateResponse> = z
     configDir: z.string().min(1),
     currentVersion: z.string().min(1),
     dataDir: z.string().min(1),
+    imageRegistry: selfHostedRuntimeImageRegistrySchema,
     imageSource: selfHostedImageSourceSchema,
     skipReason: updateSkipReasonSchema.nullable(),
     status: updateStatusSchema,

@@ -44,10 +44,10 @@ describe('self-hosted environment helpers', (): void => {
     });
 
     expect(rendered.values.COMPARTMENT_BASE_DOMAIN).toBe('example.com');
-    expect(rendered.values.COMPARTMENT_API_IMAGE).toBe('docker.io/compartmentdev/compartment-api:1.2.3');
-    expect(rendered.values.COMPARTMENT_CADDY_IMAGE).toBe('docker.io/compartmentdev/compartment-caddy:1.2.3');
+    expect(rendered.values.COMPARTMENT_API_IMAGE).toBe('ghcr.io/compartmentdev/compartment-api:1.2.3');
+    expect(rendered.values.COMPARTMENT_CADDY_IMAGE).toBe('ghcr.io/compartmentdev/compartment-caddy:1.2.3');
     expect(rendered.values.COMPARTMENT_RUNTIME_PROBE_IMAGE).toBe(
-      'docker.io/compartmentdev/compartment-runtime-probe:1.2.3',
+      'ghcr.io/compartmentdev/compartment-runtime-probe:1.2.3',
     );
     expect(rendered.values.COMPARTMENT_ARTIFACT_REGISTRY_HOST).toBe('127.0.0.1');
     expect(rendered.values.COMPARTMENT_ARTIFACT_REGISTRY_PORT).toBe('39461');
@@ -103,6 +103,35 @@ describe('self-hosted environment helpers', (): void => {
     expect(rendered.text).toContain('COMPARTMENT_SYSTEM_TOKEN=system-token');
     expect(rendered.text).toContain('COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME=reader');
     expect(rendered.text).toContain('COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME=writer');
+  });
+
+  it('renders Docker Hub image refs when selected', (): void => {
+    const rendered: RenderedSelfHostedEnvironment = buildSelfHostedEnvironment({
+      acmeEmail: 'admin@example.com',
+      baseDomain: 'example.com',
+      dockerWorkDirectory: '/var/lib/compartment/self-hosted/docker-work',
+      edgeToken: 'edge-token',
+      ...createArtifactRegistryCredentialInput(),
+      postgresPassword: 'postgres-password',
+      publicHttpPort: 80,
+      publicHttpsPort: 443,
+      publicIngressIpv4: '',
+      publicIngressIpv6: '',
+      runtimeSelection: buildPublishedSelfHostedRuntimeSelection('1.2.3', 'docker-hub'),
+      sessionSecret: 'session-secret',
+      nodeAgentSocketPath: '/var/run/compartment/node/agent.sock',
+      systemApiSocketPath: '/var/run/compartment/api/system-api.sock',
+      systemToken: 'system-token',
+      templateText: buildTemplateText(),
+      variablesMasterKey: 'a'.repeat(64),
+      runtimeControlToken: 'runtime-token',
+    });
+
+    expect(rendered.values.COMPARTMENT_API_IMAGE).toBe('docker.io/compartmentdev/compartment-api:1.2.3');
+    expect(rendered.values.COMPARTMENT_CADDY_IMAGE).toBe('docker.io/compartmentdev/compartment-caddy:1.2.3');
+    expect(rendered.values.COMPARTMENT_RUNTIME_PROBE_IMAGE).toBe(
+      'docker.io/compartmentdev/compartment-runtime-probe:1.2.3',
+    );
   });
 
   it('reads installed self-hosted image refs from environment text', (): void => {

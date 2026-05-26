@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { selfHostedImageSourceSchema, type SelfHostedImageSource } from './self-hosted.contract';
+import {
+  selfHostedImageSourceSchema,
+  selfHostedRuntimeImageRegistrySchema,
+  type SelfHostedImageSource,
+  type SelfHostedRuntimeImageRegistry,
+} from './self-hosted.contract';
 import {
   rollbackRetentionEffectivePolicySchema,
   type RollbackRetentionEffectivePolicy,
@@ -91,6 +96,7 @@ export interface SystemStatusResponse {
   dataDir: string;
   domain: SystemStatusDomainSummary;
   dockerNamespace: string;
+  imageRegistry: SelfHostedRuntimeImageRegistry;
   imageSource: SelfHostedImageSource;
   overallStatus: SystemOverallStatus;
   rollbackRetention: RollbackRetentionEffectivePolicy;
@@ -144,6 +150,7 @@ export const systemStatusResponseSchema: ContractSchema<SystemStatusResponse> = 
     dataDir: z.string().min(1),
     domain: systemStatusDomainSummarySchema,
     dockerNamespace: z.string().min(1),
+    imageRegistry: selfHostedRuntimeImageRegistrySchema,
     imageSource: selfHostedImageSourceSchema,
     overallStatus: systemOverallStatusSchema,
     rollbackRetention: rollbackRetentionEffectivePolicySchema,

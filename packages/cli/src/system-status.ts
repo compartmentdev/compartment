@@ -19,6 +19,7 @@ import {
   readRequiredSelfHostedEnvironmentRawValue,
   readRequiredSelfHostedEnvironmentValue,
 } from './self-hosted-env-file';
+import { resolveStoredSelfHostedRuntimeImageRegistry } from './self-hosted-runtime-selection';
 import { readCanonicalNodeAgentSocketPath } from './self-hosted-host-socket-paths';
 import { readRequiredSelfHostedInstall } from './self-hosted-install-read';
 import type { ReadSelfHostedInstallResult } from './self-hosted-install-read.types';
@@ -40,12 +41,23 @@ export async function getSelfHostedSystemStatus(input: SelfHostedSystemInput): P
     checkedAt,
   );
 
+  return parseSystemStatusResult(checkedAt, paths, install, environmentValues, services);
+}
+
+function parseSystemStatusResult(
+  checkedAt: string,
+  paths: SelfHostedPathSelection,
+  install: ReadSelfHostedInstallResult,
+  environmentValues: Record<string, string>,
+  services: SystemServiceSummary[],
+): SelfHostedSystemStatusResult {
   return systemStatusResponseSchema.parse({
     checkedAt,
     configDir: paths.configDir,
     dataDir: paths.dataDir,
     domain: readSystemStatusDomainSummary(environmentValues),
     dockerNamespace: readRequiredSelfHostedEnvironmentValue(environmentValues, 'COMPARTMENT_DOCKER_NAMESPACE'),
+    imageRegistry: resolveStoredSelfHostedRuntimeImageRegistry(install.state.imageRegistry, install.state.imageSource),
     imageSource: install.state.imageSource,
     overallStatus: readSystemOverallStatus(services),
     rollbackRetention: readSystemRollbackRetentionPolicy(environmentValues),
