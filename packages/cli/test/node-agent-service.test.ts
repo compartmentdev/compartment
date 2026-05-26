@@ -153,13 +153,10 @@ describe('node agent service staging', (): void => {
     expect(unitContents).not.toContain('compartment/api');
     expect(unitContents).toContain('RuntimeDirectoryMode=0700');
     expect(unitContents).toContain('RuntimeDirectoryPreserve=yes');
-    const legacySelfHostedStateDirectory: string = ['compartment/on', 'prem'].join('');
-    expect(unitContents).toContain(
-      `StateDirectory=compartment/self-hosted ${legacySelfHostedStateDirectory} compartment/resource-backups`,
-    );
+    expect(unitContents).toContain('StateDirectory=compartment/self-hosted compartment/resource-backups');
     expect(unitContents).toContain('StateDirectoryMode=0700');
     expect(unitContents).toContain(
-      `ReadWritePaths=/var/run/compartment/node /var/lib/compartment/self-hosted /var/lib/${legacySelfHostedStateDirectory} /var/lib/compartment/resource-backups /var/run/docker.sock`,
+      'ReadWritePaths=/var/run/compartment/node /var/lib/compartment/self-hosted /var/lib/compartment/resource-backups /var/run/docker.sock',
     );
     expect(unitContents).not.toContain('ExecStartPre=');
     const temporaryBinaryPath: string = readTemporaryBinaryPath();

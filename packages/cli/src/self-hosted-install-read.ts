@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { isMissingFileSystemEntryError } from '@compartment/utils';
-import { resolveExistingSelfHostedInstallPaths } from './self-hosted-install-paths';
+import { buildSelfHostedInstallPaths } from './self-hosted-install-paths';
 import type { SelfHostedInstallPaths, SelfHostedPathSelection } from './self-hosted-install-paths.types';
 import { readSelfHostedInstallStateFromInstallPaths } from './self-hosted-install-state';
 import type { SelfHostedInstallState } from './self-hosted-install-state.types';
@@ -18,7 +18,7 @@ export async function readRequiredSelfHostedInstallForUpdate(
 export async function readRequiredSelfHostedInstall(
   paths: SelfHostedPathSelection,
 ): Promise<ReadSelfHostedInstallResult> {
-  const installPaths: SelfHostedInstallPaths = resolveExistingSelfHostedInstallPaths(paths);
+  const installPaths: SelfHostedInstallPaths = buildSelfHostedInstallPaths(paths);
   const environmentText: string = await readRequiredSelfHostedEnvironmentText(installPaths.stagedAssetPaths.envPath);
   const state: SelfHostedInstallState | undefined = await readSelfHostedInstallStateFromInstallPaths(installPaths);
   if (state === undefined) {

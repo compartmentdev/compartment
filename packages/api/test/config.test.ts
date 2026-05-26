@@ -4,6 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { readApiConfig, type ApiConfig } from '../src/config';
 
+const requiredExplicitSelfHostedEnvSlots: string[] = [
+  'COMPARTMENT_ROLLBACK_RETENTION_LIMIT',
+  'COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN',
+  'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL',
+  'COMPARTMENT_TRUSTED_OUTBOUND_HOSTS',
+];
+
 describe('readApiConfig', (): void => {
   it('reads the required API runtime config from env', (): void => {
     const config: ApiConfig = readApiConfig(createApiConfigEnv());
@@ -63,6 +70,12 @@ describe('readApiConfig', (): void => {
       });
     }).toThrow();
   });
+
+  for (const variableName of requiredExplicitSelfHostedEnvSlots) {
+    it(`requires an explicit value for ${variableName}`, (): void => {
+      expect((): ApiConfig => readApiConfig(createApiConfigEnv({ [variableName]: undefined }))).toThrow();
+    });
+  }
 
   it('rejects an invalid session ttl duration', (): void => {
     expect((): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_SESSION_TTL: 'banana' }))).toThrow(
@@ -304,6 +317,8 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_EDGE_PORT: '9081',
     COMPARTMENT_EDGE_TOKEN: 'edge-secret',
     COMPARTMENT_LOG_LEVEL: 'info',
+    COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: '',
+    COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: '',
     COMPARTMENT_NODE_AGENT_SOCKET: '/tmp/compartment/node/agent.sock',
     COMPARTMENT_PUBLIC_PROTOCOL: 'http',
     COMPARTMENT_PUBLIC_HTTP_PORT: '9080',
@@ -314,6 +329,7 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_SYSTEM_TOKEN: 'system-secret',
     COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: '',
     COMPARTMENT_RESOURCE_BACKUP_DIR: '/tmp/compartment/dev/resource-backups',
+    COMPARTMENT_ROLLBACK_RETENTION_LIMIT: '',
     COMPARTMENT_SOURCE_ARCHIVE_DIR: '.compartment/source-archives',
     COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES: '104857600',
     COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: '127.0.0.1',

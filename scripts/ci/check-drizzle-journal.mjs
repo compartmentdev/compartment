@@ -3,23 +3,12 @@ import { pathToFileURL } from 'node:url';
 
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 
-const apiBaselineResetJournalPath = 'packages/api/drizzle/meta/_journal.json';
-const apiBaselineResetBaseEntryCount = 51;
-const apiBaselineResetBaseLastTag = '0050_wooden_timeslip';
-const apiBaselineResetHeadTag = '0000_initial';
-const apiBaselineResetDialect = 'postgresql';
-const apiBaselineResetVersion = '7';
-
 export function readDrizzleMigrationJournal(rawJournal) {
   return JSON.parse(rawJournal);
 }
 
 export function findDrizzleJournalDiffValidationErrors(journalPath, baseJournal, headJournal) {
   const validationErrors = [];
-
-  if (isApiBaselineJournalReset(journalPath, baseJournal, headJournal)) {
-    return validationErrors;
-  }
 
   if (headJournal.entries.length < baseJournal.entries.length) {
     validationErrors.push(`${journalPath}: pull requests must not remove existing journal entries.`);
@@ -57,34 +46,6 @@ export function findDrizzleJournalDiffValidationErrors(journalPath, baseJournal,
   }
 
   return validationErrors;
-}
-
-function isApiBaselineJournalReset(journalPath, baseJournal, headJournal) {
-  if (journalPath !== apiBaselineResetJournalPath) {
-    return false;
-  }
-
-  if (
-    baseJournal.dialect !== apiBaselineResetDialect ||
-    headJournal.dialect !== apiBaselineResetDialect ||
-    baseJournal.version !== apiBaselineResetVersion ||
-    headJournal.version !== apiBaselineResetVersion
-  ) {
-    return false;
-  }
-
-  if (baseJournal.entries.length !== apiBaselineResetBaseEntryCount || headJournal.entries.length !== 1) {
-    return false;
-  }
-
-  const baseLastEntry = baseJournal.entries[baseJournal.entries.length - 1];
-  const [entry] = headJournal.entries;
-  return (
-    baseLastEntry?.tag === apiBaselineResetBaseLastTag &&
-    entry.idx === 0 &&
-    entry.tag === apiBaselineResetHeadTag &&
-    entry.when === baseLastEntry.when
-  );
 }
 
 function readMaxWhenEntry(entries) {

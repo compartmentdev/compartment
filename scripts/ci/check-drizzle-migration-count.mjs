@@ -3,17 +3,10 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { listChangedDrizzleJournalPaths } from './check-drizzle-journal.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 
-const apiBaselineResetJournalPath = 'packages/api/drizzle/meta/_journal.json';
-const apiBaselineResetSqlCount = 51;
-const apiBaselineResetInitialSqlPath = 'packages/api/drizzle/0000_initial.sql';
-const apiBaselineResetLastSqlPath = 'packages/api/drizzle/0050_wooden_timeslip.sql';
-const apiMigrationSqlPathPattern = /^packages\/api\/drizzle\/[0-9][0-9][0-9][0-9]_.+\.sql$/;
-
-export function findDrizzleMigrationCountValidationErrors(migrationChanges, changedJournalPaths) {
-  if (migrationChanges.length <= 1 || isApiBaselineSqlReset(migrationChanges, changedJournalPaths)) {
+export function findDrizzleMigrationCountValidationErrors(migrationChanges) {
+  if (migrationChanges.length <= 1) {
     return [];
   }
 
@@ -37,34 +30,6 @@ export function parseGitNameStatus(rawNameStatus) {
         status,
       };
     });
-}
-
-function isApiBaselineSqlReset(migrationChanges, changedJournalPaths) {
-  if (
-    migrationChanges.length !== apiBaselineResetSqlCount ||
-    !changedJournalPaths.includes(apiBaselineResetJournalPath)
-  ) {
-    return false;
-  }
-
-  let sawInitialSql = false;
-  let sawLastSql = false;
-
-  for (const migrationChange of migrationChanges) {
-    if (!apiMigrationSqlPathPattern.test(migrationChange.path)) {
-      return false;
-    }
-
-    if (migrationChange.path === apiBaselineResetInitialSqlPath && migrationChange.status === 'M') {
-      sawInitialSql = true;
-    } else if (migrationChange.path === apiBaselineResetLastSqlPath && migrationChange.status === 'D') {
-      sawLastSql = true;
-    } else if (migrationChange.status !== 'D') {
-      return false;
-    }
-  }
-
-  return sawInitialSql && sawLastSql;
 }
 
 function listChangedPackageMigrationFiles(repoRoot, baseRef, headRef) {
@@ -100,8 +65,7 @@ function main() {
 
   const repoRoot = readRepositoryRoot(import.meta.url, 2);
   const migrationChanges = listChangedPackageMigrationFiles(repoRoot, baseRef, headRef);
-  const changedJournalPaths = listChangedDrizzleJournalPaths(repoRoot, baseRef, headRef);
-  const validationErrors = findDrizzleMigrationCountValidationErrors(migrationChanges, changedJournalPaths);
+  const validationErrors = findDrizzleMigrationCountValidationErrors(migrationChanges);
 
   if (validationErrors.length > 0) {
     throw new Error(validationErrors.join('\n'));
