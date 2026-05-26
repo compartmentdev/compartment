@@ -3,13 +3,13 @@ title: Install Modes
 description: Understand the current shipped install command and the supported system-install modes.
 ---
 
-If the CLI is already installed on the target server, install the platform with:
+If the CLI is already installed on the self-hosted server, install the platform with:
 
 ```bash
 compartment install
 ```
 
-Before you run `compartment install`, the CLI must already be installed on the target server. The public bootstrapper can either install the CLI only or install the CLI and immediately start `compartment install`.
+Before you run `compartment install`, the CLI must already be installed on the self-hosted server. The public bootstrapper can either install the CLI only or install the CLI and immediately start `compartment install`.
 
 ## Default mode
 

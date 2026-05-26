@@ -8,7 +8,7 @@ Use this flow when you are creating a new Compartment runtime.
 Compartment has two install steps:
 
 - install the CLI on the machine you are using;
-- install the Compartment system on the target server.
+- install the self-hosted Compartment system on the server.
 
 ## 1. Install the CLI
 
@@ -18,13 +18,13 @@ curl -fsSL https://compartment.dev/install.sh | sh
 
 The public bootstrapper installs the CLI only by default.
 
-If you are already on the target server and want the installer to continue directly into system setup, use:
+If you are already on the self-hosted server and want the installer to continue directly into system setup, use:
 
 ```bash
 curl -fsSL https://compartment.dev/install.sh | sh -s -- --init-install
 ```
 
-## 2. Install the system on the target server
+## 2. Install the self-hosted system
 
 The current shipped system install command is:
 

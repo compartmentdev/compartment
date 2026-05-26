@@ -34,7 +34,7 @@ Typical examples include:
 
 One of the core use cases for Compartment is working with AI coding agents.
 
-Because the deployment model is explicit, an agent can be told to make a repository Compartment-deployable, add the required descriptor files, install Compartment on a target server, and wire up a deploy flow that matches the current docs.
+Because the deployment model is explicit, an agent can be told to make a repository Compartment-deployable, add the required descriptor files, install Compartment on a self-hosted server, and wire up a deploy flow that matches the current docs.
 
 That does not limit you to an agent-only workflow. You can still use a standard local CLI deploy flow, CI-driven automation, or a Git and GitHub deployment path.
 

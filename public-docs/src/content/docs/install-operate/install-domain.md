@@ -10,7 +10,7 @@ Compartment uses one install-level base domain for:
 
 There are two main domain models:
 
-- managed-domain install: the broker allocates the base domain and Caddy obtains the wildcard certificate on the customer host;
+- managed-domain install: the broker allocates the base domain and Caddy obtains the wildcard certificate on the self-hosted runtime host;
 - operator-owned install domain: you stage, verify, and activate the install domain yourself.
 
 In the default managed mode, `compartment install` asks the managed-domain broker to allocate this install domain automatically.
