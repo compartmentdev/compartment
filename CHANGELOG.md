@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/compartmentdev/compartment/compare/v0.2.0...v0.3.0) (2026-05-26)
+
+
+### Features
+
+* **cli:** add create-flow CLI mode selector ([#14](https://github.com/compartmentdev/compartment/issues/14)) ([b915227](https://github.com/compartmentdev/compartment/commit/b915227034508d4859804cf253b335d4c9290b70))
+* **repo:** polish console tabs and tables ([#17](https://github.com/compartmentdev/compartment/issues/17)) ([11b0c78](https://github.com/compartmentdev/compartment/commit/11b0c78395fc42127a1f0abd9ef8505e9129a3ad))
+
 ## [0.2.0](https://github.com/compartmentdev/compartment/compare/v0.1.1...v0.2.0) (2026-05-26)
 
 
