@@ -5,7 +5,11 @@ import {
   resolveManagedDomainInstallState,
   type ResolvedManagedDomainInstallState,
 } from './install.command.managed-domain';
-import { readInstallImageSource, type InstallVersionSelection } from './install.command.options';
+import {
+  readInstallImageRegistry,
+  readInstallImageSource,
+  type InstallVersionSelection,
+} from './install.command.options';
 import type {
   InstallCommandOptions,
   ResolvedInstallIdentityPrompts,
@@ -21,6 +25,7 @@ export function resolveSelfHostedInstallPreflightOptions(
   publicPorts: InstallPublicPorts,
 ): SelfHostedInstallPreflightOptions {
   return {
+    imageRegistry: readInstallImageRegistry(options.imageRegistry),
     imageSource: readInstallImageSource(options.imageSource),
     publicHttpPort: publicPorts.publicHttpPort,
     publicHttpsPort: publicPorts.publicHttpsPort,
@@ -95,6 +100,7 @@ function buildSelfHostedInstallOptions(
     adminEmail: prompts.adminEmail,
     adminPassword: prompts.adminPassword,
     baseDomain: readResolvedInstallBaseDomain(options, managedDomain),
+    imageRegistry: readInstallImageRegistry(options.imageRegistry),
     imageSource: readInstallImageSource(options.imageSource),
     installationId,
     ...(managedDomain === undefined ? {} : { managedDomain }),

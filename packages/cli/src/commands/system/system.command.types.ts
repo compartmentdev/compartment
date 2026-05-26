@@ -30,6 +30,7 @@ export type SystemRestartCommandOptions = SystemOutputCommandOptions;
 export type SystemStatusCommandOptions = SystemOutputCommandOptions;
 
 export interface UpdateCommandOptions extends SystemOutputCommandOptions {
+  imageRegistry?: string | undefined;
   imageSource?: string | undefined;
   version?: string | undefined;
 }

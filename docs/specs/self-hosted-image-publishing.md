@@ -2,7 +2,7 @@
 
 This document captures the internal publication rules for self-hosted runtime images.
 
-GitHub Actions publishes Docker Hub self-hosted images as attested OCI indexes. Generated runtime refs use `docker.io/compartmentdev`; GHCR remains a compatibility target during registry migration:
+GitHub Actions publishes self-hosted images to Docker Hub and GitHub Container Registry as attested OCI indexes. Generated CLI runtime refs use `ghcr.io/compartmentdev` by default; Docker Hub remains available through explicit install and update selection:
 
 - pushes to `main` publish `main` and `sha-<commit>`;
 - manual `Publish Self-Hosted Images (SHA)` runs publish only `sha-<commit>` for the selected ref;
@@ -34,7 +34,7 @@ After promoting a tag, the publish job resolves the tag to a concrete image dige
 
 Mutable tags such as `main` and `latest` share the same digest signature, SBOM attestation, and provenance attestation as their immutable `sha-<commit>` or semver tag when they resolve to the same digest.
 
-The CLI resolves registry-sourced Compartment runtime image tags to digests, verifies the digest signatures before pulling, pulls the verified digests, tags them locally for Compose, and verifies pulled local digests before starting containers. Verification trusts only keyless signatures issued by GitHub Actions for `compartmentdev/compartment` on the `publish-self-hosted-main.yml` and `publish-self-hosted-release.yml` workflows. During the workflow rename transition, the verifier also accepts the previous publishing workflow identity for already-published digests so mutable tags do not fail solely because their digest was signed before the rename. Local image installs skip registry signature verification.
+The CLI resolves registry-sourced Compartment runtime image tags to digests, verifies the digest signatures before pulling, pulls the verified digests, tags them locally for Compose, and verifies pulled local digests before starting containers. Verification trusts only keyless signatures issued by GitHub Actions for `compartmentdev/compartment` on the `publish-self-hosted-main.yml` and `publish-self-hosted-release.yml` workflows. During the workflow rename transition, the verifier also accepts the previous publishing workflow identity for already-published digests so mutable tags do not fail solely because their digest was signed before the rename. The same policy applies to GHCR and Docker Hub digest refs. Local image installs skip registry signature verification.
 
 As a manual fallback only, prepare a release commit locally by updating all workspace package versions, `.env.self-hosted.example`, and `.release-please-manifest.json` together. Add a matching `CHANGELOG.md` section before pushing the tag when the release needs detailed notes; otherwise the distribution release falls back to generic manual-release notes.
 

@@ -6,13 +6,18 @@ import { readRequiredOptionValue } from '../lib/options.mjs';
 import {
   buildSelfHostedImageRef,
   buildSelfHostedRuntimeImageVariableName,
+  defaultSelfHostedImageRepositoryPrefix,
   selfHostedRuntimeImageArtifacts,
 } from './self-hosted-runtime-services.mjs';
 
 const defaultTemplatePath = '.env.self-hosted.example';
 
-export function renderSelfHostedEnv({ primaryTag, templateText }) {
-  const overrides = buildSelfHostedEnvOverrides(primaryTag);
+export function renderSelfHostedEnv({
+  primaryTag,
+  repositoryPrefix = defaultSelfHostedImageRepositoryPrefix,
+  templateText,
+}) {
+  const overrides = buildSelfHostedEnvOverrides(primaryTag, repositoryPrefix);
 
   return templateText
     .split('\n')
@@ -29,20 +34,29 @@ export function renderSelfHostedEnv({ primaryTag, templateText }) {
     .join('\n');
 }
 
-export async function writeRenderedSelfHostedEnv({ outputPath, primaryTag, templatePath = defaultTemplatePath }) {
+export async function writeRenderedSelfHostedEnv({
+  outputPath,
+  primaryTag,
+  repositoryPrefix = defaultSelfHostedImageRepositoryPrefix,
+  templatePath = defaultTemplatePath,
+}) {
   const resolvedOutputPath = resolve(outputPath);
   const templateText = await readFile(resolve(templatePath), 'utf8');
   await mkdir(dirname(resolvedOutputPath), { recursive: true });
-  await writeFile(resolvedOutputPath, renderSelfHostedEnv({ primaryTag, templateText }));
+  await writeFile(resolvedOutputPath, renderSelfHostedEnv({ primaryTag, repositoryPrefix, templateText }));
 }
 
-function buildSelfHostedEnvOverrides(primaryTag) {
+function buildSelfHostedEnvOverrides(primaryTag, repositoryPrefix) {
   const overrides = {
     COMPARTMENT_NODE_VERSION: primaryTag,
   };
 
   for (const serviceName of selfHostedRuntimeImageArtifacts) {
-    overrides[buildSelfHostedRuntimeImageVariableName(serviceName)] = buildSelfHostedImageRef(serviceName, primaryTag);
+    overrides[buildSelfHostedRuntimeImageVariableName(serviceName)] = buildSelfHostedImageRef(
+      serviceName,
+      primaryTag,
+      repositoryPrefix,
+    );
   }
 
   return overrides;
@@ -52,6 +66,7 @@ function readRenderSelfHostedEnvOptions(args) {
   const options = {
     outputPath: undefined,
     primaryTag: undefined,
+    repositoryPrefix: defaultSelfHostedImageRepositoryPrefix,
     templatePath: defaultTemplatePath,
   };
 
@@ -63,6 +78,10 @@ function readRenderSelfHostedEnvOptions(args) {
     }
     if (argument === '--primary-tag') {
       options.primaryTag = readRequiredOptionValue(args, ++index, '--primary-tag');
+      continue;
+    }
+    if (argument === '--repository-prefix') {
+      options.repositoryPrefix = readRequiredOptionValue(args, ++index, '--repository-prefix');
       continue;
     }
     if (argument === '--template') {
@@ -83,6 +102,7 @@ function readRenderSelfHostedEnvOptions(args) {
   return {
     outputPath: options.outputPath,
     primaryTag: options.primaryTag,
+    repositoryPrefix: options.repositoryPrefix,
     templatePath: options.templatePath,
   };
 }

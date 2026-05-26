@@ -6,6 +6,7 @@ export interface InstallCommandOptions {
   brokerUrl?: string | undefined;
   dev?: boolean | undefined;
   email?: string | undefined;
+  imageRegistry?: string | undefined;
   imageSource?: string | undefined;
   internalInstallResult?: boolean | undefined;
   localRuntime?: boolean | undefined;

@@ -21,6 +21,7 @@ export function createSelfHostedUpdateResultMessage(result: SelfHostedUpdateResu
   return `Updated self-hosted runtime using config ${result.configDir} and data ${result.dataDir}.
 Version: ${result.currentVersion} -> ${result.targetVersion}.
 Image source: ${result.imageSource}.
+Image registry: ${result.imageRegistry}.
 Backup saved to ${result.backupDir}.`;
 }
 
@@ -30,13 +31,15 @@ function createSkippedSelfHostedUpdateResultMessage(result: SelfHostedUpdateResu
 Requested version: ${result.targetVersion}.
 Current version: ${result.currentVersion}.
 Self-hosted downgrades are not supported. No changes were applied.
-Requested image source: ${result.imageSource}.`;
+Requested image source: ${result.imageSource}.
+Requested image registry: ${result.imageRegistry}.`;
   }
 
   return `Skipped self-hosted runtime update using config ${result.configDir} and data ${result.dataDir}.
-Requested version and image source already match the current install.
+Requested version, image source, and image registry already match the current install.
 Current version: ${result.currentVersion}.
-Image source: ${result.imageSource}.`;
+Image source: ${result.imageSource}.
+Image registry: ${result.imageRegistry}.`;
 }
 
 export function createSystemRestartResultMessage(result: SystemRestartResponse): string {
@@ -56,6 +59,7 @@ Login your CLI on this server:
   ${createLoginCliCommand(result)}
 Docker namespace: ${result.dockerNamespace}.
 Image source: ${result.imageSource}.
+Image registry: ${result.imageRegistry}.
 Rollback retention: ${formatRollbackRetentionPolicy(result.rollbackRetention)}.
 
 ${serviceStatusLines}`;

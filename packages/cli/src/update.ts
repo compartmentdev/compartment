@@ -15,7 +15,7 @@ import {
   waitForNodeAgentHostServiceHealth,
 } from './node-agent-service';
 import type { DockerExecutionContext } from './docker-runtime.types';
-import type { InstallContext, InstallProgressReporter } from './install.types';
+import type { InstallContext, InstallImageSource, InstallProgressReporter } from './install.types';
 import type { SelfHostedPathSelection } from './self-hosted-install-paths.types';
 import type { SelfHostedRuntimeSelection, RenderedSelfHostedEnvironment } from './self-hosted-env.types';
 import { readBundledAssets, stageBundledAssets } from './runtime-assets';
@@ -30,6 +30,7 @@ import {
 import {
   assertRegistryUpdateMatchesPackagedNodeAgent,
   createPreparedSelfHostedUpdateDecisionContext,
+  resolveSelfHostedUpdateImageRegistry,
   resolveSelfHostedUpdateImageSource,
 } from './update-decision';
 import type {
@@ -144,6 +145,7 @@ function createPreparedAppliedSelfHostedUpdateResult(
     currentState: preparedEnvironment.currentState,
     currentVersion,
     dataDir: paths.dataDir,
+    imageRegistry: preparedEnvironment.imageRegistry,
     imageSource: preparedEnvironment.imageSource,
     installPaths: preparedEnvironment.installPaths,
     paths,
@@ -160,11 +162,13 @@ async function readPreparedSelfHostedUpdateEnvironment(
   paths: SelfHostedPathSelection,
 ): Promise<PreparedSelfHostedUpdateEnvironment> {
   const install: ReadSelfHostedInstallForUpdateResult = await readRequiredSelfHostedInstallForUpdate(paths);
+  const imageSource: InstallImageSource = resolveSelfHostedUpdateImageSource(input.options.imageSource, install.state);
 
   return {
     currentEnvironmentText: install.environmentText,
     currentState: install.state,
-    imageSource: resolveSelfHostedUpdateImageSource(input.options.imageSource, install.state),
+    imageRegistry: resolveSelfHostedUpdateImageRegistry(input.options.imageRegistry, install.state, imageSource),
+    imageSource,
     installPaths: install.installPaths,
     stagedAssetPaths: install.installPaths.stagedAssetPaths,
   };
@@ -181,6 +185,7 @@ function createPreparedSkippedSelfHostedUpdatePlan(
     preparedEnvironment.currentState,
     preparedContext.currentVersion,
     preparedContext.runtimeSelection.nodeVersion,
+    preparedEnvironment.imageRegistry,
     preparedEnvironment.imageSource,
     skipReason,
   );

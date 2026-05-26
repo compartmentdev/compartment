@@ -32,6 +32,7 @@ import type { InstallInput } from './services/install.service.types';
 import type { DockerExecutionContext, StartSelfHostedRuntimeInput } from './docker-runtime.types';
 import type { SelfHostedPathSelection } from './self-hosted-install-paths.types';
 import type { ManagedDomainInstallState, SelfHostedInstallState } from './self-hosted-install-state.types';
+import type { SelfHostedRuntimeImageRegistry } from './self-hosted-env.types';
 import type { StagedAssetPaths } from './runtime-assets.types';
 import { buildStagedAssetPaths, readBundledAssets, readBundledEnvTemplate } from './runtime-assets';
 
@@ -47,6 +48,7 @@ export async function installSelfHosted(input: SelfHostedInstallInput): Promise<
   const result: SelfHostedInstallResult = await installPreparedSelfHostedEnvironment(input, preparedEnvironment);
   await writeFreshSelfHostedInstallState(
     preparedEnvironment.paths,
+    input.options.imageRegistry,
     input.options.imageSource,
     input.options.installationId,
     input.options.managedDomain,
@@ -62,7 +64,7 @@ export async function preflightSelfHostedInstall(input: SelfHostedInstallPreflig
   const packageDirectory: string = readInstallPackageDirectory(input.context);
 
   assertInstallDirectoryAvailable(stagedAssetPaths);
-  buildPublishedSelfHostedRuntimeSelection(input.options.version);
+  buildPublishedSelfHostedRuntimeSelection(input.options.version, input.options.imageRegistry);
   const dockerContext: DockerExecutionContext = await ensureSelfHostedDockerExecutionContext(input.context);
   await assertInstallPublicPortsAvailable({
     dockerContext,
@@ -180,11 +182,13 @@ async function installAgainstApi(
 
 async function writeFreshSelfHostedInstallState(
   paths: SelfHostedPathSelection,
+  imageRegistry: SelfHostedRuntimeImageRegistry,
   imageSource: InstallImageSource,
   installationId: string,
   managedDomain: ManagedDomainInstallState | undefined,
 ): Promise<void> {
   const state: SelfHostedInstallState = {
+    imageRegistry,
     imageSource,
     installationId,
     ...(managedDomain === undefined ? {} : { managedDomain }),

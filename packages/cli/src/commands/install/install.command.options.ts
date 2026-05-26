@@ -2,7 +2,11 @@ import { organizationSlugSchema } from '@compartment/contracts';
 import { hasText } from '@compartment/utils';
 import type { SafeParseReturnType } from 'zod';
 import { assertValidRemoteName } from '../../services/remote-name.service';
-import { readSelfHostedImageSource, resolveSelfHostedVersionSelection } from '../self-hosted.command.options';
+import {
+  readSelfHostedImageRegistry,
+  readSelfHostedImageSource,
+  resolveSelfHostedVersionSelection,
+} from '../self-hosted.command.options';
 import { defaultPublicHttpPort, defaultPublicHttpsPort, readInstallPublicPortOption } from './install.command.helpers';
 import type { InstallCommandOptions } from './install.command.types';
 
@@ -10,6 +14,7 @@ const localRuntimeInstallBaseDomain: string = '127.0.0.1.sslip.io';
 const managedDomainBrokerUrlEnvName: string = 'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL';
 const defaultManagedDomainBrokerUrl: string = 'https://broker.compartment.run';
 export {
+  readSelfHostedImageRegistry as readInstallImageRegistry,
   readSelfHostedImageSource as readInstallImageSource,
   assertSelfHostedVersionMatchesPackagedNodeAgent as assertInstallVersionMatchesPackagedNodeAgent,
   resolveSelfHostedVersionSelection as resolveInstallVersionSelection,
@@ -28,6 +33,7 @@ export function assertInstallOptionValues(options: InstallCommandOptions): void 
   }
   readInstallBaseDomain(options);
   readInstallManagedDomainBrokerUrl(options);
+  readSelfHostedImageRegistry(options.imageRegistry);
   readSelfHostedImageSource(options.imageSource);
   resolveSelfHostedVersionSelection(options.version);
   assertInstallOrganizationSlugOption(options.organizationSlug);
@@ -133,6 +139,7 @@ function assertDevModeOptionSelection(options: InstallCommandOptions): void {
   }
 
   assertDevOptionUnset(options.imageSource, '`--dev` cannot be combined with `--image-source`.');
+  assertDevOptionUnset(options.imageRegistry, '`--dev` cannot be combined with `--image-registry`.');
   assertDevOptionUnset(options.version, '`--dev` cannot be combined with `--version`.');
   assertDevOptionUnset(options.baseDomain, '`--dev` cannot be combined with `--base-domain`.');
   assertDevOptionUnset(options.brokerUrl, '`--dev` cannot be combined with `--broker-url`.');

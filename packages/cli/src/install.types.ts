@@ -1,7 +1,11 @@
 import type { InstallResponse, SelfHostedImageSource } from '@compartment/contracts';
 import type { ManagedDomainInstallState } from './managed-domain.types';
 import type { SelfHostedPathSelection } from './self-hosted-install-paths.types';
-import type { SelfHostedRuntimeSelection, RenderedSelfHostedEnvironment } from './self-hosted-env.types';
+import type {
+  SelfHostedRuntimeImageRegistry,
+  SelfHostedRuntimeSelection,
+  RenderedSelfHostedEnvironment,
+} from './self-hosted-env.types';
 import type { BundledAssets, StagedAssetPaths } from './runtime-assets.types';
 
 export type InstallProgressReporter = (message: string) => void;
@@ -17,6 +21,7 @@ export interface InstallContext {
 export type InstallImageSource = SelfHostedImageSource;
 
 export interface SelfHostedInstallPreflightOptions {
+  imageRegistry: SelfHostedRuntimeImageRegistry;
   imageSource: InstallImageSource;
   publicHttpPort: number;
   publicHttpsPort: number;
@@ -27,6 +32,7 @@ export interface SelfHostedInstallServiceOptions {
   adminEmail: string;
   adminPassword: string;
   baseDomain: string;
+  imageRegistry: SelfHostedRuntimeImageRegistry;
   imageSource: InstallImageSource;
   installationId: string;
   managedDomain?: ManagedDomainInstallState | undefined;

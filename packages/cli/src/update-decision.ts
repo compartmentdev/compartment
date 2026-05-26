@@ -1,12 +1,16 @@
 import { buildPublishedSelfHostedRuntimeSelection } from './self-hosted-env';
+import {
+  legacySelfHostedRuntimeImageRegistry,
+  resolveStoredSelfHostedRuntimeImageRegistry,
+} from './self-hosted-runtime-selection';
 import { readSelfHostedEnvironmentValues, readRequiredSelfHostedEnvironmentValue } from './self-hosted-env-file';
-import { readCanonicalNodeAgentSocketPath, readCanonicalSystemApiSocketPath } from './self-hosted-host-socket-paths';
+import { readCanonicalNodeAgentSocketPath, readMigratedSystemApiSocketPath } from './self-hosted-host-socket-paths';
 import { readCliBuildInfo } from './cli-build-info';
 import { decideSelfHostedUpdateAction } from './update-version';
 import type { CliBuildInfo } from './cli-build-info.types';
 import type { InstallImageSource } from './install.types';
 import type { SelfHostedInstallState } from './self-hosted-install-state.types';
-import type { SelfHostedRuntimeSelection } from './self-hosted-env.types';
+import type { SelfHostedRuntimeImageRegistry, SelfHostedRuntimeSelection } from './self-hosted-env.types';
 import type {
   SelfHostedUpdateInput,
   PreparedSelfHostedUpdateDecisionContext,
@@ -29,18 +33,13 @@ export function createPreparedSelfHostedUpdateDecisionContext(
   const canonicalEnvironment: CanonicalHostSocketEnvironment = readCanonicalHostSocketEnvironment(environmentValues);
   const requestedRuntimeSelection: SelfHostedRuntimeSelection = buildPublishedSelfHostedRuntimeSelection(
     input.options.version,
+    preparedEnvironment.imageRegistry,
   );
-  const updateDecision: SelfHostedUpdateDecision = readPreparedSelfHostedUpdateDecision(
-    preparedEnvironment,
-    currentVersion,
-    requestedRuntimeSelection,
-  );
-
   return createPreparedUpdateDecisionContext(
     currentVersion,
     canonicalEnvironment.values,
     requestedRuntimeSelection,
-    updateDecision,
+    readPreparedSelfHostedUpdateDecision(input, preparedEnvironment, currentVersion, requestedRuntimeSelection),
   );
 }
 
@@ -74,9 +73,21 @@ export function resolveSelfHostedUpdateImageSource(
   return currentState.imageSource;
 }
 
+export function resolveSelfHostedUpdateImageRegistry(
+  requestedImageRegistry: SelfHostedRuntimeImageRegistry | undefined,
+  currentState: SelfHostedInstallState,
+  targetImageSource: InstallImageSource,
+): SelfHostedRuntimeImageRegistry {
+  if (requestedImageRegistry !== undefined) {
+    return requestedImageRegistry;
+  }
+
+  return resolveStoredSelfHostedRuntimeImageRegistry(currentState.imageRegistry, targetImageSource);
+}
+
 function readCanonicalHostSocketEnvironment(environmentValues: Record<string, string>): CanonicalHostSocketEnvironment {
   const nodeAgentSocketPath: string = readCanonicalNodeAgentSocketPath(environmentValues);
-  const systemApiSocketPath: string = readCanonicalSystemApiSocketPath(environmentValues);
+  const systemApiSocketPath: string = readMigratedSystemApiSocketPath(environmentValues);
 
   return {
     values: {
@@ -102,14 +113,25 @@ function createPreparedUpdateDecisionContext(
 }
 
 function readPreparedSelfHostedUpdateDecision(
+  input: SelfHostedUpdateInput,
   preparedEnvironment: PreparedSelfHostedUpdateEnvironment,
   currentVersion: string,
   runtimeSelection: SelfHostedRuntimeSelection,
 ): SelfHostedUpdateDecision {
   return decideSelfHostedUpdateAction({
     currentImageSource: preparedEnvironment.currentState.imageSource,
+    currentImageRegistry: readCurrentSelfHostedUpdateImageRegistry(preparedEnvironment.currentState),
+    currentImageRegistryRecorded: preparedEnvironment.currentState.imageRegistry !== undefined,
     currentVersion,
     targetImageSource: preparedEnvironment.imageSource,
+    targetImageRegistry: preparedEnvironment.imageRegistry,
+    targetImageRegistryRequested: input.options.imageRegistry !== undefined,
     targetVersion: runtimeSelection.nodeVersion,
   });
+}
+
+function readCurrentSelfHostedUpdateImageRegistry(
+  currentState: SelfHostedInstallState,
+): SelfHostedRuntimeImageRegistry {
+  return currentState.imageRegistry ?? legacySelfHostedRuntimeImageRegistry;
 }

@@ -15,6 +15,7 @@ import {
   runCliCommand,
   type CliCommandResult,
 } from './cli-test.harness';
+import { createInstallCommandResultFixture as createInstallResult } from './install.command.fixtures';
 import type { ManagedDomainAllocationMetadata, ManagedDomainAllocationResponse } from '@compartment/contracts';
 import { readCliVersion } from '../src/cli-build-info';
 import type { CliIo } from '../src/app.types';
@@ -146,6 +147,12 @@ describe.sequential('compartment install command boundary validation', (): void 
     const result: CliCommandResult = await runCliCommand(['install', '--dev', '--local-runtime']);
 
     expectCliFailure(result, '`--dev` cannot be combined with `--local-runtime`.');
+  });
+
+  it('rejects combining dev mode with explicit image registry selection', async (): Promise<void> => {
+    const result: CliCommandResult = await runCliCommand(['install', '--dev', '--image-registry', 'docker-hub']);
+
+    expectCliFailure(result, '`--dev` cannot be combined with `--image-registry`.');
   });
 
   it('rejects --remote without --dev', async (): Promise<void> => {
@@ -353,6 +360,12 @@ describe.sequential('compartment install command boundary validation', (): void 
     const result: CliCommandResult = await runCliCommand(['install', '--image-source', 'broken']);
 
     expectCliFailure(result, 'Install image source must be `registry` or `local` when provided.');
+  });
+
+  it('rejects unknown install image registries', async (): Promise<void> => {
+    const result: CliCommandResult = await runCliCommand(['install', '--image-registry', 'broken']);
+
+    expectCliFailure(result, 'Self-hosted image registry must be `github` or `docker-hub` when provided.');
   });
 
   it('fails on self-hosted preflight before prompting for the admin password', async (): Promise<void> => {
@@ -977,7 +990,7 @@ describe.sequential('compartment install command boundary validation', (): void 
 
     expectCliFailure(result, 'Stopped after reporting the default main runtime tag.');
     expect(readCliStderr(capture)).toContain(
-      'Using published self-hosted image tag sha-8355ff9c8f6ca4291da56a9dfa99a8fd6c7fad2e because this compartment CLI was installed from the main channel.',
+      'Using published self-hosted image tag sha-8355ff9c8f6ca4291da56a9dfa99a8fd6c7fad2e from GitHub Container Registry because this compartment CLI was installed from the main channel.',
     );
   });
 });
@@ -1012,39 +1025,6 @@ function restoreNoColorEnv(): void {
   }
 
   process.env.NO_COLOR = originalNoColor;
-}
-
-function createInstallResult(): SelfHostedInstallResult {
-  return {
-    adminEmail: 'admin@example.com',
-    apiUrl: 'http://127.0.0.1:9443',
-    baseDomain: 'localhost',
-    configDir: '/tmp/compartment-install/etc',
-    dataDir: '/tmp/compartment-install/var',
-    dnsRecords: [
-      {
-        host: '*.localhost',
-        purpose: 'Apps',
-        type: 'A/AAAA-or-CNAME',
-      },
-    ],
-    operation: {
-      completedAt: '2026-04-01T00:00:00.000Z',
-      createdAt: '2026-04-01T00:00:00.000Z',
-      id: 'op_123',
-      status: 'succeeded',
-      targetId: 'org_123',
-      targetType: 'organization',
-      type: 'compartment.install',
-    },
-    organization: {
-      id: 'org_123',
-      name: 'Acme Dev',
-      slug: 'acme-dev',
-    },
-    compartmentUrl: 'http://console.localhost:9443',
-    sessionToken: 'session_123',
-  };
 }
 
 function stripAnsi(value: string): string {

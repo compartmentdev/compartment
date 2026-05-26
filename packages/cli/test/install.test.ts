@@ -82,12 +82,7 @@ describe.sequential('install runtime', (): void => {
     const [publicHttpPort, publicHttpsPort]: DistinctFreePorts = await findDistinctFreePorts();
 
     const input: SelfHostedInstallPreflightInput = {
-      options: {
-        imageSource: 'registry',
-        publicHttpPort,
-        publicHttpsPort,
-        version: '1.2.3',
-      },
+      options: { imageRegistry: 'github', imageSource: 'registry', publicHttpPort, publicHttpsPort, version: '1.2.3' },
     };
 
     await expect(preflightSelfHostedInstall(input)).resolves.toBeUndefined();
@@ -110,6 +105,7 @@ describe.sequential('install runtime', (): void => {
           adminEmail: 'admin@example.com',
           adminPassword: 'supersecretpassword',
           baseDomain: 'example.com',
+          imageRegistry: 'github',
           imageSource: 'registry',
           installationId: '11111111-1111-4111-8111-111111111111',
           organizationName: 'Acme Dev',
@@ -135,6 +131,7 @@ describe.sequential('install runtime', (): void => {
     await expect(
       preflightSelfHostedInstall({
         options: {
+          imageRegistry: 'github',
           imageSource: 'registry',
           publicHttpPort: busyHttpPort,
           publicHttpsPort,
@@ -157,6 +154,7 @@ describe.sequential('install runtime', (): void => {
     await expect(
       preflightSelfHostedInstall({
         options: {
+          imageRegistry: 'github',
           imageSource: 'registry',
           publicHttpPort,
           publicHttpsPort,
@@ -182,6 +180,7 @@ describe.sequential('install runtime', (): void => {
         adminEmail: 'admin@example.com',
         adminPassword: 'supersecretpassword',
         baseDomain: 'example.com',
+        imageRegistry: 'github',
         imageSource: 'registry',
         installationId: '11111111-1111-4111-8111-111111111111',
         organizationName: 'Acme Dev',
@@ -227,10 +226,10 @@ describe.sequential('install runtime', (): void => {
       'COMPARTMENT_PUBLIC_INGRESS_IPV6=',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
-      'COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:1.2.3',
+      'COMPARTMENT_API_IMAGE=ghcr.io/compartmentdev/compartment-api:1.2.3',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
-      'COMPARTMENT_RUNTIME_PROBE_IMAGE=docker.io/compartmentdev/compartment-runtime-probe:1.2.3',
+      'COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:1.2.3',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_VARIABLES_MASTER_KEY=',
@@ -257,10 +256,50 @@ describe.sequential('install runtime', (): void => {
     ).resolves.toContain('pull_policy: never');
     await expect(stat(join(installPaths.dataDir, 'self-hosted/docker-work'))).resolves.toBeDefined();
     await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
+      '"imageRegistry": "github"',
+    );
+    await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
       '"imageSource": "registry"',
     );
     await expect(readMode(join(installPaths.dataDir, 'self-hosted'))).resolves.toBe(0o700);
     await expect(readMode(join(installPaths.dataDir, 'self-hosted/install-state.json'))).resolves.toBe(0o600);
+  });
+
+  it('stages Docker Hub image refs and persists the registry selection when requested', async (): Promise<void> => {
+    mockInstallRuntime();
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths(temporaryDirectories);
+    const { installSelfHosted } = await import('../src/install');
+
+    await expect(
+      installSelfHosted({
+        options: {
+          adminEmail: 'admin@example.com',
+          adminPassword: 'supersecretpassword',
+          baseDomain: 'example.com',
+          imageRegistry: 'docker-hub',
+          imageSource: 'registry',
+          installationId: '11111111-1111-4111-8111-111111111111',
+          organizationName: 'Acme Dev',
+          publicHttpPort: 8080,
+          publicHttpsPort: 8443,
+          publicIngressIpv4: '',
+          publicIngressIpv6: '',
+          version: '1.2.3',
+        },
+      }),
+    ).resolves.toMatchObject({
+      configDir: installPaths.configDir,
+      dataDir: installPaths.dataDir,
+    });
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:1.2.3',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_PROBE_IMAGE=docker.io/compartmentdev/compartment-runtime-probe:1.2.3',
+    );
+    await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
+      '"imageRegistry": "docker-hub"',
+    );
   });
 
   it('leaves the install directory retryable when runtime image preparation fails', async (): Promise<void> => {
@@ -278,6 +317,7 @@ describe.sequential('install runtime', (): void => {
           adminEmail: 'admin@example.com',
           adminPassword: 'supersecretpassword',
           baseDomain: 'example.com',
+          imageRegistry: 'github',
           imageSource: 'registry',
           installationId: '11111111-1111-4111-8111-111111111111',
           organizationName: 'Acme Dev',
@@ -317,6 +357,7 @@ describe.sequential('install runtime', (): void => {
           adminEmail: 'admin@example.com',
           adminPassword: 'supersecretpassword',
           baseDomain: '127.0.0.1.sslip.io',
+          imageRegistry: 'github',
           imageSource: 'registry',
           installationId: '11111111-1111-4111-8111-111111111111',
           organizationName: 'Acme Dev',
@@ -347,6 +388,7 @@ describe.sequential('install runtime', (): void => {
           adminEmail: 'admin@example.com',
           adminPassword: 'supersecretpassword',
           baseDomain: 'example.com',
+          imageRegistry: 'github',
           imageSource: 'local',
           installationId: '11111111-1111-4111-8111-111111111111',
           organizationName: 'Acme Dev',
@@ -365,13 +407,16 @@ describe.sequential('install runtime', (): void => {
       },
     });
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
-      'COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:main',
+      'COMPARTMENT_API_IMAGE=ghcr.io/compartmentdev/compartment-api:main',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
-      'COMPARTMENT_RUNTIME_PROBE_IMAGE=docker.io/compartmentdev/compartment-runtime-probe:main',
+      'COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:main',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_NODE_VERSION=main',
+    );
+    await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
+      '"imageRegistry": "github"',
     );
     await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
       '"imageSource": "local"',
@@ -389,6 +434,7 @@ describe.sequential('install runtime', (): void => {
           adminEmail: 'admin@example.com',
           adminPassword: 'supersecretpassword',
           baseDomain: '4h8z9k2m1p7q.app.compartment.run',
+          imageRegistry: 'github',
           imageSource: 'registry',
           installationId: '11111111-1111-4111-8111-111111111111',
           managedDomain: {
@@ -460,6 +506,7 @@ describe.sequential('install runtime', (): void => {
           adminEmail: 'admin@example.com',
           adminPassword: 'supersecretpassword',
           baseDomain: 'example.com',
+          imageRegistry: 'github',
           imageSource: 'registry',
           installationId: '11111111-1111-4111-8111-111111111111',
           organizationName: 'Acme Dev',

@@ -65,6 +65,7 @@ describe.sequential('compartment system command boundary validation', (): void =
     expect(readCliStdout(statusResult.capture)).toContain('Console: https://console.customer.example.com.');
     expect(readCliStdout(statusResult.capture)).toContain('Login your CLI on this server:');
     expect(readCliStdout(statusResult.capture)).toContain('--api-url http://127.0.0.1:39444');
+    expect(readCliStdout(statusResult.capture)).toContain('Image registry: github.');
     expect(readCliStdout(statusResult.capture)).toContain('Rollback retention: indefinite.');
     expect(readCliStdout(statusResult.capture)).not.toContain('Domain:');
     expect(readCliStdout(statusResult.capture)).not.toContain('Hosted apps:');
@@ -481,6 +482,7 @@ function createSystemStatusResponse(): SystemStatusResponse {
       controlPlaneUrl: 'https://console.customer.example.com',
     },
     dockerNamespace: 'compartment-prod',
+    imageRegistry: 'github',
     imageSource: 'registry',
     overallStatus: 'degraded',
     rollbackRetention: {

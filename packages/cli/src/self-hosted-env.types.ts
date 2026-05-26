@@ -1,5 +1,7 @@
 import type { ManagedDomainInstallState } from './managed-domain.types';
 
+export type { SelfHostedRuntimeImageRegistry } from '@compartment/contracts';
+
 export interface SelfHostedImageRefs {
   apiImage: string;
   caddyImage: string;

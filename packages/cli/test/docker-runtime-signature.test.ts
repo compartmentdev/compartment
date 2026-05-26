@@ -134,6 +134,31 @@ describe('runtime image signature verification', (): void => {
     expect(mocks.runDockerCommand).not.toHaveBeenCalled();
   });
 
+  it('verifies Docker Hub remote digest refs when Docker Hub is selected', async (): Promise<void> => {
+    mocks.runQuietDockerCommand.mockResolvedValueOnce(createSuccessfulCommandResult(`sha256:${'a'.repeat(64)}`));
+    mocks.runCommand.mockResolvedValueOnce(createSuccessfulCommandResult('verified'));
+    mocks.runDockerCommand
+      .mockResolvedValueOnce(createSuccessfulCommandResult('pulled'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('tagged'));
+
+    await expect(
+      pullVerifiedRemoteSelfHostedRuntimeImages({
+        context: createDockerExecutionContext(),
+        imageRefs: createDockerHubImageRefs('0.2.0'),
+        services: ['api'],
+      }),
+    ).resolves.toBeNull();
+
+    expect(mocks.runCommand).toHaveBeenCalledWith(
+      expect.arrayContaining([`docker.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`]),
+      expect.any(Object),
+    );
+    expect(mocks.runDockerCommand).toHaveBeenCalledWith(createDockerExecutionContext(), [
+      'pull',
+      `docker.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`,
+    ]);
+  });
+
   it('verifies the pulled local digest before containers start', async (): Promise<void> => {
     process.env.COMPARTMENT_SYSTEM_TOKEN = 'secret-token';
     mocks.runQuietDockerCommand.mockResolvedValueOnce(

@@ -3,14 +3,16 @@ import type { Command } from 'commander';
 import { renderOutput } from '../../output/render';
 import { assertNodeAgentHostServiceInstallable } from '../../node-agent-service';
 import { updateSelfHosted } from '../../update';
-import type { SelfHostedUpdateResult } from '../../update.types';
+import type { SelfHostedUpdateOptions, SelfHostedUpdateResult } from '../../update.types';
 import type { CliCommandDependencies, CliIoCommandDependencies } from '../command.types';
 import { createCommandProgress } from '../command.progress';
 import type { CommandProgress } from '../command.progress.types';
 import { createSelfHostedCommandContext } from '../self-hosted.command.context';
 import type { InstallImageSource } from '../../install.types';
+import type { SelfHostedRuntimeImageRegistry } from '../../self-hosted-env.types';
 import {
   assertSelfHostedVersionMatchesPackagedNodeAgent,
+  readOptionalSelfHostedImageRegistry,
   readSelfHostedImageSource,
   resolveSelfHostedVersionSelection,
   type SelfHostedVersionSelection,
@@ -23,6 +25,7 @@ export function registerUpdateSystemCommand(program: Command, dependencies: CliC
   program
     .command('update')
     .option('--image-source <source>', 'registry or local')
+    .option('--image-registry <registry>', 'github or docker-hub')
     .option('--version <version>', 'runtime tag; registry updates must match the packaged CLI node-agent')
     .option('--output <format>', 'text or json', 'text')
     .action(async (options: UpdateCommandOptions): Promise<void> => await executeUpdateCommand(dependencies, options));
@@ -43,6 +46,7 @@ async function executeUpdateCommand(
 function assertUpdateCommandBoundaryOptions(options: UpdateCommandOptions): void {
   const imageSource: InstallImageSource | undefined =
     options.imageSource === undefined ? undefined : readSelfHostedImageSource(options.imageSource);
+  readOptionalSelfHostedImageRegistry(options.imageRegistry);
   const versionSelection: SelfHostedVersionSelection = resolveSelfHostedVersionSelection(options.version);
   if (imageSource === 'registry') {
     assertSelfHostedVersionMatchesPackagedNodeAgent(versionSelection);
@@ -54,17 +58,13 @@ async function executeUpdateCommandLocally(
   options: UpdateCommandOptions,
 ): Promise<void> {
   const versionSelection: SelfHostedVersionSelection = resolveSelfHostedVersionSelection(options.version);
-  const imageSource: InstallImageSource | undefined =
-    options.imageSource === undefined ? undefined : readSelfHostedImageSource(options.imageSource);
+  const updateOptions: SelfHostedUpdateOptions = readSelfHostedUpdateOptions(options, versionSelection);
   const progress: CommandProgress = createCommandProgress({ io: dependencies.io, output: options.output });
 
   try {
     const result: SelfHostedUpdateResult = await updateSelfHosted({
       context: createSelfHostedCommandContext(dependencies, (message: string): void => progress.report(message)),
-      options: {
-        ...(imageSource !== undefined ? { imageSource } : {}),
-        version: versionSelection.value,
-      },
+      options: updateOptions,
     });
     const payload: UpdateResponse = updateResponseSchema.parse(result);
 
@@ -73,4 +73,21 @@ async function executeUpdateCommandLocally(
   } finally {
     progress.stop();
   }
+}
+
+function readSelfHostedUpdateOptions(
+  options: UpdateCommandOptions,
+  versionSelection: SelfHostedVersionSelection,
+): SelfHostedUpdateOptions {
+  const imageSource: InstallImageSource | undefined =
+    options.imageSource === undefined ? undefined : readSelfHostedImageSource(options.imageSource);
+  const imageRegistry: SelfHostedRuntimeImageRegistry | undefined = readOptionalSelfHostedImageRegistry(
+    options.imageRegistry,
+  );
+
+  return {
+    ...(imageRegistry !== undefined ? { imageRegistry } : {}),
+    ...(imageSource !== undefined ? { imageSource } : {}),
+    version: versionSelection.value,
+  };
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertInstallModeSelection,
   readInstallBaseDomain,
+  readInstallImageRegistry,
   readInstallManagedDomainBrokerUrl,
   readInstallImageSource,
   resolveInstallVersionSelection,
@@ -26,6 +27,22 @@ describe('readInstallImageSource', (): void => {
   it('rejects unknown image sources', (): void => {
     expect((): string => readInstallImageSource('broken')).toThrowError(
       'Install image source must be `registry` or `local` when provided.',
+    );
+  });
+});
+
+describe('readInstallImageRegistry', (): void => {
+  it('defaults to GitHub Container Registry when no image registry is provided', (): void => {
+    expect(readInstallImageRegistry(undefined)).toBe('github');
+  });
+
+  it('accepts Docker Hub as an explicit image registry', (): void => {
+    expect(readInstallImageRegistry('docker-hub')).toBe('docker-hub');
+  });
+
+  it('rejects unknown image registries', (): void => {
+    expect((): string => readInstallImageRegistry('broken')).toThrowError(
+      'Self-hosted image registry must be `github` or `docker-hub` when provided.',
     );
   });
 });

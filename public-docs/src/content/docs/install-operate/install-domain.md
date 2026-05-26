@@ -28,7 +28,7 @@ Use `--tls custom-cert` when you will attach your own certificate material.
 
 Browser login and hosted-app access require HTTPS public URLs because Compartment uses host-bound secure cookies for platform sessions. Legacy HTTP runtime domain settings remain readable so operators can migrate them to HTTPS.
 
-Activation restarts the self-hosted runtime. For registry image sources, Compartment verifies runtime image signatures with `cosign` before starting containers.
+Activation restarts the self-hosted runtime. For registry image sources, Compartment verifies runtime image signatures with the bundled CLI verifier before starting containers.
 
 ## Return to the managed domain
 

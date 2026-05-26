@@ -16,6 +16,18 @@ const currentValuePreservedCanonicalVariables: string[] = [
   'COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES',
 ];
 
+const managedDomainBrokerUrlMigrationVariableNames: readonly string[] = [
+  'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL',
+  'COMPARTMENT_ACME_DNS_BROKER_URL',
+  'COMPARTMENT_GITHUB_ACCOUNT_DISCOVERY_BROKER_URL',
+];
+
+const managedDomainBrokerTokenMigrationVariableNames: readonly string[] = [
+  'COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN',
+  'COMPARTMENT_ACME_DNS_TOKEN',
+  'COMPARTMENT_GITHUB_ACCOUNT_DISCOVERY_BROKER_TOKEN',
+];
+
 export function readUpdatedCanonicalOverrides(
   currentValues: Record<string, string>,
   canonicalOverrides: Record<string, string>,
@@ -67,13 +79,15 @@ function readCurrentDomainOverrides(currentValues: Record<string, string>): Reco
 
 function readCurrentBrokerEnvOverrides(currentValues: Record<string, string>): Record<string, string> {
   const overrides: Record<string, string> = {};
-  const brokerUrl: string = readRequiredSelfHostedEnvironmentRawValue(
+  const brokerUrl: string = readFirstCurrentBrokerEnvRawValue(
     currentValues,
     'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL',
+    managedDomainBrokerUrlMigrationVariableNames,
   );
-  const brokerToken: string = readRequiredSelfHostedEnvironmentRawValue(
+  const brokerToken: string = readFirstCurrentBrokerEnvRawValue(
     currentValues,
     'COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN',
+    managedDomainBrokerTokenMigrationVariableNames,
   );
 
   if (brokerUrl.trim() !== '') {
@@ -84,6 +98,21 @@ function readCurrentBrokerEnvOverrides(currentValues: Record<string, string>): R
   }
 
   return overrides;
+}
+
+function readFirstCurrentBrokerEnvRawValue(
+  currentValues: Record<string, string>,
+  canonicalVariableName: string,
+  variableNames: readonly string[],
+): string {
+  for (const variableName of variableNames) {
+    const currentValue: string | undefined = currentValues[variableName];
+    if (currentValue !== undefined && currentValue.trim() !== '') {
+      return currentValue;
+    }
+  }
+
+  return readRequiredSelfHostedEnvironmentRawValue(currentValues, canonicalVariableName);
 }
 
 function deleteCanonicalOverrideWhenCurrentValueExists(

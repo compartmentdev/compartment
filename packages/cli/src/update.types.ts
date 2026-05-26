@@ -3,10 +3,15 @@ import type { InstallContext, InstallImageSource } from './install.types';
 import type { SelfHostedInstallPaths, SelfHostedPathSelection } from './self-hosted-install-paths.types';
 import type { SelfHostedInstallState } from './self-hosted-install-state.types';
 import type { BundledAssets, StagedAssetPaths } from './runtime-assets.types';
-import type { RenderedSelfHostedEnvironment, SelfHostedRuntimeSelection } from './self-hosted-env.types';
+import type {
+  RenderedSelfHostedEnvironment,
+  SelfHostedRuntimeImageRegistry,
+  SelfHostedRuntimeSelection,
+} from './self-hosted-env.types';
 import type { SelfHostedUpdateDecision } from './update-version.types';
 
 export interface SelfHostedUpdateOptions {
+  imageRegistry?: SelfHostedRuntimeImageRegistry | undefined;
   imageSource?: InstallImageSource | undefined;
   version: string;
 }
@@ -26,6 +31,7 @@ export interface PreparedSelfHostedUpdate {
   currentState: SelfHostedInstallState;
   currentVersion: string;
   dataDir: string;
+  imageRegistry: SelfHostedRuntimeImageRegistry;
   imageSource: InstallImageSource;
   installPaths: SelfHostedInstallPaths;
   paths: SelfHostedPathSelection;
@@ -41,6 +47,7 @@ export interface SkippedSelfHostedUpdate {
   currentState: SelfHostedInstallState;
   currentVersion: string;
   dataDir: string;
+  imageRegistry: SelfHostedRuntimeImageRegistry;
   imageSource: InstallImageSource;
   skipReason: UpdateSkipReason;
   targetVersion: string;
@@ -51,6 +58,7 @@ export interface PreparedSelfHostedUpdateEnvironment {
   currentEnvironmentText: string;
   currentState: SelfHostedInstallState;
   imageSource: InstallImageSource;
+  imageRegistry: SelfHostedRuntimeImageRegistry;
   installPaths: SelfHostedInstallPaths;
   stagedAssetPaths: StagedAssetPaths;
 }

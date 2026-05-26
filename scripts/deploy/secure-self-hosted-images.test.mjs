@@ -20,7 +20,7 @@ describe('readSecureSelfHostedImageOptions', () => {
     expect(readSecureSelfHostedImageOptions(['--output-dir', './sboms', 'sha-123', 'main', 'main'])).toEqual({
       dockerScout: false,
       outputDirectory: './sboms',
-      repositoryPrefix: 'docker.io/compartmentdev',
+      repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: false,
       tags: ['sha-123', 'main'],
       validateProvenanceAttestation: false,
@@ -31,7 +31,7 @@ describe('readSecureSelfHostedImageOptions', () => {
     expect(readSecureSelfHostedImageOptions(['--scan-only', 'sha-123'])).toEqual({
       dockerScout: false,
       outputDirectory: './.compartment/release-assets/self-hosted-sboms',
-      repositoryPrefix: 'docker.io/compartmentdev',
+      repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: true,
       tags: ['sha-123'],
       validateProvenanceAttestation: false,
@@ -42,7 +42,7 @@ describe('readSecureSelfHostedImageOptions', () => {
     expect(readSecureSelfHostedImageOptions(['--validate-provenance-attestation'])).toEqual({
       dockerScout: false,
       outputDirectory: './.compartment/release-assets/self-hosted-sboms',
-      repositoryPrefix: 'docker.io/compartmentdev',
+      repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: false,
       tags: [],
       validateProvenanceAttestation: true,
@@ -51,10 +51,10 @@ describe('readSecureSelfHostedImageOptions', () => {
 
   it('reads repository prefix overrides', () => {
     expect(
-      readSecureSelfHostedImageOptions(['--repository-prefix', 'ghcr.io/compartmentdev', 'sha-123']),
+      readSecureSelfHostedImageOptions(['--repository-prefix', 'docker.io/compartmentdev', 'sha-123']),
     ).toMatchObject({
       dockerScout: false,
-      repositoryPrefix: 'ghcr.io/compartmentdev',
+      repositoryPrefix: 'docker.io/compartmentdev',
       tags: ['sha-123'],
     });
   });
@@ -148,13 +148,13 @@ describe('scanSelfHostedImages', () => {
         'Trivy failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s).',
       );
       await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
-        '`docker.io/compartmentdev/compartment-worker:sha-test`',
+        '`ghcr.io/compartmentdev/compartment-worker:sha-test`',
       );
       await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
         'Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s).',
       );
       await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
-        '`docker.io/compartmentdev/compartment-caddy:sha-test`',
+        '`ghcr.io/compartmentdev/compartment-caddy:sha-test`',
       );
     } finally {
       restoreEnv('PATH', oldPath);
@@ -225,8 +225,8 @@ describe('secureSelfHostedImages', () => {
       const cosignCalls = parseCommandArgsLog(await readFile(commandArgsLogPath, 'utf8')).filter(
         (entry) => entry.file === 'cosign',
       );
-      const mainImageDigestRef = `docker.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`;
-      const runtimeProbeDigestRef = `docker.io/compartmentdev/compartment-runtime-probe@sha256:${'e'.repeat(64)}`;
+      const mainImageDigestRef = `ghcr.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`;
+      const runtimeProbeDigestRef = `ghcr.io/compartmentdev/compartment-runtime-probe@sha256:${'e'.repeat(64)}`;
       const expectedBundleFormatFlag = selfHostedRuntimeImageSignaturePolicy.cosignBundleFormatFlag;
 
       expect(hasCosignCall(cosignCalls, ['sign', '--yes', expectedBundleFormatFlag, mainImageDigestRef])).toBe(true);
@@ -326,11 +326,11 @@ appendFileSync(process.env.COMMAND_ARGS_LOG, JSON.stringify({ file: 'cosign', ar
 
 function renderExpectedScannedImageRefs() {
   return [
-    'docker.io/compartmentdev/compartment-api:sha-test',
-    'docker.io/compartmentdev/compartment-caddy:sha-test',
-    'docker.io/compartmentdev/compartment-edge:sha-test',
-    'docker.io/compartmentdev/compartment-worker:sha-test',
-    'docker.io/compartmentdev/compartment-runtime-probe:sha-test',
+    'ghcr.io/compartmentdev/compartment-api:sha-test',
+    'ghcr.io/compartmentdev/compartment-caddy:sha-test',
+    'ghcr.io/compartmentdev/compartment-edge:sha-test',
+    'ghcr.io/compartmentdev/compartment-worker:sha-test',
+    'ghcr.io/compartmentdev/compartment-runtime-probe:sha-test',
   ];
 }
 

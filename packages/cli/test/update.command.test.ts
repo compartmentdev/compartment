@@ -64,6 +64,12 @@ describe.sequential('compartment system update command boundary validation', ():
     expectCliFailure(result, 'Install image source must be `registry` or `local` when provided.');
   });
 
+  it('rejects invalid update image registries', async (): Promise<void> => {
+    const result: CliCommandResult = await runCliCommand(['system', 'update', '--image-registry', 'broken']);
+
+    expectCliFailure(result, 'Self-hosted image registry must be `github` or `docker-hub` when provided.');
+  });
+
   it('rejects invalid update version selectors', async (): Promise<void> => {
     const result: CliCommandResult = await runCliCommand(['system', 'update', '--version', 'broken']);
 
@@ -80,6 +86,7 @@ describe.sequential('compartment system update command boundary validation', ():
       configDir: '/tmp/compartment/etc',
       currentVersion: '0.1.0',
       dataDir: '/tmp/compartment/var',
+      imageRegistry: 'github',
       imageSource: 'local',
       skipReason: null,
       status: 'updated',
@@ -101,6 +108,41 @@ describe.sequential('compartment system update command boundary validation', ():
       expect.objectContaining({
         options: {
           version: '9.9.9',
+        },
+      }),
+    );
+  });
+
+  it('passes explicit update image registries to the runtime update service', async (): Promise<void> => {
+    resetCliCommandModules();
+    const updateSelfHostedMock: Mock<UpdateSelfHosted> = vi.fn<UpdateSelfHosted>().mockResolvedValue({
+      backupDir: '/tmp/compartment/var/self-hosted/backups/runtime-2026-04-09',
+      configDir: '/tmp/compartment/etc',
+      currentVersion: '0.1.0',
+      dataDir: '/tmp/compartment/var',
+      imageRegistry: 'docker-hub',
+      imageSource: 'registry',
+      skipReason: null,
+      status: 'updated',
+      targetVersion: '0.2.0',
+    });
+    vi.doMock(
+      '../src/update',
+      (): {
+        updateSelfHosted: Mock<UpdateSelfHosted>;
+      } => ({
+        updateSelfHosted: updateSelfHostedMock,
+      }),
+    );
+
+    const result: CliCommandResult = await runCliCommand(['system', 'update', '--image-registry', 'docker-hub']);
+
+    expectCliSuccess(result);
+    expect(updateSelfHostedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: {
+          imageRegistry: 'docker-hub',
+          version: 'latest',
         },
       }),
     );
@@ -187,6 +229,7 @@ describe.sequential('compartment system update command boundary validation', ():
           configDir: '/tmp/compartment/etc',
           currentVersion: '0.1.0',
           dataDir: '/tmp/compartment/var',
+          imageRegistry: 'github',
           imageSource: 'registry',
           skipReason: null,
           status: 'updated',
@@ -209,6 +252,7 @@ describe.sequential('compartment system update command boundary validation', ():
     );
     expect(readCliStdout(textResult.capture)).toContain('Version: 0.1.0 -> 0.2.0.');
     expect(readCliStdout(textResult.capture)).toContain('Image source: registry.');
+    expect(readCliStdout(textResult.capture)).toContain('Image registry: github.');
   });
 
   it('renders update progress for text output without polluting JSON output', async (): Promise<void> => {
@@ -218,6 +262,7 @@ describe.sequential('compartment system update command boundary validation', ():
       configDir: '/tmp/compartment/etc',
       currentVersion: '0.1.0',
       dataDir: '/tmp/compartment/var',
+      imageRegistry: 'github',
       imageSource: 'registry',
       skipReason: null,
       status: 'updated',
@@ -267,6 +312,7 @@ describe.sequential('compartment system update command boundary validation', ():
           configDir: '/tmp/compartment/etc',
           currentVersion: '0.2.0',
           dataDir: '/tmp/compartment/var',
+          imageRegistry: 'github',
           imageSource: 'registry',
           skipReason: 'downgrade-not-supported',
           status: 'skipped',
@@ -287,6 +333,7 @@ describe.sequential('compartment system update command boundary validation', ():
       'Self-hosted downgrades are not supported. No changes were applied.',
     );
     expect(readCliStdout(result.capture)).toContain('Requested image source: registry.');
+    expect(readCliStdout(result.capture)).toContain('Requested image registry: github.');
   });
 
   it('surfaces update runtime errors', async (): Promise<void> => {

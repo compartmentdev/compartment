@@ -9,7 +9,7 @@ const releaseVersionPattern: RegExp = /^(\d+)\.(\d+)\.(\d+)$/;
 
 export function decideSelfHostedUpdateAction(input: DecideSelfHostedUpdateActionInput): SelfHostedUpdateDecision {
   if (input.currentVersion === input.targetVersion) {
-    return input.currentImageSource !== input.targetImageSource
+    return hasSelfHostedRuntimeSelectionChanged(input)
       ? createApplySelfHostedUpdateDecision()
       : createSkipSelfHostedUpdateDecision('already-current');
   }
@@ -37,12 +37,20 @@ function readParsedSelfHostedUpdateDecision(
     return createApplySelfHostedUpdateDecision();
   }
   if (comparison === 0) {
-    return input.currentImageSource !== input.targetImageSource
+    return hasSelfHostedRuntimeSelectionChanged(input)
       ? createApplySelfHostedUpdateDecision()
       : createSkipSelfHostedUpdateDecision('already-current');
   }
 
   return createSkipSelfHostedUpdateDecision('downgrade-not-supported');
+}
+
+function hasSelfHostedRuntimeSelectionChanged(input: DecideSelfHostedUpdateActionInput): boolean {
+  return (
+    input.currentImageSource !== input.targetImageSource ||
+    input.currentImageRegistry !== input.targetImageRegistry ||
+    (input.targetImageRegistryRequested && !input.currentImageRegistryRecorded)
+  );
 }
 
 function createApplySelfHostedUpdateDecision(): SelfHostedUpdateDecision {

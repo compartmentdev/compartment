@@ -146,7 +146,7 @@ function createPreparedInstallEnvironmentResult(
 function readPreparedInstallEnvironmentOptions(input: SelfHostedInstallInput): PreparedInstallEnvironmentOptions {
   return {
     baseDomain: input.options.baseDomain,
-    runtimeSelection: buildPublishedSelfHostedRuntimeSelection(input.options.version),
+    runtimeSelection: buildPublishedSelfHostedRuntimeSelection(input.options.version, input.options.imageRegistry),
   };
 }
 

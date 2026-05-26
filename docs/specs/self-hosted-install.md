@@ -4,7 +4,7 @@ This document captures the internal install and operator flow for the self-hoste
 
 ## Default Install
 
-Default install uses the production managed-domain broker and the published self-hosted image tag embedded in the installed CLI build:
+Default install uses the production managed-domain broker and the published self-hosted image tag embedded in the installed CLI build. Registry installs use GitHub Container Registry by default:
 
 ```bash
 compartment install
@@ -93,6 +93,8 @@ Registry installs and updates must use the runtime tag embedded in the packaged 
 
 `--image-source local` keeps the same tag selection and skips pulling from the registry, so the selected tag must already exist in the local Docker daemon.
 
+`--image-registry github` selects `ghcr.io/compartmentdev`; `--image-registry docker-hub` selects `docker.io/compartmentdev`. New installs persist the selected image registry in `install-state.json`. States created before `imageRegistry` existed default registry updates to GHCR; local-image states keep Docker Hub-style names unless explicitly changed.
+
 ## Host Dependencies
 
 On Ubuntu and Debian hosts, `compartment install` can install Docker Engine and the Docker Compose plugin when they are missing, but it first asks for confirmation. The install flow may prompt for `sudo` while it checks Docker access or installs the packages.
@@ -118,7 +120,7 @@ To update an existing self-hosted install after upgrading the CLI binary, run:
 sudo compartment system update
 ```
 
-The CLI reads the current image source from `/var/lib/compartment/self-hosted/install-state.json`, stores any `--image-source registry` or `--image-source local` override there for subsequent updates, and skips the update when the requested release version is not newer than the installed one.
+The CLI reads the current image source and image registry from `/var/lib/compartment/self-hosted/install-state.json`. It stores any `--image-source registry`, `--image-source local`, or `--image-registry <registry>` override in that state file for subsequent updates, and skips the update when the requested release version is not newer than the installed one and the runtime image selection is unchanged.
 
 `system update` also refreshes the host node-agent binary and systemd unit, restarts the agent before recreating Docker runtime services so their bind mount sees the current agent socket directory, then waits for the agent socket to become healthy.
 

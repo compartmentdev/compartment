@@ -18,9 +18,10 @@ Related guides:
 Usage: compartment system update [options]
 
 Options:
-  --image-source <source>  registry or local
-  --version <version>      runtime tag; registry updates must match the packaged
-                           CLI node-agent
-  --output <format>        text or json (default: "text")
-  -h, --help               display help for command
+  --image-source <source>      registry or local
+  --image-registry <registry>  github or docker-hub
+  --version <version>          runtime tag; registry updates must match the
+                               packaged CLI node-agent
+  --output <format>            text or json (default: "text")
+  -h, --help                   display help for command
 ```

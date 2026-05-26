@@ -35,6 +35,7 @@ export function registerInstallCommand(program: Command, dependencies: CliComman
     .option('--broker-url <url>')
     .option('--local-runtime', 'Install the full self-hosted Docker runtime with local browser hosts')
     .option('--image-source <source>', 'registry or local')
+    .option('--image-registry <registry>', 'github or docker-hub')
     .option('--public-http-port <port>')
     .option('--public-https-port <port>')
     .option('--version <version>', 'runtime tag; registry installs must match the packaged CLI node-agent')

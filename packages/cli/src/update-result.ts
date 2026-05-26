@@ -1,5 +1,6 @@
 import type { UpdateSkipReason } from '@compartment/contracts';
 import type { InstallImageSource } from './install.types';
+import type { SelfHostedRuntimeImageRegistry } from './self-hosted-env.types';
 import type { SelfHostedPathSelection } from './self-hosted-install-paths.types';
 import type { SelfHostedInstallState } from './self-hosted-install-state.types';
 import type { SelfHostedUpdateResult, PreparedSelfHostedUpdate, SkippedSelfHostedUpdate } from './update.types';
@@ -9,6 +10,7 @@ export function createUpdatedSelfHostedInstallState(
   currentState: SelfHostedInstallState,
 ): SelfHostedInstallState {
   return {
+    imageRegistry: preparedUpdate.imageRegistry,
     imageSource: preparedUpdate.imageSource,
     installationId: currentState.installationId,
     ...(currentState.managedDomain === undefined ? {} : { managedDomain: currentState.managedDomain }),
@@ -25,6 +27,7 @@ export function createAppliedSelfHostedUpdateResult(
     configDir: preparedUpdate.configDir,
     currentVersion: preparedUpdate.currentVersion,
     dataDir: preparedUpdate.dataDir,
+    imageRegistry: preparedUpdate.imageRegistry,
     imageSource: preparedUpdate.imageSource,
     skipReason: null,
     status: 'updated',
@@ -38,6 +41,7 @@ export function createSkippedSelfHostedUpdateResult(preparedUpdate: SkippedSelfH
     configDir: preparedUpdate.configDir,
     currentVersion: preparedUpdate.currentVersion,
     dataDir: preparedUpdate.dataDir,
+    imageRegistry: preparedUpdate.imageRegistry,
     imageSource: preparedUpdate.imageSource,
     skipReason: preparedUpdate.skipReason,
     status: 'skipped',
@@ -50,6 +54,7 @@ export function createSkippedPreparedSelfHostedUpdate(
   currentState: SelfHostedInstallState,
   currentVersion: string,
   targetVersion: string,
+  imageRegistry: SelfHostedRuntimeImageRegistry,
   imageSource: InstallImageSource,
   skipReason: UpdateSkipReason,
 ): SkippedSelfHostedUpdate {
@@ -58,6 +63,7 @@ export function createSkippedPreparedSelfHostedUpdate(
     currentState,
     currentVersion,
     dataDir: paths.dataDir,
+    imageRegistry,
     imageSource,
     skipReason,
     targetVersion,
