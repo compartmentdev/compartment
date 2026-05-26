@@ -7,6 +7,9 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 const repoRoot = readRepositoryRoot(import.meta.url, 2);
 const workflowDir = '.github/workflows';
 const runsOnKey = /^(\s*)runs-on:\s*(.*)$/;
+const matrixRunnerKey = /^(\s*)runner:\s*(.*)$/;
+const matrixRunnerExpression = /\bmatrix\.runner\b/;
+const yamlBlockScalar = /^[>|][+-]?$/;
 const forbiddenRunnerLabel = /\b(?:self-hosted|compartment-ci-deploy-e2e|hetzner-x86-container-dind-libatomic-5slot)\b/;
 
 function findForbiddenRunsOnLine(content) {
@@ -25,22 +28,71 @@ function findForbiddenRunsOnLine(content) {
     }
 
     if (!startsRunsOnBlock(inlineValue)) {
+      if (matrixRunnerExpression.test(inlineValue)) {
+        const badMatrixLine = findForbiddenMatrixRunnerLine(lines, index, findParentBlockIndent(lines, index));
+        if (badMatrixLine !== undefined) {
+          return `${line.trim()} ${badMatrixLine.trim()}`;
+        }
+      }
       continue;
     }
 
-    for (let blockIndex = index + 1; blockIndex < lines.length; blockIndex += 1) {
-      const blockLine = stripYamlComment(lines[blockIndex] ?? '');
-      if (blockLine.trim() === '') {
-        continue;
-      }
+    const badBlockLine = findForbiddenContinuationLine(lines, index, indent.length);
+    if (badBlockLine !== undefined) {
+      return `${line.trim()} ${badBlockLine.trim()}`;
+    }
+  }
 
-      if (readIndent(blockLine) <= indent.length) {
-        break;
-      }
+  return undefined;
+}
 
-      if (hasForbiddenRunnerLabel(blockLine)) {
-        return `${line.trim()} ${blockLine.trim()}`;
-      }
+function findForbiddenContinuationLine(lines, startIndex, parentIndent) {
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = stripYamlComment(lines[index] ?? '');
+    if (line.trim() === '') {
+      continue;
+    }
+
+    if (readIndent(line) <= parentIndent) {
+      return undefined;
+    }
+
+    if (hasForbiddenRunnerLabel(line)) {
+      return line;
+    }
+  }
+
+  return undefined;
+}
+
+function findForbiddenMatrixRunnerLine(lines, runsOnIndex, jobIndent) {
+  for (let index = runsOnIndex + 1; index < lines.length; index += 1) {
+    const line = stripYamlComment(lines[index] ?? '');
+    if (line.trim() === '') {
+      continue;
+    }
+
+    if (readIndent(line) <= jobIndent) {
+      return undefined;
+    }
+
+    const matrixRunnerMatch = matrixRunnerKey.exec(line);
+    if (matrixRunnerMatch === null) {
+      continue;
+    }
+
+    const [, indent, value] = matrixRunnerMatch;
+    if (hasForbiddenRunnerLabel(value)) {
+      return line;
+    }
+
+    if (!startsRunsOnBlock(value)) {
+      continue;
+    }
+
+    const badBlockLine = findForbiddenContinuationLine(lines, index, indent.length);
+    if (badBlockLine !== undefined) {
+      return `${line.trim()} ${badBlockLine.trim()}`;
     }
   }
 
@@ -53,7 +105,7 @@ function hasForbiddenRunnerLabel(line) {
 
 function startsRunsOnBlock(inlineValue) {
   const value = inlineValue.trim();
-  return value === '' || hasUnclosedFlowCollection(value);
+  return value === '' || yamlBlockScalar.test(value) || hasUnclosedFlowCollection(value);
 }
 
 function hasUnclosedFlowCollection(value) {
@@ -64,6 +116,24 @@ function hasUnclosedFlowCollection(value) {
 
 function readIndent(line) {
   return line.length - line.trimStart().length;
+}
+
+function findParentBlockIndent(lines, childIndex) {
+  const childIndent = readIndent(stripYamlComment(lines[childIndex] ?? ''));
+
+  for (let index = childIndex - 1; index >= 0; index -= 1) {
+    const line = stripYamlComment(lines[index] ?? '');
+    if (line.trim() === '') {
+      continue;
+    }
+
+    const indent = readIndent(line);
+    if (indent < childIndent) {
+      return indent;
+    }
+  }
+
+  return -1;
 }
 
 function stripYamlComment(line) {
