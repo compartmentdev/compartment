@@ -42,6 +42,7 @@ interface FirstDeployStandalonePageProps {
 
 interface FirstDeployMainPanelProps {
   consoleOrigin: string;
+  flowPathname: string;
   navigate: OnboardingRouteNavigate;
   principalEmail: string;
   routeState: OnboardingRouteState;
@@ -54,6 +55,16 @@ interface FirstDeployChoicePanelProps {
 
 interface FirstDeploySessionIssueBannerProps {
   issue: OnboardingSessionIssue;
+}
+
+interface SelectedOrganizationFirstDeployContentInput {
+  consoleOrigin: string;
+  data: OnboardingPageData;
+  flowPathname: string;
+  navigate: OnboardingRouteNavigate;
+  routeState: OnboardingRouteState;
+  selectedOrganizationSlug: string;
+  sessionIssue: OnboardingSessionIssue | null;
 }
 
 export function FirstDeployPage({
@@ -82,14 +93,15 @@ export function FirstDeployFlow({
     return renderFirstDeployOrganizationContext(data.organizationContext, data, flowPathname);
   }
 
-  return renderSelectedOrganizationFirstDeployContent(
+  return renderSelectedOrganizationFirstDeployContent({
     consoleOrigin,
     data,
+    flowPathname,
     navigate,
     routeState,
+    selectedOrganizationSlug: data.organizationContext.selectedOrganizationSlug,
     sessionIssue,
-    data.organizationContext.selectedOrganizationSlug,
-  );
+  });
 }
 
 export function useFirstDeployPageState(flowPathname: string): FirstDeployFlowState {
@@ -136,37 +148,61 @@ function renderFirstDeployOrganizationContext(
 }
 
 function renderSelectedOrganizationFirstDeployContent(
-  consoleOrigin: string,
-  data: OnboardingPageData,
-  navigate: OnboardingRouteNavigate,
-  routeState: OnboardingRouteState,
-  sessionIssue: OnboardingSessionIssue | null,
-  selectedOrganizationSlug: string,
+  input: Readonly<SelectedOrganizationFirstDeployContentInput>,
 ): JSX.Element {
   return (
     <>
       <OnboardingProcessStepper
-        currentStep={routeState.step}
-        isComplete={routeState.deployCompleted}
-        readStepHref={readStepHrefReader(routeState)}
+        currentStep={input.routeState.step}
+        isComplete={input.routeState.deployCompleted}
+        readStepHref={readStepHrefReader(input.routeState)}
       />
-      {sessionIssue !== null ? <FirstDeploySessionIssueBanner issue={sessionIssue} /> : null}
-      <FirstDeployMainPanel
-        {...readFirstDeployMainPanelProps(consoleOrigin, data, navigate, routeState, selectedOrganizationSlug)}
-      />
+      {input.sessionIssue !== null ? <FirstDeploySessionIssueBanner issue={input.sessionIssue} /> : null}
+      {renderSelectedOrganizationMainPanel(
+        input.consoleOrigin,
+        input.data,
+        input.flowPathname,
+        input.navigate,
+        input.routeState,
+        input.selectedOrganizationSlug,
+      )}
     </>
+  );
+}
+
+function renderSelectedOrganizationMainPanel(
+  consoleOrigin: string,
+  data: OnboardingPageData,
+  flowPathname: string,
+  navigate: OnboardingRouteNavigate,
+  routeState: OnboardingRouteState,
+  selectedOrganizationSlug: string,
+): JSX.Element {
+  return (
+    <FirstDeployMainPanel
+      {...readFirstDeployMainPanelProps(
+        consoleOrigin,
+        data,
+        flowPathname,
+        navigate,
+        routeState,
+        selectedOrganizationSlug,
+      )}
+    />
   );
 }
 
 function readFirstDeployMainPanelProps(
   consoleOrigin: string,
   data: OnboardingPageData,
+  flowPathname: string,
   navigate: OnboardingRouteNavigate,
   routeState: OnboardingRouteState,
   selectedOrganizationSlug: string,
 ): FirstDeployMainPanelProps {
   return {
     consoleOrigin,
+    flowPathname,
     navigate,
     principalEmail: data.principalEmail,
     routeState,
@@ -185,6 +221,7 @@ function FirstDeploySessionIssueBanner({ issue }: Readonly<FirstDeploySessionIss
 
 function FirstDeployMainPanel({
   consoleOrigin,
+  flowPathname,
   navigate,
   principalEmail,
   routeState,
@@ -198,6 +235,7 @@ function FirstDeployMainPanel({
     <section className="min-w-0 rounded-lg border border-black/10 bg-white">
       <OnboardingMethodPanel
         consoleOrigin={consoleOrigin}
+        flowPathname={flowPathname}
         navigate={navigate}
         principalEmail={principalEmail}
         routeState={routeState}
