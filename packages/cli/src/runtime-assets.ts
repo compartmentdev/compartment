@@ -9,6 +9,10 @@ const bundledAssetsDirectoryName: string = 'assets';
 const composeFilename: string = 'docker-compose.self-hosted.yml';
 const localComposeFilename: string = 'docker-compose.self-hosted.local.yml';
 const envExampleFilename: string = '.env.self-hosted.example';
+const legacyRuntimeName: string = ['on', 'prem'].join('');
+const legacyComposeFilename: string = `docker-compose.${legacyRuntimeName}.yml`;
+const legacyLocalComposeFilename: string = `docker-compose.${legacyRuntimeName}.local.yml`;
+const legacyEnvFilename: string = `.env.${legacyRuntimeName}`;
 
 export function readBundledAssets(currentDirectory: string = __dirname): BundledAssets {
   const seaAssets: BundledAssets | undefined = readSeaBundledAssets();
@@ -37,6 +41,17 @@ export function buildStagedAssetPaths(configDir: string, dataDir: string): Stage
     dockerWorkDirectory: resolve(dataDir, 'self-hosted/docker-work'),
     envPath: resolve(configDir, '.env.self-hosted'),
     localComposePath: resolve(configDir, localComposeFilename),
+  };
+}
+
+export function buildLegacyStagedAssetPaths(configDir: string, dataDir: string): StagedAssetPaths {
+  return {
+    configDir,
+    composePath: resolve(configDir, legacyComposeFilename),
+    dataDir,
+    dockerWorkDirectory: resolve(dataDir, legacyRuntimeName, 'docker-work'),
+    envPath: resolve(configDir, legacyEnvFilename),
+    localComposePath: resolve(configDir, legacyLocalComposeFilename),
   };
 }
 

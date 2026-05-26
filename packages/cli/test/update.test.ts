@@ -1,7 +1,11 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createUpdateRuntimeTestHarness, type TemporaryInstallPaths } from './update.test.harness';
+import {
+  createUpdateRuntimeTestHarness,
+  type InstallStateJsonObject,
+  type TemporaryInstallPaths,
+} from './update.test.harness';
 import type { SelfHostedUpdateResult } from '../src/update.types';
 
 const {
@@ -11,6 +15,7 @@ const {
   removeEnvironmentAssignments,
   writeCurrentInstallFiles,
   writeInstallState,
+  writeInstallStateJson,
   writeInvalidInstallStateWithoutInstallationId,
   writeManagedDomainInstallState,
 } = createUpdateRuntimeTestHarness({ temporaryDirectoryPrefix: 'compartment-update-runtime-' });
@@ -154,6 +159,43 @@ describe.sequential('update runtime', (): void => {
     await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
       '"managedDomainBrokerToken": "acme-token"',
     );
+  });
+
+  it('migrates legacy managed-domain broker env aliases and install-state tokens during update', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
+    const previousEnvironmentText: string = `${removeEnvironmentAssignments(
+      createCurrentEnvironmentText({
+        baseDomain: '4h8z9k2m1p7q.app.compartment.run',
+        caddyTlsMode: 'managed',
+        includeVariablesMasterKey: true,
+        publicProtocol: 'https',
+      }),
+      ['COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN', 'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL'],
+    )}COMPARTMENT_ACME_DNS_BROKER_URL=http://127.0.0.1:4545
+COMPARTMENT_ACME_DNS_TOKEN=legacy-token
+`;
+    await writeCurrentInstallFiles(installPaths, previousEnvironmentText);
+    await writeInstallStateJson(installPaths, createLegacyManagedDomainInstallState());
+    const { updateSelfHosted } = await import('../src/update');
+
+    const result: SelfHostedUpdateResult = await updateSelfHosted({
+      options: {
+        version: '1.2.3',
+      },
+    });
+
+    expect(result.status).toBe('updated');
+    const updatedEnvironmentText: string = await readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8');
+    expect(updatedEnvironmentText).toContain('COMPARTMENT_MANAGED_DOMAIN_BROKER_URL=http://127.0.0.1:4545');
+    expect(updatedEnvironmentText).toContain('COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN=legacy-token');
+    expect(updatedEnvironmentText).not.toContain('COMPARTMENT_ACME_DNS_BROKER_URL=');
+    expect(updatedEnvironmentText).not.toContain('COMPARTMENT_ACME_DNS_TOKEN=');
+    const updatedStateText: string = await readFile(
+      join(installPaths.dataDir, 'self-hosted/install-state.json'),
+      'utf8',
+    );
+    expect(updatedStateText).toContain('"managedDomainBrokerToken": "legacy-token"');
+    expect(updatedStateText).not.toContain('acmeDnsToken');
   });
 
   it('leaves the current runtime files active when image preparation fails', async (): Promise<void> => {
@@ -539,7 +581,7 @@ describe.sequential('update runtime', (): void => {
     );
   });
 
-  it('rejects unsupported system API socket paths while updating an environment', async (): Promise<void> => {
+  it('migrates legacy system API socket paths while updating an environment', async (): Promise<void> => {
     const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
     const previousEnvironmentText: string = createCurrentEnvironmentText().replace(
       'COMPARTMENT_SYSTEM_API_SOCKET=/var/run/compartment/api/system-api.sock',
@@ -554,15 +596,15 @@ describe.sequential('update runtime', (): void => {
 
     const { updateSelfHosted } = await import('../src/update');
 
-    await expect(
-      updateSelfHosted({
-        options: {
-          version: '1.2.3',
-        },
-      }),
-    ).rejects.toThrow('COMPARTMENT_SYSTEM_API_SOCKET must point to a socket inside a private subdirectory like');
-    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toBe(
-      previousEnvironmentText,
+    const result: SelfHostedUpdateResult = await updateSelfHosted({
+      options: {
+        version: '1.2.3',
+      },
+    });
+
+    expect(result.status).toBe('updated');
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_SYSTEM_API_SOCKET=/var/run/compartment/api/system-api.sock',
     );
   });
 
@@ -721,6 +763,20 @@ function readRequiredBackupDirectory(result: SelfHostedUpdateResult): string {
   }
 
   throw new Error('Expected updateSelfHosted to create a backup directory.');
+}
+
+function createLegacyManagedDomainInstallState(): InstallStateJsonObject {
+  return {
+    imageSource: 'registry',
+    installationId: '11111111-1111-4111-8111-111111111111',
+    managedDomain: {
+      acmeDnsToken: 'legacy-token',
+      acmeEmail: 'admin@example.com',
+      baseDomain: '4h8z9k2m1p7q.app.compartment.run',
+      brokerUrl: 'http://127.0.0.1:4545',
+    },
+    stateVersion: 1,
+  };
 }
 
 async function readMode(path: string): Promise<number> {

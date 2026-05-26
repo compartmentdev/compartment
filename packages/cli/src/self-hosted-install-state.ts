@@ -149,8 +149,6 @@ function readManagedDomainInstallState(value: ParsedJsonValue): ManagedDomainIns
   if (
     typeof value.baseDomain !== 'string' ||
     value.baseDomain === '' ||
-    typeof value.managedDomainBrokerToken !== 'string' ||
-    value.managedDomainBrokerToken === '' ||
     typeof value.acmeEmail !== 'string' ||
     value.acmeEmail === '' ||
     typeof value.brokerUrl !== 'string' ||
@@ -159,12 +157,28 @@ function readManagedDomainInstallState(value: ParsedJsonValue): ManagedDomainIns
     return undefined;
   }
 
+  const managedDomainBrokerToken: string | undefined = readManagedDomainBrokerToken(value);
+  if (managedDomainBrokerToken === undefined) {
+    return undefined;
+  }
+
   return {
     acmeEmail: value.acmeEmail,
     baseDomain: value.baseDomain,
     brokerUrl: value.brokerUrl,
-    managedDomainBrokerToken: value.managedDomainBrokerToken,
+    managedDomainBrokerToken,
   };
+}
+
+function readManagedDomainBrokerToken(value: ParsedJsonObject): string | undefined {
+  if (typeof value.managedDomainBrokerToken === 'string' && value.managedDomainBrokerToken !== '') {
+    return value.managedDomainBrokerToken;
+  }
+  if (typeof value.acmeDnsToken === 'string' && value.acmeDnsToken !== '') {
+    return value.acmeDnsToken;
+  }
+
+  return undefined;
 }
 
 function isSelfHostedInstallStateCandidate(value: ParsedJsonValue): value is SelfHostedInstallStateCandidate {

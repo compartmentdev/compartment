@@ -4,7 +4,7 @@ import {
   resolveStoredSelfHostedRuntimeImageRegistry,
 } from './self-hosted-runtime-selection';
 import { readSelfHostedEnvironmentValues, readRequiredSelfHostedEnvironmentValue } from './self-hosted-env-file';
-import { readCanonicalNodeAgentSocketPath, readCanonicalSystemApiSocketPath } from './self-hosted-host-socket-paths';
+import { readCanonicalNodeAgentSocketPath, readMigratedSystemApiSocketPath } from './self-hosted-host-socket-paths';
 import { readCliBuildInfo } from './cli-build-info';
 import { decideSelfHostedUpdateAction } from './update-version';
 import type { CliBuildInfo } from './cli-build-info.types';
@@ -87,7 +87,7 @@ export function resolveSelfHostedUpdateImageRegistry(
 
 function readCanonicalHostSocketEnvironment(environmentValues: Record<string, string>): CanonicalHostSocketEnvironment {
   const nodeAgentSocketPath: string = readCanonicalNodeAgentSocketPath(environmentValues);
-  const systemApiSocketPath: string = readCanonicalSystemApiSocketPath(environmentValues);
+  const systemApiSocketPath: string = readMigratedSystemApiSocketPath(environmentValues);
 
   return {
     values: {

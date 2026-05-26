@@ -8,6 +8,8 @@ import { readRequiredSelfHostedEnvironmentValue } from './self-hosted-env-file';
 
 type SelfHostedHostSocketVariableName = 'COMPARTMENT_NODE_AGENT_SOCKET' | 'COMPARTMENT_SYSTEM_API_SOCKET';
 
+const legacySystemApiSocketPath: string = '/var/run/compartment/system-api.sock';
+
 const nodeAgentSocketPolicy: UnixSocketPathPolicy = createCompartmentUnixSocketPathPolicy({
   directoryLabel: 'Node agent socket directory',
   socketFileName: 'agent.sock',
@@ -27,6 +29,15 @@ export function readCanonicalNodeAgentSocketPath(environmentValues: Record<strin
     'COMPARTMENT_NODE_AGENT_SOCKET',
     defaultNodeAgentSocketPath,
   );
+}
+
+export function readMigratedSystemApiSocketPath(environmentValues: Record<string, string>): string {
+  const socketPath: string = readRequiredSelfHostedEnvironmentValue(environmentValues, 'COMPARTMENT_SYSTEM_API_SOCKET');
+  if (socketPath === legacySystemApiSocketPath) {
+    return defaultSystemApiSocketPath;
+  }
+
+  return readCanonicalSystemApiSocketPath(environmentValues);
 }
 
 export function readCanonicalSystemApiSocketPath(environmentValues: Record<string, string>): string {
