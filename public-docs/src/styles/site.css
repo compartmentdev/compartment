@@ -205,7 +205,8 @@
     border-inline-end-color: var(--cpt-border-default);
   }
 
-  header.header .github-star-widget {
+  header.header .github-star-widget,
+  header.header .product-site-link {
     align-items: center;
     gap: 0.3rem;
     min-height: 2rem;
@@ -226,13 +227,15 @@
       color 180ms ease;
   }
 
-  header.header .github-star-widget:hover {
+  header.header .github-star-widget:hover,
+  header.header .product-site-link:hover {
     border-color: var(--cpt-border-strong);
     background: var(--cpt-overlay-2);
     color: var(--cpt-text-primary);
   }
 
-  header.header .github-star-widget svg {
+  header.header .github-star-widget svg,
+  header.header .product-site-link svg {
     width: 1rem;
     height: 1rem;
   }
@@ -303,18 +306,26 @@
   header.header starlight-theme-select label {
     --sl-inline-padding: 0.8rem;
     --sl-label-icon-size: 1rem;
+    position: relative;
+    justify-content: center;
     min-width: 0;
     gap: 0;
     padding-inline: 0;
-    width: max-content;
+    width: 2.3rem;
+    overflow: hidden;
   }
 
   header.header starlight-theme-select select {
+    position: absolute;
+    inset: 0;
+    height: 100%;
     min-width: 0;
-    width: max-content;
+    width: 100%;
     margin-inline: 0;
+    padding: 0;
     background: transparent;
     line-height: 1.2;
+    opacity: 0;
     white-space: nowrap;
   }
 
@@ -324,11 +335,12 @@
   }
 
   header.header starlight-theme-select .label-icon {
-    inset-inline-start: var(--sl-inline-padding);
+    inset-inline-start: 50%;
+    transform: translate(-50%, -50%);
   }
 
   header.header starlight-theme-select .caret {
-    inset-inline-end: var(--sl-inline-padding);
+    display: none;
   }
 
   starlight-menu-button button {
