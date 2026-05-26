@@ -158,7 +158,13 @@ function readDockerImageRepoDigests(inspectResult: CommandResult): string[] {
 
 function readMatchingImageDigestRef(imageRef: string, digestRefs: readonly string[]): string | null {
   const repository: string = readImageRepository(imageRef);
-  return digestRefs.find((digestRef: string): boolean => readImageRepository(digestRef) === repository) ?? null;
+  const comparableRepository: string = readComparableImageRepository(repository);
+  const digestRef: string | undefined = digestRefs.find(
+    (candidateDigestRef: string): boolean =>
+      readComparableImageRepository(readImageRepository(candidateDigestRef)) === comparableRepository,
+  );
+
+  return digestRef === undefined ? null : `${repository}@${readImageDigest(digestRef)}`;
 }
 
 function readSelectedSignedSelfHostedRuntimeImageRefs(
@@ -213,6 +219,25 @@ function readImageRepository(imageRef: string): string {
   const lastSlashIndex: number = imageRef.lastIndexOf('/');
   const lastColonIndex: number = imageRef.lastIndexOf(':');
   return lastColonIndex <= lastSlashIndex ? imageRef : imageRef.slice(0, lastColonIndex);
+}
+
+function readComparableImageRepository(repository: string): string {
+  const firstSlashIndex: number = repository.indexOf('/');
+  if (firstSlashIndex === -1) {
+    return repository;
+  }
+
+  const registryHost: string = repository.slice(0, firstSlashIndex);
+  if (registryHost === 'docker.io' || registryHost === 'index.docker.io') {
+    return repository.slice(firstSlashIndex + 1);
+  }
+
+  return repository;
+}
+
+function readImageDigest(imageRef: string): string {
+  const digestSeparatorIndex: number = imageRef.indexOf('@');
+  return digestSeparatorIndex === -1 ? imageRef : imageRef.slice(digestSeparatorIndex + 1);
 }
 
 function createCommandError(prefix: string, result: CommandResult): Error {
