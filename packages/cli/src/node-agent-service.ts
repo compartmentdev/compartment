@@ -20,7 +20,6 @@ const nodeAgentRestartTimeoutMs: number = 30_000;
 const systemdUnitMode: number = 0o644;
 const nodeRuntimeDirectory: string = 'compartment/node';
 const selfHostedStateDirectory: string = 'compartment/self-hosted';
-const legacySelfHostedStateDirectory: string = ['compartment/on', 'prem'].join('');
 const resourceBackupsStateDirectory: string = 'compartment/resource-backups';
 
 interface StageNodeAgentHostServiceInput {
@@ -155,9 +154,9 @@ ProtectSystem=strict
 RuntimeDirectory=compartment/node
 RuntimeDirectoryMode=0700
 RuntimeDirectoryPreserve=yes
-StateDirectory=${selfHostedStateDirectory} ${legacySelfHostedStateDirectory} ${resourceBackupsStateDirectory}
+StateDirectory=${selfHostedStateDirectory} ${resourceBackupsStateDirectory}
 StateDirectoryMode=0700
-ReadWritePaths=/var/run/${nodeRuntimeDirectory} /var/lib/${selfHostedStateDirectory} /var/lib/${legacySelfHostedStateDirectory} /var/lib/${resourceBackupsStateDirectory} /var/run/docker.sock
+ReadWritePaths=/var/run/${nodeRuntimeDirectory} /var/lib/${selfHostedStateDirectory} /var/lib/${resourceBackupsStateDirectory} /var/run/docker.sock
 UMask=0077`;
 }
 

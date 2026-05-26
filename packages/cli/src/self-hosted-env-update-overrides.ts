@@ -1,4 +1,3 @@
-import { hasText } from '@compartment/utils';
 import {
   readRequiredSelfHostedEnvironmentRawValue,
   readRequiredSelfHostedEnvironmentValue,
@@ -17,23 +16,11 @@ const currentValuePreservedCanonicalVariables: string[] = [
   'COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES',
 ];
 
-const managedDomainBrokerUrlMigrationVariableNames: readonly string[] = [
-  'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL',
-  'COMPARTMENT_ACME_DNS_BROKER_URL',
-  'COMPARTMENT_GITHUB_ACCOUNT_DISCOVERY_BROKER_URL',
-];
-
-const managedDomainBrokerTokenMigrationVariableNames: readonly string[] = [
-  'COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN',
-  'COMPARTMENT_ACME_DNS_TOKEN',
-  'COMPARTMENT_GITHUB_ACCOUNT_DISCOVERY_BROKER_TOKEN',
-];
-
 export function readUpdatedCanonicalOverrides(
   currentValues: Record<string, string>,
   canonicalOverrides: Record<string, string>,
 ): Record<string, string> {
-  const brokerEnvOverrides: Record<string, string> = readBrokerEnvMigrationOverrides(currentValues);
+  const brokerEnvOverrides: Record<string, string> = readCurrentBrokerEnvOverrides(currentValues);
   const updatedCanonicalOverrides: Record<string, string> = {
     ...canonicalOverrides,
     ...readCurrentDomainOverrides(currentValues),
@@ -46,10 +33,8 @@ export function readUpdatedCanonicalOverrides(
     delete updatedCanonicalOverrides.COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN;
   }
 
-  const currentDockerNamespace: string | null = readCurrentDockerNamespace(currentValues);
-  if (currentDockerNamespace !== null) {
-    delete updatedCanonicalOverrides.COMPARTMENT_DOCKER_NAMESPACE;
-  }
+  readRequiredSelfHostedEnvironmentValue(currentValues, 'COMPARTMENT_DOCKER_NAMESPACE');
+  delete updatedCanonicalOverrides.COMPARTMENT_DOCKER_NAMESPACE;
   for (const variableName of currentValuePreservedCanonicalVariables) {
     deleteCanonicalOverrideWhenCurrentValueExists(updatedCanonicalOverrides, currentValues, variableName);
   }
@@ -76,55 +61,29 @@ function readCurrentDomainOverrides(currentValues: Record<string, string>): Reco
       currentValues,
       'COMPARTMENT_CUSTOM_TLS_KEY_FILE',
     ),
-    COMPARTMENT_PUBLIC_PROTOCOL: readUpdatedPublicProtocol(caddyTlsMode, publicProtocol),
+    COMPARTMENT_PUBLIC_PROTOCOL: publicProtocol,
   };
 }
 
-function readUpdatedPublicProtocol(caddyTlsMode: string, publicProtocol: string): string {
-  if (caddyTlsMode === 'internal' && publicProtocol === 'http') {
-    return 'https';
-  }
-
-  return publicProtocol;
-}
-
-function readBrokerEnvMigrationOverrides(currentValues: Record<string, string>): Record<string, string> {
+function readCurrentBrokerEnvOverrides(currentValues: Record<string, string>): Record<string, string> {
   const overrides: Record<string, string> = {};
-  const brokerUrl: string | undefined = readFirstCurrentTextValue(
+  const brokerUrl: string = readRequiredSelfHostedEnvironmentRawValue(
     currentValues,
-    managedDomainBrokerUrlMigrationVariableNames,
+    'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL',
   );
-  const brokerToken: string | undefined = readFirstCurrentTextValue(
+  const brokerToken: string = readRequiredSelfHostedEnvironmentRawValue(
     currentValues,
-    managedDomainBrokerTokenMigrationVariableNames,
+    'COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN',
   );
 
-  if (brokerUrl !== undefined) {
+  if (brokerUrl.trim() !== '') {
     overrides.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL = brokerUrl;
   }
-  if (brokerToken !== undefined) {
+  if (brokerToken.trim() !== '') {
     overrides.COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN = brokerToken;
   }
 
   return overrides;
-}
-
-function readFirstCurrentTextValue(
-  currentValues: Record<string, string>,
-  variableNames: readonly string[],
-): string | undefined {
-  for (const variableName of variableNames) {
-    const currentValue: string | undefined = currentValues[variableName];
-    if (hasText(currentValue)) {
-      return currentValue;
-    }
-  }
-
-  return undefined;
-}
-
-function readCurrentDockerNamespace(currentValues: Record<string, string>): string | null {
-  return hasText(currentValues.COMPARTMENT_DOCKER_NAMESPACE) ? currentValues.COMPARTMENT_DOCKER_NAMESPACE : null;
 }
 
 function deleteCanonicalOverrideWhenCurrentValueExists(

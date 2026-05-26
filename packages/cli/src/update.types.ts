@@ -57,7 +57,6 @@ export interface PreparedSelfHostedUpdateEnvironment {
 
 export interface PreparedSelfHostedUpdateDecisionContext {
   currentVersion: string;
-  environmentMigrationRequired: boolean;
   environmentValues: Record<string, string>;
   runtimeSelection: SelfHostedRuntimeSelection;
   updateDecision: SelfHostedUpdateDecision;
