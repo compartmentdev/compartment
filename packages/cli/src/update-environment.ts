@@ -1,4 +1,4 @@
-import { buildUpdatedSelfHostedEnvironment, createRandomSecret } from './self-hosted-env';
+import { buildUpdatedSelfHostedEnvironment } from './self-hosted-env';
 import {
   readRequiredSelfHostedEnvironmentPort,
   readRequiredSelfHostedEnvironmentRawValue,
@@ -83,34 +83,23 @@ function readRegistryUpdateEnvironmentValues(
   environmentValues: Record<string, string>,
 ): RegistryUpdateEnvironmentValues {
   return {
-    artifactRegistryReadPassword: readExistingOrCreateSecret(
+    artifactRegistryReadPassword: readRequiredSelfHostedEnvironmentValue(
       environmentValues,
       'COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD',
     ),
-    artifactRegistryReadUsername: readExistingOrDefault(
+    artifactRegistryReadUsername: readRequiredSelfHostedEnvironmentValue(
       environmentValues,
       'COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME',
-      'compartment-reader',
     ),
-    artifactRegistryWritePassword: readExistingOrCreateSecret(
+    artifactRegistryWritePassword: readRequiredSelfHostedEnvironmentValue(
       environmentValues,
       'COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD',
     ),
-    artifactRegistryWriteUsername: readExistingOrDefault(
+    artifactRegistryWriteUsername: readRequiredSelfHostedEnvironmentValue(
       environmentValues,
       'COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME',
-      'compartment-writer',
     ),
   };
-}
-
-function readExistingOrCreateSecret(values: Record<string, string>, variableName: string): string {
-  return readExistingOrDefault(values, variableName, createRandomSecret());
-}
-
-function readExistingOrDefault(values: Record<string, string>, variableName: string, defaultValue: string): string {
-  const value: string | undefined = values[variableName];
-  return value === undefined || value.trim() === '' ? defaultValue : value;
 }
 
 function readSystemApiUpdateEnvironmentValues(

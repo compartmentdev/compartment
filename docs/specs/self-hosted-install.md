@@ -58,6 +58,8 @@ compartment install --image-source local --local-runtime
 - Public ports default to `80` and `443`.
 - Config, compose, and env files live in `/etc/compartment`.
 - State, install backups, and docker work files live in `/var/lib/compartment/self-hosted`.
+- Runtime files are `/etc/compartment/.env.self-hosted`, `/etc/compartment/docker-compose.self-hosted.yml`, and
+  `/var/lib/compartment/self-hosted/install-state.json`.
 - The runtime socket root is `/var/run/compartment`: System API uses `/var/run/compartment/api/system-api.sock`, and the host node agent uses `/var/run/compartment/node/agent.sock`.
 - `compartment install` stages `/usr/local/bin/compartment-node-agent` and `compartment-node-agent.service`; API and worker containers talk to that host service over the node-agent Unix socket.
 - The system install requires root privileges.

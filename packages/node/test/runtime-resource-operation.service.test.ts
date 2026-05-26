@@ -1,13 +1,21 @@
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   DockerInspectContainerResult,
   DockerInspectNetworkResult,
   DockerRunContainerInput,
   DockerRunContainerToCompletionResult,
 } from '@compartment/docker';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { runRuntimeResourceRestoreOperation } from '../src/services/runtime-resource-operation.service';
-import type { RuntimeDeployConfig } from '../src/services/runtime.types';
+import type { NodeResourceOperationRequest } from '@compartment/contracts';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
+import {
+  runRuntimeResourceBackupOperation,
+  runRuntimeResourceRestoreOperation,
+} from '../src/services/runtime-resource-operation.service';
+import type { RuntimeResourceOperationConfig } from '../src/services/runtime.types';
 
+type CanConnectToRuntimeHost = (host: string, port: number, deadline: number) => Promise<boolean>;
 type ConnectDockerContainerToNetwork = (input: { containerRef: string; networkName: string }) => Promise<void>;
 type EnsureDockerImageAvailable = (input: { imageRef: string }) => Promise<void>;
 type EnsureDockerNetwork = (input: DockerEnsureNetworkInput) => Promise<void>;
@@ -20,7 +28,13 @@ interface DockerEnsureNetworkInput {
   networkName: string;
 }
 
+interface RuntimeResourceConnectivityModule {
+  canConnectToRuntimeHost: CanConnectToRuntimeHost;
+  resolveRuntimeContainerNetworkHost: (containerRef: string, networkName: string) => Promise<string>;
+}
+
 interface RuntimeResourceOperationMocks {
+  canConnectToRuntimeHost: Mock<CanConnectToRuntimeHost>;
   connectDockerContainerToNetwork: Mock<ConnectDockerContainerToNetwork>;
   ensureDockerImageAvailable: Mock<EnsureDockerImageAvailable>;
   ensureDockerNetwork: Mock<EnsureDockerNetwork>;
@@ -31,6 +45,7 @@ interface RuntimeResourceOperationMocks {
 
 const mocks: RuntimeResourceOperationMocks = vi.hoisted(
   (): RuntimeResourceOperationMocks => ({
+    canConnectToRuntimeHost: vi.fn<CanConnectToRuntimeHost>(),
     connectDockerContainerToNetwork: vi.fn<ConnectDockerContainerToNetwork>(),
     ensureDockerImageAvailable: vi.fn<EnsureDockerImageAvailable>(),
     ensureDockerNetwork: vi.fn<EnsureDockerNetwork>(),
@@ -38,6 +53,19 @@ const mocks: RuntimeResourceOperationMocks = vi.hoisted(
     inspectDockerNetwork: vi.fn<InspectDockerNetwork>(),
     runDockerContainerToCompletion: vi.fn<RunDockerContainerToCompletion>(),
   }),
+);
+
+vi.mock(
+  '../src/services/runtime-resource-connectivity.service',
+  async (
+    importOriginal: () => Promise<RuntimeResourceConnectivityModule>,
+  ): Promise<RuntimeResourceConnectivityModule> => {
+    const original: RuntimeResourceConnectivityModule = await importOriginal();
+    return {
+      ...original,
+      canConnectToRuntimeHost: mocks.canConnectToRuntimeHost.mockImplementation(original.canConnectToRuntimeHost),
+    };
+  },
 );
 
 vi.mock(
@@ -67,12 +95,14 @@ vi.mock(
 
 const nodeContainerRef: string = 'node_container_123';
 const originalHostname: string | undefined = process.env.HOSTNAME;
+const temporaryDirectories: string[] = [];
 
 beforeEach((): void => {
   process.env.HOSTNAME = nodeContainerRef;
 });
 
-afterEach((): void => {
+afterEach(async (): Promise<void> => {
+  mocks.canConnectToRuntimeHost.mockClear();
   if (originalHostname === undefined) {
     delete process.env.HOSTNAME;
   } else {
@@ -84,11 +114,61 @@ afterEach((): void => {
   mocks.inspectDockerContainer.mockReset();
   mocks.inspectDockerNetwork.mockReset();
   mocks.runDockerContainerToCompletion.mockReset();
+  await Promise.all(
+    temporaryDirectories.splice(0).map(async (directory: string): Promise<void> => {
+      await rm(directory, { force: true, recursive: true });
+    }),
+  );
 });
 
 describe('runRuntimeResourceRestoreOperation', (): void => {
+  it('performs an initial readiness probe before the restore timeout expires', async (): Promise<void> => {
+    const dateNowSpy: MockInstance<typeof Date.now> = vi
+      .spyOn(Date, 'now')
+      .mockImplementationOnce((): number => 1_000)
+      .mockImplementation((): number => 1_001);
+    const backupArtifact: RuntimeResourceBackupArtifactFixture = await createResourceBackupArtifactFixture();
+    mocks.canConnectToRuntimeHost.mockResolvedValueOnce(true);
+
+    mocks.inspectDockerContainer.mockResolvedValue({
+      containerId: 'resource_container_123',
+      imageRef: 'postgres:16',
+      isRunning: true,
+      labels: {},
+      networkAttachments: [{ ipAddress: '127.0.0.1', name: 'compartment-test-prj-123-env-123-resources' }],
+      publishedPorts: [],
+    });
+    mocks.runDockerContainerToCompletion.mockResolvedValue({
+      containerId: 'operation_container_123',
+      logs: [],
+      stderr: '',
+      stdout: 'ok',
+    });
+
+    try {
+      await expect(
+        runRuntimeResourceRestoreOperation(
+          createResourceOperationRequest({
+            backupId: backupArtifact.backupId,
+            readiness: { port: 5432, timeoutMs: 0, type: 'tcp' },
+          }),
+          createRuntimeConfig({ resourceBackupDirectory: backupArtifact.root }),
+        ),
+      ).resolves.toEqual({
+        stderr: '',
+        stdout: 'ok',
+      });
+    } finally {
+      dateNowSpy.mockRestore();
+    }
+
+    expect(mocks.canConnectToRuntimeHost).toHaveBeenCalledTimes(1);
+    expect(mocks.canConnectToRuntimeHost.mock.calls[0]?.slice(0, 2)).toEqual(['127.0.0.1', 5432]);
+  });
+
   it('probes restore readiness through the resource container network address', async (): Promise<void> => {
     const resourceNetworkAddress: string = ['172', '20', '0', '15'].join('.');
+    const backupArtifact: RuntimeResourceBackupArtifactFixture = await createResourceBackupArtifactFixture();
 
     mocks.inspectDockerContainer.mockResolvedValue({
       containerId: 'resource_container_123',
@@ -107,22 +187,11 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
 
     await expect(
       runRuntimeResourceRestoreOperation(
-        {
-          artifactHostPath: '/var/lib/compartment/resource-backups/rbak_123',
-          definition: {
-            command: 'psql < "$COMPARTMENT_BACKUP_DIR/dump.sql"',
-            env: [],
-            image: 'postgres:16',
-          },
-          environmentId: 'env_123',
-          environmentName: 'production',
-          projectId: 'prj_123',
-          projectName: 'internal-tools',
+        createResourceOperationRequest({
+          backupId: backupArtifact.backupId,
           readiness: { port: 5432, timeoutMs: 1, type: 'tcp' },
-          resourceHostname: 'postgres.production.internal-tools.resource.internal',
-          resourceName: 'postgres',
-        },
-        createRuntimeConfig(),
+        }),
+        createRuntimeConfig({ resourceBackupDirectory: backupArtifact.root }),
       ),
     ).rejects.toThrow('Resource postgres did not become ready after restore before 1ms.');
 
@@ -145,9 +214,18 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
         'compartment.resource': 'postgres',
       }),
     );
+    expect(operationContainerInput?.mounts).toEqual([
+      {
+        containerPath: '/backup',
+        hostPath: backupArtifact.path,
+        readOnly: true,
+      },
+    ]);
   });
 
   it('rejects operation containers before joining an unowned resource network', async (): Promise<void> => {
+    const backupArtifact: RuntimeResourceBackupArtifactFixture = await createResourceBackupArtifactFixture();
+
     mocks.ensureDockerNetwork.mockRejectedValueOnce(
       new Error(
         'Docker network compartment-test-prj-123-env-123-resources exists without required label compartment.namespace=test.',
@@ -156,22 +234,11 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
 
     await expect(
       runRuntimeResourceRestoreOperation(
-        {
-          artifactHostPath: '/var/lib/compartment/resource-backups/rbak_123',
-          definition: {
-            command: 'psql < "$COMPARTMENT_BACKUP_DIR/dump.sql"',
-            env: [],
-            image: 'postgres:16',
-          },
-          environmentId: 'env_123',
-          environmentName: 'production',
-          projectId: 'prj_123',
-          projectName: 'internal-tools',
+        createResourceOperationRequest({
+          backupId: backupArtifact.backupId,
           readiness: null,
-          resourceHostname: 'postgres.production.internal-tools.resource.internal',
-          resourceName: 'postgres',
-        },
-        createRuntimeConfig(),
+        }),
+        createRuntimeConfig({ resourceBackupDirectory: backupArtifact.root }),
       ),
     ).rejects.toThrow(
       'Docker network compartment-test-prj-123-env-123-resources exists without required label compartment.namespace=test.',
@@ -180,11 +247,207 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
   });
 });
 
-function createRuntimeConfig(): RuntimeDeployConfig {
+describe('runRuntimeResourceBackupOperation', (): void => {
+  it('mounts backup artifact directories by id with writable access', async (): Promise<void> => {
+    const backupArtifact: RuntimeResourceBackupArtifactFixture = await createResourceBackupArtifactFixture();
+    mocks.runDockerContainerToCompletion.mockResolvedValue({
+      containerId: 'operation_container_123',
+      logs: [],
+      stderr: '',
+      stdout: 'ok',
+    });
+
+    await expect(
+      runRuntimeResourceBackupOperation(
+        createResourceOperationRequest({ backupId: backupArtifact.backupId }),
+        createRuntimeConfig({ resourceBackupDirectory: backupArtifact.root }),
+      ),
+    ).resolves.toEqual({
+      stderr: '',
+      stdout: 'ok',
+    });
+
+    const operationContainerInput: DockerRunContainerInput | undefined =
+      mocks.runDockerContainerToCompletion.mock.calls[0]?.[0];
+    expect(operationContainerInput?.mounts).toEqual([
+      {
+        containerPath: '/backup',
+        hostPath: backupArtifact.path,
+      },
+    ]);
+  });
+
+  it('revalidates backup artifact directories after Docker setup and before container create', async (): Promise<void> => {
+    const backupArtifact: RuntimeResourceBackupArtifactFixture = await createResourceBackupArtifactFixture();
+    const outsideDirectory: string = await createResourceBackupRoot();
+    mocks.ensureDockerNetwork.mockImplementationOnce(async (): Promise<void> => {
+      await rm(backupArtifact.path, { force: true, recursive: true });
+      await symlink(outsideDirectory, backupArtifact.path);
+    });
+
+    await expect(
+      runRuntimeResourceBackupOperation(
+        createResourceOperationRequest({ backupId: backupArtifact.backupId }),
+        createRuntimeConfig({ resourceBackupDirectory: backupArtifact.root }),
+      ),
+    ).rejects.toThrow('Resource backup artifact directory "rbak_123" must not include symlinks.');
+
+    expect(mocks.ensureDockerImageAvailable).toHaveBeenCalledTimes(1);
+    expect(mocks.ensureDockerNetwork).toHaveBeenCalledTimes(1);
+    expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
+  });
+
+  it.each(['../etc', '/etc', 'rbak/123', 'rbak\\123', ''])(
+    'rejects unsafe backup id "%s" before Docker side effects',
+    async (backupId: string): Promise<void> => {
+      const resourceBackupDirectory: string = await createResourceBackupRoot();
+
+      await expect(
+        runRuntimeResourceBackupOperation(
+          createResourceOperationRequest({ backupId }),
+          createRuntimeConfig({ resourceBackupDirectory }),
+        ),
+      ).rejects.toThrow();
+
+      expect(mocks.ensureDockerImageAvailable).not.toHaveBeenCalled();
+      expect(mocks.ensureDockerNetwork).not.toHaveBeenCalled();
+      expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects missing backup artifact directories before Docker side effects', async (): Promise<void> => {
+    const resourceBackupDirectory: string = await createResourceBackupRoot();
+
+    await expect(
+      runRuntimeResourceBackupOperation(
+        createResourceOperationRequest({ backupId: 'rbak_missing' }),
+        createRuntimeConfig({ resourceBackupDirectory }),
+      ),
+    ).rejects.toThrow('Resource backup artifact directory "rbak_missing" does not exist.');
+
+    expect(mocks.ensureDockerImageAvailable).not.toHaveBeenCalled();
+    expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-directory backup artifacts before Docker side effects', async (): Promise<void> => {
+    const resourceBackupDirectory: string = await createResourceBackupRoot();
+    await writeFile(join(resourceBackupDirectory, 'rbak_file'), '');
+
+    await expect(
+      runRuntimeResourceBackupOperation(
+        createResourceOperationRequest({ backupId: 'rbak_file' }),
+        createRuntimeConfig({ resourceBackupDirectory }),
+      ),
+    ).rejects.toThrow('Resource backup artifact directory "rbak_file" must point to a directory.');
+
+    expect(mocks.ensureDockerImageAvailable).not.toHaveBeenCalled();
+    expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-directory backup roots before Docker side effects', async (): Promise<void> => {
+    const parentDirectory: string = await createResourceBackupRoot();
+    const resourceBackupDirectory: string = join(parentDirectory, 'resource-backups-file');
+    await writeFile(resourceBackupDirectory, '');
+
+    await expect(
+      runRuntimeResourceBackupOperation(
+        createResourceOperationRequest({ backupId: 'rbak_123' }),
+        createRuntimeConfig({ resourceBackupDirectory }),
+      ),
+    ).rejects.toThrow('Resource backup root directory "." must point to a directory.');
+
+    expect(mocks.ensureDockerImageAvailable).not.toHaveBeenCalled();
+    expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
+  });
+
+  it('rejects symlinked backup roots before Docker side effects', async (): Promise<void> => {
+    const parentDirectory: string = await createResourceBackupRoot();
+    const realBackupRoot: string = await createResourceBackupRoot();
+    const resourceBackupDirectory: string = join(parentDirectory, 'resource-backups-link');
+    await symlink(realBackupRoot, resourceBackupDirectory);
+
+    await expect(
+      runRuntimeResourceBackupOperation(
+        createResourceOperationRequest({ backupId: 'rbak_123' }),
+        createRuntimeConfig({ resourceBackupDirectory }),
+      ),
+    ).rejects.toThrow('Resource backup root directory "." must not include symlinks.');
+
+    expect(mocks.ensureDockerImageAvailable).not.toHaveBeenCalled();
+    expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
+  });
+
+  it('rejects symlinked backup artifact directories before Docker side effects', async (): Promise<void> => {
+    const resourceBackupDirectory: string = await createResourceBackupRoot();
+    const outsideDirectory: string = await createResourceBackupRoot();
+    await symlink(outsideDirectory, join(resourceBackupDirectory, 'rbak_link'));
+
+    await expect(
+      runRuntimeResourceBackupOperation(
+        createResourceOperationRequest({ backupId: 'rbak_link' }),
+        createRuntimeConfig({ resourceBackupDirectory }),
+      ),
+    ).rejects.toThrow('Resource backup artifact directory "rbak_link" must not include symlinks.');
+
+    expect(mocks.ensureDockerImageAvailable).not.toHaveBeenCalled();
+    expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
+  });
+});
+
+interface RuntimeResourceBackupArtifactFixture {
+  backupId: string;
+  path: string;
+  root: string;
+}
+
+async function createResourceBackupArtifactFixture(
+  backupId: string = 'rbak_123',
+): Promise<RuntimeResourceBackupArtifactFixture> {
+  const root: string = await createResourceBackupRoot();
+  const path: string = join(root, backupId);
+  await mkdir(path);
+
+  return {
+    backupId,
+    path,
+    root,
+  };
+}
+
+async function createResourceBackupRoot(): Promise<string> {
+  const directory: string = await mkdtemp(join(tmpdir(), 'compartment-node-resource-backups-'));
+  temporaryDirectories.push(directory);
+
+  return directory;
+}
+
+function createResourceOperationRequest(
+  overrides: Partial<NodeResourceOperationRequest> = {},
+): NodeResourceOperationRequest {
+  return {
+    backupId: 'rbak_123',
+    definition: {
+      command: 'pg_dump > "$COMPARTMENT_BACKUP_DIR/dump.sql"',
+      env: [],
+      image: 'postgres:16',
+    },
+    environmentId: 'env_123',
+    environmentName: 'production',
+    projectId: 'prj_123',
+    projectName: 'internal-tools',
+    readiness: null,
+    resourceHostname: 'postgres.production.internal-tools.resource.internal',
+    resourceName: 'postgres',
+    ...overrides,
+  };
+}
+
+function createRuntimeConfig(overrides: Partial<RuntimeResourceOperationConfig> = {}): RuntimeResourceOperationConfig {
   return {
     appPortEnd: 39_000,
     appPortStart: 38_000,
     dockerNamespace: 'test',
+    resourceBackupDirectory: '/var/lib/compartment/resource-backups',
     runtimeConnectivityMode: 'network',
     runtimeDefaultUpstreamHost: 'host.docker.internal',
     runtimeRegistryCredentials: {
@@ -193,5 +456,6 @@ function createRuntimeConfig(): RuntimeDeployConfig {
       username: 'registry-reader',
     },
     runtimeProbeImageRef: 'ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0',
+    ...overrides,
   };
 }

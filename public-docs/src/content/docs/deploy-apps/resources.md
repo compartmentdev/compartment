@@ -283,6 +283,13 @@ also requires `operations.restore.command`, because it creates a pre-restore bac
 Restore-to-new-resource with `--as` uses the operation configuration saved with the selected backup. `resource backup
 list` and `resource backup show` read existing backup records and do not require operation commands. Compartment runs
 each command in a disposable container on the resource network and mounts the backup artifact workspace at `/backup`.
+Backup commands can write to `/backup`; restore commands receive `/backup` read-only, so use another writable path such
+as `/tmp` for restore scratch files.
+
+Set `COMPARTMENT_RESOURCE_BACKUP_DIR` to the same persistent absolute host directory for the API and node processes.
+Relative backup directories are rejected. When upgrading from a relative backup directory, resolve the old directory
+against the previous API working directory, move the artifact directories under the chosen absolute backup directory,
+and reconcile stored backup artifact locations before relying on restore.
 
 The operation image defaults to the resource image. Add `image` under the operation to use a different image. Operation
 environment starts with the final resource runtime env, then overlays operation-specific literal `env`; Compartment does

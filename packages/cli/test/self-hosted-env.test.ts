@@ -179,7 +179,7 @@ describe('self-hosted environment helpers', (): void => {
       runtimeSelection: buildPublishedSelfHostedRuntimeSelection('1.2.3'),
       sessionSecret: 'session-secret',
       nodeAgentSocketPath: '/var/run/compartment/node/agent.sock',
-      systemApiSocketPath: '/var/run/compartment/system-api.sock',
+      systemApiSocketPath: '/var/run/compartment/api/system-api.sock',
       systemToken: 'system-token',
       templateText: buildTemplateText(),
       variablesMasterKey: 'a'.repeat(64),
@@ -189,7 +189,7 @@ describe('self-hosted environment helpers', (): void => {
     expect(rendered.values.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL).toBe('');
   });
 
-  it('migrates internal HTTP browser URLs to HTTPS during update', (): void => {
+  it('preserves configured public protocol during update', (): void => {
     const rendered: RenderedSelfHostedEnvironment = buildUpdatedSelfHostedEnvironment({
       acmeEmail: 'admin@example.com',
       baseDomain: 'example.com',
@@ -212,7 +212,7 @@ describe('self-hosted environment helpers', (): void => {
       variablesMasterKey: 'a'.repeat(64),
     });
 
-    expect(rendered.values.COMPARTMENT_PUBLIC_PROTOCOL).toBe('https');
+    expect(rendered.values.COMPARTMENT_PUBLIC_PROTOCOL).toBe('http');
   });
 
   it('renders custom public ports into the self-hosted environment', (): void => {
@@ -349,44 +349,6 @@ describe('self-hosted environment helpers', (): void => {
     expect(renderedText).toContain('COMPARTMENT_MANAGED_DOMAIN_BROKER_URL=https://old-broker.example');
     expect(renderedText).not.toContain('COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN=broker-token');
     expect(renderedText).not.toContain('COMPARTMENT_MANAGED_DOMAIN_BROKER_URL=https://broker.compartment.run');
-  });
-
-  it('migrates legacy broker env names during update', (): void => {
-    const rendered: RenderedSelfHostedEnvironment = buildUpdatedSelfHostedEnvironment({
-      acmeEmail: 'admin@example.com',
-      baseDomain: 'example.com',
-      currentValues: readSelfHostedEnvironmentValues(
-        buildTemplateTextWithout('COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN')
-          .split('\n')
-          .filter((line: string): boolean => !line.startsWith('COMPARTMENT_MANAGED_DOMAIN_BROKER_URL='))
-          .join('\n')
-          .replace(
-            'COMPARTMENT_ACME_EMAIL=',
-            'COMPARTMENT_ACME_EMAIL=\nCOMPARTMENT_ACME_DNS_BROKER_URL=https://legacy-broker.example\nCOMPARTMENT_ACME_DNS_TOKEN=legacy-token',
-          ),
-      ),
-      dockerWorkDirectory: '/var/lib/compartment/self-hosted/docker-work',
-      edgeToken: 'edge-token',
-      ...createArtifactRegistryCredentialInput(),
-      postgresPassword: 'postgres-password',
-      publicHttpPort: 80,
-      publicHttpsPort: 443,
-      publicIngressIpv4: '',
-      publicIngressIpv6: '',
-      runtimeControlToken: 'runtime-token',
-      runtimeSelection: buildPublishedSelfHostedRuntimeSelection('1.2.3'),
-      sessionSecret: 'session-secret',
-      nodeAgentSocketPath: '/var/run/compartment/node/agent.sock',
-      systemApiSocketPath: '/var/run/compartment/system-api.sock',
-      systemToken: 'system-token',
-      templateText: buildTemplateText(),
-      variablesMasterKey: 'a'.repeat(64),
-    });
-
-    expect(rendered.text).toContain('COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN=legacy-token');
-    expect(rendered.text).toContain('COMPARTMENT_MANAGED_DOMAIN_BROKER_URL=https://legacy-broker.example');
-    expect(rendered.text).not.toContain('COMPARTMENT_ACME_DNS_TOKEN=');
-    expect(rendered.text).not.toContain('COMPARTMENT_ACME_DNS_BROKER_URL=');
   });
 
   it('fails fast when the env template omits a required override variable', (): void => {

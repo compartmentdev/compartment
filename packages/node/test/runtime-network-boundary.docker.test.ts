@@ -245,6 +245,7 @@ function createNodeConfig(dockerNamespace: string, apiPort: number, nodeSocketPa
     logLevel: 'silent',
     name: 'test-node',
     nodeSocketPath,
+    resourceBackupDirectory: '/var/lib/compartment/resource-backups',
     runtimeConnectivityMode: 'network',
     runtimeDefaultUpstreamHost: 'host.docker.internal',
     runtimeRegistryCredentials: {

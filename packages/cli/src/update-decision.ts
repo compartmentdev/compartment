@@ -1,6 +1,6 @@
 import { buildPublishedSelfHostedRuntimeSelection } from './self-hosted-env';
 import { readSelfHostedEnvironmentValues, readRequiredSelfHostedEnvironmentValue } from './self-hosted-env-file';
-import { readMigratedNodeAgentSocketPath, readMigratedSystemApiSocketPath } from './self-hosted-host-socket-paths';
+import { readCanonicalNodeAgentSocketPath, readCanonicalSystemApiSocketPath } from './self-hosted-host-socket-paths';
 import { readCliBuildInfo } from './cli-build-info';
 import { decideSelfHostedUpdateAction } from './update-version';
 import type { CliBuildInfo } from './cli-build-info.types';
@@ -14,8 +14,7 @@ import type {
 } from './update.types';
 import type { SelfHostedUpdateDecision } from './update-version.types';
 
-interface MigratedHostSocketEnvironment {
-  migrationRequired: boolean;
+interface CanonicalHostSocketEnvironment {
   values: Record<string, string>;
 }
 
@@ -27,7 +26,7 @@ export function createPreparedSelfHostedUpdateDecisionContext(
     preparedEnvironment.currentEnvironmentText,
   );
   const currentVersion: string = readRequiredSelfHostedEnvironmentValue(environmentValues, 'COMPARTMENT_NODE_VERSION');
-  const migratedEnvironment: MigratedHostSocketEnvironment = readMigratedHostSocketEnvironment(environmentValues);
+  const canonicalEnvironment: CanonicalHostSocketEnvironment = readCanonicalHostSocketEnvironment(environmentValues);
   const requestedRuntimeSelection: SelfHostedRuntimeSelection = buildPublishedSelfHostedRuntimeSelection(
     input.options.version,
   );
@@ -39,19 +38,10 @@ export function createPreparedSelfHostedUpdateDecisionContext(
 
   return createPreparedUpdateDecisionContext(
     currentVersion,
-    migratedEnvironment.values,
+    canonicalEnvironment.values,
     requestedRuntimeSelection,
     updateDecision,
-    migratedEnvironment.migrationRequired,
   );
-}
-
-export function shouldSkipPreparedSelfHostedUpdate(preparedContext: PreparedSelfHostedUpdateDecisionContext): boolean {
-  if (preparedContext.updateDecision.action !== 'skip') {
-    return false;
-  }
-
-  return preparedContext.updateDecision.reason !== 'already-current' || !preparedContext.environmentMigrationRequired;
 }
 
 export function assertRegistryUpdateMatchesPackagedNodeAgent(
@@ -84,14 +74,11 @@ export function resolveSelfHostedUpdateImageSource(
   return currentState.imageSource;
 }
 
-function readMigratedHostSocketEnvironment(environmentValues: Record<string, string>): MigratedHostSocketEnvironment {
-  const nodeAgentSocketPath: string = readMigratedNodeAgentSocketPath(environmentValues);
-  const systemApiSocketPath: string = readMigratedSystemApiSocketPath(environmentValues);
+function readCanonicalHostSocketEnvironment(environmentValues: Record<string, string>): CanonicalHostSocketEnvironment {
+  const nodeAgentSocketPath: string = readCanonicalNodeAgentSocketPath(environmentValues);
+  const systemApiSocketPath: string = readCanonicalSystemApiSocketPath(environmentValues);
 
   return {
-    migrationRequired:
-      environmentValues.COMPARTMENT_NODE_AGENT_SOCKET !== nodeAgentSocketPath ||
-      environmentValues.COMPARTMENT_SYSTEM_API_SOCKET !== systemApiSocketPath,
     values: {
       ...environmentValues,
       COMPARTMENT_NODE_AGENT_SOCKET: nodeAgentSocketPath,
@@ -105,11 +92,9 @@ function createPreparedUpdateDecisionContext(
   environmentValues: Record<string, string>,
   runtimeSelection: SelfHostedRuntimeSelection,
   updateDecision: SelfHostedUpdateDecision,
-  environmentMigrationRequired: boolean,
 ): PreparedSelfHostedUpdateDecisionContext {
   return {
     currentVersion,
-    environmentMigrationRequired,
     environmentValues,
     runtimeSelection,
     updateDecision,

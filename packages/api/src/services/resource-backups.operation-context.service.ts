@@ -12,6 +12,7 @@ import type {
   RunResourceRestoreInput,
 } from './resources.service.types';
 import type { StoredResourceOperationConfig } from './resources.service.storage';
+import { resolveResourceBackupArtifactPath } from './resource-backup-artifact.service';
 
 export type ResourceOperationKind = 'backup' | 'restore';
 
@@ -56,10 +57,10 @@ export function buildResourceOperationRequest(
   context: ResourceEnvironmentContext,
   resource: ProjectResourceRow,
   operationContext: ResourceBackupOperationContext,
-  artifactHostPath: string,
+  backupId: string,
 ): NodeResourceOperationRequest {
   return {
-    artifactHostPath,
+    backupId,
     definition: buildNodeResourceOperationDefinition(
       operationContext.intent,
       operationContext.operation,
@@ -75,12 +76,18 @@ export function buildResourceOperationRequest(
   };
 }
 
-export function requireBackupArtifactHostPath(backup: ResourceBackupRow): string {
-  if (backup.artifactLocation !== null) {
-    return backup.artifactLocation;
+export function requireBackupArtifactId(backup: ResourceBackupRow): string {
+  if (backup.artifactLocation === null) {
+    throw createInvalidDeployConfigError(`Backup ${backup.id} does not have an artifact location.`);
   }
 
-  throw createInvalidDeployConfigError(`Backup ${backup.id} does not have an artifact location.`);
+  if (backup.artifactLocation === resolveResourceBackupArtifactPath(backup.id)) {
+    return backup.id;
+  }
+
+  throw createInvalidDeployConfigError(
+    `Backup ${backup.id} artifact location does not match the configured resource backup directory.`,
+  );
 }
 
 function requireResourceOperation(

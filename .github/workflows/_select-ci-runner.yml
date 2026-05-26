@@ -1,0 +1,30 @@
+name: Select CI runner reusable
+
+on:
+  workflow_call:
+    outputs:
+      runner_labels_json:
+        description: JSON array for runs-on labels.
+        value: ${{ jobs.select-runner.outputs.runner_labels_json }}
+
+permissions: {}
+
+jobs:
+  select-runner:
+    name: select runner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      runner_labels_json: ${{ steps.runner.outputs.labels }}
+    steps:
+      - name: Select CI runner
+        id: runner
+        env:
+          IS_INTERNAL_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [ "$IS_INTERNAL_PR" != "true" ]; then
+            echo 'labels=["ubuntu-24.04"]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo 'labels=["compartment-ci-deploy-e2e","hetzner-x86-container-dind-libatomic-5slot"]' >> "$GITHUB_OUTPUT"

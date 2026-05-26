@@ -77,9 +77,11 @@ function readCurrentSelfHostedInstallStateValue(value: ParsedJsonValue): SelfHos
   ) {
     return undefined;
   }
-  const managedDomain: ManagedDomainInstallState | undefined = readManagedDomainInstallState(
-    value.managedDomain ?? null,
-  );
+  const managedDomain: ManagedDomainInstallState | undefined =
+    value.managedDomain === undefined ? undefined : readManagedDomainInstallState(value.managedDomain);
+  if (value.managedDomain !== undefined && managedDomain === undefined) {
+    return undefined;
+  }
 
   return {
     imageSource: value.imageSource,
@@ -94,11 +96,11 @@ function readManagedDomainInstallState(value: ParsedJsonValue): ManagedDomainIns
     return undefined;
   }
 
-  const managedDomainBrokerToken: string | undefined = readManagedDomainBrokerToken(value);
   if (
     typeof value.baseDomain !== 'string' ||
     value.baseDomain === '' ||
-    managedDomainBrokerToken === undefined ||
+    typeof value.managedDomainBrokerToken !== 'string' ||
+    value.managedDomainBrokerToken === '' ||
     typeof value.acmeEmail !== 'string' ||
     value.acmeEmail === '' ||
     typeof value.brokerUrl !== 'string' ||
@@ -111,19 +113,8 @@ function readManagedDomainInstallState(value: ParsedJsonValue): ManagedDomainIns
     acmeEmail: value.acmeEmail,
     baseDomain: value.baseDomain,
     brokerUrl: value.brokerUrl,
-    managedDomainBrokerToken,
+    managedDomainBrokerToken: value.managedDomainBrokerToken,
   };
-}
-
-function readManagedDomainBrokerToken(value: ParsedJsonObject): string | undefined {
-  if (typeof value.managedDomainBrokerToken === 'string' && value.managedDomainBrokerToken !== '') {
-    return value.managedDomainBrokerToken;
-  }
-  if (typeof value.acmeDnsToken === 'string' && value.acmeDnsToken !== '') {
-    return value.acmeDnsToken;
-  }
-
-  return undefined;
 }
 
 function isSelfHostedInstallStateCandidate(value: ParsedJsonValue): value is SelfHostedInstallStateCandidate {

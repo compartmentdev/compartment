@@ -10,6 +10,7 @@ import {
   nodeDrainDeploymentPathname,
   nodeInspectDeploymentPathname,
   nodeReleasePathname,
+  nodeResourceOperationRequestSchema,
   nodeStopDeploymentPathname,
   nodeTailLogsPathname,
   workerAppendDeploymentEventPathname,
@@ -20,6 +21,7 @@ import {
   workerRunNextScheduledResourceOperationPathname,
   workerUpdateDeploymentRuntimePathname,
   type NodeDeployRequest,
+  type NodeResourceOperationRequest,
 } from '../src';
 
 interface InvalidNodePreviousDeployment {
@@ -29,6 +31,10 @@ interface InvalidNodePreviousDeployment {
 
 interface InvalidNodeDeployRequest extends Omit<NodeDeployRequest, 'previousDeployment'> {
   previousDeployment: InvalidNodePreviousDeployment;
+}
+
+interface InvalidNodeResourceOperationRawPathRequest extends Omit<NodeResourceOperationRequest, 'backupId'> {
+  artifactHostPath: string;
 }
 
 describe('internal protocol path constants', (): void => {
@@ -82,6 +88,27 @@ describe('node deploy contract', (): void => {
   });
 });
 
+describe('node resource operation contract', (): void => {
+  it('accepts backup ids instead of host artifact paths', (): void => {
+    const request: NodeResourceOperationRequest = createNodeResourceOperationRequest();
+    const rawPathRequest: InvalidNodeResourceOperationRawPathRequest = {
+      artifactHostPath: '/etc',
+      definition: request.definition,
+      environmentId: request.environmentId,
+      environmentName: request.environmentName,
+      projectId: request.projectId,
+      projectName: request.projectName,
+      readiness: request.readiness,
+      resourceHostname: request.resourceHostname,
+      resourceName: request.resourceName,
+    };
+
+    expect(nodeResourceOperationRequestSchema.parse(request).backupId).toBe('rbak_123');
+    expect(nodeResourceOperationRequestSchema.safeParse(rawPathRequest).success).toBe(false);
+    expect(nodeResourceOperationRequestSchema.safeParse({ ...request, backupId: '../etc' }).success).toBe(false);
+  });
+});
+
 function createNodeDeployRequest(overrides: Partial<NodeDeployRequest> = {}): NodeDeployRequest {
   return {
     deploymentId: 'dep_123',
@@ -104,6 +131,27 @@ function createNodeDeployRequest(overrides: Partial<NodeDeployRequest> = {}): No
     runtimeEnv: {},
     serviceId: 'svc_123',
     serviceName: 'web',
+    ...overrides,
+  };
+}
+
+function createNodeResourceOperationRequest(
+  overrides: Partial<NodeResourceOperationRequest> = {},
+): NodeResourceOperationRequest {
+  return {
+    backupId: 'rbak_123',
+    definition: {
+      command: 'pg_dump > "$COMPARTMENT_BACKUP_DIR/dump.sql"',
+      env: [],
+      image: 'postgres:16',
+    },
+    environmentId: 'env_123',
+    environmentName: 'production',
+    projectId: 'prj_123',
+    projectName: 'smoke-web',
+    readiness: null,
+    resourceHostname: 'postgres.production.smoke-web.resource.internal',
+    resourceName: 'postgres',
     ...overrides,
   };
 }

@@ -16,6 +16,7 @@ describe('readNodeConfig', (): void => {
       COMPARTMENT_NODE_AGENT_SOCKET: '/tmp/compartment/node-test/node/agent.sock',
       COMPARTMENT_NODE_NAME: 'local-node',
       COMPARTMENT_NODE_VERSION: '0.1.0',
+      COMPARTMENT_RESOURCE_BACKUP_DIR: '/var/lib/compartment/resource-backups',
       COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: 'loopback',
       COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: '127.0.0.1',
       COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
@@ -25,6 +26,7 @@ describe('readNodeConfig', (): void => {
     expect(config.apiUrl).toBe('http://127.0.0.1:9443');
     expect(config.runtimeProbeImageRef).toBe('ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0');
     expect(config.nodeSocketPath).toBe('/tmp/compartment/node-test/node/agent.sock');
+    expect(config.resourceBackupDirectory).toBe('/var/lib/compartment/resource-backups');
     expect(config.runtimeRegistryCredentials).toEqual({
       password: 'registry-read-password',
       serverAddress: '127.0.0.1:5000',
@@ -60,6 +62,7 @@ describe('readNodeConfig', (): void => {
         COMPARTMENT_NODE_AGENT_SOCKET: '/tmp/compartment/node-test/node/agent.sock',
         COMPARTMENT_NODE_NAME: 'local-node',
         COMPARTMENT_NODE_VERSION: '0.1.0',
+        COMPARTMENT_RESOURCE_BACKUP_DIR: '/var/lib/compartment/resource-backups',
         COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: 'loopback',
         COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: '127.0.0.1',
         COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
@@ -74,6 +77,15 @@ describe('readNodeConfig', (): void => {
         COMPARTMENT_NODE_AGENT_SOCKET: 'compartment/node/agent.sock',
       });
     }).toThrow('COMPARTMENT_NODE_AGENT_SOCKET must be an absolute socket path.');
+  });
+
+  it('rejects relative resource backup directories', (): void => {
+    expect((): NodeConfig => {
+      return readNodeConfig({
+        ...createNodeConfigEnv(),
+        COMPARTMENT_RESOURCE_BACKUP_DIR: '.compartment/resource-backups',
+      });
+    }).toThrow('COMPARTMENT_RESOURCE_BACKUP_DIR must be an absolute path.');
   });
 });
 
@@ -91,6 +103,7 @@ function createNodeConfigEnv(): NodeJS.ProcessEnv {
     COMPARTMENT_NODE_AGENT_SOCKET: '/tmp/compartment/node-test/node/agent.sock',
     COMPARTMENT_NODE_NAME: 'local-node',
     COMPARTMENT_NODE_VERSION: '0.1.0',
+    COMPARTMENT_RESOURCE_BACKUP_DIR: '/var/lib/compartment/resource-backups',
     COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: 'loopback',
     COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: '127.0.0.1',
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',

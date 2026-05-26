@@ -12,6 +12,10 @@ export interface RuntimeDeployConfig {
   runtimeProbeImageRef: string;
 }
 
+export interface RuntimeResourceOperationConfig extends RuntimeDeployConfig {
+  resourceBackupDirectory: string;
+}
+
 export interface ResolvedRuntimeDeploymentContext {
   containerName: string;
   containerPort: number;

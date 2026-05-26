@@ -167,6 +167,66 @@ describe('runtime image signature verification', (): void => {
       }),
     );
   });
+
+  it('matches Docker Hub local digests when Docker omits the docker.io host', async (): Promise<void> => {
+    mocks.runQuietDockerCommand.mockResolvedValueOnce(
+      createSuccessfulCommandResult(JSON.stringify([`compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`])),
+    );
+    mocks.runCommand.mockResolvedValueOnce(createSuccessfulCommandResult('verified'));
+
+    await expect(
+      verifyLocalSelfHostedRuntimeImageSignatures({
+        context: createDockerExecutionContext(),
+        imageRefs: createDockerHubImageRefs('0.2.0'),
+        services: ['api'],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mocks.runCommand).toHaveBeenCalledWith(
+      [
+        '/embedded/cosign',
+        'verify',
+        selfHostedRuntimeImageSignaturePolicy.cosignBundleFormatFlag,
+        '--certificate-oidc-issuer',
+        selfHostedRuntimeImageSignaturePolicy.certificateOidcIssuer,
+        '--certificate-identity-regexp',
+        selfHostedRuntimeImageSignaturePolicy.certificateIdentityRegexp,
+        `docker.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`,
+      ],
+      expect.any(Object),
+    );
+  });
+
+  it('matches Docker Hub local digests when Docker uses the index.docker.io host', async (): Promise<void> => {
+    mocks.runQuietDockerCommand.mockResolvedValueOnce(
+      createSuccessfulCommandResult(
+        JSON.stringify([`index.docker.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`]),
+      ),
+    );
+    mocks.runCommand.mockResolvedValueOnce(createSuccessfulCommandResult('verified'));
+
+    await expect(
+      verifyLocalSelfHostedRuntimeImageSignatures({
+        context: createDockerExecutionContext(),
+        imageRefs: createDockerHubImageRefs('0.2.0'),
+        services: ['api'],
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mocks.runCommand).toHaveBeenCalledWith(
+      [
+        '/embedded/cosign',
+        'verify',
+        selfHostedRuntimeImageSignaturePolicy.cosignBundleFormatFlag,
+        '--certificate-oidc-issuer',
+        selfHostedRuntimeImageSignaturePolicy.certificateOidcIssuer,
+        '--certificate-identity-regexp',
+        selfHostedRuntimeImageSignaturePolicy.certificateIdentityRegexp,
+        `docker.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`,
+      ],
+      expect.any(Object),
+    );
+  });
 });
 
 function createSuccessfulCommandResult(stdout: string = ''): CommandResult {
@@ -184,6 +244,16 @@ function createImageRefs(tag: string): SelfHostedImageRefs {
     edgeImage: `ghcr.io/compartmentdev/compartment-edge:${tag}`,
     runtimeProbeImage: `ghcr.io/compartmentdev/compartment-runtime-probe:${tag}`,
     workerImage: `ghcr.io/compartmentdev/compartment-worker:${tag}`,
+  };
+}
+
+function createDockerHubImageRefs(tag: string): SelfHostedImageRefs {
+  return {
+    apiImage: `docker.io/compartmentdev/compartment-api:${tag}`,
+    caddyImage: `docker.io/compartmentdev/compartment-caddy:${tag}`,
+    edgeImage: `docker.io/compartmentdev/compartment-edge:${tag}`,
+    runtimeProbeImage: `docker.io/compartmentdev/compartment-runtime-probe:${tag}`,
+    workerImage: `docker.io/compartmentdev/compartment-worker:${tag}`,
   };
 }
 

@@ -503,6 +503,7 @@ function createNodeConfig(): NodeConfig {
     logLevel: 'silent',
     name: 'local-node',
     nodeSocketPath: '/tmp/compartment/node-test/node/internal-routes.sock',
+    resourceBackupDirectory: '/var/lib/compartment/resource-backups',
     runtimeConnectivityMode: 'loopback',
     runtimeDefaultUpstreamHost: '127.0.0.1',
     runtimeRegistryCredentials: {

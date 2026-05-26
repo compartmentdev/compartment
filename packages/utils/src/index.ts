@@ -11,7 +11,7 @@ export { buildGitHubApiBaseUrl } from './github';
 export { buildInternalHttpUrl } from './internal-http-url';
 export { normalizeNanosecondZuluTimestamp } from './log-timestamp';
 export { normalizeDnsHostname } from './dns-hostname';
-export { appendOptionalSearchParam, readUrlOrigin } from './url';
+export { appendOptionalSearchParam, hasDuplicateSearchParam, readSingleSearchParam, readUrlOrigin } from './url';
 export { buildCompartmentArtifactRegistryAddress } from './artifact-registry-address';
 export { isUnsafePublicIpAddress } from './public-ip';
 export { createOutboundHttpFetch, fetchOutboundHttp } from './outbound-http/outbound-http-client';
@@ -32,7 +32,7 @@ export {
   type ValidatedFileSystemEntry,
   type ValidatedFileSystemWriteTarget,
 } from './file-system-boundary';
-export { isMissingFileSystemEntryError, isPathWithinDirectory } from './file-system-path';
+export { isMissingFileSystemEntryError, isPathWithinDirectory, readRequiredAbsolutePath } from './file-system-path';
 export {
   assertValidUnixSocketPath,
   createCompartmentUnixSocketPathPolicy,

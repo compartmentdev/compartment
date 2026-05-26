@@ -27,7 +27,7 @@ import {
   buildRuntimeResourceNetworkName,
 } from './runtime-names.service';
 import { canConnectToRuntimeHost } from './runtime-resource-connectivity.service';
-import { resolveResourceReadinessHost, resourceReadinessPollIntervalMs } from './runtime-resource-readiness.service';
+import { continueResourceReadinessPolling, resolveResourceReadinessHost } from './runtime-resource-readiness.service';
 import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
 import { buildUserResourceWritableSecurityProfile } from './runtime-security-profile.service';
 
@@ -209,16 +209,32 @@ async function waitForResourceReadiness(
 
   const readiness: NodeResourceReadiness = input.definition.readiness;
   const deadline: number = Date.now() + readiness.timeoutMs;
-  const resourceNetworkName: string = buildRuntimeResourceNetworkName(input, config.dockerNamespace);
-  while (Date.now() <= deadline) {
-    if (await canReachResourceReadinessPort(containerId, resourceNetworkName, readiness.port, deadline)) {
+  for (;;) {
+    if (await canReachRuntimeResourceReadiness(input, config, containerId, readiness.port, deadline)) {
       return;
     }
-    await waitForResourcePoll();
+    if (!(await continueResourceReadinessPolling(deadline))) {
+      break;
+    }
   }
 
   await removeDockerContainer({ containerRef: buildResourceContainerName(input, config.dockerNamespace) });
   throw new Error(`Resource ${input.resourceName} did not become ready before ${readiness.timeoutMs}ms.`);
+}
+
+async function canReachRuntimeResourceReadiness(
+  input: NodeResourceRequest,
+  config: RuntimeDeployConfig,
+  containerId: string,
+  port: number,
+  deadline: number,
+): Promise<boolean> {
+  return await canReachResourceReadinessPort(
+    containerId,
+    buildRuntimeResourceNetworkName(input, config.dockerNamespace),
+    port,
+    deadline,
+  );
 }
 
 async function canReachResourceReadinessPort(
@@ -244,10 +260,4 @@ async function ensureResourceContainerIsRunning(containerId: string): Promise<vo
   if (container?.isRunning !== true) {
     throw new Error(`Expected resource container ${containerId} to remain running after startup.`);
   }
-}
-
-async function waitForResourcePoll(): Promise<void> {
-  await new Promise<void>((resolve: () => void): void => {
-    setTimeout(resolve, resourceReadinessPollIntervalMs);
-  });
 }

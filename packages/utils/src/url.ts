@@ -10,6 +10,16 @@ export function appendOptionalSearchParam(
   }
 }
 
+export function hasDuplicateSearchParam(searchParams: URLSearchParams, name: string): boolean {
+  return searchParams.getAll(name).length > 1;
+}
+
+export function readSingleSearchParam(searchParams: URLSearchParams, name: string): string | null {
+  const values: string[] = searchParams.getAll(name);
+
+  return values.length === 1 ? (values[0] ?? null) : null;
+}
+
 export function readUrlOrigin(value: string | undefined): string | null {
   if (!hasText(value)) {
     return null;

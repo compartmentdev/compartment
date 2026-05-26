@@ -69,7 +69,7 @@ export async function deleteResourceBackupArtifactDirectory(artifactLocation: st
   await rm(artifactLocation, { force: true, recursive: true });
 }
 
-function resolveResourceBackupArtifactPath(backupId: string): string {
+export function resolveResourceBackupArtifactPath(backupId: string): string {
   const backupDirectory: string = getApiConfig().resourceBackupDirectory;
 
   return join(backupDirectory, sanitizeStorageArtifactId(backupId));

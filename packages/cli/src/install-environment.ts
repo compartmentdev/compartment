@@ -7,13 +7,7 @@ import {
   defaultSystemApiSocketPath,
 } from './self-hosted-env';
 import { writeSelfHostedPrivateFile } from './self-hosted-file-permissions';
-import {
-  buildStagedAssetPathCandidates,
-  buildStagedAssetPaths,
-  readBundledAssets,
-  readBundledEnvTemplate,
-  stageBundledAssets,
-} from './runtime-assets';
+import { buildStagedAssetPaths, readBundledAssets, readBundledEnvTemplate, stageBundledAssets } from './runtime-assets';
 import { readRequiredRenderedEnvironmentValue } from './rendered-environment';
 import type {
   InstallContext,
@@ -128,9 +122,7 @@ export function assertInstallDirectoryAvailable(stagedAssetPaths: StagedAssetPat
 }
 
 function readExistingSelfHostedEnvironmentPath(stagedAssetPaths: StagedAssetPaths): string | undefined {
-  return buildStagedAssetPathCandidates(stagedAssetPaths.configDir, stagedAssetPaths.dataDir).find(
-    (candidatePaths: StagedAssetPaths): boolean => existsSync(candidatePaths.envPath),
-  )?.envPath;
+  return existsSync(stagedAssetPaths.envPath) ? stagedAssetPaths.envPath : undefined;
 }
 
 function createPreparedInstallEnvironmentResult(

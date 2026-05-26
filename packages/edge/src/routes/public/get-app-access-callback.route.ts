@@ -4,7 +4,7 @@ import {
   type AppAccessExchangeRequest,
   type AppAccessExchangeResponse,
 } from '@compartment/contracts';
-import { isSafeRelativePath } from '@compartment/utils';
+import { isSafeRelativePath, readSingleSearchParam } from '@compartment/utils';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { SafeParseReturnType } from 'zod';
 import type { EdgeApp } from '../../app.types';
@@ -90,8 +90,8 @@ async function replyInvalidAppAccessCallback(reply: FastifyReply): Promise<Fasti
 
 function readCallbackRequestInput(request: FastifyRequest, host: string): AppAccessExchangeRequest | null {
   const callbackUrl: URL = new URL(request.url, `http://${host}`);
-  const callbackCode: string | null = callbackUrl.searchParams.get('code');
-  const callbackState: string | null = callbackUrl.searchParams.get('state');
+  const callbackCode: string | null = readSingleSearchParam(callbackUrl.searchParams, 'code');
+  const callbackState: string | null = readSingleSearchParam(callbackUrl.searchParams, 'state');
   const parseResult: SafeParseReturnType<AppAccessExchangeRequest, AppAccessExchangeRequest> =
     appAccessExchangeRequestSchema.safeParse({
       code: callbackCode,

@@ -4,6 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { readApiConfig, type ApiConfig } from '../src/config';
 
+const requiredExplicitSelfHostedEnvSlots: string[] = [
+  'COMPARTMENT_ROLLBACK_RETENTION_LIMIT',
+  'COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN',
+  'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL',
+  'COMPARTMENT_TRUSTED_OUTBOUND_HOSTS',
+];
+
 describe('readApiConfig', (): void => {
   it('reads the required API runtime config from env', (): void => {
     const config: ApiConfig = readApiConfig(createApiConfigEnv());
@@ -33,7 +40,7 @@ describe('readApiConfig', (): void => {
     expect(config.publicHttpsPort).toBe(9444);
     expect(config.customTlsDirectory).toBe('/etc/compartment/tls');
     expect(config.runtimeDefaultUpstreamHost).toBe('127.0.0.1');
-    expect(config.resourceBackupDirectory).toBe(resolve('.compartment/resource-backups'));
+    expect(config.resourceBackupDirectory).toBe('/tmp/compartment/dev/resource-backups');
     expect(config.sessionTtlMs).toBe(7 * 24 * 60 * 60 * 1000);
     expect(config.sourceArchiveDirectory).toBe('.compartment/source-archives');
     expect(config.sourceArchiveMaxBytes).toBe(104_857_600);
@@ -63,6 +70,12 @@ describe('readApiConfig', (): void => {
       });
     }).toThrow();
   });
+
+  for (const variableName of requiredExplicitSelfHostedEnvSlots) {
+    it(`requires an explicit value for ${variableName}`, (): void => {
+      expect((): ApiConfig => readApiConfig(createApiConfigEnv({ [variableName]: undefined }))).toThrow();
+    });
+  }
 
   it('rejects an invalid session ttl duration', (): void => {
     expect((): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_SESSION_TTL: 'banana' }))).toThrow(
@@ -254,12 +267,10 @@ describe('readApiConfig', (): void => {
     expect(config.resourceBackupDirectory).toBe('/var/lib/compartment/resource-backups');
   });
 
-  it('resolves a relative source-dev resource backup directory from the process cwd', (): void => {
-    const config: ApiConfig = readApiConfig(
-      createApiConfigEnv({ COMPARTMENT_RESOURCE_BACKUP_DIR: '.compartment/resource-backups' }),
-    );
-
-    expect(config.resourceBackupDirectory).toBe(resolve('.compartment/resource-backups'));
+  it('rejects a relative resource backup directory', (): void => {
+    expect((): ApiConfig => {
+      return readApiConfig(createApiConfigEnv({ COMPARTMENT_RESOURCE_BACKUP_DIR: '.compartment/resource-backups' }));
+    }).toThrow('COMPARTMENT_RESOURCE_BACKUP_DIR must be an absolute path.');
   });
 
   it('rejects a system API socket path directly under a shared temp root', (): void => {
@@ -306,6 +317,8 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_EDGE_PORT: '9081',
     COMPARTMENT_EDGE_TOKEN: 'edge-secret',
     COMPARTMENT_LOG_LEVEL: 'info',
+    COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: '',
+    COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: '',
     COMPARTMENT_NODE_AGENT_SOCKET: '/tmp/compartment/node/agent.sock',
     COMPARTMENT_PUBLIC_PROTOCOL: 'http',
     COMPARTMENT_PUBLIC_HTTP_PORT: '9080',
@@ -315,7 +328,8 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_SYSTEM_API_SOCKET: '/tmp/compartment/api/system-api.sock',
     COMPARTMENT_SYSTEM_TOKEN: 'system-secret',
     COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: '',
-    COMPARTMENT_RESOURCE_BACKUP_DIR: '.compartment/resource-backups',
+    COMPARTMENT_RESOURCE_BACKUP_DIR: '/tmp/compartment/dev/resource-backups',
+    COMPARTMENT_ROLLBACK_RETENTION_LIMIT: '',
     COMPARTMENT_SOURCE_ARCHIVE_DIR: '.compartment/source-archives',
     COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES: '104857600',
     COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: '127.0.0.1',
