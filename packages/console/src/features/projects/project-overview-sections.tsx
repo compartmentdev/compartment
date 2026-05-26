@@ -52,9 +52,6 @@ export function ProjectOverviewHeader({ data, onNavigate }: Readonly<ProjectOver
       <div className="pb-6">
         <BrowserBreadcrumbs items={readProjectOverviewBreadcrumbItems(data)} onNavigate={onNavigate} />
         <BrowserConsoleDetailTitle icon={Boxes} iconTone="purple" title="Overview" />
-        <p className="mt-2 max-w-3xl text-[13px] leading-5 text-muted-foreground">
-          Project services, routes, and deployment status by environment.
-        </p>
       </div>
       <ProjectOverviewEnvironmentTabs data={data} onNavigate={onNavigate} />
     </header>

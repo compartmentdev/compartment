@@ -17,11 +17,12 @@ export interface EmptyStateCardLinkAction {
 }
 
 export type EmptyStateCardAction = EmptyStateCardButtonAction | EmptyStateCardLinkAction;
+export type EmptyStateCardIcon = LucideIcon | string;
 
 export interface EmptyStateCardProps {
   readonly action?: EmptyStateCardAction | undefined;
   readonly className?: string | undefined;
-  readonly icon: LucideIcon;
+  readonly icon: EmptyStateCardIcon;
   readonly iconClassName?: string | undefined;
   readonly message: string;
 }

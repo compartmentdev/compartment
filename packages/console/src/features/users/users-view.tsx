@@ -100,6 +100,10 @@ function renderUsersContent(
     return <UsersOrganizationContextPanel context={data.organizationContext} data={data} onNavigate={onNavigate} />;
   }
 
+  if (shouldRenderUsersEmptyState(data)) {
+    return <UsersEmptyState data={data} onNavigate={onNavigate} />;
+  }
+
   return (
     <>
       <UsersToolbar data={data} onNavigate={onNavigate} />

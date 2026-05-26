@@ -18,7 +18,6 @@ import { BrowserConsoleOrganizationContextPanel } from '../console/console-organ
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
 import { RoleDetailDrawer } from './roles-page.detail-drawer';
 import { RoleEditorDrawer } from './roles-page.drawer';
-import { RolesEmptyState, shouldRenderRolesEmptyState } from './roles-empty-state';
 import {
   buildRolesOrganizationHref,
   buildRolesPageHref,
@@ -38,7 +37,9 @@ interface RolesPageBodyProps {
   state: RolesPageState;
 }
 interface RolesPageHeaderProps {
-  showCreateAction: boolean;
+  state: RolesPageState;
+}
+interface CreateRoleButtonProps {
   state: RolesPageState;
 }
 interface RolesPageToolbarProps {
@@ -47,7 +48,6 @@ interface RolesPageToolbarProps {
 }
 interface RolesTableSectionProps {
   roles: AccessRoleListRow[];
-  showEmptyState: boolean;
   state: RolesPageState;
 }
 export function RolesPageContent({ state }: Readonly<RolesPageContentProps>): JSX.Element {
@@ -86,7 +86,7 @@ function RolesPageDrawer({ state }: Readonly<RolesPageContentProps>): JSX.Elemen
 function RolesPageBody({ searchQuery, setSearchQuery, state }: Readonly<RolesPageBodyProps>): JSX.Element {
   return (
     <div className={browserConsolePageClassName}>
-      <RolesPageHeader showCreateAction={!shouldRenderRolesEmptyState(state, searchQuery)} state={state} />
+      <RolesPageHeader state={state} />
       <div className={browserConsolePageBodyClassName}>
         <DismissibleAlert message={state.data.noticeMessage} variant="notice" />
         <DismissibleAlert message={state.data.errorMessage} variant="error" />
@@ -121,24 +121,23 @@ function renderSelectedRolesPageContent(
   state: RolesPageState,
 ): JSX.Element {
   const visibleRoles: AccessRoleListRow[] = readVisibleRoles(state.data.roles, searchQuery);
-  const showEmptyState: boolean = shouldRenderRolesEmptyState(state, searchQuery);
 
   return (
     <>
       <RolesPageToolbar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
-      <RolesTableSection roles={visibleRoles} showEmptyState={showEmptyState} state={state} />
+      <RolesTableSection roles={visibleRoles} state={state} />
     </>
   );
 }
 
-function RolesPageHeader({ showCreateAction, state }: Readonly<RolesPageHeaderProps>): JSX.Element {
+function RolesPageHeader({ state }: Readonly<RolesPageHeaderProps>): JSX.Element {
   const backLink: RolesBackLink | null = readRolesBackLink(state.data.backHref, state.data.selectedOrganizationSlug);
 
   return (
     <header className={browserConsolePageHeaderClassName}>
       <div className="flex flex-col gap-5">
         {renderRolesBackBreadcrumb(backLink, state)}
-        <AccessPageHeader action={<CreateRoleButton showCreateAction={showCreateAction} state={state} />} title="Roles" />
+        <AccessPageHeader action={<CreateRoleButton state={state} />} title="Roles" />
       </div>
     </header>
   );
@@ -186,8 +185,8 @@ function RolesPageToolbar({ searchQuery, setSearchQuery }: Readonly<RolesPageToo
   );
 }
 
-function CreateRoleButton({ showCreateAction, state }: Readonly<RolesPageHeaderProps>): JSX.Element | null {
-  if (!showCreateAction || !canManageBrowserRoles(state.data.currentOrganizationPermissions)) {
+function CreateRoleButton({ state }: Readonly<CreateRoleButtonProps>): JSX.Element | null {
+  if (!canManageBrowserRoles(state.data.currentOrganizationPermissions)) {
     return null;
   }
 
@@ -205,11 +204,7 @@ function CreateRoleButton({ showCreateAction, state }: Readonly<RolesPageHeaderP
   );
 }
 
-function RolesTableSection({ roles, showEmptyState, state }: Readonly<RolesTableSectionProps>): JSX.Element {
-  if (showEmptyState) {
-    return <RolesEmptyState state={state} />;
-  }
-
+function RolesTableSection({ roles, state }: Readonly<RolesTableSectionProps>): JSX.Element {
   return (
     <ServerTableFrame>
       <RolesTable roles={roles} state={state} />

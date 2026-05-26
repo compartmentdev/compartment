@@ -14,6 +14,7 @@ import { ToolbarPrimaryActionLink } from '../../components/toolbar-primary-actio
 import { Plus } from '../../components/ui/icons';
 import { readBrowserTablePageSize } from '../../lib/server-table-query';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
+import type { BrowserConsoleOrganizationIssue } from '../../services/browser-organization-context.service.types';
 import type { BrowserProjectsPageResult } from '../../services/browser-projects.service.types';
 import { AccessPageHeader } from '../access/access-ui';
 import { BrowserConsoleOrganizationContextPanel } from '../console/console-organization-context-panel';
@@ -39,6 +40,9 @@ interface ProjectsToolbarProps {
 interface ProjectsToolbarActionsProps {
   createProjectHref: string | null;
   onNavigate: BrowserSoftNavigateHandler;
+}
+interface ProjectsPageHeaderProps {
+  readonly action: JSX.Element;
 }
 
 interface ProjectsTableSectionProps {
@@ -87,16 +91,19 @@ function renderProjectsContent(
   onProjectAction: ProjectActionHandler,
 ): JSX.Element {
   if (data.organizationContext.kind !== 'selected') {
-    return (
-      <BrowserConsoleOrganizationContextPanel
-        context={data.organizationContext}
-        onNavigate={onNavigate}
-        organizations={data.organizations}
-        readOrganizationHref={(organizationSlug: string): string =>
-          readOrganizationSelectionHref(data, organizationSlug)
-        }
-      />
-    );
+    return renderProjectsOrganizationContextPanel(data.organizationContext, data, onNavigate);
+  }
+
+  return renderSelectedProjectsContent(data, onNavigate, onProjectAction);
+}
+
+function renderSelectedProjectsContent(
+  data: BrowserProjectsPageResult,
+  onNavigate: BrowserSoftNavigateHandler,
+  onProjectAction: ProjectActionHandler,
+): JSX.Element {
+  if (shouldRenderProjectsEmptyState(data)) {
+    return <ProjectsEmptyState data={data} onNavigate={onNavigate} />;
   }
 
   return (
@@ -104,6 +111,21 @@ function renderProjectsContent(
       <ProjectsToolbar data={data} onNavigate={onNavigate} />
       <ProjectsTableSection data={data} onNavigate={onNavigate} onProjectAction={onProjectAction} />
     </>
+  );
+}
+
+function renderProjectsOrganizationContextPanel(
+  context: BrowserConsoleOrganizationIssue,
+  data: BrowserProjectsPageResult,
+  onNavigate: BrowserSoftNavigateHandler,
+): JSX.Element {
+  return (
+    <BrowserConsoleOrganizationContextPanel
+      context={context}
+      onNavigate={onNavigate}
+      organizations={data.organizations}
+      readOrganizationHref={(organizationSlug: string): string => readOrganizationSelectionHref(data, organizationSlug)}
+    />
   );
 }
 
@@ -121,7 +143,7 @@ function readOrganizationControl(
   );
 }
 
-function ProjectsPageHeader({ action }: Readonly<{ action: JSX.Element }>): JSX.Element {
+function ProjectsPageHeader({ action }: Readonly<ProjectsPageHeaderProps>): JSX.Element {
   return <AccessPageHeader action={action} title="Projects" />;
 }
 
@@ -144,7 +166,7 @@ function ProjectsToolbar({ data, onNavigate }: Readonly<ProjectsToolbarProps>): 
 
 function ProjectsToolbarActions({ createProjectHref, onNavigate }: Readonly<ProjectsToolbarActionsProps>): JSX.Element {
   return (
-    <div className="flex flex-col gap-3 md:items-center">
+    <div className="flex min-h-9 flex-col gap-3 md:items-center">
       {createProjectHref === null ? null : (
         <ToolbarPrimaryActionLink href={createProjectHref} icon={Plus} onNavigate={onNavigate} variant="accent">
           Add project

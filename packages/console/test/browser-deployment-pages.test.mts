@@ -695,7 +695,9 @@ describe('browser deployment pages', (): void => {
     expect(cleanedHistoryViewHtml).toContain('lucide-box');
     expect(cleanedHistoryViewHtml).toContain('aria-label="Environment"');
     expect(cleanedHistoryViewHtml).toContain('>Production</span>');
-    expect(cleanedHistoryViewHtml).toContain('Deployment runs, release history, and rollback status for production.');
+    expect(cleanedHistoryViewHtml).not.toContain(
+      'Deployment runs, release history, and rollback status for production.',
+    );
     expect(cleanedHistoryViewHtml).toContain('aria-label="Open actions for release 42"');
     expect(cleanedHistoryViewHtml).toContain('lucide-ellipsis');
     expect(cleanedHistoryViewHtml).toContain('Rollback unavailable');
