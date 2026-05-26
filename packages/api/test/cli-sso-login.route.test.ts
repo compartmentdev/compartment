@@ -7,7 +7,7 @@ import {
   browserLoginCliPathname,
   getBrowserAssetPathname,
 } from '../src/browser-public-paths';
-import { createInvalidCliLoginError, createInvalidSsoLoginError } from '../src/errors/api-business-error';
+import { createInvalidCliLoginError } from '../src/errors/api-business-error';
 import {
   authApiCliExchangePathname,
   authApiCliStartPathname,
@@ -387,7 +387,6 @@ describe('CLI login routes', (): void => {
   });
 
   it('expires CLI login attempts when SSO callbacks fail after a valid CLI-bound state lookup', async (): Promise<void> => {
-    mocks.completeBrowserSsoLogin.mockRejectedValueOnce(createInvalidSsoLoginError());
     mocks.findCliLoginAttemptIdForBrowserSsoCallback.mockResolvedValueOnce('cla_123');
 
     await withApiRouteApp(async (app: ApiApp): Promise<void> => {
@@ -400,7 +399,25 @@ describe('CLI login routes', (): void => {
       expectNoStoreCacheControlHeader(response);
       expect(response.headers.location).toBe(`${browserLoginCliCompletedPathname}?status=failed`);
       expect(response.headers['set-cookie']).toContain(`${compartmentCliLoginAttemptCookieName}=`);
+      expect(mocks.completeBrowserSsoLogin).not.toHaveBeenCalled();
       expect(mocks.failCliLoginAttempt).toHaveBeenCalledWith('cla_123');
+    });
+  });
+
+  it('rejects ambiguous CLI-bound SSO callbacks before lookup, completion, or session cookie issuance', async (): Promise<void> => {
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const response: LightMyRequestResponse = await injectApiRoute(app, {
+        method: 'GET',
+        url: '/login/sso/callback?code=oidc-code&state=oidc-state&tenant=acme&tenant=other',
+      });
+
+      expect(response.statusCode).toBe(302);
+      expectNoStoreCacheControlHeader(response);
+      expect(response.headers.location).toBe('/login?error=sso_failed');
+      expect(String(response.headers['set-cookie'])).not.toContain(`${compartmentSessionCookieName}=`);
+      expect(mocks.completeBrowserSsoLogin).not.toHaveBeenCalled();
+      expect(mocks.findCliLoginAttemptIdForBrowserSsoCallback).not.toHaveBeenCalled();
+      expect(mocks.failCliLoginAttempt).not.toHaveBeenCalled();
     });
   });
 });

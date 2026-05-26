@@ -1,4 +1,4 @@
-import { hasDuplicateSearchParam, hasText, readSingleSearchParam } from '@compartment/utils';
+import { hasText } from '@compartment/utils';
 import { browserLoginSsoCallbackPathname } from '../../browser-public-paths';
 import { createInvalidSsoLoginError } from '../../errors/api-business-error';
 import { createId, hashToken } from '../../lib/tokens';
@@ -15,6 +15,10 @@ import { buildRuntimePublicSettings } from '../public-hosts.service';
 import { buildOidcAuthorizationPlan, readOidcCallbackClaims } from './sso-oidc-client.adapter';
 import type { OidcAuthorizationPlan, OidcCallbackInput, OidcIdentityClaims } from './sso-oidc-client.adapter.types';
 import { completeCliBrowserSsoLogin, issueBrowserSsoLoginResult } from './sso-oidc-login-completion.service';
+import {
+  readRequiredSsoOidcSuccessCallbackState,
+  readSsoOidcCallbackStateForFailureHandling,
+} from './sso-oidc-callback.service';
 import { resolveSsoOidcLoginSession } from './sso-oidc-login-resolution.service';
 import type {
   BrowserSsoFlowTarget,
@@ -25,8 +29,6 @@ import { requireSsoOidcProviderById, resolveBrowserSsoStartInput } from './sso-o
 
 const ssoOidcFlowTtlMs: number = 10 * 60 * 1000;
 const ssoOidcCallbackPath: string = browserLoginSsoCallbackPathname;
-const ssoOidcCallbackCodeSearchParamName: string = 'code';
-const ssoOidcCallbackStateSearchParamName: string = 'state';
 
 export async function startBrowserSsoLogin(input: StartBrowserSsoLoginInput): Promise<string> {
   const { flowTarget, provider } = await resolveBrowserSsoStartInput(input);
@@ -45,8 +47,7 @@ export async function startBrowserSsoLogin(input: StartBrowserSsoLoginInput): Pr
 }
 
 export async function completeBrowserSsoLogin(currentUrl: URL): Promise<CompleteSsoOidcLoginResult> {
-  assertSingleSsoOidcCallbackSearchParams(currentUrl);
-  const flow: SsoOidcFlowRow = await consumeCallbackFlow(readSsoOidcState(currentUrl));
+  const flow: SsoOidcFlowRow = await consumeCallbackFlow(readRequiredSsoOidcSuccessCallbackState(currentUrl));
   const provider: SsoOidcProviderRow = await requireSsoOidcProviderById(flow.providerId);
   const claims: OidcIdentityClaims = await readOidcCallbackClaims(buildOidcCallbackInput(currentUrl, flow, provider));
   const { principal, session } = await resolveSsoOidcLoginSession({ claims, provider });
@@ -59,22 +60,13 @@ export async function completeBrowserSsoLogin(currentUrl: URL): Promise<Complete
 }
 
 export async function findCliLoginAttemptIdForBrowserSsoCallback(currentUrl: URL): Promise<string | undefined> {
-  const state: string | null = readSingleSearchParam(currentUrl.searchParams, ssoOidcCallbackStateSearchParamName);
+  const state: string | null = readSsoOidcCallbackStateForFailureHandling(currentUrl);
   if (!hasText(state)) {
     return undefined;
   }
 
   const flow: SsoOidcFlowRow | undefined = await findSsoOidcFlowByStateHash(hashSsoOidcState(state));
   return flow?.cliLoginAttemptId ?? undefined;
-}
-
-function assertSingleSsoOidcCallbackSearchParams(currentUrl: URL): void {
-  if (
-    hasDuplicateSearchParam(currentUrl.searchParams, ssoOidcCallbackCodeSearchParamName) ||
-    hasDuplicateSearchParam(currentUrl.searchParams, ssoOidcCallbackStateSearchParamName)
-  ) {
-    throw createInvalidSsoLoginError();
-  }
 }
 
 function buildOidcCallbackInput(
@@ -120,15 +112,6 @@ function decryptSsoOidcProviderSecret(provider: SsoOidcProviderRow): string {
     provider.clientSecretEncryptionKeyId,
     getApiConfig().variablesMasterKey,
   );
-}
-
-function readSsoOidcState(currentUrl: URL): string {
-  const state: string | null = readSingleSearchParam(currentUrl.searchParams, ssoOidcCallbackStateSearchParamName);
-  if (!hasText(state)) {
-    throw createInvalidSsoLoginError();
-  }
-
-  return state;
 }
 
 async function persistSsoOidcFlow(

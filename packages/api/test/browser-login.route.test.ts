@@ -249,6 +249,60 @@ describe('browser login route', (): void => {
       expectBrowserAntiFramingHeaders(response);
     });
   });
+
+  it('handles valid failure SSO callbacks without attempting browser session completion', async (): Promise<void> => {
+    prepareBrowserLoginRoute();
+
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const response: LightMyRequestResponse = await injectApiRoute(app, {
+        method: 'GET',
+        url: '/login/sso/callback?error=access_denied&state=sso-state',
+      });
+
+      expect(response.statusCode).toBe(302);
+      expect(response.headers.location).toBe('/login?error=sso_failed');
+      expect(mocks.completeBrowserSsoLogin).not.toHaveBeenCalled();
+      expect(mocks.findCliLoginAttemptIdForBrowserSsoCallback).toHaveBeenCalledTimes(1);
+      expect(mocks.createCompartmentSessionCookie).not.toHaveBeenCalled();
+      expectBrowserAntiFramingHeaders(response);
+    });
+  });
+
+  it('rejects ambiguous browser SSO callbacks before service completion or session issuance', async (): Promise<void> => {
+    prepareBrowserLoginRoute();
+
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const response: LightMyRequestResponse = await injectApiRoute(app, {
+        method: 'GET',
+        url: '/login/sso/callback?code=oidc-code&state=sso-state&unknown=abc&unknown=def',
+      });
+
+      expect(response.statusCode).toBe(302);
+      expect(response.headers.location).toBe('/login?error=sso_failed');
+      expect(mocks.completeBrowserSsoLogin).not.toHaveBeenCalled();
+      expect(mocks.findCliLoginAttemptIdForBrowserSsoCallback).not.toHaveBeenCalled();
+      expect(mocks.createCompartmentSessionCookie).not.toHaveBeenCalled();
+      expectBrowserAntiFramingHeaders(response);
+    });
+  });
+
+  it('rejects browser SSO callbacks with extra query parameters before service completion', async (): Promise<void> => {
+    prepareBrowserLoginRoute();
+
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const response: LightMyRequestResponse = await injectApiRoute(app, {
+        method: 'GET',
+        url: '/login/sso/callback?code=oidc-code&state=sso-state&tenant=acme',
+      });
+
+      expect(response.statusCode).toBe(302);
+      expect(response.headers.location).toBe('/login?error=sso_failed');
+      expect(mocks.completeBrowserSsoLogin).not.toHaveBeenCalled();
+      expect(mocks.findCliLoginAttemptIdForBrowserSsoCallback).not.toHaveBeenCalled();
+      expect(mocks.createCompartmentSessionCookie).not.toHaveBeenCalled();
+      expectBrowserAntiFramingHeaders(response);
+    });
+  });
 });
 
 function prepareBrowserLoginRoute(): void {

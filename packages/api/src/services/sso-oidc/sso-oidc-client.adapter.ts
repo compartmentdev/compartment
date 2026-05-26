@@ -18,6 +18,7 @@ import type {
   OidcCallbackInput,
   OidcIdentityClaims,
 } from './sso-oidc-client.adapter.types';
+import { assertValidSsoOidcSuccessCallbackUrl } from './sso-oidc-callback.service';
 import { resolveOidcIdentityClaims } from './sso-oidc-identity-verification.service';
 import type { OidcIdentityClaimSources } from './sso-oidc-identity-verification.service.types';
 
@@ -61,6 +62,7 @@ function assertOidcAuthorizationUrlAllowed(authorizationUrl: URL): void {
 }
 
 export async function readOidcCallbackClaims(input: OidcCallbackInput): Promise<OidcIdentityClaims> {
+  assertValidSsoOidcSuccessCallbackUrl(input.currentUrl);
   const claimSources: OidcIdentityClaimSources = await readOidcClaimSources(input);
 
   return resolveOidcIdentityClaims(claimSources, input.identityVerification);

@@ -16,23 +16,17 @@ import {
   createClearedBrowserCliLoginAttemptCookie,
 } from '../../services/browser-cli-login-attempt-cookie.service';
 import { createBrowserCsrfCookie } from '../../services/browser-csrf-cookie.service';
-import { createCompartmentSessionCookie } from '../../services/browser-session-cookie.service';
 import {
   readCliLoginAttemptFromBrowserCookie,
   type BrowserCliLoginAttemptReadResult,
 } from '../../services/browser-cli-login-flow.service';
-import { failCliLoginAttempt, startCliBrowserLogin } from '../../services/cli-login.service';
+import { startCliBrowserLogin } from '../../services/cli-login.service';
 import type { CliBrowserLoginAttempt } from '../../services/cli-login.service.types';
-import {
-  completeBrowserSsoLogin,
-  findCliLoginAttemptIdForBrowserSsoCallback,
-  startBrowserSsoLogin,
-} from '../../services/sso-oidc/sso-oidc-login.service';
-import type { CompleteSsoOidcLoginResult } from '../../services/sso-oidc/sso-oidc.service.types';
+import { readSsoOidcCallbackKind, type SsoOidcCallbackKind } from '../../services/sso-oidc/sso-oidc-callback.service';
+import { completeBrowserSsoLogin, startBrowserSsoLogin } from '../../services/sso-oidc/sso-oidc-login.service';
 import { authRateLimitRouteOptions } from '../auth/auth-rate-limit.route';
 import { browserNoReferrerPolicy } from './browser-anti-framing.headers';
 import {
-  buildCliLoginCompletedUrl,
   buildCliLoginStartResponseBody,
   renderCliLoginCompletedPage,
   renderCliLoginStartPage,
@@ -44,9 +38,11 @@ import { buildCurrentBrowserUrl } from './browser-login-response.helpers';
 import { renderBrowserLoginPage } from './browser-login.page';
 import { assertSafeBrowserSsoRedirectUrl } from './browser-sso-redirect-url.helpers';
 import {
-  readSelectedBrowserSessionOrganizationSlug,
-  sendBrowserSessionRedirect,
-} from './browser-session-response.helpers';
+  sendBrowserSsoCallbackErrorResult,
+  sendBrowserSsoFailureCallbackResult,
+  sendBrowserSsoCallbackResult,
+  sendSsoErrorRedirect,
+} from './browser-sso-callback-response.helpers';
 import {
   type BrowserCliCompletedQuery,
   type BrowserCliStartBody,
@@ -164,43 +160,24 @@ async function handleBrowserCliLoginPost(request: FastifyRequest, reply: Fastify
 }
 
 async function handleBrowserSsoCallbackGet(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  const currentUrl: URL = buildCurrentBrowserUrl(request);
+  const callbackKind: SsoOidcCallbackKind | null = readSsoOidcCallbackKind(currentUrl);
+  if (callbackKind === null) {
+    return await sendSsoErrorRedirect(reply, null);
+  }
+  if (callbackKind === 'failure') {
+    return await sendBrowserSsoFailureCallbackResult(currentUrl, reply);
+  }
+
   try {
-    return await sendBrowserSsoCallbackResult(reply, await completeBrowserSsoLogin(buildCurrentBrowserUrl(request)));
+    return await sendBrowserSsoCallbackResult(reply, await completeBrowserSsoLogin(currentUrl));
   } catch (error) {
-    const businessError: Error | null = error instanceof Error ? error : null;
-    if (await sendFailedCliSsoCallbackResult(request, reply, businessError)) {
-      return await reply;
-    }
-    if (isInvalidCliLoginBusinessError(businessError)) {
-      return await sendFailedCliCompletionRedirect(reply);
-    }
-    if (!isApiBusinessError(businessError)) {
+    if (!(error instanceof Error)) {
       throw error;
     }
 
-    return await sendSsoErrorRedirect(reply, null);
+    return await sendBrowserSsoCallbackErrorResult(currentUrl, reply, error);
   }
-}
-
-async function sendFailedCliSsoCallbackResult(
-  request: FastifyRequest,
-  reply: FastifyReply,
-  businessError: Error | null,
-): Promise<boolean> {
-  if (!isApiBusinessError(businessError)) {
-    return false;
-  }
-
-  const cliLoginAttemptId: string | undefined = await findCliLoginAttemptIdForBrowserSsoCallback(
-    buildCurrentBrowserUrl(request),
-  );
-  if (cliLoginAttemptId === undefined) {
-    return false;
-  }
-
-  await failCliLoginAttempt(cliLoginAttemptId);
-  await sendFailedCliCompletionRedirect(reply);
-  return true;
 }
 
 async function sendBrowserCliLoginStartResponse(reply: FastifyReply, body: BrowserCliStartBody): Promise<FastifyReply> {
@@ -233,47 +210,4 @@ async function readCliAttemptForBrowserSso(
   }
 
   return cliAttemptReadResult.attempt;
-}
-
-async function sendBrowserSsoCallbackResult(
-  reply: FastifyReply,
-  result: CompleteSsoOidcLoginResult,
-): Promise<FastifyReply> {
-  if (result.kind === 'cli_attempt_authenticated') {
-    reply.header('Set-Cookie', [
-      createCompartmentSessionCookie(result.sessionToken, result.sessionExpiresAt),
-      createClearedBrowserCliLoginAttemptCookie(),
-    ]);
-
-    return await reply.redirect(browserLoginCliCompletedPathname);
-  }
-
-  return await sendBrowserSessionRedirect(reply, {
-    flowTarget: result.flowTarget,
-    selectedOrganizationSlug: readSelectedBrowserSessionOrganizationSlug({
-      authSession: result.authSession,
-      organizations: result.organizations,
-    }),
-    sessionExpiresAt: result.sessionExpiresAt,
-    sessionId: result.sessionId,
-    sessionToken: result.sessionToken,
-  });
-}
-
-async function sendSsoErrorRedirect(
-  reply: FastifyReply,
-  flowTarget: BrowserFlowTargetOrNull,
-  successRedirectTo?: string,
-): Promise<FastifyReply> {
-  reply.header('Set-Cookie', createClearedBrowserCliLoginAttemptCookie());
-  return await reply.redirect(buildSsoErrorLoginUrl(flowTarget, successRedirectTo));
-}
-
-async function sendFailedCliCompletionRedirect(reply: FastifyReply): Promise<FastifyReply> {
-  reply.header('Set-Cookie', createClearedBrowserCliLoginAttemptCookie());
-  return await reply.redirect(buildCliLoginCompletedUrl('failed'));
-}
-
-function isInvalidCliLoginBusinessError(error: Error | null | undefined): boolean {
-  return isApiBusinessError(error) && error.code === 'invalid_cli_login';
 }

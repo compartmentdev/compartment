@@ -56,6 +56,7 @@ interface OidcTestTokenResult {
 }
 
 interface OidcCallbackInputOverrides {
+  currentUrl?: URL | undefined;
   identityVerification?: SsoOidcIdentityVerificationConfig | undefined;
 }
 
@@ -181,6 +182,30 @@ describe('SSO OIDC client adapter', (): void => {
       'The SSO login could not be completed.',
     );
   });
+
+  it.each([
+    ['failure callback', 'https://compartment.localhost/login/sso/callback?error=access_denied&state=sso-state'],
+    ['duplicate code', 'https://compartment.localhost/login/sso/callback?code=one&code=two&state=sso-state'],
+    [
+      'duplicate unknown key',
+      'https://compartment.localhost/login/sso/callback?code=one&state=sso-state&unknown=a&unknown=b',
+    ],
+    ['extra tenant key', 'https://compartment.localhost/login/sso/callback?code=one&state=sso-state&tenant=acme'],
+    [
+      'mixed code and error',
+      'https://compartment.localhost/login/sso/callback?code=one&state=sso-state&error=access_denied',
+    ],
+  ] as const)(
+    'rejects callback URLs with %s before discovery or token exchange',
+    async (_caseName: string, currentUrl: string): Promise<void> => {
+      await expect(
+        readOidcCallbackClaims(createOidcCallbackInput({ currentUrl: new URL(currentUrl) })),
+      ).rejects.toThrow('The SSO login could not be completed.');
+
+      expect(mocks.discovery).not.toHaveBeenCalled();
+      expect(mocks.authorizationCodeGrant).not.toHaveBeenCalled();
+    },
+  );
 
   it('maps standard OIDC verified email claims', async (): Promise<void> => {
     mocks.authorizationCodeGrant.mockResolvedValueOnce(
@@ -403,7 +428,9 @@ function createOidcCallbackInput(overrides: OidcCallbackInputOverrides = {}): Oi
   return {
     clientId: 'client-id',
     clientSecret: 'client-secret',
-    currentUrl: new URL('https://compartment.localhost/login/sso/callback?code=oidc-code&state=sso-state'),
+    currentUrl:
+      overrides.currentUrl ??
+      new URL('https://compartment.localhost/login/sso/callback?code=oidc-code&state=sso-state'),
     expectedNonce: 'oidc-nonce',
     expectedState: 'sso-state',
     identityVerification: overrides.identityVerification ?? buildDefaultSsoOidcIdentityVerificationConfig(),
