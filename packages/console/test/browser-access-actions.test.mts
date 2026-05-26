@@ -34,7 +34,7 @@ describe('browser access action visibility', (): void => {
 
     expect(html).not.toContain('Invite user');
     expect(html).not.toContain('Open actions for viewer@example.com');
-    expect(html).not.toContain('All organization members and access you manage with Compartment.');
+    expect(html).not.toContain('Manage organization members, direct grants, and shared access through groups.');
   });
 
   it('hides group create and delete actions from read-only group viewers', (): void => {
@@ -94,7 +94,7 @@ describe('browser access action visibility', (): void => {
     expect(html).toContain('Create group');
     expect(html).toContain('button-accent-surface');
     expect(html).toContain('lucide-users-round');
-    expect(html).not.toContain('All shared access groups you manage with Compartment.');
+    expect(html).not.toContain('Manage shared access groups and their members.');
   });
 
   it('hides role create and delete actions from read-only role viewers', (): void => {
@@ -122,7 +122,7 @@ describe('browser access action visibility', (): void => {
     expect(html).toContain('Create role');
     expect(html).toContain('button-accent-surface');
     expect(html).toContain('lucide-shield-plus');
-    expect(html).not.toContain('All permission sets you manage with Compartment.');
+    expect(html).not.toContain('Define permission sets for organization access.');
   });
 
   it('renders a users back action when roles page has a valid users return target', (): void => {
