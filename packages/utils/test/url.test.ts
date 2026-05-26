@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { hasDuplicateSearchParam, readSingleSearchParam, readUrlOrigin } from '../src/url';
+import { hasDuplicateSearchParamName, readSingleSearchParam, readUrlOrigin } from '../src/url';
 
-describe('hasDuplicateSearchParam', (): void => {
-  it('detects repeated search params by name', (): void => {
-    const searchParams: URLSearchParams = new URLSearchParams('code=abc&code=def&state=flow');
+describe('hasDuplicateSearchParamName', (): void => {
+  it('detects repeated search param names without knowing the key in advance', (): void => {
+    const searchParams: URLSearchParams = new URLSearchParams('code=abc&state=flow&tenant=acme&tenant=other');
 
-    expect(hasDuplicateSearchParam(searchParams, 'code')).toBe(true);
-    expect(hasDuplicateSearchParam(searchParams, 'state')).toBe(false);
+    expect(hasDuplicateSearchParamName(searchParams)).toBe(true);
+  });
+
+  it('allows unique search param names', (): void => {
+    const searchParams: URLSearchParams = new URLSearchParams('code=abc&state=flow&tenant=acme');
+
+    expect(hasDuplicateSearchParamName(searchParams)).toBe(false);
   });
 });
 
