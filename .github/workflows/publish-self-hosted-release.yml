@@ -131,12 +131,14 @@ jobs:
           DOCKER_SCOUT_CLI_VERSION: 1.21.0
         run: |
           mkdir -p "$HOME/.docker/cli-plugins"
+          rm -rf /tmp/docker-scout-install
+          mkdir -p /tmp/docker-scout-install
           curl --fail --location --show-error \
             "https://github.com/docker/scout-cli/releases/download/v${DOCKER_SCOUT_CLI_VERSION}/docker-scout_${DOCKER_SCOUT_CLI_VERSION}_linux_amd64.tar.gz" \
             --output /tmp/docker-scout.tar.gz
           echo "${DOCKER_SCOUT_CLI_SHA256}  /tmp/docker-scout.tar.gz" | sha256sum --check
-          tar -xzf /tmp/docker-scout.tar.gz -C /tmp docker-scout
-          install -m 0755 /tmp/docker-scout "$HOME/.docker/cli-plugins/docker-scout"
+          tar -xzf /tmp/docker-scout.tar.gz -C /tmp/docker-scout-install docker-scout
+          install -m 0755 /tmp/docker-scout-install/docker-scout "$HOME/.docker/cli-plugins/docker-scout"
           docker scout version
 
       - name: Download self-hosted image artifact
