@@ -21,6 +21,7 @@ import { readBrowserConsoleOrganizationControl } from '../console/console-organi
 import { buildBrowserConsoleHref } from '../console/console-hrefs';
 import type { ProjectActionHandler } from './project-actions';
 import { ProjectArchiveStateSwitch } from './project-archive-state-switch';
+import { ProjectsEmptyState, shouldRenderProjectsEmptyState } from './projects-empty-state';
 import { ProjectsTable } from './projects-table';
 import { buildProjectsHref } from './projects-query';
 
@@ -154,6 +155,18 @@ function ProjectsToolbarActions({ createProjectHref, onNavigate }: Readonly<Proj
 }
 
 function ProjectsTableSection({ data, onNavigate, onProjectAction }: Readonly<ProjectsTableSectionProps>): JSX.Element {
+  if (shouldRenderProjectsEmptyState(data)) {
+    return <ProjectsEmptyState data={data} onNavigate={onNavigate} />;
+  }
+
+  return <ProjectsTableFrameSection data={data} onNavigate={onNavigate} onProjectAction={onProjectAction} />;
+}
+
+function ProjectsTableFrameSection({
+  data,
+  onNavigate,
+  onProjectAction,
+}: Readonly<ProjectsTableSectionProps>): JSX.Element {
   return (
     <div className="flex flex-col">
       <ProjectArchiveStateSwitch data={data} onNavigate={onNavigate} />
