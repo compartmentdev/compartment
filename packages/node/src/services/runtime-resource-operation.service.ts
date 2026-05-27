@@ -25,6 +25,7 @@ import { resourceNameLabelName } from './runtime-resource-labels';
 import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
 import { resolveRuntimeResourceBackupArtifactHostPath } from './runtime-resource-backup-path.service';
 import type { RuntimeResourceOperationConfig } from './runtime.types';
+import { createRuntimeResourceReadinessError } from '../errors/node-runtime-error';
 
 const backupContainerPath: string = '/backup';
 type RuntimeResourceOperationMountMode = 'read-only' | 'read-write';
@@ -159,7 +160,11 @@ async function waitForResourceReadiness(
     }
   }
 
-  throw new Error(`Resource ${input.resourceName} did not become ready after restore before ${readiness.timeoutMs}ms.`);
+  throw createRuntimeResourceReadinessError({
+    phase: 'restore',
+    resourceName: input.resourceName,
+    timeoutMs: readiness.timeoutMs,
+  });
 }
 
 async function canReachRuntimeResourceOperationReadiness(

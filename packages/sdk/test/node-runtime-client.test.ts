@@ -18,7 +18,7 @@ import type {
 } from '@compartment/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createNodeRequester } from '../src/http/node-request';
-import { readNodeRequestRuntimeMessage } from '../src/http/node-request-error';
+import { readNodeRequestRuntimeError, readNodeRequestRuntimeMessage } from '../src/http/node-request-error';
 import type { NodeRequester } from '../src/http/node-request.types';
 import { deployToNode } from '../src/services/node-runtime-deploy.service';
 import { inspectNodeDeployment } from '../src/services/node-runtime-inspect.service';
@@ -231,6 +231,10 @@ describe('node runtime request services', (): void => {
     }
 
     expect(failure).toBeInstanceOf(Error);
+    expect(readNodeRequestRuntimeError(failure!)).toEqual({
+      code: 'unexpected',
+      message: 'node deploy failed',
+    });
     expect(readNodeRequestRuntimeMessage(failure!)).toBe('node deploy failed');
     expect(failure?.message).toContain('Node runtime request failed for /internal/deployments/deploy with status 500');
   });
