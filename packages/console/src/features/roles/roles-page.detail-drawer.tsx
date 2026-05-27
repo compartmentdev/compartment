@@ -1,6 +1,7 @@
 import type { AccessRoleListRow, PermissionKey } from '@compartment/contracts/browser';
 import type { UseMutationResult } from '@tanstack/react-query';
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
+import { ConfirmationDialog } from '../../components/confirmation-dialog';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Box, Pencil, Trash } from '../../components/ui/icons';
@@ -13,13 +14,24 @@ import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-q
 import { accessDrawerHeaderActionButtonClassName, AccessDrawerSection, AccessDrawerShell } from '../access/access-ui';
 import { PermissionFamiliesCard } from '../access/access-permission-families';
 import { canManageBrowserRoles } from '../console/console-access';
-import { handleRoleDelete, readRoleDeleteConfirmationMessage } from './roles-page.actions';
+import {
+  handleRoleDelete,
+  readRoleDeleteConfirmationSpec,
+  type RoleDeleteConfirmationSpec,
+} from './roles-page.actions';
 import { closeRolesDrawerAfterMutation } from './roles-page.navigation';
 import { buildRolesPageHref } from './roles-page.query';
 import type { RolesPageState } from './roles-page.state';
 
 interface RoleDetailDrawerProps {
   state: RolesPageState;
+}
+
+interface DeleteRoleActionProps {
+  isDialogOpen: boolean;
+  isPending: boolean;
+  role: AccessRoleListRow;
+  setIsDialogOpen: (value: boolean) => void;
 }
 
 type RoleDeleteMutation = UseMutationResult<boolean, Error, void>;
@@ -141,20 +153,67 @@ function RoleDangerZone({ role, state }: Readonly<{ role: AccessRoleListRow; sta
 }
 
 function DeleteRoleButton({ role, state }: Readonly<{ role: AccessRoleListRow; state: RolesPageState }>): JSX.Element {
+  const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
   const mutation: RoleDeleteMutation = useRoleDeleteMutation(role, state);
 
   return (
+    <>
+      <DeleteRoleActionButton isPending={mutation.isPending} setIsDialogOpen={setIsDialogOpen} />
+      <DeleteRoleDialog
+        isDialogOpen={isDialogOpen}
+        isPending={mutation.isPending}
+        role={role}
+        setIsDialogOpen={setIsDialogOpen}
+        onConfirm={(): void => {
+          setIsDialogOpen(false);
+          mutation.mutate();
+        }}
+      />
+    </>
+  );
+}
+
+function DeleteRoleActionButton({
+  isPending,
+  setIsDialogOpen,
+}: Readonly<Pick<DeleteRoleActionProps, 'isPending' | 'setIsDialogOpen'>>): JSX.Element {
+  return (
     <Button
       className={readAccessDangerActionButtonClassName()}
-      disabled={mutation.isPending}
-      onClick={createRoleDeleteHandler(role.name, mutation)}
+      disabled={isPending}
+      onClick={(): void => setIsDialogOpen(true)}
       size="sm"
       type="button"
       variant="destructive"
     >
       <Trash aria-hidden="true" />
-      {mutation.isPending ? 'Removing...' : 'Remove role'}
+      {isPending ? 'Removing...' : 'Remove role'}
     </Button>
+  );
+}
+
+function DeleteRoleDialog({
+  isDialogOpen,
+  isPending,
+  role,
+  setIsDialogOpen,
+  onConfirm,
+}: Readonly<DeleteRoleActionProps & { onConfirm: () => void }>): JSX.Element {
+  const confirmation: RoleDeleteConfirmationSpec = readRoleDeleteConfirmationSpec(role.name);
+
+  return (
+    <ConfirmationDialog
+      confirmLabel={confirmation.confirmLabel}
+      description={confirmation.description}
+      expectedValue={confirmation.expectedValue}
+      inputLabel={confirmation.inputLabel}
+      inputPlaceholder={confirmation.inputPlaceholder}
+      isPending={isPending}
+      onConfirm={onConfirm}
+      onOpenChange={setIsDialogOpen}
+      open={isDialogOpen}
+      title={confirmation.title}
+    />
   );
 }
 
@@ -170,16 +229,6 @@ function useRoleDeleteMutation(role: AccessRoleListRow, state: RolesPageState): 
       }
     },
   });
-}
-
-function createRoleDeleteHandler(roleName: string, mutation: RoleDeleteMutation): () => void {
-  return (): void => {
-    if (mutation.isPending || window.prompt(readRoleDeleteConfirmationMessage(roleName)) !== roleName) {
-      return;
-    }
-
-    mutation.mutate();
-  };
 }
 
 function readSelectedRole(state: RolesPageState): AccessRoleListRow | undefined {
