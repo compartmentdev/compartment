@@ -1,6 +1,8 @@
+import { spawnSync } from 'node:child_process';
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
@@ -9,11 +11,11 @@ import {
   buildDigestImageRef,
   buildSelfHostedImageSbomPath,
   readSecureSelfHostedImageOptions,
-  readSelfHostedImageRefsFromEnvFile,
   scanSelfHostedImages,
   secureSelfHostedImages,
 } from './secure-self-hosted-images.mjs';
 
+const secureSelfHostedImagesScriptPath = fileURLToPath(new URL('./secure-self-hosted-images.mjs', import.meta.url));
 const testDigest = `sha256:${'a'.repeat(64)}`;
 
 describe('readSecureSelfHostedImageOptions', () => {
@@ -156,12 +158,23 @@ describe('scanSelfHostedImages', () => {
 
       await writeFile(envFilePath, renderSelfHostedImageRefsEnv(), 'utf8');
 
-      process.env.PATH = `${tempDirectory}:${oldPath ?? ''}`;
-      process.env.DOCKER_SCOUT_ARGS_LOG = scannerPaths.dockerScoutArgsLogPath;
-      process.env.TRIVY_ARGS_LOG = scannerPaths.trivyArgsLogPath;
+      const result = spawnSync(
+        process.execPath,
+        [secureSelfHostedImagesScriptPath, '--scan-only', '--docker-scout', '--env-file', envFilePath],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            DOCKER_SCOUT_ARGS_LOG: scannerPaths.dockerScoutArgsLogPath,
+            PATH: `${tempDirectory}:${oldPath ?? ''}`,
+            TRIVY_ARGS_LOG: scannerPaths.trivyArgsLogPath,
+          },
+        },
+      );
 
-      const imageRefs = readSelfHostedImageRefsFromEnvFile(tempDirectory, envFilePath);
-      scanSelfHostedImages({ dockerScout: true, imageRefs, repositoryRoot: tempDirectory });
+      expect(result.error).toBeUndefined();
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
 
       const trivyCalls = parseCommandArgsLog(await readFile(scannerPaths.trivyArgsLogPath, 'utf8'));
       expect(trivyCalls.map((args) => args.at(-1))).toEqual(expectedImageRefs);

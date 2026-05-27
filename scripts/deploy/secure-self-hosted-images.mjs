@@ -235,7 +235,7 @@ function buildSecureSelfHostedImageRef(repositoryPrefix, serviceName, tag) {
   return buildSelfHostedImageRefForRepository(serviceName, tag, repositoryPrefix ?? defaultRepositoryPrefix);
 }
 
-export function readSelfHostedImageRefsFromEnvFile(repositoryRoot, envFilePath) {
+function readSelfHostedImageRefsFromEnvFile(repositoryRoot, envFilePath) {
   const resolvedEnvFilePath = isAbsolute(envFilePath) ? envFilePath : resolve(repositoryRoot, envFilePath);
   const envValues = parseSelfHostedEnvFile(readFileSync(resolvedEnvFilePath, 'utf8'));
   return listSelfHostedRuntimeImageSpecs().map(({ imageVariableName }) =>
