@@ -103,6 +103,29 @@ describe('browser access query state', (): void => {
     expect(markup).not.toContain('Loader group');
   });
 
+  it('keeps a selected group detail open when the cache is stale during create-to-detail navigation', (): void => {
+    const selectedGroup: AccessGroupListRow = createGroupListRow('group_new', 'New group');
+    browserQueryClient.setQueryData(readAccessGroupsListQueryKey('acme-dev'), {
+      groups: [createGroupListRow('group_old', 'Old group')],
+    });
+
+    const markup: string = renderWithBrowserQueryClient(
+      React.createElement(GroupsQueryStateProbe, {
+        data: createGroupsPageResult({
+          groups: [selectedGroup],
+          mode: 'detail',
+          selectedGroupId: selectedGroup.id,
+        }),
+      }),
+    );
+
+    expect(markup).toContain('detail');
+    expect(markup).toContain('group_new');
+    expect(markup).toContain('New group');
+    expect(markup).not.toContain('group_old');
+    expect(markup).not.toContain('Old group');
+  });
+
   it('keeps groups unavailable organization states off stale empty-slug access cache entries', (): void => {
     browserQueryClient.setQueryData(readAccessGroupsListQueryKey(''), {
       groups: [createGroupListRow('group_ghost', 'Ghost group')],
@@ -219,6 +242,17 @@ function GroupsQueryProbe({ data }: Readonly<{ data: BrowserGroupsPageResult }>)
   const queryData: BrowserGroupsPageResult = useGroupsPageQueryData(data);
   const groupNames: string = queryData.groups.map((group: AccessGroupListRow): string => group.name).join(',');
   return React.createElement('output', null, groupNames === '' ? 'empty' : groupNames);
+}
+
+function GroupsQueryStateProbe({ data }: Readonly<{ data: BrowserGroupsPageResult }>): React.ReactElement {
+  const queryData: BrowserGroupsPageResult = useGroupsPageQueryData(data);
+  return React.createElement(
+    'output',
+    null,
+    `${queryData.mode}:${queryData.selectedGroupId ?? 'none'}:${queryData.groups
+      .map((group: AccessGroupListRow): string => group.name)
+      .join(',')}`,
+  );
 }
 
 function RolesQueryProbe({ data }: Readonly<{ data: BrowserRolesPageResult }>): React.ReactElement {

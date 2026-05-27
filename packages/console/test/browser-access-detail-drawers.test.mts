@@ -12,9 +12,9 @@ import type { BrowserGroupsPageResult } from '../src/services/browser-groups.ser
 import type { BrowserOrganizationOption } from '../src/services/browser-organization.service.types';
 import type { BrowserRolesPageResult } from '../src/services/browser-roles.service.types';
 import type { BrowserUsersPageResult, BrowserUsersUser } from '../src/services/browser-users.service.types';
-import { GroupDetailDrawer } from '../src/features/groups/groups-page.detail-drawer';
+import { GroupsPageContent } from '../src/features/groups/groups-page.sections';
 import type { GroupsPageState } from '../src/features/groups/groups-page.state';
-import { RoleDetailDrawer } from '../src/features/roles/roles-page.detail-drawer';
+import { RolesPageContent } from '../src/features/roles/roles-page.sections';
 import type { RolesPageState } from '../src/features/roles/roles-page.state';
 import { UserAccessPanel } from '../src/features/users/user-access-panel';
 
@@ -37,6 +37,7 @@ describe('browser access detail drawers', (): void => {
     expect(html).toContain('Groups');
     expect(html).toContain('Direct assignments');
     expect(html).toContain('Effective permissions');
+    expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain('Inherited access');
     expect(html).not.toContain('Manual access');
     expect(html).not.toContain('Effective total');
@@ -46,7 +47,7 @@ describe('browser access detail drawers', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
-      React.createElement(RoleDetailDrawer, {
+      React.createElement(RolesPageContent, {
         state: createRolesPageState(['organization.role.read']),
       }),
     );
@@ -61,7 +62,7 @@ describe('browser access detail drawers', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
-      React.createElement(GroupDetailDrawer, {
+      React.createElement(GroupsPageContent, {
         state: createGroupDetailPageState(['organization.group.read', 'organization.role.read']),
       }),
     );

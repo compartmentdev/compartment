@@ -2,9 +2,9 @@ import type { JSX } from 'react';
 import { browserOnboardingPathname, browserProjectCreatePathname } from '../../browser-public-paths';
 import {
   BrowserConsoleShell,
-  browserConsolePageBodyClassName,
   browserConsolePageClassName,
   browserConsolePageHeaderClassName,
+  browserConsoleListPageBodyClassName,
 } from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import { ServerSearch } from '../../components/server-search';
@@ -65,7 +65,7 @@ export function ProjectsView({ data, onNavigate, onProjectAction }: Readonly<Pro
     >
       <div className={browserConsolePageClassName}>
         {renderProjectsHeader(data, onNavigate)}
-        <div className={browserConsolePageBodyClassName}>
+        <div className={browserConsoleListPageBodyClassName}>
           <DismissibleAlert message={data.errorMessage} variant="error" />
           <DismissibleAlert message={data.noticeMessage} variant="notice" />
           {renderProjectsContent(data, onNavigate, onProjectAction)}

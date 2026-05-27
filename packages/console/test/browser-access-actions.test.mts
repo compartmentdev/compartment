@@ -7,8 +7,8 @@ import type { BrowserGroupsPageResult } from '../src/services/browser-groups.ser
 import type { BrowserOrganizationOption } from '../src/services/browser-organization.service.types';
 import type { BrowserRolesPageResult } from '../src/services/browser-roles.service.types';
 import type { BrowserUsersPageResult, BrowserUsersUser } from '../src/services/browser-users.service.types';
+import { GroupDetailDrawerContent } from '../src/features/groups/groups-page.detail-drawer';
 import { GroupsPageContent } from '../src/features/groups/groups-page.sections';
-import { GroupDetailDrawer } from '../src/features/groups/groups-page.detail-drawer';
 import type { GroupsPageState } from '../src/features/groups/groups-page.state';
 import { RolesPageContent } from '../src/features/roles/roles-page.sections';
 import type { RolesPageState } from '../src/features/roles/roles-page.state';
@@ -54,7 +54,9 @@ describe('browser access action visibility', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
-      React.createElement(GroupDetailDrawer, {
+      React.createElement(GroupDetailDrawerContent, {
+        isEditing: false,
+        setIsEditing: (): void => undefined,
         state: createGroupDetailPageState(['organization.group.read']),
       }),
     );

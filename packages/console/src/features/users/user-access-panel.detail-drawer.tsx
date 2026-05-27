@@ -5,7 +5,7 @@ import { StatusTag } from '../../components/ui/status-tag';
 import { AccessDrawerCollapsibleSection } from '../access/access-drawer-collapsible-section';
 import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
-import { AccessDrawerSection, AccessDrawerShell } from '../access/access-ui';
+import { AccessDrawerSection } from '../access/access-ui';
 import { PermissionFamiliesCard } from '../access/access-permission-families';
 import { canManageBrowserGroups, canManageBrowserRoles, canReadBrowserRoles } from '../console/console-access';
 import { ManageRolesButton } from '../roles/manage-roles-button';
@@ -28,26 +28,17 @@ interface UserDetailDrawerProps {
   state: UserAccessPanelState;
 }
 
-export function UserDetailDrawer({ access, state }: Readonly<UserDetailDrawerProps>): JSX.Element {
+export function UserDetailDrawerHeader({ state }: Readonly<Pick<UserDetailDrawerProps, 'state'>>): JSX.Element {
   return (
-    <AccessDrawerShell
+    <AccessDrawerDetailHeader
       closeHref={buildUsersHref(state.data, { mode: 'list', selectedUserEmail: null })}
-      header={
-        <AccessDrawerDetailHeader
-          closeHref={buildUsersHref(state.data, { mode: 'list', selectedUserEmail: null })}
-          eyebrow="User"
-          onNavigate={state.onNavigate}
-        />
-      }
+      eyebrow="User"
       onNavigate={state.onNavigate}
-      title={access.user.email}
-    >
-      <UserDetailContent access={access} state={state} />
-    </AccessDrawerShell>
+    />
   );
 }
 
-function UserDetailContent({ access, state }: Readonly<UserDetailDrawerProps>): JSX.Element {
+export function UserDetailDrawerContent({ access, state }: Readonly<UserDetailDrawerProps>): JSX.Element {
   return (
     <>
       <AccessDrawerErrorAlert message={state.drawerErrorMessage} />
@@ -163,7 +154,7 @@ function UserStatusBadge({ access }: Readonly<{ access: UserAccessDetail }>): JS
 function UserPermissionsCard({ permissionKeys }: Readonly<{ permissionKeys: PermissionKey[] }>): JSX.Element {
   return (
     <AccessDrawerCollapsibleSection
-      defaultExpanded={true}
+      defaultExpanded={false}
       description="Resulting access from groups + direct assignments"
       summary={`${permissionKeys.length} effective permissions in total`}
       title="Effective permissions"

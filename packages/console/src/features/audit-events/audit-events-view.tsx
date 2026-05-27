@@ -5,9 +5,9 @@ import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import { BrowserSoftNavigationLink } from '../../components/browser-soft-navigation-link';
 import {
   BrowserConsoleShell,
-  browserConsolePageBodyClassName,
   browserConsolePageClassName,
   browserConsolePageHeaderClassName,
+  browserConsoleListPageBodyClassName,
 } from '../../components/browser-console-header';
 import { Select } from '../../components/select';
 import { ServerTableFrame } from '../../components/server-table';
@@ -66,7 +66,7 @@ export function AuditEventsView({ data, onNavigate }: Readonly<AuditEventsViewPr
         <header className={browserConsolePageHeaderClassName}>
           <AccessPageHeader title="Audit logs" />
         </header>
-        <div className={browserConsolePageBodyClassName}>{renderAuditEventsContent(data, onNavigate)}</div>
+        <div className={browserConsoleListPageBodyClassName}>{renderAuditEventsContent(data, onNavigate)}</div>
       </div>
     </BrowserConsoleShell>
   );

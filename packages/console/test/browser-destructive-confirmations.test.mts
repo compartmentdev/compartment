@@ -18,10 +18,12 @@ import { type BrowserFetchCall, type FetchImplementation, readFetchPath } from '
 import { createJsonResponse } from './browser-test.fixtures';
 import { browserQueryClient } from '../src/lib/browser-query-client';
 import { ConfirmationDialog } from '../src/components/confirmation-dialog';
+import { AccessDrawerShell } from '../src/features/access/access-ui';
 import type { DeploymentHistoryRollbackHandler } from '../src/features/deployment-history/deployment-history-actions';
 import { DeploymentHistoryTableActions } from '../src/features/deployment-history/deployment-history-table-actions';
 import { ProjectRowActionsDropdown } from '../src/features/projects/project-row-actions-dropdown';
-import { RoleDetailDrawer } from '../src/features/roles/roles-page.detail-drawer';
+import { RoleDetailDrawerContent, RoleDetailDrawerHeader } from '../src/features/roles/roles-page.detail-drawer';
+import { buildRolesPageHref } from '../src/features/roles/roles-page.query';
 import type { ProjectActionHandler } from '../src/features/projects/project-actions';
 import type { RolesPageState } from '../src/features/roles/roles-page.state';
 import type { BrowserDeploymentHistoryPageResult } from '../src/services/browser-deployment-history.service.types';
@@ -276,7 +278,7 @@ describe('browser destructive confirmations', (): void => {
     vi.stubGlobal('fetch', fetchMock);
 
     const mountedApp: MountedTestApp = await mountWithBrowserQueryClient(
-      React.createElement(RoleDetailDrawer, {
+      React.createElement(RoleDetailDrawerProbe, {
         state: createRolesPageState(),
       }),
     );
@@ -503,6 +505,23 @@ describe('browser destructive confirmations', (): void => {
     }
   });
 });
+
+function RoleDetailDrawerProbe({ state }: Readonly<{ state: RolesPageState }>): ReactElement | null {
+  const role: AccessRoleListRow | undefined = state.data.roles.find(
+    (candidate: AccessRoleListRow): boolean => candidate.id === state.data.roleId,
+  );
+  if (role === undefined) {
+    return null;
+  }
+
+  return React.createElement(AccessDrawerShell, {
+    children: React.createElement(RoleDetailDrawerContent, { role, state }),
+    closeHref: buildRolesPageHref(state.data),
+    header: React.createElement(RoleDetailDrawerHeader, { role, state }),
+    onNavigate: state.onNavigate,
+    title: role.name,
+  });
+}
 
 function ConfirmationDialogProbe(): ReactElement {
   const [isOpen, setIsOpen] = useState<boolean>(true);

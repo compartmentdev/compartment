@@ -1,4 +1,5 @@
-import type { ChangeEvent, FormEvent, JSX } from 'react';
+import type { PermissionKey } from '@compartment/contracts/browser';
+import { useEffect, useState, type ChangeEvent, type FormEvent, type JSX } from 'react';
 import type { MutationKey, UseMutationResult } from '@tanstack/react-query';
 import { Button } from '../../components/ui/button';
 import { X } from '../../components/ui/icons';
@@ -10,9 +11,9 @@ import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-q
 import {
   accessDrawerActionButtonClassName,
   accessDrawerFieldClassName,
+  accessDrawerSectionDividerClassName,
   accessDrawerTextareaClassName,
   AccessDrawerSection,
-  AccessDrawerShell,
   useAccessDrawerCloseNavigation,
 } from '../access/access-ui';
 import { handleRoleSubmit } from './roles-page.actions';
@@ -25,48 +26,53 @@ interface RoleEditorDrawerProps {
   state: RolesPageState;
 }
 
-type RoleSubmitMutation = UseMutationResult<boolean, Error, void>;
+export type RoleSubmitMutation = UseMutationResult<boolean, Error, void>;
+
+export interface RoleEditorDraftState {
+  description: string;
+  name: string;
+  selectedPermissions: PermissionKey[];
+  setDescription: (value: string) => void;
+  setName: (value: string) => void;
+  setSelectedPermissions: (value: PermissionKey[] | ((current: PermissionKey[]) => PermissionKey[])) => void;
+}
 
 const roleEditorFormId: string = 'role-editor-form';
 
-export function RoleEditorDrawer({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element {
-  const mutation: RoleSubmitMutation = useRoleSubmitMutation(state);
-
+export function RoleEditorDrawerContent({
+  editorState,
+  mutation,
+  state,
+}: Readonly<RoleEditorDrawerProps & { editorState: RoleEditorDraftState; mutation: RoleSubmitMutation }>): JSX.Element {
   return (
-    <AccessDrawerShell
-      closeHref={buildRolesPageHref(state.data)}
-      footer={<RoleDrawerActions formId={roleEditorFormId} mutation={mutation} state={state} />}
-      header={
-        <AccessDrawerDetailHeader
-          closeHref={buildRolesPageHref(state.data)}
-          eyebrow={readRoleEditorEyebrow(state)}
-          onNavigate={state.onNavigate}
-        />
-      }
-      onNavigate={state.onNavigate}
-      title={readRoleEditorTitle(state)}
-    >
-      <form id={roleEditorFormId} onSubmit={createRoleSubmitHandler(mutation)}>
-        <AccessDrawerErrorAlert message={state.drawerErrorMessage} />
-        <RoleSummaryCard state={state} />
-        <RolePermissionsSection state={state} />
-      </form>
-    </AccessDrawerShell>
+    <form id={roleEditorFormId} onSubmit={createRoleSubmitHandler(mutation)}>
+      <AccessDrawerErrorAlert message={state.drawerErrorMessage} />
+      <RoleSummaryCard editorState={editorState} state={state} />
+      <RolePermissionsSection editorState={editorState} state={state} />
+    </form>
   );
 }
 
-function RoleSummaryCard({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element {
+function RoleSummaryCard({
+  editorState,
+  state,
+}: Readonly<RoleEditorDrawerProps & { editorState: RoleEditorDraftState }>): JSX.Element {
   return (
     <AccessDrawerSection separated={false} title="General role settings">
-      <div className="space-y-2">
-        <RoleNameField state={state} />
-        <RoleDescriptionField state={state} />
+      <div className={state.data.mode === 'edit' ? accessDrawerSectionDividerClassName : undefined}>
+        <div className="space-y-2">
+          <RoleNameField editorState={editorState} state={state} />
+          <RoleDescriptionField editorState={editorState} state={state} />
+        </div>
       </div>
     </AccessDrawerSection>
   );
 }
 
-function RoleNameField({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element {
+function RoleNameField({
+  editorState,
+  state,
+}: Readonly<RoleEditorDrawerProps & { editorState: RoleEditorDraftState }>): JSX.Element {
   return (
     <label className="block text-[13px] font-medium">
       <span className="mb-1 block text-[11px] leading-[14px] tracking-[0.033px] text-[var(--cpt-text-primary,#111212)]">
@@ -75,16 +81,19 @@ function RoleNameField({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element 
       <Input
         className={accessDrawerFieldClassName}
         disabled={isSystemRole(state)}
-        onChange={(event: ChangeEvent<HTMLInputElement>): void => state.setName(event.target.value)}
+        onChange={(event: ChangeEvent<HTMLInputElement>): void => editorState.setName(event.target.value)}
         placeholder="Custom role"
         required
-        value={state.name}
+        value={editorState.name}
       />
     </label>
   );
 }
 
-function RoleDescriptionField({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element {
+function RoleDescriptionField({
+  editorState,
+  state,
+}: Readonly<RoleEditorDrawerProps & { editorState: RoleEditorDraftState }>): JSX.Element {
   return (
     <label className="block text-[13px] font-medium">
       <span className="mb-1 block text-[11px] leading-[14px] tracking-[0.033px] text-[var(--cpt-text-primary,#111212)]">
@@ -93,22 +102,25 @@ function RoleDescriptionField({ state }: Readonly<RoleEditorDrawerProps>): JSX.E
       <textarea
         className={`min-h-[68px] ${accessDrawerTextareaClassName}`}
         disabled={isSystemRole(state)}
-        onChange={(event: ChangeEvent<HTMLTextAreaElement>): void => state.setDescription(event.target.value)}
+        onChange={(event: ChangeEvent<HTMLTextAreaElement>): void => editorState.setDescription(event.target.value)}
         placeholder="Write a short reasonable description about the role"
-        value={state.description}
+        value={editorState.description}
       />
     </label>
   );
 }
 
-function RolePermissionsSection({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element {
+function RolePermissionsSection({
+  editorState,
+  state,
+}: Readonly<RoleEditorDrawerProps & { editorState: RoleEditorDraftState }>): JSX.Element {
   return (
     <AccessDrawerSection title="Permissions">
       <RolePermissionsEditorCard
         isDisabled={isSystemRole(state)}
         permissionKeys={state.data.permissionKeys}
-        selectedPermissions={state.selectedPermissions}
-        setSelectedPermissions={state.setSelectedPermissions}
+        selectedPermissions={editorState.selectedPermissions}
+        setSelectedPermissions={editorState.setSelectedPermissions}
       />
     </AccessDrawerSection>
   );
@@ -140,6 +152,13 @@ function RoleDrawerActions({
   );
 }
 
+export function RoleEditorDrawerFooter({
+  mutation,
+  state,
+}: Readonly<RoleEditorDrawerProps & { mutation: RoleSubmitMutation }>): JSX.Element {
+  return <RoleDrawerActions formId={roleEditorFormId} mutation={mutation} state={state} />;
+}
+
 function RoleBackAction({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element {
   const closeDrawer: () => void = useAccessDrawerCloseNavigation(buildRolesPageHref(state.data), state.onNavigate);
 
@@ -151,9 +170,9 @@ function RoleBackAction({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element
   );
 }
 
-function useRoleSubmitMutation(state: RolesPageState): RoleSubmitMutation {
+export function useRoleSubmitMutation(state: RolesPageState, editorState: RoleEditorDraftState): RoleSubmitMutation {
   return useBrowserMutation<boolean>({
-    mutation: async (): Promise<boolean> => await submitRoleEditorChange(state),
+    mutation: async (): Promise<boolean> => await submitRoleEditorChange(state, editorState),
     mutationKey: readRoleSubmitMutationKey(state),
     onSuccess: (didSave: boolean): void => {
       if (didSave) {
@@ -163,13 +182,13 @@ function useRoleSubmitMutation(state: RolesPageState): RoleSubmitMutation {
   });
 }
 
-async function submitRoleEditorChange(state: RolesPageState): Promise<boolean> {
+async function submitRoleEditorChange(state: RolesPageState, editorState: RoleEditorDraftState): Promise<boolean> {
   return await handleRoleSubmit(
     state.data,
     state.data.role,
-    state.description,
-    state.name,
-    state.selectedPermissions,
+    editorState.description,
+    editorState.name,
+    editorState.selectedPermissions,
     state.setData,
     state.setDrawerErrorMessage,
   );
@@ -200,8 +219,18 @@ function readRoleSubmitLabel(state: RolesPageState, isPending: boolean): string 
   return state.data.mode === 'create' ? 'Create new role' : 'Save role';
 }
 
-function readRoleEditorTitle(state: RolesPageState): string {
+export function readRoleEditorTitle(state: RolesPageState): string {
   return state.data.mode === 'create' ? 'Create role' : (state.data.role?.name ?? 'Role');
+}
+
+export function RoleEditorDrawerHeader({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element {
+  return (
+    <AccessDrawerDetailHeader
+      closeHref={buildRolesPageHref(state.data)}
+      eyebrow={readRoleEditorEyebrow(state)}
+      onNavigate={state.onNavigate}
+    />
+  );
 }
 
 function readRoleEditorEyebrow(state: RolesPageState): string {
@@ -210,4 +239,41 @@ function readRoleEditorEyebrow(state: RolesPageState): string {
 
 function isSystemRole(state: RolesPageState): boolean {
   return state.data.role?.kind === 'system';
+}
+
+export function useRoleEditorDraftState(state: RolesPageState): RoleEditorDraftState {
+  const [name, setName] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const [selectedPermissions, setSelectedPermissions] = useState<PermissionKey[]>([]);
+
+  useEffect((): void => {
+    syncRoleEditorDraft(state, setDescription, setName, setSelectedPermissions);
+  }, [state.data.mode, state.data.roleId, state.data.selectedOrganizationSlug]);
+
+  return {
+    description,
+    name,
+    selectedPermissions,
+    setDescription,
+    setName,
+    setSelectedPermissions,
+  };
+}
+
+function syncRoleEditorDraft(
+  state: RolesPageState,
+  setDescription: (value: string) => void,
+  setName: (value: string) => void,
+  setSelectedPermissions: (value: PermissionKey[]) => void,
+): void {
+  if (state.data.mode === 'create') {
+    setName('');
+    setDescription('');
+    setSelectedPermissions([]);
+    return;
+  }
+
+  setName(state.data.role?.name ?? '');
+  setDescription(state.data.role?.description ?? '');
+  setSelectedPermissions(state.data.role?.permissionKeys ?? []);
 }

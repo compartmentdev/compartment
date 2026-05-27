@@ -55,22 +55,27 @@ export const accessDrawerHeaderActionButtonClassName: string =
 export const accessDrawerPrimaryActionButtonClassName: string =
   'h-9 w-auto shrink-0 justify-center gap-1.5 rounded-[10px] px-3 text-[13px]';
 export const accessDrawerRowActionButtonClassName: string = 'h-[26px] gap-1 rounded-[8px] px-2 text-[12px]';
+export const accessDrawerSectionDividerClassName: string = '-mx-4 border-t border-border px-4 pt-4';
 export const accessDrawerTextareaClassName: string =
   'w-full rounded-[10px] border border-input bg-background px-3 py-2 text-[13px] outline-none transition placeholder:text-muted-foreground focus-visible:border-[rgba(77,86,94,0.18)] focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50';
 
 export function AccessPageHeader({ action, description, title }: Readonly<AccessPageHeaderProps>): JSX.Element {
   return (
-    <header>
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold leading-8 tracking-normal text-foreground">{title}</h1>
+    <div>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-h-9 flex-col justify-center gap-2">
+          <h1 className="flex min-h-9 items-center text-2xl font-semibold leading-8 tracking-normal text-foreground">
+            {title}
+          </h1>
           {description === undefined || description === null ? null : (
             <p className="max-w-3xl text-[13px] leading-5 text-muted-foreground">{description}</p>
           )}
         </div>
-        {action === undefined || action === null ? null : <div className="shrink-0">{action}</div>}
+        {action === undefined || action === null ? null : (
+          <div className="flex min-h-9 shrink-0 items-center">{action}</div>
+        )}
       </div>
-    </header>
+    </div>
   );
 }
 
@@ -138,6 +143,7 @@ function useDrawerCloseAnimation(
   onNavigate: BrowserSoftNavigateHandler,
 ): { isClosing: boolean; onClose: () => void } {
   const [isClosing, setIsClosing] = useState<boolean>(false);
+  useDrawerEscapeClose(isClosing, setIsClosing);
 
   useEffect((): (() => void) | void => {
     if (!isClosing) {
@@ -159,6 +165,28 @@ function useDrawerCloseAnimation(
       setIsClosing(true);
     },
   };
+}
+
+function useDrawerEscapeClose(isClosing: boolean, setIsClosing: (value: boolean) => void): void {
+  useEffect((): (() => void) | void => {
+    if (isClosing) {
+      return undefined;
+    }
+
+    const handleKeyDown: (event: KeyboardEvent) => void = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.key !== 'Escape') {
+        return;
+      }
+
+      setIsClosing(true);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return (): void => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isClosing, setIsClosing]);
 }
 
 export function AccessDrawerSummaryText({ children }: Readonly<AccessDrawerSummaryTextProps>): JSX.Element {
@@ -192,12 +220,27 @@ function AccessDrawerPanel({
 }: Readonly<AccessDrawerPanelProps>): JSX.Element {
   return (
     <aside className={readDrawerPanelClassName(isClosing, panelClassName)}>
-      {header ?? (
-        <AccessDrawerHeader actions={actions} eyebrow={eyebrow} onClose={onClose} subtitle={subtitle} title={title} />
-      )}
+      {renderAccessDrawerPanelHeader(actions, eyebrow, header, onClose, subtitle, title)}
       <AccessDrawerBody>{children}</AccessDrawerBody>
       {footer === undefined ? null : <div className="border-t border-border px-4 py-4">{footer}</div>}
     </aside>
+  );
+}
+
+function renderAccessDrawerPanelHeader(
+  actions: ReactNode | undefined,
+  eyebrow: string | undefined,
+  header: ReactNode | undefined,
+  onClose: () => void,
+  subtitle: string | undefined,
+  title: string,
+): JSX.Element {
+  return (
+    <div className="border-b border-border">
+      {header ?? (
+        <AccessDrawerHeader actions={actions} eyebrow={eyebrow} onClose={onClose} subtitle={subtitle} title={title} />
+      )}
+    </div>
   );
 }
 
