@@ -54,6 +54,9 @@ describe('assertHttpHeaderValue', (): void => {
       assertHttpHeaderValue('secret\nX-Injected: yes', 'authorization header');
     }).toThrow(/^Invalid authorization header\.$/);
     expect((): void => {
+      assertHttpHeaderValue('secret\tX-Injected: yes', 'authorization header');
+    }).toThrow(/^Invalid authorization header\.$/);
+    expect((): void => {
       assertHttpHeaderValue('secret\u0001', 'authorization header');
     }).toThrow(/^Invalid authorization header\.$/);
     expect((): void => {
