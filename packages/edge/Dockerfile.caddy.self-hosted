@@ -19,6 +19,9 @@ FROM ${COMPARTMENT_CADDY_RUNTIME_IMAGE}
 
 LABEL org.opencontainers.image.source="https://github.com/compartmentdev/compartment"
 
+ENV XDG_CONFIG_HOME=/config \
+  XDG_DATA_HOME=/data
+
 RUN apk upgrade --no-cache \
   && apk add --no-cache ca-certificates libcap mailcap \
   && addgroup -S compartment \
