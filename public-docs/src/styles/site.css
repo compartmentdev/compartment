@@ -29,6 +29,7 @@
     --cpt-radius-lg: 20px;
     --cpt-radius-md: 14px;
     --cpt-radius-sm: 10px;
+    --cpt-header-control-size: 2.3rem;
     --sl-color-white: var(--cpt-text-primary);
     --sl-color-gray-1: var(--cpt-text-primary);
     --sl-color-gray-2: var(--cpt-text-secondary);
@@ -159,7 +160,6 @@
   }
 
   header.header {
-    --cpt-header-control-size: 2.3rem;
     height: auto;
     padding: 0.45rem var(--cpt-shell-gutter) 0;
     border-bottom: 0;
