@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/compartmentdev/compartment/compare/v0.4.2...v0.5.0) (2026-05-27)
+
+
+### Features
+
+* **repo:** add console empty states ([#37](https://github.com/compartmentdev/compartment/issues/37)) ([a7bb1fd](https://github.com/compartmentdev/compartment/commit/a7bb1fd3bdfeaa5d1f75c5f0a7f8db0867a67555))
+* **repo:** replace native confirm dialogs in console ([#43](https://github.com/compartmentdev/compartment/issues/43)) ([e80e1f2](https://github.com/compartmentdev/compartment/commit/e80e1f2ebf2b7003bf414a7012762230cfb69eaa))
+
+
+### Bug Fixes
+
+* **auth:** centralize header and cookie serialization safety ([#34](https://github.com/compartmentdev/compartment/issues/34)) ([ec509cc](https://github.com/compartmentdev/compartment/commit/ec509ccaffd2f0c3c6e3b0b518b45e40e8c78c8e))
+* **auth:** enforce single forwarded metadata values ([#35](https://github.com/compartmentdev/compartment/issues/35)) ([9af8700](https://github.com/compartmentdev/compartment/commit/9af8700f33fc8aa69a142fa2571e853bfbda8e73))
+* **repo:** stabilize console access drawers ([#49](https://github.com/compartmentdev/compartment/issues/49)) ([0b08074](https://github.com/compartmentdev/compartment/commit/0b08074bc480743b1c1f63c63016e58166b618a0))
+* **repo:** stabilize console cleanup e2e ([#41](https://github.com/compartmentdev/compartment/issues/41)) ([19d47be](https://github.com/compartmentdev/compartment/commit/19d47becaa3085f6d174fa42356e2969c6b50e49))
+* **repo:** tighten registry location policy ([#36](https://github.com/compartmentdev/compartment/issues/36)) ([b421f7e](https://github.com/compartmentdev/compartment/commit/b421f7efe53b2a49e553e10d0518296340515a6f))
+
 ## [0.4.2](https://github.com/compartmentdev/compartment/compare/v0.4.1...v0.4.2) (2026-05-27)
 
 
