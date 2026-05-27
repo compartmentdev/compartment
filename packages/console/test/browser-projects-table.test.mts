@@ -259,7 +259,7 @@ describe('browser projects table', (): void => {
     expect(html).not.toContain('href="https://billing.apps.localhost"');
   });
 
-  it('keeps the selected organization in the empty projects onboarding link for single-org sessions', (): void => {
+  it('renders a plain empty row for empty projects table results', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
@@ -274,11 +274,12 @@ describe('browser projects table', (): void => {
       }),
     );
 
-    expect(html).toContain('Deploy my first project');
-    expect(html).toContain('href="/orgs/acme-dev/projects/create"');
+    expect(html).toContain('No projects found.');
+    expect(html).not.toContain('Deploy my first project');
+    expect(html).not.toContain('href="/orgs/acme-dev/projects/create"');
   });
 
-  it('preserves the selected organization in the empty projects onboarding link for multi-org sessions', (): void => {
+  it('keeps empty projects table rows free of onboarding actions for multi-org sessions', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
@@ -298,8 +299,9 @@ describe('browser projects table', (): void => {
       }),
     );
 
-    expect(html).toContain('Deploy my first project');
-    expect(html).toContain('href="/orgs/acme-dev/projects/create"');
+    expect(html).toContain('No projects found.');
+    expect(html).not.toContain('Deploy my first project');
+    expect(html).not.toContain('href="/orgs/acme-dev/projects/create"');
   });
 
   it('omits the empty projects onboarding link for archived projects', (): void => {

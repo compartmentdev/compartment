@@ -21,6 +21,7 @@ import { BrowserConsoleOrganizationContextPanel } from '../console/console-organ
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
 import { UserAccessPanel } from './user-access-panel';
 import type { UserActionHandler } from './user-actions';
+import { shouldRenderUsersEmptyState, UsersEmptyState } from './users-empty-state';
 import { UsersTable } from './users-table';
 import { buildUsersHref } from './users-query';
 
@@ -34,6 +35,10 @@ interface UsersViewProps {
 interface UsersToolbarProps {
   data: BrowserUsersPageResult;
   onNavigate: BrowserSoftNavigateHandler;
+}
+
+interface UsersPageHeaderProps extends UsersToolbarProps {
+  showInviteAction: boolean;
 }
 
 interface UsersTableSectionProps {
@@ -76,7 +81,7 @@ function UsersPageBody({
 }: Readonly<Pick<UsersViewProps, 'data' | 'onNavigate' | 'onUserAction'>>): JSX.Element {
   return (
     <div className={browserConsolePageClassName}>
-      <UsersPageHeader data={data} onNavigate={onNavigate} />
+      <UsersPageHeader data={data} onNavigate={onNavigate} showInviteAction={!shouldRenderUsersEmptyState(data)} />
       <div className={browserConsolePageBodyClassName}>
         <DismissibleAlert message={data.noticeMessage} variant="notice" />
         <DismissibleAlert message={data.errorMessage} variant="error" />
@@ -93,6 +98,10 @@ function renderUsersContent(
 ): JSX.Element {
   if (data.organizationContext.kind !== 'selected') {
     return <UsersOrganizationContextPanel context={data.organizationContext} data={data} onNavigate={onNavigate} />;
+  }
+
+  if (shouldRenderUsersEmptyState(data)) {
+    return <UsersEmptyState data={data} onNavigate={onNavigate} />;
   }
 
   return (
@@ -127,10 +136,13 @@ function readUsersOrganizationHref(data: BrowserUsersPageResult, organizationSlu
   });
 }
 
-function UsersPageHeader({ data, onNavigate }: Readonly<UsersToolbarProps>): JSX.Element {
+function UsersPageHeader({ data, onNavigate, showInviteAction }: Readonly<UsersPageHeaderProps>): JSX.Element {
   return (
     <header className={browserConsolePageHeaderClassName}>
-      <AccessPageHeader action={<InviteUserButton data={data} onNavigate={onNavigate} />} title="Users" />
+      <AccessPageHeader
+        action={<InviteUserButton data={data} onNavigate={onNavigate} showInviteAction={showInviteAction} />}
+        title="Users"
+      />
     </header>
   );
 }
@@ -166,8 +178,8 @@ function UsersToolbar({ data, onNavigate }: Readonly<UsersToolbarProps>): JSX.El
   );
 }
 
-function InviteUserButton({ data, onNavigate }: Readonly<UsersToolbarProps>): JSX.Element | null {
-  if (!canInviteBrowserUsers(data.currentOrganizationPermissions)) {
+function InviteUserButton({ data, onNavigate, showInviteAction }: Readonly<UsersPageHeaderProps>): JSX.Element | null {
+  if (!showInviteAction || !canInviteBrowserUsers(data.currentOrganizationPermissions)) {
     return null;
   }
 
@@ -186,6 +198,14 @@ function InviteUserButton({ data, onNavigate }: Readonly<UsersToolbarProps>): JS
 }
 
 function UsersTableSection({ data, onNavigate, onUserAction }: Readonly<UsersTableSectionProps>): JSX.Element {
+  if (shouldRenderUsersEmptyState(data)) {
+    return <UsersEmptyState data={data} onNavigate={onNavigate} />;
+  }
+
+  return <UsersTableFrameSection data={data} onNavigate={onNavigate} onUserAction={onUserAction} />;
+}
+
+function UsersTableFrameSection({ data, onNavigate, onUserAction }: Readonly<UsersTableSectionProps>): JSX.Element {
   return (
     <ServerTableFrame>
       <UsersTable data={data} onNavigate={onNavigate} onUserAction={onUserAction} />

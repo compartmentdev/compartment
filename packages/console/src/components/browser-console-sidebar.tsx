@@ -147,7 +147,7 @@ function BrowserConsoleSidebarBrand({
         onNavigate={onNavigate}
       >
         <BrowserConsoleSidebarBrandIcon />
-        <span className="min-w-0 truncate text-[14px] font-medium leading-5">Compartment Deploy Center</span>
+        <span className="min-w-0 truncate text-[20px] font-medium leading-5">Compartment</span>
       </BrowserSoftNavigationLink>
     </div>
   );
