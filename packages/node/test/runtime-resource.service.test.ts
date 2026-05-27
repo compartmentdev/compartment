@@ -7,8 +7,14 @@ import type {
   DockerRunContainerInput,
   DockerRunContainerResult,
 } from '@compartment/docker';
-import type { NodeResourceDeleteRequest, NodeResourceRequest, NodeResourceResponse } from '@compartment/contracts';
+import {
+  nodeRuntimeResourceReadinessFailedErrorCode,
+  type NodeResourceDeleteRequest,
+  type NodeResourceRequest,
+  type NodeResourceResponse,
+} from '@compartment/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
+import { isNodeRuntimeError } from '../src/errors/node-runtime-error';
 import { reconcileRuntimeResource, startRuntimeResource } from '../src/services/runtime-resource.service';
 import { deleteRuntimeResource } from '../src/services/runtime-resource-lifecycle.service';
 import { buildRuntimeResourceLabels } from '../src/services/runtime-resource-labels';
@@ -481,7 +487,7 @@ describe('startRuntimeResource', (): void => {
     expect(mocks.connectDockerContainerToNetwork).not.toHaveBeenCalled();
   });
 
-  it('removes the resource container when TCP readiness times out', async (): Promise<void> => {
+  it('surfaces TCP readiness timeout when resource container cleanup fails', async (): Promise<void> => {
     mocks.ensureDockerImageAvailable.mockResolvedValueOnce(undefined);
     mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'resource_container_123' });
     mocks.inspectDockerContainer.mockResolvedValueOnce({
@@ -497,10 +503,11 @@ describe('startRuntimeResource', (): void => {
       ],
       publishedPorts: [],
     });
-    mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
+    mocks.removeDockerContainer.mockRejectedValueOnce(new Error('cleanup failed'));
 
-    await expect(
-      startRuntimeResource(
+    let failure: Error | undefined;
+    try {
+      await startRuntimeResource(
         createResourceRequest({
           readiness: {
             port: 9,
@@ -509,8 +516,17 @@ describe('startRuntimeResource', (): void => {
           },
         }),
         createRuntimeDeployConfig(),
-      ),
-    ).rejects.toThrow('did not become ready');
+      );
+    } catch (error) {
+      failure = error as Error;
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    if (!isNodeRuntimeError(failure)) {
+      throw new Error('Expected runtime resource readiness failure.');
+    }
+    expect(failure.code).toBe(nodeRuntimeResourceReadinessFailedErrorCode);
+    expect(failure.message).toContain('did not become ready');
 
     expect(mocks.removeDockerContainer).toHaveBeenCalledWith({
       containerRef: 'compartment-compartment-e2e-smoke-production-resource-postgres',

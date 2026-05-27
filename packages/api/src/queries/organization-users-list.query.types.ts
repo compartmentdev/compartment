@@ -1,4 +1,4 @@
-import type { ListPagination, ListSortDirection, UserListOrderBy } from '@compartment/contracts';
+import type { ListPagination, ListSortDirection, OrganizationUserType, UserListOrderBy } from '@compartment/contracts';
 import type { OrganizationUserRow } from './organization-users.query.types';
 
 export interface ListOrganizationUsersPageInput {
@@ -8,6 +8,7 @@ export interface ListOrganizationUsersPageInput {
   perPage: number;
   search?: string | undefined;
   sort: ListSortDirection;
+  type?: OrganizationUserType | undefined;
 }
 
 export interface OrganizationUsersListPageResult {

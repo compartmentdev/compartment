@@ -2,8 +2,15 @@ import type { DeploymentReadSummary, DeploymentStatusResponse } from '@compartme
 import { readDeploymentDurationLabel } from '../../services/deployment-duration.service';
 import { formatDeploymentLabelTag } from '../../services/deployment-label-output.service';
 
-export function createDeploymentProgressSignature(deployments: DeploymentReadSummary[]): string {
-  return deployments.map(createSingleDeploymentProgressSignature).join('|');
+export function createDeploymentProgressSignature(
+  deployments: DeploymentReadSummary[],
+  liveProgressTime: number | null,
+): string {
+  return deployments
+    .map((deployment: DeploymentReadSummary): string =>
+      createSingleDeploymentProgressSignature(deployment, liveProgressTime),
+    )
+    .join('|');
 }
 
 export function buildDeploymentProgressMessage(
@@ -20,7 +27,10 @@ export function buildDeploymentProgressMessage(
     .join('; ')}.`;
 }
 
-function createSingleDeploymentProgressSignature(deployment: DeploymentReadSummary): string {
+function createSingleDeploymentProgressSignature(
+  deployment: DeploymentReadSummary,
+  liveProgressTime: number | null,
+): string {
   return [
     deployment.id,
     deployment.status,
@@ -28,6 +38,7 @@ function createSingleDeploymentProgressSignature(deployment: DeploymentReadSumma
     deployment.promotionStage,
     deployment.routeUrl ?? '',
     deployment.operation.completedAt ?? '',
+    liveProgressTime === null ? '' : (readDeploymentDurationLabel(deployment, liveProgressTime) ?? ''),
   ].join(':');
 }
 

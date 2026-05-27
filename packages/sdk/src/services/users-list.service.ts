@@ -22,5 +22,6 @@ function buildUserListPath(query: UserListQuery): string {
     { name: 'perPage', value: query.perPage },
     { name: 'search', value: query.search },
     { name: 'sort', value: query.sort },
+    { name: 'type', value: query.type },
   ]);
 }

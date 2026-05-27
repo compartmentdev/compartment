@@ -513,7 +513,7 @@ describe('browser client pages', (): void => {
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).toEqual([
       '/v1/orgs',
       '/v1/whoami',
-      '/v1/users?orderBy=email&sort=asc&page=1&perPage=10',
+      '/v1/users?orderBy=email&type=user&sort=asc&page=1&perPage=10',
       '/v1/roles?detail=options',
       '/v1/groups?detail=options',
       '/v1/assignments/scope-options',
@@ -719,7 +719,7 @@ describe('browser client pages', (): void => {
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).toEqual([
       '/v1/orgs',
       '/v1/whoami',
-      '/v1/users?orderBy=email&sort=asc&page=1&perPage=10',
+      '/v1/users?orderBy=email&type=user&sort=asc&page=1&perPage=10',
     ]);
   });
 
@@ -756,7 +756,7 @@ describe('browser client pages', (): void => {
       '/v1/whoami',
     ]);
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).not.toContain(
-      '/v1/users?orderBy=email&sort=asc&page=1&perPage=10',
+      '/v1/users?orderBy=email&type=user&sort=asc&page=1&perPage=10',
     );
   });
 

@@ -27,10 +27,12 @@ interface CliJsonParser<TResult> {
 
 export function createCliCapture({
   isTTY = false,
+  stderrColumns,
   stderrIsTTY = isTTY,
   stdoutIsTTY = isTTY,
 }: {
   isTTY?: boolean | undefined;
+  stderrColumns?: number | undefined;
   stderrIsTTY?: boolean | undefined;
   stdoutIsTTY?: boolean | undefined;
 } = {}): CliCommandCapture {
@@ -43,6 +45,7 @@ export function createCliCapture({
 
   return {
     io: {
+      stderrColumns,
       stderrIsTTY,
       stdin,
       stderr: (value: string): void => {

@@ -24,7 +24,9 @@ import { environmentIdLabelName, projectIdLabelName } from './runtime-container-
 import { resourceNameLabelName } from './runtime-resource-labels';
 import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
 import { resolveRuntimeResourceBackupArtifactHostPath } from './runtime-resource-backup-path.service';
+import { buildRuntimeShellCommandContainerInvocation } from './runtime-shell-command.service';
 import type { RuntimeResourceOperationConfig } from './runtime.types';
+import { createRuntimeResourceReadinessError } from '../errors/node-runtime-error';
 
 const backupContainerPath: string = '/backup';
 type RuntimeResourceOperationMountMode = 'read-only' | 'read-write';
@@ -76,7 +78,7 @@ async function buildResourceOperationContainerInput(
   mountMode: RuntimeResourceOperationMountMode,
 ): Promise<DockerRunContainerInput> {
   return {
-    command: ['sh', '-lc', input.definition.command],
+    ...buildRuntimeShellCommandContainerInvocation(input.definition.command),
     containerName: buildResourceOperationContainerName(input, config.dockerNamespace),
     env: buildResourceOperationEnv(input),
     imageRef: input.definition.image,
@@ -159,7 +161,11 @@ async function waitForResourceReadiness(
     }
   }
 
-  throw new Error(`Resource ${input.resourceName} did not become ready after restore before ${readiness.timeoutMs}ms.`);
+  throw createRuntimeResourceReadinessError({
+    phase: 'restore',
+    resourceName: input.resourceName,
+    timeoutMs: readiness.timeoutMs,
+  });
 }
 
 async function canReachRuntimeResourceOperationReadiness(

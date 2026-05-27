@@ -3,7 +3,7 @@ export type { NodeRequester } from './http/node-request.types';
 export type { RequestTransportFailure } from './http/request-error';
 
 export { createNodeRequester } from './http/node-request';
-export { readNodeRequestRuntimeMessage } from './http/node-request-error';
+export { readNodeRequestRuntimeError, readNodeRequestRuntimeMessage } from './http/node-request-error';
 export {
   createCompartmentBinaryRequester,
   createCompartmentRawRequester,

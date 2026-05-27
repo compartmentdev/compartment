@@ -1,16 +1,20 @@
 import { type ChangeEvent, type FormEvent, type JSX } from 'react';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { Button } from '../../components/ui/button';
-import { Pencil, Users, X } from '../../components/ui/icons';
+import { IconTile } from '../../components/ui/icon-tile';
+import { Pencil, UsersRound, X } from '../../components/ui/icons';
 import { Input } from '../../components/ui/input';
 import { useBrowserMutation } from '../../lib/browser-query-client';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import {
   accessDrawerActionButtonClassName,
-  accessDrawerFieldClassName,
   accessDrawerHeaderActionButtonClassName,
   accessDrawerSectionDividerClassName,
+  accessDrawerSummaryDescriptionClassName,
+  accessDrawerSummaryIdentityClassName,
+  accessDrawerSummaryStackClassName,
+  accessDrawerSummaryTitleClassName,
   accessDrawerTextareaClassName,
   AccessDrawerSection,
 } from '../access/access-ui';
@@ -59,16 +63,14 @@ export function GroupSummaryCard({ isEditing, setIsEditing, state }: Readonly<Gr
 
 function GroupSummaryIdentity({ state }: Readonly<{ state: GroupsPageState }>): JSX.Element {
   return (
-    <div className="flex items-start gap-3">
-      <div className="flex size-8 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-        <Users className="size-4" />
+    <div className={accessDrawerSummaryStackClassName}>
+      <div className={accessDrawerSummaryIdentityClassName}>
+        <IconTile icon={UsersRound} />
+        <h3 className={accessDrawerSummaryTitleClassName}>{state.selectedGroup?.name ?? 'Group'}</h3>
       </div>
-      <div className="space-y-1">
-        <h3 className="text-[22px] font-semibold tracking-tight">{state.selectedGroup?.name ?? 'Group'}</h3>
-        <p className="text-[13px] text-muted-foreground">
-          {readGroupHeaderDescription(state.selectedGroup?.description ?? null)}
-        </p>
-      </div>
+      <p className={accessDrawerSummaryDescriptionClassName}>
+        {readGroupHeaderDescription(state.selectedGroup?.description ?? null)}
+      </p>
     </div>
   );
 }
@@ -121,7 +123,7 @@ function GroupNameField({ state }: Readonly<{ state: GroupsPageState }>): JSX.El
     <label className="block text-[13px] font-medium">
       Name
       <Input
-        className={`mt-1 ${accessDrawerFieldClassName}`}
+        className="mt-1"
         onChange={(event: ChangeEvent<HTMLInputElement>): void => state.setGroupName(event.target.value)}
         required
         value={state.groupName}

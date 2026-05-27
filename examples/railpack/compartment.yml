@@ -6,6 +6,8 @@ services:
     # Railpack-only runtime start override through compartment.yml.
     run:
       command: npm run start:override
+    release:
+      command: node -e "console.log('railpack release completed')"
     readiness:
       type: http
       path: /ready

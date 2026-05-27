@@ -60,7 +60,8 @@ export const selfHostedSingleServiceBuildFixtures: readonly SelfHostedSingleServ
   {
     directory: resolve(__dirname, '../../../examples/railpack'),
     expectedAuthorizedBodyText: 'Railpack',
-    expectedLogTexts: ['railpack booting', 'railpack listening'],
+    expectedLogTexts: ['railpack release completed', 'railpack booting', 'railpack listening'],
+    expectedOrderedLogTexts: ['railpack release completed', 'railpack booting'],
     name: 'railpack',
     unexpectedLogTexts: ['railpack default booting'],
   },

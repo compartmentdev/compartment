@@ -28,6 +28,7 @@ export function buildDockerContainerCreateOptions(input: DockerRunContainerInput
 
   const options: DockerContainerCreateOptions = {
     ...(input.command !== undefined ? { Cmd: input.command } : {}),
+    ...(input.entrypoint !== undefined ? { Entrypoint: input.entrypoint } : {}),
     Env: buildDockerEnv(input.env),
     ExposedPorts: buildDockerExposedPorts(input.publishedPorts ?? []),
     HostConfig: buildDockerHostConfig(input),

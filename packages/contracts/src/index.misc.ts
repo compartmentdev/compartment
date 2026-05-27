@@ -1,5 +1,5 @@
 export { createErrorResponse } from './error-response';
-export { errorResponseSchema } from './contracts/error.contract';
+export { errorResponseSchema, type ErrorDetails, type ErrorResponse } from './contracts/error.contract';
 export { type HealthResponse, healthResponseSchema } from './contracts/health.contract';
 export {
   type SelfHostedImageSource,

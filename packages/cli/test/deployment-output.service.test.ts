@@ -7,7 +7,7 @@ import type {
   DeploymentStatusResponse,
   ResourceSummary,
 } from '@compartment/contracts';
-import type { CommandProgress } from '../src/commands/command.progress.types';
+import type { CommandProgress, CommandProgressMode } from '../src/commands/command.progress.types';
 import {
   createDeployDetachMessage,
   createDeployResultMessage,
@@ -165,7 +165,7 @@ describe('deployment output service', (): void => {
     );
   });
 
-  it('prints deployment progress updates only when status meaningfully changes', (): void => {
+  it('prints deployment progress updates only when status meaningfully changes for line progress', (): void => {
     const stderr: string[] = [];
     const reporter: DeploymentStatusReporter = createDeploymentProgressReporter({
       now: (): number => Date.parse('2026-03-23T12:00:03.000Z'),
@@ -196,6 +196,33 @@ describe('deployment output service', (): void => {
     expect(stderr).toEqual([
       'Deploy smoke-web/production web: running (building), elapsed 3.0s.\n',
       'Deploy smoke-web/production web: succeeded (active) in 5.0s. Route: http://127.0.0.1:31000.\n',
+    ]);
+  });
+
+  it('refreshes live deployment progress when elapsed time changes', (): void => {
+    const stderr: string[] = [];
+    let now: number = Date.parse('2026-03-23T12:00:03.000Z');
+    const reporter: DeploymentStatusReporter = createDeploymentProgressReporter({
+      now: (): number => now,
+      progress: createTestCommandProgress(stderr, 'live'),
+    });
+    const runningResponse: DeploymentStatusResponse = createDeploymentStatusResponse({
+      completedAt: null,
+      createdAt: '2026-03-23T12:00:00.000Z',
+      operationCompletedAt: null,
+      operationCreatedAt: '2026-03-23T12:00:00.000Z',
+      routeUrl: null,
+      status: 'running',
+    });
+
+    reporter(runningResponse);
+    reporter(runningResponse);
+    now = Date.parse('2026-03-23T12:00:04.000Z');
+    reporter(runningResponse);
+
+    expect(stderr).toEqual([
+      'Deploy smoke-web/production web: running (building), elapsed 3.0s.\n',
+      'Deploy smoke-web/production web: running (building), elapsed 4.0s.\n',
     ]);
   });
 
@@ -426,15 +453,17 @@ function createResourceSummary(): ResourceSummary {
   };
 }
 
-function createTestCommandProgress(stderr: string[]): CommandProgress {
-  return new TestCommandProgress(stderr);
+function createTestCommandProgress(stderr: string[], mode: CommandProgressMode = 'line'): CommandProgress {
+  return new TestCommandProgress(stderr, mode);
 }
 
 class TestCommandProgress implements CommandProgress {
+  readonly mode: CommandProgressMode;
   readonly #stderr: string[];
 
-  constructor(stderr: string[]) {
+  constructor(stderr: string[], mode: CommandProgressMode) {
     this.#stderr = stderr;
+    this.mode = mode;
   }
 
   report(message: string): void {

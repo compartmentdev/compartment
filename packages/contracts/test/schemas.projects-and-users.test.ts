@@ -424,6 +424,7 @@ describe('contract schemas projects and users', (): void => {
       perPage: '10',
       search: 'viewer',
       sort: 'desc',
+      type: 'user',
     });
     const response: UserListResponse = userListResponseSchema.parse({
       pagination: {
@@ -449,6 +450,7 @@ describe('contract schemas projects and users', (): void => {
     });
 
     expect(query.page).toBe(2);
+    expect(query.type).toBe('user');
     expect(expectPresent(response.users[0], 'user').email).toBe('viewer@example.com');
   });
 });

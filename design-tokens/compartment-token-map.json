@@ -74,6 +74,11 @@
       "css": "--muted-foreground",
       "tailwind": "text-muted-foreground"
     },
+    "mutedForegroundSecondary": {
+      "figma": "theme/muted-foreground-secondary",
+      "css": "--muted-foreground-secondary",
+      "tailwind": "text-muted-foreground-secondary"
+    },
     "accent": {
       "figma": "theme/accent",
       "css": "--accent",
@@ -131,6 +136,14 @@
     "primaryMain": {
       "figma": "opacity/primary/20",
       "css": "--opacity-primary-main"
+    },
+    "successLighter": {
+      "figma": "opacity/success/lighter",
+      "css": "--opacity-success-lighter"
+    },
+    "infoLighter": {
+      "figma": "opacity/info/lighter",
+      "css": "--opacity-info-lighter"
     }
   },
   "sidebar": {

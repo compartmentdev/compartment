@@ -7,8 +7,9 @@ import type {
   DockerRunContainerInput,
   DockerRunContainerToCompletionResult,
 } from '@compartment/docker';
-import type { NodeResourceOperationRequest } from '@compartment/contracts';
+import { nodeRuntimeResourceReadinessFailedErrorCode, type NodeResourceOperationRequest } from '@compartment/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
+import { isNodeRuntimeError } from '../src/errors/node-runtime-error';
 import {
   runRuntimeResourceBackupOperation,
   runRuntimeResourceRestoreOperation,
@@ -185,15 +186,25 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
       stdout: 'ok',
     });
 
-    await expect(
-      runRuntimeResourceRestoreOperation(
+    let failure: Error | undefined;
+    try {
+      await runRuntimeResourceRestoreOperation(
         createResourceOperationRequest({
           backupId: backupArtifact.backupId,
           readiness: { port: 5432, timeoutMs: 1, type: 'tcp' },
         }),
         createRuntimeConfig({ resourceBackupDirectory: backupArtifact.root }),
-      ),
-    ).rejects.toThrow('Resource postgres did not become ready after restore before 1ms.');
+      );
+    } catch (error) {
+      failure = error as Error;
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    if (!isNodeRuntimeError(failure)) {
+      throw new Error('Expected runtime resource readiness failure.');
+    }
+    expect(failure.code).toBe(nodeRuntimeResourceReadinessFailedErrorCode);
+    expect(failure.message).toBe('Resource postgres did not become ready after restore before 1ms.');
 
     expect(mocks.inspectDockerContainer).toHaveBeenCalledWith({
       containerRef: 'compartment-test-internal-tools-production-resource-postgres',
@@ -206,6 +217,8 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
     });
     const operationContainerInput: DockerRunContainerInput | undefined =
       mocks.runDockerContainerToCompletion.mock.calls[0]?.[0];
+    expect(operationContainerInput?.command).toEqual(['pg_dump > "$COMPARTMENT_BACKUP_DIR/dump.sql"']);
+    expect(operationContainerInput?.entrypoint).toEqual(['sh', '-lc']);
     expect(operationContainerInput?.labels).toEqual(
       expect.objectContaining({
         'compartment.environmentId': 'env_123',

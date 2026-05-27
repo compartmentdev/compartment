@@ -293,6 +293,62 @@ describe('organization users list db query', (): void => {
       'git-source+src_123@compartment.internal',
     );
   });
+
+  it('filters requested user types before counting, searching, and paginating', async (): Promise<void> => {
+    await insertOrganizationUser({
+      email: 'git-source+src_123@compartment.internal',
+      passwordHash: null,
+      principalId: 'prn_git_source',
+      type: 'automation',
+    });
+
+    const humanResult: OrganizationUsersListPageResult = await listOrganizationUsersPage({
+      orderBy: 'email',
+      organizationId: 'org_123',
+      page: 1,
+      perPage: 10,
+      search: 'active',
+      sort: 'asc',
+      type: 'user',
+    });
+    const automationResult: OrganizationUsersListPageResult = await listOrganizationUsersPage({
+      orderBy: 'email',
+      organizationId: 'org_123',
+      page: 1,
+      perPage: 10,
+      search: 'system',
+      sort: 'asc',
+      type: 'automation',
+    });
+    const humanPaginationResult: OrganizationUsersListPageResult = await listOrganizationUsersPage({
+      orderBy: 'email',
+      organizationId: 'org_123',
+      page: 2,
+      perPage: 2,
+      sort: 'desc',
+      type: 'user',
+    });
+
+    expect(humanResult.pagination.totalItems).toBe(2);
+    expect(humanResult.users.map((user: OrganizationUserRow): string => user.email)).toEqual([
+      'admin@example.com',
+      'deployer@example.com',
+    ]);
+    expect(automationResult.pagination.totalItems).toBe(1);
+    expect(automationResult.users.map((user: OrganizationUserRow): string => user.email)).toEqual([
+      'git-source+src_123@compartment.internal',
+    ]);
+    expect(humanPaginationResult.pagination).toEqual({
+      page: 2,
+      perPage: 2,
+      totalItems: 4,
+      totalPages: 2,
+    });
+    expect(humanPaginationResult.users.map((user: OrganizationUserRow): string => user.email)).toEqual([
+      'deployer@example.com',
+      'admin@example.com',
+    ]);
+  });
 });
 
 interface InsertOrganizationUserInput {

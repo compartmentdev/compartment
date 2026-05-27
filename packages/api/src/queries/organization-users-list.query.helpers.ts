@@ -1,6 +1,6 @@
-import { type ListSortDirection, type UserListOrderBy } from '@compartment/contracts';
+import { type ListSortDirection, type OrganizationUserType, type UserListOrderBy } from '@compartment/contracts';
 import { hasText } from '@compartment/utils';
-import { and, asc, desc, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { principals } from '../db/schema';
 import {
   buildOrganizationMembershipFilter,
@@ -10,14 +10,19 @@ import {
   buildOrganizationUserTypeSearchText,
 } from './organization-users.query.helpers';
 
-export function buildOrganizationUsersListFilter(organizationId: string, search: string | undefined): SQL | undefined {
+export function buildOrganizationUsersListFilter(
+  organizationId: string,
+  search: string | undefined,
+  type: OrganizationUserType | undefined,
+): SQL | undefined {
+  const baseFilter: SQL | undefined = buildOrganizationUsersBaseFilter(organizationId, type);
   const searchFilter: SQL | undefined = buildOrganizationUsersSearchFilter(organizationId, search);
 
   if (searchFilter === undefined) {
-    return buildOrganizationMembershipFilter(organizationId);
+    return baseFilter;
   }
 
-  return and(buildOrganizationMembershipFilter(organizationId), searchFilter);
+  return and(baseFilter, searchFilter);
 }
 
 export function buildOrganizationUserListOrderBy(
@@ -51,6 +56,24 @@ function buildOrganizationUsersSearchFilter(organizationId: string, search: stri
     like ${normalizedSearch}
     escape '\\'
   `;
+}
+
+function buildOrganizationUsersBaseFilter(
+  organizationId: string,
+  type: OrganizationUserType | undefined,
+): SQL | undefined {
+  const organizationFilter: SQL | undefined = buildOrganizationMembershipFilter(organizationId);
+  const typeFilter: SQL | undefined = buildOrganizationUserTypeFilter(type);
+
+  return typeFilter === undefined ? organizationFilter : and(organizationFilter, typeFilter);
+}
+
+function buildOrganizationUserTypeFilter(type: OrganizationUserType | undefined): SQL | undefined {
+  if (type === undefined) {
+    return undefined;
+  }
+
+  return eq(principals.type, type);
 }
 
 function buildOrganizationUserEmailSortExpression(): SQL<string> {

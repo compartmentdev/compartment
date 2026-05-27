@@ -38,6 +38,26 @@ describe('command progress', (): void => {
     expect(readCliStderr(capture)).toBe('Preparing source archive...\n');
   });
 
+  it('truncates TTY spinner frames before the terminal wraps them', (): void => {
+    vi.useFakeTimers();
+    const capture: CliCommandCapture = createCliCapture({ stderrColumns: 20, stderrIsTTY: true });
+    const progress: CommandProgress = createCommandProgress({
+      io: capture.io,
+      output: 'text',
+    });
+
+    progress.report('Starting self-hosted runtime...');
+    vi.advanceTimersByTime(120);
+    progress.stop();
+    vi.useRealTimers();
+
+    const frames: string[] = readCliStderr(capture)
+      .split('\r\u001B[2K')
+      .filter((frame: string): boolean => frame !== '');
+    expect(frames).toEqual(['- Starting self-...', '\\ Starting self-...']);
+    expect(frames.every((frame: string): boolean => frame.length < 20)).toBe(true);
+  });
+
   it('renders multiline TTY progress once as lines', (): void => {
     vi.useFakeTimers();
     const capture: CliCommandCapture = createCliCapture({ stderrIsTTY: true });

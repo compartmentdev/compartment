@@ -47,6 +47,7 @@ interface MockDockerContainer {
 
 interface MockDockerContainerCreateOptions {
   Cmd?: string[] | undefined;
+  Entrypoint?: string[] | undefined;
   Env?: string[] | undefined;
   ExposedPorts?: MockDockerExposedPortMap | undefined;
   HostConfig?: MockDockerHostConfig | undefined;
@@ -297,6 +298,33 @@ describe('createDockerEngineContainer', (): void => {
 
     const createOptions: MockDockerContainerCreateOptions | undefined = dockerClient.createContainer.mock.calls[0]?.[0];
     expect(createOptions?.Cmd).toEqual(['npm run start:override']);
+  });
+
+  it('passes an entrypoint override separately from the docker cmd when provided', async (): Promise<void> => {
+    const container: MockDockerContainer = createMockDockerContainer({ id: 'container_791' });
+    const dockerClient: MockDockerClient = createMockDockerClient({
+      createdContainer: container,
+      inspectedContainer: container,
+    });
+    mocks.createDockerClient.mockResolvedValueOnce(dockerClient);
+
+    await expect(
+      createDockerEngineContainer({
+        command: ['pnpm db:migrate'],
+        containerName: 'compartment-smoke-web-production-web-release',
+        entrypoint: ['sh', '-lc'],
+        env: { PORT: '3000' },
+        imageRef: 'sha256:image-id',
+        labels: {
+          'compartment.deploymentId': 'dep_456',
+        },
+        securityProfile: restrictedWritableSecurityProfile,
+      }),
+    ).resolves.toEqual({ containerId: 'container_791' });
+
+    const createOptions: MockDockerContainerCreateOptions | undefined = dockerClient.createContainer.mock.calls[0]?.[0];
+    expect(createOptions?.Entrypoint).toEqual(['sh', '-lc']);
+    expect(createOptions?.Cmd).toEqual(['pnpm db:migrate']);
   });
 
   it('passes restart policy retry limits through to docker host config', async (): Promise<void> => {

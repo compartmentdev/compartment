@@ -813,15 +813,38 @@ describe('Phase 0 API integration organization users', (): void => {
       method: 'GET',
       url: '/v1/users?search=system',
     });
+    const humanListResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      url: '/v1/users?type=user',
+    });
+    const automationListResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      url: '/v1/users?type=automation',
+    });
 
     expect(listResponse.statusCode).toBe(200);
     const listPayload: UserListResponse = userListResponseSchema.parse(listResponse.json());
+    expect(humanListResponse.statusCode).toBe(200);
+    const humanListPayload: UserListResponse = userListResponseSchema.parse(humanListResponse.json());
+    expect(automationListResponse.statusCode).toBe(200);
+    const automationListPayload: UserListResponse = userListResponseSchema.parse(automationListResponse.json());
     expect(listPayload.users).toEqual([
       expect.objectContaining({
         access: 'allowed',
         email: 'git-source+src_123@compartment.internal',
         roleNames: ['deployer'],
         status: 'active',
+        type: 'automation',
+      }),
+    ]);
+    expect(humanListPayload.users.map((user: OrganizationUserSummary): string => user.email)).not.toContain(
+      'git-source+src_123@compartment.internal',
+    );
+    expect(automationListPayload.users).toEqual([
+      expect.objectContaining({
+        email: 'git-source+src_123@compartment.internal',
         type: 'automation',
       }),
     ]);

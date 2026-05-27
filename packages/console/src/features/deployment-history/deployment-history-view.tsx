@@ -100,7 +100,6 @@ function DeploymentHistoryHeader({ data, onNavigate }: Readonly<DeploymentHistor
         <BrowserConsoleDetailTitle
           badgeLabel={readDeploymentHistoryEnvironmentBadgeLabel(data)}
           icon={Box}
-          iconTone="purple"
           title="Deployments"
         />
       </div>

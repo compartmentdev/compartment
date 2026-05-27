@@ -14,6 +14,11 @@ export const nodeResourceRestartPolicyPathname: string = '/internal/resources/re
 export const nodeResourceStartPathname: string = '/internal/resources/start';
 export const nodeResourceStopPathname: string = '/internal/resources/stop';
 
+export type NodeRuntimeResourceErrorCode = 'runtime_resource_readiness_failed';
+
+export const nodeRuntimeResourceReadinessFailedErrorCode: NodeRuntimeResourceErrorCode =
+  'runtime_resource_readiness_failed';
+
 export interface NodeResourceEnvValue {
   keyName: string;
   value: string;
