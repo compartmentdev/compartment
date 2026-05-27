@@ -1,6 +1,7 @@
 import type { AccessGroupListRow } from '@compartment/contracts/browser';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { useEffect, useState, type JSX } from 'react';
+import { ConfirmationDialog } from '../../components/confirmation-dialog';
 import {
   ServerTable,
   ServerTableActionError,
@@ -23,7 +24,11 @@ import { useBrowserMutation } from '../../lib/browser-query-client';
 import { formatGroupAccessSummary, formatGroupScopeSummary } from '../access/access-display';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import { canManageBrowserGroups } from '../console/console-access';
-import { handleGroupDeleteAction, readGroupDeleteConfirmationMessage } from './groups-page.actions';
+import {
+  handleGroupDeleteAction,
+  readGroupDeleteConfirmationSpec,
+  type GroupDeleteConfirmationSpec,
+} from './groups-page.actions';
 import { buildGroupsPageHref } from './groups-page.href';
 import type { GroupsPageState } from './groups-page.state';
 
@@ -35,6 +40,14 @@ interface GroupsTableProps {
 interface GroupRowProps {
   group: AccessGroupListRow;
   state: GroupsPageState;
+}
+
+interface GroupDeleteDialogProps {
+  groupName: string;
+  isOpen: boolean;
+  isPending: boolean;
+  onConfirm: () => void;
+  onOpenChange: (open: boolean) => void;
 }
 
 type GroupDeleteMutation = UseMutationResult<boolean, Error, void>;
@@ -129,13 +142,63 @@ function GroupRowActionsMenu({
   setErrorMessage,
   state,
 }: Readonly<GroupRowProps & { setErrorMessage: (value: string | undefined) => void }>): JSX.Element {
+  const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
+  const mutation: GroupDeleteMutation = useGroupDeleteMutation(group, setErrorMessage, state);
+
+  return (
+    <>
+      <GroupActionsDropdown isPending={mutation.isPending} group={group} onRequestDelete={setIsDialogOpen} />
+      <GroupDeleteDialog
+        groupName={group.name}
+        isOpen={isDialogOpen}
+        isPending={mutation.isPending}
+        onConfirm={(): void => {
+          setIsDialogOpen(false);
+          mutation.mutate();
+        }}
+        onOpenChange={setIsDialogOpen}
+      />
+    </>
+  );
+}
+
+function GroupActionsDropdown({
+  group,
+  isPending,
+  onRequestDelete,
+}: Readonly<{ group: AccessGroupListRow; isPending: boolean; onRequestDelete: (open: boolean) => void }>): JSX.Element {
   return (
     <DropdownMenu>
       <GroupActionsTrigger group={group} />
       <DropdownMenuContent align="end">
-        <GroupRemoveMenuItem group={group} setErrorMessage={setErrorMessage} state={state} />
+        <GroupRemoveMenuItem isPending={isPending} onSelect={(): void => onRequestDelete(true)} />
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function GroupDeleteDialog({
+  groupName,
+  isOpen,
+  isPending,
+  onConfirm,
+  onOpenChange,
+}: Readonly<GroupDeleteDialogProps>): JSX.Element {
+  const confirmation: GroupDeleteConfirmationSpec = readGroupDeleteConfirmationSpec(groupName);
+
+  return (
+    <ConfirmationDialog
+      confirmLabel={confirmation.confirmLabel}
+      description={confirmation.description}
+      expectedValue={confirmation.expectedValue}
+      inputLabel={confirmation.inputLabel}
+      inputPlaceholder={confirmation.inputPlaceholder}
+      isPending={isPending}
+      onConfirm={onConfirm}
+      onOpenChange={onOpenChange}
+      open={isOpen}
+      title={confirmation.title}
+    />
   );
 }
 
@@ -156,23 +219,20 @@ function GroupActionsTrigger({ group }: Readonly<{ group: AccessGroupListRow }>)
 }
 
 function GroupRemoveMenuItem({
-  group,
-  setErrorMessage,
-  state,
-}: Readonly<GroupRowProps & { setErrorMessage: (value: string | undefined) => void }>): JSX.Element {
-  const mutation: GroupDeleteMutation = useGroupDeleteMutation(group, setErrorMessage, state);
-
+  isPending,
+  onSelect,
+}: Readonly<{ isPending: boolean; onSelect: () => void }>): JSX.Element {
   return (
     <DropdownMenuItem
       className="text-red-700 focus:text-red-800"
-      disabled={mutation.isPending}
+      disabled={isPending}
       onSelect={(): void => {
-        if (!mutation.isPending && window.prompt(readGroupDeleteConfirmationMessage(group.name)) === group.name) {
-          mutation.mutate();
+        if (!isPending) {
+          onSelect();
         }
       }}
     >
-      {mutation.isPending ? 'Removing...' : 'Remove'}
+      {isPending ? 'Removing...' : 'Remove'}
     </DropdownMenuItem>
   );
 }

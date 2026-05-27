@@ -17,6 +17,15 @@ export type RolePageSetter = (
 ) => void;
 type RoleDrawerErrorSetter = (value: string | undefined) => void;
 
+export interface RoleDeleteConfirmationSpec {
+  confirmLabel: 'Remove role';
+  description: string;
+  expectedValue: string;
+  inputLabel: 'Role name';
+  inputPlaceholder: string;
+  title: 'Remove role';
+}
+
 const roleEditorFieldLabels: BrowserActionFieldLabelMap = {
   name: 'role name',
   permissionKeys: 'permission',
@@ -54,8 +63,15 @@ export async function handleRoleDelete(
   });
 }
 
-export function readRoleDeleteConfirmationMessage(roleName: string): string {
-  return `Type ${roleName} to remove this role.`;
+export function readRoleDeleteConfirmationSpec(roleName: string): RoleDeleteConfirmationSpec {
+  return {
+    confirmLabel: 'Remove role',
+    description: `Type ${roleName} to remove this role.`,
+    expectedValue: roleName,
+    inputLabel: 'Role name',
+    inputPlaceholder: roleName,
+    title: 'Remove role',
+  };
 }
 
 async function runRoleAction(

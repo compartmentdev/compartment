@@ -1,20 +1,27 @@
 import type { JSX } from 'react';
-import type { UseMutationResult } from '@tanstack/react-query';
 import type { BrowserProjectSummary, BrowserProjectsPageResult } from '../../services/browser-projects.service.types';
 import { ServerTableActionsMenu } from '../../components/server-table-actions-menu';
-import { useBrowserMutation } from '../../lib/browser-query-client';
 import { DropdownMenuItem } from '../../components/ui/dropdown-menu';
+import { type ProjectAction, type ProjectActionHandler } from './project-actions';
 import {
-  readProjectActionConfirmationMessage,
-  runProjectAction,
-  type ProjectAction,
-  type ProjectActionHandler,
-} from './project-actions';
+  ProjectActionConfirmationDialog,
+  type ProjectActionController,
+  readCloseProjectConfirmationDialogHandler,
+  useProjectActionController,
+} from './project-row-actions-dropdown.confirmation';
 import { renderProjectOpenMenuItems } from './project-open-action';
 
 interface ProjectRowActionsDropdownProps {
   data: BrowserProjectsPageResult;
   onProjectAction: ProjectActionHandler;
+  project: BrowserProjectSummary;
+}
+
+interface ProjectRowActionsDropdownContentProps {
+  actions: readonly ProjectRowMenuAction[];
+  onProjectAction: ProjectActionHandler;
+  openItems: readonly JSX.Element[];
+  organizationSlug: string;
   project: BrowserProjectSummary;
 }
 
@@ -25,13 +32,18 @@ interface ProjectRowMenuAction {
 
 interface ProjectActionMenuItemProps {
   action: ProjectAction;
+  isPending: boolean;
   label: string;
-  onProjectAction: ProjectActionHandler;
-  organizationSlug: string;
-  projectName: string;
+  onSelect: (action: ProjectAction) => void;
 }
 
-type ProjectActionMutation = UseMutationResult<void, Error, void>;
+interface ProjectActionsMenuProps {
+  actions: readonly ProjectRowMenuAction[];
+  isPendingAction: ProjectAction | undefined;
+  onSelect: (action: ProjectAction) => void;
+  openItems: readonly JSX.Element[];
+  projectName: string;
+}
 
 export function ProjectRowActionsDropdown({
   data,
@@ -49,10 +61,40 @@ export function ProjectRowActionsDropdown({
   }
 
   return (
-    <ServerTableActionsMenu ariaLabel={`Open actions for ${project.name}`}>
-      {openItems}
-      {renderProjectActionMenuItems(actions, onProjectAction, data.selectedOrganizationSlug, project.name)}
-    </ServerTableActionsMenu>
+    <ProjectRowActionsDropdownContent
+      actions={actions}
+      onProjectAction={onProjectAction}
+      openItems={openItems}
+      organizationSlug={data.selectedOrganizationSlug}
+      project={project}
+    />
+  );
+}
+
+function ProjectRowActionsDropdownContent(props: Readonly<ProjectRowActionsDropdownContentProps>): JSX.Element {
+  const controller: ProjectActionController = useProjectActionController(
+    props.project.name,
+    props.organizationSlug,
+    props.onProjectAction,
+  );
+
+  return (
+    <>
+      <ProjectActionsMenu
+        actions={props.actions}
+        isPendingAction={controller.pendingAction}
+        onSelect={controller.requestAction}
+        openItems={props.openItems}
+        projectName={props.project.name}
+      />
+      <ProjectActionConfirmationDialog
+        action={controller.confirmationAction}
+        isPending={controller.isPending}
+        onConfirm={controller.submitConfirmedAction}
+        onOpenChange={readCloseProjectConfirmationDialogHandler(controller.setConfirmationAction)}
+        projectName={props.project.name}
+      />
+    </>
   );
 }
 
@@ -79,44 +121,41 @@ function appendProjectArchiveMenuActions(actions: ProjectRowMenuAction[], projec
     return;
   }
   if (project.status === 'archived') {
-    appendArchivedProjectMenuActions(actions);
+    actions.push({ action: 'unarchive', label: 'Unarchive' }, { action: 'delete', label: 'Remove' });
     return;
   }
 
-  actions.push({
-    action: 'archive',
-    label: 'Archive',
-  });
+  actions.push({ action: 'archive', label: 'Archive' });
 }
 
-function appendArchivedProjectMenuActions(actions: ProjectRowMenuAction[]): void {
-  actions.push(
-    {
-      action: 'unarchive',
-      label: 'Unarchive',
-    },
-    {
-      action: 'delete',
-      label: 'Remove',
-    },
+function ProjectActionsMenu({
+  actions,
+  isPendingAction,
+  onSelect,
+  openItems,
+  projectName,
+}: Readonly<ProjectActionsMenuProps>): JSX.Element {
+  return (
+    <ServerTableActionsMenu ariaLabel={`Open actions for ${projectName}`}>
+      {openItems}
+      {renderProjectActionMenuItems(actions, isPendingAction, onSelect)}
+    </ServerTableActionsMenu>
   );
 }
 
 function renderProjectActionMenuItems(
   actions: readonly ProjectRowMenuAction[],
-  onProjectAction: ProjectActionHandler,
-  organizationSlug: string,
-  projectName: string,
+  pendingAction: ProjectAction | undefined,
+  onSelect: (action: ProjectAction) => void,
 ): JSX.Element[] {
   return actions.map(
     (action: ProjectRowMenuAction): JSX.Element => (
       <ProjectActionMenuItem
         action={action.action}
+        isPending={pendingAction === action.action}
         key={action.action}
         label={action.label}
-        onProjectAction={onProjectAction}
-        organizationSlug={organizationSlug}
-        projectName={projectName}
+        onSelect={onSelect}
       />
     ),
   );
@@ -124,66 +163,25 @@ function renderProjectActionMenuItems(
 
 function ProjectActionMenuItem({
   action,
+  isPending,
   label,
-  onProjectAction,
-  organizationSlug,
-  projectName,
+  onSelect,
 }: Readonly<ProjectActionMenuItemProps>): JSX.Element {
-  const mutation: ProjectActionMutation = useProjectActionMutation(
-    action,
-    projectName,
-    organizationSlug,
-    onProjectAction,
-  );
-
   return (
     <DropdownMenuItem
       className={
         action === 'delete' ? 'text-destructive focus:text-destructive data-[highlighted]:text-destructive' : undefined
       }
-      disabled={mutation.isPending}
-      onSelect={createProjectActionSelectHandler(action, projectName, mutation)}
+      disabled={isPending}
+      onSelect={(): void => {
+        if (!isPending) {
+          onSelect(action);
+        }
+      }}
     >
-      {mutation.isPending ? readPendingProjectActionLabel(action) : label}
+      {isPending ? readPendingProjectActionLabel(action) : label}
     </DropdownMenuItem>
   );
-}
-
-function useProjectActionMutation(
-  action: ProjectAction,
-  projectName: string,
-  organizationSlug: string,
-  onProjectAction: ProjectActionHandler,
-): ProjectActionMutation {
-  return useBrowserMutation<void>({
-    mutation: async (): Promise<void> => await runProjectAction(action, projectName, organizationSlug),
-    mutationKey: ['console-projects', organizationSlug, projectName, action],
-    onError: (error: Error): void => {
-      void onProjectAction(action, projectName, error);
-    },
-    onSuccess: async (): Promise<void> => {
-      await onProjectAction(action, projectName);
-    },
-  });
-}
-
-function createProjectActionSelectHandler(
-  action: ProjectAction,
-  projectName: string,
-  mutation: ProjectActionMutation,
-): () => void {
-  return (): void => {
-    if (mutation.isPending || !shouldRunProjectAction(action, projectName)) {
-      return;
-    }
-
-    mutation.mutate();
-  };
-}
-
-function shouldRunProjectAction(action: ProjectAction, projectName: string): boolean {
-  const confirmationMessage: string | null = readProjectActionConfirmationMessage(action, projectName);
-  return confirmationMessage === null || window.prompt(confirmationMessage) === projectName;
 }
 
 function readPendingProjectActionLabel(action: ProjectAction): string {

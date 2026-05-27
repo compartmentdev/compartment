@@ -2,12 +2,7 @@ import { type JSX } from 'react';
 import { DropdownMenuItem } from '../../components/ui/dropdown-menu';
 import type { BrowserUsersAccessState, BrowserUsersUser } from '../../services/browser-users.service.types';
 import type { UserActionHandler } from './user-actions';
-import {
-  type UserAccessMutation,
-  type UserRemoveMutation,
-  useUserAccessMutation,
-  useUserRemoveMutation,
-} from './users-table.mutations';
+import { type UserAccessMutation, useUserAccessMutation } from './users-table.mutations';
 
 interface UserActionMenuItemProps {
   onUserAction: UserActionHandler;
@@ -22,6 +17,8 @@ interface UserAccessMenuItemProps extends UserActionMenuItemProps {
 
 interface UserRemoveMenuItemProps extends UserActionMenuItemProps {
   canRemoveUser: boolean;
+  isPending: boolean;
+  onSelect: () => void;
 }
 
 export function UserAccessMenuItem(props: Readonly<UserAccessMenuItemProps>): JSX.Element | null {
@@ -61,13 +58,9 @@ function readUserAccessMenuItemClassName(access: BrowserUsersAccessState): strin
 
 export function UserRemoveMenuItem({
   canRemoveUser,
-  onUserAction,
-  organizationSlug,
-  setErrorMessage,
-  user,
+  isPending,
+  onSelect,
 }: Readonly<UserRemoveMenuItemProps>): JSX.Element | null {
-  const mutation: UserRemoveMutation = useUserRemoveMutation(onUserAction, organizationSlug, setErrorMessage, user);
-
   if (!canRemoveUser) {
     return null;
   }
@@ -75,14 +68,14 @@ export function UserRemoveMenuItem({
   return (
     <DropdownMenuItem
       className="text-destructive focus:text-destructive data-[highlighted]:text-destructive"
-      disabled={mutation.isPending}
+      disabled={isPending}
       onSelect={(): void => {
-        if (!mutation.isPending && window.prompt(`Type ${user.email} to remove this user.`) === user.email) {
-          mutation.mutate();
+        if (!isPending) {
+          onSelect();
         }
       }}
     >
-      {mutation.isPending ? 'Removing...' : 'Remove'}
+      {isPending ? 'Removing...' : 'Remove'}
     </DropdownMenuItem>
   );
 }
