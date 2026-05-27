@@ -89,7 +89,7 @@ describe('browser access action visibility', (): void => {
 
     const html: string = renderToStaticMarkup(
       React.createElement(GroupsPageContent, {
-        state: createGroupsPageState(['organization.group.read', 'organization.group.manage']),
+        state: createGroupsPageState(['organization.group.read', 'organization.group.manage'], [createGroup()]),
       }),
     );
 
@@ -97,6 +97,45 @@ describe('browser access action visibility', (): void => {
     expect(html).toContain('button-accent-surface');
     expect(html).toContain('lucide-users-round');
     expect(html).not.toContain('Manage shared access groups and their members.');
+  });
+
+  it('renders a users empty state action with the accent button', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(UsersView, {
+        data: createUsersPageResult(['organization.user.read', 'organization.user.invite'], {
+          users: [createCurrentPrincipalUser()],
+        }),
+        onNavigate: vi.fn<BrowserSoftNavigateHandler>(),
+        onUserAction: vi.fn<UserActionHandler>(),
+        setData: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('You do not have any invited users.');
+    expect(html).toContain('Invite user');
+    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('empty-states/users.svg');
+    expect(html).toContain('lucide-mail-plus');
+    expect(html).not.toContain('Search users');
+  });
+
+  it('renders a groups empty state action with the accent button', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(GroupsPageContent, {
+        state: createGroupsPageState(['organization.group.read', 'organization.group.manage']),
+      }),
+    );
+
+    expect(html).toContain('You do not have any groups.');
+    expect(html).toContain('Create group');
+    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('empty-states/groups.svg');
+    expect(html).toContain('lucide-plus');
+    expect(html).not.toContain('Search groups');
   });
 
   it('hides role create and delete actions from read-only role viewers', (): void => {
@@ -125,6 +164,40 @@ describe('browser access action visibility', (): void => {
     expect(html).toContain('button-accent-surface');
     expect(html).toContain('lucide-shield-plus');
     expect(html).not.toContain('Define permission sets for organization access.');
+  });
+
+  it('keeps the roles table when no roles are returned', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(RolesPageContent, {
+        state: createRolesPageState(['organization.role.read', 'organization.role.manage'], { roles: [] }),
+      }),
+    );
+
+    expect(html).toContain('Create role');
+    expect(html).toContain('Search roles');
+    expect(html).toContain('No roles found.');
+    expect(html).toContain('button-accent-surface');
+    expect(html).not.toContain('You do not have any roles.');
+  });
+
+  it('keeps system roles in the roles table', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(RolesPageContent, {
+        state: createRolesPageState(['organization.role.read', 'organization.role.manage'], {
+          roles: [{ ...createRole(), id: 'role_system_admin', kind: 'system', name: 'Admin' }],
+        }),
+      }),
+    );
+
+    expect(html).toContain('Admin');
+    expect(html).toContain('System');
+    expect(html).toContain('Create role');
+    expect(html).toContain('Search roles');
+    expect(html).not.toContain('You do not have any roles.');
   });
 
   it('renders a users back action when roles page has a valid users return target', (): void => {
@@ -162,7 +235,10 @@ describe('browser access action visibility', (): void => {
   });
 });
 
-function createUsersPageResult(currentOrganizationPermissions: PermissionKey[]): BrowserUsersPageResult {
+function createUsersPageResult(
+  currentOrganizationPermissions: PermissionKey[],
+  overrides: Partial<BrowserUsersPageResult> = {},
+): BrowserUsersPageResult {
   return {
     availableGroups: [],
     availableRoles: [],
@@ -186,6 +262,7 @@ function createUsersPageResult(currentOrganizationPermissions: PermissionKey[]):
     totalPages: 1,
     totalUsers: 1,
     users: [createUser()],
+    ...overrides,
   };
 }
 
@@ -201,6 +278,14 @@ function createUser(): BrowserUsersUser {
     roleNames: ['viewer'],
     status: 'active',
     type: 'user',
+  };
+}
+
+function createCurrentPrincipalUser(): BrowserUsersUser {
+  return {
+    ...createUser(),
+    email: 'admin@example.com',
+    id: 'usr_admin',
   };
 }
 

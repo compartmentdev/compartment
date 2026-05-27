@@ -12,8 +12,10 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import {
   buildSelfHostedImageRefForRepository,
   defaultSelfHostedImageRepositoryPrefix,
+  listSelfHostedRuntimeImageSpecs,
   selfHostedRuntimeImageArtifacts,
 } from './self-hosted-runtime-services.mjs';
+import { parseSelfHostedEnvFile, readRequiredSelfHostedEnvValue } from './self-hosted-env-file.mjs';
 
 const defaultOutputDirectory = './.compartment/release-assets/self-hosted-sboms';
 const defaultRepositoryPrefix = defaultSelfHostedImageRepositoryPrefix;
@@ -37,6 +39,10 @@ async function main() {
   if (options.scanOnly) {
     scanSelfHostedImages({
       dockerScout: options.dockerScout,
+      imageRefs:
+        options.envFilePath === undefined
+          ? undefined
+          : readSelfHostedImageRefsFromEnvFile(repositoryRoot, options.envFilePath),
       repositoryPrefix: options.repositoryPrefix,
       repositoryRoot,
       tags: options.tags,
@@ -84,38 +90,35 @@ export async function secureSelfHostedImages(input) {
 
 export function scanSelfHostedImages(input) {
   const dockerScoutFailedImageRefs = [];
+  const imageRefs = input.imageRefs ?? buildSelfHostedImageRefs(input.repositoryPrefix, input.tags);
   const scannedImageRefs = new Set();
   const trivyFailedImageRefs = [];
 
-  for (const serviceName of selfHostedRuntimeImageArtifacts) {
-    for (const tag of input.tags) {
-      const imageRef = buildSecureSelfHostedImageRef(input.repositoryPrefix, serviceName, tag);
-
-      if (scannedImageRefs.has(imageRef)) {
-        continue;
-      }
-
-      process.stdout.write(`Scanning self-hosted image ${imageRef}.\n`);
-      try {
-        scanSelfHostedImage(input.repositoryRoot, imageRef);
-      } catch (error) {
-        trivyFailedImageRefs.push(imageRef);
-        process.stderr.write(`Trivy scan failed for self-hosted image ${imageRef}: ${readErrorMessage(error)}\n`);
-      }
-
-      if (input.dockerScout === true) {
-        process.stdout.write(`Checking fixable self-hosted image vulnerabilities with Docker Scout for ${imageRef}.\n`);
-        try {
-          scanSelfHostedImageWithDockerScout(input.repositoryRoot, imageRef);
-        } catch (error) {
-          dockerScoutFailedImageRefs.push(imageRef);
-          process.stderr.write(
-            `Docker Scout scan failed for self-hosted image ${imageRef}: ${readErrorMessage(error)}\n`,
-          );
-        }
-      }
-      scannedImageRefs.add(imageRef);
+  for (const imageRef of imageRefs) {
+    if (scannedImageRefs.has(imageRef)) {
+      continue;
     }
+
+    process.stdout.write(`Scanning self-hosted image ${imageRef}.\n`);
+    try {
+      scanSelfHostedImage(input.repositoryRoot, imageRef);
+    } catch (error) {
+      trivyFailedImageRefs.push(imageRef);
+      process.stderr.write(`Trivy scan failed for self-hosted image ${imageRef}: ${readErrorMessage(error)}\n`);
+    }
+
+    if (input.dockerScout === true) {
+      process.stdout.write(`Checking fixable self-hosted image vulnerabilities with Docker Scout for ${imageRef}.\n`);
+      try {
+        scanSelfHostedImageWithDockerScout(input.repositoryRoot, imageRef);
+      } catch (error) {
+        dockerScoutFailedImageRefs.push(imageRef);
+        process.stderr.write(
+          `Docker Scout scan failed for self-hosted image ${imageRef}: ${readErrorMessage(error)}\n`,
+        );
+      }
+    }
+    scannedImageRefs.add(imageRef);
   }
 
   reportSelfHostedImageScanFailures({
@@ -126,9 +129,11 @@ export function scanSelfHostedImages(input) {
 
 export function readSecureSelfHostedImageOptions(args) {
   let dockerScout = false;
+  let envFilePath;
   const tags = [];
   let outputDirectory = defaultOutputDirectory;
   let repositoryPrefix = defaultRepositoryPrefix;
+  let repositoryPrefixSet = false;
   let scanOnly = false;
   let validateProvenanceAttestation = false;
 
@@ -145,6 +150,12 @@ export function readSecureSelfHostedImageOptions(args) {
       continue;
     }
 
+    if (argument === '--env-file') {
+      envFilePath = readRequiredOptionValue(args, index + 1, '--env-file');
+      index += 1;
+      continue;
+    }
+
     if (argument === '--validate-provenance-attestation') {
       validateProvenanceAttestation = true;
       continue;
@@ -158,6 +169,7 @@ export function readSecureSelfHostedImageOptions(args) {
 
     if (argument === '--repository-prefix') {
       repositoryPrefix = readRequiredOptionValue(args, index + 1, '--repository-prefix');
+      repositoryPrefixSet = true;
       index += 1;
       continue;
     }
@@ -180,18 +192,31 @@ export function readSecureSelfHostedImageOptions(args) {
     throw new Error('Can only use --docker-scout with --scan-only.');
   }
 
+  if (envFilePath !== undefined && !scanOnly) {
+    throw new Error('Can only use --env-file with --scan-only.');
+  }
+
+  if (envFilePath !== undefined && repositoryPrefixSet) {
+    throw new Error('Cannot combine --env-file with --repository-prefix.');
+  }
+
+  if (envFilePath !== undefined && tags.length !== 0) {
+    throw new Error('Cannot combine --env-file with image tags.');
+  }
+
   if (validateProvenanceAttestation && tags.length !== 0) {
     throw new Error('Expected no image tags with --validate-provenance-attestation.');
   }
 
-  if (!validateProvenanceAttestation && tags.length === 0) {
+  if (!validateProvenanceAttestation && envFilePath === undefined && tags.length === 0) {
     throw new Error(
-      'Expected at least one self-hosted image tag. Example: `node ./scripts/deploy/secure-self-hosted-images.mjs sha-<commit> main`.',
+      'Expected at least one self-hosted image tag or --env-file. Example: `node ./scripts/deploy/secure-self-hosted-images.mjs sha-<commit> main`.',
     );
   }
 
   return {
     dockerScout,
+    envFilePath,
     outputDirectory,
     repositoryPrefix,
     scanOnly,
@@ -200,8 +225,22 @@ export function readSecureSelfHostedImageOptions(args) {
   };
 }
 
+function buildSelfHostedImageRefs(repositoryPrefix, tags) {
+  return selfHostedRuntimeImageArtifacts.flatMap((serviceName) =>
+    tags.map((tag) => buildSecureSelfHostedImageRef(repositoryPrefix, serviceName, tag)),
+  );
+}
+
 function buildSecureSelfHostedImageRef(repositoryPrefix, serviceName, tag) {
   return buildSelfHostedImageRefForRepository(serviceName, tag, repositoryPrefix ?? defaultRepositoryPrefix);
+}
+
+function readSelfHostedImageRefsFromEnvFile(repositoryRoot, envFilePath) {
+  const resolvedEnvFilePath = isAbsolute(envFilePath) ? envFilePath : resolve(repositoryRoot, envFilePath);
+  const envValues = parseSelfHostedEnvFile(readFileSync(resolvedEnvFilePath, 'utf8'));
+  return listSelfHostedRuntimeImageSpecs().map(({ imageVariableName }) =>
+    readRequiredSelfHostedEnvValue(envValues, imageVariableName, resolvedEnvFilePath),
+  );
 }
 
 export function buildDigestImageRef(imageRef, digest) {

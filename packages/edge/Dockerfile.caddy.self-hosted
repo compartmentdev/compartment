@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG COMPARTMENT_CADDY_BUILDER_IMAGE=caddy:2.11.3-builder
-ARG COMPARTMENT_CADDY_RUNTIME_IMAGE=caddy:2.11.3
+ARG COMPARTMENT_CADDY_RUNTIME_IMAGE=alpine:3.22
 
 FROM ${COMPARTMENT_CADDY_BUILDER_IMAGE} AS builder
 
@@ -11,24 +11,29 @@ COPY packages/edge/caddy-dns-compartment-broker ./packages/edge/caddy-dns-compar
 
 RUN xcaddy build v2.11.3 \
     --with github.com/compartmentdev/compartment/packages/edge/caddy-dns-compartment-broker=./packages/edge/caddy-dns-compartment-broker \
-    --replace github.com/go-jose/go-jose/v3=github.com/go-jose/go-jose/v3@v3.0.5
+    --replace github.com/go-jose/go-jose/v3=github.com/go-jose/go-jose/v3@v3.0.5 \
+    --replace golang.org/x/crypto=golang.org/x/crypto@v0.52.0 \
+    --replace golang.org/x/net=golang.org/x/net@v0.55.0
 
 FROM ${COMPARTMENT_CADDY_RUNTIME_IMAGE}
 
 LABEL org.opencontainers.image.source="https://github.com/compartmentdev/compartment"
 
+ENV XDG_CONFIG_HOME=/config \
+  XDG_DATA_HOME=/data
+
 RUN apk upgrade --no-cache \
-  && addgroup -S compartment \
-  && adduser -S -D -H -G compartment compartment \
-  && chown -R compartment:compartment /config /data
+  && apk add --no-cache ca-certificates libcap mailcap \
+  && mkdir -p /config /data
 
 COPY --from=builder /src/caddy /usr/bin/caddy
+RUN setcap cap_net_bind_service=+ep /usr/bin/caddy
 COPY packages/edge/Caddyfile.custom-cert /etc/caddy/Caddyfile.custom-cert
 COPY packages/edge/Caddyfile.custom-http /etc/caddy/Caddyfile.custom-http
 COPY packages/edge/Caddyfile.internal /etc/caddy/Caddyfile.internal
 COPY packages/edge/Caddyfile.managed /etc/caddy/Caddyfile.managed
 COPY --chmod=755 packages/edge/caddy-entrypoint.sh /usr/bin/compartment-caddy-entrypoint
 
-USER compartment
+VOLUME /data /config
 
 ENTRYPOINT ["/usr/bin/compartment-caddy-entrypoint"]

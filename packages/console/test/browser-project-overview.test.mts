@@ -18,6 +18,7 @@ describe('browser project overview', (): void => {
 
     expect(html).toContain('>Overview<');
     expect(html).toContain('lucide-boxes');
+    expect(html).not.toContain('Project services, routes, and deployment status by environment.');
     expect(html).toContain('>Production details<');
     expect(html).toContain('gap-3 bg-background');
     expect(html).toContain('aria-label="Breadcrumb"');

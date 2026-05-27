@@ -13,13 +13,18 @@ import { accessDetailDrawer } from '../support/access-drawer';
 import { isSuccessfulApiMutationResponse, isSuccessfulApiResponse } from '../support/browser-api';
 import { isConsolePathname } from '../support/console-paths';
 import { readVisibleEffectivePermissionKeys } from '../support/effective-permissions';
+import { type PageReadyState, waitForPageReadyState } from '../support/page-readiness';
 
 export class GroupsPage {
+  private readonly createGroupButton: Locator;
+  private readonly emptyStateMessage: Locator;
   private readonly organizationSlug: string;
   private readonly page: Page;
   private readonly searchInput: Locator;
 
   constructor(page: Page, organizationSlug: string) {
+    this.createGroupButton = page.getByRole('button', { name: 'Create group' });
+    this.emptyStateMessage = page.getByText('You do not have any groups.', { exact: true });
     this.organizationSlug = organizationSlug;
     this.page = page;
     this.searchInput = page.getByRole('searchbox', { name: 'Search groups' });
@@ -46,8 +51,14 @@ export class GroupsPage {
       this.page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Groups/ }),
     ).toHaveAttribute('aria-current', 'page');
     await expect(this.page.getByRole('heading', { name: 'Groups' })).toBeVisible();
-    await expect(this.searchInput).toBeVisible();
-    await expect(this.page.getByRole('table')).toBeVisible();
+    const readyState: PageReadyState = await waitForPageReadyState(this.searchInput, this.emptyStateMessage);
+
+    if (readyState === 'content') {
+      await expect(this.page.getByRole('table')).toBeVisible();
+      return;
+    }
+
+    await expect(this.createGroupButton).toBeVisible();
   }
 
   async expectGroupVisible(groupName: string): Promise<void> {
@@ -57,7 +68,7 @@ export class GroupsPage {
   async createGroup(groupName: string, description: string): Promise<void> {
     await Promise.all([
       this.page.waitForURL((url: URL): boolean => this.isCreateGroupUrl(url)),
-      this.page.getByRole('button', { name: 'Create group' }).click(),
+      this.createGroupButton.click(),
     ]);
 
     const drawer: Locator = this.detailDrawer('Create group');

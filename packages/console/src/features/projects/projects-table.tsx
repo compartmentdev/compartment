@@ -1,8 +1,4 @@
 import type { JSX } from 'react';
-import { browserProjectCreatePathname } from '../../browser-public-paths';
-import { BrowserSoftNavigationLink } from '../../components/browser-soft-navigation-link';
-import { buttonVariants } from '../../components/ui/button';
-import { buildBrowserConsoleHref } from '../console/console-hrefs';
 import type {
   BrowserProjectSummary,
   BrowserProjectsPageResult,
@@ -28,8 +24,7 @@ interface SortableHeadingProps {
 }
 
 interface ProjectsEmptyRowProps {
-  data: BrowserProjectsPageResult;
-  onNavigate: BrowserSoftNavigateHandler;
+  message: string;
 }
 
 export function ProjectsTable({ data, onNavigate, onProjectAction }: Readonly<ProjectsTableProps>): JSX.Element {
@@ -73,7 +68,7 @@ function renderTableRows(
   onProjectAction: ProjectActionHandler,
 ): JSX.Element[] {
   if (data.projects.length === 0) {
-    return [<ProjectsEmptyRow data={data} key="empty" onNavigate={onNavigate} />];
+    return [<ProjectsEmptyRow key="empty" message="No projects found." />];
   }
 
   return data.projects.map(
@@ -89,24 +84,12 @@ function renderTableRows(
   );
 }
 
-function ProjectsEmptyRow({ data, onNavigate }: Readonly<ProjectsEmptyRowProps>): JSX.Element {
-  const onboardingLink: JSX.Element | null =
-    data.archiveState !== 'archived' && data.projectCount === 0 ? (
-      <BrowserSoftNavigationLink
-        className={buttonVariants({ variant: 'default' })}
-        href={buildBrowserConsoleHref(browserProjectCreatePathname, data.selectedOrganizationSlug)}
-        onNavigate={onNavigate}
-      >
-        Deploy my first project
-      </BrowserSoftNavigationLink>
-    ) : null;
-
+function ProjectsEmptyRow({ message }: Readonly<ProjectsEmptyRowProps>): JSX.Element {
   return (
     <tr>
       <td className="px-4 py-10 text-center" colSpan={6}>
         <div className="grid justify-items-center gap-3">
-          <p className="text-[13px] text-muted-foreground">No projects found.</p>
-          {onboardingLink}
+          <p className="text-[13px] text-muted-foreground">{message}</p>
         </div>
       </td>
     </tr>

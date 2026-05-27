@@ -45,6 +45,7 @@ describe('edge public ingress routes', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'console.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -67,6 +68,7 @@ describe('edge public ingress routes', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'unknown.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -89,6 +91,7 @@ describe('edge public ingress routes', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -122,6 +125,7 @@ describe('edge public ingress routes', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '//attacker.example',
         },
       });
@@ -154,6 +158,7 @@ describe('edge public ingress routes', (): void => {
         headers: {
           cookie: readAppSessionCookie('app-session-token'),
           host: 'app.customer.example.com',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -191,6 +196,7 @@ describe('edge public ingress routes', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -221,6 +227,7 @@ describe('edge public ingress routes', (): void => {
         headers: {
           cookie: readAppSessionCookie('missing-session'),
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -252,6 +259,7 @@ describe('edge public ingress routes', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -289,6 +297,7 @@ describe('edge public ingress routes', (): void => {
         headers: {
           cookie: readAppSessionCookie('app-session-token'),
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -320,6 +329,7 @@ describe('edge public ingress routes', (): void => {
         headers: {
           cookie: readAppSessionCookie('app-session-token'),
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard?tab=activity',
           [compartmentPrincipalIdResponseHeaderName]: 'spoofed',
         },
@@ -391,6 +401,7 @@ describe('edge public ingress routes', (): void => {
             `${legacyCompartmentAppSessionCookieName}=attacker-session-token; ` +
             readAppSessionCookie('victim-session-token'),
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard?tab=activity',
         },
       });
@@ -421,6 +432,7 @@ describe('edge public ingress routes', (): void => {
         headers: {
           cookie: `${legacyCompartmentAppSessionCookieName}=legacy-session-token`,
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -456,6 +468,7 @@ describe('edge public ingress routes', (): void => {
         headers: {
           cookie: readAppSessionCookie('app-session-token'),
           host: 'app.customer.example.com',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard?tab=activity',
         },
       });
@@ -940,6 +953,7 @@ describe('edge public ingress routes', (): void => {
         headers: {
           cookie: readAppSessionCookie('app-session-token'),
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -974,6 +988,7 @@ describe('edge public ingress routes', (): void => {
         headers: {
           cookie: readAppSessionCookie('app-session-token'),
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -1014,6 +1029,7 @@ describe('edge public ingress routes', (): void => {
         headers: {
           cookie: readAppSessionCookie('app-session-token'),
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -1040,6 +1056,7 @@ describe('edge public ingress routes', (): void => {
         headers: {
           cookie: readAppSessionCookie('app-session-token'),
           host: 'billing.localhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });

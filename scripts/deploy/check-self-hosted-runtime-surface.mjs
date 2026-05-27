@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+import { parseSelfHostedEnvFile, readRequiredSelfHostedEnvValue } from './self-hosted-env-file.mjs';
 import { listSelfHostedRuntimeImageSpecs } from './self-hosted-runtime-services.mjs';
 
 const runtimeImages = listSelfHostedRuntimeImageSpecs();
@@ -35,9 +36,9 @@ await main();
 
 async function main() {
   const envPath = resolve(readEnvPathArgument());
-  const envText = await readFile(envPath, 'utf8');
+  const envValues = parseSelfHostedEnvFile(await readFile(envPath, 'utf8'));
   const violations = runtimeImages
-    .map((runtimeImage) => inspectRuntimeImage(envText, runtimeImage))
+    .map((runtimeImage) => inspectRuntimeImage(envValues, runtimeImage, envPath))
     .filter((violation) => violation !== null);
 
   if (violations.length === 0) {
@@ -56,8 +57,8 @@ function readEnvPathArgument() {
   return argument ?? '.env.self-hosted.example';
 }
 
-function inspectRuntimeImage(envText, runtimeImage) {
-  const imageRef = readRequiredEnvironmentValue(envText, runtimeImage.imageVariableName);
+function inspectRuntimeImage(envValues, runtimeImage, envPath) {
+  const imageRef = readRequiredSelfHostedEnvValue(envValues, runtimeImage.imageVariableName, envPath);
   const result = spawnSync(
     'docker',
     ['run', '--rm', '--entrypoint', 'sh', imageRef, '-lc', runtimeSurfaceCheckCommand],
@@ -80,13 +81,4 @@ function inspectRuntimeImage(envText, runtimeImage) {
     matches,
     serviceName: runtimeImage.serviceName,
   };
-}
-
-function readRequiredEnvironmentValue(envText, variableName) {
-  const envLine = envText.split('\n').find((line) => line.startsWith(`${variableName}=`));
-  if (envLine !== undefined) {
-    return envLine.slice(variableName.length + 1).trim();
-  }
-
-  throw new Error(`Expected ${variableName} in the self-hosted env file.`);
 }

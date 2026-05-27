@@ -12,15 +12,15 @@ Publishing requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. Stable semver ta
 come from release-please; the tag publish workflow validates the tag version against
 checked-in release metadata before building images.
 
-Before pushing a tag, the publish job scans each self-hosted runtime image artifact with Trivy and fails before publication on fixable high or critical vulnerabilities. The scan does not stop on the first failing image; it reports every failing image before exiting.
+Before pushing a tag, the publish job scans each self-hosted runtime image artifact with Trivy and Docker Scout and fails before publication on fixable high or critical vulnerabilities. The scan does not stop on the first failing image; it reports every failing image before exiting.
 
 The published image artifact set includes the long-running runtime services (`api`, `caddy`, `edge`, `worker`) and the one-shot `runtime-probe` image used by the node agent for readiness and network probes.
 
-Pull request CI also scans the locally built or restored self-hosted test images with the same Trivy policy before those images are used by the self-hosted e2e jobs.
+Pull request and main CI build or restore the self-hosted image cache once per commit, then fan out e2e jobs and a separate self-hosted image security gate from that same cache. The gate loads the cached tar images and scans the exact refs from the rendered `.env.self-hosted` with the same Trivy and Docker Scout policy before the workflow can pass. Fork pull requests cannot receive Docker Hub credentials, so they run the Trivy gate only; internal pull requests, main CI, and publish workflows keep Docker Scout enabled.
 
-The root `.trivyignore.yaml` is the only allowed suppression point for self-hosted image scans. Current suppressions must include a statement and be scoped to the affected binary path.
+The root `.trivyignore.yaml` is the only allowed suppression point for Trivy self-hosted image scans. Docker Scout has no repository suppression path in the CI or publish gates.
 
-Before promoting Docker Hub tags, the publish job pushes each attested image to a workflow-scoped staging tag, scans that staged image with Trivy, and only then promotes the same image index to the public `main`, `sha-<commit>`, semver, or `latest` tags.
+Before promoting Docker Hub tags, the publish job pushes each attested image to a workflow-scoped staging tag, scans that staged image with Trivy and Docker Scout, and only then promotes the same image index to the public `main`, `sha-<commit>`, semver, or `latest` tags.
 
 After promoting a tag, the publish job resolves the tag to a concrete image digest and secures each unique runtime image digest:
 

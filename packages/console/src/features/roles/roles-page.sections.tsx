@@ -6,16 +6,16 @@ import {
   browserConsolePageHeaderClassName,
   browserConsoleListPageBodyClassName,
 } from '../../components/browser-console-header';
-import { BrowserSoftNavigationLink } from '../../components/browser-soft-navigation-link';
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import { ServerSearch } from '../../components/server-search';
 import { ServerTableFrame } from '../../components/server-table';
 import { ToolbarPrimaryActionButton } from '../../components/toolbar-primary-action';
-import { ArrowLeft, ShieldPlus } from '../../components/ui/icons';
+import { ShieldPlus } from '../../components/ui/icons';
 import { AccessDrawerShell, AccessPageHeader } from '../access/access-ui';
 import { canManageBrowserRoles } from '../console/console-access';
 import { BrowserConsoleOrganizationContextPanel } from '../console/console-organization-context-panel';
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
+import { RolesBackBreadcrumb } from './roles-page.back-breadcrumb';
 import { RoleDetailDrawerContent, RoleDetailDrawerHeader } from './roles-page.detail-drawer';
 import {
   readRoleEditorTitle,
@@ -40,10 +40,27 @@ import { RolesTable } from './roles-page.table';
 interface RolesPageContentProps {
   state: RolesPageState;
 }
-
+interface RolesPageBodyProps {
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
+  state: RolesPageState;
+}
+interface RolesPageHeaderProps {
+  state: RolesPageState;
+}
+interface CreateRoleButtonProps {
+  state: RolesPageState;
+}
+interface RolesPageToolbarProps {
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
+}
+interface RolesTableSectionProps {
+  roles: AccessRoleListRow[];
+  state: RolesPageState;
+}
 export function RolesPageContent({ state }: Readonly<RolesPageContentProps>): JSX.Element {
   const [searchQuery, setSearchQuery] = useState<string>('');
-
   return (
     <BrowserConsoleShell
       currentOrganizationPermissions={state.data.currentOrganizationPermissions}
@@ -63,11 +80,9 @@ export function RolesPageContent({ state }: Readonly<RolesPageContentProps>): JS
 function RolesPageDrawer({ state }: Readonly<RolesPageContentProps>): JSX.Element | null {
   const editorState: RoleEditorDraftState = useRoleEditorDraftState(state);
   const mutation: RoleSubmitMutation = useRoleSubmitMutation(state, editorState);
-
   if (state.data.mode === 'list') {
     return null;
   }
-
   if (state.data.mode === 'detail') {
     const role: AccessRoleListRow | undefined = state.data.roles.find(
       (candidate: AccessRoleListRow): boolean => candidate.id === state.data.roleId,
@@ -78,11 +93,9 @@ function RolesPageDrawer({ state }: Readonly<RolesPageContentProps>): JSX.Elemen
 
     return renderRoleDetailDrawer(role, state);
   }
-
   if (!canManageBrowserRoles(state.data.currentOrganizationPermissions)) {
     return null;
   }
-
   return renderRoleEditorDrawer(editorState, mutation, state);
 }
 
@@ -117,11 +130,7 @@ function renderRoleEditorDrawer(
   );
 }
 
-function RolesPageBody({
-  searchQuery,
-  setSearchQuery,
-  state,
-}: Readonly<{ searchQuery: string; setSearchQuery: (value: string) => void; state: RolesPageState }>): JSX.Element {
+function RolesPageBody({ searchQuery, setSearchQuery, state }: Readonly<RolesPageBodyProps>): JSX.Element {
   return (
     <div className={browserConsolePageClassName}>
       <RolesPageHeader state={state} />
@@ -150,58 +159,38 @@ function renderRolesPageContent(
     );
   }
 
+  return renderSelectedRolesPageContent(searchQuery, setSearchQuery, state);
+}
+
+function renderSelectedRolesPageContent(
+  searchQuery: string,
+  setSearchQuery: (value: string) => void,
+  state: RolesPageState,
+): JSX.Element {
+  const visibleRoles: AccessRoleListRow[] = readVisibleRoles(state.data.roles, searchQuery);
+
   return (
     <>
       <RolesPageToolbar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
-      <RolesTableSection roles={readVisibleRoles(state.data.roles, searchQuery)} state={state} />
+      <RolesTableSection roles={visibleRoles} state={state} />
     </>
   );
 }
 
-function RolesPageHeader({ state }: Readonly<{ state: RolesPageState }>): JSX.Element {
+function RolesPageHeader({ state }: Readonly<RolesPageHeaderProps>): JSX.Element {
   const backLink: RolesBackLink | null = readRolesBackLink(state.data.backHref, state.data.selectedOrganizationSlug);
 
   return (
     <header className={browserConsolePageHeaderClassName}>
       <div className="flex flex-col gap-5">
-        {renderRolesBackBreadcrumb(backLink, state)}
+        <RolesBackBreadcrumb backLink={backLink} onNavigate={state.onNavigate} />
         <AccessPageHeader action={<CreateRoleButton state={state} />} title="Roles" />
       </div>
     </header>
   );
 }
 
-function renderRolesBackBreadcrumb(
-  backLink: RolesBackLink | null,
-  state: Readonly<RolesPageState>,
-): JSX.Element | null {
-  if (backLink === null) {
-    return null;
-  }
-
-  return (
-    <nav aria-label="Breadcrumb" className="overflow-x-auto">
-      <ol className="flex flex-wrap items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
-        <li className="flex min-w-0 items-center gap-1.5">
-          <BrowserSoftNavigationLink
-            className="inline-flex items-center gap-1 truncate transition-colors hover:text-foreground focus-visible:text-foreground"
-            href={backLink.href}
-            onNavigate={state.onNavigate}
-            title={backLink.label}
-          >
-            <ArrowLeft aria-hidden="true" className="size-3.5 shrink-0" />
-            <span className="truncate">{backLink.label}</span>
-          </BrowserSoftNavigationLink>
-        </li>
-      </ol>
-    </nav>
-  );
-}
-
-function RolesPageToolbar({
-  searchQuery,
-  setSearchQuery,
-}: Readonly<{ searchQuery: string; setSearchQuery: (value: string) => void }>): JSX.Element {
+function RolesPageToolbar({ searchQuery, setSearchQuery }: Readonly<RolesPageToolbarProps>): JSX.Element {
   return (
     <header>
       <ServerSearch
@@ -216,11 +205,10 @@ function RolesPageToolbar({
   );
 }
 
-function CreateRoleButton({ state }: Readonly<{ state: RolesPageState }>): JSX.Element | null {
+function CreateRoleButton({ state }: Readonly<CreateRoleButtonProps>): JSX.Element | null {
   if (!canManageBrowserRoles(state.data.currentOrganizationPermissions)) {
     return null;
   }
-
   return (
     <ToolbarPrimaryActionButton
       icon={ShieldPlus}
@@ -235,10 +223,7 @@ function CreateRoleButton({ state }: Readonly<{ state: RolesPageState }>): JSX.E
   );
 }
 
-function RolesTableSection({
-  roles,
-  state,
-}: Readonly<{ roles: AccessRoleListRow[]; state: RolesPageState }>): JSX.Element {
+function RolesTableSection({ roles, state }: Readonly<RolesTableSectionProps>): JSX.Element {
   return (
     <ServerTableFrame>
       <RolesTable roles={roles} state={state} />

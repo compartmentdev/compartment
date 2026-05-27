@@ -18,6 +18,7 @@ export {
   LockKeyhole,
   LoaderCircle,
   Mail,
+  MailPlus,
   MoreHorizontal,
   Pencil,
   Play,

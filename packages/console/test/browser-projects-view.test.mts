@@ -22,6 +22,30 @@ describe('browser projects view', (): void => {
     expect(html).not.toContain('lucide-folder-plus');
   });
 
+  it('renders the project empty state screen when the organization has no projects', (): void => {
+    const html: string = renderToStaticMarkup(
+      createElement(ProjectsView, {
+        data: createProjectsPageResult({
+          projectCount: 0,
+          projects: [],
+          totalProjects: 0,
+        }),
+        onNavigate: (): void => undefined,
+        onProjectAction: async (): Promise<void> => await Promise.resolve(),
+      }),
+    );
+
+    expect(html).toContain('You do not have a project deployed in the Compartment.');
+    expect(html).toContain('Add project');
+    expect(html).toContain('href="/orgs/acme-dev/projects/create"');
+    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('empty-states/projects.svg');
+    expect(html).toContain('lucide-plus');
+    expect(html).not.toContain('Search projects');
+    expect(html).not.toContain('No projects found.');
+    expect(html).not.toContain('Deploy my first project');
+  });
+
   it('keeps the add project toolbar action for filtered empty results', (): void => {
     const html: string = renderToStaticMarkup(
       createElement(ProjectsView, {
@@ -109,6 +133,7 @@ describe('browser projects view', (): void => {
     );
 
     expect(html).not.toContain('Add project');
+    expect(html).toContain('min-h-9');
   });
 
   it('keeps project open targets behind the row actions menu', (): void => {
