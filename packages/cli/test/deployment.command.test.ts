@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import {
   deployResponseSchema,
   type DeploymentListResponse,
+  type DeploymentReadSummary,
   type DeploymentStatusResponse,
   type DeployResponse,
 } from '@compartment/contracts';
@@ -19,8 +20,10 @@ import type {
 import type { DeployCommandInput } from '../src/services/deployments.types';
 import type { CliConfig } from '../src/store/config.types';
 import {
+  createActiveDeploymentReadSummaryFixture,
   createActiveDeploymentStatusResponseFixture,
   createCliConfigFixture,
+  createDeploymentStatusResponseFixture,
   createDeployResponseFixture,
 } from './cli-test.fixtures';
 import {
@@ -109,6 +112,7 @@ describe.sequential('compartment deployment commands', (): void => {
   afterEach(async (): Promise<void> => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
     restoreCliCommandModules([
       '../src/commands/deployments/deployment.command.output',
       '../src/services/deployment-movement.service',
@@ -265,6 +269,73 @@ describe.sequential('compartment deployment commands', (): void => {
     expect(readCliStderr(capture)).toContain(
       'Deploy smoke-web/staging web: succeeded (active) in 5.0s. Route: https://smoke-web.preview.acme.dev.\n',
     );
+    expect(readCliStdout(capture)).toContain('Deployment dep_123 is active at https://smoke-web.preview.acme.dev');
+  });
+
+  it('refreshes TTY deploy status progress when only elapsed time changes', async (): Promise<void> => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-30T10:00:01.200Z'));
+    const runningDeployments: DeploymentReadSummary[] = ['web', 'internal-api', 'public-api'].map(
+      (serviceName: string): DeploymentReadSummary =>
+        createActiveDeploymentReadSummaryFixture({
+          completedAt: null,
+          health: 'pending',
+          id: `dep_${serviceName}`,
+          operation: {
+            completedAt: null,
+            createdAt: '2026-03-30T10:00:00.000Z',
+            status: 'running',
+          },
+          promotionStage: 'building',
+          routeUrl: null,
+          serviceName,
+          status: 'running',
+        }),
+    );
+    const runningResponse: DeploymentStatusResponse = createDeploymentStatusResponseFixture({
+      activeDeployments: [],
+      deployments: runningDeployments,
+    });
+    const succeededResponse: DeploymentStatusResponse = createActiveDeploymentStatusResponseFixture();
+    const deployProjectMock: DeployProjectMock = vi
+      .fn<DeployProject>()
+      .mockImplementation(
+        async (_context: AuthenticatedContext, input: DeployCommandInput): Promise<DeploymentStatusResponse> => {
+          input.onStatusUpdate?.(runningResponse);
+          vi.advanceTimersByTime(120);
+          vi.setSystemTime(new Date('2026-03-30T10:00:03.200Z'));
+          input.onStatusUpdate?.(runningResponse);
+          vi.advanceTimersByTime(120);
+          await Promise.resolve();
+          return succeededResponse;
+        },
+      );
+    const readCliConfigMock: Mock<ReadCliConfig> = vi.fn<ReadCliConfig>().mockResolvedValue(createCliConfigFixture());
+    const writeCliConfigMock: Mock<WriteCliConfig> = vi.fn<WriteCliConfig>().mockResolvedValue(undefined);
+    vi.doMock('../src/services/deployments.service', (): { deployProject: DeployProjectMock } => ({
+      deployProject: deployProjectMock,
+    }));
+    vi.doMock(
+      '../src/store/config.store',
+      (): { readCliConfig: Mock<ReadCliConfig>; writeCliConfig: Mock<WriteCliConfig> } => ({
+        readCliConfig: readCliConfigMock,
+        writeCliConfig: writeCliConfigMock,
+      }),
+    );
+    vi.spyOn(process, 'cwd').mockReturnValue('/tmp/smoke-web');
+    const capture: CliCommandCapture = createCliCapture({ stderrColumns: 120, stderrIsTTY: true });
+
+    const result: CliCommandResult = await runCliCommand(['deploy'], capture);
+
+    expectCliSuccess(result);
+    const stderr: string = readCliStderr(capture);
+    const progressFrames: string[] = stderr.split('\r\u001B[2K').filter((frame: string): boolean => frame !== '');
+    expect(progressFrames.every((frame: string): boolean => frame.length < 120)).toBe(true);
+    expect(progressFrames.some((frame: string): boolean => frame.includes('elapsed 1.2s'))).toBe(true);
+    expect(progressFrames.some((frame: string): boolean => frame.includes('elapsed 3.2s'))).toBe(true);
+    expect(progressFrames.some((frame: string): boolean => frame.endsWith('...'))).toBe(true);
+    expect(stderr.indexOf('elapsed 1.2s')).toBeLessThan(stderr.indexOf('elapsed 3.2s'));
+    expect(stderr.endsWith('\r\u001B[2K')).toBe(true);
     expect(readCliStdout(capture)).toContain('Deployment dep_123 is active at https://smoke-web.preview.acme.dev');
   });
 

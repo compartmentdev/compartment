@@ -30,6 +30,10 @@ class ProcessCliIo implements CliIo {
   readonly stdin: NodeJS.ReadableStream = process.stdin;
   readonly stdoutIsTTY: boolean | undefined = process.stdout.isTTY;
 
+  get stderrColumns(): number | undefined {
+    return process.stderr.columns;
+  }
+
   stderr(value: string): void {
     process.stderr.write(value);
   }

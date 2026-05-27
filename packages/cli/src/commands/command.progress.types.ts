@@ -7,7 +7,10 @@ export interface CommandProgressInput {
   output: OutputFormat;
 }
 
+export type CommandProgressMode = 'hidden' | 'line' | 'live';
+
 export interface CommandProgress {
+  readonly mode: CommandProgressMode;
   report(message: string): void;
   stop(): void;
 }
