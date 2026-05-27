@@ -13,12 +13,6 @@ export interface CommandProgress {
 }
 
 export interface CommandProgressState {
-  frameIndex: number;
   message: string | null;
   rendered: boolean;
-  timer: NodeJS.Timeout | null;
-}
-
-export interface CommandProgressTimer {
-  unref?: (() => void) | undefined;
 }

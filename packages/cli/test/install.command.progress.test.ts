@@ -50,8 +50,7 @@ describe('install command progress', (): void => {
     ]);
   });
 
-  it('renders and clears a spinner for text TTY output', (): void => {
-    vi.useFakeTimers();
+  it('renders and clears a TTY status line for text output', (): void => {
     const capture: CliCommandCapture = createCliCapture({ stderrIsTTY: true });
     const progress: InstallCommandProgress = createInstallCommandProgress({
       io: capture.io,
@@ -59,14 +58,10 @@ describe('install command progress', (): void => {
     });
 
     progress.report('Preparing self-hosted install environment...');
-    vi.advanceTimersByTime(120);
     progress.stop();
     const stoppedOutput: string = readCliStderr(capture);
-    vi.advanceTimersByTime(30);
 
-    expect(stoppedOutput).toContain('- Preparing self-hosted install environment...');
-    expect(stoppedOutput).toContain('\\ Preparing self-hosted install environment...');
-    expect(stoppedOutput.endsWith('\r\u001B[2K')).toBe(true);
+    expect(stoppedOutput).toBe('\r\u001B[2KPreparing self-hosted install environment...\r\u001B[2K');
     expect(readCliStderr(capture)).toBe(stoppedOutput);
   });
 

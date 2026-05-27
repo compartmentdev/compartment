@@ -1,12 +1,5 @@
-import type {
-  CommandProgress,
-  CommandProgressInput,
-  CommandProgressState,
-  CommandProgressTimer,
-} from './command.progress.types';
+import type { CommandProgress, CommandProgressInput, CommandProgressState } from './command.progress.types';
 
-const spinnerFrames: readonly string[] = ['-', '\\', '|', '/'];
-const spinnerIntervalMs: number = 120;
 const terminalClearLine: string = '\u001B[2K';
 const terminalLineStart: string = '\r';
 
@@ -19,7 +12,7 @@ export function createCommandProgress(input: CommandProgressInput): CommandProgr
     return new LineCommandProgress(input);
   }
 
-  return new SpinnerCommandProgress(input);
+  return new StatusLineCommandProgress(input);
 }
 
 class NoopCommandProgress implements CommandProgress {
@@ -48,13 +41,11 @@ class LineCommandProgress implements CommandProgress {
   }
 }
 
-class SpinnerCommandProgress implements CommandProgress {
+class StatusLineCommandProgress implements CommandProgress {
   readonly #input: CommandProgressInput;
   readonly #state: CommandProgressState = {
-    frameIndex: 0,
     message: null,
     rendered: false,
-    timer: null,
   };
 
   constructor(input: CommandProgressInput) {
@@ -68,12 +59,10 @@ class SpinnerCommandProgress implements CommandProgress {
     }
 
     this.#state.message = message;
-    ensureCommandProgressTimer(this.#input, this.#state);
-    renderCommandProgressFrame(this.#input, this.#state);
+    renderCommandProgressStatusLine(this.#input, this.#state);
   }
 
   stop(): void {
-    stopCommandProgressTimer(this.#state);
     clearRenderedCommandProgress(this.#input, this.#state);
     this.#state.message = null;
   }
@@ -84,19 +73,9 @@ function hasLineBreak(message: string): boolean {
 }
 
 function renderCommandProgressLine(input: CommandProgressInput, state: CommandProgressState, message: string): void {
-  stopCommandProgressTimer(state);
   clearRenderedCommandProgress(input, state);
   state.message = null;
   input.io.stderr(readLineProgressMessage(message));
-}
-
-function stopCommandProgressTimer(state: CommandProgressState): void {
-  if (state.timer === null) {
-    return;
-  }
-
-  clearInterval(state.timer);
-  state.timer = null;
 }
 
 function clearRenderedCommandProgress(input: CommandProgressInput, state: CommandProgressState): void {
@@ -112,26 +91,13 @@ function readLineProgressMessage(message: string): string {
   return message.endsWith('\n') ? message : `${message}\n`;
 }
 
-function ensureCommandProgressTimer(input: CommandProgressInput, state: CommandProgressState): void {
-  if (state.timer !== null) {
-    return;
-  }
-
-  state.timer = setInterval((): void => {
-    renderCommandProgressFrame(input, state);
-  }, spinnerIntervalMs);
-  (state.timer as CommandProgressTimer).unref?.();
-}
-
-function renderCommandProgressFrame(input: CommandProgressInput, state: CommandProgressState): void {
+function renderCommandProgressStatusLine(input: CommandProgressInput, state: CommandProgressState): void {
   if (state.message === null) {
     return;
   }
 
-  const frame: string = spinnerFrames[state.frameIndex % spinnerFrames.length]!;
-  state.frameIndex += 1;
   state.rendered = true;
-  input.io.stderr(`${terminalLineStart}${terminalClearLine}${frame} ${state.message}`);
+  input.io.stderr(`${terminalLineStart}${terminalClearLine}${state.message}`);
 }
 
 function shouldRenderCommandProgress(input: CommandProgressInput): boolean {

@@ -268,6 +268,46 @@ describe.sequential('compartment deployment commands', (): void => {
     expect(readCliStdout(capture)).toContain('Deployment dep_123 is active at https://smoke-web.preview.acme.dev');
   });
 
+  it('renders deploy TTY progress without spinner frames', async (): Promise<void> => {
+    const response: DeploymentStatusResponse = createActiveDeploymentStatusResponseFixture();
+    const deployProjectMock: DeployProjectMock = vi
+      .fn<DeployProject>()
+      .mockImplementation(
+        async (_context: AuthenticatedContext, input: DeployCommandInput): Promise<DeploymentStatusResponse> => {
+          input.reportProgress?.('Preparing source archive...');
+          input.onStatusUpdate?.(response);
+          await Promise.resolve();
+          return response;
+        },
+      );
+    const readCliConfigMock: Mock<ReadCliConfig> = vi.fn<ReadCliConfig>().mockResolvedValue(createCliConfigFixture());
+    const writeCliConfigMock: Mock<WriteCliConfig> = vi.fn<WriteCliConfig>().mockResolvedValue(undefined);
+    vi.doMock('../src/services/deployments.service', (): { deployProject: DeployProjectMock } => ({
+      deployProject: deployProjectMock,
+    }));
+    vi.doMock(
+      '../src/store/config.store',
+      (): { readCliConfig: Mock<ReadCliConfig>; writeCliConfig: Mock<WriteCliConfig> } => ({
+        readCliConfig: readCliConfigMock,
+        writeCliConfig: writeCliConfigMock,
+      }),
+    );
+    vi.spyOn(process, 'cwd').mockReturnValue('/tmp/smoke-web');
+    const capture: CliCommandCapture = createCliCapture({ stderrIsTTY: true });
+
+    const result: CliCommandResult = await runCliCommand(['deploy'], capture);
+    const stderr: string = readCliStderr(capture);
+
+    expectCliSuccess(result);
+    expect(stderr).toContain('\r\u001B[2KPreparing source archive...');
+    expect(stderr).toContain(
+      '\r\u001B[2KDeploy smoke-web/staging web: succeeded (active) in 5.0s. Route: https://smoke-web.preview.acme.dev.',
+    );
+    expect(stderr).not.toContain('- Preparing source archive...');
+    expect(stderr).not.toContain('- Deploy smoke-web/staging web:');
+    expect(stderr).not.toContain('\\ Deploy smoke-web/staging web:');
+  });
+
   it('suppresses deploy progress for JSON output', async (): Promise<void> => {
     const response: DeploymentStatusResponse = createActiveDeploymentStatusResponseFixture();
     const deployProjectMock: DeployProjectMock = vi
