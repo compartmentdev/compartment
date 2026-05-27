@@ -16,7 +16,7 @@ export function AccessAdditionalCard({
 }: Readonly<AccessAdditionalCardProps>): JSX.Element {
   return (
     <div className={readAccessAdditionalCardClassName(tone)} style={readAccessAdditionalCardStyle(tone)}>
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <p className={readAccessAdditionalTitleClassName(tone)} style={readAccessAdditionalTitleStyle(tone)}>
             {title}

@@ -1,6 +1,6 @@
 import type { AccessGroupResponse } from '@compartment/contracts/browser';
 import type { UseMutationResult } from '@tanstack/react-query';
-import type { ChangeEvent, FormEvent, JSX } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type JSX, type MutableRefObject } from 'react';
 import { Button } from '../../components/ui/button';
 import { X } from '../../components/ui/icons';
 import { Input } from '../../components/ui/input';
@@ -13,7 +13,6 @@ import {
   accessDrawerFieldClassName,
   accessDrawerTextareaClassName,
   AccessDrawerSection,
-  AccessDrawerShell,
   useAccessDrawerCloseNavigation,
 } from '../access/access-ui';
 import { handleGroupCreateAction } from './groups-page.actions';
@@ -24,44 +23,47 @@ interface CreateGroupDrawerProps {
   state: GroupsPageState;
 }
 
-type CreateGroupMutation = UseMutationResult<AccessGroupResponse, Error, void>;
+export type CreateGroupMutation = UseMutationResult<AccessGroupResponse, Error, void>;
+
+export interface CreateGroupFormState {
+  description: string;
+  name: string;
+  setDescription: (value: string) => void;
+  setName: (value: string) => void;
+}
+
+type GroupsDrawerMode = 'create' | 'detail' | 'list';
 
 const createGroupFormId: string = 'create-group-form';
 const createGroupFieldLabels: BrowserActionFieldLabelMap = {
   name: 'group name',
 };
 
-export function CreateGroupDrawer({ state }: Readonly<CreateGroupDrawerProps>): JSX.Element {
-  const mutation: CreateGroupMutation = useCreateGroupMutation(state);
-
+export function CreateGroupDrawerContent({
+  formState,
+  mutation,
+  state,
+}: Readonly<CreateGroupDrawerProps & { formState: CreateGroupFormState; mutation: CreateGroupMutation }>): JSX.Element {
   return (
-    <AccessDrawerShell
-      closeHref={buildGroupsPageHref(state.data, null)}
-      footer={<GroupDrawerActions formId={createGroupFormId} mutation={mutation} state={state} />}
-      header={readCreateGroupDrawerHeader(state)}
-      onNavigate={state.onNavigate}
-      title="Create group"
-    >
-      <form id={createGroupFormId} onSubmit={createGroupSubmitHandler(state, mutation)}>
-        <AccessDrawerErrorAlert message={state.drawerErrorMessage} />
-        <AccessDrawerSection separated={false} title="Summary">
-          <GroupIdentityFields state={state} />
-        </AccessDrawerSection>
-      </form>
-    </AccessDrawerShell>
+    <form id={createGroupFormId} onSubmit={createGroupSubmitHandler(state, mutation)}>
+      <AccessDrawerErrorAlert message={state.drawerErrorMessage} />
+      <AccessDrawerSection separated={false} title="Summary">
+        <GroupIdentityFields formState={formState} />
+      </AccessDrawerSection>
+    </form>
   );
 }
 
-function GroupIdentityFields({ state }: Readonly<CreateGroupDrawerProps>): JSX.Element {
+function GroupIdentityFields({ formState }: Readonly<{ formState: CreateGroupFormState }>): JSX.Element {
   return (
     <div className="space-y-3">
-      <GroupNameField state={state} />
-      <GroupDescriptionField state={state} />
+      <GroupNameField formState={formState} />
+      <GroupDescriptionField formState={formState} />
     </div>
   );
 }
 
-function GroupNameField({ state }: Readonly<CreateGroupDrawerProps>): JSX.Element {
+function GroupNameField({ formState }: Readonly<{ formState: CreateGroupFormState }>): JSX.Element {
   return (
     <label className="block text-[13px] font-medium">
       <span className="mb-1 block text-[11px] leading-[14px] tracking-[0.033px] text-[var(--cpt-text-primary,#111212)]">
@@ -69,15 +71,15 @@ function GroupNameField({ state }: Readonly<CreateGroupDrawerProps>): JSX.Elemen
       </span>
       <Input
         className={accessDrawerFieldClassName}
-        onChange={(event: ChangeEvent<HTMLInputElement>): void => state.setNewGroupName(event.target.value)}
+        onChange={(event: ChangeEvent<HTMLInputElement>): void => formState.setName(event.target.value)}
         required
-        value={state.newGroupName}
+        value={formState.name}
       />
     </label>
   );
 }
 
-function GroupDescriptionField({ state }: Readonly<CreateGroupDrawerProps>): JSX.Element {
+function GroupDescriptionField({ formState }: Readonly<{ formState: CreateGroupFormState }>): JSX.Element {
   return (
     <label className="block text-[13px] font-medium">
       <span className="mb-1 block text-[11px] leading-[14px] tracking-[0.033px] text-[var(--cpt-text-primary,#111212)]">
@@ -85,8 +87,8 @@ function GroupDescriptionField({ state }: Readonly<CreateGroupDrawerProps>): JSX
       </span>
       <textarea
         className={`min-h-[68px] ${accessDrawerTextareaClassName}`}
-        onChange={(event: ChangeEvent<HTMLTextAreaElement>): void => state.setNewGroupDescription(event.target.value)}
-        value={state.newGroupDescription}
+        onChange={(event: ChangeEvent<HTMLTextAreaElement>): void => formState.setDescription(event.target.value)}
+        value={formState.description}
       />
     </label>
   );
@@ -108,6 +110,13 @@ function GroupDrawerActions({
       <GroupDrawerSubmitButton formId={formId} isPending={mutation.isPending} />
     </div>
   );
+}
+
+export function CreateGroupDrawerFooter({
+  mutation,
+  state,
+}: Readonly<CreateGroupDrawerProps & { mutation: CreateGroupMutation }>): JSX.Element {
+  return <GroupDrawerActions formId={createGroupFormId} mutation={mutation} state={state} />;
 }
 
 function GroupDrawerCancelButton({ closeDrawer }: Readonly<{ closeDrawer: () => void }>): JSX.Element {
@@ -149,10 +158,10 @@ function createGroupSubmitHandler(
   };
 }
 
-function useCreateGroupMutation(state: GroupsPageState): CreateGroupMutation {
+export function useCreateGroupMutation(state: GroupsPageState, formState: CreateGroupFormState): CreateGroupMutation {
   return useBrowserMutation<AccessGroupResponse>({
     mutation: async (): Promise<AccessGroupResponse> =>
-      await handleGroupCreateAction(state.data, state.newGroupDescription, state.newGroupName),
+      await handleGroupCreateAction(state.data, formState.description, formState.name),
     mutationKey: ['console-access', 'groups', state.data.selectedOrganizationSlug ?? 'unselected', 'create'],
     onError: (error: Error): void => {
       setGroupCreateError(error, state);
@@ -169,7 +178,29 @@ function setGroupCreateError(error: Error, state: GroupsPageState): void {
   );
 }
 
-function readCreateGroupDrawerHeader(state: GroupsPageState): JSX.Element {
+export function useCreateGroupFormState(state: GroupsPageState): CreateGroupFormState {
+  const [name, setName] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const previousModeRef: MutableRefObject<GroupsDrawerMode> = useRef(state.data.mode);
+  const previousOrganizationSlugRef: MutableRefObject<string | null> = useRef(state.data.selectedOrganizationSlug);
+
+  useEffect((): void => {
+    const didEnterCreate: boolean = previousModeRef.current !== 'create' && state.data.mode === 'create';
+    const organizationChanged: boolean = previousOrganizationSlugRef.current !== state.data.selectedOrganizationSlug;
+
+    if (state.data.mode === 'create' && (didEnterCreate || organizationChanged)) {
+      setName('');
+      setDescription('');
+    }
+
+    previousModeRef.current = state.data.mode;
+    previousOrganizationSlugRef.current = state.data.selectedOrganizationSlug;
+  }, [state.data.mode, state.data.selectedOrganizationSlug]);
+
+  return { description, name, setDescription, setName };
+}
+
+export function CreateGroupDrawerHeader({ state }: Readonly<CreateGroupDrawerProps>): JSX.Element {
   return (
     <AccessDrawerDetailHeader
       closeHref={buildGroupsPageHref(state.data, null)}

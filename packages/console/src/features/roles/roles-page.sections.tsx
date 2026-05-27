@@ -2,9 +2,9 @@ import type { AccessRoleListRow } from '@compartment/contracts/browser';
 import { type JSX, useState } from 'react';
 import {
   BrowserConsoleShell,
-  browserConsolePageBodyClassName,
   browserConsolePageClassName,
   browserConsolePageHeaderClassName,
+  browserConsoleListPageBodyClassName,
 } from '../../components/browser-console-header';
 import { BrowserSoftNavigationLink } from '../../components/browser-soft-navigation-link';
 import { DismissibleAlert } from '../../components/dismissible-alert';
@@ -12,12 +12,21 @@ import { ServerSearch } from '../../components/server-search';
 import { ServerTableFrame } from '../../components/server-table';
 import { ToolbarPrimaryActionButton } from '../../components/toolbar-primary-action';
 import { ArrowLeft, ShieldPlus } from '../../components/ui/icons';
-import { AccessPageHeader } from '../access/access-ui';
+import { AccessDrawerShell, AccessPageHeader } from '../access/access-ui';
 import { canManageBrowserRoles } from '../console/console-access';
 import { BrowserConsoleOrganizationContextPanel } from '../console/console-organization-context-panel';
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
-import { RoleDetailDrawer } from './roles-page.detail-drawer';
-import { RoleEditorDrawer } from './roles-page.drawer';
+import { RoleDetailDrawerContent, RoleDetailDrawerHeader } from './roles-page.detail-drawer';
+import {
+  readRoleEditorTitle,
+  type RoleEditorDraftState,
+  type RoleSubmitMutation,
+  RoleEditorDrawerContent,
+  RoleEditorDrawerFooter,
+  RoleEditorDrawerHeader,
+  useRoleEditorDraftState,
+  useRoleSubmitMutation,
+} from './roles-page.drawer';
 import {
   buildRolesOrganizationHref,
   buildRolesPageHref,
@@ -52,17 +61,60 @@ export function RolesPageContent({ state }: Readonly<RolesPageContentProps>): JS
 }
 
 function RolesPageDrawer({ state }: Readonly<RolesPageContentProps>): JSX.Element | null {
+  const editorState: RoleEditorDraftState = useRoleEditorDraftState(state);
+  const mutation: RoleSubmitMutation = useRoleSubmitMutation(state, editorState);
+
   if (state.data.mode === 'list') {
     return null;
   }
+
   if (state.data.mode === 'detail') {
-    return <RoleDetailDrawer state={state} />;
+    const role: AccessRoleListRow | undefined = state.data.roles.find(
+      (candidate: AccessRoleListRow): boolean => candidate.id === state.data.roleId,
+    );
+    if (role === undefined) {
+      return null;
+    }
+
+    return renderRoleDetailDrawer(role, state);
   }
+
   if (!canManageBrowserRoles(state.data.currentOrganizationPermissions)) {
     return null;
   }
 
-  return <RoleEditorDrawer state={state} />;
+  return renderRoleEditorDrawer(editorState, mutation, state);
+}
+
+function renderRoleDetailDrawer(role: AccessRoleListRow, state: RolesPageState): JSX.Element {
+  return (
+    <AccessDrawerShell
+      closeHref={buildRolesPageHref(state.data)}
+      header={<RoleDetailDrawerHeader role={role} state={state} />}
+      onNavigate={state.onNavigate}
+      title={role.name}
+    >
+      <RoleDetailDrawerContent role={role} state={state} />
+    </AccessDrawerShell>
+  );
+}
+
+function renderRoleEditorDrawer(
+  editorState: RoleEditorDraftState,
+  mutation: RoleSubmitMutation,
+  state: RolesPageState,
+): JSX.Element {
+  return (
+    <AccessDrawerShell
+      closeHref={buildRolesPageHref(state.data)}
+      footer={<RoleEditorDrawerFooter mutation={mutation} state={state} />}
+      header={<RoleEditorDrawerHeader state={state} />}
+      onNavigate={state.onNavigate}
+      title={readRoleEditorTitle(state)}
+    >
+      <RoleEditorDrawerContent editorState={editorState} mutation={mutation} state={state} />
+    </AccessDrawerShell>
+  );
 }
 
 function RolesPageBody({
@@ -73,7 +125,7 @@ function RolesPageBody({
   return (
     <div className={browserConsolePageClassName}>
       <RolesPageHeader state={state} />
-      <div className={browserConsolePageBodyClassName}>
+      <div className={browserConsoleListPageBodyClassName}>
         <DismissibleAlert message={state.data.noticeMessage} variant="notice" />
         <DismissibleAlert message={state.data.errorMessage} variant="error" />
         {renderRolesPageContent(searchQuery, setSearchQuery, state)}

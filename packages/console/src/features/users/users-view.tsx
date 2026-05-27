@@ -1,9 +1,9 @@
 import type { JSX } from 'react';
 import {
   BrowserConsoleShell,
-  browserConsolePageBodyClassName,
   browserConsolePageClassName,
   browserConsolePageHeaderClassName,
+  browserConsoleListPageBodyClassName,
 } from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import { ServerSearch } from '../../components/server-search';
@@ -77,7 +77,7 @@ function UsersPageBody({
   return (
     <div className={browserConsolePageClassName}>
       <UsersPageHeader data={data} onNavigate={onNavigate} />
-      <div className={browserConsolePageBodyClassName}>
+      <div className={browserConsoleListPageBodyClassName}>
         <DismissibleAlert message={data.noticeMessage} variant="notice" />
         <DismissibleAlert message={data.errorMessage} variant="error" />
         {renderUsersContent(data, onNavigate, onUserAction)}

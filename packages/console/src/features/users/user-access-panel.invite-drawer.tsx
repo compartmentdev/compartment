@@ -15,7 +15,6 @@ import {
   accessDrawerActionButtonClassName,
   accessDrawerFieldClassName,
   AccessDrawerSection,
-  AccessDrawerShell,
   useAccessDrawerCloseNavigation,
 } from '../access/access-ui';
 import type { UserAccessPanelState } from './user-access-panel.state';
@@ -38,37 +37,14 @@ interface InviteUserResultInvitation {
   bootstrapExpiresAt: string;
 }
 
-type InviteUserMutation = UseMutationResult<InviteUserResult, Error, void>;
+export type InviteUserMutation = UseMutationResult<InviteUserResult, Error, void>;
 
 const inviteUserFormId: string = 'invite-user-form';
 const inviteUserFieldLabels: BrowserActionFieldLabelMap = {
   email: 'email address',
 };
 
-export function InviteUserDrawer({ state }: Readonly<InviteUserDrawerProps>): JSX.Element {
-  const mutation: InviteUserMutation = useInviteUserMutation(state);
-
-  return (
-    <AccessDrawerShell
-      closeHref={buildUsersHref(state.data, { mode: 'list', selectedUserEmail: null })}
-      footer={<InviteDrawerActions formId={inviteUserFormId} mutation={mutation} state={state} />}
-      header={
-        <AccessDrawerDetailHeader
-          closeHref={buildUsersHref(state.data, { mode: 'list', selectedUserEmail: null })}
-          eyebrow="Invite user"
-          onNavigate={state.onNavigate}
-          title="Invite user"
-        />
-      }
-      onNavigate={state.onNavigate}
-      title="Invite user"
-    >
-      <InviteUserForm mutation={mutation} state={state} />
-    </AccessDrawerShell>
-  );
-}
-
-function InviteUserForm({
+export function InviteUserDrawerContent({
   mutation,
   state,
 }: Readonly<InviteUserDrawerProps & { mutation: InviteUserMutation }>): JSX.Element {
@@ -118,6 +94,13 @@ function InviteDrawerActions({
   );
 }
 
+export function InviteUserDrawerFooter({
+  mutation,
+  state,
+}: Readonly<InviteUserDrawerProps & { mutation: InviteUserMutation }>): JSX.Element {
+  return <InviteDrawerActions formId={inviteUserFormId} mutation={mutation} state={state} />;
+}
+
 function InviteDrawerCancelButton({ closeDrawer }: Readonly<{ closeDrawer: () => void }>): JSX.Element {
   return (
     <Button className={accessDrawerActionButtonClassName} onClick={closeDrawer} size="sm" type="button" variant="soft">
@@ -160,7 +143,7 @@ function createInviteSubmitHandler(
   };
 }
 
-function useInviteUserMutation(state: UserAccessPanelState): InviteUserMutation {
+export function useInviteUserMutation(state: UserAccessPanelState): InviteUserMutation {
   const organizationSlug: string = requireBrowserAccessSelectedOrganizationSlug(state.data.selectedOrganizationSlug);
   return useBrowserMutation<InviteUserResult>({
     mutation: async (): Promise<InviteUserResult> => await submitUserInvite(state, organizationSlug),
@@ -220,4 +203,15 @@ function createInvitationState(
 
 function setInviteDrawerError(error: Error | undefined, state: UserAccessPanelState): void {
   state.setDrawerErrorMessage(normalizeBrowserActionErrorMessage(error, 'User action failed.', inviteUserFieldLabels));
+}
+
+export function InviteUserDrawerHeader({ state }: Readonly<InviteUserDrawerProps>): JSX.Element {
+  return (
+    <AccessDrawerDetailHeader
+      closeHref={buildUsersHref(state.data, { mode: 'list', selectedUserEmail: null })}
+      eyebrow="Invite user"
+      onNavigate={state.onNavigate}
+      title="Invite user"
+    />
+  );
 }

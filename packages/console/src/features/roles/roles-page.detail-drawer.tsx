@@ -10,7 +10,7 @@ import { AccessDrawerCollapsibleSection } from '../access/access-drawer-collapsi
 import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
-import { accessDrawerHeaderActionButtonClassName, AccessDrawerSection, AccessDrawerShell } from '../access/access-ui';
+import { accessDrawerHeaderActionButtonClassName, AccessDrawerSection } from '../access/access-ui';
 import { PermissionFamiliesCard } from '../access/access-permission-families';
 import { canManageBrowserRoles } from '../console/console-access';
 import { handleRoleDelete, readRoleDeleteConfirmationMessage } from './roles-page.actions';
@@ -18,31 +18,12 @@ import { closeRolesDrawerAfterMutation } from './roles-page.navigation';
 import { buildRolesPageHref } from './roles-page.query';
 import type { RolesPageState } from './roles-page.state';
 
-interface RoleDetailDrawerProps {
-  state: RolesPageState;
-}
-
 type RoleDeleteMutation = UseMutationResult<boolean, Error, void>;
 
-export function RoleDetailDrawer({ state }: Readonly<RoleDetailDrawerProps>): JSX.Element | null {
-  const role: AccessRoleListRow | undefined = readSelectedRole(state);
-  if (role === undefined) {
-    return null;
-  }
-
-  return (
-    <AccessDrawerShell
-      closeHref={buildRolesPageHref(state.data)}
-      header={<RoleDetailHeader role={role} state={state} />}
-      onNavigate={state.onNavigate}
-      title={role.name}
-    >
-      <RoleDetailContent role={role} state={state} />
-    </AccessDrawerShell>
-  );
-}
-
-function RoleDetailHeader({ role, state }: Readonly<{ role: AccessRoleListRow; state: RolesPageState }>): JSX.Element {
+export function RoleDetailDrawerHeader({
+  role,
+  state,
+}: Readonly<{ role: AccessRoleListRow; state: RolesPageState }>): JSX.Element {
   return (
     <AccessDrawerDetailHeader
       action={
@@ -74,7 +55,10 @@ function EditRoleButton({ roleId, state }: Readonly<{ roleId: string; state: Rol
   );
 }
 
-function RoleDetailContent({ role, state }: Readonly<{ role: AccessRoleListRow; state: RolesPageState }>): JSX.Element {
+export function RoleDetailDrawerContent({
+  role,
+  state,
+}: Readonly<{ role: AccessRoleListRow; state: RolesPageState }>): JSX.Element {
   return (
     <>
       <AccessDrawerErrorAlert message={state.drawerErrorMessage} />
@@ -180,10 +164,6 @@ function createRoleDeleteHandler(roleName: string, mutation: RoleDeleteMutation)
 
     mutation.mutate();
   };
-}
-
-function readSelectedRole(state: RolesPageState): AccessRoleListRow | undefined {
-  return state.data.roles.find((role: AccessRoleListRow): boolean => role.id === state.data.roleId);
 }
 
 function readRoleDescription(role: AccessRoleListRow): string {

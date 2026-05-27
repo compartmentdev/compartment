@@ -139,7 +139,9 @@ function AccessDrawerCollapsibleContent({
       inert={!isExpanded}
       role="region"
     >
-      <div className="min-h-0 overflow-hidden pt-3">{children}</div>
+      <div className="min-h-0 overflow-hidden">
+        <div className="pt-3">{children}</div>
+      </div>
     </div>
   );
 }
