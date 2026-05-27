@@ -266,6 +266,10 @@ jobs:
     with:
       runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
       self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
+      docker_scout_enabled: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    secrets:
+      dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+      dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
 
   system-user-flow-e2e:
     name: check:ci / system-user-flow-e2e

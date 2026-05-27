@@ -24,10 +24,7 @@ ENV XDG_CONFIG_HOME=/config \
 
 RUN apk upgrade --no-cache \
   && apk add --no-cache ca-certificates libcap mailcap \
-  && addgroup -S compartment \
-  && adduser -S -D -H -G compartment compartment \
-  && mkdir -p /config /data \
-  && chown -R compartment:compartment /config /data
+  && mkdir -p /config /data
 
 COPY --from=builder /src/caddy /usr/bin/caddy
 RUN setcap cap_net_bind_service=+ep /usr/bin/caddy
@@ -37,6 +34,6 @@ COPY packages/edge/Caddyfile.internal /etc/caddy/Caddyfile.internal
 COPY packages/edge/Caddyfile.managed /etc/caddy/Caddyfile.managed
 COPY --chmod=755 packages/edge/caddy-entrypoint.sh /usr/bin/compartment-caddy-entrypoint
 
-USER compartment
+VOLUME /data /config
 
 ENTRYPOINT ["/usr/bin/compartment-caddy-entrypoint"]

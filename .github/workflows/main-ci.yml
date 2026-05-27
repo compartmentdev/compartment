@@ -43,6 +43,10 @@ jobs:
     with:
       runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
       self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
+      docker_scout_enabled: true
+    secrets:
+      dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+      dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
 
   console-e2e:
     name: main:ci / console-e2e
