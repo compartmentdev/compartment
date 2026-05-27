@@ -3,14 +3,7 @@ name: Hetzner runner fleet
 on:
   pull_request_target:
     types:
-      - opened
-      - reopened
-      - synchronize
-      - ready_for_review
       - closed
-  push:
-    branches:
-      - main
   schedule:
     # Billing-aware reaper: catch idle VMs before their next rounded Hetzner hour.
     - cron: '*/10 * * * *'
@@ -32,12 +25,6 @@ concurrency:
 jobs:
   manage:
     name: manage Hetzner runner fleet
-    if: >-
-      ${{
-        github.event_name != 'pull_request_target' ||
-        github.event.action == 'closed' ||
-        github.event.pull_request.head.repo.full_name == github.repository
-      }}
     uses: ./.github/workflows/_hetzner-runner-control.yml
     with:
       command: ${{ github.event_name == 'schedule' && 'reconcile' || (github.event_name == 'workflow_run' || (github.event_name == 'pull_request_target' && github.event.action == 'closed')) && 'cleanup' || 'ensure-fleet' }}
