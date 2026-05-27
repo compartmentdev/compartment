@@ -60,6 +60,7 @@ compartment install --image-source local --local-runtime
 - State, install backups, and docker work files live in `/var/lib/compartment/self-hosted`.
 - Runtime files are `/etc/compartment/.env.self-hosted`, `/etc/compartment/docker-compose.self-hosted.yml`, and
   `/var/lib/compartment/self-hosted/install-state.json`.
+- The pre-release `onprem` runtime layout, including `/etc/compartment/.env.onprem` and `/var/lib/compartment/onprem/install-state.json`, is not a supported install or update source.
 - The runtime socket root is `/var/run/compartment`: System API uses `/var/run/compartment/api/system-api.sock`, and the host node agent uses `/var/run/compartment/node/agent.sock`.
 - `compartment install` stages `/usr/local/bin/compartment-node-agent` and `compartment-node-agent.service`; API and worker containers talk to that host service over the node-agent Unix socket.
 - The system install requires root privileges.
