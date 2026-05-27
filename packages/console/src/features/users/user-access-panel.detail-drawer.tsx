@@ -10,7 +10,6 @@ import {
   accessDrawerSummaryIdentityClassName,
   accessDrawerSummaryTitleClassName,
   AccessDrawerSection,
-  AccessDrawerShell,
 } from '../access/access-ui';
 import { PermissionFamiliesCard } from '../access/access-permission-families';
 import { canManageBrowserGroups, canManageBrowserRoles, canReadBrowserRoles } from '../console/console-access';
@@ -34,26 +33,17 @@ interface UserDetailDrawerProps {
   state: UserAccessPanelState;
 }
 
-export function UserDetailDrawer({ access, state }: Readonly<UserDetailDrawerProps>): JSX.Element {
+export function UserDetailDrawerHeader({ state }: Readonly<Pick<UserDetailDrawerProps, 'state'>>): JSX.Element {
   return (
-    <AccessDrawerShell
+    <AccessDrawerDetailHeader
       closeHref={buildUsersHref(state.data, { mode: 'list', selectedUserEmail: null })}
-      header={
-        <AccessDrawerDetailHeader
-          closeHref={buildUsersHref(state.data, { mode: 'list', selectedUserEmail: null })}
-          eyebrow="User"
-          onNavigate={state.onNavigate}
-        />
-      }
+      eyebrow="User"
       onNavigate={state.onNavigate}
-      title={access.user.email}
-    >
-      <UserDetailContent access={access} state={state} />
-    </AccessDrawerShell>
+    />
   );
 }
 
-function UserDetailContent({ access, state }: Readonly<UserDetailDrawerProps>): JSX.Element {
+export function UserDetailDrawerContent({ access, state }: Readonly<UserDetailDrawerProps>): JSX.Element {
   return (
     <>
       <AccessDrawerErrorAlert message={state.drawerErrorMessage} />
@@ -141,7 +131,7 @@ function UserSummaryHeader({ access }: Readonly<{ access: UserAccessDetail }>): 
   return (
     <div className="flex items-center justify-between gap-3">
       <div className={accessDrawerSummaryIdentityClassName}>
-        <IconTile className="rounded-full" icon={UserRound} />
+        <IconTile icon={UserRound} />
         <p className={accessDrawerSummaryTitleClassName}>{access.user.email}</p>
       </div>
       <UserStatusBadge access={access} />

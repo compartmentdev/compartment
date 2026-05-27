@@ -8,7 +8,9 @@ export type BrowserConsolePage = 'audit' | 'groups' | 'projects' | 'roles' | 'us
 const browserConsolePageFrameClassName: string = 'mx-auto min-h-screen w-full max-w-[1500px]';
 export const browserConsolePageClassName: string = 'flex min-h-screen w-full flex-col';
 export const browserConsolePageGutterClassName: string = 'px-4 sm:px-6 lg:px-8';
-export const browserConsolePageHeaderClassName: string = 'px-4 pt-8 sm:px-6 lg:px-8';
+export const browserConsolePageHeaderClassName: string = 'px-4 pb-8 pt-8 sm:px-6 lg:px-8';
+export const browserConsoleListPageBodyClassName: string =
+  'flex w-full flex-1 flex-col gap-8 px-4 pb-8 pt-0 sm:px-6 lg:px-8';
 export const browserConsoleDetailPageHeaderClassName: string = 'border-b border-border px-4 pt-5 sm:px-6 lg:px-8';
 export const browserConsolePageBodyClassName: string = 'flex w-full flex-1 flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8';
 

@@ -1,7 +1,11 @@
 name: Publish Self-Hosted Images (Main)
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - Main CI
+    types:
+      - completed
     branches:
       - main
 
@@ -9,11 +13,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: publish-self-hosted-main-${{ github.ref }}
+  group: publish-self-hosted-main
+  queue: max
+
+env:
+  PUBLISH_SHA: ${{ github.event.workflow_run.head_sha }}
 
 jobs:
   build-main-images:
     name: build main image artifact
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -21,6 +30,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+          ref: ${{ env.PUBLISH_SHA }}
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -32,7 +42,7 @@ jobs:
 
       - name: Prepare self-hosted build env
         env:
-          PRIMARY_TAG: sha-${{ github.sha }}
+          PRIMARY_TAG: sha-${{ env.PUBLISH_SHA }}
         run: |
           mkdir -p ./.compartment/release-assets
           node ./scripts/deploy/render-self-hosted-env.mjs \
@@ -56,11 +66,11 @@ jobs:
       - name: Archive self-hosted images
         run: |
           docker image save \
-            "docker.io/compartmentdev/compartment-api:sha-${GITHUB_SHA}" \
-            "docker.io/compartmentdev/compartment-caddy:sha-${GITHUB_SHA}" \
-            "docker.io/compartmentdev/compartment-edge:sha-${GITHUB_SHA}" \
-            "docker.io/compartmentdev/compartment-runtime-probe:sha-${GITHUB_SHA}" \
-            "docker.io/compartmentdev/compartment-worker:sha-${GITHUB_SHA}" \
+            "docker.io/compartmentdev/compartment-api:sha-${PUBLISH_SHA}" \
+            "docker.io/compartmentdev/compartment-caddy:sha-${PUBLISH_SHA}" \
+            "docker.io/compartmentdev/compartment-edge:sha-${PUBLISH_SHA}" \
+            "docker.io/compartmentdev/compartment-runtime-probe:sha-${PUBLISH_SHA}" \
+            "docker.io/compartmentdev/compartment-worker:sha-${PUBLISH_SHA}" \
             | gzip -1 > ./.compartment/release-assets/self-hosted-images.tar.gz
 
       - name: Upload self-hosted image artifact
@@ -84,6 +94,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           persist-credentials: false
+          ref: ${{ env.PUBLISH_SHA }}
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -127,7 +138,7 @@ jobs:
             --scan-only \
             --docker-scout \
             --repository-prefix docker.io/compartmentdev \
-            "sha-${GITHUB_SHA}"
+            "sha-${PUBLISH_SHA}"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
@@ -144,9 +155,10 @@ jobs:
           COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.3-bookworm
           COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
           COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MUTABLE_TAG: main
-          PRIMARY_TAG: sha-${{ github.sha }}
-          STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          PRIMARY_TAG: sha-${{ env.PUBLISH_SHA }}
+          STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.PUBLISH_SHA }}
         run: |
           common_args=(--push --provenance=mode=max --sbom=true)
           node_args=(
@@ -165,6 +177,8 @@ jobs:
           runtime_probe_args=(
             --build-arg "COMPARTMENT_NODE_RUNTIME_IMAGE=${COMPARTMENT_NODE_RUNTIME_IMAGE}"
           )
+          mutable_tags_file="./.compartment/release-assets/published-self-hosted-mutable-tags.txt"
+          : > "$mutable_tags_file"
 
           push_dockerhub_image() {
             local image_name="$1"
@@ -179,8 +193,27 @@ jobs:
             local image_name="$1"
             docker buildx imagetools create \
               --tag "docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}" \
-              --tag "docker.io/compartmentdev/${image_name}:${MUTABLE_TAG}" \
               "docker.io/compartmentdev/${image_name}:${STAGING_TAG}"
+          }
+
+          read_current_main_sha() {
+            local current_main_sha
+            if ! current_main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"; then
+              echo "Failed to read current main ref." >&2
+              return 1
+            fi
+            if [ -z "$current_main_sha" ]; then
+              echo "Expected current main ref SHA." >&2
+              return 1
+            fi
+            printf '%s\n' "$current_main_sha"
+          }
+
+          promote_dockerhub_mutable_image() {
+            local image_name="$1"
+            docker buildx imagetools create \
+              --tag "docker.io/compartmentdev/${image_name}:${MUTABLE_TAG}" \
+              "docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
           }
 
           push_dockerhub_image compartment-api packages/api/Dockerfile.self-hosted "${node_args[@]}"
@@ -189,38 +222,62 @@ jobs:
           push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
           push_dockerhub_image compartment-runtime-probe packages/node/Dockerfile.runtime-probe.self-hosted "${runtime_probe_args[@]}"
 
+          mapfile -t self_hosted_services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
+
           node ./scripts/deploy/secure-self-hosted-images.mjs \
             --scan-only \
             --docker-scout \
             --repository-prefix docker.io/compartmentdev \
             "$STAGING_TAG"
 
-          promote_dockerhub_image compartment-api
-          promote_dockerhub_image compartment-caddy
-          promote_dockerhub_image compartment-edge
-          promote_dockerhub_image compartment-worker
-          promote_dockerhub_image compartment-runtime-probe
-
-          for service in api caddy edge worker runtime-probe; do
-            image_ref="docker.io/compartmentdev/compartment-${service}:sha-${GITHUB_SHA}"
-            docker tag "${image_ref}" "ghcr.io/compartmentdev/compartment-${service}:sha-${GITHUB_SHA}"
-            docker push "ghcr.io/compartmentdev/compartment-${service}:sha-${GITHUB_SHA}"
-            docker tag "${image_ref}" "ghcr.io/compartmentdev/compartment-${service}:main"
-            docker push "ghcr.io/compartmentdev/compartment-${service}:main"
+          for service in "${self_hosted_services[@]}"; do
+            promote_dockerhub_image "compartment-${service}"
           done
+
+          mutable_main_enabled=false
+          current_main_sha="$(read_current_main_sha)" || exit 1
+          if [ "$current_main_sha" = "$PUBLISH_SHA" ]; then
+            mutable_main_enabled=true
+            for service in "${self_hosted_services[@]}"; do
+              promote_dockerhub_mutable_image "compartment-${service}"
+            done
+            printf '%s\n' "$MUTABLE_TAG" >> "$mutable_tags_file"
+          fi
+
+          for service in "${self_hosted_services[@]}"; do
+            image_ref="docker.io/compartmentdev/compartment-${service}:sha-${PUBLISH_SHA}"
+            docker tag "${image_ref}" "ghcr.io/compartmentdev/compartment-${service}:sha-${PUBLISH_SHA}"
+            docker push "ghcr.io/compartmentdev/compartment-${service}:sha-${PUBLISH_SHA}"
+          done
+
+          if [ "$mutable_main_enabled" = true ]; then
+            for service in "${self_hosted_services[@]}"; do
+              image_ref="docker.io/compartmentdev/compartment-${service}:sha-${PUBLISH_SHA}"
+              docker tag "${image_ref}" "ghcr.io/compartmentdev/compartment-${service}:main"
+              docker push "ghcr.io/compartmentdev/compartment-${service}:main"
+            done
+          fi
 
       - name: Secure self-hosted image digests
         run: |
+          tags=("sha-${PUBLISH_SHA}")
+          mutable_tags_file="./.compartment/release-assets/published-self-hosted-mutable-tags.txt"
+          if [ -f "$mutable_tags_file" ]; then
+            while IFS= read -r mutable_tag; do
+              if [ -n "$mutable_tag" ]; then
+                tags+=("$mutable_tag")
+              fi
+            done < "$mutable_tags_file"
+          fi
+
           node ./scripts/deploy/secure-self-hosted-images.mjs \
             --repository-prefix docker.io/compartmentdev \
             --output-dir ./.compartment/release-assets/self-hosted-sboms/dockerhub \
-            "sha-${GITHUB_SHA}" \
-            main
+            "${tags[@]}"
           node ./scripts/deploy/secure-self-hosted-images.mjs \
             --repository-prefix ghcr.io/compartmentdev \
             --output-dir ./.compartment/release-assets/self-hosted-sboms/ghcr \
-            "sha-${GITHUB_SHA}" \
-            main
+            "${tags[@]}"
 
       - name: Upload self-hosted SBOM artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -256,6 +313,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.PUBLISH_SHA }}
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -280,14 +339,14 @@ jobs:
         run: |
           pnpm cli:build:sea \
             --distribution-channel main \
-            --default-registry-image-tag "sha-${{ github.sha }}" \
-            --build-commit-sha "${{ github.sha }}" \
+            --default-registry-image-tag "sha-${PUBLISH_SHA}" \
+            --build-commit-sha "${PUBLISH_SHA}" \
             --output-dir ./.compartment/cli-dist
 
       - name: Smoke test CLI binary
         run: |
           version_output="$(./.compartment/cli-dist/compartment --version)"
-          expected_version_suffix="-main+$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
+          expected_version_suffix="-main+$(printf '%s' "${PUBLISH_SHA}" | cut -c1-7)"
           case "$version_output" in
             *"$expected_version_suffix")
               ;;
@@ -335,32 +394,49 @@ jobs:
 
       - name: Ensure immutable main release exists
         run: |
-          release_tag="sha-${GITHUB_SHA}"
+          release_tag="sha-${PUBLISH_SHA}"
           if gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${GITHUB_SHA}." --prerelease --draft=false
+            gh release edit "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${PUBLISH_SHA}." --prerelease --draft=false
           else
-            gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${GITHUB_SHA}." --prerelease --target "$GITHUB_SHA"
+            gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${PUBLISH_SHA}." --prerelease --target "$PUBLISH_SHA"
           fi
 
       - name: Upload immutable main CLI artifacts
         run: |
-          release_tag="sha-${GITHUB_SHA}"
+          release_tag="sha-${PUBLISH_SHA}"
           gh release upload "$release_tag" ./.compartment/release-assets/compartment-*.tar.gz ./.compartment/release-assets/checksums.txt \
             --repo "$RELEASE_REPOSITORY" \
             --clobber
 
+      - name: Resolve rolling main publish
+        id: rolling-main
+        run: |
+          read_current_main_sha() {
+            gh api "repos/${RELEASE_REPOSITORY}/git/ref/heads/main" --jq '.object.sha'
+          }
+
+          current_main_sha="$(read_current_main_sha)"
+          if [ "$current_main_sha" = "$PUBLISH_SHA" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Write rolling main pointer
-        run: printf 'sha-%s\n' "${GITHUB_SHA}" > ./.compartment/release-assets/main-release-tag.txt
+        if: steps.rolling-main.outputs.enabled == 'true'
+        run: printf 'sha-%s\n' "${PUBLISH_SHA}" > ./.compartment/release-assets/main-release-tag.txt
 
       - name: Ensure rolling release exists
+        if: steps.rolling-main.outputs.enabled == 'true'
         run: |
           if gh release view main --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit main --repo "$RELEASE_REPOSITORY" --title "main" --notes "Pointer to the latest main CLI build: sha-${GITHUB_SHA}." --prerelease --draft=false
+            gh release edit main --repo "$RELEASE_REPOSITORY" --title "main" --notes "Pointer to the latest main CLI build: sha-${PUBLISH_SHA}." --prerelease --draft=false
           else
-            gh release create main --repo "$RELEASE_REPOSITORY" --title "main" --notes "Pointer to the latest main CLI build: sha-${GITHUB_SHA}." --prerelease --target "$GITHUB_SHA"
+            gh release create main --repo "$RELEASE_REPOSITORY" --title "main" --notes "Pointer to the latest main CLI build: sha-${PUBLISH_SHA}." --prerelease --target "$PUBLISH_SHA"
           fi
 
       - name: Remove legacy rolling binary assets
+        if: steps.rolling-main.outputs.enabled == 'true'
         run: |
           removable_assets="$(gh release view main --repo "$RELEASE_REPOSITORY" --json assets --jq '.assets[]?.name | select(. == "checksums.txt" or startswith("compartment-"))')"
           if [ -z "$removable_assets" ]; then
@@ -374,6 +450,7 @@ jobs:
           EOF
 
       - name: Upload rolling main pointer
+        if: steps.rolling-main.outputs.enabled == 'true'
         run: |
           gh release upload main ./.compartment/release-assets/main-release-tag.txt \
             --repo "$RELEASE_REPOSITORY" \

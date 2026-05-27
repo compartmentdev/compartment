@@ -230,11 +230,11 @@ export class UsersPage {
     await expect(drawer.getByRole('heading', { name: 'Direct assignments' })).toBeVisible();
     await expect(drawer.getByRole('heading', { name: 'Effective permissions' })).toBeVisible();
     await expect(drawer.getByText(/effective permissions in total/u)).toBeVisible();
-    await this.expectEffectivePermissionsExpanded(drawer, permissionKeys);
-    await this.toggleEffectivePermissions(drawer);
     await this.expectEffectivePermissionsCollapsed(drawer, permissionKeys);
     await this.toggleEffectivePermissions(drawer);
     await this.expectEffectivePermissionsExpanded(drawer, permissionKeys);
+    await this.toggleEffectivePermissions(drawer);
+    await this.expectEffectivePermissionsCollapsed(drawer, permissionKeys);
   }
 
   async expectPasswordResetUnavailable(email: string): Promise<void> {

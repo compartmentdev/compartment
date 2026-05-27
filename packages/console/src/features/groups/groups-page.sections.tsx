@@ -2,24 +2,31 @@ import type { AccessGroupListRow } from '@compartment/contracts/browser';
 import { type JSX, useState } from 'react';
 import {
   BrowserConsoleShell,
-  browserConsolePageBodyClassName,
   browserConsolePageClassName,
   browserConsolePageHeaderClassName,
+  browserConsoleListPageBodyClassName,
 } from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
-import { EmptyStateCard } from '../../components/empty-state-card';
-import { groupsEmptyStateIconUrl } from '../../components/empty-state-icons';
-import type { EmptyStateCardAction } from '../../components/empty-state-card.types';
 import { ServerSearch } from '../../components/server-search';
 import { ServerTableFrame } from '../../components/server-table';
 import { ToolbarPrimaryActionButton } from '../../components/toolbar-primary-action';
-import { Plus, UsersRound } from '../../components/ui/icons';
-import { AccessPageHeader } from '../access/access-ui';
+import { UsersRound } from '../../components/ui/icons';
+import { AccessDrawerShell, AccessPageHeader } from '../access/access-ui';
 import { canManageBrowserGroups } from '../console/console-access';
 import { BrowserConsoleOrganizationContextPanel } from '../console/console-organization-context-panel';
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
-import { CreateGroupDrawer } from './groups-page.create-drawer';
-import { GroupDetailDrawer } from './groups-page.detail-drawer';
+import {
+  type CreateGroupFormState,
+  type CreateGroupMutation,
+  CreateGroupDrawerContent,
+  CreateGroupDrawerFooter,
+  CreateGroupDrawerHeader,
+  useCreateGroupFormState,
+  useCreateGroupMutation,
+} from './groups-page.create-drawer';
+import { GroupDrawerHeader } from './groups-page.detail-layout';
+import { GroupsEmptyState, shouldRenderGroupsEmptyState } from './groups-empty-state';
+import { GroupDetailDrawerContent, useGroupDetailEditingState } from './groups-page.detail-drawer';
 import { buildGroupsHref, buildGroupsPageHref } from './groups-page.href';
 import type { GroupsPageState } from './groups-page.state';
 import { GroupsTable, readGroupSearchText } from './groups-page.table';
@@ -27,13 +34,11 @@ import { GroupsTable, readGroupSearchText } from './groups-page.table';
 interface GroupsPageContentProps {
   state: GroupsPageState;
 }
-
 interface GroupsPageBodyProps {
   searchQuery: string;
   setSearchQuery: (value: string) => void;
   state: GroupsPageState;
 }
-
 interface GroupsPageHeaderProps {
   showCreateAction: boolean;
   state: GroupsPageState;
@@ -50,13 +55,10 @@ interface GroupsPageToolbarProps {
 
 interface GroupsTableSectionProps {
   groups: AccessGroupListRow[];
-  showEmptyState: boolean;
   state: GroupsPageState;
 }
-
 export function GroupsPageContent({ state }: Readonly<GroupsPageContentProps>): JSX.Element {
   const [searchQuery, setSearchQuery] = useState<string>('');
-
   return (
     <BrowserConsoleShell
       currentOrganizationPermissions={state.data.currentOrganizationPermissions}
@@ -68,25 +70,69 @@ export function GroupsPageContent({ state }: Readonly<GroupsPageContentProps>): 
       selectedOrganizationSlug={state.data.selectedOrganizationSlug}
     >
       <GroupsPageBody searchQuery={searchQuery} setSearchQuery={setSearchQuery} state={state} />
-      {state.data.organizationContext.kind === 'selected' && state.data.mode === 'create' ? (
-        <CreateGroupDrawer state={state} />
-      ) : null}
-      {state.data.organizationContext.kind === 'selected' &&
-      state.selectedGroup !== undefined &&
-      state.data.mode === 'detail' ? (
-        <GroupDetailDrawer state={state} />
-      ) : null}
+      {state.data.organizationContext.kind === 'selected' ? <GroupsPageDrawer state={state} /> : null}
     </BrowserConsoleShell>
+  );
+}
+
+function GroupsPageDrawer({ state }: Readonly<GroupsPageContentProps>): JSX.Element | null {
+  const { isEditing, setIsEditing } = useGroupDetailEditingState(state.selectedGroup?.id);
+  const createFormState: CreateGroupFormState = useCreateGroupFormState(state);
+  const createMutation: CreateGroupMutation = useCreateGroupMutation(state, createFormState);
+  if (state.data.mode === 'list') {
+    return null;
+  }
+  if (state.data.mode === 'create') {
+    return renderGroupsCreateDrawer(state, createFormState, createMutation);
+  }
+  if (state.selectedGroup === undefined) {
+    return null;
+  }
+  return renderGroupsDetailDrawer(state, isEditing, setIsEditing);
+}
+
+function renderGroupsCreateDrawer(
+  state: GroupsPageState,
+  createFormState: CreateGroupFormState,
+  createMutation: CreateGroupMutation,
+): JSX.Element {
+  return (
+    <AccessDrawerShell
+      closeHref={buildGroupsPageHref(state.data, null)}
+      footer={<CreateGroupDrawerFooter mutation={createMutation} state={state} />}
+      header={<CreateGroupDrawerHeader state={state} />}
+      onNavigate={state.onNavigate}
+      title="Create group"
+    >
+      <CreateGroupDrawerContent formState={createFormState} mutation={createMutation} state={state} />
+    </AccessDrawerShell>
+  );
+}
+
+function renderGroupsDetailDrawer(
+  state: GroupsPageState,
+  isEditing: boolean,
+  setIsEditing: (value: boolean) => void,
+): JSX.Element {
+  return (
+    <AccessDrawerShell
+      closeHref={buildGroupsPageHref(state.data, null)}
+      header={<GroupDrawerHeader isEditing={isEditing} setIsEditing={setIsEditing} state={state} />}
+      onNavigate={state.onNavigate}
+      subtitle="Review membership, shared assignments, and inherited permissions."
+      title={state.selectedGroup?.name ?? 'Group'}
+    >
+      <GroupDetailDrawerContent isEditing={isEditing} setIsEditing={setIsEditing} state={state} />
+    </AccessDrawerShell>
   );
 }
 
 function GroupsPageBody({ searchQuery, setSearchQuery, state }: Readonly<GroupsPageBodyProps>): JSX.Element {
   const showEmptyState: boolean = shouldRenderGroupsEmptyState(state, searchQuery);
-
   return (
     <div className={browserConsolePageClassName}>
       <GroupsPageHeader showCreateAction={!showEmptyState} state={state} />
-      <div className={browserConsolePageBodyClassName}>
+      <div className={browserConsoleListPageBodyClassName}>
         <DismissibleAlert message={state.data.noticeMessage} variant="notice" />
         <DismissibleAlert message={state.data.errorMessage} variant="error" />
         {renderGroupsPageContent(searchQuery, setSearchQuery, state)}
@@ -120,17 +166,14 @@ function renderSelectedGroupsPageContent(
   state: GroupsPageState,
 ): JSX.Element {
   const showEmptyState: boolean = shouldRenderGroupsEmptyState(state, searchQuery);
-
   if (showEmptyState) {
-    return <GroupsTableSection groups={[]} showEmptyState={showEmptyState} state={state} />;
+    return <GroupsEmptyState state={state} />;
   }
-
   const visibleGroups: AccessGroupListRow[] = readVisibleGroups(state.data.groups, searchQuery);
-
   return (
     <>
       <GroupsPageToolbar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
-      <GroupsTableSection groups={visibleGroups} showEmptyState={showEmptyState} state={state} />
+      <GroupsTableSection groups={visibleGroups} state={state} />
     </>
   );
 }
@@ -165,7 +208,6 @@ function CreateGroupButton({ showCreateAction, state }: Readonly<CreateGroupButt
   if (!showCreateAction || !canManageBrowserGroups(state.data.currentOrganizationPermissions)) {
     return null;
   }
-
   return (
     <ToolbarPrimaryActionButton
       icon={UsersRound}
@@ -180,41 +222,12 @@ function CreateGroupButton({ showCreateAction, state }: Readonly<CreateGroupButt
   );
 }
 
-function GroupsTableSection({ groups, showEmptyState, state }: Readonly<GroupsTableSectionProps>): JSX.Element {
-  if (showEmptyState) {
-    return (
-      <EmptyStateCard
-        action={readCreateGroupEmptyStateAction(state)}
-        icon={groupsEmptyStateIconUrl}
-        message="You do not have any groups."
-      />
-    );
-  }
-
+function GroupsTableSection({ groups, state }: Readonly<GroupsTableSectionProps>): JSX.Element {
   return (
     <ServerTableFrame>
       <GroupsTable groups={groups} state={state} />
     </ServerTableFrame>
   );
-}
-
-function readCreateGroupEmptyStateAction(state: GroupsPageState): EmptyStateCardAction | undefined {
-  if (!canManageBrowserGroups(state.data.currentOrganizationPermissions)) {
-    return undefined;
-  }
-
-  return {
-    icon: Plus,
-    kind: 'button',
-    label: 'Create group',
-    onClick: (): void => {
-      state.onNavigate(buildGroupsPageHref(state.data, null, 'create'));
-    },
-  };
-}
-
-function shouldRenderGroupsEmptyState(state: GroupsPageState, searchQuery: string): boolean {
-  return searchQuery.trim() === '' && state.data.groups.length === 0;
 }
 
 function readOrganizationControl(state: GroupsPageState): JSX.Element | null {
@@ -227,7 +240,6 @@ function readOrganizationControl(state: GroupsPageState): JSX.Element | null {
     },
   );
 }
-
 function readVisibleGroups(groups: AccessGroupListRow[], searchQuery: string): AccessGroupListRow[] {
   const normalizedSearchQuery: string = searchQuery.trim().toLowerCase();
   return groups.filter((group: AccessGroupListRow): boolean =>

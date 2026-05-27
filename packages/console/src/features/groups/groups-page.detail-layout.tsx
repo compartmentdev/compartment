@@ -10,6 +10,7 @@ import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-q
 import {
   accessDrawerActionButtonClassName,
   accessDrawerHeaderActionButtonClassName,
+  accessDrawerSectionDividerClassName,
   accessDrawerSummaryDescriptionClassName,
   accessDrawerSummaryIdentityClassName,
   accessDrawerSummaryStackClassName,
@@ -107,11 +108,13 @@ function GroupSummaryForm({
   const mutation: GroupRenameMutation = useGroupRenameMutation(setIsEditing, state);
 
   return (
-    <form className="mt-4 space-y-3 border-t border-border pt-4" onSubmit={createSubmitHandler(mutation)}>
-      <GroupNameField state={state} />
-      <GroupDescriptionField state={state} />
-      <GroupSummaryActions isPending={mutation.isPending} onCancel={createEditCancelHandler(setIsEditing, state)} />
-    </form>
+    <div className={`mt-4 ${accessDrawerSectionDividerClassName}`}>
+      <form className="space-y-3" onSubmit={createSubmitHandler(mutation)}>
+        <GroupNameField state={state} />
+        <GroupDescriptionField state={state} />
+        <GroupSummaryActions isPending={mutation.isPending} onCancel={createEditCancelHandler(setIsEditing, state)} />
+      </form>
+    </div>
   );
 }
 

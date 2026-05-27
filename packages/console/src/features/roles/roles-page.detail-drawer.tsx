@@ -9,8 +9,8 @@ import { Drama, Pencil, Trash } from '../../components/ui/icons';
 import { useBrowserMutation } from '../../lib/browser-query-client';
 import { AccessAdditionalCard, readAccessDangerActionButtonClassName } from '../access/access-additional-card';
 import { AccessDrawerCollapsibleSection } from '../access/access-drawer-collapsible-section';
-import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
+import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import {
   accessDrawerHeaderActionButtonClassName,
@@ -19,7 +19,6 @@ import {
   accessDrawerSummaryStackClassName,
   accessDrawerSummaryTitleClassName,
   AccessDrawerSection,
-  AccessDrawerShell,
 } from '../access/access-ui';
 import { PermissionFamiliesCard } from '../access/access-permission-families';
 import { canManageBrowserRoles } from '../console/console-access';
@@ -32,10 +31,6 @@ import { closeRolesDrawerAfterMutation } from './roles-page.navigation';
 import { buildRolesPageHref } from './roles-page.query';
 import type { RolesPageState } from './roles-page.state';
 
-interface RoleDetailDrawerProps {
-  state: RolesPageState;
-}
-
 interface DeleteRoleActionProps {
   isDialogOpen: boolean;
   isPending: boolean;
@@ -47,25 +42,10 @@ type RoleDeleteMutation = UseMutationResult<boolean, Error, void>;
 type RoleKind = 'custom' | 'system';
 type RoleKindBadgeVariant = 'info' | 'soft';
 
-export function RoleDetailDrawer({ state }: Readonly<RoleDetailDrawerProps>): JSX.Element | null {
-  const role: AccessRoleListRow | undefined = readSelectedRole(state);
-  if (role === undefined) {
-    return null;
-  }
-
-  return (
-    <AccessDrawerShell
-      closeHref={buildRolesPageHref(state.data)}
-      header={<RoleDetailHeader role={role} state={state} />}
-      onNavigate={state.onNavigate}
-      title={role.name}
-    >
-      <RoleDetailContent role={role} state={state} />
-    </AccessDrawerShell>
-  );
-}
-
-function RoleDetailHeader({ role, state }: Readonly<{ role: AccessRoleListRow; state: RolesPageState }>): JSX.Element {
+export function RoleDetailDrawerHeader({
+  role,
+  state,
+}: Readonly<{ role: AccessRoleListRow; state: RolesPageState }>): JSX.Element {
   return (
     <AccessDrawerDetailHeader
       action={
@@ -97,7 +77,10 @@ function EditRoleButton({ roleId, state }: Readonly<{ roleId: string; state: Rol
   );
 }
 
-function RoleDetailContent({ role, state }: Readonly<{ role: AccessRoleListRow; state: RolesPageState }>): JSX.Element {
+export function RoleDetailDrawerContent({
+  role,
+  state,
+}: Readonly<{ role: AccessRoleListRow; state: RolesPageState }>): JSX.Element {
   return (
     <>
       <AccessDrawerErrorAlert message={state.drawerErrorMessage} />
@@ -240,10 +223,6 @@ function useRoleDeleteMutation(role: AccessRoleListRow, state: RolesPageState): 
       }
     },
   });
-}
-
-function readSelectedRole(state: RolesPageState): AccessRoleListRow | undefined {
-  return state.data.roles.find((role: AccessRoleListRow): boolean => role.id === state.data.roleId);
 }
 
 function readRoleDescription(role: AccessRoleListRow): string {

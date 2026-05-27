@@ -196,7 +196,7 @@ function readMergedGroupsPageData(
   initialData: GroupsPageQueryData,
   results: GroupsPageQueryResults,
 ): BrowserGroupsPageResult {
-  const groups: AccessGroupListResponse = results.groups.data ?? initialData.groups;
+  const groups: AccessGroupListResponse = readMergedGroupsResponse(loaderData, initialData.groups, results.groups.data);
   const nextSelectedGroupId: string | null = readNextSelectedGroupId(loaderData.selectedGroupId, groups);
   return {
     ...loaderData,
@@ -208,6 +208,20 @@ function readMergedGroupsPageData(
     scopeProjects: (results.scopeOptions.data ?? initialData.scopeOptions).projects,
     selectedGroupId: nextSelectedGroupId,
   };
+}
+
+function readMergedGroupsResponse(
+  loaderData: BrowserGroupsPageResult,
+  initialGroups: AccessGroupListResponse,
+  cachedGroups: AccessGroupListResponse | undefined,
+): AccessGroupListResponse {
+  if (cachedGroups === undefined) {
+    return initialGroups;
+  }
+
+  return shouldPreferLoaderGroups(loaderData.selectedGroupId, cachedGroups, initialGroups)
+    ? initialGroups
+    : cachedGroups;
 }
 
 export async function invalidateGroupsAccessQueries(data: BrowserGroupsPageResult): Promise<void> {
@@ -233,12 +247,21 @@ function readInitialGroupsPageQueryData(data: BrowserGroupsPageResult): GroupsPa
   };
 }
 
-function readNextSelectedGroupId(selectedGroupId: string | null, response: AccessGroupListResponse): string | null {
-  if (selectedGroupId === null) {
-    return null;
-  }
+function shouldPreferLoaderGroups(
+  selectedGroupId: string | null,
+  cachedGroups: AccessGroupListResponse,
+  loaderGroups: AccessGroupListResponse,
+): boolean {
+  return (
+    selectedGroupId !== null &&
+    readNextSelectedGroupId(selectedGroupId, cachedGroups) === null &&
+    readNextSelectedGroupId(selectedGroupId, loaderGroups) !== null
+  );
+}
 
-  return response.groups.some((group: AccessGroupSummary): boolean => group.id === selectedGroupId)
+function readNextSelectedGroupId(selectedGroupId: string | null, response: AccessGroupListResponse): string | null {
+  return selectedGroupId !== null &&
+    response.groups.some((group: AccessGroupSummary): boolean => group.id === selectedGroupId)
     ? selectedGroupId
     : null;
 }

@@ -1,10 +1,9 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import { docsHomePath } from './site-config.mjs';
+import starlightLlmsTxt from 'starlight-llms-txt';
+import starlightDocsConfig from './starlight.config.mjs';
 
-const docsSiteHref = 'https://docs.compartment.dev';
-const docsHomeSidebarItem = docsHomePath.replace(/^\//, '').replace(/\/$/, '');
 /** @type {import('@astrojs/starlight/types').StarlightConfig['head']} */
 const faviconHead = [
   { tag: 'link', attrs: { rel: 'manifest', href: '/site.webmanifest' } },
@@ -70,9 +69,8 @@ const faviconHead = [
     attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png', sizes: '180x180' },
   },
 ];
-
 export default defineConfig({
-  site: docsSiteHref,
+  site: starlightDocsConfig.site,
   integrations: [
     starlight({
       title: 'Compartment Docs',
@@ -84,57 +82,13 @@ export default defineConfig({
       },
       customCss: ['/src/styles/site.css'],
       head: faviconHead,
-      social: [{ icon: 'discord', label: 'Discord', href: 'https://discord.gg/uNxsg9vT' }],
-      sidebar: [
-        {
-          label: 'Quickstart',
-          items: [docsHomeSidebarItem, 'quickstart/install-compartment', 'quickstart/first-deploy'],
-        },
-        {
-          label: 'Install & Operate',
-          items: [
-            'install-operate/install-modes',
-            'install-operate/install-domain',
-            'install-operate/system-operations',
-          ],
-        },
-        {
-          label: 'Deploy Apps',
-          items: [
-            'deploy-apps/deploy-using-cli',
-            'deploy-apps/deploy-using-git',
-            'deploy-apps/deployment-lifecycle',
-            'deploy-apps/projects-and-app-urls',
-            'deploy-apps/runtime-variables',
-            'deploy-apps/resources',
-            'deploy-apps/custom-domains-for-apps',
-            'deploy-apps/project-descriptor',
-            'deploy-apps/route-rules',
-          ],
-        },
-        {
-          label: 'Manage Access',
-          items: [
-            'manage-access/login-activation-and-the-control-plane',
-            'manage-access/access-organizations-users-and-roles',
-            'manage-access/grant-access-to-users-and-groups',
-            'manage-access/roles-and-permissions',
-            'manage-access/audit-logs',
-            'manage-access/troubleshoot-access',
-            'manage-access/single-sign-on',
-          ],
-        },
-        {
-          label: 'Reference',
-          items: [
-            'reference/cli-reference',
-            { label: 'Generated CLI Reference', autogenerate: { directory: 'reference/generated/cli' } },
-            'reference/schema-reference',
-            { label: 'Generated Schema Reference', autogenerate: { directory: 'reference/generated/schema' } },
-            'reference/glossary',
-          ],
-        },
+      plugins: [
+        starlightLlmsTxt({
+          ...starlightDocsConfig.llmsTxt,
+        }),
       ],
+      social: [{ icon: 'discord', label: 'Discord', href: 'https://discord.gg/uNxsg9vT' }],
+      sidebar: starlightDocsConfig.sidebar,
     }),
   ],
 });

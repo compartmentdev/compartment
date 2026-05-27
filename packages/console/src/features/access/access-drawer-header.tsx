@@ -17,10 +17,12 @@ export function AccessDrawerHeader({
   subtitle,
   title,
 }: Readonly<AccessDrawerHeaderProps>): JSX.Element {
+  const resolvedEyebrow: string | undefined = readDrawerHeaderEyebrow(eyebrow, title);
+
   return (
     <div className="px-4 py-4">
       <div className="flex items-start justify-between gap-4">
-        <AccessDrawerHeading eyebrow={eyebrow} subtitle={subtitle} title={title} />
+        <AccessDrawerHeading eyebrow={resolvedEyebrow} subtitle={subtitle} title={title} />
         <AccessDrawerCloseButton onClose={onClose} />
       </div>
       {actions === undefined ? null : <div className="mt-4 flex flex-wrap gap-2">{actions}</div>}
@@ -35,13 +37,25 @@ function AccessDrawerHeading({
 }: Readonly<Pick<AccessDrawerHeaderProps, 'eyebrow' | 'subtitle' | 'title'>>): JSX.Element {
   return (
     <div className="space-y-1">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-        {eyebrow ?? 'Control plane'}
-      </p>
+      {eyebrow === undefined ? null : (
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{eyebrow}</p>
+      )}
       <h2 className="text-lg font-semibold">{title}</h2>
       {subtitle === undefined ? null : <p className="text-[13px] text-muted-foreground">{subtitle}</p>}
     </div>
   );
+}
+
+function readDrawerHeaderEyebrow(eyebrow: string | undefined, title: string): string | undefined {
+  if (eyebrow === undefined) {
+    return 'Control plane';
+  }
+
+  return normalizeDrawerHeaderLabel(eyebrow) === normalizeDrawerHeaderLabel(title) ? undefined : eyebrow;
+}
+
+function normalizeDrawerHeaderLabel(value: string): string {
+  return value.trim().toLocaleLowerCase();
 }
 
 function AccessDrawerCloseButton({ onClose }: Readonly<{ onClose: () => void }>): JSX.Element {

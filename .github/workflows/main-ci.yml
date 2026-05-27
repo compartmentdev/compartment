@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: main-ci-${{ github.ref }}
-  cancel-in-progress: true
+  queue: max
 
 jobs:
   select-runner:

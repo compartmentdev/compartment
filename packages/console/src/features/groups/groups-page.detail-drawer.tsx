@@ -3,54 +3,37 @@ import { type JSX, useEffect, useState } from 'react';
 import { AccessAdditionalCard } from '../access/access-additional-card';
 import { AccessDrawerCollapsibleSection } from '../access/access-drawer-collapsible-section';
 import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
-import { AccessDrawerSection, AccessDrawerShell } from '../access/access-ui';
+import { AccessDrawerSection } from '../access/access-ui';
 import { PermissionFamiliesCard } from '../access/access-permission-families';
 import { canManageBrowserGroups, canManageBrowserRoles, canReadBrowserRoles } from '../console/console-access';
 import { ManageRolesButton } from '../roles/manage-roles-button';
-import { GroupDeleteAction } from './groups-page.delete-action';
 import { GroupAssignmentsCard } from './groups-page.assignments';
-import { GroupDrawerHeader, GroupSummaryCard } from './groups-page.detail-layout';
+import { GroupDeleteAction } from './groups-page.delete-action';
+import { GroupSummaryCard } from './groups-page.detail-layout';
 import { GroupMembersCard } from './groups-page.members';
-import { buildGroupsPageHref } from './groups-page.href';
 import type { GroupsPageState } from './groups-page.state';
 
 interface GroupDetailDrawerProps {
   state: GroupsPageState;
 }
 
-export function GroupDetailDrawer({ state }: Readonly<GroupDetailDrawerProps>): JSX.Element {
-  const effectivePermissions: PermissionKey[] = readGroupEffectivePermissions(state);
+export function useGroupDetailEditingState(
+  selectedGroupId: string | undefined,
+): Readonly<{ isEditing: boolean; setIsEditing: (value: boolean) => void }> {
   const [isEditing, setIsEditing] = useState<boolean>(false);
 
   useEffect((): void => {
     setIsEditing(false);
-  }, [state.selectedGroup?.id]);
+  }, [selectedGroupId]);
 
-  return (
-    <AccessDrawerShell
-      closeHref={buildGroupsPageHref(state.data, null)}
-      header={<GroupDrawerHeader isEditing={isEditing} setIsEditing={setIsEditing} state={state} />}
-      onNavigate={state.onNavigate}
-      subtitle="Review membership, shared assignments, and inherited permissions."
-      title={state.selectedGroup?.name ?? 'Group'}
-    >
-      <GroupDrawerContent
-        effectivePermissions={effectivePermissions}
-        isEditing={isEditing}
-        setIsEditing={setIsEditing}
-        state={state}
-      />
-    </AccessDrawerShell>
-  );
+  return { isEditing, setIsEditing };
 }
 
-function GroupDrawerContent({
-  effectivePermissions,
+export function GroupDetailDrawerContent({
   isEditing,
   setIsEditing,
   state,
 }: Readonly<{
-  effectivePermissions: PermissionKey[];
   isEditing: boolean;
   setIsEditing: (value: boolean) => void;
   state: GroupsPageState;
@@ -58,6 +41,8 @@ function GroupDrawerContent({
   if (state.selectedGroup === undefined) {
     return null;
   }
+
+  const effectivePermissions: PermissionKey[] = readGroupEffectivePermissions(state);
 
   return (
     <>
