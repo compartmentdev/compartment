@@ -196,10 +196,17 @@ jobs:
               "docker.io/compartmentdev/${image_name}:${STAGING_TAG}"
           }
 
-          publish_mutable_main() {
+          read_current_main_sha() {
             local current_main_sha
-            current_main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-            [ "$current_main_sha" = "$PUBLISH_SHA" ]
+            if ! current_main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"; then
+              echo "Failed to read current main ref." >&2
+              return 1
+            fi
+            if [ -z "$current_main_sha" ]; then
+              echo "Expected current main ref SHA." >&2
+              return 1
+            fi
+            printf '%s\n' "$current_main_sha"
           }
 
           promote_dockerhub_mutable_image() {
@@ -228,7 +235,8 @@ jobs:
           done
 
           mutable_main_enabled=false
-          if publish_mutable_main; then
+          current_main_sha="$(read_current_main_sha)" || exit 1
+          if [ "$current_main_sha" = "$PUBLISH_SHA" ]; then
             mutable_main_enabled=true
             for service in "${self_hosted_services[@]}"; do
               promote_dockerhub_mutable_image "compartment-${service}"

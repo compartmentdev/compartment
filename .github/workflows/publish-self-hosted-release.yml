@@ -208,16 +208,25 @@ jobs:
               "docker.io/compartmentdev/${image_name}:${STAGING_TAG}"
           }
 
-          publish_mutable_latest() {
+          read_latest_stable_release_tag_version() {
+            local tag_refs
             local latest_tag_version
+            if ! tag_refs="$(git ls-remote --exit-code --refs --tags origin 'refs/tags/v*.*.*')"; then
+              echo "Failed to read release tags from origin." >&2
+              return 1
+            fi
             latest_tag_version="$(
-              git ls-remote --exit-code --refs --tags origin 'refs/tags/v*.*.*' \
+              printf '%s\n' "$tag_refs" \
                 | sed -E 's#.*refs/tags/v##' \
                 | awk '/^[0-9]+[.][0-9]+[.][0-9]+$/ { print }' \
                 | sort -V \
                 | tail -n 1
             )"
-            [ "$latest_tag_version" = "$PRIMARY_TAG" ]
+            if [ -z "$latest_tag_version" ]; then
+              echo "Expected at least one stable release tag." >&2
+              return 1
+            fi
+            printf '%s\n' "$latest_tag_version"
           }
 
           promote_dockerhub_mutable_image() {
@@ -246,7 +255,8 @@ jobs:
           done
 
           mutable_latest_enabled=false
-          if publish_mutable_latest; then
+          latest_stable_release_tag_version="$(read_latest_stable_release_tag_version)" || exit 1
+          if [ "$latest_stable_release_tag_version" = "$PRIMARY_TAG" ]; then
             mutable_latest_enabled=true
             for service in "${self_hosted_services[@]}"; do
               promote_dockerhub_mutable_image "compartment-${service}"
