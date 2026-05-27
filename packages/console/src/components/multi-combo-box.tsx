@@ -11,6 +11,7 @@ interface MultiComboBoxProps {
   className?: string | undefined;
   disabled?: boolean | undefined;
   emptyMessage: string;
+  labelId?: string | undefined;
   onChange: (values: string[]) => void;
   options: MultiComboBoxOption[];
   placeholder: string;

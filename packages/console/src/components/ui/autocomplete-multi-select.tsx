@@ -4,6 +4,7 @@ import {
   type JSX,
   type MutableRefObject,
   type SetStateAction,
+  useId,
   useRef,
   useState,
 } from 'react';
@@ -14,9 +15,9 @@ import {
   useAutocompleteQueryReset,
   useSelectedAutocompleteOptions,
 } from './autocomplete.helpers';
-import { Badge } from './badge';
-import { Check, ChevronDown } from './icons';
+import { Check } from './icons';
 import { Input } from './input';
+import { AutocompleteMultiSelectTrigger } from './autocomplete-multi-select-trigger';
 
 interface AutocompleteMultiSelectOption {
   label: string;
@@ -28,21 +29,13 @@ interface AutocompleteMultiSelectProps {
   className?: string | undefined;
   disabled?: boolean | undefined;
   emptyMessage: string;
+  labelId?: string | undefined;
   onChange: (values: string[]) => void;
   options: AutocompleteMultiSelectOption[];
   placeholder: string;
   searchPlaceholder: string;
   triggerClassName?: string | undefined;
   values: string[];
-}
-
-interface AutocompleteMultiSelectTriggerProps {
-  disabled?: boolean | undefined;
-  isOpen: boolean;
-  onClick: () => void;
-  placeholder: string;
-  selectedOptions: AutocompleteMultiSelectOption[];
-  triggerClassName?: string | undefined;
 }
 
 interface AutocompleteMultiSelectMenuProps {
@@ -66,6 +59,7 @@ type AutocompleteMultiSelectState = readonly [
 ];
 
 export function AutocompleteMultiSelect(props: Readonly<AutocompleteMultiSelectProps>): JSX.Element {
+  const triggerValueId: string = useId();
   const [containerRef, isOpen, onToggle, query, setQuery, filteredOptions, selectedOptions] =
     useAutocompleteMultiSelectState(props);
 
@@ -74,10 +68,12 @@ export function AutocompleteMultiSelect(props: Readonly<AutocompleteMultiSelectP
       <AutocompleteMultiSelectTrigger
         disabled={props.disabled}
         isOpen={isOpen}
+        labelId={props.labelId}
         onClick={onToggle}
         placeholder={props.placeholder}
         selectedOptions={selectedOptions}
         triggerClassName={props.triggerClassName}
+        valueId={triggerValueId}
       />
       {renderAutocompleteMultiSelectMenu(props, isOpen, query, setQuery, filteredOptions)}
     </div>
@@ -105,58 +101,6 @@ function renderAutocompleteMultiSelectMenu(
       selectedValues={props.values}
       setQuery={setQuery}
     />
-  );
-}
-
-function AutocompleteMultiSelectTrigger(props: Readonly<AutocompleteMultiSelectTriggerProps>): JSX.Element {
-  return (
-    <button
-      className={cn(
-        'flex h-9 w-full items-center justify-between gap-2 overflow-hidden rounded-md border border-input bg-background px-3 text-left text-[13px] text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50',
-        props.isOpen && props.triggerClassName === undefined
-          ? 'ring-2 ring-ring/60 ring-offset-2 ring-offset-background'
-          : undefined,
-        props.triggerClassName,
-      )}
-      disabled={props.disabled}
-      onClick={props.onClick}
-      type="button"
-    >
-      <AutocompleteMultiSelectTriggerValue placeholder={props.placeholder} selectedOptions={props.selectedOptions} />
-      <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-    </button>
-  );
-}
-
-function AutocompleteMultiSelectTriggerValue({
-  placeholder,
-  selectedOptions,
-}: Readonly<Pick<AutocompleteMultiSelectTriggerProps, 'placeholder' | 'selectedOptions'>>): JSX.Element {
-  if (selectedOptions.length === 0) {
-    return <span className="truncate text-muted-foreground">{placeholder}</span>;
-  }
-
-  return (
-    <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-      {selectedOptions.map(
-        (option: AutocompleteMultiSelectOption): JSX.Element => (
-          <AutocompleteMultiSelectTriggerBadge key={option.value} option={option} />
-        ),
-      )}
-    </span>
-  );
-}
-
-function AutocompleteMultiSelectTriggerBadge({
-  option,
-}: Readonly<{ option: AutocompleteMultiSelectOption }>): JSX.Element {
-  return (
-    <Badge
-      className="h-5 max-w-full shrink-0 rounded-full border border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-background px-1.5 py-0 text-[11px] font-medium leading-4"
-      variant="outline"
-    >
-      <span className="truncate">{option.label}</span>
-    </Badge>
   );
 }
 

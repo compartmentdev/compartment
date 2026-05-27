@@ -4,6 +4,7 @@ test.describe('console users and permissions real app', (): void => {
   test('creates users, groups, roles, and assignments through the console UI', async ({
     auditEventsPage,
     e2eAccess,
+    e2eDeployment,
     groupsPage,
     loginPage,
     projectsPage,
@@ -29,6 +30,12 @@ test.describe('console users and permissions real app', (): void => {
     await groupsPage.createGroup(e2eAccess.groupName, e2eAccess.groupDescription);
     await groupsPage.addMember(e2eAccess.groupName, e2eAccess.userEmail);
     await groupsPage.addOrganizationAssignment(e2eAccess.groupName, e2eAccess.roleName);
+    await groupsPage.addEnvironmentAssignment(
+      e2eAccess.groupName,
+      e2eAccess.roleName,
+      e2eDeployment.projectName,
+      'production',
+    );
     await groupsPage.expectGroupDetailsVisible(
       e2eAccess.groupName,
       e2eAccess.userEmail,

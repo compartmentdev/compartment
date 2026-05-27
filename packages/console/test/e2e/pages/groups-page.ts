@@ -150,6 +150,34 @@ export class GroupsPage {
     await expect(this.assignmentRow(drawer, roleName)).toBeVisible();
   }
 
+  async addEnvironmentAssignment(
+    groupName: string,
+    roleName: string,
+    projectName: string,
+    environmentName: string,
+  ): Promise<void> {
+    const drawer: Locator = this.detailDrawer(groupName);
+    const scopeSelect: Locator = drawer.getByRole('combobox').nth(0);
+    const roleSelect: Locator = drawer.getByRole('combobox').nth(1);
+    const projectTrigger: Locator = this.assignmentMultiSelectTrigger(drawer, 'Project(s)');
+    const environmentTrigger: Locator = this.assignmentMultiSelectTrigger(drawer, 'Environment(s)');
+
+    await selectComboboxOption(this.page, scopeSelect, 'Environment');
+    await selectComboboxOption(this.page, roleSelect, roleName);
+    await expect(environmentTrigger).toBeDisabled();
+    await selectMultiComboBoxOption(this.page, projectTrigger, projectName);
+    await expect(environmentTrigger).toBeEnabled();
+    await selectMultiComboBoxOption(this.page, environmentTrigger, `${projectName} / ${environmentName}`);
+    await expect(drawer.getByRole('button', { name: 'Add assignment' })).toBeEnabled();
+    await Promise.all([
+      this.page.waitForResponse((response: Response): boolean =>
+        isSuccessfulApiMutationResponse(response, compartmentAssignmentsPathname, 'POST'),
+      ),
+      drawer.getByRole('button', { name: 'Add assignment' }).click(),
+    ]);
+    await expect(drawer.getByText(`Environment: ${projectName}/${environmentName}`, { exact: true })).toBeVisible();
+  }
+
   private detailDrawer(groupName: string): Locator {
     return accessDetailDrawer(this.page, groupName);
   }
@@ -188,6 +216,10 @@ export class GroupsPage {
 
   private assignmentSection(drawer: Locator): Locator {
     return drawer.locator('section').filter({ has: this.page.getByRole('heading', { name: 'Assignments' }) });
+  }
+
+  private assignmentMultiSelectTrigger(drawer: Locator, label: string): Locator {
+    return drawer.getByRole('button', { name: new RegExp(`^${escapeForRegExp(label)}`, 'u') });
   }
 
   private groupRow(groupName: string): Locator {
@@ -231,4 +263,14 @@ export class GroupsPage {
 async function selectComboboxOption(page: Page, combobox: Locator, optionName: string): Promise<void> {
   await combobox.click();
   await page.getByRole('option', { exact: true, name: optionName }).click();
+}
+
+async function selectMultiComboBoxOption(page: Page, trigger: Locator, optionName: string): Promise<void> {
+  await trigger.click();
+  await page.getByRole('button', { exact: true, name: optionName }).click();
+  await trigger.click();
+}
+
+function escapeForRegExp(value: string): string {
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
