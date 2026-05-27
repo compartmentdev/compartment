@@ -4,6 +4,8 @@
     ".codex/skills/**/scripts/**/*.mjs",
     "examples/**",
     "public-docs/src/styles/site.css",
+    // Release workflows run this helper by string path from shell steps.
+    "scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs",
     // CLI smoke starts this helper through a string path passed to Node spawn.
     "packages/cli/test/support/fake-oidc-server.ts",
     // Docs generation shells through repo-local tsx and passes this runner by string path.
@@ -35,6 +37,7 @@
     "package.json",
     "eslint.config.mjs!",
     "eslint.duplicates.config.mjs!",
+    "scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs!",
     "scripts/dev/run-compartment-cli.mjs!",
     "scripts/docs/public-docs/generate-public-docs.mjs!",
     "scripts/docs/public-docs/run-typescript-export.mjs!",
