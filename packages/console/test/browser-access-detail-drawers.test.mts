@@ -36,8 +36,9 @@ describe('browser access detail drawers', (): void => {
 
     expect(html).toContain('Groups');
     expect(html).toContain('Direct assignments');
-    expect(html).toContain('Effective permissions');
-    expect(html).toContain('aria-expanded="true"');
+    expect(html).toMatch(
+      /<button(?=[^>]*aria-expanded="true")[^>]*>(?:(?!<\/button>).)*Effective permissions(?:(?!<\/button>).)*<\/button>/s,
+    );
     expect(html).not.toContain('Inherited access');
     expect(html).not.toContain('Manual access');
     expect(html).not.toContain('Effective total');
