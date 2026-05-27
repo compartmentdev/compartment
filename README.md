@@ -52,13 +52,6 @@ Teams use Compartment when software that started as a script, internal app, work
 Install the CLI, then create the Compartment system on the target server:
 
 ```bash
-curl -fsSL https://compartment.dev/install.sh | sh
-compartment install
-```
-
-If you are already on the target server and want one command:
-
-```bash
 curl -fsSL https://compartment.dev/install.sh | sh -s -- --init-install
 ```
 
