@@ -31,9 +31,12 @@ export const accessDrawerPrimaryAddButtonClassName: string = cn(
   accessDrawerPrimaryActionButtonClassName,
   'min-w-[11rem]',
 );
-export const accessDrawerRowActionButtonClassName: string = 'h-[26px] gap-1 rounded-[8px] px-2 text-[12px]';
+export const accessDrawerRowActionButtonClassName: string =
+  'h-[26px] min-w-[6.75rem] justify-center gap-1 rounded-[8px] px-2 text-[12px]';
 export const accessDrawerAssignmentRowClassName: string =
-  'md:grid-cols-[minmax(7rem,8.5rem)_minmax(0,1fr)_fit-content(8.5rem)_auto]';
+  'gap-x-3 md:grid-cols-[minmax(7rem,8.5rem)_minmax(0,1fr)_fit-content(8.5rem)_auto]';
+export const accessDrawerDirectAssignmentRowClassName: string =
+  'gap-x-3 md:grid-cols-[minmax(7rem,8.5rem)_minmax(0,1fr)_minmax(9rem,10.5rem)_auto]';
 export const accessDrawerSectionDividerClassName: string = '-mx-4 border-t border-border px-4 pt-4';
 export const accessDrawerSummaryDescriptionClassName: string =
   "max-w-full truncate text-[13px] font-normal leading-5 text-muted-foreground [font-variation-settings:'opsz'_14]";

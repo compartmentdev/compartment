@@ -4,6 +4,8 @@ import {
 } from '@compartment/contracts/browser';
 import { type JSX, type ReactNode, useId } from 'react';
 import { MultiComboBox, type MultiComboBoxOption } from '../../components/multi-combo-box';
+import { Button } from '../../components/ui/button';
+import { Plus } from '../../components/ui/icons';
 import { cn } from '../../lib/utils';
 import { accessDrawerPrimaryAddButtonClassName } from './access-ui';
 import {
@@ -37,11 +39,29 @@ const accessAssignmentScopeFieldLabelClassName: string =
 export const accessAssignmentPrimaryRowClassName: string =
   'grid w-full gap-2 md:grid-cols-[minmax(0,1.4fr)_16px_minmax(0,1fr)_auto] md:items-center';
 export const accessAssignmentConnectorClassName: string =
-  'hidden h-9 items-center justify-center text-[14px] text-muted-foreground md:flex';
-export const accessAssignmentSubmitButtonClassName: string = cn(
+  'hidden self-center items-center justify-center text-[14px] leading-none text-muted-foreground md:flex';
+const accessAssignmentSubmitButtonClassName: string = cn(
   accessDrawerPrimaryAddButtonClassName,
   'w-fit justify-self-start',
 );
+
+export function AccessAssignmentSubmitButton({
+  disabled,
+  isPending,
+}: Readonly<{ disabled: boolean; isPending: boolean }>): JSX.Element {
+  return (
+    <Button
+      className={accessAssignmentSubmitButtonClassName}
+      disabled={disabled}
+      size="sm"
+      type="submit"
+      variant="default"
+    >
+      {isPending ? null : <Plus className="size-4" />}
+      {isPending ? 'Adding...' : 'Add assignment'}
+    </Button>
+  );
+}
 
 export function AccessScopeInputs(props: Readonly<AccessScopeInputsProps>): JSX.Element | null {
   if (props.scopeType === 'organization') {

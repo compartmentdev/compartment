@@ -9,18 +9,17 @@ import type { BrowserUsersPageResult } from '../../services/browser-users.servic
 import { Select } from '../../components/select';
 import { formatBrowserAccessAssignmentScope } from '../../lib/access-assignment-browser';
 import { Button } from '../../components/ui/button';
-import { Plus } from '../../components/ui/icons';
 import { formatAssignmentAccessSummary } from '../access/access-display';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
 import {
+  AccessAssignmentSubmitButton,
   accessAssignmentConnectorClassName,
   accessAssignmentPrimaryRowClassName,
-  accessAssignmentSubmitButtonClassName,
   AccessScopeInputs,
   isAccessScopeSelectionReady,
 } from '../access/access-scope-inputs';
 import {
-  accessDrawerAssignmentRowClassName,
+  accessDrawerDirectAssignmentRowClassName,
   accessDrawerRowActionButtonClassName,
   AccessDrawerSection,
 } from '../access/access-ui';
@@ -86,16 +85,16 @@ export function UserDirectAssignmentsCard(props: Readonly<UserDirectAssignmentsC
 
 function UserDirectAssignmentForm(props: Readonly<UserDirectAssignmentsCardProps>): JSX.Element {
   const mutation: UserAssignmentMutation = useUserAssignmentCreateMutation(props);
-
+  const isSubmitDisabled: boolean = !isUserAssignmentFormReady(props) || mutation.isPending;
   return (
     <form className="space-y-2" onSubmit={createUserAssignmentSubmitHandler(props, mutation)}>
       <div className={accessAssignmentPrimaryRowClassName}>
         <UserScopeSelect scopeType={props.scopeType} setScopeType={props.setScopeType} />
         <span aria-hidden="true" className={accessAssignmentConnectorClassName}>
-          →
+          {'→'}
         </span>
         <UserRoleSelect availableRoles={props.data.availableRoles} roleId={props.roleId} setRoleId={props.setRoleId} />
-        <UserDirectAssignmentSubmitButton isPending={mutation.isPending} isReady={isUserAssignmentFormReady(props)} />
+        <AccessAssignmentSubmitButton disabled={isSubmitDisabled} isPending={mutation.isPending} />
       </div>
       <AccessScopeInputs
         environmentValues={props.environmentValues}
@@ -106,24 +105,6 @@ function UserDirectAssignmentForm(props: Readonly<UserDirectAssignmentsCardProps
         setProjectNames={props.setProjectNames}
       />
     </form>
-  );
-}
-
-function UserDirectAssignmentSubmitButton({
-  isPending,
-  isReady,
-}: Readonly<{ isPending: boolean; isReady: boolean }>): JSX.Element {
-  return (
-    <Button
-      className={accessAssignmentSubmitButtonClassName}
-      disabled={!isReady || isPending}
-      size="sm"
-      type="submit"
-      variant="default"
-    >
-      {isPending ? null : <Plus className="size-4" />}
-      {isPending ? 'Adding...' : 'Add assignment'}
-    </Button>
   );
 }
 
@@ -224,7 +205,7 @@ function renderAssignmentRows(
 
 function UserDirectAssignmentRow(props: Readonly<UserDirectAssignmentRowProps>): JSX.Element {
   return (
-    <AccessDrawerListRow className={accessDrawerAssignmentRowClassName}>
+    <AccessDrawerListRow className={accessDrawerDirectAssignmentRowClassName}>
       <div className="text-[13px] font-semibold leading-[18px]">{props.assignment.roleName}</div>
       <div className="text-[12px] leading-4 text-[var(--cpt-text-secondary,#485259)]">
         {formatBrowserAccessAssignmentScope(props.assignment.scope)}
