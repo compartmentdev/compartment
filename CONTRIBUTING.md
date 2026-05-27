@@ -130,12 +130,12 @@ type(scope): subject
 
 Allowed types are `feat`, `fix`, `perf`, `release`, `refactor`, `style`, `test`, `build`, `ci`, `docs`, and `chore`.
 
-Allowed scopes are `repo`, `tooling`, `contracts`, `api`, `node`, `cli`, `sdk`, `db`, `auth`, `env`, `research`, and `public-docs`.
+Allowed scopes are package-owned scopes (`api`, `cli`, `console`, `contracts`, `docker`, `edge`, `eslint-config`, `eslint-plugin`, `node`, `sdk`, `source-archive`, `test-support`, `utils`, `worker`, and `public-docs`) plus root-owned scopes (`scripts`, `root-config`, `docs`, `examples`, and `release`).
 
 Examples:
 
 ```text
-docs(repo): refresh project readme
+docs(docs): refresh project readme
 fix(cli): preserve deploy target selection
 feat(api): add organization invite expiry
 ```

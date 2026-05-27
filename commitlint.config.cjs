@@ -1,3 +1,23 @@
+const packageScopes = [
+  'api',
+  'cli',
+  'console',
+  'contracts',
+  'docker',
+  'edge',
+  'eslint-config',
+  'eslint-plugin',
+  'node',
+  'sdk',
+  'source-archive',
+  'test-support',
+  'utils',
+  'worker',
+  'public-docs',
+];
+
+const rootScopes = ['scripts', 'root-config', 'docs', 'examples', 'release'];
+
 module.exports = {
   extends: ['@commitlint/config-conventional'],
   rules: {
@@ -6,11 +26,7 @@ module.exports = {
       'always',
       ['feat', 'fix', 'perf', 'release', 'refactor', 'style', 'test', 'build', 'ci', 'docs', 'chore'],
     ],
-    'scope-enum': [
-      2,
-      'always',
-      ['repo', 'tooling', 'contracts', 'api', 'node', 'cli', 'sdk', 'db', 'auth', 'env', 'research', 'public-docs'],
-    ],
+    'scope-enum': [2, 'always', [...packageScopes, ...rootScopes]],
     'scope-empty': [2, 'never'],
     'subject-empty': [2, 'never'],
     'type-empty': [2, 'never'],
