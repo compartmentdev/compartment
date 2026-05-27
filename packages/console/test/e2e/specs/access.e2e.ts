@@ -41,6 +41,7 @@ test.describe('console users and permissions real app', (): void => {
       e2eAccess.userEmail,
       e2eAccess.roleName,
       e2eAccess.rolePermissions,
+      ['Organization', `Environment: ${e2eDeployment.projectName}/production`],
     );
 
     await usersPage.goto();
@@ -58,6 +59,7 @@ test.describe('console users and permissions real app', (): void => {
       e2eAccess.userEmail,
       e2eAccess.roleName,
       e2eAccess.rolePermissions,
+      ['Organization', `Environment: ${e2eDeployment.projectName}/production`],
     );
 
     await rolesPage.goto();

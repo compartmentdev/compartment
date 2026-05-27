@@ -104,13 +104,16 @@ export class GroupsPage {
     memberEmail: string,
     roleName: string,
     permissionKeys: PermissionKey[],
+    assignmentScopeLabels: readonly string[],
   ): Promise<void> {
     const drawer: Locator = this.detailDrawer(groupName);
 
     await expect(drawer).toBeVisible();
     await expect(drawer.getByText(groupName, { exact: true })).toBeVisible();
     await expect(drawer.getByText(memberEmail, { exact: true })).toBeVisible();
-    await expect(this.assignmentRow(drawer, roleName)).toBeVisible();
+    for (const scopeLabel of assignmentScopeLabels) {
+      await expect(this.assignmentRow(drawer, roleName, scopeLabel)).toBeVisible();
+    }
     await expect(drawer.getByRole('heading', { name: 'Assignments' })).toBeVisible();
     await expect(drawer.getByRole('heading', { name: 'Group members' })).toBeVisible();
     await expect(drawer.getByRole('heading', { name: 'Effective permissions' })).toBeVisible();
@@ -147,7 +150,7 @@ export class GroupsPage {
       ),
       drawer.getByRole('button', { name: 'Add assignment' }).click(),
     ]);
-    await expect(this.assignmentRow(drawer, roleName)).toBeVisible();
+    await expect(this.assignmentRow(drawer, roleName, 'Organization')).toBeVisible();
   }
 
   async addEnvironmentAssignment(
@@ -175,7 +178,7 @@ export class GroupsPage {
       ),
       drawer.getByRole('button', { name: 'Add assignment' }).click(),
     ]);
-    await expect(drawer.getByText(`Environment: ${projectName}/${environmentName}`, { exact: true })).toBeVisible();
+    await expect(this.assignmentRow(drawer, roleName, `Environment: ${projectName}/${environmentName}`)).toBeVisible();
   }
 
   private detailDrawer(groupName: string): Locator {
@@ -208,10 +211,11 @@ export class GroupsPage {
     return drawer.getByRole('button', { name: 'Effective permissions' });
   }
 
-  private assignmentRow(drawer: Locator, roleName: string): Locator {
+  private assignmentRow(drawer: Locator, roleName: string, scopeLabel: string): Locator {
     return this.assignmentSection(drawer)
       .getByRole('listitem')
-      .filter({ has: this.page.getByText(roleName, { exact: true }) });
+      .filter({ hasText: roleName })
+      .filter({ hasText: scopeLabel });
   }
 
   private assignmentSection(drawer: Locator): Locator {
