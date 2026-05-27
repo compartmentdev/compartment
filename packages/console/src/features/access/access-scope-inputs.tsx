@@ -2,7 +2,7 @@ import {
   type AccessAssignmentScopeProjectOption,
   type AccessAssignmentScopeType,
 } from '@compartment/contracts/browser';
-import type { JSX, ReactNode } from 'react';
+import { type JSX, type ReactNode, useId } from 'react';
 import { MultiComboBox, type MultiComboBoxOption } from '../../components/multi-combo-box';
 import { cn } from '../../lib/utils';
 import { accessDrawerPrimaryActionButtonClassName } from './access-ui';
@@ -22,16 +22,20 @@ interface AccessScopeInputsProps {
   setProjectNames: (values: string[]) => void;
 }
 
-interface InheritedScopeFieldProps {
+interface DependentScopeFieldProps {
   children: ReactNode;
   className?: string | undefined;
+  depth: 1 | 2;
+  label: string;
+  labelId: string;
 }
 
-const accessAssignmentInheritedFieldClassName: string = 'md:pl-10';
+const accessAssignmentScopeBranchClassName: string = 'grid gap-2 md:col-span-4 md:w-full md:max-w-[560px]';
+const accessAssignmentScopeFieldLabelClassName: string =
+  'px-1 text-[12px] font-medium leading-4 text-[var(--cpt-text-secondary,#485259)]';
 
 export const accessAssignmentPrimaryRowClassName: string =
-  'grid w-full gap-2 md:grid-cols-[minmax(0,1fr)_16px_minmax(0,1fr)_auto] md:items-center';
-const accessAssignmentSecondaryRowClassName: string = 'grid gap-2 md:col-span-4 md:[grid-template-columns:subgrid]';
+  'grid w-full gap-2 md:grid-cols-[minmax(0,480px)_16px_minmax(0,240px)_auto] md:items-start';
 export const accessAssignmentSubmitButtonClassName: string = cn(
   accessDrawerPrimaryActionButtonClassName,
   'w-fit justify-self-start',
@@ -43,7 +47,7 @@ export function AccessScopeInputs(props: Readonly<AccessScopeInputsProps>): JSX.
   }
 
   return (
-    <div className={accessAssignmentSecondaryRowClassName}>
+    <div className={accessAssignmentScopeBranchClassName}>
       <ProjectScopeSelect props={props} />
       <EnvironmentScopeSelect props={props} />
     </div>
@@ -66,52 +70,78 @@ export function isAccessScopeSelectionReady(
 }
 
 function ProjectScopeSelect({ props }: Readonly<{ props: AccessScopeInputsProps }>): JSX.Element {
+  const labelId: string = useId();
+
   return (
-    <InheritedScopeField className="md:col-start-1">
+    <DependentScopeField depth={1} label="Project(s)" labelId={labelId}>
       <MultiComboBox
         className="w-full"
         emptyMessage="No matching projects."
+        labelId={labelId}
         onChange={createProjectChangeHandler(props)}
         options={readProjectOptions(props.scopeProjects)}
-        placeholder="Select project"
+        placeholder="Select project(s)"
         searchPlaceholder="Search projects"
         values={props.projectNames}
       />
-    </InheritedScopeField>
+    </DependentScopeField>
   );
 }
 
 function EnvironmentScopeSelect({ props }: Readonly<{ props: AccessScopeInputsProps }>): JSX.Element | null {
+  const labelId: string = useId();
+
   if (props.scopeType !== 'environment') {
     return null;
   }
 
   return (
-    <InheritedScopeField className="md:col-start-3">
+    <DependentScopeField depth={2} label="Environment(s)" labelId={labelId}>
       <MultiComboBox
         className="w-full"
         disabled={props.projectNames.length === 0}
-        emptyMessage={props.projectNames.length === 0 ? 'Select a project first.' : 'No matching environments.'}
+        emptyMessage={props.projectNames.length === 0 ? 'Select project(s) first.' : 'No matching environments.'}
+        labelId={labelId}
         onChange={props.setEnvironmentValues}
         options={readEnvironmentOptions(props.scopeProjects, props.projectNames)}
-        placeholder={props.projectNames.length === 0 ? 'Select project first' : 'Select environment'}
+        placeholder={props.projectNames.length === 0 ? 'Select project(s) first' : 'Select environment(s)'}
         searchPlaceholder="Search environments"
         values={props.environmentValues}
       />
-    </InheritedScopeField>
+    </DependentScopeField>
   );
 }
 
-function InheritedScopeField({ children, className }: Readonly<InheritedScopeFieldProps>): JSX.Element {
+function DependentScopeField({
+  children,
+  className,
+  depth,
+  label,
+  labelId,
+}: Readonly<DependentScopeFieldProps>): JSX.Element {
   return (
-    <div className={cn('relative w-full', accessAssignmentInheritedFieldClassName, className)}>
+    <div className={cn('relative w-full space-y-1', readDependentScopeFieldPaddingClassName(depth), className)}>
       <div
-        className="pointer-events-none absolute left-0 top-[-8px] hidden h-[27px] w-10 rounded-bl-[10px] border-b border-l border-[var(--cpt-border-default,rgba(0,0,0,0.08))] md:block"
+        className={cn(
+          'pointer-events-none absolute top-[-8px] hidden h-[27px] w-8 rounded-bl-[10px] border-b border-l border-[var(--cpt-border-default,rgba(0,0,0,0.08))] md:block',
+          readDependentScopeConnectorClassName(depth),
+        )}
         data-access-inherited-connector
       />
+      <p className={accessAssignmentScopeFieldLabelClassName} id={labelId}>
+        {label}
+      </p>
       {children}
     </div>
   );
+}
+
+function readDependentScopeConnectorClassName(depth: 1 | 2): string {
+  return depth === 1 ? 'left-0' : 'left-8';
+}
+
+function readDependentScopeFieldPaddingClassName(depth: 1 | 2): string {
+  return depth === 1 ? 'md:pl-8' : 'md:pl-16';
 }
 
 function createProjectChangeHandler(props: Readonly<AccessScopeInputsProps>): (projectNames: string[]) => void {

@@ -8,6 +8,7 @@ import type {
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserSoftNavigateHandler } from '../src/browser-soft-navigation';
+import { AccessScopeInputs } from '../src/features/access/access-scope-inputs';
 import type { BrowserGroupsPageResult } from '../src/services/browser-groups.service.types';
 import type { BrowserOrganizationOption } from '../src/services/browser-organization.service.types';
 import type { BrowserRolesPageResult } from '../src/services/browser-roles.service.types';
@@ -72,6 +73,27 @@ describe('browser access detail drawers', (): void => {
     expect(html).toContain('Effective permissions');
     expect(html).not.toContain('>users<');
     expect(html).not.toContain('>projects<');
+  });
+
+  it('renders environment assignment inputs as a project to environment dependency chain', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(AccessScopeInputs, {
+        environmentValues: [],
+        projectNames: [],
+        scopeProjects: [{ environmentNames: ['production', 'staging'], projectName: 'ng2-admin' }],
+        scopeType: 'environment',
+        setEnvironmentValues: vi.fn(),
+        setProjectNames: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('Project(s)');
+    expect(html).toContain('Environment(s)');
+    expect(html).toContain('aria-labelledby="');
+    expect(html).toContain('disabled=""');
+    expect(html).toContain('Select project(s) first');
   });
 });
 

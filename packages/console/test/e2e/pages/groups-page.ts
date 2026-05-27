@@ -104,13 +104,16 @@ export class GroupsPage {
     memberEmail: string,
     roleName: string,
     permissionKeys: PermissionKey[],
+    assignmentScopeLabels: readonly string[],
   ): Promise<void> {
     const drawer: Locator = this.detailDrawer(groupName);
 
     await expect(drawer).toBeVisible();
     await expect(drawer.getByText(groupName, { exact: true })).toBeVisible();
     await expect(drawer.getByText(memberEmail, { exact: true })).toBeVisible();
-    await expect(this.assignmentRow(drawer, roleName)).toBeVisible();
+    for (const scopeLabel of assignmentScopeLabels) {
+      await expect(this.assignmentRow(drawer, roleName, scopeLabel)).toBeVisible();
+    }
     await expect(drawer.getByRole('heading', { name: 'Assignments' })).toBeVisible();
     await expect(drawer.getByRole('heading', { name: 'Group members' })).toBeVisible();
     await expect(drawer.getByRole('heading', { name: 'Effective permissions' })).toBeVisible();
@@ -147,7 +150,35 @@ export class GroupsPage {
       ),
       drawer.getByRole('button', { name: 'Add assignment' }).click(),
     ]);
-    await expect(this.assignmentRow(drawer, roleName)).toBeVisible();
+    await expect(this.assignmentRow(drawer, roleName, 'Organization')).toBeVisible();
+  }
+
+  async addEnvironmentAssignment(
+    groupName: string,
+    roleName: string,
+    projectName: string,
+    environmentName: string,
+  ): Promise<void> {
+    const drawer: Locator = this.detailDrawer(groupName);
+    const scopeSelect: Locator = drawer.getByRole('combobox').nth(0);
+    const roleSelect: Locator = drawer.getByRole('combobox').nth(1);
+    const projectTrigger: Locator = this.assignmentMultiSelectTrigger(drawer, 'Project(s)');
+    const environmentTrigger: Locator = this.assignmentMultiSelectTrigger(drawer, 'Environment(s)');
+
+    await selectComboboxOption(this.page, scopeSelect, 'Environment');
+    await selectComboboxOption(this.page, roleSelect, roleName);
+    await expect(environmentTrigger).toBeDisabled();
+    await selectMultiComboBoxOption(this.page, projectTrigger, projectName);
+    await expect(environmentTrigger).toBeEnabled();
+    await selectMultiComboBoxOption(this.page, environmentTrigger, `${projectName} / ${environmentName}`);
+    await expect(drawer.getByRole('button', { name: 'Add assignment' })).toBeEnabled();
+    await Promise.all([
+      this.page.waitForResponse((response: Response): boolean =>
+        isSuccessfulApiMutationResponse(response, compartmentAssignmentsPathname, 'POST'),
+      ),
+      drawer.getByRole('button', { name: 'Add assignment' }).click(),
+    ]);
+    await expect(this.assignmentRow(drawer, roleName, `Environment: ${projectName}/${environmentName}`)).toBeVisible();
   }
 
   private detailDrawer(groupName: string): Locator {
@@ -180,14 +211,19 @@ export class GroupsPage {
     return drawer.getByRole('button', { name: 'Effective permissions' });
   }
 
-  private assignmentRow(drawer: Locator, roleName: string): Locator {
+  private assignmentRow(drawer: Locator, roleName: string, scopeLabel: string): Locator {
     return this.assignmentSection(drawer)
       .getByRole('listitem')
-      .filter({ has: this.page.getByText(roleName, { exact: true }) });
+      .filter({ hasText: roleName })
+      .filter({ hasText: scopeLabel });
   }
 
   private assignmentSection(drawer: Locator): Locator {
     return drawer.locator('section').filter({ has: this.page.getByRole('heading', { name: 'Assignments' }) });
+  }
+
+  private assignmentMultiSelectTrigger(drawer: Locator, label: string): Locator {
+    return drawer.getByRole('button', { name: new RegExp(`^${escapeForRegExp(label)}`, 'u') });
   }
 
   private groupRow(groupName: string): Locator {
@@ -231,4 +267,14 @@ export class GroupsPage {
 async function selectComboboxOption(page: Page, combobox: Locator, optionName: string): Promise<void> {
   await combobox.click();
   await page.getByRole('option', { exact: true, name: optionName }).click();
+}
+
+async function selectMultiComboBoxOption(page: Page, trigger: Locator, optionName: string): Promise<void> {
+  await trigger.click();
+  await page.getByRole('button', { exact: true, name: optionName }).click();
+  await trigger.click();
+}
+
+function escapeForRegExp(value: string): string {
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
