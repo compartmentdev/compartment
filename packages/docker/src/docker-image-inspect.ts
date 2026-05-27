@@ -1,4 +1,8 @@
-import type { DockerImageInspectConfigRecord, DockerImageInspectExposedPortMap } from './docker-build.types';
+import type {
+  DockerImageInspectConfigRecord,
+  DockerImageInspectExposedPortMap,
+  DockerImageInspectJsonValue,
+} from './docker-build.types';
 import type { DockerInspectImageResult } from './docker-models';
 
 export function parseDockerInspectImageResult(output: string, imageRef: string): DockerInspectImageResult {
@@ -24,7 +28,7 @@ function parseDockerImageInspectConfig(output: string): DockerImageInspectConfig
 function readDockerImageEntrypoint(
   config: DockerImageInspectConfigRecord,
 ): Pick<DockerInspectImageResult, 'entrypoint'> | Record<string, never> {
-  const entrypoint: string[] | null | undefined = config.Entrypoint;
+  const entrypoint: DockerImageInspectJsonValue | undefined = config.Entrypoint;
   if (entrypoint === null || entrypoint === undefined || !isDockerStringArray(entrypoint)) {
     return {};
   }
@@ -52,6 +56,8 @@ function parseDockerExposedPortKey(portKey: string): number {
   return Number.parseInt(rawPort ?? '', 10);
 }
 
-function isDockerStringArray(value: string[] | null | undefined): value is string[] {
-  return Array.isArray(value) && value.every((item: string): boolean => typeof item === 'string');
+function isDockerStringArray(value: DockerImageInspectJsonValue | undefined): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item: DockerImageInspectJsonValue): item is string => typeof item === 'string')
+  );
 }

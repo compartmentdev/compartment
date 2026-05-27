@@ -467,6 +467,18 @@ describe('inspectDockerImage', (): void => {
     });
   });
 
+  it('ignores malformed entrypoint values from image inspect output', async (): Promise<void> => {
+    mocks.runDockerCommand.mockResolvedValueOnce({
+      stderr: '',
+      stdout: '{"Entrypoint":["/bin/bash",42],"ExposedPorts":{"3000/tcp":{}}}',
+    });
+
+    await expect(inspectDockerImage({ imageRef: 'sha256:image-id' })).resolves.toEqual({
+      exposedPorts: [3000],
+      imageRef: 'sha256:image-id',
+    });
+  });
+
   it('ignores UDP-only exposed ports from image inspect output', async (): Promise<void> => {
     mocks.runDockerCommand.mockResolvedValueOnce({
       stderr: '',

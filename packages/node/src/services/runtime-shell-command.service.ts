@@ -37,5 +37,5 @@ function readExecutableName(executable: string): string {
 }
 
 function isShellCommandFlag(value: string): boolean {
-  return value.startsWith('-') && value.includes('c');
+  return value.startsWith('-') && !value.startsWith('--') && value.includes('c');
 }
