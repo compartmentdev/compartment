@@ -1,3 +1,4 @@
-import type { DockerRunContainerInput } from '@compartment/docker';
-
-export type RuntimeShellCommandContainerInvocation = Pick<DockerRunContainerInput, 'command' | 'entrypoint'>;
+export interface RuntimeShellCommandContainerInvocation {
+  readonly command: string[];
+  readonly entrypoint: string[];
+}
