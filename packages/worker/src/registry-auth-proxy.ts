@@ -16,6 +16,7 @@ import {
   writeRawBadRequest,
   writeRawUnauthorized,
 } from './registry-auth-proxy-responses';
+import { rewriteRegistryLocationHeader } from './registry-auth-proxy-location';
 
 interface RegistryAuthCredentials {
   password: string;
@@ -207,7 +208,7 @@ function proxyRegistryRequest(
   const registryRequest: ClientRequest = createHttpRequest(
     buildRegistryRequestOptions(clientRequest, config.targetUrl, requestTarget),
     (registryResponse: IncomingMessage): void => {
-      pipeRegistryResponse(registryResponse, config, clientRequest, clientResponse);
+      pipeRegistryResponse(registryResponse, config, clientResponse);
     },
   );
 
@@ -236,12 +237,11 @@ function buildRegistryRequestOptions(
 function pipeRegistryResponse(
   registryResponse: IncomingMessage,
   config: RegistryAuthProxyConfig,
-  clientRequest: IncomingMessage,
   clientResponse: ServerResponse,
 ): void {
   clientResponse.writeHead(
     registryResponse.statusCode ?? 502,
-    buildProxyResponseHeaders(registryResponse, config.targetUrl, clientRequest.headers.host),
+    buildProxyResponseHeaders(registryResponse, config.targetUrl),
   );
   registryResponse.pipe(clientResponse);
 }
@@ -253,15 +253,17 @@ function buildProxyRequestHeaders(request: IncomingMessage, targetUrl: URL): Rec
   };
 }
 
-function buildProxyResponseHeaders(
-  response: IncomingMessage,
-  targetUrl: URL,
-  requestHost: string | undefined,
-): Record<string, string | string[]> {
+function buildProxyResponseHeaders(response: IncomingMessage, targetUrl: URL): Record<string, string | string[]> {
   const headers: Record<string, string | string[]> = filterProxyHeaders(response.headers);
   const location: string | string[] | undefined = headers.location;
-  if (typeof location === 'string' && requestHost !== undefined) {
-    headers.location = rewriteRegistryLocation(location, targetUrl, requestHost);
+  if (location !== undefined) {
+    const rewrittenLocation: string | null =
+      typeof location === 'string' ? rewriteRegistryLocationHeader(location, targetUrl) : null;
+    if (rewrittenLocation === null) {
+      delete headers.location;
+    } else {
+      headers.location = rewrittenLocation;
+    }
   }
 
   return headers;
@@ -276,14 +278,6 @@ function filterProxyHeaders(headers: NodeJS.Dict<string | string[]>): Record<str
   }
 
   return filteredHeaders;
-}
-
-function rewriteRegistryLocation(location: string, targetUrl: URL, requestHost: string): string {
-  if (location.startsWith(targetUrl.origin)) {
-    return `http://${requestHost}${location.slice(targetUrl.origin.length)}`;
-  }
-
-  return location;
 }
 
 if (require.main === module) {
