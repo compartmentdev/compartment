@@ -1,7 +1,5 @@
 import { nodeRuntimeResourceReadinessFailedErrorCode, type NodeRuntimeResourceErrorCode } from '@compartment/contracts';
 
-type NodeRuntimeErrorCode = NodeRuntimeResourceErrorCode;
-
 type RuntimeResourceReadinessPhase = 'restore' | 'startup';
 
 interface RuntimeResourceReadinessErrorInput {
@@ -10,26 +8,26 @@ interface RuntimeResourceReadinessErrorInput {
   timeoutMs: number;
 }
 
-interface NodeRuntimeErrorShape extends Error {
-  readonly code: NodeRuntimeErrorCode;
+export interface NodeRuntimeError extends Error {
+  readonly code: NodeRuntimeResourceErrorCode;
 }
 
-class NodeRuntimeError extends Error implements NodeRuntimeErrorShape {
-  public readonly code: NodeRuntimeErrorCode;
+class NodeRuntimeErrorImpl extends Error implements NodeRuntimeError {
+  public readonly code: NodeRuntimeResourceErrorCode;
 
-  public constructor(code: NodeRuntimeErrorCode, message: string) {
+  public constructor(code: NodeRuntimeResourceErrorCode, message: string) {
     super(message);
     this.name = 'NodeRuntimeError';
     this.code = code;
   }
 }
 
-export function createRuntimeResourceReadinessError(input: RuntimeResourceReadinessErrorInput): NodeRuntimeErrorShape {
-  return new NodeRuntimeError(nodeRuntimeResourceReadinessFailedErrorCode, createResourceReadinessMessage(input));
+export function createRuntimeResourceReadinessError(input: RuntimeResourceReadinessErrorInput): NodeRuntimeError {
+  return new NodeRuntimeErrorImpl(nodeRuntimeResourceReadinessFailedErrorCode, createResourceReadinessMessage(input));
 }
 
-export function isNodeRuntimeError(value: Error | null | undefined): value is NodeRuntimeErrorShape {
-  return value instanceof NodeRuntimeError;
+export function isNodeRuntimeError(value: Error | null | undefined): value is NodeRuntimeError {
+  return value instanceof NodeRuntimeErrorImpl;
 }
 
 function createResourceReadinessMessage(input: RuntimeResourceReadinessErrorInput): string {

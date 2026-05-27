@@ -219,7 +219,9 @@ async function waitForResourceReadiness(
     }
   }
 
-  await removeFailedResourceContainer(input, config);
+  await removeDockerContainer({ containerRef: buildResourceContainerName(input, config.dockerNamespace) }).catch(
+    (): void => undefined,
+  );
   throwRuntimeResourceReadinessError(input, readiness);
 }
 
@@ -229,10 +231,6 @@ function throwRuntimeResourceReadinessError(input: NodeResourceRequest, readines
     resourceName: input.resourceName,
     timeoutMs: readiness.timeoutMs,
   });
-}
-
-async function removeFailedResourceContainer(input: NodeResourceRequest, config: RuntimeDeployConfig): Promise<void> {
-  await removeDockerContainer({ containerRef: buildResourceContainerName(input, config.dockerNamespace) });
 }
 
 async function canReachRuntimeResourceReadiness(

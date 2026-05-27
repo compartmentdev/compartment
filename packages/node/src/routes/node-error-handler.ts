@@ -3,7 +3,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import type { NodeApp } from '../app.types';
 import { isNodeBoundaryError } from '../errors/node-boundary-error';
-import { isNodeRuntimeError } from '../errors/node-runtime-error';
+import { isNodeRuntimeError, type NodeRuntimeError } from '../errors/node-runtime-error';
 import { invalidNodeInternalRequestMessage } from './internal/node-internal-validation';
 
 interface NodeErrorResponsePayload {
@@ -38,7 +38,7 @@ function mapNodeError(error: Error): NodeErrorResponsePayload {
   }
 
   if (isNodeRuntimeError(error)) {
-    return createNodeRuntimeErrorResponse(error.code, error.message);
+    return createNodeRuntimeErrorResponse(error);
   }
 
   if (error instanceof ZodError) {
@@ -56,10 +56,10 @@ function mapNodeError(error: Error): NodeErrorResponsePayload {
   };
 }
 
-function createNodeRuntimeErrorResponse(code: string, message: string): NodeErrorResponsePayload {
+function createNodeRuntimeErrorResponse(error: NodeRuntimeError): NodeErrorResponsePayload {
   return {
-    code,
-    message,
+    code: error.code,
+    message: error.message,
     statusCode: 500,
   };
 }

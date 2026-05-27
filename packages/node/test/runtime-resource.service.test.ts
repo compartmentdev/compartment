@@ -487,7 +487,7 @@ describe('startRuntimeResource', (): void => {
     expect(mocks.connectDockerContainerToNetwork).not.toHaveBeenCalled();
   });
 
-  it('removes the resource container when TCP readiness times out', async (): Promise<void> => {
+  it('surfaces TCP readiness timeout when resource container cleanup fails', async (): Promise<void> => {
     mocks.ensureDockerImageAvailable.mockResolvedValueOnce(undefined);
     mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'resource_container_123' });
     mocks.inspectDockerContainer.mockResolvedValueOnce({
@@ -503,7 +503,7 @@ describe('startRuntimeResource', (): void => {
       ],
       publishedPorts: [],
     });
-    mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
+    mocks.removeDockerContainer.mockRejectedValueOnce(new Error('cleanup failed'));
 
     let failure: Error | undefined;
     try {
