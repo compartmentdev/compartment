@@ -18,7 +18,7 @@ The published image artifact set includes the long-running runtime services (`ap
 
 Pull request and main CI build or restore the self-hosted image cache once per commit, then fan out e2e jobs and a separate self-hosted image security gate from that same cache. The gate loads the cached tar images and scans the exact refs from the rendered `.env.self-hosted` with the same Trivy and Docker Scout policy before the workflow can pass.
 
-The root `.trivyignore.yaml` is the only allowed suppression point for self-hosted image scans. Current suppressions must include a statement and be scoped to the affected binary path.
+The root `.trivyignore.yaml` is the only allowed suppression point for Trivy self-hosted image scans. Docker Scout has no repository suppression path in the CI or publish gates.
 
 Before promoting Docker Hub tags, the publish job pushes each attested image to a workflow-scoped staging tag, scans that staged image with Trivy and Docker Scout, and only then promotes the same image index to the public `main`, `sha-<commit>`, semver, or `latest` tags.
 
