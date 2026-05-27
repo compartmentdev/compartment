@@ -10,7 +10,6 @@ import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
 import {
   accessDrawerActionButtonClassName,
-  accessDrawerFieldClassName,
   accessDrawerTextareaClassName,
   AccessDrawerSection,
   useAccessDrawerCloseNavigation,
@@ -70,7 +69,6 @@ function GroupNameField({ formState }: Readonly<{ formState: CreateGroupFormStat
         Name
       </span>
       <Input
-        className={accessDrawerFieldClassName}
         onChange={(event: ChangeEvent<HTMLInputElement>): void => formState.setName(event.target.value)}
         required
         value={formState.name}

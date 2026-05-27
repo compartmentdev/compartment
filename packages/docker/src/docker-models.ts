@@ -43,6 +43,7 @@ export interface DockerInspectImageInput {
 }
 
 export interface DockerInspectImageResult {
+  entrypoint?: string[] | undefined;
   exposedPorts: number[];
   imageRef: string;
 }
@@ -151,6 +152,7 @@ export interface DockerRestartPolicy {
 export interface DockerRunContainerInput {
   containerName: string;
   command?: string[] | undefined;
+  entrypoint?: string[] | undefined;
   env: Record<string, string>;
   extraHosts?: DockerExtraHost[] | undefined;
   imageRef: string;

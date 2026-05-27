@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { cn } from '../../lib/utils';
 import { Badge } from './badge';
+import { selectTriggerFieldControlClassName } from './field-styles';
 import { ChevronDown } from './icons';
 
 interface AutocompleteMultiSelectOption {
@@ -24,13 +25,8 @@ export function AutocompleteMultiSelectTrigger(props: Readonly<AutocompleteMulti
   return (
     <button
       aria-labelledby={readAutocompleteMultiSelectLabelledBy(props.labelId, props.valueId)}
-      className={cn(
-        'flex h-9 w-full items-center justify-between gap-2 overflow-hidden rounded-md border border-input bg-background px-3 text-left text-[13px] text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50',
-        props.isOpen && props.triggerClassName === undefined
-          ? 'ring-2 ring-ring/60 ring-offset-2 ring-offset-background'
-          : undefined,
-        props.triggerClassName,
-      )}
+      className={cn(selectTriggerFieldControlClassName, 'overflow-hidden', props.triggerClassName)}
+      data-state={props.isOpen ? 'open' : 'closed'}
       disabled={props.disabled}
       onClick={props.onClick}
       type="button"

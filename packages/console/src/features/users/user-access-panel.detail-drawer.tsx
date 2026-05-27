@@ -1,11 +1,16 @@
 import type { PermissionKey, UserAccessDetail } from '@compartment/contracts/browser';
 import type { JSX } from 'react';
+import { IconTile } from '../../components/ui/icon-tile';
 import { UserRound } from '../../components/ui/icons';
 import { StatusTag } from '../../components/ui/status-tag';
 import { AccessDrawerCollapsibleSection } from '../access/access-drawer-collapsible-section';
 import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
-import { AccessDrawerSection } from '../access/access-ui';
+import {
+  accessDrawerSummaryIdentityClassName,
+  accessDrawerSummaryTitleClassName,
+  AccessDrawerSection,
+} from '../access/access-ui';
 import { PermissionFamiliesCard } from '../access/access-permission-families';
 import { canManageBrowserGroups, canManageBrowserRoles, canReadBrowserRoles } from '../console/console-access';
 import { ManageRolesButton } from '../roles/manage-roles-button';
@@ -125,13 +130,9 @@ function UserSummaryCard({ access }: Readonly<{ access: UserAccessDetail }>): JS
 function UserSummaryHeader({ access }: Readonly<{ access: UserAccessDetail }>): JSX.Element {
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-[rgba(40,162,60,0.12)] text-[var(--success,#28a23c)]">
-          <UserRound className="size-4" />
-        </div>
-        <p className="min-w-0 truncate text-[24px] font-medium leading-8 tracking-normal text-foreground">
-          {access.user.email}
-        </p>
+      <div className={accessDrawerSummaryIdentityClassName}>
+        <IconTile icon={UserRound} />
+        <p className={accessDrawerSummaryTitleClassName}>{access.user.email}</p>
       </div>
       <UserStatusBadge access={access} />
     </div>
@@ -154,7 +155,7 @@ function UserStatusBadge({ access }: Readonly<{ access: UserAccessDetail }>): JS
 function UserPermissionsCard({ permissionKeys }: Readonly<{ permissionKeys: PermissionKey[] }>): JSX.Element {
   return (
     <AccessDrawerCollapsibleSection
-      defaultExpanded={false}
+      defaultExpanded={true}
       description="Resulting access from groups + direct assignments"
       summary={`${permissionKeys.length} effective permissions in total`}
       title="Effective permissions"

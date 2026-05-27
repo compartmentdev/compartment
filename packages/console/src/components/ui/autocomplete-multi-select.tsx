@@ -176,8 +176,8 @@ function AutocompleteMultiSelectOptionRow({
   return (
     <button
       className={cn(
-        'flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-[13px] text-foreground hover:bg-accent',
-        isSelected ? 'bg-accent/70' : undefined,
+        'flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-[13px] text-foreground hover:bg-accent hover:text-accent-foreground',
+        isSelected ? 'bg-accent text-accent-foreground' : undefined,
       )}
       onClick={(): void => onChange(readNextAutocompleteValues(selectedValues, option.value))}
       type="button"

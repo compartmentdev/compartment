@@ -63,6 +63,7 @@ export function buildOrganizationUsersListInput(input: ListOrganizationUsersInpu
     perPage: input.perPage ?? 100,
     search: input.search,
     sort: input.sort ?? 'asc',
+    type: input.type,
   };
 }
 

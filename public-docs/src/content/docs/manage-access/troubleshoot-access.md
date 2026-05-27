@@ -63,11 +63,11 @@ Restore access with:
 compartment user unblock alex@example.com
 ```
 
-## Automation Accounts Appear in the User List
+## Automation Accounts Do Not Appear on the Browser Users Page
 
-Some entries in the organization user list are system-managed automation accounts, for example after you connect a Git source.
+Compartment can create system-managed automation accounts after you connect a Git source.
 
-Those entries are not human sign-in accounts. Compartment manages their access through the owning source lifecycle instead of normal invite, activation, or assignment flows.
+Those entries are not human sign-in accounts. The browser Users page hides them, but CLI and API organization user lists can still return them with `type=automation`. Compartment manages their access through the owning source lifecycle instead of normal invite, activation, or assignment flows.
 
 Next steps:
 

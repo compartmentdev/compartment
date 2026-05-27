@@ -109,13 +109,17 @@ export function createDeploymentProgressReporter(options: DeploymentProgressRepo
       return;
     }
 
-    const signature: string = createDeploymentProgressSignature(deployments);
+    const now: number = nowProvider();
+    const signature: string = createDeploymentProgressSignature(
+      deployments,
+      options.progress.mode === 'live' ? now : null,
+    );
     if (signature === state.lastSignature) {
       return;
     }
 
     state.lastSignature = signature;
-    options.progress.report(buildDeploymentProgressMessage(status, deployments, nowProvider()));
+    options.progress.report(buildDeploymentProgressMessage(status, deployments, now));
   };
 }
 

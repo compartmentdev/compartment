@@ -10,7 +10,6 @@ import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header'
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import {
   accessDrawerActionButtonClassName,
-  accessDrawerFieldClassName,
   accessDrawerSectionDividerClassName,
   accessDrawerTextareaClassName,
   AccessDrawerSection,
@@ -79,7 +78,6 @@ function RoleNameField({
         Role name
       </span>
       <Input
-        className={accessDrawerFieldClassName}
         disabled={isSystemRole(state)}
         onChange={(event: ChangeEvent<HTMLInputElement>): void => editorState.setName(event.target.value)}
         placeholder="Custom role"

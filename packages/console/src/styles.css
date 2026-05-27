@@ -154,6 +154,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-muted-foreground-secondary: var(--muted-foreground-secondary);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
@@ -218,6 +219,20 @@ input,
 select,
 textarea {
   font-family: inherit;
+}
+
+.field-control-surface {
+  border-color: var(--input);
+}
+
+.field-control-surface:focus-visible,
+.field-control-surface:focus-within,
+.field-control-surface[data-state='open'] {
+  border-color: var(--ring);
+}
+
+.field-control-surface[aria-invalid='true'] {
+  border-color: var(--destructive);
 }
 
 #root {

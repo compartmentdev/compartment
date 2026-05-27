@@ -32,6 +32,7 @@ import {
   writeBrowserConsoleListSearchParams,
 } from '../console/console-data';
 import { canReadBrowserGroups, canReadBrowserRoles } from '../console/console-access';
+import { resolveSelectedConsoleUserEmail } from './users-loader.selected-user';
 
 export interface UsersLoaderQuery {
   errorMessage?: string | undefined;
@@ -47,6 +48,14 @@ export interface UsersLoaderQuery {
 
 export interface UsersPageResponses {
   access: UserAccessDetailResponse | null;
+  groups: AccessGroupListResponse;
+  roles: AccessRoleListResponse;
+  selectedUserEmail: string | null;
+  scopeOptions: AccessAssignmentScopeOptionsResponse;
+  users: UserListResponse;
+}
+
+interface UsersPageListResponses {
   groups: AccessGroupListResponse;
   roles: AccessRoleListResponse;
   scopeOptions: AccessAssignmentScopeOptionsResponse;
@@ -77,21 +86,46 @@ export async function loadUsersPageResponses(
   organizationSlug: string,
   options: BrowserApiRequestOptions = {},
 ): Promise<UsersPageResponses> {
-  const [users, roles, groups, scopeOptions, access]: [
+  const listResponses: UsersPageListResponses = await loadUsersPageListResponses(
+    query,
+    permissions,
+    organizationSlug,
+    options,
+  );
+  const selectedUserEmail: string | null = await resolveSelectedConsoleUserEmail(
+    query,
+    listResponses.users.users,
+    organizationSlug,
+    options,
+  );
+  const access: UserAccessDetailResponse | null = await readSelectedUserAccess(
+    selectedUserEmail,
+    organizationSlug,
+    options,
+  );
+
+  return { ...listResponses, access, selectedUserEmail };
+}
+
+async function loadUsersPageListResponses(
+  query: UsersLoaderQuery,
+  permissions: PermissionKey[],
+  organizationSlug: string,
+  options: BrowserApiRequestOptions,
+): Promise<UsersPageListResponses> {
+  const [users, roles, groups, scopeOptions]: [
     UserListResponse,
     AccessRoleListResponse,
     AccessGroupListResponse,
     AccessAssignmentScopeOptionsResponse,
-    UserAccessDetailResponse | null,
   ] = await Promise.all([
     fetchUsersPageResponse(query, organizationSlug, options),
     readRolesPageResponse(permissions, organizationSlug, options),
     readGroupsPageResponse(permissions, organizationSlug, options),
     readScopeOptionsResponse(permissions, organizationSlug, options),
-    readSelectedUserAccess(query, organizationSlug, options),
   ]);
 
-  return { access, groups, roles, scopeOptions, users };
+  return { groups, roles, scopeOptions, users };
 }
 
 async function readRolesPageResponse(
@@ -177,21 +211,22 @@ export async function fetchScopeOptionsResponse(
 function buildUserListPath(query: UsersLoaderQuery): string {
   const searchParams: URLSearchParams = new URLSearchParams();
   searchParams.set('orderBy', query.sortBy);
+  searchParams.set('type', 'user');
   writeBrowserConsoleListSearchParams(searchParams, query);
 
   return `${usersApiPathname}?${searchParams.toString()}`;
 }
 
 async function readSelectedUserAccess(
-  query: UsersLoaderQuery,
+  selectedUserEmail: string | null,
   organizationSlug: string,
   options: BrowserApiRequestOptions,
 ): Promise<UserAccessDetailResponse | null> {
-  if (query.mode !== 'detail' || query.selectedUserEmail === null) {
+  if (selectedUserEmail === null) {
     return null;
   }
 
-  return await fetchUserAccessResponse(query.selectedUserEmail, organizationSlug, options);
+  return await fetchUserAccessResponse(selectedUserEmail, organizationSlug, options);
 }
 
 export async function fetchUserAccessResponse(

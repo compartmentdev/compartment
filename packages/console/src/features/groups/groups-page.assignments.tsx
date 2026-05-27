@@ -14,7 +14,6 @@ import { formatAssignmentAccessSummary } from '../access/access-display';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
 import {
   accessAssignmentPrimaryRowClassName,
-  accessAssignmentSelectClassName,
   accessAssignmentSubmitButtonClassName,
   AccessScopeInputs,
   isAccessScopeSelectionReady,
@@ -108,7 +107,6 @@ function GroupAssignmentsForm(props: Readonly<GroupAssignmentsCardProps>): JSX.E
 function GroupScopeSelect(props: Readonly<GroupScopeSelectProps>): JSX.Element {
   return (
     <Select
-      className={accessAssignmentSelectClassName}
       containerClassName="w-full"
       onChange={(event: ChangeEvent<HTMLSelectElement>): void =>
         props.setScopeType(event.target.value as AccessAssignmentScopeType)
@@ -125,7 +123,6 @@ function GroupScopeSelect(props: Readonly<GroupScopeSelectProps>): JSX.Element {
 function GroupRoleSelect(props: Readonly<GroupRoleSelectProps>): JSX.Element {
   return (
     <Select
-      className={accessAssignmentSelectClassName}
       containerClassName="w-full"
       onChange={(event: ChangeEvent<HTMLSelectElement>): void => props.setRoleId(event.target.value)}
       required

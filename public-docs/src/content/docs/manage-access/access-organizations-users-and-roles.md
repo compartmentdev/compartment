@@ -132,9 +132,9 @@ Use `compartment user block` when an account should stay in the organization but
 
 Destructive access-removal commands require explicit confirmation in the CLI. Use `--yes` with `compartment user remove`, `compartment role delete`, and `compartment group delete`.
 
-User lists can also include system-managed automation accounts, for example when you connect a Git source. Those entries are not human sign-in accounts. Compartment marks them as system or automation entries and manages their access through the owning source lifecycle instead of normal user-management actions.
+The browser Users page shows human organization members only. System-managed automation accounts, for example from connected Git sources, do not appear there even though they still exist in the organization.
 
-Automation note: organization user lists return the documented `type` field so you can distinguish human users from automation accounts. Do not depend on undeclared list columns or mutation payload properties.
+Automation note: CLI and API organization user lists still return the documented `type` field so you can distinguish human users from automation accounts. Do not depend on undeclared list columns or mutation payload properties.
 
 Next steps:
 

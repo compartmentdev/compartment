@@ -51,6 +51,7 @@ export interface ListOrganizationUsersInput {
   perPage?: number | undefined;
   search?: string | undefined;
   sort?: ListSortDirection | undefined;
+  type?: OrganizationUserType | undefined;
 }
 
 export interface OrganizationUserListResult {

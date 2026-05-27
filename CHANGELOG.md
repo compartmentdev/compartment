@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.1](https://github.com/compartmentdev/compartment/compare/v0.5.0...v0.5.1) (2026-05-27)
+
+
+### Bug Fixes
+
+* **api:** handle system API socket rate limits ([#50](https://github.com/compartmentdev/compartment/issues/50)) ([da799a4](https://github.com/compartmentdev/compartment/commit/da799a45801a28bf30fc5da754a57dcbc3cf9d54))
+* **api:** surface node resource readiness errors ([#55](https://github.com/compartmentdev/compartment/issues/55)) ([217dd10](https://github.com/compartmentdev/compartment/commit/217dd10b30a748d1ee957081da98e00d8b6f8c7b))
+* **cli:** keep deploy progress on one line ([#57](https://github.com/compartmentdev/compartment/issues/57)) ([8e13799](https://github.com/compartmentdev/compartment/commit/8e137992d51336e64ab521c4d4d74c3f54b6ff98))
+* **cli:** show sudo install progress ([#51](https://github.com/compartmentdev/compartment/issues/51)) ([b1c85e7](https://github.com/compartmentdev/compartment/commit/b1c85e730840bc129438608aa6bc9b011e163110))
+* **node:** run shell commands via entrypoint ([#56](https://github.com/compartmentdev/compartment/issues/56)) ([b9506e2](https://github.com/compartmentdev/compartment/commit/b9506e2370d637f220d49986606186d4a9757d76))
+
 ## [0.5.0](https://github.com/compartmentdev/compartment/compare/v0.4.2...v0.5.0) (2026-05-27)
 
 

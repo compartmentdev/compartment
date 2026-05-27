@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { cn } from '../../lib/utils';
+import { selectTriggerFieldControlClassName } from './field-styles';
 import type {
   NativeSelectChangeHandler,
   NativeOptionValue,
@@ -65,10 +66,7 @@ export function readNativeSelectValueProp(selectedRadixValue: string | undefined
 }
 
 export function readNativeSelectTriggerClassName(className: string | undefined): string {
-  return cn(
-    'flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-left text-[13px] text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-muted-foreground',
-    className,
-  );
+  return cn(selectTriggerFieldControlClassName, className);
 }
 
 export function readNativeSelectItemKey(option: NativeSelectOption, index: number): string {
