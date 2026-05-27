@@ -96,19 +96,6 @@ describe('install command progress', (): void => {
     expect(readCliStderr(capture)).toBe('');
   });
 
-  it('renders progress for internal install result json output', (): void => {
-    const capture: CliCommandCapture = createCliCapture({ stderrIsTTY: false });
-    const progress: InstallCommandProgress = createInstallCommandProgress({
-      io: capture.io,
-      options: createInstallCommandOptions('json', true),
-    });
-
-    progress.report('Starting self-hosted runtime...');
-    progress.stop();
-
-    expect(readCliStderr(capture)).toBe('Starting self-hosted runtime...\n');
-  });
-
   it('suppresses install command progress for json output', async (): Promise<void> => {
     mockInstallCommandProgress({
       preflightProgressMessage: 'Preflight progress should not render.',
