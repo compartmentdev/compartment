@@ -33,19 +33,6 @@ interface ProjectMutationRecoveryNamedListResponse {
 const projectMutationRecoveryAttemptCount: number = 20;
 const projectMutationRecoveryDelayMs: number = 250;
 
-export function readProjectActionConfirmationMessage(action: ProjectAction, projectName: string): string | null {
-  switch (action) {
-    case 'archive':
-      return `Type ${projectName} to archive this project.`;
-    case 'delete':
-      return `Type ${projectName} to permanently remove this project.`;
-    case 'start':
-    case 'stop':
-    case 'unarchive':
-      return null;
-  }
-}
-
 export async function runProjectAction(
   action: ProjectAction,
   projectName: string,

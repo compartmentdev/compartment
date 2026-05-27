@@ -1,4 +1,5 @@
 import { useEffect, useState, type JSX } from 'react';
+import { ConfirmationDialog } from '../../components/confirmation-dialog';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import {
   readServerTableActionControlClassName,
@@ -8,8 +9,13 @@ import {
 import { ServerTableActionsMenu } from '../../components/server-table-actions-menu';
 import { Button } from '../../components/ui/button';
 import type { BrowserUsersPageResult, BrowserUsersUser } from '../../services/browser-users.service.types';
-import type { UserActionHandler } from './user-actions';
+import {
+  readUserRemoveConfirmationSpec,
+  type UserActionHandler,
+  type UserRemoveConfirmationSpec,
+} from './user-actions';
 import { UserAccessMenuItem, UserRemoveMenuItem } from './users-table.actions.menu-items';
+import { useUserRemoveMutation, type UserRemoveMutation } from './users-table.mutations';
 import {
   readUserActionsMenuVisibleState,
   type UserActionsMenuPermissionState,
@@ -33,6 +39,18 @@ interface ManageUserMenuItemProps {
 interface UserActionsMenuProps extends UserActionControlsProps {
   menuState: UserActionsMenuPermissionState;
   setErrorMessage: (value: string | undefined) => void;
+}
+
+interface UserRemoveDialogProps {
+  email: string;
+  isOpen: boolean;
+  isPending: boolean;
+  onConfirm: () => void;
+  onOpenChange: (open: boolean) => void;
+}
+
+interface UserActionsMenuContentProps {
+  props: UserActionsMenuProps;
 }
 
 export function UserActionControls(props: Readonly<UserActionControlsProps>): JSX.Element {
@@ -73,10 +91,47 @@ function readUserActionsMenu(
 }
 
 function UserActionsMenu(props: Readonly<UserActionsMenuProps>): JSX.Element {
-  const { user } = props;
+  return <UserActionsMenuContent props={props} />;
+}
+
+function UserActionsMenuContent({ props }: Readonly<UserActionsMenuContentProps>): JSX.Element {
+  const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState<boolean>(false);
+  const removeMutation: UserRemoveMutation = useUserActionsMenuRemoveMutation(props);
+  const handleConfirm: () => void = (): void => {
+    setIsRemoveDialogOpen(false);
+    removeMutation.mutate();
+  };
+
   return (
-    <ServerTableActionsMenu ariaLabel={`Open actions for ${user.email}`}>
-      {renderUserActionsMenuItems(props, props.menuState)}
+    <>
+      <UserActionsDropdown
+        isRemovePending={removeMutation.isPending}
+        onRequestRemove={(): void => setIsRemoveDialogOpen(true)}
+        props={props}
+      />
+      <UserRemoveDialog
+        email={props.user.email}
+        isOpen={isRemoveDialogOpen}
+        isPending={removeMutation.isPending}
+        onConfirm={handleConfirm}
+        onOpenChange={setIsRemoveDialogOpen}
+      />
+    </>
+  );
+}
+
+function useUserActionsMenuRemoveMutation(props: Readonly<UserActionsMenuProps>): UserRemoveMutation {
+  return useUserRemoveMutation(props.onUserAction, props.organizationSlug, props.setErrorMessage, props.user);
+}
+
+function UserActionsDropdown({
+  isRemovePending,
+  onRequestRemove,
+  props,
+}: Readonly<{ isRemovePending: boolean; onRequestRemove: () => void; props: UserActionsMenuProps }>): JSX.Element {
+  return (
+    <ServerTableActionsMenu ariaLabel={`Open actions for ${props.user.email}`}>
+      {renderUserActionsMenuItems(props, props.menuState, isRemovePending, onRequestRemove)}
     </ServerTableActionsMenu>
   );
 }
@@ -84,11 +139,13 @@ function UserActionsMenu(props: Readonly<UserActionsMenuProps>): JSX.Element {
 function renderUserActionsMenuItems(
   props: Readonly<UserActionsMenuProps>,
   menuState: UserActionsMenuPermissionState,
+  isRemovePending: boolean,
+  onRequestRemove: () => void,
 ): JSX.Element {
   return (
     <>
       {renderUserAccessMenuItem(props, menuState.canBlockUser)}
-      {renderUserRemoveMenuItem(props, menuState.canRemoveUser)}
+      {renderUserRemoveMenuItem(props, menuState.canRemoveUser, isRemovePending, onRequestRemove)}
     </>
   );
 }
@@ -105,14 +162,46 @@ function renderUserAccessMenuItem(props: Readonly<UserActionsMenuProps>, canBloc
   );
 }
 
-function renderUserRemoveMenuItem(props: Readonly<UserActionsMenuProps>, canRemoveUser: boolean): JSX.Element {
+function renderUserRemoveMenuItem(
+  props: Readonly<UserActionsMenuProps>,
+  canRemoveUser: boolean,
+  isPending: boolean,
+  onRequestRemove: () => void,
+): JSX.Element {
   return (
     <UserRemoveMenuItem
       canRemoveUser={canRemoveUser}
+      isPending={isPending}
+      onSelect={onRequestRemove}
       onUserAction={props.onUserAction}
       organizationSlug={props.organizationSlug}
       setErrorMessage={props.setErrorMessage}
       user={props.user}
+    />
+  );
+}
+
+function UserRemoveDialog({
+  email,
+  isOpen,
+  isPending,
+  onConfirm,
+  onOpenChange,
+}: Readonly<UserRemoveDialogProps>): JSX.Element {
+  const confirmation: UserRemoveConfirmationSpec = readUserRemoveConfirmationSpec(email);
+
+  return (
+    <ConfirmationDialog
+      confirmLabel={confirmation.confirmLabel}
+      description={confirmation.description}
+      expectedValue={confirmation.expectedValue}
+      inputLabel={confirmation.inputLabel}
+      inputPlaceholder={confirmation.inputPlaceholder}
+      isPending={isPending}
+      onConfirm={onConfirm}
+      onOpenChange={onOpenChange}
+      open={isOpen}
+      title={confirmation.title}
     />
   );
 }

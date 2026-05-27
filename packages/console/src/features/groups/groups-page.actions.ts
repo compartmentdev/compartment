@@ -22,6 +22,15 @@ import { invalidateGroupsAccessQueries } from './groups-query-state';
 export type GroupsPageSetter = BrowserAccessPageSetter<BrowserGroupsPageResult>;
 type GroupDrawerErrorSetter = (value: string | undefined) => void;
 
+export interface GroupDeleteConfirmationSpec {
+  confirmLabel: 'Delete group';
+  description: string;
+  expectedValue: string;
+  inputLabel: 'Group name';
+  inputPlaceholder: string;
+  title: 'Delete group';
+}
+
 const groupActionFailureMessage: string = 'Group action failed.';
 
 export async function handleGroupCreateAction(
@@ -80,8 +89,15 @@ export async function handleGroupDeleteAction(
   );
 }
 
-export function readGroupDeleteConfirmationMessage(groupName: string): string {
-  return `Type ${groupName} to delete this group.`;
+export function readGroupDeleteConfirmationSpec(groupName: string): GroupDeleteConfirmationSpec {
+  return {
+    confirmLabel: 'Delete group',
+    description: `Type ${groupName} to delete this group.`,
+    expectedValue: groupName,
+    inputLabel: 'Group name',
+    inputPlaceholder: groupName,
+    title: 'Delete group',
+  };
 }
 
 export async function handleGroupMemberAddAction(

@@ -1,16 +1,16 @@
+// @vitest-environment jsdom
+
 import * as React from 'react';
 import { compartmentCsrfCookieName, compartmentCsrfHeaderName } from '@compartment/contracts/browser';
-import type { ReactElement, ReactNode } from 'react';
+import { act, type ReactElement, type ReactNode } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createJsonResponse } from './browser-test.fixtures';
 import type { BrowserProjectSummary, BrowserProjectsPageResult } from '../src/services/browser-projects.service.types';
 import type { BrowserSoftNavigateHandler } from '../src/browser-soft-navigation';
-import {
-  readProjectActionConfirmationMessage,
-  runProjectAction,
-  type ProjectActionHandler,
-} from '../src/features/projects/project-actions';
+import { runProjectAction, type ProjectActionHandler } from '../src/features/projects/project-actions';
+import { ProjectActionConfirmationDialog } from '../src/features/projects/project-row-actions-dropdown.confirmation';
 import { ProjectsTable } from '../src/features/projects/projects-table';
 
 type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
@@ -21,6 +21,10 @@ interface MockDropdownMenuItemProps {
   children?: ReactNode;
   disabled?: boolean;
   [key: string]: MockDropdownMenuItemPropValue;
+}
+
+interface DocumentBodyContainer {
+  body?: { innerHTML: string } | undefined;
 }
 
 vi.mock('../src/components/ui/dropdown-menu', async (importOriginal: () => Promise<object>): Promise<object> => {
@@ -55,7 +59,10 @@ vi.mock('../src/components/ui/dropdown-menu', async (importOriginal: () => Promi
   };
 });
 
+configureReactActEnvironment();
+
 afterEach((): void => {
+  clearDocumentBody();
   vi.unstubAllGlobals();
 });
 
@@ -106,12 +113,12 @@ describe('browser projects table', (): void => {
     expect(html).toContain('href="/orgs/acme-dev/projects?sortBy=project&amp;sortDirection=asc"');
   });
 
-  it('requires exact-match confirmation for destructive project actions only', (): void => {
-    expect(readProjectActionConfirmationMessage('archive', 'billing')).toBe('Type billing to archive this project.');
-    expect(readProjectActionConfirmationMessage('delete', 'billing')).toBe(
-      'Type billing to permanently remove this project.',
-    );
-    expect(readProjectActionConfirmationMessage('stop', 'billing')).toBeNull();
+  it('builds exact-match confirmation copy for destructive project actions', async (): Promise<void> => {
+    const archiveText: string = await renderProjectActionConfirmationDialogText('archive');
+    const deleteText: string = await renderProjectActionConfirmationDialogText('delete');
+
+    expect(archiveText).toContain('Type billing to archive this project.');
+    expect(deleteText).toContain('Type billing to permanently remove this project.');
   });
 
   it('submits archive action through the project action API', async (): Promise<void> => {
@@ -413,4 +420,50 @@ function createProjectSummary(overrides?: Partial<BrowserProjectSummary>): Brows
     updatedAt: '2026-04-21T09:00:00.000Z',
     ...overrides,
   };
+}
+
+async function renderProjectActionConfirmationDialogText(action: 'archive' | 'delete'): Promise<string> {
+  const container: HTMLDivElement = document.createElement('div');
+  const root: Root = createRoot(container);
+  document.body.append(container);
+
+  await act(async (): Promise<void> => {
+    root.render(
+      React.createElement(ProjectActionConfirmationDialog, {
+        action,
+        isPending: false,
+        onConfirm: (): void => undefined,
+        onOpenChange: (): void => undefined,
+        projectName: 'billing',
+      }),
+    );
+    await Promise.resolve();
+  });
+
+  const dialogText: string = document.body.textContent;
+
+  await act(async (): Promise<void> => {
+    root.unmount();
+    await Promise.resolve();
+  });
+  container.remove();
+
+  return dialogText;
+}
+
+function clearDocumentBody(): void {
+  const globalState: typeof globalThis & { document?: DocumentBodyContainer | undefined } = globalThis;
+  const documentState: DocumentBodyContainer | undefined = globalState.document;
+  if (hasDocumentBody(documentState)) {
+    documentState.body.innerHTML = '';
+  }
+}
+
+function configureReactActEnvironment(): void {
+  const globalState: typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean } = globalThis;
+  globalState.IS_REACT_ACT_ENVIRONMENT = true;
+}
+
+function hasDocumentBody(value: DocumentBodyContainer | undefined): value is { body: { innerHTML: string } } {
+  return value?.body !== undefined;
 }

@@ -7,6 +7,7 @@ import Search from '@astrojs/starlight/components/Search.astro';
 import SocialIcons from '@astrojs/starlight/components/SocialIcons.astro';
 import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro';
 import SiteTitle from './SiteTitle.astro';
+import { productSiteHref } from '../../../site-config.mjs';
 
 const shouldRenderSearch =
   config.pagefind || config.components.Search !== '@astrojs/starlight/components/Search.astro';
@@ -19,7 +20,18 @@ const shouldRenderSearch =
   <div class="sl-flex print:hidden">
     {shouldRenderSearch && <Search />}
   </div>
+  <a
+    class="product-site-link product-site-link-mobile sl-flex md:sl-hidden print:hidden"
+    href={productSiteHref}
+    aria-label="Open Compartment website"
+  >
+    <Icon name="external" />
+  </a>
   <div class="sl-hidden md:sl-flex print:hidden right-group">
+    <a class="product-site-link sl-flex" href={productSiteHref} aria-label="Open Compartment website">
+      <span>Website</span>
+      <Icon name="external" />
+    </a>
     <a
       class="github-star-widget sl-flex"
       href="https://github.com/compartmentdev/compartment"
