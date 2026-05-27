@@ -1,25 +1,15 @@
-import { useState, type FormEvent, type JSX } from 'react';
+import type { JSX } from 'react';
 import { type DeploymentReadRunGroup, type DeploymentReadSummary } from '@compartment/contracts/browser';
 import { DropdownMenuItem } from '../../components/ui/dropdown-menu';
 import type { BrowserDeploymentHistoryPageResult } from '../../services/browser-deployment-history.service.types';
 import { canRollbackBrowserDeployments } from '../console/console-access';
-import {
-  readRollbackDeploymentRunConfirmationMessage,
-  rollbackDeploymentRun,
-  toDeploymentHistoryActionError,
-  type DeploymentHistoryRollbackHandler,
-  type DeploymentHistoryActionErrorLike,
-  type RollbackDeploymentRunInput,
-} from './deployment-history-actions';
+import type { RollbackDeploymentRunInput } from './deployment-history-actions';
 
 interface DeploymentRunRollbackMenuItemProps {
-  data: BrowserDeploymentHistoryPageResult;
-  onRollback: DeploymentHistoryRollbackHandler;
-  run: DeploymentReadRunGroup;
+  isSubmitting: boolean;
+  onSelect: () => void;
+  state: DeploymentRunRollbackState;
 }
-
-type DeploymentRunRollbackSubmittingSetter = (value: boolean) => void;
-type DeploymentRunRollbackSubmitHandler = (event: FormEvent<HTMLFormElement>) => void;
 
 interface DeploymentRunRollbackContext {
   environmentName: string;
@@ -40,25 +30,16 @@ interface HiddenDeploymentRunRollbackState {
   kind: 'hidden';
 }
 
-interface EnabledDeploymentRunRollbackMenuItemProps {
-  input: RollbackDeploymentRunInput;
-  isSubmitting: boolean;
-  onRollback: DeploymentHistoryRollbackHandler;
-  setIsSubmitting: DeploymentRunRollbackSubmittingSetter;
-}
-
-type DeploymentRunRollbackState =
+export type DeploymentRunRollbackState =
   | DisabledDeploymentRunRollbackState
   | EnabledDeploymentRunRollbackState
   | HiddenDeploymentRunRollbackState;
 
 export function DeploymentRunRollbackMenuItem({
-  data,
-  onRollback,
-  run,
+  isSubmitting,
+  onSelect,
+  state,
 }: Readonly<DeploymentRunRollbackMenuItemProps>): JSX.Element | null {
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const state: DeploymentRunRollbackState = readRollbackDeploymentRunState(data, run);
   if (state.kind === 'hidden') {
     return null;
   }
@@ -66,33 +47,24 @@ export function DeploymentRunRollbackMenuItem({
     return <DisabledDeploymentRunRollbackMenuItem reason={state.reason} />;
   }
 
-  return (
-    <EnabledDeploymentRunRollbackMenuItem
-      input={state.input}
-      isSubmitting={isSubmitting}
-      onRollback={onRollback}
-      setIsSubmitting={setIsSubmitting}
-    />
-  );
+  return <EnabledDeploymentRunRollbackMenuItem isSubmitting={isSubmitting} onSelect={onSelect} />;
 }
 
 function EnabledDeploymentRunRollbackMenuItem({
-  input,
   isSubmitting,
-  onRollback,
-  setIsSubmitting,
-}: Readonly<EnabledDeploymentRunRollbackMenuItemProps>): JSX.Element {
-  const onSubmit: DeploymentRunRollbackSubmitHandler = (event: FormEvent<HTMLFormElement>): void =>
-    void handleSubmit(event, input, isSubmitting, onRollback, setIsSubmitting);
-
+  onSelect,
+}: Readonly<{ isSubmitting: boolean; onSelect: () => void }>): JSX.Element {
   return (
-    <form onSubmit={onSubmit}>
-      <DropdownMenuItem asChild disabled={isSubmitting}>
-        <button disabled={isSubmitting} type="submit">
-          {isSubmitting ? 'Rolling back...' : 'Rollback'}
-        </button>
-      </DropdownMenuItem>
-    </form>
+    <DropdownMenuItem
+      disabled={isSubmitting}
+      onSelect={(): void => {
+        if (!isSubmitting) {
+          onSelect();
+        }
+      }}
+    >
+      {isSubmitting ? 'Rolling back...' : 'Rollback'}
+    </DropdownMenuItem>
   );
 }
 
@@ -107,7 +79,7 @@ function DisabledDeploymentRunRollbackMenuItem({
   );
 }
 
-function readRollbackDeploymentRunState(
+export function readRollbackDeploymentRunState(
   data: BrowserDeploymentHistoryPageResult,
   run: DeploymentReadRunGroup,
 ): DeploymentRunRollbackState {
@@ -207,26 +179,4 @@ function readDisabledDeploymentRollbackReason(deployment: DeploymentReadSummary)
   }
 
   return 'Rollback unavailable';
-}
-
-async function handleSubmit(
-  event: FormEvent<HTMLFormElement>,
-  input: Readonly<RollbackDeploymentRunInput>,
-  isSubmitting: boolean,
-  onRollback: DeploymentHistoryRollbackHandler,
-  setIsSubmitting: DeploymentRunRollbackSubmittingSetter,
-): Promise<void> {
-  event.preventDefault();
-  if (isSubmitting || !window.confirm(readRollbackDeploymentRunConfirmationMessage(input))) {
-    return;
-  }
-
-  setIsSubmitting(true);
-  try {
-    await onRollback(await rollbackDeploymentRun(input));
-  } catch (error) {
-    await onRollback(undefined, toDeploymentHistoryActionError(error as DeploymentHistoryActionErrorLike));
-  } finally {
-    setIsSubmitting(false);
-  }
 }
