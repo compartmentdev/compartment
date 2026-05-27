@@ -154,6 +154,7 @@ describe('ensureDockerExecutionContext', (): void => {
     });
     expect(reportProgressMock).toHaveBeenCalledWith(
       'Direct Docker daemon access is unavailable. Checking Docker access via sudo; you may be prompted for your password.',
+      { renderMode: 'line' },
     );
     expectCommandCall(mocks.runInheritedCommand, ['sudo', '-v']);
     expectCommandCall(mocks.runCappedCommand, ['sudo', 'docker', 'compose', 'version']);
@@ -262,6 +263,7 @@ describe('ensureDockerExecutionContext', (): void => {
     expect(confirmInstallWhenMissingMock).toHaveBeenCalledTimes(1);
     expect(reportProgressMock).toHaveBeenCalledWith(
       'Direct Docker access is unavailable. Checking Docker access via sudo; you may be prompted for your password.',
+      { renderMode: 'line' },
     );
     expect(reportProgressMock).toHaveBeenCalledWith(
       'Docker installation is continuing after sudo access was confirmed.',

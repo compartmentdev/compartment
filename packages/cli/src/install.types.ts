@@ -8,7 +8,11 @@ import type {
 } from './self-hosted-env.types';
 import type { BundledAssets, StagedAssetPaths } from './runtime-assets.types';
 
-export type InstallProgressReporter = (message: string) => void;
+export interface InstallProgressReportOptions {
+  renderMode?: 'line' | 'spinner' | undefined;
+}
+
+export type InstallProgressReporter = (message: string, options?: InstallProgressReportOptions) => void;
 export type ConfirmInstallWhenMissing = () => Promise<boolean>;
 
 export interface InstallContext {

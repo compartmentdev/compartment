@@ -5,6 +5,7 @@ import { assertSelfHostedSystemPrivileges } from './self-hosted-system-privilege
 import { buildSelfHostedPathSelection } from './self-hosted-install-paths';
 import { assertInstallPublicPortsAvailable } from './install-public-port-preflight';
 import { prepareSelfHostedRuntimeImages, startSelfHostedRuntime } from './docker-runtime';
+import { readInheritedDockerProgressReportOptions } from './docker-progress';
 import {
   assertNodeAgentHostServiceInstallable,
   restartNodeAgentHostService,
@@ -19,8 +20,9 @@ import {
 } from './install-environment';
 import type {
   InstallContext,
-  InstallProgressReporter,
   InstallImageSource,
+  InstallProgressReporter,
+  InstallProgressReportOptions,
   SelfHostedInstallInput,
   SelfHostedInstallPreflightInput,
   SelfHostedInstallResult,
@@ -108,7 +110,7 @@ async function startInstallRuntime(
   preparedEnvironment: PreparedInstallEnvironment,
   input: SelfHostedInstallInput,
 ): Promise<void> {
-  reportInstallProgress(input.context, 'Preparing runtime images...');
+  reportInstallDockerProgress(input, dockerContext, 'Preparing runtime images...');
   await prepareInstallRuntimeImages(dockerContext, preparedEnvironment, input);
   reportInstallProgress(input.context, 'Staging self-hosted runtime assets...');
   await stagePreparedInstallEnvironment(preparedEnvironment);
@@ -116,7 +118,7 @@ async function startInstallRuntime(
   await stageNodeAgentHostService({
     envPath: preparedEnvironment.stagedAssetPaths.envPath,
   });
-  reportInstallProgress(input.context, 'Starting self-hosted runtime...');
+  reportInstallDockerProgress(input, dockerContext, 'Starting self-hosted runtime...');
   await startInstallComposeRuntime(dockerContext, preparedEnvironment, input);
   reportInstallProgress(input.context, 'Restarting node agent service...');
   await restartNodeAgentHostService({
@@ -198,7 +200,19 @@ async function writeFreshSelfHostedInstallState(
   await writeSelfHostedInstallState(paths, state);
 }
 
-function reportInstallProgress(context: InstallContext | undefined, message: string): void {
+function reportInstallDockerProgress(
+  input: SelfHostedInstallInput,
+  dockerContext: DockerExecutionContext,
+  message: string,
+): void {
+  reportInstallProgress(input.context, message, readInheritedDockerProgressReportOptions(dockerContext));
+}
+
+function reportInstallProgress(
+  context: InstallContext | undefined,
+  message: string,
+  options?: InstallProgressReportOptions,
+): void {
   const reportProgress: InstallProgressReporter | undefined = context?.reportProgress;
-  reportProgress?.(message);
+  reportProgress?.(message, options);
 }

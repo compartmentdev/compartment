@@ -58,6 +58,22 @@ describe('command progress', (): void => {
     expect(frames.every((frame: string): boolean => frame.length < 20)).toBe(true);
   });
 
+  it('renders explicit line progress for text TTY output', (): void => {
+    vi.useFakeTimers();
+    const capture: CliCommandCapture = createCliCapture({ stderrIsTTY: true });
+    const progress: CommandProgress = createCommandProgress({
+      io: capture.io,
+      output: 'text',
+    });
+
+    progress.report('Checking Docker access via sudo...', { renderMode: 'line' });
+    vi.advanceTimersByTime(240);
+    progress.stop();
+    vi.useRealTimers();
+
+    expect(readCliStderr(capture)).toBe('Checking Docker access via sudo...\n');
+  });
+
   it('renders multiline TTY progress once as lines', (): void => {
     vi.useFakeTimers();
     const capture: CliCommandCapture = createCliCapture({ stderrIsTTY: true });

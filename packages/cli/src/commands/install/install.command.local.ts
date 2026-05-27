@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { installSelfHosted } from '../../install';
-import type { InstallContext, SelfHostedInstallPreflightOptions, SelfHostedInstallResult } from '../../install.types';
+import type {
+  InstallContext,
+  InstallProgressReportOptions,
+  InstallProgressReporter,
+  SelfHostedInstallPreflightOptions,
+  SelfHostedInstallResult,
+} from '../../install.types';
 import type { CliCommandDependencies } from '../command.types';
 import { createSelfHostedCommandContext } from '../self-hosted.command.context';
 import {
@@ -30,8 +36,9 @@ export async function runLocalSelfHostedInstallCommand(
   versionSelection: InstallVersionSelection,
   progress: InstallCommandProgress,
 ): Promise<void> {
-  const installContext: InstallContext = createSelfHostedCommandContext(dependencies, (message: string): void =>
-    progress.report(message),
+  const installContext: InstallContext = createSelfHostedCommandContext(
+    dependencies,
+    createInstallProgressReporter(progress),
   );
   const execution: ResolvedSelfHostedInstallExecution = await prepareLocalSelfHostedInstallExecution(
     dependencies,
@@ -75,6 +82,10 @@ async function prepareLocalSelfHostedInstallExecution(
     randomUUID(),
     progress,
   );
+}
+
+function createInstallProgressReporter(progress: InstallCommandProgress): InstallProgressReporter {
+  return (message: string, options?: InstallProgressReportOptions): void => progress.report(message, options);
 }
 
 async function runSelfHostedInstallPreflight(

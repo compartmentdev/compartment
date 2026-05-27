@@ -9,9 +9,13 @@ export interface CommandProgressInput {
 
 export type CommandProgressMode = 'hidden' | 'line' | 'live';
 
+export interface CommandProgressReportOptions {
+  renderMode?: 'line' | 'spinner' | undefined;
+}
+
 export interface CommandProgress {
   readonly mode: CommandProgressMode;
-  report(message: string): void;
+  report(message: string, options?: CommandProgressReportOptions): void;
   stop(): void;
 }
 

@@ -1,4 +1,4 @@
-import type { InstallContext } from '../install.types';
+import type { InstallContext, InstallProgressReporter } from '../install.types';
 import { promptInstallDocker } from '../prompts/install-docker.prompt';
 import type { CliIoCommandDependencies } from './command.types';
 
@@ -8,7 +8,7 @@ interface PromptReadableStream extends NodeJS.ReadableStream {
 
 export function createSelfHostedCommandContext(
   dependencies: CliIoCommandDependencies,
-  reportProgress: (message: string) => void,
+  reportProgress: InstallProgressReporter,
 ): InstallContext {
   return new SelfHostedCommandContext(readSelfHostedCommandIsInteractive(dependencies), reportProgress, dependencies);
 }
@@ -20,11 +20,11 @@ function readSelfHostedCommandIsInteractive(dependencies: CliIoCommandDependenci
 class SelfHostedCommandContext implements InstallContext {
   readonly allowInteractiveSudo: boolean;
   readonly confirmInstallWhenMissing?: (() => Promise<boolean>) | undefined;
-  readonly reportProgress: (message: string) => void;
+  readonly reportProgress: InstallProgressReporter;
 
   constructor(
     allowInteractiveSudo: boolean,
-    reportProgress: (message: string) => void,
+    reportProgress: InstallProgressReporter,
     dependencies: CliIoCommandDependencies,
   ) {
     this.allowInteractiveSudo = allowInteractiveSudo;

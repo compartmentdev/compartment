@@ -7,6 +7,7 @@ import {
   readInteractiveSudoProbeMessage,
   readMissingDockerInstallMessage,
 } from './docker-execution-context.messages';
+import { inheritedCommandProgressReportOptions } from './docker-progress';
 import { installDockerEngine } from './docker-install';
 import type {
   DockerExecutionContext,
@@ -99,7 +100,10 @@ async function resolveInteractiveSudoDockerExecutionProbe(
     return readUnavailableDockerExecutionProbe([directProbe, passwordlessSudoProbe], false);
   }
 
-  options.reportProgress?.(readInteractiveSudoProbeMessage(directProbe.composeResult.exitCode));
+  options.reportProgress?.(
+    readInteractiveSudoProbeMessage(directProbe.composeResult.exitCode),
+    inheritedCommandProgressReportOptions,
+  );
   if (!(await validateInteractiveSudoAccess())) {
     return readUnavailableDockerExecutionProbe([directProbe, passwordlessSudoProbe], true);
   }

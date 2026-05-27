@@ -8,7 +8,7 @@ import type { CliCommandDependencies, CliIoCommandDependencies } from '../comman
 import { createCommandProgress } from '../command.progress';
 import type { CommandProgress } from '../command.progress.types';
 import { createSelfHostedCommandContext } from '../self-hosted.command.context';
-import type { InstallImageSource } from '../../install.types';
+import type { InstallImageSource, InstallProgressReportOptions } from '../../install.types';
 import type { SelfHostedRuntimeImageRegistry } from '../../self-hosted-env.types';
 import {
   assertSelfHostedVersionMatchesPackagedNodeAgent,
@@ -63,7 +63,11 @@ async function executeUpdateCommandLocally(
 
   try {
     const result: SelfHostedUpdateResult = await updateSelfHosted({
-      context: createSelfHostedCommandContext(dependencies, (message: string): void => progress.report(message)),
+      context: createSelfHostedCommandContext(
+        dependencies,
+        (message: string, progressOptions?: InstallProgressReportOptions): void =>
+          progress.report(message, progressOptions),
+      ),
       options: updateOptions,
     });
     const payload: UpdateResponse = updateResponseSchema.parse(result);

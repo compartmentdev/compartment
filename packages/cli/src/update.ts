@@ -8,6 +8,7 @@ import type { ReadSelfHostedInstallForUpdateResult } from './self-hosted-install
 import { assertSelfHostedSystemPrivileges } from './self-hosted-system-privileges';
 import { buildSelfHostedPathSelection } from './self-hosted-install-paths';
 import { prepareSelfHostedRuntimeImages, restartSelfHostedRuntime } from './docker-runtime';
+import { readInheritedDockerProgressReportOptions } from './docker-progress';
 import {
   assertNodeAgentHostServiceInstallable,
   restartNodeAgentHostService,
@@ -15,7 +16,12 @@ import {
   waitForNodeAgentHostServiceHealth,
 } from './node-agent-service';
 import type { DockerExecutionContext } from './docker-runtime.types';
-import type { InstallContext, InstallImageSource, InstallProgressReporter } from './install.types';
+import type {
+  InstallContext,
+  InstallImageSource,
+  InstallProgressReporter,
+  InstallProgressReportOptions,
+} from './install.types';
 import type { SelfHostedPathSelection } from './self-hosted-install-paths.types';
 import type { SelfHostedRuntimeSelection, RenderedSelfHostedEnvironment } from './self-hosted-env.types';
 import { readBundledAssets, stageBundledAssets } from './runtime-assets';
@@ -210,7 +216,11 @@ async function restartUpdatedSelfHostedRuntime(
   // systemd recreates RuntimeDirectory on agent restart; do it before Docker binds the socket directory.
   reportUpdateProgress(context, 'Restarting node agent service...');
   await restartNodeAgentHostService({ envPath: preparedUpdate.stagedAssetPaths.envPath, waitForHealth: false });
-  reportUpdateProgress(context, 'Restarting self-hosted runtime...');
+  reportUpdateProgress(
+    context,
+    'Restarting self-hosted runtime...',
+    readInheritedDockerProgressReportOptions(dockerContext),
+  );
   await restartUpdatedComposeRuntime(dockerContext, context, preparedUpdate);
   reportUpdateProgress(context, 'Waiting for node agent service...');
   await waitForNodeAgentHostServiceHealth({ envPath: preparedUpdate.stagedAssetPaths.envPath });
@@ -221,7 +231,7 @@ async function prepareUpdatedSelfHostedRuntimeImages(
   context: InstallContext | undefined,
   preparedUpdate: PreparedSelfHostedUpdate,
 ): Promise<void> {
-  reportUpdateProgress(context, 'Preparing runtime images...');
+  reportUpdateProgress(context, 'Preparing runtime images...', readInheritedDockerProgressReportOptions(dockerContext));
   await prepareSelfHostedRuntimeImages(dockerContext, {
     composePath: preparedUpdate.stagedAssetPaths.composePath,
     envPath: preparedUpdate.stagedAssetPaths.envPath,
@@ -250,7 +260,11 @@ async function restartUpdatedComposeRuntime(
   });
 }
 
-function reportUpdateProgress(context: InstallContext | undefined, message: string): void {
+function reportUpdateProgress(
+  context: InstallContext | undefined,
+  message: string,
+  options?: InstallProgressReportOptions,
+): void {
   const reportProgress: InstallProgressReporter | undefined = context?.reportProgress;
-  reportProgress?.(message);
+  reportProgress?.(message, options);
 }
