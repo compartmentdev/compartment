@@ -13,6 +13,7 @@ import { formatBrowserAccessAssignmentScope } from '../../lib/access-assignment-
 import { formatAssignmentAccessSummary } from '../access/access-display';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
 import {
+  accessAssignmentConnectorClassName,
   accessAssignmentPrimaryRowClassName,
   accessAssignmentSubmitButtonClassName,
   AccessScopeInputs,
@@ -84,14 +85,15 @@ function GroupAssignmentsForm(props: Readonly<GroupAssignmentsCardProps>): JSX.E
   const mutation: GroupAssignmentMutation = useGroupAssignmentCreateMutation(props);
 
   return (
-    <form
-      className={accessAssignmentPrimaryRowClassName}
-      onSubmit={createGroupAssignmentSubmitHandler(props, mutation)}
-    >
-      <GroupScopeSelect scopeType={props.scopeType} setScopeType={props.setScopeType} />
-      <span className="hidden text-center text-[14px] text-muted-foreground md:block">→</span>
-      <GroupRoleSelect roleId={props.roleId} roles={props.data.roles} setRoleId={props.setRoleId} />
-      <GroupAssignmentSubmitButton isPending={mutation.isPending} isReady={isGroupAssignmentFormReady(props)} />
+    <form className="space-y-2" onSubmit={createGroupAssignmentSubmitHandler(props, mutation)}>
+      <div className={accessAssignmentPrimaryRowClassName}>
+        <GroupScopeSelect scopeType={props.scopeType} setScopeType={props.setScopeType} />
+        <span aria-hidden="true" className={accessAssignmentConnectorClassName}>
+          →
+        </span>
+        <GroupRoleSelect roleId={props.roleId} roles={props.data.roles} setRoleId={props.setRoleId} />
+        <GroupAssignmentSubmitButton isPending={mutation.isPending} isReady={isGroupAssignmentFormReady(props)} />
+      </div>
       <AccessScopeInputs
         environmentValues={props.environmentValues}
         projectNames={props.projectNames}

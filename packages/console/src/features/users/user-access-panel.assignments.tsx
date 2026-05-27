@@ -13,6 +13,7 @@ import { Plus } from '../../components/ui/icons';
 import { formatAssignmentAccessSummary } from '../access/access-display';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
 import {
+  accessAssignmentConnectorClassName,
   accessAssignmentPrimaryRowClassName,
   accessAssignmentSubmitButtonClassName,
   AccessScopeInputs,
@@ -83,11 +84,15 @@ function UserDirectAssignmentForm(props: Readonly<UserDirectAssignmentsCardProps
   const mutation: UserAssignmentMutation = useUserAssignmentCreateMutation(props);
 
   return (
-    <form className={accessAssignmentPrimaryRowClassName} onSubmit={createUserAssignmentSubmitHandler(props, mutation)}>
-      <UserScopeSelect scopeType={props.scopeType} setScopeType={props.setScopeType} />
-      <span className="hidden text-center text-[14px] text-muted-foreground md:block">→</span>
-      <UserRoleSelect availableRoles={props.data.availableRoles} roleId={props.roleId} setRoleId={props.setRoleId} />
-      <UserDirectAssignmentSubmitButton isPending={mutation.isPending} isReady={isUserAssignmentFormReady(props)} />
+    <form className="space-y-2" onSubmit={createUserAssignmentSubmitHandler(props, mutation)}>
+      <div className={accessAssignmentPrimaryRowClassName}>
+        <UserScopeSelect scopeType={props.scopeType} setScopeType={props.setScopeType} />
+        <span aria-hidden="true" className={accessAssignmentConnectorClassName}>
+          →
+        </span>
+        <UserRoleSelect availableRoles={props.data.availableRoles} roleId={props.roleId} setRoleId={props.setRoleId} />
+        <UserDirectAssignmentSubmitButton isPending={mutation.isPending} isReady={isUserAssignmentFormReady(props)} />
+      </div>
       <AccessScopeInputs
         environmentValues={props.environmentValues}
         projectNames={props.projectNames}

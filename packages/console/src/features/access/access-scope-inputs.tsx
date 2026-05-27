@@ -30,12 +30,14 @@ interface DependentScopeFieldProps {
   labelId: string;
 }
 
-const accessAssignmentScopeBranchClassName: string = 'grid gap-2 md:col-span-4 md:w-full md:max-w-[560px]';
+const accessAssignmentScopeBranchClassName: string = 'grid w-full gap-2 md:max-w-[560px]';
 const accessAssignmentScopeFieldLabelClassName: string =
   'px-1 text-[12px] font-medium leading-4 text-[var(--cpt-text-secondary,#485259)]';
 
 export const accessAssignmentPrimaryRowClassName: string =
-  'grid w-full gap-2 md:grid-cols-[minmax(0,480px)_16px_minmax(0,240px)_auto] md:items-start';
+  'grid w-full gap-2 md:grid-cols-[minmax(0,1.4fr)_16px_minmax(0,1fr)_auto] md:items-center';
+export const accessAssignmentConnectorClassName: string =
+  'hidden h-9 items-center justify-center text-[14px] text-muted-foreground md:flex';
 export const accessAssignmentSubmitButtonClassName: string = cn(
   accessDrawerPrimaryActionButtonClassName,
   'w-fit justify-self-start',
