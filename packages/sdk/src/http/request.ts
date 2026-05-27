@@ -1,4 +1,8 @@
-import { errorResponseSchema, compartmentCurrentOrganizationHeaderName } from '@compartment/contracts';
+import {
+  compartmentCurrentOrganizationHeaderName,
+  errorResponseSchema,
+  type ErrorResponse,
+} from '@compartment/contracts';
 import { hasText, type JsonValue } from '@compartment/utils';
 import { ZodError, type SafeParseReturnType } from 'zod';
 import type { ClientOptions } from '../client.types';
@@ -148,9 +152,7 @@ function createRawRequestHeaders(
   });
   if (contentType !== null) headers.set('Content-Type', contentType);
   const authorizationToken: string | undefined = resolveAuthorizationToken(options, defaults);
-  if (hasText(authorizationToken)) {
-    headers.set('Authorization', `Bearer ${authorizationToken}`);
-  }
+  if (hasText(authorizationToken)) headers.set('Authorization', `Bearer ${authorizationToken}`);
   const currentOrganization: string | undefined = options.currentOrganization ?? defaults.currentOrganization;
   if (hasText(currentOrganization)) headers.set(compartmentCurrentOrganizationHeaderName, currentOrganization);
   return headers;
@@ -223,8 +225,7 @@ async function createBinaryRequestError(response: Response): Promise<Compartment
 }
 
 function createCompartmentRequestError(payload: JsonValue, statusCode: number): CompartmentRequestError {
-  const parsedError: SafeParseReturnType<JsonValue, { error: { code: string; message: string } }> =
-    errorResponseSchema.safeParse(payload);
+  const parsedError: SafeParseReturnType<JsonValue, ErrorResponse> = errorResponseSchema.safeParse(payload);
   if (parsedError.success) {
     return new CompartmentRequestError({
       code: parsedError.data.error.code,
