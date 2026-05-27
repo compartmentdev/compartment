@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 
 import { readRequiredOptionValue } from '../lib/options.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
+import { parseSelfHostedEnvFile, readRequiredSelfHostedEnvValue } from './self-hosted-env-file.mjs';
 
 const defaultBaseImages = Object.freeze({
   COMPARTMENT_CADDY_BUILDER_IMAGE: 'caddy:2.11.3-builder',
@@ -27,7 +28,7 @@ const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
 export async function buildSelfHostedImages(input) {
   const envText = await readFile(resolve(input.envFilePath), 'utf8');
-  const envValues = parseEnvFile(envText);
+  const envValues = parseSelfHostedEnvFile(envText);
   const buildPlan = buildSelfHostedImageBuildPlan(envValues, input.env ?? process.env);
 
   for (const build of buildPlan) {
@@ -48,7 +49,7 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
       args: [
         ...nodeArgs,
         '--tag',
-        readRequiredEnvValue(envValues, 'COMPARTMENT_API_IMAGE'),
+        readRequiredSelfHostedEnvValue(envValues, 'COMPARTMENT_API_IMAGE', 'the self-hosted env file'),
         '--file',
         'packages/api/Dockerfile.self-hosted',
         '.',
@@ -59,7 +60,7 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
       args: [
         ...nodeArgs,
         '--tag',
-        readRequiredEnvValue(envValues, 'COMPARTMENT_EDGE_IMAGE'),
+        readRequiredSelfHostedEnvValue(envValues, 'COMPARTMENT_EDGE_IMAGE', 'the self-hosted env file'),
         '--file',
         'packages/edge/Dockerfile.self-hosted',
         '.',
@@ -72,7 +73,7 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
         '--build-arg',
         `COMPARTMENT_GO_BUILD_IMAGE=${readBaseImage(env, 'COMPARTMENT_GO_BUILD_IMAGE')}`,
         '--tag',
-        readRequiredEnvValue(envValues, 'COMPARTMENT_WORKER_IMAGE'),
+        readRequiredSelfHostedEnvValue(envValues, 'COMPARTMENT_WORKER_IMAGE', 'the self-hosted env file'),
         '--file',
         'packages/worker/Dockerfile.self-hosted',
         '.',
@@ -84,7 +85,7 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
         '--build-arg',
         `COMPARTMENT_NODE_RUNTIME_IMAGE=${readBaseImage(env, 'COMPARTMENT_NODE_RUNTIME_IMAGE')}`,
         '--tag',
-        readRequiredEnvValue(envValues, 'COMPARTMENT_RUNTIME_PROBE_IMAGE'),
+        readRequiredSelfHostedEnvValue(envValues, 'COMPARTMENT_RUNTIME_PROBE_IMAGE', 'the self-hosted env file'),
         '--file',
         'packages/node/Dockerfile.runtime-probe.self-hosted',
         '.',
@@ -98,7 +99,7 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
         '--build-arg',
         `COMPARTMENT_CADDY_RUNTIME_IMAGE=${readBaseImage(env, 'COMPARTMENT_CADDY_RUNTIME_IMAGE')}`,
         '--tag',
-        readRequiredEnvValue(envValues, 'COMPARTMENT_CADDY_IMAGE'),
+        readRequiredSelfHostedEnvValue(envValues, 'COMPARTMENT_CADDY_IMAGE', 'the self-hosted env file'),
         '--file',
         'packages/edge/Dockerfile.caddy.self-hosted',
         '.',
@@ -173,24 +174,6 @@ function isDockerRegistryRateLimitFailure(output) {
   return dockerRegistryRateLimitPatterns.some((pattern) => normalizedOutput.includes(pattern.toLowerCase()));
 }
 
-function parseEnvFile(envText) {
-  const values = {};
-
-  for (const line of envText.split('\n')) {
-    const trimmedLine = line.trim();
-    if (trimmedLine === '' || trimmedLine.startsWith('#')) {
-      continue;
-    }
-
-    const separatorIndex = trimmedLine.indexOf('=');
-    if (separatorIndex > 0) {
-      values[trimmedLine.slice(0, separatorIndex)] = trimmedLine.slice(separatorIndex + 1);
-    }
-  }
-
-  return values;
-}
-
 function readBaseImage(env, variableName) {
   const imageRef = env[variableName] ?? defaultBaseImages[variableName];
   if (imageRef !== undefined) {
@@ -198,15 +181,6 @@ function readBaseImage(env, variableName) {
   }
 
   throw new Error(`Expected ${variableName} to be configured for self-hosted image builds.`);
-}
-
-function readRequiredEnvValue(envValues, variableName) {
-  const value = envValues[variableName];
-  if (value !== undefined && value.trim() !== '') {
-    return value.trim();
-  }
-
-  throw new Error(`Expected ${variableName} in the self-hosted env file.`);
 }
 
 function readBuildSelfHostedImagesOptions(args) {

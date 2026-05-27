@@ -6,10 +6,6 @@ on:
       runner_labels_json:
         required: true
         type: string
-      scan_vulnerabilities:
-        default: false
-        required: false
-        type: boolean
     outputs:
       cache_key:
         value: ${{ jobs.build-and-check-images.outputs.cache_key }}
@@ -69,12 +65,6 @@ jobs:
             [registry."docker.io"]
               mirrors = ["mirror.gcr.io"]
 
-      - name: Set up Trivy
-        if: inputs.scan_vulnerabilities
-        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514
-        with:
-          version: v0.70.0
-
       - name: Prepare self-hosted image env
         if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'
         env:
@@ -115,10 +105,6 @@ jobs:
           for service in api caddy edge worker runtime-probe; do
             docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
           done
-
-      - name: Check self-hosted image vulnerabilities
-        if: inputs.scan_vulnerabilities
-        run: node ./scripts/deploy/secure-self-hosted-images.mjs --scan-only "sha-${{ github.sha }}"
 
       - name: Check self-hosted runtime surface
         run: node ./scripts/deploy/check-self-hosted-runtime-surface.mjs ./.compartment/self-hosted-image-cache/.env.self-hosted

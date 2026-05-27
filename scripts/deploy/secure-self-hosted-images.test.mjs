@@ -9,6 +9,7 @@ import {
   buildDigestImageRef,
   buildSelfHostedImageSbomPath,
   readSecureSelfHostedImageOptions,
+  readSelfHostedImageRefsFromEnvFile,
   scanSelfHostedImages,
   secureSelfHostedImages,
 } from './secure-self-hosted-images.mjs';
@@ -19,6 +20,7 @@ describe('readSecureSelfHostedImageOptions', () => {
   it('reads unique tags and output directory', () => {
     expect(readSecureSelfHostedImageOptions(['--output-dir', './sboms', 'sha-123', 'main', 'main'])).toEqual({
       dockerScout: false,
+      envFilePath: undefined,
       outputDirectory: './sboms',
       repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: false,
@@ -30,6 +32,7 @@ describe('readSecureSelfHostedImageOptions', () => {
   it('reads scan-only mode', () => {
     expect(readSecureSelfHostedImageOptions(['--scan-only', 'sha-123'])).toEqual({
       dockerScout: false,
+      envFilePath: undefined,
       outputDirectory: './.compartment/release-assets/self-hosted-sboms',
       repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: true,
@@ -41,6 +44,7 @@ describe('readSecureSelfHostedImageOptions', () => {
   it('reads provenance attestation validation mode', () => {
     expect(readSecureSelfHostedImageOptions(['--validate-provenance-attestation'])).toEqual({
       dockerScout: false,
+      envFilePath: undefined,
       outputDirectory: './.compartment/release-assets/self-hosted-sboms',
       repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: false,
@@ -67,13 +71,45 @@ describe('readSecureSelfHostedImageOptions', () => {
     });
   });
 
+  it('reads scan-only env file mode', () => {
+    expect(readSecureSelfHostedImageOptions(['--scan-only', '--docker-scout', '--env-file', './cache.env'])).toEqual({
+      dockerScout: true,
+      envFilePath: './cache.env',
+      outputDirectory: './.compartment/release-assets/self-hosted-sboms',
+      repositoryPrefix: 'ghcr.io/compartmentdev',
+      scanOnly: true,
+      tags: [],
+      validateProvenanceAttestation: false,
+    });
+  });
+
   it('requires at least one image tag', () => {
-    expect(() => readSecureSelfHostedImageOptions([])).toThrow('Expected at least one self-hosted image tag.');
+    expect(() => readSecureSelfHostedImageOptions([])).toThrow(
+      'Expected at least one self-hosted image tag or --env-file.',
+    );
   });
 
   it('requires scan-only mode for Docker Scout', () => {
     expect(() => readSecureSelfHostedImageOptions(['--docker-scout', 'sha-123'])).toThrow(
       'Can only use --docker-scout with --scan-only.',
+    );
+  });
+
+  it('requires env file mode to be a single scan source', () => {
+    expect(() => readSecureSelfHostedImageOptions(['--env-file', './cache.env'])).toThrow(
+      'Can only use --env-file with --scan-only.',
+    );
+    expect(() =>
+      readSecureSelfHostedImageOptions([
+        '--scan-only',
+        '--env-file',
+        './cache.env',
+        '--repository-prefix',
+        'docker.io/x',
+      ]),
+    ).toThrow('Cannot combine --env-file with --repository-prefix.');
+    expect(() => readSecureSelfHostedImageOptions(['--scan-only', '--env-file', './cache.env', 'sha-123'])).toThrow(
+      'Cannot combine --env-file with image tags.',
     );
   });
 });
@@ -101,6 +137,44 @@ describe('buildSelfHostedImageSbomPath', () => {
 });
 
 describe('scanSelfHostedImages', () => {
+  it('scans self-hosted image refs from the rendered env file', async () => {
+    const tempDirectory = await mkdtemp(join(tmpdir(), 'compartment-env-image-refs-test-'));
+    const envFilePath = join(tempDirectory, '.env.self-hosted');
+    const oldPath = process.env.PATH;
+    const oldDockerScoutArgsLog = process.env.DOCKER_SCOUT_ARGS_LOG;
+    const oldTrivyArgsLog = process.env.TRIVY_ARGS_LOG;
+
+    try {
+      const scannerPaths = await installFakeImageScanners(tempDirectory);
+      const expectedImageRefs = [
+        'localhost:5000/custom-api:from-env',
+        'localhost:5000/custom-caddy:from-env',
+        'localhost:5000/custom-edge:from-env',
+        'localhost:5000/custom-worker:from-env',
+        'localhost:5000/custom-runtime-probe:from-env',
+      ];
+
+      await writeFile(envFilePath, renderSelfHostedImageRefsEnv(), 'utf8');
+
+      process.env.PATH = `${tempDirectory}:${oldPath ?? ''}`;
+      process.env.DOCKER_SCOUT_ARGS_LOG = scannerPaths.dockerScoutArgsLogPath;
+      process.env.TRIVY_ARGS_LOG = scannerPaths.trivyArgsLogPath;
+
+      const imageRefs = readSelfHostedImageRefsFromEnvFile(tempDirectory, envFilePath);
+      scanSelfHostedImages({ dockerScout: true, imageRefs, repositoryRoot: tempDirectory });
+
+      const trivyCalls = parseCommandArgsLog(await readFile(scannerPaths.trivyArgsLogPath, 'utf8'));
+      expect(trivyCalls.map((args) => args.at(-1))).toEqual(expectedImageRefs);
+      const dockerScoutCalls = parseCommandArgsLog(await readFile(scannerPaths.dockerScoutArgsLogPath, 'utf8'));
+      expect(dockerScoutCalls.map((args) => args.at(-1))).toEqual(expectedImageRefs);
+    } finally {
+      restoreEnv('PATH', oldPath);
+      restoreEnv('DOCKER_SCOUT_ARGS_LOG', oldDockerScoutArgsLog);
+      restoreEnv('TRIVY_ARGS_LOG', oldTrivyArgsLog);
+      await rm(tempDirectory, { force: true, recursive: true });
+    }
+  });
+
   it('scans every self-hosted image before reporting failures', async () => {
     const tempDirectory = await mkdtemp(join(tmpdir(), 'compartment-trivy-test-'));
     const oldPath = process.env.PATH;
@@ -109,20 +183,12 @@ describe('scanSelfHostedImages', () => {
     const oldGitHubStepSummary = process.env.GITHUB_STEP_SUMMARY;
 
     try {
-      const dockerPath = join(tempDirectory, 'docker');
-      const dockerScoutArgsLogPath = join(tempDirectory, 'docker-scout-args.log');
-      const trivyPath = join(tempDirectory, 'trivy');
-      const trivyArgsLogPath = join(tempDirectory, 'trivy-args.log');
+      const scannerPaths = await installFakeImageScanners(tempDirectory);
       const stepSummaryPath = join(tempDirectory, 'step-summary.md');
 
-      await writeFile(dockerPath, renderFakeDockerScoutScript(), 'utf8');
-      await writeFile(trivyPath, renderFakeTrivyScript(), 'utf8');
-      await chmod(dockerPath, 0o755);
-      await chmod(trivyPath, 0o755);
-
       process.env.PATH = `${tempDirectory}:${oldPath ?? ''}`;
-      process.env.DOCKER_SCOUT_ARGS_LOG = dockerScoutArgsLogPath;
-      process.env.TRIVY_ARGS_LOG = trivyArgsLogPath;
+      process.env.DOCKER_SCOUT_ARGS_LOG = scannerPaths.dockerScoutArgsLogPath;
+      process.env.TRIVY_ARGS_LOG = scannerPaths.trivyArgsLogPath;
       process.env.GITHUB_STEP_SUMMARY = stepSummaryPath;
 
       let scanError;
@@ -140,9 +206,9 @@ describe('scanSelfHostedImages', () => {
         'Docker Scout failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s):',
       );
 
-      const trivyCalls = parseCommandArgsLog(await readFile(trivyArgsLogPath, 'utf8'));
+      const trivyCalls = parseCommandArgsLog(await readFile(scannerPaths.trivyArgsLogPath, 'utf8'));
       expect(trivyCalls.map((args) => args.at(-1))).toEqual(renderExpectedScannedImageRefs());
-      const dockerScoutCalls = parseCommandArgsLog(await readFile(dockerScoutArgsLogPath, 'utf8'));
+      const dockerScoutCalls = parseCommandArgsLog(await readFile(scannerPaths.dockerScoutArgsLogPath, 'utf8'));
       expect(dockerScoutCalls.map((args) => args.at(-1))).toEqual(renderExpectedScannedImageRefs());
       await expect(readFile(stepSummaryPath, 'utf8')).resolves.toContain(
         'Trivy failed the fixable HIGH/CRITICAL vulnerability gate for 1 self-hosted image(s).',
@@ -165,6 +231,32 @@ describe('scanSelfHostedImages', () => {
     }
   });
 });
+
+function renderSelfHostedImageRefsEnv() {
+  return `COMPARTMENT_API_IMAGE=localhost:5000/custom-api:from-env
+COMPARTMENT_CADDY_IMAGE=localhost:5000/custom-caddy:from-env
+COMPARTMENT_EDGE_IMAGE=localhost:5000/custom-edge:from-env
+COMPARTMENT_WORKER_IMAGE=localhost:5000/custom-worker:from-env
+COMPARTMENT_RUNTIME_PROBE_IMAGE=localhost:5000/custom-runtime-probe:from-env
+`;
+}
+
+async function installFakeImageScanners(tempDirectory) {
+  const dockerPath = join(tempDirectory, 'docker');
+  const dockerScoutArgsLogPath = join(tempDirectory, 'docker-scout-args.log');
+  const trivyPath = join(tempDirectory, 'trivy');
+  const trivyArgsLogPath = join(tempDirectory, 'trivy-args.log');
+
+  await writeFile(dockerPath, renderFakeDockerScoutScript(), 'utf8');
+  await writeFile(trivyPath, renderFakeTrivyScript(), 'utf8');
+  await chmod(dockerPath, 0o755);
+  await chmod(trivyPath, 0o755);
+
+  return {
+    dockerScoutArgsLogPath,
+    trivyArgsLogPath,
+  };
+}
 
 describe('secureSelfHostedImages', () => {
   it('writes SBOM and provenance files and signs both attestations', async () => {

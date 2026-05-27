@@ -27,12 +27,22 @@ jobs:
       runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
 
   self-hosted-image-cache:
-    name: main:ci / build and check images
+    name: main:ci / build images
     needs:
       - select-runner
     uses: ./.github/workflows/_self-hosted-image-cache.yml
     with:
       runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
+
+  self-hosted-image-security-gate:
+    name: main:ci / self-hosted image security gate
+    needs:
+      - select-runner
+      - self-hosted-image-cache
+    uses: ./.github/workflows/_self-hosted-image-security-gate.yml
+    with:
+      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
+      self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
 
   console-e2e:
     name: main:ci / console-e2e

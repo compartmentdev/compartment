@@ -10,7 +10,6 @@ permissions:
 
 concurrency:
   group: publish-self-hosted-main-${{ github.ref }}
-  queue: max
 
 jobs:
   build-main-images:
@@ -57,11 +56,11 @@ jobs:
       - name: Archive self-hosted images
         run: |
           docker image save \
-            docker.io/compartmentdev/compartment-api:sha-${GITHUB_SHA} \
-            docker.io/compartmentdev/compartment-caddy:sha-${GITHUB_SHA} \
-            docker.io/compartmentdev/compartment-edge:sha-${GITHUB_SHA} \
-            docker.io/compartmentdev/compartment-runtime-probe:sha-${GITHUB_SHA} \
-            docker.io/compartmentdev/compartment-worker:sha-${GITHUB_SHA} \
+            "docker.io/compartmentdev/compartment-api:sha-${GITHUB_SHA}" \
+            "docker.io/compartmentdev/compartment-caddy:sha-${GITHUB_SHA}" \
+            "docker.io/compartmentdev/compartment-edge:sha-${GITHUB_SHA}" \
+            "docker.io/compartmentdev/compartment-runtime-probe:sha-${GITHUB_SHA}" \
+            "docker.io/compartmentdev/compartment-worker:sha-${GITHUB_SHA}" \
             | gzip -1 > ./.compartment/release-assets/self-hosted-images.tar.gz
 
       - name: Upload self-hosted image artifact
