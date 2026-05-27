@@ -48,7 +48,7 @@ function buildSelectedUserLookupPath(email: string): string {
   searchParams.set('type', 'user');
   searchParams.set('sort', 'asc');
   searchParams.set('page', '1');
-  searchParams.set('perPage', '100');
+  searchParams.set('perPage', '1');
   searchParams.set('search', email);
 
   return `${usersApiPathname}?${searchParams.toString()}`;

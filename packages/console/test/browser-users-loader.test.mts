@@ -50,12 +50,12 @@ describe('browser users loader', (): void => {
         }
         if (
           path ===
-          `/v1/users?orderBy=email&type=user&sort=asc&page=1&perPage=100&search=${encodeURIComponent(automationEmail)}`
+          `/v1/users?orderBy=email&type=user&sort=asc&page=1&perPage=1&search=${encodeURIComponent(automationEmail)}`
         ) {
           return createJsonResponse({
             pagination: {
               page: 1,
-              perPage: 100,
+              perPage: 1,
               totalItems: 0,
               totalPages: 1,
             },
@@ -95,7 +95,7 @@ describe('browser users loader', (): void => {
       '/v1/roles',
       '/v1/groups',
       '/v1/assignments/scope-options',
-      `/v1/users?orderBy=email&type=user&sort=asc&page=1&perPage=100&search=${encodeURIComponent(automationEmail)}`,
+      `/v1/users?orderBy=email&type=user&sort=asc&page=1&perPage=1&search=${encodeURIComponent(automationEmail)}`,
     ]);
   });
 });
