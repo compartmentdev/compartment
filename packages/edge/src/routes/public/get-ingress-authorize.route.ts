@@ -60,11 +60,15 @@ async function handleIngressAuthorizeRequest(
   if (forwardedRequestPath === null) {
     return await replyRouteNotFound(reply);
   }
+  const forwardedRequestMethod: string | null = readForwardedRequestMethod(request);
+  if (forwardedRequestMethod === null) {
+    return await replyRouteNotFound(reply);
+  }
 
   return await replyForIngressAuthorizeDecision(reply, config, store, {
     appSessionToken: readAppSessionToken(request.headers.cookie),
     host,
-    method: readForwardedRequestMethod(request),
+    method: forwardedRequestMethod,
     path: forwardedRequestPath,
   });
 }
