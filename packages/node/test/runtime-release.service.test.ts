@@ -112,8 +112,9 @@ describe('releaseRuntimeContainer', (): void => {
       mocks.runDockerContainerToCompletion.mock.invocationCallOrder[0] ?? 0,
     );
     expect(mocks.runDockerContainerToCompletion).toHaveBeenCalledWith({
-      command: ['sh', '-lc', 'pnpm db:migrate'],
+      command: ['pnpm db:migrate'],
       containerName: 'compartment-compartment-e2e-smoke-web-production-web-dep_123456-release',
+      entrypoint: ['sh', '-lc'],
       env: {
         PORT: '3000',
       },

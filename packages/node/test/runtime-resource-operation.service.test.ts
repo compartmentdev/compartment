@@ -206,6 +206,8 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
     });
     const operationContainerInput: DockerRunContainerInput | undefined =
       mocks.runDockerContainerToCompletion.mock.calls[0]?.[0];
+    expect(operationContainerInput?.command).toEqual(['pg_dump > "$COMPARTMENT_BACKUP_DIR/dump.sql"']);
+    expect(operationContainerInput?.entrypoint).toEqual(['sh', '-lc']);
     expect(operationContainerInput?.labels).toEqual(
       expect.objectContaining({
         'compartment.environmentId': 'env_123',

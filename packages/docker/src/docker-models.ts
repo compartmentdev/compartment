@@ -151,6 +151,7 @@ export interface DockerRestartPolicy {
 export interface DockerRunContainerInput {
   containerName: string;
   command?: string[] | undefined;
+  entrypoint?: string[] | undefined;
   env: Record<string, string>;
   extraHosts?: DockerExtraHost[] | undefined;
   imageRef: string;

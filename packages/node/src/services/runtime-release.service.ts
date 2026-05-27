@@ -11,6 +11,7 @@ import { buildReleaseContainerLabels } from './runtime-container-labels';
 import { buildRuntimeEnv, resolveRuntimeContainerPort } from './runtime-env.service';
 import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
 import { buildDeploymentReleaseContainerName, buildRuntimeResourceNetworkName } from './runtime-names.service';
+import { buildRuntimeShellCommandContainerInvocation } from './runtime-shell-command.service';
 import type { RuntimeDeployConfig } from './runtime.types';
 
 const defaultRuntimeReleaseTimeoutMs: number = 600_000;
@@ -81,7 +82,7 @@ function buildReleaseContainerInput(
   networkName: string,
 ): DockerRunContainerInput {
   return {
-    command: ['sh', '-lc', input.release.command],
+    ...buildRuntimeShellCommandContainerInvocation(input.release.command),
     containerName,
     env: buildRuntimeEnv(input.runtimeEnv, containerPort),
     imageRef: input.imageRef,
