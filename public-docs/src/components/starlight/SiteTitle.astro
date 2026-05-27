@@ -1,16 +1,18 @@
 ---
 import darkMark from '../../assets/compartment-mark-dark.svg?raw';
 import lightMark from '../../assets/compartment-mark-light.svg?raw';
-import { docsHintLabel, productSiteHref, productSiteLabel } from '../../../site-config.mjs';
+import { docsHintLabel, docsHomePath, productSiteLabel } from '../../../site-config.mjs';
+
+const docsHomeLabel = `${productSiteLabel} ${docsHintLabel}`;
 ---
 
 <div class="site-title-group">
-  <a href={productSiteHref} class="site-title-logo" aria-label={productSiteLabel}>
+  <a href={docsHomePath} class="site-title-logo" aria-label={docsHomeLabel}>
     <span class="logo-mark light:sl-hidden print:hidden" aria-hidden="true" set:html={darkMark} />
     <span class="logo-mark dark:sl-hidden print:block" aria-hidden="true" set:html={lightMark} />
   </a>
   <span class="site-title-copy">
-    <a href={productSiteHref} class="site-title-link" translate="no">{productSiteLabel}</a>
+    <a href={docsHomePath} class="site-title-link" translate="no">{productSiteLabel}</a>
     <span class="docs-hint" translate="no">{docsHintLabel}</span>
   </span>
 </div>

@@ -29,6 +29,7 @@
     --cpt-radius-lg: 20px;
     --cpt-radius-md: 14px;
     --cpt-radius-sm: 10px;
+    --cpt-header-control-size: 2.3rem;
     --sl-color-white: var(--cpt-text-primary);
     --sl-color-gray-1: var(--cpt-text-primary);
     --sl-color-gray-2: var(--cpt-text-secondary);
@@ -178,6 +179,16 @@
     backdrop-filter: saturate(180%) blur(28px);
   }
 
+  @media (max-width: 49.999rem) {
+    header.header {
+      padding-inline-end: calc(var(--cpt-shell-gutter) + var(--sl-menu-button-size) + 0.55rem);
+    }
+
+    header.header > .header {
+      gap: 0.6rem;
+    }
+  }
+
   @media (min-width: 50rem) {
     header.header {
       padding-inline: var(--cpt-shell-gutter);
@@ -205,7 +216,8 @@
     border-inline-end-color: var(--cpt-border-default);
   }
 
-  header.header .github-star-widget {
+  header.header .github-star-widget,
+  header.header .product-site-link {
     align-items: center;
     gap: 0.3rem;
     min-height: 2rem;
@@ -226,15 +238,24 @@
       color 180ms ease;
   }
 
-  header.header .github-star-widget:hover {
+  header.header .github-star-widget:hover,
+  header.header .product-site-link:hover {
     border-color: var(--cpt-border-strong);
     background: var(--cpt-overlay-2);
     color: var(--cpt-text-primary);
   }
 
-  header.header .github-star-widget svg {
+  header.header .github-star-widget svg,
+  header.header .product-site-link svg {
     width: 1rem;
     height: 1rem;
+  }
+
+  header.header .product-site-link-mobile {
+    justify-content: center;
+    width: var(--cpt-header-control-size);
+    min-height: var(--cpt-header-control-size);
+    padding: 0;
   }
 
   header.header .github-star-count {
@@ -265,14 +286,19 @@
   }
 
   header.header label:hover,
+  header.header label:focus-within,
   button[data-open-modal]:hover {
     border-color: var(--cpt-border-strong);
     background: var(--cpt-overlay-2);
     color: var(--cpt-text-primary);
   }
 
+  header.header label:focus-within {
+    box-shadow: 0 0 0 3px var(--cpt-primary-muted);
+  }
+
   header.header label {
-    min-height: 2.3rem;
+    min-height: var(--cpt-header-control-size);
     padding-inline: 0.4rem;
   }
 
@@ -286,7 +312,7 @@
   }
 
   button[data-open-modal] {
-    min-height: 2.3rem;
+    min-height: var(--cpt-header-control-size);
     padding-inline: 0.8rem 0.55rem;
     box-shadow: none;
   }
@@ -296,39 +322,54 @@
     background: var(--cpt-overlay-1);
   }
 
-  header.header starlight-theme-select {
+  starlight-theme-select {
     flex: 0 0 auto;
   }
 
-  header.header starlight-theme-select label {
+  starlight-theme-select label {
     --sl-inline-padding: 0.8rem;
     --sl-label-icon-size: 1rem;
+    position: relative;
+    justify-content: center;
     min-width: 0;
+    min-height: var(--cpt-header-control-size);
     gap: 0;
     padding-inline: 0;
-    width: max-content;
+    border-radius: 999px;
+    width: var(--cpt-header-control-size);
+    overflow: hidden;
   }
 
-  header.header starlight-theme-select select {
+  starlight-theme-select label:focus-within {
+    box-shadow: 0 0 0 3px var(--cpt-primary-muted);
+  }
+
+  starlight-theme-select select {
+    position: absolute;
+    inset: 0;
+    height: 100%;
     min-width: 0;
-    width: max-content;
+    width: 100%;
     margin-inline: 0;
+    padding: 0;
     background: transparent;
     line-height: 1.2;
+    opacity: 0;
     white-space: nowrap;
   }
 
-  header.header starlight-theme-select .label-icon,
-  header.header starlight-theme-select .caret {
+  starlight-theme-select .label-icon,
+  starlight-theme-select .caret {
     flex: 0 0 auto;
   }
 
-  header.header starlight-theme-select .label-icon {
-    inset-inline-start: var(--sl-inline-padding);
+  starlight-theme-select .label-icon {
+    inset-inline-start: 50%;
+    transform: translate(-50%, -50%);
   }
 
-  header.header starlight-theme-select .caret {
-    inset-inline-end: var(--sl-inline-padding);
+  starlight-theme-select .caret {
+    display: none;
   }
 
   starlight-menu-button button {
