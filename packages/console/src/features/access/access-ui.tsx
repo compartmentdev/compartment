@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type JSX, type ReactNode } from 'react';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
+import { textareaFieldControlClassName } from '../../components/ui/field-styles';
 import { cn } from '../../lib/utils';
 import { AccessDrawerHeader } from './access-drawer-header';
 
@@ -48,15 +49,13 @@ const AccessDrawerCloseContext: React.Context<(() => void) | null> = createConte
 
 export const accessDrawerActionButtonClassName: string =
   'h-8 gap-1.5 rounded-[8px] px-3 text-[13px] font-medium leading-5';
-export const accessDrawerFieldClassName: string =
-  'rounded-[10px] focus-visible:border-[rgba(77,86,94,0.18)] focus-visible:ring-0 focus-visible:ring-offset-0';
+export const accessDrawerFieldClassName: string = 'rounded-[10px]';
 export const accessDrawerHeaderActionButtonClassName: string =
   'h-8 shrink-0 gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium leading-5';
 export const accessDrawerPrimaryActionButtonClassName: string =
   'h-9 w-auto shrink-0 justify-center gap-1.5 rounded-[10px] px-3 text-[13px]';
 export const accessDrawerRowActionButtonClassName: string = 'h-[26px] gap-1 rounded-[8px] px-2 text-[12px]';
-export const accessDrawerTextareaClassName: string =
-  'w-full rounded-[10px] border border-input bg-background px-3 py-2 text-[13px] outline-none transition placeholder:text-muted-foreground focus-visible:border-[rgba(77,86,94,0.18)] focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50';
+export const accessDrawerTextareaClassName: string = textareaFieldControlClassName;
 
 export function AccessPageHeader({ action, description, title }: Readonly<AccessPageHeaderProps>): JSX.Element {
   return (
