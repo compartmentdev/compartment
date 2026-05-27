@@ -1,4 +1,6 @@
+import { errorResponseSchema, type ErrorDetails, type ErrorResponse } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
+import type { SafeParseReturnType } from 'zod';
 
 interface NodeRequestErrorInput {
   path: string;
@@ -6,16 +8,9 @@ interface NodeRequestErrorInput {
   status: number;
 }
 
-interface NodeRuntimeErrorPayload extends Record<string, JsonValue> {
-  error: JsonValue;
-}
-
-interface NodeRuntimeErrorDetail extends Record<string, JsonValue> {
-  message: string;
-}
-
 export class NodeRequestError extends Error {
   readonly path: string;
+  readonly runtimeError: ErrorDetails | null;
   readonly runtimeMessage: string | null;
   readonly status: number;
 
@@ -23,9 +18,14 @@ export class NodeRequestError extends Error {
     super(createNodeRequestFailureMessage(input.status, input.path, input.payload));
     this.name = 'NodeRequestError';
     this.path = input.path;
-    this.runtimeMessage = readNodeRuntimeMessage(input.payload);
+    this.runtimeError = readNodeRuntimeError(input.payload);
+    this.runtimeMessage = this.runtimeError?.message ?? null;
     this.status = input.status;
   }
+}
+
+export function readNodeRequestRuntimeError(error: Error): ErrorDetails | null {
+  return error instanceof NodeRequestError ? error.runtimeError : null;
 }
 
 export function readNodeRequestRuntimeMessage(error: Error): string | null {
@@ -36,29 +36,7 @@ function createNodeRequestFailureMessage(status: number, path: string, payload: 
   return `Node runtime request failed for ${path} with status ${status.toString()}: ${JSON.stringify(payload)}.`;
 }
 
-function readNodeRuntimeMessage(payload: JsonValue): string | null {
-  const errorPayload: JsonValue | null = readNodeRuntimeErrorPayload(payload);
-  if (isNodeRuntimeErrorDetail(errorPayload)) {
-    return errorPayload.message;
-  }
-
-  return null;
-}
-
-function readNodeRuntimeErrorPayload(payload: JsonValue): JsonValue | null {
-  return isNodeRuntimeErrorPayload(payload) ? payload.error : null;
-}
-
-function isNodeRuntimeErrorPayload(value: JsonValue): value is NodeRuntimeErrorPayload {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) && 'error' in value;
-}
-
-function isNodeRuntimeErrorDetail(value: JsonValue): value is NodeRuntimeErrorDetail {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    'message' in value &&
-    typeof (value as Partial<NodeRuntimeErrorDetail>).message === 'string'
-  );
+function readNodeRuntimeError(payload: JsonValue): ErrorDetails | null {
+  const parsedError: SafeParseReturnType<JsonValue, ErrorResponse> = errorResponseSchema.safeParse(payload);
+  return parsedError.success ? parsedError.data.error : null;
 }

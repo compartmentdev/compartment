@@ -5,6 +5,7 @@ import {
   nodeResourceReconcilePathname,
   nodeResourceRestartPolicyPathname,
   nodeResourceStopPathname,
+  nodeRuntimeResourceReadinessFailedErrorCode,
   deployResponseSchema,
   errorResponseSchema,
   installResponseSchema,
@@ -76,7 +77,6 @@ import {
   injectJsonDeployRequest,
   injectNodeRegistrationRequest,
   installCompartment,
-  queueIntegrationNodeAgentError,
   queueIntegrationNodeAgentResponse,
   registerLocalNode,
   claimNextQueuedDeployment,
@@ -1055,7 +1055,15 @@ describe('Phase 0 API integration deploy submission', (): void => {
   it('does not persist resource intent or queue app deployments when resource reconciliation fails', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     await registerLocalNode(app);
-    queueIntegrationNodeAgentError('not ready');
+    queueIntegrationNodeAgentResponse(
+      {
+        error: {
+          code: nodeRuntimeResourceReadinessFailedErrorCode,
+          message: 'Resource postgres did not become ready before 30000ms.',
+        },
+      },
+      500,
+    );
     await setPostgresPasswordVariable(installPayload);
 
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
@@ -1069,10 +1077,49 @@ describe('Phase 0 API integration deploy submission', (): void => {
     );
 
     expect(deployResponse.statusCode, deployResponse.body).toBe(500);
+    expect(errorResponseSchema.parse(deployResponse.json()).error).toEqual({
+      code: nodeRuntimeResourceReadinessFailedErrorCode,
+      message: 'Resource postgres did not become ready before 30000ms.',
+    });
     expect(await db.select().from(projectResources)).toHaveLength(0);
     expect(await db.select().from(deployments)).toHaveLength(0);
     expect(await db.select().from(buildArtifacts)).toHaveLength(0);
   });
+
+  it('keeps unexpected node resource reconciliation failures generic', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await registerLocalNode(app);
+    queueIntegrationNodeAgentResponse(
+      {
+        error: {
+          code: 'unexpected_node_failure',
+          message: 'unexpected runtime detail',
+        },
+      },
+      500,
+    );
+    await setPostgresPasswordVariable(installPayload);
+
+    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      {
+        descriptor: createResourceDeployDescriptor(),
+        sourceArchive: await createResourceDeploySourceArchive(),
+      },
+    );
+
+    expect(deployResponse.statusCode, deployResponse.body).toBe(500);
+    expect(errorResponseSchema.parse(deployResponse.json()).error).toEqual({
+      code: 'internal_error',
+      message: 'An unexpected error occurred.',
+    });
+    expect(await db.select().from(projectResources)).toHaveLength(0);
+    expect(await db.select().from(deployments)).toHaveLength(0);
+    expect(await db.select().from(buildArtifacts)).toHaveLength(0);
+  });
+
   it('rejects invalid first-deploy onboarding sessions before reconciling resources', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     await registerLocalNode(app);

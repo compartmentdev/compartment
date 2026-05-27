@@ -3,6 +3,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import type { NodeApp } from '../app.types';
 import { isNodeBoundaryError } from '../errors/node-boundary-error';
+import { isNodeRuntimeError } from '../errors/node-runtime-error';
 import { invalidNodeInternalRequestMessage } from './internal/node-internal-validation';
 
 interface NodeErrorResponsePayload {
@@ -20,7 +21,7 @@ export function registerNodeErrorHandler(app: NodeApp): void {
     const mappedError: NodeErrorResponsePayload = mapNodeError(error);
 
     if (mappedError.statusCode >= 500) {
-      request.log.error({ error }, 'Unhandled node runtime error.');
+      request.log.error({ err: error }, 'Unhandled node runtime error.');
     }
 
     return await reply.code(mappedError.statusCode).send(createErrorResponse(mappedError.code, mappedError.message));
@@ -36,6 +37,10 @@ function mapNodeError(error: Error): NodeErrorResponsePayload {
     };
   }
 
+  if (isNodeRuntimeError(error)) {
+    return createNodeRuntimeErrorResponse(error.code, error.message);
+  }
+
   if (error instanceof ZodError) {
     return createInvalidNodeInternalRequestError();
   }
@@ -47,6 +52,14 @@ function mapNodeError(error: Error): NodeErrorResponsePayload {
   return {
     code: 'internal_error',
     message: 'An unexpected error occurred.',
+    statusCode: 500,
+  };
+}
+
+function createNodeRuntimeErrorResponse(code: string, message: string): NodeErrorResponsePayload {
+  return {
+    code,
+    message,
     statusCode: 500,
   };
 }

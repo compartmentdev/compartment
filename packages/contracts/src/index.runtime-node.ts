@@ -60,6 +60,7 @@ export {
   type NodeResourceRuntimeDefinition,
   type NodeResourceStopRequest,
   type NodeResourceVolume,
+  type NodeRuntimeResourceErrorCode,
   nodeResourceDeletePathname,
   nodeResourceDeleteRequestSchema,
   nodeResourceLogsPathname,
@@ -78,4 +79,5 @@ export {
   nodeResourceStartPathname,
   nodeResourceStopPathname,
   nodeResourceStopRequestSchema,
+  nodeRuntimeResourceReadinessFailedErrorCode,
 } from './contracts/runtime-node-resource.contract';

@@ -30,6 +30,7 @@ import { canConnectToRuntimeHost } from './runtime-resource-connectivity.service
 import { continueResourceReadinessPolling, resolveResourceReadinessHost } from './runtime-resource-readiness.service';
 import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
 import { buildUserResourceWritableSecurityProfile } from './runtime-security-profile.service';
+import { createRuntimeResourceReadinessError } from '../errors/node-runtime-error';
 
 export async function reconcileRuntimeResource(
   input: NodeResourceRequest,
@@ -218,8 +219,20 @@ async function waitForResourceReadiness(
     }
   }
 
+  await removeFailedResourceContainer(input, config);
+  throwRuntimeResourceReadinessError(input, readiness);
+}
+
+function throwRuntimeResourceReadinessError(input: NodeResourceRequest, readiness: NodeResourceReadiness): never {
+  throw createRuntimeResourceReadinessError({
+    phase: 'startup',
+    resourceName: input.resourceName,
+    timeoutMs: readiness.timeoutMs,
+  });
+}
+
+async function removeFailedResourceContainer(input: NodeResourceRequest, config: RuntimeDeployConfig): Promise<void> {
   await removeDockerContainer({ containerRef: buildResourceContainerName(input, config.dockerNamespace) });
-  throw new Error(`Resource ${input.resourceName} did not become ready before ${readiness.timeoutMs}ms.`);
 }
 
 async function canReachRuntimeResourceReadiness(
