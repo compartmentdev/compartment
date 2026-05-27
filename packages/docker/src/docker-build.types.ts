@@ -3,6 +3,7 @@ import type { RailpackSecretFile } from './docker-build-secrets';
 export type DockerImageInspectExposedPortMap = Record<string, Record<string, never>>;
 
 export interface DockerImageInspectConfigRecord {
+  Entrypoint?: string[] | null | undefined;
   ExposedPorts?: DockerImageInspectExposedPortMap | null | undefined;
 }
 

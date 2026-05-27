@@ -139,6 +139,29 @@ describe('releaseRuntimeContainer', (): void => {
     });
   });
 
+  it('preserves image shell entrypoints for release commands', async (): Promise<void> => {
+    mocks.inspectDockerImage.mockResolvedValueOnce({
+      entrypoint: ['/bin/bash', '-l', '-c'],
+      exposedPorts: [3000],
+      imageRef: 'sha256:image',
+    });
+    mocks.runDockerContainerToCompletion.mockResolvedValueOnce({
+      containerId: 'release_container_123',
+      logs: [],
+      stderr: '',
+      stdout: '',
+    });
+
+    await releaseRuntimeContainer(createReleaseRequest(), createRuntimeDeployConfig());
+
+    expect(mocks.runDockerContainerToCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: ['pnpm db:migrate'],
+        entrypoint: ['/bin/bash', '-l', '-c'],
+      }),
+    );
+  });
+
   it('does not start the release operation on an unowned resource network', async (): Promise<void> => {
     const ownershipError: Error = new Error(
       'Docker network compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824 exists without required label compartment.namespace=compartment-e2e.',

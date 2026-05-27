@@ -5,6 +5,7 @@ export function parseDockerInspectImageResult(output: string, imageRef: string):
   const config: DockerImageInspectConfigRecord = parseDockerImageInspectConfig(output);
 
   return {
+    ...readDockerImageEntrypoint(config),
     exposedPorts: readDockerImageExposedPorts(config),
     imageRef,
   };
@@ -19,6 +20,18 @@ function parseDockerImageInspectConfig(output: string): DockerImageInspectConfig
   const configRecord: DockerImageInspectConfigRecord = config;
   return configRecord;
 }
+
+function readDockerImageEntrypoint(
+  config: DockerImageInspectConfigRecord,
+): Pick<DockerInspectImageResult, 'entrypoint'> | Record<string, never> {
+  const entrypoint: string[] | null | undefined = config.Entrypoint;
+  if (entrypoint === null || entrypoint === undefined || !isDockerStringArray(entrypoint)) {
+    return {};
+  }
+
+  return { entrypoint };
+}
+
 function readDockerImageExposedPorts(config: DockerImageInspectConfigRecord): number[] {
   const exposedPorts: DockerImageInspectExposedPortMap | null | undefined = config.ExposedPorts;
   if (exposedPorts === null || exposedPorts === undefined) {
@@ -37,4 +50,8 @@ function isDockerTcpExposedPortKey(portKey: string): boolean {
 function parseDockerExposedPortKey(portKey: string): number {
   const [rawPort] = portKey.split('/', 1);
   return Number.parseInt(rawPort ?? '', 10);
+}
+
+function isDockerStringArray(value: string[] | null | undefined): value is string[] {
+  return Array.isArray(value) && value.every((item: string): boolean => typeof item === 'string');
 }

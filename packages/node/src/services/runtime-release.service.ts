@@ -1,14 +1,16 @@
 import {
   ensureDockerImageAvailable,
+  inspectDockerImage,
   removeDockerContainer,
   runDockerContainerToCompletion,
+  type DockerInspectImageResult,
   type DockerLogLine,
   type DockerRunContainerInput,
   type DockerRunContainerToCompletionResult,
 } from '@compartment/docker';
 import type { NodeReleaseLogLine, NodeReleaseRequest, NodeReleaseResponse } from '@compartment/contracts';
 import { buildReleaseContainerLabels } from './runtime-container-labels';
-import { buildRuntimeEnv, resolveRuntimeContainerPort } from './runtime-env.service';
+import { buildRuntimeEnv, resolveRuntimeImageContainerPort } from './runtime-env.service';
 import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
 import { buildDeploymentReleaseContainerName, buildRuntimeResourceNetworkName } from './runtime-names.service';
 import { buildRuntimeShellCommandContainerInvocation } from './runtime-shell-command.service';
@@ -41,7 +43,8 @@ export async function releaseRuntimeContainer(
     imageRef: input.imageRef,
     registryCredentials: config.runtimeRegistryCredentials,
   });
-  const containerPort: number = await resolveRuntimeContainerPort(input.imageRef, input.runtimeEnv);
+  const image: DockerInspectImageResult = await inspectDockerImage({ imageRef: input.imageRef });
+  const containerPort: number = resolveRuntimeImageContainerPort(input.runtimeEnv, image);
   const containerName: string = buildDeploymentReleaseContainerName(input, config.dockerNamespace);
   const networkName: string = buildRuntimeResourceNetworkName(input, config.dockerNamespace);
   await ensureOwnedRuntimeNetwork({ dockerNamespace: config.dockerNamespace, networkName });
@@ -49,7 +52,7 @@ export async function releaseRuntimeContainer(
 
   try {
     const result: DockerRunContainerToCompletionResult = await runDockerContainerToCompletion(
-      buildReleaseContainerInput(input, config, containerPort, containerName, networkName),
+      buildReleaseContainerInput(input, config, containerPort, containerName, networkName, image.entrypoint),
     );
 
     return buildRuntimeReleaseResponse(result);
@@ -80,9 +83,10 @@ function buildReleaseContainerInput(
   containerPort: number,
   containerName: string,
   networkName: string,
+  imageEntrypoint: readonly string[] | undefined,
 ): DockerRunContainerInput {
   return {
-    ...buildRuntimeShellCommandContainerInvocation(input.release.command),
+    ...buildRuntimeShellCommandContainerInvocation(input.release.command, imageEntrypoint),
     containerName,
     env: buildRuntimeEnv(input.runtimeEnv, containerPort),
     imageRef: input.imageRef,

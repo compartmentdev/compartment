@@ -43,6 +43,7 @@ export interface DockerInspectImageInput {
 }
 
 export interface DockerInspectImageResult {
+  entrypoint?: string[] | undefined;
   exposedPorts: number[];
   imageRef: string;
 }
