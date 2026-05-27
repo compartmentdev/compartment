@@ -21,7 +21,7 @@ When the selected repository has no `compartment.yml` and does not already look 
 
 If GitHub App access is missing, the command opens a browser setup URL and waits. In GitHub, choose the repositories the Compartment GitHub App can access.
 
-Each connected Git source also gets a system-managed automation account. Compartment uses that account for source sync and push-driven deploy work. It can appear in the browser or CLI user list as an automation entry, but it is not a human login account.
+Each connected Git source also gets a system-managed automation account. Compartment uses that account for source sync and push-driven deploy work. It does not appear on the browser Users page, but CLI and API user lists can still return it as an automation entry. It is not a human login account.
 
 When a connected descriptor declares top-level `resources`, push-driven deploys reconcile those internal Docker-backed
 resources from the same `compartment.yml` before deploying app services.

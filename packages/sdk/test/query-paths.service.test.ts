@@ -5,6 +5,7 @@ import {
   type DeploymentStatusResponse,
   type ListCustomDomainsResponse,
   type ProjectStatusListResponse,
+  type UserListResponse,
   type WhoAmIResponse,
 } from '@compartment/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -14,6 +15,7 @@ import { listCustomDomains } from '../src/services/custom-domain.service';
 import { getDeploymentInspect } from '../src/services/deployment-inspect.service';
 import { getDeploymentStatus } from '../src/services/deployment-status.service';
 import { listProjects } from '../src/services/project-list.service';
+import { listUsers } from '../src/services/users-list.service';
 import {
   buildVariableBindingItemPath,
   buildVariableCollectionPath,
@@ -109,6 +111,22 @@ describe('sdk query path services', (): void => {
 
     expect(readUrls(fetchState)).toEqual([
       'https://console.example/v1/projects?detail=status&projectIds=prj_123&projectIds=prj_456',
+    ]);
+  });
+
+  it('serializes the optional user type filter for user list queries', async (): Promise<void> => {
+    const fetchState: FetchMockState = mockFetchSequence([createJsonResponse(createUserListResponse())]);
+
+    await listUsers(createRequest(), {
+      page: 2,
+      perPage: 10,
+      search: 'viewer',
+      sort: 'desc',
+      type: 'user',
+    });
+
+    expect(readUrls(fetchState)).toEqual([
+      'https://console.example/v1/users?page=2&perPage=10&search=viewer&sort=desc&type=user',
     ]);
   });
 
@@ -212,6 +230,18 @@ function createWhoAmIResponse(): WhoAmIResponse {
       id: 'prn_123',
       type: 'user',
     },
+  };
+}
+
+function createUserListResponse(): UserListResponse {
+  return {
+    pagination: {
+      page: 1,
+      perPage: 10,
+      totalItems: 0,
+      totalPages: 1,
+    },
+    users: [],
   };
 }
 

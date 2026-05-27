@@ -60,6 +60,7 @@ export interface UserListQuery {
   perPage?: number | undefined;
   search?: string | undefined;
   sort?: ListSortDirection | undefined;
+  type?: OrganizationUserType | undefined;
 }
 
 interface UserListQueryInput {
@@ -68,6 +69,7 @@ interface UserListQueryInput {
   perPage?: number | string | undefined;
   search?: string | undefined;
   sort?: ListSortDirection | undefined;
+  type?: OrganizationUserType | undefined;
 }
 
 const organizationUserStatusSchema: ContractSchema<OrganizationUserStatus> = z.enum(['active', 'invited']);
@@ -152,5 +154,6 @@ export const userListQuerySchema: z.ZodType<UserListQuery, z.ZodTypeDef, UserLis
     perPage: listPerPageQuerySchema.optional(),
     search: z.string().optional(),
     sort: listSortDirectionSchema.optional(),
+    type: organizationUserTypeSchema.optional(),
   })
   .strict();
