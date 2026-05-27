@@ -76,6 +76,7 @@ export { rollbackDeployment } from './services/deployment-rollback.service';
 export { getArtifactSourceArchive } from './services/artifact-source-archive.service';
 export { deployToNode } from './services/node-runtime-deploy.service';
 export { drainNodeDeployment } from './services/node-runtime-drain.service';
+export { reconcileNodeRuntimeNetworks } from './services/node-runtime-network-reconcile.service';
 export { releaseNodeDeployment } from './services/node-runtime-release.service';
 export { blockUser } from './services/user-block.service';
 export {

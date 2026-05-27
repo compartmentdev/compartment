@@ -8,6 +8,7 @@ import type {
   PrepareSelfHostedRuntimeImagesInput,
   RestartSelfHostedRuntimeInput,
 } from '../src/docker-runtime.types';
+import type * as NodeAgentRuntimeNetworkSourceModule from '../src/node-agent-runtime-network';
 import type * as SelfHostedInstallPathsSourceModule from '../src/self-hosted-install-paths';
 import type { SelfHostedInstallState } from '../src/self-hosted-install-state.types';
 
@@ -19,6 +20,7 @@ type PrepareSelfHostedRuntimeImages = (
   input: PrepareSelfHostedRuntimeImagesInput,
 ) => Promise<void>;
 type ReadCliBuildInfo = () => CliBuildInfo;
+type ReconcileNodeAgentRuntimeNetworks = (input: ReconcileNodeAgentRuntimeNetworksInput) => Promise<void>;
 type RestartNodeAgentHostService = (input: object) => Promise<void>;
 type RestartSelfHostedRuntime = (
   context: DockerExecutionContext,
@@ -42,6 +44,10 @@ interface CreateCurrentEnvironmentTextOptions {
   publicIngressIpv6?: string | undefined;
   publicProtocol?: string | undefined;
   variablesMasterKey?: string | undefined;
+}
+
+export interface ReconcileNodeAgentRuntimeNetworksInput {
+  environmentText: string;
 }
 
 interface CliBuildInfoModule {
@@ -82,6 +88,7 @@ interface UpdateRuntimeMocks {
   assertNodeAgentHostServiceInstallable: Mock<AssertNodeAgentHostServiceInstallable>;
   ensureDockerExecutionContext: Mock<EnsureDockerExecutionContext>;
   prepareSelfHostedRuntimeImages: Mock<PrepareSelfHostedRuntimeImages>;
+  reconcileNodeAgentRuntimeNetworks: Mock<ReconcileNodeAgentRuntimeNetworks>;
   restartNodeAgentHostService: Mock<RestartNodeAgentHostService>;
   restartSelfHostedRuntime: Mock<RestartSelfHostedRuntime>;
   stageNodeAgentHostService: Mock<StageNodeAgentHostService>;
@@ -166,12 +173,14 @@ class UpdateRuntimeTestHarness {
       mockCliBuildInfo();
       mockDockerRuntime(this.mocks);
       mockNodeAgentService(this.mocks);
+      mockNodeAgentRuntimeNetwork(this.mocks);
     });
 
     afterEach(async (): Promise<void> => {
       vi.doUnmock('../src/cli-build-info');
       vi.doUnmock('../src/docker-runtime');
       vi.doUnmock('../src/node-agent-service');
+      vi.doUnmock('../src/node-agent-runtime-network');
       vi.doUnmock('../src/self-hosted-install-paths');
       await Promise.all(
         this.temporaryDirectories.map(async (directory: string): Promise<void> => {
@@ -191,6 +200,7 @@ function createUpdateRuntimeMocks(): UpdateRuntimeMocks {
     assertNodeAgentHostServiceInstallable: vi.fn<AssertNodeAgentHostServiceInstallable>(),
     ensureDockerExecutionContext: vi.fn<EnsureDockerExecutionContext>(),
     prepareSelfHostedRuntimeImages: vi.fn<PrepareSelfHostedRuntimeImages>(),
+    reconcileNodeAgentRuntimeNetworks: vi.fn<ReconcileNodeAgentRuntimeNetworks>(),
     restartNodeAgentHostService: vi.fn<RestartNodeAgentHostService>(),
     restartSelfHostedRuntime: vi.fn<RestartSelfHostedRuntime>(),
     stageNodeAgentHostService: vi.fn<StageNodeAgentHostService>(),
@@ -202,10 +212,26 @@ function resetUpdateRuntimeMocks(mocks: UpdateRuntimeMocks): void {
   mocks.assertNodeAgentHostServiceInstallable.mockReset();
   mocks.ensureDockerExecutionContext.mockReset();
   mocks.prepareSelfHostedRuntimeImages.mockReset();
+  mocks.reconcileNodeAgentRuntimeNetworks.mockReset();
   mocks.restartNodeAgentHostService.mockReset();
   mocks.restartSelfHostedRuntime.mockReset();
   mocks.stageNodeAgentHostService.mockReset();
   mocks.waitForNodeAgentHostServiceHealth.mockReset();
+}
+
+function mockNodeAgentRuntimeNetwork(mocks: UpdateRuntimeMocks): void {
+  vi.doMock(
+    '../src/node-agent-runtime-network',
+    async (
+      importOriginal: () => Promise<typeof NodeAgentRuntimeNetworkSourceModule>,
+    ): Promise<typeof NodeAgentRuntimeNetworkSourceModule> => {
+      const actualModule: typeof NodeAgentRuntimeNetworkSourceModule = await importOriginal();
+      return {
+        ...actualModule,
+        reconcileNodeAgentRuntimeNetworks: mocks.reconcileNodeAgentRuntimeNetworks.mockResolvedValue(undefined),
+      };
+    },
+  );
 }
 
 function mockCliBuildInfo(): void {

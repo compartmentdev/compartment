@@ -15,6 +15,10 @@ import {
   stageNodeAgentHostService,
   waitForNodeAgentHostServiceHealth,
 } from './node-agent-service';
+import {
+  assertNodeAgentRuntimeNetworkReconcileEnvironment,
+  reconcileNodeAgentRuntimeNetworks,
+} from './node-agent-runtime-network';
 import type { DockerExecutionContext } from './docker-runtime.types';
 import type {
   InstallContext,
@@ -72,6 +76,7 @@ async function applyPreparedSelfHostedUpdate(
   input: SelfHostedUpdateInput,
   preparedUpdate: PreparedSelfHostedUpdate,
 ): Promise<SelfHostedUpdateResult> {
+  assertNodeAgentRuntimeNetworkReconcileEnvironment(preparedUpdate.renderedEnvironment.text);
   const dockerContext: DockerExecutionContext = await ensureSelfHostedDockerExecutionContext(input.context);
 
   await prepareUpdatedSelfHostedRuntimeImages(dockerContext, input.context, preparedUpdate);
@@ -224,6 +229,8 @@ async function restartUpdatedSelfHostedRuntime(
   await restartUpdatedComposeRuntime(dockerContext, context, preparedUpdate);
   reportUpdateProgress(context, 'Waiting for node agent service...');
   await waitForNodeAgentHostServiceHealth({ envPath: preparedUpdate.stagedAssetPaths.envPath });
+  reportUpdateProgress(context, 'Reconciling runtime network attachments...');
+  await reconcileNodeAgentRuntimeNetworks({ environmentText: preparedUpdate.renderedEnvironment.text });
 }
 
 async function prepareUpdatedSelfHostedRuntimeImages(

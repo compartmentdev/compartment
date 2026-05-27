@@ -7,6 +7,7 @@ import { registerGetRuntimeInspectRoute } from './get-runtime-inspect.route';
 import { registerGetRuntimeLogsRoute } from './get-runtime-logs.route';
 import { registerPostRuntimeDeployRoute } from './post-runtime-deploy.route';
 import { registerPostRuntimeDrainRoute } from './post-runtime-drain.route';
+import { registerPostRuntimeNetworkReconcileRoute } from './post-runtime-network-reconcile.route';
 import { registerPostRuntimeReleaseRoute } from './post-runtime-release.route';
 import { registerPostRuntimeStopRoute } from './post-runtime-stop.route';
 import { registerPostProjectCleanupRoute } from './post-project-cleanup.route';
@@ -21,6 +22,7 @@ export function registerInternalNodeRoutes(app: NodeApp, config: NodeConfig): vo
     internalApp.addHook('preHandler', createAuthenticateInternalRequest(config));
     registerPostRuntimeDeployRoute(internalApp, config);
     registerPostRuntimeDrainRoute(internalApp, config);
+    registerPostRuntimeNetworkReconcileRoute(internalApp, config);
     registerPostRuntimeReleaseRoute(internalApp, config);
     registerGetRuntimeInspectRoute(internalApp, config);
     registerPostRuntimeStopRoute(internalApp, config);

@@ -9,6 +9,10 @@ import { buildSelfHostedPathSelection } from './self-hosted-install-paths';
 import type { SelfHostedPathSelection } from './self-hosted-install-paths.types';
 import { readRequiredSelfHostedInstall } from './self-hosted-install-read';
 import type { ReadSelfHostedInstallResult } from './self-hosted-install-read.types';
+import {
+  assertNodeAgentRuntimeNetworkReconcileEnvironment,
+  reconcileNodeAgentRuntimeNetworks,
+} from './node-agent-runtime-network';
 import { restartSelfHostedRuntime } from './docker-runtime';
 import type { DockerExecutionContext } from './docker-runtime.types';
 import type { SystemDomainRuntimeApplyInput } from './system-domain.types';
@@ -16,8 +20,9 @@ import type { SystemDomainRuntimeApplyInput } from './system-domain.types';
 export async function applySelfHostedSystemDomainRuntime(input: SystemDomainRuntimeApplyInput): Promise<void> {
   const paths: SelfHostedPathSelection = buildSelfHostedPathSelection();
   const install: ReadSelfHostedInstallResult = await readRequiredSelfHostedInstall(paths);
-  const dockerContext: DockerExecutionContext = await ensureSelfHostedDockerExecutionContext(input.context);
   const nextEnvironmentText: string = renderSelfHostedRuntimeDomainEnvironment(install.environmentText, input);
+  assertNodeAgentRuntimeNetworkReconcileEnvironment(nextEnvironmentText);
+  const dockerContext: DockerExecutionContext = await ensureSelfHostedDockerExecutionContext(input.context);
 
   reportProgress(input, 'Staging domain runtime environment...');
   await writeSelfHostedPrivateFile(install.installPaths.stagedAssetPaths.envPath, nextEnvironmentText);
@@ -30,6 +35,8 @@ export async function applySelfHostedSystemDomainRuntime(input: SystemDomainRunt
     installDirectory: install.installPaths.configDir,
     localComposePath: install.installPaths.stagedAssetPaths.localComposePath,
   });
+  reportProgress(input, 'Reconciling runtime network attachments...');
+  await reconcileNodeAgentRuntimeNetworks({ environmentText: nextEnvironmentText });
 }
 
 function renderSelfHostedRuntimeDomainEnvironment(
