@@ -28,6 +28,7 @@ export function registerGetUsersRoute(app: ApiApp): void {
             perPage: query.perPage,
             search: query.search,
             sort: query.sort,
+            type: query.type,
           }),
         ),
       );

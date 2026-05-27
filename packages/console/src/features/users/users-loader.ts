@@ -135,17 +135,25 @@ function buildUsersPageResult(
   query: UsersLoaderQuery,
   responses: UsersPageResponses,
 ): BrowserUsersPageResult {
+  const effectiveQuery: UsersLoaderQuery = shouldHideSelectedUserDetail(query, responses.selectedUserEmail)
+    ? { ...query, mode: 'list', selectedUserEmail: null }
+    : { ...query, selectedUserEmail: responses.selectedUserEmail };
+
   return {
-    ...buildUsersPageBaseResult(context, query),
+    ...buildUsersPageBaseResult(context, effectiveQuery),
     availableGroups: responses.groups.groups,
     availableRoles: responses.roles.roles,
     page: responses.users.pagination.page,
-    selectedUserAccess: responses.access?.access ?? null,
+    selectedUserAccess: effectiveQuery.mode === 'detail' ? (responses.access?.access ?? null) : null,
     scopeProjects: responses.scopeOptions.projects,
     totalPages: responses.users.pagination.totalPages,
     totalUsers: responses.users.pagination.totalItems,
     users: responses.users.users,
   };
+}
+
+function shouldHideSelectedUserDetail(query: UsersLoaderQuery, selectedUserEmail: string | null): boolean {
+  return query.mode === 'detail' && query.selectedUserEmail !== null && selectedUserEmail === null;
 }
 
 function buildEmptyUsersPageResult(context: BrowserConsoleContext, query: UsersLoaderQuery): BrowserUsersPageResult {
