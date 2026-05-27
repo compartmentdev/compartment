@@ -32,6 +32,7 @@ const importedVariableFileName: string = '.env.self-hosted-e2e-import';
 const importedGroupFileName: string = '.env.self-hosted-e2e-group-import';
 const probeNodeImageRef: string = process.env.COMPARTMENT_TEST_APP_NODE_IMAGE ?? 'node:24.15.0-bookworm';
 const probePostgresImageRef: string = process.env.COMPARTMENT_TEST_POSTGRES_IMAGE ?? 'postgres:16-alpine';
+const probePostgresReadinessTimeoutMs: number = 180_000;
 
 export const selfHostedUserSetupAppListeningLogText: string = 'self-hosted-e2e-app listening';
 
@@ -106,7 +107,7 @@ resources:
     readiness:
       type: tcp
       port: 5432
-      timeoutMs: 60000
+      timeoutMs: ${probePostgresReadinessTimeoutMs}
     operations:
       backup:
         command: PGPASSWORD="$POSTGRES_PASSWORD" pg_dump --clean --if-exists --host "$COMPARTMENT_RESOURCE_HOST" --username "$POSTGRES_USER" "$POSTGRES_DB" > "$COMPARTMENT_BACKUP_DIR/dump.sql"

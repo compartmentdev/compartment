@@ -24,6 +24,7 @@ const apiRateLimitLimitHeaderName: string = 'x-ratelimit-limit';
 const apiRateLimitRemainingHeaderName: string = 'x-ratelimit-remaining';
 const apiRateLimitResetHeaderName: string = 'x-ratelimit-reset';
 const apiRateLimitRetryAfterHeaderName: string = 'retry-after';
+const apiRateLimitLocalSocketKey: string = 'local-socket';
 
 export function registerApiRateLimit(app: ApiApp): void {
   app.register(fastifyRateLimit, {
@@ -54,6 +55,12 @@ export function createApiMultiRateLimitRouteOptions(
 }
 
 function readApiRateLimitKey(request: FastifyRequest): string {
+  const remoteAddress: string | undefined = request.raw.socket.remoteAddress;
+
+  if (remoteAddress === undefined || remoteAddress.length === 0) {
+    return apiRateLimitLocalSocketKey;
+  }
+
   return request.ip;
 }
 
