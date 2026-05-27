@@ -8,9 +8,12 @@ import {
 import { expect, type Locator, type Page, type Response } from '@playwright/test';
 import { isSuccessfulApiResponse } from '../support/browser-api';
 import { isConsolePathname } from '../support/console-paths';
+import { type PageReadyState, waitForPageReadyState } from '../support/page-readiness';
 
 export class ProjectsPage {
-  private readonly emptyProjectsMessage: Locator;
+  private readonly addProjectLink: Locator;
+  private readonly emptyProjectsStateMessage: Locator;
+  private readonly noProjectsFoundMessage: Locator;
   private readonly page: Page;
   private readonly primaryNavigation: Locator;
   private readonly projectOverviewHeading: Locator;
@@ -18,7 +21,11 @@ export class ProjectsPage {
   private readonly searchInput: Locator;
 
   constructor(page: Page) {
-    this.emptyProjectsMessage = page.getByText('No projects found.');
+    this.addProjectLink = page.getByRole('link', { name: 'Add project' }).first();
+    this.emptyProjectsStateMessage = page.getByText('You do not have a project deployed in the Compartment.', {
+      exact: true,
+    });
+    this.noProjectsFoundMessage = page.getByText('No projects found.', { exact: true });
     this.page = page;
     this.primaryNavigation = page.getByRole('navigation', { name: 'Primary' });
     this.projectOverviewHeading = page.getByRole('heading', { name: 'Overview' });
@@ -33,7 +40,7 @@ export class ProjectsPage {
   }
 
   getReadyLocator(): Locator {
-    return this.searchInput;
+    return this.searchInput.or(this.emptyProjectsStateMessage).first();
   }
 
   async expectReady(): Promise<void> {
@@ -41,8 +48,14 @@ export class ProjectsPage {
       'aria-current',
       'page',
     );
-    await expect(this.searchInput).toBeVisible();
-    await expect(this.page.getByRole('table')).toBeVisible();
+    const readyState: PageReadyState = await waitForPageReadyState(this.searchInput, this.emptyProjectsStateMessage);
+
+    if (readyState === 'content') {
+      await expect(this.page.getByRole('table')).toBeVisible();
+      return;
+    }
+
+    await expect(this.addProjectLink).toBeVisible();
   }
 
   async expectProjectVisible(projectName: string): Promise<void> {
@@ -64,7 +77,7 @@ export class ProjectsPage {
   }
 
   async expectNoProjectsFound(): Promise<void> {
-    await expect(this.emptyProjectsMessage).toBeVisible();
+    await expect(this.noProjectsFoundMessage).toBeVisible();
   }
 
   async openProjectOverview(projectName: string): Promise<void> {
