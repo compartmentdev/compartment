@@ -34,6 +34,11 @@ type PromptRegisterOrganization = (
 ) => Promise<string>;
 type RerunSelfHostedInstallCommandWithSudoIfNeeded = () => Promise<SelfHostedInstallResult | undefined>;
 
+interface MockInstallCommandProgressInput {
+  preflightProgressMessage: string;
+  runtimeProgressMessage: string;
+}
+
 describe('install command progress', (): void => {
   afterEach((): void => {
     vi.useRealTimers();
@@ -91,59 +96,24 @@ describe('install command progress', (): void => {
     expect(readCliStderr(capture)).toBe('');
   });
 
+  it('renders progress for internal install result json output', (): void => {
+    const capture: CliCommandCapture = createCliCapture({ stderrIsTTY: false });
+    const progress: InstallCommandProgress = createInstallCommandProgress({
+      io: capture.io,
+      options: createInstallCommandOptions('json', true),
+    });
+
+    progress.report('Starting self-hosted runtime...');
+    progress.stop();
+
+    expect(readCliStderr(capture)).toBe('Starting self-hosted runtime...\n');
+  });
+
   it('suppresses install command progress for json output', async (): Promise<void> => {
-    resetCliCommandModules();
-    vi.doMock(
-      '../src/install',
-      (): {
-        installDev: Mock<InstallDev>;
-        installSelfHosted: Mock<InstallSelfHosted>;
-        preflightSelfHostedInstall: Mock<PreflightSelfHostedInstall>;
-      } => ({
-        installDev: vi.fn<InstallDev>(),
-        installSelfHosted: vi
-          .fn<InstallSelfHosted>()
-          .mockImplementation(async (input: SelfHostedInstallInput): Promise<SelfHostedInstallResult> => {
-            input.context?.reportProgress?.('Runtime progress should not render.');
-            await Promise.resolve();
-            return createInstallResult();
-          }),
-        preflightSelfHostedInstall: vi
-          .fn<PreflightSelfHostedInstall>()
-          .mockImplementation(async (input: SelfHostedInstallPreflightInput): Promise<void> => {
-            input.context?.reportProgress?.('Preflight progress should not render.');
-            await Promise.resolve();
-          }),
-      }),
-    );
-    vi.doMock(
-      '../src/node-agent-service',
-      (): { assertNodeAgentHostServiceInstallable: Mock<AssertNodeAgentHostServiceInstallable> } => ({
-        assertNodeAgentHostServiceInstallable: vi.fn<AssertNodeAgentHostServiceInstallable>(),
-      }),
-    );
-    vi.doMock(
-      '../src/commands/install/install.command.sudo',
-      (): {
-        rerunSelfHostedInstallCommandWithSudoIfNeeded: Mock<RerunSelfHostedInstallCommandWithSudoIfNeeded>;
-      } => ({
-        rerunSelfHostedInstallCommandWithSudoIfNeeded: vi
-          .fn<RerunSelfHostedInstallCommandWithSudoIfNeeded>()
-          .mockResolvedValue(undefined),
-      }),
-    );
-    vi.doMock(
-      '../src/prompts/prompt',
-      (): {
-        promptNewPassword: Mock<PromptNewPassword>;
-        promptRegisterEmail: Mock<PromptRegisterEmail>;
-        promptRegisterOrganization: Mock<PromptRegisterOrganization>;
-      } => ({
-        promptNewPassword: vi.fn<PromptNewPassword>().mockResolvedValue('supersecretpassword'),
-        promptRegisterEmail: vi.fn<PromptRegisterEmail>().mockResolvedValue('admin@example.com'),
-        promptRegisterOrganization: vi.fn<PromptRegisterOrganization>().mockResolvedValue('Acme Dev'),
-      }),
-    );
+    mockInstallCommandProgress({
+      preflightProgressMessage: 'Preflight progress should not render.',
+      runtimeProgressMessage: 'Runtime progress should not render.',
+    });
     const capture: CliCommandCapture = createCliCapture({ isTTY: true });
 
     const result: CliCommandResult = await runCliCommand(
@@ -169,10 +139,106 @@ describe('install command progress', (): void => {
       baseDomain: 'localhost',
     });
   });
+
+  it('renders install command progress for internal install result json output', async (): Promise<void> => {
+    mockInstallCommandProgress({
+      preflightProgressMessage: 'Preflight progress should render.',
+      runtimeProgressMessage: 'Runtime progress should render.',
+    });
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true, stderrIsTTY: false });
+
+    const result: CliCommandResult = await runCliCommand(
+      [
+        'install',
+        '--base-domain',
+        'example.com',
+        '--email',
+        'admin@example.com',
+        '--organization',
+        'Acme Dev',
+        '--output',
+        'json',
+        '--skip-session-persist',
+        '--internal-install-result',
+      ],
+      capture,
+    );
+
+    expectCliSuccess(result);
+    const stderr: string = readCliStderr(capture);
+    expect(stderr).toContain('Preflight progress should render.\n');
+    expect(stderr).toContain('Using published self-hosted image tag');
+    expect(stderr).toContain('Runtime progress should render.\n');
+    expect(JSON.parse(readCliStdout(capture))).toMatchObject({
+      adminEmail: 'admin@example.com',
+      baseDomain: 'localhost',
+    });
+  });
 });
 
-function createInstallCommandOptions(output: 'json' | 'text'): InstallCommandOptions {
-  return { output };
+function createInstallCommandOptions(
+  output: 'json' | 'text',
+  internalInstallResult: boolean = false,
+): InstallCommandOptions {
+  return {
+    ...(internalInstallResult ? { internalInstallResult: true } : {}),
+    output,
+  };
+}
+
+function mockInstallCommandProgress(input: MockInstallCommandProgressInput): void {
+  resetCliCommandModules();
+  vi.doMock(
+    '../src/install',
+    (): {
+      installDev: Mock<InstallDev>;
+      installSelfHosted: Mock<InstallSelfHosted>;
+      preflightSelfHostedInstall: Mock<PreflightSelfHostedInstall>;
+    } => ({
+      installDev: vi.fn<InstallDev>(),
+      installSelfHosted: vi
+        .fn<InstallSelfHosted>()
+        .mockImplementation(async (installInput: SelfHostedInstallInput): Promise<SelfHostedInstallResult> => {
+          installInput.context?.reportProgress?.(input.runtimeProgressMessage);
+          await Promise.resolve();
+          return createInstallResult();
+        }),
+      preflightSelfHostedInstall: vi
+        .fn<PreflightSelfHostedInstall>()
+        .mockImplementation(async (installInput: SelfHostedInstallPreflightInput): Promise<void> => {
+          installInput.context?.reportProgress?.(input.preflightProgressMessage);
+          await Promise.resolve();
+        }),
+    }),
+  );
+  vi.doMock(
+    '../src/node-agent-service',
+    (): { assertNodeAgentHostServiceInstallable: Mock<AssertNodeAgentHostServiceInstallable> } => ({
+      assertNodeAgentHostServiceInstallable: vi.fn<AssertNodeAgentHostServiceInstallable>(),
+    }),
+  );
+  vi.doMock(
+    '../src/commands/install/install.command.sudo',
+    (): {
+      rerunSelfHostedInstallCommandWithSudoIfNeeded: Mock<RerunSelfHostedInstallCommandWithSudoIfNeeded>;
+    } => ({
+      rerunSelfHostedInstallCommandWithSudoIfNeeded: vi
+        .fn<RerunSelfHostedInstallCommandWithSudoIfNeeded>()
+        .mockResolvedValue(undefined),
+    }),
+  );
+  vi.doMock(
+    '../src/prompts/prompt',
+    (): {
+      promptNewPassword: Mock<PromptNewPassword>;
+      promptRegisterEmail: Mock<PromptRegisterEmail>;
+      promptRegisterOrganization: Mock<PromptRegisterOrganization>;
+    } => ({
+      promptNewPassword: vi.fn<PromptNewPassword>().mockResolvedValue('supersecretpassword'),
+      promptRegisterEmail: vi.fn<PromptRegisterEmail>().mockResolvedValue('admin@example.com'),
+      promptRegisterOrganization: vi.fn<PromptRegisterOrganization>().mockResolvedValue('Acme Dev'),
+    }),
+  );
 }
 
 function createInstallResult(): SelfHostedInstallResult {
