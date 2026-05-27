@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/compartmentdev/compartment/compare/v0.6.0...v0.6.1) (2026-05-27)
+
+
+### Bug Fixes
+
+* **cli:** keep sudo docker progress out of spinner ([#67](https://github.com/compartmentdev/compartment/issues/67)) ([bd055d4](https://github.com/compartmentdev/compartment/commit/bd055d4006d22c7f8d6296e4c658bb3aceb08168))
+
 ## [0.6.0](https://github.com/compartmentdev/compartment/compare/v0.5.1...v0.6.0) (2026-05-27)
 
 
