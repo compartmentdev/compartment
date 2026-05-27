@@ -207,7 +207,7 @@ function AuditEventsFilterField({ children, label }: Readonly<AuditEventsFilterF
 function AuditEventsTableSection({ data, onNavigate }: Readonly<AuditEventsTableSectionProps>): JSX.Element {
   return (
     <ServerTableFrame>
-      <AuditEventsTable data={data} />
+      <AuditEventsTable data={data} onNavigate={onNavigate} />
       <ServerTableControls
         currentPage={data.page}
         itemLabel="audit event"

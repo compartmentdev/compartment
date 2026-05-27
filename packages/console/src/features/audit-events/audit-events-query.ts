@@ -1,20 +1,29 @@
-import { hasText } from '@compartment/utils';
+import {
+  appendDefaultedNumberParam,
+  appendDefaultedParam,
+  appendTextParam,
+  readNextServerTableSortDirection,
+  type ServerTableHrefOverrides,
+} from '../../lib/server-table-query';
 import type {
   BrowserAuditEventFilters,
-  BrowserAuditEventTypeFilter,
   BrowserAuditEventsPageResult,
   BrowserAuditEventsPageSize,
+  BrowserAuditEventsSortBy,
+  BrowserAuditEventsSortDirection,
+  BrowserAuditEventTypeFilter,
 } from '../../services/browser-audit-events.service.types';
 import { browserAuditPathname, buildBrowserOrganizationScopedPathname } from '../../browser-public-paths';
 
-interface AuditEventsHrefOverrides {
+interface AuditEventsHrefOverrides extends ServerTableHrefOverrides<
+  BrowserAuditEventsSortBy,
+  BrowserAuditEventsSortDirection,
+  BrowserAuditEventsPageSize
+> {
   actor?: string | undefined;
   eventType?: BrowserAuditEventTypeFilter | undefined;
   from?: string | undefined;
-  page?: number | undefined;
-  pageSize?: BrowserAuditEventsPageSize | undefined;
   project?: string | undefined;
-  selectedOrganizationSlug?: string | null | undefined;
   targetType?: string | undefined;
   to?: string | undefined;
 }
@@ -24,10 +33,14 @@ interface AuditEventsHrefQuery {
   page: number;
   pageSize: BrowserAuditEventsPageSize;
   selectedOrganizationSlug: string | null;
+  sortBy: BrowserAuditEventsSortBy;
+  sortDirection: BrowserAuditEventsSortDirection;
 }
 
 const defaultAuditEventsPage: number = 1;
 const defaultAuditEventsPageSize: BrowserAuditEventsPageSize = 10;
+const defaultAuditEventsSortBy: BrowserAuditEventsSortBy = 'occurredAt';
+const defaultAuditEventsSortDirection: BrowserAuditEventsSortDirection = 'desc';
 
 export function buildAuditEventsHref(
   data: Readonly<BrowserAuditEventsPageResult>,
@@ -45,9 +58,23 @@ export function buildAuditEventsResetHref(data: Readonly<BrowserAuditEventsPageR
     : buildBrowserOrganizationScopedPathname(data.selectedOrganizationSlug, browserAuditPathname);
 }
 
+export function readNextAuditEventsSortDirection(
+  data: Readonly<BrowserAuditEventsPageResult>,
+  sortBy: BrowserAuditEventsSortBy,
+): BrowserAuditEventsSortDirection {
+  return readNextServerTableSortDirection(
+    data.sortBy,
+    data.sortDirection,
+    sortBy,
+    sortBy === 'occurredAt' ? 'desc' : 'asc',
+  );
+}
+
 function buildAuditEventsSearchParams(query: AuditEventsHrefQuery): URLSearchParams {
   const searchParams: URLSearchParams = new URLSearchParams();
   appendAuditFilterParams(searchParams, query.filters);
+  appendDefaultedParam(searchParams, 'sortBy', query.sortBy, defaultAuditEventsSortBy);
+  appendDefaultedParam(searchParams, 'sortDirection', query.sortDirection, defaultAuditEventsSortDirection);
   appendDefaultedNumberParam(searchParams, 'page', query.page, defaultAuditEventsPage);
   appendDefaultedNumberParam(searchParams, 'pageSize', query.pageSize, defaultAuditEventsPageSize);
 
@@ -73,6 +100,8 @@ function resolveAuditEventsHrefQuery(
       overrides.selectedOrganizationSlug === undefined
         ? data.selectedOrganizationSlug
         : overrides.selectedOrganizationSlug,
+    sortBy: overrides.sortBy ?? data.sortBy,
+    sortDirection: overrides.sortDirection ?? data.sortDirection,
   };
 }
 
@@ -83,23 +112,6 @@ function appendAuditFilterParams(searchParams: URLSearchParams, filters: Browser
   appendTextParam(searchParams, 'actor', filters.actor);
   appendTextParam(searchParams, 'targetType', filters.targetType);
   appendTextParam(searchParams, 'project', filters.project);
-}
-
-function appendTextParam(searchParams: URLSearchParams, name: string, value: string): void {
-  if (hasText(value)) {
-    searchParams.set(name, value);
-  }
-}
-
-function appendDefaultedNumberParam(
-  searchParams: URLSearchParams,
-  name: string,
-  value: number,
-  defaultValue: number,
-): void {
-  if (value !== defaultValue) {
-    searchParams.set(name, String(value));
-  }
 }
 
 function buildAuditEventsPathname(searchParams: URLSearchParams, selectedOrganizationSlug: string | null): string {

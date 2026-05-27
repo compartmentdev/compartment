@@ -1,8 +1,10 @@
 import {
+  accessRoleListOptionsResponseSchema,
   accessRoleListResponseSchema,
   accessRoleResponseSchema,
   compartmentRolesPathname,
   createAccessRoleRequestSchema,
+  type AccessRoleListOptionsResponse,
   updateAccessRoleRequestSchema,
   type AccessRoleListResponse,
   type AccessRoleResponse,
@@ -10,12 +12,18 @@ import {
   type UpdateAccessRoleRequest,
 } from '@compartment/contracts';
 import type { CompartmentRequester } from '../http/request.types';
+import { buildAccessListOptionsPath } from './access-list-path.service';
 
 export async function listAccessRoles(request: CompartmentRequester): Promise<AccessRoleListResponse> {
+  const response: AccessRoleListOptionsResponse = await listAccessRoleOptions(request);
+  return accessRoleListResponseSchema.parse({ roles: response.roles });
+}
+
+async function listAccessRoleOptions(request: CompartmentRequester): Promise<AccessRoleListOptionsResponse> {
   return await request({
     method: 'GET',
-    path: compartmentRolesPathname,
-    schema: accessRoleListResponseSchema,
+    path: buildAccessListOptionsPath(compartmentRolesPathname),
+    schema: accessRoleListOptionsResponseSchema,
   });
 }
 

@@ -1,4 +1,5 @@
 import type {
+  AuditEventListOrderBy,
   AuditEventActorType,
   AuditEventMetadata,
   AuditEventScopeType,
@@ -6,6 +7,7 @@ import type {
   AuditEventType,
   AuditRetentionMode,
   ListPagination,
+  ListSortDirection,
 } from '@compartment/contracts';
 import type { Database } from '../db/client';
 import type { ApiDatabaseTransaction } from '../db/client.types';
@@ -50,7 +52,9 @@ export interface AuditEventFilterInput {
   eventType?: AuditEventType | undefined;
   from?: Date | undefined;
   organizationId: string;
+  orderBy?: AuditEventListOrderBy | undefined;
   project?: string | undefined;
+  sort?: ListSortDirection | undefined;
   targetType?: string | undefined;
   to?: Date | undefined;
 }

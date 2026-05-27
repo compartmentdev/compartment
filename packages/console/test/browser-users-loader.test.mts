@@ -62,11 +62,11 @@ describe('browser users loader', (): void => {
             users: [],
           });
         }
-        if (path === '/v1/roles') {
-          return createJsonResponse({ roles: [] });
+        if (path === '/v1/roles?detail=options') {
+          return createJsonResponse({ detail: 'options', roles: [] });
         }
-        if (path === '/v1/groups') {
-          return createJsonResponse({ groups: [] });
+        if (path === '/v1/groups?detail=options') {
+          return createJsonResponse({ detail: 'options', groups: [] });
         }
         if (path === '/v1/assignments/scope-options') {
           return createJsonResponse({ projects: [] });
@@ -92,8 +92,8 @@ describe('browser users loader', (): void => {
       '/v1/orgs',
       '/v1/whoami',
       '/v1/users?orderBy=email&type=user&sort=asc&page=1&perPage=10',
-      '/v1/roles',
-      '/v1/groups',
+      '/v1/roles?detail=options',
+      '/v1/groups?detail=options',
       '/v1/assignments/scope-options',
       `/v1/users?orderBy=email&type=user&sort=asc&page=1&perPage=1&search=${encodeURIComponent(automationEmail)}`,
     ]);

@@ -21,8 +21,8 @@ export function GroupsEmptyState({ state }: Readonly<GroupsEmptyStateProps>): JS
   );
 }
 
-export function shouldRenderGroupsEmptyState(state: GroupsPageState, searchQuery: string): boolean {
-  return searchQuery.trim() === '' && state.data.groups.length === 0;
+export function shouldRenderGroupsEmptyState(state: GroupsPageState): boolean {
+  return state.data.searchQuery.trim() === '' && state.data.totalGroups === 0;
 }
 
 function readCreateGroupEmptyStateAction(state: GroupsPageState): EmptyStateCardAction | undefined {

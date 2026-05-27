@@ -3,7 +3,11 @@ import {
   type AccessAssignmentSummary,
   type AuditEventSummary,
   type AccessGroupSummary,
+  type AccessGroupListPageResponse,
+  type AccessGroupListOptionsResponse,
   type AccessRoleSummary,
+  type AccessRoleListPageResponse,
+  type AccessRoleListOptionsResponse,
   type UserAccessDetail,
   accessAssignmentListResponseSchema,
   accessAssignmentResponseSchema,
@@ -11,9 +15,13 @@ import {
   auditEventListResponseSchema,
   errorResponseSchema,
   accessGroupListResponseSchema,
+  accessGroupListPageResponseSchema,
+  accessGroupListOptionsResponseSchema,
   accessGroupMemberListResponseSchema,
   accessGroupResponseSchema,
   accessRoleListResponseSchema,
+  accessRoleListOptionsResponseSchema,
+  accessRoleListPageResponseSchema,
   accessRoleResponseSchema,
   buildCompartmentUserAccessApiPathname,
   compartmentAssignmentsPathname,
@@ -37,6 +45,8 @@ import {
   ensureRbacTestHarness,
   resetRbacTestHarness,
   seedEnvironment,
+  seedCustomRole,
+  seedGroup,
   seedProject,
   type RbacTestHarness,
 } from './rbac-test.fixtures';
@@ -543,6 +553,272 @@ describe('rbac crud integration', (): void => {
     });
     expect(auditEventsAfterExportResponse.statusCode).toBe(200);
     expect(auditEventListResponseSchema.parse(auditEventsAfterExportResponse.json()).events).toHaveLength(1);
+  });
+
+  it('lists roles through the paginated list contract with search and sorting', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await seedCustomRole(harness, {
+      id: 'rol_alpha_operator',
+      name: 'Alpha Operator',
+      organizationId: installPayload.organization.id,
+      permissionKeys: ['project.read'],
+    });
+    await seedCustomRole(harness, {
+      id: 'rol_beta_operator',
+      name: 'Beta Operator',
+      organizationId: installPayload.organization.id,
+      permissionKeys: ['variable.write'],
+    });
+
+    const response: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      url: `${compartmentRolesPathname}?detail=list&search=operator&orderBy=name&sort=desc&page=1&perPage=1`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload: AccessRoleListPageResponse = accessRoleListPageResponseSchema.parse(response.json());
+    expect(payload.detail).toBe('list');
+    expect(payload.pagination).toEqual({
+      page: 1,
+      perPage: 1,
+      totalItems: 2,
+      totalPages: 2,
+    });
+    expect(payload.roles.map((role: AccessRoleSummary): string => role.name)).toEqual(['Beta Operator']);
+  });
+
+  it('lists groups through the paginated list contract with search and sorting', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await seedGroup(harness, {
+      id: 'grp_alpha_operators',
+      name: 'Alpha Operators',
+      organizationId: installPayload.organization.id,
+    });
+    await seedGroup(harness, {
+      id: 'grp_beta_operators',
+      name: 'Beta Operators',
+      organizationId: installPayload.organization.id,
+    });
+
+    const response: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      url: `${compartmentGroupsPathname}?detail=list&search=operators&orderBy=name&sort=desc&page=1&perPage=1`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload: AccessGroupListPageResponse = accessGroupListPageResponseSchema.parse(response.json());
+    expect(payload.detail).toBe('list');
+    expect(payload.pagination).toEqual({
+      page: 1,
+      perPage: 1,
+      totalItems: 2,
+      totalPages: 2,
+    });
+    expect(payload.groups.map((group: AccessGroupSummary): string => group.name)).toEqual(['Beta Operators']);
+  });
+
+  it('returns explicit options responses and rejects paginated params without detail=list', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+
+    const roleOptionsResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      query: { detail: 'options' },
+      url: compartmentRolesPathname,
+    });
+    expect(roleOptionsResponse.statusCode).toBe(200);
+    const roleOptionsPayload: AccessRoleListOptionsResponse = accessRoleListOptionsResponseSchema.parse(
+      roleOptionsResponse.json(),
+    );
+    expect(roleOptionsPayload.detail).toBe('options');
+
+    const invalidRoleQueryResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      query: { page: '2' },
+      url: compartmentRolesPathname,
+    });
+    expect(invalidRoleQueryResponse.statusCode).toBe(400);
+
+    const groupOptionsResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      query: { detail: 'options' },
+      url: compartmentGroupsPathname,
+    });
+    expect(groupOptionsResponse.statusCode).toBe(200);
+    const groupOptionsPayload: AccessGroupListOptionsResponse = accessGroupListOptionsResponseSchema.parse(
+      groupOptionsResponse.json(),
+    );
+    expect(groupOptionsPayload.detail).toBe('options');
+
+    const invalidGroupQueryResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      query: { sort: 'desc' },
+      url: compartmentGroupsPathname,
+    });
+    expect(invalidGroupQueryResponse.statusCode).toBe(400);
+  });
+
+  it('sorts audit events through the public orderBy and sort query params', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await harness.db.insert(auditEventsTable).values([
+      {
+        actorEmail: 'sorter@example.com',
+        actorType: 'user',
+        eventType: 'organization.role.created',
+        id: 'aud_sort_role_created',
+        metadataJson: '{}',
+        occurredAt: new Date('2026-05-10T10:00:00.000Z'),
+        organizationId: installPayload.organization.id,
+        scopeType: 'organization',
+        status: 'succeeded',
+        targetDisplayName: 'Role created',
+        targetId: 'rol_sort_role_created',
+        targetType: 'role',
+      },
+      {
+        actorEmail: 'sorter@example.com',
+        actorType: 'user',
+        eventType: 'organization.group.created',
+        id: 'aud_sort_group_created',
+        metadataJson: '{}',
+        occurredAt: new Date('2026-05-10T11:00:00.000Z'),
+        organizationId: installPayload.organization.id,
+        scopeType: 'organization',
+        status: 'succeeded',
+        targetDisplayName: 'Group created',
+        targetId: 'grp_sort_group_created',
+        targetType: 'group',
+      },
+    ]);
+
+    const response: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      query: {
+        actor: 'sorter@example.com',
+        orderBy: 'eventType',
+        page: '1',
+        perPage: '10',
+        sort: 'asc',
+      },
+      url: compartmentAuditEventsPathname,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload: { events: AuditEventSummary[] } = auditEventListResponseSchema.parse(response.json());
+    expect(payload.events.map((event: AuditEventSummary): string => event.id)).toEqual([
+      'aud_sort_group_created',
+      'aud_sort_role_created',
+    ]);
+  });
+
+  it('uses stable default and status audit ordering branches', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await harness.db.insert(auditEventsTable).values([
+      {
+        actorEmail: 'sorter@example.com',
+        actorType: 'user',
+        eventType: 'organization.group.created',
+        id: 'aud_default_latest',
+        metadataJson: '{}',
+        occurredAt: new Date('2026-05-10T12:00:00.000Z'),
+        organizationId: installPayload.organization.id,
+        scopeType: 'organization',
+        status: 'succeeded',
+        targetDisplayName: 'Latest group',
+        targetId: 'grp_default_latest',
+        targetType: 'group',
+      },
+      {
+        actorEmail: 'sorter@example.com',
+        actorType: 'user',
+        eventType: 'organization.group.created',
+        id: 'aud_status_b',
+        metadataJson: '{}',
+        occurredAt: new Date('2026-05-10T11:00:00.000Z'),
+        organizationId: installPayload.organization.id,
+        scopeType: 'organization',
+        status: 'failed',
+        targetDisplayName: 'Failed group B',
+        targetId: 'grp_status_b',
+        targetType: 'group',
+      },
+      {
+        actorEmail: 'sorter@example.com',
+        actorType: 'user',
+        eventType: 'organization.group.created',
+        id: 'aud_status_a',
+        metadataJson: '{}',
+        occurredAt: new Date('2026-05-10T11:00:00.000Z'),
+        organizationId: installPayload.organization.id,
+        scopeType: 'organization',
+        status: 'failed',
+        targetDisplayName: 'Failed group A',
+        targetId: 'grp_status_a',
+        targetType: 'group',
+      },
+      {
+        actorEmail: 'sorter@example.com',
+        actorType: 'user',
+        eventType: 'organization.group.created',
+        id: 'aud_default_oldest',
+        metadataJson: '{}',
+        occurredAt: new Date('2026-05-10T10:00:00.000Z'),
+        organizationId: installPayload.organization.id,
+        scopeType: 'organization',
+        status: 'succeeded',
+        targetDisplayName: 'Oldest group',
+        targetId: 'grp_default_oldest',
+        targetType: 'group',
+      },
+    ]);
+
+    const defaultResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      query: {
+        actor: 'sorter@example.com',
+        eventType: 'organization.group.created',
+        page: '1',
+        perPage: '10',
+      },
+      url: compartmentAuditEventsPathname,
+    });
+    expect(defaultResponse.statusCode).toBe(200);
+    const defaultPayload: { events: AuditEventSummary[] } = auditEventListResponseSchema.parse(defaultResponse.json());
+    expect(defaultPayload.events.map((event: AuditEventSummary): string => event.id)).toEqual([
+      'aud_default_latest',
+      'aud_status_b',
+      'aud_status_a',
+      'aud_default_oldest',
+    ]);
+
+    const statusResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      method: 'GET',
+      query: {
+        actor: 'sorter@example.com',
+        eventType: 'organization.group.created',
+        orderBy: 'status',
+        page: '1',
+        perPage: '10',
+        sort: 'asc',
+      },
+      url: compartmentAuditEventsPathname,
+    });
+    expect(statusResponse.statusCode).toBe(200);
+    const statusPayload: { events: AuditEventSummary[] } = auditEventListResponseSchema.parse(statusResponse.json());
+    expect(statusPayload.events.map((event: AuditEventSummary): string => event.id)).toEqual([
+      'aud_status_b',
+      'aud_status_a',
+      'aud_default_latest',
+      'aud_default_oldest',
+    ]);
   });
 
   it('rejects audit exports that exceed the route export limit', async (): Promise<void> => {

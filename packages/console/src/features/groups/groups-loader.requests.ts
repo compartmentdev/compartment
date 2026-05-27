@@ -1,8 +1,9 @@
 import {
   accessAssignmentListResponseSchema,
   accessAssignmentScopeOptionsResponseSchema,
-  accessGroupListResponseSchema,
+  accessGroupListPageResponseSchema,
   accessGroupMemberListResponseSchema,
+  accessRoleListOptionsResponseSchema,
   accessRoleListResponseSchema,
   compartmentAssignmentScopeOptionsPathname,
   compartmentAssignmentsPathname,
@@ -11,12 +12,15 @@ import {
   compartmentRolesPathname,
   type AccessAssignmentListResponse,
   type AccessAssignmentScopeOptionsResponse,
+  type AccessGroupListPageResponse,
   type AccessGroupMemberListResponse,
-  type AccessGroupListResponse,
   type AccessGroupMemberSummary,
+  type AccessRoleListOptionsResponse,
   type AccessRoleListResponse,
 } from '@compartment/contracts/browser';
 import { requestBrowserApi, type BrowserApiRequestOptions } from '../../lib/browser-api';
+import { buildBrowserAccessPageListPath } from '../access/access-list-path';
+import type { GroupsLoaderQuery } from './groups-loader';
 
 export async function fetchScopeOptionsResponse(
   currentOrganization: string,
@@ -34,22 +38,33 @@ export async function fetchScopeOptionsResponse(
 
 export async function fetchGroupsResponse(
   currentOrganization: string,
+  query: GroupsLoaderQuery,
   options: BrowserApiRequestOptions = {},
-): Promise<AccessGroupListResponse> {
-  return await requestBrowserApi(compartmentGroupsPathname, accessGroupListResponseSchema, {
-    currentOrganization,
-    signal: options.signal,
-  });
+): Promise<AccessGroupListPageResponse> {
+  return await requestBrowserApi(
+    buildBrowserAccessPageListPath(compartmentGroupsPathname, query),
+    accessGroupListPageResponseSchema,
+    {
+      currentOrganization,
+      signal: options.signal,
+    },
+  );
 }
 
 export async function fetchRolesResponse(
   currentOrganization: string,
   options: BrowserApiRequestOptions = {},
 ): Promise<AccessRoleListResponse> {
-  return await requestBrowserApi(compartmentRolesPathname, accessRoleListResponseSchema, {
-    currentOrganization,
-    signal: options.signal,
-  });
+  const response: AccessRoleListOptionsResponse = await requestBrowserApi(
+    `${compartmentRolesPathname}?detail=options`,
+    accessRoleListOptionsResponseSchema,
+    {
+      currentOrganization,
+      signal: options.signal,
+    },
+  );
+
+  return accessRoleListResponseSchema.parse({ roles: response.roles });
 }
 
 export async function fetchAssignmentsResponse(

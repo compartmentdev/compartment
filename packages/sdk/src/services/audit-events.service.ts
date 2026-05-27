@@ -41,9 +41,11 @@ function buildAuditEventsListPath(query: AuditEventListQuery): string {
     { name: 'actor', value: query.actor },
     { name: 'eventType', value: query.eventType },
     { name: 'from', value: query.from },
+    { name: 'orderBy', value: query.orderBy },
     { name: 'page', value: query.page },
     { name: 'perPage', value: query.perPage },
     { name: 'project', value: query.project },
+    { name: 'sort', value: query.sort },
     { name: 'targetType', value: query.targetType },
     { name: 'to', value: query.to },
   ]);
@@ -55,7 +57,9 @@ function buildAuditEventsExportPath(query: AuditEventExportQuery): string {
     { name: 'eventType', value: query.eventType },
     { name: 'format', value: query.format },
     { name: 'from', value: query.from },
+    { name: 'orderBy', value: query.orderBy },
     { name: 'project', value: query.project },
+    { name: 'sort', value: query.sort },
     { name: 'targetType', value: query.targetType },
     { name: 'to', value: query.to },
   ]);

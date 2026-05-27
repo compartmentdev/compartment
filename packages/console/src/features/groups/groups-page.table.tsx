@@ -10,17 +10,13 @@ import {
   ServerTableEmptyRow,
   ServerTableHeading,
   ServerTableRow,
+  ServerTableSortableHeading,
   readServerTableActionControlClassName,
 } from '../../components/server-table';
 import { Button } from '../../components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../../components/ui/dropdown-menu';
-import { MoreHorizontal } from '../../components/ui/icons';
+import { DropdownMenu, DropdownMenuContent } from '../../components/ui/dropdown-menu';
 import { useBrowserMutation } from '../../lib/browser-query-client';
+import type { BrowserGroupsPageResult, BrowserGroupsSortBy } from '../../services/browser-groups.service.types';
 import { formatGroupAccessSummary, formatGroupScopeSummary } from '../access/access-display';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import { canManageBrowserGroups } from '../console/console-access';
@@ -29,19 +25,23 @@ import {
   readGroupDeleteConfirmationSpec,
   type GroupDeleteConfirmationSpec,
 } from './groups-page.actions';
-import { buildGroupsPageHref } from './groups-page.href';
+import { buildGroupsPageHref, readNextGroupsSortDirection } from './groups-page.href';
 import type { GroupsPageState } from './groups-page.state';
+import { GroupActionsTrigger, GroupRemoveMenuItem, readGroupDescription } from './groups-page.table.controls';
 
 interface GroupsTableProps {
-  groups: AccessGroupListRow[];
   state: GroupsPageState;
 }
-
+interface GroupsSortableHeadingProps {
+  data: BrowserGroupsPageResult;
+  label: string;
+  sortBy: BrowserGroupsSortBy;
+  state: GroupsPageState;
+}
 interface GroupRowProps {
   group: AccessGroupListRow;
   state: GroupsPageState;
 }
-
 interface GroupDeleteDialogProps {
   groupName: string;
   isOpen: boolean;
@@ -49,43 +49,49 @@ interface GroupDeleteDialogProps {
   onConfirm: () => void;
   onOpenChange: (open: boolean) => void;
 }
-
 type GroupDeleteMutation = UseMutationResult<boolean, Error, void>;
 
-export function GroupsTable({ groups, state }: Readonly<GroupsTableProps>): JSX.Element {
+export function GroupsTable({ state }: Readonly<GroupsTableProps>): JSX.Element {
   return (
     <ServerTable minWidthClassName="min-w-[1040px]">
       <thead className="bg-background">
         <tr>
-          <ServerTableHeading label="Group" />
-          <ServerTableHeading label="Members" />
-          <ServerTableHeading label="Access" />
+          <GroupsSortableHeading data={state.data} label="Group" sortBy="name" state={state} />
+          <GroupsSortableHeading data={state.data} label="Members" sortBy="memberCount" state={state} />
+          <GroupsSortableHeading data={state.data} label="Access" sortBy="assignmentCount" state={state} />
           <ServerTableHeading label="Scope" />
           <ServerTableHeading label="Description" />
           <ServerTableHeading align="right" label="Actions" />
         </tr>
       </thead>
-      <tbody>{renderGroupRows(groups, state)}</tbody>
+      <tbody>{renderGroupRows(state)}</tbody>
     </ServerTable>
   );
 }
-
-export function readGroupSearchText(group: AccessGroupListRow): string {
-  return [group.name, group.description ?? '', ...group.assignedRoleNames, ...group.assignmentScopeLabels]
-    .join(' ')
-    .toLowerCase();
-}
-
-function renderGroupRows(groups: AccessGroupListRow[], state: GroupsPageState): JSX.Element[] {
-  if (groups.length === 0) {
-    return [<ServerTableEmptyRow colSpan={6} key="empty" message="No groups found." />];
-  }
-
-  return groups.map(
-    (group: AccessGroupListRow): JSX.Element => <GroupRow group={group} key={group.id} state={state} />,
+function GroupsSortableHeading({ data, label, sortBy, state }: Readonly<GroupsSortableHeadingProps>): JSX.Element {
+  return (
+    <ServerTableSortableHeading
+      href={buildGroupsPageHref(data, data.selectedGroupId, data.mode, {
+        page: 1,
+        sortBy,
+        sortDirection: readNextGroupsSortDirection(data, sortBy),
+      })}
+      label={label}
+      onNavigate={state.onNavigate}
+      sortDirection={data.sortBy === sortBy ? data.sortDirection : undefined}
+    />
   );
 }
 
+function renderGroupRows(state: GroupsPageState): JSX.Element[] {
+  if (state.data.groups.length === 0) {
+    return [<ServerTableEmptyRow colSpan={6} key="empty" message="No groups found." />];
+  }
+
+  return state.data.groups.map(
+    (group: AccessGroupListRow): JSX.Element => <GroupRow group={group} key={group.id} state={state} />,
+  );
+}
 function GroupRow({ group, state }: Readonly<GroupRowProps>): JSX.Element {
   return (
     <ServerTableRow>
@@ -100,7 +106,6 @@ function GroupRow({ group, state }: Readonly<GroupRowProps>): JSX.Element {
     </ServerTableRow>
   );
 }
-
 function GroupRowActions({ group, state }: Readonly<GroupRowProps>): JSX.Element {
   const [actionErrorMessage, setActionErrorMessage] = useState<string | undefined>(undefined);
 
@@ -120,13 +125,12 @@ function GroupRowActions({ group, state }: Readonly<GroupRowProps>): JSX.Element
     </div>
   );
 }
-
 function ManageGroupButton({ group, state }: Readonly<GroupRowProps>): JSX.Element {
   return (
     <Button
       className={readServerTableActionControlClassName()}
       onClick={(): void => {
-        state.onNavigate(buildGroupsPageHref(state.data, group.id));
+        state.onNavigate(buildGroupsPageHref(state.data, group.id, 'detail'));
       }}
       size="sm"
       type="button"
@@ -136,7 +140,6 @@ function ManageGroupButton({ group, state }: Readonly<GroupRowProps>): JSX.Eleme
     </Button>
   );
 }
-
 function GroupRowActionsMenu({
   group,
   setErrorMessage,
@@ -161,7 +164,6 @@ function GroupRowActionsMenu({
     </>
   );
 }
-
 function GroupActionsDropdown({
   group,
   isPending,
@@ -176,7 +178,6 @@ function GroupActionsDropdown({
     </DropdownMenu>
   );
 }
-
 function GroupDeleteDialog({
   groupName,
   isOpen,
@@ -201,42 +202,6 @@ function GroupDeleteDialog({
     />
   );
 }
-
-function GroupActionsTrigger({ group }: Readonly<{ group: AccessGroupListRow }>): JSX.Element {
-  return (
-    <DropdownMenuTrigger asChild>
-      <Button
-        aria-label={`Open actions for ${group.name}`}
-        className="size-7 px-0 text-muted-foreground"
-        size="sm"
-        type="button"
-        variant="secondary"
-      >
-        <MoreHorizontal className="size-3.5" />
-      </Button>
-    </DropdownMenuTrigger>
-  );
-}
-
-function GroupRemoveMenuItem({
-  isPending,
-  onSelect,
-}: Readonly<{ isPending: boolean; onSelect: () => void }>): JSX.Element {
-  return (
-    <DropdownMenuItem
-      className="text-red-700 focus:text-red-800"
-      disabled={isPending}
-      onSelect={(): void => {
-        if (!isPending) {
-          onSelect();
-        }
-      }}
-    >
-      {isPending ? 'Removing...' : 'Remove'}
-    </DropdownMenuItem>
-  );
-}
-
 function useGroupDeleteMutation(
   group: AccessGroupListRow,
   setErrorMessage: (value: string | undefined) => void,
@@ -253,8 +218,4 @@ function useGroupDeleteMutation(
       }
     },
   });
-}
-
-function readGroupDescription(group: AccessGroupListRow): string {
-  return group.description === null || group.description === '' ? 'No description' : group.description;
 }

@@ -1,5 +1,5 @@
-import type { AccessRoleListRow } from '@compartment/contracts/browser';
-import { type JSX, useState } from 'react';
+import type { AccessRoleListRow, AccessRoleSummary } from '@compartment/contracts/browser';
+import { type JSX } from 'react';
 import {
   BrowserConsoleShell,
   browserConsolePageClassName,
@@ -9,8 +9,10 @@ import {
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import { ServerSearch } from '../../components/server-search';
 import { ServerTableFrame } from '../../components/server-table';
+import { ServerTableControls } from '../../components/server-table-controls';
 import { ToolbarPrimaryActionButton } from '../../components/toolbar-primary-action';
 import { ShieldPlus } from '../../components/ui/icons';
+import { readBrowserTablePageSize } from '../../lib/server-table-query';
 import { AccessDrawerShell, AccessPageHeader } from '../access/access-ui';
 import { canManageBrowserRoles } from '../console/console-access';
 import { BrowserConsoleOrganizationContextPanel } from '../console/console-organization-context-panel';
@@ -30,7 +32,6 @@ import {
 import {
   buildRolesOrganizationHref,
   buildRolesPageHref,
-  readRoleSearchText,
   type RolesBackLink,
   readRolesBackLink,
 } from './roles-page.query';
@@ -40,27 +41,20 @@ import { RolesTable } from './roles-page.table';
 interface RolesPageContentProps {
   state: RolesPageState;
 }
-interface RolesPageBodyProps {
-  searchQuery: string;
-  setSearchQuery: (value: string) => void;
-  state: RolesPageState;
-}
+
 interface RolesPageHeaderProps {
   state: RolesPageState;
 }
+
 interface CreateRoleButtonProps {
   state: RolesPageState;
 }
-interface RolesPageToolbarProps {
-  searchQuery: string;
-  setSearchQuery: (value: string) => void;
-}
+
 interface RolesTableSectionProps {
-  roles: AccessRoleListRow[];
   state: RolesPageState;
 }
+
 export function RolesPageContent({ state }: Readonly<RolesPageContentProps>): JSX.Element {
-  const [searchQuery, setSearchQuery] = useState<string>('');
   return (
     <BrowserConsoleShell
       currentOrganizationPermissions={state.data.currentOrganizationPermissions}
@@ -71,7 +65,7 @@ export function RolesPageContent({ state }: Readonly<RolesPageContentProps>): JS
       projectCount={state.data.projectCount}
       selectedOrganizationSlug={state.data.selectedOrganizationSlug}
     >
-      <RolesPageBody searchQuery={searchQuery} setSearchQuery={setSearchQuery} state={state} />
+      <RolesPageBody state={state} />
       {state.data.organizationContext.kind === 'selected' ? <RolesPageDrawer state={state} /> : null}
     </BrowserConsoleShell>
   );
@@ -84,9 +78,7 @@ function RolesPageDrawer({ state }: Readonly<RolesPageContentProps>): JSX.Elemen
     return null;
   }
   if (state.data.mode === 'detail') {
-    const role: AccessRoleListRow | undefined = state.data.roles.find(
-      (candidate: AccessRoleListRow): boolean => candidate.id === state.data.roleId,
-    );
+    const role: AccessRoleListRow | undefined = readSelectedDrawerRole(state);
     if (role === undefined) {
       return null;
     }
@@ -97,6 +89,27 @@ function RolesPageDrawer({ state }: Readonly<RolesPageContentProps>): JSX.Elemen
     return null;
   }
   return renderRoleEditorDrawer(editorState, mutation, state);
+}
+
+function readSelectedDrawerRole(state: RolesPageState): AccessRoleListRow | undefined {
+  const detailRole: AccessRoleSummary | null = state.data.role;
+  if (detailRole === null) {
+    return undefined;
+  }
+
+  const pageRole: AccessRoleListRow | undefined = state.data.roles.find(
+    (candidate: AccessRoleListRow): boolean => candidate.id === detailRole.id,
+  );
+  if (pageRole !== undefined) {
+    return pageRole;
+  }
+
+  return {
+    ...detailRole,
+    assignmentCount: 0,
+    groupCount: 0,
+    principalCount: 0,
+  };
 }
 
 function renderRoleDetailDrawer(role: AccessRoleListRow, state: RolesPageState): JSX.Element {
@@ -130,24 +143,20 @@ function renderRoleEditorDrawer(
   );
 }
 
-function RolesPageBody({ searchQuery, setSearchQuery, state }: Readonly<RolesPageBodyProps>): JSX.Element {
+function RolesPageBody({ state }: Readonly<RolesPageContentProps>): JSX.Element {
   return (
     <div className={browserConsolePageClassName}>
       <RolesPageHeader state={state} />
       <div className={browserConsoleListPageBodyClassName}>
         <DismissibleAlert message={state.data.noticeMessage} variant="notice" />
         <DismissibleAlert message={state.data.errorMessage} variant="error" />
-        {renderRolesPageContent(searchQuery, setSearchQuery, state)}
+        {renderRolesPageContent(state)}
       </div>
     </div>
   );
 }
 
-function renderRolesPageContent(
-  searchQuery: string,
-  setSearchQuery: (value: string) => void,
-  state: RolesPageState,
-): JSX.Element {
+function renderRolesPageContent(state: RolesPageState): JSX.Element {
   if (state.data.organizationContext.kind !== 'selected') {
     return (
       <BrowserConsoleOrganizationContextPanel
@@ -159,20 +168,10 @@ function renderRolesPageContent(
     );
   }
 
-  return renderSelectedRolesPageContent(searchQuery, setSearchQuery, state);
-}
-
-function renderSelectedRolesPageContent(
-  searchQuery: string,
-  setSearchQuery: (value: string) => void,
-  state: RolesPageState,
-): JSX.Element {
-  const visibleRoles: AccessRoleListRow[] = readVisibleRoles(state.data.roles, searchQuery);
-
   return (
     <>
-      <RolesPageToolbar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
-      <RolesTableSection roles={visibleRoles} state={state} />
+      <RolesPageToolbar state={state} />
+      <RolesTableSection state={state} />
     </>
   );
 }
@@ -190,16 +189,18 @@ function RolesPageHeader({ state }: Readonly<RolesPageHeaderProps>): JSX.Element
   );
 }
 
-function RolesPageToolbar({ searchQuery, setSearchQuery }: Readonly<RolesPageToolbarProps>): JSX.Element {
+function RolesPageToolbar({ state }: Readonly<RolesPageContentProps>): JSX.Element {
   return (
     <header>
       <ServerSearch
         className="w-full max-w-none"
         hasLeadingSearchIcon
         label="Search roles"
-        onSearch={setSearchQuery}
+        onSearch={(searchQuery: string): void => {
+          state.onNavigate(buildRolesPageHref(state.data, { page: 1, searchQuery }));
+        }}
         placeholder="Search roles"
-        value={searchQuery}
+        value={state.data.searchQuery}
       />
     </header>
   );
@@ -213,7 +214,7 @@ function CreateRoleButton({ state }: Readonly<CreateRoleButtonProps>): JSX.Eleme
     <ToolbarPrimaryActionButton
       icon={ShieldPlus}
       onClick={(): void => {
-        state.onNavigate(buildRolesPageHref(state.data, { mode: 'create' }));
+        state.onNavigate(buildRolesPageHref(state.data, { mode: 'create', roleId: null }));
       }}
       type="button"
       variant="accent"
@@ -223,10 +224,24 @@ function CreateRoleButton({ state }: Readonly<CreateRoleButtonProps>): JSX.Eleme
   );
 }
 
-function RolesTableSection({ roles, state }: Readonly<RolesTableSectionProps>): JSX.Element {
+function RolesTableSection({ state }: Readonly<RolesTableSectionProps>): JSX.Element {
   return (
     <ServerTableFrame>
-      <RolesTable roles={roles} state={state} />
+      <RolesTable state={state} />
+      <ServerTableControls
+        currentPage={state.data.page}
+        itemLabel="role"
+        nextPageHref={readNextPageHref(state)}
+        onNavigate={state.onNavigate}
+        onPageSizeChange={(value: string): void => {
+          state.onNavigate(buildRolesPageHref(state.data, { page: 1, pageSize: readBrowserTablePageSize(value) }));
+        }}
+        pageSize={String(state.data.pageSize)}
+        pageSizeOptions={state.data.pageSizeOptions.map(String)}
+        previousPageHref={readPreviousPageHref(state)}
+        totalItems={state.data.totalRoles}
+        totalPages={state.data.totalPages}
+      />
     </ServerTableFrame>
   );
 }
@@ -242,7 +257,10 @@ function readOrganizationControl(state: RolesPageState): JSX.Element | null {
   );
 }
 
-function readVisibleRoles(roles: AccessRoleListRow[], searchQuery: string): AccessRoleListRow[] {
-  const normalizedSearchQuery: string = searchQuery.trim().toLowerCase();
-  return roles.filter((role: AccessRoleListRow): boolean => readRoleSearchText(role).includes(normalizedSearchQuery));
+function readNextPageHref(state: RolesPageState): string | null {
+  return state.data.page < state.data.totalPages ? buildRolesPageHref(state.data, { page: state.data.page + 1 }) : null;
+}
+
+function readPreviousPageHref(state: RolesPageState): string | null {
+  return state.data.page > 1 ? buildRolesPageHref(state.data, { page: state.data.page - 1 }) : null;
 }

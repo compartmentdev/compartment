@@ -159,12 +159,20 @@ function createGroupDetailPageState(currentOrganizationPermissions: PermissionKe
     noticeMessage: undefined,
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [createOrganizationOption()],
+    page: 1,
+    pageSize: 10,
+    pageSizeOptions: [10, 20, 50],
     principalEmail: 'admin@example.com',
     roles: [createRole()],
+    searchQuery: '',
     scopeProjects: [],
     selectedGroupId: group.id,
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'name',
+    sortDirection: 'asc',
+    totalGroups: 1,
+    totalPages: 1,
   };
 
   return {
@@ -203,13 +211,21 @@ function createRolesPageState(currentOrganizationPermissions: PermissionKey[]): 
     mode: 'detail',
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [createOrganizationOption()],
+    page: 1,
+    pageSize: 10,
+    pageSizeOptions: [10, 20, 50],
     permissionKeys: role.permissionKeys,
     principalEmail: 'admin@example.com',
     role,
     roleId: role.id,
     roles: [role],
+    searchQuery: '',
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'name',
+    sortDirection: 'asc',
+    totalPages: 1,
+    totalRoles: 1,
   };
 
   return {

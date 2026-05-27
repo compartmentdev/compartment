@@ -83,9 +83,11 @@ describe('browser audit events page', (): void => {
       actor: 'admin@example.com',
       eventType: 'organization.user.invited',
       from: new Date('2026-05-14T10:00').toISOString(),
+      orderBy: 'occurredAt',
       page: '2',
       perPage: '20',
       project: 'prj_123',
+      sort: 'desc',
       targetType: 'user',
       to: new Date('2026-05-14T12:30').toISOString(),
     });
@@ -196,6 +198,8 @@ function createAuditEventsPageResult(options: CreateAuditEventsPageResultOptions
     projectCount: 1,
     selectedOrganizationSlug: options.selectedOrganizationSlug ?? 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'occurredAt',
+    sortDirection: 'desc',
     totalEvents: 1,
     totalPages: 1,
   };

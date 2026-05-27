@@ -103,6 +103,26 @@ export async function deleteGroupAssignmentsWithExecutor(
 export async function listAccessAssignmentSummaries(organizationId: string): Promise<AccessAssignmentSummaryRow[]> {
   return await readAllAccessAssignmentSummaryRows(organizationId);
 }
+
+export async function listGroupAccessAssignmentSummaries(
+  organizationId: string,
+  groupIds: readonly string[],
+): Promise<AccessAssignmentSummaryRow[]> {
+  if (groupIds.length === 0) {
+    return [];
+  }
+
+  return await readAccessAssignmentSummaryQueryRows(
+    and(
+      eq(accessAssignments.organizationId, organizationId),
+      eq(accessAssignments.subjectType, 'group'),
+      inArray(accessAssignments.subjectId, [...groupIds]),
+      buildPresentAccessAssignmentSubjectFilter(),
+    )!,
+    [asc(accessRoles.name), asc(accessAssignments.scopeType), asc(accessAssignments.createdAt)],
+  );
+}
+
 export async function listDirectAccessAssignmentSummariesForPrincipal(
   organizationId: string,
   principalId: string,

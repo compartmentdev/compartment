@@ -1,3 +1,4 @@
+import type { AccessRoleListRow } from '@compartment/contracts/browser';
 import type { ShouldRevalidateFunctionArgs } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type { BrowserSoftNavigateHandler } from '../src/browser-soft-navigation';
@@ -108,18 +109,27 @@ function createRolesPageState(overrides: Partial<BrowserRolesPageResult> = {}): 
 }
 
 function createRolesPageResult(overrides: Partial<BrowserRolesPageResult> = {}): BrowserRolesPageResult {
+  const roles: AccessRoleListRow[] = overrides.roles ?? [];
   return {
     currentOrganizationPermissions: ['organization.role.read'],
     mode: 'list',
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [createOrganizationOption()],
+    page: 1,
+    pageSize: 10,
+    pageSizeOptions: [10, 20, 50],
     permissionKeys: ['project.read'],
     principalEmail: 'admin@example.com',
     role: null,
     roleId: null,
-    roles: [],
+    roles,
+    searchQuery: '',
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'name',
+    sortDirection: 'asc',
+    totalPages: 1,
+    totalRoles: roles.length,
     ...overrides,
   };
 }

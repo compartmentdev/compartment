@@ -163,19 +163,24 @@ function appendOptionalDefaultedParam(
   }
 }
 
-function appendTextParam(searchParams: URLSearchParams, name: string, value: string): void {
+export function appendTextParam(searchParams: URLSearchParams, name: string, value: string): void {
   if (hasText(value)) {
     searchParams.set(name, value);
   }
 }
 
-function appendDefaultedParam(searchParams: URLSearchParams, name: string, value: string, defaultValue: string): void {
+export function appendDefaultedParam(
+  searchParams: URLSearchParams,
+  name: string,
+  value: string,
+  defaultValue: string,
+): void {
   if (value !== defaultValue) {
     searchParams.set(name, value);
   }
 }
 
-function appendDefaultedNumberParam(
+export function appendDefaultedNumberParam(
   searchParams: URLSearchParams,
   name: string,
   value: number,

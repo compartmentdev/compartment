@@ -1,6 +1,8 @@
 import {
   accessAssignmentScopeOptionsResponseSchema,
+  accessGroupListOptionsResponseSchema,
   accessGroupListResponseSchema,
+  accessRoleListOptionsResponseSchema,
   accessRoleListResponseSchema,
   compartmentAssignmentScopeOptionsPathname,
   compartmentGroupsPathname,
@@ -8,7 +10,9 @@ import {
   userAccessDetailResponseSchema,
   userListResponseSchema,
   type AccessAssignmentScopeOptionsResponse,
+  type AccessGroupListOptionsResponse,
   type AccessGroupListResponse,
+  type AccessRoleListOptionsResponse,
   type AccessRoleListResponse,
   type PermissionKey,
   type UserAccessDetailResponse,
@@ -181,20 +185,32 @@ export async function fetchRolesPageResponse(
   organizationSlug: string,
   options: BrowserApiRequestOptions = {},
 ): Promise<AccessRoleListResponse> {
-  return await requestBrowserApi<AccessRoleListResponse>(compartmentRolesPathname, accessRoleListResponseSchema, {
-    currentOrganization: organizationSlug,
-    signal: options.signal,
-  });
+  const response: AccessRoleListOptionsResponse = await requestBrowserApi(
+    `${compartmentRolesPathname}?detail=options`,
+    accessRoleListOptionsResponseSchema,
+    {
+      currentOrganization: organizationSlug,
+      signal: options.signal,
+    },
+  );
+
+  return accessRoleListResponseSchema.parse({ roles: response.roles });
 }
 
 export async function fetchGroupsPageResponse(
   organizationSlug: string,
   options: BrowserApiRequestOptions = {},
 ): Promise<AccessGroupListResponse> {
-  return await requestBrowserApi<AccessGroupListResponse>(compartmentGroupsPathname, accessGroupListResponseSchema, {
-    currentOrganization: organizationSlug,
-    signal: options.signal,
-  });
+  const response: AccessGroupListOptionsResponse = await requestBrowserApi(
+    `${compartmentGroupsPathname}?detail=options`,
+    accessGroupListOptionsResponseSchema,
+    {
+      currentOrganization: organizationSlug,
+      signal: options.signal,
+    },
+  );
+
+  return accessGroupListResponseSchema.parse({ groups: response.groups });
 }
 
 export async function fetchScopeOptionsResponse(

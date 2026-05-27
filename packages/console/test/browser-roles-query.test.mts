@@ -14,7 +14,7 @@ describe('browser roles hrefs', (): void => {
           roleId: 'role_123',
         },
       ),
-    ).toBe('/orgs/acme-dev/roles?mode=edit&roleId=role_123&returnTo=%2Forgs%2Facme-dev%2Fusers%3Fpage%3D2');
+    ).toBe('/orgs/acme-dev/roles?roleId=role_123&mode=edit&returnTo=%2Forgs%2Facme-dev%2Fusers%3Fpage%3D2');
   });
 
   it('derives users and groups back links from validated return targets', (): void => {

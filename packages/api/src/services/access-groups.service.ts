@@ -6,6 +6,7 @@ import {
   createUserNotFoundError,
 } from '../errors/api-business-error';
 import { findOrganizationUserByEmailWithExecutor } from '../queries/organization-users.query';
+import type { AccessGroupListPageRow, AccessGroupsPageResult } from '../queries/rbac-groups-list.query.types';
 import {
   addAccessGroupMembershipWithExecutor,
   createAccessGroupWithExecutor,
@@ -13,11 +14,16 @@ import {
   deleteAccessGroupWithExecutor,
   findAccessGroupById,
   findAccessGroupByIdWithExecutor,
+  listAccessGroupsPage,
   listAccessGroupMembers,
   listAccessGroups,
   updateAccessGroupWithExecutor,
 } from '../queries/rbac-groups.query';
-import { deleteGroupAssignmentsWithExecutor, listAccessAssignmentSummaries } from '../queries/rbac-assignments.query';
+import {
+  deleteGroupAssignmentsWithExecutor,
+  listAccessAssignmentSummaries,
+  listGroupAccessAssignmentSummaries,
+} from '../queries/rbac-assignments.query';
 import type {
   AccessAssignmentSummaryRow,
   AccessGroupMemberRow,
@@ -33,6 +39,8 @@ import type {
   AccessGroupMemberResult,
   AccessGroupResult,
   AddOrganizationAccessGroupMemberInput,
+  ListOrganizationAccessGroupsPageInput,
+  OrganizationAccessGroupsPageResult,
 } from './access-groups.service.types';
 import { runOrganizationAccessMutationTransaction } from './rbac-admin-invariant.service';
 
@@ -45,6 +53,26 @@ export async function listOrganizationAccessGroups(organizationId: string): Prom
   return groups.map(
     (group: AccessGroupRow): AccessGroupListRowResult => toAccessGroupListRow(group, summariesByGroupId.get(group.id)),
   );
+}
+
+export async function listOrganizationAccessGroupsPage(
+  input: ListOrganizationAccessGroupsPageInput,
+): Promise<OrganizationAccessGroupsPageResult> {
+  const pageResult: AccessGroupsPageResult = await readOrganizationAccessGroupsPage(input);
+  const summariesByGroupId: ReadonlyMap<string, GroupListSummary> = await buildGroupListSummaries(
+    await listGroupAccessAssignmentSummaries(
+      input.organizationId,
+      pageResult.groups.map((group: AccessGroupListPageRow): string => group.id),
+    ),
+  );
+
+  return {
+    groups: pageResult.groups.map(
+      (group: AccessGroupListPageRow): AccessGroupListRowResult =>
+        toAccessGroupListRow(group, summariesByGroupId.get(group.id)),
+    ),
+    pagination: pageResult.pagination,
+  };
 }
 
 export async function readOrganizationAccessGroup(organizationId: string, groupId: string): Promise<AccessGroupResult> {
@@ -230,4 +258,17 @@ function toAccessGroupListRow(group: AccessGroupRow, summary: GroupListSummary |
     assignedRoleNames: summary?.assignedRoleNames ?? [],
     assignmentScopeLabels: summary?.assignmentScopeLabels ?? [],
   };
+}
+
+async function readOrganizationAccessGroupsPage(
+  input: ListOrganizationAccessGroupsPageInput,
+): Promise<AccessGroupsPageResult> {
+  return await listAccessGroupsPage({
+    organizationId: input.organizationId,
+    orderBy: input.orderBy ?? 'name',
+    page: input.page ?? 1,
+    perPage: input.perPage ?? 100,
+    search: input.search,
+    sort: input.sort ?? 'asc',
+  });
 }

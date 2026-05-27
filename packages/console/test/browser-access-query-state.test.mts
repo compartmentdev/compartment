@@ -1,9 +1,10 @@
 import * as React from 'react';
 import { QueryClientProvider, type QueryKey } from '@tanstack/react-query';
 import {
+  type AccessGroupListPageResponse,
   type AccessGroupListRow,
   compartmentCurrentOrganizationHeaderName,
-  type AccessRoleListResponse,
+  type AccessRoleListPageResponse,
   type AccessRoleListRow,
   type AccessRoleResponse,
   type PermissionKey,
@@ -19,15 +20,19 @@ import type { BrowserRolesPageResult } from '../src/services/browser-roles.servi
 import type { BrowserUsersPageResult, BrowserUsersUser } from '../src/services/browser-users.service.types';
 import {
   readAccessGroupsListQueryKey,
+  readAccessGroupsOptionsQueryKey,
   readAccessGroupsOrganizationQueryKey,
   readAccessRolesListQueryKey,
+  readAccessRolesOptionsQueryKey,
   readAccessRolesOrganizationQueryKey,
   readAccessUsersListQueryKey,
   readAccessUsersOrganizationQueryKey,
 } from '../src/features/access/access-query';
 import { readBrowserConsoleWhoAmIQueryKey } from '../src/features/console/console-query';
 import { readGroupDeleteConfirmationSpec } from '../src/features/groups/groups-page.actions';
+import { invalidateGroupsAccessQueries } from '../src/features/groups/groups-query-invalidate';
 import { handleRoleDelete, readRoleDeleteConfirmationSpec } from '../src/features/roles/roles-page.actions';
+import { invalidateUserAccessQueries } from '../src/features/users/users-query-invalidation';
 import { readUserRemoveConfirmationSpec } from '../src/features/users/user-actions';
 import { useGroupsPageQueryData } from '../src/features/groups/groups-query-state';
 import { useRolesPageQueryData } from '../src/features/roles/roles-query-state';
@@ -85,12 +90,14 @@ describe('browser access query state', (): void => {
   });
 
   it('keeps groups list data scoped to the selected organization slug', (): void => {
-    browserQueryClient.setQueryData(readAccessGroupsListQueryKey('beta-dev'), {
-      groups: [createGroupListRow('group_beta', 'Beta group')],
-    });
-    browserQueryClient.setQueryData(readAccessGroupsListQueryKey('acme-dev'), {
-      groups: [createGroupListRow('group_acme', 'Acme group')],
-    });
+    browserQueryClient.setQueryData(
+      readAccessGroupsListQueryKey('beta-dev', 1, 10, '', 'name', 'asc'),
+      createGroupListPageResponse('group_beta', 'Beta group'),
+    );
+    browserQueryClient.setQueryData(
+      readAccessGroupsListQueryKey('acme-dev', 1, 10, '', 'name', 'asc'),
+      createGroupListPageResponse('group_acme', 'Acme group'),
+    );
 
     const markup: string = renderWithBrowserQueryClient(
       React.createElement(GroupsQueryProbe, {
@@ -124,6 +131,25 @@ describe('browser access query state', (): void => {
     expect(markup).toContain('New group');
     expect(markup).not.toContain('group_old');
     expect(markup).not.toContain('Old group');
+  });
+
+  it('keeps a selected group detail open when the selected group is outside the current page slice', (): void => {
+    const selectedGroup: AccessGroupListRow = createGroupListRow('group_selected', 'Selected group');
+
+    const markup: string = renderWithBrowserQueryClient(
+      React.createElement(GroupsSelectionProbe, {
+        data: createGroupsPageResult({
+          groups: [createGroupListRow('group_page', 'Paged group')],
+          mode: 'detail',
+          selectedGroup: selectedGroup,
+          selectedGroupId: selectedGroup.id,
+        }),
+      }),
+    );
+
+    expect(markup).toContain('detail');
+    expect(markup).toContain('group_selected');
+    expect(markup).toContain('Selected group');
   });
 
   it('keeps groups unavailable organization states off stale empty-slug access cache entries', (): void => {
@@ -173,12 +199,14 @@ describe('browser access query state', (): void => {
   });
 
   it('keeps roles list data scoped to the selected organization slug', (): void => {
-    browserQueryClient.setQueryData(readAccessRolesListQueryKey('beta-dev'), {
-      roles: [createRoleListRow('role_beta', 'Beta role')],
-    });
-    browserQueryClient.setQueryData(readAccessRolesListQueryKey('acme-dev'), {
-      roles: [createRoleListRow('role_acme', 'Acme role')],
-    });
+    browserQueryClient.setQueryData(
+      readAccessRolesListQueryKey('beta-dev', 1, 10, '', 'name', 'asc'),
+      createRoleListPageResponse('role_beta', 'Beta role'),
+    );
+    browserQueryClient.setQueryData(
+      readAccessRolesListQueryKey('acme-dev', 1, 10, '', 'name', 'asc'),
+      createRoleListPageResponse('role_acme', 'Acme role'),
+    );
 
     const markup: string = renderWithBrowserQueryClient(
       React.createElement(RolesQueryProbe, {
@@ -191,11 +219,36 @@ describe('browser access query state', (): void => {
     expect(markup).not.toContain('Loader role');
   });
 
+  it('keeps a selected role detail open when the selected role is outside the current page slice', (): void => {
+    const selectedRole: AccessRoleListRow = createRoleListRow('role_selected', 'Selected role');
+
+    const markup: string = renderWithBrowserQueryClient(
+      React.createElement(RolesSelectionProbe, {
+        data: createRolesPageResult({
+          mode: 'detail',
+          role: {
+            description: selectedRole.description,
+            id: selectedRole.id,
+            kind: selectedRole.kind,
+            name: selectedRole.name,
+            permissionKeys: selectedRole.permissionKeys,
+          },
+          roleId: selectedRole.id,
+          roles: [createRoleListRow('role_page', 'Paged role')],
+        }),
+      }),
+    );
+
+    expect(markup).toContain('detail');
+    expect(markup).toContain('role_selected');
+    expect(markup).toContain('Selected role');
+  });
+
   it('invalidates role mutations inside the selected organization only', async (): Promise<void> => {
-    const acmeRolesListKey: QueryKey = readAccessRolesListQueryKey('acme-dev');
-    const betaRolesListKey: QueryKey = readAccessRolesListQueryKey('beta-dev');
-    browserQueryClient.setQueryData(acmeRolesListKey, createRoleListResponse('role_acme', 'Acme role'));
-    browserQueryClient.setQueryData(betaRolesListKey, createRoleListResponse('role_beta', 'Beta role'));
+    const acmeRolesListKey: QueryKey = readAccessRolesListQueryKey('acme-dev', 1, 10, '', 'name', 'asc');
+    const betaRolesListKey: QueryKey = readAccessRolesListQueryKey('beta-dev', 1, 10, '', 'name', 'asc');
+    browserQueryClient.setQueryData(acmeRolesListKey, createRoleListPageResponse('role_acme', 'Acme role'));
+    browserQueryClient.setQueryData(betaRolesListKey, createRoleListPageResponse('role_beta', 'Beta role'));
     browserQueryClient.setQueryData(readAccessRolesOrganizationQueryKey('acme-dev'), { stale: false });
     browserQueryClient.setQueryData(readAccessGroupsOrganizationQueryKey('acme-dev'), { stale: false });
     browserQueryClient.setQueryData(readAccessUsersOrganizationQueryKey('acme-dev'), { stale: false });
@@ -217,6 +270,30 @@ describe('browser access query state', (): void => {
     expect(new Headers(firstCall[1]?.headers).get(compartmentCurrentOrganizationHeaderName)).toBe('acme-dev');
     expect(browserQueryClient.getQueryState(acmeRolesListKey)?.isInvalidated).toBe(true);
     expect(browserQueryClient.getQueryState(betaRolesListKey)?.isInvalidated).toBe(false);
+  });
+
+  it('invalidates role and group option caches after user access mutations', async (): Promise<void> => {
+    const rolesOptionsKey: QueryKey = readAccessRolesOptionsQueryKey('acme-dev');
+    const groupsOptionsKey: QueryKey = readAccessGroupsOptionsQueryKey('acme-dev');
+    browserQueryClient.setQueryData(rolesOptionsKey, { stale: false });
+    browserQueryClient.setQueryData(groupsOptionsKey, { stale: false });
+
+    await invalidateUserAccessQueries(createUsersPageResult());
+
+    expect(browserQueryClient.getQueryState(rolesOptionsKey)?.isInvalidated).toBe(true);
+    expect(browserQueryClient.getQueryState(groupsOptionsKey)?.isInvalidated).toBe(true);
+  });
+
+  it('invalidates roles together with groups after group-side mutations', async (): Promise<void> => {
+    const groupsKey: QueryKey = readAccessGroupsOrganizationQueryKey('acme-dev');
+    const rolesKey: QueryKey = readAccessRolesOrganizationQueryKey('acme-dev');
+    browserQueryClient.setQueryData(groupsKey, { stale: false });
+    browserQueryClient.setQueryData(rolesKey, { stale: false });
+
+    await invalidateGroupsAccessQueries(createGroupsPageResult());
+
+    expect(browserQueryClient.getQueryState(groupsKey)?.isInvalidated).toBe(true);
+    expect(browserQueryClient.getQueryState(rolesKey)?.isInvalidated).toBe(true);
   });
 
   it('renders typed confirmation copy for role, group, and user destructive actions', (): void => {
@@ -255,10 +332,28 @@ function GroupsQueryStateProbe({ data }: Readonly<{ data: BrowserGroupsPageResul
   );
 }
 
+function GroupsSelectionProbe({ data }: Readonly<{ data: BrowserGroupsPageResult }>): React.ReactElement {
+  const queryData: BrowserGroupsPageResult = useGroupsPageQueryData(data);
+  return React.createElement(
+    'output',
+    null,
+    `${queryData.mode}:${queryData.selectedGroupId ?? 'none'}:${queryData.selectedGroup?.name ?? 'none'}`,
+  );
+}
+
 function RolesQueryProbe({ data }: Readonly<{ data: BrowserRolesPageResult }>): React.ReactElement {
   const queryData: BrowserRolesPageResult = useRolesPageQueryData(data);
   const roleNames: string = queryData.roles.map((role: AccessRoleListRow): string => role.name).join(',');
   return React.createElement('output', null, roleNames === '' ? 'empty' : roleNames);
+}
+
+function RolesSelectionProbe({ data }: Readonly<{ data: BrowserRolesPageResult }>): React.ReactElement {
+  const queryData: BrowserRolesPageResult = useRolesPageQueryData(data);
+  return React.createElement(
+    'output',
+    null,
+    `${queryData.mode}:${queryData.roleId ?? 'none'}:${queryData.role?.name ?? 'none'}`,
+  );
 }
 
 function createUsersPageResult(overrides: Partial<BrowserUsersPageResult> = {}): BrowserUsersPageResult {
@@ -290,39 +385,57 @@ function createUsersPageResult(overrides: Partial<BrowserUsersPageResult> = {}):
 }
 
 function createRolesPageResult(overrides: Partial<BrowserRolesPageResult> = {}): BrowserRolesPageResult {
+  const roles: AccessRoleListRow[] = overrides.roles ?? [createRoleListRow('role_loader', 'Loader role')];
   return {
     currentOrganizationPermissions: createAccessManagementPermissions(),
     mode: 'list',
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [{ id: 'org_123', name: 'Acme Dev', slug: 'acme-dev' }],
+    page: 1,
+    pageSize: 10,
+    pageSizeOptions: [10, 20, 50],
     permissionKeys: ['project.read'],
     principalEmail: 'admin@example.com',
     projectCount: 1,
     role: null,
     roleId: null,
-    roles: [createRoleListRow('role_loader', 'Loader role')],
+    roles,
+    searchQuery: '',
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'name',
+    sortDirection: 'asc',
+    totalPages: 1,
+    totalRoles: roles.length,
     ...overrides,
   };
 }
 
 function createGroupsPageResult(overrides: Partial<BrowserGroupsPageResult> = {}): BrowserGroupsPageResult {
+  const groups: AccessGroupListRow[] = overrides.groups ?? [createGroupListRow('group_loader', 'Loader group')];
   return {
     assignments: [],
     currentOrganizationPermissions: createAccessManagementPermissions(),
-    groups: [createGroupListRow('group_loader', 'Loader group')],
+    groups,
     members: [],
     mode: 'list',
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [{ id: 'org_123', name: 'Acme Dev', slug: 'acme-dev' }],
+    page: 1,
+    pageSize: 10,
+    pageSizeOptions: [10, 20, 50],
     principalEmail: 'admin@example.com',
     projectCount: 1,
     roles: [],
+    searchQuery: '',
     scopeProjects: [],
     selectedGroupId: null,
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'name',
+    sortDirection: 'asc',
+    totalGroups: groups.length,
+    totalPages: 1,
     ...overrides,
   };
 }
@@ -365,6 +478,19 @@ function createGroupListRow(id: string, name: string): AccessGroupListRow {
   };
 }
 
+function createGroupListPageResponse(id: string, name: string): AccessGroupListPageResponse {
+  return {
+    detail: 'list',
+    groups: [createGroupListRow(id, name)],
+    pagination: {
+      page: 1,
+      perPage: 10,
+      totalItems: 1,
+      totalPages: 1,
+    },
+  };
+}
+
 function createUser(email: string): BrowserUsersUser {
   return {
     access: 'allowed',
@@ -380,8 +506,17 @@ function createUser(email: string): BrowserUsersUser {
   };
 }
 
-function createRoleListResponse(id: string, name: string): AccessRoleListResponse {
-  return { roles: [createRoleListRow(id, name)] };
+function createRoleListPageResponse(id: string, name: string): AccessRoleListPageResponse {
+  return {
+    detail: 'list',
+    pagination: {
+      page: 1,
+      perPage: 10,
+      totalItems: 1,
+      totalPages: 1,
+    },
+    roles: [createRoleListRow(id, name)],
+  };
 }
 
 function createRoleResponse(id: string, name: string): AccessRoleResponse {

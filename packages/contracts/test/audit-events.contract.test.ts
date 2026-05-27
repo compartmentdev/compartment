@@ -88,15 +88,23 @@ describe('audit event contracts', (): void => {
       auditEventListQuerySchema.parse({
         eventType: 'organization.user.invited',
         from: '2026-05-01T00:00:00.000Z',
+        orderBy: 'status',
         page: '2',
         perPage: '25',
+        sort: 'asc',
       }),
     ).toMatchObject({
       eventType: 'organization.user.invited',
+      orderBy: 'status',
       page: 2,
       perPage: 25,
+      sort: 'asc',
     });
-    expect(auditEventExportQuerySchema.parse({ format: 'csv' }).format).toBe('csv');
+    expect(auditEventExportQuerySchema.parse({ format: 'csv', orderBy: 'eventType', sort: 'desc' })).toMatchObject({
+      format: 'csv',
+      orderBy: 'eventType',
+      sort: 'desc',
+    });
   });
 
   it('validates audit retention policy shapes', (): void => {

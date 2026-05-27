@@ -1,4 +1,5 @@
-import type { AddAccessGroupMemberRequest } from '@compartment/contracts';
+import type { AccessGroupListOrderBy, AddAccessGroupMemberRequest, ListSortDirection } from '@compartment/contracts';
+import type { ListPagination } from './list-pagination.service.helpers';
 
 export interface AddOrganizationAccessGroupMemberInput {
   actorPrincipalId: string;
@@ -29,4 +30,18 @@ export interface AccessGroupMemberResult {
 export interface AccessGroupMemberMutationResult {
   changed: boolean;
   members: AccessGroupMemberResult[];
+}
+
+export interface ListOrganizationAccessGroupsPageInput {
+  organizationId: string;
+  orderBy?: AccessGroupListOrderBy | undefined;
+  page?: number | undefined;
+  perPage?: number | undefined;
+  search?: string | undefined;
+  sort?: ListSortDirection | undefined;
+}
+
+export interface OrganizationAccessGroupsPageResult {
+  groups: AccessGroupListRowResult[];
+  pagination: ListPagination;
 }

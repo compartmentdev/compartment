@@ -11,6 +11,8 @@ import type {
   BrowserAuditEventFilters,
   BrowserAuditEventsPageResult,
   BrowserAuditEventsPageSize,
+  BrowserAuditEventsSortBy,
+  BrowserAuditEventsSortDirection,
 } from '../../services/browser-audit-events.service.types';
 import { browserTablePageSizeOptions } from '../../services/browser-table.service.types';
 import { requestBrowserApi } from '../../lib/browser-api';
@@ -27,6 +29,8 @@ interface AuditEventsLoaderQuery {
   filters: BrowserAuditEventFilters;
   page: number;
   pageSize: BrowserAuditEventsPageSize;
+  sortBy: BrowserAuditEventsSortBy;
+  sortDirection: BrowserAuditEventsSortDirection;
 }
 
 export async function loadAuditEventsPageData({ request }: LoaderFunctionArgs): Promise<BrowserAuditEventsPageResult> {
@@ -82,6 +86,8 @@ function readAuditEventsLoaderQuery(searchParams: URLSearchParams): AuditEventsL
     },
     page: readPositiveIntegerSearchParam(searchParams.get('page'), 1),
     pageSize: readBrowserTablePageSize(searchParams.get('pageSize') ?? ''),
+    sortBy: readAuditEventsSortBy(searchParams.get('sortBy')),
+    sortDirection: readAuditEventsSortDirection(searchParams.get('sortDirection')),
   };
 }
 
@@ -119,6 +125,8 @@ function buildAuditEventsPageResult(
     principalEmail: context.principalEmail,
     selectedOrganizationSlug: context.selectedOrganizationSlug,
     showOrganizationSelector: context.showOrganizationSelector,
+    sortBy: query.sortBy,
+    sortDirection: query.sortDirection,
     totalEvents: response.pagination.totalItems,
     totalPages: response.pagination.totalPages,
   };
@@ -140,6 +148,8 @@ function buildEmptyAuditEventsPageResult(
     principalEmail: context.principalEmail,
     selectedOrganizationSlug: null,
     showOrganizationSelector: context.showOrganizationSelector,
+    sortBy: query.sortBy,
+    sortDirection: query.sortDirection,
     totalEvents: 0,
     totalPages: 1,
   };
@@ -160,8 +170,10 @@ async function fetchAuditEventsPageResponse(
 
 function buildAuditEventsListPath(query: AuditEventsLoaderQuery): string {
   const searchParams: URLSearchParams = new URLSearchParams();
+  searchParams.set('orderBy', query.sortBy);
   searchParams.set('page', String(query.page));
   searchParams.set('perPage', String(query.pageSize));
+  searchParams.set('sort', query.sortDirection);
   appendTextParam(searchParams, 'actor', query.filters.actor);
   appendTextParam(searchParams, 'eventType', query.filters.eventType);
   appendApiDateTimeParam(searchParams, 'from', query.filters.from);
@@ -200,4 +212,19 @@ function readAuditEventType(value: string | null): AuditEventType | '' {
   }
 
   return auditEventTypeOptions.includes(value as AuditEventType) ? (value as AuditEventType) : '';
+}
+
+function readAuditEventsSortBy(value: string | null): BrowserAuditEventsSortBy {
+  switch (value) {
+    case 'eventType':
+    case 'status':
+      return value;
+    case null:
+    default:
+      return 'occurredAt';
+  }
+}
+
+function readAuditEventsSortDirection(value: string | null): BrowserAuditEventsSortDirection {
+  return value === 'asc' ? 'asc' : 'desc';
 }

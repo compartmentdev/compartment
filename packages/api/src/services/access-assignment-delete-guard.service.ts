@@ -1,6 +1,6 @@
 import { createSelfAdminMembershipChangeForbiddenError } from '../errors/api-business-error';
 import { hasAccessGroupPrincipalMembershipWithExecutor } from '../queries/rbac-groups.query';
-import { listAccessRolePermissionKeysWithExecutor } from '../queries/rbac-roles.query';
+import { listAccessRolePermissionKeysWithExecutor } from '../queries/rbac-role-permissions.query';
 import type { AccessAssignmentRow, RbacTransaction } from '../queries/rbac.query.types';
 import type { DeleteOrganizationAccessAssignmentInput } from './access-assignments.service.types';
 import { hasOrganizationAdminPathPermissions } from './rbac-admin-path.service';

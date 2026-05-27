@@ -180,12 +180,20 @@ function createGroupsPageResult(description: string | null): BrowserGroupsPageRe
     noticeMessage: undefined,
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [createOrganizationOption()],
+    page: 1,
+    pageSize: 10,
+    pageSizeOptions: [10, 20, 50],
     principalEmail: 'admin@example.com',
     roles: [] satisfies AccessRoleListRow[],
+    searchQuery: '',
     scopeProjects: [],
     selectedGroupId: selectedGroup.id,
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'name',
+    sortDirection: 'asc',
+    totalGroups: 1,
+    totalPages: 1,
   };
 }
 

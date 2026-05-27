@@ -1,40 +1,39 @@
-import { and, asc, eq, inArray, type SQL } from 'drizzle-orm';
-import type { Database } from '../db/client';
-import {
-  accessAssignments,
-  accessGroupMemberships,
-  accessGroups,
-  localCredentials,
-  organizationMemberships,
-  principals,
-} from '../db/schema';
+import type { ListPagination } from '@compartment/contracts';
+import { and, eq, inArray } from 'drizzle-orm';
+import { accessGroupMemberships, accessGroups } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
+import { buildListPagination } from './list-pagination.query';
+import { countAccessGroups, readAccessGroupPageRows } from './rbac-groups-list.query';
+import type { AccessGroupsPageResult, ListAccessGroupsPageInput } from './rbac-groups-list.query.types';
+import {
+  readAccessGroupByIdWithExecutor,
+  readAccessGroupMemberRows,
+  readAccessGroupsWithExecutor,
+  type AccessGroupReader,
+} from './rbac-groups-read.query';
 import type {
   AccessGroupPrincipalMembershipInput,
-  AccessGroupAggregateRow,
-  AccessGroupMemberQueryRow,
   AccessGroupMemberRow,
   AccessGroupRow,
   CreateAccessGroupInput,
   CreateAccessGroupMembershipInput,
   RbacTransaction,
 } from './rbac.query.types';
-import {
-  readAccessGroupAggregateSelection,
-  toAccessGroupMemberRow,
-  toAccessGroupRow,
-} from './rbac-groups.query.helpers';
+import { toAccessGroupMemberRow } from './rbac-groups.query.helpers';
 
 export { listPrincipalGroupCounts } from './rbac-principal-groups.query';
 
-type AggregateRowsPromise = Promise<AccessGroupAggregateRow[]>;
-
-interface AccessGroupAggregateQuery {
-  limit(limit: number): AggregateRowsPromise;
-  orderBy(orderBy: SQL): AggregateRowsPromise;
-}
 export async function listAccessGroups(organizationId: string): Promise<AccessGroupRow[]> {
   return await readAccessGroupsWithExecutor(getApiDatabase(), organizationId);
+}
+
+export async function listAccessGroupsPage(input: ListAccessGroupsPageInput): Promise<AccessGroupsPageResult> {
+  const pagination: ListPagination = await readAccessGroupPagination(input);
+
+  return {
+    groups: await readAccessGroupPageRows({ ...input, page: pagination.page }),
+    pagination,
+  };
 }
 
 export async function findAccessGroupById(
@@ -195,69 +194,12 @@ function requireAccessGroup(group: AccessGroupRow | undefined): AccessGroupRow {
   return group;
 }
 
-type AccessGroupReader = Database | RbacTransaction;
+async function readAccessGroupPagination(input: ListAccessGroupsPageInput): Promise<ListPagination> {
+  const totalItems: number = await countAccessGroups(input.organizationId, input.search);
 
-async function readAccessGroupMemberRows(
-  organizationId: string,
-  groupId: string,
-): Promise<AccessGroupMemberQueryRow[]> {
-  return await getApiDatabase()
-    .select({
-      blockedAt: organizationMemberships.blockedAt,
-      email: principals.email,
-      id: principals.id,
-      passwordHash: localCredentials.passwordHash,
-    })
-    .from(accessGroupMemberships)
-    .innerJoin(accessGroups, eq(accessGroups.id, accessGroupMemberships.groupId))
-    .innerJoin(principals, eq(principals.id, accessGroupMemberships.principalId))
-    .innerJoin(
-      organizationMemberships,
-      and(
-        eq(organizationMemberships.organizationId, accessGroups.organizationId),
-        eq(organizationMemberships.principalId, principals.id),
-      ),
-    )
-    .leftJoin(localCredentials, eq(localCredentials.principalId, principals.id))
-    .where(and(eq(accessGroups.organizationId, organizationId), eq(accessGroupMemberships.groupId, groupId)))
-    .orderBy(asc(principals.email));
-}
-
-async function readAccessGroupsWithExecutor(
-  executor: AccessGroupReader,
-  organizationId: string,
-): Promise<AccessGroupRow[]> {
-  const rows: AccessGroupAggregateRow[] = await readAccessGroupAggregateRows(executor, organizationId);
-  return rows.map(toAccessGroupRow);
-}
-
-async function readAccessGroupByIdWithExecutor(
-  executor: AccessGroupReader,
-  organizationId: string,
-  groupId: string,
-): Promise<AccessGroupRow | undefined> {
-  const rows: AccessGroupAggregateRow[] = await readAccessGroupAggregateRows(executor, organizationId, groupId);
-  return rows[0] === undefined ? undefined : toAccessGroupRow(rows[0]);
-}
-async function readAccessGroupAggregateRows(
-  executor: AccessGroupReader,
-  organizationId: string,
-  groupId?: string,
-): Promise<AccessGroupAggregateRow[]> {
-  const scopedRows: AccessGroupAggregateQuery = executor
-    .select(readAccessGroupAggregateSelection())
-    .from(accessGroups)
-    .leftJoin(accessGroupMemberships, eq(accessGroupMemberships.groupId, accessGroups.id))
-    .leftJoin(
-      accessAssignments,
-      and(eq(accessAssignments.subjectType, 'group'), eq(accessAssignments.subjectId, accessGroups.id)),
-    )
-    .where(
-      groupId === undefined
-        ? eq(accessGroups.organizationId, organizationId)
-        : and(eq(accessGroups.organizationId, organizationId), eq(accessGroups.id, groupId)),
-    )
-    .groupBy(accessGroups.id);
-
-  return groupId === undefined ? await scopedRows.orderBy(asc(accessGroups.name)) : await scopedRows.limit(1);
+  return buildListPagination({
+    page: input.page,
+    perPage: input.perPage,
+    totalItems,
+  });
 }

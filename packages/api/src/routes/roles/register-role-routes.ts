@@ -1,10 +1,19 @@
 import {
+  accessRoleListOptionsResponseSchema,
+  accessRoleListPageResponseSchema,
+  accessRoleListQuerySchema,
   accessRoleListResponseSchema,
+  accessRoleListRouteResponseSchema,
+  type AccessRoleListPageQuery,
+  type AccessRoleListOptionsResponse,
   accessRoleResponseSchema,
   compartmentRolesPathname,
   createAccessRoleRequestSchema,
   updateAccessRoleRequestSchema,
+  type AccessRoleListPageResponse,
+  type AccessRoleListQuery,
   type AccessRoleListResponse,
+  type AccessRoleListRouteResponse,
   type AccessRoleListRow,
   type AccessRoleResponse,
   type AccessRoleSummary,
@@ -21,9 +30,11 @@ import {
   createOrganizationAccessRole,
   deleteOrganizationAccessRole,
   listOrganizationAccessRoles,
+  listOrganizationAccessRolesPage,
   readOrganizationAccessRole,
   updateOrganizationAccessRole,
 } from '../../services/access-roles.service';
+import type { OrganizationAccessRolesPageResult } from '../../services/access-roles.service.types';
 import { synchronizeEdgeAppAccessState } from '../../services/app-access-edge.service';
 import { buildAuditEventForRequest } from '../audit/audit-event-route-context';
 import type { RouteAuditEventInput } from '../audit/audit-event-route-context.types';
@@ -40,10 +51,58 @@ export function registerRoleRoutes(app: ApiApp): void {
 }
 
 async function handleRoleList(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
-  const roles: AccessRoleListRow[] = await listOrganizationAccessRoles(request.currentOrganization.id);
-  const response: AccessRoleListResponse = accessRoleListResponseSchema.parse({ roles });
-
+  const query: AccessRoleListQuery = parseRequestValue(accessRoleListQuerySchema, request.query, 'invalid_role_query');
+  const response: AccessRoleListRouteResponse = await buildRoleListResponse(request, query);
   return await reply.send(response);
+}
+
+async function buildRoleListResponse(
+  request: FastifyRequest,
+  query: AccessRoleListQuery,
+): Promise<AccessRoleListRouteResponse> {
+  if (query.detail === 'list') {
+    return await buildRoleListPageResponse(request, query);
+  }
+  if (query.detail === 'options') {
+    return await buildRoleListOptionsResponse(request);
+  }
+
+  return await buildRoleListLegacyResponse(request);
+}
+
+async function buildRoleListPageResponse(
+  request: FastifyRequest,
+  query: AccessRoleListPageQuery,
+): Promise<AccessRoleListPageResponse> {
+  const page: OrganizationAccessRolesPageResult = await listOrganizationAccessRolesPage({
+    organizationId: request.currentOrganization.id,
+    orderBy: query.orderBy,
+    page: query.page,
+    perPage: query.perPage,
+    search: query.search,
+    sort: query.sort,
+  });
+
+  return accessRoleListPageResponseSchema.parse({
+    detail: 'list',
+    pagination: page.pagination,
+    roles: page.roles,
+  });
+}
+
+async function buildRoleListOptionsResponse(request: FastifyRequest): Promise<AccessRoleListOptionsResponse> {
+  const roles: AccessRoleListRow[] = await listOrganizationAccessRoles(request.currentOrganization.id);
+
+  return accessRoleListOptionsResponseSchema.parse({
+    detail: 'options',
+    roles,
+  });
+}
+
+async function buildRoleListLegacyResponse(request: FastifyRequest): Promise<AccessRoleListResponse> {
+  const roles: AccessRoleListRow[] = await listOrganizationAccessRoles(request.currentOrganization.id);
+
+  return accessRoleListResponseSchema.parse({ roles });
 }
 
 async function handleRoleCreate(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
@@ -129,7 +188,7 @@ function buildRoleAuditEventInput(
 function registerRoleListRoute(app: ApiApp): void {
   app.get(
     compartmentRolesPathname,
-    createCurrentOrganizationRouteResponseOptions('organization.role.read', { 200: accessRoleListResponseSchema }),
+    createCurrentOrganizationRouteResponseOptions('organization.role.read', { 200: accessRoleListRouteResponseSchema }),
     handleRoleList,
   );
 }
