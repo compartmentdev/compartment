@@ -1,5 +1,5 @@
 import { request as createHttpRequest, type ClientRequest, type IncomingMessage, type RequestOptions } from 'node:http';
-import type { JsonValue } from '@compartment/utils';
+import { assertHttpHeaderName, assertHttpHeaderValue, type JsonValue } from '@compartment/utils';
 import { ZodError } from 'zod';
 import type { NodeRuntimeClientOptions } from '../node-runtime-client.types';
 import { NodeRequestError } from './node-request-error';
@@ -57,10 +57,13 @@ function createNodeRequestHeaders(body: string | undefined, internalToken: strin
     headers['Content-Length'] = Buffer.byteLength(body).toString();
   }
 
+  assertNodeRequestHeaders(headers);
   return headers;
 }
 
 async function sendNodeRequest(input: SendNodeRequestInput): Promise<NodeHttpResponse> {
+  assertHttpHeaderValue(input.path, 'node runtime request path');
+
   const options: RequestOptions = {
     headers: input.headers,
     method: input.method,
@@ -69,6 +72,13 @@ async function sendNodeRequest(input: SendNodeRequestInput): Promise<NodeHttpRes
   };
 
   return await readNodeHttpResponse(input, options);
+}
+
+function assertNodeRequestHeaders(headers: Record<string, string>): void {
+  for (const [name, value] of Object.entries(headers)) {
+    assertHttpHeaderName(name, 'node runtime header name');
+    assertHttpHeaderValue(value, `node runtime ${name} header`);
+  }
 }
 
 async function readNodeHttpResponse(input: SendNodeRequestInput, options: RequestOptions): Promise<NodeHttpResponse> {

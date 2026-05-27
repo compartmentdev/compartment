@@ -60,6 +60,40 @@ describe('createNodeRequester transport defaults', (): void => {
 
     expect(request.setTimeout).toHaveBeenCalledWith(330_000, expect.any(Function));
   });
+
+  it('rejects injected internal tokens before creating the transport request', async (): Promise<void> => {
+    const nodeRequester: NodeRequester = createNodeRequester({
+      internalToken: 'worker-secret\r\nX-Injected: yes',
+      nodeSocketPath: '/tmp/compartment/test/node/agent.sock',
+    });
+
+    await expect(
+      nodeRequester({
+        method: 'GET',
+        path: '/healthz',
+        schema: z.object({ ok: z.literal(true) }),
+      }),
+    ).rejects.toThrow(/^Invalid node runtime Authorization header\.$/);
+
+    expect(mocks.createHttpRequest).not.toHaveBeenCalled();
+  });
+
+  it('rejects injected request paths before creating the transport request', async (): Promise<void> => {
+    const nodeRequester: NodeRequester = createNodeRequester({
+      internalToken: 'worker-secret',
+      nodeSocketPath: '/tmp/compartment/test/node/agent.sock',
+    });
+
+    await expect(
+      nodeRequester({
+        method: 'GET',
+        path: '/healthz\r\nX-Injected: yes',
+        schema: z.object({ ok: z.literal(true) }),
+      }),
+    ).rejects.toThrow('Invalid node runtime request path.');
+
+    expect(mocks.createHttpRequest).not.toHaveBeenCalled();
+  });
 });
 
 function createMockClientRequest(): MockClientRequestShape {
