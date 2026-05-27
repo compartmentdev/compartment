@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/compartmentdev/compartment/compare/v0.5.1...v0.6.0) (2026-05-27)
+
+
+### Features
+
+* **console:** clarify direct assignment scope hierarchy ([#61](https://github.com/compartmentdev/compartment/issues/61)) ([fdb3162](https://github.com/compartmentdev/compartment/commit/fdb31621cb46d75d1f9871d4d1aa1c2b97887038))
+* **console:** hide automation users from browser users page ([#60](https://github.com/compartmentdev/compartment/issues/60)) ([effbe8e](https://github.com/compartmentdev/compartment/commit/effbe8e50dd3f71bce2b8909f7340605bee26115))
+* **contracts:** align RBAC list contracts across clients ([#62](https://github.com/compartmentdev/compartment/issues/62)) ([8fd2516](https://github.com/compartmentdev/compartment/commit/8fd25168a492da61f0dea7a6b46cdbbfcd3bd326))
+
+
+### Bug Fixes
+
+* **console:** stabilize access assignment layout ([#64](https://github.com/compartmentdev/compartment/issues/64)) ([1c4bda4](https://github.com/compartmentdev/compartment/commit/1c4bda40cf75acb372959efa618e94ad27c76959))
+
 ## [0.5.1](https://github.com/compartmentdev/compartment/compare/v0.5.0...v0.5.1) (2026-05-27)
 
 
