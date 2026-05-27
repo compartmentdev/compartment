@@ -4,9 +4,11 @@ This document captures the internal publication rules for self-hosted runtime im
 
 GitHub Actions publishes self-hosted images to Docker Hub and GitHub Container Registry as attested OCI indexes. Generated CLI runtime refs use `ghcr.io/compartmentdev` by default; Docker Hub remains available through explicit install and update selection:
 
-- pushes to `main` publish `main` and `sha-<commit>`;
+- successful main CI runs publish immutable `sha-<commit>` images, and update
+  mutable `main` only when that commit is still the current `main`;
 - manual `Publish Self-Hosted Images (SHA)` runs publish only `sha-<commit>` for the selected ref;
-- semver tags like `v0.2.0` publish `0.2.0` and `latest`.
+- semver tags like `v0.2.0` publish `0.2.0`, and update mutable `latest`
+  only when that tag is the newest stable semver tag.
 
 Publishing requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. Stable semver tags
 come from release-please; the tag publish workflow validates the tag version against
@@ -16,7 +18,7 @@ Before pushing a tag, the publish job scans each self-hosted runtime image artif
 
 The published image artifact set includes the long-running runtime services (`api`, `caddy`, `edge`, `worker`) and the one-shot `runtime-probe` image used by the node agent for readiness and network probes.
 
-Pull request and main CI build or restore the self-hosted image cache once per commit, then fan out e2e jobs and a separate self-hosted image security gate from that same cache. The gate loads the cached tar images and scans the exact refs from the rendered `.env.self-hosted` with the same Trivy and Docker Scout policy before the workflow can pass. Fork pull requests cannot receive Docker Hub credentials, so they run the Trivy gate only; internal pull requests, main CI, and publish workflows keep Docker Scout enabled.
+Pull request and main CI build or restore the self-hosted image cache once per commit, then fan out e2e jobs and a separate self-hosted image security gate from that same cache. The gate loads the cached tar images and scans the exact refs from the rendered `.env.self-hosted` with the same Trivy and Docker Scout policy before the workflow can pass. Main publish runs only after main CI succeeds for the same commit. Fork pull requests cannot receive Docker Hub credentials, so they run the Trivy gate only; internal pull requests, main CI, and publish workflows keep Docker Scout enabled.
 
 The root `.trivyignore.yaml` is the only allowed suppression point for Trivy self-hosted image scans. Docker Scout has no repository suppression path in the CI or publish gates.
 

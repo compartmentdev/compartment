@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: publish-self-hosted-release-${{ github.ref }}
-  cancel-in-progress: true
+  group: publish-self-hosted-release
+  queue: max
 
 jobs:
   build-release-images:
@@ -27,7 +27,7 @@ jobs:
 
       - name: Ensure tagged commit is on main
         run: |
-          git fetch origin main
+          git fetch origin refs/heads/main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"; then
             echo "Release tags must point to a commit reachable from origin/main." >&2
             exit 1
@@ -189,6 +189,18 @@ jobs:
           runtime_probe_args=(
             --build-arg "COMPARTMENT_NODE_RUNTIME_IMAGE=${COMPARTMENT_NODE_RUNTIME_IMAGE}"
           )
+          mutable_tags_file="./.compartment/release-assets/published-self-hosted-mutable-tags.txt"
+          : > "$mutable_tags_file"
+
+          read_self_hosted_services() {
+            node --input-type=module <<'EOF'
+          import { selfHostedRuntimeImageArtifacts } from './scripts/deploy/self-hosted-runtime-services.mjs';
+
+          for (const serviceName of selfHostedRuntimeImageArtifacts) {
+            console.log(serviceName);
+          }
+          EOF
+          }
 
           push_dockerhub_image() {
             local image_name="$1"
@@ -203,8 +215,25 @@ jobs:
             local image_name="$1"
             docker buildx imagetools create \
               --tag "docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}" \
-              --tag "docker.io/compartmentdev/${image_name}:${MUTABLE_TAG}" \
               "docker.io/compartmentdev/${image_name}:${STAGING_TAG}"
+          }
+
+          publish_mutable_latest() {
+            local latest_tag_version
+            latest_tag_version="$(
+              git ls-remote --exit-code --refs --tags origin 'refs/tags/v*.*.*' \
+                | sed -E 's#.*refs/tags/v##' \
+                | sort -V \
+                | tail -n 1
+            )"
+            [ "$latest_tag_version" = "$PRIMARY_TAG" ]
+          }
+
+          promote_dockerhub_mutable_image() {
+            local image_name="$1"
+            docker buildx imagetools create \
+              --tag "docker.io/compartmentdev/${image_name}:${MUTABLE_TAG}" \
+              "docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
           }
 
           push_dockerhub_image compartment-api packages/api/Dockerfile.self-hosted "${node_args[@]}"
@@ -213,40 +242,63 @@ jobs:
           push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
           push_dockerhub_image compartment-runtime-probe packages/node/Dockerfile.runtime-probe.self-hosted "${runtime_probe_args[@]}"
 
+          mapfile -t self_hosted_services < <(read_self_hosted_services)
+
           node ./scripts/deploy/secure-self-hosted-images.mjs \
             --scan-only \
             --docker-scout \
             --repository-prefix docker.io/compartmentdev \
             "$STAGING_TAG"
 
-          promote_dockerhub_image compartment-api
-          promote_dockerhub_image compartment-caddy
-          promote_dockerhub_image compartment-edge
-          promote_dockerhub_image compartment-worker
-          promote_dockerhub_image compartment-runtime-probe
+          for service in "${self_hosted_services[@]}"; do
+            promote_dockerhub_image "compartment-${service}"
+          done
 
-          for service in api caddy edge worker runtime-probe; do
+          mutable_latest_enabled=false
+          if publish_mutable_latest; then
+            mutable_latest_enabled=true
+            for service in "${self_hosted_services[@]}"; do
+              promote_dockerhub_mutable_image "compartment-${service}"
+            done
+            printf '%s\n' "$MUTABLE_TAG" >> "$mutable_tags_file"
+          fi
+
+          for service in "${self_hosted_services[@]}"; do
             image_ref="docker.io/compartmentdev/compartment-${service}:${PRIMARY_TAG}"
             docker tag "${image_ref}" "ghcr.io/compartmentdev/compartment-${service}:${PRIMARY_TAG}"
             docker push "ghcr.io/compartmentdev/compartment-${service}:${PRIMARY_TAG}"
-            docker tag "${image_ref}" "ghcr.io/compartmentdev/compartment-${service}:latest"
-            docker push "ghcr.io/compartmentdev/compartment-${service}:latest"
           done
+
+          if [ "$mutable_latest_enabled" = true ]; then
+            for service in "${self_hosted_services[@]}"; do
+              image_ref="docker.io/compartmentdev/compartment-${service}:${PRIMARY_TAG}"
+              docker tag "${image_ref}" "ghcr.io/compartmentdev/compartment-${service}:latest"
+              docker push "ghcr.io/compartmentdev/compartment-${service}:latest"
+            done
+          fi
 
       - name: Secure self-hosted image digests
         env:
           RELEASE_VERSION: ${{ needs.build-release-images.outputs.release_version }}
         run: |
+          tags=("$RELEASE_VERSION")
+          mutable_tags_file="./.compartment/release-assets/published-self-hosted-mutable-tags.txt"
+          if [ -f "$mutable_tags_file" ]; then
+            while IFS= read -r mutable_tag; do
+              if [ -n "$mutable_tag" ]; then
+                tags+=("$mutable_tag")
+              fi
+            done < "$mutable_tags_file"
+          fi
+
           node ./scripts/deploy/secure-self-hosted-images.mjs \
             --repository-prefix docker.io/compartmentdev \
             --output-dir ./.compartment/release-assets/self-hosted-sboms/dockerhub \
-            "$RELEASE_VERSION" \
-            latest
+            "${tags[@]}"
           node ./scripts/deploy/secure-self-hosted-images.mjs \
             --repository-prefix ghcr.io/compartmentdev \
             --output-dir ./.compartment/release-assets/self-hosted-sboms/ghcr \
-            "$RELEASE_VERSION" \
-            latest
+            "${tags[@]}"
 
       - name: Upload self-hosted SBOM artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
