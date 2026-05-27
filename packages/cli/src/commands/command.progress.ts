@@ -2,6 +2,7 @@ import type {
   CommandProgress,
   CommandProgressInput,
   CommandProgressMode,
+  CommandProgressReportOptions,
   CommandProgressState,
   CommandProgressTimer,
 } from './command.progress.types';
@@ -45,7 +46,7 @@ class LineCommandProgress implements CommandProgress {
   }
 
   report(message: string): void {
-    this.#input.io.stderr(`${message}\n`);
+    this.#input.io.stderr(readLineProgressMessage(message));
   }
 
   stop(): void {
@@ -67,8 +68,8 @@ class SpinnerCommandProgress implements CommandProgress {
     this.#input = input;
   }
 
-  report(message: string): void {
-    if (hasLineBreak(message)) {
+  report(message: string, options?: CommandProgressReportOptions): void {
+    if (options?.renderMode === 'line' || hasLineBreak(message)) {
       renderCommandProgressLine(this.#input, this.#state, message);
       return;
     }

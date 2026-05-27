@@ -6,6 +6,7 @@ import type { CliCommandDependencies, CliIoCommandDependencies } from '../comman
 import { createCommandProgress } from '../command.progress';
 import type { CommandProgress } from '../command.progress.types';
 import { createSelfHostedCommandContext } from '../self-hosted.command.context';
+import type { InstallProgressReportOptions } from '../../install.types';
 import { createSystemRestartResultMessage } from './system.command.helpers';
 import { executeSelfHostedSystemCommandWithSudoFallback } from './system.command.sudo';
 import type { SystemRestartCommandOptions } from './system.command.types';
@@ -38,7 +39,11 @@ async function executeRestartCommandLocally(
   try {
     const result: SystemRestartResponse = systemRestartResponseSchema.parse(
       await restartSelfHostedSystem({
-        context: createSelfHostedCommandContext(dependencies, (message: string): void => progress.report(message)),
+        context: createSelfHostedCommandContext(
+          dependencies,
+          (message: string, progressOptions?: InstallProgressReportOptions): void =>
+            progress.report(message, progressOptions),
+        ),
       }),
     );
 

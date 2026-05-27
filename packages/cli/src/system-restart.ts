@@ -8,7 +8,9 @@ import { readSelfHostedImageRefsFromEnvironmentText } from './self-hosted-env';
 import { restartNodeAgentHostService, waitForNodeAgentHostServiceHealth } from './node-agent-service';
 import type { ReadSelfHostedInstallResult } from './self-hosted-install-read.types';
 import { readSelfHostedSystemServiceNames, restartSelfHostedSystemRuntime } from './docker-runtime';
+import { readInheritedDockerProgressReportOptions } from './docker-progress';
 import type { DockerExecutionContext } from './docker-runtime.types';
+import type { InstallProgressReportOptions } from './install.types';
 import type { SelfHostedPathSelection } from './self-hosted-install-paths.types';
 import type { SelfHostedSystemInput, SelfHostedSystemRestartResult } from './system.types';
 
@@ -55,7 +57,11 @@ async function restartSystemRuntime(
   install: ReadSelfHostedInstallResult,
   dockerContext: DockerExecutionContext,
 ): Promise<void> {
-  reportRestartProgress(input, 'Restarting self-hosted runtime...');
+  reportRestartProgress(
+    input,
+    'Restarting self-hosted runtime...',
+    readInheritedDockerProgressReportOptions(dockerContext),
+  );
   await restartSelfHostedSystemRuntime(dockerContext, {
     composePath: install.installPaths.stagedAssetPaths.composePath,
     envPath: install.installPaths.stagedAssetPaths.envPath,
@@ -86,6 +92,10 @@ function createSystemRestartResponse(configDir: string, dataDir: string): System
   };
 }
 
-function reportRestartProgress(input: SelfHostedSystemInput, message: string): void {
-  input.context?.reportProgress?.(message);
+function reportRestartProgress(
+  input: SelfHostedSystemInput,
+  message: string,
+  options?: InstallProgressReportOptions,
+): void {
+  input.context?.reportProgress?.(message, options);
 }
