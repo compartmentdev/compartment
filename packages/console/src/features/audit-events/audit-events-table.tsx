@@ -18,11 +18,9 @@ import {
 } from '../../components/server-table';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import { StatusTag, type StatusTagVariant } from '../../components/ui/status-tag';
-import type {
-  BrowserAuditEventsPageResult,
-  BrowserAuditEventsSortBy,
-} from '../../services/browser-audit-events.service.types';
+import type { BrowserAuditEventsPageResult } from '../../services/browser-audit-events.service.types';
 import { buildAuditEventsHref, readNextAuditEventsSortDirection } from './audit-events-query';
+import type { AuditEventsSortableHeadingProps } from './audit-events-table.types';
 
 interface AuditEventsTableProps {
   data: BrowserAuditEventsPageResult;
@@ -82,12 +80,7 @@ function AuditEventsSortableHeading({
   label,
   onNavigate,
   sortBy,
-}: Readonly<{
-  data: BrowserAuditEventsPageResult;
-  label: string;
-  onNavigate: BrowserSoftNavigateHandler;
-  sortBy: BrowserAuditEventsSortBy;
-}>): JSX.Element {
+}: Readonly<AuditEventsSortableHeadingProps>): JSX.Element {
   return (
     <ServerTableSortableHeading
       href={buildAuditEventsHref(data, {

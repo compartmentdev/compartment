@@ -48,6 +48,7 @@ export type {
   AccessGroupListQuery,
   AccessGroupListResponse,
   AccessGroupListRow,
+  AccessGroupListRouteResponse,
   AccessGroupListOptionsResponse,
   AccessGroupMemberListResponse,
   AccessGroupMemberSummary,

@@ -21,7 +21,7 @@ describe('browser groups hrefs', (): void => {
     ).toBe('/orgs/acme-dev/groups?q=ops&sortBy=memberCount&sortDirection=desc&page=2&pageSize=20');
   });
 
-  it('uses descending defaults for count-based sorts and asc for a new name sort', (): void => {
+  it('uses descending defaults for count-based sorts and flips the current ascending name sort to desc', (): void => {
     const data: BrowserGroupsPageResult = createGroupsPageResult();
 
     expect(readNextGroupsSortDirection(data, 'memberCount')).toBe('desc');
