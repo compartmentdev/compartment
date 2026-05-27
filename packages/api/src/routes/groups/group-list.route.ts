@@ -8,14 +8,13 @@ import {
   type AccessGroupListQuery,
   type AccessGroupListOptionsResponse,
   type AccessGroupListResponse,
+  type AccessGroupListRouteResponse,
+  type AccessGroupListRow,
 } from '@compartment/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { parseRequestValue } from '../../http/validation';
 import { listOrganizationAccessGroups, listOrganizationAccessGroupsPage } from '../../services/access-groups.service';
-import type {
-  AccessGroupListRowResult,
-  OrganizationAccessGroupsPageResult,
-} from '../../services/access-groups.service.types';
+import type { OrganizationAccessGroupsPageResult } from '../../services/access-groups.service.types';
 import { buildAccessGroupListRows } from './group.presenter';
 
 export async function handleGroupList(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
@@ -24,23 +23,23 @@ export async function handleGroupList(request: FastifyRequest, reply: FastifyRep
     request.query,
     'invalid_group_query',
   );
+  const response: AccessGroupListRouteResponse = await buildGroupListResponse(request, query);
+
+  return await reply.send(response);
+}
+
+async function buildGroupListResponse(
+  request: FastifyRequest,
+  query: AccessGroupListQuery,
+): Promise<AccessGroupListRouteResponse> {
   if (query.detail === 'list') {
-    return await reply.send(await buildGroupListPageResponse(request, query));
+    return await buildGroupListPageResponse(request, query);
   }
   if (query.detail === 'options') {
-    const groups: AccessGroupListRowResult[] = await listOrganizationAccessGroups(request.currentOrganization.id);
-    const response: AccessGroupListOptionsResponse = accessGroupListOptionsResponseSchema.parse({
-      detail: 'options',
-      groups: buildAccessGroupListRows(groups),
-    });
-    return await reply.send(response);
+    return await buildGroupListOptionsResponse(request);
   }
 
-  const groups: AccessGroupListRowResult[] = await listOrganizationAccessGroups(request.currentOrganization.id);
-  const response: AccessGroupListResponse = accessGroupListResponseSchema.parse({
-    groups: buildAccessGroupListRows(groups),
-  });
-  return await reply.send(response);
+  return await buildGroupListLegacyResponse(request);
 }
 
 async function buildGroupListPageResponse(
@@ -61,4 +60,19 @@ async function buildGroupListPageResponse(
     groups: buildAccessGroupListRows(page.groups),
     pagination: page.pagination,
   });
+}
+
+async function buildGroupListOptionsResponse(request: FastifyRequest): Promise<AccessGroupListOptionsResponse> {
+  const groups: AccessGroupListRow[] = await listOrganizationAccessGroups(request.currentOrganization.id);
+
+  return accessGroupListOptionsResponseSchema.parse({
+    detail: 'options',
+    groups,
+  });
+}
+
+async function buildGroupListLegacyResponse(request: FastifyRequest): Promise<AccessGroupListResponse> {
+  const groups: AccessGroupListRow[] = await listOrganizationAccessGroups(request.currentOrganization.id);
+
+  return accessGroupListResponseSchema.parse({ groups });
 }
