@@ -255,7 +255,7 @@ function renderNativeSelectItems(options: NativeSelectOption[]): JSX.Element[] {
 function NativeSelectItem({ option }: Readonly<{ option: NativeSelectOption }>): JSX.Element {
   return (
     <SelectPrimitive.Item
-      className="relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-[13px] outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+      className="relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
       disabled={option.disabled}
       value={option.radixValue ?? emptySelectableOptionRadixValue}
     >

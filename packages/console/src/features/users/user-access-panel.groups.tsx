@@ -100,7 +100,6 @@ function UserGroupAddForm(props: Readonly<UserGroupAddFormProps>): JSX.Element {
 function UserGroupSelect({ props }: Readonly<{ props: UserGroupAddFormProps }>): JSX.Element {
   return (
     <Select
-      className="h-9"
       containerClassName="flex-1"
       onChange={(event: ChangeEvent<HTMLSelectElement>): void => props.setGroupId(event.target.value)}
       value={props.groupId}

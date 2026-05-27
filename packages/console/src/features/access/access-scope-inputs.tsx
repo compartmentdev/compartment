@@ -5,7 +5,7 @@ import {
 import type { JSX, ReactNode } from 'react';
 import { MultiComboBox, type MultiComboBoxOption } from '../../components/multi-combo-box';
 import { cn } from '../../lib/utils';
-import { accessDrawerFieldClassName, accessDrawerPrimaryActionButtonClassName } from './access-ui';
+import { accessDrawerPrimaryActionButtonClassName } from './access-ui';
 import {
   type AccessScopeEnvironmentOption,
   readScopeEnvironmentOptions,
@@ -27,14 +27,15 @@ interface InheritedScopeFieldProps {
   className?: string | undefined;
 }
 
-const accessAssignmentMultiSelectTriggerClassName: string = accessDrawerFieldClassName;
 const accessAssignmentInheritedFieldClassName: string = 'md:pl-10';
 
 export const accessAssignmentPrimaryRowClassName: string =
-  'grid gap-2 md:grid-cols-[minmax(0,262px)_16px_minmax(0,219px)_auto] md:items-center';
+  'grid w-full gap-2 md:grid-cols-[minmax(0,1fr)_16px_minmax(0,1fr)_auto] md:items-center';
 const accessAssignmentSecondaryRowClassName: string = 'grid gap-2 md:col-span-4 md:[grid-template-columns:subgrid]';
-export const accessAssignmentSelectClassName: string = cn('h-9 text-[13px]', accessDrawerFieldClassName);
-export const accessAssignmentSubmitButtonClassName: string = accessDrawerPrimaryActionButtonClassName;
+export const accessAssignmentSubmitButtonClassName: string = cn(
+  accessDrawerPrimaryActionButtonClassName,
+  'w-fit justify-self-start',
+);
 
 export function AccessScopeInputs(props: Readonly<AccessScopeInputsProps>): JSX.Element | null {
   if (props.scopeType === 'organization') {
@@ -74,7 +75,6 @@ function ProjectScopeSelect({ props }: Readonly<{ props: AccessScopeInputsProps 
         options={readProjectOptions(props.scopeProjects)}
         placeholder="Select project"
         searchPlaceholder="Search projects"
-        triggerClassName={accessAssignmentMultiSelectTriggerClassName}
         values={props.projectNames}
       />
     </InheritedScopeField>
@@ -96,7 +96,6 @@ function EnvironmentScopeSelect({ props }: Readonly<{ props: AccessScopeInputsPr
         options={readEnvironmentOptions(props.scopeProjects, props.projectNames)}
         placeholder={props.projectNames.length === 0 ? 'Select project first' : 'Select environment'}
         searchPlaceholder="Search environments"
-        triggerClassName={accessAssignmentMultiSelectTriggerClassName}
         values={props.environmentValues}
       />
     </InheritedScopeField>

@@ -76,6 +76,10 @@
       "light": "#9CA4AB",
       "dark": "#737E87"
     },
+    "theme/muted-foreground-secondary": {
+      "light": "#4D565E",
+      "dark": "#9CA4AB"
+    },
     "opacity/primary/10": {
       "light": "#1214171A",
       "dark": "#FAFAFA1A"
@@ -83,6 +87,14 @@
     "opacity/primary/20": {
       "light": "#12141733",
       "dark": "#FAFAFA33"
+    },
+    "opacity/info/lighter": {
+      "light": "#1E65AC1A",
+      "dark": "#5798DB1A"
+    },
+    "opacity/success/lighter": {
+      "light": "#1C882C1A",
+      "dark": "#3BBA501A"
     },
     "theme/popover": {
       "light": "#FFFFFF",

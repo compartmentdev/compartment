@@ -14,7 +14,6 @@ import { formatAssignmentAccessSummary } from '../access/access-display';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
 import {
   accessAssignmentPrimaryRowClassName,
-  accessAssignmentSelectClassName,
   accessAssignmentSubmitButtonClassName,
   AccessScopeInputs,
   isAccessScopeSelectionReady,
@@ -136,7 +135,6 @@ function createUserAssignmentSubmitHandler(
 function UserRoleSelect(props: Readonly<UserRoleSelectProps>): JSX.Element {
   return (
     <Select
-      className={accessAssignmentSelectClassName}
       containerClassName="w-full"
       onChange={(event: ChangeEvent<HTMLSelectElement>): void => props.setRoleId(event.target.value)}
       required
@@ -157,7 +155,6 @@ function UserRoleSelect(props: Readonly<UserRoleSelectProps>): JSX.Element {
 function UserScopeSelect(props: Readonly<UserScopeSelectProps>): JSX.Element {
   return (
     <Select
-      className={accessAssignmentSelectClassName}
       containerClassName="w-full"
       onChange={(event: ChangeEvent<HTMLSelectElement>): void =>
         props.setScopeType(event.target.value as AccessAssignmentScopeType)
