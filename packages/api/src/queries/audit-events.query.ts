@@ -1,12 +1,14 @@
 import type {
+  AuditEventListOrderBy,
   AuditEventActorType,
   AuditEventMetadata,
   AuditEventScopeType,
   AuditEventStatus,
   AuditEventType,
   AuditRetentionMode,
+  ListSortDirection,
 } from '@compartment/contracts';
-import { and, count, desc, eq, gte, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, lte, or, sql, type SQL } from 'drizzle-orm';
 import { auditEvents, organizations } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -152,7 +154,7 @@ async function readAuditEvents(
     .select()
     .from(auditEvents)
     .where(buildAuditEventFilter(input))
-    .orderBy(desc(auditEvents.occurredAt), desc(auditEvents.id))
+    .orderBy(...buildAuditEventOrderBy(input.orderBy, input.sort))
     .limit(limit)
     .offset(offset);
 }
@@ -216,6 +218,22 @@ function appendAuditEventAttributeFilters(filters: SQL[], input: AuditEventFilte
 
 function buildAuditEventActorFilter(actor: string): SQL {
   return or(eq(auditEvents.actorPrincipalId, actor), buildPrincipalEmailLookup(actor, auditEvents.actorEmail))!;
+}
+
+function buildAuditEventOrderBy(
+  orderBy: AuditEventListOrderBy | undefined,
+  sort: ListSortDirection | undefined,
+): SQL[] {
+  const direction: typeof asc | typeof desc = (sort ?? 'desc') === 'asc' ? asc : desc;
+
+  switch (orderBy ?? 'occurredAt') {
+    case 'eventType':
+      return [direction(auditEvents.eventType), desc(auditEvents.occurredAt), desc(auditEvents.id)];
+    case 'occurredAt':
+      return [direction(auditEvents.occurredAt), direction(auditEvents.id)];
+    case 'status':
+      return [direction(auditEvents.status), desc(auditEvents.occurredAt), desc(auditEvents.id)];
+  }
 }
 
 function toAuditEventRow(row: StoredAuditEventRow): AuditEventRow {

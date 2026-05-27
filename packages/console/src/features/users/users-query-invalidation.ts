@@ -1,8 +1,8 @@
 import { browserQueryClient, invalidateBrowserQueries } from '../../lib/browser-query-client';
 import type { BrowserUsersPageResult } from '../../services/browser-users.service.types';
 import {
-  readAccessGroupsListQueryKey,
-  readAccessRolesListQueryKey,
+  readAccessGroupsOptionsQueryKey,
+  readAccessRolesOptionsQueryKey,
   readAccessUsersOrganizationQueryKey,
 } from '../access/access-query';
 import { invalidateBrowserConsolePermissionQueries } from '../console/console-query';
@@ -26,7 +26,7 @@ export async function invalidateUserAccessQueries(data: BrowserUsersPageResult):
   await Promise.all([
     invalidateBrowserConsolePermissionQueries(data.selectedOrganizationSlug),
     invalidateBrowserQueries(browserQueryClient, readAccessUsersOrganizationQueryKey(data.selectedOrganizationSlug)),
-    invalidateBrowserQueries(browserQueryClient, readAccessRolesListQueryKey(data.selectedOrganizationSlug)),
-    invalidateBrowserQueries(browserQueryClient, readAccessGroupsListQueryKey(data.selectedOrganizationSlug)),
+    invalidateBrowserQueries(browserQueryClient, readAccessRolesOptionsQueryKey(data.selectedOrganizationSlug)),
+    invalidateBrowserQueries(browserQueryClient, readAccessGroupsOptionsQueryKey(data.selectedOrganizationSlug)),
   ]);
 }

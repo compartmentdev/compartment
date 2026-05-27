@@ -37,7 +37,7 @@ describe('browser roles loader', (): void => {
       '/v1/orgs',
       '/v1/whoami',
       browserProjectCountPath,
-      '/v1/roles',
+      '/v1/roles?detail=list&orderBy=name&page=1&perPage=10&sort=asc',
     ]);
   });
 
@@ -70,8 +70,15 @@ function createRolesFetchMock(): Mock<FetchImplementation> {
     if (path === browserProjectCountPath) {
       return createJsonResponse(createProjectCountResponse());
     }
-    if (path === '/v1/roles') {
+    if (path === '/v1/roles?detail=list&orderBy=name&page=1&perPage=10&sort=asc') {
       return createJsonResponse({
+        detail: 'list',
+        pagination: {
+          page: 1,
+          perPage: 10,
+          totalItems: 1,
+          totalPages: 1,
+        },
         roles: [
           {
             assignmentCount: 0,

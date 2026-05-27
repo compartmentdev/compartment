@@ -8,9 +8,13 @@ import {
   createOrganizationAccessGroup,
   deleteOrganizationAccessGroup,
   listOrganizationAccessGroupMembers,
+  listOrganizationAccessGroupsPage,
   updateOrganizationAccessGroup,
 } from '../src/services/access-groups.service';
-import type { AccessGroupResult } from '../src/services/access-groups.service.types';
+import type {
+  AccessGroupResult,
+  OrganizationAccessGroupsPageResult,
+} from '../src/services/access-groups.service.types';
 import {
   clearRbacTestHarnessRuntime,
   closeRbacTestHarness,
@@ -18,11 +22,13 @@ import {
   createRbacTestHarness,
   ensureRbacTestHarness,
   resetRbacTestHarness,
+  seedEnvironment,
   seedAssignment,
   seedCustomRole,
   seedSystemRoles,
   seedOrganization,
   seedPrincipal,
+  seedProject,
   findRoleIdByName,
   type RbacTestHarness,
 } from './rbac-test.fixtures';
@@ -223,5 +229,129 @@ describe('rbac groups db', (): void => {
         }),
       ]),
     );
+  });
+
+  it('pages groups through assigned-role search, scope-label search, escaped wildcards, and count orderings', async (): Promise<void> => {
+    await seedProject(harness, {
+      id: 'prj_billing',
+      name: 'billing',
+      organizationId: 'org_123',
+    });
+    await seedEnvironment(harness, {
+      id: 'env_production',
+      name: 'production',
+      projectId: 'prj_billing',
+    });
+    await seedCustomRole(harness, {
+      id: 'rol_release_captain',
+      name: 'Release Captain',
+      organizationId: 'org_123',
+      permissionKeys: ['deployment.create'],
+    });
+    await seedCustomRole(harness, {
+      id: 'rol_support_captain',
+      name: 'Support Captain',
+      organizationId: 'org_123',
+      permissionKeys: ['deployment.read'],
+    });
+    const searchGroup: AccessGroupResult = await createOrganizationAccessGroup('org_123', { name: 'Support Pod' });
+    const wildcardGroup: AccessGroupResult = await createOrganizationAccessGroup('org_123', { name: '100% Operators' });
+    const crowdedGroup: AccessGroupResult = await createOrganizationAccessGroup('org_123', { name: 'Crowded Group' });
+    const assignedGroup: AccessGroupResult = await createOrganizationAccessGroup('org_123', { name: 'Assigned Group' });
+
+    await addOrganizationAccessGroupMember({
+      actorPrincipalId: 'prn_active',
+      groupId: crowdedGroup.id,
+      organizationId: 'org_123',
+      request: { email: 'active@example.com' },
+    });
+    await addOrganizationAccessGroupMember({
+      actorPrincipalId: 'prn_active',
+      groupId: crowdedGroup.id,
+      organizationId: 'org_123',
+      request: { email: 'invited@example.com' },
+    });
+    await addOrganizationAccessGroupMember({
+      actorPrincipalId: 'prn_active',
+      groupId: wildcardGroup.id,
+      organizationId: 'org_123',
+      request: { email: 'active@example.com' },
+    });
+
+    await seedAssignment(harness, {
+      id: 'asg_search_release',
+      organizationId: 'org_123',
+      roleId: 'rol_release_captain',
+      scopeId: 'env_production',
+      scopeType: 'environment',
+      subjectId: searchGroup.id,
+      subjectType: 'group',
+    });
+    await seedAssignment(harness, {
+      id: 'asg_assigned_support',
+      organizationId: 'org_123',
+      roleId: 'rol_support_captain',
+      scopeId: 'org_123',
+      scopeType: 'organization',
+      subjectId: assignedGroup.id,
+      subjectType: 'group',
+    });
+    await seedAssignment(harness, {
+      id: 'asg_assigned_release',
+      organizationId: 'org_123',
+      roleId: 'rol_release_captain',
+      scopeId: 'prj_billing',
+      scopeType: 'project',
+      subjectId: assignedGroup.id,
+      subjectType: 'group',
+    });
+
+    const roleSearch: OrganizationAccessGroupsPageResult = await listOrganizationAccessGroupsPage({
+      organizationId: 'org_123',
+      orderBy: 'name',
+      page: 1,
+      perPage: 20,
+      search: 'release captain',
+      sort: 'asc',
+    });
+    expect(roleSearch.groups.map((group: AccessGroupResult): string => group.id)).toContain(searchGroup.id);
+
+    const scopeSearch: OrganizationAccessGroupsPageResult = await listOrganizationAccessGroupsPage({
+      organizationId: 'org_123',
+      orderBy: 'name',
+      page: 1,
+      perPage: 20,
+      search: 'billing / production',
+      sort: 'asc',
+    });
+    expect(scopeSearch.groups.map((group: AccessGroupResult): string => group.id)).toContain(searchGroup.id);
+
+    const wildcardSearch: OrganizationAccessGroupsPageResult = await listOrganizationAccessGroupsPage({
+      organizationId: 'org_123',
+      orderBy: 'name',
+      page: 1,
+      perPage: 20,
+      search: '100%',
+      sort: 'asc',
+    });
+    expect(wildcardSearch.groups.map((group: AccessGroupResult): string => group.id)).toEqual([wildcardGroup.id]);
+
+    const memberCountPage: OrganizationAccessGroupsPageResult = await listOrganizationAccessGroupsPage({
+      organizationId: 'org_123',
+      orderBy: 'memberCount',
+      page: 1,
+      perPage: 20,
+      sort: 'desc',
+    });
+    expect(memberCountPage.groups[0]?.id).toBe(crowdedGroup.id);
+
+    const assignmentCountPage: OrganizationAccessGroupsPageResult = await listOrganizationAccessGroupsPage({
+      organizationId: 'org_123',
+      orderBy: 'assignmentCount',
+      page: 1,
+      perPage: 20,
+      sort: 'desc',
+    });
+    expect(assignmentCountPage.groups[0]?.id).toBe(assignedGroup.id);
   });
 });

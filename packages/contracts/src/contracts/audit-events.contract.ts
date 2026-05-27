@@ -3,117 +3,44 @@ import {
   listPageQuerySchema,
   listPaginationSchema,
   listPerPageQuerySchema,
-  type ListPagination,
+  listSortDirectionSchema,
 } from './list.contract';
 import type { ContractSchema } from './schema.types';
+import type {
+  AuditEventActorSummary,
+  AuditEventActorType,
+  AuditEventExportFormat,
+  AuditEventExportQuery,
+  AuditEventExportQueryInput,
+  AuditEventListOrderBy,
+  AuditEventListQuery,
+  AuditEventListQueryInput,
+  AuditEventListResponse,
+  AuditEventMetadata,
+  AuditEventMetadataValue,
+  AuditEventScopeType,
+  AuditEventStatus,
+  AuditEventSummary,
+  AuditEventTargetSummary,
+  AuditEventType,
+} from './audit-events.contract.types';
 
-export type AuditEventScopeType = 'installation' | 'organization';
-export type AuditEventStatus = 'failed' | 'succeeded';
-export type AuditEventActorType = 'automation' | 'system' | 'user';
-export type AuditEventExportFormat = 'csv' | 'ndjson';
-export type AuditEventMetadataValue = boolean | number | string | null;
-export type AuditEventMetadata = Record<string, AuditEventMetadataValue>;
-export type AuditEventType =
-  | 'audit.export.created'
-  | 'organization.assignment.created'
-  | 'organization.assignment.deleted'
-  | 'organization.auth_settings.updated'
-  | 'organization.group.created'
-  | 'organization.group.deleted'
-  | 'organization.group.member_added'
-  | 'organization.group.member_removed'
-  | 'organization.group.updated'
-  | 'organization.role.created'
-  | 'organization.role.deleted'
-  | 'organization.role.updated'
-  | 'organization.settings.updated'
-  | 'organization.sso_oidc_provider.created'
-  | 'organization.sso_oidc_provider.deleted'
-  | 'organization.sso_oidc_provider.updated'
-  | 'organization.user.blocked'
-  | 'organization.user.invited'
-  | 'organization.user.password_reset_issued'
-  | 'organization.user.removed'
-  | 'organization.user.unblocked'
-  | 'source.auto_deploy.queued'
-  | 'source.auto_deploy.skipped'
-  | 'source.binding.created'
-  | 'source.connected'
-  | 'source.descriptor.excluded'
-  | 'source.descriptor.included'
-  | 'source.disconnected'
-  | 'source.upload.created'
-  | 'source.push.received'
-  | 'source.settings.updated'
-  | 'source.sync.failed'
-  | 'source.sync.requested'
-  | 'source.sync.succeeded';
-
-export interface AuditEventActorSummary {
-  email: string | null;
-  principalId: string | null;
-  sessionId: string | null;
-  sourceIp: string | null;
-  transport: string | null;
-  type: AuditEventActorType;
-  userAgent: string | null;
-}
-
-export interface AuditEventTargetSummary {
-  displayName: string | null;
-  environmentId: string | null;
-  id: string;
-  projectId: string | null;
-  serviceId: string | null;
-  type: string;
-}
-
-export interface AuditEventSummary {
-  actor: AuditEventActorSummary;
-  eventType: AuditEventType;
-  id: string;
-  metadata: AuditEventMetadata;
-  occurredAt: string;
-  organizationId: string | null;
-  scopeType: AuditEventScopeType;
-  status: AuditEventStatus;
-  target: AuditEventTargetSummary;
-}
-
-export interface AuditEventListQuery {
-  actor?: string | undefined;
-  eventType?: AuditEventType | undefined;
-  from?: string | undefined;
-  page?: number | undefined;
-  perPage?: number | undefined;
-  project?: string | undefined;
-  targetType?: string | undefined;
-  to?: string | undefined;
-}
-
-export interface AuditEventExportQuery extends Omit<AuditEventListQuery, 'page' | 'perPage'> {
-  format: AuditEventExportFormat;
-}
-
-export interface AuditEventListResponse {
-  events: AuditEventSummary[];
-  pagination: ListPagination;
-}
-
-interface AuditEventListQueryInput {
-  actor?: string | undefined;
-  eventType?: AuditEventType | undefined;
-  from?: string | undefined;
-  page?: number | string | undefined;
-  perPage?: number | string | undefined;
-  project?: string | undefined;
-  targetType?: string | undefined;
-  to?: string | undefined;
-}
-
-interface AuditEventExportQueryInput extends Omit<AuditEventListQueryInput, 'page' | 'perPage'> {
-  format?: AuditEventExportFormat | undefined;
-}
+export type {
+  AuditEventActorSummary,
+  AuditEventActorType,
+  AuditEventExportFormat,
+  AuditEventExportQuery,
+  AuditEventListOrderBy,
+  AuditEventListQuery,
+  AuditEventListResponse,
+  AuditEventMetadata,
+  AuditEventMetadataValue,
+  AuditEventScopeType,
+  AuditEventStatus,
+  AuditEventSummary,
+  AuditEventTargetSummary,
+  AuditEventType,
+} from './audit-events.contract.types';
 
 interface AuditEventFilterQueryShape {
   actor: z.ZodOptional<z.ZodString>;
@@ -129,6 +56,11 @@ const auditEventScopeTypeValues: readonly [AuditEventScopeType, ...AuditEventSco
   'organization',
 ];
 const auditEventStatusValues: readonly [AuditEventStatus, ...AuditEventStatus[]] = ['failed', 'succeeded'];
+const auditEventListOrderByValues: readonly [AuditEventListOrderBy, ...AuditEventListOrderBy[]] = [
+  'eventType',
+  'occurredAt',
+  'status',
+];
 const auditEventActorTypeValues: readonly [AuditEventActorType, ...AuditEventActorType[]] = [
   'automation',
   'system',
@@ -173,6 +105,7 @@ export const auditEventTypeOptions: readonly [AuditEventType, ...AuditEventType[
 
 export const auditEventTypeSchema: ContractSchema<AuditEventType> = z.enum(auditEventTypeOptions);
 export const auditEventExportFormatSchema: ContractSchema<AuditEventExportFormat> = z.enum(['csv', 'ndjson']);
+const auditEventListOrderBySchema: ContractSchema<AuditEventListOrderBy> = z.enum(auditEventListOrderByValues);
 
 const auditEventMetadataValueSchema: ContractSchema<AuditEventMetadataValue> = z.union([
   z.boolean(),
@@ -228,8 +161,10 @@ const auditEventFilterQueryShape: AuditEventFilterQueryShape = {
 export const auditEventListQuerySchema: z.ZodType<AuditEventListQuery, z.ZodTypeDef, AuditEventListQueryInput> = z
   .object({
     ...auditEventFilterQueryShape,
+    orderBy: auditEventListOrderBySchema.optional(),
     page: listPageQuerySchema.optional(),
     perPage: listPerPageQuerySchema.optional(),
+    sort: listSortDirectionSchema.optional(),
   })
   .strict()
   .superRefine(validateAuditEventTimeRange);
@@ -238,6 +173,8 @@ export const auditEventExportQuerySchema: z.ZodType<AuditEventExportQuery, z.Zod
   .object({
     ...auditEventFilterQueryShape,
     format: auditEventExportFormatSchema.default('ndjson'),
+    orderBy: auditEventListOrderBySchema.optional(),
+    sort: listSortDirectionSchema.optional(),
   })
   .strict()
   .superRefine(validateAuditEventTimeRange);

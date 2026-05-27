@@ -110,8 +110,8 @@ function useGroupsPageFormState(data: BrowserGroupsPageResult): GroupsPageFormSt
 
 function useGroupsPageSelectionState(data: BrowserGroupsPageResult): GroupsPageSelectionState {
   const selectedGroup: AccessGroupListRow | undefined = useMemo(
-    (): AccessGroupListRow | undefined => readSelectedGroup(data.groups, data.selectedGroupId),
-    [data.groups, data.selectedGroupId],
+    (): AccessGroupListRow | undefined => readSelectedGroup(data.selectedGroup, data.groups, data.selectedGroupId),
+    [data.groups, data.selectedGroup, data.selectedGroupId],
   );
   const groupAssignments: AccessAssignmentSummary[] = useMemo(
     (): AccessAssignmentSummary[] => readGroupAssignments(data.assignments, data.selectedGroupId),
@@ -127,9 +127,14 @@ function useGroupsPageFormFields(): GroupsPageFormState {
 }
 
 function readSelectedGroup(
+  explicitSelectedGroup: AccessGroupListRow | null | undefined,
   groups: AccessGroupListRow[],
   selectedGroupId: string | null,
 ): AccessGroupListRow | undefined {
+  if (selectedGroupId !== null && explicitSelectedGroup?.id === selectedGroupId) {
+    return explicitSelectedGroup;
+  }
+
   return groups.find((group: AccessGroupListRow): boolean => group.id === selectedGroupId);
 }
 

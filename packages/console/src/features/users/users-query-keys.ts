@@ -1,8 +1,8 @@
 import { type QueryKey } from '@tanstack/react-query';
 import {
-  readAccessGroupsListQueryKey,
+  readAccessGroupsOptionsQueryKey,
   readAccessOrganizationUnavailableQueryKey,
-  readAccessRolesListQueryKey,
+  readAccessRolesOptionsQueryKey,
   readAccessScopeOptionsQueryKey,
   readAccessUsersAccessQueryKey,
   readAccessUsersListQueryKey,
@@ -24,8 +24,8 @@ export function readUsersPageQueryKeys(organizationSlug: string | null, query: U
 
   return {
     access: readUsersAccessQueryKey(organizationSlug, query.selectedUserEmail),
-    groups: readAccessGroupsListQueryKey(organizationSlug),
-    roles: readAccessRolesListQueryKey(organizationSlug),
+    groups: readAccessGroupsOptionsQueryKey(organizationSlug),
+    roles: readAccessRolesOptionsQueryKey(organizationSlug),
     scopeOptions: readAccessScopeOptionsQueryKey(organizationSlug),
     users: readAccessUsersListQueryKey(
       organizationSlug,

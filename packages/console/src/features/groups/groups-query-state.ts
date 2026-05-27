@@ -1,29 +1,16 @@
 import type {
   AccessAssignmentScopeOptionsResponse,
   AccessAssignmentSummary,
-  AccessGroupListResponse,
+  AccessGroupListPageResponse,
   AccessGroupMemberSummary,
-  AccessGroupSummary,
   AccessRoleListRow,
 } from '@compartment/contracts/browser';
 import { useMemo } from 'react';
 import { type UseQueryResult, useQuery } from '@tanstack/react-query';
-import {
-  type BrowserQueryFunctionContext,
-  browserQueryClient,
-  invalidateBrowserQueries,
-  useSeedBrowserQueryData,
-} from '../../lib/browser-query-client';
+import { type BrowserQueryFunctionContext, useSeedBrowserQueryData } from '../../lib/browser-query-client';
 import type { BrowserGroupsPageResult } from '../../services/browser-groups.service.types';
-import {
-  browserAccessQueryStaleTime,
-  readAccessGroupsOrganizationQueryKey,
-  readAccessRolesListQueryKey,
-  readAccessUsersOrganizationQueryKey,
-  requireBrowserAccessSelectedOrganizationSlug,
-} from '../access/access-query';
+import { browserAccessQueryStaleTime, requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import { canReadBrowserRoles } from '../console/console-access';
-import { invalidateBrowserConsolePermissionQueries } from '../console/console-query';
 import {
   fetchAssignmentsResponse,
   fetchGroupsResponse,
@@ -31,15 +18,15 @@ import {
   fetchScopeOptionsResponse,
   loadSelectedGroupMembers,
 } from './groups-loader.requests';
+import {
+  readGroupsLoaderQuery,
+  readInitialGroupsPageQueryData,
+  readMergedGroupsPageData,
+  type GroupsPageQueryData,
+  type GroupsPageQueryResultData,
+} from './groups-query-state.helpers';
 import { readGroupsPageQueryKeys, type GroupsPageQueryKeys } from './groups-query-keys';
-
-interface GroupsPageQueryData {
-  assignments: { assignments: AccessAssignmentSummary[] };
-  groups: AccessGroupListResponse;
-  members: AccessGroupMemberSummary[];
-  roles: { roles: AccessRoleListRow[] };
-  scopeOptions: AccessAssignmentScopeOptionsResponse;
-}
+import type { GroupsLoaderQuery } from './groups-loader.query';
 
 interface GroupsPageQueryInput {
   canReadRoles: boolean;
@@ -48,18 +35,17 @@ interface GroupsPageQueryInput {
   initialData: GroupsPageQueryData;
   keys: GroupsPageQueryKeys;
   organizationSlug: string | null;
+  query: GroupsLoaderQuery;
   selectedGroupId: string | null;
 }
 
 interface GroupsPageQueryResults {
   assignments: UseQueryResult<{ assignments: AccessAssignmentSummary[] }>;
-  groups: UseQueryResult<AccessGroupListResponse>;
+  groups: UseQueryResult<AccessGroupListPageResponse>;
   members: UseQueryResult<AccessGroupMemberSummary[]>;
   roles: UseQueryResult<{ roles: AccessRoleListRow[] }>;
   scopeOptions: UseQueryResult<AccessAssignmentScopeOptionsResponse>;
 }
-
-type GroupsPageMode = 'create' | 'detail' | 'list';
 
 export function useGroupsPageQueryData(loaderData: BrowserGroupsPageResult): BrowserGroupsPageResult {
   const input: GroupsPageQueryInput = useGroupsPageQueryInput(loaderData);
@@ -70,25 +56,24 @@ export function useGroupsPageQueryData(loaderData: BrowserGroupsPageResult): Bro
 
 function useGroupsPageQueryInput(loaderData: BrowserGroupsPageResult): GroupsPageQueryInput {
   const organizationSlug: string | null = loaderData.selectedOrganizationSlug;
+  const query: GroupsLoaderQuery = useMemo((): GroupsLoaderQuery => readGroupsLoaderQuery(loaderData), [loaderData]);
   const keys: GroupsPageQueryKeys = useMemo(
-    (): GroupsPageQueryKeys => readGroupsPageQueryKeys(organizationSlug, loaderData.selectedGroupId),
-    [organizationSlug, loaderData.selectedGroupId],
+    (): GroupsPageQueryKeys => readGroupsPageQueryKeys(organizationSlug, query, loaderData.selectedGroupId),
+    [organizationSlug, query, loaderData.selectedGroupId],
   );
   const initialData: GroupsPageQueryData = useMemo(
     (): GroupsPageQueryData => readInitialGroupsPageQueryData(loaderData),
-    [loaderData.assignments, loaderData.groups, loaderData.members, loaderData.roles, loaderData.scopeProjects],
+    [loaderData],
   );
-  const hasOrganization: boolean = loaderData.selectedOrganizationSlug !== null;
-  const hasSelectedGroup: boolean = loaderData.selectedGroupId !== null;
-  const canReadRoles: boolean = canReadBrowserRoles(loaderData.currentOrganizationPermissions);
 
   return {
-    canReadRoles,
-    hasOrganization,
-    hasSelectedGroup,
+    canReadRoles: canReadBrowserRoles(loaderData.currentOrganizationPermissions),
+    hasOrganization: loaderData.selectedOrganizationSlug !== null,
+    hasSelectedGroup: loaderData.selectedGroupId !== null,
     initialData,
     keys,
     organizationSlug,
+    query,
     selectedGroupId: loaderData.selectedGroupId,
   };
 }
@@ -111,12 +96,14 @@ function useGroupsPageQueries(input: GroupsPageQueryInput): GroupsPageQueryResul
   };
 }
 
-function useGroupsListQuery(input: GroupsPageQueryInput): UseQueryResult<AccessGroupListResponse> {
+function useGroupsListQuery(input: GroupsPageQueryInput): UseQueryResult<AccessGroupListPageResponse> {
   return useQuery({
     enabled: input.hasOrganization,
     initialData: input.initialData.groups,
-    queryFn: async ({ signal }: BrowserQueryFunctionContext): Promise<AccessGroupListResponse> =>
-      await fetchGroupsResponse(requireBrowserAccessSelectedOrganizationSlug(input.organizationSlug), { signal }),
+    queryFn: async ({ signal }: BrowserQueryFunctionContext): Promise<AccessGroupListPageResponse> =>
+      await fetchGroupsResponse(requireBrowserAccessSelectedOrganizationSlug(input.organizationSlug), input.query, {
+        signal,
+      }),
     queryKey: input.keys.groups,
     staleTime: browserAccessQueryStaleTime,
   });
@@ -177,8 +164,16 @@ function useMergedGroupsPageData(
   initialData: GroupsPageQueryData,
   results: GroupsPageQueryResults,
 ): BrowserGroupsPageResult {
+  const resultData: GroupsPageQueryResultData = {
+    assignments: results.assignments.data,
+    groups: results.groups.data,
+    members: results.members.data,
+    roles: results.roles.data,
+    scopeOptions: results.scopeOptions.data,
+  };
+
   return useMemo(
-    (): BrowserGroupsPageResult => readMergedGroupsPageData(loaderData, initialData, results),
+    (): BrowserGroupsPageResult => readMergedGroupsPageData(loaderData, initialData, resultData),
     [
       initialData,
       loaderData,
@@ -189,87 +184,4 @@ function useMergedGroupsPageData(
       results.scopeOptions.data,
     ],
   );
-}
-
-function readMergedGroupsPageData(
-  loaderData: BrowserGroupsPageResult,
-  initialData: GroupsPageQueryData,
-  results: GroupsPageQueryResults,
-): BrowserGroupsPageResult {
-  const groups: AccessGroupListResponse = readMergedGroupsResponse(loaderData, initialData.groups, results.groups.data);
-  const nextSelectedGroupId: string | null = readNextSelectedGroupId(loaderData.selectedGroupId, groups);
-  return {
-    ...loaderData,
-    assignments: (results.assignments.data ?? initialData.assignments).assignments,
-    groups: groups.groups,
-    members: nextSelectedGroupId === null ? [] : (results.members.data ?? initialData.members),
-    mode: readNextGroupsMode(loaderData.mode, nextSelectedGroupId),
-    roles: (results.roles.data ?? initialData.roles).roles,
-    scopeProjects: (results.scopeOptions.data ?? initialData.scopeOptions).projects,
-    selectedGroupId: nextSelectedGroupId,
-  };
-}
-
-function readMergedGroupsResponse(
-  loaderData: BrowserGroupsPageResult,
-  initialGroups: AccessGroupListResponse,
-  cachedGroups: AccessGroupListResponse | undefined,
-): AccessGroupListResponse {
-  if (cachedGroups === undefined) {
-    return initialGroups;
-  }
-
-  return shouldPreferLoaderGroups(loaderData.selectedGroupId, cachedGroups, initialGroups)
-    ? initialGroups
-    : cachedGroups;
-}
-
-export async function invalidateGroupsAccessQueries(data: BrowserGroupsPageResult): Promise<void> {
-  if (data.selectedOrganizationSlug === null) {
-    return;
-  }
-
-  await Promise.all([
-    invalidateBrowserConsolePermissionQueries(data.selectedOrganizationSlug),
-    invalidateBrowserQueries(browserQueryClient, readAccessGroupsOrganizationQueryKey(data.selectedOrganizationSlug)),
-    invalidateBrowserQueries(browserQueryClient, readAccessRolesListQueryKey(data.selectedOrganizationSlug)),
-    invalidateBrowserQueries(browserQueryClient, readAccessUsersOrganizationQueryKey(data.selectedOrganizationSlug)),
-  ]);
-}
-
-function readInitialGroupsPageQueryData(data: BrowserGroupsPageResult): GroupsPageQueryData {
-  return {
-    assignments: { assignments: data.assignments },
-    groups: { groups: data.groups },
-    members: data.members,
-    roles: { roles: data.roles },
-    scopeOptions: { projects: data.scopeProjects },
-  };
-}
-
-function shouldPreferLoaderGroups(
-  selectedGroupId: string | null,
-  cachedGroups: AccessGroupListResponse,
-  loaderGroups: AccessGroupListResponse,
-): boolean {
-  return (
-    selectedGroupId !== null &&
-    readNextSelectedGroupId(selectedGroupId, cachedGroups) === null &&
-    readNextSelectedGroupId(selectedGroupId, loaderGroups) !== null
-  );
-}
-
-function readNextSelectedGroupId(selectedGroupId: string | null, response: AccessGroupListResponse): string | null {
-  return selectedGroupId !== null &&
-    response.groups.some((group: AccessGroupSummary): boolean => group.id === selectedGroupId)
-    ? selectedGroupId
-    : null;
-}
-
-function readNextGroupsMode(currentMode: GroupsPageMode, selectedGroupId: string | null): GroupsPageMode {
-  if (currentMode === 'create') {
-    return 'create';
-  }
-
-  return selectedGroupId === null ? 'list' : 'detail';
 }

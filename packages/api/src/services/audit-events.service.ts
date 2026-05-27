@@ -162,7 +162,9 @@ async function toRetainedAuditEventFilter(input: OrganizationAuditEventFilterInp
     eventType: input.eventType,
     from: readLatestDate(toOptionalDate(input.from), retentionStart),
     organizationId: input.organizationId,
+    orderBy: input.orderBy,
     project: input.project,
+    sort: input.sort,
     targetType: input.targetType,
     to: toOptionalDate(input.to),
   };

@@ -42,8 +42,21 @@ export function readAccessGroupsAssignmentsQueryKey(organizationSlug: string): Q
   return ['console-access', 'groups', organizationSlug, 'assignments'];
 }
 
-export function readAccessGroupsListQueryKey(organizationSlug: string): QueryKey {
-  return ['console-access', 'groups', organizationSlug, 'list'];
+export function readAccessGroupsListQueryKey(
+  organizationSlug: string,
+  page?: number,
+  pageSize?: number,
+  searchQuery?: string,
+  sortBy?: string,
+  sortDirection?: string,
+): QueryKey {
+  return page === undefined
+    ? ['console-access', 'groups', organizationSlug, 'list']
+    : ['console-access', 'groups', organizationSlug, 'list', page, pageSize, searchQuery, sortBy, sortDirection];
+}
+
+export function readAccessGroupsOptionsQueryKey(organizationSlug: string): QueryKey {
+  return ['console-access', 'groups', organizationSlug, 'options'];
 }
 
 export function readAccessGroupsMembersQueryKey(organizationSlug: string, groupId: string): QueryKey {
@@ -58,8 +71,21 @@ export function readAccessRolesDetailQueryKey(organizationSlug: string, roleId: 
   return ['console-access', 'roles', organizationSlug, 'detail', roleId];
 }
 
-export function readAccessRolesListQueryKey(organizationSlug: string): QueryKey {
-  return ['console-access', 'roles', organizationSlug, 'list'];
+export function readAccessRolesListQueryKey(
+  organizationSlug: string,
+  page?: number,
+  pageSize?: number,
+  searchQuery?: string,
+  sortBy?: string,
+  sortDirection?: string,
+): QueryKey {
+  return page === undefined
+    ? ['console-access', 'roles', organizationSlug, 'list']
+    : ['console-access', 'roles', organizationSlug, 'list', page, pageSize, searchQuery, sortBy, sortDirection];
+}
+
+export function readAccessRolesOptionsQueryKey(organizationSlug: string): QueryKey {
+  return ['console-access', 'roles', organizationSlug, 'options'];
 }
 
 export function readAccessRolesOrganizationQueryKey(organizationSlug: string): QueryKey {

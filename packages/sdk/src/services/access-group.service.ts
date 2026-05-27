@@ -1,4 +1,5 @@
 import {
+  accessGroupListOptionsResponseSchema,
   accessGroupListResponseSchema,
   accessGroupMemberListResponseSchema,
   accessGroupResponseSchema,
@@ -6,6 +7,7 @@ import {
   compartmentGroupMembersPathnameSuffix,
   compartmentGroupsPathname,
   createAccessGroupRequestSchema,
+  type AccessGroupListOptionsResponse,
   type AccessGroupListResponse,
   type AccessGroupMemberListResponse,
   type AccessGroupResponse,
@@ -13,12 +15,18 @@ import {
   type CreateAccessGroupRequest,
 } from '@compartment/contracts';
 import type { CompartmentRequester } from '../http/request.types';
+import { buildAccessListOptionsPath } from './access-list-path.service';
 
 export async function listAccessGroups(request: CompartmentRequester): Promise<AccessGroupListResponse> {
+  const response: AccessGroupListOptionsResponse = await listAccessGroupOptions(request);
+  return accessGroupListResponseSchema.parse({ groups: response.groups });
+}
+
+async function listAccessGroupOptions(request: CompartmentRequester): Promise<AccessGroupListOptionsResponse> {
   return await request({
     method: 'GET',
-    path: compartmentGroupsPathname,
-    schema: accessGroupListResponseSchema,
+    path: buildAccessListOptionsPath(compartmentGroupsPathname),
+    schema: accessGroupListOptionsResponseSchema,
   });
 }
 

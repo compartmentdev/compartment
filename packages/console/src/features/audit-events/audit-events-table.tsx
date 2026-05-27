@@ -13,13 +13,20 @@ import {
   ServerTableEmptyRow,
   ServerTableHeading,
   ServerTableRow,
+  ServerTableSortableHeading,
   type ServerTableColumnDefinition,
 } from '../../components/server-table';
+import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import { StatusTag, type StatusTagVariant } from '../../components/ui/status-tag';
-import type { BrowserAuditEventsPageResult } from '../../services/browser-audit-events.service.types';
+import type {
+  BrowserAuditEventsPageResult,
+  BrowserAuditEventsSortBy,
+} from '../../services/browser-audit-events.service.types';
+import { buildAuditEventsHref, readNextAuditEventsSortDirection } from './audit-events-query';
 
 interface AuditEventsTableProps {
   data: BrowserAuditEventsPageResult;
+  onNavigate?: BrowserSoftNavigateHandler | undefined;
 }
 
 interface AuditMetadataEntry {
@@ -39,23 +46,59 @@ const auditEventColumns: ServerTableColumnDefinition[] = [
 
 const auditMetadataPreviewLimit: number = 4;
 
-export function AuditEventsTable({ data }: Readonly<AuditEventsTableProps>): JSX.Element {
+export function AuditEventsTable({ data, onNavigate }: Readonly<AuditEventsTableProps>): JSX.Element {
+  const navigate: BrowserSoftNavigateHandler = readAuditEventsNavigateHandler(onNavigate);
   return (
     <ServerTable minWidthClassName="min-w-[1120px]">
       <ServerTableColumnGroup columns={auditEventColumns} />
       <thead className="bg-background">
         <tr>
-          <ServerTableHeading label="Time" />
-          <ServerTableHeading label="Event" />
+          <AuditEventsSortableHeading data={data} label="Time" onNavigate={navigate} sortBy="occurredAt" />
+          <AuditEventsSortableHeading data={data} label="Event" onNavigate={navigate} sortBy="eventType" />
           <ServerTableHeading label="Actor" />
           <ServerTableHeading label="Target" />
           <ServerTableHeading label="Project" />
-          <ServerTableHeading label="Status" />
+          <AuditEventsSortableHeading data={data} label="Status" onNavigate={navigate} sortBy="status" />
           <ServerTableHeading label="Details" />
         </tr>
       </thead>
       <tbody>{renderAuditEventRows(data.events)}</tbody>
     </ServerTable>
+  );
+}
+
+function readAuditEventsNavigateHandler(
+  onNavigate: BrowserSoftNavigateHandler | undefined,
+): BrowserSoftNavigateHandler {
+  return onNavigate ?? readNoopNavigate;
+}
+
+function readNoopNavigate(): void {
+  return undefined;
+}
+
+function AuditEventsSortableHeading({
+  data,
+  label,
+  onNavigate,
+  sortBy,
+}: Readonly<{
+  data: BrowserAuditEventsPageResult;
+  label: string;
+  onNavigate: BrowserSoftNavigateHandler;
+  sortBy: BrowserAuditEventsSortBy;
+}>): JSX.Element {
+  return (
+    <ServerTableSortableHeading
+      href={buildAuditEventsHref(data, {
+        page: 1,
+        sortBy,
+        sortDirection: readNextAuditEventsSortDirection(data, sortBy),
+      })}
+      label={label}
+      onNavigate={onNavigate}
+      sortDirection={data.sortBy === sortBy ? data.sortDirection : undefined}
+    />
   );
 }
 

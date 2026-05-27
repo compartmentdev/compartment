@@ -5,17 +5,12 @@ import type {
   UpdateAccessRoleRequest,
 } from '@compartment/contracts';
 import { createId } from '../lib/tokens';
-import {
-  createAccessRoleImmutableError,
-  createAccessRoleNameTakenError,
-  createAccessRoleNotFoundError,
-} from '../errors/api-business-error';
+import { createAccessRoleImmutableError, createAccessRoleNotFoundError } from '../errors/api-business-error';
 import {
   createAccessRoleWithExecutor,
   deleteAccessRoleWithExecutor,
   findAccessRoleById,
   findAccessRoleByIdWithExecutor,
-  findAccessRoleByNameWithExecutor,
   listAccessRoles,
   renameAccessRoleWithExecutor,
   updateAccessRoleWithExecutor,
@@ -24,13 +19,22 @@ import { listAccessAssignmentSummaries } from '../queries/rbac-assignments.query
 import type { AccessAssignmentSummaryRow, AccessRoleRow, RbacTransaction } from '../queries/rbac.query.types';
 import { normalizeDescription } from './access-description.service.helpers';
 import { assertCanGrantOrganizationRolePermissions } from './access-roles-grantability.service';
-import { buildRoleUsageByRoleId, type RoleUsageSummary } from './access-roles.service.helpers';
-import { runOrganizationAccessMutationTransaction } from './rbac-admin-invariant.service';
+import {
+  assertAccessRoleNameAvailable,
+  buildRoleUsageByRoleId,
+  readNextAccessRole,
+  readOrganizationAccessRolesPage,
+  toAccessRoleListRowResult,
+  type RoleUsageSummary,
+} from './access-roles.service.helpers';
 import type {
   CreateOrganizationAccessRoleInput,
   DeleteOrganizationAccessRoleInput,
+  ListOrganizationAccessRolesPageInput,
+  OrganizationAccessRolesPageResult,
   UpdateOrganizationAccessRoleInput,
 } from './access-roles.service.types';
+import { runOrganizationAccessMutationTransaction } from './rbac-admin-invariant.service';
 
 export async function listOrganizationAccessRoles(organizationId: string): Promise<AccessRoleListRow[]> {
   const [roles, assignments]: [AccessRoleRow[], AccessAssignmentSummaryRow[]] = await Promise.all([
@@ -39,7 +43,20 @@ export async function listOrganizationAccessRoles(organizationId: string): Promi
   ]);
   const usageByRoleId: ReadonlyMap<string, RoleUsageSummary> = buildRoleUsageByRoleId(assignments);
 
-  return roles.map((role: AccessRoleRow): AccessRoleListRow => toAccessRoleListRow(role, usageByRoleId.get(role.id)));
+  return roles.map(
+    (role: AccessRoleRow): AccessRoleListRow => toLegacyAccessRoleListRow(role, usageByRoleId.get(role.id)),
+  );
+}
+
+export async function listOrganizationAccessRolesPage(
+  input: ListOrganizationAccessRolesPageInput,
+): Promise<OrganizationAccessRolesPageResult> {
+  const pageResult: OrganizationAccessRolesPageResult = await readOrganizationAccessRolesPage(input);
+
+  return {
+    pagination: pageResult.pagination,
+    roles: pageResult.roles.map(toAccessRoleListRowResult),
+  };
 }
 
 export async function readOrganizationAccessRole(organizationId: string, roleId: string): Promise<AccessRoleSummary> {
@@ -141,21 +158,12 @@ async function requireAccessRole(organizationId: string, roleId: string): Promis
   return role;
 }
 
-function toAccessRoleListRow(role: AccessRoleRow, usage: RoleUsageSummary | undefined): AccessRoleListRow {
+function toLegacyAccessRoleListRow(role: AccessRoleRow, usage: RoleUsageSummary | undefined): AccessRoleListRow {
   return {
     ...toAccessRoleSummary(role),
     assignmentCount: usage?.assignmentCount ?? 0,
     groupCount: usage?.groupCount ?? 0,
     principalCount: usage?.principalCount ?? 0,
-  };
-}
-
-function readNextAccessRole(role: AccessRoleRow, request: UpdateAccessRoleRequest): AccessRoleRow {
-  return {
-    ...role,
-    description: request.description === undefined ? role.description : normalizeDescription(request.description),
-    name: request.name ?? role.name,
-    permissionKeys: request.permissionKeys ?? role.permissionKeys,
   };
 }
 
@@ -250,16 +258,4 @@ function toAccessRoleSummary(role: AccessRoleRow): AccessRoleSummary {
     name: role.name,
     permissionKeys: role.permissionKeys,
   };
-}
-
-async function assertAccessRoleNameAvailable(
-  tx: RbacTransaction,
-  organizationId: string,
-  roleName: string,
-  roleId?: string,
-): Promise<void> {
-  const existingRole: AccessRoleRow | undefined = await findAccessRoleByNameWithExecutor(tx, organizationId, roleName);
-  if (existingRole !== undefined && existingRole.id !== roleId) {
-    throw createAccessRoleNameTakenError();
-  }
 }

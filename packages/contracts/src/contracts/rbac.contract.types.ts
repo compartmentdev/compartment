@@ -1,3 +1,4 @@
+import type { ListPagination, ListSortDirection } from './list.contract';
 import type { AccessRoleKind, AccessSummaryLabel, PermissionKey } from './access.contract';
 import type { OrganizationUserSummary } from './users.contract';
 
@@ -22,6 +23,43 @@ export interface AccessRoleResponse {
 export interface AccessRoleListResponse {
   roles: AccessRoleListRow[];
 }
+
+export type AccessRoleListOrderBy = 'assignmentCount' | 'kind' | 'name';
+
+export interface AccessRoleLegacyListQuery {
+  detail?: undefined;
+}
+
+export interface AccessRoleListOptionsQuery {
+  detail: 'options';
+}
+
+export interface AccessRoleListPageQuery {
+  detail: 'list';
+  orderBy?: AccessRoleListOrderBy | undefined;
+  page?: number | undefined;
+  perPage?: number | undefined;
+  search?: string | undefined;
+  sort?: ListSortDirection | undefined;
+}
+
+export type AccessRoleListQuery = AccessRoleLegacyListQuery | AccessRoleListOptionsQuery | AccessRoleListPageQuery;
+
+export interface AccessRoleListPageResponse {
+  detail: 'list';
+  pagination: ListPagination;
+  roles: AccessRoleListRow[];
+}
+
+export interface AccessRoleListOptionsResponse {
+  detail: 'options';
+  roles: AccessRoleListRow[];
+}
+
+export type AccessRoleListRouteResponse =
+  | AccessRoleListOptionsResponse
+  | AccessRoleListPageResponse
+  | AccessRoleListResponse;
 
 export interface CreateAccessRoleRequest {
   description?: string | null | undefined;
@@ -55,6 +93,43 @@ export interface AccessGroupResponse {
 export interface AccessGroupListResponse {
   groups: AccessGroupListRow[];
 }
+
+export type AccessGroupListOrderBy = 'assignmentCount' | 'memberCount' | 'name';
+
+export interface AccessGroupLegacyListQuery {
+  detail?: undefined;
+}
+
+export interface AccessGroupListOptionsQuery {
+  detail: 'options';
+}
+
+export interface AccessGroupListPageQuery {
+  detail: 'list';
+  orderBy?: AccessGroupListOrderBy | undefined;
+  page?: number | undefined;
+  perPage?: number | undefined;
+  search?: string | undefined;
+  sort?: ListSortDirection | undefined;
+}
+
+export type AccessGroupListQuery = AccessGroupLegacyListQuery | AccessGroupListOptionsQuery | AccessGroupListPageQuery;
+
+export interface AccessGroupListPageResponse {
+  detail: 'list';
+  groups: AccessGroupListRow[];
+  pagination: ListPagination;
+}
+
+export interface AccessGroupListOptionsResponse {
+  detail: 'options';
+  groups: AccessGroupListRow[];
+}
+
+export type AccessGroupListRouteResponse =
+  | AccessGroupListOptionsResponse
+  | AccessGroupListPageResponse
+  | AccessGroupListResponse;
 
 export interface CreateAccessGroupRequest {
   description?: string | null | undefined;

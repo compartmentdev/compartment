@@ -9,7 +9,10 @@ import {
 } from '@compartment/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createCompartmentRequester } from '../src/http/request';
-import type { CompartmentRequester } from '../src/http/request.types';
+import type { CompartmentBinaryRequester, CompartmentRequester } from '../src/http/request.types';
+import { exportAuditEvents, listAuditEvents } from '../src/services/audit-events.service';
+import { listAccessGroups } from '../src/services/access-group.service';
+import { listAccessRoles } from '../src/services/access-role.service';
 import { listCustomDomains } from '../src/services/custom-domain.service';
 import { getDeploymentInspect } from '../src/services/deployment-inspect.service';
 import { getDeploymentStatus } from '../src/services/deployment-status.service';
@@ -112,6 +115,37 @@ describe('sdk query path services', (): void => {
     ]);
   });
 
+  it('builds roles, groups, and audit query paths for the new list contracts', async (): Promise<void> => {
+    const fetchState: FetchMockState = mockFetchSequence([
+      createJsonResponse({ detail: 'options', roles: [] }),
+      createJsonResponse({ detail: 'options', groups: [] }),
+      createJsonResponse({ events: [], pagination: { page: 1, perPage: 25, totalItems: 0, totalPages: 1 } }),
+      createJsonResponse(new Uint8Array()),
+    ]);
+
+    await listAccessRoles(createRequest());
+    await listAccessGroups(createRequest());
+    await listAuditEvents(createRequest(), {
+      actor: 'admin@example.com',
+      orderBy: 'status',
+      page: 1,
+      perPage: 25,
+      sort: 'asc',
+    });
+    await exportAuditEvents(createBinaryRequest(), {
+      format: 'csv',
+      orderBy: 'eventType',
+      sort: 'desc',
+    });
+
+    expect(readUrls(fetchState)).toEqual([
+      'https://console.example/v1/roles?detail=options',
+      'https://console.example/v1/groups?detail=options',
+      'https://console.example/v1/audit/events?actor=admin%40example.com&orderBy=status&page=1&perPage=25&sort=asc',
+      'https://console.example/v1/audit/events/export?format=csv&orderBy=eventType&sort=desc',
+    ]);
+  });
+
   it('preserves variable target query parameter order', (): void => {
     expect(
       buildVariableCollectionPath({
@@ -152,6 +186,16 @@ function createRequest(): CompartmentRequester {
     apiUrl: 'https://console.example/',
     sessionToken: 'session_123',
   });
+}
+
+function createBinaryRequest(): CompartmentBinaryRequester {
+  return async ({ path }: { path: string }): Promise<Buffer> => {
+    await fetch(new URL(path, 'https://console.example/').toString(), {
+      method: 'POST',
+    });
+
+    return Buffer.alloc(0);
+  };
 }
 
 function createDeploymentStatusResponse(): DeploymentStatusResponse {

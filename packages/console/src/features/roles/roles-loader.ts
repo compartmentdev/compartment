@@ -1,15 +1,16 @@
 import {
-  accessRoleListResponseSchema,
+  accessRoleListPageResponseSchema,
   accessRoleResponseSchema,
   compartmentRolesPathname,
   listPermissionKeys,
-  type AccessRoleListResponse,
+  type AccessRoleListPageResponse,
   type AccessRoleResponse,
   type PermissionKey,
 } from '@compartment/contracts/browser';
 import { redirect, type LoaderFunctionArgs } from 'react-router';
+import { BrowserApiError, requestBrowserApi, type BrowserApiRequestOptions } from '../../lib/browser-api';
 import type { BrowserRolesPageResult } from '../../services/browser-roles.service.types';
-import { requestBrowserApi, type BrowserApiRequestOptions } from '../../lib/browser-api';
+import { browserTablePageSizeOptions } from '../../services/browser-table.service.types';
 import { BrowserRedirect, readBrowserApiRedirect } from '../../lib/browser-redirect';
 import {
   loadBrowserConsoleContext,
@@ -18,15 +19,18 @@ import {
   readBrowserNoticeMessage,
   type BrowserConsoleContext,
 } from '../console/console-data';
-import {
-  buildUsersAdminRequiredRedirectTarget,
-  canManageBrowserRoles,
-  canReadBrowserRoles,
-} from '../console/console-access';
+import { buildUsersAdminRequiredRedirectTarget, canReadBrowserRoles } from '../console/console-access';
+import { buildBrowserAccessPageListPath } from '../access/access-list-path';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
+import { readRoleId, readRolesLoaderQuery, readRolesMode, type RolesLoaderQuery } from './roles-loader.query';
 import { readRolesBackHref } from './roles-page.query';
 
-type BrowserRolesPageBaseResult = Omit<BrowserRolesPageResult, 'projectCount' | 'role' | 'roleId' | 'roles'>;
+export type { RolesLoaderQuery } from './roles-loader.query';
+
+type BrowserRolesPageBaseResult = Omit<
+  BrowserRolesPageResult,
+  'page' | 'pageSize' | 'pageSizeOptions' | 'projectCount' | 'role' | 'roleId' | 'roles' | 'totalPages' | 'totalRoles'
+>;
 
 export async function loadRolesPageData({ request }: LoaderFunctionArgs): Promise<BrowserRolesPageResult> {
   const url: URL = new URL(request.url);
@@ -46,9 +50,10 @@ async function loadRolesPageDataForUrl(
   url: URL,
   options: BrowserApiRequestOptions = {},
 ): Promise<BrowserRolesPageResult> {
+  const query: RolesLoaderQuery = readRolesLoaderQuery(url.searchParams);
   const context: BrowserConsoleContext = await loadBrowserConsoleContext(url, options);
   if (context.selectedOrganizationSlug === null) {
-    return buildEmptyRolesPageResult(context, url.searchParams);
+    return buildEmptyRolesPageResult(context, query, url.searchParams);
   }
   const usersAdminRequiredRedirectTarget: string = buildUsersAdminRequiredRedirectTarget(
     context.selectedOrganizationSlug,
@@ -58,7 +63,7 @@ async function loadRolesPageDataForUrl(
   }
 
   try {
-    return await loadSelectedOrganizationRolesPageData(context, url.searchParams, options);
+    return await loadSelectedOrganizationRolesPageData(context, query, url.searchParams, options);
   } catch (error) {
     if (error instanceof Error) {
       throw readBrowserApiRedirect(error, usersAdminRequiredRedirectTarget) ?? error;
@@ -70,68 +75,67 @@ async function loadRolesPageDataForUrl(
 
 function buildEmptyRolesPageResult(
   context: BrowserConsoleContext,
+  query: RolesLoaderQuery,
   searchParams: URLSearchParams,
 ): BrowserRolesPageResult {
   return {
-    backHref: undefined,
-    currentOrganizationPermissions: context.currentOrganizationPermissions,
-    errorMessage: readBrowserErrorMessage(searchParams.get('error')),
-    mode: 'list',
-    noticeMessage: readBrowserNoticeMessage(searchParams.get('notice')),
-    organizationContext: context.organizationContext,
-    organizations: context.organizations,
-    permissionKeys: listGrantableRolePermissionKeys(context.currentOrganizationPermissions),
-    principalEmail: context.principalEmail,
+    ...buildRolesPageBaseResult(context, query, searchParams, null),
+    page: 1,
+    pageSize: query.pageSize,
+    pageSizeOptions: browserTablePageSizeOptions,
     projectCount: 0,
     role: null,
     roleId: null,
     roles: [],
-    selectedOrganizationSlug: null,
-    showOrganizationSelector: context.showOrganizationSelector,
+    totalPages: 1,
+    totalRoles: 0,
   };
 }
 
 async function loadSelectedOrganizationRolesPageData(
   context: BrowserConsoleContext,
+  query: RolesLoaderQuery,
   searchParams: URLSearchParams,
   options: BrowserApiRequestOptions,
 ): Promise<BrowserRolesPageResult> {
   const currentOrganization: string = requireBrowserAccessSelectedOrganizationSlug(context.selectedOrganizationSlug);
-  const [projectCount, response]: [number, AccessRoleListResponse] = await Promise.all([
+  const [projectCount, response]: [number, AccessRoleListPageResponse] = await Promise.all([
     loadSidebarProjectCount(currentOrganization, options),
-    fetchRolesResponse(currentOrganization, options),
+    fetchRolesResponse(currentOrganization, query, options),
   ]);
-  const roleId: string | null = readRoleId(searchParams, response);
+  const requestedRoleId: string | null = readRoleId(searchParams);
+  const role: AccessRoleResponse | null = await readSelectedRole(currentOrganization, requestedRoleId, options);
+  const roleId: string | null = role === null ? null : requestedRoleId;
 
-  return buildRolesPageResult(
-    context,
-    searchParams,
-    projectCount,
-    response,
-    roleId,
-    await readSelectedRole(currentOrganization, roleId, options),
-  );
+  return buildRolesPageResult(context, query, searchParams, projectCount, response, roleId, role);
 }
 
 function buildRolesPageResult(
   context: BrowserConsoleContext,
+  query: RolesLoaderQuery,
   searchParams: URLSearchParams,
   projectCount: number,
-  response: AccessRoleListResponse,
+  response: AccessRoleListPageResponse,
   roleId: string | null,
   role: AccessRoleResponse | null,
 ): BrowserRolesPageResult {
   return {
-    ...buildRolesPageBaseResult(context, searchParams, roleId),
+    ...buildRolesPageBaseResult(context, query, searchParams, roleId),
+    page: response.pagination.page,
+    pageSize: query.pageSize,
+    pageSizeOptions: browserTablePageSizeOptions,
     projectCount,
     role: role?.role ?? null,
     roleId,
     roles: response.roles,
+    totalPages: response.pagination.totalPages,
+    totalRoles: response.pagination.totalItems,
   };
 }
 
 function buildRolesPageBaseResult(
   context: BrowserConsoleContext,
+  query: RolesLoaderQuery,
   searchParams: URLSearchParams,
   roleId: string | null,
 ): BrowserRolesPageBaseResult {
@@ -145,8 +149,11 @@ function buildRolesPageBaseResult(
     organizations: context.organizations,
     permissionKeys: listGrantableRolePermissionKeys(context.currentOrganizationPermissions),
     principalEmail: context.principalEmail,
+    searchQuery: query.searchQuery,
     selectedOrganizationSlug: context.selectedOrganizationSlug,
     showOrganizationSelector: context.showOrganizationSelector,
+    sortBy: query.sortBy,
+    sortDirection: query.sortDirection,
   };
 }
 
@@ -159,40 +166,17 @@ function listGrantableRolePermissionKeys(currentOrganizationPermissions: Permiss
 
 export async function fetchRolesResponse(
   currentOrganization: string,
+  query: RolesLoaderQuery,
   options: BrowserApiRequestOptions = {},
-): Promise<AccessRoleListResponse> {
-  return await requestBrowserApi(compartmentRolesPathname, accessRoleListResponseSchema, {
-    currentOrganization,
-    signal: options.signal,
-  });
-}
-
-function readRoleId(searchParams: URLSearchParams, response: AccessRoleListResponse): string | null {
-  const roleId: string | null = searchParams.get('roleId');
-  if (roleId === null) {
-    return null;
-  }
-
-  return response.roles.some((role: { id: string }): boolean => role.id === roleId) ? roleId : null;
-}
-
-function readRolesMode(
-  searchParams: URLSearchParams,
-  roleId: string | null,
-  permissions: PermissionKey[],
-): 'create' | 'detail' | 'edit' | 'list' {
-  const mode: string | null = searchParams.get('mode');
-  if (mode === 'create' && canManageBrowserRoles(permissions)) {
-    return 'create';
-  }
-  if (mode === 'edit' && roleId !== null && canManageBrowserRoles(permissions)) {
-    return 'edit';
-  }
-  if (roleId !== null) {
-    return 'detail';
-  }
-
-  return 'list';
+): Promise<AccessRoleListPageResponse> {
+  return await requestBrowserApi(
+    buildBrowserAccessPageListPath(compartmentRolesPathname, query),
+    accessRoleListPageResponseSchema,
+    {
+      currentOrganization,
+      signal: options.signal,
+    },
+  );
 }
 
 export async function readSelectedRole(
@@ -204,12 +188,20 @@ export async function readSelectedRole(
     return null;
   }
 
-  return await requestBrowserApi(
-    `${compartmentRolesPathname}/${encodeURIComponent(roleId)}`,
-    accessRoleResponseSchema,
-    {
-      currentOrganization,
-      signal: options.signal,
-    },
-  );
+  try {
+    return await requestBrowserApi(
+      `${compartmentRolesPathname}/${encodeURIComponent(roleId)}`,
+      accessRoleResponseSchema,
+      {
+        currentOrganization,
+        signal: options.signal,
+      },
+    );
+  } catch (error) {
+    if (error instanceof BrowserApiError && error.status === 404) {
+      return null;
+    }
+
+    throw error;
+  }
 }

@@ -1,6 +1,7 @@
 import {
   accessGroupResponseSchema,
   compartmentGroupsPathname,
+  type AccessGroupListRow,
   type AccessGroupResponse,
   type AccessAssignmentScopeType,
 } from '@compartment/contracts/browser';
@@ -17,7 +18,7 @@ import {
 } from '../../lib/access-assignment-browser';
 import { normalizeOptionalDescription } from '../access/access-description.helpers';
 import { readAccessAssignmentCreateScopes } from '../access/access-assignment-create-scopes';
-import { invalidateGroupsAccessQueries } from './groups-query-state';
+import { invalidateGroupsAccessQueries } from './groups-query-invalidate';
 
 export type GroupsPageSetter = BrowserAccessPageSetter<BrowserGroupsPageResult>;
 type GroupDrawerErrorSetter = (value: string | undefined) => void;
@@ -56,9 +57,16 @@ export async function handleGroupRenameAction(
   setData: GroupsPageSetter,
   setErrorMessage: GroupDrawerErrorSetter,
 ): Promise<boolean> {
+  const normalizedDescription: string | null = normalizeOptionalDescription(description);
   return await runBrowserAccessAction(
     setData,
-    async (): Promise<void> => await invalidateGroupsAccessQueries(data),
+    async (): Promise<void> => {
+      await invalidateGroupsAccessQueries(data);
+      setData(
+        (current: BrowserGroupsPageResult): BrowserGroupsPageResult =>
+          updateRenamedGroupData(current, groupId, normalizedDescription, name),
+      );
+    },
     async (): Promise<void> => await updateGroup(groupId, description, name, data.selectedOrganizationSlug),
     {
       failureMessage: groupActionFailureMessage,
@@ -187,6 +195,23 @@ export async function handleGroupAssignmentDeleteAction(
 
 function readGroupAssignmentSubject(groupId: string): { groupId: string; subjectType: 'group' } {
   return { groupId, subjectType: 'group' };
+}
+
+function updateRenamedGroupData(
+  current: BrowserGroupsPageResult,
+  groupId: string,
+  description: string | null,
+  name: string,
+): BrowserGroupsPageResult {
+  return {
+    ...current,
+    groups: current.groups.map(
+      (group: AccessGroupListRow): AccessGroupListRow =>
+        group.id === groupId ? { ...group, description, name } : group,
+    ),
+    selectedGroup:
+      current.selectedGroup?.id === groupId ? { ...current.selectedGroup, description, name } : current.selectedGroup,
+  };
 }
 
 async function updateGroup(

@@ -743,19 +743,28 @@ function createRolesPageState(): RolesPageState {
 }
 
 function createRolesPageResult(overrides: Partial<BrowserRolesPageResult> = {}): BrowserRolesPageResult {
+  const roles: AccessRoleListRow[] = overrides.roles ?? [createRoleListRow('role_loader', 'Loader role')];
   return {
     currentOrganizationPermissions: createAccessManagementPermissions(),
     mode: 'list',
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [{ id: 'org_123', name: 'Acme Dev', slug: 'acme-dev' }],
+    page: 1,
+    pageSize: 10,
+    pageSizeOptions: [10, 20, 50],
     permissionKeys: ['project.read'],
     principalEmail: 'admin@example.com',
     projectCount: 1,
     role: null,
     roleId: null,
-    roles: [createRoleListRow('role_loader', 'Loader role')],
+    roles,
+    searchQuery: '',
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'name',
+    sortDirection: 'asc',
+    totalPages: 1,
+    totalRoles: roles.length,
     ...overrides,
   };
 }

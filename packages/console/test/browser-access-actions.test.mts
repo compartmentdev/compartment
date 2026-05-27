@@ -302,13 +302,21 @@ function createGroupsPageState(
     noticeMessage: undefined,
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [createOrganizationOption()],
+    page: 1,
+    pageSize: 10,
+    pageSizeOptions: [10, 20, 50],
     principalEmail: 'admin@example.com',
     projectCount: 1,
     roles: [],
+    searchQuery: '',
     scopeProjects: [],
     selectedGroupId: null,
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'name',
+    sortDirection: 'asc',
+    totalGroups: groups.length,
+    totalPages: 1,
   };
 
   return {
@@ -388,19 +396,28 @@ function createRolesPageResult(
   currentOrganizationPermissions: PermissionKey[],
   overrides: Partial<BrowserRolesPageResult> = {},
 ): BrowserRolesPageResult {
+  const roles: AccessRoleListRow[] = overrides.roles ?? [createRole()];
   return {
     currentOrganizationPermissions,
     mode: 'list',
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [createOrganizationOption()],
+    page: 1,
+    pageSize: 10,
+    pageSizeOptions: [10, 20, 50],
     permissionKeys: ['project.read'],
     principalEmail: 'admin@example.com',
     projectCount: 1,
     role: null,
     roleId: null,
-    roles: [createRole()],
+    roles,
+    searchQuery: '',
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'name',
+    sortDirection: 'asc',
+    totalPages: 1,
+    totalRoles: roles.length,
     ...overrides,
   };
 }

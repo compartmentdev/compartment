@@ -1,6 +1,6 @@
-import type { AccessRoleListResponse, AccessRoleResponse, AccessRoleSummary } from '@compartment/contracts/browser';
+import type { AccessRoleListPageResponse, AccessRoleResponse, AccessRoleSummary } from '@compartment/contracts/browser';
 import { useMemo } from 'react';
-import { type QueryKey, type UseQueryResult, useQuery } from '@tanstack/react-query';
+import { type UseQueryResult, useQuery } from '@tanstack/react-query';
 import {
   type BrowserQueryFunctionContext,
   browserQueryClient,
@@ -11,25 +11,14 @@ import type { BrowserRolesPageResult } from '../../services/browser-roles.servic
 import {
   browserAccessQueryStaleTime,
   readAccessGroupsOrganizationQueryKey,
-  readAccessOrganizationUnavailableQueryKey,
-  readAccessRolesDetailQueryKey,
-  readAccessRolesListQueryKey,
   readAccessRolesOrganizationQueryKey,
   readAccessUsersOrganizationQueryKey,
   requireBrowserAccessSelectedOrganizationSlug,
 } from '../access/access-query';
 import { invalidateBrowserConsolePermissionQueries } from '../console/console-query';
-import { fetchRolesResponse, readSelectedRole } from './roles-loader';
-
-interface RolesPageQueryData {
-  role: AccessRoleResponse | undefined;
-  roles: AccessRoleListResponse;
-}
-
-interface RolesPageQueryKeys {
-  role: QueryKey;
-  roles: QueryKey;
-}
+import { fetchRolesResponse, readSelectedRole, type RolesLoaderQuery } from './roles-loader';
+import { useInitialRolesPageQueryData, useRolesPageQueryKeys } from './roles-query-state.helpers';
+import type { RolesPageQueryData, RolesPageQueryKeys } from './roles-query-state.types';
 
 interface RolesPageQueryInput {
   hasOrganization: boolean;
@@ -37,12 +26,13 @@ interface RolesPageQueryInput {
   initialData: RolesPageQueryData;
   keys: RolesPageQueryKeys;
   organizationSlug: string | null;
+  query: RolesLoaderQuery;
   roleId: string | null;
 }
 
 interface RolesPageQueryResults {
   role: UseQueryResult<AccessRoleResponse | undefined>;
-  roles: UseQueryResult<AccessRoleListResponse>;
+  roles: UseQueryResult<AccessRoleListPageResponse>;
 }
 
 type RolesPageMode = 'create' | 'detail' | 'edit' | 'list';
@@ -56,18 +46,20 @@ export function useRolesPageQueryData(loaderData: BrowserRolesPageResult): Brows
 
 function useRolesPageQueryInput(loaderData: BrowserRolesPageResult): RolesPageQueryInput {
   const organizationSlug: string | null = loaderData.selectedOrganizationSlug;
-  const keys: RolesPageQueryKeys = useMemo(
-    (): RolesPageQueryKeys => readRolesPageQueryKeys(organizationSlug, loaderData.roleId),
-    [organizationSlug, loaderData.roleId],
-  );
-  const initialData: RolesPageQueryData = useMemo(
-    (): RolesPageQueryData => readInitialRolesPageQueryData(loaderData),
-    [loaderData.role, loaderData.roles],
-  );
-  const hasOrganization: boolean = loaderData.selectedOrganizationSlug !== null;
-  const hasSelectedRole: boolean = loaderData.roleId !== null;
+  const roleId: string | null = loaderData.roleId;
+  const query: RolesLoaderQuery = useMemo((): RolesLoaderQuery => readRolesLoaderQuery(loaderData), [loaderData]);
+  const keys: RolesPageQueryKeys = useRolesPageQueryKeys(organizationSlug, query, roleId);
+  const initialData: RolesPageQueryData = useInitialRolesPageQueryData(loaderData);
 
-  return { hasOrganization, hasSelectedRole, initialData, keys, organizationSlug, roleId: loaderData.roleId };
+  return {
+    hasOrganization: organizationSlug !== null,
+    hasSelectedRole: roleId !== null,
+    initialData,
+    keys,
+    organizationSlug,
+    query,
+    roleId,
+  };
 }
 
 function useSeedRolesPageQueryData(keys: RolesPageQueryKeys, initialData: RolesPageQueryData): void {
@@ -82,12 +74,14 @@ function useRolesPageQueries(input: RolesPageQueryInput): RolesPageQueryResults 
   };
 }
 
-function useRolesListQuery(input: RolesPageQueryInput): UseQueryResult<AccessRoleListResponse> {
+function useRolesListQuery(input: RolesPageQueryInput): UseQueryResult<AccessRoleListPageResponse> {
   return useQuery({
     enabled: input.hasOrganization,
     initialData: input.initialData.roles,
-    queryFn: async ({ signal }: BrowserQueryFunctionContext): Promise<AccessRoleListResponse> =>
-      await fetchRolesResponse(requireBrowserAccessSelectedOrganizationSlug(input.organizationSlug), { signal }),
+    queryFn: async ({ signal }: BrowserQueryFunctionContext): Promise<AccessRoleListPageResponse> =>
+      await fetchRolesResponse(requireBrowserAccessSelectedOrganizationSlug(input.organizationSlug), input.query, {
+        signal,
+      }),
     queryKey: input.keys.roles,
     staleTime: browserAccessQueryStaleTime,
   });
@@ -124,14 +118,18 @@ function readMergedRolesPageData(
   initialData: RolesPageQueryData,
   results: RolesPageQueryResults,
 ): BrowserRolesPageResult {
-  const roles: AccessRoleListResponse = results.roles.data ?? initialData.roles;
-  const nextRoleId: string | null = readNextRoleId(loaderData.roleId, roles);
+  const roles: AccessRoleListPageResponse = results.roles.data ?? initialData.roles;
+  const role: AccessRoleResponse | undefined = results.role.data ?? initialData.role;
+  const nextRoleId: string | null = readNextRoleId(loaderData.roleId, roles, role);
   return {
     ...loaderData,
     mode: readNextRolesMode(loaderData.mode, nextRoleId),
-    role: nextRoleId === null ? null : ((results.role.data ?? initialData.role)?.role ?? null),
+    page: roles.pagination.page,
+    role: nextRoleId === null ? null : (role?.role ?? null),
     roleId: nextRoleId,
     roles: roles.roles,
+    totalPages: roles.pagination.totalPages,
+    totalRoles: roles.pagination.totalItems,
   };
 }
 
@@ -148,43 +146,18 @@ export async function invalidateRoleAccessQueries(data: BrowserRolesPageResult):
   ]);
 }
 
-function readRolesPageQueryKeys(organizationSlug: string | null, roleId: string | null): RolesPageQueryKeys {
-  if (organizationSlug === null) {
-    return readRolesPageOrganizationUnavailableQueryKeys(roleId);
-  }
-
-  return {
-    role: readRolesDetailQueryKey(organizationSlug, roleId),
-    roles: readAccessRolesListQueryKey(organizationSlug),
-  };
-}
-
-function readRolesDetailQueryKey(organizationSlug: string, roleId: string | null): QueryKey {
-  return roleId === null
-    ? ['console-access', 'roles', organizationSlug, 'detail', 'unselected']
-    : readAccessRolesDetailQueryKey(organizationSlug, roleId);
-}
-
-function readRolesPageOrganizationUnavailableQueryKeys(roleId: string | null): RolesPageQueryKeys {
-  return {
-    role: readAccessOrganizationUnavailableQueryKey('roles', 'detail', roleId ?? 'unselected'),
-    roles: readAccessOrganizationUnavailableQueryKey('roles', 'list'),
-  };
-}
-
-function readInitialRolesPageQueryData(data: BrowserRolesPageResult): RolesPageQueryData {
-  return {
-    role: data.role === null ? undefined : { role: data.role },
-    roles: { roles: data.roles },
-  };
-}
-
-function readNextRoleId(roleId: string | null, response: AccessRoleListResponse): string | null {
+function readNextRoleId(
+  roleId: string | null,
+  response: AccessRoleListPageResponse,
+  role: AccessRoleResponse | undefined,
+): string | null {
   if (roleId === null) {
     return null;
   }
 
-  return response.roles.some((role: AccessRoleSummary): boolean => role.id === roleId) ? roleId : null;
+  return response.roles.some((item: AccessRoleSummary): boolean => item.id === roleId) || role?.role.id === roleId
+    ? roleId
+    : null;
 }
 
 function readNextRolesMode(currentMode: RolesPageMode, roleId: string | null): RolesPageMode {
@@ -196,4 +169,14 @@ function readNextRolesMode(currentMode: RolesPageMode, roleId: string | null): R
   }
 
   return roleId === null ? 'list' : 'detail';
+}
+
+function readRolesLoaderQuery(loaderData: BrowserRolesPageResult): RolesLoaderQuery {
+  return {
+    page: loaderData.page,
+    pageSize: loaderData.pageSize,
+    searchQuery: loaderData.searchQuery,
+    sortBy: loaderData.sortBy,
+    sortDirection: loaderData.sortDirection,
+  };
 }

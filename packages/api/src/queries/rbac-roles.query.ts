@@ -1,8 +1,19 @@
-import type { PermissionKey } from '@compartment/contracts';
-import { and, asc, eq, inArray } from 'drizzle-orm';
-import type { Database } from '../db/client';
-import { accessRolePermissions, accessRoles } from '../db/schema';
+import type { ListPagination, PermissionKey } from '@compartment/contracts';
+import { and, asc, eq } from 'drizzle-orm';
+import { accessRoles } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
+import { buildListPagination } from './list-pagination.query';
+import { countAccessRoleRecords, listAccessRolePageRecords } from './rbac-roles-list.query';
+import {
+  listAccessRolePermissionKeysByRoleIds,
+  replaceAccessRolePermissions,
+  type AccessRoleReader,
+} from './rbac-role-permissions.query';
+import type {
+  AccessRolesPageResult,
+  AccessRoleListPageRecord,
+  ListAccessRolesPageInput,
+} from './rbac-roles-list.query.types';
 import type {
   AccessRoleKindValue,
   AccessRoleRow,
@@ -32,6 +43,30 @@ export async function findAccessRoleById(organizationId: string, roleId: string)
   return await findAccessRoleByIdWithExecutor(getApiDatabase(), organizationId, roleId);
 }
 
+export async function listAccessRolesPage(input: ListAccessRolesPageInput): Promise<AccessRolesPageResult> {
+  const pagination: ListPagination = await readAccessRolePagePagination(input);
+  const records: AccessRoleListPageRecord[] = await listAccessRolePageRecords({ ...input, page: pagination.page });
+  const permissionKeysByRoleId: Map<string, PermissionKey[]> = await listAccessRolePermissionKeysByRoleIds(
+    getApiDatabase(),
+    records.map((record: AccessRoleListPageRecord): string => record.id),
+  );
+  const result: AccessRolesPageResult = { pagination, roles: [] };
+  for (const record of records) {
+    result.roles.push({
+      assignmentCount: record.assignmentCount,
+      description: record.description,
+      groupCount: record.groupCount,
+      id: record.id,
+      kind: record.kind,
+      name: record.name,
+      permissionKeys: permissionKeysByRoleId.get(record.id) ?? [],
+      principalCount: record.principalCount,
+    });
+  }
+
+  return result;
+}
+
 export async function findAccessRoleByNameWithExecutor(
   executor: AccessRoleReader,
   organizationId: string,
@@ -48,13 +83,6 @@ export async function findAccessRoleByNameWithExecutor(
   }
 
   return await buildAccessRoleRow(executor, role);
-}
-
-export async function listAccessRolePermissionKeysWithExecutor(
-  executor: AccessRoleReader,
-  roleId: string,
-): Promise<PermissionKey[]> {
-  return (await listAccessRolePermissionKeysByRoleIds(executor, [roleId])).get(roleId) ?? [];
 }
 
 export async function findAccessRoleByIdWithExecutor(
@@ -193,6 +221,16 @@ async function buildAccessRoleRow(
   return toAccessRoleRow(role, permissionKeysByRoleId.get(role.id) ?? []);
 }
 
+async function readAccessRolePagePagination(input: ListAccessRolesPageInput): Promise<ListPagination> {
+  const totalItems: number = await countAccessRoleRecords(input.organizationId, input.search);
+
+  return buildListPagination({
+    page: input.page,
+    perPage: input.perPage,
+    totalItems,
+  });
+}
+
 function toAccessRoleRow(role: typeof accessRoles.$inferSelect, permissionKeys: PermissionKey[]): AccessRoleRow {
   return {
     createdAt: role.createdAt,
@@ -205,45 +243,3 @@ function toAccessRoleRow(role: typeof accessRoles.$inferSelect, permissionKeys: 
     updatedAt: role.updatedAt,
   };
 }
-
-async function listAccessRolePermissionKeysByRoleIds(
-  executor: AccessRoleReader,
-  roleIds: readonly string[],
-): Promise<Map<string, PermissionKey[]>> {
-  const permissionKeysByRoleId: Map<string, PermissionKey[]> = new Map<string, PermissionKey[]>();
-  if (roleIds.length === 0) {
-    return permissionKeysByRoleId;
-  }
-
-  const rows: (typeof accessRolePermissions.$inferSelect)[] = await executor
-    .select()
-    .from(accessRolePermissions)
-    .where(inArray(accessRolePermissions.roleId, [...roleIds]));
-  for (const row of rows) {
-    const existing: PermissionKey[] = permissionKeysByRoleId.get(row.roleId) ?? [];
-    permissionKeysByRoleId.set(row.roleId, [...existing, row.permissionKey as PermissionKey]);
-  }
-
-  return permissionKeysByRoleId;
-}
-
-async function replaceAccessRolePermissions(
-  executor: RbacTransaction,
-  roleId: string,
-  permissionKeys: readonly PermissionKey[],
-): Promise<void> {
-  await executor.delete(accessRolePermissions).where(eq(accessRolePermissions.roleId, roleId));
-  if (permissionKeys.length === 0) {
-    return;
-  }
-
-  await executor.insert(accessRolePermissions).values(
-    permissionKeys.map((permissionKey: PermissionKey): typeof accessRolePermissions.$inferInsert => ({
-      id: `${roleId}:${permissionKey}`,
-      permissionKey,
-      roleId,
-    })),
-  );
-}
-
-type AccessRoleReader = Database | RbacTransaction;

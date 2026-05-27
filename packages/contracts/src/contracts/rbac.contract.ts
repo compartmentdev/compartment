@@ -3,6 +3,7 @@ import { accessRoleKindSchema, permissionKeySchema } from './access.contract';
 import { compartmentProjectNameSchema } from './compartment-descriptor.contract';
 import type { ContractSchema } from './schema.types';
 import { organizationUserSummarySchema } from './users.contract';
+import { accessGroupSummarySchema, accessRoleSummarySchema } from './rbac-list.contract';
 import type {
   AccessAssignmentListResponse,
   AccessAssignmentResponse,
@@ -11,16 +12,10 @@ import type {
   AccessAssignmentScopeTarget,
   AccessAssignmentSubjectSummary,
   AccessAssignmentSummary,
-  AccessGroupListRow,
-  AccessGroupListResponse,
   AccessGroupMemberListResponse,
   AccessGroupMemberSummary,
   AccessGroupResponse,
-  AccessGroupSummary,
-  AccessRoleListRow,
-  AccessRoleListResponse,
   AccessRoleResponse,
-  AccessRoleSummary,
   AddAccessGroupMemberRequest,
   CreateAccessAssignmentRequest,
   CreateAccessAssignmentSubject,
@@ -39,52 +34,45 @@ import type {
   UserAccessDetailResponse,
 } from './rbac.contract.types';
 
-export type * from './rbac.contract.types';
-
-const accessRoleSummarySchema: ContractSchema<AccessRoleSummary> = z
-  .object({
-    description: z.string().min(1).nullable(),
-    id: z.string().min(1),
-    kind: accessRoleKindSchema,
-    name: z.string().min(1),
-    permissionKeys: z.array(permissionKeySchema),
-  })
-  .strict();
-
-const accessRoleListRowSchema: ContractSchema<AccessRoleListRow> = z
-  .object({
-    description: z.string().min(1).nullable(),
-    id: z.string().min(1),
-    kind: accessRoleKindSchema,
-    name: z.string().min(1),
-    permissionKeys: z.array(permissionKeySchema),
-    assignmentCount: z.number().int().nonnegative(),
-    groupCount: z.number().int().nonnegative(),
-    principalCount: z.number().int().nonnegative(),
-  })
-  .strict();
-
-const accessGroupSummarySchema: ContractSchema<AccessGroupSummary> = z
-  .object({
-    assignmentCount: z.number().int().nonnegative(),
-    description: z.string().min(1).nullable(),
-    id: z.string().min(1),
-    memberCount: z.number().int().nonnegative(),
-    name: z.string().min(1),
-  })
-  .strict();
-
-const accessGroupListRowSchema: ContractSchema<AccessGroupListRow> = z
-  .object({
-    assignmentCount: z.number().int().nonnegative(),
-    description: z.string().min(1).nullable(),
-    id: z.string().min(1),
-    memberCount: z.number().int().nonnegative(),
-    name: z.string().min(1),
-    assignedRoleNames: z.array(z.string().min(1)),
-    assignmentScopeLabels: z.array(z.string().min(1)),
-  })
-  .strict();
+export type {
+  AccessAssignmentListResponse,
+  AccessAssignmentResponse,
+  AccessAssignmentScopeOptionsResponse,
+  AccessAssignmentScopeProjectOption,
+  AccessAssignmentScopeTarget,
+  AccessAssignmentSubjectSummary,
+  AccessAssignmentSummary,
+  AccessGroupListOrderBy,
+  AccessGroupListPageQuery,
+  AccessGroupListPageResponse,
+  AccessGroupListQuery,
+  AccessGroupListResponse,
+  AccessGroupListRow,
+  AccessGroupListOptionsResponse,
+  AccessGroupMemberListResponse,
+  AccessGroupMemberSummary,
+  AccessGroupResponse,
+  AccessGroupSummary,
+  AccessRoleListOrderBy,
+  AccessRoleListPageQuery,
+  AccessRoleListPageResponse,
+  AccessRoleListQuery,
+  AccessRoleListResponse,
+  AccessRoleListRouteResponse,
+  AccessRoleListRow,
+  AccessRoleListOptionsResponse,
+  AccessRoleResponse,
+  AccessRoleSummary,
+  AddAccessGroupMemberRequest,
+  CreateAccessAssignmentRequest,
+  CreateAccessGroupRequest,
+  CreateAccessRoleRequest,
+  OrganizationUserListRow,
+  UpdateAccessGroupRequest,
+  UpdateAccessRoleRequest,
+  UserAccessDetail,
+  UserAccessDetailResponse,
+} from './rbac.contract.types';
 
 const accessGroupMemberSummarySchema: ContractSchema<AccessGroupMemberSummary> = z
   .object({
@@ -167,9 +155,6 @@ const accessAssignmentSummarySchema: ContractSchema<AccessAssignmentSummary> = z
 export const accessRoleResponseSchema: ContractSchema<AccessRoleResponse> = z
   .object({ role: accessRoleSummarySchema })
   .strict();
-export const accessRoleListResponseSchema: ContractSchema<AccessRoleListResponse> = z
-  .object({ roles: z.array(accessRoleListRowSchema) })
-  .strict();
 export const createAccessRoleRequestSchema: ContractSchema<CreateAccessRoleRequest> = z
   .object({
     description: z.string().min(1).nullable().optional(),
@@ -187,9 +172,6 @@ export const updateAccessRoleRequestSchema: ContractSchema<UpdateAccessRoleReque
 
 export const accessGroupResponseSchema: ContractSchema<AccessGroupResponse> = z
   .object({ group: accessGroupSummarySchema })
-  .strict();
-export const accessGroupListResponseSchema: ContractSchema<AccessGroupListResponse> = z
-  .object({ groups: z.array(accessGroupListRowSchema) })
   .strict();
 export const createAccessGroupRequestSchema: ContractSchema<CreateAccessGroupRequest> = z
   .object({
@@ -245,3 +227,16 @@ const userAccessDetailSchema: ContractSchema<UserAccessDetail> = z
 export const userAccessDetailResponseSchema: ContractSchema<UserAccessDetailResponse> = z
   .object({ access: userAccessDetailSchema })
   .strict();
+
+export {
+  accessGroupListResponseSchema,
+  accessGroupListOptionsResponseSchema,
+  accessGroupListPageResponseSchema,
+  accessGroupListQuerySchema,
+  accessGroupListRouteResponseSchema,
+  accessRoleListResponseSchema,
+  accessRoleListOptionsResponseSchema,
+  accessRoleListPageResponseSchema,
+  accessRoleListQuerySchema,
+  accessRoleListRouteResponseSchema,
+} from './rbac-list.contract';

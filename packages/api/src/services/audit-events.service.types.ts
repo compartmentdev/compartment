@@ -2,10 +2,12 @@ import type {
   AuditEventListQuery,
   AuditEventListResponse,
   AuditEventExportQuery,
+  AuditEventListOrderBy,
   AuditEventMetadata,
   AuditEventStatus,
   AuditEventSummary,
   AuditEventType,
+  ListSortDirection,
 } from '@compartment/contracts';
 import type { AuditEventWriteExecutor } from '../queries/audit-events.query.types';
 
@@ -56,7 +58,9 @@ export interface OrganizationAuditEventFilterInput {
   eventType?: AuditEventType | undefined;
   from?: string | undefined;
   organizationId: string;
+  orderBy?: AuditEventListOrderBy | undefined;
   project?: string | undefined;
+  sort?: ListSortDirection | undefined;
   targetType?: string | undefined;
   to?: string | undefined;
 }

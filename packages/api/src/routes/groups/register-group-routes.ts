@@ -1,5 +1,5 @@
 import {
-  accessGroupListResponseSchema,
+  accessGroupListRouteResponseSchema,
   accessGroupMemberListResponseSchema,
   accessGroupResponseSchema,
   addAccessGroupMemberRequestSchema,
@@ -7,7 +7,6 @@ import {
   compartmentGroupMembersPathnameSuffix,
   createAccessGroupRequestSchema,
   updateAccessGroupRequestSchema,
-  type AccessGroupListResponse,
   type AccessGroupMemberListResponse,
   type AccessGroupResponse,
   type AddAccessGroupMemberRequest,
@@ -20,7 +19,6 @@ import type { ApiApp } from '../../app.types';
 import { parseRequestValue } from '../../http/validation';
 import { recordAuditEvent } from '../../services/audit-events.service';
 import type {
-  AccessGroupListRowResult,
   AccessGroupMemberMutationResult,
   AccessGroupMemberResult,
   AccessGroupResult,
@@ -30,7 +28,6 @@ import {
   createOrganizationAccessGroup,
   deleteOrganizationAccessGroup,
   listOrganizationAccessGroupMembers,
-  listOrganizationAccessGroups,
   readOrganizationAccessGroup,
   removeOrganizationAccessGroupMember,
   updateOrganizationAccessGroup,
@@ -39,7 +36,8 @@ import { synchronizeEdgeAppAccessState } from '../../services/app-access-edge.se
 import { buildAuditEventForRequest } from '../audit/audit-event-route-context';
 import { createCurrentOrganizationRouteResponseOptions } from '../protected/current-organization-route';
 import { buildGroupAuditEventInput, buildGroupMemberAuditEventInput } from './group-audit-route';
-import { buildAccessGroupListRows, buildAccessGroupMembersResponse, buildAccessGroupResponse } from './group.presenter';
+import { handleGroupList } from './group-list.route';
+import { buildAccessGroupMembersResponse, buildAccessGroupResponse } from './group.presenter';
 import {
   groupMemberRouteParamsSchema,
   groupRouteParamsSchema,
@@ -48,19 +46,17 @@ import {
 } from './group.route.types';
 
 export function registerGroupRoutes(app: ApiApp): void {
-  registerGroupCrudRoutes(app);
-  registerGroupMemberRoutes(app);
-}
-
-function registerGroupCrudRoutes(app: ApiApp): void {
   registerGroupListCreateRoutes(app);
   registerGroupItemRoutes(app);
+  registerGroupMemberRoutes(app);
 }
 
 function registerGroupListCreateRoutes(app: ApiApp): void {
   app.get(
     compartmentGroupsPathname,
-    createCurrentOrganizationRouteResponseOptions('organization.group.read', { 200: accessGroupListResponseSchema }),
+    createCurrentOrganizationRouteResponseOptions('organization.group.read', {
+      200: accessGroupListRouteResponseSchema,
+    }),
     handleGroupList,
   );
   app.post(
@@ -69,7 +65,6 @@ function registerGroupListCreateRoutes(app: ApiApp): void {
     handleGroupCreate,
   );
 }
-
 function registerGroupItemRoutes(app: ApiApp): void {
   app.get(
     `${compartmentGroupsPathname}/:groupId`,
@@ -87,7 +82,6 @@ function registerGroupItemRoutes(app: ApiApp): void {
     handleGroupDelete,
   );
 }
-
 function registerGroupMemberRoutes(app: ApiApp): void {
   app.get(
     `${compartmentGroupsPathname}/:groupId${compartmentGroupMembersPathnameSuffix}`,
@@ -112,15 +106,6 @@ function registerGroupMemberRoutes(app: ApiApp): void {
   );
 }
 
-async function handleGroupList(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
-  const groups: AccessGroupListRowResult[] = await listOrganizationAccessGroups(request.currentOrganization.id);
-  const response: AccessGroupListResponse = accessGroupListResponseSchema.parse({
-    groups: buildAccessGroupListRows(groups),
-  });
-
-  return await reply.send(response);
-}
-
 async function handleGroupCreate(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const body: CreateAccessGroupRequest = parseRequestValue(
     createAccessGroupRequestSchema,
@@ -132,18 +117,14 @@ async function handleGroupCreate(request: FastifyRequest, reply: FastifyReply): 
   await recordAuditEvent(
     buildAuditEventForRequest(request, buildGroupAuditEventInput(group, 'organization.group.created')),
   );
-
   return await reply.send(response);
 }
-
 async function handleGroupRead(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const params: GroupRouteParams = parseRequestValue(groupRouteParamsSchema, request.params, 'invalid_group_params');
   const group: AccessGroupResult = await readOrganizationAccessGroup(request.currentOrganization.id, params.groupId);
   const response: AccessGroupResponse = accessGroupResponseSchema.parse(buildAccessGroupResponse(group));
-
   return await reply.send(response);
 }
-
 async function handleGroupUpdate(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const params: GroupRouteParams = parseRequestValue(groupRouteParamsSchema, request.params, 'invalid_group_params');
   const body: UpdateAccessGroupRequest = parseRequestValue(
@@ -160,10 +141,8 @@ async function handleGroupUpdate(request: FastifyRequest, reply: FastifyReply): 
   await recordAuditEvent(
     buildAuditEventForRequest(request, buildGroupAuditEventInput(group, 'organization.group.updated')),
   );
-
   return await reply.send(response);
 }
-
 async function handleGroupDelete(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const params: GroupRouteParams = parseRequestValue(groupRouteParamsSchema, request.params, 'invalid_group_params');
   const group: AccessGroupResult = await readOrganizationAccessGroup(request.currentOrganization.id, params.groupId);
@@ -173,10 +152,8 @@ async function handleGroupDelete(request: FastifyRequest, reply: FastifyReply): 
     buildAuditEventForRequest(request, buildGroupAuditEventInput(group, 'organization.group.deleted')),
   );
   await synchronizeEdgeAppAccessState();
-
   return await reply.send(response);
 }
-
 async function handleGroupMembersList(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const params: GroupRouteParams = parseRequestValue(groupRouteParamsSchema, request.params, 'invalid_group_params');
   const members: AccessGroupMemberResult[] = await listOrganizationAccessGroupMembers(
@@ -186,10 +163,8 @@ async function handleGroupMembersList(request: FastifyRequest, reply: FastifyRep
   const response: AccessGroupMemberListResponse = accessGroupMemberListResponseSchema.parse(
     buildAccessGroupMembersResponse(members),
   );
-
   return await reply.send(response);
 }
-
 async function handleGroupMemberAdd(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const params: GroupRouteParams = parseRequestValue(groupRouteParamsSchema, request.params, 'invalid_group_params');
   const body: AddAccessGroupMemberRequest = parseRequestValue(
@@ -213,10 +188,8 @@ async function handleGroupMemberAdd(request: FastifyRequest, reply: FastifyReply
     );
     await synchronizeEdgeAppAccessState();
   }
-
   return await reply.send(accessGroupMemberListResponseSchema.parse(buildAccessGroupMembersResponse(result.members)));
 }
-
 async function handleGroupMemberDelete(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const params: GroupMemberRouteParams = parseGroupMemberRouteParams(request);
   const result: AccessGroupMemberMutationResult = await removeOrganizationAccessGroupMember(
@@ -237,10 +210,8 @@ async function handleGroupMemberDelete(request: FastifyRequest, reply: FastifyRe
     );
     await synchronizeEdgeAppAccessState();
   }
-
   return await reply.send(response);
 }
-
 function parseGroupMemberRouteParams(request: FastifyRequest): GroupMemberRouteParams {
   return parseRequestValue(groupMemberRouteParamsSchema, request.params, 'invalid_group_member_params');
 }

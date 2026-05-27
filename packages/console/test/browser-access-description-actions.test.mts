@@ -1,5 +1,7 @@
 import type {
+  AccessGroupListRow,
   AccessGroupResponse,
+  AccessRoleListRow,
   AccessRoleResponse,
   CreateAccessGroupRequest,
   CreateAccessRoleRequest,
@@ -73,6 +75,56 @@ describe('browser access description actions', (): void => {
     expect(readFetchPath(fetchMock.mock.calls[0]![0])).toBe('/v1/groups/group_123');
   });
 
+  it('updates an off-page selected group summary after a successful rename', async (): Promise<void> => {
+    const fetchMock: Mock<FetchImplementation> = vi.fn<FetchImplementation>(async (): Promise<Response> => {
+      await Promise.resolve();
+      return createJsonResponse(createGroupResponse());
+    });
+    vi.stubGlobal('document', { cookie: '' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const selectedGroup: AccessGroupListRow = {
+      assignedRoleNames: ['Viewer'],
+      assignmentCount: 1,
+      assignmentScopeLabels: ['Organization'],
+      description: 'Before',
+      id: 'group_123',
+      memberCount: 2,
+      name: 'Operators',
+    };
+    const initialState: BrowserGroupsPageResult = createGroupsPageResult({
+      groups: [],
+      mode: 'detail',
+      selectedGroup,
+      selectedGroupId: selectedGroup.id,
+    });
+    let nextState: BrowserGroupsPageResult | undefined;
+
+    await expect(
+      handleGroupRenameAction(
+        initialState,
+        selectedGroup.id,
+        'After',
+        'Operators Plus',
+        (value: BrowserGroupsPageResult | ((current: BrowserGroupsPageResult) => BrowserGroupsPageResult)): void => {
+          nextState = typeof value === 'function' ? value(initialState) : value;
+        },
+        (): void => undefined,
+      ),
+    ).resolves.toBe(true);
+
+    expect(nextState).toBeDefined();
+    if (nextState === undefined) {
+      throw new Error('Expected the group rename action to update local page state.');
+    }
+    const updatedState: BrowserGroupsPageResult = nextState;
+
+    expect(updatedState.selectedGroup).toMatchObject({
+      description: 'After',
+      name: 'Operators Plus',
+    });
+  });
+
   it('sends null when creating a role without a description', async (): Promise<void> => {
     const fetchMock: Mock<FetchImplementation> = vi.fn<FetchImplementation>(async (): Promise<Response> => {
       await Promise.resolve();
@@ -118,38 +170,56 @@ function readRequestJson(call: BrowserFetchCall): AccessMutationRequest {
 }
 
 function createGroupsPageResult(overrides: Partial<BrowserGroupsPageResult> = {}): BrowserGroupsPageResult {
+  const groups: AccessGroupListRow[] = overrides.groups ?? [];
   return {
     assignments: [],
     currentOrganizationPermissions: ['organization.group.manage'],
-    groups: [],
+    groups,
     members: [],
     mode: 'list',
     noticeMessage: undefined,
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [createOrganizationOption()],
+    page: 1,
+    pageSize: 10,
+    pageSizeOptions: [10, 20, 50],
     principalEmail: 'admin@example.com',
     roles: [],
+    searchQuery: '',
     scopeProjects: [],
     selectedGroupId: null,
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'name',
+    sortDirection: 'asc',
+    totalGroups: groups.length,
+    totalPages: 1,
     ...overrides,
   };
 }
 
 function createRolesPageResult(overrides: Partial<BrowserRolesPageResult> = {}): BrowserRolesPageResult {
+  const roles: AccessRoleListRow[] = overrides.roles ?? [];
   return {
     currentOrganizationPermissions: ['organization.role.manage'],
     mode: 'list',
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [createOrganizationOption()],
+    page: 1,
+    pageSize: 10,
+    pageSizeOptions: [10, 20, 50],
     permissionKeys: ['project.read'],
     principalEmail: 'admin@example.com',
     role: null,
     roleId: null,
-    roles: [],
+    roles,
+    searchQuery: '',
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
+    sortBy: 'name',
+    sortDirection: 'asc',
+    totalPages: 1,
+    totalRoles: roles.length,
     ...overrides,
   };
 }

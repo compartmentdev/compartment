@@ -6,8 +6,10 @@ import { findAccessRoleById, listAccessRoles } from '../src/queries/rbac-roles.q
 import {
   createOrganizationAccessRole,
   deleteOrganizationAccessRole,
+  listOrganizationAccessRolesPage,
   updateOrganizationAccessRole,
 } from '../src/services/access-roles.service';
+import type { OrganizationAccessRolesPageResult } from '../src/services/access-roles.service.types';
 import {
   clearRbacTestHarnessRuntime,
   closeRbacTestHarness,
@@ -17,6 +19,8 @@ import {
   resetRbacTestHarness,
   findRoleIdByName,
   seedAssignment,
+  seedCustomRole,
+  seedGroup,
   seedOrganization,
   seedOrganizationMembership,
   seedPrincipal,
@@ -143,5 +147,87 @@ describe('rbac roles db', (): void => {
       (error: Error | null | undefined): boolean =>
         error instanceof Error && isApiBusinessError(error) && error.code === 'access_role_immutable',
     );
+  });
+
+  it('pages roles through permission-key search, escaped wildcards, and non-name orderings', async (): Promise<void> => {
+    await seedCustomRole(harness, {
+      id: 'rol_launch_captain',
+      name: 'Launch Captain',
+      organizationId: 'org_123',
+      permissionKeys: ['variable.write'],
+    });
+    await seedCustomRole(harness, {
+      id: 'rol_100_percent_ops',
+      name: '100% Ops',
+      organizationId: 'org_123',
+      permissionKeys: ['deployment.read'],
+    });
+    await seedCustomRole(harness, {
+      id: 'rol_heavy_ops',
+      name: 'Heavy Ops',
+      organizationId: 'org_123',
+      permissionKeys: ['project.read'],
+    });
+    await seedGroup(harness, {
+      id: 'grp_heavy_ops',
+      name: 'Heavy Operators',
+      organizationId: 'org_123',
+    });
+    await seedAssignment(harness, {
+      id: 'asg_heavy_principal',
+      organizationId: 'org_123',
+      roleId: 'rol_heavy_ops',
+      scopeId: 'org_123',
+      scopeType: 'organization',
+      subjectId: adminPrincipalId,
+      subjectType: 'principal',
+    });
+    await seedAssignment(harness, {
+      id: 'asg_heavy_group',
+      organizationId: 'org_123',
+      roleId: 'rol_heavy_ops',
+      scopeId: 'org_123',
+      scopeType: 'organization',
+      subjectId: 'grp_heavy_ops',
+      subjectType: 'group',
+    });
+
+    const permissionSearch: OrganizationAccessRolesPageResult = await listOrganizationAccessRolesPage({
+      organizationId: 'org_123',
+      orderBy: 'name',
+      page: 1,
+      perPage: 20,
+      search: 'variable.write',
+      sort: 'asc',
+    });
+    expect(permissionSearch.roles.map((role: AccessRoleSummary): string => role.id)).toContain('rol_launch_captain');
+
+    const wildcardSearch: OrganizationAccessRolesPageResult = await listOrganizationAccessRolesPage({
+      organizationId: 'org_123',
+      orderBy: 'name',
+      page: 1,
+      perPage: 20,
+      search: '100%',
+      sort: 'asc',
+    });
+    expect(wildcardSearch.roles.map((role: AccessRoleSummary): string => role.id)).toEqual(['rol_100_percent_ops']);
+
+    const assignmentCountPage: OrganizationAccessRolesPageResult = await listOrganizationAccessRolesPage({
+      organizationId: 'org_123',
+      orderBy: 'assignmentCount',
+      page: 1,
+      perPage: 20,
+      sort: 'desc',
+    });
+    expect(assignmentCountPage.roles[0]?.id).toBe('rol_heavy_ops');
+
+    const kindPage: OrganizationAccessRolesPageResult = await listOrganizationAccessRolesPage({
+      organizationId: 'org_123',
+      orderBy: 'kind',
+      page: 1,
+      perPage: 20,
+      sort: 'asc',
+    });
+    expect(kindPage.roles[0]?.kind).toBe('custom');
   });
 });

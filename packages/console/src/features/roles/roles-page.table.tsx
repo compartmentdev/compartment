@@ -1,6 +1,7 @@
 import type { AccessRoleListRow } from '@compartment/contracts/browser';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { useEffect, useState, type JSX } from 'react';
+import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import { ConfirmationDialog } from '../../components/confirmation-dialog';
 import {
   ServerTable,
@@ -10,12 +11,14 @@ import {
   ServerTableEmptyRow,
   ServerTableHeading,
   ServerTableRow,
+  ServerTableSortableHeading,
   readServerTableActionControlClassName,
 } from '../../components/server-table';
 import { ServerTableActionsMenu } from '../../components/server-table-actions-menu';
 import { Button } from '../../components/ui/button';
 import { DropdownMenuItem } from '../../components/ui/dropdown-menu';
 import { useBrowserMutation } from '../../lib/browser-query-client';
+import type { BrowserRolesPageResult, BrowserRolesSortBy } from '../../services/browser-roles.service.types';
 import { formatRolePermissionSummary, formatRoleUsageSummary } from '../access/access-display';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import { canManageBrowserRoles } from '../console/console-access';
@@ -24,12 +27,18 @@ import {
   readRoleDeleteConfirmationSpec,
   type RoleDeleteConfirmationSpec,
 } from './roles-page.actions';
-import { buildRolesPageHref } from './roles-page.query';
+import { buildRolesPageHref, readNextRolesSortDirection } from './roles-page.query';
 import type { RolesPageState } from './roles-page.state';
 
 interface RolesTableProps {
-  roles: AccessRoleListRow[];
   state: RolesPageState;
+}
+
+interface SortableHeadingProps {
+  data: BrowserRolesPageResult;
+  label: string;
+  onNavigate: BrowserSoftNavigateHandler;
+  sortBy: BrowserRolesSortBy;
 }
 
 interface RoleRowProps {
@@ -47,30 +56,48 @@ interface RoleDeleteDialogProps {
 
 type RoleDeleteMutation = UseMutationResult<boolean, Error, void>;
 
-export function RolesTable({ roles, state }: Readonly<RolesTableProps>): JSX.Element {
+export function RolesTable({ state }: Readonly<RolesTableProps>): JSX.Element {
+  const { data, onNavigate } = state;
   return (
     <ServerTable minWidthClassName="min-w-[980px]">
       <thead className="bg-background">
         <tr>
-          <ServerTableHeading label="Role" />
-          <ServerTableHeading label="Type" />
+          <SortableHeading data={data} label="Role" onNavigate={onNavigate} sortBy="name" />
+          <SortableHeading data={data} label="Type" onNavigate={onNavigate} sortBy="kind" />
           <ServerTableHeading label="Permissions" />
-          <ServerTableHeading label="Used by" />
+          <SortableHeading data={data} label="Used by" onNavigate={onNavigate} sortBy="assignmentCount" />
           <ServerTableHeading label="Description" />
           <ServerTableHeading align="right" label="Actions" />
         </tr>
       </thead>
-      <tbody>{renderRoleRows(roles, state)}</tbody>
+      <tbody>{renderRoleRows(state)}</tbody>
     </ServerTable>
   );
 }
 
-function renderRoleRows(roles: AccessRoleListRow[], state: RolesPageState): JSX.Element[] {
-  if (roles.length === 0) {
+function SortableHeading({ data, label, onNavigate, sortBy }: Readonly<SortableHeadingProps>): JSX.Element {
+  return (
+    <ServerTableSortableHeading
+      href={buildRolesPageHref(data, {
+        page: 1,
+        sortBy,
+        sortDirection: readNextRolesSortDirection(data, sortBy),
+      })}
+      label={label}
+      onNavigate={onNavigate}
+      sortDirection={data.sortBy === sortBy ? data.sortDirection : undefined}
+    />
+  );
+}
+
+function renderRoleRows(state: RolesPageState): JSX.Element[] {
+  if (state.data.roles.length === 0) {
     return [<ServerTableEmptyRow colSpan={6} key="empty" message="No roles found." />];
   }
 
-  return roles.map((role: AccessRoleListRow): JSX.Element => <RoleRow key={role.id} role={role} state={state} />);
+  return state.data.roles.map(
+    (role: AccessRoleListRow): JSX.Element => <RoleRow key={role.id} role={role} state={state} />,
+  );
 }
 
 function RoleRow({ role, state }: Readonly<RoleRowProps>): JSX.Element {

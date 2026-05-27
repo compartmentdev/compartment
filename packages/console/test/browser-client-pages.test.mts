@@ -492,11 +492,11 @@ describe('browser client pages', (): void => {
             users: [],
           });
         }
-        if (path === '/v1/roles') {
-          return createJsonResponse({ roles: [] });
+        if (path === '/v1/roles?detail=options') {
+          return createJsonResponse({ detail: 'options', roles: [] });
         }
-        if (path === '/v1/groups') {
-          return createJsonResponse({ groups: [] });
+        if (path === '/v1/groups?detail=options') {
+          return createJsonResponse({ detail: 'options', groups: [] });
         }
         if (path === '/v1/assignments/scope-options') {
           return createJsonResponse({ projects: [] });
@@ -514,8 +514,8 @@ describe('browser client pages', (): void => {
       '/v1/orgs',
       '/v1/whoami',
       '/v1/users?orderBy=email&sort=asc&page=1&perPage=10',
-      '/v1/roles',
-      '/v1/groups',
+      '/v1/roles?detail=options',
+      '/v1/groups?detail=options',
       '/v1/assignments/scope-options',
     ]);
   });
@@ -775,8 +775,17 @@ describe('browser client pages', (): void => {
         if (path === browserProjectCountPath) {
           return createJsonResponse(createProjectCountResponse());
         }
-        if (path === '/v1/groups') {
-          return createJsonResponse({ groups: [] });
+        if (path === '/v1/groups?detail=list&orderBy=name&page=1&perPage=10&sort=asc') {
+          return createJsonResponse({
+            detail: 'list',
+            groups: [],
+            pagination: {
+              page: 1,
+              perPage: 10,
+              totalItems: 0,
+              totalPages: 1,
+            },
+          });
         }
 
         throw new Error(`Unexpected browser API request: ${path}`);
@@ -798,7 +807,7 @@ describe('browser client pages', (): void => {
       '/v1/orgs',
       '/v1/whoami',
       browserProjectCountPath,
-      '/v1/groups',
+      '/v1/groups?detail=list&orderBy=name&page=1&perPage=10&sort=asc',
     ]);
   });
 
@@ -817,8 +826,15 @@ describe('browser client pages', (): void => {
         if (path === browserProjectCountPath) {
           return createJsonResponse(createProjectCountResponse());
         }
-        if (path === '/v1/roles') {
+        if (path === '/v1/roles?detail=list&orderBy=name&page=1&perPage=10&sort=asc') {
           return createJsonResponse({
+            detail: 'list',
+            pagination: {
+              page: 1,
+              perPage: 10,
+              totalItems: 1,
+              totalPages: 1,
+            },
             roles: [
               {
                 assignmentCount: 0,
@@ -851,7 +867,7 @@ describe('browser client pages', (): void => {
       '/v1/orgs',
       '/v1/whoami',
       browserProjectCountPath,
-      '/v1/roles',
+      '/v1/roles?detail=list&orderBy=name&page=1&perPage=10&sort=asc',
     ]);
   });
 
