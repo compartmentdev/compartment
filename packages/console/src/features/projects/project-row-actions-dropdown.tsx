@@ -32,6 +32,7 @@ interface ProjectRowMenuAction {
 
 interface ProjectActionMenuItemProps {
   action: ProjectAction;
+  isDisabled: boolean;
   isPending: boolean;
   label: string;
   onSelect: (action: ProjectAction) => void;
@@ -39,7 +40,7 @@ interface ProjectActionMenuItemProps {
 
 interface ProjectActionsMenuProps {
   actions: readonly ProjectRowMenuAction[];
-  isPendingAction: ProjectAction | undefined;
+  pendingAction: ProjectAction | undefined;
   onSelect: (action: ProjectAction) => void;
   openItems: readonly JSX.Element[];
   projectName: string;
@@ -82,7 +83,7 @@ function ProjectRowActionsDropdownContent(props: Readonly<ProjectRowActionsDropd
     <>
       <ProjectActionsMenu
         actions={props.actions}
-        isPendingAction={controller.pendingAction}
+        pendingAction={controller.pendingAction}
         onSelect={controller.requestAction}
         openItems={props.openItems}
         projectName={props.project.name}
@@ -130,7 +131,7 @@ function appendProjectArchiveMenuActions(actions: ProjectRowMenuAction[], projec
 
 function ProjectActionsMenu({
   actions,
-  isPendingAction,
+  pendingAction,
   onSelect,
   openItems,
   projectName,
@@ -138,7 +139,7 @@ function ProjectActionsMenu({
   return (
     <ServerTableActionsMenu ariaLabel={`Open actions for ${projectName}`}>
       {openItems}
-      {renderProjectActionMenuItems(actions, isPendingAction, onSelect)}
+      {renderProjectActionMenuItems(actions, pendingAction, onSelect)}
     </ServerTableActionsMenu>
   );
 }
@@ -152,6 +153,7 @@ function renderProjectActionMenuItems(
     (action: ProjectRowMenuAction): JSX.Element => (
       <ProjectActionMenuItem
         action={action.action}
+        isDisabled={pendingAction !== undefined}
         isPending={pendingAction === action.action}
         key={action.action}
         label={action.label}
@@ -163,6 +165,7 @@ function renderProjectActionMenuItems(
 
 function ProjectActionMenuItem({
   action,
+  isDisabled,
   isPending,
   label,
   onSelect,
@@ -172,9 +175,9 @@ function ProjectActionMenuItem({
       className={
         action === 'delete' ? 'text-destructive focus:text-destructive data-[highlighted]:text-destructive' : undefined
       }
-      disabled={isPending}
+      disabled={isDisabled}
       onSelect={(): void => {
-        if (!isPending) {
+        if (!isDisabled) {
           onSelect(action);
         }
       }}

@@ -50,16 +50,17 @@ export function useProjectActionController(
   onProjectAction: ProjectActionHandler,
 ): ProjectActionController {
   const [confirmationAction, setConfirmationAction] = useState<ConfirmableProjectAction | null>(null);
+  const [pendingAction, setPendingAction] = useState<ProjectAction | undefined>(undefined);
   const mutation: ProjectActionMutation = useProjectActionMutation(projectName, organizationSlug, onProjectAction);
   const requestAction: (action: ProjectAction) => void = (action: ProjectAction): void =>
-    requestProjectAction(action, mutation, setConfirmationAction);
+    requestProjectAction(action, mutation, setConfirmationAction, setPendingAction);
   const submitConfirmedAction: () => void = (): void =>
-    submitConfirmedProjectAction(confirmationAction, mutation, setConfirmationAction);
+    submitConfirmedProjectAction(confirmationAction, mutation, setConfirmationAction, setPendingAction);
 
   return new ProjectActionControllerValue(
     confirmationAction,
     mutation.isPending,
-    mutation.isPending ? mutation.variables : undefined,
+    pendingAction,
     requestAction,
     setConfirmationAction,
     submitConfirmedAction,
@@ -100,26 +101,45 @@ function requestProjectAction(
   action: ProjectAction,
   mutation: ProjectActionMutation,
   setConfirmationAction: (action: ConfirmableProjectAction | null) => void,
+  setPendingAction: (action: ProjectAction | undefined) => void,
 ): void {
+  if (mutation.isPending) {
+    return;
+  }
+
   if (action === 'archive' || action === 'delete') {
     setConfirmationAction(action);
     return;
   }
 
-  mutation.mutate(action);
+  mutateProjectAction(action, mutation, setPendingAction);
 }
 
 function submitConfirmedProjectAction(
   confirmationAction: ConfirmableProjectAction | null,
   mutation: ProjectActionMutation,
   setConfirmationAction: (action: ConfirmableProjectAction | null) => void,
+  setPendingAction: (action: ProjectAction | undefined) => void,
 ): void {
-  if (confirmationAction === null) {
+  if (confirmationAction === null || mutation.isPending) {
     return;
   }
 
   setConfirmationAction(null);
-  mutation.mutate(confirmationAction);
+  mutateProjectAction(confirmationAction, mutation, setPendingAction);
+}
+
+function mutateProjectAction(
+  action: ProjectAction,
+  mutation: ProjectActionMutation,
+  setPendingAction: (action: ProjectAction | undefined) => void,
+): void {
+  setPendingAction(action);
+  mutation.mutate(action, {
+    onSettled: (): void => {
+      setPendingAction(undefined);
+    },
+  });
 }
 
 function useProjectActionMutation(

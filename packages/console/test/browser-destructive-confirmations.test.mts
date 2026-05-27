@@ -386,6 +386,59 @@ describe('browser destructive confirmations', (): void => {
     }
   });
 
+  it('disables every project action while a lifecycle mutation is pending', async (): Promise<void> => {
+    let resolveFetch: ((response: Response) => void) | undefined;
+    const fetchPromise: Promise<Response> = new Promise<Response>((resolve: (response: Response) => void): void => {
+      resolveFetch = resolve;
+    });
+    const fetchMock: Mock<FetchImplementation> = vi.fn<FetchImplementation>(
+      async (): Promise<Response> => await fetchPromise,
+    );
+    const onProjectAction: Mock<ProjectActionHandler> = vi.fn<ProjectActionHandler>(async (): Promise<void> => {
+      await Promise.resolve();
+    });
+    const project: BrowserProjectSummary = createProjectSummary({
+      canManageArchive: true,
+      lifecycleAction: 'start',
+      lifecycleState: 'stopped',
+    });
+
+    document.cookie = `${compartmentCsrfCookieName}=csrf-token`;
+    vi.stubGlobal('fetch', fetchMock);
+
+    const mountedApp: MountedTestApp = await mountWithBrowserQueryClient(
+      React.createElement(ProjectRowActionsDropdown, {
+        data: createProjectsPageResult({
+          currentOrganizationPermissions: ['project.archive', 'project.lifecycle.write'],
+          projects: [project],
+        }),
+        onProjectAction,
+        project,
+      }),
+    );
+
+    try {
+      await clickButton(requireButton(mountedApp.container, 'Start'));
+      await waitForMutationFetch(fetchMock);
+      await flushEffects();
+
+      expect(requireButton(mountedApp.container, 'Start').disabled).toBe(true);
+      expect(requireButton(mountedApp.container, 'Archive').disabled).toBe(true);
+      expect(document.body.querySelector('[role="alertdialog"]')).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      resolveFetch?.(
+        new Response(JSON.stringify(createProjectLifecycleResponse('start')), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200,
+        }),
+      );
+      await flushEffects();
+    } finally {
+      await mountedApp.unmount();
+    }
+  });
+
   it('runs rollback after confirming the non-typed dialog', async (): Promise<void> => {
     const fetchMock: Mock<FetchImplementation> = vi.fn<FetchImplementation>(async (): Promise<Response> => {
       await Promise.resolve();
