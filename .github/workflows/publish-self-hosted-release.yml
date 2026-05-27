@@ -223,6 +223,7 @@ jobs:
             latest_tag_version="$(
               git ls-remote --exit-code --refs --tags origin 'refs/tags/v*.*.*' \
                 | sed -E 's#.*refs/tags/v##' \
+                | awk '/^[0-9]+[.][0-9]+[.][0-9]+$/ { print }' \
                 | sort -V \
                 | tail -n 1
             )"
