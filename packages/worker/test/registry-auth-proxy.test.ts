@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createConnection, type AddressInfo, type Socket } from 'node:net';
 import { resolve as resolvePath } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { rewriteRegistryLocationHeader } from '../src/registry-auth-proxy-location';
 
 interface RegistryTargetCall {
   authorization: string | undefined;
@@ -20,6 +21,12 @@ interface RawHttpResponse {
 interface RegistryFetchResponse {
   location: string | null;
   status: number;
+}
+
+interface RegistryLocationPolicyCase {
+  createLocation: (targetUrl: string) => string;
+  expectedLocation: string | null;
+  name: string;
 }
 
 describe('registry auth proxy', (): void => {
@@ -192,12 +199,46 @@ describe('registry auth proxy', (): void => {
     expect(internalCalls).toEqual([]);
   });
 
-  it('rewrites registry location headers for normal proxied responses', async (): Promise<void> => {
+  it('applies strict registry-owned Location policy to proxied responses', async (): Promise<void> => {
+    const uploadPath: string = '/v2/repo/blobs/uploads/upload-id';
+    const locationPolicyCases: RegistryLocationPolicyCase[] = [
+      {
+        createLocation: (targetUrl: string): string => `${targetUrl}${uploadPath}`,
+        expectedLocation: uploadPath,
+        name: 'target-origin absolute registry upload redirect',
+      },
+      {
+        createLocation: (): string => uploadPath,
+        expectedLocation: uploadPath,
+        name: 'safe origin-form registry upload redirect',
+      },
+      {
+        createLocation: (targetUrl: string): string => `${targetUrl}@evil.example${uploadPath}`,
+        expectedLocation: null,
+        name: 'prefix-confusion userinfo absolute URL',
+      },
+      {
+        createLocation: (): string => `http://evil.example${uploadPath}`,
+        expectedLocation: null,
+        name: 'cross-origin absolute URL',
+      },
+      {
+        createLocation: (): string => `//evil.example${uploadPath}`,
+        expectedLocation: null,
+        name: 'network-path URL',
+      },
+      {
+        createLocation: (): string => 'http://[::1',
+        expectedLocation: null,
+        name: 'malformed URL',
+      },
+    ];
     let targetUrl: string = '';
+    let targetLocation: string = '';
     const targetServer: Server = await listen(
       createServer((_request: IncomingMessage, response: ServerResponse): void => {
         response.writeHead(307, {
-          location: `${targetUrl}/v2/repo/blobs/uploads/upload-id`,
+          location: targetLocation,
         });
         response.end();
       }),
@@ -209,18 +250,45 @@ describe('registry auth proxy', (): void => {
     processes.push(proxyProcess);
     const proxyUrl: string = `http://127.0.0.1:${proxyPort.toString()}`;
 
-    await expect(
-      readFetchResponse(`${proxyUrl}/v2/repo/blobs/uploads/`, {
-        headers: {
-          authorization: basicAuthorizationHeader('writer', 'write-password'),
-        },
-        method: 'POST',
-        redirect: 'manual',
-      }),
-    ).resolves.toEqual({
-      location: `${proxyUrl}/v2/repo/blobs/uploads/upload-id`,
-      status: 307,
-    });
+    for (const locationPolicyCase of locationPolicyCases) {
+      targetLocation = locationPolicyCase.createLocation(targetUrl);
+
+      await expect(
+        readFetchResponse(`${proxyUrl}/v2/repo/blobs/uploads/`, {
+          headers: {
+            authorization: basicAuthorizationHeader('writer', 'write-password'),
+          },
+          method: 'POST',
+          redirect: 'manual',
+        }),
+        locationPolicyCase.name,
+      ).resolves.toEqual({
+        location: locationPolicyCase.expectedLocation,
+        status: 307,
+      });
+    }
+  });
+
+  it('rejects unsafe registry Location values before rewrite', (): void => {
+    const targetUrl: URL = new URL('http://registry.example:5000');
+    const unsafeLocations: string[] = [
+      'http://user:password@registry.example:5000/v2/repo/blobs/uploads/upload-id',
+      'http://@registry.example:5000/v2/repo/blobs/uploads/upload-id',
+      'http://registry.example:5000.evil/v2/repo/blobs/uploads/upload-id',
+      'http:registry.example:5000/v2/repo/blobs/uploads/upload-id',
+      'http://registry.example:5000/v1/%2e%2e/v2/repo/blobs/uploads/upload-id',
+      'http://registry.example:5000/x/../v2/repo/blobs/uploads/upload-id',
+      '/v2/repo\r\nx',
+      '/v2/repo\u007f',
+      '/v2/repo\u0085',
+      '/v2/%zz',
+      '/v1/%2e%2e/v2/repo/blobs/uploads/upload-id',
+      '/x/../v2/repo/blobs/uploads/upload-id',
+    ];
+
+    for (const unsafeLocation of unsafeLocations) {
+      expect(rewriteRegistryLocationHeader(unsafeLocation, targetUrl), unsafeLocation).toBeNull();
+    }
   });
 });
 

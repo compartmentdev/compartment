@@ -11,7 +11,7 @@ import {
 } from '@compartment/contracts/browser';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { createJsonResponse, waitForNextTick } from './browser-test.fixtures';
+import { createJsonResponse } from './browser-test.fixtures';
 import { type BrowserFetchCall, type FetchImplementation, readFetchPath } from './browser-client-pages.helpers';
 import { browserQueryClient } from '../src/lib/browser-query-client';
 import type { BrowserGroupsPageResult } from '../src/services/browser-groups.service.types';
@@ -26,33 +26,15 @@ import {
   readAccessUsersOrganizationQueryKey,
 } from '../src/features/access/access-query';
 import { readBrowserConsoleWhoAmIQueryKey } from '../src/features/console/console-query';
-import { readGroupDeleteConfirmationMessage } from '../src/features/groups/groups-page.actions';
-import { handleRoleDelete, readRoleDeleteConfirmationMessage } from '../src/features/roles/roles-page.actions';
+import { readGroupDeleteConfirmationSpec } from '../src/features/groups/groups-page.actions';
+import { handleRoleDelete, readRoleDeleteConfirmationSpec } from '../src/features/roles/roles-page.actions';
+import { readUserRemoveConfirmationSpec } from '../src/features/users/user-actions';
 import { useGroupsPageQueryData } from '../src/features/groups/groups-query-state';
 import { useRolesPageQueryData } from '../src/features/roles/roles-query-state';
 import { useUsersPageQueryData } from '../src/features/users/users-query-state';
-import type { GroupsPageState } from '../src/features/groups/groups-page.state';
-import type { RolesPageState } from '../src/features/roles/roles-page.state';
-import type * as GroupDetailDrawerModule from '../src/features/groups/groups-page.detail-drawer';
-import type * as GroupsPageTableModule from '../src/features/groups/groups-page.table';
-import type * as RoleDetailDrawerModule from '../src/features/roles/roles-page.detail-drawer';
-import type * as RolesTableModule from '../src/features/roles/roles-page.table';
-
-interface CapturedButtonProps {
-  children: React.ReactNode;
-  onClick?: (() => void) | undefined;
-}
-
-interface CapturedDropdownMenuItemProps {
-  children: React.ReactNode;
-  disabled?: boolean | undefined;
-  onSelect?: (() => void) | undefined;
-}
 
 afterEach((): void => {
   browserQueryClient.clear();
-  vi.doUnmock('../src/components/ui/button');
-  vi.doUnmock('../src/components/ui/dropdown-menu');
   vi.unstubAllGlobals();
 });
 
@@ -214,201 +196,12 @@ describe('browser access query state', (): void => {
     expect(browserQueryClient.getQueryState(betaRolesListKey)?.isInvalidated).toBe(false);
   });
 
-  it('requires typed confirmation before role delete mutation runs from the detail drawer', async (): Promise<void> => {
-    const capturedButtons: CapturedButtonProps[] = [];
-    vi.doMock('../src/components/ui/button', (): { Button: (props: CapturedButtonProps) => React.ReactElement } => ({
-      Button: (props: CapturedButtonProps): React.ReactElement => {
-        capturedButtons.push(props);
-        return React.createElement('button', null, props.children);
-      },
-    }));
-    const roleDetailDrawerModule: typeof RoleDetailDrawerModule =
-      await import('../src/features/roles/roles-page.detail-drawer');
-    const fetchMock: Mock<FetchImplementation> = vi.fn<FetchImplementation>(async (): Promise<Response> => {
-      await Promise.resolve();
-      return createJsonResponse(createRoleResponse('role_123', 'Viewer'));
-    });
-    const promptMock: Mock<(message: string) => string> = vi
-      .fn<(message: string) => string>()
-      .mockReturnValueOnce('not-viewer')
-      .mockReturnValueOnce('Viewer');
-    vi.stubGlobal('document', { cookie: '' });
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('window', { prompt: promptMock });
-
-    renderWithBrowserQueryClient(
-      React.createElement(roleDetailDrawerModule.RoleDetailDrawer, {
-        state: createRolesPageState(),
-      }),
+  it('renders typed confirmation copy for role, group, and user destructive actions', (): void => {
+    expect(readRoleDeleteConfirmationSpec('Viewer').description).toBe('Type Viewer to remove this role.');
+    expect(readGroupDeleteConfirmationSpec('Operators').description).toBe('Type Operators to delete this group.');
+    expect(readUserRemoveConfirmationSpec('viewer@example.com').description).toBe(
+      'Type viewer@example.com to remove this user.',
     );
-    const removeRoleButton: CapturedButtonProps = requireCapturedButton(capturedButtons, 'Remove role');
-    removeRoleButton.onClick?.();
-    await waitForNextTick();
-    expect(fetchMock).not.toHaveBeenCalled();
-    removeRoleButton.onClick?.();
-    await waitForMutationFetch(fetchMock);
-
-    const firstCall: BrowserFetchCall = fetchMock.mock.calls[0]!;
-    expect(promptMock).toHaveBeenNthCalledWith(1, 'Type Viewer to remove this role.');
-    expect(promptMock).toHaveBeenNthCalledWith(2, 'Type Viewer to remove this role.');
-    expect(readFetchPath(firstCall[0])).toBe('/v1/roles/role_123');
-    expect(new Headers(firstCall[1]?.headers).get(compartmentCurrentOrganizationHeaderName)).toBe('acme-dev');
-    expect(browserQueryClient.getMutationCache().getAll()).toHaveLength(1);
-    expect(browserQueryClient.getMutationCache().getAll()[0]?.options.mutationKey).toEqual([
-      'console-access',
-      'roles',
-      'acme-dev',
-      'role_123',
-      'delete',
-    ]);
-  });
-
-  it('runs role row deletes through the typed confirmation gate', async (): Promise<void> => {
-    const capturedItems: CapturedDropdownMenuItemProps[] = [];
-    vi.doMock(
-      '../src/components/ui/dropdown-menu',
-      (): {
-        DropdownMenu: (props: { children: React.ReactNode }) => React.ReactElement;
-        DropdownMenuContent: (props: { children: React.ReactNode }) => React.ReactElement;
-        DropdownMenuItem: (props: CapturedDropdownMenuItemProps) => React.ReactElement;
-        DropdownMenuTrigger: (props: { children: React.ReactNode }) => React.ReactElement;
-      } => ({
-        DropdownMenu: (props: { children: React.ReactNode }): React.ReactElement =>
-          React.createElement(React.Fragment, null, props.children),
-        DropdownMenuContent: (props: { children: React.ReactNode }): React.ReactElement =>
-          React.createElement(React.Fragment, null, props.children),
-        DropdownMenuItem: (props: CapturedDropdownMenuItemProps): React.ReactElement => {
-          capturedItems.push(props);
-          return React.createElement('button', null, props.children);
-        },
-        DropdownMenuTrigger: (props: { children: React.ReactNode }): React.ReactElement =>
-          React.createElement(React.Fragment, null, props.children),
-      }),
-    );
-    const rolesTableModule: typeof RolesTableModule = await import('../src/features/roles/roles-page.table');
-    const fetchMock: Mock<FetchImplementation> = vi.fn<FetchImplementation>(async (): Promise<Response> => {
-      await Promise.resolve();
-      return createJsonResponse(createRoleResponse('role_123', 'Viewer'));
-    });
-    const promptMock: Mock<(message: string) => string> = vi
-      .fn<(message: string) => string>()
-      .mockReturnValue('Viewer');
-    vi.stubGlobal('document', { cookie: '' });
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('window', { prompt: promptMock });
-
-    renderWithBrowserQueryClient(
-      React.createElement(rolesTableModule.RolesTable, {
-        roles: [createRoleListRow('role_123', 'Viewer')],
-        state: createRolesPageState(),
-      }),
-    );
-    requireCapturedDropdownMenuItem(capturedItems, 'Remove').onSelect?.();
-    await waitForMutationFetch(fetchMock);
-
-    expect(promptMock).toHaveBeenCalledWith('Type Viewer to remove this role.');
-    expect(readFetchPath(fetchMock.mock.calls[0]![0])).toBe('/v1/roles/role_123');
-  });
-
-  it('requires typed confirmation before group delete mutation runs from the detail drawer', async (): Promise<void> => {
-    const capturedButtons: CapturedButtonProps[] = [];
-    vi.doMock('../src/components/ui/button', (): { Button: (props: CapturedButtonProps) => React.ReactElement } => ({
-      Button: (props: CapturedButtonProps): React.ReactElement => {
-        capturedButtons.push(props);
-        return React.createElement('button', null, props.children);
-      },
-    }));
-    const groupDetailDrawerModule: typeof GroupDetailDrawerModule =
-      await import('../src/features/groups/groups-page.detail-drawer');
-    const fetchMock: Mock<FetchImplementation> = vi.fn<FetchImplementation>(async (): Promise<Response> => {
-      await Promise.resolve();
-      return createJsonResponse(createGroupDeleteResponse('group_123', 'Operators'));
-    });
-    const promptMock: Mock<(message: string) => string> = vi
-      .fn<(message: string) => string>()
-      .mockReturnValueOnce('wrong')
-      .mockReturnValueOnce('Operators');
-    vi.stubGlobal('document', { cookie: '' });
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('window', { prompt: promptMock });
-
-    renderWithBrowserQueryClient(
-      React.createElement(groupDetailDrawerModule.GroupDetailDrawer, {
-        state: createGroupsDetailPageState(),
-      }),
-    );
-    const deleteGroupButton: CapturedButtonProps = requireCapturedButton(capturedButtons, 'Delete group');
-    deleteGroupButton.onClick?.();
-    await waitForNextTick();
-    expect(fetchMock).not.toHaveBeenCalled();
-    deleteGroupButton.onClick?.();
-    await waitForMutationFetch(fetchMock);
-
-    expect(promptMock).toHaveBeenNthCalledWith(1, 'Type Operators to delete this group.');
-    expect(promptMock).toHaveBeenNthCalledWith(2, 'Type Operators to delete this group.');
-    expect(readFetchPath(fetchMock.mock.calls[0]![0])).toBe('/v1/groups/group_123');
-  });
-
-  it('runs group row deletes through the typed confirmation gate with selected organization scope', async (): Promise<void> => {
-    const capturedItems: CapturedDropdownMenuItemProps[] = [];
-    vi.doMock(
-      '../src/components/ui/dropdown-menu',
-      (): {
-        DropdownMenu: (props: { children?: React.ReactNode }) => React.ReactElement;
-        DropdownMenuContent: (props: { children?: React.ReactNode }) => React.ReactElement;
-        DropdownMenuItem: (props: CapturedDropdownMenuItemProps) => React.ReactElement;
-        DropdownMenuTrigger: (props: { children?: React.ReactNode }) => React.ReactElement;
-      } => ({
-        DropdownMenu: (props: { children?: React.ReactNode }): React.ReactElement =>
-          React.createElement(React.Fragment, null, props.children),
-        DropdownMenuContent: (props: { children?: React.ReactNode }): React.ReactElement =>
-          React.createElement(React.Fragment, null, props.children),
-        DropdownMenuItem: (props: CapturedDropdownMenuItemProps): React.ReactElement => {
-          capturedItems.push(props);
-          return React.createElement('button', null, props.children);
-        },
-        DropdownMenuTrigger: (props: { children?: React.ReactNode }): React.ReactElement =>
-          React.createElement(React.Fragment, null, props.children),
-      }),
-    );
-    const groupsTableModule: typeof GroupsPageTableModule = await import('../src/features/groups/groups-page.table');
-    const fetchMock: Mock<FetchImplementation> = vi.fn<FetchImplementation>(async (): Promise<Response> => {
-      await Promise.resolve();
-      return createJsonResponse(createGroupDeleteResponse('group_123', 'Operators'));
-    });
-    const promptMock: Mock<(message: string) => string> = vi
-      .fn<(message: string) => string>()
-      .mockReturnValue('Operators');
-    vi.stubGlobal('document', { cookie: '' });
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('window', { prompt: promptMock });
-
-    renderWithBrowserQueryClient(
-      React.createElement(groupsTableModule.GroupsTable, {
-        groups: [createGroupListRow('group_123', 'Operators')],
-        state: createGroupsListPageState(),
-      }),
-    );
-    requireCapturedDropdownMenuItem(capturedItems, 'Remove').onSelect?.();
-    await waitForMutationFetch(fetchMock);
-
-    const firstCall: BrowserFetchCall = fetchMock.mock.calls[0]!;
-    expect(promptMock).toHaveBeenCalledWith('Type Operators to delete this group.');
-    expect(readFetchPath(firstCall[0])).toBe('/v1/groups/group_123');
-    expect(new Headers(firstCall[1]?.headers).get(compartmentCurrentOrganizationHeaderName)).toBe('acme-dev');
-    expect(browserQueryClient.getMutationCache().getAll()).toHaveLength(1);
-    expect(browserQueryClient.getMutationCache().getAll()[0]?.options.mutationKey).toEqual([
-      'console-access',
-      'groups',
-      'acme-dev',
-      'group_123',
-      'delete',
-    ]);
-  });
-
-  it('renders typed confirmation copy for role and group deletes', (): void => {
-    expect(readRoleDeleteConfirmationMessage('Viewer')).toBe('Type Viewer to remove this role.');
-    expect(readGroupDeleteConfirmationMessage('Operators')).toBe('Type Operators to delete this group.');
   });
 });
 
@@ -432,53 +225,6 @@ function RolesQueryProbe({ data }: Readonly<{ data: BrowserRolesPageResult }>): 
   const queryData: BrowserRolesPageResult = useRolesPageQueryData(data);
   const roleNames: string = queryData.roles.map((role: AccessRoleListRow): string => role.name).join(',');
   return React.createElement('output', null, roleNames === '' ? 'empty' : roleNames);
-}
-
-function requireCapturedButton(buttons: CapturedButtonProps[], label: string): CapturedButtonProps {
-  const button: CapturedButtonProps | undefined = buttons.find((item: CapturedButtonProps): boolean =>
-    readReactNodeText(item.children).includes(label),
-  );
-  if (button === undefined) {
-    throw new Error(`Expected button with label ${label}.`);
-  }
-
-  return button;
-}
-
-function requireCapturedDropdownMenuItem(
-  items: CapturedDropdownMenuItemProps[],
-  label: string,
-): CapturedDropdownMenuItemProps {
-  const item: CapturedDropdownMenuItemProps | undefined = items.find(
-    (captured: CapturedDropdownMenuItemProps): boolean => readReactNodeText(captured.children).includes(label),
-  );
-  if (item === undefined) {
-    throw new Error(`Expected dropdown item with label ${label}.`);
-  }
-
-  return item;
-}
-
-function readReactNodeText(node: React.ReactNode): string {
-  if (typeof node === 'string' || typeof node === 'number') {
-    return String(node);
-  }
-  if (Array.isArray(node)) {
-    return node.map(readReactNodeText).join('');
-  }
-
-  return '';
-}
-
-async function waitForMutationFetch(fetchMock: Mock<FetchImplementation>): Promise<void> {
-  for (let index: number = 0; index < 10; index += 1) {
-    if (fetchMock.mock.calls.length > 0) {
-      return;
-    }
-    await waitForNextTick();
-  }
-
-  throw new Error('Expected mutation fetch call.');
 }
 
 function createUsersPageResult(overrides: Partial<BrowserUsersPageResult> = {}): BrowserUsersPageResult {
@@ -544,151 +290,6 @@ function createGroupsPageResult(overrides: Partial<BrowserGroupsPageResult> = {}
     selectedOrganizationSlug: 'acme-dev',
     showOrganizationSelector: false,
     ...overrides,
-  };
-}
-
-function createRolesPageState(): RolesPageState {
-  return Object.assign(new TestRolesPageState(), {
-    data: createRolesPageResult({
-      mode: 'detail',
-      role: createRoleResponse('role_123', 'Viewer').role,
-      roleId: 'role_123',
-      roles: [createRoleListRow('role_123', 'Viewer')],
-    }),
-    description: '',
-    drawerErrorMessage: undefined,
-    name: '',
-    onNavigate: (): void => undefined,
-    selectedPermissions: [],
-    setData: (): void => undefined,
-    setDescription: (): void => undefined,
-    setDrawerErrorMessage: (): void => undefined,
-    setName: (): void => undefined,
-    setSelectedPermissions: (): void => undefined,
-  });
-}
-
-function createGroupsDetailPageState(): GroupsPageState {
-  const selectedGroup: AccessGroupListRow = createGroupListRow('group_123', 'Operators');
-
-  return Object.assign(new TestGroupsPageState(), {
-    data: createGroupsPageResult({
-      groups: [selectedGroup],
-      mode: 'detail',
-      selectedGroupId: selectedGroup.id,
-    }),
-    drawerErrorMessage: undefined,
-    environmentValues: [],
-    groupAssignments: [],
-    groupDescription: '',
-    groupName: '',
-    memberEmail: '',
-    newGroupDescription: '',
-    newGroupName: '',
-    onNavigate: (): void => undefined,
-    projectNames: [],
-    roleId: '',
-    scopeType: 'organization',
-    selectedGroup,
-    setData: (): void => undefined,
-    setDrawerErrorMessage: (): void => undefined,
-    setEnvironmentValues: (): void => undefined,
-    setGroupDescription: (): void => undefined,
-    setGroupName: (): void => undefined,
-    setMemberEmail: (): void => undefined,
-    setNewGroupDescription: (): void => undefined,
-    setNewGroupName: (): void => undefined,
-    setProjectNames: (): void => undefined,
-    setRoleId: (): void => undefined,
-    setScopeType: (): void => undefined,
-  });
-}
-
-function createGroupsListPageState(): GroupsPageState {
-  return Object.assign(new TestGroupsPageState(), {
-    data: createGroupsPageResult({
-      groups: [createGroupListRow('group_123', 'Operators')],
-    }),
-    drawerErrorMessage: undefined,
-    environmentValues: [],
-    groupAssignments: [],
-    groupDescription: '',
-    groupName: '',
-    memberEmail: '',
-    newGroupDescription: '',
-    newGroupName: '',
-    onNavigate: (): void => undefined,
-    projectNames: [],
-    roleId: '',
-    scopeType: 'organization',
-    selectedGroup: undefined,
-    setData: (): void => undefined,
-    setDrawerErrorMessage: (): void => undefined,
-    setEnvironmentValues: (): void => undefined,
-    setGroupDescription: (): void => undefined,
-    setGroupName: (): void => undefined,
-    setMemberEmail: (): void => undefined,
-    setNewGroupDescription: (): void => undefined,
-    setNewGroupName: (): void => undefined,
-    setProjectNames: (): void => undefined,
-    setRoleId: (): void => undefined,
-    setScopeType: (): void => undefined,
-  });
-}
-
-class TestRolesPageState implements RolesPageState {
-  public data!: BrowserRolesPageResult;
-  public description!: string;
-  public drawerErrorMessage!: string | undefined;
-  public name!: string;
-  public onNavigate!: () => void;
-  public selectedPermissions!: PermissionKey[];
-  public setData!: () => void;
-  public setDescription!: () => void;
-  public setDrawerErrorMessage!: () => void;
-  public setName!: () => void;
-  public setSelectedPermissions!: () => void;
-}
-
-class TestGroupsPageState implements GroupsPageState {
-  public data!: BrowserGroupsPageResult;
-  public drawerErrorMessage!: string | undefined;
-  public environmentValues!: string[];
-  public groupAssignments!: [];
-  public groupDescription!: string;
-  public groupName!: string;
-  public memberEmail!: string;
-  public newGroupDescription!: string;
-  public newGroupName!: string;
-  public onNavigate!: () => void;
-  public projectNames!: string[];
-  public roleId!: string;
-  public scopeType!: 'organization' | 'project' | 'environment';
-  public selectedGroup!: AccessGroupListRow | undefined;
-  public setData!: () => void;
-  public setDrawerErrorMessage!: () => void;
-  public setEnvironmentValues!: () => void;
-  public setGroupDescription!: () => void;
-  public setGroupName!: () => void;
-  public setMemberEmail!: () => void;
-  public setNewGroupDescription!: () => void;
-  public setNewGroupName!: () => void;
-  public setProjectNames!: () => void;
-  public setRoleId!: () => void;
-  public setScopeType!: () => void;
-}
-
-function createGroupDeleteResponse(id: string, name: string): { group: AccessGroupListRow } {
-  return {
-    group: {
-      assignedRoleNames: [],
-      assignmentCount: 0,
-      assignmentScopeLabels: [],
-      description: null,
-      id,
-      memberCount: 0,
-      name,
-    },
   };
 }
 

@@ -15,6 +15,7 @@ describe('edge public ingress Host authority handling', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'billing.localhost:evil',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -38,6 +39,7 @@ describe('edge public ingress Host authority handling', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'billing%2elocalhost',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -61,6 +63,7 @@ describe('edge public ingress Host authority handling', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'billing.localhost:443',
+          'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
       });

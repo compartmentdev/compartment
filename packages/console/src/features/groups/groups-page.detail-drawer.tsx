@@ -1,18 +1,13 @@
 import { type AccessGroupListRow, type PermissionKey } from '@compartment/contracts/browser';
-import type { UseMutationResult } from '@tanstack/react-query';
 import { type JSX, useEffect, useState } from 'react';
-import { Button } from '../../components/ui/button';
-import { Trash } from '../../components/ui/icons';
-import { useBrowserMutation } from '../../lib/browser-query-client';
-import { AccessAdditionalCard, readAccessDangerActionButtonClassName } from '../access/access-additional-card';
+import { AccessAdditionalCard } from '../access/access-additional-card';
 import { AccessDrawerCollapsibleSection } from '../access/access-drawer-collapsible-section';
 import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
-import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import { AccessDrawerSection, AccessDrawerShell } from '../access/access-ui';
 import { PermissionFamiliesCard } from '../access/access-permission-families';
 import { canManageBrowserGroups, canManageBrowserRoles, canReadBrowserRoles } from '../console/console-access';
 import { ManageRolesButton } from '../roles/manage-roles-button';
-import { handleGroupDeleteAction, readGroupDeleteConfirmationMessage } from './groups-page.actions';
+import { GroupDeleteAction } from './groups-page.delete-action';
 import { GroupAssignmentsCard } from './groups-page.assignments';
 import { GroupDrawerHeader, GroupSummaryCard } from './groups-page.detail-layout';
 import { GroupMembersCard } from './groups-page.members';
@@ -22,8 +17,6 @@ import type { GroupsPageState } from './groups-page.state';
 interface GroupDetailDrawerProps {
   state: GroupsPageState;
 }
-
-type DeleteGroupMutation = UseMutationResult<boolean, Error, void>;
 
 export function GroupDetailDrawer({ state }: Readonly<GroupDetailDrawerProps>): JSX.Element {
   const effectivePermissions: PermissionKey[] = readGroupEffectivePermissions(state);
@@ -145,10 +138,12 @@ function GroupAdditionalSection({ state }: Readonly<GroupDetailDrawerProps>): JS
     return null;
   }
 
+  const selectedGroup: AccessGroupListRow = requireSelectedGroup(state);
+
   return (
     <AccessDrawerSection title="Additional">
       <AccessAdditionalCard
-        action={<DeleteGroupButton state={state} />}
+        action={<GroupDeleteAction selectedGroup={selectedGroup} state={state} />}
         description="Delete group and reset permissions for people in the group."
         title="Danger zone"
         tone="danger"
@@ -157,56 +152,12 @@ function GroupAdditionalSection({ state }: Readonly<GroupDetailDrawerProps>): JS
   );
 }
 
-function DeleteGroupButton({ state }: Readonly<GroupDetailDrawerProps>): JSX.Element {
-  const mutation: DeleteGroupMutation = useDeleteGroupMutation(state);
-  const selectedGroup: AccessGroupListRow = requireSelectedGroup(state);
-
-  return (
-    <Button
-      className={readAccessDangerActionButtonClassName()}
-      disabled={mutation.isPending}
-      onClick={createDeleteGroupHandler(selectedGroup.name, mutation)}
-      size="sm"
-      type="button"
-      variant="destructive"
-    >
-      <Trash aria-hidden="true" />
-      {mutation.isPending ? 'Deleting...' : 'Delete group'}
-    </Button>
-  );
-}
-
-function useDeleteGroupMutation(state: GroupsPageState): DeleteGroupMutation {
-  const organizationSlug: string = requireBrowserAccessSelectedOrganizationSlug(state.data.selectedOrganizationSlug);
-  const selectedGroup: AccessGroupListRow = requireSelectedGroup(state);
-  return useBrowserMutation<boolean>({
-    mutation: async (): Promise<boolean> =>
-      await handleGroupDeleteAction(state.data, selectedGroup.id, state.setData, state.setDrawerErrorMessage),
-    mutationKey: ['console-access', 'groups', organizationSlug, selectedGroup.id, 'delete'],
-    onSuccess: (didDelete: boolean): void => {
-      if (didDelete) {
-        state.onNavigate(buildGroupsPageHref(state.data, null));
-      }
-    },
-  });
-}
-
 function requireSelectedGroup(state: GroupsPageState): AccessGroupListRow {
   if (state.selectedGroup === undefined) {
     throw new Error('Expected selected group.');
   }
 
   return state.selectedGroup;
-}
-
-function createDeleteGroupHandler(groupName: string, mutation: DeleteGroupMutation): () => void {
-  return (): void => {
-    if (mutation.isPending || window.prompt(readGroupDeleteConfirmationMessage(groupName)) !== groupName) {
-      return;
-    }
-
-    mutation.mutate();
-  };
 }
 
 function readGroupEffectivePermissions(state: GroupsPageState): PermissionKey[] {

@@ -1,11 +1,15 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { readHeaderValue } from '@compartment/utils';
+import { hasText } from '@compartment/utils';
 import type { EdgeConfig } from '../../config';
 import { readRequestHost } from '../../services/edge-gateway.service';
 import {
   parseSafeForwardedRequestPath,
   type ParsedForwardedRequestPath,
 } from '../../services/edge-forwarded-request-path.service';
+
+const forwardedMethodHeaderName: string = 'x-forwarded-method';
+const forwardedMethodValueSeparator: string = ',';
+const forwardedUriHeaderName: string = 'x-forwarded-uri';
 
 export function readPublicRequestHost(request: FastifyRequest): string | null {
   return readRequestHost(request.headers.host);
@@ -28,17 +32,45 @@ export function setReplyCookies(reply: FastifyReply, cookies: string[]): void {
 }
 
 export function readForwardedRequestPath(request: FastifyRequest): ParsedForwardedRequestPath | null {
-  const forwardedUri: string | string[] | undefined = request.headers['x-forwarded-uri'];
-  const candidate: string | undefined = readHeaderValue(forwardedUri);
-
-  return parseSafeForwardedRequestPath(candidate);
+  return parseSafeForwardedRequestPath(readSingleForwardedHeader(request, forwardedUriHeaderName));
 }
 
-export function readForwardedRequestMethod(request: FastifyRequest): string {
-  const forwardedMethod: string | string[] | undefined = request.headers['x-forwarded-method'];
-  const candidate: string | undefined = readHeaderValue(forwardedMethod);
+export function readForwardedRequestMethod(request: FastifyRequest): string | null {
+  const forwardedMethod: string | null = readSingleForwardedHeader(request, forwardedMethodHeaderName);
+  if (
+    forwardedMethod === null ||
+    !hasText(forwardedMethod) ||
+    forwardedMethod.includes(forwardedMethodValueSeparator)
+  ) {
+    return null;
+  }
 
-  return candidate ?? request.method;
+  return forwardedMethod;
 }
 
-export { readHeaderValue };
+function readSingleForwardedHeader(request: FastifyRequest, headerName: string): string | null {
+  const normalizedHeaderName: string = headerName.toLowerCase();
+  const headerValue: string | string[] | undefined = request.headers[normalizedHeaderName];
+
+  if (typeof headerValue !== 'string' || hasRepeatedRawHeader(request.raw.rawHeaders, normalizedHeaderName)) {
+    return null;
+  }
+
+  return headerValue;
+}
+
+function hasRepeatedRawHeader(rawHeaders: string[], normalizedHeaderName: string): boolean {
+  let matchingHeaderCount: number = 0;
+  for (let index: number = 0; index < rawHeaders.length; index += 2) {
+    if (rawHeaders[index]?.toLowerCase() === normalizedHeaderName) {
+      matchingHeaderCount += 1;
+    }
+    if (matchingHeaderCount > 1) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export { readHeaderValue } from '@compartment/utils';

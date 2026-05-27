@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/compartmentdev/compartment/compare/v0.4.1...v0.4.2) (2026-05-27)
+
+
+### Bug Fixes
+
+* **repo:** simplify console page headers ([#28](https://github.com/compartmentdev/compartment/issues/28)) ([03f66cd](https://github.com/compartmentdev/compartment/commit/03f66cd402810f0e3a90f5c053603c77f38c46ac))
+
 ## [0.4.1](https://github.com/compartmentdev/compartment/compare/v0.4.0...v0.4.1) (2026-05-26)
 
 

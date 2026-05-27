@@ -1,6 +1,7 @@
 import type { AccessRoleListRow } from '@compartment/contracts/browser';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { useEffect, useState, type JSX } from 'react';
+import { ConfirmationDialog } from '../../components/confirmation-dialog';
 import {
   ServerTable,
   ServerTableActionError,
@@ -18,7 +19,11 @@ import { useBrowserMutation } from '../../lib/browser-query-client';
 import { formatRolePermissionSummary, formatRoleUsageSummary } from '../access/access-display';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import { canManageBrowserRoles } from '../console/console-access';
-import { handleRoleDelete, readRoleDeleteConfirmationMessage } from './roles-page.actions';
+import {
+  handleRoleDelete,
+  readRoleDeleteConfirmationSpec,
+  type RoleDeleteConfirmationSpec,
+} from './roles-page.actions';
 import { buildRolesPageHref } from './roles-page.query';
 import type { RolesPageState } from './roles-page.state';
 
@@ -30,6 +35,14 @@ interface RolesTableProps {
 interface RoleRowProps {
   role: AccessRoleListRow;
   state: RolesPageState;
+}
+
+interface RoleDeleteDialogProps {
+  isOpen: boolean;
+  isPending: boolean;
+  onConfirm: () => void;
+  onOpenChange: (open: boolean) => void;
+  roleName: string;
 }
 
 type RoleDeleteMutation = UseMutationResult<boolean, Error, void>;
@@ -116,31 +129,78 @@ function RoleRowActionsMenu({
   setErrorMessage,
   state,
 }: Readonly<RoleRowProps & { setErrorMessage: (value: string | undefined) => void }>): JSX.Element {
+  const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
+  const mutation: RoleDeleteMutation = useRoleDeleteMutation(role, setErrorMessage, state);
+
   return (
-    <ServerTableActionsMenu ariaLabel={`Open actions for ${role.name}`}>
-      <RoleRemoveMenuItem role={role} setErrorMessage={setErrorMessage} state={state} />
+    <>
+      <RoleActionsMenuDropdown isPending={mutation.isPending} roleName={role.name} onRequestDelete={setIsDialogOpen} />
+      <RoleDeleteDialog
+        isOpen={isDialogOpen}
+        isPending={mutation.isPending}
+        onConfirm={(): void => {
+          setIsDialogOpen(false);
+          mutation.mutate();
+        }}
+        onOpenChange={setIsDialogOpen}
+        roleName={role.name}
+      />
+    </>
+  );
+}
+
+function RoleActionsMenuDropdown({
+  isPending,
+  onRequestDelete,
+  roleName,
+}: Readonly<{ isPending: boolean; onRequestDelete: (open: boolean) => void; roleName: string }>): JSX.Element {
+  return (
+    <ServerTableActionsMenu ariaLabel={`Open actions for ${roleName}`}>
+      <RoleRemoveMenuItem isPending={isPending} onSelect={(): void => onRequestDelete(true)} />
     </ServerTableActionsMenu>
   );
 }
 
-function RoleRemoveMenuItem({
-  role,
-  setErrorMessage,
-  state,
-}: Readonly<RoleRowProps & { setErrorMessage: (value: string | undefined) => void }>): JSX.Element {
-  const mutation: RoleDeleteMutation = useRoleDeleteMutation(role, setErrorMessage, state);
+function RoleDeleteDialog({
+  isOpen,
+  isPending,
+  onConfirm,
+  onOpenChange,
+  roleName,
+}: Readonly<RoleDeleteDialogProps>): JSX.Element {
+  const confirmation: RoleDeleteConfirmationSpec = readRoleDeleteConfirmationSpec(roleName);
 
+  return (
+    <ConfirmationDialog
+      confirmLabel={confirmation.confirmLabel}
+      description={confirmation.description}
+      expectedValue={confirmation.expectedValue}
+      inputLabel={confirmation.inputLabel}
+      inputPlaceholder={confirmation.inputPlaceholder}
+      isPending={isPending}
+      onConfirm={onConfirm}
+      onOpenChange={onOpenChange}
+      open={isOpen}
+      title={confirmation.title}
+    />
+  );
+}
+
+function RoleRemoveMenuItem({
+  isPending,
+  onSelect,
+}: Readonly<{ isPending: boolean; onSelect: () => void }>): JSX.Element {
   return (
     <DropdownMenuItem
       className="text-destructive focus:text-destructive data-[highlighted]:text-destructive"
-      disabled={mutation.isPending}
+      disabled={isPending}
       onSelect={(): void => {
-        if (!mutation.isPending && window.prompt(readRoleDeleteConfirmationMessage(role.name)) === role.name) {
-          mutation.mutate();
+        if (!isPending) {
+          onSelect();
         }
       }}
     >
-      {mutation.isPending ? 'Removing...' : 'Remove'}
+      {isPending ? 'Removing...' : 'Remove'}
     </DropdownMenuItem>
   );
 }

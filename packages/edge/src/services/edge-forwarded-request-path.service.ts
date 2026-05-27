@@ -1,12 +1,14 @@
 import { isSafeRelativePath } from '@compartment/utils';
 
+const coalescedForwardedPathPattern: RegExp = /,\s*\//u;
+
 export interface ParsedForwardedRequestPath {
   pathname: string;
   search: string;
 }
 
-export function parseSafeForwardedRequestPath(requestUri: string | undefined): ParsedForwardedRequestPath | null {
-  if (!isSafeRelativePath(requestUri)) {
+export function parseSafeForwardedRequestPath(requestUri: string | null): ParsedForwardedRequestPath | null {
+  if (requestUri === null || coalescedForwardedPathPattern.test(requestUri) || !isSafeRelativePath(requestUri)) {
     return null;
   }
 

@@ -21,9 +21,9 @@ import { DeploymentDetailsView } from '../src/features/deployment-history/deploy
 import { loadDeploymentHistoryPageData } from '../src/features/deployment-history/deployment-history-loader';
 import { DeploymentHistoryView } from '../src/features/deployment-history/deployment-history-view';
 import { DeploymentHistoryTable } from '../src/features/deployment-history/deployment-history-table';
+import { DeploymentHistoryTableActions } from '../src/features/deployment-history/deployment-history-table-actions';
 import type { DeploymentHistoryRollbackHandler } from '../src/features/deployment-history/deployment-history-actions';
 import { createDeploymentHistoryRollbackHandler } from '../src/features/deployment-history/deployment-history-view.actions';
-import { DeploymentRunRollbackMenuItem } from '../src/features/deployment-history/deployment-run-rollback-action';
 import {
   createDeploymentDetailsPageResult,
   createDeploymentHistoryPageResult,
@@ -104,8 +104,9 @@ function readFirstDeploymentRun(data: BrowserDeploymentHistoryPageResult): Deplo
 
 function renderRollbackMenuItem(data: BrowserDeploymentHistoryPageResult): string {
   return renderToStaticMarkup(
-    createElement(DeploymentRunRollbackMenuItem, {
+    createElement(DeploymentHistoryTableActions, {
       data,
+      onNavigate: noopBrowserNavigate,
       onRollback: noopDeploymentHistoryRollback,
       run: readFirstDeploymentRun(data),
     }),
@@ -748,7 +749,8 @@ describe('browser deployment pages', (): void => {
       currentEnvironmentPermissions: [],
     });
     const hiddenHtml: string = renderRollbackMenuItem(hiddenData);
-    expect(hiddenHtml).toBe('');
+    expect(hiddenHtml).toContain('>Details<');
+    expect(hiddenHtml).not.toContain('>Rollback<');
   });
 
   it('preserves multi-org context after rollback success navigation', (): void => {

@@ -131,6 +131,7 @@ describe('edge proxy route service', (): void => {
     '/api/%2Fhealthz',
     '/api/%5Chealthz',
     '/api/\\healthz',
+    '/api/ready,/api/admin',
   ])('rejects ambiguous forwarded path %s before route matching', (requestPath: string): void => {
     expect(parseSafeForwardedRequestPath(requestPath)).toBeNull();
   });
