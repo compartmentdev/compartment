@@ -249,14 +249,27 @@ jobs:
       runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
 
   self-hosted-image-cache:
-    name: check:ci / build and check images
+    name: check:ci / build images
     needs:
       - migration-count
       - select-runner
     uses: ./.github/workflows/_self-hosted-image-cache.yml
     with:
       runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
-      scan_vulnerabilities: ${{ github.event_name == 'pull_request' }}
+
+  self-hosted-image-security-gate:
+    name: check:ci / self-hosted image security gate
+    needs:
+      - select-runner
+      - self-hosted-image-cache
+    uses: ./.github/workflows/_self-hosted-image-security-gate.yml
+    with:
+      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
+      self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
+      docker_scout_enabled: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    secrets:
+      dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+      dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
 
   system-user-flow-e2e:
     name: check:ci / system-user-flow-e2e
@@ -308,6 +321,7 @@ jobs:
       - standard-checks
       - db-integration
       - self-hosted-image-cache
+      - self-hosted-image-security-gate
       - system-user-flow-e2e
       - console-e2e
       - system-build-matrix-e2e
@@ -332,6 +346,9 @@ jobs:
             exit 1
           fi
           if [[ "${{ needs.self-hosted-image-cache.result }}" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "${{ needs.self-hosted-image-security-gate.result }}" != "success" ]]; then
             exit 1
           fi
           if [[ "${{ needs.system-user-flow-e2e.result }}" != "success" ]]; then
