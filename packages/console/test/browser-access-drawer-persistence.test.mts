@@ -54,6 +54,8 @@ class MountedDrawerProbeValue<TData> implements MountedDrawerProbe<TData> {
   }
 }
 
+const createGroupFormSelector: string = 'form#create-group-form';
+
 configureReactActEnvironment();
 
 afterEach((): void => {
@@ -226,7 +228,7 @@ function requireBackdrop(container: HTMLElement): HTMLButtonElement {
 }
 
 function requireGroupNameInput(container: HTMLElement): HTMLInputElement {
-  const input: HTMLInputElement | null = container.querySelector('input');
+  const input: HTMLInputElement | null = container.querySelector(`${createGroupFormSelector} input`);
   if (input === null) {
     throw new Error('Expected group name input.');
   }
@@ -235,7 +237,7 @@ function requireGroupNameInput(container: HTMLElement): HTMLInputElement {
 }
 
 function requireGroupDescriptionTextarea(container: HTMLElement): HTMLTextAreaElement {
-  const textarea: HTMLTextAreaElement | null = container.querySelector('textarea');
+  const textarea: HTMLTextAreaElement | null = container.querySelector(`${createGroupFormSelector} textarea`);
   if (textarea === null) {
     throw new Error('Expected group description textarea.');
   }
@@ -245,9 +247,15 @@ function requireGroupDescriptionTextarea(container: HTMLElement): HTMLTextAreaEl
 
 async function updateTextControl(element: HTMLInputElement | HTMLTextAreaElement, value: string): Promise<void> {
   await act(async (): Promise<void> => {
-    element.value = value;
+    const prototype: HTMLInputElement | HTMLTextAreaElement =
+      element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const descriptor: TypedPropertyDescriptor<string> | undefined = Object.getOwnPropertyDescriptor(prototype, 'value');
+    if (descriptor?.set === undefined) {
+      throw new Error('Expected value setter for editable field.');
+    }
+
+    descriptor.set.call(element, value);
     element.dispatchEvent(new Event('input', { bubbles: true }));
-    element.dispatchEvent(new Event('change', { bubbles: true }));
     await flushEffects();
   });
 }
