@@ -130,11 +130,7 @@ function readUsersOrganizationHref(data: BrowserUsersPageResult, organizationSlu
 function UsersPageHeader({ data, onNavigate }: Readonly<UsersToolbarProps>): JSX.Element {
   return (
     <header className={browserConsolePageHeaderClassName}>
-      <AccessPageHeader
-        action={<InviteUserButton data={data} onNavigate={onNavigate} />}
-        description="Manage organization members, direct grants, and shared access through groups."
-        title="Users"
-      />
+      <AccessPageHeader action={<InviteUserButton data={data} onNavigate={onNavigate} />} title="Users" />
     </header>
   );
 }

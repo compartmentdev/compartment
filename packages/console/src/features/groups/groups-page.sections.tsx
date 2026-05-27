@@ -95,11 +95,7 @@ function renderGroupsPageContent(
 function GroupsPageHeader({ state }: Readonly<{ state: GroupsPageState }>): JSX.Element {
   return (
     <header className={browserConsolePageHeaderClassName}>
-      <AccessPageHeader
-        action={<CreateGroupButton state={state} />}
-        description="Manage shared access groups and their members."
-        title="Groups"
-      />
+      <AccessPageHeader action={<CreateGroupButton state={state} />} title="Groups" />
     </header>
   );
 }

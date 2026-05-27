@@ -3,7 +3,12 @@ import { hasText } from '@compartment/utils';
 import type { FormEvent, JSX } from 'react';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
 import { BrowserSoftNavigationLink } from '../../components/browser-soft-navigation-link';
-import { BrowserConsoleShell, browserConsolePageBodyClassName } from '../../components/browser-console-header';
+import {
+  BrowserConsoleShell,
+  browserConsolePageBodyClassName,
+  browserConsolePageClassName,
+  browserConsolePageHeaderClassName,
+} from '../../components/browser-console-header';
 import { Select } from '../../components/select';
 import { ServerTableFrame } from '../../components/server-table';
 import { ServerTableControls } from '../../components/server-table-controls';
@@ -57,7 +62,12 @@ export function AuditEventsView({ data, onNavigate }: Readonly<AuditEventsViewPr
       projectCount={data.projectCount}
       selectedOrganizationSlug={data.selectedOrganizationSlug}
     >
-      <div className={browserConsolePageBodyClassName}>{renderAuditEventsContent(data, onNavigate)}</div>
+      <div className={browserConsolePageClassName}>
+        <header className={browserConsolePageHeaderClassName}>
+          <AccessPageHeader title="Audit logs" />
+        </header>
+        <div className={browserConsolePageBodyClassName}>{renderAuditEventsContent(data, onNavigate)}</div>
+      </div>
     </BrowserConsoleShell>
   );
 }
@@ -74,15 +84,10 @@ function renderAuditEventsContent(
 
   return (
     <>
-      <AuditEventsPageHeader />
       <AuditEventsFilterForm data={data} key={readAuditEventsFilterFormKey(data.filters)} onNavigate={onNavigate} />
       <AuditEventsTableSection data={data} onNavigate={onNavigate} />
     </>
   );
-}
-
-function AuditEventsPageHeader(): JSX.Element {
-  return <AccessPageHeader title="Audit logs" />;
 }
 
 function readOrganizationControl(

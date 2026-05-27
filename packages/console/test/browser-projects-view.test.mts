@@ -74,6 +74,7 @@ describe('browser projects view', (): void => {
     expect(html).toContain('Archived');
     expect(html).toContain('All');
     expect(html).toContain('Add project');
+    expect(html).not.toContain('All projects you run with Compartment.');
     expect(html.indexOf('Projects')).toBeLessThan(html.indexOf('Add project'));
     expect(html.indexOf('Add project')).toBeLessThan(html.indexOf('Search projects'));
     expect(html.indexOf('Search projects')).toBeLessThan(html.indexOf('Active'));
