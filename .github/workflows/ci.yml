@@ -13,10 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  select-runner:
-    name: check:ci / select runner
-    uses: ./.github/workflows/_select-ci-runner.yml
-
   migration-count:
     name: check:ci / migration-count
     runs-on: ubuntu-24.04
@@ -47,8 +43,7 @@ jobs:
     name: check:ci / standard
     needs:
       - migration-count
-      - select-runner
-    runs-on: ${{ fromJson(needs.select-runner.outputs.runner_labels_json) }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -150,9 +145,6 @@ jobs:
       - name: Check commitlint wiring
         run: pnpm check:commitlint
 
-      - name: Check fork PR runner routing
-        run: pnpm check:fork-pr-runners
-
       - name: Check formatting
         run: pnpm format:check
 
@@ -243,28 +235,20 @@ jobs:
     name: check:ci / db
     needs:
       - migration-count
-      - select-runner
     uses: ./.github/workflows/_db-integration.yml
-    with:
-      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
 
   self-hosted-image-cache:
     name: check:ci / build images
     needs:
       - migration-count
-      - select-runner
     uses: ./.github/workflows/_self-hosted-image-cache.yml
-    with:
-      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
 
   self-hosted-image-security-gate:
     name: check:ci / self-hosted image security gate
     needs:
-      - select-runner
       - self-hosted-image-cache
     uses: ./.github/workflows/_self-hosted-image-security-gate.yml
     with:
-      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
       self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
       docker_scout_enabled: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     secrets:
@@ -274,12 +258,10 @@ jobs:
   system-user-flow-e2e:
     name: check:ci / system-user-flow-e2e
     needs:
-      - select-runner
       - self-hosted-image-cache
     uses: ./.github/workflows/_system-user-flow-e2e.yml
     with:
       self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
-      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
       suite_name: system user flow
       suite_slug: system-user-flow
       test_file: test/system-user-flow.e2e.test.ts
@@ -287,13 +269,11 @@ jobs:
   console-e2e:
     name: check:ci / console-e2e
     needs:
-      - select-runner
       - self-hosted-image-cache
     uses: ./.github/workflows/_system-user-flow-e2e.yml
     with:
       install_console_playwright: true
       self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
-      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
       suite_name: console
       suite_slug: console
       test_file: test/console.e2e.test.ts
@@ -301,12 +281,10 @@ jobs:
   system-build-matrix-e2e:
     name: check:ci / system-build-matrix-e2e
     needs:
-      - select-runner
       - self-hosted-image-cache
     uses: ./.github/workflows/_system-user-flow-e2e.yml
     with:
       self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
-      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
       suite_name: system build matrix
       suite_slug: system-build-matrix
       test_file: test/system-build-matrix.e2e.test.ts
@@ -315,7 +293,6 @@ jobs:
     name: check:ci
     if: ${{ always() }}
     needs:
-      - select-runner
       - gitleaks
       - semgrep
       - standard-checks
@@ -330,9 +307,6 @@ jobs:
     steps:
       - name: Verify all CI jobs passed
         run: |
-          if [[ "${{ needs.select-runner.result }}" != "success" ]]; then
-            exit 1
-          fi
           if [[ "${{ needs.standard-checks.result }}" != "success" ]]; then
             exit 1
           fi

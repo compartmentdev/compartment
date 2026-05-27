@@ -10,9 +10,6 @@ on:
       self_hosted_image_cache_key:
         required: true
         type: string
-      runner_labels_json:
-        required: true
-        type: string
       suite_name:
         required: true
         type: string
@@ -30,7 +27,7 @@ permissions:
 jobs:
   run-system-user-flow-e2e:
     name: run ${{ inputs.suite_name }} e2e
-    runs-on: ${{ fromJson(inputs.runner_labels_json) }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - name: Checkout repository
