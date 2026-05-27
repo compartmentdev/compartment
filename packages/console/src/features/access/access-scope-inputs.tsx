@@ -5,7 +5,7 @@ import {
 import { type JSX, type ReactNode, useId } from 'react';
 import { MultiComboBox, type MultiComboBoxOption } from '../../components/multi-combo-box';
 import { cn } from '../../lib/utils';
-import { accessDrawerPrimaryActionButtonClassName } from './access-ui';
+import { accessDrawerPrimaryAddButtonClassName } from './access-ui';
 import {
   type AccessScopeEnvironmentOption,
   readScopeEnvironmentOptions,
@@ -30,7 +30,7 @@ interface DependentScopeFieldProps {
   labelId: string;
 }
 
-const accessAssignmentScopeBranchClassName: string = 'grid w-full gap-2 md:max-w-[560px]';
+const accessAssignmentScopeBranchClassName: string = 'grid w-full gap-2 md:min-w-0 md:w-[min(34rem,80%)]';
 const accessAssignmentScopeFieldLabelClassName: string =
   'px-1 text-[12px] font-medium leading-4 text-[var(--cpt-text-secondary,#485259)]';
 
@@ -39,7 +39,7 @@ export const accessAssignmentPrimaryRowClassName: string =
 export const accessAssignmentConnectorClassName: string =
   'hidden h-9 items-center justify-center text-[14px] text-muted-foreground md:flex';
 export const accessAssignmentSubmitButtonClassName: string = cn(
-  accessDrawerPrimaryActionButtonClassName,
+  accessDrawerPrimaryAddButtonClassName,
   'w-fit justify-self-start',
 );
 
@@ -77,7 +77,7 @@ function ProjectScopeSelect({ props }: Readonly<{ props: AccessScopeInputsProps 
   return (
     <DependentScopeField depth={1} label="Project(s)" labelId={labelId}>
       <MultiComboBox
-        className="w-full"
+        className="min-w-0 w-full"
         emptyMessage="No matching projects."
         labelId={labelId}
         onChange={createProjectChangeHandler(props)}
@@ -100,7 +100,7 @@ function EnvironmentScopeSelect({ props }: Readonly<{ props: AccessScopeInputsPr
   return (
     <DependentScopeField depth={2} label="Environment(s)" labelId={labelId}>
       <MultiComboBox
-        className="w-full"
+        className="min-w-0 w-full"
         disabled={props.projectNames.length === 0}
         emptyMessage={props.projectNames.length === 0 ? 'Select project(s) first.' : 'No matching environments.'}
         labelId={labelId}
@@ -122,7 +122,7 @@ function DependentScopeField({
   labelId,
 }: Readonly<DependentScopeFieldProps>): JSX.Element {
   return (
-    <div className={cn('relative w-full space-y-1', readDependentScopeFieldPaddingClassName(depth), className)}>
+    <div className={cn('relative min-w-0 w-full space-y-1', readDependentScopeFieldPaddingClassName(depth), className)}>
       <div
         className={cn(
           'pointer-events-none absolute top-[-8px] hidden h-[27px] w-8 rounded-bl-[10px] border-b border-l border-[var(--cpt-border-default,rgba(0,0,0,0.08))] md:block',

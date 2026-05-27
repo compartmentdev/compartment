@@ -19,7 +19,11 @@ import {
   AccessScopeInputs,
   isAccessScopeSelectionReady,
 } from '../access/access-scope-inputs';
-import { accessDrawerRowActionButtonClassName, AccessDrawerSection } from '../access/access-ui';
+import {
+  accessDrawerAssignmentRowClassName,
+  accessDrawerRowActionButtonClassName,
+  AccessDrawerSection,
+} from '../access/access-ui';
 import type { UserAccessPanelSetter } from './user-access-panel.actions';
 import {
   type UserAssignmentMutation,
@@ -220,7 +224,7 @@ function renderAssignmentRows(
 
 function UserDirectAssignmentRow(props: Readonly<UserDirectAssignmentRowProps>): JSX.Element {
   return (
-    <AccessDrawerListRow className="md:grid-cols-[144px_116px_minmax(0,1fr)_auto]">
+    <AccessDrawerListRow className={accessDrawerAssignmentRowClassName}>
       <div className="text-[13px] font-semibold leading-[18px]">{props.assignment.roleName}</div>
       <div className="text-[12px] leading-4 text-[var(--cpt-text-secondary,#485259)]">
         {formatBrowserAccessAssignmentScope(props.assignment.scope)}

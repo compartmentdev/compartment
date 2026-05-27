@@ -19,6 +19,8 @@ export function useGroupAssignmentCreateMutation(props: GroupAssignmentsCardProp
         props.environmentValues,
         props.setData,
         props.setErrorMessage,
+        props.setEnvironmentValues,
+        props.setProjectNames,
       ),
     mutationKey: ['console-access', 'groups', organizationSlug, props.selectedGroup.id, 'assignments', 'create'],
   });

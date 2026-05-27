@@ -19,6 +19,8 @@ export function useUserAssignmentCreateMutation(props: UserDirectAssignmentsCard
         props.environmentValues,
         props.setData,
         props.setErrorMessage,
+        props.setEnvironmentValues,
+        props.setProjectNames,
       ),
     mutationKey: ['console-access', 'users', organizationSlug, props.access.user.email, 'assignments', 'create'],
   });

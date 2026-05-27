@@ -7,7 +7,7 @@ import { Plus } from '../../components/ui/icons';
 import { formatGroupScopeSummary } from '../access/access-display';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
 import {
-  accessDrawerPrimaryActionButtonClassName,
+  accessDrawerPrimaryAddButtonClassName,
   accessDrawerRowActionButtonClassName,
   AccessDrawerSection,
 } from '../access/access-ui';
@@ -120,7 +120,7 @@ function renderUserGroupOption(group: AccessGroupSummary): JSX.Element {
 
 function UserGroupAddButton({ disabled, isPending }: Readonly<{ disabled: boolean; isPending: boolean }>): JSX.Element {
   return (
-    <Button className={accessDrawerPrimaryActionButtonClassName} disabled={disabled} type="submit" variant="default">
+    <Button className={accessDrawerPrimaryAddButtonClassName} disabled={disabled} type="submit" variant="default">
       {isPending ? null : <Plus className="size-4" />}
       {isPending ? 'Adding...' : 'Add user to group'}
     </Button>

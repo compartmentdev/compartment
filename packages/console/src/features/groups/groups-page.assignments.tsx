@@ -19,7 +19,11 @@ import {
   AccessScopeInputs,
   isAccessScopeSelectionReady,
 } from '../access/access-scope-inputs';
-import { accessDrawerRowActionButtonClassName, AccessDrawerSection } from '../access/access-ui';
+import {
+  accessDrawerAssignmentRowClassName,
+  accessDrawerRowActionButtonClassName,
+  AccessDrawerSection,
+} from '../access/access-ui';
 import type { GroupsPageSetter } from './groups-page.actions';
 import {
   type GroupAssignmentMutation,
@@ -229,7 +233,7 @@ function renderGroupAssignmentRows(
 
 function GroupAssignmentRow(props: Readonly<GroupAssignmentRowProps>): JSX.Element {
   return (
-    <AccessDrawerListRow className="md:grid-cols-[120px_120px_minmax(0,1fr)_auto]">
+    <AccessDrawerListRow className={accessDrawerAssignmentRowClassName}>
       <div className="text-[13px] font-semibold leading-[18px]">{props.assignment.roleName}</div>
       <div className="text-[12px] leading-4 text-[var(--cpt-text-secondary,#485259)]">
         {formatBrowserAccessAssignmentScope(props.assignment.scope)}

@@ -24,3 +24,14 @@ export function syncAccessScopeSelections(input: Readonly<AccessScopeSelectionSy
     input.setEnvironmentValues(nextEnvironmentValues);
   }
 }
+
+export function resetAccessScopeSelectionsAfterCreate(
+  didCreate: boolean,
+  setEnvironmentValues: (value: string[]) => void,
+  setProjectNames: (value: string[]) => void,
+): void {
+  if (didCreate) {
+    setEnvironmentValues([]);
+    setProjectNames([]);
+  }
+}
