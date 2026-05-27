@@ -159,6 +159,7 @@
   }
 
   header.header {
+    --cpt-header-control-size: 2.3rem;
     height: auto;
     padding: 0.45rem var(--cpt-shell-gutter) 0;
     border-bottom: 0;
@@ -176,6 +177,16 @@
     box-shadow: 0 12px 32px rgba(5, 8, 12, 0.06);
     -webkit-backdrop-filter: saturate(180%) blur(28px);
     backdrop-filter: saturate(180%) blur(28px);
+  }
+
+  @media (max-width: 49.999rem) {
+    header.header {
+      padding-inline-end: calc(var(--cpt-shell-gutter) + var(--sl-menu-button-size) + 0.55rem);
+    }
+
+    header.header > .header {
+      gap: 0.6rem;
+    }
   }
 
   @media (min-width: 50rem) {
@@ -240,6 +251,13 @@
     height: 1rem;
   }
 
+  header.header .product-site-link-mobile {
+    justify-content: center;
+    width: var(--cpt-header-control-size);
+    min-height: var(--cpt-header-control-size);
+    padding: 0;
+  }
+
   header.header .github-star-count {
     margin-inline-start: 0.1rem;
     padding-inline-start: 0.45rem;
@@ -280,7 +298,7 @@
   }
 
   header.header label {
-    min-height: 2.3rem;
+    min-height: var(--cpt-header-control-size);
     padding-inline: 0.4rem;
   }
 
@@ -294,7 +312,7 @@
   }
 
   button[data-open-modal] {
-    min-height: 2.3rem;
+    min-height: var(--cpt-header-control-size);
     padding-inline: 0.8rem 0.55rem;
     box-shadow: none;
   }
@@ -304,23 +322,29 @@
     background: var(--cpt-overlay-1);
   }
 
-  header.header starlight-theme-select {
+  starlight-theme-select {
     flex: 0 0 auto;
   }
 
-  header.header starlight-theme-select label {
+  starlight-theme-select label {
     --sl-inline-padding: 0.8rem;
     --sl-label-icon-size: 1rem;
     position: relative;
     justify-content: center;
     min-width: 0;
+    min-height: var(--cpt-header-control-size);
     gap: 0;
     padding-inline: 0;
-    width: 2.3rem;
+    border-radius: 999px;
+    width: var(--cpt-header-control-size);
     overflow: hidden;
   }
 
-  header.header starlight-theme-select select {
+  starlight-theme-select label:focus-within {
+    box-shadow: 0 0 0 3px var(--cpt-primary-muted);
+  }
+
+  starlight-theme-select select {
     position: absolute;
     inset: 0;
     height: 100%;
@@ -334,17 +358,17 @@
     white-space: nowrap;
   }
 
-  header.header starlight-theme-select .label-icon,
-  header.header starlight-theme-select .caret {
+  starlight-theme-select .label-icon,
+  starlight-theme-select .caret {
     flex: 0 0 auto;
   }
 
-  header.header starlight-theme-select .label-icon {
+  starlight-theme-select .label-icon {
     inset-inline-start: 50%;
     transform: translate(-50%, -50%);
   }
 
-  header.header starlight-theme-select .caret {
+  starlight-theme-select .caret {
     display: none;
   }
 
