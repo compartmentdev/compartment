@@ -1,6 +1,7 @@
 import type {
   CommandProgress,
   CommandProgressInput,
+  CommandProgressMode,
   CommandProgressState,
   CommandProgressTimer,
 } from './command.progress.types';
@@ -9,6 +10,7 @@ const spinnerFrames: readonly string[] = ['-', '\\', '|', '/'];
 const spinnerIntervalMs: number = 120;
 const terminalClearLine: string = '\u001B[2K';
 const terminalLineStart: string = '\r';
+const terminalWrapSafetyColumns: number = 1;
 
 export function createCommandProgress(input: CommandProgressInput): CommandProgress {
   if (!shouldRenderCommandProgress(input)) {
@@ -23,6 +25,8 @@ export function createCommandProgress(input: CommandProgressInput): CommandProgr
 }
 
 class NoopCommandProgress implements CommandProgress {
+  readonly mode: CommandProgressMode = 'hidden';
+
   report(): void {
     return;
   }
@@ -33,6 +37,7 @@ class NoopCommandProgress implements CommandProgress {
 }
 
 class LineCommandProgress implements CommandProgress {
+  readonly mode: CommandProgressMode = 'line';
   readonly #input: CommandProgressInput;
 
   constructor(input: CommandProgressInput) {
@@ -49,6 +54,7 @@ class LineCommandProgress implements CommandProgress {
 }
 
 class SpinnerCommandProgress implements CommandProgress {
+  readonly mode: CommandProgressMode = 'live';
   readonly #input: CommandProgressInput;
   readonly #state: CommandProgressState = {
     frameIndex: 0,
@@ -131,9 +137,44 @@ function renderCommandProgressFrame(input: CommandProgressInput, state: CommandP
   const frame: string = spinnerFrames[state.frameIndex % spinnerFrames.length]!;
   state.frameIndex += 1;
   state.rendered = true;
-  input.io.stderr(`${terminalLineStart}${terminalClearLine}${frame} ${state.message}`);
+  input.io.stderr(`${terminalLineStart}${terminalClearLine}${formatCommandProgressFrame(input, frame, state.message)}`);
 }
 
 function shouldRenderCommandProgress(input: CommandProgressInput): boolean {
   return input.enabled !== false && input.output === 'text';
+}
+
+function formatCommandProgressFrame(input: CommandProgressInput, frame: string, message: string): string {
+  const prefix: string = `${frame} `;
+  const maxColumns: number | undefined = readCommandProgressFrameColumns(input);
+  if (maxColumns === undefined) {
+    return `${prefix}${message}`;
+  }
+
+  const availableColumns: number = maxColumns - prefix.length;
+  if (availableColumns <= 0) {
+    return prefix.slice(0, maxColumns);
+  }
+
+  return `${prefix}${truncateCommandProgressMessage(message, availableColumns)}`;
+}
+
+function readCommandProgressFrameColumns(input: CommandProgressInput): number | undefined {
+  const columns: number | undefined = input.io.stderrColumns;
+  if (columns === undefined || !Number.isFinite(columns)) {
+    return undefined;
+  }
+
+  return Math.max(1, Math.floor(columns) - terminalWrapSafetyColumns);
+}
+
+function truncateCommandProgressMessage(message: string, maxLength: number): string {
+  if (message.length <= maxLength) {
+    return message;
+  }
+  if (maxLength <= 3) {
+    return message.slice(0, maxLength);
+  }
+
+  return `${message.slice(0, maxLength - 3)}...`;
 }
