@@ -12,6 +12,13 @@ export async function resolveRuntimeContainerPort(
   return readImageContainerPort(configuredPort, image);
 }
 
+export function resolveRuntimeImageContainerPort(
+  runtimeEnv: Record<string, string>,
+  image: DockerInspectImageResult,
+): number {
+  return readImageContainerPort(readRuntimeEnvContainerPort(runtimeEnv), image);
+}
+
 export function buildRuntimeEnv(runtimeEnv: Record<string, string>, containerPort: number): Record<string, string> {
   return runtimeEnv.PORT !== undefined
     ? runtimeEnv
