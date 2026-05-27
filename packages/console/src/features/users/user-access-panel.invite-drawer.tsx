@@ -13,7 +13,6 @@ import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header'
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import {
   accessDrawerActionButtonClassName,
-  accessDrawerFieldClassName,
   AccessDrawerSection,
   AccessDrawerShell,
   useAccessDrawerCloseNavigation,
@@ -89,7 +88,6 @@ function InviteEmailField({ state }: Readonly<InviteUserDrawerProps>): JSX.Eleme
         Email
       </span>
       <Input
-        className={accessDrawerFieldClassName}
         onChange={(event: ChangeEvent<HTMLInputElement>): void => state.setInviteEmail(event.target.value)}
         placeholder="name@example.com"
         required

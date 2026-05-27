@@ -99,7 +99,7 @@ function LoginInputField({
       <div className={authInputClassName}>
         <LoginInputFieldLeadingIcon icon={icon} />
         <Input
-          className="border-0 bg-transparent px-0 py-0 pl-7 pr-7 shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="border-0 bg-transparent px-0 py-0 pl-7 pr-7 ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
           {...inputProps}
         />
       </div>
@@ -147,4 +147,4 @@ function LoginInputFieldLeadingIcon({ icon }: Readonly<{ icon: 'email' | 'passwo
 }
 
 const compactInputClassName: string =
-  'border-0 bg-transparent px-0 py-0 shadow-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0';
+  'border-0 bg-transparent px-0 py-0 ring-0 focus-visible:ring-0 focus-visible:ring-offset-0';

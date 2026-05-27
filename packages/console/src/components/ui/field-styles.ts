@@ -10,7 +10,7 @@ const fieldInvalidRingClassName: string =
 const fieldOpenRingClassName: string = 'data-[state=open]:ring-[3px] data-[state=open]:ring-[rgb(163_163_163_/_24%)]';
 
 export const fieldControlBaseClassName: string =
-  'field-control-surface w-full rounded-[10px] border bg-background text-[13px] leading-5 text-foreground outline-none transition placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50';
+  'field-control-surface w-full rounded-[10px] border bg-background text-[13px] font-normal leading-5 text-foreground outline-none transition placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50';
 
 const fieldControlClassName: string = cn(fieldControlBaseClassName, fieldFocusRingClassName, fieldInvalidRingClassName);
 

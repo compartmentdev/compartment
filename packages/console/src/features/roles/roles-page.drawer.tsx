@@ -9,7 +9,6 @@ import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header'
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import {
   accessDrawerActionButtonClassName,
-  accessDrawerFieldClassName,
   accessDrawerTextareaClassName,
   AccessDrawerSection,
   AccessDrawerShell,
@@ -73,7 +72,6 @@ function RoleNameField({ state }: Readonly<RoleEditorDrawerProps>): JSX.Element 
         Role name
       </span>
       <Input
-        className={accessDrawerFieldClassName}
         disabled={isSystemRole(state)}
         onChange={(event: ChangeEvent<HTMLInputElement>): void => state.setName(event.target.value)}
         placeholder="Custom role"

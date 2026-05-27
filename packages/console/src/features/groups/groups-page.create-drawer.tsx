@@ -10,7 +10,6 @@ import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
 import {
   accessDrawerActionButtonClassName,
-  accessDrawerFieldClassName,
   accessDrawerTextareaClassName,
   AccessDrawerSection,
   AccessDrawerShell,
@@ -68,7 +67,6 @@ function GroupNameField({ state }: Readonly<CreateGroupDrawerProps>): JSX.Elemen
         Name
       </span>
       <Input
-        className={accessDrawerFieldClassName}
         onChange={(event: ChangeEvent<HTMLInputElement>): void => state.setNewGroupName(event.target.value)}
         required
         value={state.newGroupName}

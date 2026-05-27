@@ -38,7 +38,6 @@ export function ComboBox(props: Readonly<ComboBoxProps>): JSX.Element {
     <div className={cn('relative', props.className)}>
       <Input
         autoComplete="off"
-        className="h-9 w-full"
         disabled={props.disabled}
         onBlur={createComboBoxInputBlurHandler(props.onFocusChange, setIsFocused)}
         onChange={createComboBoxInputChangeHandler(props.onInputChange)}
@@ -104,7 +103,7 @@ function ComboBoxStatusMessage({ message }: Readonly<ComboBoxStatusMessageProps>
 function ComboBoxOptionButton({ onChange, option }: Readonly<ComboBoxOptionButtonProps>): JSX.Element {
   return (
     <button
-      className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-[13px] text-foreground hover:bg-accent"
+      className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-[13px] text-foreground hover:bg-accent hover:text-accent-foreground"
       onClick={(): void => onChange(option.value)}
       onMouseDown={preventComboBoxOptionMouseDown}
       type="button"

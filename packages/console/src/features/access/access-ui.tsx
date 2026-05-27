@@ -49,12 +49,17 @@ const AccessDrawerCloseContext: React.Context<(() => void) | null> = createConte
 
 export const accessDrawerActionButtonClassName: string =
   'h-8 gap-1.5 rounded-[8px] px-3 text-[13px] font-medium leading-5';
-export const accessDrawerFieldClassName: string = 'rounded-[10px]';
 export const accessDrawerHeaderActionButtonClassName: string =
   'h-8 shrink-0 gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium leading-5';
 export const accessDrawerPrimaryActionButtonClassName: string =
   'h-9 w-auto shrink-0 justify-center gap-1.5 rounded-[10px] px-3 text-[13px]';
 export const accessDrawerRowActionButtonClassName: string = 'h-[26px] gap-1 rounded-[8px] px-2 text-[12px]';
+export const accessDrawerSummaryDescriptionClassName: string =
+  "max-w-full truncate text-[13px] font-normal leading-5 text-muted-foreground [font-variation-settings:'opsz'_14]";
+export const accessDrawerSummaryIdentityClassName: string = 'flex min-w-0 items-center gap-2';
+export const accessDrawerSummaryStackClassName: string = 'flex min-w-0 flex-col items-start gap-2';
+export const accessDrawerSummaryTitleClassName: string =
+  "min-w-0 truncate text-2xl font-medium leading-8 tracking-normal text-foreground [font-variation-settings:'opsz'_14]";
 export const accessDrawerTextareaClassName: string = textareaFieldControlClassName;
 
 export function AccessPageHeader({ action, description, title }: Readonly<AccessPageHeaderProps>): JSX.Element {

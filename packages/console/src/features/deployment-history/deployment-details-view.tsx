@@ -142,7 +142,6 @@ function DeploymentDetailsPageTitle({ environmentName }: Readonly<DeploymentDeta
     <BrowserConsoleDetailTitle
       badgeLabel={readDeploymentDetailsEnvironmentBadgeLabel(environmentName)}
       icon={FileBox}
-      iconTone="blue"
       title="Deployment run details"
     />
   );

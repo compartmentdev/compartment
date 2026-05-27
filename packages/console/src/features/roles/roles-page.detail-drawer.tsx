@@ -4,14 +4,23 @@ import { useState, type JSX } from 'react';
 import { ConfirmationDialog } from '../../components/confirmation-dialog';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
-import { Box, Pencil, Trash } from '../../components/ui/icons';
+import { IconTile } from '../../components/ui/icon-tile';
+import { Drama, Pencil, Trash } from '../../components/ui/icons';
 import { useBrowserMutation } from '../../lib/browser-query-client';
 import { AccessAdditionalCard, readAccessDangerActionButtonClassName } from '../access/access-additional-card';
 import { AccessDrawerCollapsibleSection } from '../access/access-drawer-collapsible-section';
 import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
 import { AccessDrawerDetailHeader } from '../access/access-drawer-detail-header';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
-import { accessDrawerHeaderActionButtonClassName, AccessDrawerSection, AccessDrawerShell } from '../access/access-ui';
+import {
+  accessDrawerHeaderActionButtonClassName,
+  accessDrawerSummaryDescriptionClassName,
+  accessDrawerSummaryIdentityClassName,
+  accessDrawerSummaryStackClassName,
+  accessDrawerSummaryTitleClassName,
+  AccessDrawerSection,
+  AccessDrawerShell,
+} from '../access/access-ui';
 import { PermissionFamiliesCard } from '../access/access-permission-families';
 import { canManageBrowserRoles } from '../console/console-access';
 import {
@@ -35,6 +44,8 @@ interface DeleteRoleActionProps {
 }
 
 type RoleDeleteMutation = UseMutationResult<boolean, Error, void>;
+type RoleKind = 'custom' | 'system';
+type RoleKindBadgeVariant = 'info' | 'soft';
 
 export function RoleDetailDrawer({ state }: Readonly<RoleDetailDrawerProps>): JSX.Element | null {
   const role: AccessRoleListRow | undefined = readSelectedRole(state);
@@ -102,20 +113,20 @@ function RoleDetailContent({ role, state }: Readonly<{ role: AccessRoleListRow; 
 function RoleSummaryCard({ role }: Readonly<{ role: AccessRoleListRow }>): JSX.Element {
   return (
     <AccessDrawerSection separated={false}>
-      <div className="flex items-center gap-3">
-        <div className="flex size-8 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-          <Box className="size-4" />
+      <div className={accessDrawerSummaryStackClassName}>
+        <div className={accessDrawerSummaryIdentityClassName}>
+          <IconTile icon={Drama} />
+          <h3 className={accessDrawerSummaryTitleClassName}>{role.name}</h3>
+          <Badge variant={readRoleKindBadgeVariant(role.kind)}>{role.kind === 'system' ? 'System' : 'Custom'}</Badge>
         </div>
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-[22px] font-semibold tracking-tight">{role.name}</h3>
-            <Badge variant="soft">{role.kind === 'system' ? 'System' : 'Custom'}</Badge>
-          </div>
-          <p className="text-[13px] text-muted-foreground">{readRoleDescription(role)}</p>
-        </div>
+        <p className={accessDrawerSummaryDescriptionClassName}>{readRoleDescription(role)}</p>
       </div>
     </AccessDrawerSection>
   );
+}
+
+function readRoleKindBadgeVariant(kind: RoleKind): RoleKindBadgeVariant {
+  return kind === 'custom' ? 'info' : 'soft';
 }
 
 function RolePermissionsCard({ permissionKeys }: Readonly<{ permissionKeys: PermissionKey[] }>): JSX.Element {

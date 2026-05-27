@@ -19,8 +19,11 @@
   --input: #e6e8ea;
   --muted: #e6e8ea;
   --muted-foreground: #9ca4ab;
+  --muted-foreground-secondary: #4d565e;
+  --opacity-info-lighter: #1e65ac1a;
   --opacity-primary-lighter: #1214171a;
   --opacity-primary-main: #12141733;
+  --opacity-success-lighter: #1c882c1a;
   --popover: #ffffff;
   --popover-foreground: #121417;
   --primary: #121417;
@@ -58,8 +61,11 @@
   --input: #24282c;
   --muted: #121417;
   --muted-foreground: #737e87;
+  --muted-foreground-secondary: #9ca4ab;
+  --opacity-info-lighter: #5798db1a;
   --opacity-primary-lighter: #fafafa1a;
   --opacity-primary-main: #fafafa33;
+  --opacity-success-lighter: #3bba501a;
   --popover: #24282c;
   --popover-foreground: #f4f4f6;
   --primary: #e6e8ea;
