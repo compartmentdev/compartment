@@ -2,7 +2,11 @@
   // Runtime-only dead code check.
   // This intentionally ignores test usage and looks only at production/runtime entrypoints.
   "includeEntryExports": true,
-  "entry": ["scripts/dev/run-compartment-cli.mjs!", "packages/contracts/src/index.browser.ts!"],
+  "entry": [
+    "scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs!",
+    "scripts/dev/run-compartment-cli.mjs!",
+    "packages/contracts/src/index.browser.ts!",
+  ],
   "ignore": [
     "packages/*/dist/**",
     // Browser-safe utils entry is consumed through the Vite alias in packages/console/vite.config.ts.

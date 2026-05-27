@@ -192,16 +192,6 @@ jobs:
           mutable_tags_file="./.compartment/release-assets/published-self-hosted-mutable-tags.txt"
           : > "$mutable_tags_file"
 
-          read_self_hosted_services() {
-            node --input-type=module <<'EOF'
-          import { selfHostedRuntimeImageArtifacts } from './scripts/deploy/self-hosted-runtime-services.mjs';
-
-          for (const serviceName of selfHostedRuntimeImageArtifacts) {
-            console.log(serviceName);
-          }
-          EOF
-          }
-
           push_dockerhub_image() {
             local image_name="$1"
             local dockerfile="$2"
@@ -243,7 +233,7 @@ jobs:
           push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
           push_dockerhub_image compartment-runtime-probe packages/node/Dockerfile.runtime-probe.self-hosted "${runtime_probe_args[@]}"
 
-          mapfile -t self_hosted_services < <(read_self_hosted_services)
+          mapfile -t self_hosted_services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
 
           node ./scripts/deploy/secure-self-hosted-images.mjs \
             --scan-only \
