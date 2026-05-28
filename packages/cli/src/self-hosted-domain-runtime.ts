@@ -13,6 +13,7 @@ import {
   assertNodeAgentRuntimeNetworkReconcileEnvironment,
   reconcileNodeAgentRuntimeNetworks,
 } from './node-agent-runtime-network';
+import { restartNodeAgentHostService } from './node-agent-service';
 import { restartSelfHostedRuntime } from './docker-runtime';
 import type { DockerExecutionContext } from './docker-runtime.types';
 import type { SystemDomainRuntimeApplyInput } from './system-domain.types';
@@ -35,8 +36,7 @@ export async function applySelfHostedSystemDomainRuntime(input: SystemDomainRunt
     installDirectory: install.installPaths.configDir,
     localComposePath: install.installPaths.stagedAssetPaths.localComposePath,
   });
-  reportProgress(input, 'Reconciling runtime network attachments...');
-  await reconcileNodeAgentRuntimeNetworks({ environmentText: nextEnvironmentText });
+  await reconcileDomainRuntimeNetworks(input, install, nextEnvironmentText);
 }
 
 function renderSelfHostedRuntimeDomainEnvironment(
@@ -48,6 +48,30 @@ function renderSelfHostedRuntimeDomainEnvironment(
   }
 
   return renderSelfHostedDomainEnvironment(environmentText, input.hostPlan, input.certificate);
+}
+
+async function reconcileDomainRuntimeNetworks(
+  input: SystemDomainRuntimeApplyInput,
+  install: ReadSelfHostedInstallResult,
+  environmentText: string,
+): Promise<void> {
+  reportProgress(input, 'Reconciling runtime network attachments...');
+  try {
+    await reconcileNodeAgentRuntimeNetworks({ environmentText });
+  } catch {
+    await retryDomainRuntimeNetworkReconcile(input, install, environmentText);
+  }
+}
+
+async function retryDomainRuntimeNetworkReconcile(
+  input: SystemDomainRuntimeApplyInput,
+  install: ReadSelfHostedInstallResult,
+  environmentText: string,
+): Promise<void> {
+  reportProgress(input, 'Restarting node agent service before retrying runtime network attachments...');
+  await restartNodeAgentHostService({ envPath: install.installPaths.stagedAssetPaths.envPath });
+  reportProgress(input, 'Reconciling runtime network attachments...');
+  await reconcileNodeAgentRuntimeNetworks({ environmentText });
 }
 
 function reportProgress(input: SystemDomainRuntimeApplyInput, message: string): void {
