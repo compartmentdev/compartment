@@ -32,6 +32,11 @@ interface DependentScopeFieldProps {
   labelId: string;
 }
 
+interface AccessAssignmentSubmitButtonProps {
+  disabled: boolean;
+  isPending: boolean;
+}
+
 const accessAssignmentScopeBranchClassName: string = 'grid w-full gap-2 md:min-w-0 md:w-[min(34rem,80%)]';
 const accessAssignmentScopeFieldLabelClassName: string =
   'px-1 text-[12px] font-medium leading-4 text-[var(--cpt-text-secondary,#485259)]';
@@ -48,7 +53,7 @@ const accessAssignmentSubmitButtonClassName: string = cn(
 export function AccessAssignmentSubmitButton({
   disabled,
   isPending,
-}: Readonly<{ disabled: boolean; isPending: boolean }>): JSX.Element {
+}: Readonly<AccessAssignmentSubmitButtonProps>): JSX.Element {
   return (
     <Button
       className={accessAssignmentSubmitButtonClassName}
