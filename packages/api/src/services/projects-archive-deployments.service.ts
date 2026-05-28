@@ -39,7 +39,7 @@ export async function cleanupCanceledDeploymentSourceUploads(deployments: Deploy
   }
 
   for (const sourceUploadId of sourceUploadIds) {
-    await cleanupConsumedSourceUpload(sourceUploadId);
+    await cleanupConsumedSourceUpload(sourceUploadId).catch((): void => undefined);
   }
 }
 
