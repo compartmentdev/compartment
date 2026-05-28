@@ -12,6 +12,7 @@ import type {
   NodeDeployRequest,
   NodeDeployResponse,
   NodeInspectDeploymentResponse,
+  NodeRuntimeNetworkReconcileResponse,
   NodeStopDeploymentResponse,
   NodeTailLogsResponse,
   ResolvedCompartmentServiceRunConfig,
@@ -22,6 +23,7 @@ import { readNodeRequestRuntimeError, readNodeRequestRuntimeMessage } from '../s
 import type { NodeRequester } from '../src/http/node-request.types';
 import { deployToNode } from '../src/services/node-runtime-deploy.service';
 import { inspectNodeDeployment } from '../src/services/node-runtime-inspect.service';
+import { reconcileNodeRuntimeNetworks } from '../src/services/node-runtime-network-reconcile.service';
 import { stopNodeDeployment } from '../src/services/node-runtime-stop.service';
 import { tailNodeDeploymentLogs } from '../src/services/node-runtime-logs.service';
 
@@ -157,6 +159,21 @@ describe('node runtime request services', (): void => {
       body: { containerId: 'container_123' },
       method: 'POST',
       pathname: '/internal/deployments/stop',
+    });
+  });
+
+  it('sends runtime network reconcile requests to the node reconcile endpoint', async (): Promise<void> => {
+    const server: NodeRuntimeTestServer = await startNodeRuntimeTestServer([
+      createJsonResponse(createNodeRuntimeNetworkReconcileResponse()),
+    ]);
+    const request: NodeRequester = createNodeRequesterFixture(server.socketPath);
+
+    const reconcileResponse: NodeRuntimeNetworkReconcileResponse = await reconcileNodeRuntimeNetworks(request);
+
+    expect(reconcileResponse.success).toBe(true);
+    expectNodeRequest(server.calls[0]!, {
+      method: 'POST',
+      pathname: '/internal/runtime-networks/reconcile',
     });
   });
 
@@ -338,6 +355,12 @@ function createNodeInspectDeploymentResponse(): NodeInspectDeploymentResponse {
 function createNodeStopDeploymentResponse(): NodeStopDeploymentResponse {
   return {
     stoppedAt: '2026-03-24T10:00:00.000Z',
+  };
+}
+
+function createNodeRuntimeNetworkReconcileResponse(): NodeRuntimeNetworkReconcileResponse {
+  return {
+    success: true,
   };
 }
 

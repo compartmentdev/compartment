@@ -38,6 +38,11 @@ export {
   nodeProjectCleanupResponseSchema,
 } from './contracts/runtime-node-project-cleanup.contract';
 export {
+  type NodeRuntimeNetworkReconcileResponse,
+  nodeRuntimeNetworkReconcilePathname,
+  nodeRuntimeNetworkReconcileResponseSchema,
+} from './contracts/runtime-node-network.contract';
+export {
   type NodeReleaseLogLine,
   type NodeReleaseRequest,
   type NodeReleaseResponse,

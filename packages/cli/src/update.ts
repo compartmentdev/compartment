@@ -1,38 +1,17 @@
 import type { UpdateSkipReason } from '@compartment/contracts';
-import { ensureSelfHostedDockerExecutionContext } from './self-hosted-docker-context';
-import { writeSelfHostedPrivateFile } from './self-hosted-file-permissions';
-import { backupSelfHostedInstallFiles } from './self-hosted-install-backup';
-import { writeSelfHostedInstallState } from './self-hosted-install-state';
 import { readRequiredSelfHostedInstallForUpdate } from './self-hosted-install-read';
 import type { ReadSelfHostedInstallForUpdateResult } from './self-hosted-install-read.types';
 import { assertSelfHostedSystemPrivileges } from './self-hosted-system-privileges';
 import { buildSelfHostedPathSelection } from './self-hosted-install-paths';
-import { prepareSelfHostedRuntimeImages, restartSelfHostedRuntime } from './docker-runtime';
-import { readInheritedDockerProgressReportOptions } from './docker-progress';
-import {
-  assertNodeAgentHostServiceInstallable,
-  restartNodeAgentHostService,
-  stageNodeAgentHostService,
-  waitForNodeAgentHostServiceHealth,
-} from './node-agent-service';
-import type { DockerExecutionContext } from './docker-runtime.types';
-import type {
-  InstallContext,
-  InstallImageSource,
-  InstallProgressReporter,
-  InstallProgressReportOptions,
-} from './install.types';
+import { assertNodeAgentHostServiceInstallable } from './node-agent-service';
+import type { InstallImageSource } from './install.types';
 import type { SelfHostedPathSelection } from './self-hosted-install-paths.types';
 import type { SelfHostedRuntimeSelection, RenderedSelfHostedEnvironment } from './self-hosted-env.types';
-import { readBundledAssets, stageBundledAssets } from './runtime-assets';
+import { readBundledAssets } from './runtime-assets';
 import type { BundledAssets } from './runtime-assets.types';
 import { buildRenderedSelfHostedUpdateEnvironment } from './update-environment';
-import {
-  createAppliedSelfHostedUpdateResult,
-  createSkippedSelfHostedUpdateResult,
-  createSkippedPreparedSelfHostedUpdate,
-  createUpdatedSelfHostedInstallState,
-} from './update-result';
+import { createSkippedSelfHostedUpdateResult, createSkippedPreparedSelfHostedUpdate } from './update-result';
+import { applyPreparedSelfHostedUpdate } from './update-apply';
 import {
   assertRegistryUpdateMatchesPackagedNodeAgent,
   createPreparedSelfHostedUpdateDecisionContext,
@@ -66,25 +45,6 @@ function finishSkippedSelfHostedUpdate(preparedUpdate: PreparedSelfHostedUpdateP
   }
 
   return createSkippedSelfHostedUpdateResult(preparedUpdate);
-}
-
-async function applyPreparedSelfHostedUpdate(
-  input: SelfHostedUpdateInput,
-  preparedUpdate: PreparedSelfHostedUpdate,
-): Promise<SelfHostedUpdateResult> {
-  const dockerContext: DockerExecutionContext = await ensureSelfHostedDockerExecutionContext(input.context);
-
-  await prepareUpdatedSelfHostedRuntimeImages(dockerContext, input.context, preparedUpdate);
-  const backupDir: string = await backupSelfHostedInstallFiles(preparedUpdate.installPaths);
-  await stageUpdatedSelfHostedRuntime(input.context, preparedUpdate);
-  await restartUpdatedSelfHostedRuntime(dockerContext, input.context, preparedUpdate);
-  await writeSelfHostedInstallState(
-    preparedUpdate.paths,
-    createUpdatedSelfHostedInstallState(preparedUpdate, preparedUpdate.currentState),
-    preparedUpdate.installPaths,
-  );
-
-  return createAppliedSelfHostedUpdateResult(preparedUpdate, backupDir);
 }
 
 async function prepareSelfHostedUpdate(
@@ -195,76 +155,4 @@ function createPreparedSkippedSelfHostedUpdatePlan(
     preparedEnvironment.imageSource,
     skipReason,
   );
-}
-
-async function stageUpdatedSelfHostedRuntime(
-  context: InstallContext | undefined,
-  preparedUpdate: PreparedSelfHostedUpdate,
-): Promise<void> {
-  reportUpdateProgress(context, 'Staging updated self-hosted runtime assets...');
-  await stageBundledAssets(preparedUpdate.stagedAssetPaths, preparedUpdate.assetPaths);
-  await writeSelfHostedPrivateFile(preparedUpdate.stagedAssetPaths.envPath, preparedUpdate.renderedEnvironment.text);
-}
-
-async function restartUpdatedSelfHostedRuntime(
-  dockerContext: DockerExecutionContext,
-  context: InstallContext | undefined,
-  preparedUpdate: PreparedSelfHostedUpdate,
-): Promise<void> {
-  reportUpdateProgress(context, 'Staging node agent service...');
-  await stageNodeAgentHostService({ envPath: preparedUpdate.stagedAssetPaths.envPath });
-  // systemd recreates RuntimeDirectory on agent restart; do it before Docker binds the socket directory.
-  reportUpdateProgress(context, 'Restarting node agent service...');
-  await restartNodeAgentHostService({ envPath: preparedUpdate.stagedAssetPaths.envPath, waitForHealth: false });
-  reportUpdateProgress(
-    context,
-    'Restarting self-hosted runtime...',
-    readInheritedDockerProgressReportOptions(dockerContext),
-  );
-  await restartUpdatedComposeRuntime(dockerContext, context, preparedUpdate);
-  reportUpdateProgress(context, 'Waiting for node agent service...');
-  await waitForNodeAgentHostServiceHealth({ envPath: preparedUpdate.stagedAssetPaths.envPath });
-}
-
-async function prepareUpdatedSelfHostedRuntimeImages(
-  dockerContext: DockerExecutionContext,
-  context: InstallContext | undefined,
-  preparedUpdate: PreparedSelfHostedUpdate,
-): Promise<void> {
-  reportUpdateProgress(context, 'Preparing runtime images...', readInheritedDockerProgressReportOptions(dockerContext));
-  await prepareSelfHostedRuntimeImages(dockerContext, {
-    composePath: preparedUpdate.stagedAssetPaths.composePath,
-    envPath: preparedUpdate.stagedAssetPaths.envPath,
-    imageRefs: preparedUpdate.runtimeSelection.imageRefs,
-    imageSource: preparedUpdate.imageSource,
-    installDirectory: preparedUpdate.configDir,
-    localComposePath: preparedUpdate.stagedAssetPaths.localComposePath,
-    reportProgress: context?.reportProgress,
-  });
-}
-
-async function restartUpdatedComposeRuntime(
-  dockerContext: DockerExecutionContext,
-  context: InstallContext | undefined,
-  preparedUpdate: PreparedSelfHostedUpdate,
-): Promise<void> {
-  await restartSelfHostedRuntime(dockerContext, {
-    composePath: preparedUpdate.stagedAssetPaths.composePath,
-    envPath: preparedUpdate.stagedAssetPaths.envPath,
-    imageRefs: preparedUpdate.runtimeSelection.imageRefs,
-    imageSource: preparedUpdate.imageSource,
-    installDirectory: preparedUpdate.configDir,
-    localComposePath: preparedUpdate.stagedAssetPaths.localComposePath,
-    reportProgress: context?.reportProgress,
-    skipRequiredImageVerificationBeforeStart: true,
-  });
-}
-
-function reportUpdateProgress(
-  context: InstallContext | undefined,
-  message: string,
-  options?: InstallProgressReportOptions,
-): void {
-  const reportProgress: InstallProgressReporter | undefined = context?.reportProgress;
-  reportProgress?.(message, options);
 }

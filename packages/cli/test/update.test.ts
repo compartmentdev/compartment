@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createUpdateRuntimeTestHarness,
   type InstallStateJsonObject,
+  type ReconcileNodeAgentRuntimeNetworksInput,
   type TemporaryInstallPaths,
 } from './update.test.harness';
 import type { SelfHostedUpdateResult } from '../src/update.types';
@@ -85,6 +86,15 @@ describe.sequential('update runtime', (): void => {
     expect(result.imageRegistry).toBe('github');
     expect(result.imageSource).toBe('registry');
     expect(result.skipReason).toBeNull();
+    expect(mocks.restartSelfHostedRuntime.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.waitForNodeAgentHostServiceHealth.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.waitForNodeAgentHostServiceHealth.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.reconcileNodeAgentRuntimeNetworks.mock.invocationCallOrder[0]!,
+    );
+    const reconcileInput: ReconcileNodeAgentRuntimeNetworksInput | undefined =
+      mocks.reconcileNodeAgentRuntimeNetworks.mock.calls[0]?.[0];
+    expect(reconcileInput?.environmentText).toContain('COMPARTMENT_NODE_VERSION=1.2.3');
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_NODE_VERSION=1.2.3',
     );
@@ -239,6 +249,42 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
       previousStateText,
     );
     await expect(stat(join(installPaths.dataDir, 'self-hosted/backups'))).rejects.toThrow();
+  });
+
+  it('persists applied install state before failing post-restart runtime network reconcile', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
+    await writeCurrentInstallFiles(
+      installPaths,
+      createCurrentEnvironmentText({
+        includeVariablesMasterKey: true,
+        nodeVersion: '0.1.0',
+        variablesMasterKey: 'h'.repeat(64),
+      }),
+    );
+    await writeInstallState(installPaths, {
+      imageRegistry: 'github',
+      imageSource: 'registry',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      stateVersion: 1,
+    });
+    mocks.reconcileNodeAgentRuntimeNetworks.mockRejectedValueOnce(new Error('reconcile failed'));
+    const { updateSelfHosted } = await import('../src/update');
+
+    await expect(
+      updateSelfHosted({
+        options: {
+          imageRegistry: 'docker-hub',
+          version: '1.2.3',
+        },
+      }),
+    ).rejects.toThrow('reconcile failed');
+
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_NODE_VERSION=1.2.3',
+    );
+    await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
+      '"imageRegistry": "docker-hub"',
+    );
   });
 
   it('updates current registry installs to Docker Hub when explicitly selected', async (): Promise<void> => {
@@ -507,13 +553,11 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
 
   it('fails fast when the runtime control token is missing', async (): Promise<void> => {
     const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
-    await writeCurrentInstallFiles(
-      installPaths,
-      createCurrentEnvironmentText({
-        includeRuntimeControlToken: false,
-        includeVariablesMasterKey: true,
-      }),
-    );
+    const previousEnvironmentText: string = createCurrentEnvironmentText({
+      includeRuntimeControlToken: false,
+      includeVariablesMasterKey: true,
+    });
+    await writeCurrentInstallFiles(installPaths, previousEnvironmentText);
     await writeInstallState(installPaths, {
       imageSource: 'registry',
       installationId: '11111111-1111-4111-8111-111111111111',
@@ -528,6 +572,14 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
         },
       }),
     ).rejects.toThrow('The self-hosted environment is missing COMPARTMENT_RUNTIME_CONTROL_TOKEN.');
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toBe(
+      previousEnvironmentText,
+    );
+    expect(mocks.ensureDockerExecutionContext).not.toHaveBeenCalled();
+    expect(mocks.prepareSelfHostedRuntimeImages).not.toHaveBeenCalled();
+    expect(mocks.stageNodeAgentHostService).not.toHaveBeenCalled();
+    expect(mocks.restartSelfHostedRuntime).not.toHaveBeenCalled();
+    expect(mocks.reconcileNodeAgentRuntimeNetworks).not.toHaveBeenCalled();
   });
 
   it('rejects installs missing required system token env', async (): Promise<void> => {

@@ -10,10 +10,13 @@ import {
   nodeResourceRestartPolicyPathname,
   nodeResourceStartPathname,
   nodeResourceStopPathname,
+  nodeRuntimeNetworkReconcilePathname,
+  nodeRuntimeNetworkReconcileResponseSchema,
   nodeStopDeploymentResponseSchema,
   nodeTailLogsResponseSchema,
   type NodeDeployResponse,
   type NodeInspectDeploymentResponse,
+  type NodeRuntimeNetworkReconcileResponse,
   type NodeStopDeploymentResponse,
   type NodeTailLogsResponse,
 } from '@compartment/contracts';
@@ -27,12 +30,14 @@ import type {
   stopRuntimeContainer,
   tailRuntimeContainerLogs,
 } from '../src/services/runtime.service';
+import type { reconcileRuntimeNetworks } from '../src/services/runtime-network.service';
 import type { cleanupRuntimeProject } from '../src/services/runtime-project-cleanup.service';
 import type { updateRuntimeResourceRestartPolicy } from '../src/services/runtime-resource-restart-policy.service';
 
 type CleanupRuntimeProject = typeof cleanupRuntimeProject;
 type DeployRuntimeContainer = typeof deployRuntimeContainer;
 type InspectRuntimeDeployment = typeof inspectRuntimeDeployment;
+type ReconcileRuntimeNetworks = typeof reconcileRuntimeNetworks;
 type StopRuntimeContainer = typeof stopRuntimeContainer;
 type TailRuntimeContainerLogs = typeof tailRuntimeContainerLogs;
 type UpdateRuntimeResourceRestartPolicy = typeof updateRuntimeResourceRestartPolicy;
@@ -57,6 +62,7 @@ interface InternalRouteMocks {
   cleanupRuntimeProject: Mock<CleanupRuntimeProject>;
   deployRuntimeContainer: Mock<DeployRuntimeContainer>;
   inspectRuntimeDeployment: Mock<InspectRuntimeDeployment>;
+  reconcileRuntimeNetworks: Mock<ReconcileRuntimeNetworks>;
   stopRuntimeContainer: Mock<StopRuntimeContainer>;
   tailRuntimeContainerLogs: Mock<TailRuntimeContainerLogs>;
   updateRuntimeResourceRestartPolicy: Mock<UpdateRuntimeResourceRestartPolicy>;
@@ -67,6 +73,7 @@ const mocks: InternalRouteMocks = vi.hoisted(
     cleanupRuntimeProject: vi.fn<CleanupRuntimeProject>(),
     deployRuntimeContainer: vi.fn<DeployRuntimeContainer>(),
     inspectRuntimeDeployment: vi.fn<InspectRuntimeDeployment>(),
+    reconcileRuntimeNetworks: vi.fn<ReconcileRuntimeNetworks>(),
     stopRuntimeContainer: vi.fn<StopRuntimeContainer>(),
     tailRuntimeContainerLogs: vi.fn<TailRuntimeContainerLogs>(),
     updateRuntimeResourceRestartPolicy: vi.fn<UpdateRuntimeResourceRestartPolicy>(),
@@ -98,6 +105,15 @@ vi.mock(
 );
 
 vi.mock(
+  '../src/services/runtime-network.service',
+  (): {
+    reconcileRuntimeNetworks: Mock<ReconcileRuntimeNetworks>;
+  } => ({
+    reconcileRuntimeNetworks: mocks.reconcileRuntimeNetworks,
+  }),
+);
+
+vi.mock(
   '../src/services/runtime-resource-restart-policy.service',
   (): {
     updateRuntimeResourceRestartPolicy: Mock<UpdateRuntimeResourceRestartPolicy>;
@@ -110,6 +126,7 @@ afterEach((): void => {
   mocks.cleanupRuntimeProject.mockReset();
   mocks.deployRuntimeContainer.mockReset();
   mocks.inspectRuntimeDeployment.mockReset();
+  mocks.reconcileRuntimeNetworks.mockReset();
   mocks.stopRuntimeContainer.mockReset();
   mocks.tailRuntimeContainerLogs.mockReset();
   mocks.updateRuntimeResourceRestartPolicy.mockReset();
@@ -271,6 +288,57 @@ describe('internal node routes', (): void => {
 
       expect(payload.containerId).toBe('container_123');
       expect(mocks.deployRuntimeContainer).toHaveBeenCalledTimes(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects runtime network reconcile requests without the runtime control token', async (): Promise<void> => {
+    const { app } = createTestApp();
+
+    try {
+      const response: LightMyRequestResponse = await withInjectTimeout(
+        app.inject({
+          method: 'POST',
+          url: nodeRuntimeNetworkReconcilePathname,
+        }),
+      );
+
+      expect(response.statusCode).toBe(401);
+      expect(mocks.reconcileRuntimeNetworks).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('reconciles runtime networks for requests with valid runtime control auth', async (): Promise<void> => {
+    mocks.reconcileRuntimeNetworks.mockResolvedValueOnce(undefined);
+    const { app } = createTestApp();
+
+    try {
+      const response: LightMyRequestResponse = await withInjectTimeout(
+        app.inject({
+          headers: {
+            authorization: 'Bearer test-runtime-control-token',
+          },
+          method: 'POST',
+          url: nodeRuntimeNetworkReconcilePathname,
+        }),
+      );
+
+      expect(response.statusCode).toBe(200);
+      const payload: NodeRuntimeNetworkReconcileResponse = nodeRuntimeNetworkReconcileResponseSchema.parse(
+        response.json(),
+      );
+
+      expect(payload.success).toBe(true);
+      expect(mocks.reconcileRuntimeNetworks).toHaveBeenCalledTimes(1);
+      expect(mocks.reconcileRuntimeNetworks).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dockerNamespace: 'compartment-test',
+          runtimeConnectivityMode: 'loopback',
+        }),
+      );
     } finally {
       await app.close();
     }

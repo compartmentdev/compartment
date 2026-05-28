@@ -6,6 +6,10 @@ import { assertSelfHostedSystemPrivileges } from './self-hosted-system-privilege
 import { readRequiredSelfHostedInstall } from './self-hosted-install-read';
 import { readSelfHostedImageRefsFromEnvironmentText } from './self-hosted-env';
 import { restartNodeAgentHostService, waitForNodeAgentHostServiceHealth } from './node-agent-service';
+import {
+  assertNodeAgentRuntimeNetworkReconcileEnvironment,
+  reconcileNodeAgentRuntimeNetworks,
+} from './node-agent-runtime-network';
 import type { ReadSelfHostedInstallResult } from './self-hosted-install-read.types';
 import { readSelfHostedSystemServiceNames, restartSelfHostedSystemRuntime } from './docker-runtime';
 import { readInheritedDockerProgressReportOptions } from './docker-progress';
@@ -18,6 +22,7 @@ export async function restartSelfHostedSystem(input: SelfHostedSystemInput): Pro
   const paths: SelfHostedPathSelection = buildSelfHostedPathSelection();
   assertSelfHostedSystemPrivileges();
   const install: ReadSelfHostedInstallResult = await readRequiredSelfHostedInstall(paths);
+  assertNodeAgentRuntimeNetworkReconcileEnvironment(install.environmentText);
   const dockerContext: DockerExecutionContext = await ensureSelfHostedDockerExecutionContext(input.context);
 
   await restartPreparedSelfHostedSystem(input, install, dockerContext);
@@ -34,6 +39,7 @@ async function restartPreparedSelfHostedSystem(
   await restartSystemNodeAgent(input, install);
   await restartSystemRuntime(input, install, dockerContext);
   await waitForRestartedNodeAgent(input, install);
+  await reconcileRestartedRuntimeNetworks(input, install);
 }
 
 async function prepareRestartRuntimeDirectories(input: SelfHostedSystemInput): Promise<void> {
@@ -81,6 +87,14 @@ async function waitForRestartedNodeAgent(
   await waitForNodeAgentHostServiceHealth({
     envPath: install.installPaths.stagedAssetPaths.envPath,
   });
+}
+
+async function reconcileRestartedRuntimeNetworks(
+  input: SelfHostedSystemInput,
+  install: ReadSelfHostedInstallResult,
+): Promise<void> {
+  reportRestartProgress(input, 'Reconciling runtime network attachments...');
+  await reconcileNodeAgentRuntimeNetworks({ environmentText: install.environmentText });
 }
 
 function createSystemRestartResponse(configDir: string, dataDir: string): SystemRestartResponse {

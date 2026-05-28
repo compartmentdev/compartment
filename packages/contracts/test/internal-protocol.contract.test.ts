@@ -10,6 +10,7 @@ import {
   nodeDrainDeploymentPathname,
   nodeInspectDeploymentPathname,
   nodeReleasePathname,
+  nodeRuntimeNetworkReconcilePathname,
   nodeResourceOperationRequestSchema,
   nodeStopDeploymentPathname,
   nodeTailLogsPathname,
@@ -51,6 +52,7 @@ describe('internal protocol path constants', (): void => {
     expect(nodeDrainDeploymentPathname).toBe('/internal/deployments/drain');
     expect(nodeInspectDeploymentPathname).toBe('/internal/deployments/inspect');
     expect(nodeReleasePathname).toBe('/internal/deployments/release');
+    expect(nodeRuntimeNetworkReconcilePathname).toBe('/internal/runtime-networks/reconcile');
     expect(nodeStopDeploymentPathname).toBe('/internal/deployments/stop');
     expect(nodeTailLogsPathname).toBe('/internal/deployments/logs');
   });

@@ -10,6 +10,7 @@ import type {
   SelfHostedRuntimeServiceInspection,
   RestartSelfHostedRuntimeInput,
 } from '../src/docker-runtime.types';
+import type * as NodeAgentRuntimeNetworkSourceModule from '../src/node-agent-runtime-network';
 
 type EnsureSelfHostedDockerExecutionContext = () => Promise<DockerExecutionContext>;
 type InspectSelfHostedRuntimeServices = (
@@ -21,15 +22,21 @@ type RestartSelfHostedSystemRuntime = (
   input: RestartSelfHostedRuntimeInput,
 ) => Promise<void>;
 type ReadSelfHostedSystemServiceNames = () => readonly SystemServiceName[];
+type ReconcileNodeAgentRuntimeNetworks = (input: ReconcileNodeAgentRuntimeNetworksInput) => Promise<void>;
 type RestartNodeAgentHostService = (input: object) => Promise<void>;
 type WaitForNodeAgentHostServiceHealth = (input: object) => Promise<void>;
 type EnsureSelfHostedRuntimeDirectories = () => Promise<void>;
+
+interface ReconcileNodeAgentRuntimeNetworksInput {
+  environmentText: string;
+}
 
 interface SystemRuntimeMocks {
   ensureSelfHostedDockerExecutionContext: Mock<EnsureSelfHostedDockerExecutionContext>;
   inspectSelfHostedRuntimeServices: Mock<InspectSelfHostedRuntimeServices>;
   ensureSelfHostedRuntimeDirectories: Mock<EnsureSelfHostedRuntimeDirectories>;
   readSelfHostedSystemServiceNames: Mock<ReadSelfHostedSystemServiceNames>;
+  reconcileNodeAgentRuntimeNetworks: Mock<ReconcileNodeAgentRuntimeNetworks>;
   restartNodeAgentHostService: Mock<RestartNodeAgentHostService>;
   restartSelfHostedSystemRuntime: Mock<RestartSelfHostedSystemRuntime>;
   waitForNodeAgentHostServiceHealth: Mock<WaitForNodeAgentHostServiceHealth>;
@@ -53,6 +60,7 @@ const mocks: SystemRuntimeMocks = vi.hoisted(
     ensureSelfHostedRuntimeDirectories: vi.fn<EnsureSelfHostedRuntimeDirectories>(),
     inspectSelfHostedRuntimeServices: vi.fn<InspectSelfHostedRuntimeServices>(),
     readSelfHostedSystemServiceNames: vi.fn<ReadSelfHostedSystemServiceNames>(),
+    reconcileNodeAgentRuntimeNetworks: vi.fn<ReconcileNodeAgentRuntimeNetworks>(),
     restartNodeAgentHostService: vi.fn<RestartNodeAgentHostService>(),
     restartSelfHostedSystemRuntime: vi.fn<RestartSelfHostedSystemRuntime>(),
     waitForNodeAgentHostServiceHealth: vi.fn<WaitForNodeAgentHostServiceHealth>(),
@@ -72,6 +80,7 @@ describe.sequential('system maintenance runtime', (): void => {
     mocks.ensureSelfHostedRuntimeDirectories.mockReset();
     mocks.ensureSelfHostedRuntimeDirectories.mockResolvedValue(undefined);
     mocks.readSelfHostedSystemServiceNames.mockReset();
+    mocks.reconcileNodeAgentRuntimeNetworks.mockReset();
     mocks.restartNodeAgentHostService.mockReset();
     mocks.restartSelfHostedSystemRuntime.mockReset();
     mocks.waitForNodeAgentHostServiceHealth.mockReset();
@@ -124,12 +133,25 @@ describe.sequential('system maintenance runtime', (): void => {
         waitForNodeAgentHostServiceHealth: mocks.waitForNodeAgentHostServiceHealth.mockResolvedValue(undefined),
       }),
     );
+    vi.doMock(
+      '../src/node-agent-runtime-network',
+      async (
+        importOriginal: () => Promise<typeof NodeAgentRuntimeNetworkSourceModule>,
+      ): Promise<typeof NodeAgentRuntimeNetworkSourceModule> => {
+        const actualModule: typeof NodeAgentRuntimeNetworkSourceModule = await importOriginal();
+        return {
+          ...actualModule,
+          reconcileNodeAgentRuntimeNetworks: mocks.reconcileNodeAgentRuntimeNetworks.mockResolvedValue(undefined),
+        };
+      },
+    );
   });
 
   afterEach(async (): Promise<void> => {
     vi.useRealTimers();
     vi.doUnmock('../src/docker-runtime');
     vi.doUnmock('../src/node-agent-service');
+    vi.doUnmock('../src/node-agent-runtime-network');
     vi.doUnmock('../src/self-hosted-runtime-directories');
     vi.doUnmock('../src/self-hosted-install-paths');
     vi.doUnmock('../src/self-hosted-docker-context');
@@ -322,6 +344,9 @@ describe.sequential('system maintenance runtime', (): void => {
     expect(mocks.restartSelfHostedSystemRuntime.mock.invocationCallOrder[0]!).toBeLessThan(
       mocks.waitForNodeAgentHostServiceHealth.mock.invocationCallOrder[0]!,
     );
+    expect(mocks.waitForNodeAgentHostServiceHealth.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.reconcileNodeAgentRuntimeNetworks.mock.invocationCallOrder[0]!,
+    );
     expect(mocks.restartNodeAgentHostService).toHaveBeenCalledWith({
       envPath: join(installPaths.configDir, '.env.self-hosted'),
       waitForHealth: false,
@@ -329,6 +354,11 @@ describe.sequential('system maintenance runtime', (): void => {
     expect(mocks.waitForNodeAgentHostServiceHealth).toHaveBeenCalledWith({
       envPath: join(installPaths.configDir, '.env.self-hosted'),
     });
+    const reconcileInput: ReconcileNodeAgentRuntimeNetworksInput | undefined =
+      mocks.reconcileNodeAgentRuntimeNetworks.mock.calls[0]?.[0];
+    expect(reconcileInput?.environmentText).toContain(
+      'COMPARTMENT_NODE_AGENT_SOCKET=/var/run/compartment/node/agent.sock',
+    );
     expect(result.services).toEqual(['api', 'registry', 'edge', 'node', 'builder', 'worker', 'caddy', 'postgres']);
     expect(result.restartedAt).toBe('2026-04-09T12:00:00.000Z');
   });
@@ -344,6 +374,26 @@ describe.sequential('system maintenance runtime', (): void => {
       `Expected an existing self-hosted install state at ${join(installPaths.dataDir, 'self-hosted/install-state.json')}. Reinstall the runtime with \`compartment install\`.`,
     );
     expect(mocks.ensureSelfHostedDockerExecutionContext).not.toHaveBeenCalled();
+  });
+
+  it('validates runtime network reconcile env before restarting services', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths(temporaryDirectories);
+    await writeCurrentInstallFiles(
+      installPaths,
+      'registry',
+      createCurrentEnvironmentText().replace('COMPARTMENT_RUNTIME_CONTROL_TOKEN=runtime-token\n', ''),
+    );
+    const { restartSelfHostedSystem } = await import('../src/system-restart');
+
+    await expect(restartSelfHostedSystem({})).rejects.toThrow(
+      'The self-hosted environment is missing COMPARTMENT_RUNTIME_CONTROL_TOKEN.',
+    );
+    expect(mocks.ensureSelfHostedDockerExecutionContext).not.toHaveBeenCalled();
+    expect(mocks.ensureSelfHostedRuntimeDirectories).not.toHaveBeenCalled();
+    expect(mocks.restartNodeAgentHostService).not.toHaveBeenCalled();
+    expect(mocks.restartSelfHostedSystemRuntime).not.toHaveBeenCalled();
+    expect(mocks.waitForNodeAgentHostServiceHealth).not.toHaveBeenCalled();
+    expect(mocks.reconcileNodeAgentRuntimeNetworks).not.toHaveBeenCalled();
   });
 });
 
@@ -425,6 +475,7 @@ COMPARTMENT_WORKER_IMAGE=${imageRepositoryPrefix}/compartment-worker:0.2.0
 COMPARTMENT_NODE_VERSION=0.2.0
 COMPARTMENT_ROLLBACK_RETENTION_LIMIT=
 COMPARTMENT_NODE_AGENT_SOCKET=/var/run/compartment/node/agent.sock
+COMPARTMENT_RUNTIME_CONTROL_TOKEN=runtime-token
 COMPARTMENT_ENV=self-hosted`;
 }
 
