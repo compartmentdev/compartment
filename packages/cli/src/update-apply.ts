@@ -35,6 +35,7 @@ export async function applyPreparedSelfHostedUpdate(
     createUpdatedSelfHostedInstallState(preparedUpdate, preparedUpdate.currentState),
     preparedUpdate.installPaths,
   );
+  await reconcileUpdatedRuntimeNetworks(input.context, preparedUpdate);
 
   return createAppliedSelfHostedUpdateResult(preparedUpdate, backupDir);
 }
@@ -83,8 +84,6 @@ async function restartUpdatedSelfHostedRuntime(
   await restartUpdatedComposeRuntime(dockerContext, context, preparedUpdate);
   reportUpdateProgress(context, 'Waiting for node agent service...');
   await waitForNodeAgentHostServiceHealth({ envPath: preparedUpdate.stagedAssetPaths.envPath });
-  reportUpdateProgress(context, 'Reconciling runtime network attachments...');
-  await reconcileNodeAgentRuntimeNetworks({ environmentText: preparedUpdate.renderedEnvironment.text });
 }
 
 async function restartUpdatedComposeRuntime(
@@ -102,6 +101,14 @@ async function restartUpdatedComposeRuntime(
     reportProgress: context?.reportProgress,
     skipRequiredImageVerificationBeforeStart: true,
   });
+}
+
+async function reconcileUpdatedRuntimeNetworks(
+  context: InstallContext | undefined,
+  preparedUpdate: PreparedSelfHostedUpdate,
+): Promise<void> {
+  reportUpdateProgress(context, 'Reconciling runtime network attachments...');
+  await reconcileNodeAgentRuntimeNetworks({ environmentText: preparedUpdate.renderedEnvironment.text });
 }
 
 function reportUpdateProgress(

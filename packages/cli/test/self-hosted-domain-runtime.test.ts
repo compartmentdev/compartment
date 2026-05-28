@@ -119,6 +119,36 @@ describe.sequential('self-hosted domain runtime apply', (): void => {
     });
   });
 
+  it('preserves both reconcile failures when the domain retry fails', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths(temporaryDirectories);
+    await writeInstallFiles(installPaths, createEnvironmentText());
+    mockSelfHostedPathSelection(installPaths);
+    const firstError: Error = new Error('node socket unavailable');
+    const retryError: Error = new Error('node socket still unavailable');
+    mocks.reconcileNodeAgentRuntimeNetworks.mockRejectedValueOnce(firstError).mockRejectedValueOnce(retryError);
+    const { applySelfHostedSystemDomainRuntime } = await import('../src/self-hosted-domain-runtime');
+
+    let thrownError: Error | undefined;
+    try {
+      await applySelfHostedSystemDomainRuntime({ hostPlan: createCustomHttpHostPlan() });
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        throw error;
+      }
+      thrownError = error;
+    }
+
+    expect(thrownError).toBeInstanceOf(AggregateError);
+    const aggregateError: AggregateError = thrownError as AggregateError;
+    expect(aggregateError.message).toBe(
+      'Runtime network reconciliation failed before and after restarting the node agent service.',
+    );
+    expect(aggregateError.errors).toEqual([firstError, retryError]);
+    expect(mocks.restartNodeAgentHostService).toHaveBeenCalledWith({
+      envPath: join(installPaths.configDir, '.env.self-hosted'),
+    });
+  });
+
   it('validates runtime network reconcile env before staging domain runtime changes', async (): Promise<void> => {
     const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths(temporaryDirectories);
     const previousEnvironmentText: string = createEnvironmentText().replace(

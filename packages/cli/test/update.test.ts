@@ -251,6 +251,42 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
     await expect(stat(join(installPaths.dataDir, 'self-hosted/backups'))).rejects.toThrow();
   });
 
+  it('persists applied install state before failing post-restart runtime network reconcile', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
+    await writeCurrentInstallFiles(
+      installPaths,
+      createCurrentEnvironmentText({
+        includeVariablesMasterKey: true,
+        nodeVersion: '0.1.0',
+        variablesMasterKey: 'h'.repeat(64),
+      }),
+    );
+    await writeInstallState(installPaths, {
+      imageRegistry: 'github',
+      imageSource: 'registry',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      stateVersion: 1,
+    });
+    mocks.reconcileNodeAgentRuntimeNetworks.mockRejectedValueOnce(new Error('reconcile failed'));
+    const { updateSelfHosted } = await import('../src/update');
+
+    await expect(
+      updateSelfHosted({
+        options: {
+          imageRegistry: 'docker-hub',
+          version: '1.2.3',
+        },
+      }),
+    ).rejects.toThrow('reconcile failed');
+
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_NODE_VERSION=1.2.3',
+    );
+    await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
+      '"imageRegistry": "docker-hub"',
+    );
+  });
+
   it('updates current registry installs to Docker Hub when explicitly selected', async (): Promise<void> => {
     const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
     await writeCurrentInstallFiles(

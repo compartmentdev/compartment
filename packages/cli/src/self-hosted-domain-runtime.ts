@@ -58,8 +58,15 @@ async function reconcileDomainRuntimeNetworks(
   reportProgress(input, 'Reconciling runtime network attachments...');
   try {
     await reconcileNodeAgentRuntimeNetworks({ environmentText });
-  } catch {
-    await retryDomainRuntimeNetworkReconcile(input, install, environmentText);
+  } catch (error) {
+    try {
+      await retryDomainRuntimeNetworkReconcile(input, install, environmentText);
+    } catch (retryError) {
+      throw new AggregateError(
+        [error, retryError],
+        'Runtime network reconciliation failed before and after restarting the node agent service.',
+      );
+    }
   }
 }
 
