@@ -63,7 +63,7 @@ async function synchronizeManagedDomainBrokerAlias(hostPlan: DomainHostPlan): Pr
 
 async function upsertManagedDomainBrokerAlias(hostPlan: DomainHostPlan): Promise<void> {
   const config: ManagedDomainBrokerAliasConfig | null = readManagedDomainBrokerAliasConfig();
-  if (config === null || hostPlan.domainKind !== 'custom') {
+  if (config === null) {
     return;
   }
 
