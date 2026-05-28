@@ -52,29 +52,29 @@ export async function trySynchronizeManagedDomainBrokerAlias(
 }
 
 async function synchronizeManagedDomainBrokerAlias(hostPlan: DomainHostPlan): Promise<void> {
-  if (hostPlan.domainKind === 'custom') {
-    await upsertManagedDomainBrokerAlias(hostPlan);
-    return;
-  }
-  if (hostPlan.domainKind === 'managed') {
-    await clearManagedDomainBrokerAliases();
-  }
-}
-
-async function upsertManagedDomainBrokerAlias(hostPlan: DomainHostPlan): Promise<void> {
   const config: ManagedDomainBrokerAliasConfig | null = readManagedDomainBrokerAliasConfig();
   if (config === null) {
     return;
   }
 
+  if (hostPlan.domainKind === 'custom') {
+    await upsertManagedDomainBrokerAlias(hostPlan.baseDomain, config.token);
+    return;
+  }
+  if (hostPlan.domainKind === 'managed') {
+    await clearManagedDomainBrokerAliases(config.token);
+  }
+}
+
+async function upsertManagedDomainBrokerAlias(baseDomain: string, token: string): Promise<void> {
   const request: ManagedDomainAliasUpsertRequest = {
-    baseDomain: hostPlan.baseDomain,
+    baseDomain,
   };
   const response: Response = await fetchManagedDomainBrokerHttp(managedDomainAliasPathname, {
     body: JSON.stringify(request),
     headers: {
       Accept: 'application/json',
-      Authorization: `Bearer ${config.token}`,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
     method: 'PUT',
@@ -87,16 +87,11 @@ async function upsertManagedDomainBrokerAlias(hostPlan: DomainHostPlan): Promise
   throw new Error(`Managed-domain broker alias registration failed with status ${response.status}.`);
 }
 
-async function clearManagedDomainBrokerAliases(): Promise<void> {
-  const config: ManagedDomainBrokerAliasConfig | null = readManagedDomainBrokerAliasConfig();
-  if (config === null) {
-    return;
-  }
-
+async function clearManagedDomainBrokerAliases(token: string): Promise<void> {
   const response: Response = await fetchManagedDomainBrokerHttp(managedDomainAliasPathname, {
     headers: {
       Accept: 'application/json',
-      Authorization: `Bearer ${config.token}`,
+      Authorization: `Bearer ${token}`,
     },
     method: 'DELETE',
     signal: AbortSignal.timeout(managedDomainBrokerAliasRequestTimeoutMs),

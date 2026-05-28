@@ -40,7 +40,9 @@ interface SystemDomainDnsProofInput {
 export function buildRequiredSystemDomainDnsRecords(input: SystemDomainDnsProofInput): DomainDnsRecord[] {
   return [
     buildSystemDomainOwnershipDnsRecord(input.pendingBaseDomain, input.pendingOperationId),
-    ...buildManagedDomainBrokerAliasDnsRecords(input.pendingBaseDomain, input.managedDomainBrokerToken),
+    ...(input.managedDomainBrokerToken === null
+      ? []
+      : buildManagedDomainBrokerAliasDnsRecords(input.pendingBaseDomain, input.managedDomainBrokerToken)),
     ...buildDirectRoutingDnsRecords(input.pendingBaseDomain, input.publicIngressConfig),
   ];
 }
@@ -54,10 +56,12 @@ export async function verifySystemDomainDnsProof(input: SystemDomainDnsProofInpu
   if (ownershipFailure !== null) {
     return { failure: ownershipFailure };
   }
-  const brokerAliasOwnershipFailure: DomainCheckFailure | null =
-    await verifyManagedDomainBrokerAliasOwnershipDnsRecord(input);
-  if (brokerAliasOwnershipFailure !== null) {
-    return { failure: brokerAliasOwnershipFailure };
+  if (input.managedDomainBrokerToken !== null) {
+    const brokerAliasOwnershipFailure: DomainCheckFailure | null =
+      await verifyManagedDomainBrokerAliasOwnershipDnsRecord(input.pendingBaseDomain, input.managedDomainBrokerToken);
+    if (brokerAliasOwnershipFailure !== null) {
+      return { failure: brokerAliasOwnershipFailure };
+    }
   }
 
   return {
@@ -65,11 +69,7 @@ export async function verifySystemDomainDnsProof(input: SystemDomainDnsProofInpu
   };
 }
 
-function buildManagedDomainBrokerAliasDnsRecords(baseDomain: string, brokerToken: string | null): DomainDnsRecord[] {
-  if (brokerToken === null) {
-    return [];
-  }
-
+function buildManagedDomainBrokerAliasDnsRecords(baseDomain: string, brokerToken: string): DomainDnsRecord[] {
   return [buildManagedDomainBrokerAliasOwnershipDnsRecord(baseDomain, brokerToken)];
 }
 
@@ -85,16 +85,13 @@ function buildSystemDomainOwnershipDnsRecord(baseDomain: string, operationId: st
 }
 
 async function verifyManagedDomainBrokerAliasOwnershipDnsRecord(
-  input: SystemDomainDnsProofInput,
+  pendingBaseDomain: string,
+  managedDomainBrokerToken: string,
 ): Promise<DomainCheckFailure | null> {
-  if (input.managedDomainBrokerToken === null) {
-    return null;
-  }
-
-  const recordName: string = buildManagedDomainBrokerAliasOwnershipRecordName(input.pendingBaseDomain);
+  const recordName: string = buildManagedDomainBrokerAliasOwnershipRecordName(pendingBaseDomain);
   const expectedValue: string = buildManagedDomainBrokerAliasOwnershipValue(
-    input.pendingBaseDomain,
-    input.managedDomainBrokerToken,
+    pendingBaseDomain,
+    managedDomainBrokerToken,
   );
   const txtValues: string[] = await resolveTxtValues(recordName);
   if (txtValues.includes(expectedValue)) {
