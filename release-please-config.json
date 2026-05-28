@@ -8,6 +8,8 @@
       "package-name": "compartment",
       "include-component-in-tag": false,
       "include-v-in-tag": true,
+      "draft": true,
+      "force-tag-creation": true,
       "extra-files": [
         {
           "type": "json",

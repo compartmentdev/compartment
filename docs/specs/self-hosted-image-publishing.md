@@ -14,6 +14,10 @@ Publishing requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. Stable semver ta
 come from release-please; the tag publish workflow validates the tag version against
 checked-in release metadata before building images.
 
+Release-please creates stable GitHub Releases as drafts while forcing immediate
+git tag creation. The tag publish workflow uploads CLI archives and checksums to
+that draft, then publishes the stable release only after the upload succeeds.
+
 Before pushing a tag, the publish job scans each self-hosted runtime image artifact with Trivy and Docker Scout and fails before publication on fixable high or critical vulnerabilities. The scan does not stop on the first failing image; it reports every failing image before exiting.
 
 The published image artifact set includes the long-running runtime services (`api`, `caddy`, `edge`, `worker`) and the one-shot `runtime-probe` image used by the node agent for readiness and network probes.
