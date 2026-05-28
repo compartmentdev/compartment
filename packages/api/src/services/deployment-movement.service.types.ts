@@ -1,7 +1,9 @@
 import type { DeploymentJoinedRow, EnvironmentRow } from '../queries/deployments.query.types';
+import type { DeploymentProjectMutationRejection } from '../queries/deployment-project-mutation.query.types';
 import type { ProjectRow } from '../queries/projects.query.types';
 
 export type DeploymentMovementOperationType = 'deployment.promote' | 'deployment.rollback';
+export type DeploymentMovementResult = DeploymentJoinedRow[] | DeploymentProjectMutationRejection;
 
 export interface PromoteDeploymentInput {
   actorPrincipalId: string;

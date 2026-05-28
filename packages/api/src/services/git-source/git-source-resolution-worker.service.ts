@@ -20,8 +20,10 @@ import {
   retrySourceResolutionTask,
 } from '../../queries/source-resolution.query';
 import type { SourceResolutionTaskRow } from '../../queries/source-resolution.query.types';
+import type { DeploymentProjectMutationRejection } from '../../queries/deployment-project-mutation.query.types';
 import { getApiConfig, getApiDatabase } from '../../runtime/runtime-access';
 import { createDeploymentsFromSourceUpload } from '../deployment-creation.service';
+import { isDeploymentProjectMutationRejection } from '../deployment-project-mutation-result.service';
 import type { DeploymentSummaryInput, DeployResponseInput } from '../presenter.types';
 import { createSourceUploadFromArchivePath } from '../source-uploads.service';
 import type { CreatedSourceUpload } from '../source-uploads.service.types';
@@ -48,7 +50,7 @@ import {
   serializeSourceBindingSnapshot,
   serializeSourceRepositorySnapshot,
 } from './git-source-resolution-worker.support';
-import type { DeploymentSourceProvenance } from '../deployments.service.types';
+import type { DeployInputContext, DeploymentSourceProvenance } from '../deployments.service.types';
 
 const sourceResolutionTaskLeaseMs: number = 5 * 60 * 1000;
 
@@ -166,18 +168,34 @@ async function createSourceDrivenDeployments(
     organizationId: state.source.organizationId,
     sourceId: state.source.id,
   });
-  const deploymentInput: DeployResponseInput = await createDeploymentsFromSourceUpload({
-    actorPrincipalId: automationPrincipalId,
+  const deploymentInput: DeployResponseInput | DeploymentProjectMutationRejection =
+    await createDeploymentsFromSourceUpload(
+      buildSourceDrivenDeploymentInput(state, task, input, automationPrincipalId, sourceUpload.id),
+    );
+  if (isDeploymentProjectMutationRejection(deploymentInput)) {
+    return [];
+  }
+
+  return deploymentInput.deployments.map((deployment: DeploymentSummaryInput): DeploymentRow => deployment.deployment);
+}
+
+function buildSourceDrivenDeploymentInput(
+  state: DeployableSourceResolutionTaskState,
+  task: SourceResolutionTaskRow,
+  input: WorkerCompleteGitSourceResolutionTaskRequest,
+  actorPrincipalId: string,
+  sourceUploadId: string,
+): DeployInputContext {
+  return {
+    actorPrincipalId,
     descriptor: input.descriptor,
     environmentName: task.targetEnvironmentName,
     organizationId: state.organization.id,
     organizationSlug: state.organization.slug,
     routes: input.routes,
-    sourceProvenance: buildSourceProvenance(state, task, automationPrincipalId),
-    sourceUploadId: sourceUpload.id,
-  });
-
-  return deploymentInput.deployments.map((deployment: DeploymentSummaryInput): DeploymentRow => deployment.deployment);
+    sourceProvenance: buildSourceProvenance(state, task, actorPrincipalId),
+    sourceUploadId,
+  };
 }
 
 async function readDeployableSourceResolutionTaskState(

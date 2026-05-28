@@ -1,4 +1,5 @@
 import type { ProjectLifecycleAction, ProjectLifecycleState } from '@compartment/contracts';
+import type { DeploymentProjectMutationRejection } from '../queries/deployment-project-mutation.query.types';
 import type { DeploymentSummaryInput, EnvironmentSummaryInput, ProjectSummaryInput } from './presenter.types';
 
 export interface ProjectLifecycleInput {
@@ -15,3 +16,5 @@ export interface ProjectLifecycleResult {
   project: ProjectSummaryInput;
   state: ProjectLifecycleState;
 }
+
+export type ProjectLifecycleServiceResult = ProjectLifecycleResult | DeploymentProjectMutationRejection;

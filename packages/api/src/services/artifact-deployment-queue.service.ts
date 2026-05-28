@@ -1,45 +1,63 @@
 import type {
   CreateQueuedExistingArtifactDeploymentBatchItem,
   DeploymentJoinedRow,
-  DeploymentRow,
   EnvironmentRow,
 } from '../queries/deployments.query.types';
 import { createQueuedExistingArtifactDeploymentBatch } from '../queries/deployments.query';
+import type { QueuedExistingArtifactDeploymentBatchResult } from '../queries/deployment-batch.query.types';
+import type { DeploymentProjectMutationRejection } from '../queries/deployment-project-mutation.query.types';
 import { buildArtifactDeploymentBatchItem } from './artifact-deployment-batch-item.service';
-import { requireQueuedExistingArtifactDeployments } from './artifact-deployment-queue-result.service';
 import {
   appendQueuedDeploymentRunEvents,
   createDeploymentRunId,
-  withDeploymentRunCleanupOnError,
+  withDeploymentRunCleanupOnErrorOrResult,
 } from './deployment-run-creation.service';
 import { readDeploymentRunSourceProvenanceInput } from './deployment-run-source.service';
+import { isDeploymentProjectMutationRejection } from './deployment-project-mutation-result.service';
 import { hydrateJoinedDeploymentsById } from './joined-deployment-hydration.service';
 
 export async function queueArtifactStartDeployments(
   sourceDeployments: DeploymentJoinedRow[],
   targetEnvironment: EnvironmentRow,
   actorPrincipalId: string,
-): Promise<DeploymentJoinedRow[]> {
+): Promise<DeploymentJoinedRow[] | DeploymentProjectMutationRejection> {
   const deploymentRunId: string = await createStartDeploymentRunId(sourceDeployments[0], targetEnvironment);
-  const queuedDeployments: DeploymentRow[] = await withDeploymentRunCleanupOnError(
+  const queuedDeployments: QueuedExistingArtifactDeploymentBatchResult = await queueArtifactStartDeploymentRows(
     deploymentRunId,
-    async (): Promise<DeploymentRow[]> => {
-      return requireQueuedExistingArtifactDeployments(
-        await createQueuedExistingArtifactDeploymentBatch({
-          items: buildArtifactStartDeploymentBatchItems(
-            sourceDeployments,
-            targetEnvironment,
-            actorPrincipalId,
-            deploymentRunId,
-          ),
-          projectId: targetEnvironment.projectId,
-        }),
-      );
-    },
+    sourceDeployments,
+    targetEnvironment,
+    actorPrincipalId,
   );
+  if (isDeploymentProjectMutationRejection(queuedDeployments)) {
+    return queuedDeployments;
+  }
 
   await appendQueuedDeploymentRunEvents(queuedDeployments);
   return await hydrateJoinedDeploymentsById(queuedDeployments);
+}
+
+async function queueArtifactStartDeploymentRows(
+  deploymentRunId: string,
+  sourceDeployments: DeploymentJoinedRow[],
+  targetEnvironment: EnvironmentRow,
+  actorPrincipalId: string,
+): Promise<QueuedExistingArtifactDeploymentBatchResult> {
+  const queuedDeployments: QueuedExistingArtifactDeploymentBatchResult = await withDeploymentRunCleanupOnErrorOrResult(
+    deploymentRunId,
+    async (): Promise<QueuedExistingArtifactDeploymentBatchResult> =>
+      await createQueuedExistingArtifactDeploymentBatch({
+        items: buildArtifactStartDeploymentBatchItems(
+          sourceDeployments,
+          targetEnvironment,
+          actorPrincipalId,
+          deploymentRunId,
+        ),
+        projectId: targetEnvironment.projectId,
+      }),
+    isDeploymentProjectMutationRejection,
+  );
+
+  return queuedDeployments;
 }
 
 function buildArtifactStartDeploymentBatchItems(

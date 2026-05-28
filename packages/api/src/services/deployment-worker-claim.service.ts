@@ -32,33 +32,31 @@ export async function claimQueuedDeploymentForWorker(): Promise<ClaimedDeploymen
 }
 
 async function claimQueuedDeploymentReservation(): Promise<ClaimedDeploymentReservation | null> {
-  return await getApiDatabase().transaction(
-    async (tx: DeploymentTransaction): Promise<ClaimedDeploymentReservation | null> =>
-      await claimQueuedDeploymentWithReservation(tx, new Date()),
-  );
+  for (let attempt: number = 1; attempt <= skippedLockedProjectClaimAttempts; attempt += 1) {
+    const reservation: ClaimedDeploymentReservation | null = await getApiDatabase().transaction(
+      async (tx: DeploymentTransaction): Promise<ClaimedDeploymentReservation | null> =>
+        await claimQueuedDeploymentWithReservation(tx, new Date()),
+    );
+    if (reservation !== null) {
+      return reservation;
+    }
+
+    await waitForSkippedLockedProjectClaimRetry(attempt);
+  }
+
+  return null;
 }
 
 async function claimQueuedDeploymentWithReservation(
   tx: DeploymentTransaction,
   now: Date,
 ): Promise<ClaimedDeploymentReservation | null> {
-  for (let attempt: number = 1; attempt <= skippedLockedProjectClaimAttempts; attempt += 1) {
-    const candidate: QueuedDeploymentClaimCandidateRow | undefined = await findFirstFairQueuedDeploymentCandidate(tx);
-    if (candidate === undefined) {
-      await waitForSkippedLockedProjectClaimRetry(attempt);
-      continue;
-    }
-    const reservation: ClaimedDeploymentReservation | null = await reserveActiveProjectDeploymentRoute(
-      tx,
-      candidate,
-      now,
-    );
-    if (reservation !== null) {
-      return reservation;
-    }
+  const candidate: QueuedDeploymentClaimCandidateRow | undefined = await findFirstFairQueuedDeploymentCandidate(tx);
+  if (candidate === undefined) {
+    return null;
   }
 
-  return null;
+  return await reserveActiveProjectDeploymentRoute(tx, candidate, now);
 }
 
 async function waitForSkippedLockedProjectClaimRetry(attempt: number): Promise<void> {

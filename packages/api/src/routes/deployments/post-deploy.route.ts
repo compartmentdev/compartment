@@ -11,6 +11,7 @@ import '../../http/request.types';
 import { parseRequestValue } from '../../http/validation';
 import { createDeploymentsFromSourceUpload } from '../../services/deployment-creation.service';
 import { createCurrentOrganizationRouteResponseOptions } from '../protected/current-organization-route';
+import { requireActiveProjectMutationRouteResult } from '../deployment-project-mutation-route.helpers';
 import { buildDeployResponse } from './deployment.presenter';
 
 const invalidDeployRequestCode: string = 'invalid_deploy_request';
@@ -37,18 +38,20 @@ function parseDeployRouteRequest(request: FastifyRequest): DeployRequest {
 async function createDeployResponsePayload(request: FastifyRequest, input: DeployRequest): Promise<DeployResponse> {
   return deployResponseSchema.parse(
     buildDeployResponse(
-      await createDeploymentsFromSourceUpload({
-        actorPrincipalId: request.actor.principalId,
-        descriptor: input.descriptor,
-        environmentName: input.environmentName,
-        label: input.label,
-        onboardingSessionId: input.onboardingSessionId,
-        organizationId: request.currentOrganization.id,
-        organizationSlug: request.currentOrganization.slug,
-        routes: input.routes,
-        serviceName: input.serviceName,
-        sourceUploadId: input.sourceUploadId,
-      }),
+      requireActiveProjectMutationRouteResult(
+        await createDeploymentsFromSourceUpload({
+          actorPrincipalId: request.actor.principalId,
+          descriptor: input.descriptor,
+          environmentName: input.environmentName,
+          label: input.label,
+          onboardingSessionId: input.onboardingSessionId,
+          organizationId: request.currentOrganization.id,
+          organizationSlug: request.currentOrganization.slug,
+          routes: input.routes,
+          serviceName: input.serviceName,
+          sourceUploadId: input.sourceUploadId,
+        }),
+      ),
     ),
   );
 }

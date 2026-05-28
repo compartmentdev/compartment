@@ -18,7 +18,10 @@ import type {
 } from '../src/services/deployment-context.service';
 import type { queueSerializedArtifactDeploymentMovement } from '../src/services/artifact-deployment-movement.service';
 import { rollbackDeploymentForPrincipal } from '../src/services/deployment-movement.service';
-import type { RollbackDeploymentInput } from '../src/services/deployment-movement.service.types';
+import type {
+  DeploymentMovementResult,
+  RollbackDeploymentInput,
+} from '../src/services/deployment-movement.service.types';
 import type { requireActiveHumanRuntimeActor } from '../src/services/runtime-actor-authorization.service';
 
 type FindActiveJoinedDeployment = typeof findActiveJoinedDeployment;
@@ -226,7 +229,7 @@ describe('deployment movement service', (): void => {
     ]);
     mocks.queueSerializedArtifactDeploymentMovement.mockResolvedValueOnce([reusablePreviousDeployment]);
 
-    const result: DeploymentJoinedRow[] = await rollbackDeploymentForPrincipal({
+    const result: DeploymentMovementResult = await rollbackDeploymentForPrincipal({
       ...createRollbackInput(),
       target: {
         mode: 'previous',

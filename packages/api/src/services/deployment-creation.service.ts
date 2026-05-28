@@ -1,5 +1,6 @@
 import { type CompartmentRoutesFile } from '@compartment/contracts';
 import { findJoinedDeploymentById } from '../queries/deployment-joined.query';
+import type { DeploymentProjectMutationRejection } from '../queries/deployment-project-mutation.query.types';
 import type { DeploymentJoinedRow, DeploymentRow } from '../queries/deployments.query.types';
 import type { SourceUploadRow } from '../queries/source-uploads.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
@@ -34,7 +35,7 @@ import { validateDescriptorRoutes } from './compartment-routes.service';
 import {
   appendQueuedDeploymentRunEvents,
   createDeploymentRunId,
-  withDeploymentRunCleanupOnError,
+  withDeploymentRunCleanupOnErrorOrResult,
 } from './deployment-run-creation.service';
 import type { DeployResponseInput } from './presenter.types';
 import { readValidatedFirstDeployOnboardingSessionId } from './onboarding-first-deploy-correlation.service';
@@ -44,8 +45,37 @@ import {
   queuePreparedDeployments,
   requireAuthorizedSubmitSourceUpload,
 } from './deployment-source-upload-queue.service';
+import { isDeploymentProjectMutationRejection } from './deployment-project-mutation-result.service';
 
-export async function createDeploymentsFromSourceUpload(input: DeployInputContext): Promise<DeployResponseInput> {
+interface DeploymentCreationState {
+  contexts: ResolvedProjectContext[];
+  onboardingSessionId: string | null;
+  resources: ResourceListResult;
+  sourceUpload: SourceUploadRow;
+}
+
+export async function createDeploymentsFromSourceUpload(
+  input: DeployInputContext,
+): Promise<DeployResponseInput | DeploymentProjectMutationRejection> {
+  const state: DeploymentCreationState = await resolveDeploymentCreationState(input);
+  const deployments: DeploymentJoinedRow[] | DeploymentProjectMutationRejection =
+    await queueDeploymentsFromValidatedSourceUpload(
+      input,
+      state.contexts,
+      state.sourceUpload,
+      state.onboardingSessionId,
+    );
+  if (isDeploymentProjectMutationRejection(deployments)) {
+    return deployments;
+  }
+
+  return {
+    deployments,
+    resources: state.resources.resources,
+  };
+}
+
+async function resolveDeploymentCreationState(input: DeployInputContext): Promise<DeploymentCreationState> {
   validateDescriptorRoutes(input.descriptor, input.routes);
   const descriptorServices: ResolvedDescriptorService[] = resolveDescriptorServices(
     input.descriptor,
@@ -66,8 +96,10 @@ export async function createDeploymentsFromSourceUpload(input: DeployInputContex
   );
 
   return {
-    deployments: await queueDeploymentsFromValidatedSourceUpload(input, contexts, sourceUpload, onboardingSessionId),
-    resources: resources.resources,
+    contexts,
+    onboardingSessionId,
+    resources,
+    sourceUpload,
   };
 }
 
@@ -106,8 +138,24 @@ async function queueDeploymentsFromValidatedSourceUpload(
   contexts: readonly ResolvedProjectContext[],
   sourceUpload: SourceUploadRow,
   onboardingSessionId: string | null,
-): Promise<DeploymentJoinedRow[]> {
-  const deploymentRunId: string = await createDeploymentRunId({
+): Promise<DeploymentJoinedRow[] | DeploymentProjectMutationRejection> {
+  const deploymentRunId: string = await createSourceUploadDeploymentRunId(input, contexts, onboardingSessionId);
+  const queuedDeployments: DeploymentRow[] | DeploymentProjectMutationRejection =
+    await createQueuedDeploymentsForSourceUploadRun(deploymentRunId, input, contexts, sourceUpload);
+  if (isDeploymentProjectMutationRejection(queuedDeployments)) {
+    return queuedDeployments;
+  }
+
+  await appendQueuedDeploymentRunEvents(queuedDeployments);
+  return await findQueuedJoinedDeployments(queuedDeployments);
+}
+
+async function createSourceUploadDeploymentRunId(
+  input: DeployInputContext,
+  contexts: readonly ResolvedProjectContext[],
+  onboardingSessionId: string | null,
+): Promise<string> {
+  return await createDeploymentRunId({
     environmentId: contexts[0]!.environment.id,
     label: input.label,
     onboardingSessionId,
@@ -115,15 +163,6 @@ async function queueDeploymentsFromValidatedSourceUpload(
     triggerType: resolveSourceUploadDeploymentRunTriggerType(input.sourceProvenance),
     updatedAt: new Date(),
   });
-  const queuedDeployments: DeploymentRow[] = await createQueuedDeploymentsForSourceUploadRun(
-    deploymentRunId,
-    input,
-    contexts,
-    sourceUpload,
-  );
-
-  await appendQueuedDeploymentRunEvents(queuedDeployments);
-  return await findQueuedJoinedDeployments(queuedDeployments);
 }
 
 async function createQueuedDeploymentsForSourceUploadRun(
@@ -131,22 +170,26 @@ async function createQueuedDeploymentsForSourceUploadRun(
   input: DeployInputContext,
   contexts: readonly ResolvedProjectContext[],
   sourceUpload: SourceUploadRow,
-): Promise<DeploymentRow[]> {
-  return await withDeploymentRunCleanupOnError(deploymentRunId, async (): Promise<DeploymentRow[]> => {
-    const preparedStates: PreparedQueuedDeploymentState[] = await prepareQueuedDeploymentStates(
-      deploymentRunId,
-      input.sourceProvenance,
-      contexts,
-      input.routes,
-      sourceUpload,
-    );
+): Promise<DeploymentRow[] | DeploymentProjectMutationRejection> {
+  return await withDeploymentRunCleanupOnErrorOrResult(
+    deploymentRunId,
+    async (): Promise<DeploymentRow[] | DeploymentProjectMutationRejection> => {
+      const preparedStates: PreparedQueuedDeploymentState[] = await prepareQueuedDeploymentStates(
+        deploymentRunId,
+        input.sourceProvenance,
+        contexts,
+        input.routes,
+        sourceUpload,
+      );
 
-    return await queuePreparedDeployments(
-      preparedStates,
-      buildSourceUploadConsumptionScope(input, contexts, sourceUpload),
-      input.label,
-    );
-  });
+      return await queuePreparedDeployments(
+        preparedStates,
+        buildSourceUploadConsumptionScope(input, contexts, sourceUpload),
+        input.label,
+      );
+    },
+    isDeploymentProjectMutationRejection,
+  );
 }
 
 async function prepareQueuedDeploymentStates(

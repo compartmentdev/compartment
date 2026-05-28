@@ -10,6 +10,7 @@ import type { ApiApp } from '../../app.types';
 import { parseRequestValue } from '../../http/validation';
 import '../../http/request.types';
 import { rollbackDeploymentForPrincipal } from '../../services/deployment-movement.service';
+import { requireActiveProjectMutationRouteResult } from '../deployment-project-mutation-route.helpers';
 import { createCurrentOrganizationRouteResponseOptions } from '../protected/current-organization-route';
 import { buildRollbackDeploymentTarget } from './deployment-movement-route.helpers';
 import { buildDeployResponse } from './deployment.presenter';
@@ -30,14 +31,16 @@ async function handlePostRollbackRequest(request: FastifyRequest, reply: Fastify
   );
   const deployResponse: DeployResponse = deployResponseSchema.parse(
     buildDeployResponse({
-      deployments: await rollbackDeploymentForPrincipal({
-        actorPrincipalId: request.actor.principalId,
-        environmentName: input.environmentName,
-        organizationId: request.currentOrganization.id,
-        organizationSlug: request.currentOrganization.slug,
-        projectName: input.projectName,
-        target: buildRollbackDeploymentTarget(input),
-      }),
+      deployments: requireActiveProjectMutationRouteResult(
+        await rollbackDeploymentForPrincipal({
+          actorPrincipalId: request.actor.principalId,
+          environmentName: input.environmentName,
+          organizationId: request.currentOrganization.id,
+          organizationSlug: request.currentOrganization.slug,
+          projectName: input.projectName,
+          target: buildRollbackDeploymentTarget(input),
+        }),
+      ),
       resources: [],
     }),
   );

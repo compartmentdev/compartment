@@ -1,4 +1,4 @@
-import type { ProjectLifecycleResult } from '../../services/project-lifecycle.service.types';
+import type { ProjectLifecycleServiceResult } from '../../services/project-lifecycle.service.types';
 
 export interface ProjectLifecycleRouteInput {
   environmentName: string;
@@ -7,4 +7,6 @@ export interface ProjectLifecycleRouteInput {
   projectName: string;
 }
 
-export type ProjectLifecycleRouteExecutor = (input: ProjectLifecycleRouteInput) => Promise<ProjectLifecycleResult>;
+export type ProjectLifecycleRouteExecutor = (
+  input: ProjectLifecycleRouteInput,
+) => Promise<ProjectLifecycleServiceResult>;
