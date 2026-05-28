@@ -52,6 +52,7 @@ type InvalidateEdgeAppAccessSessions = () => Promise<void>;
 type SynchronizeEdgeAppAccessState = () => Promise<void>;
 type ResolveDnsRecord = (hostname: string) => Promise<string[]>;
 type ResolveTxtRecord = (hostname: string) => Promise<string[][]>;
+type FetchManagedDomainBrokerHttp = typeof OutboundHttpService.fetchManagedDomainBrokerHttp;
 type FetchSystemDomainProbeHttp = typeof OutboundHttpService.fetchSystemDomainProbeHttp;
 type SystemDomainSetupStateRecord = typeof systemDomainSetupState.$inferSelect;
 
@@ -68,6 +69,7 @@ interface DnsPromiseMocks {
 }
 
 interface OutboundHttpServiceMocks {
+  fetchManagedDomainBrokerHttp: Mock<FetchManagedDomainBrokerHttp>;
   fetchSystemDomainProbeHttp: Mock<FetchSystemDomainProbeHttp>;
 }
 
@@ -89,6 +91,7 @@ const dnsPromiseMocks: DnsPromiseMocks = vi.hoisted(
 
 const outboundHttpServiceMocks: OutboundHttpServiceMocks = vi.hoisted(
   (): OutboundHttpServiceMocks => ({
+    fetchManagedDomainBrokerHttp: vi.fn<FetchManagedDomainBrokerHttp>(),
     fetchSystemDomainProbeHttp: vi.fn<FetchSystemDomainProbeHttp>(),
   }),
 );
@@ -117,6 +120,7 @@ vi.mock(
     const actualModule: typeof OutboundHttpService = await importOriginal();
     return {
       ...actualModule,
+      fetchManagedDomainBrokerHttp: outboundHttpServiceMocks.fetchManagedDomainBrokerHttp,
       fetchSystemDomainProbeHttp: outboundHttpServiceMocks.fetchSystemDomainProbeHttp,
     };
   },
@@ -317,6 +321,8 @@ process.env.COMPARTMENT_PUBLIC_HTTPS_PORT = '443';
 process.env.COMPARTMENT_PUBLIC_INGRESS_IPV4 = '';
 process.env.COMPARTMENT_PUBLIC_INGRESS_IPV6 = '';
 process.env.COMPARTMENT_EDGE_TOKEN = 'test-edge-token';
+process.env.COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN = 'broker-token';
+process.env.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL = 'https://broker.example';
 process.env.COMPARTMENT_NODE_AGENT_SOCKET = '/tmp/compartment/api-test/node/integration.sock';
 process.env.COMPARTMENT_SYSTEM_API_SOCKET = '/tmp/compartment/api-integration-system-domain/system-api.sock';
 process.env.COMPARTMENT_SYSTEM_TOKEN = 'test-system-token';
@@ -379,6 +385,8 @@ describe('Phase 0 API integration system domain', (): void => {
     dnsPromiseMocks.resolveCname.mockRejectedValue(new Error('No CNAME record.'));
     dnsPromiseMocks.resolveTxt.mockReset();
     dnsPromiseMocks.resolveTxt.mockRejectedValue(new Error('No TXT record.'));
+    outboundHttpServiceMocks.fetchManagedDomainBrokerHttp.mockReset();
+    outboundHttpServiceMocks.fetchManagedDomainBrokerHttp.mockResolvedValue(new Response(null, { status: 204 }));
     outboundHttpServiceMocks.fetchSystemDomainProbeHttp.mockReset();
     await rm(testCustomTlsDirectory, { force: true, recursive: true });
     await mkdir(testCustomTlsDirectory, { recursive: true });
@@ -656,8 +664,7 @@ describe('Phase 0 API integration system domain', (): void => {
     });
     expect(setResponse.statusCode).toBe(200);
     const setPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(setResponse.json());
-    const ownershipRecord: DomainDnsRecord = requireSystemDomainDnsRecord(setPayload, 'ownership', 'TXT');
-    dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
+    mockSystemDomainOwnershipTxtRecords(setPayload);
 
     const verifyResponse: LightMyRequestResponse = await systemApp.inject({
       method: 'POST',
@@ -669,6 +676,16 @@ describe('Phase 0 API integration system domain', (): void => {
     const verifyPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(verifyResponse.json());
     expect(verifyPayload.status.pending?.status).toBe('verified');
     expect(verifyPayload.setupVersion).toBe(2);
+
+    outboundHttpServiceMocks.fetchManagedDomainBrokerHttp.mockClear();
+    const staleActivateResponse: LightMyRequestResponse = await systemApp.inject({
+      method: 'POST',
+      url: '/internal/system/domain/activate',
+      headers: buildSystemMutationHeaders('domain-custom-http-stale-activate'),
+      payload: { expectedSetupVersion: 1 },
+    });
+    expect(staleActivateResponse.statusCode).toBe(409);
+    expect(outboundHttpServiceMocks.fetchManagedDomainBrokerHttp).not.toHaveBeenCalled();
 
     configureApiRuntime({ config: createCustomHttpApiConfig(), db });
     const activateResponse: LightMyRequestResponse = await systemApp.inject({
@@ -689,6 +706,17 @@ describe('Phase 0 API integration system domain', (): void => {
       publicScheme: 'https',
       tlsMode: 'external',
     });
+    const aliasRequest: RequestInit = requireManagedDomainBrokerAliasRequest('PUT');
+    expect(aliasRequest).toMatchObject({
+      body: '{"baseDomain":"customer.example.com"}',
+      headers: {
+        Accept: 'application/json',
+        Authorization: 'Bearer broker-token',
+        'Content-Type': 'application/json',
+      },
+      method: 'PUT',
+    });
+    expect(aliasRequest.signal).toBeInstanceOf(AbortSignal);
     expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).toHaveBeenCalledTimes(1);
 
     const [storedSetupState]: SystemDomainSetupStateRecord[] = await db.select().from(systemDomainSetupState);
@@ -722,9 +750,7 @@ describe('Phase 0 API integration system domain', (): void => {
     const setPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(setResponse.json());
     expect(setPayload.status.pending?.status).toBe('pending_dns');
     expect(setPayload.status.pending?.certificate).toBeNull();
-    dnsPromiseMocks.resolveTxt.mockResolvedValue([
-      [requireSystemDomainDnsRecord(setPayload, 'ownership', 'TXT').value],
-    ]);
+    mockSystemDomainOwnershipTxtRecords(setPayload);
 
     const verifyWithoutCertResponse: LightMyRequestResponse = await systemApp.inject({
       method: 'POST',
@@ -996,9 +1022,7 @@ describe('Phase 0 API integration system domain', (): void => {
     });
     expect(setResponse.statusCode).toBe(200);
     const setPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(setResponse.json());
-    dnsPromiseMocks.resolveTxt.mockResolvedValue([
-      [requireSystemDomainDnsRecord(setPayload, 'ownership', 'TXT').value],
-    ]);
+    mockSystemDomainOwnershipTxtRecords(setPayload);
 
     const verifyResponse: LightMyRequestResponse = await systemApp.inject({
       method: 'POST',
@@ -1024,6 +1048,64 @@ describe('Phase 0 API integration system domain', (): void => {
     expect(activatePayload.status.active.baseDomain).toBe('customer.example.com');
     expect(activatePayload.status.activeDomainHealth.status).toBe('unhealthy');
     expect(activatePayload.status.activeDomainHealth.failureCode).toBe('edge_sync_failed');
+  });
+
+  it('keeps activation durable when broker alias sync fails and retries on status refresh', async (): Promise<void> => {
+    await installCompartment(app);
+    configureApiRuntimeWithPublicIngress(defaultApiConfig, createManagedPublicIngressConfig());
+
+    const setResponse: LightMyRequestResponse = await systemApp.inject({
+      method: 'POST',
+      url: '/internal/system/domain/set',
+      headers: buildSystemMutationHeaders('domain-broker-alias-fail-set'),
+      payload: buildCustomExternalDomainSetRequest(0),
+    });
+    expect(setResponse.statusCode).toBe(200);
+    const setPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(setResponse.json());
+    mockSystemDomainOwnershipTxtRecords(setPayload);
+
+    const verifyResponse: LightMyRequestResponse = await systemApp.inject({
+      method: 'POST',
+      url: '/internal/system/domain/verify',
+      headers: buildSystemMutationHeaders('domain-broker-alias-fail-verify'),
+      payload: { expectedSetupVersion: 1 },
+    });
+    expect(verifyResponse.statusCode).toBe(200);
+
+    configureApiRuntime({ config: createCustomHttpApiConfig(), db });
+    outboundHttpServiceMocks.fetchManagedDomainBrokerHttp.mockResolvedValueOnce(new Response(null, { status: 500 }));
+    const activateResponse: LightMyRequestResponse = await systemApp.inject({
+      method: 'POST',
+      url: '/internal/system/domain/activate',
+      headers: buildSystemMutationHeaders('domain-broker-alias-fail-activate'),
+      payload: { expectedSetupVersion: 2 },
+    });
+    expect(activateResponse.statusCode).toBe(200);
+    const activatePayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(
+      activateResponse.json(),
+    );
+    expect(activatePayload.status.pending).toBeNull();
+    expect(activatePayload.status.active.baseDomain).toBe('customer.example.com');
+    expect(activatePayload.status.activeDomainHealth.status).toBe('unhealthy');
+    expect(activatePayload.status.activeDomainHealth.failureCode).toBe('broker_alias_sync_failed');
+    const [storedSetupState]: SystemDomainSetupStateRecord[] = await db.select().from(systemDomainSetupState);
+    expect(storedSetupState?.pendingStatus).toBeNull();
+
+    outboundHttpServiceMocks.fetchManagedDomainBrokerHttp.mockClear();
+    outboundHttpServiceMocks.fetchSystemDomainProbeHttp.mockResolvedValue(new Response('{}', { status: 200 }));
+    const refreshResponse: LightMyRequestResponse = await systemApp.inject({
+      method: 'POST',
+      url: '/internal/system/domain/status/refresh',
+      headers: buildSystemAuthorizationHeaders(),
+    });
+    expect(refreshResponse.statusCode).toBe(200);
+    const refreshPayload: SystemDomainStatusResponse = systemDomainStatusResponseSchema.parse(refreshResponse.json());
+    expect(refreshPayload.activeDomainHealth.status).toBe('ok');
+    const retryAliasRequest: RequestInit = requireManagedDomainBrokerAliasRequest('PUT');
+    expect(retryAliasRequest).toMatchObject({
+      body: '{"baseDomain":"customer.example.com"}',
+      method: 'PUT',
+    });
   });
 
   it('resets a custom domain operation back to the active managed runtime and syncs edge', async (): Promise<void> => {
@@ -1058,6 +1140,15 @@ describe('Phase 0 API integration system domain', (): void => {
       tlsMode: 'broker-dns01',
     });
     expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).toHaveBeenCalledTimes(1);
+    const aliasCleanupRequest: RequestInit = requireManagedDomainBrokerAliasRequest('DELETE');
+    expect(aliasCleanupRequest).toMatchObject({
+      headers: {
+        Accept: 'application/json',
+        Authorization: 'Bearer broker-token',
+      },
+      method: 'DELETE',
+    });
+    expect(aliasCleanupRequest.signal).toBeInstanceOf(AbortSignal);
 
     const duplicateResetResponse: LightMyRequestResponse = await systemApp.inject({
       method: 'POST',
@@ -1093,4 +1184,27 @@ function requireSystemDomainDnsRecord(
   }
 
   return record;
+}
+
+function mockSystemDomainOwnershipTxtRecords(response: SystemDomainMutationResponse): void {
+  const values: string[][] =
+    response.status.pending?.requiredDnsRecords
+      .filter((record: DomainDnsRecord): boolean => record.purpose === 'ownership' && record.recordType === 'TXT')
+      .map((record: DomainDnsRecord): string[] => [record.value]) ?? [];
+
+  dnsPromiseMocks.resolveTxt.mockResolvedValue(values);
+}
+
+function requireManagedDomainBrokerAliasRequest(method: string): RequestInit {
+  for (const call of outboundHttpServiceMocks.fetchManagedDomainBrokerHttp.mock.calls) {
+    if (call[0] !== '/v1/managed-domains/aliases') {
+      continue;
+    }
+    if (call[1]?.method !== method) {
+      continue;
+    }
+    return call[1];
+  }
+
+  throw new Error(`Expected managed-domain broker alias ${method} request.`);
 }

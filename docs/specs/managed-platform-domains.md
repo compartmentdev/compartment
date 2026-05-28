@@ -15,6 +15,7 @@ Managed platform domains cover install-level public domain ownership for the who
 - Certificate private keys stay on the customer host. The broker stores only the scoped ACME DNS credential material needed to authorize TXT updates.
 - The broker stores allocation metadata for managed-domain installs: installation id, public ingress IP, generated base domain,
   selected runtime version, CLI version, and OS platform details.
+- When a managed-domain install activates a verified whole-install custom domain, the broker stores that custom base domain as an alias for the original managed allocation so broker-backed GitHub account discovery can return to the active console origin without accepting arbitrary `console.*` return URLs.
 
 ## Ownership and boundaries
 
@@ -31,6 +32,7 @@ Managed platform domains cover install-level public domain ownership for the who
 - Managed allocation uses a broker-generated label, not an exact vanity reservation from operator input.
 - ACME DNS access is limited to the install's challenge record and must reject writes outside that scope.
 - Whole-install custom-domain activation requires proof of domain ownership and proof that traffic resolves directly to this install's public ingress.
+- Broker-side custom-domain aliases are accepted only after the custom console host has been verified against the managed allocation's public ingress IP and the custom domain publishes the broker alias ownership TXT derived from that allocation's broker token.
 - Managed domains are immutable for the lifetime of that allocation. Public-IP changes are handled by a fresh allocation rather than in-place resync.
 
 ## Rationale

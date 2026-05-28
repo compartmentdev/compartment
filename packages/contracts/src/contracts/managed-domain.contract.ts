@@ -4,6 +4,7 @@ import type { ContractSchema } from './schema.types';
 
 export const managedDomainRequestedLabelSourceMaxLength: number = 128;
 export const managedDomainAllocationPathname: string = '/v1/managed-domains';
+export const managedDomainAliasPathname: string = `${managedDomainAllocationPathname}/aliases`;
 
 export interface ManagedDomainAllocationRequest {
   installationId: string;
@@ -28,6 +29,10 @@ export interface ManagedDomainAllocationResponse {
   acmeDnsToken: string;
   baseDomain: string;
   dnsRecords: DnsRecordInstruction[];
+}
+
+export interface ManagedDomainAliasUpsertRequest {
+  baseDomain: string;
 }
 
 export const managedDomainAllocationResponseSchema: ContractSchema<ManagedDomainAllocationResponse> = z

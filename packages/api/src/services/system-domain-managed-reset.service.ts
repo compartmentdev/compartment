@@ -11,6 +11,7 @@ import type {
 } from '../queries/system-domain.query.types';
 import { synchronizeEdgeAfterDomainActivation } from './system-domain-health.service';
 import { runIdempotentSystemDomainMutation } from './system-domain-idempotent-mutation.service';
+import { synchronizeManagedDomainBrokerAliasAfterDomainActivation } from './system-domain-managed-broker-alias.service';
 import { readRuntimeDomainHostPlan } from './system-domain-runtime.service';
 import {
   createSystemDomainMutationResult,
@@ -35,7 +36,9 @@ export async function resetSystemDomainManaged(
       await resetSystemDomainManagedInTransaction(tx, input),
   );
 
-  return await synchronizeEdgeAfterDomainActivation(result);
+  return await synchronizeEdgeAfterDomainActivation(
+    await synchronizeManagedDomainBrokerAliasAfterDomainActivation(result),
+  );
 }
 
 async function resetSystemDomainManagedInTransaction(

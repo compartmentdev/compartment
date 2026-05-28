@@ -18,6 +18,11 @@ import {
   type DirectDomainBindingAnswers,
 } from './domain-dns-binding.service';
 import { resolveTxtValues } from './domain-dns-resolution.service';
+import {
+  buildManagedDomainBrokerAliasOwnershipDnsRecord,
+  buildManagedDomainBrokerAliasOwnershipRecordName,
+  buildManagedDomainBrokerAliasOwnershipValue,
+} from './system-domain-managed-broker-alias-proof.service';
 import type { DomainCheckFailure, DomainCheckResult } from './system-domain-check.service.types';
 
 const ownershipGroupId: string = 'ownership';
@@ -26,6 +31,7 @@ const routingGroupId: string = 'routing';
 const routingPurpose: DomainDnsRecordPurpose = 'routing';
 
 interface SystemDomainDnsProofInput {
+  managedDomainBrokerToken: string | null;
   pendingBaseDomain: string;
   pendingOperationId: string;
   publicIngressConfig: ApiPublicIngressConfig;
@@ -34,6 +40,7 @@ interface SystemDomainDnsProofInput {
 export function buildRequiredSystemDomainDnsRecords(input: SystemDomainDnsProofInput): DomainDnsRecord[] {
   return [
     buildSystemDomainOwnershipDnsRecord(input.pendingBaseDomain, input.pendingOperationId),
+    ...buildManagedDomainBrokerAliasDnsRecords(input.pendingBaseDomain, input.managedDomainBrokerToken),
     ...buildDirectRoutingDnsRecords(input.pendingBaseDomain, input.publicIngressConfig),
   ];
 }
@@ -47,10 +54,23 @@ export async function verifySystemDomainDnsProof(input: SystemDomainDnsProofInpu
   if (ownershipFailure !== null) {
     return { failure: ownershipFailure };
   }
+  const brokerAliasOwnershipFailure: DomainCheckFailure | null =
+    await verifyManagedDomainBrokerAliasOwnershipDnsRecord(input);
+  if (brokerAliasOwnershipFailure !== null) {
+    return { failure: brokerAliasOwnershipFailure };
+  }
 
   return {
     failure: await verifyRoutingDnsBinding(input),
   };
+}
+
+function buildManagedDomainBrokerAliasDnsRecords(baseDomain: string, brokerToken: string | null): DomainDnsRecord[] {
+  if (brokerToken === null) {
+    return [];
+  }
+
+  return [buildManagedDomainBrokerAliasOwnershipDnsRecord(baseDomain, brokerToken)];
 }
 
 function buildSystemDomainOwnershipDnsRecord(baseDomain: string, operationId: string): DomainDnsRecord {
@@ -61,6 +81,29 @@ function buildSystemDomainOwnershipDnsRecord(baseDomain: string, operationId: st
     recordType: 'TXT',
     required: true,
     value: buildCompartmentDomainOwnershipValue(operationId),
+  };
+}
+
+async function verifyManagedDomainBrokerAliasOwnershipDnsRecord(
+  input: SystemDomainDnsProofInput,
+): Promise<DomainCheckFailure | null> {
+  if (input.managedDomainBrokerToken === null) {
+    return null;
+  }
+
+  const recordName: string = buildManagedDomainBrokerAliasOwnershipRecordName(input.pendingBaseDomain);
+  const expectedValue: string = buildManagedDomainBrokerAliasOwnershipValue(
+    input.pendingBaseDomain,
+    input.managedDomainBrokerToken,
+  );
+  const txtValues: string[] = await resolveTxtValues(recordName);
+  if (txtValues.includes(expectedValue)) {
+    return null;
+  }
+
+  return {
+    code: 'dns_ownership_invalid',
+    message: `Broker alias ownership TXT ${recordName} must equal ${expectedValue}.`,
   };
 }
 

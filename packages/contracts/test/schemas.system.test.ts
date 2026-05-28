@@ -8,6 +8,7 @@ import {
   installResponseSchema,
   managedDomainAllocationPathname,
   managedDomainAllocationResponseSchema,
+  managedDomainAliasPathname,
   projectLifecycleRequestSchema,
   projectLifecycleResponseSchema,
   type CreateOrganizationRequest,
@@ -71,6 +72,10 @@ describe('contract schemas system and domain', (): void => {
 
   it('exposes the managed domain allocation pathname', (): void => {
     expect(managedDomainAllocationPathname).toBe('/v1/managed-domains');
+  });
+
+  it('exposes the managed domain alias pathname', (): void => {
+    expect(managedDomainAliasPathname).toBe('/v1/managed-domains/aliases');
   });
 
   it('accepts a valid managed domain allocation response', (): void => {
