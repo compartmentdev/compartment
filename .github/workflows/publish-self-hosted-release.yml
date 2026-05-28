@@ -433,13 +433,13 @@ jobs:
             --fallback-notes "Manual compartment release ${RELEASE_VERSION}." \
             --output ./.compartment/release-assets/release-notes.md
 
-      - name: Ensure stable release exists
+      - name: Ensure stable release draft exists
         run: |
           release_tag="v${RELEASE_VERSION}"
           if gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$release_tag" --repo "$RELEASE_REPOSITORY" --title "compartment ${RELEASE_VERSION}" --notes-file ./.compartment/release-assets/release-notes.md --prerelease=false --draft=false
+            gh release edit "$release_tag" --repo "$RELEASE_REPOSITORY" --title "compartment ${RELEASE_VERSION}" --notes-file ./.compartment/release-assets/release-notes.md --prerelease=false --draft
           else
-            gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "compartment ${RELEASE_VERSION}" --notes-file ./.compartment/release-assets/release-notes.md --verify-tag
+            gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "compartment ${RELEASE_VERSION}" --notes-file ./.compartment/release-assets/release-notes.md --draft --verify-tag
           fi
 
       - name: Upload stable CLI artifacts
@@ -447,3 +447,12 @@ jobs:
           gh release upload "v${RELEASE_VERSION}" ./.compartment/release-assets/compartment-*.tar.gz ./.compartment/release-assets/checksums.txt ./install.sh \
             --repo "$RELEASE_REPOSITORY" \
             --clobber
+
+      - name: Publish stable release
+        run: |
+          gh release edit "v${RELEASE_VERSION}" \
+            --repo "$RELEASE_REPOSITORY" \
+            --title "compartment ${RELEASE_VERSION}" \
+            --notes-file ./.compartment/release-assets/release-notes.md \
+            --prerelease=false \
+            --draft=false
