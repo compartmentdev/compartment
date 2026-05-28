@@ -18,6 +18,7 @@ import {
 } from '../../lib/access-assignment-browser';
 import { normalizeOptionalDescription } from '../access/access-description.helpers';
 import { readAccessAssignmentCreateScopes } from '../access/access-assignment-create-scopes';
+import { resetAccessScopeSelectionsAfterCreate } from '../access/access-scope-selection';
 import { invalidateGroupsAccessQueries } from './groups-query-invalidate';
 
 export type GroupsPageSetter = BrowserAccessPageSetter<BrowserGroupsPageResult>;
@@ -162,8 +163,10 @@ export async function handleGroupAssignmentCreateAction(
   environmentValues: string[],
   setData: GroupsPageSetter,
   setErrorMessage: GroupDrawerErrorSetter,
+  setEnvironmentValues: (value: string[]) => void,
+  setProjectNames: (value: string[]) => void,
 ): Promise<void> {
-  await runBrowserAccessAssignmentCreateAction({
+  const didCreate: boolean = await runBrowserAccessAssignmentCreateAction({
     currentOrganization: requireSelectedOrganizationSlug(data.selectedOrganizationSlug),
     failureMessage: groupActionFailureMessage,
     refreshPageData: async (): Promise<void> => await invalidateGroupsAccessQueries(data),
@@ -173,6 +176,8 @@ export async function handleGroupAssignmentCreateAction(
     setErrorMessage,
     subject: readGroupAssignmentSubject(groupId),
   });
+
+  resetAccessScopeSelectionsAfterCreate(didCreate, setEnvironmentValues, setProjectNames);
 }
 
 export async function handleGroupAssignmentDeleteAction(

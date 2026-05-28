@@ -18,7 +18,7 @@ import {
   type AccessRoleListOptionsResponse,
   type AccessRoleListResponse,
 } from '@compartment/contracts/browser';
-import { requestBrowserApi, type BrowserApiRequestOptions } from '../../lib/browser-api';
+import { BrowserApiError, requestBrowserApi, type BrowserApiRequestOptions } from '../../lib/browser-api';
 import { buildBrowserAccessPageListPath } from '../access/access-list-path';
 import type { GroupsLoaderQuery } from './groups-loader';
 
@@ -86,14 +86,22 @@ export async function loadSelectedGroupMembers(
     return [];
   }
 
-  const response: AccessGroupMemberListResponse = await requestBrowserApi(
-    `${compartmentGroupsPathname}/${encodeURIComponent(groupId)}${compartmentGroupMembersPathnameSuffix}`,
-    accessGroupMemberListResponseSchema,
-    {
-      currentOrganization: organizationSlug,
-      signal: options.signal,
-    },
-  );
+  try {
+    const response: AccessGroupMemberListResponse = await requestBrowserApi(
+      `${compartmentGroupsPathname}/${encodeURIComponent(groupId)}${compartmentGroupMembersPathnameSuffix}`,
+      accessGroupMemberListResponseSchema,
+      {
+        currentOrganization: organizationSlug,
+        signal: options.signal,
+      },
+    );
 
-  return response.members;
+    return response.members;
+  } catch (error) {
+    if (error instanceof BrowserApiError && error.status === 404) {
+      return [];
+    }
+
+    throw error;
+  }
 }

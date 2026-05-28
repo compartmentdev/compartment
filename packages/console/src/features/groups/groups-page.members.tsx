@@ -9,7 +9,7 @@ import { useBrowserMutation } from '../../lib/browser-query-client';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
 import { requireBrowserAccessSelectedOrganizationSlug } from '../access/access-query';
 import {
-  accessDrawerPrimaryActionButtonClassName,
+  accessDrawerPrimaryAddButtonClassName,
   accessDrawerRowActionButtonClassName,
   AccessDrawerSection,
 } from '../access/access-ui';
@@ -105,7 +105,7 @@ function GroupMemberAddForm(props: Readonly<GroupMemberAddFormProps>): JSX.Eleme
         setMemberEmail={props.setMemberEmail}
       />
       <Button
-        className={accessDrawerPrimaryActionButtonClassName}
+        className={accessDrawerPrimaryAddButtonClassName}
         disabled={mutation.isPending}
         type="submit"
         variant="default"

@@ -70,7 +70,7 @@ function AutocompleteMultiSelectTriggerBadge({
 }: Readonly<{ option: AutocompleteMultiSelectOption }>): JSX.Element {
   return (
     <Badge
-      className="h-5 max-w-full shrink-0 rounded-full border border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-background px-1.5 py-0 text-[11px] font-medium leading-4"
+      className="h-5 max-w-full min-w-0 rounded-full border border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-background px-1.5 py-0 text-[11px] font-medium leading-4"
       variant="outline"
     >
       <span className="truncate">{option.label}</span>

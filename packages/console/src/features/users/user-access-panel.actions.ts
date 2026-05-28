@@ -10,6 +10,7 @@ import {
   type BrowserAccessPageSetter,
 } from '../../lib/access-assignment-browser';
 import { readAccessAssignmentCreateScopes } from '../access/access-assignment-create-scopes';
+import { resetAccessScopeSelectionsAfterCreate } from '../access/access-scope-selection';
 import { invalidateUserAccessQueries } from './users-query-invalidation';
 
 export type UserAccessPanelSetter = BrowserAccessPageSetter<BrowserUsersPageResult>;
@@ -68,8 +69,10 @@ export async function handleUserAccessAssignmentCreate(
   environmentValues: string[],
   setData: UserAccessPanelSetter,
   setErrorMessage: UserAccessDrawerErrorSetter,
+  setEnvironmentValues: (value: string[]) => void,
+  setProjectNames: (value: string[]) => void,
 ): Promise<void> {
-  await runBrowserAccessAssignmentCreateAction({
+  const didCreate: boolean = await runBrowserAccessAssignmentCreateAction({
     currentOrganization: requireSelectedOrganizationSlug(data.selectedOrganizationSlug),
     failureMessage: userAccessActionFailureMessage,
     refreshPageData: async (): Promise<void> => await invalidateUserAccessQueries(data),
@@ -79,6 +82,8 @@ export async function handleUserAccessAssignmentCreate(
     setErrorMessage,
     subject: readPrincipalAssignmentSubject(email),
   });
+
+  resetAccessScopeSelectionsAfterCreate(didCreate, setEnvironmentValues, setProjectNames);
 }
 
 export async function handleUserAccessAssignmentDelete(

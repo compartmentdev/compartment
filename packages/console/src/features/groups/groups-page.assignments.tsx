@@ -7,19 +7,22 @@ import {
 import { type ChangeEvent, type FormEvent, type JSX, type ReactNode } from 'react';
 import { Select } from '../../components/select';
 import { Button } from '../../components/ui/button';
-import { Plus } from '../../components/ui/icons';
 import type { BrowserGroupsPageResult } from '../../services/browser-groups.service.types';
 import { formatBrowserAccessAssignmentScope } from '../../lib/access-assignment-browser';
 import { formatAssignmentAccessSummary } from '../access/access-display';
 import { AccessDrawerList, AccessDrawerListEmpty, AccessDrawerListRow } from '../access/access-drawer-list';
 import {
+  AccessAssignmentSubmitButton,
   accessAssignmentConnectorClassName,
   accessAssignmentPrimaryRowClassName,
-  accessAssignmentSubmitButtonClassName,
   AccessScopeInputs,
   isAccessScopeSelectionReady,
 } from '../access/access-scope-inputs';
-import { accessDrawerRowActionButtonClassName, AccessDrawerSection } from '../access/access-ui';
+import {
+  accessDrawerAssignmentRowClassName,
+  accessDrawerRowActionButtonClassName,
+  AccessDrawerSection,
+} from '../access/access-ui';
 import type { GroupsPageSetter } from './groups-page.actions';
 import {
   type GroupAssignmentMutation,
@@ -83,16 +86,16 @@ export function GroupAssignmentsCard(props: Readonly<GroupAssignmentsCardProps>)
 
 function GroupAssignmentsForm(props: Readonly<GroupAssignmentsCardProps>): JSX.Element {
   const mutation: GroupAssignmentMutation = useGroupAssignmentCreateMutation(props);
-
+  const isSubmitDisabled: boolean = !isGroupAssignmentFormReady(props) || mutation.isPending;
   return (
     <form className="space-y-2" onSubmit={createGroupAssignmentSubmitHandler(props, mutation)}>
       <div className={accessAssignmentPrimaryRowClassName}>
         <GroupScopeSelect scopeType={props.scopeType} setScopeType={props.setScopeType} />
         <span aria-hidden="true" className={accessAssignmentConnectorClassName}>
-          →
+          {'→'}
         </span>
         <GroupRoleSelect roleId={props.roleId} roles={props.data.roles} setRoleId={props.setRoleId} />
-        <GroupAssignmentSubmitButton isPending={mutation.isPending} isReady={isGroupAssignmentFormReady(props)} />
+        <AccessAssignmentSubmitButton disabled={isSubmitDisabled} isPending={mutation.isPending} />
       </div>
       <AccessScopeInputs
         environmentValues={props.environmentValues}
@@ -139,24 +142,6 @@ function GroupRoleSelect(props: Readonly<GroupRoleSelectProps>): JSX.Element {
         ),
       )}
     </Select>
-  );
-}
-
-function GroupAssignmentSubmitButton({
-  isPending,
-  isReady,
-}: Readonly<{ isPending: boolean; isReady: boolean }>): JSX.Element {
-  return (
-    <Button
-      className={accessAssignmentSubmitButtonClassName}
-      disabled={!isReady || isPending}
-      size="sm"
-      type="submit"
-      variant="default"
-    >
-      {isPending ? null : <Plus className="size-4" />}
-      {isPending ? 'Adding...' : 'Add assignment'}
-    </Button>
   );
 }
 
@@ -229,7 +214,7 @@ function renderGroupAssignmentRows(
 
 function GroupAssignmentRow(props: Readonly<GroupAssignmentRowProps>): JSX.Element {
   return (
-    <AccessDrawerListRow className="md:grid-cols-[120px_120px_minmax(0,1fr)_auto]">
+    <AccessDrawerListRow className={accessDrawerAssignmentRowClassName}>
       <div className="text-[13px] font-semibold leading-[18px]">{props.assignment.roleName}</div>
       <div className="text-[12px] leading-4 text-[var(--cpt-text-secondary,#485259)]">
         {formatBrowserAccessAssignmentScope(props.assignment.scope)}
