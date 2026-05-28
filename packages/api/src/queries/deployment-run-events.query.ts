@@ -18,7 +18,7 @@ export async function appendDeploymentRunEvent(input: AppendDeploymentRunEventIn
   await appendDeploymentRunEventWithExecutor(getApiDatabase(), input);
 }
 
-async function appendDeploymentRunEventWithExecutor(
+export async function appendDeploymentRunEventWithExecutor(
   executor: DeploymentRunEventExecutor,
   input: AppendDeploymentRunEventInput,
 ): Promise<void> {

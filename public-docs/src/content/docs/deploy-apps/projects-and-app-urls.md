@@ -45,6 +45,8 @@ On the active Projects page, Compartment also refreshes the visible project life
 
 Project-scoped commands usually resolve the default project from the current repository descriptor. `project archive` and `project delete` are the destructive exceptions and require explicit `--yes` confirmation. `project delete` also requires an explicit `--project <slug>` target.
 
+When you archive a project, deployments that are still queued and have not been claimed by a worker are canceled and recorded as failed deployment runs. Watch the project or deployment history when archiving during active rollout work.
+
 Compartment also ships project runtime commands:
 
 ```bash

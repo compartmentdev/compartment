@@ -3,6 +3,7 @@ export interface QueuedDeploymentClaimCandidateRow {
   environmentId: string;
   environmentName: string;
   organizationId: string;
+  projectId: string;
   projectName: string;
   serviceId: string;
   serviceName: string;

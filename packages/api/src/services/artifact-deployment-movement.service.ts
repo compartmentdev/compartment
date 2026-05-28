@@ -4,6 +4,9 @@ import {
 } from '../queries/deployment-movement.query';
 import type { DeploymentMovementTargetSelector } from '../queries/deployment-movement.query.types';
 import { createQueuedExistingArtifactDeploymentBatchWithExecutor } from '../queries/deployments.query';
+import type { QueuedExistingArtifactDeploymentBatchResult } from '../queries/deployment-batch.query.types';
+import { lockActiveProjectDeploymentMutationWithExecutor } from '../queries/deployment-project-mutation.query';
+import type { DeploymentProjectMutationStatus } from '../queries/deployment-project-mutation.query.types';
 import type {
   CreateQueuedExistingArtifactDeploymentBatchItem,
   DeploymentJoinedRow,
@@ -32,6 +35,7 @@ import type {
 } from './artifact-deployment-movement.service.types';
 import { hydrateJoinedDeploymentsById } from './joined-deployment-hydration.service';
 import type { DeploymentMovementOperationType } from './deployment-movement.service.types';
+import { requireQueuedExistingArtifactDeployments } from './artifact-deployment-queue-result.service';
 
 export async function queueSerializedArtifactDeploymentMovement(
   sourceDeployments: DeploymentJoinedRow[],
@@ -73,6 +77,7 @@ async function queueSerializedMovementDeployments(
           deploymentRunId,
           operationType,
         ),
+        targetEnvironment.projectId,
       ),
   );
 }
@@ -94,6 +99,7 @@ async function createMovementDeploymentRunId(
 
 async function resolveSerializedDeploymentMovementBatch(
   items: SerializedDeploymentMovementBatchItem[],
+  projectId: string,
 ): Promise<DeploymentRow[]> {
   if (items.length === 0) {
     return [];
@@ -104,7 +110,7 @@ async function resolveSerializedDeploymentMovementBatch(
 
   return await getApiDatabase().transaction(
     async (tx: DeploymentTransaction): Promise<DeploymentRow[]> =>
-      await resolveSerializedDeploymentMovementBatchInTransaction(tx, sortedItems),
+      await resolveSerializedDeploymentMovementBatchInTransaction(tx, sortedItems, projectId),
   );
 }
 
@@ -157,7 +163,16 @@ function allDeploymentsBelongToRun(deployments: DeploymentRow[], deploymentRunId
 async function resolveSerializedDeploymentMovementBatchInTransaction(
   tx: DeploymentTransaction,
   items: SerializedDeploymentMovementBatchItem[],
+  projectId: string,
 ): Promise<DeploymentRow[]> {
+  const projectStatus: DeploymentProjectMutationStatus = await lockActiveProjectDeploymentMutationWithExecutor(
+    tx,
+    projectId,
+  );
+  if (projectStatus !== 'active') {
+    return requireQueuedExistingArtifactDeployments(projectStatus);
+  }
+
   const targets: DeploymentMovementTargetSelector[] = collectSerializedDeploymentMovementTargets(items);
 
   await acquireDeploymentMovementTargetLocks(tx, targets);
@@ -170,20 +185,22 @@ async function resolveSerializedDeploymentMovementBatchInTransaction(
     return duplicateDeployments;
   }
 
-  return await createQueuedSerializedDeploymentMovementBatch(tx, items);
+  return await createQueuedSerializedDeploymentMovementBatch(tx, items, projectId);
 }
 
 async function createQueuedSerializedDeploymentMovementBatch(
   tx: DeploymentTransaction,
   items: SerializedDeploymentMovementBatchItem[],
+  projectId: string,
 ): Promise<DeploymentRow[]> {
-  const queuedDeployments: DeploymentRow[] = await createQueuedExistingArtifactDeploymentBatchWithExecutor(
-    tx,
-    toQueuedExistingArtifactDeploymentBatchItems(items),
-  );
+  const queuedDeployments: QueuedExistingArtifactDeploymentBatchResult =
+    await createQueuedExistingArtifactDeploymentBatchWithExecutor(tx, {
+      items: toQueuedExistingArtifactDeploymentBatchItems(items),
+      projectId,
+    });
 
   return sortResolvedDeploymentMovementItemsByRequestIndex(
-    queuedDeployments.map(
+    requireQueuedExistingArtifactDeployments(queuedDeployments).map(
       (deployment: DeploymentRow, index: number): ResolvedDeploymentMovementBatchItem => ({
         deployment,
         requestIndex: items[index]!.requestIndex,

@@ -28,9 +28,11 @@ export type {
   CreateQueuedDeploymentBatchDeploymentInput,
   CreateQueuedDeploymentBatchItem,
   CreateQueuedExistingArtifactDeploymentBatchItem,
+  CreateQueuedExistingArtifactDeploymentBatchInput,
   CreateQueuedExistingArtifactDeploymentInput,
   MarkBuildArtifactsCleanedInput,
   MarkDeploymentFailedInput,
+  MarkQueuedProjectDeploymentsFailedInput,
   UpdateBuildArtifactImageInput,
   UpdateDeploymentRuntimeStateInput,
 } from './deployments.query.write.types';

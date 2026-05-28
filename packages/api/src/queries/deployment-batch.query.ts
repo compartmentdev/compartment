@@ -3,6 +3,9 @@ import type { Database } from '../db/client';
 import { buildArtifacts, sourceUploads } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { createDeploymentWithExecutor, requirePersistedRow, toBuildArtifactRow } from './deployments.query';
+import type { QueuedDeploymentBatchResult } from './deployment-batch.query.types';
+import { lockActiveProjectDeploymentMutationWithExecutor } from './deployment-project-mutation.query';
+import type { DeploymentProjectMutationStatus } from './deployment-project-mutation.query.types';
 import type {
   BuildArtifactRow,
   ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput,
@@ -14,10 +17,21 @@ import type {
 import { insertOperationRecordWithExecutor } from './operations.query';
 import type { OperationRecord } from './operations.query.types';
 
+interface ConsumedSourceUploadRow {
+  id: string;
+}
+
 export async function consumeSourceUploadAndCreateQueuedDeploymentBatch(
   input: ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput,
-): Promise<DeploymentRow[] | undefined> {
-  return await getApiDatabase().transaction(async (tx: DeploymentTransaction): Promise<DeploymentRow[] | undefined> => {
+): Promise<QueuedDeploymentBatchResult> {
+  return await getApiDatabase().transaction(async (tx: DeploymentTransaction): Promise<QueuedDeploymentBatchResult> => {
+    const projectStatus: DeploymentProjectMutationStatus = await lockActiveProjectDeploymentMutationWithExecutor(
+      tx,
+      input.projectId,
+    );
+    if (projectStatus !== 'active') {
+      return projectStatus;
+    }
     if (!(await consumeSourceUploadWithExecutor(tx, input))) {
       return undefined;
     }
@@ -30,7 +44,7 @@ async function consumeSourceUploadWithExecutor(
   tx: DeploymentTransaction,
   input: ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput,
 ): Promise<boolean> {
-  const rows: { id: string }[] = await tx
+  const rows: ConsumedSourceUploadRow[] = await tx
     .update(sourceUploads)
     .set({ consumedAt: input.consumedAt })
     .where(

@@ -6,6 +6,7 @@ import type {
 } from '../queries/deployments.query.types';
 import { createQueuedExistingArtifactDeploymentBatch } from '../queries/deployments.query';
 import { buildArtifactDeploymentBatchItem } from './artifact-deployment-batch-item.service';
+import { requireQueuedExistingArtifactDeployments } from './artifact-deployment-queue-result.service';
 import {
   appendQueuedDeploymentRunEvents,
   createDeploymentRunId,
@@ -23,22 +24,40 @@ export async function queueArtifactStartDeployments(
   const queuedDeployments: DeploymentRow[] = await withDeploymentRunCleanupOnError(
     deploymentRunId,
     async (): Promise<DeploymentRow[]> => {
-      const items: CreateQueuedExistingArtifactDeploymentBatchItem[] = sourceDeployments.map(
-        (sourceDeployment: DeploymentJoinedRow): CreateQueuedExistingArtifactDeploymentBatchItem =>
-          buildArtifactDeploymentBatchItem(
-            sourceDeployment,
+      return requireQueuedExistingArtifactDeployments(
+        await createQueuedExistingArtifactDeploymentBatch({
+          items: buildArtifactStartDeploymentBatchItems(
+            sourceDeployments,
             targetEnvironment,
             actorPrincipalId,
             deploymentRunId,
-            'deployment.start',
           ),
+          projectId: targetEnvironment.projectId,
+        }),
       );
-      return await createQueuedExistingArtifactDeploymentBatch(items);
     },
   );
 
   await appendQueuedDeploymentRunEvents(queuedDeployments);
   return await hydrateJoinedDeploymentsById(queuedDeployments);
+}
+
+function buildArtifactStartDeploymentBatchItems(
+  sourceDeployments: DeploymentJoinedRow[],
+  targetEnvironment: EnvironmentRow,
+  actorPrincipalId: string,
+  deploymentRunId: string,
+): CreateQueuedExistingArtifactDeploymentBatchItem[] {
+  return sourceDeployments.map(
+    (sourceDeployment: DeploymentJoinedRow): CreateQueuedExistingArtifactDeploymentBatchItem =>
+      buildArtifactDeploymentBatchItem(
+        sourceDeployment,
+        targetEnvironment,
+        actorPrincipalId,
+        deploymentRunId,
+        'deployment.start',
+      ),
+  );
 }
 
 async function createStartDeploymentRunId(

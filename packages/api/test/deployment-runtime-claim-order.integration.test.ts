@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { LightMyRequestResponse } from 'fastify';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import {
   type DeploymentInspectResponse,
   type DeploymentSummary,
@@ -251,6 +251,50 @@ describe('deployment runtime movement claim order integration', (): void => {
 
       await assertReservedRouteIsHiddenForOrganization(installPayload, 'acme-dev');
       await assertReservedRouteIsHiddenForOrganization(installPayload, 'beta-dev');
+    },
+    deploymentRuntimeMovementTimeoutMs,
+  );
+
+  it(
+    'claims another project when the first fair project is locked',
+    async (): Promise<void> => {
+      const installPayload: InstallResponse = await installCompartment(app);
+      await registerLocalNode(app);
+      await createOrganization(installPayload, 'Beta Dev', 'beta-dev');
+
+      const acmeDeployResponse: LightMyRequestResponse = await injectDeployRequest(
+        app,
+        installPayload.sessionToken,
+        'acme-dev',
+      );
+      const betaDeployResponse: LightMyRequestResponse = await injectDeployRequest(
+        app,
+        installPayload.sessionToken,
+        'beta-dev',
+      );
+      expect(acmeDeployResponse.statusCode).toBe(200);
+      expect(betaDeployResponse.statusCode).toBe(200);
+      const betaDeployment: DeploymentSummary = requireDeployResponseDeployment(
+        deployResponseSchema.parse(betaDeployResponse.json()),
+      );
+      const acmeProjectId: string = await findProjectIdForOrganization('smoke-web', 'acme-dev');
+      const betaProjectId: string = await findProjectIdForOrganization('smoke-web', 'beta-dev');
+
+      const client: PoolClient = await pool.connect();
+      try {
+        await client.query('begin');
+        await client.query('select id from projects where id = $1 for update', [acmeProjectId]);
+
+        const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
+          await claimNextQueuedDeployment(app),
+        );
+
+        expect(claimedDeployment.deploymentId).toBe(betaDeployment.id);
+        expect(claimedDeployment.projectId).toBe(betaProjectId);
+      } finally {
+        await client.query('rollback');
+        client.release();
+      }
     },
     deploymentRuntimeMovementTimeoutMs,
   );

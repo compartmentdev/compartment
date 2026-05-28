@@ -1,9 +1,12 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
-  findFirstFairQueuedDeploymentCandidateForUpdate,
+  findFirstFairQueuedDeploymentCandidate,
   markQueuedDeploymentRunningWithExecutor,
   recordDeploymentMovementOrganizationClaim,
 } from '../queries/deployment-claim.query';
 import type { QueuedDeploymentClaimCandidateRow } from '../queries/deployment-claim.query.types';
+import { lockActiveProjectDeploymentMutationWithExecutor } from '../queries/deployment-project-mutation.query';
+import type { DeploymentProjectMutationStatus } from '../queries/deployment-project-mutation.query.types';
 import type { DeploymentRow, DeploymentTransaction } from '../queries/deployments.query.types';
 import { updateOperationRecordWithExecutor } from '../queries/operations.query';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -15,6 +18,9 @@ import type { ClaimedDeploymentContext } from './deployments.service.types';
 interface ClaimedDeploymentReservation {
   deploymentId: string;
 }
+
+const skippedLockedProjectClaimAttempts: number = 5;
+const skippedLockedProjectClaimRetryDelayMs: number = 10;
 
 export async function claimQueuedDeploymentForWorker(): Promise<ClaimedDeploymentContext | null> {
   const claimed: ClaimedDeploymentReservation | null = await claimQueuedDeploymentReservation();
@@ -36,9 +42,43 @@ async function claimQueuedDeploymentWithReservation(
   tx: DeploymentTransaction,
   now: Date,
 ): Promise<ClaimedDeploymentReservation | null> {
-  const candidate: QueuedDeploymentClaimCandidateRow | undefined =
-    await findFirstFairQueuedDeploymentCandidateForUpdate(tx);
-  if (candidate === undefined) {
+  for (let attempt: number = 1; attempt <= skippedLockedProjectClaimAttempts; attempt += 1) {
+    const candidate: QueuedDeploymentClaimCandidateRow | undefined = await findFirstFairQueuedDeploymentCandidate(tx);
+    if (candidate === undefined) {
+      await waitForSkippedLockedProjectClaimRetry(attempt);
+      continue;
+    }
+    const reservation: ClaimedDeploymentReservation | null = await reserveActiveProjectDeploymentRoute(
+      tx,
+      candidate,
+      now,
+    );
+    if (reservation !== null) {
+      return reservation;
+    }
+  }
+
+  return null;
+}
+
+async function waitForSkippedLockedProjectClaimRetry(attempt: number): Promise<void> {
+  if (attempt >= skippedLockedProjectClaimAttempts) {
+    return;
+  }
+
+  await sleep(skippedLockedProjectClaimRetryDelayMs);
+}
+
+async function reserveActiveProjectDeploymentRoute(
+  tx: DeploymentTransaction,
+  candidate: QueuedDeploymentClaimCandidateRow,
+  now: Date,
+): Promise<ClaimedDeploymentReservation | null> {
+  const projectStatus: DeploymentProjectMutationStatus = await lockActiveProjectDeploymentMutationWithExecutor(
+    tx,
+    candidate.projectId,
+  );
+  if (projectStatus !== 'active') {
     return null;
   }
 

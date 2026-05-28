@@ -16,6 +16,7 @@ import {
   setProjectArchivedAtWithExecutor,
 } from '../queries/projects.query';
 import { isUniqueConstraintError } from '../queries/query-error';
+import type { DeploymentRow } from '../queries/deployments.query.types';
 import type { DeleteProjectResult, ProjectRow, ProjectsMutationTransaction } from '../queries/projects.query.types';
 import {
   clearDisconnectedBindingProjectReferences,
@@ -28,6 +29,15 @@ import { resolveActiveProjectScope, resolveRequiredProjectScope } from './projec
 import type { ResolvedProjectScope } from './project-scope.service.types';
 import type { ProjectReadResult, ProjectScopeInput, RenameProjectServiceInput } from './projects.service.types';
 import { excludeGitSourceProjectBindingWithinTransaction } from './git-source/git-source-exclusion.service';
+import {
+  cancelQueuedProjectDeploymentsForArchive,
+  cleanupCanceledDeploymentSourceUploads,
+} from './projects-archive-deployments.service';
+
+interface ArchivedProjectResult {
+  canceledDeployments: DeploymentRow[];
+  project: ProjectRow;
+}
 
 export async function renameProjectForPrincipal(input: RenameProjectServiceInput): Promise<ProjectRow> {
   const projectScope: ProjectRow = (
@@ -60,13 +70,20 @@ export async function archiveProjectForPrincipal(input: ProjectScopeInput): Prom
       permission: 'project.archive',
     })
   ).project;
-  const archivedProject: ProjectRow = await getApiDatabase().transaction(
-    async (transaction: ProjectsMutationTransaction): Promise<ProjectRow> => {
+  const archivedResult: ArchivedProjectResult = await getApiDatabase().transaction(
+    async (transaction: ProjectsMutationTransaction): Promise<ArchivedProjectResult> => {
       const project: ProjectRow = await requireArchivableProject(transaction, projectScope.id);
       await excludeGitSourceProjectBindingWithinTransaction(transaction, project.id, input.principalId, new Date());
-      return await ensureArchivedProject(transaction, project);
+      const archivedProject: ProjectRow = await ensureArchivedProject(transaction, project);
+
+      return {
+        canceledDeployments: await cancelQueuedProjectDeploymentsForArchive(transaction, archivedProject.id),
+        project: archivedProject,
+      };
     },
   );
+  await cleanupCanceledDeploymentSourceUploads(archivedResult.canceledDeployments);
+  const archivedProject: ProjectRow = archivedResult.project;
   await cleanupArchivedProjectRuntime(archivedProject);
   return archivedProject;
 }

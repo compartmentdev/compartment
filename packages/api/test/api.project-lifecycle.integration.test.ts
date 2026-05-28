@@ -20,7 +20,7 @@ import {
   nodeStopDeploymentPathname,
 } from '@compartment/contracts';
 import type { LightMyRequestResponse } from 'fastify';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { eq } from 'drizzle-orm';
 import type { ApiApp } from '../src/app.types';
@@ -28,6 +28,8 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 
 import {
   buildArtifacts,
+  deploymentRuns,
+  deploymentRunEvents,
   deploymentRoutes,
   deployments,
   environmentVariableValues,
@@ -39,14 +41,30 @@ import {
   projects,
   gitProviderRegistrations,
   sourceBindings,
+  sourceUploads,
   sources,
 } from '../src/db/schema';
+import type {
+  ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput,
+  CreateQueuedExistingArtifactDeploymentBatchInput,
+  EnvironmentRow,
+  PersistedProjectServiceRow,
+  ProjectServiceRow,
+} from '../src/queries/deployments.query.types';
+import type {
+  QueuedDeploymentBatchResult,
+  QueuedExistingArtifactDeploymentBatchResult,
+} from '../src/queries/deployment-batch.query.types';
+import { consumeSourceUploadAndCreateQueuedDeploymentBatch } from '../src/queries/deployment-batch.query';
+import { createQueuedExistingArtifactDeploymentBatch } from '../src/queries/deployments.query';
+import { toProjectServiceRow } from '../src/queries/project-service-row.mapper';
 import type { ProjectRow } from '../src/queries/projects.query.types';
 
 import {
   buildOrganizationAuthorizationHeaders,
   claimNextQueuedDeployment,
   clearIntegrationNodeAgentRequests,
+  createMultiServiceDescriptor,
   completeQueuedDeployment,
   injectDeployRequest,
   installCompartment,
@@ -84,6 +102,190 @@ interface DnsPromiseMocks {
   resolve6: Mock<ResolveDnsRecord>;
   resolveCname: Mock<ResolveDnsRecord>;
   resolveTxt: Mock<ResolveTxtRecord>;
+}
+
+interface StoredDeploymentRunEventResult {
+  message: string;
+  status: string | null;
+  stepKey: string;
+}
+
+interface PrincipalIdRow {
+  id: string;
+}
+
+interface ProjectDeploymentScopeRows {
+  environment: EnvironmentRow;
+  principalId: string;
+  project: ProjectRow;
+  service: ProjectServiceRow;
+}
+
+async function expectDeploymentCanceledBeforeWorkerClaim(deployment: DeploymentSummary): Promise<void> {
+  const storedDeployment: StoredDeploymentRow | undefined = await db.query.deployments.findFirst({
+    where: eq(deployments.id, deployment.id),
+  });
+  expect(storedDeployment?.status).toBe('failed');
+  expect(storedDeployment?.failureMessage).toBe(
+    'Deployment canceled because the project was archived before the worker claimed it.',
+  );
+  expect(storedDeployment?.completedAt).not.toBeNull();
+
+  const storedOperation: StoredOperationRow | undefined = await db.query.operations.findFirst({
+    where: eq(operations.id, deployment.operation.id),
+  });
+  expect(storedOperation?.status).toBe('failed');
+  expect(storedOperation?.completedAt).not.toBeNull();
+
+  const storedEvents: StoredDeploymentRunEventResult[] = await db
+    .select({
+      message: deploymentRunEvents.message,
+      status: deploymentRunEvents.status,
+      stepKey: deploymentRunEvents.stepKey,
+    })
+    .from(deploymentRunEvents)
+    .where(eq(deploymentRunEvents.deploymentId, deployment.id));
+  expect(storedEvents).toContainEqual({
+    message: 'Deployment canceled because the project was archived before the worker claimed it.',
+    status: 'failed',
+    stepKey: 'completed',
+  });
+}
+
+async function requireProjectDeploymentScope(projectName: string = 'smoke-web'): Promise<ProjectDeploymentScopeRows> {
+  const project: ProjectRow | undefined = await db.query.projects.findFirst({
+    where: eq(projects.name, projectName),
+  });
+  if (project === undefined) {
+    throw new Error(`Expected project ${projectName}.`);
+  }
+  const environment: EnvironmentRow | undefined = await db.query.environments.findFirst({
+    where: eq(environments.projectId, project.id),
+  });
+  if (environment === undefined) {
+    throw new Error(`Expected project ${projectName} environment.`);
+  }
+  const persistedService: PersistedProjectServiceRow | undefined = await db.query.projectServices.findFirst({
+    where: eq(projectServices.projectId, project.id),
+  });
+  if (persistedService === undefined) {
+    throw new Error(`Expected project ${projectName} service.`);
+  }
+  const [principal]: PrincipalIdRow[] = await db.select({ id: principals.id }).from(principals).limit(1);
+  if (principal === undefined) {
+    throw new Error('Expected principal.');
+  }
+
+  return {
+    environment,
+    principalId: principal.id,
+    project,
+    service: toProjectServiceRow(persistedService),
+  };
+}
+
+function buildArchivedProjectQueuedBatchInput(
+  scope: ProjectDeploymentScopeRows,
+  organizationId: string,
+  sourceUploadId: string,
+): ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput {
+  const now: Date = new Date();
+
+  return {
+    actorPrincipalId: scope.principalId,
+    consumedAt: now,
+    environmentId: scope.environment.id,
+    expiresAtCutoff: now,
+    items: [
+      {
+        artifact: {
+          createdByPrincipalId: scope.principalId,
+          id: 'art_stale_archived_project',
+          imageRepository: buildCompartmentArtifactImageRepository(scope.project.id, scope.service.id),
+          projectId: scope.project.id,
+          projectServiceId: scope.service.id,
+          resolvedBuildEnvJson: '{}',
+          resolvedBuildJson: '{}',
+          sourceDigest: 'stale-archived-project-digest',
+          sourceUploadId,
+          updatedAt: now,
+        },
+        deployment: {
+          accessMode: 'public',
+          deploymentRunId: 'drun_stale_archived_project',
+          drainDeadlineAt: null,
+          drainingContainerId: null,
+          environmentId: scope.environment.id,
+          health: 'pending',
+          id: 'dep_stale_archived_project',
+          movementSourceDeploymentId: null,
+          nodeId: scope.environment.nodeId,
+          projectServiceId: scope.service.id,
+          promotionStage: 'building',
+          resolvedReadinessJson: 'null',
+          resolvedReleaseJson: 'null',
+          resolvedRoutesJson: '[]',
+          resolvedRunJson: '{}',
+          status: 'queued',
+          updatedAt: now,
+        },
+        operation: {
+          actorPrincipalId: scope.principalId,
+          status: 'queued',
+          summary: 'Queued deployment for archived project race coverage.',
+          targetId: scope.environment.id,
+          targetType: 'environment',
+          type: 'deployment.run',
+        },
+      },
+    ],
+    organizationId,
+    projectId: scope.project.id,
+    projectServiceIds: [scope.service.id],
+    sourceUploadId,
+  };
+}
+
+function buildArchivedProjectExistingArtifactBatchInput(
+  scope: ProjectDeploymentScopeRows,
+): CreateQueuedExistingArtifactDeploymentBatchInput {
+  const now: Date = new Date();
+
+  return {
+    items: [
+      {
+        deployment: {
+          accessMode: 'public',
+          buildArtifactId: 'art_existing_archived_project',
+          deploymentRunId: 'drun_existing_archived_project',
+          drainDeadlineAt: null,
+          drainingContainerId: null,
+          environmentId: scope.environment.id,
+          health: 'pending',
+          id: 'dep_existing_artifact_archived_project',
+          movementSourceDeploymentId: null,
+          nodeId: scope.environment.nodeId,
+          projectServiceId: scope.service.id,
+          promotionStage: 'building',
+          resolvedReadinessJson: 'null',
+          resolvedReleaseJson: 'null',
+          resolvedRoutesJson: '[]',
+          resolvedRunJson: '{}',
+          status: 'queued',
+          updatedAt: now,
+        },
+        operation: {
+          actorPrincipalId: scope.principalId,
+          status: 'queued',
+          summary: 'Queued existing artifact deployment for archived project race coverage.',
+          targetId: scope.environment.id,
+          targetType: 'environment',
+          type: 'deployment.start',
+        },
+      },
+    ],
+    projectId: scope.project.id,
+  };
 }
 
 const appAccessEdgeServiceMocks: AppAccessEdgeServiceMocks = vi.hoisted(
@@ -448,7 +650,50 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     expect(deleteResponse.statusCode).toBe(409);
     expect(errorResponseSchema.parse(deleteResponse.json()).error.code).toBe('project_delete_blocked');
   });
-  it('blocks deleting archived projects with queued deployments', async (): Promise<void> => {
+  it('cancels queued deployments when archiving projects before worker claim', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await registerLocalNode(app);
+
+    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      {
+        descriptor: createMultiServiceDescriptor(),
+      },
+    );
+    expect(deployResponse.statusCode).toBe(200);
+    const deployPayload: DeployResponse = deployResponseSchema.parse(deployResponse.json());
+    expect(deployPayload.deployments).toHaveLength(2);
+
+    const archiveResponse: LightMyRequestResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/projects/smoke-multi-service/archive',
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
+      },
+    });
+    expect(archiveResponse.statusCode).toBe(200);
+
+    for (const deployment of deployPayload.deployments) {
+      await expectDeploymentCanceledBeforeWorkerClaim(deployment);
+    }
+
+    expect(await db.select().from(sourceUploads)).toEqual([]);
+
+    const deleteResponse: LightMyRequestResponse = await app.inject({
+      method: 'DELETE',
+      url: '/v1/projects/smoke-multi-service',
+      headers: {
+        authorization: `Bearer ${installPayload.sessionToken}`,
+        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
+      },
+    });
+    expect(deleteResponse.statusCode).toBe(200);
+    expect(projectDeleteResponseSchema.parse(deleteResponse.json()).projectName).toBe('smoke-multi-service');
+  });
+  it('rejects stale prepared deployments after the project is archived', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     await registerLocalNode(app);
 
@@ -469,16 +714,73 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     });
     expect(archiveResponse.statusCode).toBe(200);
 
-    const deleteResponse: LightMyRequestResponse = await app.inject({
-      method: 'DELETE',
-      url: '/v1/projects/smoke-web',
+    const scope: ProjectDeploymentScopeRows = await requireProjectDeploymentScope();
+    const sourceUploadId: string = 'sup_stale_archived_project';
+    await db.insert(sourceUploads).values({
+      byteSize: 1,
+      createdByPrincipalId: scope.principalId,
+      expiresAt: new Date(Date.now() + 60_000),
+      id: sourceUploadId,
+      organizationId: installPayload.organization.id,
+      sourceDigest: 'stale-archived-project-digest',
+    });
+
+    const queuedDeployments: QueuedDeploymentBatchResult = await consumeSourceUploadAndCreateQueuedDeploymentBatch(
+      buildArchivedProjectQueuedBatchInput(scope, installPayload.organization.id, sourceUploadId),
+    );
+
+    expect(queuedDeployments).toBe('project_archived');
+    expect(await db.select().from(deployments).where(eq(deployments.id, 'dep_stale_archived_project'))).toEqual([]);
+    expect(
+      (await db.select().from(sourceUploads).where(eq(sourceUploads.id, sourceUploadId)))[0]?.consumedAt,
+    ).toBeNull();
+  });
+  it('rejects existing-artifact deployment queues after the project is archived', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await registerLocalNode(app);
+
+    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    expect(deployResponse.statusCode).toBe(200);
+
+    const archiveResponse: LightMyRequestResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/projects/smoke-web/archive',
       headers: {
         authorization: `Bearer ${installPayload.sessionToken}`,
         [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
       },
     });
-    expect(deleteResponse.statusCode).toBe(409);
-    expect(errorResponseSchema.parse(deleteResponse.json()).error.code).toBe('project_delete_blocked');
+    expect(archiveResponse.statusCode).toBe(200);
+
+    const scope: ProjectDeploymentScopeRows = await requireProjectDeploymentScope();
+    await db.insert(deploymentRuns).values({
+      environmentId: scope.environment.id,
+      id: 'drun_existing_archived_project',
+      triggerType: 'start',
+      updatedAt: new Date(),
+    });
+    await db.insert(buildArtifacts).values({
+      id: 'art_existing_archived_project',
+      imageRepository: buildCompartmentArtifactImageRepository(scope.project.id, scope.service.id),
+      projectId: scope.project.id,
+      projectServiceId: scope.service.id,
+      resolvedBuildEnvJson: '{}',
+      resolvedBuildJson: '{}',
+      sourceDigest: 'existing-artifact-archived-project-digest',
+      updatedAt: new Date(),
+    });
+
+    const queuedDeployments: QueuedExistingArtifactDeploymentBatchResult =
+      await createQueuedExistingArtifactDeploymentBatch(buildArchivedProjectExistingArtifactBatchInput(scope));
+
+    expect(queuedDeployments).toBe('project_archived');
+    expect(
+      await db.select().from(deployments).where(eq(deployments.id, 'dep_existing_artifact_archived_project')),
+    ).toEqual([]);
   });
   it('blocks deleting archived projects with running deployments', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
@@ -639,6 +941,9 @@ describe('Phase 0 API integration project lifecycle', (): void => {
       'acme-dev',
     );
     expect(deployResponse.statusCode).toBe(200);
+    const deployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse(deployResponse.json()),
+    );
 
     const archiveResponse: LightMyRequestResponse = await app.inject({
       method: 'POST',
@@ -650,8 +955,54 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     });
     expect(archiveResponse.statusCode).toBe(200);
 
+    await db
+      .update(deployments)
+      .set({
+        completedAt: null,
+        failureMessage: null,
+        status: 'queued',
+        updatedAt: new Date(),
+      })
+      .where(eq(deployments.id, deployment.id));
+
     const claimedPayload: WorkerClaimDeploymentResponse = await claimNextQueuedDeployment(app);
     expect(claimedPayload.deployment).toBeNull();
+  });
+  it('does not claim queued deployments while project archive holds the mutation lock', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await registerLocalNode(app);
+
+    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    expect(deployResponse.statusCode).toBe(200);
+    const deployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse(deployResponse.json()),
+    );
+    const { project }: ProjectDeploymentScopeRows = await requireProjectDeploymentScope();
+
+    const client: PoolClient = await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query('select id from projects where id = $1 for update', [project.id]);
+      await client.query('update projects set archived_at = $1, updated_at = $1 where id = $2', [
+        new Date(),
+        project.id,
+      ]);
+
+      const claimedPayload: WorkerClaimDeploymentResponse = await claimNextQueuedDeployment(app);
+      expect(claimedPayload.deployment).toBeNull();
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+
+    const storedDeployment: StoredDeploymentRow | undefined = await db.query.deployments.findFirst({
+      where: eq(deployments.id, deployment.id),
+    });
+    expect(storedDeployment?.status).toBe('queued');
   });
   it('rejects completion for deployments whose project was archived after worker claim', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);

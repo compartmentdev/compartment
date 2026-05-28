@@ -1,4 +1,6 @@
+import { createProjectArchivedError, createProjectNotFoundError } from '../errors/api-business-error';
 import { consumeSourceUploadAndCreateQueuedDeploymentBatch } from '../queries/deployment-batch.query';
+import type { QueuedDeploymentBatchResult } from '../queries/deployment-batch.query.types';
 import type {
   ConsumeSourceUploadAndCreateQueuedDeploymentBatchInput,
   CreateQueuedDeploymentBatchItem,
@@ -47,10 +49,20 @@ export async function queuePreparedDeployments(
   label: string | undefined,
 ): Promise<DeploymentRow[]> {
   const consumedAt: Date = new Date();
-  const queuedDeployments: DeploymentRow[] | undefined = await consumeSourceUploadAndCreateQueuedDeploymentBatch(
+  const queuedDeployments: QueuedDeploymentBatchResult = await consumeSourceUploadAndCreateQueuedDeploymentBatch(
     buildQueuedDeploymentBatchInput(preparedStates, sourceUploadScope, label, consumedAt),
   );
-  return queuedDeployments ?? (await throwSourceUploadNoLongerDeployableError(sourceUploadScope));
+  if (queuedDeployments === undefined) {
+    return await throwSourceUploadNoLongerDeployableError(sourceUploadScope);
+  }
+  if (queuedDeployments === 'project_archived') {
+    throw createProjectArchivedError();
+  }
+  if (queuedDeployments === 'project_not_found') {
+    throw createProjectNotFoundError();
+  }
+
+  return queuedDeployments;
 }
 
 async function requireDeployableSubmitSourceUpload(input: DeployInputContext): Promise<SourceUploadRow> {
