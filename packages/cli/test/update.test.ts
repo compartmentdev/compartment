@@ -95,8 +95,16 @@ describe.sequential('update runtime', (): void => {
     const reconcileInput: ReconcileNodeAgentRuntimeNetworksInput | undefined =
       mocks.reconcileNodeAgentRuntimeNetworks.mock.calls[0]?.[0];
     expect(reconcileInput?.environmentText).toContain('COMPARTMENT_NODE_VERSION=1.2.3');
+    expect(reconcileInput?.environmentText).toContain('BUILDKIT_ADDR=unix:///run/buildkit/buildkitd.sock');
+    expect(reconcileInput?.environmentText).not.toContain('BUILDKIT_ADDR=tcp://builder:1234');
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_NODE_VERSION=1.2.3',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'BUILDKIT_ADDR=unix:///run/buildkit/buildkitd.sock',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.not.toContain(
+      'BUILDKIT_ADDR=tcp://builder:1234',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:1.2.3',

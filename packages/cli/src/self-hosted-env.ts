@@ -20,6 +20,7 @@ import type {
 import type { ManagedDomainInstallState } from './managed-domain.types';
 
 const defaultSelfHostedDockerNamespace: string = 'compartment';
+const defaultSelfHostedBuildKitAddress: string = 'unix:///run/buildkit/buildkitd.sock';
 const defaultRuntimeUpstreamHost: string = 'host.docker.internal';
 export const defaultNodeAgentSocketPath: string = '/var/run/compartment/node/agent.sock';
 export const defaultSystemApiSocketPath: string = '/var/run/compartment/api/system-api.sock';
@@ -84,6 +85,7 @@ function buildManagedDomainTlsOverrides(
 
 function buildSelfHostedRuntimeOverrides(input: BuildSelfHostedEnvironmentInput): Record<string, string> {
   return {
+    BUILDKIT_ADDR: defaultSelfHostedBuildKitAddress,
     COMPARTMENT_BASE_DOMAIN: input.baseDomain,
     ...buildArtifactRegistryOverrides(),
     ...buildArtifactRegistryCredentialOverrides(input),
