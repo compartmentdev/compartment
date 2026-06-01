@@ -6,7 +6,7 @@ import type { SystemServiceHealth, SystemServiceStatus } from '@compartment/cont
 import { runCommand } from './command-runner';
 import type { CommandResult } from './command-runner.types';
 import type { SelfHostedRuntimeServiceInspection } from './docker-runtime.types';
-import { ensureSelfHostedRuntimeDirectories } from './self-hosted-runtime-directories';
+import { ensureSelfHostedRuntimeDirectoriesFromEnvFile } from './self-hosted-runtime-directories-env';
 import { readSelfHostedEnvironmentValues } from './self-hosted-env-file';
 import { readCanonicalNodeAgentSocketPath } from './self-hosted-host-socket-paths';
 import { selfHostedRuntimeGroupName } from './self-hosted-runtime-identity';
@@ -43,9 +43,8 @@ interface InspectNodeAgentHostServiceInput {
 }
 
 export async function stageNodeAgentHostService(input: StageNodeAgentHostServiceInput): Promise<void> {
-  const environmentText: string = await readFile(input.envPath, 'utf8');
-  await ensureSelfHostedRuntimeDirectories({
-    environmentValues: readSelfHostedEnvironmentValues(environmentText),
+  await ensureSelfHostedRuntimeDirectoriesFromEnvFile({
+    envPath: input.envPath,
     repairRuntimeWritableDirectoryContents: input.repairRuntimeWritableDirectoryContents,
   });
   await installNodeAgentBinary();
