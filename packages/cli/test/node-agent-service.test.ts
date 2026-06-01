@@ -237,6 +237,9 @@ describe('node agent service staging', (): void => {
   it('repairs root-owned runtime tree contents before handing the root to the runtime user', async (): Promise<void> => {
     mocks.readdir.mockImplementation(async (path: string): Promise<Dirent[]> => {
       await Promise.resolve();
+      if (path === '/var/lib/compartment/self-hosted/docker-work') {
+        return [createDirent('build-cache', 'directory')];
+      }
       if (path === '/var/lib/compartment/source-archives') {
         return [createDirent('archive.tar', 'file'), createDirent('nested', 'directory')];
       }
@@ -260,6 +263,8 @@ describe('node agent service staging', (): void => {
     expect(mocks.chmod).toHaveBeenCalledWith('/var/lib/compartment/source-archives/archive.tar', 0o600);
     expect(mocks.chown).toHaveBeenCalledWith('/var/lib/compartment/source-archives/nested', 10001, 10001);
     expect(mocks.chmod).toHaveBeenCalledWith('/var/lib/compartment/source-archives/nested', 0o700);
+    expect(mocks.chown).toHaveBeenCalledWith('/var/lib/compartment/self-hosted/docker-work/build-cache', 10001, 10001);
+    expect(mocks.chmod).toHaveBeenCalledWith('/var/lib/compartment/self-hosted/docker-work/build-cache', 0o700);
     expect(readCallOrder(mocks.chown, '/var/lib/compartment/source-archives', 10001, 10001)).toBeLessThan(
       readCallOrder(mocks.chown, '/var/lib/compartment/source-archives/archive.tar', 10001, 10001),
     );
@@ -280,6 +285,7 @@ describe('node agent service staging', (): void => {
       repairRuntimeWritableDirectoryContents: false,
     });
     expect(mocks.readdir).not.toHaveBeenCalledWith('/var/lib/compartment/source-archives', expect.anything());
+    expect(mocks.readdir).not.toHaveBeenCalledWith('/var/lib/compartment/self-hosted/docker-work', expect.anything());
   });
 
   it('rejects an existing runtime group with a different GID', async (): Promise<void> => {

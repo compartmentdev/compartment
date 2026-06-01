@@ -139,7 +139,12 @@ function readRuntimeOwnedDirectorySpecs(
   repairRuntimeWritableDirectoryContents: boolean,
 ): RuntimeDirectorySpec[] {
   return [
-    buildRuntimeOwnedDirectorySpec(environmentValues, owner, 'COMPARTMENT_DOCKER_WORK_DIR', false),
+    buildRuntimeOwnedDirectorySpec(
+      environmentValues,
+      owner,
+      'COMPARTMENT_DOCKER_WORK_DIR',
+      repairRuntimeWritableDirectoryContents,
+    ),
     ...runtimeWritableTreeDirectoryVariables.map(
       (variableName: string): RuntimeDirectorySpec =>
         buildRuntimeOwnedDirectorySpec(environmentValues, owner, variableName, repairRuntimeWritableDirectoryContents),
