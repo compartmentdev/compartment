@@ -743,7 +743,7 @@ describe('reconcileRuntimeNetworks', (): void => {
     });
   });
 
-  it('keeps active empty reservations during global reconcile', async (): Promise<void> => {
+  it('keeps active endpoint reservations on existing empty runtime networks without reservation labels', async (): Promise<void> => {
     const dockerNamespace: string = 'compartment-test';
     const staleResourceNetworkName: string = buildRuntimeResourceNetworkName(
       {
@@ -781,8 +781,6 @@ describe('reconcileRuntimeNetworks', (): void => {
       labels: {
         'compartment.namespace': dockerNamespace,
         'compartment.network.ipam': 'managed',
-        'compartment.network.reservationExpiresAt': '2999-01-01T00:00:00.000Z',
-        'compartment.network.reservationId': 'dep_reserved',
       },
       name: staleResourceNetworkName,
     });
