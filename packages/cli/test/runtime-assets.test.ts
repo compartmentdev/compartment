@@ -17,9 +17,14 @@ interface RuntimeComposeNamedNetwork {
 interface RuntimeComposeFile {
   networks?: Record<string, RuntimeComposeNamedNetwork | null>;
   services?: Record<string, RuntimeComposeService>;
+  volumes?: Record<string, null>;
 }
 
 type RuntimeComposeServiceNetworks = readonly string[] | Record<string, null>;
+
+interface RuntimeComposeHealthcheck {
+  test?: readonly string[];
+}
 
 interface RuntimeComposeService {
   cap_add?: readonly string[];
@@ -27,6 +32,7 @@ interface RuntimeComposeService {
   command?: readonly string[];
   environment?: Record<string, string>;
   env_file?: string | readonly string[];
+  healthcheck?: RuntimeComposeHealthcheck;
   image?: string;
   networks?: RuntimeComposeServiceNetworks;
   privileged?: boolean;
@@ -109,7 +115,7 @@ describe.sequential('runtime assets', (): void => {
     await expect(readFile(stagedAssetPaths.localComposePath, 'utf8')).resolves.toBe('pull_policy: never\n');
   });
 
-  it('stages the bundled compose asset with the isolated postgres network topology', async (): Promise<void> => {
+  it('stages the bundled compose asset with isolated database and build network topology', async (): Promise<void> => {
     tempDirectory = await mkdtemp(join(tmpdir(), 'compartment-runtime-assets-'));
     const configDir: string = join(tempDirectory, 'etc');
     const dataDir: string = join(tempDirectory, 'var');
@@ -126,11 +132,13 @@ describe.sequential('runtime assets', (): void => {
     ) as RuntimeComposeFile;
 
     expect(composeFile.networks).toHaveProperty('db_internal');
+    expect(composeFile.networks).toHaveProperty('build_internal');
     expect(readServiceNetworks(composeFile, 'api-migrate')).toEqual(['db_internal', 'system_internal']);
     expect(readServiceNetworks(composeFile, 'api')).toEqual(['db_internal', 'system_internal']);
     expect(readServiceNetworks(composeFile, 'postgres')).toEqual(['db_internal']);
     expect(readServiceNetworks(composeFile, 'registry')).toEqual(['system_internal']);
-    expect(readServiceNetworks(composeFile, 'builder')).toEqual(['system_internal']);
+    expect(readServiceNetworks(composeFile, 'registry-auth')).toEqual(['build_internal', 'system_internal']);
+    expect(readServiceNetworks(composeFile, 'builder')).toEqual(['build_internal']);
     expect(readServiceNetworks(composeFile, 'edge')).toEqual(['system_internal']);
     expect(composeFile.services).not.toHaveProperty('node');
     expect(readServiceNetworks(composeFile, 'worker')).toEqual(['system_internal']);
@@ -153,12 +161,30 @@ describe.sequential('runtime assets', (): void => {
       await readFile(stagedAssetPaths.composePath, 'utf8'),
     ) as RuntimeComposeFile;
     const builderService: RuntimeComposeService = readService(composeFile, 'builder');
+    const composeText: string = await readFile(stagedAssetPaths.composePath, 'utf8');
 
     expect(builderService.image).toBe('moby/buildkit:v0.30.0');
-    expect(builderService.command).toEqual(['--addr', 'tcp://0.0.0.0:1234']);
+    expect(builderService.command).toEqual(['--addr', 'unix:///run/buildkit/buildkitd.sock']);
+    expect(builderService.healthcheck?.test).toEqual([
+      'CMD',
+      'buildctl',
+      '--addr',
+      'unix:///run/buildkit/buildkitd.sock',
+      'debug',
+      'workers',
+    ]);
     expect(builderService.privileged).toBe(true);
     expect(builderService.security_opt).toBeUndefined();
-    expect(builderService.volumes).toEqual(['compartment-buildkit-rootful-state:/var/lib/buildkit']);
+    expect(builderService.volumes).toEqual([
+      'compartment-buildkit-socket:/run/buildkit',
+      'compartment-buildkit-rootful-state:/var/lib/buildkit',
+    ]);
+    expect(readServiceEnvironment(composeFile, 'worker').BUILDKIT_ADDR).toBe('${BUILDKIT_ADDR}');
+    expect(readServiceVolumes(composeFile, 'worker')).toContain('compartment-buildkit-socket:/run/buildkit:ro');
+    expect(composeFile.volumes).toHaveProperty('compartment-buildkit-socket');
+    expect(composeText).not.toContain('tcp://0.0.0.0:1234');
+    expect(composeText).not.toContain('tcp://127.0.0.1:1234');
+    expect(composeText).not.toContain('tcp://builder:1234');
   });
 
   it('stages the bundled compose asset with read-only hardened system services', async (): Promise<void> => {

@@ -63,6 +63,8 @@ compartment install --image-source local --local-runtime
 - The pre-release `onprem` runtime layout, including `/etc/compartment/.env.onprem` and `/var/lib/compartment/onprem/install-state.json`, is not a supported install or update source.
 - The runtime socket root is `/var/run/compartment`: System API uses `/var/run/compartment/api/system-api.sock`, and the host node agent uses `/var/run/compartment/node/agent.sock`.
 - `compartment install` stages `/usr/local/bin/compartment-node-agent` and `compartment-node-agent.service`; API and worker containers talk to that host service over the node-agent Unix socket.
+- Self-hosted source builds use a rootful BuildKit container listening only on `unix:///run/buildkit/buildkitd.sock`; the worker reaches BuildKit through a named Docker volume, not TCP.
+- BuildKit runs on the separate `build_internal` Docker network. The worker stays on `system_internal`, and `registry-auth` bridges `system_internal` and `build_internal` so builds can push images without giving build execution access to API, database, edge, or Caddy service networks.
 - The system install requires root privileges.
 - In the default non-root path, the `sudo` worker only performs system setup and first signup.
 - The user-level parent process writes `~/.config/compartment-cli/config.json`.

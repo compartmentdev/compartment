@@ -33,6 +33,7 @@ interface CreateCurrentEnvironmentTextOptions {
   acmeCaUrl?: string | undefined;
   acmeEmail?: string | undefined;
   baseDomain?: string | undefined;
+  buildKitAddress?: string | undefined;
   caddyTlsMode?: string | undefined;
   includeRuntimeControlToken?: boolean | undefined;
   includeVariablesMasterKey?: boolean | undefined;
@@ -297,6 +298,7 @@ function mockSelfHostedPathSelection(installPaths: TemporaryInstallPaths): void 
 function createCurrentEnvironmentText(options: CreateCurrentEnvironmentTextOptions = {}): string {
   const values: string[] = [
     'COMPARTMENT_ENV=self-hosted',
+    `BUILDKIT_ADDR=${options.buildKitAddress ?? 'tcp://builder:1234'}`,
     'COMPARTMENT_API_BIND_HOST=0.0.0.0',
     'COMPARTMENT_API_IMAGE=ghcr.io/compartmentdev/compartment-api:0.1.0',
     'COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0',

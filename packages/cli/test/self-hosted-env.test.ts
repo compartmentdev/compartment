@@ -20,6 +20,8 @@ type ArtifactRegistryCredentialInput = Pick<
   | 'artifactRegistryWriteUsername'
 >;
 
+const selfHostedBuildKitAddress: string = 'unix:///run/buildkit/buildkitd.sock';
+
 describe('self-hosted environment helpers', (): void => {
   it('renders the self-hosted environment with generated image refs and secrets', (): void => {
     const rendered: RenderedSelfHostedEnvironment = buildSelfHostedEnvironment({
@@ -43,6 +45,7 @@ describe('self-hosted environment helpers', (): void => {
       runtimeControlToken: 'runtime-token',
     });
 
+    expect(rendered.values.BUILDKIT_ADDR).toBe(selfHostedBuildKitAddress);
     expect(rendered.values.COMPARTMENT_BASE_DOMAIN).toBe('example.com');
     expect(rendered.values.COMPARTMENT_API_IMAGE).toBe('ghcr.io/compartmentdev/compartment-api:1.2.3');
     expect(rendered.values.COMPARTMENT_CADDY_IMAGE).toBe('ghcr.io/compartmentdev/compartment-caddy:1.2.3');
@@ -103,6 +106,7 @@ describe('self-hosted environment helpers', (): void => {
     expect(rendered.text).toContain('COMPARTMENT_SYSTEM_TOKEN=system-token');
     expect(rendered.text).toContain('COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME=reader');
     expect(rendered.text).toContain('COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME=writer');
+    expect(rendered.text).toContain(`BUILDKIT_ADDR=${selfHostedBuildKitAddress}`);
   });
 
   it('renders Docker Hub image refs when selected', (): void => {
@@ -242,6 +246,34 @@ describe('self-hosted environment helpers', (): void => {
     });
 
     expect(rendered.values.COMPARTMENT_PUBLIC_PROTOCOL).toBe('http');
+  });
+
+  it('migrates the self-hosted BuildKit address during update', (): void => {
+    const rendered: RenderedSelfHostedEnvironment = buildUpdatedSelfHostedEnvironment({
+      acmeEmail: 'admin@example.com',
+      baseDomain: 'example.com',
+      currentValues: readSelfHostedEnvironmentValues(buildTemplateText()),
+      dockerWorkDirectory: '/var/lib/compartment/self-hosted/docker-work',
+      edgeToken: 'edge-token',
+      ...createArtifactRegistryCredentialInput(),
+      postgresPassword: 'postgres-password',
+      publicHttpPort: 80,
+      publicHttpsPort: 443,
+      publicIngressIpv4: '',
+      publicIngressIpv6: '',
+      runtimeControlToken: 'runtime-token',
+      runtimeSelection: buildPublishedSelfHostedRuntimeSelection('1.2.3'),
+      sessionSecret: 'session-secret',
+      nodeAgentSocketPath: '/var/run/compartment/node/agent.sock',
+      systemApiSocketPath: '/var/run/compartment/api/system-api.sock',
+      systemToken: 'system-token',
+      templateText: buildTemplateText(),
+      variablesMasterKey: 'a'.repeat(64),
+    });
+
+    expect(rendered.values.BUILDKIT_ADDR).toBe(selfHostedBuildKitAddress);
+    expect(rendered.text).toContain(`BUILDKIT_ADDR=${selfHostedBuildKitAddress}`);
+    expect(rendered.text).not.toContain('BUILDKIT_ADDR=tcp://builder:1234');
   });
 
   it('renders custom public ports into the self-hosted environment', (): void => {
@@ -464,7 +496,8 @@ function createArtifactRegistryCredentialInput(): ArtifactRegistryCredentialInpu
 }
 
 function buildTemplateText(): string {
-  return `COMPARTMENT_API_URL=http://127.0.0.1:39444
+  return `BUILDKIT_ADDR=tcp://builder:1234
+COMPARTMENT_API_URL=http://127.0.0.1:39444
 COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:latest
 COMPARTMENT_RUNTIME_PROBE_IMAGE=docker.io/compartmentdev/compartment-runtime-probe:latest
 COMPARTMENT_ACME_CA_URL=
