@@ -23,6 +23,7 @@ import type {
 import { assertRuntimeNetworkSubnetEndpointCapacity } from './runtime-network-endpoint-capacity.service';
 import {
   allocateRuntimeNetworkSubnet,
+  allocateRuntimeNetworkSubnetAvoiding,
   allocateRuntimeNetworkSubnetIgnoring,
 } from './runtime-network-subnet-allocation.service';
 
@@ -96,19 +97,36 @@ export async function createManagedRuntimeNetwork(
   config: RuntimeNetworkCapacityConfig,
   subnet: Ipv4Cidr,
 ): Promise<void> {
+  let candidateSubnet: Ipv4Cidr = subnet;
+  const failedSubnets: Ipv4Cidr[] = [];
   let lastError: DockerEngineError | undefined;
   for (let attempt: number = 1; attempt <= runtimeNetworkCreateMaxAttempts; attempt += 1) {
-    const result: RuntimeNetworkCreateAttemptResult = await tryCreateManagedRuntimeNetwork(input, config, subnet);
+    const result: RuntimeNetworkCreateAttemptResult = await createManagedRuntimeNetworkCandidate(
+      input,
+      config,
+      candidateSubnet,
+    );
     if (result.created) {
       return;
     }
     lastError = result.error;
+    candidateSubnet = await readNextRuntimeNetworkCreateCandidate(config, candidateSubnet, failedSubnets, attempt);
   }
 
-  if (lastError !== undefined && isDockerNetworkIpamCapacityError(lastError)) {
-    throw createRuntimeNetworkCapacityExhaustedError(readDockerErrorMessage(lastError));
-  }
-  throw createRuntimeNetworkCapacityExhaustedError('No managed runtime network subnets are available.');
+  throwRuntimeNetworkCreateFailure(lastError);
+}
+
+async function createManagedRuntimeNetworkCandidate(
+  input: RuntimeNetworkCreateInput,
+  config: RuntimeNetworkCapacityConfig,
+  subnet: Ipv4Cidr,
+): Promise<RuntimeNetworkCreateAttemptResult> {
+  assertNewRuntimeNetworkEndpointCapacity(
+    input.spec,
+    subnet,
+    readDefaultNewRuntimeNetworkRequiredEndpointCount(input.spec),
+  );
+  return await tryCreateManagedRuntimeNetwork(input, config, subnet);
 }
 
 export function assertNewRuntimeNetworkEndpointCapacity(
@@ -143,6 +161,26 @@ async function tryCreateManagedRuntimeNetwork(
     }
     return { created: false, error: dockerError };
   }
+}
+
+async function readNextRuntimeNetworkCreateCandidate(
+  config: RuntimeNetworkCapacityConfig,
+  subnet: Ipv4Cidr,
+  failedSubnets: Ipv4Cidr[],
+  attempt: number,
+): Promise<Ipv4Cidr> {
+  failedSubnets.push(subnet);
+  return attempt >= runtimeNetworkCreateMaxAttempts
+    ? subnet
+    : await allocateRuntimeNetworkSubnetAvoiding(config.runtimeNetworkPool, failedSubnets);
+}
+
+function throwRuntimeNetworkCreateFailure(lastError: DockerEngineError | undefined): never {
+  if (lastError !== undefined && isDockerNetworkIpamCapacityError(lastError)) {
+    throw createRuntimeNetworkCapacityExhaustedError(readDockerErrorMessage(lastError));
+  }
+
+  throw createRuntimeNetworkCapacityExhaustedError('No managed runtime network subnets are available.');
 }
 
 function readDefaultNewRuntimeNetworkRequiredEndpointCount(spec: RuntimeNetworkSpec): number {

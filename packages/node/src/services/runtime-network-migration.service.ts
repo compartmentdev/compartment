@@ -76,9 +76,9 @@ async function replaceSameNameLegacyRuntimeNetwork(
   config: RuntimeNetworkCapacityConfig,
   subnet: Ipv4Cidr,
 ): Promise<void> {
-  await disconnectRuntimeNetworkMigrationParticipants(participants, network.name);
-  await removeDockerNetwork({ networkName: network.name });
   try {
+    await disconnectRuntimeNetworkMigrationParticipants(participants, network.name);
+    await removeDockerNetwork({ networkName: network.name });
     await createManagedReplacementNetwork(input, config, subnet);
     await connectRuntimeNetworkMigrationParticipants(participants, input.spec.networkName);
   } catch (error) {

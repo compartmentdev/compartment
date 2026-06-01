@@ -331,7 +331,7 @@ describe('migrateLegacyRuntimeNetworksOnStartup', (): void => {
     });
   });
 
-  it('removes stale legacy networks that only have non-runtime endpoints', async (): Promise<void> => {
+  it('leaves legacy networks with non-runtime endpoints attached', async (): Promise<void> => {
     const dockerNamespace: string = 'test';
     const legacyNetworkName: string = 'compartment-test-smoke-production-old-service';
     const legacyNetwork: DockerInspectNetworkResult = {
@@ -361,10 +361,33 @@ describe('migrateLegacyRuntimeNetworksOnStartup', (): void => {
 
     await migrateLegacyRuntimeNetworksOnStartup(createConfig(dockerNamespace));
 
-    expect(mocks.disconnectDockerContainerFromNetwork).toHaveBeenCalledWith({
-      containerRef: 'caddy_container_123',
-      networkName: legacyNetworkName,
-    });
+    expect(mocks.disconnectDockerContainerFromNetwork).not.toHaveBeenCalled();
+    expect(mocks.removeDockerNetwork).not.toHaveBeenCalled();
+    expect(mocks.ensureDockerNetwork).not.toHaveBeenCalled();
+  });
+
+  it('removes empty stale legacy networks without a desired runtime spec', async (): Promise<void> => {
+    const dockerNamespace: string = 'test';
+    const legacyNetworkName: string = 'compartment-test-smoke-production-empty-service';
+    const legacyNetwork: DockerInspectNetworkResult = {
+      endpointContainerIds: [],
+      ipamConfigs: [
+        {
+          gateway: null,
+          subnet: buildTestIpv4Cidr(172, 20, 0, 0, 16),
+        },
+      ],
+      labels: {
+        'compartment.namespace': dockerNamespace,
+      },
+      name: legacyNetworkName,
+    };
+    mocks.listDockerNetworks.mockResolvedValue([toListedNetwork(legacyNetwork)]);
+    mocks.inspectDockerNetwork.mockResolvedValue(legacyNetwork);
+
+    await migrateLegacyRuntimeNetworksOnStartup(createConfig(dockerNamespace));
+
+    expect(mocks.disconnectDockerContainerFromNetwork).not.toHaveBeenCalled();
     expect(mocks.removeDockerNetwork).toHaveBeenCalledWith({ networkName: legacyNetworkName });
     expect(mocks.ensureDockerNetwork).not.toHaveBeenCalled();
   });

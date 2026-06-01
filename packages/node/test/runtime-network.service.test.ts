@@ -5,14 +5,16 @@ import type {
   DockerListNetworkResult,
   DockerListVolumeResult,
 } from '@compartment/docker';
+import type { NodeDeployRequest } from '@compartment/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   buildRuntimeResourceNetworkName,
   buildRuntimeServiceNetworkName,
   buildSystemNetworkName,
 } from '../src/services/runtime-names.service';
-import { reconcileRuntimeNetworks } from '../src/services/runtime-network.service';
+import { ensureRuntimeNetworkForDeployment, reconcileRuntimeNetworks } from '../src/services/runtime-network.service';
 import type { RuntimeNetworkPoolConfig } from '../src/services/runtime.types';
+import { createDeployRequest } from './runtime.service.fixtures';
 import { buildTestIpv4Cidr, createRuntimeNetworkPoolConfig } from './runtime-network-pool.fixture';
 
 interface DockerConnectContainerToNetworkInput {
@@ -179,6 +181,47 @@ afterEach((): void => {
   mocks.removeDockerNetwork.mockReset();
   mocks.syncCurrentRuntimeNetworkEgressDenyRules.mockReset();
   mocks.syncDesiredRuntimeNetworkEgressDenyRules.mockReset();
+});
+
+describe('ensureRuntimeNetworkForDeployment', (): void => {
+  it('detaches Caddy when post-attach network capacity validation fails', async (): Promise<void> => {
+    const dockerNamespace: string = 'compartment-test';
+    const request: NodeDeployRequest = createDeployRequest({
+      environmentId: 'env_123',
+      projectId: 'prj_123',
+      serviceId: 'svc_123',
+    });
+    const networkName: string = buildRuntimeServiceNetworkName(request, dockerNamespace);
+    mocks.inspectDockerNetwork.mockResolvedValue(
+      createManagedNetwork(networkName, dockerNamespace, {
+        endpointContainerIds: Array.from(
+          { length: 12 },
+          (_value: undefined, index: number): string => `endpoint_${index}`,
+        ),
+      }),
+    );
+    mocks.listDockerContainers.mockImplementation(
+      async (input: DockerListContainersInput): Promise<DockerListContainerResult[]> => {
+        if (input.labelFilters?.['com.docker.compose.service'] === 'caddy') {
+          return await Promise.resolve([createListedContainer('caddy_container', {})]);
+        }
+        return await Promise.resolve([]);
+      },
+    );
+
+    await expect(
+      ensureRuntimeNetworkForDeployment(createRuntimeNetworkConfig(dockerNamespace), request),
+    ).rejects.toThrow('starting deployment container');
+
+    expect(mocks.connectDockerContainerToNetwork).toHaveBeenCalledWith({
+      containerRef: 'caddy_container',
+      networkName,
+    });
+    expect(mocks.disconnectDockerContainerFromNetwork).toHaveBeenCalledWith({
+      containerRef: 'caddy_container',
+      networkName,
+    });
+  });
 });
 
 describe('reconcileRuntimeNetworks', (): void => {
@@ -861,7 +904,11 @@ function createInspectedContainer(containerId: string, networkNames: readonly st
   };
 }
 
-function createManagedNetwork(networkName: string, dockerNamespace: string): DockerInspectNetworkResult {
+function createManagedNetwork(
+  networkName: string,
+  dockerNamespace: string,
+  overrides: Partial<DockerInspectNetworkResult> = {},
+): DockerInspectNetworkResult {
   return {
     endpointContainerIds: [],
     ipamConfigs: [
@@ -882,6 +929,7 @@ function createManagedNetwork(networkName: string, dockerNamespace: string): Doc
       'compartment.serviceId': 'svc_123',
     },
     name: networkName,
+    ...overrides,
   };
 }
 

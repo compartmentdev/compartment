@@ -126,7 +126,7 @@ async function startResourceReplacement(
     await removeDockerContainer({ containerRef: backupContainerRef });
     return response;
   } catch (error) {
-    await removeDockerContainer({ containerRef });
+    await removeRuntimeResourceContainerBestEffort(containerRef);
     await renameDockerContainer({ containerRef: backupContainerRef, nextContainerName: containerRef });
     await startDockerContainer({ containerRef });
     throw error;
@@ -143,7 +143,7 @@ async function startPreparedRuntimeResource(
   try {
     await waitForResourceStartupReadiness(input, config, container.containerId);
   } catch (error) {
-    await removeRuntimeResourceContainerBestEffort(buildResourceContainerName(input, config.dockerNamespace));
+    await removeRuntimeResourceContainerBestEffort(container.containerId);
     throw error;
   }
 

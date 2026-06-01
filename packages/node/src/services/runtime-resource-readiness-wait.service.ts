@@ -1,7 +1,7 @@
 import { inspectDockerContainer, type DockerInspectContainerResult } from '@compartment/docker';
 import type { NodeResourceReadiness, NodeResourceRequest } from '@compartment/contracts';
 import { createRuntimeResourceReadinessError } from '../errors/node-runtime-error';
-import { buildResourceContainerName, buildRuntimeResourceNetworkName } from './runtime-names.service';
+import { buildRuntimeResourceNetworkName } from './runtime-names.service';
 import { canConnectToRuntimeHost } from './runtime-resource-connectivity.service';
 import { continueResourceReadinessPolling, resolveResourceReadinessHost } from './runtime-resource-readiness.service';
 import { removeRuntimeResourceContainerBestEffort } from './runtime-resource-cleanup.service';
@@ -28,15 +28,15 @@ export async function waitForResourceStartupReadiness(
     }
   }
 
-  await throwResourceStartupReadinessError(input, config, readiness);
+  await throwResourceStartupReadinessError(input, containerId, readiness);
 }
 
 async function throwResourceStartupReadinessError(
   input: NodeResourceRequest,
-  config: RuntimeDeployConfig,
+  containerId: string,
   readiness: NodeResourceReadiness,
 ): Promise<never> {
-  await removeRuntimeResourceContainerBestEffort(buildResourceContainerName(input, config.dockerNamespace));
+  await removeRuntimeResourceContainerBestEffort(containerId);
   throw createRuntimeResourceReadinessError({
     phase: 'startup',
     resourceName: input.resourceName,

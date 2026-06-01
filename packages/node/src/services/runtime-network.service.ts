@@ -50,22 +50,58 @@ export async function ensureRuntimeNetworkForDeployment(
   const networkName: string = await ensureRuntimeServiceNetwork(input, config);
 
   const actors: RuntimeNetworkActors = await resolveRuntimeNetworkActors(config);
-  await connectDockerContainerToNetwork({ containerRef: actors.caddyContainerId, networkName });
+  await attachCaddyToDeploymentRuntimeNetwork(config, input, actors.caddyContainerId, networkName);
+
+  return networkName;
+}
+
+async function attachCaddyToDeploymentRuntimeNetwork(
+  config: RuntimeNetworkConfig,
+  input: NodeDeployRequest,
+  caddyContainerId: string,
+  networkName: string,
+): Promise<void> {
+  let caddyAttached: boolean = false;
+  try {
+    await connectDockerContainerToNetwork({ containerRef: caddyContainerId, networkName });
+    caddyAttached = true;
+    await assertDeploymentRuntimeNetworkFreeEndpoints(input, config);
+    await syncCurrentRuntimeNetworkEgressDenyRules(config, [networkName], {
+      platformSourceContainerRefs: [caddyContainerId],
+    });
+  } catch (error) {
+    if (caddyAttached) {
+      await disconnectDockerContainerFromNetworkBestEffort(caddyContainerId, networkName);
+    }
+    throw error;
+  }
+}
+
+async function assertDeploymentRuntimeNetworkFreeEndpoints(
+  input: NodeDeployRequest,
+  config: RuntimeNetworkConfig,
+): Promise<void> {
   await assertRuntimeServiceNetworkFreeEndpoints(
     input,
     config,
     readDeploymentServiceNetworkRequiredFreeEndpoints(input),
     'starting deployment container',
   );
-  await syncCurrentRuntimeNetworkEgressDenyRules(config, [networkName], {
-    platformSourceContainerRefs: [actors.caddyContainerId],
-  });
-
-  return networkName;
 }
 
 function readDeploymentServiceNetworkRequiredFreeEndpoints(input: NodeDeployRequest): number {
   return input.readiness === null ? 1 : 2;
+}
+
+async function disconnectDockerContainerFromNetworkBestEffort(
+  containerRef: string,
+  networkName: string,
+): Promise<void> {
+  try {
+    await disconnectDockerContainerFromNetwork({ containerRef, networkName });
+  } catch {
+    return;
+  }
 }
 
 export async function reconcileRuntimeNetworks(

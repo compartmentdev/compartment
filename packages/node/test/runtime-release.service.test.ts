@@ -156,6 +156,9 @@ describe('releaseRuntimeContainer', (): void => {
     expect(mocks.ensureRuntimeResourceNetwork.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.runDockerContainerToCompletion.mock.invocationCallOrder[0] ?? 0,
     );
+    expect(mocks.removeDockerContainer.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.ensureRuntimeResourceNetwork.mock.invocationCallOrder[0] ?? 0,
+    );
     expect(mocks.runDockerContainerToCompletion).toHaveBeenCalledWith({
       command: ['pnpm db:migrate'],
       containerName: 'compartment-compartment-e2e-smoke-web-production-web-dep_123456-release',
@@ -274,7 +277,7 @@ describe('releaseRuntimeContainer', (): void => {
     expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
   });
 
-  it('reconciles release networks when pre-run container cleanup fails', async (): Promise<void> => {
+  it('does not reserve release network capacity when pre-run container cleanup fails', async (): Promise<void> => {
     mocks.inspectDockerImage.mockResolvedValueOnce({
       exposedPorts: [3000],
       imageRef: 'sha256:image',
@@ -288,7 +291,7 @@ describe('releaseRuntimeContainer', (): void => {
       'remove failed',
     );
 
-    expect(mocks.ensureRuntimeResourceNetwork).toHaveBeenCalled();
+    expect(mocks.ensureRuntimeResourceNetwork).not.toHaveBeenCalled();
     expect(mocks.removeDockerContainer).toHaveBeenCalledTimes(2);
     expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
   });

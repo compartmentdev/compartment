@@ -54,8 +54,8 @@ export async function releaseRuntimeContainer(
   const containerName: string = buildDeploymentReleaseContainerName(input, config.dockerNamespace);
 
   try {
-    const networkName: string | undefined = await resolveReleaseNetworkName(input, config);
     await removeDockerContainer({ containerRef: containerName });
+    const networkName: string | undefined = await resolveReleaseNetworkName(input, config);
     const result: DockerRunContainerToCompletionResult = await runDockerContainerToCompletion(
       buildReleaseContainerInput(input, config, containerPort, containerName, networkName, image.entrypoint),
     );

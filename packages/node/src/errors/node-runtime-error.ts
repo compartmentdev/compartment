@@ -17,7 +17,10 @@ interface RuntimeResourceReadinessErrorInput {
   timeoutMs: number;
 }
 
-type NodeRuntimeErrorCode = NodeRuntimeNetworkErrorCode | NodeRuntimeResourceErrorCode | NodeRuntimeServiceErrorCode;
+export type NodeRuntimeErrorCode =
+  | NodeRuntimeNetworkErrorCode
+  | NodeRuntimeResourceErrorCode
+  | NodeRuntimeServiceErrorCode;
 
 export interface NodeRuntimeError extends Error {
   readonly code: NodeRuntimeErrorCode;

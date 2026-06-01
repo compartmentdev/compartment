@@ -344,7 +344,14 @@ describe('reconcileRuntimeResource', (): void => {
 
   it('restores the previous resource container when replacement startup fails', async (): Promise<void> => {
     mocks.ensureDockerImageAvailable.mockResolvedValueOnce(undefined);
-    mocks.removeDockerContainer.mockResolvedValue(undefined);
+    mocks.removeDockerContainer.mockImplementation(
+      async ({ containerRef }: { containerRef: string }): Promise<void> => {
+        await Promise.resolve();
+        if (containerRef === 'compartment-compartment-e2e-smoke-production-resource-postgres') {
+          throw new Error('new resource container already removed');
+        }
+      },
+    );
     mocks.renameDockerContainer.mockResolvedValue(undefined);
     mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'resource_container_123' });
     mocks.startDockerContainer.mockResolvedValueOnce(undefined);
@@ -401,9 +408,12 @@ describe('reconcileRuntimeResource', (): void => {
       containerRef: 'compartment-compartment-e2e-smoke-production-resource-postgres-previous',
     });
     expect(mocks.removeDockerContainer).toHaveBeenNthCalledWith(2, {
-      containerRef: 'compartment-compartment-e2e-smoke-production-resource-postgres',
+      containerRef: 'resource_container_123',
     });
     expect(mocks.removeDockerContainer).toHaveBeenNthCalledWith(3, {
+      containerRef: 'resource_container_123',
+    });
+    expect(mocks.removeDockerContainer).toHaveBeenNthCalledWith(4, {
       containerRef: 'compartment-compartment-e2e-smoke-production-resource-postgres',
     });
   });
@@ -572,9 +582,7 @@ describe('startRuntimeResource', (): void => {
     expect(failure.code).toBe(nodeRuntimeResourceReadinessFailedErrorCode);
     expect(failure.message).toContain('did not become ready');
 
-    expect(mocks.removeDockerContainer).toHaveBeenCalledWith({
-      containerRef: 'compartment-compartment-e2e-smoke-production-resource-postgres',
-    });
+    expect(mocks.removeDockerContainer).toHaveBeenCalledWith({ containerRef: 'resource_container_123' });
   });
 
   it('removes a partial resource container when startup exits before readiness checks', async (): Promise<void> => {
@@ -598,9 +606,7 @@ describe('startRuntimeResource', (): void => {
       ),
     ).rejects.toThrow('Expected resource container resource_container_123 to remain running after startup.');
 
-    expect(mocks.removeDockerContainer).toHaveBeenCalledWith({
-      containerRef: 'compartment-compartment-e2e-smoke-production-resource-postgres',
-    });
+    expect(mocks.removeDockerContainer).toHaveBeenCalledWith({ containerRef: 'resource_container_123' });
   });
 });
 

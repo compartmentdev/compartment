@@ -37,31 +37,74 @@ export async function allocateRuntimeNetworkSubnetIgnoring(
   return subnet;
 }
 
+export async function allocateRuntimeNetworkSubnetAvoiding(
+  poolConfig: RuntimeNetworkPoolConfig,
+  avoidedCidrs: readonly Ipv4Cidr[],
+): Promise<Ipv4Cidr> {
+  const [subnet]: Ipv4Cidr[] = await allocateRuntimeNetworkSubnets(poolConfig, 1, [], avoidedCidrs);
+  if (subnet === undefined) {
+    throw createRuntimeNetworkCapacityExhaustedError(
+      `Docker runtime network pool ${poolConfig.cidr} has no available /${poolConfig.subnetPrefixLength.toString()} subnets.`,
+    );
+  }
+
+  return subnet;
+}
+
 export async function allocateRuntimeNetworkSubnets(
   poolConfig: RuntimeNetworkPoolConfig,
   count: number,
   ignoredCidrs: readonly Ipv4Cidr[] = [],
+  avoidedCidrs: readonly Ipv4Cidr[] = [],
 ): Promise<Ipv4Cidr[]> {
+  assertRuntimeNetworkSubnetAllocationCount(count);
   if (count === 0) {
     return [];
   }
 
   const pool: Ipv4Cidr = parseIpv4Cidr(poolConfig.cidr);
   const occupiedCidrs: Ipv4Cidr[] = removeIgnoredCidrs(await readOccupiedIpv4Cidrs(), ignoredCidrs);
-  const selectedCidrs: Ipv4Cidr[] = [];
-
-  for (const candidate of enumerateIpv4Subnets(pool, poolConfig.subnetPrefixLength)) {
-    if (!cidrOverlapsAny(candidate, occupiedCidrs) && !cidrOverlapsAny(candidate, selectedCidrs)) {
-      selectedCidrs.push(candidate);
-      if (selectedCidrs.length === count) {
-        return selectedCidrs;
-      }
-    }
+  const unavailableCidrs: Ipv4Cidr[] = [...occupiedCidrs, ...avoidedCidrs];
+  const selectedCidrs: Ipv4Cidr[] = selectAvailableRuntimeNetworkSubnets(pool, poolConfig, count, unavailableCidrs);
+  if (selectedCidrs.length === count) {
+    return selectedCidrs;
   }
 
   throw createRuntimeNetworkCapacityExhaustedError(
     `Docker runtime network pool ${poolConfig.cidr} has no available /${poolConfig.subnetPrefixLength.toString()} subnets.`,
   );
+}
+
+function assertRuntimeNetworkSubnetAllocationCount(count: number): void {
+  if (!Number.isInteger(count) || count < 0) {
+    throw new RangeError('Runtime network subnet allocation count must be a non-negative integer.');
+  }
+}
+
+function selectAvailableRuntimeNetworkSubnets(
+  pool: Ipv4Cidr,
+  poolConfig: RuntimeNetworkPoolConfig,
+  count: number,
+  unavailableCidrs: readonly Ipv4Cidr[],
+): Ipv4Cidr[] {
+  const selectedCidrs: Ipv4Cidr[] = [];
+  for (const candidate of enumerateIpv4Subnets(pool, poolConfig.subnetPrefixLength)) {
+    addAvailableRuntimeNetworkSubnet(candidate, unavailableCidrs, selectedCidrs);
+    if (selectedCidrs.length === count) {
+      break;
+    }
+  }
+  return selectedCidrs;
+}
+
+function addAvailableRuntimeNetworkSubnet(
+  candidate: Ipv4Cidr,
+  unavailableCidrs: readonly Ipv4Cidr[],
+  selectedCidrs: Ipv4Cidr[],
+): void {
+  if (!cidrOverlapsAny(candidate, unavailableCidrs) && !cidrOverlapsAny(candidate, selectedCidrs)) {
+    selectedCidrs.push(candidate);
+  }
 }
 
 async function readOccupiedIpv4Cidrs(): Promise<Ipv4Cidr[]> {

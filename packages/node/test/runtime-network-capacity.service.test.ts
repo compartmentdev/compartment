@@ -22,6 +22,7 @@ import {
   type Ipv4Cidr,
 } from '../src/services/runtime-network-cidr.service';
 import { assertRuntimeNetworkSubnetEndpointCapacity } from '../src/services/runtime-network-endpoint-capacity.service';
+import { allocateRuntimeNetworkSubnets } from '../src/services/runtime-network-subnet-allocation.service';
 import { buildRuntimeResourceNetworkName, buildRuntimeServiceNetworkName } from '../src/services/runtime-names.service';
 import type { RuntimeConnectivityMode, RuntimeNetworkPoolConfig } from '../src/services/runtime.types';
 import {
@@ -318,6 +319,26 @@ describe('reserveRuntimeNetworksForDeployment', (): void => {
     });
   });
 
+  it('retries Docker IPAM create conflicts with a different managed subnet', async (): Promise<void> => {
+    const request: NodeRuntimeNetworkReservationRequest = createReservationRequest();
+    const ipamConflict: Error = new Error('Pool overlaps with another one on this address space');
+    mocks.isDockerNetworkIpamCapacityError.mockImplementation((error: Error): boolean => error === ipamConflict);
+    mocks.ensureDockerNetwork.mockRejectedValueOnce(ipamConflict).mockResolvedValueOnce(undefined);
+
+    const response: NodeRuntimeNetworkReservationResponse = await reserveRuntimeNetworksForDeployment(
+      request,
+      createConfig({ cidr: buildTestIpv4Cidr(10, 240, 0, 0, 27) }),
+    );
+
+    expect(response.newlyCreatedNetworkNames).toEqual([buildRuntimeServiceNetworkName(request, dockerNamespace)]);
+    expect(mocks.ensureDockerNetwork).toHaveBeenCalledTimes(2);
+    expect(
+      mocks.ensureDockerNetwork.mock.calls.map(
+        (call: [DockerEnsureNetworkInput]): string | undefined => call[0].ipam?.subnet,
+      ),
+    ).toEqual([buildTestIpv4Cidr(10, 240, 0, 0, 28), buildTestIpv4Cidr(10, 240, 0, 16, 28)]);
+  });
+
   it('serializes concurrent reservations so each service gets a distinct subnet', async (): Promise<void> => {
     const firstRequest: NodeRuntimeNetworkReservationRequest = createReservationRequest();
     const secondRequest: NodeRuntimeNetworkReservationRequest = createReservationRequest({
@@ -349,6 +370,15 @@ describe('reserveRuntimeNetworksForDeployment', (): void => {
 
     expect(mocks.ensureDockerNetwork).not.toHaveBeenCalled();
     expect(mocks.removeDockerNetwork).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid subnet allocation counts before reading Docker state', async (): Promise<void> => {
+    await expect(allocateRuntimeNetworkSubnets(createConfig().runtimeNetworkPool, -1)).rejects.toThrow(
+      'non-negative integer',
+    );
+
+    expect(mocks.listDockerNetworks).not.toHaveBeenCalled();
+    expect(mocks.execFile).not.toHaveBeenCalled();
   });
 
   it('fails before Docker create when a new service network subnet cannot fit caddy and the app endpoint', async (): Promise<void> => {
@@ -518,6 +548,45 @@ describe('reserveRuntimeNetworksForDeployment', (): void => {
         networkName: serviceNetworkName,
       }),
     );
+    expect(mocks.connectDockerContainerToNetwork).toHaveBeenCalledWith({
+      aliases: ['upstream-dep-123'],
+      containerRef: 'container_123',
+      networkName: serviceNetworkName,
+    });
+  });
+
+  it('restores same-name legacy participants when legacy network removal fails', async (): Promise<void> => {
+    const request: NodeRuntimeNetworkReservationRequest = createReservationRequest();
+    const serviceNetworkName: string = buildRuntimeServiceNetworkName(request, dockerNamespace);
+    mocks.inspectDockerNetwork.mockResolvedValue({
+      endpointContainerIds: ['container_123'],
+      ipamConfigs: [createIpamConfig(buildTestIpv4Cidr(172, 20, 0, 0, 16))],
+      labels: {
+        'compartment.namespace': dockerNamespace,
+      },
+      name: serviceNetworkName,
+    });
+    mocks.inspectDockerContainer.mockResolvedValueOnce({
+      containerId: 'container_123',
+      imageRef: 'sha256:image',
+      isRunning: true,
+      labels: {
+        'compartment.deploymentId': request.deploymentId,
+        'compartment.upstreamHost': 'upstream-dep-123',
+      },
+      publishedPorts: [],
+    });
+    mocks.removeDockerNetwork.mockRejectedValueOnce(new Error('remove failed'));
+
+    await expect(reserveRuntimeNetworksForDeployment(request, createConfig())).rejects.toThrow('remove failed');
+
+    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith({
+      ipam: { subnet: buildTestIpv4Cidr(172, 20, 0, 0, 16) },
+      labels: {
+        'compartment.namespace': dockerNamespace,
+      },
+      networkName: serviceNetworkName,
+    });
     expect(mocks.connectDockerContainerToNetwork).toHaveBeenCalledWith({
       aliases: ['upstream-dep-123'],
       containerRef: 'container_123',

@@ -1,5 +1,4 @@
 import {
-  disconnectDockerContainerFromNetwork,
   inspectDockerContainer,
   inspectDockerNetwork,
   listDockerNetworks,
@@ -54,7 +53,7 @@ async function migrateLegacyRuntimeNetworkOnStartup(
 
   const desiredSpec: RuntimeNetworkSpec | undefined = await readLegacyRuntimeNetworkDesiredSpec(network, config);
   if (desiredSpec === undefined) {
-    await removeEmptyLegacyRuntimeNetwork(network);
+    await removeLegacyRuntimeNetworkIfEmpty(network);
     return;
   }
 
@@ -63,15 +62,11 @@ async function migrateLegacyRuntimeNetworkOnStartup(
   await migrateLegacyRuntimeNetwork({ spec: desiredSpec }, network, config, subnet);
 }
 
-async function removeEmptyLegacyRuntimeNetwork(network: DockerInspectNetworkResult): Promise<void> {
-  if (network.endpointContainerIds.length === 0) {
-    await removeDockerNetwork({ networkName: network.name });
+async function removeLegacyRuntimeNetworkIfEmpty(network: DockerInspectNetworkResult): Promise<void> {
+  if (network.endpointContainerIds.length > 0) {
     return;
   }
 
-  for (const containerId of network.endpointContainerIds) {
-    await disconnectDockerContainerFromNetwork({ containerRef: containerId, networkName: network.name });
-  }
   await removeDockerNetwork({ networkName: network.name });
 }
 
