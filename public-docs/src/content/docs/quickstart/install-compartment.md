@@ -41,8 +41,8 @@ resource lifecycle operations, and runtime network cleanup. Install and update i
 the runtime version you are running.
 
 Self-hosted installs reserve the host group `compartment-runtime` at GID `10001` and run API and worker containers as
-UID/GID `10001:10001`. Supporting services keep their service-specific runtime users. Resolve any existing host user or
-group conflicts before install; Compartment stops instead of reusing a different identity.
+UID/GID `10001:10001`. Supporting services keep their service-specific runtime users. Resolve any existing host group
+name or GID conflicts before install; Compartment stops instead of reusing a different group identity.
 
 ## 3. Complete the install prompts
 

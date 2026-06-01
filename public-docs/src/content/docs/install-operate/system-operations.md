@@ -24,8 +24,9 @@ Existing installs created before this version may not have an `imageRegistry` va
 For registry image sources, `system update` verifies Compartment runtime image signatures with the bundled CLI verifier before pulling images and before replacing active runtime files. `system restart` verifies signatures before starting containers. A missing or invalid signature stops the affected registry runtime image from running.
 
 `system update` and `system restart` also repair self-hosted runtime permissions for the reserved `compartment-runtime`
-identity (`10001:10001`). If the host already assigns that group name or GID to something else, resolve the conflict
-before retrying.
+identity (`10001:10001`). Existing installs from before this identity was introduced must run `sudo compartment system
+update` once before relying on `system restart` for permission repair. If the host already assigns that group name or GID
+to something else, resolve the conflict before retrying.
 
 If `system status` shows `node` as failed or missing, deployments, runtime logs, resource operations, and runtime
 reconciliation will not run until the host node agent is healthy again. Use `sudo compartment system restart` after
@@ -41,7 +42,7 @@ Audit retention cleanup runs automatically from the API job scheduler. New insta
 
 Set `COMPARTMENT_AUDIT_FILE_SINK_ENABLED=true` when you want the install to mirror sanitized audit events to local NDJSON files. New installs keep it disabled. Use `COMPARTMENT_AUDIT_FILE_SINK_DIR`, `COMPARTMENT_AUDIT_FILE_SINK_ROTATE_INTERVAL`, `COMPARTMENT_AUDIT_FILE_SINK_ROTATE_SIZE`, and `COMPARTMENT_AUDIT_FILE_SINK_RETENTION_FILES` to choose the directory, rotation, and retained file count.
 
-Packaged Docker installs bind-mount the configured file sink directory into the API container, so Docker can create the host directory before the sink is enabled. The directory stays empty while disabled, and Compartment locks it down to owner-only permissions when the sink starts.
+Packaged Docker installs bind-mount the configured file sink directory into the API container. The CLI creates and repairs that host directory during install, update, and restart. The directory stays empty while disabled, and Compartment locks audit files down to owner-only permissions when the sink starts.
 
 Set `COMPARTMENT_TRUSTED_OUTBOUND_HOSTS` when an external service used by the install has a public HTTPS host that is not trusted by default. OIDC SSO browser authorization endpoints use this allowlist when the provider is not a built-in Google or Microsoft host.
 

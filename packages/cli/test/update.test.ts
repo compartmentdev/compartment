@@ -87,6 +87,22 @@ describe.sequential('update runtime', (): void => {
     expect(result.imageRegistry).toBe('github');
     expect(result.imageSource).toBe('registry');
     expect(result.skipReason).toBeNull();
+    expect(mocks.stopSelfHostedRuntime.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.stopNodeAgentHostService.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.stopNodeAgentHostService.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.stageNodeAgentHostService.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.stageNodeAgentHostService).toHaveBeenCalledWith({
+      envPath: join(installPaths.configDir, '.env.self-hosted'),
+      repairRuntimeWritableDirectoryContents: true,
+    });
+    expect(mocks.stageNodeAgentHostService.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.restartNodeAgentHostService.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.restartNodeAgentHostService.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.restartSelfHostedRuntime.mock.invocationCallOrder[0]!,
+    );
     expect(mocks.restartSelfHostedRuntime.mock.invocationCallOrder[0]!).toBeLessThan(
       mocks.waitForNodeAgentHostServiceHealth.mock.invocationCallOrder[0]!,
     );

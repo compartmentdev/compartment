@@ -347,6 +347,17 @@ describe.sequential('system maintenance runtime', (): void => {
         installDirectory: installPaths.configDir,
       }),
     );
+    expect(mocks.stopSelfHostedRuntime.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.stopNodeAgentHostService.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.stopNodeAgentHostService.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.ensureSelfHostedRuntimeDirectories.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.ensureSelfHostedRuntimeDirectories).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repairRuntimeWritableDirectoryContents: true,
+      }),
+    );
     expect(mocks.ensureSelfHostedRuntimeDirectories.mock.invocationCallOrder[0]!).toBeLessThan(
       mocks.restartNodeAgentHostService.mock.invocationCallOrder[0]!,
     );
