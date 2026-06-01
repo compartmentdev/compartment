@@ -103,6 +103,12 @@ describe.sequential('update runtime', (): void => {
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'BUILDKIT_ADDR=unix:///run/buildkit/buildkitd.sock',
     );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_UID=10001',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_GID=10001',
+    );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.not.toContain(
       'BUILDKIT_ADDR=tcp://builder:1234',
     );

@@ -1,7 +1,7 @@
 import type { Stats } from 'node:fs';
 import { lstat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { isMissingFileSystemEntryError } from '@compartment/utils';
+import { readOptionalSelfHostedPathStats } from './self-hosted-path-stats';
 
 interface AssertNoExistingSelfHostedDirectorySymlinksInput {
   directoryPath: string;
@@ -15,7 +15,7 @@ export async function assertNoExistingSelfHostedDirectorySymlinks({
   managedRoots,
 }: AssertNoExistingSelfHostedDirectorySymlinksInput): Promise<void> {
   for (const checkedPath of readSelfHostedDirectoryCheckPaths(directoryPath, managedRoots)) {
-    const stats: Stats | null = await readOptionalPathStats(checkedPath);
+    const stats: Stats | null = await readOptionalSelfHostedPathStats(checkedPath);
     if (stats === null) {
       continue;
     }
@@ -29,17 +29,6 @@ export async function assertRealSelfHostedDirectory(directoryPath: string, label
   const stats: Stats = await lstat(directoryPath);
   if (stats.isSymbolicLink() || !stats.isDirectory()) {
     throw new Error(`${label} ${directoryPath} must be a real directory.`);
-  }
-}
-
-async function readOptionalPathStats(path: string): Promise<Stats | null> {
-  try {
-    return await lstat(path);
-  } catch (error) {
-    if (error instanceof Error && isMissingFileSystemEntryError(error)) {
-      return null;
-    }
-    throw error;
   }
 }
 

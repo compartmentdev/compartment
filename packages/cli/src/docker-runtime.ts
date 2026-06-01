@@ -42,6 +42,7 @@ const buildServiceComposeStartRecoveryMessage: string =
   'Docker Compose reported a transient build-service start error after services became available.';
 
 export { ensureDockerExecutionContext, inspectSelfHostedRuntimeServices, readSelfHostedSystemServiceNames };
+export { stopSelfHostedRuntime } from './docker-runtime-stop';
 
 export async function prepareSelfHostedRuntimeImages(
   context: DockerExecutionContext,

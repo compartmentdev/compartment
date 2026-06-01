@@ -9,6 +9,7 @@ import {
 } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
 import { readRequiredSelfHostedEnvironmentValue } from './self-hosted-env-file';
+import { readSelfHostedRuntimeIdentity, type SelfHostedRuntimeIdentity } from './self-hosted-runtime-identity';
 import {
   createSystemCommandContext,
   readSystemClientConfig,
@@ -22,6 +23,7 @@ export type SystemDomainCommandContext = SystemCommandContext;
 
 export interface SystemDomainAttachCommandContext extends SystemDomainCommandContext {
   customTlsDirectory: string;
+  runtimeIdentity: SelfHostedRuntimeIdentity;
 }
 
 export async function createSystemDomainCommandContext(): Promise<SystemDomainCommandContext> {
@@ -34,6 +36,7 @@ export async function createSystemDomainAttachCommandContext(): Promise<SystemDo
   return {
     client: readSystemClientConfig(environmentValues),
     customTlsDirectory: readRequiredSelfHostedEnvironmentValue(environmentValues, 'COMPARTMENT_CUSTOM_TLS_DIR'),
+    runtimeIdentity: readSelfHostedRuntimeIdentity(environmentValues),
   };
 }
 

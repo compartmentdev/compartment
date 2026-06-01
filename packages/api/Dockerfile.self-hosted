@@ -18,6 +18,9 @@ RUN HUSKY=0 NODE_ENV=production pnpm --filter=@compartment/api deploy --legacy -
 
 FROM ${COMPARTMENT_NODE_RUNTIME_IMAGE} AS runtime
 
+ARG COMPARTMENT_RUNTIME_UID=10001
+ARG COMPARTMENT_RUNTIME_GID=10001
+
 ENV NODE_ENV=production
 
 LABEL org.opencontainers.image.source="https://github.com/compartmentdev/compartment"
@@ -28,11 +31,14 @@ RUN apt-get update \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
   && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd --gid "${COMPARTMENT_RUNTIME_GID}" compartment-runtime \
+  && useradd --uid "${COMPARTMENT_RUNTIME_UID}" --gid "${COMPARTMENT_RUNTIME_GID}" --home-dir /app --no-create-home --shell /usr/sbin/nologin compartment-runtime
+
 WORKDIR /app
 
-COPY --from=build /runtime /app
+COPY --chown=compartment-runtime:compartment-runtime --from=build /runtime /app
 
-USER node
+USER compartment-runtime
 
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/server.js"]

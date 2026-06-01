@@ -2,18 +2,19 @@ import { ensureSelfHostedDockerExecutionContext } from './self-hosted-docker-con
 import { writeSelfHostedPrivateFile } from './self-hosted-file-permissions';
 import { backupSelfHostedInstallFiles } from './self-hosted-install-backup';
 import { writeSelfHostedInstallState } from './self-hosted-install-state';
-import { prepareSelfHostedRuntimeImages, restartSelfHostedRuntime } from './docker-runtime';
+import { prepareSelfHostedRuntimeImages, restartSelfHostedRuntime, stopSelfHostedRuntime } from './docker-runtime';
 import { readInheritedDockerProgressReportOptions } from './docker-progress';
 import {
   restartNodeAgentHostService,
   stageNodeAgentHostService,
+  stopNodeAgentHostService,
   waitForNodeAgentHostServiceHealth,
 } from './node-agent-service';
 import {
   assertNodeAgentRuntimeNetworkReconcileEnvironment,
   reconcileNodeAgentRuntimeNetworks,
 } from './node-agent-runtime-network';
-import type { DockerExecutionContext } from './docker-runtime.types';
+import type { DockerExecutionContext, RestartSelfHostedRuntimeInput } from './docker-runtime.types';
 import type { InstallContext, InstallProgressReporter, InstallProgressReportOptions } from './install.types';
 import type { PreparedSelfHostedUpdate, SelfHostedUpdateInput, SelfHostedUpdateResult } from './update.types';
 import { createAppliedSelfHostedUpdateResult, createUpdatedSelfHostedInstallState } from './update-result';
@@ -71,8 +72,12 @@ async function restartUpdatedSelfHostedRuntime(
   context: InstallContext | undefined,
   preparedUpdate: PreparedSelfHostedUpdate,
 ): Promise<void> {
+  await stopUpdatedRuntimeForPermissionRepair(dockerContext, context, preparedUpdate);
   reportUpdateProgress(context, 'Staging node agent service...');
-  await stageNodeAgentHostService({ envPath: preparedUpdate.stagedAssetPaths.envPath });
+  await stageNodeAgentHostService({
+    envPath: preparedUpdate.stagedAssetPaths.envPath,
+    repairRuntimeWritableDirectoryContents: true,
+  });
   // systemd recreates RuntimeDirectory on agent restart; do it before Docker binds the socket directory.
   reportUpdateProgress(context, 'Restarting node agent service...');
   await restartNodeAgentHostService({ envPath: preparedUpdate.stagedAssetPaths.envPath, waitForHealth: false });
@@ -92,6 +97,27 @@ async function restartUpdatedComposeRuntime(
   preparedUpdate: PreparedSelfHostedUpdate,
 ): Promise<void> {
   await restartSelfHostedRuntime(dockerContext, {
+    ...buildUpdatedRuntimeInput(preparedUpdate, context),
+    skipRequiredImageVerificationBeforeStart: true,
+  });
+}
+
+async function stopUpdatedRuntimeForPermissionRepair(
+  dockerContext: DockerExecutionContext,
+  context: InstallContext | undefined,
+  preparedUpdate: PreparedSelfHostedUpdate,
+): Promise<void> {
+  reportUpdateProgress(context, 'Stopping self-hosted runtime for permission repair...');
+  await stopSelfHostedRuntime(dockerContext, buildUpdatedRuntimeInput(preparedUpdate, context));
+  reportUpdateProgress(context, 'Stopping node agent service for permission repair...');
+  await stopNodeAgentHostService();
+}
+
+function buildUpdatedRuntimeInput(
+  preparedUpdate: PreparedSelfHostedUpdate,
+  context: InstallContext | undefined,
+): RestartSelfHostedRuntimeInput {
+  return {
     composePath: preparedUpdate.stagedAssetPaths.composePath,
     envPath: preparedUpdate.stagedAssetPaths.envPath,
     imageRefs: preparedUpdate.runtimeSelection.imageRefs,
@@ -99,8 +125,7 @@ async function restartUpdatedComposeRuntime(
     installDirectory: preparedUpdate.configDir,
     localComposePath: preparedUpdate.stagedAssetPaths.localComposePath,
     reportProgress: context?.reportProgress,
-    skipRequiredImageVerificationBeforeStart: true,
-  });
+  };
 }
 
 async function reconcileUpdatedRuntimeNetworks(

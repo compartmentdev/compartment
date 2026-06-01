@@ -1,11 +1,11 @@
 import type { Stats } from 'node:fs';
 import { chmod, chown, copyFile, lstat, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { isMissingFileSystemEntryError } from '@compartment/utils';
 import {
   assertNoExistingSelfHostedDirectorySymlinks,
   assertRealSelfHostedDirectory,
 } from './self-hosted-host-directories';
+import { readOptionalSelfHostedPathStats } from './self-hosted-path-stats';
 
 const selfHostedPrivateDirectoryMode: number = 0o700;
 const selfHostedPrivateFileMode: number = 0o600;
@@ -16,41 +16,63 @@ const rootOwnedSelfHostedPathPrefixes: readonly string[] = [
   '/var/run/compartment',
 ].map((path: string): string => resolve(path));
 
-export async function writeSelfHostedPrivateFile(filePath: string, contents: string): Promise<void> {
-  await ensureSelfHostedPrivateDirectory(dirname(filePath));
+interface SelfHostedPrivateFileOwner {
+  readonly gid: number;
+  readonly uid: number;
+}
+
+interface SelfHostedPrivateFileOptions {
+  readonly directoryMode?: number | undefined;
+  readonly fileMode?: number | undefined;
+  readonly owner?: SelfHostedPrivateFileOwner;
+}
+
+export async function writeSelfHostedPrivateFile(
+  filePath: string,
+  contents: string,
+  options: SelfHostedPrivateFileOptions = {},
+): Promise<void> {
+  await ensureSelfHostedPrivateDirectory(dirname(filePath), options);
   await assertWritableSelfHostedPrivateFileTarget(filePath);
   await writeFile(filePath, contents, {
     encoding: 'utf8',
-    mode: selfHostedPrivateFileMode,
+    mode: readPrivateFileMode(options),
   });
   await assertRealSelfHostedPrivateFile(filePath);
-  await applyRootOwnershipIfRoot(filePath);
-  await chmod(filePath, selfHostedPrivateFileMode);
+  await applyOwnershipIfRoot(filePath, options.owner);
+  await chmod(filePath, readPrivateFileMode(options));
 }
 
-export async function copySelfHostedPrivateFile(sourcePath: string, destinationPath: string): Promise<void> {
-  await ensureSelfHostedPrivateDirectory(dirname(destinationPath));
+export async function copySelfHostedPrivateFile(
+  sourcePath: string,
+  destinationPath: string,
+  options: SelfHostedPrivateFileOptions = {},
+): Promise<void> {
+  await ensureSelfHostedPrivateDirectory(dirname(destinationPath), options);
   await assertWritableSelfHostedPrivateFileTarget(destinationPath);
   await copyFile(sourcePath, destinationPath);
   await assertRealSelfHostedPrivateFile(destinationPath);
-  await applyRootOwnershipIfRoot(destinationPath);
-  await chmod(destinationPath, selfHostedPrivateFileMode);
+  await applyOwnershipIfRoot(destinationPath, options.owner);
+  await chmod(destinationPath, readPrivateFileMode(options));
 }
 
-export async function ensureSelfHostedPrivateDirectory(directoryPath: string): Promise<void> {
+export async function ensureSelfHostedPrivateDirectory(
+  directoryPath: string,
+  options: SelfHostedPrivateFileOptions = {},
+): Promise<void> {
   await assertNoExistingSelfHostedDirectorySymlinks({
     directoryPath,
     label: 'Compartment private directory',
     managedRoots: rootOwnedSelfHostedPathPrefixes,
   });
-  await mkdir(directoryPath, { mode: selfHostedPrivateDirectoryMode, recursive: true });
+  await mkdir(directoryPath, { mode: readPrivateDirectoryMode(options), recursive: true });
   await assertRealSelfHostedDirectory(directoryPath, 'Compartment private directory');
-  await applyRootOwnershipIfRoot(directoryPath);
-  await chmod(directoryPath, selfHostedPrivateDirectoryMode);
+  await applyOwnershipIfRoot(directoryPath, options.owner);
+  await chmod(directoryPath, readPrivateDirectoryMode(options));
 }
 
 async function assertWritableSelfHostedPrivateFileTarget(filePath: string): Promise<void> {
-  const stats: Stats | null = await readOptionalPathStats(filePath);
+  const stats: Stats | null = await readOptionalSelfHostedPathStats(filePath);
   if (stats === null) {
     return;
   }
@@ -66,23 +88,15 @@ async function assertRealSelfHostedPrivateFile(filePath: string): Promise<void> 
   }
 }
 
-async function readOptionalPathStats(path: string): Promise<Stats | null> {
-  try {
-    return await lstat(path);
-  } catch (error) {
-    if (error instanceof Error && isMissingFileSystemEntryError(error)) {
-      return null;
-    }
-    throw error;
+async function applyOwnershipIfRoot(path: string, owner: SelfHostedPrivateFileOwner | undefined): Promise<void> {
+  if (process.getuid?.() !== 0) {
+    return;
   }
-}
-
-async function applyRootOwnershipIfRoot(path: string): Promise<void> {
-  if (process.getuid?.() !== 0 || !isRootOwnedSelfHostedPath(path)) {
+  if (owner === undefined && !isRootOwnedSelfHostedPath(path)) {
     return;
   }
 
-  await chown(path, 0, 0);
+  await chown(path, owner?.uid ?? 0, owner?.gid ?? 0);
 }
 
 function isRootOwnedSelfHostedPath(path: string): boolean {
@@ -90,4 +104,12 @@ function isRootOwnedSelfHostedPath(path: string): boolean {
   return rootOwnedSelfHostedPathPrefixes.some((prefix: string): boolean => {
     return resolvedPath === prefix || resolvedPath.startsWith(`${prefix}/`);
   });
+}
+
+function readPrivateDirectoryMode(options: SelfHostedPrivateFileOptions): number {
+  return options.directoryMode ?? selfHostedPrivateDirectoryMode;
+}
+
+function readPrivateFileMode(options: SelfHostedPrivateFileOptions): number {
+  return options.fileMode ?? selfHostedPrivateFileMode;
 }

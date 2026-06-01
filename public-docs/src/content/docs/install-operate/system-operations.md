@@ -23,6 +23,10 @@ Existing installs created before this version may not have an `imageRegistry` va
 
 For registry image sources, `system update` verifies Compartment runtime image signatures with the bundled CLI verifier before pulling images and before replacing active runtime files. `system restart` verifies signatures before starting containers. A missing or invalid signature stops the affected registry runtime image from running.
 
+`system update` and `system restart` also repair self-hosted runtime permissions for the reserved `compartment-runtime`
+identity (`10001:10001`). If the host already assigns that group name or GID to something else, resolve the conflict
+before retrying.
+
 If `system status` shows `node` as failed or missing, deployments, runtime logs, resource operations, and runtime
 reconciliation will not run until the host node agent is healthy again. Use `sudo compartment system restart` after
 fixing host runtime or Docker access issues.

@@ -3,12 +3,14 @@ import { isSea } from 'node:sea';
 import { copyFile, chmod, chown, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { SystemServiceHealth, SystemServiceStatus } from '@compartment/contracts';
-import { readCommandOutput, runCommand } from './command-runner';
+import { runCommand } from './command-runner';
 import type { CommandResult } from './command-runner.types';
 import type { SelfHostedRuntimeServiceInspection } from './docker-runtime.types';
 import { ensureSelfHostedRuntimeDirectories } from './self-hosted-runtime-directories';
 import { readSelfHostedEnvironmentValues } from './self-hosted-env-file';
 import { readCanonicalNodeAgentSocketPath } from './self-hosted-host-socket-paths';
+import { selfHostedRuntimeGroupName } from './self-hosted-runtime-identity';
+import { runRequiredSelfHostedSystemCommand } from './self-hosted-system-command';
 
 const nodeAgentBinaryPath: string = '/usr/local/bin/compartment-node-agent';
 const nodeAgentServiceName: string = 'compartment-node-agent.service';
@@ -24,6 +26,7 @@ const resourceBackupsStateDirectory: string = 'compartment/resource-backups';
 
 interface StageNodeAgentHostServiceInput {
   envPath: string;
+  repairRuntimeWritableDirectoryContents: boolean;
 }
 
 interface RestartNodeAgentHostServiceInput {
@@ -40,11 +43,18 @@ interface InspectNodeAgentHostServiceInput {
 }
 
 export async function stageNodeAgentHostService(input: StageNodeAgentHostServiceInput): Promise<void> {
-  await ensureSelfHostedRuntimeDirectories();
+  const environmentText: string = await readFile(input.envPath, 'utf8');
+  await ensureSelfHostedRuntimeDirectories({
+    environmentValues: readSelfHostedEnvironmentValues(environmentText),
+    repairRuntimeWritableDirectoryContents: input.repairRuntimeWritableDirectoryContents,
+  });
   await installNodeAgentBinary();
   await writeNodeAgentSystemdUnit(input.envPath);
-  await runRequiredSystemCommand(['systemctl', 'daemon-reload'], 'Failed to reload systemd after node agent install.');
-  await runRequiredSystemCommand(
+  await runRequiredSelfHostedSystemCommand(
+    ['systemctl', 'daemon-reload'],
+    'Failed to reload systemd after node agent install.',
+  );
+  await runRequiredSelfHostedSystemCommand(
     ['systemctl', 'enable', nodeAgentServiceName],
     'Failed to enable compartment-node-agent service.',
   );
@@ -55,7 +65,7 @@ export function assertNodeAgentHostServiceInstallable(): void {
 }
 
 export async function restartNodeAgentHostService(input: RestartNodeAgentHostServiceInput): Promise<void> {
-  await runRequiredSystemCommand(
+  await runRequiredSelfHostedSystemCommand(
     ['systemctl', 'restart', nodeAgentServiceName],
     'Failed to restart compartment-node-agent service.',
   );
@@ -63,6 +73,13 @@ export async function restartNodeAgentHostService(input: RestartNodeAgentHostSer
     return;
   }
   await waitForNodeAgentHostServiceHealth(input);
+}
+
+export async function stopNodeAgentHostService(): Promise<void> {
+  await runRequiredSelfHostedSystemCommand(
+    ['systemctl', 'stop', nodeAgentServiceName],
+    'Failed to stop compartment-node-agent service.',
+  );
 }
 
 export async function waitForNodeAgentHostServiceHealth(input: WaitForNodeAgentHostServiceHealthInput): Promise<void> {
@@ -142,7 +159,7 @@ WantedBy=multi-user.target
 function renderNodeAgentSystemdService(envPath: string): string {
   return `Type=simple
 User=root
-Group=root
+Group=${selfHostedRuntimeGroupName}
 EnvironmentFile=${envPath}
 ExecStart=${nodeAgentBinaryPath}
 Restart=always
@@ -152,22 +169,12 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 RuntimeDirectory=compartment/node
-RuntimeDirectoryMode=0700
+RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=yes
-StateDirectory=${selfHostedStateDirectory} ${resourceBackupsStateDirectory}
+StateDirectory=${selfHostedStateDirectory}
 StateDirectoryMode=0700
 ReadWritePaths=/var/run/${nodeRuntimeDirectory} /var/lib/${selfHostedStateDirectory} /var/lib/${resourceBackupsStateDirectory} /var/run/docker.sock
-UMask=0077`;
-}
-
-async function runRequiredSystemCommand(command: readonly string[], failureMessage: string): Promise<void> {
-  const result: CommandResult = await runCommand(command);
-  if (result.exitCode === 0) {
-    return;
-  }
-
-  const output: string = readCommandOutput(result);
-  throw new Error(output === '' ? failureMessage : `${failureMessage}\n${output}`);
+UMask=0007`;
 }
 
 function readNodeAgentServiceStatus(result: CommandResult): SystemServiceStatus {

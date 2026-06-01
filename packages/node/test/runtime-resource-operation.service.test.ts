@@ -282,6 +282,10 @@ describe('runRuntimeResourceBackupOperation', (): void => {
 
     const operationContainerInput: DockerRunContainerInput | undefined =
       mocks.runDockerContainerToCompletion.mock.calls[0]?.[0];
+    expect(operationContainerInput?.securityProfile).toMatchObject({
+      name: 'restricted-writable',
+      user: '10001:10001',
+    });
     expect(operationContainerInput?.mounts).toEqual([
       {
         containerPath: '/backup',
@@ -463,6 +467,8 @@ function createRuntimeConfig(overrides: Partial<RuntimeResourceOperationConfig> 
     resourceBackupDirectory: '/var/lib/compartment/resource-backups',
     runtimeConnectivityMode: 'network',
     runtimeDefaultUpstreamHost: 'host.docker.internal',
+    runtimeGid: 10001,
+    runtimeUid: 10001,
     runtimeRegistryCredentials: {
       password: 'registry-read-password',
       serverAddress: '127.0.0.1:39461',

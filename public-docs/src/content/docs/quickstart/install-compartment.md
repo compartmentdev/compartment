@@ -40,6 +40,10 @@ The install creates a host service named `compartment-node-agent.service`. This 
 resource lifecycle operations, and runtime network cleanup. Install and update it with the packaged Compartment CLI for
 the runtime version you are running.
 
+Self-hosted installs reserve the host group `compartment-runtime` at GID `10001` and run runtime containers as UID/GID
+`10001:10001`. Resolve any existing host user or group conflicts before install; Compartment stops instead of reusing a
+different identity.
+
 ## 3. Complete the install prompts
 
 The install flow asks for:

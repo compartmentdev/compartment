@@ -485,15 +485,36 @@ is_agent_running() {
   [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
 }
 
-stop_agent() {
-	  if is_agent_running; then
-	    pid="$(cat "$pid_file")"
-	    kill -TERM "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
-	    sleep 1
-	    if kill -0 "$pid" 2>/dev/null; then
-	      kill -KILL "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
-	    fi
+stop_pid() {
+  pid="$1"
+  [ -n "$pid" ] || return 0
+  kill "$pid" 2>/dev/null || true
+}
+
+force_stop_pid() {
+  pid="$1"
+  [ -n "$pid" ] || return 0
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -KILL "$pid" 2>/dev/null || true
   fi
+}
+
+stop_agent() {
+  if is_agent_running; then
+    pid="$(cat "$pid_file")"
+    stop_pid "$pid"
+  else
+    pid=""
+  fi
+  if [ -s "$child_pid_file" ]; then
+    child_pid="$(cat "$child_pid_file")"
+    stop_pid "$child_pid"
+  else
+    child_pid=""
+  fi
+  sleep 1
+  force_stop_pid "$child_pid"
+  force_stop_pid "$pid"
   rm -f "$pid_file" "$child_pid_file"
   if [ -s "$proxy_pid_file" ]; then
     proxy_pid="$(cat "$proxy_pid_file")"
@@ -566,13 +587,14 @@ PROXY
   docker rm -f "$proxy_container_name" >/dev/null 2>&1 || true
   docker run --detach \\
     --name "$proxy_container_name" \\
-    --network host \\
-    --env "NODE_AGENT_SOCKET=$COMPARTMENT_NODE_AGENT_SOCKET" \\
-    --env "NODE_AGENT_PROXY_PORT=$proxy_port" \\
-    --user 0:0 \\
-    --volume /var/run/compartment/node:/var/run/compartment/node \\
-    "$COMPARTMENT_RUNTIME_PROBE_IMAGE" \\
-    node -e 'const fs = require("node:fs"); const net = require("node:net"); const path = require("node:path"); const socketPath = process.env.NODE_AGENT_SOCKET; const port = Number(process.env.NODE_AGENT_PROXY_PORT); if (!socketPath || !Number.isInteger(port) || port <= 0) throw new Error("Invalid node-agent dind proxy configuration."); fs.mkdirSync(path.dirname(socketPath), { recursive: true, mode: 0o700 }); try { const stats = fs.lstatSync(socketPath); if (!stats.isSocket()) throw new Error("Refusing to replace non-socket path at " + socketPath + "."); fs.unlinkSync(socketPath); } catch (error) { if (error?.code !== "ENOENT") throw error; } const server = net.createServer((client) => { const upstream = net.createConnection({ host: "127.0.0.1", port }); const destroyBoth = () => { client.destroy(); upstream.destroy(); }; client.on("error", destroyBoth); upstream.on("error", destroyBoth); client.pipe(upstream); upstream.pipe(client); }); server.listen(socketPath, () => { fs.chmodSync(socketPath, 0o600); console.log("node-agent dind socket proxy listening on " + socketPath); });' \\
+	    --network host \\
+	    --env "NODE_AGENT_SOCKET=$COMPARTMENT_NODE_AGENT_SOCKET" \\
+	    --env "NODE_AGENT_PROXY_PORT=$proxy_port" \\
+	    --env "COMPARTMENT_RUNTIME_GID=$COMPARTMENT_RUNTIME_GID" \\
+	    --user 0:0 \\
+	    --volume /var/run/compartment/node:/var/run/compartment/node \\
+	    "$COMPARTMENT_RUNTIME_PROBE_IMAGE" \\
+	    node -e 'const fs = require("node:fs"); const net = require("node:net"); const path = require("node:path"); const socketPath = process.env.NODE_AGENT_SOCKET; const port = Number(process.env.NODE_AGENT_PROXY_PORT); const runtimeGid = Number(process.env.COMPARTMENT_RUNTIME_GID); if (!socketPath || !Number.isInteger(port) || port <= 0 || !Number.isInteger(runtimeGid) || runtimeGid <= 0) throw new Error("Invalid node-agent dind proxy configuration."); const socketDir = path.dirname(socketPath); fs.mkdirSync(socketDir, { recursive: true, mode: 0o750 }); fs.chownSync(socketDir, 0, runtimeGid); fs.chmodSync(socketDir, 0o750); try { const stats = fs.lstatSync(socketPath); if (!stats.isSocket()) throw new Error("Refusing to replace non-socket path at " + socketPath + "."); fs.unlinkSync(socketPath); } catch (error) { if (error?.code !== "ENOENT") throw error; } const server = net.createServer((client) => { const upstream = net.createConnection({ host: "127.0.0.1", port }); const destroyBoth = () => { client.destroy(); upstream.destroy(); }; client.on("error", destroyBoth); upstream.on("error", destroyBoth); client.pipe(upstream); upstream.pipe(client); }); server.listen(socketPath, () => { fs.chownSync(socketPath, 0, runtimeGid); fs.chmodSync(socketPath, 0o660); console.log("node-agent dind socket proxy listening on " + socketPath); });' \\
     >> "$log_file" 2>&1
 }
 
@@ -770,14 +792,23 @@ set -eu
 if [ -f "${selfHostedUserSetupNodeAgentPidPath}" ]; then
   node_agent_pid="$(cat "${selfHostedUserSetupNodeAgentPidPath}")"
   if [ -n "$node_agent_pid" ]; then
-    kill -TERM "-$node_agent_pid" 2>/dev/null || kill "$node_agent_pid" 2>/dev/null || true
-    sleep 1
-    if kill -0 "$node_agent_pid" 2>/dev/null; then
-      kill -KILL "-$node_agent_pid" 2>/dev/null || kill -KILL "$node_agent_pid" 2>/dev/null || true
-    fi
+    kill "$node_agent_pid" 2>/dev/null || true
   fi
-  rm -f "${selfHostedUserSetupNodeAgentPidPath}"
 fi
+if [ -f "${join(selfHostedUserSetupSystemdStateDirectory, 'compartment-node-agent.child.pid')}" ]; then
+  node_agent_child_pid="$(cat "${join(selfHostedUserSetupSystemdStateDirectory, 'compartment-node-agent.child.pid')}")"
+  if [ -n "$node_agent_child_pid" ]; then
+    kill "$node_agent_child_pid" 2>/dev/null || true
+  fi
+fi
+sleep 1
+if [ -n "\${node_agent_child_pid:-}" ] && kill -0 "$node_agent_child_pid" 2>/dev/null; then
+  kill -KILL "$node_agent_child_pid" 2>/dev/null || true
+fi
+if [ -n "\${node_agent_pid:-}" ] && kill -0 "$node_agent_pid" 2>/dev/null; then
+  kill -KILL "$node_agent_pid" 2>/dev/null || true
+fi
+rm -f "${selfHostedUserSetupNodeAgentPidPath}" "${join(selfHostedUserSetupSystemdStateDirectory, 'compartment-node-agent.child.pid')}"
 if [ -f "${selfHostedUserSetupNodeAgentProxyPidPath}" ]; then
   node_agent_proxy_pid="$(cat "${selfHostedUserSetupNodeAgentProxyPidPath}")"
   if [ -n "$node_agent_proxy_pid" ]; then

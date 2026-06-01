@@ -4,6 +4,7 @@ import { readNodeConfig, type NodeConfig } from '../src/config';
 describe('readNodeConfig', (): void => {
   it('reads the required node runtime config from env', (): void => {
     const config: NodeConfig = readNodeConfig({
+      COMPARTMENT_ENV: 'dev',
       COMPARTMENT_API_URL: 'http://127.0.0.1:9443',
       COMPARTMENT_ARTIFACT_REGISTRY_HOST: '127.0.0.1',
       COMPARTMENT_ARTIFACT_REGISTRY_PORT: '5000',
@@ -34,6 +35,9 @@ describe('readNodeConfig', (): void => {
     });
     expect(config.runtimeConnectivityMode).toBe('loopback');
     expect(config.runtimeDefaultUpstreamHost).toBe('127.0.0.1');
+    expect(config.runtimeUid).toBeNull();
+    expect(config.runtimeGid).toBeNull();
+    expect(config.runtimeSocketGid).toBeNull();
   });
 
   it('does not read the API image as node runtime config', (): void => {
@@ -56,6 +60,7 @@ describe('readNodeConfig', (): void => {
     expect((): NodeConfig => {
       return readNodeConfig({
         COMPARTMENT_DOCKER_NAMESPACE: 'compartment-local',
+        COMPARTMENT_ENV: 'dev',
         COMPARTMENT_LOG_LEVEL: 'info',
         COMPARTMENT_NODE_APP_PORT_END: '31999',
         COMPARTMENT_NODE_APP_PORT_START: '31000',
@@ -68,6 +73,15 @@ describe('readNodeConfig', (): void => {
         COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
       });
     }).toThrow();
+  });
+
+  it('rejects non-default self-hosted runtime UIDs', (): void => {
+    expect((): NodeConfig => {
+      return readNodeConfig({
+        ...createNodeConfigEnv(),
+        COMPARTMENT_RUNTIME_UID: '12345',
+      });
+    }).toThrow('COMPARTMENT_RUNTIME_UID must be 10001 for self-hosted runtime ownership.');
   });
 
   it('rejects relative node agent socket paths', (): void => {
@@ -87,10 +101,20 @@ describe('readNodeConfig', (): void => {
       });
     }).toThrow('COMPARTMENT_RESOURCE_BACKUP_DIR must be an absolute path.');
   });
+
+  it('rejects non-default self-hosted runtime socket GIDs', (): void => {
+    expect((): NodeConfig => {
+      return readNodeConfig({
+        ...createNodeConfigEnv(),
+        COMPARTMENT_RUNTIME_GID: '12345',
+      });
+    }).toThrow('COMPARTMENT_RUNTIME_GID must be 10001 for self-hosted node-agent sockets.');
+  });
 });
 
 function createNodeConfigEnv(): NodeJS.ProcessEnv {
   return {
+    COMPARTMENT_ENV: 'self-hosted',
     COMPARTMENT_API_URL: 'http://127.0.0.1:9443',
     COMPARTMENT_ARTIFACT_REGISTRY_HOST: '127.0.0.1',
     COMPARTMENT_ARTIFACT_REGISTRY_PORT: '5000',
@@ -106,6 +130,8 @@ function createNodeConfigEnv(): NodeJS.ProcessEnv {
     COMPARTMENT_RESOURCE_BACKUP_DIR: '/var/lib/compartment/resource-backups',
     COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: 'loopback',
     COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: '127.0.0.1',
+    COMPARTMENT_RUNTIME_UID: '10001',
+    COMPARTMENT_RUNTIME_GID: '10001',
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
     COMPARTMENT_RUNTIME_PROBE_IMAGE: 'ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0',
   };

@@ -11,6 +11,7 @@ import {
   selfHostedManagedCaddyTlsMode,
 } from './self-hosted-domain-constants';
 import { readUpdatedCanonicalOverrides } from './self-hosted-env-update-overrides';
+import { defaultSelfHostedRuntimeGid, defaultSelfHostedRuntimeUid } from './self-hosted-runtime-identity';
 import type {
   BuildSelfHostedEnvironmentInput,
   BuildUpdatedSelfHostedEnvironmentInput,
@@ -182,6 +183,8 @@ function buildRuntimeConnectivityOverrides(): Record<string, string> {
   return {
     COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: 'network',
     COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: defaultRuntimeUpstreamHost,
+    COMPARTMENT_RUNTIME_GID: String(defaultSelfHostedRuntimeGid),
+    COMPARTMENT_RUNTIME_UID: String(defaultSelfHostedRuntimeUid),
   };
 }
 

@@ -22,7 +22,7 @@ services:
 
   api:
     image: ${COMPARTMENT_API_IMAGE}
-    user: '0:0'
+    user: '${COMPARTMENT_RUNTIME_UID}:${COMPARTMENT_RUNTIME_GID}'
     restart: unless-stopped
     environment:
       COMPARTMENT_API_BIND_HOST: ${COMPARTMENT_API_BIND_HOST}
@@ -101,8 +101,9 @@ services:
       - '127.0.0.1:${COMPARTMENT_API_PORT}:${COMPARTMENT_API_PORT}'
     volumes:
       - ${COMPARTMENT_AUDIT_FILE_SINK_DIR}:${COMPARTMENT_AUDIT_FILE_SINK_DIR}
+      - ${COMPARTMENT_CUSTOM_TLS_DIR}:${COMPARTMENT_CUSTOM_TLS_DIR}:ro
       - ${COMPARTMENT_RESOURCE_BACKUP_DIR}:${COMPARTMENT_RESOURCE_BACKUP_DIR}
-      - compartment-source-archives:/var/lib/compartment/source-archives
+      - ${COMPARTMENT_SOURCE_ARCHIVE_DIR}:${COMPARTMENT_SOURCE_ARCHIVE_DIR}
       - /var/run/compartment/api:/var/run/compartment/api
       - /var/run/compartment/node:/var/run/compartment/node
     depends_on:
@@ -223,7 +224,7 @@ services:
   builder:
     image: moby/buildkit:v0.30.0
     restart: unless-stopped
-    command: ['--addr', 'unix:///run/buildkit/buildkitd.sock']
+    command: ['--addr', 'unix:///run/buildkit/buildkitd.sock', '--group', '${COMPARTMENT_RUNTIME_GID}']
     privileged: true
     volumes:
       - compartment-buildkit-socket:/run/buildkit
@@ -239,7 +240,7 @@ services:
 
   worker:
     image: ${COMPARTMENT_WORKER_IMAGE}
-    user: '0:0'
+    user: '${COMPARTMENT_RUNTIME_UID}:${COMPARTMENT_RUNTIME_GID}'
     restart: unless-stopped
     environment:
       BUILDKIT_ADDR: ${BUILDKIT_ADDR}
@@ -259,6 +260,7 @@ services:
       COMPARTMENT_RUNTIME_CONTROL_TOKEN: ${COMPARTMENT_RUNTIME_CONTROL_TOKEN}
       COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: ${COMPARTMENT_TRUSTED_OUTBOUND_HOSTS}
       COMPARTMENT_WORKER_POLL_INTERVAL_MS: ${COMPARTMENT_WORKER_POLL_INTERVAL_MS}
+      DOCKER_CONFIG: /tmp/.docker
       TMPDIR: /compartment/docker-work
     volumes:
       - ${COMPARTMENT_DOCKER_WORK_DIR}:/compartment/docker-work
@@ -285,7 +287,7 @@ services:
 
   caddy:
     image: ${COMPARTMENT_CADDY_IMAGE}
-    user: '0:0'
+    user: '0:${COMPARTMENT_RUNTIME_GID}'
     restart: unless-stopped
     environment:
       COMPARTMENT_ACME_CA_URL: ${COMPARTMENT_ACME_CA_URL}
@@ -366,7 +368,6 @@ volumes:
   compartment-buildkit-rootful-state:
   compartment-caddy-data:
   compartment-postgres-data:
-  compartment-source-archives:
 
 networks:
   build_internal:

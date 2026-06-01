@@ -39,6 +39,7 @@ interface RuntimeComposeService {
   read_only?: boolean;
   security_opt?: readonly string[];
   tmpfs?: readonly string[];
+  user?: string;
   volumes?: readonly string[];
 }
 
@@ -164,7 +165,12 @@ describe.sequential('runtime assets', (): void => {
     const composeText: string = await readFile(stagedAssetPaths.composePath, 'utf8');
 
     expect(builderService.image).toBe('moby/buildkit:v0.30.0');
-    expect(builderService.command).toEqual(['--addr', 'unix:///run/buildkit/buildkitd.sock']);
+    expect(builderService.command).toEqual([
+      '--addr',
+      'unix:///run/buildkit/buildkitd.sock',
+      '--group',
+      '${COMPARTMENT_RUNTIME_GID}',
+    ]);
     expect(builderService.healthcheck?.test).toEqual([
       'CMD',
       'buildctl',
@@ -180,6 +186,7 @@ describe.sequential('runtime assets', (): void => {
       'compartment-buildkit-rootful-state:/var/lib/buildkit',
     ]);
     expect(readServiceEnvironment(composeFile, 'worker').BUILDKIT_ADDR).toBe('${BUILDKIT_ADDR}');
+    expect(readServiceEnvironment(composeFile, 'worker').DOCKER_CONFIG).toBe('/tmp/.docker');
     expect(readServiceVolumes(composeFile, 'worker')).toContain('compartment-buildkit-socket:/run/buildkit:ro');
     expect(composeFile.volumes).toHaveProperty('compartment-buildkit-socket');
     expect(composeText).not.toContain('tcp://0.0.0.0:1234');
@@ -203,6 +210,9 @@ describe.sequential('runtime assets', (): void => {
       await readFile(stagedAssetPaths.composePath, 'utf8'),
     ) as RuntimeComposeFile;
 
+    expect(readService(composeFile, 'api').user).toBe('${COMPARTMENT_RUNTIME_UID}:${COMPARTMENT_RUNTIME_GID}');
+    expect(readService(composeFile, 'worker').user).toBe('${COMPARTMENT_RUNTIME_UID}:${COMPARTMENT_RUNTIME_GID}');
+    expect(readService(composeFile, 'caddy').user).toBe('0:${COMPARTMENT_RUNTIME_GID}');
     for (const serviceName of ['api-migrate', 'api', 'edge']) {
       expect(readService(composeFile, serviceName)).toMatchObject({
         cap_drop: ['ALL'],
@@ -287,9 +297,13 @@ describe.sequential('runtime assets', (): void => {
 
     expect(readServiceVolumes(composeFile, 'api')).toEqual(
       expect.arrayContaining([
+        '${COMPARTMENT_SOURCE_ARCHIVE_DIR}:${COMPARTMENT_SOURCE_ARCHIVE_DIR}',
         '/var/run/compartment/api:/var/run/compartment/api',
         '/var/run/compartment/node:/var/run/compartment/node',
       ]),
+    );
+    expect(readServiceVolumes(composeFile, 'api')).not.toContain(
+      'compartment-source-archives:/var/lib/compartment/source-archives',
     );
     expect(readServiceVolumes(composeFile, 'worker')).toEqual(
       expect.arrayContaining(['/var/run/compartment/node:/var/run/compartment/node']),
@@ -300,6 +314,7 @@ describe.sequential('runtime assets', (): void => {
     for (const serviceName of Object.keys(composeFile.services ?? {})) {
       expect(readServiceVolumes(composeFile, serviceName)).not.toContain('/var/run/docker.sock:/var/run/docker.sock');
     }
+    expect(composeFile.volumes).not.toHaveProperty('compartment-source-archives');
   });
 
   it('stages the self-hosted Docker work directory with private permissions', async (): Promise<void> => {
@@ -336,6 +351,12 @@ describe.sequential('runtime assets', (): void => {
     ) as RuntimeComposeFile;
 
     expect(readServiceEnvironment(composeFile, 'api').COMPARTMENT_CUSTOM_TLS_DIR).toBe('${COMPARTMENT_CUSTOM_TLS_DIR}');
+    expect(readServiceVolumes(composeFile, 'api')).toContain(
+      '${COMPARTMENT_CUSTOM_TLS_DIR}:${COMPARTMENT_CUSTOM_TLS_DIR}:ro',
+    );
+    expect(readServiceVolumes(composeFile, 'caddy')).toContain(
+      '${COMPARTMENT_CUSTOM_TLS_DIR}:${COMPARTMENT_CUSTOM_TLS_DIR}:ro',
+    );
   });
 
   it('passes reset-password throttle settings to the API service', async (): Promise<void> => {

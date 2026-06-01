@@ -1,4 +1,5 @@
 import type { ClientRequest, IncomingMessage } from 'node:http';
+import type { Dirent } from 'node:fs';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { CommandResult } from '../src/command-runner.types';
 import type { SelfHostedRuntimeServiceInspection } from '../src/docker-runtime.types';
@@ -8,6 +9,7 @@ type Chown = (path: string, uid: number, gid: number) => Promise<void>;
 type CopyFile = (sourcePath: string, destinationPath: string) => Promise<void>;
 type Mkdir = (path: string, options: { mode?: number; recursive?: boolean }) => Promise<void>;
 type ReadFile = (path: string, encoding: BufferEncoding) => Promise<string>;
+type Readdir = (path: string, options: { withFileTypes: true }) => Promise<Dirent[]>;
 type Rename = (oldPath: string, newPath: string) => Promise<void>;
 type Rm = (path: string, options: { force: boolean }) => Promise<void>;
 type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
@@ -15,6 +17,8 @@ type WriteFile = (path: string, contents: string, options: { encoding: BufferEnc
 type WriteFileCall = [path: string, contents: string, options: { encoding: BufferEncoding; mode: number }];
 type IsSea = () => boolean;
 type Lstat = (path: string) => Promise<MockStats>;
+type MockCallValue = boolean | null | number | object | string | undefined;
+
 interface HttpRequestOptions {
   method?: string | undefined;
   path?: string | undefined;
@@ -37,6 +41,15 @@ interface MockIncomingMessageShape {
   statusCode: number;
 }
 
+interface MockStatsInput {
+  readonly directory?: boolean | undefined;
+  readonly file?: boolean | undefined;
+  readonly gid?: number | undefined;
+  readonly mode?: number | undefined;
+  readonly symlink?: boolean | undefined;
+  readonly uid?: number | undefined;
+}
+
 interface NodeAgentServiceTestMocks {
   chmod: Mock<Chmod>;
   chown: Mock<Chown>;
@@ -46,10 +59,15 @@ interface NodeAgentServiceTestMocks {
   lstat: Mock<Lstat>;
   mkdir: Mock<Mkdir>;
   readFile: Mock<ReadFile>;
+  readdir: Mock<Readdir>;
   rename: Mock<Rename>;
   rm: Mock<Rm>;
   runCommand: Mock<RunCommand>;
   writeFile: Mock<WriteFile>;
+}
+
+interface ProcessWithGetuid extends NodeJS.Process {
+  getuid: () => number;
 }
 
 const mocks: NodeAgentServiceTestMocks = vi.hoisted(
@@ -62,6 +80,7 @@ const mocks: NodeAgentServiceTestMocks = vi.hoisted(
     lstat: vi.fn<Lstat>(),
     mkdir: vi.fn<Mkdir>(),
     readFile: vi.fn<ReadFile>(),
+    readdir: vi.fn<Readdir>(),
     rename: vi.fn<Rename>(),
     rm: vi.fn<Rm>(),
     runCommand: vi.fn<RunCommand>(),
@@ -86,6 +105,7 @@ vi.mock(
     lstat: Mock<Lstat>;
     mkdir: Mock<Mkdir>;
     readFile: Mock<ReadFile>;
+    readdir: Mock<Readdir>;
     rename: Mock<Rename>;
     rm: Mock<Rm>;
     writeFile: Mock<WriteFile>;
@@ -96,6 +116,7 @@ vi.mock(
     lstat: mocks.lstat,
     mkdir: mocks.mkdir,
     readFile: mocks.readFile,
+    readdir: mocks.readdir,
     rename: mocks.rename,
     rm: mocks.rm,
     writeFile: mocks.writeFile,
@@ -114,6 +135,7 @@ vi.mock(
 );
 
 beforeEach((): void => {
+  vi.restoreAllMocks();
   mocks.chmod.mockReset();
   mocks.chown.mockReset();
   mocks.copyFile.mockReset();
@@ -124,10 +146,15 @@ beforeEach((): void => {
   mocks.lstat.mockResolvedValue(createStats({ directory: true }));
   mocks.mkdir.mockReset();
   mocks.readFile.mockReset();
+  mocks.readFile.mockResolvedValue(defaultSelfHostedEnvironmentText());
+  mocks.readdir.mockReset();
+  mocks.readdir.mockResolvedValue([]);
   mocks.rename.mockReset();
   mocks.rm.mockReset();
   mocks.runCommand.mockReset();
+  mocks.runCommand.mockResolvedValue({ exitCode: 0, stderr: '', stdout: '' });
   mocks.writeFile.mockReset();
+  mockRootPrivileges();
 });
 
 describe('node agent service staging', (): void => {
@@ -143,22 +170,41 @@ describe('node agent service staging', (): void => {
 
     const { stageNodeAgentHostService } = await import('../src/node-agent-service');
 
-    await stageNodeAgentHostService({ envPath: '/etc/compartment/.env.self-hosted' });
+    await stageNodeAgentHostService({
+      envPath: '/etc/compartment/.env.self-hosted',
+      repairRuntimeWritableDirectoryContents: true,
+    });
 
     const unitContents: string = readWrittenSystemdUnit();
     expect(unitContents).toContain('EnvironmentFile=/etc/compartment/.env.self-hosted');
     expect(unitContents).toContain('NoNewPrivileges=true');
     expect(unitContents).toContain('ProtectSystem=strict');
+    expect(unitContents).toContain('Group=compartment-runtime');
     expect(unitContents).toContain('RuntimeDirectory=compartment/node');
     expect(unitContents).not.toContain('compartment/api');
-    expect(unitContents).toContain('RuntimeDirectoryMode=0700');
+    expect(unitContents).toContain('RuntimeDirectoryMode=0750');
     expect(unitContents).toContain('RuntimeDirectoryPreserve=yes');
-    expect(unitContents).toContain('StateDirectory=compartment/self-hosted compartment/resource-backups');
+    expect(unitContents).toContain('StateDirectory=compartment/self-hosted');
+    expect(unitContents).not.toContain('StateDirectory=compartment/self-hosted compartment/resource-backups');
     expect(unitContents).toContain('StateDirectoryMode=0700');
     expect(unitContents).toContain(
       'ReadWritePaths=/var/run/compartment/node /var/lib/compartment/self-hosted /var/lib/compartment/resource-backups /var/run/docker.sock',
     );
+    expect(unitContents).toContain('UMask=0007');
     expect(unitContents).not.toContain('ExecStartPre=');
+    expect(mocks.runCommand).toHaveBeenCalledWith(['getent', 'group', 'compartment-runtime']);
+    expect(mocks.runCommand).toHaveBeenCalledWith(['getent', 'group', '10001']);
+    expect(mocks.runCommand).toHaveBeenCalledWith(['groupadd', '--system', '--gid', '10001', 'compartment-runtime']);
+    expect(mocks.chown).toHaveBeenCalledWith('/var/run/compartment/api', 10001, 10001);
+    expect(mocks.chmod).toHaveBeenCalledWith('/var/run/compartment/api', 0o700);
+    expect(mocks.chown).toHaveBeenCalledWith('/var/run/compartment/node', 0, 10001);
+    expect(mocks.chmod).toHaveBeenCalledWith('/var/run/compartment/node', 0o750);
+    expect(mocks.chown).toHaveBeenCalledWith('/var/lib/compartment/self-hosted/docker-work', 10001, 10001);
+    expect(mocks.chown).toHaveBeenCalledWith('/var/lib/compartment/source-archives', 10001, 10001);
+    expect(mocks.chown).toHaveBeenCalledWith('/var/lib/compartment/resource-backups', 10001, 10001);
+    expect(mocks.chown).toHaveBeenCalledWith('/var/lib/compartment/audit-logs', 10001, 10001);
+    expect(mocks.chown).toHaveBeenCalledWith('/etc/compartment/tls', 0, 10001);
+    expect(mocks.chmod).toHaveBeenCalledWith('/etc/compartment/tls', 0o750);
     const temporaryBinaryPath: string = readTemporaryBinaryPath();
     expect(mocks.copyFile).toHaveBeenCalledWith(process.execPath, temporaryBinaryPath);
     expect(mocks.chmod).toHaveBeenCalledWith(temporaryBinaryPath, 0o755);
@@ -177,12 +223,137 @@ describe('node agent service staging', (): void => {
     });
     const { stageNodeAgentHostService } = await import('../src/node-agent-service');
 
-    await expect(stageNodeAgentHostService({ envPath: '/etc/compartment/.env.self-hosted' })).rejects.toThrow(
-      'Compartment runtime directory /var/run/compartment must be a real directory.',
-    );
+    await expect(
+      stageNodeAgentHostService({
+        envPath: '/etc/compartment/.env.self-hosted',
+        repairRuntimeWritableDirectoryContents: true,
+      }),
+    ).rejects.toThrow('Compartment runtime directory /var/run/compartment must be a real directory.');
     expect(mocks.mkdir).not.toHaveBeenCalled();
     expect(mocks.chown).not.toHaveBeenCalled();
     expect(mocks.chmod).not.toHaveBeenCalled();
+  });
+
+  it('repairs root-owned runtime tree contents before handing the root to the runtime user', async (): Promise<void> => {
+    mocks.readdir.mockImplementation(async (path: string): Promise<Dirent[]> => {
+      await Promise.resolve();
+      if (path === '/var/lib/compartment/source-archives') {
+        return [createDirent('archive.tar', 'file'), createDirent('nested', 'directory')];
+      }
+      return [];
+    });
+    mocks.lstat.mockImplementation(async (path: string): Promise<MockStats> => {
+      await Promise.resolve();
+      if (path === '/var/lib/compartment/source-archives/archive.tar') {
+        return createStats({ file: true });
+      }
+      return createStats({ directory: true });
+    });
+    const { stageNodeAgentHostService } = await import('../src/node-agent-service');
+
+    await stageNodeAgentHostService({
+      envPath: '/etc/compartment/.env.self-hosted',
+      repairRuntimeWritableDirectoryContents: true,
+    });
+
+    expect(mocks.chown).toHaveBeenCalledWith('/var/lib/compartment/source-archives/archive.tar', 10001, 10001);
+    expect(mocks.chmod).toHaveBeenCalledWith('/var/lib/compartment/source-archives/archive.tar', 0o600);
+    expect(mocks.chown).toHaveBeenCalledWith('/var/lib/compartment/source-archives/nested', 10001, 10001);
+    expect(mocks.chmod).toHaveBeenCalledWith('/var/lib/compartment/source-archives/nested', 0o700);
+    expect(readCallOrder(mocks.chown, '/var/lib/compartment/source-archives', 10001, 10001)).toBeLessThan(
+      readCallOrder(mocks.chown, '/var/lib/compartment/source-archives/archive.tar', 10001, 10001),
+    );
+  });
+
+  it('skips runtime-owned tree content repair unless the caller declares the runtime stopped', async (): Promise<void> => {
+    mocks.lstat.mockImplementation(async (path: string): Promise<MockStats> => {
+      await Promise.resolve();
+      if (path === '/var/lib/compartment/source-archives') {
+        return createStats({ directory: true, gid: 10001, mode: 0o770, uid: 0 });
+      }
+      return createStats({ directory: true });
+    });
+    const { stageNodeAgentHostService } = await import('../src/node-agent-service');
+
+    await stageNodeAgentHostService({
+      envPath: '/etc/compartment/.env.self-hosted',
+      repairRuntimeWritableDirectoryContents: false,
+    });
+    expect(mocks.readdir).not.toHaveBeenCalledWith('/var/lib/compartment/source-archives', expect.anything());
+  });
+
+  it('rejects an existing runtime group with a different GID', async (): Promise<void> => {
+    mocks.runCommand.mockImplementation(async (command: readonly string[]): Promise<CommandResult> => {
+      await Promise.resolve();
+      if (command.join(' ') === 'getent group compartment-runtime') {
+        return { exitCode: 0, stderr: '', stdout: 'compartment-runtime:x:12345:\n' };
+      }
+      return { exitCode: 0, stderr: '', stdout: '' };
+    });
+    const { stageNodeAgentHostService } = await import('../src/node-agent-service');
+
+    await expect(
+      stageNodeAgentHostService({
+        envPath: '/etc/compartment/.env.self-hosted',
+        repairRuntimeWritableDirectoryContents: true,
+      }),
+    ).rejects.toThrow('Host group compartment-runtime has GID 12345; expected 10001.');
+    expect(mocks.runCommand).not.toHaveBeenCalledWith([
+      'groupadd',
+      '--system',
+      '--gid',
+      '10001',
+      'compartment-runtime',
+    ]);
+  });
+
+  it('rejects a runtime GID assigned to a different host group', async (): Promise<void> => {
+    mocks.runCommand.mockImplementation(async (command: readonly string[]): Promise<CommandResult> => {
+      await Promise.resolve();
+      if (command.join(' ') === 'getent group compartment-runtime') {
+        return { exitCode: 2, stderr: '', stdout: '' };
+      }
+      if (command.join(' ') === 'getent group 10001') {
+        return { exitCode: 0, stderr: '', stdout: 'other-runtime:x:10001:\n' };
+      }
+      return { exitCode: 0, stderr: '', stdout: '' };
+    });
+    const { stageNodeAgentHostService } = await import('../src/node-agent-service');
+
+    await expect(
+      stageNodeAgentHostService({
+        envPath: '/etc/compartment/.env.self-hosted',
+        repairRuntimeWritableDirectoryContents: true,
+      }),
+    ).rejects.toThrow('Host GID 10001 is already assigned to group other-runtime; expected compartment-runtime.');
+    expect(mocks.runCommand).not.toHaveBeenCalledWith([
+      'groupadd',
+      '--system',
+      '--gid',
+      '10001',
+      'compartment-runtime',
+    ]);
+  });
+
+  it('surfaces runtime group creation failures', async (): Promise<void> => {
+    mocks.runCommand.mockImplementation(async (command: readonly string[]): Promise<CommandResult> => {
+      await Promise.resolve();
+      if (command[0] === 'getent') {
+        return { exitCode: 2, stderr: '', stdout: '' };
+      }
+      if (command[0] === 'groupadd') {
+        return { exitCode: 1, stderr: 'groupadd failed', stdout: '' };
+      }
+      return { exitCode: 0, stderr: '', stdout: '' };
+    });
+    const { stageNodeAgentHostService } = await import('../src/node-agent-service');
+
+    await expect(
+      stageNodeAgentHostService({
+        envPath: '/etc/compartment/.env.self-hosted',
+        repairRuntimeWritableDirectoryContents: true,
+      }),
+    ).rejects.toThrow('Failed to create host group compartment-runtime with GID 10001.\ngroupadd failed');
   });
 
   it('rejects staging from a non-self-contained Node entrypoint', async (): Promise<void> => {
@@ -198,9 +369,12 @@ describe('node agent service staging', (): void => {
 
     const { stageNodeAgentHostService } = await import('../src/node-agent-service');
 
-    await expect(stageNodeAgentHostService({ envPath: '/etc/compartment/.env.self-hosted' })).rejects.toThrow(
-      'compartment-node-agent can only be installed from the self-contained compartment binary.',
-    );
+    await expect(
+      stageNodeAgentHostService({
+        envPath: '/etc/compartment/.env.self-hosted',
+        repairRuntimeWritableDirectoryContents: true,
+      }),
+    ).rejects.toThrow('compartment-node-agent can only be installed from the self-contained compartment binary.');
     expect(mocks.copyFile).not.toHaveBeenCalled();
   });
 
@@ -213,6 +387,23 @@ describe('node agent service staging', (): void => {
     );
   });
 });
+
+function mockRootPrivileges(): void {
+  const processWithGetuid: ProcessWithGetuid = process as ProcessWithGetuid;
+  vi.spyOn(processWithGetuid, 'getuid').mockReturnValue(0);
+}
+
+function defaultSelfHostedEnvironmentText(): string {
+  return `COMPARTMENT_RUNTIME_UID=10001
+COMPARTMENT_RUNTIME_GID=10001
+COMPARTMENT_DOCKER_WORK_DIR=/var/lib/compartment/self-hosted/docker-work
+COMPARTMENT_SOURCE_ARCHIVE_DIR=/var/lib/compartment/source-archives
+COMPARTMENT_RESOURCE_BACKUP_DIR=/var/lib/compartment/resource-backups
+COMPARTMENT_AUDIT_FILE_SINK_DIR=/var/lib/compartment/audit-logs
+COMPARTMENT_CUSTOM_TLS_DIR=/etc/compartment/tls
+COMPARTMENT_NODE_AGENT_SOCKET=/var/run/compartment/node/agent.sock
+`;
+}
 
 describe('node agent service inspection', (): void => {
   it('reads host service health through the configured Unix socket', async (): Promise<void> => {
@@ -350,6 +541,21 @@ function readWrittenSystemdUnit(): string {
   return unitWriteCall[1];
 }
 
+function readCallOrder(mock: Mock, ...expected: readonly MockCallValue[]): number {
+  const calls: readonly (readonly MockCallValue[])[] = mock.mock.calls as readonly (readonly MockCallValue[])[];
+  const index: number = calls.findIndex((call: readonly MockCallValue[]): boolean => {
+    return expected.every((expectedValue: MockCallValue, valueIndex: number): boolean => {
+      return call[valueIndex] === expectedValue;
+    });
+  });
+  expect(index).toBeGreaterThanOrEqual(0);
+  return mock.mock.invocationCallOrder[index]!;
+}
+
+function createDirent(name: string, kind: 'directory' | 'file'): Dirent {
+  return new MockDirent(name, kind);
+}
+
 function mockNodeAgentHealthStatus(statusCode: number): void {
   mocks.createHttpRequest.mockImplementationOnce(
     (_options: HttpRequestOptions, callback: (response: IncomingMessage) => void): ClientRequest => {
@@ -404,21 +610,72 @@ function createMockClientRequest(
   return request;
 }
 
-function createStats(input: { directory?: boolean | undefined; symlink?: boolean | undefined }): MockStats {
+function createStats(input: MockStatsInput): MockStats {
   return new MockStats(input);
+}
+
+class MockDirent {
+  public readonly name: string;
+  public readonly parentPath: string = '';
+  private readonly kind: 'directory' | 'file';
+
+  public constructor(name: string, kind: 'directory' | 'file') {
+    this.name = name;
+    this.kind = kind;
+  }
+
+  public isDirectory(): boolean {
+    return this.kind === 'directory';
+  }
+
+  public isFile(): boolean {
+    return this.kind === 'file';
+  }
+
+  public isBlockDevice(): boolean {
+    return false;
+  }
+
+  public isCharacterDevice(): boolean {
+    return false;
+  }
+
+  public isFIFO(): boolean {
+    return false;
+  }
+
+  public isSocket(): boolean {
+    return false;
+  }
+
+  public isSymbolicLink(): boolean {
+    return false;
+  }
 }
 
 class MockStats {
   private readonly directory: boolean;
+  private readonly file: boolean;
   private readonly symlink: boolean;
+  public readonly gid: number;
+  public readonly mode: number;
+  public readonly uid: number;
 
-  public constructor(input: { directory?: boolean | undefined; symlink?: boolean | undefined }) {
+  public constructor(input: MockStatsInput) {
     this.directory = input.directory === true;
+    this.file = input.file === true;
     this.symlink = input.symlink === true;
+    this.gid = input.gid ?? 0;
+    this.mode = input.mode ?? 0o700;
+    this.uid = input.uid ?? 0;
   }
 
   public isDirectory(): boolean {
     return this.directory;
+  }
+
+  public isFile(): boolean {
+    return this.file;
   }
 
   public isSymbolicLink(): boolean {

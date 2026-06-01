@@ -235,6 +235,12 @@ describe.sequential('install runtime', (): void => {
       'BUILDKIT_ADDR=unix:///run/buildkit/buildkitd.sock',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_UID=10001',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_GID=10001',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_VARIABLES_MASTER_KEY=',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
@@ -253,6 +259,9 @@ describe.sequential('install runtime', (): void => {
     );
     await expect(readFile(join(installPaths.configDir, 'docker-compose.self-hosted.yml'), 'utf8')).resolves.toContain(
       'COMPARTMENT_EDGE_INTERNAL_HOST: ${COMPARTMENT_EDGE_INTERNAL_HOST}',
+    );
+    await expect(readFile(join(installPaths.configDir, 'docker-compose.self-hosted.yml'), 'utf8')).resolves.toContain(
+      "user: '${COMPARTMENT_RUNTIME_UID}:${COMPARTMENT_RUNTIME_GID}'",
     );
     await expect(
       readFile(join(installPaths.configDir, 'docker-compose.self-hosted.local.yml'), 'utf8'),

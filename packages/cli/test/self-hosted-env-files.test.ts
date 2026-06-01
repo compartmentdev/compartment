@@ -9,8 +9,10 @@ describe('self-hosted env file contracts', (): void => {
     const selfHostedExamplePath: string = resolve(repositoryRoot, '.env.self-hosted.example');
     const devExampleContents: string = await readFile(devExamplePath, 'utf8');
     const selfHostedExampleContents: string = await readFile(selfHostedExamplePath, 'utf8');
-    expect(readDeclaredEnvVariableNames(devExampleContents)).toEqual(
-      readDeclaredEnvVariableNames(selfHostedExampleContents),
+    expect(readDeclaredEnvVariableNames(selfHostedExampleContents)).toEqual(
+      [...readDeclaredEnvVariableNames(devExampleContents), 'COMPARTMENT_RUNTIME_GID', 'COMPARTMENT_RUNTIME_UID'].sort(
+        (left: string, right: string): number => left.localeCompare(right),
+      ),
     );
     expect(selfHostedExampleContents).not.toContain('${');
     expect(selfHostedExampleContents).not.toContain('$(');

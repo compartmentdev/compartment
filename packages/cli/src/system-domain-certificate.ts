@@ -1,8 +1,14 @@
 import { createHash } from 'node:crypto';
+import type { Stats } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { buildPendingSystemDomainCertificatePaths } from '@compartment/utils';
 import { copySelfHostedPrivateFile } from './self-hosted-file-permissions';
+import { readOptionalSelfHostedPathStats } from './self-hosted-path-stats';
+import type { SelfHostedRuntimeIdentity } from './self-hosted-runtime-identity';
 import type { SystemDomainRuntimeCertificateInput } from './system-domain.types';
+
+const customTlsDirectoryMode: number = 0o750;
+const customTlsFileMode: number = 0o640;
 
 export interface StageSystemDomainCertificateInput {
   certificateFile: string;
@@ -10,6 +16,7 @@ export interface StageSystemDomainCertificateInput {
   operationId: string;
   privateKeyFile: string;
   reportProgress?: (message: string) => void;
+  runtimeIdentity: SelfHostedRuntimeIdentity;
 }
 
 export interface StageSystemDomainCertificateResult {
@@ -29,10 +36,47 @@ export async function stageSystemDomainCertificate(
   );
 
   input.reportProgress?.('Staging custom domain certificate...');
-  await copySelfHostedPrivateFile(input.certificateFile, stagedCertificatePaths.certificatePath);
-  await copySelfHostedPrivateFile(input.privateKeyFile, stagedCertificatePaths.privateKeyPath);
+  await assertCustomTlsDirectoryNotRuntimeWritable(input.customTlsDirectory, input.runtimeIdentity);
+  await copySelfHostedPrivateFile(input.certificateFile, stagedCertificatePaths.certificatePath, {
+    directoryMode: customTlsDirectoryMode,
+    fileMode: customTlsFileMode,
+    owner: { uid: 0, gid: input.runtimeIdentity.gid },
+  });
+  await copySelfHostedPrivateFile(input.privateKeyFile, stagedCertificatePaths.privateKeyPath, {
+    directoryMode: customTlsDirectoryMode,
+    fileMode: customTlsFileMode,
+    owner: { uid: 0, gid: input.runtimeIdentity.gid },
+  });
 
   return { requestFingerprint };
+}
+
+async function assertCustomTlsDirectoryNotRuntimeWritable(
+  customTlsDirectory: string,
+  runtimeIdentity: SelfHostedRuntimeIdentity,
+): Promise<void> {
+  const stats: Stats | null = await readOptionalSelfHostedPathStats(customTlsDirectory);
+  if (stats === null) {
+    return;
+  }
+  if (!stats.isDirectory() || stats.isSymbolicLink()) {
+    throw new Error(`Compartment custom TLS directory ${customTlsDirectory} must be a real directory.`);
+  }
+  if (stats.uid === runtimeIdentity.uid && (stats.mode & 0o200) !== 0) {
+    throwRuntimeWritableTlsDirectoryError(customTlsDirectory);
+  }
+  if (stats.gid === runtimeIdentity.gid && (stats.mode & 0o020) !== 0) {
+    throwRuntimeWritableTlsDirectoryError(customTlsDirectory);
+  }
+  if ((stats.mode & 0o002) !== 0) {
+    throwRuntimeWritableTlsDirectoryError(customTlsDirectory);
+  }
+}
+
+function throwRuntimeWritableTlsDirectoryError(customTlsDirectory: string): never {
+  throw new Error(
+    `Compartment custom TLS directory ${customTlsDirectory} is writable by the runtime identity. Run \`sudo compartment system restart\` before attaching a custom certificate.`,
+  );
 }
 
 async function readSystemDomainCertificateFingerprint(
