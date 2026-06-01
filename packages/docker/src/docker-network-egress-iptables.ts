@@ -34,7 +34,7 @@ export async function canSyncIptablesNetworkEgressDenyRules(): Promise<boolean> 
     return false;
   }
 
-  return await canRunIptablesCommand('filter', ['-L', '-n']);
+  return (await canRunIptablesCommand('filter', ['-L', '-n'])) && (await canRunIptablesCommand('raw', ['-L', '-n']));
 }
 
 export async function syncIptablesNetworkEgressDenyRules(input: IptablesNetworkEgressDenyInput): Promise<void> {

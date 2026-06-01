@@ -370,6 +370,39 @@ describe('syncDockerNetworkEgressDenyRules', (): void => {
     });
   });
 
+  it('does not select iptables when the raw table cannot be read', async (): Promise<void> => {
+    mocks.runProcessCommand.mockImplementation(async (input: ProcessCommandInput): Promise<ProcessCommandResult> => {
+      await Promise.resolve();
+      if (input.file === 'docker' && input.args[0] === 'info') {
+        return { stderr: '', stdout: JSON.stringify({ Driver: 'iptables' }) };
+      }
+      if (input.file === 'iptables' && input.args[0] === '--version') {
+        return { stderr: '', stdout: 'iptables v1.8.0' };
+      }
+      if (input.file === 'iptables' && input.args.join(' ') === '-w 10 -t raw -L -n') {
+        throw new Error('raw table unavailable');
+      }
+
+      return { stderr: '', stdout: '' };
+    });
+
+    await expect(
+      syncDockerNetworkEgressDenyRules({
+        destinationCidrs: [buildIpv4Cidr([172, 17, 0, 1], 32)],
+        namespace: 'compartment-test',
+        sourceSubnets: [buildIpv4Cidr([172, 30, 0, 0], 16)],
+      }),
+    ).rejects.toThrow('Docker runtime egress deny rules require nftables or iptables on the Docker host.');
+    expect(mocks.runProcessCommand).toHaveBeenCalledWith({
+      args: ['-w', '10', '-t', 'raw', '-L', '-n'],
+      file: 'iptables',
+    });
+    expect(mocks.runProcessCommand).not.toHaveBeenCalledWith({
+      args: ['-w', '10', '-t', 'raw', '-N', expect.stringMatching(/^CMP-EG-[a-f0-9]{12}-P$/u)],
+      file: 'iptables',
+    });
+  });
+
   it('fails closed when no firewall backend is available', async (): Promise<void> => {
     mocks.runProcessCommand.mockRejectedValue(new Error('command unavailable'));
 
