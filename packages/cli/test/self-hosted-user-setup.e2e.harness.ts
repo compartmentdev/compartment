@@ -531,6 +531,7 @@ start_dind_socket_proxy() {
   . /etc/compartment/.env.self-hosted
   set +a
   : "\${COMPARTMENT_NODE_AGENT_SOCKET:?}"
+  : "\${COMPARTMENT_RUNTIME_GID:?}"
   : "\${COMPARTMENT_RUNTIME_PROBE_IMAGE:?}"
 
   cat > "$proxy_file" <<'PROXY'

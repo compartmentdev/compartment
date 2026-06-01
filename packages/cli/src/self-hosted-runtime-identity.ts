@@ -1,16 +1,13 @@
 import { readCommandOutput, runCommand } from './command-runner';
 import type { CommandResult } from './command-runner.types';
 import { readRequiredSelfHostedEnvironmentValue } from './self-hosted-env-file';
+import type { SelfHostedRuntimeIdentity } from './self-hosted-runtime-identity.types';
 import { runRequiredSelfHostedSystemCommand } from './self-hosted-system-command';
 
 export const defaultSelfHostedRuntimeUid: number = 10001;
 export const defaultSelfHostedRuntimeGid: number = 10001;
 export const selfHostedRuntimeGroupName: string = 'compartment-runtime';
-
-export interface SelfHostedRuntimeIdentity {
-  readonly gid: number;
-  readonly uid: number;
-}
+export type { SelfHostedRuntimeIdentity } from './self-hosted-runtime-identity.types';
 
 interface SystemGroupEntry {
   readonly gid: number;

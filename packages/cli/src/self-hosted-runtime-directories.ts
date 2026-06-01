@@ -193,6 +193,7 @@ function buildRuntimeOwnedDirectorySpec(
 
 async function ensureRuntimeDirectory(spec: RuntimeDirectorySpec): Promise<void> {
   await assertNoExistingSelfHostedDirectorySymlinks({
+    checkUnmanagedAncestors: true,
     directoryPath: spec.path,
     label: spec.label,
     managedRoots: managedDirectoryRoots,

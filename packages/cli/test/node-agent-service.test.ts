@@ -234,6 +234,35 @@ describe('node agent service staging', (): void => {
     expect(mocks.chmod).not.toHaveBeenCalled();
   });
 
+  it('refuses symlink ancestors for env-configured runtime directories before repairing contents', async (): Promise<void> => {
+    mocks.readFile.mockResolvedValue(
+      defaultSelfHostedEnvironmentText().replace(
+        'COMPARTMENT_SOURCE_ARCHIVE_DIR=/var/lib/compartment/source-archives',
+        'COMPARTMENT_SOURCE_ARCHIVE_DIR=/mnt/runtime-link/source-archives',
+      ),
+    );
+    mocks.lstat.mockImplementation(async (path: string): Promise<MockStats> => {
+      await Promise.resolve();
+      if (path === '/mnt/runtime-link') {
+        return createStats({ symlink: true });
+      }
+
+      return createStats({ directory: true });
+    });
+    const { stageNodeAgentHostService } = await import('../src/node-agent-service');
+
+    await expect(
+      stageNodeAgentHostService({
+        envPath: '/etc/compartment/.env.self-hosted',
+        repairRuntimeWritableDirectoryContents: true,
+      }),
+    ).rejects.toThrow(
+      'Compartment runtime directory COMPARTMENT_SOURCE_ARCHIVE_DIR /mnt/runtime-link must be a real directory.',
+    );
+    expect(mocks.mkdir).not.toHaveBeenCalledWith('/mnt/runtime-link/source-archives', expect.anything());
+    expect(mocks.readdir).not.toHaveBeenCalledWith('/mnt/runtime-link/source-archives', expect.anything());
+  });
+
   it('repairs root-owned runtime tree contents before handing the root to the runtime user', async (): Promise<void> => {
     mocks.readdir.mockImplementation(async (path: string): Promise<Dirent[]> => {
       await Promise.resolve();

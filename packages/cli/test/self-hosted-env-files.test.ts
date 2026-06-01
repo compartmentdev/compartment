@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('self-hosted env file contracts', (): void => {
-  it('declares the same env variable names in the dev and self-hosted example files', async (): Promise<void> => {
+  it('declares dev env names plus self-hosted runtime identity names', async (): Promise<void> => {
     const repositoryRoot: string = resolve(__dirname, '../../..');
     const devExamplePath: string = resolve(repositoryRoot, '.env.example');
     const selfHostedExamplePath: string = resolve(repositoryRoot, '.env.self-hosted.example');
