@@ -184,11 +184,10 @@ describe('node agent service staging', (): void => {
     expect(unitContents).not.toContain('compartment/api');
     expect(unitContents).toContain('RuntimeDirectoryMode=0750');
     expect(unitContents).toContain('RuntimeDirectoryPreserve=yes');
-    expect(unitContents).toContain('StateDirectory=compartment/self-hosted');
-    expect(unitContents).not.toContain('StateDirectory=compartment/self-hosted compartment/resource-backups');
-    expect(unitContents).toContain('StateDirectoryMode=0700');
+    expect(unitContents).not.toContain('StateDirectory=');
+    expect(unitContents).not.toContain('StateDirectoryMode=');
     expect(unitContents).toContain(
-      'ReadWritePaths=/var/run/compartment/node /var/lib/compartment/self-hosted /var/lib/compartment/resource-backups /var/run/docker.sock',
+      'ReadWritePaths=/var/run/compartment/node /var/lib/compartment/resource-backups /var/run/docker.sock',
     );
     expect(unitContents).toContain('UMask=0007');
     expect(unitContents).not.toContain('ExecStartPre=');
