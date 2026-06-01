@@ -80,7 +80,7 @@ describe('node agent socket path helpers', (): void => {
     }).toThrow(`Node agent socket directory ${symlinkDirectoryPath} must be a real directory.`);
   });
 
-  it('restricts the bound socket to owner-only access', async (): Promise<void> => {
+  it('restricts the bound socket to runtime group access', async (): Promise<void> => {
     const rootDirectoryPath: string = await createTemporarySocketRootDirectory();
     temporaryDirectories.push(rootDirectoryPath);
     const socketPath: string = join(rootDirectoryPath, 'run', 'node', 'agent.sock');

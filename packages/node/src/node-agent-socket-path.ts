@@ -15,7 +15,7 @@ export function restrictNodeAgentSocketPathPermissions(socketPath: string, runti
 }
 
 export function assertValidNodeAgentSocketPath(socketPath: string): void {
-  assertValidUnixSocketPath(socketPath, createNodeAgentSocketPolicy(0));
+  assertValidUnixSocketPath(socketPath, createNodeAgentSocketPolicy(null));
 }
 
 function createNodeAgentSocketPolicy(runtimeGid: number | null): UnixSocketPathPolicy {
