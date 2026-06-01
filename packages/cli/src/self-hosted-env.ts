@@ -182,7 +182,13 @@ function buildRuntimeConnectivityOverrides(): Record<string, string> {
   return {
     COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: 'network',
     COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: defaultRuntimeUpstreamHost,
+    COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR: buildRuntimeNetworkPoolCidr(),
+    COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX: '28',
   };
+}
+
+function buildRuntimeNetworkPoolCidr(): string {
+  return `${[10, 240, 0, 0].map((octet: number): string => octet.toString()).join('.')}/12`;
 }
 
 function readManagedDomainTlsEnvironment(input: BuildSelfHostedEnvironmentInput): ManagedDomainTlsEnvironment | null {

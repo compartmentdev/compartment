@@ -4,11 +4,15 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { waitForHealthyRuntimeFromDockerNetwork } from '../src/services/runtime-docker-readiness.service';
 
 type BuildDockerNamespaceLabels = (namespace: string) => Record<string, string>;
+type IsDockerNetworkIpamCapacityError = (error: Error) => boolean;
+type ReadDockerEngineErrorMessage = (error: Error) => string;
 type RequireDockerImageAvailable = (input: { imageRef: string }) => Promise<void>;
 type RunDockerContainerToCompletion = (input: DockerRunContainerInput) => Promise<DockerRunContainerToCompletionResult>;
 
 interface RuntimeDockerReadinessTestMocks {
   buildDockerNamespaceLabels: Mock<BuildDockerNamespaceLabels>;
+  isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
+  readDockerEngineErrorMessage: Mock<ReadDockerEngineErrorMessage>;
   requireDockerImageAvailable: Mock<RequireDockerImageAvailable>;
   runDockerContainerToCompletion: Mock<RunDockerContainerToCompletion>;
 }
@@ -20,6 +24,8 @@ const mocks: RuntimeDockerReadinessTestMocks = vi.hoisted(
         'compartment.namespace': namespace,
       }),
     ),
+    isDockerNetworkIpamCapacityError: vi.fn<IsDockerNetworkIpamCapacityError>(),
+    readDockerEngineErrorMessage: vi.fn<ReadDockerEngineErrorMessage>(),
     requireDockerImageAvailable: vi.fn<RequireDockerImageAvailable>(),
     runDockerContainerToCompletion: vi.fn<RunDockerContainerToCompletion>(),
   }),
@@ -29,10 +35,14 @@ vi.mock(
   '@compartment/docker',
   (): {
     buildDockerNamespaceLabels: Mock<BuildDockerNamespaceLabels>;
+    isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
+    readDockerEngineErrorMessage: Mock<ReadDockerEngineErrorMessage>;
     requireDockerImageAvailable: Mock<RequireDockerImageAvailable>;
     runDockerContainerToCompletion: Mock<RunDockerContainerToCompletion>;
   } => ({
     buildDockerNamespaceLabels: mocks.buildDockerNamespaceLabels,
+    isDockerNetworkIpamCapacityError: mocks.isDockerNetworkIpamCapacityError,
+    readDockerEngineErrorMessage: mocks.readDockerEngineErrorMessage,
     requireDockerImageAvailable: mocks.requireDockerImageAvailable,
     runDockerContainerToCompletion: mocks.runDockerContainerToCompletion,
   }),
@@ -40,6 +50,8 @@ vi.mock(
 
 afterEach((): void => {
   mocks.buildDockerNamespaceLabels.mockClear();
+  mocks.isDockerNetworkIpamCapacityError.mockReset();
+  mocks.readDockerEngineErrorMessage.mockReset();
   mocks.requireDockerImageAvailable.mockReset();
   mocks.runDockerContainerToCompletion.mockReset();
 });
@@ -93,6 +105,31 @@ describe('waitForHealthyRuntimeFromDockerNetwork', (): void => {
         user: 'node',
       },
     });
+  });
+
+  it('preserves Docker IP exhaustion instead of polling until readiness timeout', async (): Promise<void> => {
+    const dockerError: Error = new Error('no available IPv4 addresses on this network');
+    mocks.runDockerContainerToCompletion.mockRejectedValueOnce(dockerError);
+    mocks.isDockerNetworkIpamCapacityError.mockReturnValueOnce(true);
+    mocks.readDockerEngineErrorMessage.mockReturnValueOnce(dockerError.message);
+
+    let failure: Error | undefined;
+    try {
+      await waitForHealthyRuntimeFromDockerNetwork({
+        dockerNamespace: 'compartment-test',
+        host: 'compartment-service',
+        networkName: 'compartment-test-runtime',
+        port: 3000,
+        probeImageRef: 'ghcr.io/compartmentdev/compartment-runtime-probe:1.2.3',
+        readiness: createReadiness(),
+      });
+    } catch (error) {
+      failure = error as Error;
+    }
+
+    expect(failure).toMatchObject({ code: 'runtime_network_capacity_exhausted' });
+    expect(failure?.message).toContain('no available IPv4 addresses');
+    expect(mocks.runDockerContainerToCompletion).toHaveBeenCalledTimes(1);
   });
 });
 

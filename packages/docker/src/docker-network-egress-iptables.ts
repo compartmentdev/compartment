@@ -30,7 +30,10 @@ export async function canSyncIptablesNetworkEgressDenyRules(): Promise<boolean> 
     return false;
   }
 
-  return await canRunIptablesCommand(['-L', '-n']);
+  return (
+    (await canRunIptablesCommand(['-L', dockerUserChainName, '-n'])) &&
+    (await canRunIptablesCommand(['-L', inputChainName, '-n']))
+  );
 }
 
 export async function syncIptablesNetworkEgressDenyRules(input: IptablesNetworkEgressDenyInput): Promise<void> {

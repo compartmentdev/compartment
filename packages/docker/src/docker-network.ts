@@ -1,6 +1,7 @@
 import type Docker from 'dockerode';
 import { createDockerClient } from './docker-client';
 import { isDockerEngineConflictError, readDockerEngineErrorText, type DockerEngineError } from './docker-engine-error';
+import { buildDockerLabelFilters } from './docker-label-filter';
 import type {
   DockerConnectContainerToNetworkInput,
   DockerDisconnectContainerFromNetworkInput,
@@ -10,8 +11,6 @@ import type {
   DockerListContainerResult,
   DockerListContainersInput,
   DockerListNetworkResult,
-  DockerListVolumeResult,
-  DockerListVolumesInput,
   DockerNetworkIpamConfig,
   DockerRemoveNetworkInput,
 } from './docker-models';
@@ -28,7 +27,7 @@ export async function ensureDockerNetwork(input: DockerEnsureNetworkInput): Prom
   const network: Docker.Network = docker.getNetwork(input.networkName);
   const existingNetwork: Docker.NetworkInspectInfo | null = await inspectExistingDockerNetwork(network);
   if (existingNetwork !== null) {
-    assertDockerNetworkLabels(input.networkName, existingNetwork.Labels ?? {}, input.labels);
+    assertDockerNetworkCompatibility(input, existingNetwork);
     return;
   }
 
@@ -48,7 +47,7 @@ async function assertDockerNetworkAfterCreateConflict(
   if (conflictedNetwork === null) {
     throw new Error(`Docker network ${input.networkName} conflicted during creation but was not inspectable.`);
   }
-  assertDockerNetworkLabels(input.networkName, conflictedNetwork.Labels ?? {}, input.labels);
+  assertDockerNetworkCompatibility(input, conflictedNetwork);
 }
 
 async function inspectExistingDockerNetwork(network: Docker.Network): Promise<Docker.NetworkInspectInfo | null> {
@@ -66,6 +65,7 @@ async function createDockerNetwork(docker: Docker, input: DockerEnsureNetworkInp
   try {
     await docker.createNetwork({
       CheckDuplicate: true,
+      ...(input.ipam !== undefined ? { IPAM: { Config: [{ Subnet: input.ipam.subnet }] } } : {}),
       Labels: input.labels,
       Name: input.networkName,
     });
@@ -85,6 +85,13 @@ function assertDockerNetworkRequiredLabels(input: DockerEnsureNetworkInput): voi
   }
 }
 
+function assertDockerNetworkCompatibility(input: DockerEnsureNetworkInput, network: Docker.NetworkInspectInfo): void {
+  assertDockerNetworkLabels(input.networkName, network.Labels ?? {}, input.labels);
+  if (input.ipam !== undefined) {
+    assertDockerNetworkIpam(input.networkName, network, input.ipam.subnet);
+  }
+}
+
 function assertDockerNetworkLabels(
   networkName: string,
   existingLabels: Record<string, string>,
@@ -95,6 +102,23 @@ function assertDockerNetworkLabels(
       throw new Error(`Docker network ${networkName} exists without required label ${name}=${value}.`);
     }
   }
+}
+
+function assertDockerNetworkIpam(
+  networkName: string,
+  network: Docker.NetworkInspectInfo,
+  requiredSubnet: string,
+): void {
+  const subnets: Set<string> = new Set<string>(
+    (network.IPAM?.Config ?? [])
+      .map((config: DockerNetworkInspectIpamConfig): string | undefined => config.Subnet)
+      .filter((subnet: string | undefined): subnet is string => subnet !== undefined),
+  );
+  if (subnets.has(requiredSubnet)) {
+    return;
+  }
+
+  throw new Error(`Docker network ${networkName} exists without required IPAM subnet ${requiredSubnet}.`);
 }
 
 export async function connectDockerContainerToNetwork(input: DockerConnectContainerToNetworkInput): Promise<void> {
@@ -182,22 +206,9 @@ export async function listDockerNetworks(): Promise<DockerListNetworkResult[]> {
 
   return networks.map(
     (network: Docker.NetworkInspectInfo): DockerListNetworkResult => ({
+      ipamConfigs: readDockerNetworkIpamConfigs(network),
       labels: network.Labels ?? {},
       name: network.Name,
-    }),
-  );
-}
-
-export async function listDockerVolumes(input: DockerListVolumesInput = {}): Promise<DockerListVolumeResult[]> {
-  const docker: Docker = await createDockerClient();
-  const { Volumes: volumes }: { Volumes: Docker.VolumeInspectInfo[] } = await docker.listVolumes({
-    ...(input.labelFilters !== undefined ? { filters: { label: buildDockerLabelFilters(input.labelFilters) } } : {}),
-  });
-
-  return volumes.map(
-    (volume: Docker.VolumeInspectInfo): DockerListVolumeResult => ({
-      labels: volume.Labels,
-      name: volume.Name,
     }),
   );
 }
@@ -227,12 +238,6 @@ function readDockerNetworkIpamConfigs(network: Docker.NetworkInspectInfo): Docke
         ]
       : [],
   );
-}
-
-function buildDockerLabelFilters(filters: Record<string, string | undefined>): string[] {
-  return Object.entries(filters)
-    .filter(([, value]: [string, string | undefined]): boolean => value !== undefined)
-    .map(([name, value]: [string, string | undefined]): string => (value === undefined ? name : `${name}=${value}`));
 }
 
 function hasText(value: string | null | undefined): value is string {

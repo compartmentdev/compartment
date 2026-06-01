@@ -13,13 +13,19 @@ const nftCommand: string = 'nft';
 const nftTablePrefix: string = 'compartment_egress_';
 const namespaceHashLength: number = 12;
 
-type FirewallBackend = 'iptables' | 'nft';
+type NftFamily = 'bridge' | 'inet';
+
+interface NftTableExistence {
+  readonly bridge: boolean;
+  readonly inet: boolean;
+}
 
 export async function syncDockerNetworkEgressDenyRules(input: DockerSyncNetworkEgressDenyRulesInput): Promise<void> {
   const rules: DockerNetworkEgressDenyRule[] = buildDockerNetworkEgressDenyRules(input);
   const sourceAllowCidrs: string[] = dedupeValues(input.sourceAllowCidrs ?? []);
-  const backend: FirewallBackend | null = await resolveFirewallBackend();
-  if (backend === null) {
+  const canSyncIptables: boolean = await canSyncIptablesNetworkEgressDenyRules();
+  const canSyncNft: boolean = await canSyncNftNetworkEgressDenyRules();
+  if (!canSyncIptables && !canSyncNft) {
     if (rules.length === 0 && sourceAllowCidrs.length === 0) {
       return;
     }
@@ -27,28 +33,17 @@ export async function syncDockerNetworkEgressDenyRules(input: DockerSyncNetworkE
     throw new Error('Docker runtime egress deny rules require nftables or iptables on the Docker host.');
   }
 
-  if (backend === 'nft') {
+  if (canSyncIptables) {
+    await syncIptablesNetworkEgressDenyRules({
+      namespace: input.namespace,
+      rules,
+      sourceAllowCidrs,
+    });
+  }
+
+  if (canSyncNft) {
     await syncNftNetworkEgressDenyRules(input.namespace, rules, sourceAllowCidrs);
-    return;
   }
-
-  await syncIptablesNetworkEgressDenyRules({
-    namespace: input.namespace,
-    rules,
-    sourceAllowCidrs,
-  });
-}
-
-async function resolveFirewallBackend(): Promise<FirewallBackend | null> {
-  if (await canSyncNftNetworkEgressDenyRules()) {
-    return 'nft';
-  }
-
-  if (await canSyncIptablesNetworkEgressDenyRules()) {
-    return 'iptables';
-  }
-
-  return null;
 }
 
 async function canSyncNftNetworkEgressDenyRules(): Promise<boolean> {
@@ -65,74 +60,130 @@ async function syncNftNetworkEgressDenyRules(
   sourceAllowCidrs: readonly string[],
 ): Promise<void> {
   const tableName: string = buildNftTableName(namespace);
-  const tableExists: boolean = await nftTableExists(tableName);
+  const tableExists: NftTableExistence = await readNftTableExistence(tableName);
 
   if (rules.length === 0 && sourceAllowCidrs.length === 0) {
-    if (tableExists) {
-      await runNftBatch([buildNftDeleteTableLine(tableName)]);
-    }
+    await deleteEmptyNftTables(tableName, tableExists);
     return;
   }
 
   await runNftBatch(buildNftNetworkEgressDenyBatch(tableName, rules, sourceAllowCidrs, tableExists));
 }
 
-async function nftTableExists(tableName: string): Promise<boolean> {
-  return await canRunCommand({ args: ['list', 'table', 'inet', tableName], file: nftCommand });
+async function readNftTableExistence(tableName: string): Promise<NftTableExistence> {
+  return {
+    bridge: await nftTableExists('bridge', tableName),
+    inet: await nftTableExists('inet', tableName),
+  };
+}
+
+async function deleteEmptyNftTables(tableName: string, tableExists: NftTableExistence): Promise<void> {
+  const deleteLines: string[] = [
+    ...(tableExists.bridge ? [buildNftDeleteTableLine('bridge', tableName)] : []),
+    ...(tableExists.inet ? [buildNftDeleteTableLine('inet', tableName)] : []),
+  ];
+  if (deleteLines.length > 0) {
+    await runNftBatch(deleteLines);
+  }
+}
+
+async function nftTableExists(family: NftFamily, tableName: string): Promise<boolean> {
+  return await canRunCommand({ args: ['list', 'table', family, tableName], file: nftCommand });
 }
 
 function buildNftNetworkEgressDenyBatch(
   tableName: string,
   rules: readonly DockerNetworkEgressDenyRule[],
   sourceAllowCidrs: readonly string[],
-  tableExists: boolean,
+  tableExists: NftTableExistence,
 ): string[] {
   return [
-    ...(tableExists ? [buildNftDeleteTableLine(tableName)] : []),
+    ...(tableExists.bridge ? [buildNftDeleteTableLine('bridge', tableName)] : []),
+    ...(tableExists.inet ? [buildNftDeleteTableLine('inet', tableName)] : []),
+    `add table bridge ${tableName}`,
+    buildNftBridgeBaseChainLine(tableName),
+    ...buildNftSourceAllowRuleLines('bridge', tableName, sourceAllowCidrs),
+    ...buildNftDropRuleLines('bridge', tableName, rules),
     `add table inet ${tableName}`,
-    buildNftBaseChainLine(tableName, 'forward'),
-    buildNftBaseChainLine(tableName, 'input'),
-    ...buildNftSourceAllowRuleLines(tableName, sourceAllowCidrs),
-    ...buildNftDropRuleLines(tableName, rules),
+    buildNftInetBaseChainLine(tableName, 'forward'),
+    buildNftInetBaseChainLine(tableName, 'input'),
+    ...buildNftSourceAllowRuleLines('inet', tableName, sourceAllowCidrs),
+    ...buildNftDropRuleLines('inet', tableName, rules),
   ];
 }
 
-function buildNftDeleteTableLine(tableName: string): string {
-  return `delete table inet ${tableName}`;
+function buildNftDeleteTableLine(family: NftFamily, tableName: string): string {
+  return `delete table ${family} ${tableName}`;
 }
 
-function buildNftBaseChainLine(tableName: string, hook: 'forward' | 'input'): string {
+function buildNftInetBaseChainLine(tableName: string, hook: 'forward' | 'input'): string {
   return `add chain inet ${tableName} ${hook} { type filter hook ${hook} priority -1; policy accept; }`;
 }
 
-function buildNftSourceAllowRuleLines(tableName: string, sourceAllowCidrs: readonly string[]): string[] {
-  return sourceAllowCidrs.flatMap((sourceAllowCidr: string): string[] => [
-    buildNftSourceAllowRuleLine(tableName, 'forward', sourceAllowCidr),
-    buildNftSourceAllowRuleLine(tableName, 'input', sourceAllowCidr),
-  ]);
+function buildNftBridgeBaseChainLine(tableName: string): string {
+  return `add chain bridge ${tableName} prerouting { type filter hook prerouting priority -300; policy accept; }`;
 }
+
+function buildNftSourceAllowRuleLines(
+  family: NftFamily,
+  tableName: string,
+  sourceAllowCidrs: readonly string[],
+): string[] {
+  return sourceAllowCidrs.flatMap((sourceAllowCidr: string): string[] => {
+    if (family === 'bridge') {
+      return [buildNftSourceAllowRuleLine(family, tableName, 'prerouting', sourceAllowCidr)];
+    }
+
+    return [
+      buildNftSourceAllowRuleLine(family, tableName, 'forward', sourceAllowCidr),
+      buildNftSourceAllowRuleLine(family, tableName, 'input', sourceAllowCidr),
+    ];
+  });
+}
+
+type NftChainName = 'forward' | 'input' | 'prerouting';
 
 function buildNftSourceAllowRuleLine(
+  family: NftFamily,
   tableName: string,
-  chainName: 'forward' | 'input',
+  chainName: NftChainName,
   sourceAllowCidr: string,
 ): string {
-  return `add rule inet ${tableName} ${chainName} ip saddr ${sourceAllowCidr} accept`;
+  return `add rule ${family} ${tableName} ${chainName} ${buildNftIpMatchClausePrefix(family)}ip saddr ${sourceAllowCidr} accept`;
 }
 
-function buildNftDropRuleLines(tableName: string, rules: readonly DockerNetworkEgressDenyRule[]): string[] {
-  return rules.flatMap((rule: DockerNetworkEgressDenyRule): string[] => [
-    buildNftDropRuleLine(tableName, 'forward', rule),
-    buildNftDropRuleLine(tableName, 'input', rule),
-  ]);
+function buildNftDropRuleLines(
+  family: NftFamily,
+  tableName: string,
+  rules: readonly DockerNetworkEgressDenyRule[],
+): string[] {
+  return rules.flatMap((rule: DockerNetworkEgressDenyRule): string[] => {
+    if (family === 'bridge') {
+      return [buildNftDropRuleLine(family, tableName, 'prerouting', rule)];
+    }
+
+    return [
+      buildNftDropRuleLine(family, tableName, 'forward', rule),
+      buildNftDropRuleLine(family, tableName, 'input', rule),
+    ];
+  });
 }
 
 function buildNftDropRuleLine(
+  family: NftFamily,
   tableName: string,
-  chainName: 'forward' | 'input',
+  chainName: NftChainName,
   rule: DockerNetworkEgressDenyRule,
 ): string {
-  return `add rule inet ${tableName} ${chainName} ip saddr ${rule.sourceSubnet} ip daddr ${rule.destinationCidr} drop`;
+  return `add rule ${family} ${tableName} ${chainName} ${buildNftIpMatchClausePrefix(family)}ip saddr ${rule.sourceSubnet} ip daddr ${rule.destinationCidr} drop`;
+}
+
+function buildNftIpMatchClausePrefix(family: NftFamily): string {
+  if (family === 'bridge') {
+    return 'ether type ip ';
+  }
+
+  return '';
 }
 
 async function runNftBatch(lines: readonly string[]): Promise<void> {

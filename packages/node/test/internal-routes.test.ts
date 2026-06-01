@@ -12,11 +12,15 @@ import {
   nodeResourceStopPathname,
   nodeRuntimeNetworkReconcilePathname,
   nodeRuntimeNetworkReconcileResponseSchema,
+  nodeRuntimeNetworkReservationCleanupPathname,
+  nodeRuntimeNetworkReservationPathname,
+  nodeRuntimeNetworkReservationResponseSchema,
   nodeStopDeploymentResponseSchema,
   nodeTailLogsResponseSchema,
   type NodeDeployResponse,
   type NodeInspectDeploymentResponse,
   type NodeRuntimeNetworkReconcileResponse,
+  type NodeRuntimeNetworkReservationResponse,
   type NodeStopDeploymentResponse,
   type NodeTailLogsResponse,
 } from '@compartment/contracts';
@@ -24,6 +28,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { NodeApp } from '../src/app.types';
 import type { NodeConfig } from '../src/config';
 import { registerNodeRoutes } from '../src/routes/register-routes';
+import { createRuntimeNetworkPoolConfig } from './runtime-network-pool.fixture';
 import type {
   deployRuntimeContainer,
   inspectRuntimeDeployment,
@@ -32,12 +37,18 @@ import type {
 } from '../src/services/runtime.service';
 import type { reconcileRuntimeNetworks } from '../src/services/runtime-network.service';
 import type { cleanupRuntimeProject } from '../src/services/runtime-project-cleanup.service';
+import type {
+  cleanupRuntimeNetworkReservation,
+  reserveRuntimeNetworksForDeployment,
+} from '../src/services/runtime-network-capacity.service';
 import type { updateRuntimeResourceRestartPolicy } from '../src/services/runtime-resource-restart-policy.service';
 
 type CleanupRuntimeProject = typeof cleanupRuntimeProject;
+type CleanupRuntimeNetworkReservation = typeof cleanupRuntimeNetworkReservation;
 type DeployRuntimeContainer = typeof deployRuntimeContainer;
 type InspectRuntimeDeployment = typeof inspectRuntimeDeployment;
 type ReconcileRuntimeNetworks = typeof reconcileRuntimeNetworks;
+type ReserveRuntimeNetworksForDeployment = typeof reserveRuntimeNetworksForDeployment;
 type StopRuntimeContainer = typeof stopRuntimeContainer;
 type TailRuntimeContainerLogs = typeof tailRuntimeContainerLogs;
 type UpdateRuntimeResourceRestartPolicy = typeof updateRuntimeResourceRestartPolicy;
@@ -45,7 +56,7 @@ type UpdateRuntimeResourceRestartPolicy = typeof updateRuntimeResourceRestartPol
 interface NodeInternalInvalidRouteCase {
   code: string;
   method: 'GET' | 'POST';
-  payload?: Record<string, string> | undefined;
+  payload?: object | undefined;
   url: string;
 }
 
@@ -59,10 +70,12 @@ interface TestErrorResponse {
 }
 
 interface InternalRouteMocks {
+  cleanupRuntimeNetworkReservation: Mock<CleanupRuntimeNetworkReservation>;
   cleanupRuntimeProject: Mock<CleanupRuntimeProject>;
   deployRuntimeContainer: Mock<DeployRuntimeContainer>;
   inspectRuntimeDeployment: Mock<InspectRuntimeDeployment>;
   reconcileRuntimeNetworks: Mock<ReconcileRuntimeNetworks>;
+  reserveRuntimeNetworksForDeployment: Mock<ReserveRuntimeNetworksForDeployment>;
   stopRuntimeContainer: Mock<StopRuntimeContainer>;
   tailRuntimeContainerLogs: Mock<TailRuntimeContainerLogs>;
   updateRuntimeResourceRestartPolicy: Mock<UpdateRuntimeResourceRestartPolicy>;
@@ -70,13 +83,26 @@ interface InternalRouteMocks {
 
 const mocks: InternalRouteMocks = vi.hoisted(
   (): InternalRouteMocks => ({
+    cleanupRuntimeNetworkReservation: vi.fn<CleanupRuntimeNetworkReservation>(),
     cleanupRuntimeProject: vi.fn<CleanupRuntimeProject>(),
     deployRuntimeContainer: vi.fn<DeployRuntimeContainer>(),
     inspectRuntimeDeployment: vi.fn<InspectRuntimeDeployment>(),
     reconcileRuntimeNetworks: vi.fn<ReconcileRuntimeNetworks>(),
+    reserveRuntimeNetworksForDeployment: vi.fn<ReserveRuntimeNetworksForDeployment>(),
     stopRuntimeContainer: vi.fn<StopRuntimeContainer>(),
     tailRuntimeContainerLogs: vi.fn<TailRuntimeContainerLogs>(),
     updateRuntimeResourceRestartPolicy: vi.fn<UpdateRuntimeResourceRestartPolicy>(),
+  }),
+);
+
+vi.mock(
+  '../src/services/runtime-network-capacity.service',
+  (): {
+    cleanupRuntimeNetworkReservation: Mock<CleanupRuntimeNetworkReservation>;
+    reserveRuntimeNetworksForDeployment: Mock<ReserveRuntimeNetworksForDeployment>;
+  } => ({
+    cleanupRuntimeNetworkReservation: mocks.cleanupRuntimeNetworkReservation,
+    reserveRuntimeNetworksForDeployment: mocks.reserveRuntimeNetworksForDeployment,
   }),
 );
 
@@ -123,10 +149,12 @@ vi.mock(
 );
 
 afterEach((): void => {
+  mocks.cleanupRuntimeNetworkReservation.mockReset();
   mocks.cleanupRuntimeProject.mockReset();
   mocks.deployRuntimeContainer.mockReset();
   mocks.inspectRuntimeDeployment.mockReset();
   mocks.reconcileRuntimeNetworks.mockReset();
+  mocks.reserveRuntimeNetworksForDeployment.mockReset();
   mocks.stopRuntimeContainer.mockReset();
   mocks.tailRuntimeContainerLogs.mockReset();
   mocks.updateRuntimeResourceRestartPolicy.mockReset();
@@ -276,6 +304,9 @@ describe('internal node routes', (): void => {
             },
             routeHost: 'smoke-web.localhost',
             runtimeEnv: {},
+            runtimeNetwork: {
+              requiresResourceNetwork: false,
+            },
             serviceId: 'svc_123',
             serviceName: 'web',
           },
@@ -379,7 +410,49 @@ describe('internal node routes', (): void => {
     }
   });
 
-  it.each<NodeInternalInvalidRouteCase>([
+  it('reserves runtime networks for authenticated internal requests', async (): Promise<void> => {
+    mocks.reserveRuntimeNetworksForDeployment.mockResolvedValueOnce(
+      nodeRuntimeNetworkReservationResponseSchema.parse({
+        expiresAt: '2026-03-23T14:00:00.000Z',
+        newlyCreatedNetworkNames: ['compartment-test-prj-123-env-123-svc-123'],
+        reservationId: 'dep_123',
+        reservedNetworkNames: ['compartment-test-prj-123-env-123-svc-123'],
+      }),
+    );
+    const { app } = createTestApp();
+
+    try {
+      const response: LightMyRequestResponse = await withInjectTimeout(
+        app.inject({
+          headers: {
+            authorization: 'Bearer test-runtime-control-token',
+          },
+          method: 'POST',
+          payload: {
+            deploymentId: 'dep_123',
+            environmentId: 'env_123',
+            projectId: 'prj_123',
+            requiresResourceNetwork: false,
+            serviceId: 'svc_123',
+            serviceNetworkEndpointReservations: 2,
+          },
+          url: nodeRuntimeNetworkReservationPathname,
+        }),
+      );
+
+      expect(response.statusCode).toBe(200);
+      const payload: NodeRuntimeNetworkReservationResponse = nodeRuntimeNetworkReservationResponseSchema.parse(
+        response.json(),
+      );
+
+      expect(payload.reservationId).toBe('dep_123');
+      expect(mocks.reserveRuntimeNetworksForDeployment).toHaveBeenCalledTimes(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
     {
       code: 'invalid_node_inspect_deployment_query',
       method: 'GET',
@@ -422,7 +495,26 @@ describe('internal node routes', (): void => {
       payload: { artifactHostPath: '/tmp/backup' },
       url: nodeResourceOperationRestorePathname,
     },
-  ])(
+    {
+      code: 'invalid_node_internal_request',
+      method: 'POST',
+      payload: {
+        deploymentId: 'dep_123',
+        environmentId: 'env_123',
+        projectId: 'prj_123',
+        requiresResourceNetwork: false,
+        serviceId: 'svc_123',
+        serviceNetworkEndpointReservations: 3,
+      },
+      url: nodeRuntimeNetworkReservationPathname,
+    },
+    {
+      code: 'invalid_node_internal_request',
+      method: 'POST',
+      payload: { reservationId: 'dep_123' },
+      url: nodeRuntimeNetworkReservationCleanupPathname,
+    },
+  ] satisfies NodeInternalInvalidRouteCase[])(
     'returns contract errors for invalid authenticated $url requests',
     async (input: NodeInternalInvalidRouteCase): Promise<void> => {
       const { app } = createTestApp();
@@ -574,6 +666,7 @@ function createNodeConfig(): NodeConfig {
     resourceBackupDirectory: '/var/lib/compartment/resource-backups',
     runtimeConnectivityMode: 'loopback',
     runtimeDefaultUpstreamHost: '127.0.0.1',
+    runtimeNetworkPool: createRuntimeNetworkPoolConfig(),
     runtimeRegistryCredentials: {
       password: 'registry-read-password',
       serverAddress: '127.0.0.1:39461',

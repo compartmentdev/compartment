@@ -4,9 +4,7 @@ import {
   inspectDockerContainer,
   removeDockerContainer,
   runDockerContainer,
-  tailDockerContainerLogs,
   type DockerInspectContainerResult,
-  type DockerLogLine,
   type DockerRunContainerInput,
   type DockerRunContainerResult,
 } from '@compartment/docker';
@@ -17,12 +15,18 @@ import type {
 } from '@compartment/contracts';
 import { waitForHealthyRuntime } from './runtime-health.service';
 import { buildRuntimeContainerInput } from './runtime-container-input.service';
+import { buildRuntimeDeploymentError, throwRuntimeStartupError } from './runtime-deploy-error.service';
 import { waitForHealthyRuntimeFromDockerNetwork } from './runtime-docker-readiness.service';
+import { isNodeRuntimeError } from '../errors/node-runtime-error';
 import { syncRuntimeNetworkEgressDenyRules } from './runtime-network-egress.service';
-import { resolveRuntimeNetworkActors, type RuntimeNetworkActors } from './runtime-network.service';
-import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
+import { resolveRuntimeNetworkActors, type RuntimeNetworkActors } from './runtime-network-actors.service';
+import { normalizeRuntimeNetworkDockerError, type RuntimeNetworkErrorInput } from './runtime-network-error.service';
 import { reconcileRuntimeNetworksBestEffort } from './runtime-network-reconcile.service';
-import { buildDeploymentContainerName, buildRuntimeResourceNetworkName } from './runtime-names.service';
+import { buildDeploymentContainerName } from './runtime-names.service';
+import {
+  assertRuntimeResourceNetworkFreeEndpoints,
+  ensureRuntimeResourceNetwork,
+} from './runtime-network-capacity.service';
 import { resolveRuntimeUpstreamTarget, type RuntimeUpstreamTarget } from './runtime-upstream-target.service';
 import { buildRuntimeEnv, resolveRuntimeContainerPort } from './runtime-env.service';
 import type { ResolvedRuntimeDeploymentContext, RuntimeDeployConfig } from './runtime.types';
@@ -35,21 +39,33 @@ export async function deployRuntimeContainer(
     imageRef: input.imageRef,
     registryCredentials: config.runtimeRegistryCredentials,
   });
-  const context: ResolvedRuntimeDeploymentContext = await resolveRuntimeDeploymentContext(input, config);
-  const containerId: string = await runManagedContainer(input, context);
+  const containerName: string = buildDeploymentContainerName(input, config.dockerNamespace);
+  let context: ResolvedRuntimeDeploymentContext | undefined;
+  try {
+    await removeRuntimeContainerBestEffort(containerName);
+    context = await resolveRuntimeDeploymentContext(input, config, containerName);
+    const containerId: string = await runManagedContainer(input, context).catch(throwRuntimeStartupError);
 
-  return await finalizePreparedRuntime(input, context, containerId, config);
+    return await finalizePreparedRuntime(input, context, containerId, config);
+  } catch (error) {
+    if (context !== undefined) {
+      await removeRuntimeContainerBestEffort(context.containerName);
+    }
+    await reconcileRuntimeNetworksBestEffort(config);
+    throw normalizeRuntimeNetworkDockerError(error as RuntimeNetworkErrorInput, 'Unexpected runtime deployment error.');
+  }
 }
 
 async function resolveRuntimeDeploymentContext(
   input: NodeDeployRequest,
   config: RuntimeDeployConfig,
+  containerName: string,
 ): Promise<ResolvedRuntimeDeploymentContext> {
   const containerPort: number = await resolveRuntimeContainerPort(input.imageRef, input.runtimeEnv);
   const upstreamTarget: RuntimeUpstreamTarget = await resolveRuntimeUpstreamTarget(input, config, containerPort);
 
   return {
-    containerName: buildDeploymentContainerName(input, config.dockerNamespace),
+    containerName,
     containerPort,
     dockerNamespace: config.dockerNamespace,
     networkAliases: upstreamTarget.networkAliases,
@@ -82,12 +98,37 @@ async function finalizePreparedRuntime(
     await verifyPreparedRuntimeHealth(input, context, containerId, config);
     return createPreparedRuntimeResponse(input, context, containerId);
   } catch (error) {
-    const runtimeError: Error = error instanceof Error ? error : new Error('Unexpected runtime deployment error.');
-    const deploymentError: Error = await buildRuntimeDeploymentError(input, containerId, runtimeError);
-    await removeRuntimeContainerBestEffort(context.containerName);
-    await reconcileRuntimeNetworksBestEffort(config);
-    throw deploymentError;
+    return await handlePreparedRuntimeFailure(
+      input,
+      context,
+      containerId,
+      config,
+      normalizeRuntimeNetworkDockerError(error as RuntimeNetworkErrorInput, 'Unexpected runtime deployment error.'),
+    );
   }
+}
+
+async function handlePreparedRuntimeFailure(
+  input: NodeDeployRequest,
+  context: ResolvedRuntimeDeploymentContext,
+  containerId: string,
+  config: RuntimeDeployConfig,
+  runtimeError: Error,
+): Promise<never> {
+  const deploymentError: Error = await resolvePreparedRuntimeFailure(input, containerId, runtimeError);
+  await removeRuntimeContainerBestEffort(context.containerName);
+  await reconcileRuntimeNetworksBestEffort(config);
+  throw deploymentError;
+}
+
+async function resolvePreparedRuntimeFailure(
+  input: NodeDeployRequest,
+  containerId: string,
+  runtimeError: Error,
+): Promise<Error> {
+  return isNodeRuntimeError(runtimeError)
+    ? runtimeError
+    : await buildRuntimeDeploymentError(input, containerId, runtimeError);
 }
 
 async function verifyPreparedRuntimeHealth(
@@ -123,19 +164,36 @@ async function connectPreparedRuntimeResourceNetwork(
   context: ResolvedRuntimeDeploymentContext,
   config: RuntimeDeployConfig,
 ): Promise<void> {
-  const networkName: string = buildRuntimeResourceNetworkName(input, config.dockerNamespace);
-  await ensureOwnedRuntimeNetwork({ dockerNamespace: config.dockerNamespace, networkName });
-  const platformSourceContainerRefs: string[] = [];
-  if (context.networkName !== undefined) {
-    const actors: RuntimeNetworkActors = await resolveRuntimeNetworkActors(config);
-    platformSourceContainerRefs.push(actors.caddyContainerId);
+  if (!input.runtimeNetwork.requiresResourceNetwork) {
+    return;
   }
+
+  const networkName: string = await ensureRuntimeResourceNetwork(input, config);
+  await assertRuntimeResourceNetworkFreeEndpoints(
+    input,
+    config,
+    1,
+    'connecting deployment container to resource network',
+  );
+  const platformSourceContainerRefs: string[] = await readPreparedRuntimePlatformSourceContainerRefs(context, config);
   await syncRuntimeNetworkEgressDenyRules({
     dockerNamespace: config.dockerNamespace,
     networkNames: buildPreparedRuntimeEgressDenyNetworkNames(context, networkName),
     platformSourceContainerRefs,
   });
   await connectDockerContainerToNetwork({ containerRef: context.containerName, networkName });
+}
+
+async function readPreparedRuntimePlatformSourceContainerRefs(
+  context: ResolvedRuntimeDeploymentContext,
+  config: RuntimeDeployConfig,
+): Promise<string[]> {
+  if (context.networkName === undefined) {
+    return [];
+  }
+
+  const actors: RuntimeNetworkActors = await resolveRuntimeNetworkActors(config);
+  return [actors.caddyContainerId];
 }
 
 function buildPreparedRuntimeEgressDenyNetworkNames(
@@ -185,29 +243,5 @@ async function removeRuntimeContainerBestEffort(containerRef: string): Promise<v
     await removeDockerContainer({ containerRef });
   } catch {
     return;
-  }
-}
-
-async function buildRuntimeDeploymentError(
-  input: NodeDeployRequest,
-  containerId: string,
-  error: Error,
-): Promise<Error> {
-  const summary: string = input.readiness === null ? 'runtime startup failed' : 'runtime readiness failed';
-  const detail: string = error.message;
-  const logs: string = await readRuntimeFailureLogs(containerId);
-
-  return new Error(logs === '' ? `${summary}: ${detail}` : `${summary}: ${detail}\nLast logs:\n${logs}`);
-}
-
-async function readRuntimeFailureLogs(containerId: string): Promise<string> {
-  try {
-    const lines: DockerLogLine[] = (await tailDockerContainerLogs({ containerId, tailLines: 50 })).lines;
-    return lines
-      .map((line: DockerLogLine): string => `[${line.stream}] ${line.message}`)
-      .join('\n')
-      .trim();
-  } catch {
-    return '';
   }
 }

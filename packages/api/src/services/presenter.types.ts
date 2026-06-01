@@ -15,6 +15,7 @@ import type {
   ResolvedOptionalServiceReadinessConfig,
   ResourceRuntimeStatus,
   RuntimeActiveDeployment,
+  RuntimeNetworkIntent,
 } from '@compartment/contracts';
 import type { BuildEnvMap } from './deployment-build.types';
 import type { RuntimeEnvMap } from './deployment-runtime.types';
@@ -191,6 +192,7 @@ export interface WorkerClaimedDeploymentInput {
   release: ResolvedOptionalCompartmentServiceReleaseConfig;
   routeHost: string;
   run: ResolvedCompartmentServiceRunConfig;
+  runtimeNetwork: RuntimeNetworkIntent;
   runtimeEnv: RuntimeEnvMap;
 }
 

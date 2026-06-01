@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readNodeConfig, type NodeConfig } from '../src/config';
+import { buildTestIpv4Cidr, createRuntimeNetworkPoolConfig } from './runtime-network-pool.fixture';
 
 describe('readNodeConfig', (): void => {
   it('reads the required node runtime config from env', (): void => {
@@ -20,6 +21,8 @@ describe('readNodeConfig', (): void => {
       COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: 'loopback',
       COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: '127.0.0.1',
       COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
+      COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR: buildTestIpv4Cidr(10, 240, 0, 0, 24),
+      COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX: '28',
       COMPARTMENT_RUNTIME_PROBE_IMAGE: 'ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0',
     });
 
@@ -34,6 +37,7 @@ describe('readNodeConfig', (): void => {
     });
     expect(config.runtimeConnectivityMode).toBe('loopback');
     expect(config.runtimeDefaultUpstreamHost).toBe('127.0.0.1');
+    expect(config.runtimeNetworkPool).toEqual(createRuntimeNetworkPoolConfig());
   });
 
   it('does not read the API image as node runtime config', (): void => {
@@ -107,6 +111,8 @@ function createNodeConfigEnv(): NodeJS.ProcessEnv {
     COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: 'loopback',
     COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: '127.0.0.1',
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
+    COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR: buildTestIpv4Cidr(10, 240, 0, 0, 24),
+    COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX: '28',
     COMPARTMENT_RUNTIME_PROBE_IMAGE: 'ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0',
   };
 }

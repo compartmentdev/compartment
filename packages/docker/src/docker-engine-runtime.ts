@@ -27,7 +27,12 @@ export async function createDockerEngineContainer(input: DockerRunContainerInput
   const docker: Docker = await createDockerClient();
   await ensureDockerEngineVolumes(docker, input.namedVolumes ?? []);
   const container: Docker.Container = await docker.createContainer(buildDockerContainerCreateOptions(input));
-  await container.start();
+  try {
+    await container.start();
+  } catch (error) {
+    await removeDockerEngineContainerBestEffort(container.id);
+    throw error;
+  }
 
   return {
     containerId: container.id,
@@ -45,6 +50,14 @@ export async function removeDockerEngineVolume(input: DockerRemoveVolumeInput): 
     }
 
     throw error;
+  }
+}
+
+async function removeDockerEngineContainerBestEffort(containerRef: string): Promise<void> {
+  try {
+    await removeDockerEngineContainer({ containerRef });
+  } catch {
+    return;
   }
 }
 
@@ -145,10 +158,18 @@ function readDockerInspectLabels(config: DockerInspectConfigRecord): Record<stri
 function readDockerNetworkAttachments(container: Docker.ContainerInspectInfo): DockerNetworkAttachment[] {
   return Object.entries(readDockerInspectNetworks(container)).map(
     ([name, network]: [string, Docker.EndpointSettings]): DockerNetworkAttachment => ({
+      ...readDockerNetworkAttachmentAliases(network),
       ipAddress: hasText(network.IPAddress) ? network.IPAddress : null,
       name,
     }),
   );
+}
+
+function readDockerNetworkAttachmentAliases(
+  network: Docker.EndpointSettings,
+): Pick<DockerNetworkAttachment, 'aliases'> {
+  const aliases: string[] = (network.Aliases ?? []).filter(hasText);
+  return aliases.length === 0 ? {} : { aliases };
 }
 
 function readDockerInspectNetworks(container: Docker.ContainerInspectInfo): Record<string, Docker.EndpointSettings> {

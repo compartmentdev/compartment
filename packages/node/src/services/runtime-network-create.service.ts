@@ -1,0 +1,155 @@
+import {
+  ensureDockerNetwork,
+  inspectDockerNetwork,
+  isDockerNetworkIpamCapacityError,
+  readDockerEngineErrorMessage,
+  type DockerEngineError,
+  type DockerInspectNetworkResult,
+} from '@compartment/docker';
+import { createRuntimeDockerError, createRuntimeNetworkCapacityExhaustedError } from '../errors/node-runtime-error';
+import { formatIpv4Cidr, type Ipv4Cidr } from './runtime-network-cidr.service';
+import {
+  assertCompatibleExistingRuntimeNetwork,
+  buildRuntimeNetworkLabels,
+  isLegacyRuntimeNetwork,
+} from './runtime-network-managed.service';
+import { migrateLegacyRuntimeNetwork, readRuntimeNetworkIpamCidrs } from './runtime-network-migration.service';
+import type {
+  RuntimeNetworkCapacityConfig,
+  RuntimeNetworkCreateInput,
+  RuntimeNetworkEnsureResult,
+  RuntimeNetworkSpec,
+} from './runtime-network-capacity.types';
+import { assertRuntimeNetworkSubnetEndpointCapacity } from './runtime-network-endpoint-capacity.service';
+import {
+  allocateRuntimeNetworkSubnet,
+  allocateRuntimeNetworkSubnetIgnoring,
+} from './runtime-network-subnet-allocation.service';
+
+const runtimeNetworkCreateMaxAttempts: number = 3;
+const newServiceNetworkRequiredEndpointCount: number = 2;
+const newResourceNetworkRequiredEndpointCount: number = 1;
+
+interface RuntimeNetworkCreateAttemptResult {
+  error?: DockerEngineError | undefined;
+  created: boolean;
+}
+
+export async function ensureRuntimeNetwork(
+  input: RuntimeNetworkCreateInput,
+  config: RuntimeNetworkCapacityConfig,
+): Promise<RuntimeNetworkEnsureResult> {
+  const network: DockerInspectNetworkResult | null = await inspectDockerNetwork({
+    networkName: input.spec.networkName,
+  });
+  if (network !== null) {
+    return await ensureInspectedRuntimeNetwork(input, network, config);
+  }
+
+  const subnet: Ipv4Cidr = await allocateRuntimeNetworkSubnet(config.runtimeNetworkPool);
+  assertNewRuntimeNetworkEndpointCapacity(
+    input.spec,
+    subnet,
+    readDefaultNewRuntimeNetworkRequiredEndpointCount(input.spec),
+  );
+  await createManagedRuntimeNetwork(input, config, subnet);
+  return {
+    created: true,
+    networkName: input.spec.networkName,
+  };
+}
+
+export async function ensureInspectedRuntimeNetworkManaged(
+  spec: RuntimeNetworkSpec,
+  network: DockerInspectNetworkResult,
+  config: RuntimeNetworkCapacityConfig,
+): Promise<RuntimeNetworkEnsureResult> {
+  return await ensureInspectedRuntimeNetwork({ spec }, network, config);
+}
+
+async function ensureInspectedRuntimeNetwork(
+  input: RuntimeNetworkCreateInput,
+  network: DockerInspectNetworkResult,
+  config: RuntimeNetworkCapacityConfig,
+): Promise<RuntimeNetworkEnsureResult> {
+  if (isLegacyRuntimeNetwork(network, config.dockerNamespace)) {
+    const subnet: Ipv4Cidr = await allocateRuntimeNetworkSubnetIgnoring(
+      config.runtimeNetworkPool,
+      readRuntimeNetworkIpamCidrs(network),
+    );
+    await migrateLegacyRuntimeNetwork(input, network, config, subnet);
+    return {
+      created: true,
+      networkName: input.spec.networkName,
+    };
+  }
+
+  assertCompatibleExistingRuntimeNetwork(input.spec, network, config);
+  return {
+    created: false,
+    networkName: input.spec.networkName,
+  };
+}
+
+export async function createManagedRuntimeNetwork(
+  input: RuntimeNetworkCreateInput,
+  config: RuntimeNetworkCapacityConfig,
+  subnet: Ipv4Cidr,
+): Promise<void> {
+  let lastError: DockerEngineError | undefined;
+  for (let attempt: number = 1; attempt <= runtimeNetworkCreateMaxAttempts; attempt += 1) {
+    const result: RuntimeNetworkCreateAttemptResult = await tryCreateManagedRuntimeNetwork(input, config, subnet);
+    if (result.created) {
+      return;
+    }
+    lastError = result.error;
+  }
+
+  if (lastError !== undefined && isDockerNetworkIpamCapacityError(lastError)) {
+    throw createRuntimeNetworkCapacityExhaustedError(readDockerErrorMessage(lastError));
+  }
+  throw createRuntimeNetworkCapacityExhaustedError('No managed runtime network subnets are available.');
+}
+
+export function assertNewRuntimeNetworkEndpointCapacity(
+  spec: RuntimeNetworkSpec,
+  subnet: Ipv4Cidr,
+  requiredEndpoints: number,
+): void {
+  assertRuntimeNetworkSubnetEndpointCapacity({
+    networkName: spec.networkName,
+    reason: `new ${spec.kind} runtime network`,
+    requiredEndpoints,
+    subnet,
+  });
+}
+
+async function tryCreateManagedRuntimeNetwork(
+  input: RuntimeNetworkCreateInput,
+  config: RuntimeNetworkCapacityConfig,
+  subnet: Ipv4Cidr,
+): Promise<RuntimeNetworkCreateAttemptResult> {
+  try {
+    await ensureDockerNetwork({
+      ipam: { subnet: formatIpv4Cidr(subnet) },
+      labels: buildRuntimeNetworkLabels(input, config, subnet),
+      networkName: input.spec.networkName,
+    });
+    return { created: true };
+  } catch (error) {
+    const dockerError: DockerEngineError = error as DockerEngineError;
+    if (!isDockerNetworkIpamCapacityError(dockerError)) {
+      throw createRuntimeDockerError(readDockerErrorMessage(dockerError));
+    }
+    return { created: false, error: dockerError };
+  }
+}
+
+function readDefaultNewRuntimeNetworkRequiredEndpointCount(spec: RuntimeNetworkSpec): number {
+  return spec.kind === 'service' ? newServiceNetworkRequiredEndpointCount : newResourceNetworkRequiredEndpointCount;
+}
+
+function readDockerErrorMessage(error: DockerEngineError): string {
+  const message: string = readDockerEngineErrorMessage(error);
+  return message === '' ? 'Docker Engine rejected runtime network creation.' : message;
+}

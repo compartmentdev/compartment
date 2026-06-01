@@ -27,8 +27,8 @@ import {
   buildDeploymentUpstreamHost,
   buildRuntimeServiceNetworkName,
 } from './runtime-names.service';
-import { assertExistingOwnedRuntimeNetwork } from './runtime-network-ownership.service';
-import type { RuntimeConnectivityMode } from './runtime.types';
+import { assertInspectableRuntimeNetwork } from './runtime-inspect-network.service';
+import type { RuntimeConnectivityMode, RuntimeNetworkPoolConfig } from './runtime.types';
 
 interface HostInspectableReadinessTarget {
   host: string;
@@ -45,6 +45,7 @@ type InspectableReadinessTarget = DockerNetworkInspectableReadinessTarget | Host
 interface RuntimeInspectConfig {
   dockerNamespace: string;
   runtimeConnectivityMode: RuntimeConnectivityMode;
+  runtimeNetworkPool: RuntimeNetworkPoolConfig;
   runtimeProbeImageRef: string;
 }
 
@@ -131,7 +132,7 @@ async function canReachInspectableDeployment(
       return false;
     }
 
-    await waitForInspectableDeploymentReadiness(readinessTarget, deployment, readiness, config);
+    await waitForInspectableDeploymentReadiness(readinessTarget, container, deployment, readiness, config);
     return true;
   } catch {
     return false;
@@ -140,6 +141,7 @@ async function canReachInspectableDeployment(
 
 async function waitForInspectableDeploymentReadiness(
   target: InspectableReadinessTarget,
+  container: DockerInspectContainerResult,
   deployment: NodeInspectedDeployment,
   readiness: ResolvedServiceReadinessConfig,
   config: RuntimeInspectConfig,
@@ -149,7 +151,7 @@ async function waitForInspectableDeploymentReadiness(
     return;
   }
 
-  await waitForDockerNetworkInspectableDeploymentReadiness(target, deployment, readiness, config);
+  await waitForDockerNetworkInspectableDeploymentReadiness(target, container, deployment, readiness, config);
 }
 
 async function waitForHostInspectableDeploymentReadiness(
@@ -164,14 +166,12 @@ async function waitForHostInspectableDeploymentReadiness(
 
 async function waitForDockerNetworkInspectableDeploymentReadiness(
   target: DockerNetworkInspectableReadinessTarget,
+  container: DockerInspectContainerResult,
   deployment: NodeInspectedDeployment,
   readiness: ResolvedServiceReadinessConfig,
   config: RuntimeInspectConfig,
 ): Promise<void> {
-  await assertExistingOwnedRuntimeNetwork({
-    dockerNamespace: config.dockerNamespace,
-    networkName: target.networkName,
-  });
+  await assertInspectableRuntimeNetwork(target.networkName, container, config);
   await waitForHealthyRuntimeFromDockerNetwork({
     dockerNamespace: config.dockerNamespace,
     host: deployment.upstreamHost,
