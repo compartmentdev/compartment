@@ -58,7 +58,8 @@ compartment install --image-source local --local-runtime
 - Public ports default to `80` and `443`.
 - Config, compose, and env files live in `/etc/compartment`.
 - State, install backups, and docker work files live in `/var/lib/compartment/self-hosted`.
-- Self-hosted runtime containers use the fixed `compartment-runtime` identity (`10001:10001`).
+- Self-hosted API and worker containers use the fixed `compartment-runtime` identity (`10001:10001`); supporting
+  services keep their service-specific runtime users.
 - Runtime files are `/etc/compartment/.env.self-hosted`, `/etc/compartment/docker-compose.self-hosted.yml`, and
   `/var/lib/compartment/self-hosted/install-state.json`.
 - The pre-release `onprem` runtime layout, including `/etc/compartment/.env.onprem` and `/var/lib/compartment/onprem/install-state.json`, is not a supported install or update source.
