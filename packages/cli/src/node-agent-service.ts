@@ -3,7 +3,7 @@ import { isSea } from 'node:sea';
 import { copyFile, chmod, chown, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { SystemServiceHealth, SystemServiceStatus } from '@compartment/contracts';
-import { runCommand } from './command-runner';
+import { readCommandOutput, runCommand } from './command-runner';
 import type { CommandResult } from './command-runner.types';
 import type { SelfHostedRuntimeServiceInspection } from './docker-runtime.types';
 import { ensureSelfHostedRuntimeDirectoriesFromEnvFile } from './self-hosted-runtime-directories-env';
@@ -74,9 +74,20 @@ export async function restartNodeAgentHostService(input: RestartNodeAgentHostSer
 }
 
 export async function stopNodeAgentHostService(): Promise<void> {
-  await runRequiredSelfHostedSystemCommand(
-    ['systemctl', 'stop', nodeAgentServiceName],
-    'Failed to stop compartment-node-agent service.',
+  const result: CommandResult = await runCommand(['systemctl', 'stop', nodeAgentServiceName]);
+  if (result.exitCode === 0) {
+    return;
+  }
+
+  const output: string = readCommandOutput(result);
+  if (isMissingNodeAgentServiceStopOutput(output)) {
+    return;
+  }
+
+  throw new Error(
+    output === ''
+      ? 'Failed to stop compartment-node-agent service.'
+      : `Failed to stop compartment-node-agent service.\n${output}`,
   );
 }
 
@@ -217,6 +228,14 @@ async function waitForNodeAgentHealth(socketPath: string): Promise<void> {
   }
 
   throw new Error(`compartment-node-agent did not become healthy on ${socketPath}.`);
+}
+
+function isMissingNodeAgentServiceStopOutput(output: string): boolean {
+  const normalizedOutput: string = output.trim();
+  return (
+    normalizedOutput === `Failed to stop ${nodeAgentServiceName}: Unit ${nodeAgentServiceName} not loaded.` ||
+    normalizedOutput === `Unit ${nodeAgentServiceName} could not be found.`
+  );
 }
 
 async function readNodeAgentHealth(socketPath: string): Promise<boolean> {

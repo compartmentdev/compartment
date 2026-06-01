@@ -496,7 +496,43 @@ describe('node agent service inspection', (): void => {
   });
 });
 
-describe('node agent service restart', (): void => {
+describe('node agent service lifecycle', (): void => {
+  it('stops an installed host service', async (): Promise<void> => {
+    mocks.runCommand.mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '' });
+    const { stopNodeAgentHostService } = await import('../src/node-agent-service');
+
+    await stopNodeAgentHostService();
+
+    expect(mocks.runCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.runCommand).toHaveBeenCalledWith(['systemctl', 'stop', 'compartment-node-agent.service']);
+  });
+
+  it('treats a missing host service unit as already stopped', async (): Promise<void> => {
+    mocks.runCommand.mockResolvedValueOnce({
+      exitCode: 5,
+      stderr: 'Failed to stop compartment-node-agent.service: Unit compartment-node-agent.service not loaded.\n',
+      stdout: '',
+    });
+    const { stopNodeAgentHostService } = await import('../src/node-agent-service');
+
+    await expect(stopNodeAgentHostService()).resolves.toBeUndefined();
+
+    expect(mocks.runCommand).toHaveBeenCalledWith(['systemctl', 'stop', 'compartment-node-agent.service']);
+  });
+
+  it('fails when the host service cannot be stopped for another reason', async (): Promise<void> => {
+    mocks.runCommand.mockResolvedValueOnce({
+      exitCode: 1,
+      stderr: 'Failed to connect to bus: No medium found',
+      stdout: '',
+    });
+    const { stopNodeAgentHostService } = await import('../src/node-agent-service');
+
+    await expect(stopNodeAgentHostService()).rejects.toThrow(
+      'Failed to stop compartment-node-agent service.\nFailed to connect to bus: No medium found',
+    );
+  });
+
   it('fails when the host service cannot be restarted', async (): Promise<void> => {
     mocks.runCommand.mockResolvedValueOnce({ exitCode: 1, stderr: 'not found', stdout: '' });
     const { restartNodeAgentHostService } = await import('../src/node-agent-service');
