@@ -188,6 +188,55 @@ describe('migrateLegacyRuntimeNetworksOnStartup', (): void => {
     });
   });
 
+  it('allocates a non-overlapping replacement subnet while a renamed legacy network still exists', async (): Promise<void> => {
+    const dockerNamespace: string = 'test';
+    const legacyNetworkName: string = 'compartment-test-smoke-web-production-web';
+    const managedNetworkName: string = buildRuntimeServiceNetworkName(
+      {
+        environmentId: 'env_123',
+        projectId: 'prj_123',
+        serviceId: 'svc_123',
+      },
+      dockerNamespace,
+    );
+    const legacyNetwork: DockerInspectNetworkResult = {
+      endpointContainerIds: ['container_123'],
+      ipamConfigs: [
+        {
+          gateway: null,
+          subnet: buildTestIpv4Cidr(10, 240, 0, 0, 28),
+        },
+      ],
+      labels: {
+        'compartment.namespace': dockerNamespace,
+      },
+      name: legacyNetworkName,
+    };
+    mocks.listDockerNetworks.mockResolvedValue([toListedNetwork(legacyNetwork)]);
+    mocks.inspectDockerNetwork.mockResolvedValue(legacyNetwork);
+    mocks.inspectDockerContainer.mockResolvedValue({
+      containerId: 'container_123',
+      imageRef: 'sha256:image',
+      isRunning: true,
+      labels: {
+        'compartment.deploymentId': 'dep_123',
+        'compartment.environmentId': 'env_123',
+        'compartment.projectId': 'prj_123',
+        'compartment.serviceId': 'svc_123',
+      },
+      publishedPorts: [],
+    });
+
+    await migrateLegacyRuntimeNetworksOnStartup(createConfig(dockerNamespace));
+
+    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ipam: { subnet: buildTestIpv4Cidr(10, 240, 0, 16, 28) },
+        networkName: managedNetworkName,
+      }),
+    );
+  });
+
   it('migrates legacy resource networks with service consumers as one resource network', async (): Promise<void> => {
     const dockerNamespace: string = 'test';
     const legacyNetworkName: string = 'compartment-test-smoke-production-resources';

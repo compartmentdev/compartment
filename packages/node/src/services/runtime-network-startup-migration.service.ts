@@ -17,12 +17,12 @@ import {
   serviceIdLabelName,
 } from './runtime-container-labels';
 import { isLegacyRuntimeNetwork } from './runtime-network-managed.service';
-import { migrateLegacyRuntimeNetwork, readRuntimeNetworkIpamCidrs } from './runtime-network-migration.service';
+import { migrateLegacyRuntimeNetwork } from './runtime-network-migration.service';
 import {
   buildRuntimeNetworkReservationPlans,
   type RuntimeNetworkReservationPlan,
 } from './runtime-network-reservation-plans.service';
-import { allocateRuntimeNetworkSubnetIgnoring } from './runtime-network-subnet-allocation.service';
+import { allocateRuntimeNetworkSubnet } from './runtime-network-subnet-allocation.service';
 import { buildRuntimeResourceNetworkName, buildRuntimeServiceNetworkName } from './runtime-names.service';
 import { resourceNameLabelName } from './runtime-resource-labels';
 import type { RuntimeNetworkCapacityConfig, RuntimeNetworkSpec } from './runtime-network-capacity.types';
@@ -81,7 +81,7 @@ async function allocateLegacyRuntimeNetworkMigrationSubnet(
   config: RuntimeNetworkCapacityConfig,
 ): Promise<Ipv4Cidr> {
   if (network.name !== desiredSpec.networkName) {
-    return await allocateRuntimeNetworkSubnetIgnoring(config.runtimeNetworkPool, readRuntimeNetworkIpamCidrs(network));
+    return await allocateRuntimeNetworkSubnet(config.runtimeNetworkPool);
   }
 
   const [plan]: RuntimeNetworkReservationPlan[] = await buildRuntimeNetworkReservationPlans([desiredSpec], {}, config);
