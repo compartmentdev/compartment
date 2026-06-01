@@ -1,7 +1,5 @@
-import { constants as fsConstants } from 'node:fs';
-
-const fileModePermissionMask: number = fsConstants.S_IRWXU | fsConstants.S_IRWXG | fsConstants.S_IRWXO;
+const fileModePermissionBase: number = 0o1000;
 
 export function readFileModePermissions(mode: number): number {
-  return mode & fileModePermissionMask;
+  return mode % fileModePermissionBase;
 }
