@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Stats } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { buildPendingSystemDomainCertificatePaths } from '@compartment/utils';
+import { buildPendingSystemDomainCertificatePaths, isFileModeWritableByIdentity } from '@compartment/utils';
 import { copySelfHostedPrivateFile } from './self-hosted-file-permissions';
 import { readOptionalSelfHostedPathStats } from './self-hosted-path-stats';
 import type { SelfHostedRuntimeIdentity } from './self-hosted-runtime-identity';
@@ -62,13 +62,7 @@ async function assertCustomTlsDirectoryNotRuntimeWritable(
   if (!stats.isDirectory() || stats.isSymbolicLink()) {
     throw new Error(`Compartment custom TLS directory ${customTlsDirectory} must be a real directory.`);
   }
-  if (stats.uid === runtimeIdentity.uid && (stats.mode & 0o200) !== 0) {
-    throwRuntimeWritableTlsDirectoryError(customTlsDirectory);
-  }
-  if (stats.gid === runtimeIdentity.gid && (stats.mode & 0o020) !== 0) {
-    throwRuntimeWritableTlsDirectoryError(customTlsDirectory);
-  }
-  if ((stats.mode & 0o002) !== 0) {
+  if (isFileModeWritableByIdentity(stats.mode, stats, runtimeIdentity)) {
     throwRuntimeWritableTlsDirectoryError(customTlsDirectory);
   }
 }

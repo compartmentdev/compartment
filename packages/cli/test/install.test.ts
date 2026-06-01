@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { findFreePort } from '@compartment/test-support';
+import { findFreePort, readFileModePermissions } from '@compartment/test-support';
 import type { DockerExecutionContext, EnsureDockerExecutionContextOptions } from '../src/docker-runtime.types';
 import type {
   SelfHostedInstallInput,
@@ -652,5 +652,5 @@ async function closeServer(server: Server): Promise<void> {
 }
 
 async function readMode(path: string): Promise<number> {
-  return (await stat(path)).mode & 0o777;
+  return readFileModePermissions((await stat(path)).mode);
 }

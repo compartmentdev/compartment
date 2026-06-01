@@ -3,6 +3,7 @@ import type { Stats } from 'node:fs';
 import { lstat, mkdir, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { readFileModePermissions } from '@compartment/test-support';
 import { afterEach, describe, expect, it } from 'vitest';
 import { prepareNodeAgentSocketPath, restrictNodeAgentSocketPathPermissions } from '../src/node-agent-socket-path';
 
@@ -63,7 +64,7 @@ describe('node agent socket path helpers', (): void => {
 
     const socketDirectoryStats: Stats = await lstat(dirname(socketPath));
     expect(socketDirectoryStats.isDirectory()).toBe(true);
-    expect(socketDirectoryStats.mode & 0o777).toBe(0o750);
+    expect(readFileModePermissions(socketDirectoryStats.mode)).toBe(0o750);
   });
 
   it('refuses symlink parent directories before creating the socket directory', async (): Promise<void> => {
@@ -92,7 +93,7 @@ describe('node agent socket path helpers', (): void => {
       restrictNodeAgentSocketPathPermissions(socketPath, runtimeGid);
 
       const socketStats: Stats = await stat(socketPath);
-      expect(socketStats.mode & 0o777).toBe(0o660);
+      expect(readFileModePermissions(socketStats.mode)).toBe(0o660);
     } finally {
       await closeServer(server);
     }

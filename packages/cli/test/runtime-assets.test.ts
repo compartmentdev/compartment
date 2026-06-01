@@ -2,6 +2,7 @@ import type { Stats } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { readFileModePermissions } from '@compartment/test-support';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import type { BundledAssets, StagedAssetPaths } from '../src/runtime-assets.types';
@@ -331,7 +332,7 @@ describe.sequential('runtime assets', (): void => {
 
     const dockerWorkStats: Stats = await stat(stagedAssetPaths.dockerWorkDirectory);
     expect(dockerWorkStats.isDirectory()).toBe(true);
-    expect(dockerWorkStats.mode & 0o777).toBe(0o700);
+    expect(readFileModePermissions(dockerWorkStats.mode)).toBe(0o700);
   });
 
   it('passes the custom TLS directory to the API service', async (): Promise<void> => {

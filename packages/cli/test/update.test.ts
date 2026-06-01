@@ -1,5 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { readFileModePermissions } from '@compartment/test-support';
 import { describe, expect, it } from 'vitest';
 import {
   createUpdateRuntimeTestHarness,
@@ -846,5 +847,5 @@ function createLegacyManagedDomainInstallState(): InstallStateJsonObject {
 }
 
 async function readMode(path: string): Promise<number> {
-  return (await stat(path)).mode & 0o777;
+  return readFileModePermissions((await stat(path)).mode);
 }
