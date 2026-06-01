@@ -4,11 +4,16 @@ import { isDockerEngineObjectMissingError, type DockerEngineError } from './dock
 import { buildDockerLabelFilters } from './docker-label-filter';
 import type { DockerEnsureVolumeInput, DockerListVolumeResult, DockerListVolumesInput } from './docker-models';
 
+interface DockerListVolumesResponse {
+  Volumes?: Docker.VolumeInspectInfo[] | null;
+}
+
 export async function listDockerVolumes(input: DockerListVolumesInput = {}): Promise<DockerListVolumeResult[]> {
   const docker: Docker = await createDockerClient();
-  const { Volumes: volumes }: { Volumes: Docker.VolumeInspectInfo[] } = await docker.listVolumes({
+  const response: DockerListVolumesResponse = await docker.listVolumes({
     ...(input.labelFilters !== undefined ? { filters: { label: buildDockerLabelFilters(input.labelFilters) } } : {}),
   });
+  const volumes: Docker.VolumeInspectInfo[] = response.Volumes ?? [];
 
   return volumes.map(
     (volume: Docker.VolumeInspectInfo): DockerListVolumeResult => ({

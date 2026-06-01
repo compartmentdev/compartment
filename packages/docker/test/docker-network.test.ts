@@ -45,7 +45,12 @@ interface MockDockerListVolumesOptions {
 }
 
 interface MockDockerListVolumesResult {
-  Volumes: MockDockerVolumeInspectInfo[];
+  Volumes?: MockDockerVolumeInspectInfo[] | null;
+}
+
+interface DockerListVolumesNormalizationCase {
+  response: MockDockerListVolumesResult;
+  title: string;
 }
 
 interface MockDockerNetwork {
@@ -78,6 +83,11 @@ const mocks: DockerNetworkTestMocks = vi.hoisted(
     createDockerClient: vi.fn<CreateDockerClient>(),
   }),
 );
+
+const dockerListVolumesNormalizationCases: DockerListVolumesNormalizationCase[] = [
+  { response: { Volumes: null }, title: 'null Volumes' },
+  { response: {}, title: 'missing Volumes' },
+];
 
 vi.mock('../src/docker-client', (): { createDockerClient: Mock<CreateDockerClient>; hasText: typeof hasText } => ({
   createDockerClient: mocks.createDockerClient,
@@ -458,6 +468,17 @@ describe('listDockerNetworks', (): void => {
 });
 
 describe('listDockerVolumes', (): void => {
+  it.each(dockerListVolumesNormalizationCases)(
+    'normalizes $title to an empty volume list',
+    async ({ response }: DockerListVolumesNormalizationCase): Promise<void> => {
+      const dockerClient: MockDockerClient = createMockDockerClient({});
+      dockerClient.listVolumes.mockResolvedValueOnce(response);
+      mocks.createDockerClient.mockResolvedValueOnce(dockerClient);
+
+      await expect(listDockerVolumes()).resolves.toEqual([]);
+    },
+  );
+
   it('passes label filters and preserves daemon labels', async (): Promise<void> => {
     const dockerClient: MockDockerClient = createMockDockerClient({});
     dockerClient.listVolumes.mockResolvedValueOnce({
