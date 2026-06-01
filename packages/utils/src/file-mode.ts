@@ -6,11 +6,13 @@ export function isFileModeWritableByIdentity(
   ownership: FileModeOwnership,
   identity: FileModeIdentity,
 ): boolean {
-  return (
-    (ownership.uid === identity.uid && hasFileModePermission(mode, fsConstants.S_IWUSR)) ||
-    (ownership.gid === identity.gid && hasFileModePermission(mode, fsConstants.S_IWGRP)) ||
-    hasFileModePermission(mode, fsConstants.S_IWOTH)
-  );
+  if (ownership.uid === identity.uid) {
+    return hasFileModePermission(mode, fsConstants.S_IWUSR);
+  }
+  if (ownership.gid === identity.gid) {
+    return hasFileModePermission(mode, fsConstants.S_IWGRP);
+  }
+  return hasFileModePermission(mode, fsConstants.S_IWOTH);
 }
 
 function hasFileModePermission(mode: number, permission: number): boolean {
