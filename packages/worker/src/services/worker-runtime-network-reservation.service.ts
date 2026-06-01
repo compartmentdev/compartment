@@ -6,7 +6,7 @@ import {
   type NodeRequester,
 } from '@compartment/sdk';
 
-const runtimeNetworkCleanupRequestTimeoutMs: number = 5_000;
+const runtimeNetworkCleanupRequestTimeoutMs: number = 30_000;
 
 export async function reserveClaimedDeploymentNetworks(
   runtimeControlToken: string,
