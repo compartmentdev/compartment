@@ -22,7 +22,7 @@ export function CliLoginModeSelector({ mode, onSelect }: Readonly<CliLoginModeSe
   return (
     <div className="grid gap-2">
       <p className="text-[12px] font-medium uppercase text-[#485259]">This machine</p>
-      <div className="inline-flex w-fit items-center gap-1 rounded-lg border border-black/10 bg-[#f5f6f7] p-1">
+      <div className="inline-flex w-fit items-center gap-1 rounded-field border border-black/10 bg-[#f5f6f7] p-1">
         <CliLoginModeButton label="CLI already installed" mode={mode} onSelect={onSelect} value="installed" />
         <CliLoginModeButton label="Need to install CLI" mode={mode} onSelect={onSelect} value="install" />
       </div>
@@ -50,7 +50,7 @@ function CliLoginModeButton({ label, mode, onSelect, value }: Readonly<CliLoginM
   return (
     <button
       className={cn(
-        'rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3480c8]/50',
+        'rounded-control px-3 py-1.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3480c8]/50',
         isSelected ? 'bg-white text-[#111212] shadow-sm' : 'text-[#485259] hover:text-[#111212]',
       )}
       onClick={(): void => {

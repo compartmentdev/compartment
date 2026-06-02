@@ -27,7 +27,7 @@ export function BrowserConsoleOrganizationContextPanel({
   const copy: OrganizationContextCopy = readOrganizationContextCopy(context, organizations.length);
 
   return (
-    <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
+    <section className="rounded-card border border-border bg-card p-6 shadow-sm">
       <div className="flex max-w-2xl flex-col gap-4">
         <div className="flex flex-col gap-2">
           <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">

@@ -31,7 +31,6 @@ export {
   Trash,
   TriangleAlert,
   UserPlus,
-  UserRound,
   Users,
   UsersRound,
   X,

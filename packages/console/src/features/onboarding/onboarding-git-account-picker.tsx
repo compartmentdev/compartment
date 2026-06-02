@@ -3,7 +3,8 @@ import type {
   GitHubAccountDiscoveryAccount,
   GitHubAccountDiscoveryAppInstallationStatus,
 } from '@compartment/contracts/browser';
-import { LoaderCircle, UserRound, Users, type LucideIcon } from '../../components/ui/icons';
+import { LoaderCircle, Users, type LucideIcon } from '../../components/ui/icons';
+import { MinidenticonAvatar } from '../../components/ui/minidenticon-avatar';
 
 export type GitAccountDiscoveryLoadStatus = 'failed' | 'idle' | 'loading' | 'ready';
 
@@ -99,7 +100,7 @@ function GitAccountList({
   onAccountSelected,
 }: Readonly<GitAccountListProps>): JSX.Element {
   return (
-    <div className="grid max-w-2xl overflow-hidden rounded-[8px] border border-[#d8dde2] bg-white">
+    <div className="grid max-w-2xl overflow-hidden rounded-field border border-[#d8dde2] bg-card">
       {accounts.map(
         (account: GitHubAccountDiscoveryAccount): JSX.Element => (
           <GitAccountListItem
@@ -157,12 +158,21 @@ function GitAccountInstallAction({
 
 function GitAccountAvatar({ account }: Readonly<GitAccountAvatarProps>): JSX.Element {
   if (account.avatarUrl !== null) {
-    return <img alt="" className="h-8 w-8 rounded-[6px] border border-[#d8dde2]" src={account.avatarUrl} />;
+    return <img alt="" className="h-8 w-8 rounded-icon border border-[#d8dde2]" src={account.avatarUrl} />;
+  }
+  if (account.type === 'user') {
+    return (
+      <MinidenticonAvatar
+        className="h-8 w-8 rounded-icon border-[#d8dde2] bg-[#f4f6f8]"
+        imageClassName="rounded-icon"
+        seed={account.login}
+      />
+    );
   }
 
-  const Icon: LucideIcon = account.type === 'organization' ? Users : UserRound;
+  const Icon: LucideIcon = Users;
   return (
-    <span className="grid h-8 w-8 place-items-center rounded-[6px] border border-[#d8dde2] bg-[#f4f6f8] text-[#485259]">
+    <span className="grid h-8 w-8 place-items-center rounded-icon border border-[#d8dde2] bg-[#f4f6f8] text-[#485259]">
       <Icon aria-hidden="true" size={16} />
     </span>
   );

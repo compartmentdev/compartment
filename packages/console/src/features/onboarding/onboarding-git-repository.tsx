@@ -173,7 +173,7 @@ function GitRepositoryFields({
   repositoryOptions,
 }: Readonly<GitRepositoryFieldsProps>): JSX.Element {
   return (
-    <div className="grid gap-4 rounded-lg border border-black/10 bg-[#fbfcfc] p-4">
+    <div className="grid gap-4 rounded-card border border-black/10 bg-card p-4">
       <RepositorySelect
         formInput={formInput}
         onReloadRepositories={onReloadRepositories}

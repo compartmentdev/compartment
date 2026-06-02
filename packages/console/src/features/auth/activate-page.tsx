@@ -86,7 +86,7 @@ function ActivateUnavailableState({ data }: Readonly<{ data: ActivateStateRespon
         This invitation does not allow local password activation. Use SSO to sign in instead.
       </p>
       <a
-        className={buttonVariants({ className: 'w-full no-underline', size: 'lg', variant: 'secondary' })}
+        className={buttonVariants({ className: 'w-full no-underline', size: 'sm', variant: 'secondary' })}
         href={buildActivateLoginPath(data)}
       >
         Go to login

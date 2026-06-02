@@ -2,14 +2,12 @@ import { cn } from '../../lib/utils';
 
 const fieldFocusRingClassName: string =
   'focus-visible:ring-[3px] focus-visible:ring-[rgb(163_163_163_/_24%)] focus-visible:ring-offset-0';
-export const fieldFocusWithinRingClassName: string =
-  'focus-within:ring-[3px] focus-within:ring-[rgb(163_163_163_/_24%)] focus-within:ring-offset-0';
 const fieldInvalidRingClassName: string =
   'aria-invalid:ring-[3px] aria-invalid:ring-[rgb(164_46_28_/_20%)] dark:aria-invalid:ring-[rgb(215_91_66_/_40%)]';
 
 const fieldOpenRingClassName: string = 'data-[state=open]:ring-[3px] data-[state=open]:ring-[rgb(163_163_163_/_24%)]';
 
-export const fieldControlBaseClassName: string =
+const fieldControlBaseClassName: string =
   'field-control-surface w-full rounded-field border bg-background text-[13px] font-normal leading-5 text-foreground outline-none transition placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50';
 
 export type SingleLineFieldControlSize = 'default' | 'lg' | 'md' | 'sm';

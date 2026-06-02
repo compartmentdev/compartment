@@ -171,7 +171,7 @@ function DescriptorRepository({ repository }: Readonly<DescriptorRepositoryProps
 
 function DescriptorPreview({ target }: Readonly<DescriptorPreviewProps>): JSX.Element {
   return (
-    <div className="grid gap-4 rounded-lg border border-black/10 bg-[#fbfcfc] p-4">
+    <div className="grid gap-4 rounded-card border border-black/10 bg-card p-4">
       <p className="text-[12px] font-medium uppercase text-[#485259]">
         {target.files.length === 1 ? 'PR file' : 'PR files'}
       </p>

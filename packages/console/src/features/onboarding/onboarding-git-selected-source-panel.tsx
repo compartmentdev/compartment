@@ -12,7 +12,7 @@ interface GitSourceSummaryProps {
 
 export function GitSelectedSourcePanel({ formInput }: Readonly<GitSelectedSourcePanelProps>): JSX.Element {
   return (
-    <aside className="grid content-start gap-3 rounded-lg border border-black/10 bg-white p-4">
+    <aside className="grid content-start gap-3 rounded-card border border-black/10 bg-card p-4">
       <p className="text-[12px] font-medium uppercase text-[#485259]">Selected source</p>
       <GitSourceSummary label="Repository" value={`${formInput.repository.owner}/${formInput.repository.name}`} />
       <GitSourceSummary label="Branch" value={formInput.branchName} />

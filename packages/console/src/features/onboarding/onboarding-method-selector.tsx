@@ -78,7 +78,7 @@ function OnboardingMethodButton({ isSelected, onSelect, option }: Readonly<Onboa
 
 function OnboardingMethodIcon({ icon: Icon }: Readonly<OnboardingMethodIconProps>): JSX.Element {
   return (
-    <span className="flex size-10 items-center justify-center rounded-md border border-black/10 bg-black/[0.03] text-[#485259]">
+    <span className="flex size-10 items-center justify-center rounded-icon border border-black/10 bg-black/[0.03] text-[#485259]">
       <Icon aria-hidden="true" size={18} />
     </span>
   );
@@ -95,7 +95,7 @@ function OnboardingMethodCopy({ option }: Readonly<OnboardingMethodCopyProps>): 
 
 function readMethodButtonClassName(isSelected: boolean): string {
   return cn(
-    'grid min-h-[96px] grid-cols-[40px_1fr] gap-3 rounded-lg border bg-white p-4 text-left transition-colors hover:border-[#3480c8]/60 hover:bg-[#f8fbff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3480c8]/50',
-    isSelected ? 'border-[#3480c8] bg-[#f4f9ff]' : 'border-black/10',
+    'grid min-h-[96px] grid-cols-[40px_1fr] gap-3 rounded-card border bg-card p-4 text-left transition-colors hover:border-[#3480c8]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3480c8]/50',
+    isSelected ? 'border-[#3480c8]' : 'border-black/10',
   );
 }

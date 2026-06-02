@@ -111,18 +111,18 @@ function readCurrentStepIndex(currentStep: OnboardingProcessStep): number {
 
 function readStepItemClassName(isActive: boolean, isDone: boolean): string {
   return cn(
-    'grid min-h-11 grid-cols-[28px_1fr] items-center gap-2 rounded-lg border px-3 py-2 text-[#485259] no-underline',
-    isActive ? 'border-[#3480c8] bg-white text-[#111212]' : '',
+    'grid min-h-11 grid-cols-[28px_1fr] items-center gap-2 rounded-card border px-3 py-2 text-[#485259] no-underline',
+    isActive ? 'border-[#3480c8] bg-card text-[#111212]' : '',
     !isActive && isDone ? 'border-[#cfe9d7] bg-[#eef8f1] text-[#1f6b35]' : '',
-    !isActive && !isDone ? 'border-black/10 bg-white/70' : '',
+    !isActive && !isDone ? 'border-black/10 bg-card/70' : '',
   );
 }
 
 function readStepMarkerClassName(isActive: boolean, isDone: boolean): string {
   return cn(
-    'flex size-7 items-center justify-center rounded-md text-[12px] font-semibold',
+    'flex size-7 items-center justify-center rounded-icon text-[12px] font-semibold',
     isDone ? 'bg-[#2f7d32] text-white' : '',
     isActive ? 'bg-[#111212] text-white' : '',
-    isActive || isDone ? '' : 'border border-black/10 bg-white text-[#485259]',
+    isActive || isDone ? '' : 'border border-black/10 bg-card text-[#485259]',
   );
 }

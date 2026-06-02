@@ -42,7 +42,7 @@ function OnboardingCommandBlockView({
   status,
 }: Readonly<OnboardingCommandBlockViewProps>): JSX.Element {
   return (
-    <div className="mt-3 overflow-hidden rounded-md border border-black/10 bg-[#111212]">
+    <div className="mt-3 overflow-hidden rounded-field border border-black/10 bg-[#111212]">
       <div className="flex items-start gap-2 px-3 py-2.5">
         <OnboardingCommandView command={command} commandRef={commandRef} />
         <OnboardingCommandCopyButton onCopy={onCopy} status={status} />
