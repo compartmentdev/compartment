@@ -1,18 +1,17 @@
-import type { JSX } from 'react';
+import type { ChangeEvent, JSX } from 'react';
 import { BrowserBreadcrumbs } from '../../components/browser-breadcrumbs';
 import type { BrowserBreadcrumbItem } from '../../components/browser-breadcrumbs.types';
 import {
   BrowserConsoleDetailTitle,
   readBrowserConsoleEnvironmentLabel,
 } from '../../components/browser-console-detail-header';
-import { browserConsoleDetailPageHeaderClassName } from '../../components/browser-console-header';
+import {
+  browserConsoleDetailBreadcrumbBarClassName,
+  browserConsoleDetailPageHeaderClassName,
+} from '../../components/browser-console-header';
+import { Select } from '../../components/select';
 import { BrowserSoftNavigationLink } from '../../components/browser-soft-navigation-link';
 import { buttonVariants } from '../../components/ui/button';
-import {
-  TabsLiftedNavigation,
-  TabsLiftedTriggerContent,
-  readTabsLiftedTriggerClassName,
-} from '../../components/ui/tabs-lifted';
 import { Boxes, ChevronRight } from '../../components/ui/icons';
 import { cn } from '../../lib/utils';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
@@ -29,46 +28,31 @@ interface ProjectOverviewHeaderProps {
   onNavigate: BrowserSoftNavigateHandler;
 }
 
-interface ProjectOverviewDetailsHeaderProps {
+interface ProjectOverviewEnvironmentSelectProps {
   data: BrowserProjectOverviewPageResult;
   onNavigate: BrowserSoftNavigateHandler;
 }
 
-interface ProjectOverviewEnvironmentTabsProps {
-  data: BrowserProjectOverviewPageResult;
-  onNavigate: BrowserSoftNavigateHandler;
-}
-
-interface ProjectOverviewEnvironmentTabProps {
-  active: boolean;
-  environment: BrowserProjectOverviewEnvironment;
-  onNavigate: BrowserSoftNavigateHandler;
-  page: BrowserProjectOverviewPageResult;
-}
+const projectOverviewAllEnvironmentsValue: string = '';
 
 export function ProjectOverviewHeader({ data, onNavigate }: Readonly<ProjectOverviewHeaderProps>): JSX.Element {
   return (
-    <header className={browserConsoleDetailPageHeaderClassName}>
-      <div className="pb-6">
+    <header className={cn(browserConsoleDetailPageHeaderClassName, 'border-b-0 pb-0 pt-0')}>
+      <div className={browserConsoleDetailBreadcrumbBarClassName}>
         <BrowserBreadcrumbs items={readProjectOverviewBreadcrumbItems(data)} onNavigate={onNavigate} />
-        <BrowserConsoleDetailTitle icon={Boxes} title="Overview" />
       </div>
-      <ProjectOverviewEnvironmentTabs data={data} onNavigate={onNavigate} />
+      <BrowserConsoleDetailTitle icon={Boxes} title="Overview" />
+      <ProjectOverviewHeaderControls data={data} onNavigate={onNavigate} />
     </header>
   );
 }
 
-export function ProjectOverviewDetailsHeader({
-  data,
-  onNavigate,
-}: Readonly<ProjectOverviewDetailsHeaderProps>): JSX.Element {
+function ProjectOverviewHeaderControls({ data, onNavigate }: Readonly<ProjectOverviewHeaderProps>): JSX.Element {
   return (
-    <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <h2 className="text-xl font-semibold leading-7 text-foreground">
-        {readProjectOverviewEnvironmentLabel(data.selectedEnvironmentName)} details
-      </h2>
+    <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <ProjectOverviewEnvironmentSelect data={data} onNavigate={onNavigate} />
       {renderDeploymentsAction(data, onNavigate)}
-    </header>
+    </div>
   );
 }
 
@@ -84,61 +68,59 @@ function readProjectOverviewBreadcrumbItems(data: Readonly<BrowserProjectOvervie
   ];
 }
 
-function ProjectOverviewEnvironmentTabs({
+function ProjectOverviewEnvironmentSelect({
   data,
   onNavigate,
-}: Readonly<ProjectOverviewEnvironmentTabsProps>): JSX.Element | null {
+}: Readonly<ProjectOverviewEnvironmentSelectProps>): JSX.Element | null {
   if (data.environments.length === 0) {
     return null;
   }
 
   return (
-    <TabsLiftedNavigation ariaLabel="Project environments" className="px-0">
-      {data.environments.map(
-        (environment: BrowserProjectOverviewEnvironment): JSX.Element => (
-          <ProjectOverviewEnvironmentTab
-            active={environment.name === data.selectedEnvironmentName}
-            environment={environment}
-            key={environment.name}
-            onNavigate={onNavigate}
-            page={data}
-          />
-        ),
-      )}
-    </TabsLiftedNavigation>
-  );
-}
-
-function ProjectOverviewEnvironmentTab({
-  active,
-  environment,
-  onNavigate,
-  page,
-}: Readonly<ProjectOverviewEnvironmentTabProps>): JSX.Element {
-  const href: string = buildProjectOverviewEnvironmentHref(page, environment.name);
-
-  return (
-    <BrowserSoftNavigationLink
-      aria-current={active ? 'page' : undefined}
-      className={readProjectOverviewEnvironmentTabClassName(environment.name)}
-      data-state={active ? 'active' : 'inactive'}
-      href={href}
-      onNavigate={onNavigate}
-    >
-      <TabsLiftedTriggerContent label={readProjectOverviewEnvironmentLabel(environment.name)} />
-    </BrowserSoftNavigationLink>
+    <label className="w-fit">
+      <span className="sr-only">Project environment</span>
+      <Select
+        aria-label="Project environment"
+        className="min-w-[10.5rem]"
+        name="environmentName"
+        onChange={(event: ChangeEvent<HTMLSelectElement>): void => {
+          onNavigate(buildProjectOverviewEnvironmentHref(data, readProjectOverviewSelectEnvironmentName(event)));
+        }}
+        size="md"
+        value={data.selectedEnvironmentName ?? projectOverviewAllEnvironmentsValue}
+      >
+        {renderProjectOverviewEnvironmentSelectOptions(data.environments)}
+      </Select>
+    </label>
   );
 }
 
 function buildProjectOverviewEnvironmentHref(
   page: Readonly<BrowserProjectOverviewPageResult>,
-  environmentName: string,
+  environmentName: string | null,
 ): string {
   return buildProjectOverviewHref({
     environmentName,
     organizationSlug: page.selectedOrganizationSlug,
     projectName: page.projectName,
   });
+}
+
+function renderProjectOverviewEnvironmentSelectOptions(
+  environments: BrowserProjectOverviewEnvironment[],
+): JSX.Element[] {
+  return [
+    <option key="all-environments" value={projectOverviewAllEnvironmentsValue}>
+      All
+    </option>,
+    ...environments.map(
+      (environment: BrowserProjectOverviewEnvironment): JSX.Element => (
+        <option key={environment.name} value={environment.name}>
+          {readProjectOverviewEnvironmentLabel(environment.name)}
+        </option>
+      ),
+    ),
+  ];
 }
 
 function renderDeploymentsAction(
@@ -151,11 +133,11 @@ function renderDeploymentsAction(
 
   return (
     <BrowserSoftNavigationLink
-      className={cn(buttonVariants({ variant: 'soft' }), 'h-9 w-fit rounded-lg px-3 no-underline')}
+      className={buttonVariants({ className: 'w-fit rounded-control px-3 no-underline', size: 'sm', variant: 'soft' })}
       href={buildProjectDeploymentsHref(data)}
       onNavigate={onNavigate}
     >
-      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[12px] font-semibold leading-none text-primary-foreground">
+      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-primary px-1.5 text-[12px] font-semibold leading-none text-primary-foreground">
         {readProjectOverviewDeploymentBadgeCount(data)}
       </span>
       <span>{readProjectOverviewEnvironmentLabel(data.selectedEnvironmentName)} Deployments</span>
@@ -172,12 +154,8 @@ function buildProjectDeploymentsHref(data: BrowserProjectOverviewPageResult): st
   });
 }
 
-function readProjectOverviewEnvironmentTabClassName(environmentName: string): string {
-  return readTabsLiftedTriggerClassName(readProjectOverviewEnvironmentTabWidthClassName(environmentName));
-}
-
-function readProjectOverviewEnvironmentTabWidthClassName(environmentName: string): string {
-  return readProjectOverviewEnvironmentLabel(environmentName).length > 7 ? 'w-[96px]' : 'w-[82px]';
+function readProjectOverviewSelectEnvironmentName(event: ChangeEvent<HTMLSelectElement>): string | null {
+  return event.target.value === projectOverviewAllEnvironmentsValue ? null : event.target.value;
 }
 
 function readProjectOverviewEnvironmentLabel(environmentName: string | null): string {

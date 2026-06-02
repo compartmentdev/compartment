@@ -141,7 +141,6 @@ function buildProjectOverviewSharedFields(
     consoleContext,
     query.environmentName,
     displayFields.environments,
-    displayFields.project,
   );
 
   return {
@@ -156,6 +155,12 @@ function buildProjectOverviewServices(
   environments: readonly ProjectEnvironmentOverview[],
   selectedEnvironmentName: string | null,
 ): BrowserProjectOverviewService[] {
+  if (selectedEnvironmentName === null) {
+    return environments.flatMap((environment: ProjectEnvironmentOverview): BrowserProjectOverviewService[] =>
+      buildProjectOverviewEnvironmentServices(environment),
+    );
+  }
+
   const environment: ProjectEnvironmentOverview | undefined = readSelectedProjectOverviewEnvironment(
     environments,
     selectedEnvironmentName,
@@ -164,9 +169,7 @@ function buildProjectOverviewServices(
     return [];
   }
 
-  return environment.services.map(
-    (service: ProjectServiceOverview): BrowserProjectOverviewService => buildProjectOverviewService(service),
-  );
+  return buildProjectOverviewEnvironmentServices(environment);
 }
 
 function readSelectedProjectOverviewEnvironment(
@@ -178,8 +181,21 @@ function readSelectedProjectOverviewEnvironment(
   );
 }
 
-function buildProjectOverviewService(service: ProjectServiceOverview): BrowserProjectOverviewService {
+function buildProjectOverviewEnvironmentServices(
+  environment: ProjectEnvironmentOverview,
+): BrowserProjectOverviewService[] {
+  return environment.services.map(
+    (service: ProjectServiceOverview): BrowserProjectOverviewService =>
+      buildProjectOverviewService(environment.name, service),
+  );
+}
+
+function buildProjectOverviewService(
+  environmentName: string,
+  service: ProjectServiceOverview,
+): BrowserProjectOverviewService {
   return {
+    environmentName,
     kind: service.kind,
     lastDeploymentCreatedAt: service.lastDeploymentCreatedAt,
     name: service.name,

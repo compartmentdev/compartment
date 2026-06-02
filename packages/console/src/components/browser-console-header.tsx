@@ -13,6 +13,8 @@ export const browserConsoleListPageBodyClassName: string =
   'flex w-full flex-1 flex-col gap-8 px-4 pb-8 pt-0 sm:px-6 lg:px-8';
 export const browserConsoleDetailPageHeaderClassName: string = 'border-b border-border px-4 pt-5 sm:px-6 lg:px-8';
 export const browserConsolePageBodyClassName: string = 'flex w-full flex-1 flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8';
+export const browserConsoleDetailBreadcrumbBarClassName: string =
+  '-mx-4 flex h-12 items-center border-b border-border px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8';
 
 interface BrowserConsoleShellProps {
   children: ReactNode;

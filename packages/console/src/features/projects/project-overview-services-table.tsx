@@ -1,4 +1,5 @@
 import type { JSX } from 'react';
+import { readBrowserConsoleEnvironmentLabel } from '../../components/browser-console-detail-header';
 import { BrowserTimestampTableCell } from '../../components/browser-timestamp';
 import {
   readServerTableClosedBadgeClassName,
@@ -24,6 +25,7 @@ interface ProjectOverviewServicesTableProps {
 
 interface ProjectOverviewServiceRowProps {
   service: BrowserProjectOverviewService;
+  showEnvironmentColumn: boolean;
 }
 
 export function ProjectOverviewServicesTable({ data }: Readonly<ProjectOverviewServicesTableProps>): JSX.Element {
@@ -39,8 +41,9 @@ function renderProjectOverviewServicesTable(data: BrowserProjectOverviewPageResu
   return (
     <div className="flex-1">
       <ServerTable minWidthClassName="min-w-[760px]">
-        <thead className="bg-background">
+        <thead className="bg-card">
           <tr>
+            {renderProjectOverviewEnvironmentHeading(data)}
             <ServerTableHeading label="Service" />
             <ServerTableHeading label="Kind" />
             <ServerTableHeading label="Status" />
@@ -77,19 +80,33 @@ function ignoreProjectOverviewPageSizeChange(): void {
 
 function renderProjectOverviewServiceRows(data: BrowserProjectOverviewPageResult): JSX.Element[] {
   if (data.services.length === 0) {
-    return [<ServerTableEmptyRow colSpan={5} key="empty" message="No services found for this environment." />];
+    return [
+      <ServerTableEmptyRow
+        colSpan={readProjectOverviewServicesColumnCount(data)}
+        key="empty"
+        message={readProjectOverviewServicesEmptyMessage(data)}
+      />,
+    ];
   }
 
   return data.services.map(
     (service: BrowserProjectOverviewService): JSX.Element => (
-      <ProjectOverviewServiceRow key={service.name} service={service} />
+      <ProjectOverviewServiceRow
+        key={`${service.environmentName}:${service.name}`}
+        service={service}
+        showEnvironmentColumn={data.selectedEnvironmentName === null}
+      />
     ),
   );
 }
 
-function ProjectOverviewServiceRow({ service }: Readonly<ProjectOverviewServiceRowProps>): JSX.Element {
+function ProjectOverviewServiceRow({
+  service,
+  showEnvironmentColumn,
+}: Readonly<ProjectOverviewServiceRowProps>): JSX.Element {
   return (
     <ServerTableRow>
+      {renderProjectOverviewServiceEnvironmentCell(service, showEnvironmentColumn)}
       <ServerTableCell>{renderProjectOverviewServiceName(service.name)}</ServerTableCell>
       <ServerTableCell>{service.kind}</ServerTableCell>
       <ServerTableCell>
@@ -99,6 +116,19 @@ function ProjectOverviewServiceRow({ service }: Readonly<ProjectOverviewServiceR
       <BrowserTimestampTableCell emptyLabel={projectNoDeploymentsLabel} value={service.lastDeploymentCreatedAt} />
     </ServerTableRow>
   );
+}
+
+function renderProjectOverviewEnvironmentHeading(data: Readonly<BrowserProjectOverviewPageResult>): JSX.Element | null {
+  return data.selectedEnvironmentName === null ? <ServerTableHeading label="Environment" /> : null;
+}
+
+function renderProjectOverviewServiceEnvironmentCell(
+  service: Readonly<BrowserProjectOverviewService>,
+  showEnvironmentColumn: boolean,
+): JSX.Element | null {
+  return showEnvironmentColumn ? (
+    <ServerTableCell>{readProjectOverviewEnvironmentLabel(service.environmentName)}</ServerTableCell>
+  ) : null;
 }
 
 function renderProjectOverviewServiceName(name: string): JSX.Element {
@@ -120,4 +150,16 @@ function renderProjectOverviewRoute(routeUrl: string | null): JSX.Element {
       Open
     </a>
   );
+}
+
+function readProjectOverviewServicesColumnCount(data: Readonly<BrowserProjectOverviewPageResult>): number {
+  return data.selectedEnvironmentName === null ? 6 : 5;
+}
+
+function readProjectOverviewServicesEmptyMessage(data: Readonly<BrowserProjectOverviewPageResult>): string {
+  return data.selectedEnvironmentName === null ? 'No services found.' : 'No services found for this environment.';
+}
+
+function readProjectOverviewEnvironmentLabel(environmentName: string): string {
+  return readBrowserConsoleEnvironmentLabel(environmentName, 'Environment');
 }

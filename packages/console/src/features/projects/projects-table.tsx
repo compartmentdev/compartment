@@ -30,7 +30,7 @@ interface ProjectsEmptyRowProps {
 export function ProjectsTable({ data, onNavigate, onProjectAction }: Readonly<ProjectsTableProps>): JSX.Element {
   return (
     <ServerTable minWidthClassName="min-w-[900px]">
-      <thead className="bg-background">
+      <thead className="bg-card">
         <tr>
           <SortableHeading data={data} label="Project" onNavigate={onNavigate} sortBy="project" />
           <SortableHeading data={data} label="Status" onNavigate={onNavigate} sortBy="status" />
