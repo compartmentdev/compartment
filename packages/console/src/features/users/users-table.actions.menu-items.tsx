@@ -37,23 +37,21 @@ export function UserAccessMenuItem(props: Readonly<UserAccessMenuItemProps>): JS
 
   return (
     <DropdownMenuItem
-      className={readUserAccessMenuItemClassName(props.user.access)}
       disabled={mutation.isPending}
       onSelect={(): void => {
         if (!mutation.isPending) {
           mutation.mutate();
         }
       }}
+      variant={readUserAccessMenuItemVariant(props.user.access)}
     >
       {mutation.isPending ? `${label}ing...` : label}
     </DropdownMenuItem>
   );
 }
 
-function readUserAccessMenuItemClassName(access: BrowserUsersAccessState): string | undefined {
-  return access === 'blocked'
-    ? undefined
-    : 'text-destructive focus:text-destructive data-[highlighted]:text-destructive';
+function readUserAccessMenuItemVariant(access: BrowserUsersAccessState): 'default' | 'destructive' {
+  return access === 'blocked' ? 'default' : 'destructive';
 }
 
 export function UserRemoveMenuItem({
@@ -67,13 +65,13 @@ export function UserRemoveMenuItem({
 
   return (
     <DropdownMenuItem
-      className="text-destructive focus:text-destructive data-[highlighted]:text-destructive"
       disabled={isPending}
       onSelect={(): void => {
         if (!isPending) {
           onSelect();
         }
       }}
+      variant="destructive"
     >
       {isPending ? 'Removing...' : 'Remove'}
     </DropdownMenuItem>

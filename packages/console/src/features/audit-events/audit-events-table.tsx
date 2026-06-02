@@ -49,7 +49,7 @@ export function AuditEventsTable({ data, onNavigate }: Readonly<AuditEventsTable
   return (
     <ServerTable minWidthClassName="min-w-[1120px]">
       <ServerTableColumnGroup columns={auditEventColumns} />
-      <thead className="bg-background">
+      <thead className="bg-card">
         <tr>
           <AuditEventsSortableHeading data={data} label="Time" onNavigate={navigate} sortBy="occurredAt" />
           <AuditEventsSortableHeading data={data} label="Event" onNavigate={navigate} sortBy="eventType" />
@@ -199,7 +199,7 @@ function renderAuditMetadataChip(entry: AuditMetadataEntry): JSX.Element {
 }
 
 function readAuditMetadataChipClassName(): string {
-  return 'inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-[11px] leading-4 text-muted-foreground';
+  return 'inline-flex max-w-full items-center gap-1 rounded-control border border-border bg-muted px-2 py-1 text-[11px] leading-4 text-muted-foreground';
 }
 
 function readAuditActorLabel(event: AuditEventSummary): string {

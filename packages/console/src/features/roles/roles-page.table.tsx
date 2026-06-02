@@ -60,7 +60,7 @@ export function RolesTable({ state }: Readonly<RolesTableProps>): JSX.Element {
   const { data, onNavigate } = state;
   return (
     <ServerTable minWidthClassName="min-w-[980px]">
-      <thead className="bg-background">
+      <thead className="bg-card">
         <tr>
           <SortableHeading data={data} label="Role" onNavigate={onNavigate} sortBy="name" />
           <SortableHeading data={data} label="Type" onNavigate={onNavigate} sortBy="kind" />
@@ -125,7 +125,7 @@ function RoleRowActions({ role, state }: Readonly<RoleRowProps>): JSX.Element {
   return (
     <div className="flex flex-col items-end gap-1.5">
       <ServerTableActions>
-        <ViewRoleButton role={role} state={state} />
+        <ManageRoleButton role={role} state={state} />
         {role.kind !== 'system' && canManageBrowserRoles(state.data.currentOrganizationPermissions) ? (
           <RoleRowActionsMenu role={role} setErrorMessage={setActionErrorMessage} state={state} />
         ) : null}
@@ -135,7 +135,7 @@ function RoleRowActions({ role, state }: Readonly<RoleRowProps>): JSX.Element {
   );
 }
 
-function ViewRoleButton({ role, state }: Readonly<RoleRowProps>): JSX.Element {
+function ManageRoleButton({ role, state }: Readonly<RoleRowProps>): JSX.Element {
   return (
     <Button
       className={readServerTableActionControlClassName()}
@@ -146,7 +146,7 @@ function ViewRoleButton({ role, state }: Readonly<RoleRowProps>): JSX.Element {
       type="button"
       variant="secondary"
     >
-      View
+      Manage
     </Button>
   );
 }
@@ -219,13 +219,13 @@ function RoleRemoveMenuItem({
 }: Readonly<{ isPending: boolean; onSelect: () => void }>): JSX.Element {
   return (
     <DropdownMenuItem
-      className="text-destructive focus:text-destructive data-[highlighted]:text-destructive"
       disabled={isPending}
       onSelect={(): void => {
         if (!isPending) {
           onSelect();
         }
       }}
+      variant="destructive"
     >
       {isPending ? 'Removing...' : 'Remove'}
     </DropdownMenuItem>

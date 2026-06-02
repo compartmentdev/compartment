@@ -71,7 +71,7 @@ function RolePermissionFamilyCard({
   setSelectedPermissions,
 }: Readonly<RolePermissionFamilyCardProps>): JSX.Element {
   return (
-    <div className="rounded-[14px] border border-[var(--cpt-border-subtle,rgba(0,0,0,0.05))] bg-[var(--cpt-bg-muted,white)] p-3">
+    <div className="rounded-field border border-[var(--cpt-border-subtle,rgba(0,0,0,0.05))] bg-card p-3">
       <RolePermissionFamilyHeader family={family} selectedPermissions={selectedPermissions} />
       <RolePermissionFamilyRows
         family={family}
@@ -189,7 +189,7 @@ function RolePermissionToggleRow({
     <label className="flex items-center gap-[6px] py-[2px] text-[11px] leading-[14px] tracking-[0.033px] text-black">
       <input
         checked={checked}
-        className="size-[14px] rounded-[3px] border border-[var(--cpt-checkbox-border-unchecked,rgba(0,0,0,0.15))] bg-[var(--cpt-checkbox-bg-unchecked,rgba(0,0,0,0.03))] accent-[var(--cpt-primary,#3480c8)]"
+        className="size-[14px] rounded-micro border border-[var(--cpt-checkbox-border-unchecked,rgba(0,0,0,0.15))] bg-[var(--cpt-checkbox-bg-unchecked,rgba(0,0,0,0.03))] accent-[var(--cpt-primary,#3480c8)]"
         disabled={disabled}
         onChange={onChange}
         type="checkbox"

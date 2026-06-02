@@ -172,19 +172,29 @@ function ProjectActionMenuItem({
 }: Readonly<ProjectActionMenuItemProps>): JSX.Element {
   return (
     <DropdownMenuItem
-      className={
-        action === 'delete' ? 'text-destructive focus:text-destructive data-[highlighted]:text-destructive' : undefined
-      }
       disabled={isDisabled}
       onSelect={(): void => {
         if (!isDisabled) {
           onSelect(action);
         }
       }}
+      variant={readProjectActionMenuItemVariant(action)}
     >
       {isPending ? readPendingProjectActionLabel(action) : label}
     </DropdownMenuItem>
   );
+}
+
+function readProjectActionMenuItemVariant(action: ProjectAction): 'default' | 'destructive' {
+  switch (action) {
+    case 'archive':
+    case 'delete':
+    case 'stop':
+      return 'destructive';
+    case 'start':
+    case 'unarchive':
+      return 'default';
+  }
 }
 
 function readPendingProjectActionLabel(action: ProjectAction): string {

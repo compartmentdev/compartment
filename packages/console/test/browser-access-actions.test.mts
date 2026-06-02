@@ -67,7 +67,7 @@ describe('browser access action visibility', (): void => {
     expect(html).not.toContain('projects');
   });
 
-  it('renders an accent invite user action for organization admins', (): void => {
+  it('renders a primary invite user action for organization admins', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
@@ -80,11 +80,12 @@ describe('browser access action visibility', (): void => {
     );
 
     expect(html).toContain('Invite user');
-    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('bg-primary text-primary-foreground');
+    expect(html).not.toContain('button-accent-surface');
     expect(html).toContain('lucide-user-plus');
   });
 
-  it('renders an accent create group action for group managers', (): void => {
+  it('renders a primary create group action for group managers', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
@@ -94,7 +95,8 @@ describe('browser access action visibility', (): void => {
     );
 
     expect(html).toContain('Create group');
-    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('bg-primary text-primary-foreground');
+    expect(html).not.toContain('button-accent-surface');
     expect(html).toContain('lucide-users-round');
     expect(html).not.toContain('Manage shared access groups and their members.');
   });
@@ -153,7 +155,7 @@ describe('browser access action visibility', (): void => {
     expect(html).not.toContain('Open actions for Viewer');
   });
 
-  it('renders an accent create role action for role managers', (): void => {
+  it('renders a primary create role action for role managers', (): void => {
     vi.stubGlobal('React', React);
 
     const html: string = renderToStaticMarkup(
@@ -163,7 +165,8 @@ describe('browser access action visibility', (): void => {
     );
 
     expect(html).toContain('Create role');
-    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('bg-primary text-primary-foreground');
+    expect(html).not.toContain('button-accent-surface');
     expect(html).toContain('lucide-shield-plus');
     expect(html).not.toContain('Define permission sets for organization access.');
   });
@@ -180,7 +183,8 @@ describe('browser access action visibility', (): void => {
     expect(html).toContain('Create role');
     expect(html).toContain('Search roles');
     expect(html).toContain('No roles found.');
-    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('bg-primary text-primary-foreground');
+    expect(html).not.toContain('button-accent-surface');
     expect(html).not.toContain('You do not have any roles.');
   });
 

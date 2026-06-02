@@ -66,7 +66,7 @@ describe('browser users table', (): void => {
       }),
     );
 
-    expect(html).toContain('View');
+    expect(html).toContain('Manage');
     expect(html).not.toContain('Open actions for viewer@example.com');
   });
 });

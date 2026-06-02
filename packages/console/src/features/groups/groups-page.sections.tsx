@@ -198,7 +198,6 @@ function CreateGroupButton({ showCreateAction, state }: Readonly<CreateGroupButt
         state.onNavigate(buildGroupsPageHref(state.data, null, 'create'));
       }}
       type="button"
-      variant="accent"
     >
       Create group
     </ToolbarPrimaryActionButton>

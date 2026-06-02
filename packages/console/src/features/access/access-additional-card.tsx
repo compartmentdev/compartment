@@ -35,15 +35,13 @@ export function AccessAdditionalCard({
 }
 
 export function readAccessDangerActionButtonClassName(): string {
-  return 'h-8 gap-1.5 rounded-[10px] px-2.5 text-[13px] leading-5 [&_svg]:size-4';
+  return 'h-8 gap-1.5 rounded-control px-2.5 text-[13px] leading-5 [&_svg]:size-4';
 }
 
 function readAccessAdditionalCardClassName(tone: 'default' | 'danger'): string {
   return cn(
-    'rounded-[10px] border p-3 shadow-[0_1px_1px_rgba(0,0,0,0.1)]',
-    tone === 'danger'
-      ? undefined
-      : 'border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-[var(--cpt-bg-card,#fafafa)]',
+    'rounded-field border p-3 shadow-[0_1px_1px_rgba(0,0,0,0.1)]',
+    tone === 'danger' ? undefined : 'border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-card',
   );
 }
 
@@ -53,7 +51,7 @@ function readAccessAdditionalCardStyle(tone: 'default' | 'danger'): CSSPropertie
   }
 
   return {
-    backgroundColor: 'var(--sidebar,#fafafa)',
+    backgroundColor: 'var(--card)',
     borderColor: 'rgba(164,46,28,0.1)',
   };
 }

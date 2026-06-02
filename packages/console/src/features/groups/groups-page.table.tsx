@@ -54,7 +54,7 @@ type GroupDeleteMutation = UseMutationResult<boolean, Error, void>;
 export function GroupsTable({ state }: Readonly<GroupsTableProps>): JSX.Element {
   return (
     <ServerTable minWidthClassName="min-w-[1040px]">
-      <thead className="bg-background">
+      <thead className="bg-card">
         <tr>
           <GroupsSortableHeading data={state.data} label="Group" sortBy="name" state={state} />
           <GroupsSortableHeading data={state.data} label="Members" sortBy="memberCount" state={state} />

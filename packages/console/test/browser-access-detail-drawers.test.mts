@@ -37,6 +37,7 @@ describe('browser access detail drawers', (): void => {
 
     expect(html).toContain('Groups');
     expect(html).toContain('Direct assignments');
+    expect(html).toContain('data:image/svg+xml;utf8,');
     expect(html).toMatch(
       /<button(?=[^>]*aria-expanded="true")[^>]*>(?:(?!<\/button>).)*Effective permissions(?:(?!<\/button>).)*<\/button>/s,
     );

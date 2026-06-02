@@ -1,7 +1,6 @@
 import type { PermissionKey, UserAccessDetail } from '@compartment/contracts/browser';
 import type { JSX } from 'react';
-import { IconTile } from '../../components/ui/icon-tile';
-import { UserRound } from '../../components/ui/icons';
+import { MinidenticonAvatar } from '../../components/ui/minidenticon-avatar';
 import { StatusTag } from '../../components/ui/status-tag';
 import { AccessDrawerCollapsibleSection } from '../access/access-drawer-collapsible-section';
 import { AccessDrawerErrorAlert } from '../access/access-drawer-error';
@@ -131,7 +130,7 @@ function UserSummaryHeader({ access }: Readonly<{ access: UserAccessDetail }>): 
   return (
     <div className="flex items-center justify-between gap-3">
       <div className={accessDrawerSummaryIdentityClassName}>
-        <IconTile icon={UserRound} />
+        <MinidenticonAvatar className="rounded-icon" imageClassName="rounded-icon" seed={access.user.email} />
         <p className={accessDrawerSummaryTitleClassName}>{access.user.email}</p>
       </div>
       <UserStatusBadge access={access} />

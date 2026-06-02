@@ -574,9 +574,11 @@ describe('browser deployment pages', (): void => {
     expect(historyHtml).toContain('drn_123');
     expect(historyHtml).toContain('web');
     expect(historyHtml).toContain('dep_123');
-    expect(historyHtml).toContain('aria-label="Open actions for release 42"');
-    expect(historyHtml).toContain('lucide-ellipsis');
-    expect(historyHtml).toContain('aria-haspopup="menu"');
+    expect(historyHtml).toContain(
+      'href="/orgs/acme-dev/projects/billing/deployments/drn_123?environmentName=production"',
+    );
+    expect(historyHtml).toContain('>Details</a>');
+    expect(historyHtml).not.toContain('aria-label="Open actions for release 42"');
     expect(historyHtml).toContain('<colgroup>');
     expect(historyHtml).toContain('min-w-[1008px]');
     expect(historyHtml).toContain('table-fixed');
@@ -589,6 +591,18 @@ describe('browser deployment pages', (): void => {
     expect(historyHtml).toContain('w-[7.5rem]');
     expect(historyHtml).toContain('break-all');
     expect(historyHtml).not.toContain('>Rollback<');
+    const actionsHistoryHtml: string = renderToStaticMarkup(
+      createElement(DeploymentHistoryTable, {
+        data: createDeploymentHistoryPageResult({
+          currentEnvironmentPermissions: ['deployment.rollback'],
+        }),
+        onNavigate: noopBrowserNavigate,
+        onRollback: noopDeploymentHistoryRollback,
+      }),
+    );
+    expect(actionsHistoryHtml).toContain('aria-label="Open actions for release 42"');
+    expect(actionsHistoryHtml).toContain('lucide-ellipsis');
+    expect(actionsHistoryHtml).toContain('aria-haspopup="menu"');
     const multiOrgHistoryHtml: string = renderToStaticMarkup(
       createElement(DeploymentHistoryTable, {
         data: createDeploymentHistoryPageResult({
@@ -750,6 +764,7 @@ describe('browser deployment pages', (): void => {
     });
     const hiddenHtml: string = renderRollbackMenuItem(hiddenData);
     expect(hiddenHtml).toContain('>Details<');
+    expect(hiddenHtml).not.toContain('aria-label="Open actions for release 42"');
     expect(hiddenHtml).not.toContain('>Rollback<');
   });
 
