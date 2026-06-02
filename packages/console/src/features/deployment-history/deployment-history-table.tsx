@@ -88,7 +88,7 @@ export function DeploymentHistoryTable({
 
 function DeploymentHistoryTableHead(): JSX.Element {
   return (
-    <thead className="bg-background">
+    <thead className="bg-card">
       <tr>{deploymentHistoryColumns.map(renderDeploymentHistoryHeading)}</tr>
     </thead>
   );

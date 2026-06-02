@@ -38,7 +38,7 @@ export function DeploymentDetailsServicesSection({
         <h2 className="text-[14px] font-semibold text-foreground">Services</h2>
       </div>
       <ServerTable minWidthClassName="min-w-[760px]">
-        <thead className="bg-background">
+        <thead className="bg-card">
           <tr>
             <ServerTableHeading label="Service" />
             <ServerTableHeading label="Status" />
