@@ -61,7 +61,10 @@ export class DeploymentHistoryPage {
 
   async openDeploymentDetails(deploymentRunId: string): Promise<void> {
     const row: Locator = this.getDeploymentRunRow(deploymentRunId);
-    await row.getByRole('link', { name: 'Details' }).click();
+    await Promise.all([
+      expect(this.page.getByRole('heading', { name: 'Deployment run details' })).toBeVisible(),
+      row.getByRole('link', { name: 'Details' }).click(),
+    ]);
   }
 
   private getDeploymentRunRow(deploymentRunId: string): Locator {
