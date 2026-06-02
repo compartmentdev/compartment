@@ -1,10 +1,7 @@
-import {
-  compartmentDockerNamespaceLabelName,
-  inspectDockerNetwork,
-  type DockerInspectNetworkResult,
-} from '@compartment/docker';
+import { inspectDockerNetwork, type DockerInspectNetworkResult } from '@compartment/docker';
 import type { RuntimeNetworkCapacityConfig, RuntimeNetworkSpec } from './runtime-network-capacity.types';
 import { ensureInspectedRuntimeNetworkManaged } from './runtime-network-create.service';
+import { isManagedRuntimeNetwork } from './runtime-network-managed.service';
 import { isRuntimeNetworkName } from './runtime-names.service';
 
 export async function assertExistingDesiredRuntimeNetwork(
@@ -17,7 +14,7 @@ export async function assertExistingDesiredRuntimeNetwork(
     throw new Error(`Docker runtime network ${networkName} is missing.`);
   }
 
-  await ensureInspectedRuntimeNetworkManaged(
+  ensureInspectedRuntimeNetworkManaged(
     readDesiredRuntimeNetworkSpec(networkName, desiredNetworkSpecs),
     network,
     config,
@@ -41,7 +38,7 @@ export async function isCurrentRuntimeNetworkAttachment(
 
   const desiredSpec: RuntimeNetworkSpec | undefined = desiredNetworkSpecs.get(networkName);
   if (desiredSpec !== undefined) {
-    await ensureInspectedRuntimeNetworkManaged(desiredSpec, network, config);
+    ensureInspectedRuntimeNetworkManaged(desiredSpec, network, config);
     return true;
   }
 
@@ -53,10 +50,7 @@ export function isOwnedRuntimeNetwork(
   network: Pick<DockerInspectNetworkResult, 'labels' | 'name'>,
   config: Pick<RuntimeNetworkCapacityConfig, 'dockerNamespace'>,
 ): boolean {
-  return (
-    isRuntimeNetworkName(network.name, config.dockerNamespace) &&
-    network.labels[compartmentDockerNamespaceLabelName] === config.dockerNamespace
-  );
+  return isManagedRuntimeNetwork(network, config.dockerNamespace);
 }
 
 function readDesiredRuntimeNetworkSpec(

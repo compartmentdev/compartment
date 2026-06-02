@@ -604,7 +604,7 @@ describe('deployRuntimeContainer', (): void => {
     expect(response.upstreamPort).toBe(31001);
     expect(mocks.findAvailablePort).toHaveBeenCalledWith(31000, 31010, [31000], '127.0.0.1');
     expect(mocks.removeDockerContainer).not.toHaveBeenCalledWith({
-      containerRef: 'legacy_container_123',
+      containerRef: 'previous_container_123',
     });
   });
 
@@ -972,8 +972,8 @@ describe('stopRuntimeContainer', (): void => {
 describe('drainRuntimeContainer', (): void => {
   it('removes the addressed draining container even when network reconciliation fails', async (): Promise<void> => {
     mocks.inspectDockerContainer.mockResolvedValueOnce({
-      containerId: 'legacy_container_123',
-      imageRef: 'sha256:legacy-image',
+      containerId: 'previous_container_123',
+      imageRef: 'sha256:previous-image',
       isRunning: true,
       labels: {
         'compartment.deploymentId': 'dep_previous',
@@ -986,7 +986,7 @@ describe('drainRuntimeContainer', (): void => {
 
     const response: NodeDrainDeploymentResponse = await drainRuntimeContainer(
       {
-        containerId: 'legacy_container_123',
+        containerId: 'previous_container_123',
         deploymentId: 'dep_previous',
       },
       config,
@@ -994,10 +994,10 @@ describe('drainRuntimeContainer', (): void => {
 
     expect(response.acceptedAt).toContain('T');
     expect(mocks.inspectDockerContainer).toHaveBeenCalledWith({
-      containerRef: 'legacy_container_123',
+      containerRef: 'previous_container_123',
     });
     expect(mocks.removeDockerContainer).toHaveBeenCalledWith({
-      containerRef: 'legacy_container_123',
+      containerRef: 'previous_container_123',
     });
     expect(mocks.reconcileRuntimeNetworks).toHaveBeenCalledWith(config, {
       disconnectCaddyStaleNetworks: true,
@@ -1009,7 +1009,7 @@ describe('drainRuntimeContainer', (): void => {
 
     const response: NodeDrainDeploymentResponse = await drainRuntimeContainer(
       {
-        containerId: 'legacy_container_123',
+        containerId: 'previous_container_123',
         deploymentId: 'dep_previous',
       },
       createNodeConfig(),
@@ -1021,8 +1021,8 @@ describe('drainRuntimeContainer', (): void => {
 
   it('rejects removal when the container belongs to another deployment', async (): Promise<void> => {
     mocks.inspectDockerContainer.mockResolvedValueOnce({
-      containerId: 'legacy_container_123',
-      imageRef: 'sha256:legacy-image',
+      containerId: 'previous_container_123',
+      imageRef: 'sha256:previous-image',
       isRunning: true,
       labels: {
         'compartment.deploymentId': 'dep_other',
@@ -1033,7 +1033,7 @@ describe('drainRuntimeContainer', (): void => {
     await expect(
       drainRuntimeContainer(
         {
-          containerId: 'legacy_container_123',
+          containerId: 'previous_container_123',
           deploymentId: 'dep_previous',
         },
         createNodeConfig(),

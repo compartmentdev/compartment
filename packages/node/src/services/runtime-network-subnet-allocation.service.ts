@@ -23,25 +23,11 @@ export async function allocateRuntimeNetworkSubnet(poolConfig: RuntimeNetworkPoo
   return subnet;
 }
 
-export async function allocateRuntimeNetworkSubnetIgnoring(
-  poolConfig: RuntimeNetworkPoolConfig,
-  ignoredCidrs: readonly Ipv4Cidr[],
-): Promise<Ipv4Cidr> {
-  const [subnet]: Ipv4Cidr[] = await allocateRuntimeNetworkSubnets(poolConfig, 1, ignoredCidrs);
-  if (subnet === undefined) {
-    throw createRuntimeNetworkCapacityExhaustedError(
-      `Docker runtime network pool ${poolConfig.cidr} has no available /${poolConfig.subnetPrefixLength.toString()} subnets.`,
-    );
-  }
-
-  return subnet;
-}
-
 export async function allocateRuntimeNetworkSubnetAvoiding(
   poolConfig: RuntimeNetworkPoolConfig,
   avoidedCidrs: readonly Ipv4Cidr[],
 ): Promise<Ipv4Cidr> {
-  const [subnet]: Ipv4Cidr[] = await allocateRuntimeNetworkSubnets(poolConfig, 1, [], avoidedCidrs);
+  const [subnet]: Ipv4Cidr[] = await allocateRuntimeNetworkSubnets(poolConfig, 1, avoidedCidrs);
   if (subnet === undefined) {
     throw createRuntimeNetworkCapacityExhaustedError(
       `Docker runtime network pool ${poolConfig.cidr} has no available /${poolConfig.subnetPrefixLength.toString()} subnets.`,
@@ -54,7 +40,6 @@ export async function allocateRuntimeNetworkSubnetAvoiding(
 export async function allocateRuntimeNetworkSubnets(
   poolConfig: RuntimeNetworkPoolConfig,
   count: number,
-  ignoredCidrs: readonly Ipv4Cidr[] = [],
   avoidedCidrs: readonly Ipv4Cidr[] = [],
 ): Promise<Ipv4Cidr[]> {
   assertRuntimeNetworkSubnetAllocationCount(count);
@@ -63,7 +48,7 @@ export async function allocateRuntimeNetworkSubnets(
   }
 
   const pool: Ipv4Cidr = parseIpv4Cidr(poolConfig.cidr);
-  const occupiedCidrs: Ipv4Cidr[] = removeIgnoredCidrs(await readOccupiedIpv4Cidrs(), ignoredCidrs);
+  const occupiedCidrs: Ipv4Cidr[] = await readOccupiedIpv4Cidrs();
   const unavailableCidrs: Ipv4Cidr[] = [...occupiedCidrs, ...avoidedCidrs];
   const selectedCidrs: Ipv4Cidr[] = selectAvailableRuntimeNetworkSubnets(pool, poolConfig, count, unavailableCidrs);
   if (selectedCidrs.length === count) {
@@ -156,16 +141,4 @@ function readIpv4CidrSafely(value: string): Ipv4Cidr[] {
 
 function cidrOverlapsAny(candidate: Ipv4Cidr, occupiedCidrs: readonly Ipv4Cidr[]): boolean {
   return occupiedCidrs.some((occupied: Ipv4Cidr): boolean => cidrsOverlap(candidate, occupied));
-}
-
-function removeIgnoredCidrs(occupiedCidrs: Ipv4Cidr[], ignoredCidrs: readonly Ipv4Cidr[]): Ipv4Cidr[] {
-  return occupiedCidrs.filter((cidr: Ipv4Cidr): boolean => !cidrEqualsAny(cidr, ignoredCidrs));
-}
-
-function cidrEqualsAny(cidr: Ipv4Cidr, candidates: readonly Ipv4Cidr[]): boolean {
-  return candidates.some((candidate: Ipv4Cidr): boolean => cidrEquals(cidr, candidate));
-}
-
-function cidrEquals(left: Ipv4Cidr, right: Ipv4Cidr): boolean {
-  return left.address === right.address && left.prefixLength === right.prefixLength;
 }

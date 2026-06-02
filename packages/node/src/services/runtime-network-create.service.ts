@@ -8,12 +8,7 @@ import {
 } from '@compartment/docker';
 import { createRuntimeDockerError, createRuntimeNetworkCapacityExhaustedError } from '../errors/node-runtime-error';
 import { formatIpv4Cidr, type Ipv4Cidr } from './runtime-network-cidr.service';
-import {
-  assertCompatibleExistingRuntimeNetwork,
-  buildRuntimeNetworkLabels,
-  isLegacyRuntimeNetwork,
-} from './runtime-network-managed.service';
-import { migrateLegacyRuntimeNetwork, readRuntimeNetworkIpamCidrs } from './runtime-network-migration.service';
+import { assertCompatibleExistingRuntimeNetwork, buildRuntimeNetworkLabels } from './runtime-network-managed.service';
 import type {
   RuntimeNetworkCapacityConfig,
   RuntimeNetworkCreateInput,
@@ -24,7 +19,6 @@ import { assertRuntimeNetworkSubnetEndpointCapacity } from './runtime-network-en
 import {
   allocateRuntimeNetworkSubnet,
   allocateRuntimeNetworkSubnetAvoiding,
-  allocateRuntimeNetworkSubnetIgnoring,
 } from './runtime-network-subnet-allocation.service';
 
 const runtimeNetworkCreateMaxAttempts: number = 3;
@@ -44,7 +38,7 @@ export async function ensureRuntimeNetwork(
     networkName: input.spec.networkName,
   });
   if (network !== null) {
-    return await ensureInspectedRuntimeNetwork(input, network, config);
+    return ensureInspectedRuntimeNetwork(input, network, config);
   }
 
   const subnet: Ipv4Cidr = await allocateRuntimeNetworkSubnet(config.runtimeNetworkPool);
@@ -60,31 +54,19 @@ export async function ensureRuntimeNetwork(
   };
 }
 
-export async function ensureInspectedRuntimeNetworkManaged(
+export function ensureInspectedRuntimeNetworkManaged(
   spec: RuntimeNetworkSpec,
   network: DockerInspectNetworkResult,
   config: RuntimeNetworkCapacityConfig,
-): Promise<RuntimeNetworkEnsureResult> {
-  return await ensureInspectedRuntimeNetwork({ spec }, network, config);
+): RuntimeNetworkEnsureResult {
+  return ensureInspectedRuntimeNetwork({ spec }, network, config);
 }
 
-async function ensureInspectedRuntimeNetwork(
+function ensureInspectedRuntimeNetwork(
   input: RuntimeNetworkCreateInput,
   network: DockerInspectNetworkResult,
   config: RuntimeNetworkCapacityConfig,
-): Promise<RuntimeNetworkEnsureResult> {
-  if (isLegacyRuntimeNetwork(network, config.dockerNamespace)) {
-    const subnet: Ipv4Cidr = await allocateRuntimeNetworkSubnetIgnoring(
-      config.runtimeNetworkPool,
-      readRuntimeNetworkIpamCidrs(network),
-    );
-    await migrateLegacyRuntimeNetwork(input, network, config, subnet);
-    return {
-      created: true,
-      networkName: input.spec.networkName,
-    };
-  }
-
+): RuntimeNetworkEnsureResult {
   assertCompatibleExistingRuntimeNetwork(input.spec, network, config);
   return {
     created: false,

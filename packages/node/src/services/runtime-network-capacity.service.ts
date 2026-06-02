@@ -26,7 +26,6 @@ import {
   type RuntimeNetworkReservationPlan,
 } from './runtime-network-reservation-plans.service';
 import { createManagedRuntimeNetwork, ensureRuntimeNetwork } from './runtime-network-create.service';
-import { migrateLegacyRuntimeNetwork } from './runtime-network-migration.service';
 import { buildRuntimeResourceNetworkName, buildRuntimeServiceNetworkName } from './runtime-names.service';
 import {
   createRuntimeNetworkEndpointReservations,
@@ -138,11 +137,7 @@ async function createMissingRuntimeNetworkReservations(
     if (plan.subnet === undefined) {
       continue;
     }
-    if (plan.existingLegacyNetwork !== undefined) {
-      await migrateLegacyRuntimeNetwork(plan.input, plan.existingLegacyNetwork, config, plan.subnet);
-    } else {
-      await createManagedRuntimeNetwork(plan.input, config, plan.subnet);
-    }
+    await createManagedRuntimeNetwork(plan.input, config, plan.subnet);
     newlyCreatedNetworkNames.push(plan.input.spec.networkName);
   }
 }

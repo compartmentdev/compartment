@@ -1,9 +1,5 @@
 import { inspectDockerNetwork, type DockerInspectNetworkResult } from '@compartment/docker';
-import {
-  assertCompatibleExistingRuntimeNetwork,
-  isReplaceableLegacyRuntimeNetwork,
-} from './runtime-network-managed.service';
-import { readRuntimeNetworkIpamCidrs } from './runtime-network-migration.service';
+import { assertCompatibleExistingRuntimeNetwork } from './runtime-network-managed.service';
 import { allocateRuntimeNetworkSubnets } from './runtime-network-subnet-allocation.service';
 import type {
   RuntimeNetworkCapacityConfig,
@@ -13,7 +9,6 @@ import type {
 import type { Ipv4Cidr } from './runtime-network-cidr.service';
 
 export interface RuntimeNetworkReservationPlan {
-  existingLegacyNetwork?: DockerInspectNetworkResult | undefined;
   input: RuntimeNetworkCreateInput;
   subnet?: Ipv4Cidr | undefined;
 }
@@ -32,11 +27,7 @@ export async function buildRuntimeNetworkReservationPlans(
     }),
   );
   const missingPlans: RuntimeNetworkReservationPlan[] = await readMissingRuntimeNetworkReservationPlans(plans, config);
-  const subnets: Ipv4Cidr[] = await allocateRuntimeNetworkSubnets(
-    config.runtimeNetworkPool,
-    missingPlans.length,
-    readLegacyRuntimeNetworkIpamCidrs(missingPlans),
-  );
+  const subnets: Ipv4Cidr[] = await allocateRuntimeNetworkSubnets(config.runtimeNetworkPool, missingPlans.length);
   missingPlans.forEach((plan: RuntimeNetworkReservationPlan, index: number): void => {
     plan.subnet = subnets[index];
   });
@@ -54,11 +45,6 @@ async function readMissingRuntimeNetworkReservationPlans(
       networkName: plan.input.spec.networkName,
     });
     if (network !== null) {
-      if (isReplaceableLegacyRuntimeNetwork(network, plan.input.spec, config)) {
-        plan.existingLegacyNetwork = network;
-        missingPlans.push(plan);
-        continue;
-      }
       assertCompatibleExistingRuntimeNetwork(plan.input.spec, network, config);
       continue;
     }
@@ -66,10 +52,4 @@ async function readMissingRuntimeNetworkReservationPlans(
   }
 
   return missingPlans;
-}
-
-function readLegacyRuntimeNetworkIpamCidrs(plans: RuntimeNetworkReservationPlan[]): Ipv4Cidr[] {
-  return plans.flatMap((plan: RuntimeNetworkReservationPlan): Ipv4Cidr[] =>
-    plan.existingLegacyNetwork === undefined ? [] : readRuntimeNetworkIpamCidrs(plan.existingLegacyNetwork),
-  );
 }

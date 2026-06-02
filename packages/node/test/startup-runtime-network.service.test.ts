@@ -9,7 +9,6 @@ import { buildTestIpv4Cidr, createRuntimeNetworkPoolConfig } from './runtime-net
 type ExecFile = (file: string, args: string[], callback: ExecFileCallback) => void;
 type ListDockerNetworks = () => Promise<DockerListNetworkResult[]>;
 type ReconcileRuntimeNetworks = (config: RuntimeDeployConfig) => Promise<void>;
-type MigrateLegacyRuntimeNetworksOnStartup = (config: RuntimeDeployConfig) => Promise<void>;
 type WaitForRetry = (delayMs: number) => Promise<void>;
 
 interface StartupRuntimeNetworkLogger {
@@ -24,18 +23,15 @@ interface StartupRuntimeNetworkLogPayload {
 const mocks: {
   execFile: Mock<ExecFile>;
   listDockerNetworks: Mock<ListDockerNetworks>;
-  migrateLegacyRuntimeNetworksOnStartup: Mock<MigrateLegacyRuntimeNetworksOnStartup>;
   reconcileRuntimeNetworks: Mock<ReconcileRuntimeNetworks>;
 } = vi.hoisted(
   (): {
     execFile: Mock<ExecFile>;
     listDockerNetworks: Mock<ListDockerNetworks>;
-    migrateLegacyRuntimeNetworksOnStartup: Mock<MigrateLegacyRuntimeNetworksOnStartup>;
     reconcileRuntimeNetworks: Mock<ReconcileRuntimeNetworks>;
   } => ({
     execFile: vi.fn<ExecFile>(),
     listDockerNetworks: vi.fn<ListDockerNetworks>(),
-    migrateLegacyRuntimeNetworksOnStartup: vi.fn<MigrateLegacyRuntimeNetworksOnStartup>(),
     reconcileRuntimeNetworks: vi.fn<ReconcileRuntimeNetworks>(),
   }),
 );
@@ -60,13 +56,6 @@ vi.mock(
 );
 
 vi.mock(
-  '../src/services/runtime-network-startup-migration.service',
-  (): { migrateLegacyRuntimeNetworksOnStartup: Mock<MigrateLegacyRuntimeNetworksOnStartup> } => ({
-    migrateLegacyRuntimeNetworksOnStartup: mocks.migrateLegacyRuntimeNetworksOnStartup,
-  }),
-);
-
-vi.mock(
   '../src/services/runtime-network.service',
   (): { reconcileRuntimeNetworks: Mock<ReconcileRuntimeNetworks> } => ({
     reconcileRuntimeNetworks: mocks.reconcileRuntimeNetworks,
@@ -80,13 +69,11 @@ beforeEach((): void => {
     callback(null, '', '');
   });
   mocks.listDockerNetworks.mockResolvedValue([]);
-  mocks.migrateLegacyRuntimeNetworksOnStartup.mockResolvedValue(undefined);
 });
 
 afterEach((): void => {
   mocks.execFile.mockReset();
   mocks.listDockerNetworks.mockReset();
-  mocks.migrateLegacyRuntimeNetworksOnStartup.mockReset();
   mocks.reconcileRuntimeNetworks.mockReset();
 });
 
@@ -140,11 +127,10 @@ describe('reconcileRuntimeNetworksOnStartup', (): void => {
     await expect(
       reconcileRuntimeNetworksOnStartup(createNodeConfig(), createStartupRuntimeNetworkLogger([])),
     ).rejects.toThrow(`Runtime network pool ${poolCidr} overlaps Docker network ${foreignSubnet}.`);
-    expect(mocks.migrateLegacyRuntimeNetworksOnStartup).not.toHaveBeenCalled();
     expect(mocks.reconcileRuntimeNetworks).not.toHaveBeenCalled();
   });
 
-  it('fails startup when an unmigrated legacy runtime network overlaps the managed pool', async (): Promise<void> => {
+  it('fails startup when an unmanaged runtime-name Docker network overlaps the managed pool', async (): Promise<void> => {
     const ownedSubnet: string = buildTestIpv4Cidr(10, 240, 0, 0, 28);
     mocks.listDockerNetworks.mockResolvedValueOnce([
       {
@@ -176,7 +162,6 @@ describe('reconcileRuntimeNetworksOnStartup', (): void => {
     ).rejects.toThrow(
       `Runtime network pool ${buildTestIpv4Cidr(10, 240, 0, 0, 24)} overlaps Docker network ${ownedSubnet}.`,
     );
-    expect(mocks.migrateLegacyRuntimeNetworksOnStartup).not.toHaveBeenCalled();
     expect(mocks.reconcileRuntimeNetworks).not.toHaveBeenCalled();
   });
 
@@ -202,7 +187,6 @@ describe('reconcileRuntimeNetworksOnStartup', (): void => {
         createStartupRuntimeNetworkLogger([]),
       ),
     ).rejects.toThrow(`Runtime network pool ${poolCidr} overlaps Docker network ${foreignSubnet}.`);
-    expect(mocks.migrateLegacyRuntimeNetworksOnStartup).not.toHaveBeenCalled();
     expect(mocks.reconcileRuntimeNetworks).not.toHaveBeenCalled();
   });
 });

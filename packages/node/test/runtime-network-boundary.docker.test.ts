@@ -36,7 +36,6 @@ import type { NodeConfig } from '../src/config';
 import { prepareNodeAgentSocketPath, restrictNodeAgentSocketPathPermissions } from '../src/node-agent-socket-path';
 import {
   buildDeploymentContainerName,
-  buildRuntimeResourceNetworkName,
   buildRuntimeServiceNetworkName,
   buildSystemNetworkName,
 } from '../src/services/runtime-names.service';
@@ -83,13 +82,6 @@ interface NodeAgentRequestInput {
   body: object;
   path: string;
   socketPath: string;
-}
-
-interface LegacyResourceNetworkContainerInput {
-  containerName: string;
-  dockerNamespace: string;
-  legacyNetworkName: string;
-  networkAliases: string[];
 }
 
 const executeFileAsync: (
@@ -275,80 +267,6 @@ describe.sequential('runtime network boundary', (): void => {
     },
     120_000,
   );
-
-  it.skipIf(!canInspectHostIpv4Routes())(
-    'migrates legacy resource networks and preserves endpoint aliases',
-    async (): Promise<void> => {
-      const dockerNamespace: string = createDockerTestNamespace('compartment-node-boundary');
-      const legacyNetworkName: string = `compartment-${dockerNamespace}-smoke-production-resources`;
-      const resourceContainerName: string = `${dockerNamespace}-postgres`;
-      const serviceContainerName: string = `${dockerNamespace}-web`;
-      const resourceNetworkName: string = buildRuntimeResourceNetworkName(
-        {
-          environmentId: 'env_123',
-          projectId: 'prj_123',
-        },
-        dockerNamespace,
-      );
-      const apiServer: Server = await startMockApiServer();
-      const apiPort: number = readServerPort(apiServer);
-      const socketDirectory: string = await mkdtemp(join(tmpdir(), 'compartment-node-boundary-'));
-      const nodeSocketPath: string = join(socketDirectory, 'node', 'agent.sock');
-
-      cleanupTasks.push(async (): Promise<void> => {
-        await safeDockerCommand(['rm', '-f', resourceContainerName, serviceContainerName]);
-        await safeDockerCommand(['network', 'rm', legacyNetworkName, resourceNetworkName]);
-        await rm(socketDirectory, { force: true, recursive: true });
-        await closeServer(apiServer);
-      });
-
-      await pullDockerImageIfMissing(boundaryAlpineImage);
-      await runDockerCommand([
-        'network',
-        'create',
-        '--label',
-        `${compartmentDockerNamespaceLabelName}=${dockerNamespace}`,
-        legacyNetworkName,
-      ]);
-      await runLegacyResourceNetworkContainer({
-        containerName: resourceContainerName,
-        dockerNamespace,
-        legacyNetworkName,
-        networkAliases: ['postgres.resource.internal', 'compartment-test-smoke-production-resource-postgres'],
-      });
-      await runLegacyServiceNetworkContainer({
-        containerName: serviceContainerName,
-        dockerNamespace,
-        legacyNetworkName,
-        networkAliases: ['service-resource-client'],
-      });
-
-      const nodeAgent: NodeApp = await startNodeAgent(
-        createNodeConfig(dockerNamespace, apiPort, nodeSocketPath, {
-          runtimeConnectivityMode: 'loopback',
-        }),
-      );
-      cleanupTasks.push(async (): Promise<void> => {
-        await nodeAgent.close();
-      });
-
-      const resourceInspect: DockerContainerInspect = await inspectDockerContainer(resourceContainerName);
-      const serviceInspect: DockerContainerInspect = await inspectDockerContainer(serviceContainerName);
-      const resourceNetwork: DockerNetworkInspect = await inspectDockerNetwork(resourceNetworkName);
-
-      expect(await readDockerNetworkExists(legacyNetworkName)).toBe(false);
-      expect(resourceNetwork.Labels?.['compartment.network.ipam']).toBe('managed');
-      expect(resourceInspect.NetworkSettings.Networks[legacyNetworkName]).toBeUndefined();
-      expect(serviceInspect.NetworkSettings.Networks[legacyNetworkName]).toBeUndefined();
-      expect(resourceInspect.NetworkSettings.Networks[resourceNetworkName]?.Aliases).toEqual(
-        expect.arrayContaining(['postgres.resource.internal', 'compartment-test-smoke-production-resource-postgres']),
-      );
-      expect(serviceInspect.NetworkSettings.Networks[resourceNetworkName]?.Aliases).toEqual(
-        expect.arrayContaining(['service-resource-client']),
-      );
-    },
-    120_000,
-  );
 });
 
 async function startMockApiServer(): Promise<Server> {
@@ -443,64 +361,6 @@ async function startCaddyContainer(
     'sleep',
     '300',
   ]);
-}
-
-async function runLegacyResourceNetworkContainer(input: LegacyResourceNetworkContainerInput): Promise<void> {
-  await runDockerCommand([
-    'run',
-    '-d',
-    '--name',
-    input.containerName,
-    '--network',
-    input.legacyNetworkName,
-    ...buildDockerNetworkAliasArgs(input.networkAliases),
-    '--label',
-    `${compartmentDockerNamespaceLabelName}=${input.dockerNamespace}`,
-    '--label',
-    'compartment.projectId=prj_123',
-    '--label',
-    'compartment.environmentId=env_123',
-    '--label',
-    'compartment.project=smoke',
-    '--label',
-    'compartment.environment=production',
-    '--label',
-    'compartment.resource=postgres',
-    boundaryAlpineImage,
-    'sleep',
-    '600',
-  ]);
-}
-
-async function runLegacyServiceNetworkContainer(input: LegacyResourceNetworkContainerInput): Promise<void> {
-  await runDockerCommand([
-    'run',
-    '-d',
-    '--name',
-    input.containerName,
-    '--network',
-    input.legacyNetworkName,
-    ...buildDockerNetworkAliasArgs(input.networkAliases),
-    '--label',
-    `${compartmentDockerNamespaceLabelName}=${input.dockerNamespace}`,
-    '--label',
-    'compartment.projectId=prj_123',
-    '--label',
-    'compartment.environmentId=env_123',
-    '--label',
-    'compartment.serviceId=svc_123',
-    '--label',
-    'compartment.deploymentId=dep_123',
-    '--label',
-    'compartment.upstreamHost=upstream-dep-123',
-    boundaryAlpineImage,
-    'sleep',
-    '600',
-  ]);
-}
-
-function buildDockerNetworkAliasArgs(aliases: string[]): string[] {
-  return aliases.flatMap((alias: string): string[] => ['--network-alias', alias]);
 }
 
 async function deployRuntime(socketPath: string): Promise<NodeDeployResponse> {

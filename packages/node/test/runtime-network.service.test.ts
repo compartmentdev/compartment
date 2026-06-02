@@ -391,7 +391,7 @@ describe('reconcileRuntimeNetworks', (): void => {
 
     mocks.listDockerContainers.mockImplementation(
       async (input: DockerListContainersInput): Promise<DockerListContainerResult[]> =>
-        await Promise.resolve(readLegacyListedContainers(input, dockerNamespace)),
+        await Promise.resolve(readContainerWithOldRuntimeLabels(input, dockerNamespace)),
     );
 
     await expect(reconcileRuntimeNetworks(createRuntimeNetworkConfig(dockerNamespace))).rejects.toThrow(
@@ -404,7 +404,7 @@ describe('reconcileRuntimeNetworks', (): void => {
     expect(mocks.removeDockerNetwork).not.toHaveBeenCalled();
   });
 
-  it('fails closed on legacy desired runtime attachments without managed labels', async (): Promise<void> => {
+  it('fails closed on desired runtime attachments without managed labels', async (): Promise<void> => {
     const dockerNamespace: string = 'compartment-test';
     const systemNetworkName: string = buildSystemNetworkName(dockerNamespace);
     const desiredRuntimeNetworkName: string = buildRuntimeServiceNetworkName(
@@ -443,7 +443,7 @@ describe('reconcileRuntimeNetworks', (): void => {
     expect(mocks.disconnectDockerContainerFromNetwork).not.toHaveBeenCalled();
   });
 
-  it('does not connect caddy to legacy desired runtime networks without managed labels', async (): Promise<void> => {
+  it('does not connect caddy to desired runtime networks without managed labels', async (): Promise<void> => {
     const dockerNamespace: string = 'compartment-test';
     const systemNetworkName: string = buildSystemNetworkName(dockerNamespace);
     const desiredRuntimeNetworkName: string = buildRuntimeServiceNetworkName(
@@ -481,49 +481,6 @@ describe('reconcileRuntimeNetworks', (): void => {
 
     expect(mocks.ensureDockerNetwork).not.toHaveBeenCalled();
     expect(mocks.connectDockerContainerToNetwork).not.toHaveBeenCalled();
-    expect(mocks.disconnectDockerContainerFromNetwork).not.toHaveBeenCalled();
-  });
-
-  it('migrates same-name legacy desired runtime networks during update', async (): Promise<void> => {
-    const dockerNamespace: string = 'compartment-test';
-    const systemNetworkName: string = buildSystemNetworkName(dockerNamespace);
-    const desiredRuntimeNetworkName: string = buildRuntimeServiceNetworkName(
-      {
-        environmentId: 'env_123',
-        projectId: 'prj_123',
-        serviceId: 'svc_123',
-      },
-      dockerNamespace,
-    );
-
-    mocks.listDockerContainers.mockImplementation(
-      async (input: DockerListContainersInput): Promise<DockerListContainerResult[]> =>
-        await Promise.resolve(readListedContainers(input, dockerNamespace)),
-    );
-    mocks.inspectDockerContainer.mockImplementation(
-      async ({ containerRef }: DockerInspectContainerInput): Promise<DockerInspectContainerResult | null> =>
-        await Promise.resolve(
-          readInspectedContainerFromMap(containerRef, {
-            caddy_container: [systemNetworkName],
-            runtime_container: [systemNetworkName, desiredRuntimeNetworkName],
-          }),
-        ),
-    );
-    mocks.inspectDockerNetwork.mockResolvedValueOnce(createLegacyNetwork(desiredRuntimeNetworkName, dockerNamespace));
-
-    await reconcileRuntimeNetworks(createRuntimeNetworkConfig(dockerNamespace));
-
-    expect(mocks.removeDockerNetwork).toHaveBeenCalledWith({ networkName: desiredRuntimeNetworkName });
-    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ipam: { subnet: buildTestIpv4Cidr(10, 240, 0, 0, 28) },
-        networkName: desiredRuntimeNetworkName,
-      }),
-    );
-    expect(mocks.connectDockerContainerToNetwork).toHaveBeenCalledWith({
-      containerRef: 'caddy_container',
-      networkName: desiredRuntimeNetworkName,
-    });
     expect(mocks.disconnectDockerContainerFromNetwork).not.toHaveBeenCalled();
   });
 
@@ -636,7 +593,7 @@ describe('reconcileRuntimeNetworks', (): void => {
     expect(mocks.removeDockerNetwork).not.toHaveBeenCalled();
   });
 
-  it('disconnects and removes stale owned legacy runtime networks attached to caddy', async (): Promise<void> => {
+  it('does not treat unmanaged stale runtime networks as owned', async (): Promise<void> => {
     const dockerNamespace: string = 'compartment-test';
     const systemNetworkName: string = buildSystemNetworkName(dockerNamespace);
     const staleRuntimeNetworkName: string = buildRuntimeServiceNetworkName(
@@ -692,16 +649,11 @@ describe('reconcileRuntimeNetworks', (): void => {
 
     await reconcileRuntimeNetworks(createRuntimeNetworkConfig(dockerNamespace));
 
-    expect(mocks.disconnectDockerContainerFromNetwork).toHaveBeenCalledWith({
-      containerRef: 'caddy_container',
-      networkName: staleRuntimeNetworkName,
-    });
-    expect(mocks.removeDockerNetwork).toHaveBeenCalledWith({
-      networkName: staleRuntimeNetworkName,
-    });
+    expect(mocks.disconnectDockerContainerFromNetwork).not.toHaveBeenCalled();
+    expect(mocks.removeDockerNetwork).not.toHaveBeenCalled();
   });
 
-  it('removes stale empty resource runtime networks that caddy never joins', async (): Promise<void> => {
+  it('removes stale empty managed resource runtime networks that caddy never joins', async (): Promise<void> => {
     const dockerNamespace: string = 'compartment-test';
     const staleResourceNetworkName: string = buildRuntimeResourceNetworkName(
       {
@@ -723,6 +675,7 @@ describe('reconcileRuntimeNetworks', (): void => {
       {
         labels: {
           'compartment.namespace': dockerNamespace,
+          'compartment.network.ipam': 'managed',
         },
         name: staleResourceNetworkName,
       },
@@ -733,6 +686,7 @@ describe('reconcileRuntimeNetworks', (): void => {
       ipamConfigs: [],
       labels: {
         'compartment.namespace': dockerNamespace,
+        'compartment.network.ipam': 'managed',
       },
       name: staleResourceNetworkName,
     });
@@ -765,6 +719,7 @@ describe('reconcileRuntimeNetworks', (): void => {
       {
         labels: {
           'compartment.namespace': dockerNamespace,
+          'compartment.network.ipam': 'managed',
         },
         name: staleResourceNetworkName,
       },
@@ -931,22 +886,6 @@ function createManagedNetwork(
   };
 }
 
-function createLegacyNetwork(networkName: string, dockerNamespace: string): DockerInspectNetworkResult {
-  return {
-    endpointContainerIds: [],
-    ipamConfigs: [
-      {
-        gateway: null,
-        subnet: buildTestIpv4Cidr(172, 20, 0, 0, 16),
-      },
-    ],
-    labels: {
-      'compartment.namespace': dockerNamespace,
-    },
-    name: networkName,
-  };
-}
-
 function createEndpointReservationVolume(input: {
   dockerNamespace: string;
   networkName: string;
@@ -1035,7 +974,7 @@ function readReleaseListedContainers(
   return [];
 }
 
-function readLegacyListedContainers(
+function readContainerWithOldRuntimeLabels(
   input: DockerListContainersInput,
   dockerNamespace: string,
 ): DockerListContainerResult[] {
@@ -1046,7 +985,7 @@ function readLegacyListedContainers(
     return [
       createListedContainer('runtime_container', {
         'compartment.namespace': dockerNamespace,
-        'compartment.deploymentId': 'dep_legacy',
+        'compartment.deploymentId': 'dep_old',
         'compartment.environment': 'production',
         'compartment.project': 'smoke-web',
         'compartment.service': 'web',

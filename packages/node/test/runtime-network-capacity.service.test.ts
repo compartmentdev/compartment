@@ -46,25 +46,6 @@ interface DockerListVolumesInput {
   labelFilters?: Record<string, string | undefined> | undefined;
 }
 
-interface DockerConnectContainerToNetworkInput {
-  aliases?: string[] | undefined;
-  containerRef: string;
-  networkName: string;
-}
-
-interface DockerDisconnectContainerFromNetworkInput {
-  containerRef: string;
-  networkName: string;
-}
-
-interface DockerInspectContainerResultFixture {
-  containerId: string;
-  imageRef: string;
-  isRunning: boolean;
-  labels: Record<string, string>;
-  publishedPorts: [];
-}
-
 interface RuntimeNetworkCapacityConfig {
   dockerNamespace: string;
   runtimeConnectivityMode: RuntimeConnectivityMode;
@@ -73,10 +54,7 @@ interface RuntimeNetworkCapacityConfig {
 
 type EnsureDockerNetwork = (input: DockerEnsureNetworkInput) => Promise<void>;
 type EnsureDockerVolume = (input: DockerEnsureVolumeInput) => Promise<void>;
-type ConnectDockerContainerToNetwork = (input: DockerConnectContainerToNetworkInput) => Promise<void>;
-type DisconnectDockerContainerFromNetwork = (input: DockerDisconnectContainerFromNetworkInput) => Promise<void>;
 type ExecFile = (file: string, args: string[], callback: ExecFileCallback) => void;
-type InspectDockerContainer = (input: { containerRef: string }) => Promise<DockerInspectContainerResultFixture | null>;
 type InspectDockerNetwork = (input: { networkName: string }) => Promise<DockerInspectNetworkResult | null>;
 type IsDockerNetworkIpamCapacityError = (error: Error) => boolean;
 type ListDockerContainers = () => Promise<DockerListContainerResult[]>;
@@ -95,12 +73,9 @@ const runtimeNetworkSubnetLabelName: string = 'compartment.network.subnet';
 const runtimeNetworkSubnetPrefixLabelName: string = 'compartment.network.subnetPrefix';
 
 interface RuntimeNetworkCapacityMocks {
-  connectDockerContainerToNetwork: Mock<ConnectDockerContainerToNetwork>;
-  disconnectDockerContainerFromNetwork: Mock<DisconnectDockerContainerFromNetwork>;
   ensureDockerNetwork: Mock<EnsureDockerNetwork>;
   ensureDockerVolume: Mock<EnsureDockerVolume>;
   execFile: Mock<ExecFile>;
-  inspectDockerContainer: Mock<InspectDockerContainer>;
   inspectDockerNetwork: Mock<InspectDockerNetwork>;
   isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
   listDockerContainers: Mock<ListDockerContainers>;
@@ -113,12 +88,9 @@ interface RuntimeNetworkCapacityMocks {
 
 const mocks: RuntimeNetworkCapacityMocks = vi.hoisted(
   (): RuntimeNetworkCapacityMocks => ({
-    connectDockerContainerToNetwork: vi.fn<ConnectDockerContainerToNetwork>(),
-    disconnectDockerContainerFromNetwork: vi.fn<DisconnectDockerContainerFromNetwork>(),
     ensureDockerNetwork: vi.fn<EnsureDockerNetwork>(),
     ensureDockerVolume: vi.fn<EnsureDockerVolume>(),
     execFile: vi.fn<ExecFile>(),
-    inspectDockerContainer: vi.fn<InspectDockerContainer>(),
     inspectDockerNetwork: vi.fn<InspectDockerNetwork>(),
     isDockerNetworkIpamCapacityError: vi.fn<IsDockerNetworkIpamCapacityError>(),
     listDockerContainers: vi.fn<ListDockerContainers>(),
@@ -139,11 +111,8 @@ vi.mock(
   (): {
     buildDockerNamespaceLabels: (namespace: string) => Record<string, string>;
     compartmentDockerNamespaceLabelName: string;
-    connectDockerContainerToNetwork: Mock<ConnectDockerContainerToNetwork>;
-    disconnectDockerContainerFromNetwork: Mock<DisconnectDockerContainerFromNetwork>;
     ensureDockerNetwork: Mock<EnsureDockerNetwork>;
     ensureDockerVolume: Mock<EnsureDockerVolume>;
-    inspectDockerContainer: Mock<InspectDockerContainer>;
     inspectDockerNetwork: Mock<InspectDockerNetwork>;
     isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
     listDockerContainers: Mock<ListDockerContainers>;
@@ -157,11 +126,8 @@ vi.mock(
       'compartment.namespace': namespace,
     }),
     compartmentDockerNamespaceLabelName: 'compartment.namespace',
-    connectDockerContainerToNetwork: mocks.connectDockerContainerToNetwork,
-    disconnectDockerContainerFromNetwork: mocks.disconnectDockerContainerFromNetwork,
     ensureDockerNetwork: mocks.ensureDockerNetwork,
     ensureDockerVolume: mocks.ensureDockerVolume,
-    inspectDockerContainer: mocks.inspectDockerContainer,
     inspectDockerNetwork: mocks.inspectDockerNetwork,
     isDockerNetworkIpamCapacityError: mocks.isDockerNetworkIpamCapacityError,
     listDockerContainers: mocks.listDockerContainers,
@@ -214,9 +180,6 @@ beforeEach((): void => {
       name: input.volumeName,
     });
   });
-  mocks.connectDockerContainerToNetwork.mockResolvedValue(undefined);
-  mocks.disconnectDockerContainerFromNetwork.mockResolvedValue(undefined);
-  mocks.inspectDockerContainer.mockResolvedValue(null);
   mocks.removeDockerVolume.mockImplementation(async ({ volumeName }: { volumeName: string }): Promise<void> => {
     await Promise.resolve();
     volumes.delete(volumeName);
@@ -226,12 +189,9 @@ beforeEach((): void => {
 });
 
 afterEach((): void => {
-  mocks.connectDockerContainerToNetwork.mockReset();
-  mocks.disconnectDockerContainerFromNetwork.mockReset();
   mocks.ensureDockerNetwork.mockReset();
   mocks.ensureDockerVolume.mockReset();
   mocks.execFile.mockReset();
-  mocks.inspectDockerContainer.mockReset();
   mocks.inspectDockerNetwork.mockReset();
   mocks.isDockerNetworkIpamCapacityError.mockReset();
   mocks.listDockerContainers.mockReset();
@@ -487,7 +447,7 @@ describe('reserveRuntimeNetworksForDeployment', (): void => {
     expect(mocks.removeDockerNetwork).toHaveBeenCalledWith({ networkName: serviceNetworkName });
   });
 
-  it('migrates an existing legacy same-name runtime network during self-hosted update', async (): Promise<void> => {
+  it('fails closed when a same-name namespace-owned runtime network is not managed', async (): Promise<void> => {
     const request: NodeRuntimeNetworkReservationRequest = createReservationRequest();
     const serviceNetworkName: string = buildRuntimeServiceNetworkName(request, dockerNamespace);
     mocks.inspectDockerNetwork.mockResolvedValue({
@@ -499,21 +459,15 @@ describe('reserveRuntimeNetworksForDeployment', (): void => {
       name: serviceNetworkName,
     });
 
-    await expect(reserveRuntimeNetworksForDeployment(request, createConfig())).resolves.toMatchObject({
-      newlyCreatedNetworkNames: [serviceNetworkName],
-      reservedNetworkNames: [serviceNetworkName],
-    });
-    expect(mocks.removeDockerNetwork).toHaveBeenCalledWith({ networkName: serviceNetworkName });
-    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ipam: { subnet: buildTestIpv4Cidr(10, 240, 0, 0, 28) },
-        networkName: serviceNetworkName,
-      }),
+    await expect(reserveRuntimeNetworksForDeployment(request, createConfig())).rejects.toThrow(
+      `Docker runtime network ${serviceNetworkName} exists without required managed Compartment network labels.`,
     );
-    expect(mocks.ensureDockerVolume).toHaveBeenCalledTimes(2);
+    expect(mocks.removeDockerNetwork).not.toHaveBeenCalled();
+    expect(mocks.ensureDockerNetwork).not.toHaveBeenCalled();
+    expect(mocks.ensureDockerVolume).not.toHaveBeenCalled();
   });
 
-  it('replaces an empty unlabeled same-name runtime network before reservation', async (): Promise<void> => {
+  it('fails closed when a same-name unlabeled runtime network already exists', async (): Promise<void> => {
     const request: NodeRuntimeNetworkReservationRequest = createReservationRequest();
     const serviceNetworkName: string = buildRuntimeServiceNetworkName(request, dockerNamespace);
     mocks.inspectDockerNetwork.mockResolvedValue({
@@ -523,123 +477,12 @@ describe('reserveRuntimeNetworksForDeployment', (): void => {
       name: serviceNetworkName,
     });
 
-    await expect(reserveRuntimeNetworksForDeployment(request, createConfig())).resolves.toMatchObject({
-      newlyCreatedNetworkNames: [serviceNetworkName],
-      reservedNetworkNames: [serviceNetworkName],
-    });
-    expect(mocks.removeDockerNetwork).toHaveBeenCalledWith({ networkName: serviceNetworkName });
-    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ipam: { subnet: buildTestIpv4Cidr(10, 240, 0, 0, 28) },
-        networkName: serviceNetworkName,
-      }),
+    await expect(reserveRuntimeNetworksForDeployment(request, createConfig())).rejects.toThrow(
+      `Docker runtime network ${serviceNetworkName} exists without required managed Compartment network labels.`,
     );
-  });
-
-  it('migrates active legacy runtime networks and reconnects service aliases', async (): Promise<void> => {
-    const request: NodeRuntimeNetworkReservationRequest = createReservationRequest();
-    const serviceNetworkName: string = buildRuntimeServiceNetworkName(request, dockerNamespace);
-    mocks.inspectDockerNetwork.mockResolvedValue({
-      endpointContainerIds: ['container_123'],
-      ipamConfigs: [createIpamConfig(buildTestIpv4Cidr(172, 20, 0, 0, 16))],
-      labels: {
-        'compartment.namespace': dockerNamespace,
-      },
-      name: serviceNetworkName,
-    });
-    mocks.inspectDockerContainer.mockResolvedValueOnce({
-      containerId: 'container_123',
-      imageRef: 'sha256:image',
-      isRunning: true,
-      labels: {
-        'compartment.deploymentId': request.deploymentId,
-        'compartment.upstreamHost': 'upstream-dep-123',
-      },
-      publishedPorts: [],
-    });
-
-    await reserveRuntimeNetworksForDeployment(request, createConfig());
-
-    expect(mocks.disconnectDockerContainerFromNetwork).toHaveBeenCalledWith({
-      containerRef: 'container_123',
-      networkName: serviceNetworkName,
-    });
-    expect(mocks.removeDockerNetwork).toHaveBeenCalledWith({ networkName: serviceNetworkName });
-    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ipam: { subnet: buildTestIpv4Cidr(10, 240, 0, 0, 28) },
-        networkName: serviceNetworkName,
-      }),
-    );
-    expect(mocks.connectDockerContainerToNetwork).toHaveBeenCalledWith({
-      aliases: ['upstream-dep-123'],
-      containerRef: 'container_123',
-      networkName: serviceNetworkName,
-    });
-  });
-
-  it('restores same-name legacy participants when legacy network removal fails', async (): Promise<void> => {
-    const request: NodeRuntimeNetworkReservationRequest = createReservationRequest();
-    const serviceNetworkName: string = buildRuntimeServiceNetworkName(request, dockerNamespace);
-    mocks.inspectDockerNetwork.mockResolvedValue({
-      endpointContainerIds: ['container_123'],
-      ipamConfigs: [createIpamConfig(buildTestIpv4Cidr(172, 20, 0, 0, 16))],
-      labels: {
-        'compartment.namespace': dockerNamespace,
-      },
-      name: serviceNetworkName,
-    });
-    mocks.inspectDockerContainer.mockResolvedValueOnce({
-      containerId: 'container_123',
-      imageRef: 'sha256:image',
-      isRunning: true,
-      labels: {
-        'compartment.deploymentId': request.deploymentId,
-        'compartment.upstreamHost': 'upstream-dep-123',
-      },
-      publishedPorts: [],
-    });
-    mocks.removeDockerNetwork.mockRejectedValueOnce(new Error('remove failed'));
-
-    await expect(reserveRuntimeNetworksForDeployment(request, createConfig())).rejects.toThrow('remove failed');
-
-    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith({
-      ipam: { subnet: buildTestIpv4Cidr(172, 20, 0, 0, 16) },
-      labels: {
-        'compartment.namespace': dockerNamespace,
-      },
-      networkName: serviceNetworkName,
-    });
-    expect(mocks.connectDockerContainerToNetwork).toHaveBeenCalledWith({
-      aliases: ['upstream-dep-123'],
-      containerRef: 'container_123',
-      networkName: serviceNetworkName,
-    });
-  });
-
-  it('migrates an existing legacy same-name runtime network without Docker IPAM', async (): Promise<void> => {
-    const request: NodeRuntimeNetworkReservationRequest = createReservationRequest();
-    const serviceNetworkName: string = buildRuntimeServiceNetworkName(request, dockerNamespace);
-    mocks.inspectDockerNetwork.mockResolvedValueOnce({
-      endpointContainerIds: [],
-      ipamConfigs: [],
-      labels: {
-        'compartment.namespace': dockerNamespace,
-      },
-      name: serviceNetworkName,
-    });
-
-    await expect(reserveRuntimeNetworksForDeployment(request, createConfig())).resolves.toMatchObject({
-      newlyCreatedNetworkNames: [serviceNetworkName],
-      reservedNetworkNames: [serviceNetworkName],
-    });
-    expect(mocks.removeDockerNetwork).toHaveBeenCalledWith({ networkName: serviceNetworkName });
-    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ipam: { subnet: buildTestIpv4Cidr(10, 240, 0, 0, 28) },
-        networkName: serviceNetworkName,
-      }),
-    );
+    expect(mocks.removeDockerNetwork).not.toHaveBeenCalled();
+    expect(mocks.ensureDockerNetwork).not.toHaveBeenCalled();
+    expect(mocks.ensureDockerVolume).not.toHaveBeenCalled();
   });
 
   it('fails closed when same-name managed labels do not match Docker IPAM', async (): Promise<void> => {
