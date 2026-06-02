@@ -2,6 +2,7 @@ import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AuditEventSummary } from '@compartment/contracts';
+import { readFileModePermissions } from '@compartment/test-support';
 import pino from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ApiConfig, AuditFileSinkConfig } from '../src/config';
@@ -42,8 +43,8 @@ describe('audit event file sink service', (): void => {
 
     const content: string = await readFile(join(directory, 'audit.ndjson'), 'utf8');
     expect(content.trim().split('\n').map(parseAuditEventSummary)).toEqual([event]);
-    expect(readPermissionBits((await stat(directory)).mode)).toBe(0o700);
-    expect(readPermissionBits((await stat(join(directory, 'audit.ndjson'))).mode)).toBe(0o600);
+    expect(readFileModePermissions((await stat(directory)).mode)).toBe(0o700);
+    expect(readFileModePermissions((await stat(join(directory, 'audit.ndjson'))).mode)).toBe(0o600);
   });
 
   it('does not create a local audit file when disabled', async (): Promise<void> => {
@@ -78,10 +79,6 @@ async function removeDirectory(directory: string): Promise<void> {
 
 function parseAuditEventSummary(line: string): AuditEventSummary {
   return JSON.parse(line) as AuditEventSummary;
-}
-
-function readPermissionBits(mode: number): number {
-  return mode & 0o777;
 }
 
 function buildAuditEventSummary(): AuditEventSummary {

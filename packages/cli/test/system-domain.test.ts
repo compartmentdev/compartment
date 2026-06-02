@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SystemDomainMutationResponse, SystemDomainStatusResponse } from '@compartment/contracts';
@@ -32,6 +32,7 @@ describe.sequential('system domain attach flow', (): void => {
 
   afterEach(async (): Promise<void> => {
     vi.doUnmock('../src/self-hosted-install-paths');
+    vi.doUnmock('../src/self-hosted-system-privileges');
     vi.doUnmock('../src/system-domain-client');
     await Promise.all(
       temporaryDirectories.map(async (directory: string): Promise<void> => {
@@ -48,7 +49,7 @@ describe.sequential('system domain attach flow', (): void => {
     const privateKeyFile: string = join(installPaths.dataDir, 'source-key.pem');
     await writeFile(certificateFile, 'CERTIFICATE-A\n', 'utf8');
     await writeFile(privateKeyFile, 'PRIVATE-KEY-A\n', 'utf8');
-    mockRootPrivileges();
+    mockSystemPrivileges();
     mockSelfHostedPathSelection(installPaths);
     mockSystemDomainApi(requestSystemDomainApiMock);
     requestSystemDomainApiMock.mockImplementation(mockPendingAttachFlowRequest);
@@ -77,7 +78,7 @@ describe.sequential('system domain attach flow', (): void => {
     await writeInstallFiles(installPaths);
     const certificateFile: string = join(installPaths.dataDir, 'source-cert.pem');
     const privateKeyFile: string = join(installPaths.dataDir, 'source-key.pem');
-    mockRootPrivileges();
+    mockSystemPrivileges();
     mockSelfHostedPathSelection(installPaths);
     mockSystemDomainApi(requestSystemDomainApiMock);
     requestSystemDomainApiMock.mockImplementation(mockPendingAttachFlowRequest);
@@ -97,6 +98,25 @@ describe.sequential('system domain attach flow', (): void => {
     expect(secondIdempotencyKey).toBeTruthy();
     expect(secondIdempotencyKey).not.toBe(firstIdempotencyKey);
   });
+
+  it('rejects attach-cert when the TLS directory is still runtime-writable', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths(temporaryDirectories);
+    await writeInstallFiles(installPaths);
+    await chmod(installPaths.customTlsDirectory, 0o777);
+    const certificateFile: string = join(installPaths.dataDir, 'source-cert.pem');
+    const privateKeyFile: string = join(installPaths.dataDir, 'source-key.pem');
+    await writeFile(certificateFile, 'CERTIFICATE-A\n', 'utf8');
+    await writeFile(privateKeyFile, 'PRIVATE-KEY-A\n', 'utf8');
+    mockSystemPrivileges();
+    mockSelfHostedPathSelection(installPaths);
+    mockSystemDomainApi(requestSystemDomainApiMock);
+    requestSystemDomainApiMock.mockImplementation(mockPendingAttachFlowRequest);
+    const { attachSelfHostedSystemDomainCertificate } = await import('../src/system-domain');
+
+    await expect(attachSelfHostedSystemDomainCertificate({ certificateFile, privateKeyFile })).rejects.toThrow(
+      'Run `sudo compartment system restart` before attaching a custom certificate.',
+    );
+  });
 });
 
 async function createTemporaryInstallPaths(temporaryDirectories: string[]): Promise<TemporaryInstallPaths> {
@@ -108,13 +128,6 @@ async function createTemporaryInstallPaths(temporaryDirectories: string[]): Prom
     customTlsDirectory: join(temporaryDirectory, 'tls'),
     dataDir: join(temporaryDirectory, 'var'),
   };
-}
-
-function mockRootPrivileges(): void {
-  const processWithGetuid: NodeJS.Process & { getuid: () => number } = process as NodeJS.Process & {
-    getuid: () => number;
-  };
-  vi.spyOn(processWithGetuid, 'getuid').mockReturnValue(0);
 }
 
 function mockSelfHostedPathSelection(installPaths: TemporaryInstallPaths): void {
@@ -133,6 +146,12 @@ function mockSelfHostedPathSelection(installPaths: TemporaryInstallPaths): void 
       };
     },
   );
+}
+
+function mockSystemPrivileges(): void {
+  vi.doMock('../src/self-hosted-system-privileges', (): { assertSelfHostedSystemPrivileges: () => void } => ({
+    assertSelfHostedSystemPrivileges: vi.fn<() => void>(),
+  }));
 }
 
 function mockSystemDomainApi(requestMock: Mock<RequestSystemDomainApi>): void {
@@ -157,6 +176,8 @@ async function writeInstallFiles(installPaths: TemporaryInstallPaths): Promise<v
   await writeFile(
     join(installPaths.configDir, '.env.self-hosted'),
     `COMPARTMENT_CUSTOM_TLS_DIR=${installPaths.customTlsDirectory}
+COMPARTMENT_RUNTIME_UID=10001
+COMPARTMENT_RUNTIME_GID=10001
 COMPARTMENT_SYSTEM_API_SOCKET=/var/run/compartment/api/system-api.sock
 COMPARTMENT_SYSTEM_TOKEN=system-token
 `,

@@ -14,6 +14,8 @@ export interface RuntimeDeployConfig {
 
 export interface RuntimeResourceOperationConfig extends RuntimeDeployConfig {
   resourceBackupDirectory: string;
+  runtimeGid: number | null;
+  runtimeUid: number | null;
 }
 
 export interface ResolvedRuntimeDeploymentContext {

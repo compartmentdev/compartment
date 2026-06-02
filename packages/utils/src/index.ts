@@ -32,6 +32,7 @@ export {
   type ValidatedFileSystemEntry,
   type ValidatedFileSystemWriteTarget,
 } from './file-system-boundary';
+export { isFileModeWritableByIdentity } from './file-mode';
 export { isMissingFileSystemEntryError, isPathWithinDirectory, readRequiredAbsolutePath } from './file-system-path';
 export {
   assertValidUnixSocketPath,

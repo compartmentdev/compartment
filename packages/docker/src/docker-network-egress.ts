@@ -3,6 +3,7 @@ import {
   canSyncIptablesNetworkEgressDenyRules,
   syncIptablesNetworkEgressDenyRules,
 } from './docker-network-egress-iptables';
+import { readDockerFirewallBackend, type DockerFirewallBackend } from './docker-firewall-backend';
 import { runProcessCommand } from './process-command';
 import { runProcessCommandWithTempFile } from './process-command-temp-file';
 import type { DockerSyncNetworkEgressDenyRulesInput } from './docker-models';
@@ -19,36 +20,63 @@ export async function syncDockerNetworkEgressDenyRules(input: DockerSyncNetworkE
   const rules: DockerNetworkEgressDenyRule[] = buildDockerNetworkEgressDenyRules(input);
   const sourceAllowCidrs: string[] = dedupeValues(input.sourceAllowCidrs ?? []);
   const backend: FirewallBackend | null = await resolveFirewallBackend();
-  if (backend === null) {
-    if (rules.length === 0 && sourceAllowCidrs.length === 0) {
-      return;
-    }
-
-    throw new Error('Docker runtime egress deny rules require nftables or iptables on the Docker host.');
+  if (backend !== null) {
+    await syncResolvedFirewallBackend(input.namespace, backend, rules, sourceAllowCidrs);
+    return;
   }
 
+  if (rules.length === 0 && sourceAllowCidrs.length === 0) {
+    return;
+  }
+  throw new Error('Docker runtime egress deny rules require nftables or iptables on the Docker host.');
+}
+
+async function syncResolvedFirewallBackend(
+  namespace: string,
+  backend: FirewallBackend,
+  rules: readonly DockerNetworkEgressDenyRule[],
+  sourceAllowCidrs: readonly string[],
+): Promise<void> {
   if (backend === 'nft') {
-    await syncNftNetworkEgressDenyRules(input.namespace, rules, sourceAllowCidrs);
+    await syncNftNetworkEgressDenyRules(namespace, rules, sourceAllowCidrs);
+    await cleanupIptablesNetworkEgressDenyRulesBestEffort(namespace);
     return;
   }
 
   await syncIptablesNetworkEgressDenyRules({
-    namespace: input.namespace,
+    namespace,
     rules,
     sourceAllowCidrs,
   });
+  await cleanupNftNetworkEgressDenyRulesBestEffort(namespace);
 }
 
 async function resolveFirewallBackend(): Promise<FirewallBackend | null> {
+  const canSyncIptables: boolean = await canSyncIptablesNetworkEgressDenyRules();
+  const dockerBackend: DockerFirewallBackend = await readDockerFirewallBackend();
+  if (dockerBackend !== 'unknown') {
+    return await readAvailableDockerFirewallBackend(dockerBackend, canSyncIptables);
+  }
+
+  if (canSyncIptables) {
+    return 'iptables';
+  }
   if (await canSyncNftNetworkEgressDenyRules()) {
     return 'nft';
   }
 
-  if (await canSyncIptablesNetworkEgressDenyRules()) {
-    return 'iptables';
+  return null;
+}
+
+async function readAvailableDockerFirewallBackend(
+  dockerBackend: FirewallBackend,
+  canSyncIptables: boolean,
+): Promise<FirewallBackend | null> {
+  if (dockerBackend === 'iptables') {
+    return canSyncIptables ? 'iptables' : null;
   }
 
-  return null;
+  return (await canSyncNftNetworkEgressDenyRules()) ? 'nft' : null;
 }
 
 async function canSyncNftNetworkEgressDenyRules(): Promise<boolean> {
@@ -57,6 +85,26 @@ async function canSyncNftNetworkEgressDenyRules(): Promise<boolean> {
   }
 
   return await canRunCommand({ args: ['list', 'ruleset'], file: nftCommand });
+}
+
+async function cleanupNftNetworkEgressDenyRulesBestEffort(namespace: string): Promise<void> {
+  try {
+    await syncNftNetworkEgressDenyRules(namespace, [], []);
+  } catch {
+    return;
+  }
+}
+
+async function cleanupIptablesNetworkEgressDenyRulesBestEffort(namespace: string): Promise<void> {
+  try {
+    await syncIptablesNetworkEgressDenyRules({
+      namespace,
+      rules: [],
+      sourceAllowCidrs: [],
+    });
+  } catch {
+    return;
+  }
 }
 
 async function syncNftNetworkEgressDenyRules(
@@ -90,6 +138,7 @@ function buildNftNetworkEgressDenyBatch(
   return [
     ...(tableExists ? [buildNftDeleteTableLine(tableName)] : []),
     `add table inet ${tableName}`,
+    buildNftBaseChainLine(tableName, 'prerouting'),
     buildNftBaseChainLine(tableName, 'forward'),
     buildNftBaseChainLine(tableName, 'input'),
     ...buildNftSourceAllowRuleLines(tableName, sourceAllowCidrs),
@@ -101,12 +150,17 @@ function buildNftDeleteTableLine(tableName: string): string {
   return `delete table inet ${tableName}`;
 }
 
-function buildNftBaseChainLine(tableName: string, hook: 'forward' | 'input'): string {
+function buildNftBaseChainLine(tableName: string, hook: 'forward' | 'input' | 'prerouting'): string {
+  if (hook === 'prerouting') {
+    return `add chain inet ${tableName} ${hook} { type filter hook ${hook} priority -300; policy accept; }`;
+  }
+
   return `add chain inet ${tableName} ${hook} { type filter hook ${hook} priority -1; policy accept; }`;
 }
 
 function buildNftSourceAllowRuleLines(tableName: string, sourceAllowCidrs: readonly string[]): string[] {
   return sourceAllowCidrs.flatMap((sourceAllowCidr: string): string[] => [
+    buildNftSourceAllowRuleLine(tableName, 'prerouting', sourceAllowCidr),
     buildNftSourceAllowRuleLine(tableName, 'forward', sourceAllowCidr),
     buildNftSourceAllowRuleLine(tableName, 'input', sourceAllowCidr),
   ]);
@@ -114,7 +168,7 @@ function buildNftSourceAllowRuleLines(tableName: string, sourceAllowCidrs: reado
 
 function buildNftSourceAllowRuleLine(
   tableName: string,
-  chainName: 'forward' | 'input',
+  chainName: 'forward' | 'input' | 'prerouting',
   sourceAllowCidr: string,
 ): string {
   return `add rule inet ${tableName} ${chainName} ip saddr ${sourceAllowCidr} accept`;
@@ -122,6 +176,7 @@ function buildNftSourceAllowRuleLine(
 
 function buildNftDropRuleLines(tableName: string, rules: readonly DockerNetworkEgressDenyRule[]): string[] {
   return rules.flatMap((rule: DockerNetworkEgressDenyRule): string[] => [
+    buildNftDropRuleLine(tableName, 'prerouting', rule),
     buildNftDropRuleLine(tableName, 'forward', rule),
     buildNftDropRuleLine(tableName, 'input', rule),
   ]);
@@ -129,7 +184,7 @@ function buildNftDropRuleLines(tableName: string, rules: readonly DockerNetworkE
 
 function buildNftDropRuleLine(
   tableName: string,
-  chainName: 'forward' | 'input',
+  chainName: 'forward' | 'input' | 'prerouting',
   rule: DockerNetworkEgressDenyRule,
 ): string {
   return `add rule inet ${tableName} ${chainName} ip saddr ${rule.sourceSubnet} ip daddr ${rule.destinationCidr} drop`;

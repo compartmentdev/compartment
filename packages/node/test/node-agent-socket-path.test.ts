@@ -3,10 +3,12 @@ import type { Stats } from 'node:fs';
 import { lstat, mkdir, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { readFileModePermissions } from '@compartment/test-support';
 import { afterEach, describe, expect, it } from 'vitest';
 import { prepareNodeAgentSocketPath, restrictNodeAgentSocketPathPermissions } from '../src/node-agent-socket-path';
 
 const temporaryDirectories: string[] = [];
+const runtimeGid: number = 10001;
 
 describe('node agent socket path helpers', (): void => {
   afterEach(async (): Promise<void> => {
@@ -23,13 +25,13 @@ describe('node agent socket path helpers', (): void => {
     const socketPath: string = join(rootDirectoryPath, 'node', 'agent.sock');
 
     expect((): void => {
-      prepareNodeAgentSocketPath(socketPath);
+      prepareNodeAgentSocketPath(socketPath, runtimeGid);
     }).not.toThrow();
   });
 
   it('rejects a socket path directly under a shared runtime root', (): void => {
     expect((): void => {
-      prepareNodeAgentSocketPath(join(tmpdir(), 'compartment', 'agent.sock'));
+      prepareNodeAgentSocketPath(join(tmpdir(), 'compartment', 'agent.sock'), runtimeGid);
     }).toThrow(
       'COMPARTMENT_NODE_AGENT_SOCKET must point to a socket inside a private subdirectory like /tmp/compartment/dev/node/agent.sock or /var/run/compartment/node/agent.sock.',
     );
@@ -37,7 +39,7 @@ describe('node agent socket path helpers', (): void => {
 
   it('rejects relative socket paths', (): void => {
     expect((): void => {
-      prepareNodeAgentSocketPath(join('tmp', 'compartment', 'node', 'agent.sock'));
+      prepareNodeAgentSocketPath(join('tmp', 'compartment', 'node', 'agent.sock'), runtimeGid);
     }).toThrow('COMPARTMENT_NODE_AGENT_SOCKET must be an absolute socket path.');
   });
 
@@ -49,7 +51,7 @@ describe('node agent socket path helpers', (): void => {
     await writeFile(socketPath, 'not-a-socket');
 
     expect((): void => {
-      prepareNodeAgentSocketPath(socketPath);
+      prepareNodeAgentSocketPath(socketPath, runtimeGid);
     }).toThrow(`Refusing to replace non-socket path at ${socketPath}.`);
   });
 
@@ -58,11 +60,11 @@ describe('node agent socket path helpers', (): void => {
     temporaryDirectories.push(rootDirectoryPath);
     const socketPath: string = join(rootDirectoryPath, 'run', 'node', 'agent.sock');
 
-    prepareNodeAgentSocketPath(socketPath);
+    prepareNodeAgentSocketPath(socketPath, runtimeGid);
 
     const socketDirectoryStats: Stats = await lstat(dirname(socketPath));
     expect(socketDirectoryStats.isDirectory()).toBe(true);
-    expect(socketDirectoryStats.mode & 0o777).toBe(0o700);
+    expect(readFileModePermissions(socketDirectoryStats.mode)).toBe(0o750);
   });
 
   it('refuses symlink parent directories before creating the socket directory', async (): Promise<void> => {
@@ -75,23 +77,23 @@ describe('node agent socket path helpers', (): void => {
     await symlink(realDirectoryPath, symlinkDirectoryPath, 'dir');
 
     expect((): void => {
-      prepareNodeAgentSocketPath(socketPath);
+      prepareNodeAgentSocketPath(socketPath, runtimeGid);
     }).toThrow(`Node agent socket directory ${symlinkDirectoryPath} must be a real directory.`);
   });
 
-  it('restricts the bound socket to owner-only access', async (): Promise<void> => {
+  it('restricts the bound socket to runtime group access', async (): Promise<void> => {
     const rootDirectoryPath: string = await createTemporarySocketRootDirectory();
     temporaryDirectories.push(rootDirectoryPath);
     const socketPath: string = join(rootDirectoryPath, 'run', 'node', 'agent.sock');
     const server: Server = createServer();
 
-    prepareNodeAgentSocketPath(socketPath);
+    prepareNodeAgentSocketPath(socketPath, runtimeGid);
     await listenOnSocket(server, socketPath);
     try {
-      restrictNodeAgentSocketPathPermissions(socketPath);
+      restrictNodeAgentSocketPathPermissions(socketPath, runtimeGid);
 
       const socketStats: Stats = await stat(socketPath);
-      expect(socketStats.mode & 0o777).toBe(0o600);
+      expect(readFileModePermissions(socketStats.mode)).toBe(0o660);
     } finally {
       await closeServer(server);
     }

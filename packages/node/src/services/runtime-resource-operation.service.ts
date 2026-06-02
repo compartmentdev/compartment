@@ -88,7 +88,7 @@ async function buildResourceOperationContainerInput(
       aliases: [],
       name: buildRuntimeResourceNetworkName(input, config.dockerNamespace),
     },
-    securityProfile: buildResourceOperationSecurityProfile(),
+    securityProfile: buildResourceOperationSecurityProfile(config),
   };
 }
 
@@ -108,9 +108,12 @@ async function buildResourceOperationMounts(
   ];
 }
 
-function buildResourceOperationSecurityProfile(): DockerContainerSecurityProfile {
+function buildResourceOperationSecurityProfile(config: RuntimeResourceOperationConfig): DockerContainerSecurityProfile {
   return {
     name: 'restricted-writable',
+    ...(config.runtimeUid === null || config.runtimeGid === null
+      ? {}
+      : { user: `${config.runtimeUid.toString()}:${config.runtimeGid.toString()}` }),
     writableRootFilesystemReason: 'Resource operation commands may need local scratch space during backup or restore.',
   };
 }
