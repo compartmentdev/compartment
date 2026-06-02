@@ -6,13 +6,22 @@ import { isMissingFileSystemEntryError } from './file-system-path';
 export interface UnixSocketPathPolicy {
   readonly directoryLabel: string;
   readonly directoryMode: number;
+  readonly owner?: UnixSocketPathOwner;
   readonly privatePathExample: string;
   readonly socketMode: number;
   readonly variableName: string;
 }
 
+export interface UnixSocketPathOwner {
+  readonly gid: number;
+  readonly uid: number;
+}
+
 interface CompartmentUnixSocketPathPolicyInput {
   readonly directoryLabel: string;
+  readonly directoryMode?: number;
+  readonly owner?: UnixSocketPathOwner;
+  readonly socketMode?: number;
   readonly socketFileName: string;
   readonly socketSubdirectory: string;
   readonly variableName: string;
@@ -49,9 +58,10 @@ export function createCompartmentUnixSocketPathPolicy(
 
   return {
     directoryLabel: input.directoryLabel,
-    directoryMode: 0o700,
+    directoryMode: input.directoryMode ?? 0o700,
+    ...(input.owner === undefined ? {} : { owner: input.owner }),
     privatePathExample: `${temporaryExamplePath} or ${runtimeExamplePath}`,
-    socketMode: 0o600,
+    socketMode: input.socketMode ?? 0o600,
     variableName: input.variableName,
   };
 }
@@ -71,13 +81,13 @@ export function prepareUnixSocketPath(socketPath: string, policy: UnixSocketPath
   assertNoExistingUnixSocketDirectorySymlinks(socketDirectory, policy);
   mkdirSync(socketDirectory, { mode: policy.directoryMode, recursive: true });
   assertRealUnixSocketDirectory(socketDirectory, policy);
-  applyRootOwnershipIfRoot(socketDirectory);
+  applyRootOwnershipIfRoot(socketDirectory, policy);
   chmodSync(socketDirectory, policy.directoryMode);
   unlinkExistingUnixSocket(socketPath);
 }
 
 export function restrictUnixSocketPathPermissions(socketPath: string, policy: UnixSocketPathPolicy): void {
-  applyRootOwnershipIfRoot(socketPath);
+  applyRootOwnershipIfRoot(socketPath, policy);
   chmodSync(socketPath, policy.socketMode);
 }
 
@@ -174,10 +184,10 @@ function isMissingPath(path: string): boolean {
   }
 }
 
-function applyRootOwnershipIfRoot(path: string): void {
+function applyRootOwnershipIfRoot(path: string, policy: UnixSocketPathPolicy): void {
   if (process.getuid?.() !== 0) {
     return;
   }
 
-  chownSync(path, 0, 0);
+  chownSync(path, policy.owner?.uid ?? 0, policy.owner?.gid ?? 0);
 }

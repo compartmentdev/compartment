@@ -364,6 +364,26 @@ describe('ensureDockerVolume', (): void => {
       'Docker volume runtime-reservation exists without required label compartment.namespace=compartment-prod.',
     );
   });
+
+  it('rejects existing unlabeled volumes with a required label error', async (): Promise<void> => {
+    const dockerClient: MockDockerClient = createMockDockerClient({
+      volumeInspectResult: {
+        Name: 'runtime-reservation',
+      },
+    });
+    mocks.createDockerClient.mockResolvedValueOnce(dockerClient);
+
+    await expect(
+      ensureDockerVolume({
+        labels: {
+          'compartment.namespace': 'compartment-prod',
+        },
+        volumeName: 'runtime-reservation',
+      }),
+    ).rejects.toThrow(
+      'Docker volume runtime-reservation exists without required label compartment.namespace=compartment-prod.',
+    );
+  });
 });
 
 describe('inspectDockerNetwork', (): void => {
@@ -512,6 +532,25 @@ describe('listDockerVolumes', (): void => {
         label: ['compartment.namespace=compartment-prod'],
       },
     });
+  });
+
+  it('normalizes missing volume labels to an empty object', async (): Promise<void> => {
+    const dockerClient: MockDockerClient = createMockDockerClient({});
+    dockerClient.listVolumes.mockResolvedValueOnce({
+      Volumes: [
+        {
+          Name: 'runtime-reservation',
+        },
+      ],
+    });
+    mocks.createDockerClient.mockResolvedValueOnce(dockerClient);
+
+    await expect(listDockerVolumes()).resolves.toEqual([
+      {
+        labels: {},
+        name: 'runtime-reservation',
+      },
+    ]);
   });
 });
 

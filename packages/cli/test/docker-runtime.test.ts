@@ -20,8 +20,15 @@ type ReportProgress = (message: string) => void;
 type RunCappedCommand = (command: readonly string[], env?: NodeJS.ProcessEnv) => Promise<CommandResult>;
 type RunCommand = (command: readonly string[], env?: NodeJS.ProcessEnv) => Promise<CommandResult>;
 type RunInheritedCommand = (command: readonly string[], env?: NodeJS.ProcessEnv) => Promise<CommandResult>;
+type EnsureSelfHostedRuntimeDirectoriesFromEnvFile = (input: RuntimeDirectoryRepairInput) => Promise<void>;
+
+interface RuntimeDirectoryRepairInput {
+  readonly envPath: string;
+  readonly repairRuntimeWritableDirectoryContents: boolean;
+}
 
 interface DockerRuntimeTestMocks {
+  ensureSelfHostedRuntimeDirectoriesFromEnvFile: Mock<EnsureSelfHostedRuntimeDirectoriesFromEnvFile>;
   installDockerEngine: Mock<InstallDockerEngine>;
   runCappedCommand: Mock<RunCappedCommand>;
   runCommand: Mock<RunCommand>;
@@ -55,6 +62,7 @@ const coreSignedRuntimeServices: readonly RuntimeImageServiceName[] = [
 ];
 const mocks: DockerRuntimeTestMocks = vi.hoisted(
   (): DockerRuntimeTestMocks => ({
+    ensureSelfHostedRuntimeDirectoriesFromEnvFile: vi.fn<EnsureSelfHostedRuntimeDirectoriesFromEnvFile>(),
     installDockerEngine: vi.fn<InstallDockerEngine>(),
     runCappedCommand: vi.fn<RunCappedCommand>(),
     runCommand: vi.fn<RunCommand>(),
@@ -82,7 +90,17 @@ vi.mock('../src/docker-install', (): { installDockerEngine: Mock<InstallDockerEn
   installDockerEngine: mocks.installDockerEngine,
 }));
 
+vi.mock(
+  '../src/self-hosted-runtime-directories-env',
+  (): {
+    ensureSelfHostedRuntimeDirectoriesFromEnvFile: Mock<EnsureSelfHostedRuntimeDirectoriesFromEnvFile>;
+  } => ({
+    ensureSelfHostedRuntimeDirectoriesFromEnvFile: mocks.ensureSelfHostedRuntimeDirectoriesFromEnvFile,
+  }),
+);
+
 afterEach((): void => {
+  mocks.ensureSelfHostedRuntimeDirectoriesFromEnvFile.mockReset();
   mocks.installDockerEngine.mockReset();
   mocks.runCappedCommand.mockReset();
   mocks.runCommand.mockReset();
@@ -484,14 +502,14 @@ describe('startSelfHostedRuntime', (): void => {
 
     await startSelfHostedRuntime(createDockerExecutionContext('sudo'), createRuntimeInput('local'));
 
-    expectCommandCall(mocks.runInheritedCommand, [
+    const coreComposeCommand: readonly string[] = [
       'sudo',
       'docker',
       'image',
       'inspect',
       createImageRefs().runtimeProbeImage,
-    ]);
-    expectCommandCall(mocks.runInheritedCommand, [
+    ];
+    const coreStartCommand: readonly string[] = [
       'sudo',
       'docker',
       'compose',
@@ -511,8 +529,8 @@ describe('startSelfHostedRuntime', (): void => {
       'registry-auth',
       'edge',
       'caddy',
-    ]);
-    expectCommandCall(mocks.runInheritedCommand, [
+    ];
+    const buildStartCommand: readonly string[] = [
       'sudo',
       'docker',
       'compose',
@@ -529,7 +547,21 @@ describe('startSelfHostedRuntime', (): void => {
       '--wait',
       'builder',
       'worker',
-    ]);
+    ];
+
+    expectCommandCall(mocks.runInheritedCommand, coreComposeCommand);
+    expectCommandCall(mocks.runInheritedCommand, coreStartCommand);
+    expectCommandCall(mocks.runInheritedCommand, buildStartCommand);
+    expect(mocks.ensureSelfHostedRuntimeDirectoriesFromEnvFile).toHaveBeenCalledWith({
+      envPath: '/tmp/compartment/.env.self-hosted',
+      repairRuntimeWritableDirectoryContents: true,
+    });
+    expect(readCommandCallOrder(mocks.runInheritedCommand, coreStartCommand)).toBeLessThan(
+      mocks.ensureSelfHostedRuntimeDirectoriesFromEnvFile.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.ensureSelfHostedRuntimeDirectoriesFromEnvFile.mock.invocationCallOrder[0]!).toBeLessThan(
+      readCommandCallOrder(mocks.runInheritedCommand, buildStartCommand),
+    );
   });
 
   it('keeps the control plane start successful when builder services fail', async (): Promise<void> => {
@@ -799,10 +831,28 @@ function expectCommandCall(mock: Mock<RunCommand | RunInheritedCommand>, expecte
   expect(readCommandCalls(mock)).toContainEqual(expectedCommand);
 }
 
+function readCommandCallOrder(
+  mock: Mock<RunCommand | RunInheritedCommand>,
+  expectedCommand: readonly string[],
+): number {
+  const callIndex: number = readCommandCalls(mock).findIndex((command: readonly string[]): boolean =>
+    areCommandsEqual(command, expectedCommand),
+  );
+  if (callIndex === -1) {
+    throw new Error(`Expected command call ${JSON.stringify(expectedCommand)}.`);
+  }
+
+  return mock.mock.invocationCallOrder[callIndex]!;
+}
+
 function readCommandCalls(mock: Mock<RunCommand | RunInheritedCommand>): readonly (readonly string[])[] {
   return mock.mock.calls.map(
     (call: [command: readonly string[], env?: NodeJS.ProcessEnv | undefined]): readonly string[] => call[0],
   );
+}
+
+function areCommandsEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value: string, index: number): boolean => value === right[index]);
 }
 
 function readImageInspectCommands(mock: Mock<RunCommand | RunInheritedCommand>): readonly (readonly string[])[] {

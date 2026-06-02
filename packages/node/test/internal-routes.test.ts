@@ -667,12 +667,15 @@ function createNodeConfig(): NodeConfig {
     runtimeConnectivityMode: 'loopback',
     runtimeDefaultUpstreamHost: '127.0.0.1',
     runtimeNetworkPool: createRuntimeNetworkPoolConfig(),
+    runtimeGid: 10001,
+    runtimeUid: 10001,
     runtimeRegistryCredentials: {
       password: 'registry-read-password',
       serverAddress: '127.0.0.1:39461',
       username: 'registry-reader',
     },
     runtimeProbeImageRef: 'ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0',
+    runtimeSocketGid: 10001,
     version: '0.1.0',
     runtimeControlToken: 'test-runtime-control-token',
   };

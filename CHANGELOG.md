@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.0](https://github.com/compartmentdev/compartment/compare/v0.6.1...v0.7.0) (2026-06-02)
+
+
+### Features
+
+* **cli:** run self-hosted runtime as non-root ([#75](https://github.com/compartmentdev/compartment/issues/75)) ([7fdde02](https://github.com/compartmentdev/compartment/commit/7fdde0245d01b606fa020f2099ffe18b44dd423e))
+
+
+### Bug Fixes
+
+* **cli:** harden self-hosted BuildKit transport ([#74](https://github.com/compartmentdev/compartment/issues/74)) ([eea6245](https://github.com/compartmentdev/compartment/commit/eea62454f48608fa9ec5432f4283f99d3ca38b65))
+* **cli:** reconcile runtime networks after Caddy restart ([#68](https://github.com/compartmentdev/compartment/issues/68)) ([3026cda](https://github.com/compartmentdev/compartment/commit/3026cda70fe3c9cfcb0f75cdb063acce18b28b10))
+* **console:** polish access drawer assignment ui ([#65](https://github.com/compartmentdev/compartment/issues/65)) ([3937ba8](https://github.com/compartmentdev/compartment/commit/3937ba884e820f263cb582b4e986415a1a7dfb8d))
+
 ## [0.6.1](https://github.com/compartmentdev/compartment/compare/v0.6.0...v0.6.1) (2026-05-27)
 
 

@@ -303,11 +303,11 @@ async function startMockApiServer(): Promise<Server> {
 
 async function startNodeAgent(config: NodeConfig): Promise<NodeApp> {
   const app: NodeApp = createNodeApp({ config });
-  prepareNodeAgentSocketPath(config.nodeSocketPath);
+  prepareNodeAgentSocketPath(config.nodeSocketPath, config.runtimeSocketGid);
   await app.listen({
     path: config.nodeSocketPath,
   });
-  restrictNodeAgentSocketPathPermissions(config.nodeSocketPath);
+  restrictNodeAgentSocketPathPermissions(config.nodeSocketPath, config.runtimeSocketGid);
   return app;
 }
 
@@ -329,12 +329,15 @@ function createNodeConfig(
     runtimeConnectivityMode: 'network',
     runtimeDefaultUpstreamHost: 'host.docker.internal',
     runtimeNetworkPool: createRuntimeNetworkPoolConfig(),
+    runtimeGid: 10001,
+    runtimeUid: 10001,
     runtimeRegistryCredentials: {
       password: 'registry-read-password',
       serverAddress: '127.0.0.1:39461',
       username: 'registry-reader',
     },
     runtimeProbeImageRef: boundaryNodeImage,
+    runtimeSocketGid: 10001,
     runtimeControlToken,
     version: '0.1.0',
     ...overrides,

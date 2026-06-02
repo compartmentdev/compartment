@@ -17,7 +17,7 @@ export async function listDockerVolumes(input: DockerListVolumesInput = {}): Pro
 
   return volumes.map(
     (volume: Docker.VolumeInspectInfo): DockerListVolumeResult => ({
-      labels: volume.Labels,
+      labels: normalizeDockerVolumeLabels(volume.Labels),
       name: volume.Name,
     }),
   );
@@ -30,7 +30,7 @@ export async function ensureDockerVolume(input: DockerEnsureVolumeInput): Promis
   const volume: Docker.Volume = docker.getVolume(input.volumeName);
   const existingVolume: Docker.VolumeInspectInfo | null = await inspectExistingDockerVolume(volume);
   if (existingVolume !== null) {
-    assertDockerVolumeLabels(input.volumeName, existingVolume.Labels, input.labels);
+    assertDockerVolumeLabels(input.volumeName, normalizeDockerVolumeLabels(existingVolume.Labels), input.labels);
     return;
   }
 
@@ -38,6 +38,10 @@ export async function ensureDockerVolume(input: DockerEnsureVolumeInput): Promis
     Labels: input.labels,
     Name: input.volumeName,
   });
+}
+
+function normalizeDockerVolumeLabels(labels: Record<string, string> | null | undefined): Record<string, string> {
+  return labels ?? {};
 }
 
 function assertDockerVolumeRequiredLabels(input: DockerEnsureVolumeInput): void {
