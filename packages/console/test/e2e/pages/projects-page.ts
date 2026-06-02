@@ -132,7 +132,7 @@ export class ProjectsPage {
 
   private projectOverviewServiceRow(serviceName: string): Locator {
     return this.projectOverviewServicesTable.getByRole('row').filter({
-      has: this.page.getByRole('cell', { exact: true, name: serviceName }),
+      has: this.page.getByTestId('project-overview-service-name').getByText(serviceName, { exact: true }),
     });
   }
 }
