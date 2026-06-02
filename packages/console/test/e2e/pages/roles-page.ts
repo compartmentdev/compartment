@@ -99,7 +99,7 @@ export class RolesPage {
   async openRoleDetails(roleName: string): Promise<void> {
     await Promise.all([
       this.page.waitForURL((url: URL): boolean => this.isRoleDetailUrl(url)),
-      this.roleRow(roleName).getByRole('button', { name: 'View' }).click(),
+      this.roleRow(roleName).getByRole('button', { name: 'Manage' }).click(),
     ]);
     await expect(this.detailDrawer(roleName)).toBeVisible();
   }
