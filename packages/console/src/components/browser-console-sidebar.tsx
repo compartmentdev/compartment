@@ -142,7 +142,7 @@ function BrowserConsoleSidebarBrand({
   return (
     <div className="p-2">
       <BrowserSoftNavigationLink
-        className="flex w-full items-center gap-2 rounded-md p-2 text-sidebar-foreground no-underline"
+        className="flex w-full items-center gap-2 rounded-control p-2 text-sidebar-foreground no-underline"
         href={buildBrowserConsoleProjectsHref(selectedOrganizationSlug)}
         onNavigate={onNavigate}
       >
@@ -155,7 +155,7 @@ function BrowserConsoleSidebarBrand({
 
 function BrowserConsoleSidebarBrandIcon(): JSX.Element {
   return (
-    <span className="flex size-6 shrink-0 items-center justify-center rounded-md border border-border bg-input text-primary">
+    <span className="flex size-6 shrink-0 items-center justify-center rounded-icon border border-border bg-input text-primary">
       <span aria-hidden="true" className="block size-4 bg-current" style={sidebarLogoMaskStyle} />
     </span>
   );

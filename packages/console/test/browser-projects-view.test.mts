@@ -17,7 +17,6 @@ describe('browser projects view', (): void => {
     expect(html).toContain('Add project');
     expect(html).toContain('href="/orgs/acme-dev/projects/create"');
     expect(html).toContain('button-accent-surface');
-    expect(html).not.toContain('shadow-sm');
     expect(html).toContain('lucide-plus');
     expect(html).not.toContain('lucide-folder-plus');
   });
@@ -38,7 +37,8 @@ describe('browser projects view', (): void => {
     expect(html).toContain('You do not have a project deployed in the Compartment.');
     expect(html).toContain('Add project');
     expect(html).toContain('href="/orgs/acme-dev/projects/create"');
-    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('bg-primary text-primary-foreground');
+    expect(html).not.toContain('button-accent-surface');
     expect(html).toContain('empty-states/projects.svg');
     expect(html).toContain('lucide-plus');
     expect(html).not.toContain('Search projects');

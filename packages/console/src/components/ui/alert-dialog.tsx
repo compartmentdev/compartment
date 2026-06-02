@@ -29,7 +29,7 @@ export function AlertDialogContent({ className, ...props }: Readonly<AlertDialog
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
         className={cn(
-          'fixed left-1/2 top-1/2 z-50 grid w-[calc(100vw-2rem)] max-w-[480px] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-[18px] border border-border bg-popover p-6 text-popover-foreground shadow-[0_24px_64px_rgba(15,23,42,0.24)] outline-none',
+          'fixed left-1/2 top-1/2 z-50 grid w-[calc(100vw-2rem)] max-w-[480px] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-modal border border-border bg-popover p-6 text-popover-foreground shadow-[0_24px_64px_rgba(15,23,42,0.24)] outline-none',
           className,
         )}
         {...props}

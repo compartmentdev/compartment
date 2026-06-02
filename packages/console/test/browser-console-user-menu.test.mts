@@ -1,5 +1,6 @@
 import { compartmentCsrfCookieName, compartmentCsrfHeaderName } from '@compartment/contracts/browser';
 import { Children, isValidElement, type ReactElement, type ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { BrowserConsoleUserBlock } from '../src/components/browser-console-user-menu';
 import { createJsonResponse, waitForNextTick } from './browser-test.fixtures';
@@ -15,6 +16,15 @@ afterEach((): void => {
 });
 
 describe('browser console user menu', (): void => {
+  it('renders a minidenticon for the current user', (): void => {
+    const html: string = renderToStaticMarkup(
+      BrowserConsoleUserBlock({ onError: vi.fn(), principalEmail: 'admin@example.com' }),
+    );
+
+    expect(html).toContain('data:image/svg+xml;utf8,');
+    expect(html).not.toContain('lucide-user-round');
+  });
+
   it('logs out and redirects to login', async (): Promise<void> => {
     const fetchMock: Mock<FetchImplementation> = vi
       .fn<FetchImplementation>()

@@ -1,44 +1,27 @@
 import * as SelectPrimitive from '@radix-ui/react-select';
-import { useEffect, useId, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useRef, useState, type JSX, type RefObject } from 'react';
 import { cn } from '../../lib/utils';
 import { Check, ChevronDown } from './icons';
 import {
   emptySelectableOptionRadixValue,
   readNativeSelectItemKey,
-  readNativeSelectTriggerClassName,
+  readNativeSelectHiddenFieldProps,
+  readNativeSelectLabelId,
+  readNativeSelectRootProps,
+  readNativeSelectTriggerProps,
   readNativeSelectValueProp,
   useNativeSelectModel,
 } from './native-select.helpers';
 import type {
   NativeSelectHiddenFieldProps,
+  NativeSelectHiddenFieldInput,
+  NativeSelectLayoutProps,
   NativeSelectOption,
   NativeSelectPropsWithWidth,
+  NativeSelectRootInput,
   NativeSelectRootProps,
   UseNativeSelectModelResult,
 } from './native-select.types';
-
-interface NativeSelectLayoutProps {
-  containerClassName: string | undefined;
-  hiddenFieldProps: NativeSelectHiddenFieldProps;
-  rootProps: NativeSelectRootProps;
-}
-
-interface NativeSelectRootInput {
-  ariaDescribedBy: string | undefined;
-  ariaLabel: string | undefined;
-  className: string | undefined;
-  disabled: boolean;
-  id: string | undefined;
-  required: boolean;
-}
-
-interface NativeSelectHiddenFieldInput {
-  children: ReactNode;
-  disabled: boolean;
-  form: string | undefined;
-  name: string | undefined;
-  required: boolean;
-}
 
 interface NativeSelectRootComponentProps {
   props: NativeSelectRootProps;
@@ -52,70 +35,54 @@ interface NativeSelectTriggerProps {
 
 export function NativeSelect(props: NativeSelectPropsWithWidth): JSX.Element {
   const layoutProps: NativeSelectLayoutProps = useNativeSelectLayoutProps(props);
-  return <NativeSelectLayout props={layoutProps} />;
-}
-
-function NativeSelectLayout({ props }: Readonly<{ props: NativeSelectLayoutProps }>): JSX.Element {
   return (
-    <span className={cn('relative grid', props.containerClassName)}>
-      <NativeSelectHiddenField props={props.hiddenFieldProps} />
-      <NativeSelectRoot props={props.rootProps} />
+    <span className={cn('relative grid', layoutProps.containerClassName)}>
+      <NativeSelectHiddenField props={layoutProps.hiddenFieldProps} />
+      <NativeSelectRoot props={layoutProps.rootProps} />
     </span>
   );
 }
 
-function useNativeSelectLayoutProps({
-  'aria-describedby': ariaDescribedBy,
-  'aria-label': ariaLabel,
-  children,
-  className,
-  containerClassName,
-  defaultValue,
-  disabled = false,
-  form,
-  id,
-  name,
-  onChange,
-  required = false,
-  value,
-}: NativeSelectPropsWithWidth): NativeSelectLayoutProps {
-  const model: UseNativeSelectModelResult = useNativeSelectModel({ children, defaultValue, onChange, value });
-  return {
-    containerClassName,
-    hiddenFieldProps: readNativeSelectHiddenFieldProps({ children, disabled, form, name, required }, model),
-    rootProps: readNativeSelectRootProps({ ariaDescribedBy, ariaLabel, className, disabled, id, required }, model),
-  };
-}
-
-function readNativeSelectHiddenFieldProps(
-  props: Readonly<NativeSelectHiddenFieldInput>,
-  model: UseNativeSelectModelResult,
-): NativeSelectHiddenFieldProps {
-  return {
+function useNativeSelectLayoutProps(props: NativeSelectPropsWithWidth): NativeSelectLayoutProps {
+  const disabled: boolean = props.disabled ?? false;
+  const required: boolean = props.required ?? false;
+  const model: UseNativeSelectModelResult = useNativeSelectModel({
     children: props.children,
-    disabled: props.disabled,
-    form: props.form,
-    name: props.name,
-    required: props.required,
-    selectedNativeValue: model.state.selectedNativeValue,
+    defaultValue: props.defaultValue,
+    onChange: props.onChange,
+    value: props.value,
+  });
+  return {
+    containerClassName: props.containerClassName,
+    hiddenFieldProps: readNativeSelectHiddenFieldProps(
+      readNativeSelectHiddenFieldInput(props, disabled, required),
+      model,
+    ),
+    rootProps: readNativeSelectRootProps(readNativeSelectRootInput(props, disabled, required), model),
   };
 }
 
-function readNativeSelectRootProps(
-  props: Readonly<NativeSelectRootInput>,
-  model: UseNativeSelectModelResult,
-): NativeSelectRootProps {
+function readNativeSelectHiddenFieldInput(
+  props: NativeSelectPropsWithWidth,
+  disabled: boolean,
+  required: boolean,
+): NativeSelectHiddenFieldInput {
+  return { children: props.children, disabled, form: props.form, name: props.name, required };
+}
+
+function readNativeSelectRootInput(
+  props: NativeSelectPropsWithWidth,
+  disabled: boolean,
+  required: boolean,
+): NativeSelectRootInput {
   return {
-    ariaDescribedBy: props.ariaDescribedBy,
-    ariaLabel: props.ariaLabel,
+    ariaDescribedBy: props['aria-describedby'],
+    ariaLabel: props['aria-label'],
     className: props.className,
-    disabled: props.disabled,
+    disabled,
     id: props.id,
-    onValueChange: model.onValueChange,
-    options: model.state.options,
-    placeholderLabel: model.state.placeholderLabel,
-    required: props.required,
-    selectedRadixValue: model.state.selectedRadixValue,
+    required,
+    size: props.size ?? 'sm',
   };
 }
 
@@ -168,30 +135,6 @@ function readNativeSelectHiddenFieldChange(): void {
   return;
 }
 
-function readNativeSelectTriggerProps(
-  props: NativeSelectRootProps,
-  labelledBy: string | undefined,
-  triggerRef: RefObject<HTMLButtonElement | null>,
-): {
-  'aria-describedby': string | undefined;
-  'aria-label': string | undefined;
-  'aria-labelledby': string | undefined;
-  'aria-required': true | undefined;
-  className: string;
-  id: string | undefined;
-  ref: RefObject<HTMLButtonElement | null>;
-} {
-  return {
-    'aria-describedby': props.ariaDescribedBy,
-    'aria-label': props.ariaLabel,
-    'aria-labelledby': labelledBy,
-    'aria-required': props.required || undefined,
-    className: readNativeSelectTriggerClassName(props.className),
-    id: props.id,
-    ref: triggerRef,
-  };
-}
-
 function useNativeSelectTriggerLabelledBy(
   ariaLabel: string | undefined,
 ): readonly [string | undefined, RefObject<HTMLButtonElement | null>] {
@@ -222,15 +165,11 @@ function useNativeSelectTriggerLabelledBy(
   return [labelledBy, triggerRef] as const;
 }
 
-function readNativeSelectLabelId(generatedLabelId: string): string {
-  return `native-select-label-${generatedLabelId}`;
-}
-
 function NativeSelectContent({ options }: Readonly<{ options: NativeSelectOption[] }>): JSX.Element {
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
-        className="z-50 max-h-[var(--radix-select-content-available-height)] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md"
+        className="z-50 max-h-[var(--radix-select-content-available-height)] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-field border border-border bg-popover text-popover-foreground shadow-md"
         position="popper"
         sideOffset={4}
       >
@@ -255,7 +194,7 @@ function renderNativeSelectItems(options: NativeSelectOption[]): JSX.Element[] {
 function NativeSelectItem({ option }: Readonly<{ option: NativeSelectOption }>): JSX.Element {
   return (
     <SelectPrimitive.Item
-      className="relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+      className="relative flex w-full cursor-pointer select-none items-center rounded-micro py-1.5 pl-2 pr-8 text-[13px] outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
       disabled={option.disabled}
       value={option.radixValue ?? emptySelectableOptionRadixValue}
     >

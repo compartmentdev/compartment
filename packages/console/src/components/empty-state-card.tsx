@@ -24,7 +24,7 @@ export function EmptyStateCard({
   return (
     <section
       className={cn(
-        'flex min-h-[420px] w-full flex-1 items-center justify-center rounded-[10px] border border-border px-6 py-16 shadow-[0_1px_2px_0_rgba(0,0,0,0.10)] md:min-h-[560px] lg:min-h-[640px]',
+        'flex min-h-[420px] w-full flex-1 items-center justify-center rounded-card border border-border bg-card px-6 py-16 shadow-[0_1px_2px_0_rgba(0,0,0,0.10)] md:min-h-[560px] lg:min-h-[640px]',
         className,
       )}
     >
@@ -65,7 +65,7 @@ function EmptyStateCardActionControl({ action }: Readonly<EmptyStateCardActionCo
   if (action.kind === 'link') {
     return (
       <BrowserSoftNavigationLink
-        className={buttonVariants({ className: 'no-underline', size: 'lg', variant: 'accent' })}
+        className={buttonVariants({ className: 'no-underline', size: 'sm' })}
         href={action.href}
         onNavigate={action.onNavigate}
       >
@@ -75,7 +75,7 @@ function EmptyStateCardActionControl({ action }: Readonly<EmptyStateCardActionCo
   }
 
   return (
-    <Button onClick={action.onClick} size="lg" type="button" variant="accent">
+    <Button onClick={action.onClick} size="sm" type="button">
       {content}
     </Button>
   );
