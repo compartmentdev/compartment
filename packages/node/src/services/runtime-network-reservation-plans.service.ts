@@ -1,5 +1,8 @@
 import { inspectDockerNetwork, type DockerInspectNetworkResult } from '@compartment/docker';
-import { assertCompatibleExistingRuntimeNetwork, isLegacyRuntimeNetwork } from './runtime-network-managed.service';
+import {
+  assertCompatibleExistingRuntimeNetwork,
+  isReplaceableLegacyRuntimeNetwork,
+} from './runtime-network-managed.service';
 import { readRuntimeNetworkIpamCidrs } from './runtime-network-migration.service';
 import { allocateRuntimeNetworkSubnets } from './runtime-network-subnet-allocation.service';
 import type {
@@ -51,7 +54,7 @@ async function readMissingRuntimeNetworkReservationPlans(
       networkName: plan.input.spec.networkName,
     });
     if (network !== null) {
-      if (isLegacyRuntimeNetwork(network, config.dockerNamespace)) {
+      if (isReplaceableLegacyRuntimeNetwork(network, plan.input.spec, config)) {
         plan.existingLegacyNetwork = network;
         missingPlans.push(plan);
         continue;

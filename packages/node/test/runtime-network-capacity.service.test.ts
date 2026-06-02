@@ -513,6 +513,29 @@ describe('reserveRuntimeNetworksForDeployment', (): void => {
     expect(mocks.ensureDockerVolume).toHaveBeenCalledTimes(2);
   });
 
+  it('replaces an empty unlabeled same-name runtime network before reservation', async (): Promise<void> => {
+    const request: NodeRuntimeNetworkReservationRequest = createReservationRequest();
+    const serviceNetworkName: string = buildRuntimeServiceNetworkName(request, dockerNamespace);
+    mocks.inspectDockerNetwork.mockResolvedValue({
+      endpointContainerIds: [],
+      ipamConfigs: [createIpamConfig(buildTestIpv4Cidr(172, 21, 0, 0, 16))],
+      labels: {},
+      name: serviceNetworkName,
+    });
+
+    await expect(reserveRuntimeNetworksForDeployment(request, createConfig())).resolves.toMatchObject({
+      newlyCreatedNetworkNames: [serviceNetworkName],
+      reservedNetworkNames: [serviceNetworkName],
+    });
+    expect(mocks.removeDockerNetwork).toHaveBeenCalledWith({ networkName: serviceNetworkName });
+    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ipam: { subnet: buildTestIpv4Cidr(10, 240, 0, 0, 28) },
+        networkName: serviceNetworkName,
+      }),
+    );
+  });
+
   it('migrates active legacy runtime networks and reconnects service aliases', async (): Promise<void> => {
     const request: NodeRuntimeNetworkReservationRequest = createReservationRequest();
     const serviceNetworkName: string = buildRuntimeServiceNetworkName(request, dockerNamespace);

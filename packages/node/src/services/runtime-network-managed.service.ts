@@ -115,6 +115,23 @@ export function isManagedRuntimeNetwork(
   );
 }
 
+export function isReplaceableLegacyRuntimeNetwork(
+  network: Pick<DockerInspectNetworkResult, 'endpointContainerIds' | 'labels' | 'name'>,
+  spec: RuntimeNetworkSpec,
+  config: Pick<RuntimeNetworkCapacityConfig, 'dockerNamespace'>,
+): boolean {
+  if (isLegacyRuntimeNetwork(network, config.dockerNamespace)) {
+    return true;
+  }
+
+  return (
+    network.name === spec.networkName &&
+    isRuntimeNetworkName(network.name, config.dockerNamespace) &&
+    network.endpointContainerIds.length === 0 &&
+    Object.keys(network.labels).length === 0
+  );
+}
+
 export function isLegacyRuntimeNetwork(
   network: Pick<DockerInspectNetworkResult, 'labels' | 'name'>,
   dockerNamespace: string,

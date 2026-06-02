@@ -10,7 +10,7 @@ import {
 } from '@compartment/docker';
 import { createRuntimeDockerError } from '../errors/node-runtime-error';
 import { formatIpv4Cidr, parseIpv4Cidr, type Ipv4Cidr } from './runtime-network-cidr.service';
-import { buildRuntimeNetworkLabels, isLegacyRuntimeNetwork } from './runtime-network-managed.service';
+import { buildRuntimeNetworkLabels, isReplaceableLegacyRuntimeNetwork } from './runtime-network-managed.service';
 import { assertRuntimeNetworkSubnetEndpointCapacity } from './runtime-network-endpoint-capacity.service';
 import type { RuntimeNetworkCapacityConfig, RuntimeNetworkCreateInput } from './runtime-network-capacity.types';
 import {
@@ -57,7 +57,7 @@ function assertLegacyRuntimeNetworkMigrationInput(
   config: RuntimeNetworkCapacityConfig,
   subnet: Ipv4Cidr,
 ): void {
-  if (!isLegacyRuntimeNetwork(network, config.dockerNamespace)) {
+  if (!isReplaceableLegacyRuntimeNetwork(network, input.spec, config)) {
     throw new Error(`Docker runtime network ${network.name} is not a legacy Compartment runtime network.`);
   }
 
