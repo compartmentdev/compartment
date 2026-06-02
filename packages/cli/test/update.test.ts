@@ -202,6 +202,50 @@ describe.sequential('update runtime', (): void => {
     );
   });
 
+  it('applies an already-current update when the rendered self-hosted environment needs migration', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
+    await writeCurrentInstallFiles(
+      installPaths,
+      createCurrentEnvironmentText({
+        includeVariablesMasterKey: true,
+        nodeVersion: '1.2.3',
+        variablesMasterKey: 'b'.repeat(64),
+      }),
+    );
+    await writeInstallState(installPaths, {
+      imageRegistry: 'github',
+      imageSource: 'registry',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      stateVersion: 1,
+    });
+    const { updateSelfHosted } = await import('../src/update');
+
+    const result: SelfHostedUpdateResult = await updateSelfHosted({
+      options: {
+        imageSource: 'registry',
+        version: '1.2.3',
+      },
+    });
+
+    expect(result.status).toBe('updated');
+    expect(result.currentVersion).toBe('1.2.3');
+    expect(result.targetVersion).toBe('1.2.3');
+    expect(result.skipReason).toBeNull();
+    expect(mocks.prepareSelfHostedRuntimeImages).toHaveBeenCalledTimes(1);
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'BUILDKIT_ADDR=unix:///run/buildkit/buildkitd.sock',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_UID=10001',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_GID=10001',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.not.toContain(
+      'BUILDKIT_ADDR=tcp://builder:1234',
+    );
+  });
+
   it('migrates legacy managed-domain broker env aliases and install-state tokens during update', async (): Promise<void> => {
     const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
     const previousEnvironmentText: string = `${removeEnvironmentAssignments(
