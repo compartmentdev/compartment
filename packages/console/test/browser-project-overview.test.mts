@@ -19,18 +19,21 @@ describe('browser project overview', (): void => {
     expect(html).toContain('>Overview<');
     expect(html).toContain('lucide-boxes');
     expect(html).not.toContain('Project services, routes, and deployment status by environment.');
-    expect(html).toContain('>Production details<');
-    expect(html).toContain('gap-3 bg-background');
+    expect(html).not.toContain('>Production details<');
+    expect(html).toContain('gap-6 bg-background pb-8 pt-4');
     expect(html).toContain('aria-label="Breadcrumb"');
     expect(html).toContain('href="/orgs/acme-dev/projects"');
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('title="billing">billing</span>');
-    expect(html).toContain('href="/orgs/acme-dev/projects/billing?environmentName=production"');
-    expect(html).toContain('href="/orgs/acme-dev/projects/billing?environmentName=staging"');
-    expect(html).toContain('aria-label="Project environments"');
+    expect(html).toContain('aria-label="Project environment"');
+    expect(html).toContain('role="combobox"');
+    expect(html).toContain('>All</option>');
+    expect(html).toContain('>Production</option>');
+    expect(html).toContain('>Staging</option>');
+    expect(html).not.toContain('aria-label="Project environments"');
     expect(html).toContain('href="/orgs/acme-dev/projects/billing/deployments?environmentName=production"');
     expect(html).toContain('>Production Deployments<');
-    expect(html).toContain('overflow-hidden rounded-lg border border-border bg-[var(--table-surface)]');
+    expect(html).toContain('overflow-hidden rounded-card border border-border bg-card');
     expect(html).toContain('sm:flex-row');
     expect(html).toContain('sm:justify-between');
     expect(html).not.toContain('&amp;serviceName=');
@@ -41,6 +44,44 @@ describe('browser project overview', (): void => {
     expect(html).not.toContain('production / 1 service');
     expect(html).not.toContain('>Environment<');
     expect(html).not.toContain('>Actions<');
+  });
+
+  it('renders an all-environment overview selection', (): void => {
+    vi.stubGlobal('React', React);
+
+    const html: string = renderToStaticMarkup(
+      React.createElement(ProjectOverviewView, {
+        data: createProjectOverviewPageResult({
+          selectedEnvironmentName: null,
+          services: [
+            {
+              environmentName: 'production',
+              kind: 'web',
+              lastDeploymentCreatedAt: '2026-05-06T08:20:00.000Z',
+              name: 'web',
+              routeUrl: 'https://billing.apps.localhost',
+              status: 'healthy',
+            },
+            {
+              environmentName: 'staging',
+              kind: 'worker',
+              lastDeploymentCreatedAt: null,
+              name: 'worker',
+              routeUrl: null,
+              status: 'updating',
+            },
+          ],
+        }),
+        onNavigate: vi.fn<BrowserSoftNavigateHandler>(),
+      }),
+    );
+
+    expect(html).toContain('aria-label="Project environment"');
+    expect(html).toContain('>All</option>');
+    expect(html).toContain('>Environment<');
+    expect(html).toContain('>Production<');
+    expect(html).toContain('>Staging<');
+    expect(html).not.toContain('/projects/billing/deployments?');
   });
 
   it('keeps organization in project links for multi-org sessions', (): void => {
@@ -65,7 +106,6 @@ describe('browser project overview', (): void => {
       }),
     );
 
-    expect(html).toContain('href="/orgs/acme-dev/projects/billing?environmentName=production"');
     expect(html).toContain('href="/orgs/acme-dev/projects/billing/deployments?environmentName=production"');
     expect(html).toContain('href="/orgs/acme-dev/projects"');
     expect(html).toContain('href="/orgs/acme-dev/users"');
@@ -137,6 +177,7 @@ function createProjectOverviewPageResult(
     selectedOrganizationSlug: 'acme-dev',
     services: [
       {
+        environmentName: 'production',
         kind: 'web',
         lastDeploymentCreatedAt: '2026-05-06T08:20:00.000Z',
         name: 'web',

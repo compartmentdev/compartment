@@ -1,11 +1,9 @@
 import { useState, type JSX } from 'react';
 import type { DeploymentReadRunGroup } from '@compartment/contracts/browser';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
-import { BrowserSoftNavigationLink } from '../../components/browser-soft-navigation-link';
 import { ConfirmationDialog } from '../../components/confirmation-dialog';
-import { ServerTableActions } from '../../components/server-table';
+import { ServerTableActionLink, ServerTableActions } from '../../components/server-table';
 import { ServerTableActionsMenu } from '../../components/server-table-actions-menu';
-import { DropdownMenuItem } from '../../components/ui/dropdown-menu';
 import type { BrowserDeploymentHistoryPageResult } from '../../services/browser-deployment-history.service.types';
 import {
   readRollbackDeploymentRunConfirmationMessage,
@@ -117,15 +115,30 @@ function DeploymentHistoryActionsMenu({
 }: Readonly<DeploymentHistoryActionsMenuProps>): JSX.Element {
   return (
     <ServerTableActions>
-      <ServerTableActionsMenu ariaLabel={`Open actions for ${run.label}`}>
-        <DeploymentHistoryDetailsAction data={data} onNavigate={onNavigate} run={run} />
-        <DeploymentRunRollbackMenuItem
-          isSubmitting={isSubmitting}
-          onSelect={(): void => onRequestRollback(true)}
-          state={rollbackState}
-        />
-      </ServerTableActionsMenu>
+      <DeploymentHistoryDetailsAction data={data} onNavigate={onNavigate} run={run} />
+      {renderDeploymentHistoryActionsDropdown(run, rollbackState, isSubmitting, onRequestRollback)}
     </ServerTableActions>
+  );
+}
+
+function renderDeploymentHistoryActionsDropdown(
+  run: Readonly<DeploymentReadRunGroup>,
+  rollbackState: DeploymentRunRollbackState,
+  isSubmitting: boolean,
+  onRequestRollback: (open: boolean) => void,
+): JSX.Element | null {
+  if (rollbackState.kind === 'hidden') {
+    return null;
+  }
+
+  return (
+    <ServerTableActionsMenu ariaLabel={`Open actions for ${run.label}`}>
+      <DeploymentRunRollbackMenuItem
+        isSubmitting={isSubmitting}
+        onSelect={(): void => onRequestRollback(true)}
+        state={rollbackState}
+      />
+    </ServerTableActionsMenu>
   );
 }
 
@@ -171,21 +184,19 @@ function DeploymentHistoryDetailsAction({
   run,
 }: Readonly<DeploymentHistoryDetailsActionProps>): JSX.Element {
   return (
-    <DropdownMenuItem asChild>
-      <BrowserSoftNavigationLink
-        href={buildDeploymentDetailsHref(
-          {
-            environmentName: data.environmentName,
-            organizationSlug: data.selectedOrganizationSlug,
-            projectName: data.projectName,
-          },
-          run.deploymentRunId,
-        )}
-        onNavigate={onNavigate}
-      >
-        Details
-      </BrowserSoftNavigationLink>
-    </DropdownMenuItem>
+    <ServerTableActionLink
+      href={buildDeploymentDetailsHref(
+        {
+          environmentName: data.environmentName,
+          organizationSlug: data.selectedOrganizationSlug,
+          projectName: data.projectName,
+        },
+        run.deploymentRunId,
+      )}
+      onNavigate={onNavigate}
+    >
+      Details
+    </ServerTableActionLink>
   );
 }
 

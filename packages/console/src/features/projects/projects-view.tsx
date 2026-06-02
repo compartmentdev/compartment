@@ -166,9 +166,9 @@ function ProjectsToolbar({ data, onNavigate }: Readonly<ProjectsToolbarProps>): 
 
 function ProjectsToolbarActions({ createProjectHref, onNavigate }: Readonly<ProjectsToolbarActionsProps>): JSX.Element {
   return (
-    <div className="flex min-h-9 flex-col gap-3 md:items-center">
+    <div className="flex min-h-8 flex-col gap-3 md:items-center">
       {createProjectHref === null ? null : (
-        <ToolbarPrimaryActionLink href={createProjectHref} icon={Plus} onNavigate={onNavigate} variant="accent">
+        <ToolbarPrimaryActionLink href={createProjectHref} icon={Plus} onNavigate={onNavigate}>
           Add project
         </ToolbarPrimaryActionLink>
       )}

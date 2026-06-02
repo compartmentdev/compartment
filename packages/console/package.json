@@ -31,7 +31,8 @@
   "dependencies": {
     "@compartment/contracts": "workspace:*",
     "@compartment/utils": "workspace:*",
-    "@tanstack/react-query": "5.100.11"
+    "@tanstack/react-query": "5.100.11",
+    "minidenticons": "^4.2.1"
   },
   "devDependencies": {
     "@compartment/eslint-config": "workspace:*",

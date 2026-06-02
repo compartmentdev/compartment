@@ -32,6 +32,7 @@ describe('browser onboarding Git account picker', (): void => {
     expect(markup).toContain('If Compartment is already installed for that account');
     expect(markup).toContain('Open repositories');
     expect(markup).toContain('Install app');
+    expect(markup).toContain('data:image/svg+xml;utf8,');
   });
 
   it('uses a non-install loading label for installed accounts', (): void => {

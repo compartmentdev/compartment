@@ -31,8 +31,15 @@
   --font-sans: 'DM Sans', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
   --destructive-foreground: oklch(0.985 0.002 255);
   --radius: 0.75rem;
-  --app-page-bg: linear-gradient(164.193481482512deg, var(--background) 1.3259%, var(--muted) 100%);
-  --table-surface: var(--background);
+  --cpt-radius-micro: 4px;
+  --cpt-radius-icon: 6px;
+  --cpt-radius-control: 8px;
+  --cpt-radius-field: 10px;
+  --cpt-radius-card: 12px;
+  --cpt-radius-modal: 18px;
+  --cpt-radius-pill: 9999px;
+  --app-page-bg: var(--background);
+  --table-surface: var(--card);
   --auth-page-bg: #ffffff;
   --auth-card-bg: #fbfcfc;
   --auth-card-border: #00000014;
@@ -108,8 +115,8 @@
 
 .dark {
   --destructive-foreground: oklch(0.16 0.01 257);
-  --app-page-bg: linear-gradient(164.193481482512deg, var(--background) 1.3259%, var(--muted) 100%);
-  --table-surface: var(--background);
+  --app-page-bg: var(--background);
+  --table-surface: var(--card);
   --auth-page-bg: #0d0d0e;
   --auth-card-bg: #111212;
   --auth-card-border: #ffffff14;
@@ -178,14 +185,25 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 8px);
-  --radius-md: calc(var(--radius) - 4px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 6px);
+  --radius-micro: var(--cpt-radius-micro);
+  --radius-icon: var(--cpt-radius-icon);
+  --radius-control: var(--cpt-radius-control);
+  --radius-field: var(--cpt-radius-field);
+  --radius-card: var(--cpt-radius-card);
+  --radius-modal: var(--cpt-radius-modal);
+  --radius-pill: var(--cpt-radius-pill);
+  --radius-sm: var(--cpt-radius-micro);
+  --radius-md: var(--cpt-radius-control);
+  --radius-lg: var(--cpt-radius-card);
+  --radius-xl: var(--cpt-radius-modal);
 }
 
 * {
   border-color: var(--border);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis: none;
 }
 
 html {
@@ -332,7 +350,7 @@ textarea {
   content: '';
   position: absolute;
   inset: 2px;
-  border-radius: 9999px;
+  border-radius: var(--cpt-radius-pill);
   background: currentColor;
   animation: dot-badge-active-pulse 1.8s ease-out infinite;
   opacity: 0.45;

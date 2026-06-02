@@ -211,7 +211,7 @@ function formatItemsCount(totalItems: number, itemLabel: string): string {
 
 function renderControlsLayout(props: Readonly<ServerTableControlsProps>): JSX.Element {
   return (
-    <div className="flex flex-col gap-3 border-t border-border px-4 py-3 md:flex-row md:items-center md:justify-between">
+    <div className="flex min-h-9 flex-col gap-3 border-t border-border px-4 py-0 md:flex-row md:items-center md:justify-between">
       <RowsPerPageSection
         itemLabel={props.itemLabel}
         onPageSizeChange={props.onPageSizeChange}

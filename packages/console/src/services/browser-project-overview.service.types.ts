@@ -11,6 +11,7 @@ export interface BrowserProjectOverviewEnvironment {
 }
 
 export interface BrowserProjectOverviewService {
+  environmentName: string;
   kind: CompartmentServiceKind;
   lastDeploymentCreatedAt: string | null;
   name: string;

@@ -36,7 +36,7 @@ function readGitRepositoryLabel(routeState: OnboardingRouteState): string {
 
 function GitSummary({ branchName, environmentName, repositoryLabel }: Readonly<GitSummaryProps>): JSX.Element {
   return (
-    <div className="grid gap-3 rounded-lg border border-black/10 bg-[#fbfcfc] p-4 sm:grid-cols-2">
+    <div className="grid gap-3 rounded-card border border-black/10 bg-card p-4 sm:grid-cols-2">
       <GitSummaryItem label="Repository" value={repositoryLabel} />
       <GitSummaryItem label="Branch" value={branchName} />
       <GitSummaryItem label="Environment" value={environmentName} />

@@ -1,4 +1,5 @@
-import type { ChangeEvent, ReactNode, SelectHTMLAttributes } from 'react';
+import type { ChangeEvent, ReactNode, RefObject, SelectHTMLAttributes } from 'react';
+import type { SingleLineFieldControlSize } from './field-styles';
 
 export type NativeOptionValue = readonly string[] | number | string | undefined;
 export type NativeSelectChangeHandler = ((event: ChangeEvent<HTMLSelectElement>) => void) | undefined;
@@ -20,9 +21,24 @@ export interface NativeSelectWidthProps extends Pick<
 > {
   className?: string | undefined;
   containerClassName?: string | undefined;
+  size?: SingleLineFieldControlSize | undefined;
 }
 
 export type NativeSelectPropsWithWidth = Readonly<NativeSelectWidthProps>;
+
+export interface NativeSelectLayoutProps {
+  containerClassName: string | undefined;
+  hiddenFieldProps: NativeSelectHiddenFieldProps;
+  rootProps: NativeSelectRootProps;
+}
+
+export interface NativeSelectHiddenFieldInput {
+  children: ReactNode;
+  disabled: boolean;
+  form: string | undefined;
+  name: string | undefined;
+  required: boolean;
+}
 
 export interface NativeSelectHiddenFieldProps {
   children: ReactNode;
@@ -31,6 +47,16 @@ export interface NativeSelectHiddenFieldProps {
   name: string | undefined;
   required: boolean;
   selectedNativeValue: string;
+}
+
+export interface NativeSelectRootInput {
+  ariaDescribedBy: string | undefined;
+  ariaLabel: string | undefined;
+  className: string | undefined;
+  disabled: boolean;
+  id: string | undefined;
+  required: boolean;
+  size: SingleLineFieldControlSize;
 }
 
 export interface NativeSelectRootProps {
@@ -44,6 +70,17 @@ export interface NativeSelectRootProps {
   placeholderLabel: ReactNode;
   required: boolean;
   selectedRadixValue: string | undefined;
+  size: SingleLineFieldControlSize;
+}
+
+export interface NativeSelectTriggerButtonProps {
+  'aria-describedby': string | undefined;
+  'aria-label': string | undefined;
+  'aria-labelledby': string | undefined;
+  'aria-required': true | undefined;
+  className: string;
+  id: string | undefined;
+  ref: RefObject<HTMLButtonElement | null>;
 }
 
 export interface NativeSelectOption {

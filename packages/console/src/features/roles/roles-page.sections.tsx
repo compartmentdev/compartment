@@ -217,7 +217,6 @@ function CreateRoleButton({ state }: Readonly<CreateRoleButtonProps>): JSX.Eleme
         state.onNavigate(buildRolesPageHref(state.data, { mode: 'create', roleId: null }));
       }}
       type="button"
-      variant="accent"
     >
       Create role
     </ToolbarPrimaryActionButton>

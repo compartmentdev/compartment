@@ -68,7 +68,7 @@ function SsoOptionLink({ option, successRedirectTo }: Readonly<SsoOptionLinkProp
     <a
       className={buttonVariants({
         className: 'w-full justify-center no-underline',
-        size: 'lg',
+        size: 'sm',
         variant: 'secondary',
       })}
       href={readLoginSsoRedirectUrl(option.loginUrl, successRedirectTo)}
@@ -109,7 +109,7 @@ function OrganizationChoiceButton({
     <button
       className={buttonVariants({
         className: 'w-full justify-start',
-        size: 'lg',
+        size: 'sm',
         variant: 'secondary',
       })}
       onClick={(): void => {

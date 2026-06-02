@@ -13,9 +13,9 @@ export function BrowserConsoleDetailTitle({
   title,
 }: Readonly<BrowserConsoleDetailTitleProps>): JSX.Element {
   return (
-    <div className="mt-6 flex flex-wrap items-center gap-2">
+    <div className="mt-6 flex flex-wrap items-center gap-3">
       <IconTile icon={Icon} />
-      <h1 className="text-2xl font-semibold leading-8 tracking-normal text-foreground">{title}</h1>
+      <h1 className="text-[30px] font-semibold leading-10 tracking-normal text-foreground">{title}</h1>
       {badgeLabel === undefined ? null : <BrowserConsoleEnvironmentBadge label={badgeLabel} />}
     </div>
   );

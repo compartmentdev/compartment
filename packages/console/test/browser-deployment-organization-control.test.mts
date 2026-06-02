@@ -29,6 +29,7 @@ vi.mock('../src/components/browser-console-header', async (): Promise<object> =>
 
   return {
     BrowserConsoleShell,
+    browserConsoleDetailBreadcrumbBarClassName: '',
     browserConsoleDetailPageHeaderClassName: '',
     browserConsolePageBodyClassName: '',
     browserConsolePageClassName: '',

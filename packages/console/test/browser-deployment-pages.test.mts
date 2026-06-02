@@ -574,9 +574,11 @@ describe('browser deployment pages', (): void => {
     expect(historyHtml).toContain('drn_123');
     expect(historyHtml).toContain('web');
     expect(historyHtml).toContain('dep_123');
-    expect(historyHtml).toContain('aria-label="Open actions for release 42"');
-    expect(historyHtml).toContain('lucide-ellipsis');
-    expect(historyHtml).toContain('aria-haspopup="menu"');
+    expect(historyHtml).toContain(
+      'href="/orgs/acme-dev/projects/billing/deployments/drn_123?environmentName=production"',
+    );
+    expect(historyHtml).toContain('>Details</a>');
+    expect(historyHtml).not.toContain('aria-label="Open actions for release 42"');
     expect(historyHtml).toContain('<colgroup>');
     expect(historyHtml).toContain('min-w-[1008px]');
     expect(historyHtml).toContain('table-fixed');
@@ -589,6 +591,18 @@ describe('browser deployment pages', (): void => {
     expect(historyHtml).toContain('w-[7.5rem]');
     expect(historyHtml).toContain('break-all');
     expect(historyHtml).not.toContain('>Rollback<');
+    const actionsHistoryHtml: string = renderToStaticMarkup(
+      createElement(DeploymentHistoryTable, {
+        data: createDeploymentHistoryPageResult({
+          currentEnvironmentPermissions: ['deployment.rollback'],
+        }),
+        onNavigate: noopBrowserNavigate,
+        onRollback: noopDeploymentHistoryRollback,
+      }),
+    );
+    expect(actionsHistoryHtml).toContain('aria-label="Open actions for release 42"');
+    expect(actionsHistoryHtml).toContain('lucide-ellipsis');
+    expect(actionsHistoryHtml).toContain('aria-haspopup="menu"');
     const multiOrgHistoryHtml: string = renderToStaticMarkup(
       createElement(DeploymentHistoryTable, {
         data: createDeploymentHistoryPageResult({
@@ -696,6 +710,8 @@ describe('browser deployment pages', (): void => {
     expect(cleanedHistoryViewHtml).toContain('lucide-box');
     expect(cleanedHistoryViewHtml).toContain('aria-label="Environment"');
     expect(cleanedHistoryViewHtml).toContain('>Production</span>');
+    expect(cleanedHistoryViewHtml).not.toContain('aria-label="Deployment environment"');
+    expect(cleanedHistoryViewHtml).not.toContain('Production deployments');
     expect(cleanedHistoryViewHtml).not.toContain(
       'Deployment runs, release history, and rollback status for production.',
     );
@@ -750,6 +766,7 @@ describe('browser deployment pages', (): void => {
     });
     const hiddenHtml: string = renderRollbackMenuItem(hiddenData);
     expect(hiddenHtml).toContain('>Details<');
+    expect(hiddenHtml).not.toContain('aria-label="Open actions for release 42"');
     expect(hiddenHtml).not.toContain('>Rollback<');
   });
 
@@ -805,6 +822,9 @@ describe('browser deployment pages', (): void => {
     );
     expect(html).toContain('Deployment run details');
     expect(html).toContain('lucide-file-box');
+    expect(html).toContain('border-b-0 pb-0 pt-0');
+    expect(html).toContain('flex h-12 items-center border-b border-border');
+    expect(html).toContain('bg-background pb-8 pt-4');
     expect(html).toContain('aria-label="Environment"');
     expect(html).toContain('>Production</span>');
     expect(html).toContain('aria-label="Breadcrumb"');
@@ -819,7 +839,16 @@ describe('browser deployment pages', (): void => {
     expect(html).toContain('drn_2c8c4d620ec34092a0f42102b6e57e8b');
     expect(html).toContain('dep_205b56db93b840bcb1851c7d00bd4cd6');
     expect(html).toContain('block whitespace-nowrap');
+    expect(html).toContain('rounded-field border border-border bg-background');
+    expect(html).toContain('>2 steps<');
+    expect(html).toContain('Deployment queued.');
+    expect(html).toContain('All services');
+    expect(html).toContain('Completed in 10s');
     expect(html).toContain('Preparing source');
+    expect(html).toContain('Source prepared.');
+    expect(html).toContain('Completed in 40s');
+    expect(html).toContain('border-success');
+    expect(html).not.toContain('rounded-field border px-3 py-3');
     expect(html).toContain('2026-04-21T09:01:30.000Z [web] stdout boot complete');
   });
 });

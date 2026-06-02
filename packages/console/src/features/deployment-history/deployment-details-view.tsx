@@ -8,12 +8,14 @@ import {
 } from '../../components/browser-console-detail-header';
 import {
   BrowserConsoleShell,
+  browserConsoleDetailBreadcrumbBarClassName,
   browserConsoleDetailPageHeaderClassName,
-  browserConsolePageBodyClassName,
   browserConsolePageClassName,
+  browserConsolePageGutterClassName,
 } from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import { FileBox } from '../../components/ui/icons';
+import { cn } from '../../lib/utils';
 import type { BrowserDeploymentDetailsPageResult } from '../../services/browser-deployment-history.service.types';
 import { buildBrowserConsoleProjectsHref } from '../console/console-hrefs';
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
@@ -83,7 +85,7 @@ function DeploymentDetailsContent({ data, onNavigate }: Readonly<DeploymentDetai
         environmentName={data.environmentName}
         onNavigate={onNavigate}
       />
-      <section className={`${browserConsolePageBodyClassName} bg-background`}>
+      <section className={`flex flex-1 flex-col gap-6 bg-background pb-8 pt-4 ${browserConsolePageGutterClassName}`}>
         <DismissibleAlert message={data.errorMessage} variant="error" />
         <DeploymentDetailsSections data={data} />
       </section>
@@ -128,11 +130,11 @@ function DeploymentDetailsPageHeader({
   onNavigate,
 }: Readonly<DeploymentDetailsPageHeaderProps>): JSX.Element {
   return (
-    <header className={browserConsoleDetailPageHeaderClassName}>
-      <div className="pb-6">
+    <header className={cn(browserConsoleDetailPageHeaderClassName, 'border-b-0 pb-0 pt-0')}>
+      <div className={browserConsoleDetailBreadcrumbBarClassName}>
         <BrowserBreadcrumbs items={breadcrumbItems} onNavigate={onNavigate} />
-        <DeploymentDetailsPageTitle environmentName={environmentName} />
       </div>
+      <DeploymentDetailsPageTitle environmentName={environmentName} />
     </header>
   );
 }

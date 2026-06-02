@@ -61,7 +61,7 @@ export function OnboardingStatus({
   const refreshState: OnboardingRefreshState | null = useOnboardingRefreshState(onRefresh);
   const markerState: OnboardingStatusState = state ?? (isActive ? 'active' : 'idle');
   return (
-    <div className="flex w-full max-w-full flex-col gap-3 overflow-hidden rounded-lg border border-black/10 bg-[#fbfcfc] p-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex w-full max-w-full flex-col gap-3 overflow-hidden rounded-card border border-black/10 bg-card p-4 sm:flex-row sm:items-start sm:justify-between">
       <OnboardingStatusBody label={label} state={markerState} value={value} />
       <OnboardingStatusAction
         refreshState={refreshState}
@@ -162,25 +162,25 @@ function OnboardingOpenProjectsButton({
 function OnboardingStatusMarker({ state }: Readonly<OnboardingStatusMarkerProps>): JSX.Element {
   if (state === 'success') {
     return (
-      <span className="flex size-9 items-center justify-center rounded-md bg-[#eef8f1] text-[#2f7d45]">
+      <span className="flex size-9 items-center justify-center rounded-icon bg-[#eef8f1] text-[#2f7d45]">
         <CircleCheck aria-hidden="true" className="size-5" strokeWidth={2.5} />
       </span>
     );
   }
   if (state === 'error') {
     return (
-      <span className="flex size-9 items-center justify-center rounded-md bg-[#fff3f0] text-[#b13a2f]">
+      <span className="flex size-9 items-center justify-center rounded-icon bg-[#fff3f0] text-[#b13a2f]">
         <TriangleAlert aria-hidden="true" className="size-5" strokeWidth={2.5} />
       </span>
     );
   }
   if (state === 'active') {
     return (
-      <span className="flex size-9 items-center justify-center rounded-md bg-[#f4f9ff] text-[#3480c8]">
+      <span className="flex size-9 items-center justify-center rounded-icon bg-[#f4f9ff] text-[#3480c8]">
         <LoaderCircle aria-hidden="true" className="size-5 animate-spin" strokeWidth={2.5} />
       </span>
     );
   }
 
-  return <span className="flex size-9 items-center justify-center rounded-md border border-[#3480c8]/40 bg-white" />;
+  return <span className="flex size-9 items-center justify-center rounded-icon border border-[#3480c8]/40 bg-card" />;
 }

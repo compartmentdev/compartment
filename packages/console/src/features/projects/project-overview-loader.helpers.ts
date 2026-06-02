@@ -77,14 +77,9 @@ export function buildProjectOverviewSelectionFields(
   consoleContext: BrowserConsoleContext,
   requestedEnvironmentName: string | null,
   environments: readonly BrowserProjectOverviewEnvironment[],
-  project: BrowserProjectSummary,
 ): ProjectOverviewSelectionFields {
   return {
-    selectedEnvironmentName: resolveSelectedEnvironmentName(
-      requestedEnvironmentName,
-      environments,
-      project.environmentName,
-    ),
+    selectedEnvironmentName: resolveSelectedEnvironmentName(requestedEnvironmentName, environments),
     selectedOrganizationSlug: consoleContext.selectedOrganizationSlug,
     showOrganizationSelector: consoleContext.showOrganizationSelector,
   };
@@ -123,10 +118,12 @@ function buildBrowserProjectOverviewEnvironments(
 function resolveSelectedEnvironmentName(
   requestedEnvironmentName: string | null,
   environments: readonly BrowserProjectOverviewEnvironment[],
-  fallbackEnvironmentName: string,
 ): string | null {
+  if (requestedEnvironmentName === null) {
+    return null;
+  }
+
   if (
-    requestedEnvironmentName !== null &&
     environments.some(
       (environment: BrowserProjectOverviewEnvironment): boolean => environment.name === requestedEnvironmentName,
     )
@@ -134,13 +131,5 @@ function resolveSelectedEnvironmentName(
     return requestedEnvironmentName;
   }
 
-  if (
-    environments.some(
-      (environment: BrowserProjectOverviewEnvironment): boolean => environment.name === fallbackEnvironmentName,
-    )
-  ) {
-    return fallbackEnvironmentName;
-  }
-
-  return environments[0]?.name ?? null;
+  return null;
 }

@@ -150,7 +150,7 @@ function DependentScopeField({
     <div className={cn('relative min-w-0 w-full space-y-1', readDependentScopeFieldPaddingClassName(depth), className)}>
       <div
         className={cn(
-          'pointer-events-none absolute top-[-8px] hidden h-[27px] w-8 rounded-bl-[10px] border-b border-l border-[var(--cpt-border-default,rgba(0,0,0,0.08))] md:block',
+          'pointer-events-none absolute top-[-8px] hidden h-[27px] w-8 rounded-bl-field border-b border-l border-[var(--cpt-border-default,rgba(0,0,0,0.08))] md:block',
           readDependentScopeConnectorClassName(depth),
         )}
         data-access-inherited-connector

@@ -1,3 +1,4 @@
+import * as TabsPrimitive from '@radix-ui/react-tabs';
 import type { JSX } from 'react';
 import type {
   BrowserProjectsPageResult,
@@ -52,6 +53,9 @@ const projectArchiveStateTabs: readonly ProjectArchiveStateTab[] = [
     widthClassName: 'w-[56px]',
   },
 ];
+const projectArchiveStateTabValues: readonly BrowserProjectsArchiveState[] = projectArchiveStateTabs.map(
+  (tab: ProjectArchiveStateTab): BrowserProjectsArchiveState => tab.value,
+);
 
 export function ProjectArchiveStateSwitch({
   data,
@@ -65,7 +69,12 @@ function renderProjectArchiveStateNavigation(
   onNavigate: BrowserSoftNavigateHandler,
 ): JSX.Element {
   return (
-    <TabsLiftedNavigation ariaLabel="Project state" className="shrink-0">
+    <TabsLiftedNavigation
+      ariaLabel="Project state"
+      className="shrink-0 pb-4"
+      contentValues={projectArchiveStateTabValues}
+      value={data.archiveState}
+    >
       {projectArchiveStateTabs.map(
         (tab: ProjectArchiveStateTab): JSX.Element => (
           <ProjectArchiveStateLink
@@ -93,14 +102,10 @@ function ProjectArchiveStateLink({
   });
 
   return (
-    <BrowserSoftNavigationLink
-      aria-current={active ? 'page' : undefined}
-      className={readTabsLiftedTriggerClassName(tab.widthClassName)}
-      data-state={active ? 'active' : 'inactive'}
-      href={href}
-      onNavigate={onNavigate}
-    >
-      <TabsLiftedTriggerContent icon={tab.icon} label={tab.label} />
-    </BrowserSoftNavigationLink>
+    <TabsPrimitive.Trigger asChild className={readTabsLiftedTriggerClassName(tab.widthClassName)} value={tab.value}>
+      <BrowserSoftNavigationLink aria-current={active ? 'page' : undefined} href={href} onNavigate={onNavigate}>
+        <TabsLiftedTriggerContent icon={tab.icon} label={tab.label} />
+      </BrowserSoftNavigationLink>
+    </TabsPrimitive.Trigger>
   );
 }

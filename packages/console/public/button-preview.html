@@ -12,9 +12,11 @@
         --background: #fafafa;
         --border: #4d565e1a;
         --card: #ffffff;
+        --destructive: #c0412c;
         --foreground: #121417;
         --muted: #e6e8ea;
         --muted-foreground: #9ca4ab;
+        --muted-foreground-secondary: #4d565e;
         --opacity-primary-lighter: #1214171a;
         --opacity-primary-main: #12141733;
         --primary: #121417;
@@ -22,6 +24,7 @@
         --ring: #9ca4ab;
         --secondary: #bdd92e;
         --secondary-foreground: #121417;
+        --success: #28a23c;
         --auth-page-bg: #ffffff;
         --auth-primary-bg: #3480c8;
         --auth-primary-bg-hover: #1e65ac;
@@ -47,7 +50,7 @@
       body {
         min-height: 100vh;
         margin: 0;
-        background: var(--app-page-bg, linear-gradient(164deg, var(--background) 1%, var(--muted) 100%));
+        background: var(--app-page-bg, var(--background));
         color: var(--foreground);
         font-family: 'DM Sans', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
       }
@@ -101,7 +104,7 @@
       .toolbar,
       .panel {
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: var(--cpt-radius-card);
         background: var(--card);
       }
 
@@ -137,6 +140,12 @@
         padding: 16px;
       }
 
+      .description-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
       .button-grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(150px, 1fr));
@@ -150,7 +159,7 @@
         gap: 8px;
         padding: 12px;
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: var(--cpt-radius-card);
         background: color-mix(in srgb, var(--background) 78%, transparent);
       }
 
@@ -165,13 +174,55 @@
         display: inline-flex;
         width: fit-content;
         align-items: center;
-        border-radius: 999px;
+        border-radius: var(--cpt-radius-pill);
         background: var(--muted);
         color: var(--foreground);
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
         font-size: 11px;
         line-height: 16px;
         padding: 2px 7px;
+      }
+
+      .size-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        line-height: 20px;
+      }
+
+      .size-table th,
+      .size-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .size-table th {
+        color: var(--muted-foreground-secondary);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+
+      .size-table tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .snippet {
+        overflow-x: auto;
+        margin: 0;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--cpt-radius-field);
+        background: color-mix(in srgb, var(--muted) 50%, transparent);
+        color: var(--foreground);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+        font-size: 12px;
+        line-height: 18px;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
       }
 
       .button {
@@ -181,7 +232,7 @@
         gap: 8px;
         white-space: nowrap;
         border: 1px solid transparent;
-        border-radius: 8px;
+        border-radius: var(--cpt-radius-control);
         font-family: inherit;
         font-size: 13px;
         font-weight: 500;
@@ -205,7 +256,8 @@
         pointer-events: none;
       }
 
-      .button-size-default {
+      .button-size-default,
+      .button-size-md {
         height: 36px;
         padding: 8px 14px;
       }
@@ -236,6 +288,27 @@
       .button-variant-default:hover,
       .button-variant-default.is-hover {
         background: color-mix(in srgb, var(--primary) 92%, transparent);
+      }
+
+      .button-variant-destructive {
+        border-color: transparent;
+        background: rgb(164 46 28 / 10%);
+        color: var(--destructive);
+      }
+
+      .button-variant-destructive:hover,
+      .button-variant-destructive.is-hover {
+        background: rgb(164 46 28 / 20%);
+      }
+
+      .button-variant-success {
+        background: var(--success);
+        color: #ffffff;
+      }
+
+      .button-variant-success:hover,
+      .button-variant-success.is-hover {
+        opacity: 0.8;
       }
 
       .button-variant-soft,
@@ -355,13 +428,17 @@
       .theme-swatch {
         width: 10px;
         height: 10px;
-        border-radius: 999px;
+        border-radius: var(--cpt-radius-pill);
         background: currentColor;
       }
 
       @media (max-width: 860px) {
         .button-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .description-grid {
+          grid-template-columns: 1fr;
         }
       }
 
@@ -392,11 +469,14 @@
       <section class="toolbar" aria-label="Code names">
         <span class="code-name">Button</span>
         <span class="code-name">buttonVariants()</span>
-        <span class="code-name">default</span>
+        <span class="code-name">default / primary</span>
         <span class="code-name">accent</span>
+        <span class="code-name">destructive</span>
+        <span class="code-name">success</span>
         <span class="code-name">secondary = soft</span>
         <span class="code-name">outline</span>
         <span class="code-name">ghost</span>
+        <span class="code-name">md is default size</span>
       </section>
 
       <div class="grid">
@@ -411,47 +491,59 @@
             <article class="button-cell">
               <h3>default</h3>
               <span class="code-name">variant="default"</span>
-              <button class="button button-size-default button-variant-default" type="button">Create project</button>
-              <button class="button button-size-default button-variant-default is-hover" type="button">Hover</button>
-              <button class="button button-size-default button-variant-default is-disabled" type="button">
-                Disabled
-              </button>
+              <button class="button button-size-md button-variant-default" type="button">Create project</button>
+              <button class="button button-size-md button-variant-default is-hover" type="button">Hover</button>
+              <button class="button button-size-md button-variant-default is-disabled" type="button">Disabled</button>
             </article>
 
             <article class="button-cell">
               <h3>accent</h3>
               <span class="code-name">variant="accent"</span>
-              <button class="button button-size-default button-variant-accent" type="button">Create project</button>
-              <button class="button button-size-default button-variant-accent is-hover" type="button">Hover</button>
-              <button class="button button-size-default button-variant-accent is-disabled" type="button">
-                Disabled
-              </button>
+              <button class="button button-size-md button-variant-accent" type="button">Create project</button>
+              <button class="button button-size-md button-variant-accent is-hover" type="button">Hover</button>
+              <button class="button button-size-md button-variant-accent is-disabled" type="button">Disabled</button>
             </article>
 
             <article class="button-cell">
               <h3>secondary = soft</h3>
               <span class="code-name">variant="secondary"</span>
               <span class="code-name">alias: variant="soft"</span>
-              <button class="button button-size-default button-variant-secondary" type="button">Open project</button>
-              <button class="button button-size-default button-variant-secondary is-hover" type="button">Hover</button>
-              <button class="button button-size-default button-variant-secondary is-disabled" type="button">
-                Disabled
-              </button>
+              <button class="button button-size-md button-variant-secondary" type="button">Open project</button>
+              <button class="button button-size-md button-variant-secondary is-hover" type="button">Hover</button>
+              <button class="button button-size-md button-variant-secondary is-disabled" type="button">Disabled</button>
             </article>
 
             <article class="button-cell">
               <h3>outline</h3>
               <span class="code-name">variant="outline"</span>
-              <button class="button button-size-default button-variant-outline" type="button">Cancel</button>
-              <button class="button button-size-default button-variant-outline is-hover" type="button">Hover</button>
-              <button class="button button-size-default button-variant-outline is-focus" type="button">Focus</button>
+              <button class="button button-size-md button-variant-outline" type="button">Cancel</button>
+              <button class="button button-size-md button-variant-outline is-hover" type="button">Hover</button>
+              <button class="button button-size-md button-variant-outline is-focus" type="button">Focus</button>
             </article>
 
             <article class="button-cell">
               <h3>ghost</h3>
               <span class="code-name">variant="ghost"</span>
-              <button class="button button-size-default button-variant-ghost" type="button">More actions</button>
-              <button class="button button-size-default button-variant-ghost is-hover" type="button">Hover</button>
+              <button class="button button-size-md button-variant-ghost" type="button">More actions</button>
+              <button class="button button-size-md button-variant-ghost is-hover" type="button">Hover</button>
+            </article>
+
+            <article class="button-cell">
+              <h3>destructive</h3>
+              <span class="code-name">variant="destructive"</span>
+              <button class="button button-size-md button-variant-destructive" type="button">Delete</button>
+              <button class="button button-size-md button-variant-destructive is-hover" type="button">Hover</button>
+              <button class="button button-size-md button-variant-destructive is-disabled" type="button">
+                Disabled
+              </button>
+            </article>
+
+            <article class="button-cell">
+              <h3>success</h3>
+              <span class="code-name">variant="success"</span>
+              <button class="button button-size-md button-variant-success" type="button">Save access</button>
+              <button class="button button-size-md button-variant-success is-hover" type="button">Hover</button>
+              <button class="button button-size-md button-variant-success is-disabled" type="button">Disabled</button>
             </article>
           </div>
         </section>
@@ -460,29 +552,111 @@
           <div class="panel-header">
             <div>
               <h2>Sizes</h2>
-              <p class="muted">Names are the `size` values from `components/ui/button.tsx`.</p>
+              <p class="muted">
+                Names are the `size` values from `components/ui/button.tsx`; omitted size resolves to `md`.
+              </p>
             </div>
           </div>
-          <div class="panel-body button-row">
-            <button class="button button-size-lg button-variant-default" type="button">lg</button>
-            <button class="button button-size-default button-variant-default" type="button">default</button>
-            <button class="button button-size-sm button-variant-default" type="button">sm</button>
-            <button class="button button-size-xs button-variant-default" type="button">xs</button>
-            <button class="button button-size-sm button-variant-outline" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" />
-              </svg>
-              With icon
-            </button>
-            <button
-              class="button button-size-xs button-variant-outline button-icon-only"
-              type="button"
-              aria-label="Icon only"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" />
-              </svg>
-            </button>
+          <div class="panel-body description-grid">
+            <div class="button-row">
+              <button class="button button-size-lg button-variant-default" type="button">lg</button>
+              <button class="button button-size-md button-variant-default" type="button">md / default</button>
+              <button class="button button-size-sm button-variant-default" type="button">sm</button>
+              <button class="button button-size-xs button-variant-default" type="button">xs</button>
+              <button class="button button-size-sm button-variant-outline" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M12 5v14M5 12h14"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-width="2"
+                  />
+                </svg>
+                With icon
+              </button>
+              <button
+                class="button button-size-xs button-variant-outline button-icon-only"
+                type="button"
+                aria-label="Icon only"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" />
+                </svg>
+              </button>
+            </div>
+
+            <table class="size-table">
+              <thead>
+                <tr>
+                  <th>Size</th>
+                  <th>Height</th>
+                  <th>Padding</th>
+                  <th>Text</th>
+                  <th>Use</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="code-name">xs</span></td>
+                  <td>24px</td>
+                  <td>8px inline, 6px icon gap</td>
+                  <td>12px / medium</td>
+                  <td>Pagination, copy controls, compact icon buttons.</td>
+                </tr>
+                <tr>
+                  <td><span class="code-name">sm</span></td>
+                  <td>32px</td>
+                  <td>10px inline, 8px icon gap</td>
+                  <td>12px / medium</td>
+                  <td>Table actions, drawer actions, compact forms.</td>
+                </tr>
+                <tr>
+                  <td><span class="code-name">md</span></td>
+                  <td>36px</td>
+                  <td>14px inline, 8px block, 8px icon gap</td>
+                  <td>13px / medium</td>
+                  <td>Default button size for forms and page actions.</td>
+                </tr>
+                <tr>
+                  <td><span class="code-name">default</span></td>
+                  <td>36px</td>
+                  <td>Same as md</td>
+                  <td>13px / medium</td>
+                  <td>Legacy size alias kept by `buttonVariants()`.</td>
+                </tr>
+                <tr>
+                  <td><span class="code-name">lg</span></td>
+                  <td>40px</td>
+                  <td>18px inline, 8px block, 8px icon gap</td>
+                  <td>13px / medium</td>
+                  <td>Available for rare high-emphasis flows; not used for page CTAs now.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>HTML snippets</h2>
+              <p class="muted">Equivalent static HTML classes used by this preview.</p>
+            </div>
+          </div>
+          <div class="panel-body description-grid">
+            <pre
+              class="snippet"
+            ><code>&lt;button class="button button-size-md button-variant-default" type="button"&gt;Primary&lt;/button&gt;
+&lt;button class="button button-size-sm button-variant-secondary" type="button"&gt;Secondary&lt;/button&gt;
+&lt;button class="button button-size-sm button-variant-outline" type="button"&gt;Outline&lt;/button&gt;
+&lt;button class="button button-size-sm button-variant-ghost" type="button"&gt;Ghost&lt;/button&gt;</code></pre>
+            <pre
+              class="snippet"
+            ><code>&lt;button class="button button-size-sm button-variant-success" type="button"&gt;Save&lt;/button&gt;
+&lt;button class="button button-size-sm button-variant-destructive" type="button"&gt;Delete&lt;/button&gt;
+&lt;button class="button button-size-md button-variant-accent" type="button"&gt;Legacy accent&lt;/button&gt;
+&lt;a class="button button-size-md button-variant-default" href="/orgs/acme-dev/projects"&gt;Link button&lt;/a&gt;</code></pre>
           </div>
         </section>
 
@@ -545,9 +719,9 @@
 
             <article class="button-cell">
               <h3>destructive action shell</h3>
-              <span class="code-name">outline + action text</span>
-              <button class="button button-size-sm button-variant-outline" type="button">Block user</button>
-              <button class="button button-size-sm button-variant-outline is-disabled" type="button">Remove</button>
+              <span class="code-name">variant="destructive"</span>
+              <button class="button button-size-sm button-variant-destructive" type="button">Block user</button>
+              <button class="button button-size-sm button-variant-destructive is-disabled" type="button">Remove</button>
             </article>
           </div>
         </section>
@@ -563,22 +737,22 @@
             <article class="button-cell">
               <h3>activate/reset submit</h3>
               <span class="code-name">Button variant="default"</span>
-              <button class="button button-size-default button-variant-default" type="button">Reset password</button>
-              <button class="button button-size-default button-variant-default is-hover" type="button">Hover</button>
+              <button class="button button-size-md button-variant-default" type="button">Reset password</button>
+              <button class="button button-size-md button-variant-default is-hover" type="button">Hover</button>
             </article>
 
             <article class="button-cell">
               <h3>login submit</h3>
               <span class="code-name">Button variant="default"</span>
-              <button class="button button-size-default button-variant-default" type="button">Continue</button>
-              <button class="button button-size-default button-variant-default is-hover" type="button">Hover</button>
+              <button class="button button-size-md button-variant-default" type="button">Continue</button>
+              <button class="button button-size-md button-variant-default is-hover" type="button">Hover</button>
             </article>
 
             <article class="button-cell">
               <h3>auth secondary action</h3>
               <span class="code-name">Button variant="secondary"</span>
-              <button class="button button-size-lg button-variant-secondary" type="button">Go to login</button>
-              <button class="button button-size-lg button-variant-secondary is-hover" type="button">Hover</button>
+              <button class="button button-size-md button-variant-secondary" type="button">Go to login</button>
+              <button class="button button-size-md button-variant-secondary is-hover" type="button">Hover</button>
             </article>
 
             <article class="button-cell">

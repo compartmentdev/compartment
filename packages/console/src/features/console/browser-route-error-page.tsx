@@ -33,7 +33,7 @@ function BrowserRouteErrorPage({ viewModel }: Readonly<BrowserRouteErrorPageProp
   return (
     <main className="min-h-screen bg-transparent text-foreground">
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col justify-center px-4 py-12">
-        <section className="rounded-[1.75rem] border border-border bg-card/95 p-6 shadow-sm sm:p-8">
+        <section className="rounded-card border border-border bg-card/95 p-6 shadow-sm sm:p-8">
           <BrowserRouteErrorHero viewModel={viewModel} />
           {viewModel.details !== undefined ? <ErrorDetails details={viewModel.details} /> : null}
         </section>
@@ -57,10 +57,10 @@ function BrowserRouteErrorHero({ viewModel }: Readonly<BrowserRouteErrorPageProp
 function BrowserRouteErrorActions({ viewModel }: Readonly<BrowserRouteErrorPageProps>): JSX.Element {
   return (
     <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-      <a className={buttonVariants({ size: 'lg' })} href={viewModel.primaryActionHref}>
+      <a className={buttonVariants({ size: 'sm' })} href={viewModel.primaryActionHref}>
         {viewModel.primaryActionLabel}
       </a>
-      <Button onClick={reloadBrowserPage} size="lg" type="button" variant="outline">
+      <Button onClick={reloadBrowserPage} size="sm" type="button" variant="outline">
         Reload page
       </Button>
     </div>
@@ -71,7 +71,7 @@ function ErrorStatusBadge({ statusCode }: Readonly<ErrorStatusBadgeProps>): JSX.
   const label: string = statusCode === undefined ? 'Browser console error' : `Error ${statusCode}`;
 
   return (
-    <span className="inline-flex items-center rounded-full border border-border bg-secondary px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+    <span className="inline-flex items-center rounded-pill border border-border bg-secondary px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
       {label}
     </span>
   );
@@ -79,7 +79,7 @@ function ErrorStatusBadge({ statusCode }: Readonly<ErrorStatusBadgeProps>): JSX.
 
 function ErrorDetails({ details }: Readonly<ErrorDetailsProps>): JSX.Element {
   return (
-    <details className="mt-8 rounded-2xl border border-border bg-muted/40 p-4">
+    <details className="mt-8 rounded-card border border-border bg-muted/40 p-4">
       <summary className="cursor-pointer text-[13px] font-medium text-foreground">Development details</summary>
       <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-[12px] leading-5 text-muted-foreground">
         {details}

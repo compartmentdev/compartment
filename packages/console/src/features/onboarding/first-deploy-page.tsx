@@ -212,7 +212,7 @@ function readFirstDeployMainPanelProps(
 
 function FirstDeploySessionIssueBanner({ issue }: Readonly<FirstDeploySessionIssueBannerProps>): JSX.Element {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-[#f0b4aa] bg-[#fff7f5] p-4 text-[#7a251d]">
+    <div className="flex items-start gap-3 rounded-field border border-[#f0b4aa] bg-[#fff7f5] p-4 text-[#7a251d]">
       <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" strokeWidth={2.25} />
       <p className="text-[14px] font-medium leading-5">{issue.message}</p>
     </div>
@@ -232,7 +232,7 @@ function FirstDeployMainPanel({
   }
 
   return (
-    <section className="min-w-0 rounded-lg border border-black/10 bg-white">
+    <section className="min-w-0 rounded-card border border-black/10 bg-card">
       <OnboardingMethodPanel
         consoleOrigin={consoleOrigin}
         flowPathname={flowPathname}
@@ -247,7 +247,7 @@ function FirstDeployMainPanel({
 
 function FirstDeployChoicePanel({ onSelect }: Readonly<FirstDeployChoicePanelProps>): JSX.Element {
   return (
-    <section className="rounded-lg border border-black/10 bg-white p-5">
+    <section className="rounded-card border border-black/10 bg-card p-5">
       <OnboardingMethodSelector method={undefined} onSelect={onSelect} />
     </section>
   );

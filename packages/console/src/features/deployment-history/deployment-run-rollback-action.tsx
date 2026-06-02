@@ -62,6 +62,7 @@ function EnabledDeploymentRunRollbackMenuItem({
           onSelect();
         }
       }}
+      variant="destructive"
     >
       {isSubmitting ? 'Rolling back...' : 'Rollback'}
     </DropdownMenuItem>
@@ -72,7 +73,12 @@ function DisabledDeploymentRunRollbackMenuItem({
   reason,
 }: Readonly<Pick<DisabledDeploymentRunRollbackState, 'reason'>>): JSX.Element {
   return (
-    <DropdownMenuItem className="cursor-not-allowed flex-col items-start gap-0.5" disabled title={reason}>
+    <DropdownMenuItem
+      className="cursor-not-allowed flex-col items-start gap-0.5"
+      disabled
+      title={reason}
+      variant="destructive"
+    >
       <span>Rollback</span>
       <span className="text-[11px] text-muted-foreground">{reason}</span>
     </DropdownMenuItem>

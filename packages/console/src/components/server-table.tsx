@@ -2,6 +2,7 @@ import type { JSX, ReactNode } from 'react';
 import type { BrowserSoftNavigateHandler } from '../browser-soft-navigation';
 import { BrowserSoftNavigationLink } from './browser-soft-navigation-link';
 import { cn } from '../lib/utils';
+import { buttonVariants } from './ui/button';
 
 interface ServerTableProps {
   children: ReactNode;
@@ -20,6 +21,12 @@ interface ServerTableEmptyRowProps {
 
 interface ServerTableActionsProps {
   children: ReactNode;
+}
+
+interface ServerTableActionLinkProps {
+  children: ReactNode;
+  href: string;
+  onNavigate?: BrowserSoftNavigateHandler | undefined;
 }
 
 interface ServerTableActionErrorProps {
@@ -72,9 +79,7 @@ export function ServerTable({ children, minWidthClassName }: Readonly<ServerTabl
 
 export function ServerTableFrame({ children, className }: Readonly<ServerTableFrameProps>): JSX.Element {
   return (
-    <section className={cn('overflow-hidden rounded-lg border border-border bg-[var(--table-surface)]', className)}>
-      {children}
-    </section>
+    <section className={cn('overflow-hidden rounded-card border border-border bg-card', className)}>{children}</section>
   );
 }
 
@@ -112,6 +117,22 @@ export function ServerTableActions({ children }: Readonly<ServerTableActionsProp
   return <div className="flex flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap">{children}</div>;
 }
 
+export function ServerTableActionLink({
+  children,
+  href,
+  onNavigate,
+}: Readonly<ServerTableActionLinkProps>): JSX.Element {
+  return (
+    <BrowserSoftNavigationLink
+      className={cn(buttonVariants({ size: 'sm', variant: 'secondary' }), readServerTableActionControlClassName())}
+      href={href}
+      onNavigate={onNavigate}
+    >
+      {children}
+    </BrowserSoftNavigationLink>
+  );
+}
+
 export function ServerTableActionError({ message }: Readonly<ServerTableActionErrorProps>): JSX.Element | null {
   if (message === undefined) {
     return null;
@@ -128,7 +149,7 @@ export function ServerTableHeading({
   return (
     <th
       className={cn(
-        'px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground',
+        'h-9 px-4 py-0 align-middle text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground',
         align === 'right' ? 'text-right' : 'text-left',
         className,
       )}
@@ -146,9 +167,9 @@ export function ServerTableSortableHeading({
   sortDirection,
 }: Readonly<ServerTableSortableHeadingProps>): JSX.Element {
   return (
-    <th className="px-4 py-3 text-left" scope="col">
+    <th className="h-9 px-4 py-0 text-left align-middle" scope="col">
       <BrowserSoftNavigationLink
-        className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground no-underline hover:text-foreground"
+        className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground no-underline hover:text-foreground"
         href={href}
         onNavigate={onNavigate}
       >
@@ -174,7 +195,7 @@ export function readServerTableActionControlClassName(): string {
 }
 
 export function readServerTableClosedBadgeClassName(): string {
-  return 'inline-flex h-7 items-center rounded-md border border-border bg-muted px-2 text-[12px] text-muted-foreground';
+  return 'inline-flex h-7 items-center rounded-control border border-border bg-muted px-2 text-[12px] text-muted-foreground';
 }
 
 function readSortIndicator(sortDirection: 'asc' | 'desc' | undefined): string {

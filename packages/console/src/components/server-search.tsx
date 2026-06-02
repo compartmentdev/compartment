@@ -154,7 +154,7 @@ function ServerSearchClearButton({ onClear, visible }: Readonly<ServerSearchClea
   return (
     <button
       aria-label="Clear search"
-      className="absolute right-2 top-1/2 inline-flex size-5 -translate-y-1/2 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground opacity-70 transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+      className="absolute right-2 top-1/2 inline-flex size-5 -translate-y-1/2 shrink-0 cursor-pointer items-center justify-center rounded-micro text-muted-foreground opacity-70 transition hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
       onClick={onClear}
       type="button"
     >
