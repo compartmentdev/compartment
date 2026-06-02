@@ -41,7 +41,7 @@ export async function isCurrentRuntimeNetworkAttachment(
     return true;
   }
 
-  assertDesiredNetworkHasSpec(networkName, desiredNetworkNames);
+  assertRuntimeNetworkWithMissingSpecIsNotDesired(networkName, desiredNetworkNames);
   return isManagedRuntimeNetwork(network, config.dockerNamespace);
 }
 
@@ -57,7 +57,7 @@ function readDesiredRuntimeNetworkSpec(
   return spec;
 }
 
-function assertDesiredNetworkHasSpec(networkName: string, desiredNetworkNames: Set<string>): void {
+function assertRuntimeNetworkWithMissingSpecIsNotDesired(networkName: string, desiredNetworkNames: Set<string>): void {
   if (desiredNetworkNames.has(networkName)) {
     throw new Error(`Docker runtime network ${networkName} is desired but has no runtime network specification.`);
   }

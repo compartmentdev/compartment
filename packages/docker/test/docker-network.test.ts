@@ -534,6 +534,25 @@ describe('listDockerVolumes', (): void => {
     });
   });
 
+  it('passes key-only label filters for label-exists matching', async (): Promise<void> => {
+    const dockerClient: MockDockerClient = createMockDockerClient({});
+    dockerClient.listVolumes.mockResolvedValueOnce({ Volumes: [] });
+    mocks.createDockerClient.mockResolvedValueOnce(dockerClient);
+
+    await expect(
+      listDockerVolumes({
+        labelFilters: {
+          'compartment.runtime-network-reservation': undefined,
+        },
+      }),
+    ).resolves.toEqual([]);
+    expect(dockerClient.listVolumes).toHaveBeenCalledWith({
+      filters: {
+        label: ['compartment.runtime-network-reservation'],
+      },
+    });
+  });
+
   it('normalizes missing volume labels to an empty object', async (): Promise<void> => {
     const dockerClient: MockDockerClient = createMockDockerClient({});
     dockerClient.listVolumes.mockResolvedValueOnce({
