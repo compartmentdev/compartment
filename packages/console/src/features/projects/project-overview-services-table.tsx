@@ -132,7 +132,11 @@ function renderProjectOverviewServiceEnvironmentCell(
 }
 
 function renderProjectOverviewServiceName(name: string): JSX.Element {
-  return <p className="text-[13px] font-medium text-foreground">{name}</p>;
+  return (
+    <p className="text-[13px] font-medium text-foreground" data-testid="project-overview-service-name">
+      {name}
+    </p>
+  );
 }
 
 function renderProjectOverviewRoute(routeUrl: string | null): JSX.Element {
