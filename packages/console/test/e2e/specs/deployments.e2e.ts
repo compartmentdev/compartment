@@ -13,7 +13,7 @@ test.describe('console deployments real app', (): void => {
     await loginPage.login(projectsPage.getReadyLocator());
     await projectsPage.expectReady();
 
-    await deploymentHistoryPage.openFromProjectOverview(e2eDeployment.projectName);
+    await deploymentHistoryPage.openFromProjectOverview(e2eDeployment);
     await deploymentHistoryPage.expectDeploymentVisible(e2eDeployment);
 
     const runLogsResponsePromise: Promise<DeploymentRunLogsResponse> = deploymentDetailsPage.waitForRunLogsResponse(
