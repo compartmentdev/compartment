@@ -447,7 +447,7 @@ describe('reserveRuntimeNetworksForDeployment', (): void => {
     expect(mocks.removeDockerNetwork).toHaveBeenCalledWith({ networkName: serviceNetworkName });
   });
 
-  it('fails closed when a same-name namespace-owned runtime network is not managed', async (): Promise<void> => {
+  it('fails closed when a same-name namespace-labeled runtime network is not managed', async (): Promise<void> => {
     const request: NodeRuntimeNetworkReservationRequest = createReservationRequest();
     const serviceNetworkName: string = buildRuntimeServiceNetworkName(request, dockerNamespace);
     mocks.inspectDockerNetwork.mockResolvedValue({

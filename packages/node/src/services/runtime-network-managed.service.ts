@@ -56,7 +56,7 @@ export function assertCompatibleExistingRuntimeNetwork(
     );
   }
 
-  assertManagedRuntimeNetwork(network, { dockerNamespace: config.dockerNamespace, networkName: spec.networkName });
+  assertRuntimeNetworkHasDockerIpam(network, spec.networkName);
   assertRuntimeNetworkSpecLabels(network, spec);
   assertRuntimeNetworkLabel(network, spec.networkName, runtimeNetworkPoolCidrLabelName, config.runtimeNetworkPool.cidr);
   assertRuntimeNetworkLabel(
@@ -77,31 +77,9 @@ function assertRuntimeNetworkSpecLabels(network: DockerInspectNetworkResult, spe
   }
 }
 
-export function readCompatibleRuntimeNetworkSubnet(network: DockerInspectNetworkResult): Ipv4Cidr {
-  const subnetLabel: string | undefined = network.labels[runtimeNetworkSubnetLabelName];
-  if (subnetLabel !== undefined) {
-    return parseIpv4Cidr(subnetLabel);
-  }
-
-  return readRuntimeNetworkDockerIpamSubnet(network);
-}
-
 export function isRuntimeNetworkReservationActive(network: Pick<DockerInspectNetworkResult, 'labels'>): boolean {
   const expiresAt: string | undefined = network.labels[runtimeNetworkReservationExpiresAtLabelName];
   return expiresAt !== undefined && Date.parse(expiresAt) > Date.now();
-}
-
-function assertManagedRuntimeNetwork(
-  network: DockerInspectNetworkResult,
-  input: { dockerNamespace: string; networkName: string },
-): void {
-  if (!isManagedRuntimeNetwork(network, input.dockerNamespace)) {
-    throw new Error(
-      `Docker runtime network ${input.networkName} exists without required managed Compartment network labels.`,
-    );
-  }
-
-  assertRuntimeNetworkHasDockerIpam(network, input.networkName);
 }
 
 export function isManagedRuntimeNetwork(
@@ -129,11 +107,10 @@ function assertRuntimeNetworkLabel(
 }
 
 function assertRuntimeNetworkSubnet(network: DockerInspectNetworkResult, config: RuntimeNetworkCapacityConfig): void {
-  const subnetLabel: string | undefined = network.labels[runtimeNetworkSubnetLabelName];
-  const subnet: Ipv4Cidr | undefined = subnetLabel === undefined ? undefined : parseIpv4Cidr(subnetLabel);
+  const subnet: Ipv4Cidr = readCompatibleRuntimeNetworkSubnet(network);
   const pool: Ipv4Cidr = parseIpv4Cidr(config.runtimeNetworkPool.cidr);
   if (
-    subnet?.prefixLength === config.runtimeNetworkPool.subnetPrefixLength &&
+    subnet.prefixLength === config.runtimeNetworkPool.subnetPrefixLength &&
     cidrContainsCidr(pool, subnet) &&
     hasDockerIpamSubnet(network, subnet)
   ) {
@@ -143,15 +120,13 @@ function assertRuntimeNetworkSubnet(network: DockerInspectNetworkResult, config:
   throw new Error(`Docker runtime network ${network.name} exists without a managed subnet from the runtime pool.`);
 }
 
-function readRuntimeNetworkDockerIpamSubnet(network: DockerInspectNetworkResult): Ipv4Cidr {
-  const ipamSubnet: string | undefined = network.ipamConfigs.find(
-    (config: DockerNetworkIpamConfig): boolean => config.subnet !== '',
-  )?.subnet;
-  if (ipamSubnet !== undefined) {
-    return parseIpv4Cidr(ipamSubnet);
+export function readCompatibleRuntimeNetworkSubnet(network: DockerInspectNetworkResult): Ipv4Cidr {
+  const subnetLabel: string | undefined = network.labels[runtimeNetworkSubnetLabelName];
+  if (subnetLabel === undefined) {
+    throw new Error(`Docker runtime network ${network.name} exists without required managed subnet label.`);
   }
 
-  throw new Error(`Docker runtime network ${network.name} exists without required Docker IPAM subnet.`);
+  return parseIpv4Cidr(subnetLabel);
 }
 
 function assertRuntimeNetworkHasDockerIpam(network: DockerInspectNetworkResult, networkName: string): void {

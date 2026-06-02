@@ -134,7 +134,7 @@ async function createMissingRuntimeNetworkReservations(
   config: RuntimeNetworkCapacityConfig,
 ): Promise<void> {
   for (const plan of plans) {
-    if (plan.subnet === undefined) {
+    if (plan.kind === 'existing') {
       continue;
     }
     await createManagedRuntimeNetwork(plan.input, config, plan.subnet);

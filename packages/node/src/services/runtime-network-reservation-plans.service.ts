@@ -8,9 +8,22 @@ import type {
 } from './runtime-network-capacity.types';
 import type { Ipv4Cidr } from './runtime-network-cidr.service';
 
-export interface RuntimeNetworkReservationPlan {
+export interface RuntimeNetworkCreateReservationPlan {
   input: RuntimeNetworkCreateInput;
-  subnet?: Ipv4Cidr | undefined;
+  kind: 'create';
+  subnet: Ipv4Cidr;
+}
+
+export interface RuntimeNetworkExistingReservationPlan {
+  input: RuntimeNetworkCreateInput;
+  kind: 'existing';
+}
+
+export type RuntimeNetworkReservationPlan = RuntimeNetworkCreateReservationPlan | RuntimeNetworkExistingReservationPlan;
+
+interface RuntimeNetworkReservationPlanDraft {
+  input: RuntimeNetworkCreateInput;
+  requiresCreate: boolean;
 }
 
 export async function buildRuntimeNetworkReservationPlans(
@@ -18,38 +31,71 @@ export async function buildRuntimeNetworkReservationPlans(
   reservation: Pick<RuntimeNetworkCreateInput, 'reservationExpiresAt' | 'reservationId'>,
   config: RuntimeNetworkCapacityConfig,
 ): Promise<RuntimeNetworkReservationPlan[]> {
-  const plans: RuntimeNetworkReservationPlan[] = specs.map(
-    (spec: RuntimeNetworkSpec): RuntimeNetworkReservationPlan => ({
+  const planDrafts: RuntimeNetworkReservationPlanDraft[] = specs.map(
+    (spec: RuntimeNetworkSpec): RuntimeNetworkReservationPlanDraft => ({
       input: {
         ...reservation,
         spec,
       },
+      requiresCreate: false,
     }),
   );
-  const missingPlans: RuntimeNetworkReservationPlan[] = await readMissingRuntimeNetworkReservationPlans(plans, config);
-  const subnets: Ipv4Cidr[] = await allocateRuntimeNetworkSubnets(config.runtimeNetworkPool, missingPlans.length);
-  missingPlans.forEach((plan: RuntimeNetworkReservationPlan, index: number): void => {
-    plan.subnet = subnets[index];
-  });
+  const inspectedPlanDrafts: RuntimeNetworkReservationPlanDraft[] =
+    await readInspectedRuntimeNetworkReservationPlanDrafts(planDrafts, config);
+  const createPlanDrafts: RuntimeNetworkReservationPlanDraft[] = inspectedPlanDrafts.filter(
+    (plan: RuntimeNetworkReservationPlanDraft): boolean => plan.requiresCreate,
+  );
+  const subnets: Ipv4Cidr[] = await allocateRuntimeNetworkSubnets(config.runtimeNetworkPool, createPlanDrafts.length);
 
-  return plans;
+  return buildRuntimeNetworkReservationPlansWithSubnets(inspectedPlanDrafts, subnets);
 }
 
-async function readMissingRuntimeNetworkReservationPlans(
-  plans: RuntimeNetworkReservationPlan[],
+async function readInspectedRuntimeNetworkReservationPlanDrafts(
+  plans: RuntimeNetworkReservationPlanDraft[],
   config: RuntimeNetworkCapacityConfig,
-): Promise<RuntimeNetworkReservationPlan[]> {
-  const missingPlans: RuntimeNetworkReservationPlan[] = [];
+): Promise<RuntimeNetworkReservationPlanDraft[]> {
+  const inspectedPlans: RuntimeNetworkReservationPlanDraft[] = [];
   for (const plan of plans) {
     const network: DockerInspectNetworkResult | null = await inspectDockerNetwork({
       networkName: plan.input.spec.networkName,
     });
     if (network !== null) {
       assertCompatibleExistingRuntimeNetwork(plan.input.spec, network, config);
+      inspectedPlans.push(plan);
       continue;
     }
-    missingPlans.push(plan);
+    inspectedPlans.push({
+      ...plan,
+      requiresCreate: true,
+    });
   }
 
-  return missingPlans;
+  return inspectedPlans;
+}
+
+function buildRuntimeNetworkReservationPlansWithSubnets(
+  planDrafts: RuntimeNetworkReservationPlanDraft[],
+  subnets: Ipv4Cidr[],
+): RuntimeNetworkReservationPlan[] {
+  let createPlanIndex: number = 0;
+  return planDrafts.map((plan: RuntimeNetworkReservationPlanDraft): RuntimeNetworkReservationPlan => {
+    if (!plan.requiresCreate) {
+      return {
+        input: plan.input,
+        kind: 'existing',
+      };
+    }
+
+    const subnet: Ipv4Cidr | undefined = subnets[createPlanIndex];
+    if (subnet === undefined) {
+      throw new Error(`Expected allocated subnet for Docker runtime network ${plan.input.spec.networkName}.`);
+    }
+    createPlanIndex += 1;
+
+    return {
+      input: plan.input,
+      kind: 'create',
+      subnet,
+    };
+  });
 }

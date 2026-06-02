@@ -16,11 +16,6 @@ export interface RuntimeNetworkCreateInput {
   spec: RuntimeNetworkSpec;
 }
 
-export interface RuntimeNetworkEnsureResult {
-  created: boolean;
-  networkName: string;
-}
-
 export interface RuntimeNetworkCapacityConfig {
   dockerNamespace: string;
   runtimeConnectivityMode: RuntimeConnectivityMode;

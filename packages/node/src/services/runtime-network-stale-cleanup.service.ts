@@ -7,7 +7,7 @@ import {
 } from '@compartment/docker';
 import type { DesiredRuntimeNetworkNames } from './runtime-network-desired.service';
 import type { RuntimeNetworkCapacityConfig } from './runtime-network-capacity.types';
-import { isOwnedRuntimeNetwork } from './runtime-network-compatibility.service';
+import { isManagedRuntimeNetwork } from './runtime-network-managed.service';
 import { isRuntimeNetworkProtectedByActiveReservation } from './runtime-network-reservation-protection.service';
 
 export async function removeStaleRuntimeNetworks(
@@ -16,7 +16,7 @@ export async function removeStaleRuntimeNetworks(
   config: RuntimeNetworkCapacityConfig,
 ): Promise<void> {
   await addStaleRuntimeNetworksFromDocker(desiredNetworkNames, config, staleNetworkNames);
-  await removeEmptyRuntimeNetworks(staleNetworkNames, config);
+  await removeEmptyManagedRuntimeNetworks(staleNetworkNames, config);
 }
 
 async function addStaleRuntimeNetworksFromDocker(
@@ -24,7 +24,7 @@ async function addStaleRuntimeNetworksFromDocker(
   config: RuntimeNetworkCapacityConfig,
   staleNetworkNames: Set<string>,
 ): Promise<void> {
-  const runtimeNetworkNames: Set<string> = await readDockerRuntimeNetworkNames(config);
+  const runtimeNetworkNames: Set<string> = await readDockerManagedRuntimeNetworkNames(config);
   for (const networkName of runtimeNetworkNames) {
     if (
       desiredNetworkNames.serviceNetworkNames.has(networkName) ||
@@ -37,7 +37,7 @@ async function addStaleRuntimeNetworksFromDocker(
   }
 }
 
-async function removeEmptyRuntimeNetworks(
+async function removeEmptyManagedRuntimeNetworks(
   networkNames: Set<string>,
   config: RuntimeNetworkCapacityConfig,
 ): Promise<void> {
@@ -45,7 +45,7 @@ async function removeEmptyRuntimeNetworks(
     const network: DockerInspectNetworkResult | null = await inspectDockerNetwork({ networkName });
     if (
       network !== null &&
-      isOwnedRuntimeNetwork(network, config) &&
+      isManagedRuntimeNetwork(network, config.dockerNamespace) &&
       network.endpointContainerIds.length === 0 &&
       !(await isRuntimeNetworkProtectedByActiveReservation(network, config))
     ) {
@@ -54,11 +54,11 @@ async function removeEmptyRuntimeNetworks(
   }
 }
 
-async function readDockerRuntimeNetworkNames(config: RuntimeNetworkCapacityConfig): Promise<Set<string>> {
+async function readDockerManagedRuntimeNetworkNames(config: RuntimeNetworkCapacityConfig): Promise<Set<string>> {
   const networks: DockerListNetworkResult[] = await listDockerNetworks();
   return new Set<string>(
     networks
-      .filter((network: DockerListNetworkResult): boolean => isOwnedRuntimeNetwork(network, config))
+      .filter((network: DockerListNetworkResult): boolean => isManagedRuntimeNetwork(network, config.dockerNamespace))
       .map((network: DockerListNetworkResult): string => network.name),
   );
 }

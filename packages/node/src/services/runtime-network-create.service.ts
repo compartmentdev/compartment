@@ -12,7 +12,6 @@ import { assertCompatibleExistingRuntimeNetwork, buildRuntimeNetworkLabels } fro
 import type {
   RuntimeNetworkCapacityConfig,
   RuntimeNetworkCreateInput,
-  RuntimeNetworkEnsureResult,
   RuntimeNetworkSpec,
 } from './runtime-network-capacity.types';
 import { assertRuntimeNetworkSubnetEndpointCapacity } from './runtime-network-endpoint-capacity.service';
@@ -33,12 +32,13 @@ interface RuntimeNetworkCreateAttemptResult {
 export async function ensureRuntimeNetwork(
   input: RuntimeNetworkCreateInput,
   config: RuntimeNetworkCapacityConfig,
-): Promise<RuntimeNetworkEnsureResult> {
+): Promise<void> {
   const network: DockerInspectNetworkResult | null = await inspectDockerNetwork({
     networkName: input.spec.networkName,
   });
   if (network !== null) {
-    return ensureInspectedRuntimeNetwork(input, network, config);
+    assertCompatibleExistingRuntimeNetwork(input.spec, network, config);
+    return;
   }
 
   const subnet: Ipv4Cidr = await allocateRuntimeNetworkSubnet(config.runtimeNetworkPool);
@@ -48,30 +48,6 @@ export async function ensureRuntimeNetwork(
     readDefaultNewRuntimeNetworkRequiredEndpointCount(input.spec),
   );
   await createManagedRuntimeNetwork(input, config, subnet);
-  return {
-    created: true,
-    networkName: input.spec.networkName,
-  };
-}
-
-export function ensureInspectedRuntimeNetworkManaged(
-  spec: RuntimeNetworkSpec,
-  network: DockerInspectNetworkResult,
-  config: RuntimeNetworkCapacityConfig,
-): RuntimeNetworkEnsureResult {
-  return ensureInspectedRuntimeNetwork({ spec }, network, config);
-}
-
-function ensureInspectedRuntimeNetwork(
-  input: RuntimeNetworkCreateInput,
-  network: DockerInspectNetworkResult,
-  config: RuntimeNetworkCapacityConfig,
-): RuntimeNetworkEnsureResult {
-  assertCompatibleExistingRuntimeNetwork(input.spec, network, config);
-  return {
-    created: false,
-    networkName: input.spec.networkName,
-  };
 }
 
 export async function createManagedRuntimeNetwork(

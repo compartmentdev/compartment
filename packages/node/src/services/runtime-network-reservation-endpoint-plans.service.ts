@@ -36,7 +36,7 @@ async function assertRuntimeNetworkReservationPlanEndpointCapacity(
   config: RuntimeNetworkCapacityConfig,
 ): Promise<void> {
   const endpointReservations: number = readPlannedEndpointReservationCount(plan.input.spec, endpointPlans);
-  if (plan.subnet !== undefined) {
+  if (plan.kind === 'create') {
     assertNewRuntimeNetworkEndpointCapacity(
       plan.input.spec,
       plan.subnet,
