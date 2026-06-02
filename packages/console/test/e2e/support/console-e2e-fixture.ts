@@ -4,6 +4,7 @@ import { readRequiredEnvironmentValue } from './console-e2e-runtime';
 export interface ConsoleE2eDeploymentFixture {
   readonly attackerRouteUrl: string;
   readonly deploymentRunId: string;
+  readonly environmentName: string;
   readonly projectName: string;
   readonly routeUrl: string;
   readonly serviceName: string;
@@ -44,6 +45,7 @@ export function readConsoleE2eFixture(): ConsoleE2eFixture {
   const deployment: ConsoleE2eDeploymentFixture = {
     attackerRouteUrl: readRequiredEnvironmentValue('COMPARTMENT_E2E_ATTACKER_APP_BASE_URL'),
     deploymentRunId: readRequiredEnvironmentValue('COMPARTMENT_E2E_DEPLOYMENT_RUN_ID'),
+    environmentName: readRequiredEnvironmentValue('COMPARTMENT_E2E_ENVIRONMENT_NAME'),
     projectName: readRequiredEnvironmentValue('COMPARTMENT_E2E_PROJECT_NAME'),
     routeUrl: readRequiredEnvironmentValue('COMPARTMENT_E2E_APP_BASE_URL'),
     serviceName: readRequiredEnvironmentValue('COMPARTMENT_E2E_SERVICE_NAME'),
