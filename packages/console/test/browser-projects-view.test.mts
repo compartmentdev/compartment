@@ -16,7 +16,11 @@ describe('browser projects view', (): void => {
 
     expect(html).toContain('Add project');
     expect(html).toContain('href="/orgs/acme-dev/projects/create"');
-    expect(html).toContain('button-accent-surface');
+    expect(html).toContain('bg-primary text-primary-foreground');
+    expect(html).not.toContain('button-accent-surface');
+    expect(html).toMatch(
+      /href="\/orgs\/acme-dev\/projects\/create" class="(?=[^"]*bg-primary text-primary-foreground)(?![^"]*shadow-sm)/u,
+    );
     expect(html).toContain('lucide-plus');
     expect(html).not.toContain('lucide-folder-plus');
   });
@@ -133,7 +137,7 @@ describe('browser projects view', (): void => {
     );
 
     expect(html).not.toContain('Add project');
-    expect(html).toContain('min-h-9');
+    expect(html).toContain('min-h-8');
   });
 
   it('keeps project open targets behind the row actions menu', (): void => {

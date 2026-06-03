@@ -55,6 +55,7 @@ interface ConsoleE2eAccountFixture {
 interface ConsoleE2eDeploymentFixture {
   readonly attackerRouteUrl: string;
   readonly deploymentRunId: string;
+  readonly environmentName: string;
   readonly projectName: string;
   readonly routeUrl: string;
   readonly serviceName: string;
@@ -205,6 +206,7 @@ async function deployConsoleE2eFixture(
   return {
     attackerRouteUrl: requireDeploymentRouteUrl(attackerDeployment, attackerServiceName),
     deploymentRunId: deployment.deploymentRunId,
+    environmentName: app.environmentName,
     projectName: app.projectName,
     routeUrl: requireDeploymentRouteUrl(deployment, app.serviceName),
     serviceName: app.serviceName,
@@ -429,6 +431,7 @@ function buildConsoleE2ePlaywrightEnv(
   env.COMPARTMENT_E2E_APP_BASE_URL = fixture.deployment.routeUrl;
   env.COMPARTMENT_E2E_SERVICE_NAME = fixture.deployment.serviceName;
   env.COMPARTMENT_E2E_DEPLOYMENT_RUN_ID = fixture.deployment.deploymentRunId;
+  env.COMPARTMENT_E2E_ENVIRONMENT_NAME = fixture.deployment.environmentName;
   env.COMPARTMENT_E2E_PROXY_ROUTE_URL = fixture.proxyRoute.routeUrl;
   env.COMPARTMENT_E2E_PROXY_TARGET_PATH = fixture.proxyRoute.proxyPath;
   env.COMPARTMENT_E2E_OTHER_ORGANIZATION_SLUG = fixture.resourceOwnership.otherOrganizationSlug;

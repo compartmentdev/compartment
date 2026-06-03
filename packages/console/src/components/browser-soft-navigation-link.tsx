@@ -1,4 +1,14 @@
-import type { AnchorHTMLAttributes, JSX, MouseEvent, MouseEventHandler, ReactNode } from 'react';
+import {
+  forwardRef,
+  type AnchorHTMLAttributes,
+  type ForwardedRef,
+  type ForwardRefExoticComponent,
+  type JSX,
+  type MouseEvent,
+  type MouseEventHandler,
+  type ReactNode,
+  type RefAttributes,
+} from 'react';
 import type { BrowserSoftNavigateHandler } from '../browser-soft-navigation';
 
 type BrowserSoftNavigationClickHandler = MouseEventHandler<HTMLAnchorElement> | undefined;
@@ -16,25 +26,25 @@ interface BrowserSoftNavigationClickInput {
   onNavigate: BrowserSoftNavigateHandler | undefined;
 }
 
-export function BrowserSoftNavigationLink({
-  children,
-  href,
-  onClick,
-  onNavigate,
-  ...props
-}: Readonly<BrowserSoftNavigationLinkProps>): JSX.Element {
+export const BrowserSoftNavigationLink: ForwardRefExoticComponent<
+  BrowserSoftNavigationLinkProps & RefAttributes<HTMLAnchorElement>
+> = forwardRef<HTMLAnchorElement, BrowserSoftNavigationLinkProps>(function BrowserSoftNavigationLink(
+  { children, href, onClick, onNavigate, ...props }: Readonly<BrowserSoftNavigationLinkProps>,
+  ref: ForwardedRef<HTMLAnchorElement>,
+): JSX.Element {
   return (
     <a
       href={href}
       onClick={(event: MouseEvent<HTMLAnchorElement>): void => {
         handleBrowserSoftNavigationClick({ event, href, onClick, onNavigate });
       }}
+      ref={ref}
       {...props}
     >
       {children}
     </a>
   );
-}
+});
 
 function handleBrowserSoftNavigationClick(input: Readonly<BrowserSoftNavigationClickInput>): void {
   input.onClick?.(input.event);

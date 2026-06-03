@@ -11,7 +11,7 @@ import type { BrowserProjectOverviewPageResult } from '../../services/browser-pr
 import type { BrowserConsoleOrganizationIssue } from '../../services/browser-organization-context.service.types';
 import { BrowserConsoleOrganizationContextPanel } from '../console/console-organization-context-panel';
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
-import { ProjectOverviewDetailsHeader, ProjectOverviewHeader } from './project-overview-sections';
+import { ProjectOverviewHeader } from './project-overview-sections';
 import { ProjectOverviewServicesTable } from './project-overview-services-table';
 import { buildProjectOverviewHref } from './project-overview-query';
 
@@ -75,9 +75,8 @@ function renderSelectedProjectOverviewContent(
   return (
     <div className={browserConsolePageClassName}>
       <ProjectOverviewHeader data={data} onNavigate={onNavigate} />
-      <section className={`flex flex-1 flex-col gap-3 bg-background py-8 ${browserConsolePageGutterClassName}`}>
+      <section className={`flex flex-1 flex-col gap-6 bg-background pb-8 pt-4 ${browserConsolePageGutterClassName}`}>
         <DismissibleAlert message={data.errorMessage} variant="error" />
-        <ProjectOverviewDetailsHeader data={data} onNavigate={onNavigate} />
         <ProjectOverviewServicesTable data={data} />
       </section>
     </div>
