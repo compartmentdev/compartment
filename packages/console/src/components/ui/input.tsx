@@ -1,9 +1,11 @@
 import type { InputHTMLAttributes, JSX } from 'react';
 import { cn } from '../../lib/utils';
-import { singleLineFieldControlClassName } from './field-styles';
+import { readSingleLineFieldControlClassName, type SingleLineFieldControlSize } from './field-styles';
 
-type InputProps = Readonly<InputHTMLAttributes<HTMLInputElement>>;
+interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
+  size?: SingleLineFieldControlSize | undefined;
+}
 
-export function Input({ className, type = 'text', ...props }: InputProps): JSX.Element {
-  return <input className={cn(singleLineFieldControlClassName, className)} type={type} {...props} />;
+export function Input({ className, size = 'sm', type = 'text', ...props }: Readonly<InputProps>): JSX.Element {
+  return <input className={cn(readSingleLineFieldControlClassName(size), className)} type={type} {...props} />;
 }

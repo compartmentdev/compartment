@@ -114,7 +114,7 @@ function DismissibleAlertContent(props: Readonly<DismissibleAlertContentProps>):
   const containerStyle: CSSProperties = readDismissibleAlertContainerStyle(tone);
   const handleDismiss: () => void = createDismissibleAlertDismissHandler(messageKey, onDismiss);
   const containerClassName: string = cn(
-    'flex items-center gap-2.5 rounded-[8px] border px-2.5 py-2 text-[13px] leading-[18px]',
+    'flex items-center gap-2.5 rounded-field border px-2.5 py-2 text-[13px] leading-[18px]',
     tone.containerClassName,
     className,
   );
@@ -136,7 +136,7 @@ function DismissibleAlertCloseButton({
     <button
       aria-label="Dismiss message"
       className={cn(
-        'inline-flex -m-0.5 shrink-0 cursor-pointer items-center justify-center rounded-[4px] p-0.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+        'inline-flex -m-0.5 shrink-0 cursor-pointer items-center justify-center rounded-micro p-0.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
         className,
       )}
       onClick={onDismiss}

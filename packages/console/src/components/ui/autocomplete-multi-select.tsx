@@ -106,7 +106,7 @@ function renderAutocompleteMultiSelectMenu(
 
 function AutocompleteMultiSelectMenu(props: Readonly<AutocompleteMultiSelectMenuProps>): JSX.Element {
   return (
-    <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-background shadow-lg">
+    <div className="absolute z-20 mt-1 w-full rounded-field border border-border bg-background shadow-lg">
       <AutocompleteMultiSelectSearchInput
         query={props.query}
         searchPlaceholder={props.searchPlaceholder}
@@ -176,7 +176,7 @@ function AutocompleteMultiSelectOptionRow({
   return (
     <button
       className={cn(
-        'flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-[13px] text-foreground hover:bg-accent hover:text-accent-foreground',
+        'flex w-full items-center justify-between gap-2 rounded-control px-3 py-2 text-left text-[13px] text-foreground hover:bg-accent hover:text-accent-foreground',
         isSelected ? 'bg-accent text-accent-foreground' : undefined,
       )}
       onClick={(): void => onChange(readNextAutocompleteValues(selectedValues, option.value))}

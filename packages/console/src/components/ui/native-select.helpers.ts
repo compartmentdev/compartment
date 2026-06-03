@@ -6,15 +6,21 @@ import {
   type OptionHTMLAttributes,
   type ReactElement,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import { cn } from '../../lib/utils';
-import { selectTriggerFieldControlClassName } from './field-styles';
+import { readSelectTriggerFieldControlClassName, type SingleLineFieldControlSize } from './field-styles';
 import type {
   NativeSelectChangeHandler,
+  NativeSelectHiddenFieldInput,
+  NativeSelectHiddenFieldProps,
   NativeOptionValue,
   NativeSelectFieldValue,
   NativeSelectOption,
+  NativeSelectRootInput,
+  NativeSelectRootProps,
   NativeSelectState,
+  NativeSelectTriggerButtonProps,
   UseNativeSelectModelInput,
   UseNativeSelectModelResult,
 } from './native-select.types';
@@ -65,12 +71,65 @@ export function readNativeSelectValueProp(selectedRadixValue: string | undefined
   return selectedRadixValue === undefined ? {} : { value: selectedRadixValue };
 }
 
-export function readNativeSelectTriggerClassName(className: string | undefined): string {
-  return cn(selectTriggerFieldControlClassName, className);
-}
-
 export function readNativeSelectItemKey(option: NativeSelectOption, index: number): string {
   return `${option.nativeValue}-${index}`;
+}
+
+export function readNativeSelectHiddenFieldProps(
+  props: Readonly<NativeSelectHiddenFieldInput>,
+  model: UseNativeSelectModelResult,
+): NativeSelectHiddenFieldProps {
+  return {
+    children: props.children,
+    disabled: props.disabled,
+    form: props.form,
+    name: props.name,
+    required: props.required,
+    selectedNativeValue: model.state.selectedNativeValue,
+  };
+}
+
+export function readNativeSelectRootProps(
+  props: Readonly<NativeSelectRootInput>,
+  model: UseNativeSelectModelResult,
+): NativeSelectRootProps {
+  return {
+    ariaDescribedBy: props.ariaDescribedBy,
+    ariaLabel: props.ariaLabel,
+    className: props.className,
+    disabled: props.disabled,
+    id: props.id,
+    onValueChange: model.onValueChange,
+    options: model.state.options,
+    placeholderLabel: model.state.placeholderLabel,
+    required: props.required,
+    selectedRadixValue: model.state.selectedRadixValue,
+    size: props.size,
+  };
+}
+
+export function readNativeSelectTriggerProps(
+  props: NativeSelectRootProps,
+  labelledBy: string | undefined,
+  triggerRef: RefObject<HTMLButtonElement | null>,
+): NativeSelectTriggerButtonProps {
+  return {
+    'aria-describedby': props.ariaDescribedBy,
+    'aria-label': props.ariaLabel,
+    'aria-labelledby': labelledBy,
+    'aria-required': props.required || undefined,
+    className: readNativeSelectTriggerClassName(props.className, props.size),
+    id: props.id,
+    ref: triggerRef,
+  };
+}
+
+function readNativeSelectTriggerClassName(className: string | undefined, size: SingleLineFieldControlSize): string {
+  return cn(readSelectTriggerFieldControlClassName(size), className);
+}
+
+export function readNativeSelectLabelId(generatedLabelId: string): string {
+  return `native-select-label-${generatedLabelId}`;
 }
 
 function createNativeSelectValueChangeHandler({

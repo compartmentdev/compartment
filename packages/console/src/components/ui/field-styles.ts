@@ -10,16 +10,40 @@ const fieldInvalidRingClassName: string =
 const fieldOpenRingClassName: string = 'data-[state=open]:ring-[3px] data-[state=open]:ring-[rgb(163_163_163_/_24%)]';
 
 export const fieldControlBaseClassName: string =
-  'field-control-surface w-full rounded-[10px] border bg-background text-[13px] font-normal leading-5 text-foreground outline-none transition placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50';
+  'field-control-surface w-full rounded-field border bg-background text-[13px] font-normal leading-5 text-foreground outline-none transition placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50';
+
+export type SingleLineFieldControlSize = 'default' | 'lg' | 'md' | 'sm';
 
 const fieldControlClassName: string = cn(fieldControlBaseClassName, fieldFocusRingClassName, fieldInvalidRingClassName);
 
-export const singleLineFieldControlClassName: string = cn('flex h-9 px-2.5 py-1', fieldControlClassName);
+export function readSingleLineFieldControlClassName(size: SingleLineFieldControlSize = 'sm'): string {
+  return cn(readSingleLineFieldControlSizeClassName(size), fieldControlClassName);
+}
 
-export const selectTriggerFieldControlClassName: string = cn(
-  'flex h-9 items-center justify-between gap-2 px-2.5 py-1 text-left data-[placeholder]:text-muted-foreground',
-  fieldControlClassName,
-  fieldOpenRingClassName,
-);
+function readSingleLineFieldControlSizeClassName(size: SingleLineFieldControlSize = 'sm'): string {
+  switch (size) {
+    case 'default':
+    case 'md':
+    case 'lg':
+    case 'sm':
+      return 'flex h-8 px-2 py-1 text-[12px]';
+  }
+}
+
+export function readSelectTriggerFieldControlClassName(size: SingleLineFieldControlSize = 'sm'): string {
+  return cn(readSelectTriggerFieldControlSizeClassName(size), fieldControlClassName, fieldOpenRingClassName);
+}
+
+function readSelectTriggerFieldControlSizeClassName(size: SingleLineFieldControlSize = 'sm'): string {
+  switch (size) {
+    case 'default':
+    case 'md':
+    case 'lg':
+    case 'sm':
+      return 'flex h-8 items-center justify-between gap-2 px-2 py-1 text-left text-[12px] data-[placeholder]:text-muted-foreground';
+  }
+}
+
+export const selectTriggerFieldControlClassName: string = readSelectTriggerFieldControlClassName();
 
 export const textareaFieldControlClassName: string = cn('min-h-[68px] px-2.5 py-1', fieldControlClassName);

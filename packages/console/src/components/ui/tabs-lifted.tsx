@@ -1,7 +1,7 @@
+import * as TabsPrimitive from '@radix-ui/react-tabs';
 import type { JSX } from 'react';
 import { cn } from '../../lib/utils';
 import type {
-  TabsLiftedCornerProps,
   TabsLiftedIconDefinition,
   TabsLiftedIconName,
   TabsLiftedIconProps,
@@ -10,9 +10,9 @@ import type {
 } from './tabs-lifted.types';
 
 const tabsLiftedVariablesClassName: string =
-  '[--tabs-lifted-bg:var(--table-surface)] [--tabs-lifted-border:var(--border)]';
+  '[--tabs-lifted-bg:var(--card)] [--tabs-lifted-inactive:var(--accent)] [--tabs-lifted-foreground:var(--foreground)] [--tabs-lifted-muted:var(--muted-foreground-secondary)]';
 const tabsLiftedSurfaceClassName: string =
-  'relative isolate h-8 items-center justify-start rounded-none border-0 bg-transparent p-0 text-[#111212]';
+  'inline-flex h-9 w-fit items-center justify-start gap-1 rounded-field border-0 bg-[var(--tabs-lifted-inactive)] p-1 text-[var(--tabs-lifted-muted)]';
 
 const tabsLiftedIcons: Readonly<Record<TabsLiftedIconName, TabsLiftedIconDefinition>> = {
   active: {
@@ -36,26 +36,36 @@ export function TabsLiftedNavigation({
   ariaLabel,
   children,
   className,
+  contentValues = [],
+  value,
 }: Readonly<TabsLiftedNavigationProps>): JSX.Element {
   return (
-    <nav
-      aria-label={ariaLabel}
-      className={cn(tabsLiftedVariablesClassName, tabsLiftedSurfaceClassName, 'ml-1 flex w-fit px-4', className)}
+    <TabsPrimitive.Root
+      className={cn(tabsLiftedVariablesClassName, 'w-fit', className)}
+      {...(value === undefined ? {} : { value })}
     >
-      {children}
-    </nav>
+      <TabsPrimitive.List aria-label={ariaLabel} className={tabsLiftedSurfaceClassName}>
+        {children}
+      </TabsPrimitive.List>
+      {contentValues.map(renderTabsLiftedContent)}
+    </TabsPrimitive.Root>
   );
+}
+
+function renderTabsLiftedContent(value: string): JSX.Element {
+  return <TabsPrimitive.Content className="sr-only" key={value} value={value} />;
 }
 
 export function TabsLiftedTriggerContent({ icon, label }: Readonly<TabsLiftedTriggerContentProps>): JSX.Element {
   return (
     <>
       {icon === undefined ? null : <TabsLiftedIcon name={icon} />}
-      <span className="opacity-60 group-data-[state=active]:opacity-100" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <span
+        className="opacity-90 transition-opacity duration-200 ease-out group-data-[state=active]:opacity-100 motion-reduce:transition-none"
+        style={{ fontVariationSettings: "'opsz' 14" }}
+      >
         {label}
       </span>
-      <TabsLiftedCorner side="left" />
-      <TabsLiftedCorner side="right" />
     </>
   );
 }
@@ -63,8 +73,8 @@ export function TabsLiftedTriggerContent({ icon, label }: Readonly<TabsLiftedTri
 export function readTabsLiftedTriggerClassName(widthClassName: string): string {
   return cn(
     widthClassName,
-    "group relative z-10 box-border inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-b-none rounded-t-[6px] border-0 border-solid bg-transparent px-2.5 py-1.5 text-[13px] font-medium leading-5 tracking-normal text-[#111212] no-underline shadow-none transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 after:absolute after:inset-x-0 after:bottom-[-1px] after:hidden after:h-px after:bg-[var(--tabs-lifted-bg)] after:content-['']",
-    'data-[state=active]:z-20 data-[state=active]:!border-x data-[state=active]:!border-b-0 data-[state=active]:!border-t data-[state=active]:!border-[var(--tabs-lifted-border)] data-[state=active]:bg-[var(--tabs-lifted-bg)] data-[state=active]:shadow-none data-[state=active]:after:block',
+    'group inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-control border-0 bg-transparent px-2.5 py-1 text-[13px] font-medium leading-5 tracking-normal text-[var(--tabs-lifted-muted)] no-underline shadow-none transition-all duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none',
+    'data-[state=active]:bg-[var(--tabs-lifted-bg)] data-[state=active]:text-[var(--tabs-lifted-foreground)] data-[state=active]:shadow-sm',
     'hover:text-foreground',
   );
 }
@@ -73,7 +83,7 @@ function TabsLiftedIcon({ name }: Readonly<TabsLiftedIconProps>): JSX.Element {
   const icon: TabsLiftedIconDefinition = tabsLiftedIcons[name];
 
   return (
-    <span className="relative size-4 shrink-0 overflow-hidden opacity-60 group-data-[state=active]:opacity-100">
+    <span className="relative size-4 shrink-0 overflow-hidden opacity-90 transition-opacity duration-200 ease-out group-data-[state=active]:opacity-100 motion-reduce:transition-none">
       <svg
         aria-hidden="true"
         className={`absolute ${icon.positionClassName}`}
@@ -84,35 +94,5 @@ function TabsLiftedIcon({ name }: Readonly<TabsLiftedIconProps>): JSX.Element {
         <path d={icon.path} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" />
       </svg>
     </span>
-  );
-}
-
-function TabsLiftedCorner({ side }: Readonly<TabsLiftedCornerProps>): JSX.Element {
-  const positionClassName: string = side === 'left' ? 'left-[-9px]' : 'right-[-9px] -scale-x-100';
-
-  return (
-    <span
-      aria-hidden="true"
-      className={`${positionClassName} pointer-events-none absolute bottom-[-1px] hidden size-[9px] group-data-[state=active]:block`}
-    >
-      <TabsLiftedCornerBackground />
-      <TabsLiftedCornerBorder />
-    </span>
-  );
-}
-
-function TabsLiftedCornerBackground(): JSX.Element {
-  return (
-    <svg className="absolute inset-0 size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 9 9">
-      <path clipRule="evenodd" d="M9 0H8C8 4.418 4.418 8 0 8v1h9V0Z" fill="var(--tabs-lifted-bg)" fillRule="evenodd" />
-    </svg>
-  );
-}
-
-function TabsLiftedCornerBorder(): JSX.Element {
-  return (
-    <svg className="absolute inset-0 size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 9 9">
-      <path d="M0 8C4.418 8 8 4.418 8 0" stroke="var(--tabs-lifted-border)" strokeLinecap="butt" strokeWidth="1" />
-    </svg>
   );
 }

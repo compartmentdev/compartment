@@ -2,8 +2,9 @@ import type { JSX } from 'react';
 import { browserLoginPathname } from '../browser-public-paths';
 import { logoutBrowserSession } from '../lib/browser-logout';
 import type { BrowserConsoleErrorHandler } from './browser-console.types';
-import { ChevronsUpDown, UserRound } from './ui/icons';
+import { ChevronsUpDown } from './ui/icons';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { MinidenticonAvatar } from './ui/minidenticon-avatar';
 
 interface BrowserConsoleUserBlockProps {
   onError: BrowserConsoleErrorHandler;
@@ -19,6 +20,10 @@ interface BrowserConsoleUserMenuContentProps {
   onError: BrowserConsoleErrorHandler;
 }
 
+interface BrowserConsoleUserAvatarProps {
+  principalEmail: string;
+}
+
 export function BrowserConsoleUserBlock({
   onError,
   principalEmail,
@@ -26,8 +31,8 @@ export function BrowserConsoleUserBlock({
   const [principalLabel = principalEmail] = principalEmail.split('@');
 
   return (
-    <div className="flex w-full items-center gap-2 rounded-lg p-2">
-      <BrowserConsoleUserAvatar />
+    <div className="flex w-full items-center gap-2 rounded-control p-2">
+      <BrowserConsoleUserAvatar principalEmail={principalEmail} />
       <BrowserConsoleUserMeta principalEmail={principalEmail} principalLabel={principalLabel} />
       <DropdownMenu>
         <BrowserConsoleUserMenuTrigger />
@@ -37,12 +42,8 @@ export function BrowserConsoleUserBlock({
   );
 }
 
-function BrowserConsoleUserAvatar(): JSX.Element {
-  return (
-    <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-background text-sidebar-foreground">
-      <UserRound aria-hidden="true" className="size-4" />
-    </div>
-  );
+function BrowserConsoleUserAvatar({ principalEmail }: Readonly<BrowserConsoleUserAvatarProps>): JSX.Element {
+  return <MinidenticonAvatar className="bg-background" seed={principalEmail} />;
 }
 
 function BrowserConsoleUserMeta({
@@ -62,7 +63,7 @@ function BrowserConsoleUserMenuTrigger(): JSX.Element {
     <DropdownMenuTrigger asChild>
       <button
         aria-label="Open user menu"
-        className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-sidebar-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="inline-flex size-4 shrink-0 items-center justify-center rounded-micro text-sidebar-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         type="button"
       >
         <ChevronsUpDown aria-hidden="true" className="size-4" />

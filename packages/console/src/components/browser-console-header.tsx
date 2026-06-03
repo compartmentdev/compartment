@@ -45,7 +45,7 @@ export function BrowserConsoleShell(props: Readonly<BrowserConsoleShellProps>): 
 
 function BrowserConsoleShellBody(props: Readonly<BrowserConsoleShellBodyProps>): JSX.Element {
   return (
-    <div className="min-h-screen bg-[linear-gradient(164deg,var(--background)_1.33%,var(--muted)_100%)] text-foreground lg:flex">
+    <div className="min-h-screen bg-background text-foreground lg:flex">
       <BrowserConsoleSidebar
         currentOrganizationPermissions={props.currentOrganizationPermissions}
         errorMessage={props.errorMessage}

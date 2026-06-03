@@ -30,7 +30,7 @@ describe('browser project overview', (): void => {
     expect(html).toContain('aria-label="Project environments"');
     expect(html).toContain('href="/orgs/acme-dev/projects/billing/deployments?environmentName=production"');
     expect(html).toContain('>Production Deployments<');
-    expect(html).toContain('overflow-hidden rounded-lg border border-border bg-[var(--table-surface)]');
+    expect(html).toContain('overflow-hidden rounded-card border border-border bg-card');
     expect(html).toContain('sm:flex-row');
     expect(html).toContain('sm:justify-between');
     expect(html).not.toContain('&amp;serviceName=');

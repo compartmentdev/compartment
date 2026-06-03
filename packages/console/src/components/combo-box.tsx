@@ -61,7 +61,7 @@ function renderComboBoxMenu(
   }
 
   return (
-    <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-background shadow-lg">
+    <div className="absolute z-20 mt-1 w-full rounded-field border border-border bg-background shadow-lg">
       <ComboBoxMenu
         emptyMessage={props.emptyMessage}
         isLoading={props.isLoading ?? false}
@@ -103,7 +103,7 @@ function ComboBoxStatusMessage({ message }: Readonly<ComboBoxStatusMessageProps>
 function ComboBoxOptionButton({ onChange, option }: Readonly<ComboBoxOptionButtonProps>): JSX.Element {
   return (
     <button
-      className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-[13px] text-foreground hover:bg-accent hover:text-accent-foreground"
+      className="flex w-full items-center justify-between gap-2 rounded-control px-3 py-2 text-left text-[13px] text-foreground hover:bg-accent hover:text-accent-foreground"
       onClick={(): void => onChange(option.value)}
       onMouseDown={preventComboBoxOptionMouseDown}
       type="button"

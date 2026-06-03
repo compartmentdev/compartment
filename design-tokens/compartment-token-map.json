@@ -137,6 +137,10 @@
       "figma": "opacity/primary/20",
       "css": "--opacity-primary-main"
     },
+    "destructiveLighter": {
+      "figma": "opacity/destructive/lighter",
+      "css": "--opacity-destructive-lighter"
+    },
     "successLighter": {
       "figma": "opacity/success/lighter",
       "css": "--opacity-success-lighter"

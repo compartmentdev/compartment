@@ -73,6 +73,7 @@ function ToolbarPrimaryActionContent({
 function readToolbarPrimaryActionClassName(className: string | undefined, variant: ButtonVariant = 'default'): string {
   return buttonVariants({
     className: cn('justify-center no-underline', className),
+    size: 'sm',
     variant,
   });
 }

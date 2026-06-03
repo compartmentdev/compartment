@@ -56,6 +56,10 @@
       "light": "#C0412C",
       "dark": "#D75B42"
     },
+    "opacity/destructive/lighter": {
+      "light": "#A42E1C1A",
+      "dark": "#D75B421A"
+    },
     "theme/foreground": {
       "light": "#121417",
       "dark": "#F4F4F6"

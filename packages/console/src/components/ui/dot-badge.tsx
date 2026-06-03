@@ -67,7 +67,7 @@ function DotBadgeIcon({ icon }: Readonly<{ icon: DotBadgeIconName }>): JSX.Eleme
 
 function readDotBadgeClassName(tone: DotBadgeTone): string {
   return cn(
-    "inline-flex max-w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-full text-[12px] font-semibold leading-4 [font-variation-settings:'opsz'_14]",
+    "inline-flex max-w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-pill text-[12px] font-semibold leading-4 [font-variation-settings:'opsz'_14]",
     readDotBadgeToneClassName(tone),
   );
 }

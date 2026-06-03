@@ -27,7 +27,7 @@ export function BrowserBreadcrumbs({
 
   return (
     <nav aria-label="Breadcrumb" className={cn('overflow-x-auto', className)}>
-      <ol className="flex flex-wrap items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
+      <ol className="flex flex-wrap items-center gap-1.5 text-[13px] font-medium leading-5 text-muted-foreground">
         {items.map((item: BrowserBreadcrumbItem, index: number): JSX.Element => {
           const isCurrent: boolean = index === items.length - 1;
 

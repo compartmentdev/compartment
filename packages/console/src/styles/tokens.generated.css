@@ -20,6 +20,7 @@
   --muted: #e6e8ea;
   --muted-foreground: #9ca4ab;
   --muted-foreground-secondary: #4d565e;
+  --opacity-destructive-lighter: #a42e1c1a;
   --opacity-info-lighter: #1e65ac1a;
   --opacity-primary-lighter: #1214171a;
   --opacity-primary-main: #12141733;
@@ -62,6 +63,7 @@
   --muted: #121417;
   --muted-foreground: #737e87;
   --muted-foreground-secondary: #9ca4ab;
+  --opacity-destructive-lighter: #d75b421a;
   --opacity-info-lighter: #5798db1a;
   --opacity-primary-lighter: #fafafa1a;
   --opacity-primary-main: #fafafa33;

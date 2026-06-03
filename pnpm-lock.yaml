@@ -196,6 +196,9 @@ importers:
       '@tanstack/react-query':
         specifier: 5.100.11
         version: 5.100.11(react@19.2.5)
+      minidenticons:
+        specifier: ^4.2.1
+        version: 4.2.1
     devDependencies:
       '@compartment/eslint-config':
         specifier: workspace:*
@@ -6456,6 +6459,11 @@ packages:
     resolution:
       { integrity: sha512-VP79XUPxV2CigYP3jWwAUFSku2aKqBH7uTAapFWCBqutsbmDo96KY5o8uh6U+/YSIn5OxJnXp73beVkpqMIGhA== }
     engines: { node: '>=18' }
+
+  minidenticons@4.2.1:
+    resolution:
+      { integrity: sha512-oWfFivA0lOx/V/bO/YIJbthB26lV8JXYvhnv9zM2hNd3fzsHTXQ6c6bWZPcvhD3nnOB+lQk/D9lF43BXixrN8g== }
+    engines: { node: '>=15.14.0' }
 
   minimatch@10.2.5:
     resolution:
@@ -14271,6 +14279,8 @@ snapshots:
   mimic-fn@2.1.0: {}
 
   mimic-function@5.0.1: {}
+
+  minidenticons@4.2.1: {}
 
   minimatch@10.2.5:
     dependencies:

@@ -151,7 +151,7 @@ function renderNavigationBadge(badge: string | undefined, active: boolean): JSX.
   if (active) {
     return (
       <span className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center">
-        <span className="inline-flex h-[18px] shrink-0 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[12px] font-medium leading-4 text-primary-foreground">
+        <span className="inline-flex h-[18px] shrink-0 items-center justify-center rounded-pill bg-primary px-1.5 py-0.5 text-[12px] font-medium leading-4 text-primary-foreground">
           {badge}
         </span>
       </span>
@@ -161,7 +161,7 @@ function renderNavigationBadge(badge: string | undefined, active: boolean): JSX.
   return (
     <span className="inline-flex h-6 min-w-6 shrink-0 items-center justify-center">
       <span
-        className="inline-flex h-[18px] shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[12px] font-medium leading-4 text-primary"
+        className="inline-flex h-[18px] shrink-0 items-center justify-center rounded-pill px-1.5 py-0.5 text-[12px] font-medium leading-4 text-primary"
         style={{ backgroundImage: navigationBadgeBackground }}
       >
         {badge}
@@ -172,7 +172,7 @@ function renderNavigationBadge(badge: string | undefined, active: boolean): JSX.
 
 function readNavigationLinkClassName(active: boolean): string {
   return cn(
-    'flex h-10 items-center justify-between gap-2 rounded-lg px-2 py-0 no-underline transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2',
+    'flex h-9 items-center justify-between gap-2 rounded-control px-2 py-0 no-underline transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2',
     active
       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
       : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',

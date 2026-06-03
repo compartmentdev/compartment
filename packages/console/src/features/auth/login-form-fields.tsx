@@ -4,7 +4,7 @@ import { Input } from '../../components/ui/input';
 import { LockKeyhole, Mail } from '../../components/ui/icons';
 import { authFieldLabelClassName, authHintLinkClassName, authInputClassName } from './auth-theme';
 
-interface LoginInputFieldProps extends Readonly<InputHTMLAttributes<HTMLInputElement>> {
+interface LoginInputFieldProps extends Readonly<Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>> {
   compact?: boolean | undefined;
   hintHref?: string | undefined;
   hintLabel?: string | undefined;
@@ -109,7 +109,7 @@ function LoginInputField({
 
 function CompactLoginInputField({
   inputProps,
-}: Readonly<{ inputProps: InputHTMLAttributes<HTMLInputElement> }>): JSX.Element {
+}: Readonly<{ inputProps: Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> }>): JSX.Element {
   return (
     <div className={authInputClassName}>
       <Input className={compactInputClassName} {...inputProps} />

@@ -10,7 +10,7 @@ export type ButtonVariant =
   | 'secondary'
   | 'soft'
   | 'success';
-type ButtonSize = 'default' | 'lg' | 'sm' | 'xs';
+type ButtonSize = 'default' | 'lg' | 'md' | 'sm' | 'xs';
 
 interface ButtonVariantInput {
   className?: string | undefined;
@@ -24,24 +24,19 @@ export function Button({ className, size, variant, ...props }: Readonly<ButtonPr
   return <button className={buttonVariants({ className, size, variant })} {...props} />;
 }
 
-export function buttonVariants({
-  className,
-  size = 'default',
-  variant = 'default',
-}: Readonly<ButtonVariantInput>): string {
+export function buttonVariants({ className, size = 'sm', variant = 'default' }: Readonly<ButtonVariantInput>): string {
   return cn(readBaseButtonClassName(), readButtonSizeClassName(size), readButtonVariantClassName(variant), className);
 }
 
 function readBaseButtonClassName(): string {
-  return 'inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md text-[13px] font-medium transition-colors disabled:cursor-default disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+  return 'inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-control text-[13px] font-medium transition-colors disabled:cursor-default disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background';
 }
 
 function readButtonSizeClassName(size: ButtonSize): string {
   switch (size) {
     case 'default':
-      return 'h-9 px-3.5 py-2';
+    case 'md':
     case 'lg':
-      return 'h-10 px-4.5 py-2';
     case 'sm':
       return 'h-8 px-2.5 text-[12px]';
     case 'xs':
