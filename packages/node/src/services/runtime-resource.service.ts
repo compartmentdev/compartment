@@ -6,18 +6,12 @@ import {
   runDockerContainer,
   startDockerContainer,
   stopDockerContainer,
-  type DockerContainerSecurityProfile,
   type DockerInspectContainerResult,
   type DockerNamedVolumeMount,
   type DockerRunContainerInput,
   type DockerRunContainerResult,
 } from '@compartment/docker';
-import type {
-  NodeResourceReadiness,
-  NodeResourceRequest,
-  NodeResourceResponse,
-  NodeResourceVolume,
-} from '@compartment/contracts';
+import type { NodeResourceRequest, NodeResourceResponse, NodeResourceVolume } from '@compartment/contracts';
 import type { RuntimeDeployConfig } from './runtime.types';
 import { buildRuntimeResourceLabels } from './runtime-resource-labels';
 import {
@@ -26,32 +20,46 @@ import {
   buildResourceVolumeName,
   buildRuntimeResourceNetworkName,
 } from './runtime-names.service';
-import { canConnectToRuntimeHost } from './runtime-resource-connectivity.service';
-import { continueResourceReadinessPolling, resolveResourceReadinessHost } from './runtime-resource-readiness.service';
-import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
+import {
+  assertRuntimeResourceNetworkFreeEndpoints,
+  ensureRuntimeResourceNetwork,
+} from './runtime-network-capacity.service';
+import { reconcileRuntimeNetworksBestEffort } from './runtime-network-reconcile.service';
+import { removeRuntimeResourceContainerBestEffort } from './runtime-resource-cleanup.service';
+import { waitForResourceStartupReadiness } from './runtime-resource-readiness-wait.service';
 import { buildUserResourceWritableSecurityProfile } from './runtime-security-profile.service';
-import { createRuntimeResourceReadinessError } from '../errors/node-runtime-error';
+import { normalizeRuntimeNetworkDockerError, type RuntimeNetworkErrorInput } from './runtime-network-error.service';
 
 export async function reconcileRuntimeResource(
   input: NodeResourceRequest,
   config: RuntimeDeployConfig,
 ): Promise<NodeResourceResponse> {
-  await ensureDockerImageAvailable({
-    imageRef: input.definition.image,
-    registryCredentials: config.runtimeRegistryCredentials,
-  });
-  return await replacePreparedRuntimeResource(input, config);
+  try {
+    await ensureDockerImageAvailable({
+      imageRef: input.definition.image,
+      registryCredentials: config.runtimeRegistryCredentials,
+    });
+    return await replacePreparedRuntimeResource(input, config);
+  } catch (error) {
+    await reconcileRuntimeNetworksBestEffort(config);
+    throw normalizeRuntimeNetworkDockerError(error as RuntimeNetworkErrorInput, 'Unexpected runtime resource error.');
+  }
 }
 
 export async function startRuntimeResource(
   input: NodeResourceRequest,
   config: RuntimeDeployConfig,
 ): Promise<NodeResourceResponse> {
-  await ensureDockerImageAvailable({
-    imageRef: input.definition.image,
-    registryCredentials: config.runtimeRegistryCredentials,
-  });
-  return await startPreparedRuntimeResource(input, config);
+  try {
+    await ensureDockerImageAvailable({
+      imageRef: input.definition.image,
+      registryCredentials: config.runtimeRegistryCredentials,
+    });
+    return await startPreparedRuntimeResource(input, config);
+  } catch (error) {
+    await reconcileRuntimeNetworksBestEffort(config);
+    throw normalizeRuntimeNetworkDockerError(error as RuntimeNetworkErrorInput, 'Unexpected runtime resource error.');
+  }
 }
 
 async function replacePreparedRuntimeResource(
@@ -59,7 +67,7 @@ async function replacePreparedRuntimeResource(
   config: RuntimeDeployConfig,
 ): Promise<NodeResourceResponse> {
   const containerRef: string = buildResourceContainerName(input, config.dockerNamespace);
-  const backupContainerRef: string = buildResourceReplacementBackupRef(containerRef);
+  const backupContainerRef: string = `${containerRef}-previous`;
   const existingContainer: DockerInspectContainerResult | null = await restoreResourceReplacementBackup(
     containerRef,
     backupContainerRef,
@@ -118,7 +126,7 @@ async function startResourceReplacement(
     await removeDockerContainer({ containerRef: backupContainerRef });
     return response;
   } catch (error) {
-    await removeDockerContainer({ containerRef });
+    await removeRuntimeResourceContainerBestEffort(containerRef);
     await renameDockerContainer({ containerRef: backupContainerRef, nextContainerName: containerRef });
     await startDockerContainer({ containerRef });
     throw error;
@@ -129,22 +137,21 @@ async function startPreparedRuntimeResource(
   input: NodeResourceRequest,
   config: RuntimeDeployConfig,
 ): Promise<NodeResourceResponse> {
-  await ensureOwnedRuntimeNetwork({
-    dockerNamespace: config.dockerNamespace,
-    networkName: buildRuntimeResourceNetworkName(input, config.dockerNamespace),
-  });
+  await ensureRuntimeResourceNetwork(input, config);
+  await assertRuntimeResourceNetworkFreeEndpoints(input, config, 1, 'starting resource container');
   const container: DockerRunContainerResult = await runDockerContainer(buildResourceContainerInput(input, config));
-  await waitForResourceReadiness(input, config, container.containerId);
+  try {
+    await waitForResourceStartupReadiness(input, config, container.containerId);
+  } catch (error) {
+    await removeRuntimeResourceContainerBestEffort(container.containerId);
+    throw error;
+  }
 
   return {
     containerId: container.containerId,
     hostname: input.hostname,
     status: 'running',
   };
-}
-
-function buildResourceReplacementBackupRef(containerRef: string): string {
-  return `${containerRef}-previous`;
 }
 
 function buildResourceContainerInput(input: NodeResourceRequest, config: RuntimeDeployConfig): DockerRunContainerInput {
@@ -165,7 +172,9 @@ function buildResourceContainerInput(input: NodeResourceRequest, config: Runtime
     restartPolicy: {
       name: input.definition.restart.policy,
     },
-    securityProfile: buildResourceContainerSecurityProfile(),
+    securityProfile: buildUserResourceWritableSecurityProfile(
+      'Resource images can require writable runtime paths outside declared data volumes.',
+    ),
   };
 }
 
@@ -175,12 +184,6 @@ function buildResourceEnv(input: NodeResourceRequest): Record<string, string> {
       value.keyName,
       value.value,
     ]),
-  );
-}
-
-function buildResourceContainerSecurityProfile(): DockerContainerSecurityProfile {
-  return buildUserResourceWritableSecurityProfile(
-    'Resource images can require writable runtime paths outside declared data volumes.',
   );
 }
 
@@ -196,79 +199,4 @@ function buildResourceNamedVolumes(
       targetPath: volume.mountPath,
     }),
   );
-}
-
-async function waitForResourceReadiness(
-  input: NodeResourceRequest,
-  config: RuntimeDeployConfig,
-  containerId: string,
-): Promise<void> {
-  if (input.definition.readiness === null) {
-    await ensureResourceContainerIsRunning(containerId);
-    return;
-  }
-
-  const readiness: NodeResourceReadiness = input.definition.readiness;
-  const deadline: number = Date.now() + readiness.timeoutMs;
-  for (;;) {
-    if (await canReachRuntimeResourceReadiness(input, config, containerId, readiness.port, deadline)) {
-      return;
-    }
-    if (!(await continueResourceReadinessPolling(deadline))) {
-      break;
-    }
-  }
-
-  await removeDockerContainer({ containerRef: buildResourceContainerName(input, config.dockerNamespace) }).catch(
-    (): void => undefined,
-  );
-  throwRuntimeResourceReadinessError(input, readiness);
-}
-
-function throwRuntimeResourceReadinessError(input: NodeResourceRequest, readiness: NodeResourceReadiness): never {
-  throw createRuntimeResourceReadinessError({
-    phase: 'startup',
-    resourceName: input.resourceName,
-    timeoutMs: readiness.timeoutMs,
-  });
-}
-
-async function canReachRuntimeResourceReadiness(
-  input: NodeResourceRequest,
-  config: RuntimeDeployConfig,
-  containerId: string,
-  port: number,
-  deadline: number,
-): Promise<boolean> {
-  return await canReachResourceReadinessPort(
-    containerId,
-    buildRuntimeResourceNetworkName(input, config.dockerNamespace),
-    port,
-    deadline,
-  );
-}
-
-async function canReachResourceReadinessPort(
-  containerId: string,
-  resourceNetworkName: string,
-  port: number,
-  deadline: number,
-): Promise<boolean> {
-  const readinessHost: string | null = await resolveReadinessHost(containerId, resourceNetworkName);
-  return readinessHost !== null && (await canConnectToRuntimeHost(readinessHost, port, deadline));
-}
-
-async function resolveReadinessHost(containerId: string, resourceNetworkName: string): Promise<string | null> {
-  try {
-    return await resolveResourceReadinessHost(containerId, resourceNetworkName);
-  } catch {
-    return null;
-  }
-}
-
-async function ensureResourceContainerIsRunning(containerId: string): Promise<void> {
-  const container: DockerInspectContainerResult | null = await inspectDockerContainer({ containerRef: containerId });
-  if (container?.isRunning !== true) {
-    throw new Error(`Expected resource container ${containerId} to remain running after startup.`);
-  }
 }

@@ -1,4 +1,5 @@
 import type { NodeConfig } from '../config';
+import { assertRuntimeNetworkPoolDoesNotOverlapHostState } from './runtime-network-pool-validation.service';
 import { reconcileRuntimeNetworks } from './runtime-network.service';
 
 const runtimeNetworkStartupMaxAttempts: number = 20;
@@ -20,6 +21,7 @@ export async function reconcileRuntimeNetworksOnStartup(
   logger: StartupRuntimeNetworkLogger,
   waitForRetry: WaitForRetry = waitForRetryDelay,
 ): Promise<void> {
+  await assertRuntimeNetworkPoolDoesNotOverlapHostState(config);
   if (config.runtimeConnectivityMode !== 'network') {
     return;
   }

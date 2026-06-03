@@ -101,6 +101,10 @@ export {
 } from './services/access-role.service';
 export { inspectNodeDeployment } from './services/node-runtime-inspect.service';
 export {
+  cleanupNodeRuntimeNetworkReservation,
+  reserveNodeRuntimeNetworks,
+} from './services/node-runtime-network.service';
+export {
   deleteNodeResource,
   reconcileNodeResource,
   runNodeResourceBackupOperation,

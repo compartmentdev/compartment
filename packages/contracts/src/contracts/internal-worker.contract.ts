@@ -43,6 +43,7 @@ import {
   runtimeDrainStateSchema,
   runtimePreviousDeploymentSchema,
 } from './runtime-shared.contract';
+import { runtimeNetworkIntentSchema, type RuntimeNetworkIntent } from './runtime-node-network.contract';
 import type { ContractSchema } from './schema.types';
 
 export interface WorkerNodeSummary {
@@ -81,6 +82,7 @@ export interface WorkerClaimedDeployment {
   run: ResolvedCompartmentServiceRunConfig;
   artifact: WorkerBuildArtifactSummary;
   routeHost: string;
+  runtimeNetwork: RuntimeNetworkIntent;
   runtimeEnv: Record<string, string>;
   service: WorkerProjectServiceSummary;
 }
@@ -172,6 +174,7 @@ const workerClaimedDeploymentSchema: ContractSchema<WorkerClaimedDeployment> = z
     run: resolvedCompartmentServiceRunConfigSchema,
     artifact: workerBuildArtifactSummarySchema,
     routeHost: z.string().min(1),
+    runtimeNetwork: runtimeNetworkIntentSchema,
     runtimeEnv: z.record(z.string(), z.string()),
     service: workerProjectServiceSummarySchema,
   })

@@ -1,4 +1,8 @@
-import type { WorkerClaimDeploymentResponse, WorkerClaimedDeployment } from '@compartment/contracts';
+import type {
+  NodeRuntimeNetworkReservationResponse,
+  WorkerClaimDeploymentResponse,
+  WorkerClaimedDeployment,
+} from '@compartment/contracts';
 import {
   claimNextDeployment,
   type CompartmentRequester,
@@ -17,6 +21,10 @@ import { runGitSourceSyncIteration } from './worker-git-source-sync.service';
 import { runScheduledResourceOperationIteration } from './worker-resource-operation-scheduler.service';
 import { completeBuiltDeployment } from './worker-runtime-deploy.service';
 import { readWorkerFailureMessage } from './worker-failure-message.service';
+import {
+  cleanupClaimedDeploymentNetworkReservationBestEffort,
+  reserveClaimedDeploymentNetworks,
+} from './worker-runtime-network-reservation.service';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
 import type {
   AttemptClaimedDeploymentCompletionInput,
@@ -132,9 +140,11 @@ async function completeAndPersistClaimedDeployment(
 async function attemptClaimedDeploymentCompletion(
   input: Readonly<AttemptClaimedDeploymentCompletionInput>,
 ): Promise<AttemptedClaimedDeploymentResult> {
-  const { artifactRegistry, deployment, dockerNamespace, releaseArchiveRequest, request } = input;
+  const { artifactRegistry, deployment, dockerNamespace, releaseArchiveRequest, request, runtimeControlToken } = input;
   let imageRef: string | undefined;
+  let reservation: NodeRuntimeNetworkReservationResponse | undefined;
   try {
+    reservation = await reserveClaimedDeploymentNetworks(runtimeControlToken, deployment);
     const builtImageRef: string = await buildClaimedDeploymentImage(
       request,
       releaseArchiveRequest,
@@ -144,8 +154,10 @@ async function attemptClaimedDeploymentCompletion(
     );
     imageRef = builtImageRef;
     await completeAttemptedClaimedDeployment(input, builtImageRef);
+    await cleanupClaimedDeploymentNetworkReservationBestEffort(runtimeControlToken, deployment, reservation);
     return buildAttemptedClaimedDeploymentSuccessResult(imageRef);
   } catch (error) {
+    await cleanupClaimedDeploymentNetworkReservationBestEffort(runtimeControlToken, deployment, reservation);
     return buildAttemptedClaimedDeploymentFailureResult(error instanceof Error ? error : undefined, imageRef);
   }
 }

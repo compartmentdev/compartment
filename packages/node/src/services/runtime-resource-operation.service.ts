@@ -22,11 +22,16 @@ import {
 import { continueResourceReadinessPolling, resolveResourceReadinessHost } from './runtime-resource-readiness.service';
 import { environmentIdLabelName, projectIdLabelName } from './runtime-container-labels';
 import { resourceNameLabelName } from './runtime-resource-labels';
-import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
+import {
+  assertRuntimeResourceNetworkFreeEndpoints,
+  ensureRuntimeResourceNetwork,
+} from './runtime-network-capacity.service';
+import { reconcileRuntimeNetworksBestEffort } from './runtime-network-reconcile.service';
 import { resolveRuntimeResourceBackupArtifactHostPath } from './runtime-resource-backup-path.service';
 import { buildRuntimeShellCommandContainerInvocation } from './runtime-shell-command.service';
 import type { RuntimeResourceOperationConfig } from './runtime.types';
 import { createRuntimeResourceReadinessError } from '../errors/node-runtime-error';
+import { normalizeRuntimeNetworkDockerError, type RuntimeNetworkErrorInput } from './runtime-network-error.service';
 
 const backupContainerPath: string = '/backup';
 type RuntimeResourceOperationMountMode = 'read-only' | 'read-write';
@@ -53,23 +58,41 @@ async function runRuntimeResourceOperation(
   config: RuntimeResourceOperationConfig,
   mountMode: RuntimeResourceOperationMountMode,
 ): Promise<NodeResourceOperationResponse> {
+  try {
+    const containerInput: DockerRunContainerInput = await prepareResourceOperationContainerInput(
+      input,
+      config,
+      mountMode,
+    );
+    const result: DockerRunContainerToCompletionResult = await runDockerContainerToCompletion(containerInput);
+
+    return {
+      stderr: result.stderr,
+      stdout: result.stdout,
+    };
+  } catch (error) {
+    await reconcileRuntimeNetworksBestEffort(config);
+    throw normalizeRuntimeNetworkDockerError(
+      error as RuntimeNetworkErrorInput,
+      'Unexpected runtime resource operation error.',
+    );
+  }
+}
+
+async function prepareResourceOperationContainerInput(
+  input: NodeResourceOperationRequest,
+  config: RuntimeResourceOperationConfig,
+  mountMode: RuntimeResourceOperationMountMode,
+): Promise<DockerRunContainerInput> {
   // Fail cheap before setup, then rebuild mounts immediately before Docker create below.
   await buildResourceOperationMounts(input, config.resourceBackupDirectory, mountMode);
   await ensureDockerImageAvailable({
     imageRef: input.definition.image,
     registryCredentials: config.runtimeRegistryCredentials,
   });
-  await ensureOwnedRuntimeNetwork({
-    dockerNamespace: config.dockerNamespace,
-    networkName: buildRuntimeResourceNetworkName(input, config.dockerNamespace),
-  });
-  const containerInput: DockerRunContainerInput = await buildResourceOperationContainerInput(input, config, mountMode);
-  const result: DockerRunContainerToCompletionResult = await runDockerContainerToCompletion(containerInput);
-
-  return {
-    stderr: result.stderr,
-    stdout: result.stdout,
-  };
+  await ensureRuntimeResourceNetwork(input, config);
+  await assertRuntimeResourceNetworkFreeEndpoints(input, config, 1, 'running resource operation');
+  return await buildResourceOperationContainerInput(input, config, mountMode);
 }
 
 async function buildResourceOperationContainerInput(

@@ -11,6 +11,14 @@ import {
   nodeInspectDeploymentPathname,
   nodeReleasePathname,
   nodeRuntimeNetworkReconcilePathname,
+  nodeRuntimeNetworkReservationCleanupPathname,
+  nodeRuntimeNetworkReservationCleanupRequestSchema,
+  nodeRuntimeNetworkReservationCleanupResponseSchema,
+  nodeRuntimeNetworkReservationPathname,
+  nodeRuntimeNetworkReservationRequestSchema,
+  nodeRuntimeNetworkReservationResponseSchema,
+  nodeRuntimeServiceReadinessFailedErrorCode,
+  nodeRuntimeServiceStartupFailedErrorCode,
   nodeResourceOperationRequestSchema,
   nodeStopDeploymentPathname,
   nodeTailLogsPathname,
@@ -22,6 +30,8 @@ import {
   workerRunNextScheduledResourceOperationPathname,
   workerUpdateDeploymentRuntimePathname,
   type NodeDeployRequest,
+  type NodeRuntimeNetworkReservationCleanupRequest,
+  type NodeRuntimeNetworkReservationRequest,
   type NodeResourceOperationRequest,
 } from '../src';
 
@@ -53,6 +63,8 @@ describe('internal protocol path constants', (): void => {
     expect(nodeInspectDeploymentPathname).toBe('/internal/deployments/inspect');
     expect(nodeReleasePathname).toBe('/internal/deployments/release');
     expect(nodeRuntimeNetworkReconcilePathname).toBe('/internal/runtime-networks/reconcile');
+    expect(nodeRuntimeNetworkReservationPathname).toBe('/internal/runtime-networks/reserve');
+    expect(nodeRuntimeNetworkReservationCleanupPathname).toBe('/internal/runtime-networks/reservations/cleanup');
     expect(nodeStopDeploymentPathname).toBe('/internal/deployments/stop');
     expect(nodeTailLogsPathname).toBe('/internal/deployments/logs');
   });
@@ -69,6 +81,30 @@ describe('internal protocol path constants', (): void => {
 });
 
 describe('node deploy contract', (): void => {
+  it('keeps service runtime error codes stable', (): void => {
+    expect(nodeRuntimeServiceReadinessFailedErrorCode).toBe('runtime_service_readiness_failed');
+    expect(nodeRuntimeServiceStartupFailedErrorCode).toBe('runtime_service_startup_failed');
+  });
+
+  it('requires explicit runtime network intent', (): void => {
+    const request: NodeDeployRequest = createNodeDeployRequest({
+      runtimeNetwork: {
+        requiresResourceNetwork: true,
+      },
+    });
+
+    expect(nodeDeployRequestSchema.parse(request).runtimeNetwork).toEqual({
+      requiresResourceNetwork: true,
+    });
+    expect(nodeDeployRequestSchema.safeParse({ ...request, runtimeNetwork: undefined }).success).toBe(false);
+    expect(
+      nodeDeployRequestSchema.safeParse({
+        ...request,
+        runtimeNetwork: { requiresResourceNetwork: false, serviceNetwork: true },
+      }).success,
+    ).toBe(false);
+  });
+
   it('exposes only upstream port from the previous deployment to node runtime', (): void => {
     const request: NodeDeployRequest = createNodeDeployRequest({
       previousDeployment: {
@@ -87,6 +123,45 @@ describe('node deploy contract', (): void => {
       upstreamPort: 31000,
     });
     expect(nodeDeployRequestSchema.safeParse(invalidRequest).success).toBe(false);
+  });
+});
+
+describe('node runtime network reservation contract', (): void => {
+  it('accepts reservation and cleanup payloads', (): void => {
+    const request: NodeRuntimeNetworkReservationRequest = {
+      deploymentId: 'dep_123',
+      environmentId: 'env_123',
+      projectId: 'prj_123',
+      requiresResourceNetwork: true,
+      serviceId: 'svc_123',
+      serviceNetworkEndpointReservations: 2,
+    };
+    const cleanupRequest: NodeRuntimeNetworkReservationCleanupRequest = {
+      networkNames: ['compartment-test-prj-123-env-123-svc-123'],
+      reservationId: 'dep_123',
+    };
+
+    expect(nodeRuntimeNetworkReservationRequestSchema.parse(request).requiresResourceNetwork).toBe(true);
+    expect(
+      nodeRuntimeNetworkReservationResponseSchema.parse({
+        expiresAt: '2026-03-23T14:00:00.000Z',
+        newlyCreatedNetworkNames: ['compartment-test-prj-123-env-123-svc-123'],
+        reservationId: 'dep_123',
+        reservedNetworkNames: ['compartment-test-prj-123-env-123-svc-123'],
+      }).reservationId,
+    ).toBe('dep_123');
+    expect(nodeRuntimeNetworkReservationCleanupRequestSchema.parse(cleanupRequest).networkNames).toHaveLength(1);
+    expect(
+      nodeRuntimeNetworkReservationCleanupResponseSchema.parse({
+        cleanedAt: '2026-03-23T15:00:00.000Z',
+      }).cleanedAt,
+    ).toBe('2026-03-23T15:00:00.000Z');
+    expect(
+      nodeRuntimeNetworkReservationRequestSchema.safeParse({
+        ...request,
+        dockerNetworkName: 'custom',
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -129,6 +204,9 @@ function createNodeDeployRequest(overrides: Partial<NodeDeployRequest> = {}): No
       restart: {
         policy: 'on-failure',
       },
+    },
+    runtimeNetwork: {
+      requiresResourceNetwork: false,
     },
     runtimeEnv: {},
     serviceId: 'svc_123',

@@ -280,6 +280,38 @@ describe('self-hosted environment helpers', (): void => {
     expect(rendered.text).not.toContain('BUILDKIT_ADDR=tcp://builder:1234');
   });
 
+  it('preserves configured runtime network pool during update', (): void => {
+    const runtimeNetworkPoolCidr: string = buildRuntimeNetworkPoolCidrForTest();
+    const currentValues: Record<string, string> = readSelfHostedEnvironmentValues(buildTemplateText());
+    currentValues.COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR = runtimeNetworkPoolCidr;
+    currentValues.COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX = '24';
+
+    const rendered: RenderedSelfHostedEnvironment = buildUpdatedSelfHostedEnvironment({
+      acmeEmail: 'admin@example.com',
+      baseDomain: 'example.com',
+      currentValues,
+      dockerWorkDirectory: '/var/lib/compartment/self-hosted/docker-work',
+      edgeToken: 'edge-token',
+      ...createArtifactRegistryCredentialInput(),
+      postgresPassword: 'postgres-password',
+      publicHttpPort: 80,
+      publicHttpsPort: 443,
+      publicIngressIpv4: '',
+      publicIngressIpv6: '',
+      runtimeControlToken: 'runtime-token',
+      runtimeSelection: buildPublishedSelfHostedRuntimeSelection('1.2.3'),
+      sessionSecret: 'session-secret',
+      nodeAgentSocketPath: '/var/run/compartment/node/agent.sock',
+      systemApiSocketPath: '/var/run/compartment/api/system-api.sock',
+      systemToken: 'system-token',
+      templateText: buildTemplateText(),
+      variablesMasterKey: 'a'.repeat(64),
+    });
+
+    expect(rendered.values.COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR).toBe(runtimeNetworkPoolCidr);
+    expect(rendered.values.COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX).toBe('24');
+  });
+
   it('overwrites existing self-hosted runtime UID and GID during update', (): void => {
     const rendered: RenderedSelfHostedEnvironment = buildUpdatedSelfHostedEnvironment({
       acmeEmail: 'admin@example.com',
@@ -582,6 +614,8 @@ COMPARTMENT_PUBLIC_PROTOCOL=http
 COMPARTMENT_RESOURCE_BACKUP_DIR=/var/lib/compartment/resource-backups
 COMPARTMENT_RUNTIME_CONNECTIVITY_MODE=network
 COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST=host.docker.internal
+COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR=10.240.0.0/12
+COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX=28
 COMPARTMENT_RUNTIME_UID=10001
 COMPARTMENT_RUNTIME_GID=10001
 COMPARTMENT_ROLLBACK_RETENTION_LIMIT=
@@ -598,4 +632,8 @@ function buildTemplateTextWithout(variableName: string): string {
     .split('\n')
     .filter((line: string): boolean => !line.startsWith(`${variableName}=`))
     .join('\n');
+}
+
+function buildRuntimeNetworkPoolCidrForTest(): string {
+  return `${[10, 88, 0, 0].map((octet: number): string => octet.toString()).join('.')}/16`;
 }

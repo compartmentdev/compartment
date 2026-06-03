@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { buildCompartmentArtifactRegistryAddress, readRequiredAbsolutePath } from '@compartment/utils';
 import type { DockerRegistryCredentials } from '@compartment/docker';
 import { assertValidNodeAgentSocketPath } from './node-agent-socket-path';
-import type { RuntimeConnectivityMode } from './services/runtime.types';
+import { parseIpv4Cidr } from './services/runtime-network-cidr.service';
+import type { RuntimeConnectivityMode, RuntimeNetworkPoolConfig } from './services/runtime.types';
 
 const defaultRuntimeUid: number = 10001;
 const defaultRuntimeGid: number = 10001;
@@ -27,6 +28,8 @@ interface NodeConfigEnvironment {
   COMPARTMENT_RUNTIME_UID?: number | undefined;
   COMPARTMENT_RUNTIME_GID?: number | undefined;
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: string;
+  COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR: string;
+  COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX: number;
   COMPARTMENT_RUNTIME_PROBE_IMAGE: string;
 }
 
@@ -50,8 +53,15 @@ type NodeConfigSchemaShape = z.ZodRawShape & {
   COMPARTMENT_RUNTIME_UID: z.ZodOptional<z.ZodNumber>;
   COMPARTMENT_RUNTIME_GID: z.ZodOptional<z.ZodNumber>;
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.ZodString;
+  COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR: z.ZodString;
+  COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX: z.ZodNumber;
   COMPARTMENT_RUNTIME_PROBE_IMAGE: z.ZodString;
 };
+type RuntimeIdentitySchemaShape = Pick<NodeConfigSchemaShape, 'COMPARTMENT_RUNTIME_UID' | 'COMPARTMENT_RUNTIME_GID'>;
+type RuntimeNetworkPoolSchemaShape = Pick<
+  NodeConfigSchemaShape,
+  'COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR' | 'COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX'
+>;
 
 export interface NodeConfig {
   apiUrl: string;
@@ -64,6 +74,7 @@ export interface NodeConfig {
   resourceBackupDirectory: string;
   runtimeConnectivityMode: RuntimeConnectivityMode;
   runtimeDefaultUpstreamHost: string;
+  runtimeNetworkPool: RuntimeNetworkPoolConfig;
   runtimeUid: number | null;
   runtimeGid: number | null;
   runtimeSocketGid: number | null;
@@ -101,6 +112,7 @@ function buildNodeConfig(parsed: NodeConfigEnvironment, runtimeIdentity: NodeRun
     ),
     runtimeConnectivityMode: parsed.COMPARTMENT_RUNTIME_CONNECTIVITY_MODE,
     runtimeDefaultUpstreamHost: parsed.COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST,
+    runtimeNetworkPool: readRuntimeNetworkPoolConfig(parsed),
     runtimeUid: runtimeIdentity.uid,
     runtimeGid: runtimeIdentity.gid,
     runtimeSocketGid: runtimeIdentity.socketGid,
@@ -108,6 +120,23 @@ function buildNodeConfig(parsed: NodeConfigEnvironment, runtimeIdentity: NodeRun
     runtimeProbeImageRef: parsed.COMPARTMENT_RUNTIME_PROBE_IMAGE,
     version: parsed.COMPARTMENT_NODE_VERSION,
     runtimeControlToken: parsed.COMPARTMENT_RUNTIME_CONTROL_TOKEN,
+  };
+}
+
+function readRuntimeNetworkPoolConfig(parsed: NodeConfigEnvironment): RuntimeNetworkPoolConfig {
+  const poolPrefixLength: number = parseIpv4Cidr(parsed.COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR).prefixLength;
+  const subnetPrefixLength: number = parsed.COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX;
+  if (subnetPrefixLength < poolPrefixLength || subnetPrefixLength > 30) {
+    const message: string = [
+      'COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX must fit inside COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR',
+      'and be at most 30.',
+    ].join(' ');
+    throw new Error(message);
+  }
+
+  return {
+    cidr: parsed.COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR,
+    subnetPrefixLength,
   };
 }
 
@@ -191,9 +220,23 @@ function readNodeConfigSchemaShape(): NodeConfigSchemaShape {
     COMPARTMENT_RESOURCE_BACKUP_DIR: z.string().min(1),
     COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: z.enum(['loopback', 'network']),
     COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: z.string().min(1),
+    ...readRuntimeIdentitySchemaShape(),
+    COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),
+    ...readRuntimeNetworkPoolSchemaShape(),
+    COMPARTMENT_RUNTIME_PROBE_IMAGE: z.string().min(1),
+  };
+}
+
+function readRuntimeIdentitySchemaShape(): RuntimeIdentitySchemaShape {
+  return {
     COMPARTMENT_RUNTIME_UID: z.coerce.number().int().positive().optional(),
     COMPARTMENT_RUNTIME_GID: z.coerce.number().int().positive().optional(),
-    COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),
-    COMPARTMENT_RUNTIME_PROBE_IMAGE: z.string().min(1),
+  };
+}
+
+function readRuntimeNetworkPoolSchemaShape(): RuntimeNetworkPoolSchemaShape {
+  return {
+    COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR: z.string().min(1),
+    COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX: z.coerce.number().int().positive(),
   };
 }

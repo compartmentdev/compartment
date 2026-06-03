@@ -24,7 +24,7 @@ afterEach((): void => {
 });
 
 describe('syncDockerNetworkEgressDenyRules', (): void => {
-  it('uses nftables rules scoped by runtime source and denied destination', async (): Promise<void> => {
+  it('falls back to nftables rules when Docker iptables chains are unavailable', async (): Promise<void> => {
     const gatewayCidr: string = buildIpv4Cidr([172, 17, 0, 1], 32);
     const linkLocalCidr: string = buildIpv4Cidr([169, 254, 0, 0], 16);
     const sourceAllowCidr: string = buildIpv4Cidr([172, 30, 0, 2], 32);
@@ -32,6 +32,9 @@ describe('syncDockerNetworkEgressDenyRules', (): void => {
     let nftBatchContent: string = '';
     mocks.runProcessCommand.mockImplementation(async (input: ProcessCommandInput): Promise<ProcessCommandResult> => {
       await Promise.resolve();
+      if (input.file === 'iptables') {
+        throw new Error('iptables unavailable');
+      }
       if (input.file === 'nft' && input.args.join(' ') === '--version') {
         return { stderr: '', stdout: 'nftables v1.0.0' };
       }
@@ -57,9 +60,13 @@ describe('syncDockerNetworkEgressDenyRules', (): void => {
     });
 
     expect(nftBatchContent).toMatch(/^delete table inet compartment_egress_[a-f0-9]{12}$/mu);
+    expect(nftBatchContent).toMatch(/^delete table bridge compartment_egress_[a-f0-9]{12}$/mu);
     expect(nftBatchContent).toMatch(/^add table inet compartment_egress_[a-f0-9]{12}$/mu);
+    expect(nftBatchContent).toMatch(/^add table bridge compartment_egress_[a-f0-9]{12}$/mu);
     expect(nftBatchContent).toMatch(/^add chain inet compartment_egress_[a-f0-9]{12} prerouting /mu);
+    expect(nftBatchContent).toMatch(/^add chain bridge compartment_egress_[a-f0-9]{12} prerouting /mu);
     expect(nftBatchContent).toContain(`ip saddr ${sourceAllowCidr} accept`);
+    expect(nftBatchContent).toContain(`ether type ip ip saddr ${sourceSubnet} ip daddr ${gatewayCidr} drop`);
     expect(nftBatchContent).toContain(`ip saddr ${sourceSubnet} ip daddr ${linkLocalCidr} drop`);
     expect(nftBatchContent).toContain(`ip saddr ${sourceSubnet} ip daddr ${gatewayCidr} drop`);
     expect(nftBatchContent.indexOf(`ip saddr ${sourceAllowCidr} accept`)).toBeLessThan(
@@ -327,11 +334,8 @@ describe('syncDockerNetworkEgressDenyRules', (): void => {
     const sourceSubnet: string = buildIpv4Cidr([172, 30, 0, 0], 16);
     mocks.runProcessCommand.mockImplementation(async (input: ProcessCommandInput): Promise<ProcessCommandResult> => {
       await Promise.resolve();
-      if (input.file === 'nft' && input.args.join(' ') === '--version') {
-        return { stderr: '', stdout: 'nftables v1.0.0' };
-      }
       if (input.file === 'nft') {
-        throw new Error('netlink: Operation not permitted');
+        return { stderr: '', stdout: 'nftables v1.0.0' };
       }
       if (input.file === 'iptables' && input.args.includes('-C')) {
         throw new Error('missing jump');

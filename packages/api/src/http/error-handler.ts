@@ -1,6 +1,10 @@
 import {
   createErrorResponse,
+  nodeRuntimeDockerErrorCode,
+  nodeRuntimeNetworkCapacityExhaustedErrorCode,
   nodeRuntimeResourceReadinessFailedErrorCode,
+  nodeRuntimeServiceReadinessFailedErrorCode,
+  nodeRuntimeServiceStartupFailedErrorCode,
   type ErrorDetails,
 } from '@compartment/contracts';
 import { readNodeRequestRuntimeError } from '@compartment/sdk';
@@ -95,7 +99,13 @@ function mapNodeRuntimeRequestError(error: Error): ApiErrorResponsePayload | nul
 }
 
 function isSurfacedNodeRuntimeErrorCode(code: string): boolean {
-  return code === nodeRuntimeResourceReadinessFailedErrorCode;
+  return (
+    code === nodeRuntimeResourceReadinessFailedErrorCode ||
+    code === nodeRuntimeServiceReadinessFailedErrorCode ||
+    code === nodeRuntimeServiceStartupFailedErrorCode ||
+    code === nodeRuntimeDockerErrorCode ||
+    code === nodeRuntimeNetworkCapacityExhaustedErrorCode
+  );
 }
 
 function hasStatusCode(value: Error): value is ApiStatusCodeCarrier {

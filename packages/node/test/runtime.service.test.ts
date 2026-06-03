@@ -8,17 +8,19 @@ import type {
   DockerRunContainerToCompletionResult,
   DockerTailLogsResult,
 } from '@compartment/docker';
-import type {
-  NodeDeployRequest,
-  NodeDeployResponse,
-  NodeDrainDeploymentResponse,
-  NodeStopDeploymentResponse,
-  NodeTailLogsResponse,
-  ResolvedCompartmentServiceRunConfig,
-  ResolvedServiceReadinessConfig,
+import {
+  nodeRuntimeServiceReadinessFailedErrorCode,
+  nodeRuntimeServiceStartupFailedErrorCode,
+  type NodeDeployRequest,
+  type NodeDeployResponse,
+  type NodeDrainDeploymentResponse,
+  type NodeStopDeploymentResponse,
+  type NodeTailLogsResponse,
+  type ResolvedServiceReadinessConfig,
 } from '@compartment/contracts';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { NodeConfig } from '../src/config';
+import { createRuntimeNetworkCapacityExhaustedError, isNodeRuntimeError } from '../src/errors/node-runtime-error';
 import { buildRuntimeResourceNetworkName, buildRuntimeServiceNetworkName } from '../src/services/runtime-names.service';
 import {
   drainRuntimeContainer,
@@ -27,6 +29,13 @@ import {
   tailRuntimeContainerLogs,
 } from '../src/services/runtime.service';
 import type { RuntimeDeployConfig } from '../src/services/runtime.types';
+import {
+  createDeployRequest,
+  createNodeConfig,
+  createReadiness,
+  createRun,
+  createRuntimeDeployConfig,
+} from './runtime.service.fixtures';
 
 type InspectDockerContainer = (input: { containerRef: string }) => Promise<DockerInspectContainerResult | null>;
 type InspectDockerImage = (input: { imageRef: string }) => Promise<DockerInspectImageResult>;
@@ -37,6 +46,8 @@ type RunDockerContainer = (input: DockerRunContainerInput) => Promise<DockerRunC
 type RunDockerContainerToCompletion = (input: DockerRunContainerInput) => Promise<DockerRunContainerToCompletionResult>;
 type ConnectDockerContainerToNetwork = (input: { containerRef: string; networkName: string }) => Promise<void>;
 type EnsureDockerNetwork = (input: { labels: Record<string, string>; networkName: string }) => Promise<void>;
+type IsDockerNetworkIpamCapacityError = (error: Error) => boolean;
+type ReadDockerEngineErrorMessage = (error: Error) => string;
 type TailDockerContainerLogs = (input: {
   containerId: string;
   since?: string | undefined;
@@ -47,6 +58,16 @@ type EnsureRuntimeNetworkForDeployment = (
   config: RuntimeDeployConfig,
   input: Pick<NodeDeployRequest, 'environmentId' | 'projectId' | 'serviceId'>,
 ) => Promise<string>;
+type EnsureRuntimeResourceNetwork = (
+  input: Pick<NodeDeployRequest, 'environmentId' | 'projectId'>,
+  config: RuntimeDeployConfig,
+) => Promise<string>;
+type AssertRuntimeResourceNetworkFreeEndpoints = (
+  input: Pick<NodeDeployRequest, 'environmentId' | 'projectId'>,
+  config: RuntimeDeployConfig,
+  requiredFreeEndpoints: number,
+  reason: string,
+) => Promise<void>;
 type FindAvailablePort = (start: number, end: number, excludedPorts: number[], host: string) => Promise<number>;
 type ReconcileRuntimeNetworks = (
   config: { dockerNamespace: string; runtimeConnectivityMode: string },
@@ -66,14 +87,18 @@ type WaitForHealthyRuntime = (
 ) => Promise<void>;
 
 interface RuntimeServiceTestMocks {
+  assertRuntimeResourceNetworkFreeEndpoints: Mock<AssertRuntimeResourceNetworkFreeEndpoints>;
   buildDockerNamespaceLabels: Mock<BuildDockerNamespaceLabels>;
   connectDockerContainerToNetwork: Mock<ConnectDockerContainerToNetwork>;
   ensureDockerNetwork: Mock<EnsureDockerNetwork>;
   ensureRuntimeNetworkForDeployment: Mock<EnsureRuntimeNetworkForDeployment>;
+  ensureRuntimeResourceNetwork: Mock<EnsureRuntimeResourceNetwork>;
   findAvailablePort: Mock<FindAvailablePort>;
   inspectDockerContainer: Mock<InspectDockerContainer>;
   inspectDockerImage: Mock<InspectDockerImage>;
   inspectDockerNetwork: Mock<InspectDockerNetwork>;
+  isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
+  readDockerEngineErrorMessage: Mock<ReadDockerEngineErrorMessage>;
   reconcileRuntimeNetworks: Mock<ReconcileRuntimeNetworks>;
   removeDockerContainer: Mock<RemoveDockerContainer>;
   requireDockerImageAvailable: Mock<RequireDockerImageAvailable>;
@@ -87,6 +112,7 @@ interface RuntimeServiceTestMocks {
 
 const mocks: RuntimeServiceTestMocks = vi.hoisted(
   (): RuntimeServiceTestMocks => ({
+    assertRuntimeResourceNetworkFreeEndpoints: vi.fn<AssertRuntimeResourceNetworkFreeEndpoints>(),
     buildDockerNamespaceLabels: vi.fn<BuildDockerNamespaceLabels>(
       (namespace: string): Record<string, string> => ({
         'compartment.namespace': namespace,
@@ -95,10 +121,13 @@ const mocks: RuntimeServiceTestMocks = vi.hoisted(
     connectDockerContainerToNetwork: vi.fn<ConnectDockerContainerToNetwork>(),
     ensureDockerNetwork: vi.fn<EnsureDockerNetwork>(),
     ensureRuntimeNetworkForDeployment: vi.fn<EnsureRuntimeNetworkForDeployment>(),
+    ensureRuntimeResourceNetwork: vi.fn<EnsureRuntimeResourceNetwork>(),
     findAvailablePort: vi.fn<FindAvailablePort>(),
     inspectDockerContainer: vi.fn<InspectDockerContainer>(),
     inspectDockerImage: vi.fn<InspectDockerImage>(),
     inspectDockerNetwork: vi.fn<InspectDockerNetwork>(),
+    isDockerNetworkIpamCapacityError: vi.fn<IsDockerNetworkIpamCapacityError>(),
+    readDockerEngineErrorMessage: vi.fn<ReadDockerEngineErrorMessage>(),
     reconcileRuntimeNetworks: vi.fn<ReconcileRuntimeNetworks>(),
     removeDockerContainer: vi.fn<RemoveDockerContainer>(),
     requireDockerImageAvailable: vi.fn<RequireDockerImageAvailable>(),
@@ -131,6 +160,8 @@ vi.mock(
     inspectDockerContainer: Mock<InspectDockerContainer>;
     inspectDockerImage: Mock<InspectDockerImage>;
     inspectDockerNetwork: Mock<InspectDockerNetwork>;
+    isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
+    readDockerEngineErrorMessage: Mock<ReadDockerEngineErrorMessage>;
     removeDockerContainer: Mock<RemoveDockerContainer>;
     requireDockerImageAvailable: Mock<RequireDockerImageAvailable>;
     runDockerContainer: Mock<RunDockerContainer>;
@@ -145,6 +176,8 @@ vi.mock(
     inspectDockerContainer: mocks.inspectDockerContainer,
     inspectDockerImage: mocks.inspectDockerImage,
     inspectDockerNetwork: mocks.inspectDockerNetwork,
+    isDockerNetworkIpamCapacityError: mocks.isDockerNetworkIpamCapacityError,
+    readDockerEngineErrorMessage: mocks.readDockerEngineErrorMessage,
     removeDockerContainer: mocks.removeDockerContainer,
     requireDockerImageAvailable: mocks.requireDockerImageAvailable,
     runDockerContainer: mocks.runDockerContainer,
@@ -163,11 +196,25 @@ vi.mock(
   (): {
     ensureRuntimeNetworkForDeployment: Mock<EnsureRuntimeNetworkForDeployment>;
     reconcileRuntimeNetworks: Mock<ReconcileRuntimeNetworks>;
-    resolveRuntimeNetworkActors: Mock<ResolveRuntimeNetworkActors>;
   } => ({
     ensureRuntimeNetworkForDeployment: mocks.ensureRuntimeNetworkForDeployment,
     reconcileRuntimeNetworks: mocks.reconcileRuntimeNetworks,
+  }),
+);
+vi.mock(
+  '../src/services/runtime-network-actors.service',
+  (): { resolveRuntimeNetworkActors: Mock<ResolveRuntimeNetworkActors> } => ({
     resolveRuntimeNetworkActors: mocks.resolveRuntimeNetworkActors,
+  }),
+);
+vi.mock(
+  '../src/services/runtime-network-capacity.service',
+  (): {
+    assertRuntimeResourceNetworkFreeEndpoints: Mock<AssertRuntimeResourceNetworkFreeEndpoints>;
+    ensureRuntimeResourceNetwork: Mock<EnsureRuntimeResourceNetwork>;
+  } => ({
+    assertRuntimeResourceNetworkFreeEndpoints: mocks.assertRuntimeResourceNetworkFreeEndpoints,
+    ensureRuntimeResourceNetwork: mocks.ensureRuntimeResourceNetwork,
   }),
 );
 vi.mock(
@@ -177,14 +224,18 @@ vi.mock(
   }),
 );
 afterEach((): void => {
+  mocks.assertRuntimeResourceNetworkFreeEndpoints.mockReset();
   mocks.buildDockerNamespaceLabels.mockClear();
   mocks.connectDockerContainerToNetwork.mockReset();
   mocks.ensureDockerNetwork.mockReset();
   mocks.ensureRuntimeNetworkForDeployment.mockReset();
+  mocks.ensureRuntimeResourceNetwork.mockReset();
   mocks.findAvailablePort.mockReset();
   mocks.inspectDockerContainer.mockReset();
   mocks.inspectDockerImage.mockReset();
   mocks.inspectDockerNetwork.mockReset();
+  mocks.isDockerNetworkIpamCapacityError.mockReset();
+  mocks.readDockerEngineErrorMessage.mockReset();
   mocks.reconcileRuntimeNetworks.mockReset();
   mocks.removeDockerContainer.mockReset();
   mocks.requireDockerImageAvailable.mockReset();
@@ -247,16 +298,6 @@ describe('deployRuntimeContainer', (): void => {
       },
       securityProfile: runtimeContainerSecurityProfile,
     });
-    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith({
-      labels: {
-        'compartment.namespace': 'compartment-e2e',
-      },
-      networkName: 'compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824',
-    });
-    expect(mocks.connectDockerContainerToNetwork).toHaveBeenCalledWith({
-      containerRef: 'compartment-compartment-e2e-smoke-web-production-web-dep_123456',
-      networkName: 'compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824',
-    });
     expect(mocks.findAvailablePort).toHaveBeenCalledWith(31000, 31010, [], '127.0.0.1');
     expect(mocks.waitForHealthyRuntime).toHaveBeenCalledWith('127.0.0.1', 31000, createReadiness());
   });
@@ -302,9 +343,50 @@ describe('deployRuntimeContainer', (): void => {
     });
     mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
 
-    await expect(
-      deployRuntimeContainer(createDeployRequest({ readiness: null }), createRuntimeDeployConfig()),
-    ).rejects.toThrow('remain running after startup');
+    let failure: Error | undefined;
+    try {
+      await deployRuntimeContainer(createDeployRequest({ readiness: null }), createRuntimeDeployConfig());
+    } catch (error) {
+      failure = error as Error;
+    }
+
+    expect(failure?.message).toContain('remain running after startup');
+    expect(isNodeRuntimeError(failure)).toBe(true);
+    if (isNodeRuntimeError(failure)) {
+      expect(failure.code).toBe(nodeRuntimeServiceStartupFailedErrorCode);
+    }
+  });
+
+  it('surfaces Docker container start failures as service startup errors', async (): Promise<void> => {
+    const dockerError: Error = Object.assign(new Error('Docker start failed.'), {
+      json: {
+        message: 'unable to find user definitelymissing',
+      },
+      statusCode: 400,
+    });
+    mocks.findAvailablePort.mockResolvedValueOnce(31000);
+    mocks.inspectDockerImage.mockResolvedValueOnce({
+      exposedPorts: [3000],
+      imageRef: 'sha256:image',
+    });
+    mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
+    mocks.runDockerContainer.mockRejectedValueOnce(dockerError);
+    mocks.readDockerEngineErrorMessage.mockReturnValueOnce(
+      'Docker start failed. unable to find user definitelymissing',
+    );
+
+    let failure: Error | undefined;
+    try {
+      await deployRuntimeContainer(createDeployRequest(), createRuntimeDeployConfig());
+    } catch (error) {
+      failure = error as Error;
+    }
+
+    expect(failure?.message).toBe('runtime startup failed: Docker start failed. unable to find user definitelymissing');
+    expect(isNodeRuntimeError(failure)).toBe(true);
+    if (isNodeRuntimeError(failure)) {
+      expect(failure.code).toBe(nodeRuntimeServiceStartupFailedErrorCode);
+    }
   });
 
   it('uses the compartment default container port when the image exposes no ports', async (): Promise<void> => {
@@ -522,7 +604,7 @@ describe('deployRuntimeContainer', (): void => {
     expect(response.upstreamPort).toBe(31001);
     expect(mocks.findAvailablePort).toHaveBeenCalledWith(31000, 31010, [31000], '127.0.0.1');
     expect(mocks.removeDockerContainer).not.toHaveBeenCalledWith({
-      containerRef: 'legacy_container_123',
+      containerRef: 'previous_container_123',
     });
   });
 
@@ -532,13 +614,6 @@ describe('deployRuntimeContainer', (): void => {
         environmentId: 'env_production',
         projectId: 'prj_smoke_web',
         serviceId: 'svc_web',
-      },
-      'compartment-e2e',
-    );
-    const resourceNetworkName: string = buildRuntimeResourceNetworkName(
-      {
-        environmentId: 'env_production',
-        projectId: 'prj_smoke_web',
       },
       'compartment-e2e',
     );
@@ -579,11 +654,10 @@ describe('deployRuntimeContainer', (): void => {
         serviceId: 'svc_web',
       }),
     );
-    expect(mocks.syncRuntimeNetworkEgressDenyRules).toHaveBeenCalledWith({
-      dockerNamespace: 'compartment-e2e',
-      networkNames: [networkName, resourceNetworkName],
-      platformSourceContainerRefs: ['caddy_container'],
-    });
+    expect(mocks.removeDockerContainer.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.ensureRuntimeNetworkForDeployment.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.syncRuntimeNetworkEgressDenyRules).not.toHaveBeenCalled();
     expect(mocks.runDockerContainer).toHaveBeenCalledWith({
       containerName: 'compartment-compartment-e2e-smoke-web-production-web-dep_123456',
       env: {
@@ -624,6 +698,112 @@ describe('deployRuntimeContainer', (): void => {
     expect(probeInput.network).toEqual({ name: networkName });
   });
 
+  it('connects the resource network only when runtime intent requires resource outputs', async (): Promise<void> => {
+    const networkName: string = buildRuntimeServiceNetworkName(
+      {
+        environmentId: 'env_production',
+        projectId: 'prj_smoke_web',
+        serviceId: 'svc_web',
+      },
+      'compartment-e2e',
+    );
+    const resourceNetworkName: string = buildRuntimeResourceNetworkName(
+      {
+        environmentId: 'env_production',
+        projectId: 'prj_smoke_web',
+      },
+      'compartment-e2e',
+    );
+    mocks.inspectDockerImage.mockResolvedValueOnce({
+      exposedPorts: [3000],
+      imageRef: 'sha256:image',
+    });
+    mocks.ensureRuntimeNetworkForDeployment.mockResolvedValueOnce(networkName);
+    mocks.ensureRuntimeResourceNetwork.mockResolvedValueOnce(resourceNetworkName);
+    mocks.resolveRuntimeNetworkActors.mockResolvedValueOnce({ caddyContainerId: 'caddy_container' });
+    mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
+    mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'container_123' });
+    mocks.runDockerContainerToCompletion.mockResolvedValueOnce({
+      containerId: 'probe_container_123',
+      logs: [],
+      stderr: '',
+      stdout: '',
+    });
+
+    await deployRuntimeContainer(
+      createDeployRequest({
+        runtimeNetwork: {
+          requiresResourceNetwork: true,
+        },
+      }),
+      createRuntimeDeployConfig({
+        runtimeConnectivityMode: 'network',
+        runtimeDefaultUpstreamHost: 'host.docker.internal',
+      }),
+    );
+
+    expect(mocks.ensureRuntimeResourceNetwork).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environmentId: 'env_production',
+        projectId: 'prj_smoke_web',
+      }),
+      expect.objectContaining({ dockerNamespace: 'compartment-e2e' }),
+    );
+    expect(mocks.syncRuntimeNetworkEgressDenyRules).toHaveBeenCalledWith({
+      dockerNamespace: 'compartment-e2e',
+      networkNames: [networkName, resourceNetworkName],
+      platformSourceContainerRefs: ['caddy_container'],
+    });
+    expect(mocks.connectDockerContainerToNetwork).toHaveBeenCalledWith({
+      containerRef: 'compartment-compartment-e2e-smoke-web-production-web-dep_123456',
+      networkName: resourceNetworkName,
+    });
+  });
+
+  it('preserves runtime network errors instead of wrapping them as deployment readiness failures', async (): Promise<void> => {
+    const networkName: string = buildRuntimeServiceNetworkName(
+      {
+        environmentId: 'env_production',
+        projectId: 'prj_smoke_web',
+        serviceId: 'svc_web',
+      },
+      'compartment-e2e',
+    );
+    const capacityError: Error = createRuntimeNetworkCapacityExhaustedError('No subnet remains.');
+    mocks.inspectDockerImage.mockResolvedValueOnce({
+      exposedPorts: [3000],
+      imageRef: 'sha256:image',
+    });
+    mocks.ensureRuntimeNetworkForDeployment.mockResolvedValueOnce(networkName);
+    mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
+    mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'container_123' });
+    mocks.ensureRuntimeResourceNetwork.mockRejectedValueOnce(capacityError);
+
+    let failure: Error | undefined;
+    try {
+      await deployRuntimeContainer(
+        createDeployRequest({
+          runtimeNetwork: {
+            requiresResourceNetwork: true,
+          },
+        }),
+        createRuntimeDeployConfig({
+          runtimeConnectivityMode: 'network',
+          runtimeDefaultUpstreamHost: 'host.docker.internal',
+        }),
+      );
+    } catch (error) {
+      failure = error as Error;
+    }
+
+    expect(failure).toBe(capacityError);
+    expect(isNodeRuntimeError(failure)).toBe(true);
+    expect(failure?.message).not.toContain('runtime readiness failed');
+    expect(mocks.removeDockerContainer).toHaveBeenCalledWith({
+      containerRef: 'compartment-compartment-e2e-smoke-web-production-web-dep_123456',
+    });
+  });
+
   it('preserves the readiness failure when cleanup removal also fails', async (): Promise<void> => {
     mocks.findAvailablePort.mockResolvedValueOnce(31000);
     mocks.inspectDockerImage.mockResolvedValueOnce({
@@ -631,18 +811,28 @@ describe('deployRuntimeContainer', (): void => {
       imageRef: 'sha256:image',
     });
     mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
+    mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
     mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'container_123' });
     mocks.waitForHealthyRuntime.mockRejectedValueOnce(new Error('not ready'));
     mocks.removeDockerContainer.mockRejectedValueOnce(new Error('docker remove failed'));
 
-    await expect(deployRuntimeContainer(createDeployRequest(), createRuntimeDeployConfig())).rejects.toThrow(
-      'runtime readiness failed: not ready',
-    );
+    let failure: Error | undefined;
+    try {
+      await deployRuntimeContainer(createDeployRequest(), createRuntimeDeployConfig());
+    } catch (error) {
+      failure = error as Error;
+    }
 
-    expect(mocks.removeDockerContainer).toHaveBeenNthCalledWith(1, {
+    expect(failure?.message).toContain('runtime readiness failed: not ready');
+    expect(isNodeRuntimeError(failure)).toBe(true);
+    if (isNodeRuntimeError(failure)) {
+      expect(failure.code).toBe(nodeRuntimeServiceReadinessFailedErrorCode);
+    }
+
+    expect(mocks.removeDockerContainer).toHaveBeenNthCalledWith(2, {
       containerRef: 'compartment-compartment-e2e-smoke-web-production-web-dep_123456',
     });
-    expect(mocks.removeDockerContainer).toHaveBeenNthCalledWith(2, {
+    expect(mocks.removeDockerContainer).toHaveBeenNthCalledWith(3, {
       containerRef: 'compartment-compartment-e2e-smoke-web-production-web-dep_123456',
     });
   });
@@ -782,8 +972,8 @@ describe('stopRuntimeContainer', (): void => {
 describe('drainRuntimeContainer', (): void => {
   it('removes the addressed draining container even when network reconciliation fails', async (): Promise<void> => {
     mocks.inspectDockerContainer.mockResolvedValueOnce({
-      containerId: 'legacy_container_123',
-      imageRef: 'sha256:legacy-image',
+      containerId: 'previous_container_123',
+      imageRef: 'sha256:previous-image',
       isRunning: true,
       labels: {
         'compartment.deploymentId': 'dep_previous',
@@ -796,7 +986,7 @@ describe('drainRuntimeContainer', (): void => {
 
     const response: NodeDrainDeploymentResponse = await drainRuntimeContainer(
       {
-        containerId: 'legacy_container_123',
+        containerId: 'previous_container_123',
         deploymentId: 'dep_previous',
       },
       config,
@@ -804,10 +994,10 @@ describe('drainRuntimeContainer', (): void => {
 
     expect(response.acceptedAt).toContain('T');
     expect(mocks.inspectDockerContainer).toHaveBeenCalledWith({
-      containerRef: 'legacy_container_123',
+      containerRef: 'previous_container_123',
     });
     expect(mocks.removeDockerContainer).toHaveBeenCalledWith({
-      containerRef: 'legacy_container_123',
+      containerRef: 'previous_container_123',
     });
     expect(mocks.reconcileRuntimeNetworks).toHaveBeenCalledWith(config, {
       disconnectCaddyStaleNetworks: true,
@@ -819,7 +1009,7 @@ describe('drainRuntimeContainer', (): void => {
 
     const response: NodeDrainDeploymentResponse = await drainRuntimeContainer(
       {
-        containerId: 'legacy_container_123',
+        containerId: 'previous_container_123',
         deploymentId: 'dep_previous',
       },
       createNodeConfig(),
@@ -831,8 +1021,8 @@ describe('drainRuntimeContainer', (): void => {
 
   it('rejects removal when the container belongs to another deployment', async (): Promise<void> => {
     mocks.inspectDockerContainer.mockResolvedValueOnce({
-      containerId: 'legacy_container_123',
-      imageRef: 'sha256:legacy-image',
+      containerId: 'previous_container_123',
+      imageRef: 'sha256:previous-image',
       isRunning: true,
       labels: {
         'compartment.deploymentId': 'dep_other',
@@ -843,7 +1033,7 @@ describe('drainRuntimeContainer', (): void => {
     await expect(
       drainRuntimeContainer(
         {
-          containerId: 'legacy_container_123',
+          containerId: 'previous_container_123',
           deploymentId: 'dep_previous',
         },
         createNodeConfig(),
@@ -854,14 +1044,6 @@ describe('drainRuntimeContainer', (): void => {
   });
 });
 
-function createReadiness(): ResolvedServiceReadinessConfig {
-  return {
-    path: '/healthz',
-    timeoutMs: 30000,
-    type: 'http',
-  };
-}
-
 function readRuntimeReadinessProbeInput(): DockerRunContainerInput {
   const probeInput: DockerRunContainerInput | undefined = mocks.runDockerContainerToCompletion.mock.calls[0]?.[0];
   if (probeInput === undefined) {
@@ -869,73 +1051,4 @@ function readRuntimeReadinessProbeInput(): DockerRunContainerInput {
   }
 
   return probeInput;
-}
-
-function createRun(overrides: Partial<ResolvedCompartmentServiceRunConfig> = {}): ResolvedCompartmentServiceRunConfig {
-  return {
-    restart: {
-      policy: 'on-failure',
-    },
-    ...overrides,
-  };
-}
-
-function createDeployRequest(overrides: Partial<NodeDeployRequest> = {}): NodeDeployRequest {
-  return {
-    deploymentId: 'dep_123456',
-    environmentId: 'env_production',
-    environmentName: 'production',
-    imageRef: 'sha256:image',
-    projectId: 'prj_smoke_web',
-    projectName: 'smoke-web',
-    readiness: createReadiness(),
-    run: createRun(),
-    routeHost: 'smoke-web.localhost',
-    runtimeEnv: {},
-    serviceId: 'svc_web',
-    serviceName: 'web',
-    ...overrides,
-  };
-}
-function createNodeConfig(overrides: Partial<NodeConfig> = {}): NodeConfig {
-  return {
-    apiUrl: 'http://127.0.0.1:9443',
-    appPortEnd: 31999,
-    appPortStart: 31000,
-    dockerNamespace: 'compartment-e2e',
-    logLevel: 'silent',
-    name: 'local-node',
-    nodeSocketPath: '/tmp/compartment/node-test/node/runtime.sock',
-    resourceBackupDirectory: '/var/lib/compartment/resource-backups',
-    runtimeConnectivityMode: 'loopback',
-    runtimeDefaultUpstreamHost: '127.0.0.1',
-    runtimeGid: 10001,
-    runtimeUid: 10001,
-    runtimeRegistryCredentials: {
-      password: 'registry-read-password',
-      serverAddress: '127.0.0.1:39461',
-      username: 'registry-reader',
-    },
-    runtimeProbeImageRef: 'ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0',
-    runtimeSocketGid: 10001,
-    version: '0.1.0',
-    runtimeControlToken: 'test-runtime-control-token',
-    ...overrides,
-  };
-}
-function createRuntimeDeployConfig(overrides: Partial<RuntimeDeployConfig> = {}): RuntimeDeployConfig {
-  return {
-    appPortEnd: 31010,
-    appPortStart: 31000,
-    dockerNamespace: 'compartment-e2e',
-    runtimeConnectivityMode: 'loopback',
-    runtimeDefaultUpstreamHost: '127.0.0.1',
-    runtimeRegistryCredentials: {
-      password: 'registry-read-password',
-      serverAddress: '127.0.0.1:39461',
-      username: 'registry-reader',
-    },
-    runtimeProbeImageRef: 'ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0',
-    ...overrides,
-  };
 }

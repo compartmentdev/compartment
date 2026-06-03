@@ -8,12 +8,14 @@ import {
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { expect, type Mock } from 'vitest';
-import type {
-  NodeDeployRequest,
-  NodePreviousDeployment,
-  ResolvedCompartmentServiceRunConfig,
-  ResolvedOptionalServiceReadinessConfig,
-  WorkerClaimedDeployment,
+import {
+  nodeRuntimeNetworkReservationCleanupPathname as runtimeNetworkReservationCleanupPathname,
+  nodeRuntimeNetworkReservationPathname as runtimeNetworkReservationPathname,
+  type NodeDeployRequest,
+  type NodePreviousDeployment,
+  type ResolvedCompartmentServiceRunConfig,
+  type ResolvedOptionalServiceReadinessConfig,
+  type WorkerClaimedDeployment,
 } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
 
@@ -35,6 +37,10 @@ export interface NodeRuntimeTestResponse {
 
 export interface NodeRuntimeTestServer {
   calls: NodeRuntimeRequestCall[];
+}
+
+export interface NodeRuntimeTestServerOptions {
+  reservationResponse?: NodeRuntimeTestResponse | undefined;
 }
 
 interface NodeDeploySuccessResponseBody {
@@ -66,6 +72,9 @@ export function createNodeDeployRequest(
     run: createRun(),
     routeHost: 'smoke-web.localhost',
     runtimeEnv: {},
+    runtimeNetwork: {
+      requiresResourceNetwork: false,
+    },
     serviceId: 'svc_123',
     serviceName: 'web',
   };
@@ -119,6 +128,9 @@ export function createClaimedDeploymentPayload(
     routeHost: 'smoke-web.localhost',
     buildEnv: {},
     runtimeEnv: {},
+    runtimeNetwork: {
+      requiresResourceNetwork: false,
+    },
     service: {
       build: {
         env: [],
@@ -163,11 +175,12 @@ export async function startNodeRuntimeServer(
   socketPath: string,
   handler: NodeRuntimeRouteHandler,
   servers: Server[],
+  options: NodeRuntimeTestServerOptions = {},
 ): Promise<NodeRuntimeTestServer> {
   await mkdir(dirname(socketPath), { recursive: true });
   const calls: NodeRuntimeRequestCall[] = [];
   const server: Server = createServer((request: IncomingMessage, response: ServerResponse): void => {
-    void handleNodeRuntimeRequest(request, response, calls, handler);
+    void handleNodeRuntimeRequest(request, response, calls, handler, options);
   });
   await listenOnSocket(server, socketPath);
   servers.push(server);
@@ -238,6 +251,7 @@ async function handleNodeRuntimeRequest(
   response: ServerResponse,
   calls: NodeRuntimeRequestCall[],
   handler: NodeRuntimeRouteHandler,
+  options: NodeRuntimeTestServerOptions,
 ): Promise<void> {
   const call: NodeRuntimeRequestCall = {
     body: await readNodeRuntimeRequestBody(request),
@@ -245,9 +259,47 @@ async function handleNodeRuntimeRequest(
     method: request.method ?? '',
     url: request.url ?? '',
   };
-  calls.push(call);
   expect(call.headers.authorization).toBe('Bearer worker-secret');
+  const defaultResponse: NodeRuntimeTestResponse | null = readDefaultNodeRuntimeResponse(call, options);
+  if (defaultResponse !== null) {
+    calls.push(call);
+    writeNodeRuntimeResponse(response, defaultResponse);
+    return;
+  }
+
+  calls.push(call);
   const testResponse: NodeRuntimeTestResponse = handler(call);
+  writeNodeRuntimeResponse(response, testResponse);
+}
+
+function readDefaultNodeRuntimeResponse(
+  call: NodeRuntimeRequestCall,
+  options: NodeRuntimeTestServerOptions,
+): NodeRuntimeTestResponse | null {
+  if (call.url === runtimeNetworkReservationPathname) {
+    return (
+      options.reservationResponse ?? {
+        body: {
+          expiresAt: '2026-03-23T14:00:00.000Z',
+          newlyCreatedNetworkNames: [],
+          reservationId: 'dep_123',
+          reservedNetworkNames: [],
+        },
+      }
+    );
+  }
+  if (call.url === runtimeNetworkReservationCleanupPathname) {
+    return {
+      body: {
+        cleanedAt: '2026-03-23T12:05:00.000Z',
+      },
+    };
+  }
+
+  return null;
+}
+
+function writeNodeRuntimeResponse(response: ServerResponse, testResponse: NodeRuntimeTestResponse): void {
   response.statusCode = testResponse.status ?? 200;
   response.setHeader('content-type', 'application/json');
   response.end(JSON.stringify(testResponse.body));

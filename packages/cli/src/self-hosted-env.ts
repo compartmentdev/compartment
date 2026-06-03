@@ -22,6 +22,7 @@ import type { ManagedDomainInstallState } from './managed-domain.types';
 
 const defaultSelfHostedDockerNamespace: string = 'compartment';
 const defaultSelfHostedBuildKitAddress: string = 'unix:///run/buildkit/buildkitd.sock';
+const defaultRuntimeNetworkPoolCidr: string = `${[10, 240, 0, 0].join('.')}/12`;
 const defaultRuntimeUpstreamHost: string = 'host.docker.internal';
 export const defaultNodeAgentSocketPath: string = '/var/run/compartment/node/agent.sock';
 export const defaultSystemApiSocketPath: string = '/var/run/compartment/api/system-api.sock';
@@ -183,6 +184,8 @@ function buildRuntimeConnectivityOverrides(): Record<string, string> {
   return {
     COMPARTMENT_RUNTIME_CONNECTIVITY_MODE: 'network',
     COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: defaultRuntimeUpstreamHost,
+    COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR: defaultRuntimeNetworkPoolCidr,
+    COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX: '28',
     COMPARTMENT_RUNTIME_GID: String(defaultSelfHostedRuntimeGid),
     COMPARTMENT_RUNTIME_UID: String(defaultSelfHostedRuntimeUid),
   };
@@ -265,14 +268,10 @@ function readDeclaredVariableNames(templateText: string): string[] {
   return variableNames;
 }
 
-function compareStrings(left: string, right: string): number {
-  return left.localeCompare(right);
-}
-
 function assertOverrideVariablesPresent(values: Record<string, string>, overrides: Record<string, string>): void {
   const missingVariableNames: string[] = Object.keys(overrides)
     .filter((variableName: string): boolean => values[variableName] === undefined)
-    .sort(compareStrings);
+    .sort((left: string, right: string): number => left.localeCompare(right));
 
   if (missingVariableNames.length === 0) {
     return;

@@ -1,4 +1,4 @@
-import { execFile, type ExecFileOptions } from 'node:child_process';
+import { execFile, execFileSync, type ExecFileOptions } from 'node:child_process';
 import {
   createServer,
   request as createHttpRequest,
@@ -17,8 +17,15 @@ import {
   nodeProjectCleanupPathname,
   nodeProjectCleanupResponseSchema,
   nodeDeployResponseSchema,
+  nodeRuntimeNetworkReservationCleanupPathname,
+  nodeRuntimeNetworkReservationCleanupResponseSchema,
+  nodeRuntimeNetworkReservationPathname,
+  nodeRuntimeNetworkReservationResponseSchema,
   type NodeDeployResponse,
   type NodeProjectCleanupResponse,
+  type NodeRuntimeNetworkReservationCleanupResponse,
+  type NodeRuntimeNetworkReservationRequest,
+  type NodeRuntimeNetworkReservationResponse,
 } from '@compartment/contracts';
 import { compartmentDockerNamespaceLabelName, syncDockerNetworkEgressDenyRules } from '@compartment/docker';
 import { cleanupDockerTestNamespacesByPrefix, createDockerTestNamespace } from '@compartment/test-support';
@@ -33,6 +40,7 @@ import {
   buildSystemNetworkName,
 } from '../src/services/runtime-names.service';
 import { projectIdLabelName } from '../src/services/runtime-container-labels';
+import { buildTestIpv4Cidr, createRuntimeNetworkPoolConfig } from './runtime-network-pool.fixture';
 
 interface DockerContainerInspect {
   Config: {
@@ -47,7 +55,7 @@ interface DockerContainerInspect {
   };
   Id: string;
   NetworkSettings: {
-    Networks: Record<string, { IPAddress: string } | undefined>;
+    Networks: Record<string, { Aliases?: string[] | undefined; IPAddress: string } | undefined>;
     Ports: Record<string, { HostIp: string; HostPort: string }[] | null>;
   };
 }
@@ -56,6 +64,7 @@ interface DockerNetworkInspect {
   IPAM: {
     Config?: DockerNetworkIpamInspect[] | undefined;
   };
+  Labels: Record<string, string> | null;
 }
 
 interface DockerNetworkIpamInspect {
@@ -112,6 +121,7 @@ describe.sequential('runtime network boundary', (): void => {
         },
         dockerNamespace,
       );
+      const managedServiceSubnet: string = buildTestIpv4Cidr(10, 240, 0, 0, 28);
       const apiServer: Server = await startMockApiServer();
       const apiPort: number = readServerPort(apiServer);
       const socketDirectory: string = await mkdtemp(join(tmpdir(), 'compartment-node-boundary-'));
@@ -153,8 +163,15 @@ describe.sequential('runtime network boundary', (): void => {
       const deployResponse: NodeDeployResponse = await deployRuntime(nodeSocketPath);
       const runtimeInspect: DockerContainerInspect = await inspectDockerContainer(deployResponse.containerId);
       const caddyInspect: DockerContainerInspect = await inspectDockerContainer(caddyContainerName);
+      const serviceNetwork: DockerNetworkInspect = await inspectDockerNetwork(serviceNetworkName);
 
       expect(caddyInspect.NetworkSettings.Networks[serviceNetworkName]).toBeDefined();
+      await expect(readProjectNetworkNames(dockerNamespace, 'prj_123')).resolves.toEqual([serviceNetworkName]);
+      expect(serviceNetwork.Labels?.['compartment.network.ipam']).toBe('managed');
+      expect(serviceNetwork.Labels?.['compartment.network.subnet']).toBe(managedServiceSubnet);
+      expect(
+        serviceNetwork.IPAM.Config?.map((config: DockerNetworkIpamInspect): string | undefined => config.Subnet),
+      ).toContain(managedServiceSubnet);
       expect(readPublishedPortBindings(runtimeInspect)).toHaveLength(0);
       expect(runtimeInspect.HostConfig.CapAdd).toEqual(['CHOWN', 'NET_BIND_SERVICE', 'SETGID', 'SETUID']);
       expect(runtimeInspect.HostConfig.CapDrop).toContain('ALL');
@@ -189,6 +206,64 @@ describe.sequential('runtime network boundary', (): void => {
       const caddyInspectAfterCleanup: DockerContainerInspect = await inspectDockerContainer(caddyContainerName);
 
       expect(caddyInspectAfterCleanup.NetworkSettings.Networks[serviceNetworkName]).toBeUndefined();
+    },
+    120_000,
+  );
+
+  it.skipIf(!canInspectHostIpv4Routes())(
+    'fails tiny managed-pool reservations before runtime artifacts are created',
+    async (): Promise<void> => {
+      const dockerNamespace: string = createDockerTestNamespace('compartment-node-boundary');
+      const apiServer: Server = await startMockApiServer();
+      const apiPort: number = readServerPort(apiServer);
+      const socketDirectory: string = await mkdtemp(join(tmpdir(), 'compartment-node-boundary-'));
+      const nodeSocketPath: string = join(socketDirectory, 'node', 'agent.sock');
+
+      cleanupTasks.push(async (): Promise<void> => {
+        await safeRemoveNamespaceVolumes(dockerNamespace);
+        await rm(socketDirectory, { force: true, recursive: true });
+        await closeServer(apiServer);
+      });
+
+      const nodeAgent: NodeApp = await startNodeAgent(
+        createNodeConfig(dockerNamespace, apiPort, nodeSocketPath, {
+          runtimeNetworkPool: createRuntimeNetworkPoolConfig({
+            cidr: buildTestIpv4Cidr(10, 250, 0, 0, 29),
+            subnetPrefixLength: 29,
+          }),
+        }),
+      );
+      cleanupTasks.push(async (): Promise<void> => {
+        await nodeAgent.close();
+      });
+
+      const firstReservation: NodeRuntimeNetworkReservationResponse = await reserveRuntimeNetwork(
+        nodeSocketPath,
+        createReservationRequest({ deploymentId: 'dep_first', serviceId: 'svc_first' }),
+      );
+      const firstServiceNetworkName: string = buildRuntimeServiceNetworkName(
+        {
+          environmentId: 'env_123',
+          projectId: 'prj_123',
+          serviceId: 'svc_first',
+        },
+        dockerNamespace,
+      );
+
+      await expect(
+        reserveRuntimeNetwork(
+          nodeSocketPath,
+          createReservationRequest({ deploymentId: 'dep_second', serviceId: 'svc_second' }),
+        ),
+      ).rejects.toThrow('runtime_network_capacity_exhausted');
+      await expect(readProjectContainerIds(dockerNamespace, 'prj_123')).resolves.toEqual([]);
+      await expect(readProjectNetworkNames(dockerNamespace, 'prj_123')).resolves.toEqual([firstServiceNetworkName]);
+
+      await cleanupRuntimeNetworkReservation(nodeSocketPath, {
+        networkNames: firstReservation.newlyCreatedNetworkNames,
+        reservationId: firstReservation.reservationId,
+      });
+      await expect(readProjectNetworkNames(dockerNamespace, 'prj_123')).resolves.toEqual([]);
     },
     120_000,
   );
@@ -236,7 +311,12 @@ async function startNodeAgent(config: NodeConfig): Promise<NodeApp> {
   return app;
 }
 
-function createNodeConfig(dockerNamespace: string, apiPort: number, nodeSocketPath: string): NodeConfig {
+function createNodeConfig(
+  dockerNamespace: string,
+  apiPort: number,
+  nodeSocketPath: string,
+  overrides: Partial<Pick<NodeConfig, 'runtimeConnectivityMode' | 'runtimeNetworkPool'>> = {},
+): NodeConfig {
   return {
     apiUrl: `http://127.0.0.1:${apiPort.toString()}`,
     appPortEnd: 31999,
@@ -248,6 +328,7 @@ function createNodeConfig(dockerNamespace: string, apiPort: number, nodeSocketPa
     resourceBackupDirectory: '/var/lib/compartment/resource-backups',
     runtimeConnectivityMode: 'network',
     runtimeDefaultUpstreamHost: 'host.docker.internal',
+    runtimeNetworkPool: createRuntimeNetworkPoolConfig(),
     runtimeGid: 10001,
     runtimeUid: 10001,
     runtimeRegistryCredentials: {
@@ -259,6 +340,7 @@ function createNodeConfig(dockerNamespace: string, apiPort: number, nodeSocketPa
     runtimeSocketGid: 10001,
     runtimeControlToken,
     version: '0.1.0',
+    ...overrides,
   };
 }
 
@@ -305,6 +387,9 @@ async function deployRuntime(socketPath: string): Promise<NodeDeployResponse> {
       },
       routeHost: 'smoke-web.localhost',
       runtimeEnv: {},
+      runtimeNetwork: {
+        requiresResourceNetwork: false,
+      },
       serviceId: 'svc_123',
       serviceName: 'web',
     },
@@ -329,6 +414,46 @@ async function cleanupProjectRuntime(socketPath: string, deleteData: boolean): P
   });
 
   return nodeProjectCleanupResponseSchema.parse(JSON.parse(responseBody));
+}
+
+function createReservationRequest(
+  overrides: Partial<NodeRuntimeNetworkReservationRequest> = {},
+): NodeRuntimeNetworkReservationRequest {
+  return {
+    deploymentId: 'dep_123',
+    environmentId: 'env_123',
+    projectId: 'prj_123',
+    requiresResourceNetwork: false,
+    serviceId: 'svc_123',
+    serviceNetworkEndpointReservations: 2,
+    ...overrides,
+  };
+}
+
+async function reserveRuntimeNetwork(
+  socketPath: string,
+  request: NodeRuntimeNetworkReservationRequest,
+): Promise<NodeRuntimeNetworkReservationResponse> {
+  const responseBody: string = await sendNodeAgentRequest({
+    body: request,
+    path: nodeRuntimeNetworkReservationPathname,
+    socketPath,
+  });
+
+  return nodeRuntimeNetworkReservationResponseSchema.parse(JSON.parse(responseBody));
+}
+
+async function cleanupRuntimeNetworkReservation(
+  socketPath: string,
+  request: { networkNames: string[]; reservationId: string },
+): Promise<NodeRuntimeNetworkReservationCleanupResponse> {
+  const responseBody: string = await sendNodeAgentRequest({
+    body: request,
+    path: nodeRuntimeNetworkReservationCleanupPathname,
+    socketPath,
+  });
+
+  return nodeRuntimeNetworkReservationCleanupResponseSchema.parse(JSON.parse(responseBody));
 }
 
 async function sendNodeAgentRequest(input: NodeAgentRequestInput): Promise<string> {
@@ -396,6 +521,24 @@ async function readProjectContainerIds(dockerNamespace: string, projectId: strin
     .filter((containerId: string): boolean => containerId !== '');
 }
 
+async function readProjectNetworkNames(dockerNamespace: string, projectId: string): Promise<string[]> {
+  const { stdout } = await runDockerCommand([
+    'network',
+    'ls',
+    '--format',
+    '{{.Name}}',
+    '--filter',
+    `label=${compartmentDockerNamespaceLabelName}=${dockerNamespace}`,
+    '--filter',
+    `label=${projectIdLabelName}=${projectId}`,
+  ]);
+
+  return stdout
+    .trim()
+    .split('\n')
+    .filter((networkName: string): boolean => networkName !== '');
+}
+
 async function readDockerNetworkExists(networkName: string): Promise<boolean> {
   try {
     await runDockerCommand(['network', 'inspect', networkName]);
@@ -406,9 +549,8 @@ async function readDockerNetworkExists(networkName: string): Promise<boolean> {
 }
 
 async function inspectDockerNetworkGateway(networkName: string): Promise<string> {
-  const { stdout } = await runDockerCommand(['network', 'inspect', networkName]);
-  const [network] = JSON.parse(stdout) as DockerNetworkInspect[];
-  const gateway: string | undefined = network?.IPAM.Config?.find(
+  const network: DockerNetworkInspect = await inspectDockerNetwork(networkName);
+  const gateway: string | undefined = network.IPAM.Config?.find(
     (config: DockerNetworkIpamInspect): boolean => config.Gateway !== undefined,
   )?.Gateway;
   if (gateway === undefined) {
@@ -416,6 +558,16 @@ async function inspectDockerNetworkGateway(networkName: string): Promise<string>
   }
 
   return gateway;
+}
+
+async function inspectDockerNetwork(networkName: string): Promise<DockerNetworkInspect> {
+  const { stdout } = await runDockerCommand(['network', 'inspect', networkName]);
+  const [network] = JSON.parse(stdout) as DockerNetworkInspect[];
+  if (network === undefined) {
+    throw new Error(`Missing docker network inspect result for ${networkName}.`);
+  }
+
+  return network;
 }
 
 function readPublishedPortBindings(container: DockerContainerInspect): { HostIp: string; HostPort: string }[] {
@@ -456,6 +608,15 @@ async function safeSyncDockerNetworkEgressDenyRules(input: DockerNetworkEgressDe
 
 function canManageHostFirewallRules(): boolean {
   return process.platform === 'linux' && process.getuid?.() === 0;
+}
+
+function canInspectHostIpv4Routes(): boolean {
+  try {
+    execFileSync('ip', ['-4', 'route', 'show'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function buildIpv4Address(octets: readonly [number, number, number, number]): string {
@@ -501,6 +662,27 @@ async function pullDockerImageIfMissing(imageRef: string): Promise<void> {
 async function safeDockerCommand(args: string[]): Promise<void> {
   try {
     await runDockerCommand(args);
+  } catch {
+    return;
+  }
+}
+
+async function safeRemoveNamespaceVolumes(dockerNamespace: string): Promise<void> {
+  try {
+    const { stdout } = await runDockerCommand([
+      'volume',
+      'ls',
+      '-q',
+      '--filter',
+      `label=${compartmentDockerNamespaceLabelName}=${dockerNamespace}`,
+    ]);
+    const volumeNames: string[] = stdout
+      .trim()
+      .split('\n')
+      .filter((volumeName: string): boolean => volumeName !== '');
+    for (const volumeName of volumeNames) {
+      await safeDockerCommand(['volume', 'rm', volumeName]);
+    }
   } catch {
     return;
   }

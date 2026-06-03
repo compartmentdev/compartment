@@ -15,6 +15,7 @@ import {
   runRuntimeResourceRestoreOperation,
 } from '../src/services/runtime-resource-operation.service';
 import type { RuntimeResourceOperationConfig } from '../src/services/runtime.types';
+import { createRuntimeNetworkPoolConfig } from './runtime-network-pool.fixture';
 
 type CanConnectToRuntimeHost = (host: string, port: number, deadline: number) => Promise<boolean>;
 type ConnectDockerContainerToNetwork = (input: { containerRef: string; networkName: string }) => Promise<void>;
@@ -22,7 +23,19 @@ type EnsureDockerImageAvailable = (input: { imageRef: string }) => Promise<void>
 type EnsureDockerNetwork = (input: DockerEnsureNetworkInput) => Promise<void>;
 type InspectDockerContainer = (input: { containerRef: string }) => Promise<DockerInspectContainerResult | null>;
 type InspectDockerNetwork = (input: { networkName: string }) => Promise<DockerInspectNetworkResult | null>;
+type IsDockerNetworkIpamCapacityError = (error: Error) => boolean;
+type ReadDockerEngineErrorMessage = (error: Error) => string;
 type RunDockerContainerToCompletion = (input: DockerRunContainerInput) => Promise<DockerRunContainerToCompletionResult>;
+type EnsureRuntimeResourceNetwork = (
+  input: Pick<NodeResourceOperationRequest, 'environmentId' | 'projectId'>,
+  config: RuntimeResourceOperationConfig,
+) => Promise<string>;
+type AssertRuntimeResourceNetworkFreeEndpoints = (
+  input: Pick<NodeResourceOperationRequest, 'environmentId' | 'projectId'>,
+  config: RuntimeResourceOperationConfig,
+  requiredFreeEndpoints: number,
+  reason: string,
+) => Promise<void>;
 
 interface DockerEnsureNetworkInput {
   labels: Record<string, string>;
@@ -35,24 +48,43 @@ interface RuntimeResourceConnectivityModule {
 }
 
 interface RuntimeResourceOperationMocks {
+  assertRuntimeResourceNetworkFreeEndpoints: Mock<AssertRuntimeResourceNetworkFreeEndpoints>;
   canConnectToRuntimeHost: Mock<CanConnectToRuntimeHost>;
   connectDockerContainerToNetwork: Mock<ConnectDockerContainerToNetwork>;
   ensureDockerImageAvailable: Mock<EnsureDockerImageAvailable>;
   ensureDockerNetwork: Mock<EnsureDockerNetwork>;
+  ensureRuntimeResourceNetwork: Mock<EnsureRuntimeResourceNetwork>;
   inspectDockerContainer: Mock<InspectDockerContainer>;
   inspectDockerNetwork: Mock<InspectDockerNetwork>;
+  isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
+  readDockerEngineErrorMessage: Mock<ReadDockerEngineErrorMessage>;
   runDockerContainerToCompletion: Mock<RunDockerContainerToCompletion>;
 }
 
 const mocks: RuntimeResourceOperationMocks = vi.hoisted(
   (): RuntimeResourceOperationMocks => ({
+    assertRuntimeResourceNetworkFreeEndpoints: vi.fn<AssertRuntimeResourceNetworkFreeEndpoints>(),
     canConnectToRuntimeHost: vi.fn<CanConnectToRuntimeHost>(),
     connectDockerContainerToNetwork: vi.fn<ConnectDockerContainerToNetwork>(),
     ensureDockerImageAvailable: vi.fn<EnsureDockerImageAvailable>(),
     ensureDockerNetwork: vi.fn<EnsureDockerNetwork>(),
+    ensureRuntimeResourceNetwork: vi.fn<EnsureRuntimeResourceNetwork>(),
     inspectDockerContainer: vi.fn<InspectDockerContainer>(),
     inspectDockerNetwork: vi.fn<InspectDockerNetwork>(),
+    isDockerNetworkIpamCapacityError: vi.fn<IsDockerNetworkIpamCapacityError>(),
+    readDockerEngineErrorMessage: vi.fn<ReadDockerEngineErrorMessage>(),
     runDockerContainerToCompletion: vi.fn<RunDockerContainerToCompletion>(),
+  }),
+);
+
+vi.mock(
+  '../src/services/runtime-network-capacity.service',
+  (): {
+    assertRuntimeResourceNetworkFreeEndpoints: Mock<AssertRuntimeResourceNetworkFreeEndpoints>;
+    ensureRuntimeResourceNetwork: Mock<EnsureRuntimeResourceNetwork>;
+  } => ({
+    assertRuntimeResourceNetworkFreeEndpoints: mocks.assertRuntimeResourceNetworkFreeEndpoints,
+    ensureRuntimeResourceNetwork: mocks.ensureRuntimeResourceNetwork,
   }),
 );
 
@@ -79,6 +111,8 @@ vi.mock(
     ensureDockerNetwork: Mock<EnsureDockerNetwork>;
     inspectDockerContainer: Mock<InspectDockerContainer>;
     inspectDockerNetwork: Mock<InspectDockerNetwork>;
+    isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
+    readDockerEngineErrorMessage: Mock<ReadDockerEngineErrorMessage>;
     runDockerContainerToCompletion: Mock<RunDockerContainerToCompletion>;
   } => ({
     buildDockerNamespaceLabels: (namespace: string): Record<string, string> => ({
@@ -90,6 +124,8 @@ vi.mock(
     ensureDockerNetwork: mocks.ensureDockerNetwork,
     inspectDockerContainer: mocks.inspectDockerContainer,
     inspectDockerNetwork: mocks.inspectDockerNetwork,
+    isDockerNetworkIpamCapacityError: mocks.isDockerNetworkIpamCapacityError,
+    readDockerEngineErrorMessage: mocks.readDockerEngineErrorMessage,
     runDockerContainerToCompletion: mocks.runDockerContainerToCompletion,
   }),
 );
@@ -100,9 +136,11 @@ const temporaryDirectories: string[] = [];
 
 beforeEach((): void => {
   process.env.HOSTNAME = nodeContainerRef;
+  mocks.ensureRuntimeResourceNetwork.mockResolvedValue('compartment-test-prj-123-env-123-resources');
 });
 
 afterEach(async (): Promise<void> => {
+  mocks.assertRuntimeResourceNetworkFreeEndpoints.mockReset();
   mocks.canConnectToRuntimeHost.mockClear();
   if (originalHostname === undefined) {
     delete process.env.HOSTNAME;
@@ -112,8 +150,11 @@ afterEach(async (): Promise<void> => {
   mocks.connectDockerContainerToNetwork.mockReset();
   mocks.ensureDockerImageAvailable.mockReset();
   mocks.ensureDockerNetwork.mockReset();
+  mocks.ensureRuntimeResourceNetwork.mockReset();
   mocks.inspectDockerContainer.mockReset();
   mocks.inspectDockerNetwork.mockReset();
+  mocks.isDockerNetworkIpamCapacityError.mockReset();
+  mocks.readDockerEngineErrorMessage.mockReset();
   mocks.runDockerContainerToCompletion.mockReset();
   await Promise.all(
     temporaryDirectories.splice(0).map(async (directory: string): Promise<void> => {
@@ -209,12 +250,13 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
     expect(mocks.inspectDockerContainer).toHaveBeenCalledWith({
       containerRef: 'compartment-test-internal-tools-production-resource-postgres',
     });
-    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith({
-      labels: {
-        'compartment.namespace': 'test',
-      },
-      networkName: 'compartment-test-prj-123-env-123-resources',
-    });
+    expect(mocks.ensureRuntimeResourceNetwork).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environmentId: 'env_123',
+        projectId: 'prj_123',
+      }),
+      expect.objectContaining({ dockerNamespace: 'test' }),
+    );
     const operationContainerInput: DockerRunContainerInput | undefined =
       mocks.runDockerContainerToCompletion.mock.calls[0]?.[0];
     expect(operationContainerInput?.command).toEqual(['pg_dump > "$COMPARTMENT_BACKUP_DIR/dump.sql"']);
@@ -239,9 +281,9 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
   it('rejects operation containers before joining an unowned resource network', async (): Promise<void> => {
     const backupArtifact: RuntimeResourceBackupArtifactFixture = await createResourceBackupArtifactFixture();
 
-    mocks.ensureDockerNetwork.mockRejectedValueOnce(
+    mocks.ensureRuntimeResourceNetwork.mockRejectedValueOnce(
       new Error(
-        'Docker network compartment-test-prj-123-env-123-resources exists without required label compartment.namespace=test.',
+        'Docker runtime network compartment-test-prj-123-env-123-resources exists without required managed Compartment network labels.',
       ),
     );
 
@@ -254,7 +296,7 @@ describe('runRuntimeResourceRestoreOperation', (): void => {
         createRuntimeConfig({ resourceBackupDirectory: backupArtifact.root }),
       ),
     ).rejects.toThrow(
-      'Docker network compartment-test-prj-123-env-123-resources exists without required label compartment.namespace=test.',
+      'Docker runtime network compartment-test-prj-123-env-123-resources exists without required managed Compartment network labels.',
     );
     expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
   });
@@ -297,9 +339,10 @@ describe('runRuntimeResourceBackupOperation', (): void => {
   it('revalidates backup artifact directories after Docker setup and before container create', async (): Promise<void> => {
     const backupArtifact: RuntimeResourceBackupArtifactFixture = await createResourceBackupArtifactFixture();
     const outsideDirectory: string = await createResourceBackupRoot();
-    mocks.ensureDockerNetwork.mockImplementationOnce(async (): Promise<void> => {
+    mocks.ensureRuntimeResourceNetwork.mockImplementationOnce(async (): Promise<string> => {
       await rm(backupArtifact.path, { force: true, recursive: true });
       await symlink(outsideDirectory, backupArtifact.path);
+      return 'compartment-test-prj-123-env-123-resources';
     });
 
     await expect(
@@ -310,7 +353,7 @@ describe('runRuntimeResourceBackupOperation', (): void => {
     ).rejects.toThrow('Resource backup artifact directory "rbak_123" must not include symlinks.');
 
     expect(mocks.ensureDockerImageAvailable).toHaveBeenCalledTimes(1);
-    expect(mocks.ensureDockerNetwork).toHaveBeenCalledTimes(1);
+    expect(mocks.ensureRuntimeResourceNetwork).toHaveBeenCalledTimes(1);
     expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
   });
 
@@ -327,7 +370,7 @@ describe('runRuntimeResourceBackupOperation', (): void => {
       ).rejects.toThrow();
 
       expect(mocks.ensureDockerImageAvailable).not.toHaveBeenCalled();
-      expect(mocks.ensureDockerNetwork).not.toHaveBeenCalled();
+      expect(mocks.ensureRuntimeResourceNetwork).not.toHaveBeenCalled();
       expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
     },
   );
@@ -467,6 +510,7 @@ function createRuntimeConfig(overrides: Partial<RuntimeResourceOperationConfig> 
     resourceBackupDirectory: '/var/lib/compartment/resource-backups',
     runtimeConnectivityMode: 'network',
     runtimeDefaultUpstreamHost: 'host.docker.internal',
+    runtimeNetworkPool: createRuntimeNetworkPoolConfig(),
     runtimeGid: 10001,
     runtimeUid: 10001,
     runtimeRegistryCredentials: {

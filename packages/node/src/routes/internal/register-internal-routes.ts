@@ -11,6 +11,7 @@ import { registerPostRuntimeNetworkReconcileRoute } from './post-runtime-network
 import { registerPostRuntimeReleaseRoute } from './post-runtime-release.route';
 import { registerPostRuntimeStopRoute } from './post-runtime-stop.route';
 import { registerPostProjectCleanupRoute } from './post-project-cleanup.route';
+import { registerRuntimeNetworkRoutes } from './runtime-network-routes';
 import { registerResourceRoutes } from './resource-routes';
 
 export function registerInternalNodeRoutes(app: NodeApp, config: NodeConfig): void {
@@ -27,6 +28,7 @@ export function registerInternalNodeRoutes(app: NodeApp, config: NodeConfig): vo
     registerGetRuntimeInspectRoute(internalApp, config);
     registerPostRuntimeStopRoute(internalApp, config);
     registerPostProjectCleanupRoute(internalApp, config);
+    registerRuntimeNetworkRoutes(internalApp, config);
     registerGetRuntimeLogsRoute(internalApp);
     registerResourceRoutes(internalApp, config);
     done();

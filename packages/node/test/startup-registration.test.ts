@@ -5,6 +5,7 @@ import type { NodeConfig } from '../src/config';
 import { createRegisterNode } from '../src/services/registration-api.service';
 import type { RegisterNode } from '../src/services/registration-api.types';
 import { registerNodeOnStartup } from '../src/services/startup-registration.service';
+import { createRuntimeNetworkPoolConfig } from './runtime-network-pool.fixture';
 
 type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -141,6 +142,7 @@ function createNodeConfig(): NodeConfig {
     resourceBackupDirectory: '/var/lib/compartment/resource-backups',
     runtimeConnectivityMode: 'loopback',
     runtimeDefaultUpstreamHost: '127.0.0.1',
+    runtimeNetworkPool: createRuntimeNetworkPoolConfig(),
     runtimeGid: 10001,
     runtimeUid: 10001,
     runtimeRegistryCredentials: {

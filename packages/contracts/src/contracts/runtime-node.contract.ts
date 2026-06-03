@@ -20,6 +20,7 @@ import {
   type RuntimeDrainState,
   runtimeActiveDeploymentSchema,
 } from './runtime-shared.contract';
+import { runtimeNetworkIntentSchema, type RuntimeNetworkIntent } from './runtime-node-network.contract';
 import type { ContractSchema } from './schema.types';
 
 export interface NodePreviousDeployment {
@@ -37,6 +38,7 @@ interface NodePrepareDeploymentRequest {
   readiness: ResolvedOptionalServiceReadinessConfig;
   run: ResolvedCompartmentServiceRunConfig;
   routeHost: string;
+  runtimeNetwork: RuntimeNetworkIntent;
   serviceId: string;
   runtimeEnv: Record<string, string>;
   serviceName: string;
@@ -54,6 +56,12 @@ export interface NodeInspectDeploymentReadinessFields {
 
 export type NodeDeployRequest = NodePrepareDeploymentRequest;
 export type NodeDeployResponse = NodePrepareDeploymentResponse;
+
+export type NodeRuntimeServiceErrorCode = 'runtime_service_readiness_failed' | 'runtime_service_startup_failed';
+
+export const nodeRuntimeServiceReadinessFailedErrorCode: NodeRuntimeServiceErrorCode =
+  'runtime_service_readiness_failed';
+export const nodeRuntimeServiceStartupFailedErrorCode: NodeRuntimeServiceErrorCode = 'runtime_service_startup_failed';
 
 export interface NodeDrainDeploymentRequest {
   containerId: string;
@@ -125,6 +133,7 @@ const nodePrepareDeploymentRequestSchema: ContractSchema<NodePrepareDeploymentRe
     readiness: resolvedOptionalServiceReadinessConfigSchema,
     run: resolvedCompartmentServiceRunConfigSchema,
     routeHost: z.string().min(1),
+    runtimeNetwork: runtimeNetworkIntentSchema,
     serviceId: z.string().min(1),
     runtimeEnv: z.record(z.string(), z.string()),
     serviceName: compartmentServiceNameSchema,
