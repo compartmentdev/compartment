@@ -1,38 +1,24 @@
 import { useState, type JSX } from 'react';
 import type { BrowserSoftNavigateHandler } from '../../browser-soft-navigation';
-import { BrowserBreadcrumbs } from '../../components/browser-breadcrumbs';
-import type { BrowserBreadcrumbItem } from '../../components/browser-breadcrumbs.types';
-import {
-  BrowserConsoleDetailTitle,
-  readBrowserConsoleEnvironmentLabel,
-} from '../../components/browser-console-detail-header';
 import {
   BrowserConsoleShell,
-  browserConsoleDetailPageHeaderClassName,
   browserConsolePageBodyClassName,
   browserConsolePageClassName,
   browserConsolePageGutterClassName,
 } from '../../components/browser-console-header';
 import { DismissibleAlert } from '../../components/dismissible-alert';
 import { ServerTableFrame } from '../../components/server-table';
-import { Box } from '../../components/ui/icons';
 import type { BrowserDeploymentHistoryPageResult } from '../../services/browser-deployment-history.service.types';
 import type { BrowserConsoleOrganizationIssue } from '../../services/browser-organization-context.service.types';
 import { BrowserConsoleOrganizationContextPanel } from '../console/console-organization-context-panel';
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
-import { buildBrowserConsoleProjectsHref } from '../console/console-hrefs';
 import type { DeploymentHistoryRollbackHandler } from './deployment-history-actions';
+import { DeploymentHistoryControls, DeploymentHistoryHeader } from './deployment-history-sections';
 import { DeploymentHistoryTable } from './deployment-history-table';
 import { createDeploymentHistoryRollbackHandler } from './deployment-history-view.actions';
-import { buildProjectOverviewHref } from '../projects/project-overview-query';
 import { buildDeploymentHistoryHref } from './deployment-history-query';
 
 interface DeploymentHistoryViewProps {
-  data: BrowserDeploymentHistoryPageResult;
-  onNavigate: BrowserSoftNavigateHandler;
-}
-
-interface DeploymentHistoryHeaderProps {
   data: BrowserDeploymentHistoryPageResult;
   onNavigate: BrowserSoftNavigateHandler;
 }
@@ -92,43 +78,6 @@ function readOrganizationControl(
   );
 }
 
-function DeploymentHistoryHeader({ data, onNavigate }: Readonly<DeploymentHistoryHeaderProps>): JSX.Element {
-  return (
-    <header className={browserConsoleDetailPageHeaderClassName}>
-      <div className="pb-6">
-        <BrowserBreadcrumbs items={readDeploymentHistoryBreadcrumbItems(data)} onNavigate={onNavigate} />
-        <BrowserConsoleDetailTitle
-          badgeLabel={readDeploymentHistoryEnvironmentBadgeLabel(data)}
-          icon={Box}
-          title="Deployments"
-        />
-      </div>
-    </header>
-  );
-}
-
-function readDeploymentHistoryBreadcrumbItems(
-  data: Readonly<BrowserDeploymentHistoryPageResult>,
-): BrowserBreadcrumbItem[] {
-  return [
-    {
-      href: buildBrowserConsoleProjectsHref(data.selectedOrganizationSlug),
-      label: 'Projects',
-    },
-    {
-      href: buildProjectOverviewHref({
-        environmentName: data.environmentName,
-        organizationSlug: data.selectedOrganizationSlug,
-        projectName: data.projectName,
-      }),
-      label: data.projectName,
-    },
-    {
-      label: 'Deployments',
-    },
-  ];
-}
-
 function DeploymentHistoryContent({
   actionErrorMessage,
   data,
@@ -174,10 +123,13 @@ function renderSelectedDeploymentHistoryContent(
   return (
     <div className={browserConsolePageClassName}>
       <DeploymentHistoryHeader data={data} onNavigate={onNavigate} />
-      <section className={`flex flex-1 flex-col gap-5 bg-background py-8 ${browserConsolePageGutterClassName}`}>
+      <section className={`flex flex-1 flex-col gap-6 bg-background pb-8 pt-4 ${browserConsolePageGutterClassName}`}>
         <DismissibleAlert message={errorMessage} variant="error" />
-        <ServerTableFrame className="flex flex-1 flex-col">
-          <DeploymentHistoryTable data={data} onNavigate={onNavigate} onRollback={onRollback} />
+        <ServerTableFrame className="flex min-h-[calc(100vh-300px)] flex-1 flex-col">
+          <div className="flex-1">
+            <DeploymentHistoryTable data={data} onNavigate={onNavigate} onRollback={onRollback} />
+          </div>
+          <DeploymentHistoryControls totalDeployments={data.deployments.length} />
         </ServerTableFrame>
       </section>
     </div>
@@ -245,8 +197,4 @@ function handleOrganizationChange(
       projectName: data.projectName,
     }),
   );
-}
-
-function readDeploymentHistoryEnvironmentBadgeLabel(data: BrowserDeploymentHistoryPageResult): string {
-  return readBrowserConsoleEnvironmentLabel(data.environmentName, 'Environment');
 }

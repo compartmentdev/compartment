@@ -2,34 +2,25 @@ import {
   formatDeploymentRunLogLineText,
   readDeploymentRunTriggerRepositoryLabel,
   type DeploymentRunLogLine,
-  type DeploymentRunStepSummary,
   type DeploymentRunSummary,
 } from '@compartment/contracts/browser';
 import type { JSX } from 'react';
 import { StatusTag } from '../../components/ui/status-tag';
 import { formatBrowserTimestamp } from '../../lib/browser-timestamp-format';
-import { cn } from '../../lib/utils';
 import { formatDeploymentDuration } from './deployment-history-duration';
 import { formatDeploymentEndedAt } from './deployment-history-ended-at';
 import {
-  deploymentRunStepLabels,
-  deploymentRunStepStatusLabels,
   deploymentStatusLabels,
   deploymentTriggerLabels,
-  readDeploymentRunStepTagIcon,
-  readDeploymentRunStepTagVariant,
   readDeploymentStatusTagIcon,
   readDeploymentStatusTagVariant,
 } from './deployment-history-labels';
 
 export { DeploymentDetailsServicesSection } from './deployment-details-services-section';
+export { DeploymentDetailsTimelineSection } from './deployment-details-timeline-section';
 
 interface DeploymentDetailsSummarySectionProps {
   deployment: DeploymentRunSummary;
-}
-
-interface DeploymentDetailsTimelineSectionProps {
-  steps: DeploymentRunStepSummary[];
 }
 
 interface DeploymentDetailsLogsSectionProps {
@@ -45,7 +36,7 @@ export function DeploymentDetailsSummarySection({
   deployment,
 }: Readonly<DeploymentDetailsSummarySectionProps>): JSX.Element {
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
+    <section className="rounded-card border border-border bg-card p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <DeploymentSummaryBody deployment={deployment} />
         <DeploymentMetadataGrid deployment={deployment} />
@@ -89,50 +80,9 @@ function DeploymentMetadataGrid({
   );
 }
 
-export function DeploymentDetailsTimelineSection({
-  steps,
-}: Readonly<DeploymentDetailsTimelineSectionProps>): JSX.Element {
-  return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-[14px] font-semibold text-foreground">Timeline</h2>
-        <span className="text-[12px] text-muted-foreground">{steps.length} steps</span>
-      </div>
-      {steps.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">No deployment steps were recorded.</p>
-      ) : (
-        <ol className="flex flex-col gap-3">{steps.map(renderTimelineItem)}</ol>
-      )}
-    </section>
-  );
-}
-
-function renderTimelineItem(step: DeploymentRunStepSummary, index: number): JSX.Element {
-  return (
-    <li className={readTimelineItemClassName(step)} key={readTimelineItemKey(step, index)}>
-      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[13px] font-medium text-foreground">{deploymentRunStepLabels[step.stepKey]}</p>
-            <StatusTag
-              icon={readDeploymentRunStepTagIcon(step.status)}
-              label={deploymentRunStepStatusLabels[step.status]}
-              variant={readDeploymentRunStepTagVariant(step.status)}
-            />
-          </div>
-          <p className="text-[12px] text-muted-foreground">{readTimelineMetadata(step)}</p>
-        </div>
-        <p className="max-w-3xl whitespace-pre-wrap break-words text-[13px] leading-5 text-foreground/90">
-          {step.message}
-        </p>
-      </div>
-    </li>
-  );
-}
-
 export function DeploymentDetailsLogsSection({ lines }: Readonly<DeploymentDetailsLogsSectionProps>): JSX.Element {
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
+    <section className="rounded-card border border-border bg-card p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-[14px] font-semibold text-foreground">Logs</h2>
         <span className="text-[12px] text-muted-foreground">{lines.length} lines</span>
@@ -140,27 +90,12 @@ export function DeploymentDetailsLogsSection({ lines }: Readonly<DeploymentDetai
       {lines.length === 0 ? (
         <p className="text-[13px] text-muted-foreground">No persisted deployment logs were recorded.</p>
       ) : (
-        <pre className="overflow-x-auto whitespace-pre-wrap rounded-md border border-border bg-muted/25 p-3 font-mono text-[12px] leading-5 text-foreground">
+        <pre className="overflow-x-auto whitespace-pre-wrap rounded-field border border-border bg-muted/25 p-3 font-mono text-[12px] leading-5 text-foreground">
           {lines.map(formatDeploymentRunLogLineText).join('\n')}
         </pre>
       )}
     </section>
   );
-}
-
-function readTimelineItemKey(step: DeploymentRunStepSummary, index: number): string {
-  return `${step.deploymentId ?? 'run'}:${step.stepKey}:${index}`;
-}
-
-function readTimelineItemClassName(step: DeploymentRunStepSummary): string {
-  return cn(
-    'rounded-md border px-3 py-3',
-    step.status === 'failed' ? 'border-red-200 bg-red-50/60' : 'border-border bg-muted/20',
-  );
-}
-
-function readTimelineMetadata(step: DeploymentRunStepSummary): string {
-  return `${step.serviceName ?? 'All services'} · ${formatBrowserTimestamp(step.createdAt)} · ${formatDeploymentEndedAt(step.completedAt)}`;
 }
 
 function readRepositoryValue(deployment: DeploymentRunSummary): string {

@@ -1,28 +1,24 @@
-import type { InputHTMLAttributes, JSX } from 'react';
+import type { JSX } from 'react';
 import { browserResetPasswordPathname } from '../../browser-public-paths';
 import { Input } from '../../components/ui/input';
 import { LockKeyhole, Mail } from '../../components/ui/icons';
 import { authFieldLabelClassName, authHintLinkClassName, authInputClassName } from './auth-theme';
-
-interface LoginInputFieldProps extends Readonly<Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>> {
-  compact?: boolean | undefined;
-  hintHref?: string | undefined;
-  hintLabel?: string | undefined;
-  icon: 'email' | 'password';
-  label: string;
-}
+import type {
+  CompactLoginInputFieldProps,
+  LoginEmailFieldProps,
+  LoginInputFieldHeaderProps,
+  LoginInputFieldLeadingIconProps,
+  LoginInputFieldProps,
+  LoginPasswordFieldProps,
+  LoginReadOnlyEmailFieldProps,
+} from './login-form-fields.types';
 
 export function LoginEmailField({
   compact,
   defaultValue,
   name,
   required,
-}: Readonly<{
-  compact?: boolean | undefined;
-  defaultValue?: string | undefined;
-  name: string;
-  required?: boolean | undefined;
-}>): JSX.Element {
+}: Readonly<LoginEmailFieldProps>): JSX.Element {
   return (
     <LoginInputField
       autoComplete="email"
@@ -38,7 +34,7 @@ export function LoginEmailField({
   );
 }
 
-export function LoginPasswordField({ compact }: Readonly<{ compact?: boolean | undefined }>): JSX.Element {
+export function LoginPasswordField({ compact }: Readonly<LoginPasswordFieldProps>): JSX.Element {
   return (
     <LoginInputField
       autoComplete="current-password"
@@ -56,10 +52,7 @@ export function LoginPasswordField({ compact }: Readonly<{ compact?: boolean | u
   );
 }
 
-export function LoginReadOnlyEmailField({
-  compact,
-  email,
-}: Readonly<{ compact?: boolean | undefined; email: string }>): JSX.Element {
+export function LoginReadOnlyEmailField({ compact, email }: Readonly<LoginReadOnlyEmailFieldProps>): JSX.Element {
   if (compact === true) {
     return (
       <div className={authInputClassName}>
@@ -107,9 +100,7 @@ function LoginInputField({
   );
 }
 
-function CompactLoginInputField({
-  inputProps,
-}: Readonly<{ inputProps: Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> }>): JSX.Element {
+function CompactLoginInputField({ inputProps }: Readonly<CompactLoginInputFieldProps>): JSX.Element {
   return (
     <div className={authInputClassName}>
       <Input className={compactInputClassName} {...inputProps} />
@@ -117,11 +108,7 @@ function CompactLoginInputField({
   );
 }
 
-function LoginInputFieldHeader({
-  hintHref,
-  hintLabel,
-  label,
-}: Readonly<{ hintHref?: string | undefined; hintLabel?: string | undefined; label: string }>): JSX.Element {
+function LoginInputFieldHeader({ hintHref, hintLabel, label }: Readonly<LoginInputFieldHeaderProps>): JSX.Element {
   return (
     <span className="flex items-center justify-between gap-3">
       <span className={authFieldLabelClassName}>{label}</span>
@@ -134,7 +121,7 @@ function LoginInputFieldHeader({
   );
 }
 
-function LoginInputFieldLeadingIcon({ icon }: Readonly<{ icon: 'email' | 'password' }>): JSX.Element {
+function LoginInputFieldLeadingIcon({ icon }: Readonly<LoginInputFieldLeadingIconProps>): JSX.Element {
   return (
     <span className="absolute inset-y-0 left-3 inline-flex items-center text-[var(--auth-icon-default)]">
       {icon === 'email' ? (
