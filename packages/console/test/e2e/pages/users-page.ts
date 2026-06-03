@@ -213,7 +213,7 @@ export class UsersPage {
         isSuccessfulApiResponse(response, compartmentAssignmentScopeOptionsPathname),
       ),
       this.page.waitForURL((url: URL): boolean => this.isUserDetailUrl(url, email)),
-      this.userRow(email).getByRole('button', { name: 'View' }).click(),
+      this.userRow(email).getByRole('button', { name: 'Manage' }).click(),
     ]);
   }
 

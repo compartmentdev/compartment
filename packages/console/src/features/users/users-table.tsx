@@ -31,7 +31,7 @@ interface UsersSortableHeadingProps {
 export function UsersTable({ data, onNavigate, onUserAction }: Readonly<UsersTableProps>): JSX.Element {
   return (
     <ServerTable minWidthClassName="min-w-[760px]">
-      <thead className="bg-background">
+      <thead className="bg-card">
         <tr>
           <UsersSortableHeading data={data} label="User" onNavigate={onNavigate} sortBy="email" />
           <UsersSortableHeading data={data} label="Status" onNavigate={onNavigate} sortBy="status" />

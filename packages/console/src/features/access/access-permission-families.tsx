@@ -41,7 +41,7 @@ function PermissionFamiliesSection({ permissionKeys }: Readonly<PermissionFamili
 
 function PermissionFamilyCard({ family }: Readonly<{ family: PermissionFamilyCardViewModel }>): JSX.Element {
   return (
-    <div className="rounded-[10px] border border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-[var(--cpt-bg-card,#fafafa)] px-3 py-3">
+    <div className="rounded-field border border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-card px-3 py-3">
       <div className="mb-1.5 flex items-center justify-between gap-3">
         <h4 className="text-[13px] font-semibold">{family.label}</h4>
         <span className="text-[12px] text-[var(--cpt-text-muted,#8f98a1)]">
@@ -82,7 +82,7 @@ function PermissionBadge({ permissionKey }: Readonly<{ permissionKey: Permission
   return (
     <span
       className={cn(
-        'inline-flex h-6 items-center rounded-full border border-[var(--cpt-tag-border-default,rgba(17,18,18,0.18))] bg-[var(--cpt-tag-bg-default,rgba(0,0,0,0.06))] px-2 text-[11px] font-medium leading-none text-[var(--cpt-text-secondary,#485259)]',
+        'inline-flex h-6 items-center rounded-pill border border-[var(--cpt-tag-border-default,rgba(17,18,18,0.18))] bg-[var(--cpt-tag-bg-default,rgba(0,0,0,0.06))] px-2 text-[11px] font-medium leading-none text-[var(--cpt-text-secondary,#485259)]',
       )}
     >
       {permissionKey}

@@ -22,17 +22,17 @@ interface AccessDrawerSummaryTextProps {
 export { AccessDrawerShell, useAccessDrawerCloseNavigation } from './access-drawer-shell';
 
 export const accessDrawerActionButtonClassName: string =
-  'h-8 gap-1.5 rounded-[8px] px-3 text-[13px] font-medium leading-5';
+  'h-8 gap-1.5 rounded-control px-3 text-[13px] font-medium leading-5';
 export const accessDrawerHeaderActionButtonClassName: string =
-  'h-8 shrink-0 gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium leading-5';
+  'h-8 shrink-0 gap-1.5 rounded-control px-2.5 text-[13px] font-medium leading-5';
 const accessDrawerPrimaryActionButtonClassName: string =
-  'h-9 w-auto shrink-0 justify-center gap-1.5 rounded-[10px] px-3 text-[13px]';
+  'h-8 w-auto shrink-0 justify-center gap-1.5 rounded-control px-3 text-[13px]';
 export const accessDrawerPrimaryAddButtonClassName: string = cn(
   accessDrawerPrimaryActionButtonClassName,
   'min-w-[11rem]',
 );
 export const accessDrawerRowActionButtonClassName: string =
-  'h-[26px] min-w-[6.75rem] justify-center gap-1 rounded-[8px] px-2 text-[12px]';
+  'h-[26px] min-w-[6.75rem] justify-center gap-1 rounded-control px-2 text-[12px]';
 export const accessDrawerAssignmentRowClassName: string =
   'gap-x-3 md:grid-cols-[minmax(7rem,8.5rem)_minmax(0,1fr)_fit-content(8.5rem)_auto]';
 export const accessDrawerDirectAssignmentRowClassName: string =

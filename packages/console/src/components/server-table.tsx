@@ -2,6 +2,7 @@ import type { JSX, ReactNode } from 'react';
 import type { BrowserSoftNavigateHandler } from '../browser-soft-navigation';
 import { BrowserSoftNavigationLink } from './browser-soft-navigation-link';
 import { cn } from '../lib/utils';
+import { buttonVariants } from './ui/button';
 
 interface ServerTableProps {
   children: ReactNode;
@@ -20,6 +21,12 @@ interface ServerTableEmptyRowProps {
 
 interface ServerTableActionsProps {
   children: ReactNode;
+}
+
+interface ServerTableActionLinkProps {
+  children: ReactNode;
+  href: string;
+  onNavigate?: BrowserSoftNavigateHandler | undefined;
 }
 
 interface ServerTableActionErrorProps {
@@ -108,6 +115,22 @@ export function ServerTableCell({ align = 'left', children, className }: Readonl
 
 export function ServerTableActions({ children }: Readonly<ServerTableActionsProps>): JSX.Element {
   return <div className="flex flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap">{children}</div>;
+}
+
+export function ServerTableActionLink({
+  children,
+  href,
+  onNavigate,
+}: Readonly<ServerTableActionLinkProps>): JSX.Element {
+  return (
+    <BrowserSoftNavigationLink
+      className={cn(buttonVariants({ size: 'sm', variant: 'secondary' }), readServerTableActionControlClassName())}
+      href={href}
+      onNavigate={onNavigate}
+    >
+      {children}
+    </BrowserSoftNavigationLink>
+  );
 }
 
 export function ServerTableActionError({ message }: Readonly<ServerTableActionErrorProps>): JSX.Element | null {

@@ -17,7 +17,7 @@ interface AccessDrawerListRowProps {
 export function AccessDrawerList({ children }: Readonly<AccessDrawerListProps>): JSX.Element {
   return (
     <div
-      className="overflow-hidden rounded-[10px] border border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-[var(--cpt-bg-card,#fff)]"
+      className="overflow-hidden rounded-field border border-[var(--cpt-border-default,rgba(0,0,0,0.08))] bg-card"
       role="list"
     >
       {children}

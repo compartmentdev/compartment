@@ -32,13 +32,13 @@ export function GroupActionsTrigger({ group }: Readonly<GroupActionsTriggerProps
 export function GroupRemoveMenuItem({ isPending, onSelect }: Readonly<GroupRemoveMenuItemProps>): JSX.Element {
   return (
     <DropdownMenuItem
-      className="text-red-700 focus:text-red-800"
       disabled={isPending}
       onSelect={(): void => {
         if (!isPending) {
           onSelect();
         }
       }}
+      variant="destructive"
     >
       {isPending ? 'Removing...' : 'Remove'}
     </DropdownMenuItem>

@@ -68,7 +68,7 @@ export function UserActionControls(props: Readonly<UserActionControlsProps>): JS
   return (
     <div className="flex flex-col items-end gap-1.5">
       <ServerTableActions>
-        <ViewUserButton data={data} onNavigate={onNavigate} user={user} />
+        <ManageUserButton data={data} onNavigate={onNavigate} user={user} />
         {readUserActionsMenu(props, setActionErrorMessage)}
       </ServerTableActions>
       <ServerTableActionError message={actionErrorMessage} />
@@ -206,7 +206,7 @@ function UserRemoveDialog({
   );
 }
 
-function ViewUserButton({ data, onNavigate, user }: Readonly<ManageUserMenuItemProps>): JSX.Element {
+function ManageUserButton({ data, onNavigate, user }: Readonly<ManageUserMenuItemProps>): JSX.Element {
   return (
     <Button
       className={readServerTableActionControlClassName()}
@@ -217,7 +217,7 @@ function ViewUserButton({ data, onNavigate, user }: Readonly<ManageUserMenuItemP
       type="button"
       variant="secondary"
     >
-      View
+      Manage
     </Button>
   );
 }

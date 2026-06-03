@@ -107,7 +107,7 @@ function readOrganizationControl(
 function AuditEventsFilterForm({ data, onNavigate }: Readonly<AuditEventsFilterFormProps>): JSX.Element {
   return (
     <form
-      className="grid gap-3 rounded-lg border border-border bg-card p-4 md:grid-cols-2 xl:grid-cols-4"
+      className="grid gap-3 rounded-card border border-border bg-card p-4 md:grid-cols-2 xl:grid-cols-4"
       onSubmit={(event: FormEvent<HTMLFormElement>): void => {
         handleAuditEventsFilterSubmit(event, data, onNavigate);
       }}

@@ -190,7 +190,6 @@ function InviteUserButton({ data, onNavigate, showInviteAction }: Readonly<Users
         onNavigate(buildUsersHref(data, { mode: 'create', page: 1, selectedUserEmail: null }));
       }}
       type="button"
-      variant="accent"
     >
       Invite user
     </ToolbarPrimaryActionButton>
