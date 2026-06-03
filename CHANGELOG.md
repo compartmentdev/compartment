@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/compartmentdev/compartment/compare/v0.7.0...v0.8.0) (2026-06-03)
+
+
+### Features
+
+* **node:** manage runtime network capacity ([#76](https://github.com/compartmentdev/compartment/issues/76)) ([28ac5ef](https://github.com/compartmentdev/compartment/commit/28ac5ef5a3ec3cc43f25759b95a8055c1b704217))
+
 ## [0.7.0](https://github.com/compartmentdev/compartment/compare/v0.6.1...v0.7.0) (2026-06-02)
 
 
