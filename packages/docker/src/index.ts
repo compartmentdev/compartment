@@ -7,10 +7,11 @@ export {
   inspectDockerNetwork,
   listDockerContainers,
   listDockerNetworks,
-  listDockerVolumes,
   removeDockerNetwork,
 } from './docker-network';
+export { ensureDockerVolume, listDockerVolumes } from './docker-volume';
 export { syncDockerNetworkEgressDenyRules } from './docker-network-egress';
+export { isDockerNetworkIpamCapacityError, readDockerEngineErrorMessage } from './docker-engine-error';
 export { buildDockerNamespaceLabels, compartmentDockerNamespaceLabelName } from './docker-namespace';
 export {
   inspectDockerContainer,
@@ -51,3 +52,4 @@ export {
   type DockerTailLogsResult,
   type DockerUpdateContainerRestartPolicyInput,
 } from './docker-models';
+export type { DockerEngineError } from './docker-engine-error';

@@ -40,12 +40,31 @@ export function isDockerEngineConflictError(
   return errorInfo.statusCode === 409 || conflictText.some((needle: string): boolean => errorText.includes(needle));
 }
 
+export function readDockerEngineErrorMessage(error: DockerEngineError): string {
+  return buildDockerEngineErrorMessage(readDockerEngineErrorInfo(error));
+}
+
+export function isDockerNetworkIpamCapacityError(error: DockerEngineError): boolean {
+  const errorText: string = readDockerEngineErrorText(error);
+  return (
+    errorText.includes('all predefined address pools have been fully subnetted') ||
+    errorText.includes('could not find an available, non-overlapping ipv4 address pool') ||
+    errorText.includes('could not find an available ip address') ||
+    errorText.includes('no available ipv4 addresses') ||
+    errorText.includes('overlaps with other one on this address space')
+  );
+}
+
 export function readDockerEngineErrorText(error: DockerEngineError): string {
   return buildDockerEngineErrorText(readDockerEngineErrorInfo(error));
 }
 
 function buildDockerEngineErrorText(errorInfo: DockerEngineErrorInfo): string {
-  return [errorInfo.message, errorInfo.reason, errorInfo.jsonMessage].filter(hasText).join(' ').toLowerCase();
+  return buildDockerEngineErrorMessage(errorInfo).toLowerCase();
+}
+
+function buildDockerEngineErrorMessage(errorInfo: DockerEngineErrorInfo): string {
+  return [errorInfo.message, errorInfo.reason, errorInfo.jsonMessage].filter(hasText).join(' ');
 }
 
 function readDockerEngineErrorInfo(error: DockerEngineError): DockerEngineErrorInfo {

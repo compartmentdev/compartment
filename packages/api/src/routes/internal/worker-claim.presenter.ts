@@ -43,6 +43,7 @@ function buildWorkerClaimedDeployment(claimed: WorkerClaimedDeploymentInput): Wo
     run: claimed.run,
     artifact: buildWorkerArtifactSummary(claimed),
     routeHost: claimed.routeHost,
+    runtimeNetwork: claimed.runtimeNetwork,
     runtimeEnv: claimed.runtimeEnv,
     service: buildWorkerServiceSummary(claimed),
   };

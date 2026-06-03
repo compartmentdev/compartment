@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { findFreePort } from '@compartment/test-support';
+import { findFreePort, readFileModePermissions } from '@compartment/test-support';
 import type { DockerExecutionContext, EnsureDockerExecutionContextOptions } from '../src/docker-runtime.types';
 import type {
   SelfHostedInstallInput,
@@ -232,6 +232,15 @@ describe.sequential('install runtime', (): void => {
       'COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:1.2.3',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'BUILDKIT_ADDR=unix:///run/buildkit/buildkitd.sock',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_UID=10001',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_GID=10001',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_VARIABLES_MASTER_KEY=',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
@@ -250,6 +259,9 @@ describe.sequential('install runtime', (): void => {
     );
     await expect(readFile(join(installPaths.configDir, 'docker-compose.self-hosted.yml'), 'utf8')).resolves.toContain(
       'COMPARTMENT_EDGE_INTERNAL_HOST: ${COMPARTMENT_EDGE_INTERNAL_HOST}',
+    );
+    await expect(readFile(join(installPaths.configDir, 'docker-compose.self-hosted.yml'), 'utf8')).resolves.toContain(
+      "user: '${COMPARTMENT_RUNTIME_UID}:${COMPARTMENT_RUNTIME_GID}'",
     );
     await expect(
       readFile(join(installPaths.configDir, 'docker-compose.self-hosted.local.yml'), 'utf8'),
@@ -640,5 +652,5 @@ async function closeServer(server: Server): Promise<void> {
 }
 
 async function readMode(path: string): Promise<number> {
-  return (await stat(path)).mode & 0o777;
+  return readFileModePermissions((await stat(path)).mode);
 }

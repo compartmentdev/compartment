@@ -61,31 +61,46 @@ async function prepareSelfHostedUpdate(
     preparedEnvironment,
   );
   assertRegistryUpdateMatchesPackagedNodeAgent(preparedEnvironment, preparedContext);
-  if (preparedContext.updateDecision.action === 'skip') {
-    return createPreparedSkippedSelfHostedUpdatePlan(
-      paths,
-      preparedEnvironment,
-      preparedContext,
-      preparedContext.updateDecision.reason,
-    );
-  }
 
-  return await createPreparedAppliedSelfHostedUpdate(paths, preparedEnvironment, assetPaths, preparedContext);
+  return await createPreparedSelfHostedUpdatePlanFromContext(paths, preparedEnvironment, assetPaths, preparedContext);
 }
 
-async function createPreparedAppliedSelfHostedUpdate(
+async function createPreparedSelfHostedUpdatePlanFromContext(
   paths: SelfHostedPathSelection,
   preparedEnvironment: PreparedSelfHostedUpdateEnvironment,
   assetPaths: BundledAssets,
   preparedContext: PreparedSelfHostedUpdateDecisionContext,
-): Promise<PreparedSelfHostedUpdate> {
-  const renderedEnvironment: RenderedSelfHostedEnvironment = await buildRenderedSelfHostedUpdateEnvironment(
+): Promise<PreparedSelfHostedUpdatePlan> {
+  const renderedEnvironment: RenderedSelfHostedEnvironment = await renderPreparedSelfHostedUpdateEnvironment(
     assetPaths,
-    preparedContext.environmentValues,
-    preparedEnvironment.stagedAssetPaths.dockerWorkDirectory,
-    preparedContext.runtimeSelection,
-    preparedEnvironment.currentState.managedDomain,
+    preparedEnvironment,
+    preparedContext,
   );
+
+  return createPreparedSelfHostedUpdatePlanFromRenderedEnvironment(
+    paths,
+    preparedEnvironment,
+    assetPaths,
+    preparedContext,
+    renderedEnvironment,
+  );
+}
+
+function createPreparedSelfHostedUpdatePlanFromRenderedEnvironment(
+  paths: SelfHostedPathSelection,
+  preparedEnvironment: PreparedSelfHostedUpdateEnvironment,
+  assetPaths: BundledAssets,
+  preparedContext: PreparedSelfHostedUpdateDecisionContext,
+  renderedEnvironment: RenderedSelfHostedEnvironment,
+): PreparedSelfHostedUpdatePlan {
+  const skipReason: UpdateSkipReason | null = readPreparedSelfHostedUpdateSkipReason(
+    preparedEnvironment,
+    preparedContext,
+    renderedEnvironment,
+  );
+  if (skipReason !== null) {
+    return createPreparedSkippedSelfHostedUpdatePlan(paths, preparedEnvironment, preparedContext, skipReason);
+  }
 
   return createPreparedAppliedSelfHostedUpdateResult(
     paths,
@@ -94,6 +109,38 @@ async function createPreparedAppliedSelfHostedUpdate(
     preparedContext.currentVersion,
     renderedEnvironment,
     preparedContext.runtimeSelection,
+  );
+}
+
+function readPreparedSelfHostedUpdateSkipReason(
+  preparedEnvironment: PreparedSelfHostedUpdateEnvironment,
+  preparedContext: PreparedSelfHostedUpdateDecisionContext,
+  renderedEnvironment: RenderedSelfHostedEnvironment,
+): UpdateSkipReason | null {
+  if (preparedContext.updateDecision.action !== 'skip') {
+    return null;
+  }
+
+  return shouldSkipPreparedSelfHostedUpdate(
+    preparedEnvironment,
+    renderedEnvironment,
+    preparedContext.updateDecision.reason,
+  )
+    ? preparedContext.updateDecision.reason
+    : null;
+}
+
+async function renderPreparedSelfHostedUpdateEnvironment(
+  assetPaths: BundledAssets,
+  preparedEnvironment: PreparedSelfHostedUpdateEnvironment,
+  preparedContext: PreparedSelfHostedUpdateDecisionContext,
+): Promise<RenderedSelfHostedEnvironment> {
+  return await buildRenderedSelfHostedUpdateEnvironment(
+    assetPaths,
+    preparedContext.environmentValues,
+    preparedEnvironment.stagedAssetPaths.dockerWorkDirectory,
+    preparedContext.runtimeSelection,
+    preparedEnvironment.currentState.managedDomain,
   );
 }
 
@@ -121,6 +168,18 @@ function createPreparedAppliedSelfHostedUpdateResult(
     targetVersion: runtimeSelection.nodeVersion,
     updateAction: 'apply',
   };
+}
+
+function shouldSkipPreparedSelfHostedUpdate(
+  preparedEnvironment: PreparedSelfHostedUpdateEnvironment,
+  renderedEnvironment: RenderedSelfHostedEnvironment,
+  skipReason: UpdateSkipReason,
+): boolean {
+  if (skipReason !== 'already-current') {
+    return true;
+  }
+
+  return renderedEnvironment.text === preparedEnvironment.currentEnvironmentText;
 }
 
 async function readPreparedSelfHostedUpdateEnvironment(

@@ -1,4 +1,13 @@
-import { nodeRuntimeResourceReadinessFailedErrorCode, type NodeRuntimeResourceErrorCode } from '@compartment/contracts';
+import {
+  nodeRuntimeDockerErrorCode,
+  nodeRuntimeNetworkCapacityExhaustedErrorCode,
+  nodeRuntimeResourceReadinessFailedErrorCode,
+  nodeRuntimeServiceReadinessFailedErrorCode,
+  nodeRuntimeServiceStartupFailedErrorCode,
+  type NodeRuntimeNetworkErrorCode,
+  type NodeRuntimeResourceErrorCode,
+  type NodeRuntimeServiceErrorCode,
+} from '@compartment/contracts';
 
 type RuntimeResourceReadinessPhase = 'restore' | 'startup';
 
@@ -8,14 +17,19 @@ interface RuntimeResourceReadinessErrorInput {
   timeoutMs: number;
 }
 
+export type NodeRuntimeErrorCode =
+  | NodeRuntimeNetworkErrorCode
+  | NodeRuntimeResourceErrorCode
+  | NodeRuntimeServiceErrorCode;
+
 export interface NodeRuntimeError extends Error {
-  readonly code: NodeRuntimeResourceErrorCode;
+  readonly code: NodeRuntimeErrorCode;
 }
 
 class NodeRuntimeErrorImpl extends Error implements NodeRuntimeError {
-  public readonly code: NodeRuntimeResourceErrorCode;
+  public readonly code: NodeRuntimeErrorCode;
 
-  public constructor(code: NodeRuntimeResourceErrorCode, message: string) {
+  public constructor(code: NodeRuntimeErrorCode, message: string) {
     super(message);
     this.name = 'NodeRuntimeError';
     this.code = code;
@@ -24,6 +38,32 @@ class NodeRuntimeErrorImpl extends Error implements NodeRuntimeError {
 
 export function createRuntimeResourceReadinessError(input: RuntimeResourceReadinessErrorInput): NodeRuntimeError {
   return new NodeRuntimeErrorImpl(nodeRuntimeResourceReadinessFailedErrorCode, createResourceReadinessMessage(input));
+}
+
+export function createRuntimeServiceReadinessError(detail: string): NodeRuntimeError {
+  return new NodeRuntimeErrorImpl(nodeRuntimeServiceReadinessFailedErrorCode, `runtime readiness failed: ${detail}`);
+}
+
+export function createRuntimeServiceStartupError(detail: string): NodeRuntimeError {
+  return new NodeRuntimeErrorImpl(nodeRuntimeServiceStartupFailedErrorCode, `runtime startup failed: ${detail}`);
+}
+
+export function createRuntimeNetworkCapacityExhaustedError(detail: string): NodeRuntimeError {
+  return new NodeRuntimeErrorImpl(
+    nodeRuntimeNetworkCapacityExhaustedErrorCode,
+    `Docker runtime network pool exhausted. ${detail}`,
+  );
+}
+
+export function createRuntimeNetworkIpCapacityExhaustedError(detail: string): NodeRuntimeError {
+  return new NodeRuntimeErrorImpl(
+    nodeRuntimeNetworkCapacityExhaustedErrorCode,
+    `Docker runtime network IP capacity exhausted. ${detail}`,
+  );
+}
+
+export function createRuntimeDockerError(detail: string): NodeRuntimeError {
+  return new NodeRuntimeErrorImpl(nodeRuntimeDockerErrorCode, `Docker runtime network operation failed. ${detail}`);
 }
 
 export function isNodeRuntimeError(value: Error | null | undefined): value is NodeRuntimeError {

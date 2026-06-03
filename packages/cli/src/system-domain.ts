@@ -24,6 +24,7 @@ import {
   type StageSystemDomainCertificateResult,
 } from './system-domain-certificate';
 import type { InstallProgressReporter } from './install.types';
+import type { SelfHostedRuntimeIdentity } from './self-hosted-runtime-identity';
 import type { SystemDomainClientConfig } from './system-domain-client.types';
 import { buildCustomSystemDomainHostPlan, isCustomCertHostPlan, isCustomHttpHostPlan } from './system-domain-host-plan';
 import { resolveExpectedSystemDomainVersion } from './system-domain-version';
@@ -65,6 +66,7 @@ export async function attachSelfHostedSystemDomainCertificate(
   const stagedCertificate: StageSystemDomainCertificateResult = await stagePendingCertificate(
     input,
     context.customTlsDirectory,
+    context.runtimeIdentity,
     pendingOperation,
   );
 
@@ -160,6 +162,7 @@ async function postCurrentSystemDomainMutation(
 async function stagePendingCertificate(
   input: AttachSelfHostedSystemDomainCertificateInput,
   customTlsDirectory: string,
+  runtimeIdentity: SelfHostedRuntimeIdentity,
   pendingOperation: SystemDomainPendingOperation,
 ): Promise<StageSystemDomainCertificateResult> {
   const stageInput: StagePendingCertificateInput = {
@@ -167,6 +170,7 @@ async function stagePendingCertificate(
     customTlsDirectory,
     operationId: pendingOperation.operationId,
     privateKeyFile: input.privateKeyFile,
+    runtimeIdentity,
   };
   const reportProgress: InstallProgressReporter | undefined = input.context?.reportProgress;
   if (reportProgress === undefined) {

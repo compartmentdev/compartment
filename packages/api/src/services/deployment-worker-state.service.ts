@@ -17,8 +17,7 @@ import { parseResolvedRelease } from './deployment-release.service';
 import { parseResolvedRun } from './deployment-run.service';
 import { resolveDeploymentPublicRoute } from './deployment-route.service';
 import type { DeploymentPublicRoute } from './deployment-route.service.types';
-import { buildDeploymentRuntimeEnv } from './deployment-runtime-plan.service';
-import type { RuntimeEnvMap } from './deployment-runtime.types';
+import { buildDeploymentRuntimePlan, type DeploymentRuntimePlan } from './deployment-runtime-plan.service';
 import type { ClaimedDeploymentContext, ClaimedPreviousDeploymentContext } from './deployments.service.types';
 
 export async function listDeploymentsNeedingWorkerRecovery(mode: WorkerRecoverDeploymentsMode): Promise<string[]> {
@@ -46,7 +45,7 @@ export async function buildClaimedDeploymentContext(deploymentId: string): Promi
   const previousDeployment: ClaimedPreviousDeploymentContext | null =
     await resolveClaimedPreviousDeployment(deployment);
   const buildEnv: BuildEnvMap = resolveClaimedBuildEnv(deployment);
-  const runtimeEnv: RuntimeEnvMap = await resolveClaimedRuntimeEnv(deployment);
+  const runtimePlan: DeploymentRuntimePlan = await resolveClaimedRuntimePlan(deployment);
   const routeHost: string = await resolveClaimedRouteHost(deployment);
 
   return {
@@ -58,7 +57,8 @@ export async function buildClaimedDeploymentContext(deploymentId: string): Promi
     release: parseResolvedRelease(deployment.deployment.resolvedReleaseJson),
     run: parseResolvedRun(deployment.deployment.resolvedRunJson),
     routeHost,
-    runtimeEnv,
+    runtimeEnv: runtimePlan.runtimeEnv,
+    runtimeNetwork: runtimePlan.runtimeNetwork,
   };
 }
 
@@ -66,8 +66,8 @@ function resolveClaimedBuildEnv(deployment: DeploymentJoinedRow): BuildEnvMap {
   return decryptResolvedBuildEnv(deployment.artifact.resolvedBuildEnvJson);
 }
 
-async function resolveClaimedRuntimeEnv(deployment: DeploymentJoinedRow): Promise<RuntimeEnvMap> {
-  return await buildDeploymentRuntimeEnv(
+async function resolveClaimedRuntimePlan(deployment: DeploymentJoinedRow): Promise<DeploymentRuntimePlan> {
+  return await buildDeploymentRuntimePlan(
     deployment.environment.id,
     deployment.project.organizationId,
     deployment.service.id,

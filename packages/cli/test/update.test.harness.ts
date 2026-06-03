@@ -27,12 +27,15 @@ type RestartSelfHostedRuntime = (
   input: RestartSelfHostedRuntimeInput,
 ) => Promise<void>;
 type StageNodeAgentHostService = (input: object) => Promise<void>;
+type StopNodeAgentHostService = () => Promise<void>;
+type StopSelfHostedRuntime = (context: DockerExecutionContext, input: RestartSelfHostedRuntimeInput) => Promise<void>;
 type WaitForNodeAgentHostServiceHealth = (input: object) => Promise<void>;
 
 interface CreateCurrentEnvironmentTextOptions {
   acmeCaUrl?: string | undefined;
   acmeEmail?: string | undefined;
   baseDomain?: string | undefined;
+  buildKitAddress?: string | undefined;
   caddyTlsMode?: string | undefined;
   includeRuntimeControlToken?: boolean | undefined;
   includeVariablesMasterKey?: boolean | undefined;
@@ -58,6 +61,7 @@ interface DockerRuntimeModule {
   ensureDockerExecutionContext: Mock<EnsureDockerExecutionContext>;
   prepareSelfHostedRuntimeImages: Mock<PrepareSelfHostedRuntimeImages>;
   restartSelfHostedRuntime: Mock<RestartSelfHostedRuntime>;
+  stopSelfHostedRuntime: Mock<StopSelfHostedRuntime>;
 }
 
 export interface InstallStateJsonObject {
@@ -68,6 +72,7 @@ interface NodeAgentServiceModule {
   assertNodeAgentHostServiceInstallable: Mock<AssertNodeAgentHostServiceInstallable>;
   restartNodeAgentHostService: Mock<RestartNodeAgentHostService>;
   stageNodeAgentHostService: Mock<StageNodeAgentHostService>;
+  stopNodeAgentHostService: Mock<StopNodeAgentHostService>;
   waitForNodeAgentHostServiceHealth: Mock<WaitForNodeAgentHostServiceHealth>;
 }
 
@@ -92,6 +97,8 @@ interface UpdateRuntimeMocks {
   restartNodeAgentHostService: Mock<RestartNodeAgentHostService>;
   restartSelfHostedRuntime: Mock<RestartSelfHostedRuntime>;
   stageNodeAgentHostService: Mock<StageNodeAgentHostService>;
+  stopNodeAgentHostService: Mock<StopNodeAgentHostService>;
+  stopSelfHostedRuntime: Mock<StopSelfHostedRuntime>;
   waitForNodeAgentHostServiceHealth: Mock<WaitForNodeAgentHostServiceHealth>;
 }
 
@@ -204,6 +211,8 @@ function createUpdateRuntimeMocks(): UpdateRuntimeMocks {
     restartNodeAgentHostService: vi.fn<RestartNodeAgentHostService>(),
     restartSelfHostedRuntime: vi.fn<RestartSelfHostedRuntime>(),
     stageNodeAgentHostService: vi.fn<StageNodeAgentHostService>(),
+    stopNodeAgentHostService: vi.fn<StopNodeAgentHostService>(),
+    stopSelfHostedRuntime: vi.fn<StopSelfHostedRuntime>(),
     waitForNodeAgentHostServiceHealth: vi.fn<WaitForNodeAgentHostServiceHealth>(),
   };
 }
@@ -216,6 +225,8 @@ function resetUpdateRuntimeMocks(mocks: UpdateRuntimeMocks): void {
   mocks.restartNodeAgentHostService.mockReset();
   mocks.restartSelfHostedRuntime.mockReset();
   mocks.stageNodeAgentHostService.mockReset();
+  mocks.stopNodeAgentHostService.mockReset();
+  mocks.stopSelfHostedRuntime.mockReset();
   mocks.waitForNodeAgentHostServiceHealth.mockReset();
 }
 
@@ -258,6 +269,7 @@ function mockDockerRuntime(mocks: UpdateRuntimeMocks): void {
       }),
       prepareSelfHostedRuntimeImages: mocks.prepareSelfHostedRuntimeImages.mockResolvedValue(undefined),
       restartSelfHostedRuntime: mocks.restartSelfHostedRuntime.mockResolvedValue(undefined),
+      stopSelfHostedRuntime: mocks.stopSelfHostedRuntime.mockResolvedValue(undefined),
     }),
   );
 }
@@ -269,6 +281,7 @@ function mockNodeAgentService(mocks: UpdateRuntimeMocks): void {
       assertNodeAgentHostServiceInstallable: mocks.assertNodeAgentHostServiceInstallable,
       restartNodeAgentHostService: mocks.restartNodeAgentHostService.mockResolvedValue(undefined),
       stageNodeAgentHostService: mocks.stageNodeAgentHostService.mockResolvedValue(undefined),
+      stopNodeAgentHostService: mocks.stopNodeAgentHostService.mockResolvedValue(undefined),
       waitForNodeAgentHostServiceHealth: mocks.waitForNodeAgentHostServiceHealth.mockResolvedValue(undefined),
     }),
   );
@@ -297,6 +310,7 @@ function mockSelfHostedPathSelection(installPaths: TemporaryInstallPaths): void 
 function createCurrentEnvironmentText(options: CreateCurrentEnvironmentTextOptions = {}): string {
   const values: string[] = [
     'COMPARTMENT_ENV=self-hosted',
+    `BUILDKIT_ADDR=${options.buildKitAddress ?? 'tcp://builder:1234'}`,
     'COMPARTMENT_API_BIND_HOST=0.0.0.0',
     'COMPARTMENT_API_IMAGE=ghcr.io/compartmentdev/compartment-api:0.1.0',
     'COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0',

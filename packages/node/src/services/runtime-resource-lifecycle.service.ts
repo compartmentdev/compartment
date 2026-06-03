@@ -20,7 +20,9 @@ export async function deleteRuntimeResource(
     }
   }
   if (input.containerId === null) {
-    await reconcileRuntimeNetworks(config, { disconnectCaddyStaleNetworks: true });
+    await reconcileRuntimeNetworks(config, {
+      disconnectCaddyStaleNetworks: true,
+    });
   }
 
   return response;
@@ -31,7 +33,9 @@ export async function stopRuntimeResource(
   config: RuntimeDeployConfig,
 ): Promise<NodeResourceResponse> {
   await removeDockerContainer({ containerRef: input.containerId });
-  await reconcileRuntimeNetworks(config, { disconnectCaddyStaleNetworks: true });
+  await reconcileRuntimeNetworks(config, {
+    disconnectCaddyStaleNetworks: true,
+  });
 
   return buildStoppedResourceResponse(input, config);
 }

@@ -24,6 +24,7 @@ import {
   selfHostedRequiredSystemComposeServiceNames,
   readSelfHostedSystemServiceNames,
 } from './docker-runtime.service-names';
+import { ensureSelfHostedRuntimeDirectoriesFromEnvFile } from './self-hosted-runtime-directories-env';
 import type { SelfHostedImageRefs } from './self-hosted-env.types';
 import type {
   DockerExecutionContext,
@@ -42,6 +43,7 @@ const buildServiceComposeStartRecoveryMessage: string =
   'Docker Compose reported a transient build-service start error after services became available.';
 
 export { ensureDockerExecutionContext, inspectSelfHostedRuntimeServices, readSelfHostedSystemServiceNames };
+export { stopSelfHostedRuntime } from './docker-runtime-stop';
 
 export async function prepareSelfHostedRuntimeImages(
   context: DockerExecutionContext,
@@ -135,6 +137,7 @@ async function startRequiredSelfHostedRuntimeServices(
   }
   const upResult: CommandResult = await runRuntimeComposeUp(context, input, isRestart, services);
   if (upResult.exitCode === 0 || (await recoverStartedRequiredRuntimeServices(context, input, upResult, services))) {
+    await repairRuntimeDirectoriesBeforeBuildServices(input);
     return;
   }
 
@@ -176,6 +179,13 @@ async function startBuildSelfHostedRuntimeServices(
   }
 
   await reportBuildServiceStartFailure(context, input, upResult);
+}
+
+async function repairRuntimeDirectoriesBeforeBuildServices(input: StartSelfHostedRuntimeInput): Promise<void> {
+  await ensureSelfHostedRuntimeDirectoriesFromEnvFile({
+    envPath: input.envPath,
+    repairRuntimeWritableDirectoryContents: true,
+  });
 }
 
 async function canStartBuildRuntimeServices(

@@ -19,6 +19,7 @@ import { reconcileRuntimeResource, startRuntimeResource } from '../src/services/
 import { deleteRuntimeResource } from '../src/services/runtime-resource-lifecycle.service';
 import { buildRuntimeResourceLabels } from '../src/services/runtime-resource-labels';
 import type { RuntimeDeployConfig } from '../src/services/runtime.types';
+import { createRuntimeNetworkPoolConfig } from './runtime-network-pool.fixture';
 
 type BuildDockerNamespaceLabels = (namespace: string) => Record<string, string>;
 type CanConnectToRuntimeHost = (host: string, port: number, deadline: number) => Promise<boolean>;
@@ -28,10 +29,12 @@ type EnsureDockerImageAvailable = (input: { imageRef: string }) => Promise<void>
 type EnsureDockerNetwork = (input: { labels: Record<string, string>; networkName: string }) => Promise<void>;
 type InspectDockerContainer = (input: { containerRef: string }) => Promise<DockerInspectContainerResult | null>;
 type InspectDockerNetwork = (input: { networkName: string }) => Promise<DockerInspectNetworkResult | null>;
+type IsDockerNetworkIpamCapacityError = (error: Error) => boolean;
 type ListDockerContainers = (input?: {
   labelFilters?: Record<string, string | undefined>;
 }) => Promise<DockerListContainerResult[]>;
 type ListDockerNetworks = () => Promise<DockerListNetworkResult[]>;
+type ReadDockerEngineErrorMessage = (error: Error) => string;
 type RemoveDockerContainer = (input: { containerRef: string }) => Promise<void>;
 type RemoveDockerNetwork = (input: { networkName: string }) => Promise<void>;
 type RemoveDockerVolume = (input: { volumeName: string }) => Promise<void>;
@@ -39,6 +42,16 @@ type RenameDockerContainer = (input: { containerRef: string; nextContainerName: 
 type RunDockerContainer = (input: DockerRunContainerInput) => Promise<DockerRunContainerResult>;
 type StartDockerContainer = (input: { containerRef: string }) => Promise<void>;
 type StopDockerContainer = (input: { containerRef: string }) => Promise<void>;
+type EnsureRuntimeResourceNetwork = (
+  input: Pick<NodeResourceRequest, 'environmentId' | 'projectId'>,
+  config: RuntimeDeployConfig,
+) => Promise<string>;
+type AssertRuntimeResourceNetworkFreeEndpoints = (
+  input: Pick<NodeResourceRequest, 'environmentId' | 'projectId'>,
+  config: RuntimeDeployConfig,
+  requiredFreeEndpoints: number,
+  reason: string,
+) => Promise<void>;
 type SyncDockerNetworkEgressDenyRules = (input: {
   destinationCidrs: string[];
   namespace: string;
@@ -75,16 +88,20 @@ interface RuntimeResourceConnectivityModule {
 }
 
 interface RuntimeResourceServiceMocks {
+  assertRuntimeResourceNetworkFreeEndpoints: Mock<AssertRuntimeResourceNetworkFreeEndpoints>;
   buildDockerNamespaceLabels: Mock<BuildDockerNamespaceLabels>;
   canConnectToRuntimeHost: Mock<CanConnectToRuntimeHost>;
   connectDockerContainerToNetwork: Mock<ConnectDockerContainerToNetwork>;
   disconnectDockerContainerFromNetwork: Mock<DisconnectDockerContainerFromNetwork>;
   ensureDockerImageAvailable: Mock<EnsureDockerImageAvailable>;
   ensureDockerNetwork: Mock<EnsureDockerNetwork>;
+  ensureRuntimeResourceNetwork: Mock<EnsureRuntimeResourceNetwork>;
   inspectDockerContainer: Mock<InspectDockerContainer>;
   inspectDockerNetwork: Mock<InspectDockerNetwork>;
+  isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
   listDockerContainers: Mock<ListDockerContainers>;
   listDockerNetworks: Mock<ListDockerNetworks>;
+  readDockerEngineErrorMessage: Mock<ReadDockerEngineErrorMessage>;
   removeDockerContainer: Mock<RemoveDockerContainer>;
   removeDockerNetwork: Mock<RemoveDockerNetwork>;
   removeDockerVolume: Mock<RemoveDockerVolume>;
@@ -97,6 +114,7 @@ interface RuntimeResourceServiceMocks {
 
 const mocks: RuntimeResourceServiceMocks = vi.hoisted(
   (): RuntimeResourceServiceMocks => ({
+    assertRuntimeResourceNetworkFreeEndpoints: vi.fn<AssertRuntimeResourceNetworkFreeEndpoints>(),
     buildDockerNamespaceLabels: vi.fn<BuildDockerNamespaceLabels>(
       (namespace: string): Record<string, string> => ({
         'compartment.namespace': namespace,
@@ -107,10 +125,13 @@ const mocks: RuntimeResourceServiceMocks = vi.hoisted(
     disconnectDockerContainerFromNetwork: vi.fn<DisconnectDockerContainerFromNetwork>(),
     ensureDockerImageAvailable: vi.fn<EnsureDockerImageAvailable>(),
     ensureDockerNetwork: vi.fn<EnsureDockerNetwork>(),
+    ensureRuntimeResourceNetwork: vi.fn<EnsureRuntimeResourceNetwork>(),
     inspectDockerContainer: vi.fn<InspectDockerContainer>(),
     inspectDockerNetwork: vi.fn<InspectDockerNetwork>(),
+    isDockerNetworkIpamCapacityError: vi.fn<IsDockerNetworkIpamCapacityError>(),
     listDockerContainers: vi.fn<ListDockerContainers>(),
     listDockerNetworks: vi.fn<ListDockerNetworks>(),
+    readDockerEngineErrorMessage: vi.fn<ReadDockerEngineErrorMessage>(),
     removeDockerContainer: vi.fn<RemoveDockerContainer>(),
     removeDockerNetwork: vi.fn<RemoveDockerNetwork>(),
     removeDockerVolume: vi.fn<RemoveDockerVolume>(),
@@ -119,6 +140,17 @@ const mocks: RuntimeResourceServiceMocks = vi.hoisted(
     startDockerContainer: vi.fn<StartDockerContainer>(),
     stopDockerContainer: vi.fn<StopDockerContainer>(),
     syncDockerNetworkEgressDenyRules: vi.fn<SyncDockerNetworkEgressDenyRules>(),
+  }),
+);
+
+vi.mock(
+  '../src/services/runtime-network-capacity.service',
+  (): {
+    assertRuntimeResourceNetworkFreeEndpoints: Mock<AssertRuntimeResourceNetworkFreeEndpoints>;
+    ensureRuntimeResourceNetwork: Mock<EnsureRuntimeResourceNetwork>;
+  } => ({
+    assertRuntimeResourceNetworkFreeEndpoints: mocks.assertRuntimeResourceNetworkFreeEndpoints,
+    ensureRuntimeResourceNetwork: mocks.ensureRuntimeResourceNetwork,
   }),
 );
 
@@ -146,8 +178,10 @@ vi.mock(
     ensureDockerNetwork: Mock<EnsureDockerNetwork>;
     inspectDockerContainer: Mock<InspectDockerContainer>;
     inspectDockerNetwork: Mock<InspectDockerNetwork>;
+    isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
     listDockerContainers: Mock<ListDockerContainers>;
     listDockerNetworks: Mock<ListDockerNetworks>;
+    readDockerEngineErrorMessage: Mock<ReadDockerEngineErrorMessage>;
     removeDockerContainer: Mock<RemoveDockerContainer>;
     removeDockerNetwork: Mock<RemoveDockerNetwork>;
     removeDockerVolume: Mock<RemoveDockerVolume>;
@@ -165,8 +199,10 @@ vi.mock(
     ensureDockerNetwork: mocks.ensureDockerNetwork,
     inspectDockerContainer: mocks.inspectDockerContainer,
     inspectDockerNetwork: mocks.inspectDockerNetwork,
+    isDockerNetworkIpamCapacityError: mocks.isDockerNetworkIpamCapacityError,
     listDockerContainers: mocks.listDockerContainers,
     listDockerNetworks: mocks.listDockerNetworks,
+    readDockerEngineErrorMessage: mocks.readDockerEngineErrorMessage,
     removeDockerContainer: mocks.removeDockerContainer,
     removeDockerNetwork: mocks.removeDockerNetwork,
     removeDockerVolume: mocks.removeDockerVolume,
@@ -193,6 +229,9 @@ const originalHostname: string | undefined = process.env.HOSTNAME;
 
 beforeEach((): void => {
   process.env.HOSTNAME = nodeContainerRef;
+  mocks.ensureRuntimeResourceNetwork.mockResolvedValue(
+    'compartment-compartment-e2e-prj-smoke-env-production-resources',
+  );
 });
 
 afterEach((): void => {
@@ -201,16 +240,20 @@ afterEach((): void => {
   } else {
     process.env.HOSTNAME = originalHostname;
   }
+  mocks.assertRuntimeResourceNetworkFreeEndpoints.mockReset();
   mocks.buildDockerNamespaceLabels.mockClear();
   mocks.canConnectToRuntimeHost.mockClear();
   mocks.connectDockerContainerToNetwork.mockReset();
   mocks.disconnectDockerContainerFromNetwork.mockReset();
   mocks.ensureDockerImageAvailable.mockReset();
   mocks.ensureDockerNetwork.mockReset();
+  mocks.ensureRuntimeResourceNetwork.mockReset();
   mocks.inspectDockerContainer.mockReset();
   mocks.inspectDockerNetwork.mockReset();
+  mocks.isDockerNetworkIpamCapacityError.mockReset();
   mocks.listDockerContainers.mockReset();
   mocks.listDockerNetworks.mockReset();
+  mocks.readDockerEngineErrorMessage.mockReset();
   mocks.removeDockerContainer.mockReset();
   mocks.removeDockerNetwork.mockReset();
   mocks.removeDockerVolume.mockReset();
@@ -266,12 +309,13 @@ describe('reconcileRuntimeResource', (): void => {
     expect(mocks.removeDockerContainer).toHaveBeenNthCalledWith(2, {
       containerRef: 'compartment-compartment-e2e-smoke-production-resource-postgres-previous',
     });
-    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith({
-      labels: {
-        'compartment.namespace': 'compartment-e2e',
-      },
-      networkName: 'compartment-compartment-e2e-prj-smoke-env-production-resources',
-    });
+    expect(mocks.ensureRuntimeResourceNetwork).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environmentId: 'env_production',
+        projectId: 'prj_smoke',
+      }),
+      expect.objectContaining({ dockerNamespace: 'compartment-e2e' }),
+    );
     expect(mocks.runDockerContainer).toHaveBeenCalledWith({
       containerName: 'compartment-compartment-e2e-smoke-production-resource-postgres',
       env: {
@@ -300,7 +344,14 @@ describe('reconcileRuntimeResource', (): void => {
 
   it('restores the previous resource container when replacement startup fails', async (): Promise<void> => {
     mocks.ensureDockerImageAvailable.mockResolvedValueOnce(undefined);
-    mocks.removeDockerContainer.mockResolvedValue(undefined);
+    mocks.removeDockerContainer.mockImplementation(
+      async ({ containerRef }: { containerRef: string }): Promise<void> => {
+        await Promise.resolve();
+        if (containerRef === 'compartment-compartment-e2e-smoke-production-resource-postgres') {
+          throw new Error('new resource container already removed');
+        }
+      },
+    );
     mocks.renameDockerContainer.mockResolvedValue(undefined);
     mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'resource_container_123' });
     mocks.startDockerContainer.mockResolvedValueOnce(undefined);
@@ -357,9 +408,12 @@ describe('reconcileRuntimeResource', (): void => {
       containerRef: 'compartment-compartment-e2e-smoke-production-resource-postgres-previous',
     });
     expect(mocks.removeDockerContainer).toHaveBeenNthCalledWith(2, {
-      containerRef: 'compartment-compartment-e2e-smoke-production-resource-postgres',
+      containerRef: 'resource_container_123',
     });
     expect(mocks.removeDockerContainer).toHaveBeenNthCalledWith(3, {
+      containerRef: 'resource_container_123',
+    });
+    expect(mocks.removeDockerContainer).toHaveBeenNthCalledWith(4, {
       containerRef: 'compartment-compartment-e2e-smoke-production-resource-postgres',
     });
   });
@@ -528,9 +582,31 @@ describe('startRuntimeResource', (): void => {
     expect(failure.code).toBe(nodeRuntimeResourceReadinessFailedErrorCode);
     expect(failure.message).toContain('did not become ready');
 
-    expect(mocks.removeDockerContainer).toHaveBeenCalledWith({
-      containerRef: 'compartment-compartment-e2e-smoke-production-resource-postgres',
+    expect(mocks.removeDockerContainer).toHaveBeenCalledWith({ containerRef: 'resource_container_123' });
+  });
+
+  it('removes a partial resource container when startup exits before readiness checks', async (): Promise<void> => {
+    mocks.ensureDockerImageAvailable.mockResolvedValueOnce(undefined);
+    mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'resource_container_123' });
+    mocks.inspectDockerContainer.mockResolvedValueOnce({
+      containerId: 'resource_container_123',
+      imageRef: 'postgres:16',
+      isRunning: false,
+      labels: {},
+      publishedPorts: [],
     });
+    mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
+
+    await expect(
+      startRuntimeResource(
+        createResourceRequest({
+          readiness: null,
+        }),
+        createRuntimeDeployConfig(),
+      ),
+    ).rejects.toThrow('Expected resource container resource_container_123 to remain running after startup.');
+
+    expect(mocks.removeDockerContainer).toHaveBeenCalledWith({ containerRef: 'resource_container_123' });
   });
 });
 
@@ -681,6 +757,7 @@ function createRuntimeDeployConfig(): RuntimeDeployConfig {
     dockerNamespace: 'compartment-e2e',
     runtimeConnectivityMode: 'network',
     runtimeDefaultUpstreamHost: '127.0.0.1',
+    runtimeNetworkPool: createRuntimeNetworkPoolConfig(),
     runtimeRegistryCredentials: {
       password: 'registry-read-password',
       serverAddress: '127.0.0.1:39461',

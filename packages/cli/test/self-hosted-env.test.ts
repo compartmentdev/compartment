@@ -20,6 +20,8 @@ type ArtifactRegistryCredentialInput = Pick<
   | 'artifactRegistryWriteUsername'
 >;
 
+const selfHostedBuildKitAddress: string = 'unix:///run/buildkit/buildkitd.sock';
+
 describe('self-hosted environment helpers', (): void => {
   it('renders the self-hosted environment with generated image refs and secrets', (): void => {
     const rendered: RenderedSelfHostedEnvironment = buildSelfHostedEnvironment({
@@ -43,6 +45,7 @@ describe('self-hosted environment helpers', (): void => {
       runtimeControlToken: 'runtime-token',
     });
 
+    expect(rendered.values.BUILDKIT_ADDR).toBe(selfHostedBuildKitAddress);
     expect(rendered.values.COMPARTMENT_BASE_DOMAIN).toBe('example.com');
     expect(rendered.values.COMPARTMENT_API_IMAGE).toBe('ghcr.io/compartmentdev/compartment-api:1.2.3');
     expect(rendered.values.COMPARTMENT_CADDY_IMAGE).toBe('ghcr.io/compartmentdev/compartment-caddy:1.2.3');
@@ -63,6 +66,8 @@ describe('self-hosted environment helpers', (): void => {
     expect(rendered.values.COMPARTMENT_DOCKER_NAMESPACE).toBe('compartment');
     expect(rendered.values.COMPARTMENT_RUNTIME_CONNECTIVITY_MODE).toBe('network');
     expect(rendered.values.COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST).toBe('host.docker.internal');
+    expect(rendered.values.COMPARTMENT_RUNTIME_UID).toBe('10001');
+    expect(rendered.values.COMPARTMENT_RUNTIME_GID).toBe('10001');
     expect(rendered.values.COMPARTMENT_AUDIT_RETENTION_CLEANUP_CRON).toBe('0 3 * * *');
     expect(rendered.values.COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE).toBe('1000');
     expect(rendered.values.COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES).toBe('100');
@@ -99,10 +104,13 @@ describe('self-hosted environment helpers', (): void => {
     expect(rendered.text).toContain('COMPARTMENT_AUDIT_FILE_SINK_ENABLED=false');
     expect(rendered.text).toContain('COMPARTMENT_AUDIT_FILE_SINK_DIR=/var/lib/compartment/audit-logs');
     expect(rendered.text).toContain('COMPARTMENT_RUNTIME_CONTROL_TOKEN=runtime-token');
+    expect(rendered.text).toContain('COMPARTMENT_RUNTIME_UID=10001');
+    expect(rendered.text).toContain('COMPARTMENT_RUNTIME_GID=10001');
     expect(rendered.text).toContain('COMPARTMENT_SYSTEM_API_SOCKET=/var/run/compartment/api/system-api.sock');
     expect(rendered.text).toContain('COMPARTMENT_SYSTEM_TOKEN=system-token');
     expect(rendered.text).toContain('COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME=reader');
     expect(rendered.text).toContain('COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME=writer');
+    expect(rendered.text).toContain(`BUILDKIT_ADDR=${selfHostedBuildKitAddress}`);
   });
 
   it('renders Docker Hub image refs when selected', (): void => {
@@ -242,6 +250,101 @@ describe('self-hosted environment helpers', (): void => {
     });
 
     expect(rendered.values.COMPARTMENT_PUBLIC_PROTOCOL).toBe('http');
+  });
+
+  it('migrates the self-hosted BuildKit address during update', (): void => {
+    const rendered: RenderedSelfHostedEnvironment = buildUpdatedSelfHostedEnvironment({
+      acmeEmail: 'admin@example.com',
+      baseDomain: 'example.com',
+      currentValues: readSelfHostedEnvironmentValues(buildTemplateText()),
+      dockerWorkDirectory: '/var/lib/compartment/self-hosted/docker-work',
+      edgeToken: 'edge-token',
+      ...createArtifactRegistryCredentialInput(),
+      postgresPassword: 'postgres-password',
+      publicHttpPort: 80,
+      publicHttpsPort: 443,
+      publicIngressIpv4: '',
+      publicIngressIpv6: '',
+      runtimeControlToken: 'runtime-token',
+      runtimeSelection: buildPublishedSelfHostedRuntimeSelection('1.2.3'),
+      sessionSecret: 'session-secret',
+      nodeAgentSocketPath: '/var/run/compartment/node/agent.sock',
+      systemApiSocketPath: '/var/run/compartment/api/system-api.sock',
+      systemToken: 'system-token',
+      templateText: buildTemplateText(),
+      variablesMasterKey: 'a'.repeat(64),
+    });
+
+    expect(rendered.values.BUILDKIT_ADDR).toBe(selfHostedBuildKitAddress);
+    expect(rendered.text).toContain(`BUILDKIT_ADDR=${selfHostedBuildKitAddress}`);
+    expect(rendered.text).not.toContain('BUILDKIT_ADDR=tcp://builder:1234');
+  });
+
+  it('preserves configured runtime network pool during update', (): void => {
+    const runtimeNetworkPoolCidr: string = buildRuntimeNetworkPoolCidrForTest();
+    const currentValues: Record<string, string> = readSelfHostedEnvironmentValues(buildTemplateText());
+    currentValues.COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR = runtimeNetworkPoolCidr;
+    currentValues.COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX = '24';
+
+    const rendered: RenderedSelfHostedEnvironment = buildUpdatedSelfHostedEnvironment({
+      acmeEmail: 'admin@example.com',
+      baseDomain: 'example.com',
+      currentValues,
+      dockerWorkDirectory: '/var/lib/compartment/self-hosted/docker-work',
+      edgeToken: 'edge-token',
+      ...createArtifactRegistryCredentialInput(),
+      postgresPassword: 'postgres-password',
+      publicHttpPort: 80,
+      publicHttpsPort: 443,
+      publicIngressIpv4: '',
+      publicIngressIpv6: '',
+      runtimeControlToken: 'runtime-token',
+      runtimeSelection: buildPublishedSelfHostedRuntimeSelection('1.2.3'),
+      sessionSecret: 'session-secret',
+      nodeAgentSocketPath: '/var/run/compartment/node/agent.sock',
+      systemApiSocketPath: '/var/run/compartment/api/system-api.sock',
+      systemToken: 'system-token',
+      templateText: buildTemplateText(),
+      variablesMasterKey: 'a'.repeat(64),
+    });
+
+    expect(rendered.values.COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR).toBe(runtimeNetworkPoolCidr);
+    expect(rendered.values.COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX).toBe('24');
+  });
+
+  it('overwrites existing self-hosted runtime UID and GID during update', (): void => {
+    const rendered: RenderedSelfHostedEnvironment = buildUpdatedSelfHostedEnvironment({
+      acmeEmail: 'admin@example.com',
+      baseDomain: 'example.com',
+      currentValues: readSelfHostedEnvironmentValues(
+        buildTemplateText()
+          .replace('COMPARTMENT_RUNTIME_UID=10001', 'COMPARTMENT_RUNTIME_UID=12345')
+          .replace('COMPARTMENT_RUNTIME_GID=10001', 'COMPARTMENT_RUNTIME_GID=23456'),
+      ),
+      dockerWorkDirectory: '/var/lib/compartment/self-hosted/docker-work',
+      edgeToken: 'edge-token',
+      ...createArtifactRegistryCredentialInput(),
+      postgresPassword: 'postgres-password',
+      publicHttpPort: 80,
+      publicHttpsPort: 443,
+      publicIngressIpv4: '',
+      publicIngressIpv6: '',
+      runtimeControlToken: 'runtime-token',
+      runtimeSelection: buildPublishedSelfHostedRuntimeSelection('1.2.3'),
+      sessionSecret: 'session-secret',
+      nodeAgentSocketPath: '/var/run/compartment/node/agent.sock',
+      systemApiSocketPath: '/var/run/compartment/api/system-api.sock',
+      systemToken: 'system-token',
+      templateText: buildTemplateText(),
+      variablesMasterKey: 'a'.repeat(64),
+    });
+
+    expect(rendered.values.COMPARTMENT_RUNTIME_UID).toBe('10001');
+    expect(rendered.values.COMPARTMENT_RUNTIME_GID).toBe('10001');
+    expect(rendered.text).toContain('COMPARTMENT_RUNTIME_UID=10001');
+    expect(rendered.text).toContain('COMPARTMENT_RUNTIME_GID=10001');
+    expect(rendered.text).not.toContain('COMPARTMENT_RUNTIME_UID=12345');
+    expect(rendered.text).not.toContain('COMPARTMENT_RUNTIME_GID=23456');
   });
 
   it('renders custom public ports into the self-hosted environment', (): void => {
@@ -464,7 +567,8 @@ function createArtifactRegistryCredentialInput(): ArtifactRegistryCredentialInpu
 }
 
 function buildTemplateText(): string {
-  return `COMPARTMENT_API_URL=http://127.0.0.1:39444
+  return `BUILDKIT_ADDR=tcp://builder:1234
+COMPARTMENT_API_URL=http://127.0.0.1:39444
 COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:latest
 COMPARTMENT_RUNTIME_PROBE_IMAGE=docker.io/compartmentdev/compartment-runtime-probe:latest
 COMPARTMENT_ACME_CA_URL=
@@ -510,6 +614,10 @@ COMPARTMENT_PUBLIC_PROTOCOL=http
 COMPARTMENT_RESOURCE_BACKUP_DIR=/var/lib/compartment/resource-backups
 COMPARTMENT_RUNTIME_CONNECTIVITY_MODE=network
 COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST=host.docker.internal
+COMPARTMENT_RUNTIME_NETWORK_POOL_CIDR=10.240.0.0/12
+COMPARTMENT_RUNTIME_NETWORK_SUBNET_PREFIX=28
+COMPARTMENT_RUNTIME_UID=10001
+COMPARTMENT_RUNTIME_GID=10001
 COMPARTMENT_ROLLBACK_RETENTION_LIMIT=
 COMPARTMENT_SESSION_SECRET=change-me
 COMPARTMENT_SYSTEM_API_SOCKET=/var/run/compartment/api/system-api.sock
@@ -524,4 +632,8 @@ function buildTemplateTextWithout(variableName: string): string {
     .split('\n')
     .filter((line: string): boolean => !line.startsWith(`${variableName}=`))
     .join('\n');
+}
+
+function buildRuntimeNetworkPoolCidrForTest(): string {
+  return `${[10, 88, 0, 0].map((octet: number): string => octet.toString()).join('.')}/16`;
 }

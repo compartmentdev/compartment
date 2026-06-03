@@ -40,6 +40,7 @@ function buildRuntimeReleaseConfig(config: NodeConfig): RuntimeDeployConfig {
     dockerNamespace: config.dockerNamespace,
     runtimeConnectivityMode: config.runtimeConnectivityMode,
     runtimeDefaultUpstreamHost: config.runtimeDefaultUpstreamHost,
+    runtimeNetworkPool: config.runtimeNetworkPool,
     runtimeRegistryCredentials: config.runtimeRegistryCredentials,
     runtimeProbeImageRef: config.runtimeProbeImageRef,
   };

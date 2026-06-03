@@ -10,6 +10,8 @@ import {
 import type { NodeProjectCleanupRequest, NodeProjectCleanupResponse, NodeResourceVolume } from '@compartment/contracts';
 import { projectIdLabelName } from './runtime-container-labels';
 import { reconcileRuntimeNetworks } from './runtime-network.service';
+import { removeRuntimeNetworkEndpointReservationsForProject } from './runtime-network-endpoint-reservation.service';
+import { removeEmptyRuntimeNetworkReservationsForProject } from './runtime-network-reservation-cleanup.service';
 import { buildResourceVolumeName } from './runtime-names.service';
 import type { RuntimeDeployConfig } from './runtime.types';
 
@@ -27,10 +29,16 @@ export async function cleanupRuntimeProject(
 ): Promise<NodeProjectCleanupResponse> {
   await removeProjectRuntimeContainers(input, config);
   if (input.deleteData) {
+    await removeRuntimeNetworkEndpointReservationsForProject(input.projectId, config);
     await removeProjectResourceVolumes(input, config);
   }
   const disconnectCaddyStaleNetworks: boolean = input.caddyNetworkMode === 'disconnect-stale';
-  await reconcileRuntimeNetworks(config, { disconnectCaddyStaleNetworks });
+  await reconcileRuntimeNetworks(config, {
+    disconnectCaddyStaleNetworks,
+  });
+  if (input.deleteData) {
+    await removeEmptyRuntimeNetworkReservationsForProject(input.projectId, config);
+  }
   if (!disconnectCaddyStaleNetworks) {
     scheduleDeferredCaddyNetworkReconcile(config);
   }
@@ -51,7 +59,9 @@ function scheduleDeferredCaddyNetworkReconcile(config: RuntimeDeployConfig): voi
 
   const timer: DeferredCaddyNetworkReconcileTimer = setTimeout((): void => {
     deferredCaddyNetworkReconcileTimers.delete(config.dockerNamespace);
-    void reconcileRuntimeNetworks(config, { disconnectCaddyStaleNetworks: true }).catch((): void => undefined);
+    void reconcileRuntimeNetworks(config, { disconnectCaddyStaleNetworks: true }).catch((error: Error): void => {
+      console.warn(`Deferred runtime network reconcile failed for ${config.dockerNamespace}: ${error.message}`);
+    });
   }, deferredCaddyNetworkReconcileDelayMs);
   timer.unref();
   deferredCaddyNetworkReconcileTimers.set(config.dockerNamespace, timer);

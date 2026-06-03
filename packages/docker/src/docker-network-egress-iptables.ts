@@ -7,14 +7,18 @@ const iptablesCommand: string = 'iptables';
 const iptablesChainPrefix: string = 'CMP-EG';
 const dockerUserChainName: string = 'DOCKER-USER';
 const inputChainName: string = 'INPUT';
+const preroutingChainName: string = 'PREROUTING';
 const namespaceHashLength: number = 12;
 const maxIptablesDeleteAttempts: number = 16;
 const iptablesWaitSeconds: string = '10';
+
+type IptablesTableName = 'filter' | 'raw';
 
 interface IptablesManagedChain {
   primaryChainName: string;
   parentChainName: string;
   secondaryChainName: string;
+  tableName: IptablesTableName;
 }
 
 interface IptablesNetworkEgressDenyInput {
@@ -30,7 +34,7 @@ export async function canSyncIptablesNetworkEgressDenyRules(): Promise<boolean> 
     return false;
   }
 
-  return await canRunIptablesCommand(['-L', '-n']);
+  return (await canRunIptablesCommand('filter', ['-L', '-n'])) && (await canRunIptablesCommand('raw', ['-L', '-n']));
 }
 
 export async function syncIptablesNetworkEgressDenyRules(input: IptablesNetworkEgressDenyInput): Promise<void> {
@@ -38,8 +42,8 @@ export async function syncIptablesNetworkEgressDenyRules(input: IptablesNetworkE
 
   if (input.rules.length === 0 && input.sourceAllowCidrs.length === 0) {
     for (const chain of chains) {
-      await removeIptablesManagedChain(chain.parentChainName, chain.primaryChainName);
-      await removeIptablesManagedChain(chain.parentChainName, chain.secondaryChainName);
+      await removeIptablesManagedChain(chain, chain.primaryChainName);
+      await removeIptablesManagedChain(chain, chain.secondaryChainName);
     }
     return;
   }
@@ -55,11 +59,19 @@ function buildIptablesManagedChains(namespace: string): IptablesManagedChain[] {
       parentChainName: dockerUserChainName,
       primaryChainName: buildIptablesChainName(namespace, 'F'),
       secondaryChainName: buildIptablesChainName(namespace, 'FN'),
+      tableName: 'filter',
     },
     {
       parentChainName: inputChainName,
       primaryChainName: buildIptablesChainName(namespace, 'I'),
       secondaryChainName: buildIptablesChainName(namespace, 'IN'),
+      tableName: 'filter',
+    },
+    {
+      parentChainName: preroutingChainName,
+      primaryChainName: buildIptablesChainName(namespace, 'P'),
+      secondaryChainName: buildIptablesChainName(namespace, 'PN'),
+      tableName: 'raw',
     },
   ];
 }
@@ -73,16 +85,16 @@ async function syncIptablesManagedChain(
   const stagingChainName: string =
     activeChainName === chain.primaryChainName ? chain.secondaryChainName : chain.primaryChainName;
 
-  await replaceIptablesChainRules(stagingChainName, rules, sourceAllowCidrs);
-  await ensureIptablesJump(chain.parentChainName, stagingChainName);
+  await replaceIptablesChainRules(chain, stagingChainName, rules, sourceAllowCidrs);
+  await ensureIptablesJump(chain, stagingChainName);
   if (activeChainName !== null && activeChainName !== stagingChainName) {
-    await removeIptablesManagedChainBestEffort(chain.parentChainName, activeChainName);
+    await removeIptablesManagedChainBestEffort(chain, activeChainName);
   }
 }
 
 async function readActiveIptablesManagedChain(chain: IptablesManagedChain): Promise<string | null> {
   for (const chainName of [chain.primaryChainName, chain.secondaryChainName]) {
-    if (await canRunIptablesCommand(['-C', chain.parentChainName, '-j', chainName])) {
+    if (await canRunIptablesCommand(chain.tableName, ['-C', chain.parentChainName, '-j', chainName])) {
       return chainName;
     }
   }
@@ -91,23 +103,33 @@ async function readActiveIptablesManagedChain(chain: IptablesManagedChain): Prom
 }
 
 async function replaceIptablesChainRules(
+  chain: IptablesManagedChain,
   chainName: string,
   rules: readonly DockerNetworkEgressDenyRule[],
   sourceAllowCidrs: readonly string[],
 ): Promise<void> {
-  await ensureIptablesChain(chainName);
-  await runIptablesCommand(['-F', chainName]);
+  await ensureIptablesChain(chain.tableName, chainName);
+  await runIptablesCommand(chain.tableName, ['-F', chainName]);
   for (const sourceAllowCidr of sourceAllowCidrs) {
-    await runIptablesCommand(['-A', chainName, '-s', sourceAllowCidr, '-j', 'RETURN']);
+    await runIptablesCommand(chain.tableName, ['-A', chainName, '-s', sourceAllowCidr, '-j', 'RETURN']);
   }
   for (const rule of rules) {
-    await runIptablesCommand(['-A', chainName, '-s', rule.sourceSubnet, '-d', rule.destinationCidr, '-j', 'DROP']);
+    await runIptablesCommand(chain.tableName, [
+      '-A',
+      chainName,
+      '-s',
+      rule.sourceSubnet,
+      '-d',
+      rule.destinationCidr,
+      '-j',
+      'DROP',
+    ]);
   }
 }
 
-async function ensureIptablesChain(chainName: string): Promise<void> {
+async function ensureIptablesChain(tableName: IptablesTableName, chainName: string): Promise<void> {
   try {
-    await runIptablesCommand(['-N', chainName]);
+    await runIptablesCommand(tableName, ['-N', chainName]);
   } catch (error) {
     if (!isIptablesAlreadyExistsError(error as IptablesEgressErrorInput)) {
       throw error;
@@ -115,28 +137,28 @@ async function ensureIptablesChain(chainName: string): Promise<void> {
   }
 }
 
-async function ensureIptablesJump(parentChainName: string, chainName: string): Promise<void> {
-  if (await canRunIptablesCommand(['-C', parentChainName, '-j', chainName])) {
+async function ensureIptablesJump(chain: IptablesManagedChain, chainName: string): Promise<void> {
+  if (await canRunIptablesCommand(chain.tableName, ['-C', chain.parentChainName, '-j', chainName])) {
     return;
   }
 
-  await runIptablesCommand(['-I', parentChainName, '1', '-j', chainName]);
+  await runIptablesCommand(chain.tableName, ['-I', chain.parentChainName, '1', '-j', chainName]);
 }
 
-async function removeIptablesManagedChainBestEffort(parentChainName: string, chainName: string): Promise<void> {
+async function removeIptablesManagedChainBestEffort(chain: IptablesManagedChain, chainName: string): Promise<void> {
   try {
-    await removeIptablesManagedChain(parentChainName, chainName);
+    await removeIptablesManagedChain(chain, chainName);
   } catch {
     return;
   }
 }
 
-async function removeIptablesManagedChain(parentChainName: string, chainName: string): Promise<void> {
-  await deleteIptablesJumps(parentChainName, chainName);
+async function removeIptablesManagedChain(chain: IptablesManagedChain, chainName: string): Promise<void> {
+  await deleteIptablesJumps(chain, chainName);
 
   try {
-    await runIptablesCommand(['-F', chainName]);
-    await runIptablesCommand(['-X', chainName]);
+    await runIptablesCommand(chain.tableName, ['-F', chainName]);
+    await runIptablesCommand(chain.tableName, ['-X', chainName]);
   } catch (error) {
     if (!isIptablesMissingError(error as IptablesEgressErrorInput)) {
       throw error;
@@ -144,28 +166,36 @@ async function removeIptablesManagedChain(parentChainName: string, chainName: st
   }
 }
 
-async function deleteIptablesJumps(parentChainName: string, chainName: string): Promise<void> {
+async function deleteIptablesJumps(chain: IptablesManagedChain, chainName: string): Promise<void> {
   for (let attempt: number = 0; attempt < maxIptablesDeleteAttempts; attempt += 1) {
-    if (!(await canRunIptablesCommand(['-C', parentChainName, '-j', chainName]))) {
+    if (!(await canRunIptablesCommand(chain.tableName, ['-C', chain.parentChainName, '-j', chainName]))) {
       return;
     }
 
-    await runIptablesCommand(['-D', parentChainName, '-j', chainName]);
+    await runIptablesCommand(chain.tableName, ['-D', chain.parentChainName, '-j', chainName]);
   }
 }
 
-async function runIptablesCommand(args: string[]): Promise<void> {
+async function runIptablesCommand(tableName: IptablesTableName, args: string[]): Promise<void> {
   await runProcessCommand({
-    args: ['-w', iptablesWaitSeconds, ...args],
+    args: buildIptablesCommandArgs(tableName, args),
     file: iptablesCommand,
   });
 }
 
-async function canRunIptablesCommand(args: string[]): Promise<boolean> {
+async function canRunIptablesCommand(tableName: IptablesTableName, args: string[]): Promise<boolean> {
   return await canRunCommand({
-    args: ['-w', iptablesWaitSeconds, ...args],
+    args: buildIptablesCommandArgs(tableName, args),
     file: iptablesCommand,
   });
+}
+
+function buildIptablesCommandArgs(tableName: IptablesTableName, args: readonly string[]): string[] {
+  return ['-w', iptablesWaitSeconds, ...buildIptablesTableArgs(tableName), ...args];
+}
+
+function buildIptablesTableArgs(tableName: IptablesTableName): string[] {
+  return tableName === 'filter' ? [] : ['-t', tableName];
 }
 
 async function canRunCommand(input: ProcessCommandInput): Promise<boolean> {
@@ -177,7 +207,7 @@ async function canRunCommand(input: ProcessCommandInput): Promise<boolean> {
   }
 }
 
-function buildIptablesChainName(namespace: string, suffix: 'F' | 'FN' | 'I' | 'IN'): string {
+function buildIptablesChainName(namespace: string, suffix: 'F' | 'FN' | 'I' | 'IN' | 'P' | 'PN'): string {
   return `${iptablesChainPrefix}-${createNamespaceHash(namespace)}-${suffix}`;
 }
 

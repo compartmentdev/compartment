@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import {
   buildDockerNamespaceLabels,
+  isDockerNetworkIpamCapacityError,
   requireDockerImageAvailable,
   runDockerContainerToCompletion,
+  readDockerEngineErrorMessage,
+  type DockerEngineError,
   type DockerRunContainerInput,
 } from '@compartment/docker';
 import type { ResolvedServiceReadinessConfig } from '@compartment/contracts';
+import { createRuntimeNetworkIpCapacityExhaustedError } from '../errors/node-runtime-error';
 
 interface DockerNetworkRuntimeReadinessInput {
   dockerNamespace: string;
@@ -68,7 +72,13 @@ async function canReachRuntimeFromDockerNetwork(
   try {
     await runDockerContainerToCompletion(buildDockerNetworkReadinessProbeContainerInput(input, deadline));
     return true;
-  } catch {
+  } catch (error) {
+    if (isDockerNetworkIpamCapacityError(error as DockerEngineError)) {
+      const detail: string = readDockerEngineErrorMessage(error as DockerEngineError);
+      throw createRuntimeNetworkIpCapacityExhaustedError(
+        detail === '' ? 'Docker Engine could not allocate a runtime network IP address.' : detail,
+      );
+    }
     return false;
   }
 }

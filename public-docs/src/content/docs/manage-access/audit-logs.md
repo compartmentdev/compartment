@@ -66,7 +66,7 @@ COMPARTMENT_AUDIT_FILE_SINK_RETENTION_FILES=30
 
 When enabled, Compartment writes sanitized audit events to `audit.ndjson`, rotates by time or size, compresses rotated files with gzip, and keeps the configured number of rotated files.
 
-Packaged Docker installs bind-mount `COMPARTMENT_AUDIT_FILE_SINK_DIR` for the API container. Docker can create that host directory while the sink is still disabled; it stays empty until `COMPARTMENT_AUDIT_FILE_SINK_ENABLED=true`. When the sink starts, Compartment makes the directory owner-only and creates audit files with owner-only permissions.
+Packaged Docker installs bind-mount `COMPARTMENT_AUDIT_FILE_SINK_DIR` for the API container. The CLI creates and repairs that host directory during install, update, and restart; it stays empty until `COMPARTMENT_AUDIT_FILE_SINK_ENABLED=true`. When the sink starts, Compartment creates audit files with owner-only permissions.
 
 ## Retention Policy
 

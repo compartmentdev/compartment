@@ -73,6 +73,7 @@ export interface DockerListContainerResult {
 }
 
 export interface DockerListNetworkResult {
+  ipamConfigs?: DockerNetworkIpamConfig[] | undefined;
   labels: Record<string, string>;
   name: string;
 }
@@ -84,6 +85,11 @@ export interface DockerListVolumesInput {
 export interface DockerListVolumeResult {
   labels: Record<string, string>;
   name: string;
+}
+
+export interface DockerEnsureVolumeInput {
+  labels: Record<string, string>;
+  volumeName: string;
 }
 
 export interface DockerNetworkIpamConfig {
@@ -100,13 +106,19 @@ export interface DockerNamedNetwork {
 
 export type DockerNetworkTarget = DockerNetworkMode | DockerNamedNetwork;
 export interface DockerNetworkAttachment {
+  aliases?: string[] | undefined;
   ipAddress: string | null;
   name: string;
 }
 
 export interface DockerEnsureNetworkInput {
+  ipam?: DockerEnsureNetworkIpam | undefined;
   labels: Record<string, string>;
   networkName: string;
+}
+
+export interface DockerEnsureNetworkIpam {
+  subnet: string;
 }
 
 export interface DockerConnectContainerToNetworkInput {

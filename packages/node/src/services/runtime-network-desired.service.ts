@@ -12,15 +12,24 @@ import {
   serviceIdLabelName,
 } from './runtime-container-labels';
 import { buildRuntimeResourceNetworkName, buildRuntimeServiceNetworkName } from './runtime-names.service';
+import type { RuntimeNetworkSpec } from './runtime-network-capacity.types';
 import { resourceNameLabelName } from './runtime-resource-labels';
 
 interface RuntimeNetworkDesiredConfig {
   dockerNamespace: string;
 }
 
+interface RuntimeServiceContainerLabels {
+  environmentId: string;
+  projectId: string;
+  serviceId: string;
+}
+
 export interface DesiredRuntimeNetworkNames {
   resourceNetworkNames: Set<string>;
+  resourceNetworkSpecs: Map<string, RuntimeNetworkSpec>;
   serviceNetworkNames: Set<string>;
+  serviceNetworkSpecs: Map<string, RuntimeNetworkSpec>;
 }
 
 export async function readDesiredRuntimeNetworkNames(
@@ -33,15 +42,17 @@ export async function readDesiredRuntimeNetworkNames(
   });
   const networkNames: DesiredRuntimeNetworkNames = {
     resourceNetworkNames: new Set<string>(),
+    resourceNetworkSpecs: new Map<string, RuntimeNetworkSpec>(),
     serviceNetworkNames: new Set<string>(),
+    serviceNetworkSpecs: new Map<string, RuntimeNetworkSpec>(),
   };
 
   for (const container of containers) {
     if (isManagedServiceRuntimeContainer(container)) {
-      addDesiredServiceRuntimeNetworkNames(networkNames.serviceNetworkNames, container, config);
+      addDesiredServiceRuntimeNetworkNames(networkNames, container, config);
     }
     if (isManagedResourceRuntimeContainer(container)) {
-      addDesiredResourceRuntimeNetworkNames(networkNames.resourceNetworkNames, container, config);
+      addDesiredResourceRuntimeNetworkNames(networkNames, container, config);
     }
   }
 
@@ -61,41 +72,68 @@ function isManagedResourceRuntimeContainer(container: DockerListContainerResult)
 }
 
 function addDesiredServiceRuntimeNetworkNames(
-  networkNames: Set<string>,
+  networkNames: DesiredRuntimeNetworkNames,
   container: DockerListContainerResult,
   config: RuntimeNetworkDesiredConfig,
 ): void {
-  networkNames.add(readServiceRuntimeNetworkName(container, config));
+  const spec: RuntimeNetworkSpec = readServiceRuntimeNetworkSpec(container, config);
+  networkNames.serviceNetworkNames.add(spec.networkName);
+  networkNames.serviceNetworkSpecs.set(spec.networkName, spec);
 }
 
 function addDesiredResourceRuntimeNetworkNames(
-  networkNames: Set<string>,
+  networkNames: DesiredRuntimeNetworkNames,
   container: DockerListContainerResult,
   config: RuntimeNetworkDesiredConfig,
 ): void {
-  const networkName: string | null = readResourceRuntimeNetworkName(container, config);
-  if (networkName !== null) {
-    networkNames.add(networkName);
+  const spec: RuntimeNetworkSpec | null = readResourceRuntimeNetworkSpec(container, config);
+  if (spec !== null) {
+    networkNames.resourceNetworkNames.add(spec.networkName);
+    networkNames.resourceNetworkSpecs.set(spec.networkName, spec);
   }
 }
 
-function readResourceRuntimeNetworkName(
+function readResourceRuntimeNetworkSpec(
   container: DockerListContainerResult,
   config: RuntimeNetworkDesiredConfig,
-): string | null {
+): RuntimeNetworkSpec | null {
   const projectId: string | undefined = container.labels[projectIdLabelName];
   const environmentId: string | undefined = container.labels[environmentIdLabelName];
   if (!hasText(projectId) || !hasText(environmentId)) {
     return null;
   }
 
-  return buildRuntimeResourceNetworkName({ environmentId, projectId }, config.dockerNamespace);
+  return {
+    environmentId,
+    kind: 'resource',
+    networkName: buildRuntimeResourceNetworkName({ environmentId, projectId }, config.dockerNamespace),
+    projectId,
+  };
 }
 
-function readServiceRuntimeNetworkName(
+function readServiceRuntimeNetworkSpec(
   container: DockerListContainerResult,
   config: RuntimeNetworkDesiredConfig,
-): string {
+): RuntimeNetworkSpec {
+  const labels: RuntimeServiceContainerLabels = readRuntimeServiceContainerLabels(container);
+
+  return {
+    environmentId: labels.environmentId,
+    kind: 'service',
+    networkName: buildRuntimeServiceNetworkName(
+      {
+        environmentId: labels.environmentId,
+        projectId: labels.projectId,
+        serviceId: labels.serviceId,
+      },
+      config.dockerNamespace,
+    ),
+    projectId: labels.projectId,
+    serviceId: labels.serviceId,
+  };
+}
+
+function readRuntimeServiceContainerLabels(container: DockerListContainerResult): RuntimeServiceContainerLabels {
   const projectId: string | undefined = container.labels[projectIdLabelName];
   const environmentId: string | undefined = container.labels[environmentIdLabelName];
   const serviceId: string | undefined = container.labels[serviceIdLabelName];
@@ -105,12 +143,5 @@ function readServiceRuntimeNetworkName(
     );
   }
 
-  return buildRuntimeServiceNetworkName(
-    {
-      environmentId,
-      projectId,
-      serviceId,
-    },
-    config.dockerNamespace,
-  );
+  return { environmentId, projectId, serviceId };
 }

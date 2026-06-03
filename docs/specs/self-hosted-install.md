@@ -58,11 +58,15 @@ compartment install --image-source local --local-runtime
 - Public ports default to `80` and `443`.
 - Config, compose, and env files live in `/etc/compartment`.
 - State, install backups, and docker work files live in `/var/lib/compartment/self-hosted`.
+- Self-hosted API and worker containers use the fixed `compartment-runtime` identity (`10001:10001`); supporting
+  services keep their service-specific runtime users.
 - Runtime files are `/etc/compartment/.env.self-hosted`, `/etc/compartment/docker-compose.self-hosted.yml`, and
   `/var/lib/compartment/self-hosted/install-state.json`.
 - The pre-release `onprem` runtime layout, including `/etc/compartment/.env.onprem` and `/var/lib/compartment/onprem/install-state.json`, is not a supported install or update source.
 - The runtime socket root is `/var/run/compartment`: System API uses `/var/run/compartment/api/system-api.sock`, and the host node agent uses `/var/run/compartment/node/agent.sock`.
 - `compartment install` stages `/usr/local/bin/compartment-node-agent` and `compartment-node-agent.service`; API and worker containers talk to that host service over the node-agent Unix socket.
+- Self-hosted source builds use a rootful BuildKit container listening only on `unix:///run/buildkit/buildkitd.sock`; the worker reaches BuildKit through a named Docker volume, not TCP. The BuildKit socket group is the fixed runtime GID `10001`.
+- BuildKit runs on the separate `build_internal` Docker network. The worker stays on `system_internal`, and `registry-auth` bridges `system_internal` and `build_internal` so builds can push images without giving build execution access to API, database, edge, or Caddy service networks.
 - The system install requires root privileges.
 - In the default non-root path, the `sudo` worker only performs system setup and first signup.
 - The user-level parent process writes `~/.config/compartment-cli/config.json`.
@@ -72,8 +76,11 @@ compartment install --image-source local --local-runtime
 
 Default install permissions:
 
-- `/etc/compartment`, `/var/lib/compartment/self-hosted`, and `/var/run/compartment` subdirectories are private `root:root` directories with mode `0700`.
-- `/etc/compartment/.env.self-hosted`, install state, backup metadata, `system-api.sock`, and `agent.sock` are owner-only files or sockets with mode `0600`.
+- `/etc/compartment`, `/var/lib/compartment/self-hosted`, and `/var/run/compartment` remain private root-owned directories with mode `0700`.
+- `/var/run/compartment/api`, docker work, source archive, resource backup, and audit sink directories are owned by `10001:10001` with mode `0700`.
+- Custom TLS directories are owned by `root:10001` with mode `0750`; custom TLS files are `root:10001` with mode `0640`.
+- `/var/run/compartment/node` is owned by `root:10001` with mode `0750`; `agent.sock` is `root:10001` with mode `0660`.
+- `/etc/compartment/.env.self-hosted`, install state, backup metadata, and `system-api.sock` remain owner-only files or sockets with mode `0600`.
 - `/usr/local/bin/compartment-node-agent` is `0755`; the systemd unit is `0644` and contains no secrets.
 
 ## Mode And Version Selection

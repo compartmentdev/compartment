@@ -375,6 +375,9 @@ function createClaimedDeployment(
     routeHost: 'smoke-web.localhost',
     buildEnv: {},
     runtimeEnv: {},
+    runtimeNetwork: {
+      requiresResourceNetwork: false,
+    },
     service: {
       build: {
         env: [],

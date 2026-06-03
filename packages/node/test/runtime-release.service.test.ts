@@ -6,27 +6,46 @@ import type {
 } from '@compartment/docker';
 import type { NodeReleaseRequest, NodeReleaseResponse } from '@compartment/contracts';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { createRuntimeNetworkCapacityExhaustedError, isNodeRuntimeError } from '../src/errors/node-runtime-error';
 import { releaseRuntimeContainer } from '../src/services/runtime-release.service';
 import type { RuntimeDeployConfig } from '../src/services/runtime.types';
+import { createRuntimeNetworkPoolConfig } from './runtime-network-pool.fixture';
 
 type BuildDockerNamespaceLabels = (namespace: string) => Record<string, string>;
 type EnsureDockerImageAvailable = (input: { imageRef: string }) => Promise<void>;
 type EnsureDockerNetwork = (input: { labels: Record<string, string>; networkName: string }) => Promise<void>;
 type InspectDockerImage = (input: { imageRef: string }) => Promise<DockerInspectImageResult>;
+type IsDockerNetworkIpamCapacityError = (error: Error) => boolean;
+type ReadDockerEngineErrorMessage = (error: Error) => string;
 type RemoveDockerContainer = (input: { containerRef: string }) => Promise<void>;
 type RunDockerContainerToCompletion = (input: DockerRunContainerInput) => Promise<DockerRunContainerToCompletionResult>;
+type EnsureRuntimeResourceNetwork = (
+  input: Pick<NodeReleaseRequest, 'environmentId' | 'projectId'>,
+  config: RuntimeDeployConfig,
+) => Promise<string>;
+type AssertRuntimeResourceNetworkFreeEndpoints = (
+  input: Pick<NodeReleaseRequest, 'environmentId' | 'projectId'>,
+  config: RuntimeDeployConfig,
+  requiredFreeEndpoints: number,
+  reason: string,
+) => Promise<void>;
 
 interface RuntimeReleaseServiceTestMocks {
+  assertRuntimeResourceNetworkFreeEndpoints: Mock<AssertRuntimeResourceNetworkFreeEndpoints>;
   buildDockerNamespaceLabels: Mock<BuildDockerNamespaceLabels>;
   ensureDockerImageAvailable: Mock<EnsureDockerImageAvailable>;
   ensureDockerNetwork: Mock<EnsureDockerNetwork>;
+  ensureRuntimeResourceNetwork: Mock<EnsureRuntimeResourceNetwork>;
   inspectDockerImage: Mock<InspectDockerImage>;
+  isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
+  readDockerEngineErrorMessage: Mock<ReadDockerEngineErrorMessage>;
   removeDockerContainer: Mock<RemoveDockerContainer>;
   runDockerContainerToCompletion: Mock<RunDockerContainerToCompletion>;
 }
 
 const mocks: RuntimeReleaseServiceTestMocks = vi.hoisted(
   (): RuntimeReleaseServiceTestMocks => ({
+    assertRuntimeResourceNetworkFreeEndpoints: vi.fn<AssertRuntimeResourceNetworkFreeEndpoints>(),
     buildDockerNamespaceLabels: vi.fn<BuildDockerNamespaceLabels>(
       (namespace: string): Record<string, string> => ({
         'compartment.namespace': namespace,
@@ -34,7 +53,10 @@ const mocks: RuntimeReleaseServiceTestMocks = vi.hoisted(
     ),
     ensureDockerImageAvailable: vi.fn<EnsureDockerImageAvailable>(),
     ensureDockerNetwork: vi.fn<EnsureDockerNetwork>(),
+    ensureRuntimeResourceNetwork: vi.fn<EnsureRuntimeResourceNetwork>(),
     inspectDockerImage: vi.fn<InspectDockerImage>(),
+    isDockerNetworkIpamCapacityError: vi.fn<IsDockerNetworkIpamCapacityError>(),
+    readDockerEngineErrorMessage: vi.fn<ReadDockerEngineErrorMessage>(),
     removeDockerContainer: vi.fn<RemoveDockerContainer>(),
     runDockerContainerToCompletion: vi.fn<RunDockerContainerToCompletion>(),
   }),
@@ -52,6 +74,8 @@ vi.mock(
     ensureDockerImageAvailable: Mock<EnsureDockerImageAvailable>;
     ensureDockerNetwork: Mock<EnsureDockerNetwork>;
     inspectDockerImage: Mock<InspectDockerImage>;
+    isDockerNetworkIpamCapacityError: Mock<IsDockerNetworkIpamCapacityError>;
+    readDockerEngineErrorMessage: Mock<ReadDockerEngineErrorMessage>;
     removeDockerContainer: Mock<RemoveDockerContainer>;
     runDockerContainerToCompletion: Mock<RunDockerContainerToCompletion>;
   } => ({
@@ -59,16 +83,33 @@ vi.mock(
     ensureDockerImageAvailable: mocks.ensureDockerImageAvailable,
     ensureDockerNetwork: mocks.ensureDockerNetwork,
     inspectDockerImage: mocks.inspectDockerImage,
+    isDockerNetworkIpamCapacityError: mocks.isDockerNetworkIpamCapacityError,
+    readDockerEngineErrorMessage: mocks.readDockerEngineErrorMessage,
     removeDockerContainer: mocks.removeDockerContainer,
     runDockerContainerToCompletion: mocks.runDockerContainerToCompletion,
   }),
 );
 
+vi.mock(
+  '../src/services/runtime-network-capacity.service',
+  (): {
+    assertRuntimeResourceNetworkFreeEndpoints: Mock<AssertRuntimeResourceNetworkFreeEndpoints>;
+    ensureRuntimeResourceNetwork: Mock<EnsureRuntimeResourceNetwork>;
+  } => ({
+    assertRuntimeResourceNetworkFreeEndpoints: mocks.assertRuntimeResourceNetworkFreeEndpoints,
+    ensureRuntimeResourceNetwork: mocks.ensureRuntimeResourceNetwork,
+  }),
+);
+
 afterEach((): void => {
+  mocks.assertRuntimeResourceNetworkFreeEndpoints.mockReset();
   mocks.buildDockerNamespaceLabels.mockClear();
   mocks.ensureDockerImageAvailable.mockReset();
   mocks.ensureDockerNetwork.mockReset();
+  mocks.ensureRuntimeResourceNetwork.mockReset();
   mocks.inspectDockerImage.mockReset();
+  mocks.isDockerNetworkIpamCapacityError.mockReset();
+  mocks.readDockerEngineErrorMessage.mockReset();
   mocks.removeDockerContainer.mockReset();
   mocks.runDockerContainerToCompletion.mockReset();
 });
@@ -79,6 +120,9 @@ describe('releaseRuntimeContainer', (): void => {
       exposedPorts: [3000],
       imageRef: 'sha256:image',
     });
+    mocks.ensureRuntimeResourceNetwork.mockResolvedValueOnce(
+      'compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824',
+    );
     mocks.runDockerContainerToCompletion.mockResolvedValueOnce({
       containerId: 'release_container_123',
       logs: [
@@ -102,14 +146,18 @@ describe('releaseRuntimeContainer', (): void => {
     expect(mocks.removeDockerContainer).toHaveBeenCalledWith({
       containerRef: 'compartment-compartment-e2e-smoke-web-production-web-dep_123456-release',
     });
-    expect(mocks.ensureDockerNetwork).toHaveBeenCalledWith({
-      labels: {
-        'compartment.namespace': 'compartment-e2e',
-      },
-      networkName: 'compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824',
-    });
-    expect(mocks.ensureDockerNetwork.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mocks.ensureRuntimeResourceNetwork).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environmentId: 'env_production',
+        projectId: 'prj_smoke_web',
+      }),
+      expect.objectContaining({ dockerNamespace: 'compartment-e2e' }),
+    );
+    expect(mocks.ensureRuntimeResourceNetwork.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.runDockerContainerToCompletion.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(mocks.removeDockerContainer.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.ensureRuntimeResourceNetwork.mock.invocationCallOrder[0] ?? 0,
     );
     expect(mocks.runDockerContainerToCompletion).toHaveBeenCalledWith({
       command: ['pnpm db:migrate'],
@@ -145,6 +193,9 @@ describe('releaseRuntimeContainer', (): void => {
       exposedPorts: [3000],
       imageRef: 'sha256:image',
     });
+    mocks.ensureRuntimeResourceNetwork.mockResolvedValueOnce(
+      'compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824',
+    );
     mocks.runDockerContainerToCompletion.mockResolvedValueOnce({
       containerId: 'release_container_123',
       logs: [],
@@ -168,6 +219,9 @@ describe('releaseRuntimeContainer', (): void => {
       exposedPorts: [3000],
       imageRef: 'sha256:image',
     });
+    mocks.ensureRuntimeResourceNetwork.mockResolvedValueOnce(
+      'compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824',
+    );
     mocks.runDockerContainerToCompletion.mockResolvedValueOnce({
       containerId: 'release_container_123',
       logs: [],
@@ -187,18 +241,58 @@ describe('releaseRuntimeContainer', (): void => {
 
   it('does not start the release operation on an unowned resource network', async (): Promise<void> => {
     const ownershipError: Error = new Error(
-      'Docker network compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824 exists without required label compartment.namespace=compartment-e2e.',
+      'Docker runtime network compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824 exists without required managed Compartment network labels.',
     );
     mocks.inspectDockerImage.mockResolvedValueOnce({
       exposedPorts: [3000],
       imageRef: 'sha256:image',
     });
-    mocks.ensureDockerNetwork.mockRejectedValueOnce(ownershipError);
+    mocks.ensureRuntimeResourceNetwork.mockRejectedValueOnce(ownershipError);
 
     await expect(releaseRuntimeContainer(createReleaseRequest(), createRuntimeDeployConfig())).rejects.toThrow(
       ownershipError.message,
     );
 
+    expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
+  });
+
+  it('preserves runtime network errors instead of wrapping them as release command failures', async (): Promise<void> => {
+    const capacityError: Error = createRuntimeNetworkCapacityExhaustedError('No subnet remains.');
+    mocks.inspectDockerImage.mockResolvedValueOnce({
+      exposedPorts: [3000],
+      imageRef: 'sha256:image',
+    });
+    mocks.ensureRuntimeResourceNetwork.mockRejectedValueOnce(capacityError);
+
+    let failure: Error | undefined;
+    try {
+      await releaseRuntimeContainer(createReleaseRequest(), createRuntimeDeployConfig());
+    } catch (error) {
+      failure = error as Error;
+    }
+
+    expect(failure).toBe(capacityError);
+    expect(isNodeRuntimeError(failure)).toBe(true);
+    expect(failure?.message).not.toContain('release command failed');
+    expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
+  });
+
+  it('does not reserve release network capacity when pre-run container cleanup fails', async (): Promise<void> => {
+    mocks.inspectDockerImage.mockResolvedValueOnce({
+      exposedPorts: [3000],
+      imageRef: 'sha256:image',
+    });
+    mocks.ensureRuntimeResourceNetwork.mockResolvedValueOnce(
+      'compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824',
+    );
+    mocks.removeDockerContainer.mockRejectedValueOnce(new Error('remove failed')).mockResolvedValueOnce(undefined);
+
+    await expect(releaseRuntimeContainer(createReleaseRequest(), createRuntimeDeployConfig())).rejects.toThrow(
+      'remove failed',
+    );
+
+    expect(mocks.ensureRuntimeResourceNetwork).not.toHaveBeenCalled();
+    expect(mocks.removeDockerContainer).toHaveBeenCalledTimes(2);
     expect(mocks.runDockerContainerToCompletion).not.toHaveBeenCalled();
   });
 
@@ -212,6 +306,9 @@ describe('releaseRuntimeContainer', (): void => {
       exposedPorts: [3000],
       imageRef: 'sha256:image',
     });
+    mocks.ensureRuntimeResourceNetwork.mockResolvedValueOnce(
+      'compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824',
+    );
     mocks.runDockerContainerToCompletion.mockRejectedValueOnce(error);
 
     await expect(releaseRuntimeContainer(createReleaseRequest(), createRuntimeDeployConfig())).rejects.toThrow(
@@ -233,6 +330,9 @@ describe('releaseRuntimeContainer', (): void => {
       exposedPorts: [3000],
       imageRef: 'sha256:image',
     });
+    mocks.ensureRuntimeResourceNetwork.mockResolvedValueOnce(
+      'compartment-compartment-e2e-prj-smoke-web-env-prod-f9f428dca824',
+    );
     mocks.runDockerContainerToCompletion.mockRejectedValueOnce(error);
 
     await expect(releaseRuntimeContainer(createReleaseRequest(), createRuntimeDeployConfig())).rejects.toThrow(
@@ -252,6 +352,9 @@ function createReleaseRequest(overrides: Partial<NodeReleaseRequest> = {}): Node
     release: {
       command: 'pnpm db:migrate',
     },
+    runtimeNetwork: {
+      requiresResourceNetwork: true,
+    },
     runtimeEnv: {},
     serviceId: 'svc_web',
     serviceName: 'web',
@@ -266,6 +369,7 @@ function createRuntimeDeployConfig(overrides: Partial<RuntimeDeployConfig> = {})
     dockerNamespace: 'compartment-e2e',
     runtimeConnectivityMode: 'loopback',
     runtimeDefaultUpstreamHost: '127.0.0.1',
+    runtimeNetworkPool: createRuntimeNetworkPoolConfig(),
     runtimeRegistryCredentials: {
       password: 'registry-read-password',
       serverAddress: '127.0.0.1:39461',

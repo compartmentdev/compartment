@@ -46,3 +46,4 @@ research/repos/
 
 schemas/openapi/*.tmp.json
 schemas/json-schema/*.tmp.json
+.compartment/state.json
