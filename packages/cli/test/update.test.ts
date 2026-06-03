@@ -1,5 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { readFileModePermissions } from '@compartment/test-support';
 import { describe, expect, it } from 'vitest';
 import {
   createUpdateRuntimeTestHarness,
@@ -86,6 +87,22 @@ describe.sequential('update runtime', (): void => {
     expect(result.imageRegistry).toBe('github');
     expect(result.imageSource).toBe('registry');
     expect(result.skipReason).toBeNull();
+    expect(mocks.stopSelfHostedRuntime.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.stopNodeAgentHostService.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.stopNodeAgentHostService.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.stageNodeAgentHostService.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.stageNodeAgentHostService).toHaveBeenCalledWith({
+      envPath: join(installPaths.configDir, '.env.self-hosted'),
+      repairRuntimeWritableDirectoryContents: true,
+    });
+    expect(mocks.stageNodeAgentHostService.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.restartNodeAgentHostService.mock.invocationCallOrder[0]!,
+    );
+    expect(mocks.restartNodeAgentHostService.mock.invocationCallOrder[0]!).toBeLessThan(
+      mocks.restartSelfHostedRuntime.mock.invocationCallOrder[0]!,
+    );
     expect(mocks.restartSelfHostedRuntime.mock.invocationCallOrder[0]!).toBeLessThan(
       mocks.waitForNodeAgentHostServiceHealth.mock.invocationCallOrder[0]!,
     );
@@ -95,8 +112,22 @@ describe.sequential('update runtime', (): void => {
     const reconcileInput: ReconcileNodeAgentRuntimeNetworksInput | undefined =
       mocks.reconcileNodeAgentRuntimeNetworks.mock.calls[0]?.[0];
     expect(reconcileInput?.environmentText).toContain('COMPARTMENT_NODE_VERSION=1.2.3');
+    expect(reconcileInput?.environmentText).toContain('BUILDKIT_ADDR=unix:///run/buildkit/buildkitd.sock');
+    expect(reconcileInput?.environmentText).not.toContain('BUILDKIT_ADDR=tcp://builder:1234');
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_NODE_VERSION=1.2.3',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'BUILDKIT_ADDR=unix:///run/buildkit/buildkitd.sock',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_UID=10001',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_GID=10001',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.not.toContain(
+      'BUILDKIT_ADDR=tcp://builder:1234',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:1.2.3',
@@ -168,6 +199,50 @@ describe.sequential('update runtime', (): void => {
     );
     await expect(readFile(join(installPaths.dataDir, 'self-hosted/install-state.json'), 'utf8')).resolves.toContain(
       '"managedDomainBrokerToken": "acme-token"',
+    );
+  });
+
+  it('applies an already-current update when the rendered self-hosted environment needs migration', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
+    await writeCurrentInstallFiles(
+      installPaths,
+      createCurrentEnvironmentText({
+        includeVariablesMasterKey: true,
+        nodeVersion: '1.2.3',
+        variablesMasterKey: 'b'.repeat(64),
+      }),
+    );
+    await writeInstallState(installPaths, {
+      imageRegistry: 'github',
+      imageSource: 'registry',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      stateVersion: 1,
+    });
+    const { updateSelfHosted } = await import('../src/update');
+
+    const result: SelfHostedUpdateResult = await updateSelfHosted({
+      options: {
+        imageSource: 'registry',
+        version: '1.2.3',
+      },
+    });
+
+    expect(result.status).toBe('updated');
+    expect(result.currentVersion).toBe('1.2.3');
+    expect(result.targetVersion).toBe('1.2.3');
+    expect(result.skipReason).toBeNull();
+    expect(mocks.prepareSelfHostedRuntimeImages).toHaveBeenCalledTimes(1);
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'BUILDKIT_ADDR=unix:///run/buildkit/buildkitd.sock',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_UID=10001',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_RUNTIME_GID=10001',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.not.toContain(
+      'BUILDKIT_ADDR=tcp://builder:1234',
     );
   });
 
@@ -832,5 +907,5 @@ function createLegacyManagedDomainInstallState(): InstallStateJsonObject {
 }
 
 async function readMode(path: string): Promise<number> {
-  return (await stat(path)).mode & 0o777;
+  return readFileModePermissions((await stat(path)).mode);
 }

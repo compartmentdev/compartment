@@ -12,7 +12,7 @@ import type {
   listOrganizationVariableSetEntriesForSetIds,
 } from '../src/queries/variables.query';
 import type { listEnvironmentResourceOutputVariableBindings } from '../src/queries/variables-resource-output.query';
-import { buildDeploymentRuntimeEnv } from '../src/services/deployment-runtime-plan.service';
+import { buildDeploymentRuntimePlan } from '../src/services/deployment-runtime-plan.service';
 import type {
   EnvironmentResourceOutputVariableBindingRow,
   EnvironmentVariableSetBindingRow,
@@ -176,14 +176,9 @@ describe('deployment runtime plan service', (): void => {
       ),
     ]);
 
-    const runtimeEnv: Record<string, string> = await buildDeploymentRuntimeEnv(
-      'env_production',
-      'org_123',
-      'svc_api',
-      'production',
-      'billing',
-      'api',
-    );
+    const runtimeEnv: Record<string, string> = (
+      await buildDeploymentRuntimePlan('env_production', 'org_123', 'svc_api', 'production', 'billing', 'api')
+    ).runtimeEnv;
 
     expect(runtimeEnv).toMatchObject({
       API_ONLY: 'service-value',
@@ -214,16 +209,51 @@ describe('deployment runtime plan service', (): void => {
       createEnvironmentResourceOutputVariableBinding('DATABASE_URL', 'api', 'postgres', 'connection-url'),
     ]);
 
-    const runtimeEnv: Record<string, string> = await buildDeploymentRuntimeEnv(
-      'env_production',
-      'org_123',
-      'svc_api',
-      'production',
-      'billing',
-      'api',
-    );
+    const runtimeEnv: Record<string, string> = (
+      await buildDeploymentRuntimePlan('env_production', 'org_123', 'svc_api', 'production', 'billing', 'api')
+    ).runtimeEnv;
 
     expect(runtimeEnv.DATABASE_URL).toBe('postgres://app:secret@postgres.production.billing.resource.internal/app');
+  });
+
+  it('marks the runtime resource network intent only for resource output variables', async (): Promise<void> => {
+    mocks.findProjectResourceByName.mockResolvedValue(createProjectResourceRow());
+    mocks.listEnvironmentVariableValues.mockResolvedValue([
+      createEnvironmentVariableValue('API_ONLY', 'service-value', 'svc_api'),
+    ]);
+
+    await expect(
+      buildDeploymentRuntimePlan('env_production', 'org_123', 'svc_api', 'production', 'billing', 'api'),
+    ).resolves.toMatchObject({
+      runtimeNetwork: {
+        requiresResourceNetwork: false,
+      },
+    });
+
+    mocks.findProjectResourceByName.mockResolvedValue(
+      createProjectResourceRow({
+        outputsJson: JSON.stringify({
+          host: {
+            sensitive: false,
+            value: '${resource.host}',
+          },
+        }),
+      }),
+    );
+    mocks.listEnvironmentResourceOutputVariableBindings.mockResolvedValue([
+      createEnvironmentResourceOutputVariableBinding('POSTGRES_HOST', 'api', 'postgres', 'host'),
+    ]);
+
+    await expect(
+      buildDeploymentRuntimePlan('env_production', 'org_123', 'svc_api', 'production', 'billing', 'api'),
+    ).resolves.toMatchObject({
+      runtimeEnv: {
+        POSTGRES_HOST: 'postgres.production.billing.resource.internal',
+      },
+      runtimeNetwork: {
+        requiresResourceNetwork: true,
+      },
+    });
   });
 
   it('rejects conflicting variable keys coming from multiple sets at the same scope', async (): Promise<void> => {
@@ -237,7 +267,7 @@ describe('deployment runtime plan service', (): void => {
     ]);
 
     await expect(
-      buildDeploymentRuntimeEnv('env_production', 'org_123', 'svc_api', 'production', 'billing', 'api'),
+      buildDeploymentRuntimePlan('env_production', 'org_123', 'svc_api', 'production', 'billing', 'api'),
     ).rejects.toThrow('Conflicting environment-scoped variable "SHARED_KEY"');
   });
 });

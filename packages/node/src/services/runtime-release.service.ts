@@ -11,10 +11,16 @@ import {
 import type { NodeReleaseLogLine, NodeReleaseRequest, NodeReleaseResponse } from '@compartment/contracts';
 import { buildReleaseContainerLabels } from './runtime-container-labels';
 import { buildRuntimeEnv, resolveRuntimeImageContainerPort } from './runtime-env.service';
-import { ensureOwnedRuntimeNetwork } from './runtime-network-ownership.service';
-import { buildDeploymentReleaseContainerName, buildRuntimeResourceNetworkName } from './runtime-names.service';
+import { buildDeploymentReleaseContainerName } from './runtime-names.service';
+import {
+  assertRuntimeResourceNetworkFreeEndpoints,
+  ensureRuntimeResourceNetwork,
+} from './runtime-network-capacity.service';
+import { reconcileRuntimeNetworksBestEffort } from './runtime-network-reconcile.service';
 import { buildRuntimeShellCommandContainerInvocation } from './runtime-shell-command.service';
 import type { RuntimeDeployConfig } from './runtime.types';
+import { isNodeRuntimeError } from '../errors/node-runtime-error';
+import { normalizeRuntimeNetworkDockerError, type RuntimeNetworkErrorInput } from './runtime-network-error.service';
 
 const defaultRuntimeReleaseTimeoutMs: number = 600_000;
 
@@ -46,19 +52,49 @@ export async function releaseRuntimeContainer(
   const image: DockerInspectImageResult = await inspectDockerImage({ imageRef: input.imageRef });
   const containerPort: number = resolveRuntimeImageContainerPort(input.runtimeEnv, image);
   const containerName: string = buildDeploymentReleaseContainerName(input, config.dockerNamespace);
-  const networkName: string = buildRuntimeResourceNetworkName(input, config.dockerNamespace);
-  await ensureOwnedRuntimeNetwork({ dockerNamespace: config.dockerNamespace, networkName });
-  await removeDockerContainer({ containerRef: containerName });
 
   try {
+    await removeDockerContainer({ containerRef: containerName });
+    const networkName: string | undefined = await resolveReleaseNetworkName(input, config);
     const result: DockerRunContainerToCompletionResult = await runDockerContainerToCompletion(
       buildReleaseContainerInput(input, config, containerPort, containerName, networkName, image.entrypoint),
     );
 
     return buildRuntimeReleaseResponse(result);
   } catch (error) {
-    throw buildRuntimeReleaseError(error as RuntimeReleaseErrorInput);
+    return await handleRuntimeReleaseFailure(containerName, config, error as RuntimeReleaseErrorInput);
   }
+}
+
+async function handleRuntimeReleaseFailure(
+  containerName: string,
+  config: RuntimeDeployConfig,
+  error: RuntimeReleaseErrorInput,
+): Promise<never> {
+  await removeRuntimeReleaseContainerBestEffort(containerName);
+  await reconcileRuntimeNetworksBestEffort(config);
+  const runtimeNetworkError: Error = normalizeRuntimeNetworkDockerError(
+    error as RuntimeNetworkErrorInput,
+    'Unexpected release command error.',
+  );
+  if (isNodeRuntimeError(runtimeNetworkError)) {
+    throw runtimeNetworkError;
+  }
+
+  throw buildRuntimeReleaseError(error);
+}
+
+async function resolveReleaseNetworkName(
+  input: NodeReleaseRequest,
+  config: RuntimeDeployConfig,
+): Promise<string | undefined> {
+  if (!input.runtimeNetwork.requiresResourceNetwork) {
+    return undefined;
+  }
+
+  const networkName: string = await ensureRuntimeResourceNetwork(input, config);
+  await assertRuntimeResourceNetworkFreeEndpoints(input, config, 1, 'running release command');
+  return networkName;
 }
 
 function buildRuntimeReleaseResponse(result: DockerRunContainerToCompletionResult): NodeReleaseResponse {
@@ -82,7 +118,7 @@ function buildReleaseContainerInput(
   config: RuntimeDeployConfig,
   containerPort: number,
   containerName: string,
-  networkName: string,
+  networkName: string | undefined,
   imageEntrypoint: readonly string[] | undefined,
 ): DockerRunContainerInput {
   return {
@@ -91,16 +127,21 @@ function buildReleaseContainerInput(
     env: buildRuntimeEnv(input.runtimeEnv, containerPort),
     imageRef: input.imageRef,
     labels: buildReleaseContainerLabels(config.dockerNamespace, input),
-    network: {
-      aliases: [],
-      name: networkName,
-    },
+    ...(networkName !== undefined ? { network: { aliases: [], name: networkName } } : {}),
     securityProfile: {
       name: 'restricted-writable',
       writableRootFilesystemReason: 'User release commands can require writable runtime paths.',
     },
     timeoutMs: defaultRuntimeReleaseTimeoutMs,
   };
+}
+
+async function removeRuntimeReleaseContainerBestEffort(containerRef: string): Promise<void> {
+  try {
+    await removeDockerContainer({ containerRef });
+  } catch {
+    return;
+  }
 }
 
 function buildRuntimeReleaseError(error: RuntimeReleaseErrorInput): Error {

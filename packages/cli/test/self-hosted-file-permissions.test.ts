@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { readFileModePermissions } from '@compartment/test-support';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ensureSelfHostedPrivateDirectory, writeSelfHostedPrivateFile } from '../src/self-hosted-file-permissions';
 
@@ -21,8 +22,8 @@ describe('self-hosted private file permissions', (): void => {
     await writeSelfHostedPrivateFile(filePath, 'COMPARTMENT_BASE_DOMAIN=localhost\n');
 
     await expect(readFile(filePath, 'utf8')).resolves.toBe('COMPARTMENT_BASE_DOMAIN=localhost\n');
-    expect((await stat(join(tempDirectory, 'etc', 'compartment'))).mode & 0o777).toBe(0o700);
-    expect((await stat(filePath)).mode & 0o777).toBe(0o600);
+    expect(readFileModePermissions((await stat(join(tempDirectory, 'etc', 'compartment'))).mode)).toBe(0o700);
+    expect(readFileModePermissions((await stat(filePath)).mode)).toBe(0o600);
   });
 
   it('refuses symlink private directories before chmod or writes', async (): Promise<void> => {

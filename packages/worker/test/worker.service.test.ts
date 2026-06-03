@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   createErrorResponse,
+  nodeRuntimeNetworkReservationCleanupPathname,
+  nodeRuntimeNetworkReservationPathname,
   type WorkerClaimedDeployment,
   workerClaimNextGitSourceResolutionTaskPathname,
   workerClaimNextDeploymentPathname,
@@ -33,6 +35,7 @@ import {
   type NodeRuntimeRouteHandler,
   type NodeRuntimeTestResponse,
   type NodeRuntimeTestServer,
+  type NodeRuntimeTestServerOptions,
 } from './worker.service.test-support';
 
 type BuildReleaseImageFromSource = (
@@ -146,8 +149,6 @@ describe('runWorkerIteration', (): void => {
 
         throw new Error(`Unexpected fetch url: ${url}`);
       });
-    vi.stubGlobal('fetch', fetchMock);
-    mocks.buildReleaseImageFromSource.mockResolvedValueOnce('sha256:image');
     const nodeRuntimeServer: NodeRuntimeTestServer = await startNodeRuntimeServer(
       nodeAgentSocketPath,
       (call: NodeRuntimeRequestCall): NodeRuntimeTestResponse => {
@@ -157,6 +158,20 @@ describe('runWorkerIteration', (): void => {
         return createNodeDeploySuccessResponse();
       },
     );
+    vi.stubGlobal('fetch', fetchMock);
+    mocks.buildReleaseImageFromSource.mockImplementationOnce(async (): Promise<string> => {
+      await Promise.resolve();
+      expect(nodeRuntimeServer.calls[0]?.url).toBe(nodeRuntimeNetworkReservationPathname);
+      expect(nodeRuntimeServer.calls[0]?.body).toEqual({
+        deploymentId: 'dep_123',
+        environmentId: 'env_123',
+        projectId: 'prj_123',
+        requiresResourceNetwork: false,
+        serviceId: 'svc_123',
+        serviceNetworkEndpointReservations: 2,
+      });
+      return 'sha256:image';
+    });
 
     const claimedWork: boolean = await runWorkerIteration(
       'http://127.0.0.1:9443',
@@ -166,7 +181,11 @@ describe('runWorkerIteration', (): void => {
     );
 
     expect(claimedWork).toBe(true);
-    expect(nodeRuntimeServer.calls).toHaveLength(1);
+    expect(nodeRuntimeServer.calls.map((call: NodeRuntimeRequestCall): string => call.url)).toEqual([
+      nodeRuntimeNetworkReservationPathname,
+      '/internal/deployments/deploy',
+      nodeRuntimeNetworkReservationCleanupPathname,
+    ]);
     expect(fetchMock).toHaveBeenCalled();
     const runtimeStateBodies: Record<string, JsonValue>[] = fetchMock.mock.calls.flatMap(
       (call: FetchCall): Record<string, JsonValue>[] => {
@@ -191,6 +210,68 @@ describe('runWorkerIteration', (): void => {
       'switching active route',
       'deployment completed',
     ]);
+  });
+
+  it('fails before build when node runtime network reservation exhausts capacity', async (): Promise<void> => {
+    const fetchMock: Mock<FetchImplementation> = vi
+      .fn()
+      .mockImplementation(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        await Promise.resolve();
+        const url: string = readFetchUrl(input);
+        expect(readAuthorizationHeader(init)).toBe('Bearer worker-secret');
+        if (url.endsWith(workerClaimNextGitSourceResolutionTaskPathname)) {
+          return createEmptyGitSourceResolutionTaskClaimResponse();
+        }
+        if (url.endsWith(workerClaimNextDeploymentPathname)) {
+          return new Response(JSON.stringify({ deployment: createClaimedDeploymentPayload() }), { status: 200 });
+        }
+        if (url.endsWith('/internal/deployments/runtime-events')) {
+          return new Response(init?.body ?? '{}', { status: 200 });
+        }
+        if (url.endsWith('/internal/deployments/fail')) {
+          expect(readJsonBody(init)).toEqual({
+            deploymentId: 'dep_123',
+            message: 'Docker runtime network pool exhausted.',
+          });
+
+          return new Response(
+            JSON.stringify({
+              deploymentId: 'dep_123',
+              message: 'Docker runtime network pool exhausted.',
+            }),
+            { status: 200 },
+          );
+        }
+
+        throw new Error(`Unexpected fetch url: ${url}`);
+      });
+    const nodeRuntimeServer: NodeRuntimeTestServer = await startNodeRuntimeServer(
+      nodeAgentSocketPath,
+      (call: NodeRuntimeRequestCall): NodeRuntimeTestResponse => {
+        throw new Error(`Unexpected node runtime url after reservation failure: ${call.url}`);
+      },
+      {
+        reservationResponse: {
+          body: createErrorResponse('runtime_network_capacity_exhausted', 'Docker runtime network pool exhausted.'),
+          status: 409,
+        },
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      runWorkerIteration('http://127.0.0.1:9443', 'worker-secret', 'compartment-e2e', testArtifactRegistry),
+    ).resolves.toBe(true);
+
+    expect(mocks.buildReleaseImageFromSource).not.toHaveBeenCalled();
+    expect(nodeRuntimeServer.calls.map((call: NodeRuntimeRequestCall): string => call.url)).toEqual([
+      nodeRuntimeNetworkReservationPathname,
+      nodeRuntimeNetworkReservationCleanupPathname,
+    ]);
+    expect(nodeRuntimeServer.calls[1]?.body).toEqual({
+      networkNames: [],
+      reservationId: 'dep_123',
+    });
   });
 
   it('reports runtime startup without a readiness check when the deployment disables readiness', async (): Promise<void> => {
@@ -250,7 +331,14 @@ describe('runWorkerIteration', (): void => {
     );
 
     expect(claimedWork).toBe(true);
-    expect(nodeRuntimeServer.calls).toHaveLength(1);
+    expect(nodeRuntimeServer.calls.map((call: NodeRuntimeRequestCall): string => call.url)).toEqual([
+      nodeRuntimeNetworkReservationPathname,
+      '/internal/deployments/deploy',
+      nodeRuntimeNetworkReservationCleanupPathname,
+    ]);
+    expect(nodeRuntimeServer.calls[0]?.body).toMatchObject({
+      serviceNetworkEndpointReservations: 1,
+    });
     expect(readRuntimeEventMessages(fetchMock)).toEqual([
       'node deploy started',
       'runtime container started',
@@ -312,6 +400,9 @@ describe('runWorkerIteration', (): void => {
           },
           runtimeEnv: {
             DATABASE_URL: 'postgres://db/app',
+          },
+          runtimeNetwork: {
+            requiresResourceNetwork: false,
           },
           serviceId: 'svc_123',
           serviceName: 'web',
@@ -537,7 +628,11 @@ describe('runWorkerIteration', (): void => {
     );
 
     expect(claimedWork).toBe(true);
-    expect(nodeRuntimeServer.calls).toHaveLength(1);
+    expect(nodeRuntimeServer.calls.map((call: NodeRuntimeRequestCall): string => call.url)).toEqual([
+      nodeRuntimeNetworkReservationPathname,
+      '/internal/deployments/deploy',
+      nodeRuntimeNetworkReservationCleanupPathname,
+    ]);
     expect(previousNodeRuntimeServer.calls).toHaveLength(1);
   });
 
@@ -615,7 +710,11 @@ describe('runWorkerIteration', (): void => {
     );
 
     expect(claimedWork).toBe(true);
-    expect(nodeRuntimeServer.calls).toHaveLength(1);
+    expect(nodeRuntimeServer.calls.map((call: NodeRuntimeRequestCall): string => call.url)).toEqual([
+      nodeRuntimeNetworkReservationPathname,
+      '/internal/deployments/deploy',
+      nodeRuntimeNetworkReservationCleanupPathname,
+    ]);
     expect(previousNodeRuntimeServer.calls).toHaveLength(1);
     expect(
       readRuntimeEventMessages(fetchMock).some((message: string): boolean => message.startsWith('drain failed:')),
@@ -687,7 +786,11 @@ describe('runWorkerIteration', (): void => {
     );
 
     expect(claimedWork).toBe(true);
-    expect(nodeRuntimeServer.calls).toHaveLength(1);
+    expect(nodeRuntimeServer.calls.map((call: NodeRuntimeRequestCall): string => call.url)).toEqual([
+      nodeRuntimeNetworkReservationPathname,
+      '/internal/deployments/deploy',
+      nodeRuntimeNetworkReservationCleanupPathname,
+    ]);
   });
 
   it('does not report a second failure when completion returns edge_state_update_failed', async (): Promise<void> => {
@@ -748,7 +851,11 @@ describe('runWorkerIteration', (): void => {
       testArtifactRegistry,
     );
     expect(claimedWork).toBe(true);
-    expect(nodeRuntimeServer.calls).toHaveLength(1);
+    expect(nodeRuntimeServer.calls.map((call: NodeRuntimeRequestCall): string => call.url)).toEqual([
+      nodeRuntimeNetworkReservationPathname,
+      '/internal/deployments/deploy',
+      nodeRuntimeNetworkReservationCleanupPathname,
+    ]);
   });
 
   it('reports the durable image ref when deployment fails after build completion', async (): Promise<void> => {
@@ -798,13 +905,26 @@ describe('runWorkerIteration', (): void => {
     );
     const nodeRuntimeServer: NodeRuntimeTestServer = await startNodeRuntimeServer(
       nodeAgentSocketPath,
-      (): NodeRuntimeTestResponse => ({
-        body: createErrorResponse(
-          'unexpected',
-          'runtime readiness failed: process exited\nLast logs:\n[stdout] booting\n[stderr] missing env',
-        ),
-        status: 500,
-      }),
+      (call: NodeRuntimeRequestCall): NodeRuntimeTestResponse => {
+        expect(call.url).toBe('/internal/deployments/deploy');
+        return {
+          body: createErrorResponse(
+            'unexpected',
+            'runtime readiness failed: process exited\nLast logs:\n[stdout] booting\n[stderr] missing env',
+          ),
+          status: 500,
+        };
+      },
+      {
+        reservationResponse: {
+          body: {
+            expiresAt: '2026-03-23T14:00:00.000Z',
+            newlyCreatedNetworkNames: ['runtime-network-created-for-build'],
+            reservationId: 'dep_123',
+            reservedNetworkNames: ['runtime-network-created-for-build'],
+          },
+        },
+      },
     );
 
     const claimedWork: boolean = await runWorkerIteration(
@@ -815,7 +935,15 @@ describe('runWorkerIteration', (): void => {
     );
 
     expect(claimedWork).toBe(true);
-    expect(nodeRuntimeServer.calls).toHaveLength(1);
+    expect(nodeRuntimeServer.calls.map((call: NodeRuntimeRequestCall): string => call.url)).toEqual([
+      nodeRuntimeNetworkReservationPathname,
+      '/internal/deployments/deploy',
+      nodeRuntimeNetworkReservationCleanupPathname,
+    ]);
+    expect(nodeRuntimeServer.calls[2]?.body).toEqual({
+      networkNames: ['runtime-network-created-for-build'],
+      reservationId: 'dep_123',
+    });
     expect(readRuntimeEventMessages(fetchMock)).toContain('runtime deployment failed: missing env');
   });
 
@@ -831,6 +959,9 @@ describe('runWorkerIteration', (): void => {
         }
         if (url.endsWith(workerClaimNextDeploymentPathname)) {
           return new Response(JSON.stringify({ deployment: createClaimedDeploymentPayload() }), { status: 200 });
+        }
+        if (url.endsWith('/internal/deployments/runtime-events')) {
+          return new Response(init?.body ?? '{}', { status: 200 });
         }
         if (url.endsWith('/internal/deployments/fail')) {
           expect(readJsonBody(init)).toEqual({
@@ -851,6 +982,22 @@ describe('runWorkerIteration', (): void => {
       });
     vi.stubGlobal('fetch', fetchMock);
     mocks.buildReleaseImageFromSource.mockRejectedValueOnce('build failed');
+    const nodeRuntimeServer: NodeRuntimeTestServer = await startNodeRuntimeServer(
+      nodeAgentSocketPath,
+      (call: NodeRuntimeRequestCall): NodeRuntimeTestResponse => {
+        throw new Error(`Unexpected node runtime url after build failure: ${call.url}`);
+      },
+      {
+        reservationResponse: {
+          body: {
+            expiresAt: '2026-03-23T14:00:00.000Z',
+            newlyCreatedNetworkNames: ['runtime-network-created-for-build'],
+            reservationId: 'dep_123',
+            reservedNetworkNames: ['runtime-network-created-for-build'],
+          },
+        },
+      },
+    );
 
     const claimedWork: boolean = await runWorkerIteration(
       'http://127.0.0.1:9443',
@@ -860,6 +1007,14 @@ describe('runWorkerIteration', (): void => {
     );
 
     expect(claimedWork).toBe(true);
+    expect(nodeRuntimeServer.calls.map((call: NodeRuntimeRequestCall): string => call.url)).toEqual([
+      nodeRuntimeNetworkReservationPathname,
+      nodeRuntimeNetworkReservationCleanupPathname,
+    ]);
+    expect(nodeRuntimeServer.calls[1]?.body).toEqual({
+      networkNames: ['runtime-network-created-for-build'],
+      reservationId: 'dep_123',
+    });
   });
 });
 
@@ -870,6 +1025,7 @@ function createClaimedDeploymentPayload(input: Partial<WorkerClaimedDeployment> 
 async function startNodeRuntimeServer(
   socketPath: string,
   handler: NodeRuntimeRouteHandler,
+  options: NodeRuntimeTestServerOptions = {},
 ): Promise<NodeRuntimeTestServer> {
-  return await startNodeRuntimeServerWithRegistry(socketPath, handler, nodeRuntimeServers);
+  return await startNodeRuntimeServerWithRegistry(socketPath, handler, nodeRuntimeServers, options);
 }

@@ -30,6 +30,7 @@ interface ProjectRuntimeCleanupPlan {
 }
 
 const preservedCaddyNetworkMode: NodeProjectCleanupCaddyNetworkMode = 'preserve-stale';
+const disconnectStaleCaddyNetworkMode: NodeProjectCleanupCaddyNetworkMode = 'disconnect-stale';
 
 export async function cleanupArchivedProjectRuntime(project: ProjectRow): Promise<void> {
   try {
@@ -44,7 +45,7 @@ export async function cleanupArchivedProjectRuntime(project: ProjectRow): Promis
 export async function cleanupDeletedProjectRuntime(project: ProjectRow): Promise<void> {
   try {
     const plan: ProjectRuntimeCleanupPlan = await buildProjectRuntimeCleanupPlan(project);
-    await cleanupProjectRuntime(plan, true, preservedCaddyNetworkMode);
+    await cleanupProjectRuntime(plan, true, disconnectStaleCaddyNetworkMode);
   } catch {
     throw createProjectDeleteRuntimeCleanupFailedError();
   }

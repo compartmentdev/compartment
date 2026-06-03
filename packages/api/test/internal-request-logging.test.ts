@@ -279,6 +279,9 @@ function createClaimedDeploymentResponse(): WorkerClaimDeploymentResponse {
         },
       },
       runtimeEnv: {},
+      runtimeNetwork: {
+        requiresResourceNetwork: false,
+      },
       service: {
         build: {
           env: [],

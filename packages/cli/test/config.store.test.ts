@@ -1,6 +1,7 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { readFileModePermissions } from '@compartment/test-support';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clearCliConfig, readCliConfig, writeCliConfig } from '../src/store/config.store';
 import type { CliConfig } from '../src/store/config.types';
@@ -156,7 +157,7 @@ describe('cli config store', (): void => {
     ).rejects.toThrow('Refusing to write CLI config through non-regular file path');
 
     await expect(readFile(victimPath, 'utf8')).resolves.toBe('victim-config\n');
-    expect((await stat(victimPath)).mode & 0o777).toBe(0o644);
+    expect(readFileModePermissions((await stat(victimPath)).mode)).toBe(0o644);
   });
 
   it('rejects a symlink config directory before writing config', async (): Promise<void> => {

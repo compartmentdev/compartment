@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import { readFileModePermissions } from '@compartment/test-support';
 import type { Pool } from 'pg';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
@@ -222,7 +223,7 @@ async function removeDirectory(directory: string): Promise<void> {
 
 async function readPermissionBits(path: string): Promise<number> {
   const stats: Stats = await stat(path);
-  return stats.mode & 0o777;
+  return readFileModePermissions(stats.mode);
 }
 
 function createMockDatabase(): Database {

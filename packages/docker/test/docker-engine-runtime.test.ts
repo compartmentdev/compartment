@@ -101,7 +101,13 @@ interface MockDockerInspectInfo {
 }
 
 interface MockDockerInspectNetworkSettings {
+  Networks?: Record<string, MockDockerEndpointSettings> | null | undefined;
   Ports?: MockDockerPortBindings | null | undefined;
+}
+
+interface MockDockerEndpointSettings {
+  Aliases?: string[] | undefined;
+  IPAddress?: string | undefined;
 }
 
 interface MockDockerInspectState {
@@ -585,6 +591,52 @@ describe('inspectDockerEngineContainer', (): void => {
     });
   });
 
+  it('returns attached network aliases from docker inspect', async (): Promise<void> => {
+    const containerIpAddress: string = buildIpv4Address([10, 240, 0, 2]);
+    const container: MockDockerContainer = createMockDockerContainer({
+      id: 'container_123',
+      inspectResult: {
+        Config: {
+          Image: 'sha256:image-id',
+          Labels: {},
+        },
+        Id: 'container_123',
+        NetworkSettings: {
+          Networks: {
+            'compartment-runtime': {
+              Aliases: ['upstream-dep-123', 'resource.internal'],
+              IPAddress: containerIpAddress,
+            },
+          },
+          Ports: {},
+        },
+        State: {
+          Running: true,
+        },
+      },
+    });
+    const dockerClient: MockDockerClient = createMockDockerClient({
+      createdContainer: container,
+      inspectedContainer: container,
+    });
+    mocks.createDockerClient.mockResolvedValueOnce(dockerClient);
+
+    await expect(inspectDockerEngineContainer({ containerRef: 'container_123' })).resolves.toEqual({
+      containerId: 'container_123',
+      imageRef: 'sha256:image-id',
+      isRunning: true,
+      labels: {},
+      networkAttachments: [
+        {
+          aliases: ['upstream-dep-123', 'resource.internal'],
+          ipAddress: containerIpAddress,
+          name: 'compartment-runtime',
+        },
+      ],
+      publishedPorts: [],
+    });
+  });
+
   it('returns null when the container is missing', async (): Promise<void> => {
     const container: MockDockerContainer = createMockDockerContainer({ id: 'compartment-missing' });
     container.inspect.mockRejectedValueOnce({
@@ -898,4 +950,8 @@ function createDockerLogFrame(stream: 'stdout' | 'stderr', text: string): Buffer
   header[0] = stream === 'stdout' ? 1 : 2;
   header.writeUInt32BE(payload.length, 4);
   return Buffer.concat([header, payload]);
+}
+
+function buildIpv4Address(octets: readonly [number, number, number, number]): string {
+  return octets.map((octet: number): string => octet.toString()).join('.');
 }

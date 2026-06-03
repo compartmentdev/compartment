@@ -3,7 +3,8 @@ import type { NodeInspectDeploymentResponse, ResolvedServiceReadinessConfig } fr
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { inspectRuntimeDeployment } from '../src/services/runtime-inspect.service';
 import { buildDeploymentUpstreamHost, buildRuntimeServiceNetworkName } from '../src/services/runtime-names.service';
-import type { RuntimeConnectivityMode } from '../src/services/runtime.types';
+import type { RuntimeConnectivityMode, RuntimeNetworkPoolConfig } from '../src/services/runtime.types';
+import { buildTestIpv4Cidr, createRuntimeNetworkPoolConfig } from './runtime-network-pool.fixture';
 
 type InspectDockerContainer = (input: { containerRef: string }) => Promise<DockerInspectContainerResult | null>;
 type BuildDockerNamespaceLabels = (namespace: string) => Record<string, string>;
@@ -45,6 +46,7 @@ interface RuntimeInspectServiceTestMocks {
 interface RuntimeInspectConfigFixture {
   dockerNamespace: string;
   runtimeConnectivityMode: RuntimeConnectivityMode;
+  runtimeNetworkPool: RuntimeNetworkPoolConfig;
   runtimeProbeImageRef: string;
 }
 
@@ -104,9 +106,22 @@ describe('inspectRuntimeDeployment', (): void => {
   beforeEach((): void => {
     mocks.inspectDockerNetwork.mockResolvedValue({
       endpointContainerIds: [],
-      ipamConfigs: [],
+      ipamConfigs: [
+        {
+          gateway: null,
+          subnet: buildTestIpv4Cidr(10, 240, 0, 0, 28),
+        },
+      ],
       labels: {
+        'compartment.environmentId': 'env_production',
         'compartment.namespace': 'compartment-e2e',
+        'compartment.network.ipam': 'managed',
+        'compartment.network.kind': 'service',
+        'compartment.network.poolCidr': createRuntimeNetworkPoolConfig().cidr,
+        'compartment.network.subnet': buildTestIpv4Cidr(10, 240, 0, 0, 28),
+        'compartment.network.subnetPrefix': createRuntimeNetworkPoolConfig().subnetPrefixLength.toString(),
+        'compartment.projectId': 'prj_smoke_web',
+        'compartment.serviceId': 'svc_web',
       },
       name: 'runtime-network',
     });
@@ -355,6 +370,27 @@ describe('inspectRuntimeDeployment', (): void => {
       ],
       publishedPorts: [],
     });
+    mocks.inspectDockerNetwork.mockResolvedValueOnce({
+      endpointContainerIds: [],
+      ipamConfigs: [
+        {
+          gateway: null,
+          subnet: buildTestIpv4Cidr(10, 240, 0, 0, 28),
+        },
+      ],
+      labels: {
+        'compartment.namespace': 'compartment-e2e',
+        'compartment.network.ipam': 'managed',
+        'compartment.network.kind': 'service',
+        'compartment.network.poolCidr': createRuntimeNetworkPoolConfig().cidr,
+        'compartment.network.subnet': buildTestIpv4Cidr(10, 240, 0, 0, 28),
+        'compartment.network.subnetPrefix': createRuntimeNetworkPoolConfig().subnetPrefixLength.toString(),
+        'compartment.environmentId': 'env_production',
+        'compartment.projectId': 'prj_smoke_web',
+        'compartment.serviceId': 'svc_web',
+      },
+      name: networkName,
+    });
     mocks.waitForHealthyRuntimeFromDockerNetwork.mockResolvedValueOnce(undefined);
 
     await expect(
@@ -546,6 +582,7 @@ function createRuntimeInspectConfig(overrides: Partial<RuntimeInspectConfigFixtu
   return {
     dockerNamespace: 'compartment-e2e',
     runtimeConnectivityMode: 'loopback',
+    runtimeNetworkPool: createRuntimeNetworkPoolConfig(),
     runtimeProbeImageRef: 'ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0',
     ...overrides,
   };

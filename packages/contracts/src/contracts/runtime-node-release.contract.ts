@@ -5,6 +5,7 @@ import {
   resolvedCompartmentServiceReleaseConfigSchema,
   type ResolvedCompartmentServiceReleaseConfig,
 } from './service-release.contract';
+import { runtimeNetworkIntentSchema, type RuntimeNetworkIntent } from './runtime-node-network.contract';
 import type { ContractSchema } from './schema.types';
 
 export interface NodeReleaseRequest {
@@ -15,6 +16,7 @@ export interface NodeReleaseRequest {
   projectId: string;
   projectName: string;
   release: ResolvedCompartmentServiceReleaseConfig;
+  runtimeNetwork: RuntimeNetworkIntent;
   runtimeEnv: Record<string, string>;
   serviceId: string;
   serviceName: string;
@@ -43,6 +45,7 @@ export const nodeReleaseRequestSchema: ContractSchema<NodeReleaseRequest> = z
     projectId: z.string().min(1),
     projectName: compartmentProjectNameSchema,
     release: resolvedCompartmentServiceReleaseConfigSchema,
+    runtimeNetwork: runtimeNetworkIntentSchema,
     runtimeEnv: z.record(z.string(), z.string()),
     serviceId: z.string().min(1),
     serviceName: compartmentServiceNameSchema,

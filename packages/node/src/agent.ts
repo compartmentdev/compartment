@@ -8,9 +8,9 @@ export async function runNodeAgent(): Promise<void> {
   const app: NodeApp = createNodeApp({
     config,
   });
-  prepareNodeAgentSocketPath(config.nodeSocketPath);
+  prepareNodeAgentSocketPath(config.nodeSocketPath, config.runtimeSocketGid);
   await app.listen({
     path: config.nodeSocketPath,
   });
-  restrictNodeAgentSocketPathPermissions(config.nodeSocketPath);
+  restrictNodeAgentSocketPathPermissions(config.nodeSocketPath, config.runtimeSocketGid);
 }

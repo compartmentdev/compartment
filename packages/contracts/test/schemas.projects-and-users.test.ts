@@ -169,6 +169,9 @@ describe('contract schemas projects and users', (): void => {
         buildEnv: {},
         routeHost: 'smoke-web.localhost',
         runtimeEnv: {},
+        runtimeNetwork: {
+          requiresResourceNetwork: false,
+        },
         service: {
           build: {
             env: [],

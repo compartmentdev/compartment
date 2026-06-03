@@ -30,7 +30,8 @@ Change checklist:
 - bind node control traffic only through `COMPARTMENT_NODE_AGENT_SOCKET`;
 - keep the canonical self-hosted agent socket at `/var/run/compartment/node/agent.sock`;
 - reject socket paths directly under shared runtime roots such as `/tmp`, `/run`, `/var/run`, or `/var/run/compartment`;
-- prepare socket directories as private `0700` directories and sockets as `0600`;
+- prepare host node-agent socket directories as `root:compartment-runtime` `0750` directories and sockets as
+  `root:compartment-runtime` `0660` so self-hosted API and worker containers can connect without running as root;
 - treat service runtime networks as egress-only from runtime containers;
 - fail closed when `node` cannot resolve the required `caddy` runtime-network actor;
 - if behavior is just scaffolding and only tested locally, treat it as dead runtime code.

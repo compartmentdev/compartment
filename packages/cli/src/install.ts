@@ -117,6 +117,7 @@ async function startInstallRuntime(
   reportInstallProgress(input.context, 'Staging node agent service...');
   await stageNodeAgentHostService({
     envPath: preparedEnvironment.stagedAssetPaths.envPath,
+    repairRuntimeWritableDirectoryContents: true,
   });
   reportInstallDockerProgress(input, dockerContext, 'Starting self-hosted runtime...');
   await startInstallComposeRuntime(dockerContext, preparedEnvironment, input);

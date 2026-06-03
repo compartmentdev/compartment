@@ -5,6 +5,7 @@ import type { NodeConfig } from '../src/config';
 import { createRegisterNode } from '../src/services/registration-api.service';
 import type { RegisterNode } from '../src/services/registration-api.types';
 import { registerNodeOnStartup } from '../src/services/startup-registration.service';
+import { createRuntimeNetworkPoolConfig } from './runtime-network-pool.fixture';
 
 type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -141,12 +142,16 @@ function createNodeConfig(): NodeConfig {
     resourceBackupDirectory: '/var/lib/compartment/resource-backups',
     runtimeConnectivityMode: 'loopback',
     runtimeDefaultUpstreamHost: '127.0.0.1',
+    runtimeNetworkPool: createRuntimeNetworkPoolConfig(),
+    runtimeGid: 10001,
+    runtimeUid: 10001,
     runtimeRegistryCredentials: {
       password: 'registry-read-password',
       serverAddress: '127.0.0.1:39461',
       username: 'registry-reader',
     },
     runtimeProbeImageRef: 'ghcr.io/compartmentdev/compartment-runtime-probe:0.1.0',
+    runtimeSocketGid: 10001,
     version: '0.1.0',
     runtimeControlToken: 'test-runtime-control-token',
   };

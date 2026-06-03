@@ -13,6 +13,7 @@ import type {
   NodeDeployResponse,
   NodeInspectDeploymentResponse,
   NodeRuntimeNetworkReconcileResponse,
+  NodeRuntimeNetworkReservationResponse,
   NodeStopDeploymentResponse,
   NodeTailLogsResponse,
   ResolvedCompartmentServiceRunConfig,
@@ -24,6 +25,10 @@ import type { NodeRequester } from '../src/http/node-request.types';
 import { deployToNode } from '../src/services/node-runtime-deploy.service';
 import { inspectNodeDeployment } from '../src/services/node-runtime-inspect.service';
 import { reconcileNodeRuntimeNetworks } from '../src/services/node-runtime-network-reconcile.service';
+import {
+  cleanupNodeRuntimeNetworkReservation,
+  reserveNodeRuntimeNetworks,
+} from '../src/services/node-runtime-network.service';
 import { stopNodeDeployment } from '../src/services/node-runtime-stop.service';
 import { tailNodeDeploymentLogs } from '../src/services/node-runtime-logs.service';
 
@@ -177,6 +182,55 @@ describe('node runtime request services', (): void => {
     });
   });
 
+  it('sends runtime network reservation and cleanup requests to internal node endpoints', async (): Promise<void> => {
+    const server: NodeRuntimeTestServer = await startNodeRuntimeTestServer([
+      createJsonResponse({
+        expiresAt: '2026-03-23T14:00:00.000Z',
+        newlyCreatedNetworkNames: ['network-created'],
+        reservationId: 'dep_123',
+        reservedNetworkNames: ['network-created'],
+      }),
+      createJsonResponse({
+        cleanedAt: '2026-03-23T14:10:00.000Z',
+      }),
+    ]);
+    const request: NodeRequester = createNodeRequesterFixture(server.socketPath);
+
+    const reservation: NodeRuntimeNetworkReservationResponse = await reserveNodeRuntimeNetworks(request, {
+      deploymentId: 'dep_123',
+      environmentId: 'env_123',
+      projectId: 'prj_123',
+      requiresResourceNetwork: true,
+      serviceId: 'svc_123',
+      serviceNetworkEndpointReservations: 2,
+    });
+    await cleanupNodeRuntimeNetworkReservation(request, {
+      networkNames: reservation.newlyCreatedNetworkNames,
+      reservationId: reservation.reservationId,
+    });
+
+    expectNodeRequest(server.calls[0]!, {
+      body: {
+        deploymentId: 'dep_123',
+        environmentId: 'env_123',
+        projectId: 'prj_123',
+        requiresResourceNetwork: true,
+        serviceId: 'svc_123',
+        serviceNetworkEndpointReservations: 2,
+      },
+      method: 'POST',
+      pathname: '/internal/runtime-networks/reserve',
+    });
+    expectNodeRequest(server.calls[1]!, {
+      body: {
+        networkNames: ['network-created'],
+        reservationId: 'dep_123',
+      },
+      method: 'POST',
+      pathname: '/internal/runtime-networks/reservations/cleanup',
+    });
+  });
+
   it('rejects partial readiness query fields before issuing inspect requests', async (): Promise<void> => {
     const server: NodeRuntimeTestServer = await startNodeRuntimeTestServer([]);
     const request: NodeRequester = createNodeRequester({
@@ -300,6 +354,9 @@ function createNodeDeployRequest(): NodeDeployRequest {
     },
     run: createRun(),
     routeHost: 'smoke-web.localhost',
+    runtimeNetwork: {
+      requiresResourceNetwork: false,
+    },
     runtimeEnv: {},
     serviceId: 'svc_123',
     serviceName: 'web',

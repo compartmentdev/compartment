@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { readFileModePermissions } from '@compartment/test-support';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 interface SeaModule {
@@ -64,8 +65,8 @@ describe('bundled cosign', (): void => {
     expect(command).toHaveLength(1);
     expect(cosignPath.startsWith(join(cacheDirectory, 'compartment', 'cosign'))).toBe(true);
     await expect(readFile(cosignPath, 'utf8')).resolves.toBe(cosignAsset.toString('utf8'));
-    expect((await stat(dirname(cosignPath))).mode & 0o777).toBe(0o700);
-    expect((await stat(cosignPath)).mode & 0o777).toBe(0o700);
+    expect(readFileModePermissions((await stat(dirname(cosignPath))).mode)).toBe(0o700);
+    expect(readFileModePermissions((await stat(cosignPath)).mode)).toBe(0o700);
   });
 
   it('fails when the SEA binary does not contain cosign', async (): Promise<void> => {
