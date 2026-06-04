@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/compartmentdev/compartment/compare/v0.9.0...v0.9.1) (2026-06-04)
+
+
+### Bug Fixes
+
+* **release:** make publish jobs immutable-safe ([#87](https://github.com/compartmentdev/compartment/issues/87)) ([141351f](https://github.com/compartmentdev/compartment/commit/141351f21bed52aebf45cdc980efcfeb11d95df7))
+
 ## [0.9.0](https://github.com/compartmentdev/compartment/compare/v0.8.0...v0.9.0) (2026-06-04)
 
 
