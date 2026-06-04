@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { isMissingFileSystemEntryError } from '@compartment/utils';
+import { assertSelfHostedGeneratedSecretEnvironment, isMissingFileSystemEntryError } from '@compartment/utils';
 import { buildSelfHostedInstallPaths } from './self-hosted-install-paths';
+import { readRequiredSelfHostedEnvironmentValue, readSelfHostedEnvironmentValues } from './self-hosted-env-file';
 import type { SelfHostedInstallPaths, SelfHostedPathSelection } from './self-hosted-install-paths.types';
 import { readSelfHostedInstallStateFromInstallPaths } from './self-hosted-install-state';
 import type { SelfHostedInstallState } from './self-hosted-install-state.types';
@@ -26,12 +27,24 @@ export async function readRequiredSelfHostedInstall(
       `Expected an existing self-hosted install state at ${installPaths.statePath}. Reinstall the runtime with \`compartment install\`.`,
     );
   }
+  const environmentValues: Record<string, string> = readSelfHostedEnvironmentValues(environmentText);
+  assertSelfHostedInstallEnvironment(environmentValues);
+  assertSelfHostedGeneratedSecretEnvironment(environmentValues);
 
   return {
     environmentText,
     installPaths,
     state,
   };
+}
+
+function assertSelfHostedInstallEnvironment(environmentValues: Record<string, string>): void {
+  const compartmentEnv: string = readRequiredSelfHostedEnvironmentValue(environmentValues, 'COMPARTMENT_ENV');
+  if (compartmentEnv !== 'self-hosted') {
+    throw new Error(
+      `The self-hosted environment has an invalid COMPARTMENT_ENV value: ${compartmentEnv}. Expected self-hosted.`,
+    );
+  }
 }
 
 async function readRequiredSelfHostedEnvironmentText(environmentPath: string): Promise<string> {

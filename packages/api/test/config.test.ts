@@ -10,6 +10,8 @@ const requiredExplicitSelfHostedEnvSlots: string[] = [
   'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL',
   'COMPARTMENT_TRUSTED_OUTBOUND_HOSTS',
 ];
+const generated24ByteSecret: string = '0123456789abcdef0123456789abcdef0123456789abcdef';
+const generated32ByteSecret: string = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 describe('readApiConfig', (): void => {
   it('reads the required API runtime config from env', (): void => {
@@ -207,6 +209,51 @@ describe('readApiConfig', (): void => {
     ).toThrow('COMPARTMENT_VARIABLES_MASTER_KEY must be exactly 64 hex characters.');
   });
 
+  it('accepts generated self-hosted secret env values', (): void => {
+    const config: ApiConfig = readApiConfig(createSelfHostedApiConfigEnv());
+
+    expect(config.sessionSecret).toBe(generated32ByteSecret);
+    expect(config.variablesMasterKey).toEqual(Buffer.from(generated32ByteSecret, 'hex'));
+  });
+
+  it('rejects self-hosted example-style secret env values by shape', (): void => {
+    expect(
+      (): ApiConfig =>
+        readApiConfig(
+          createSelfHostedApiConfigEnv({
+            COMPARTMENT_DATABASE_URL: 'postgresql://postgres:postgres@postgres:5432/compartment',
+            COMPARTMENT_POSTGRES_PASSWORD: 'postgres',
+            COMPARTMENT_SESSION_SECRET: 'change-me',
+          }),
+        ),
+    ).toThrow('COMPARTMENT_POSTGRES_PASSWORD must be at least 48 hex characters for self-hosted environments.');
+  });
+
+  it('rejects low-entropy self-hosted variables master keys', (): void => {
+    expect(
+      (): ApiConfig =>
+        readApiConfig(
+          createSelfHostedApiConfigEnv({
+            COMPARTMENT_VARIABLES_MASTER_KEY: '1'.repeat(64),
+          }),
+        ),
+    ).toThrow('COMPARTMENT_VARIABLES_MASTER_KEY must not use one repeated hex character for self-hosted environments.');
+  });
+
+  it('allows local dev database defaults when the runtime env is not self-hosted', (): void => {
+    expect(
+      (): ApiConfig =>
+        readApiConfig(
+          createApiConfigEnv({
+            COMPARTMENT_DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_test',
+            COMPARTMENT_ENV: 'dev',
+            COMPARTMENT_POSTGRES_PASSWORD: 'postgres',
+            COMPARTMENT_VARIABLES_MASTER_KEY: '1'.repeat(64),
+          }),
+        ),
+    ).not.toThrow();
+  });
+
   it('rejects a non-positive source archive limit', (): void => {
     expect((): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES: '0' }))).toThrow();
   });
@@ -316,10 +363,12 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_EDGE_INTERNAL_HOST: '127.0.0.1',
     COMPARTMENT_EDGE_PORT: '9081',
     COMPARTMENT_EDGE_TOKEN: 'edge-secret',
+    COMPARTMENT_ENV: 'dev',
     COMPARTMENT_LOG_LEVEL: 'info',
     COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: '',
     COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: '',
     COMPARTMENT_NODE_AGENT_SOCKET: '/tmp/compartment/node/agent.sock',
+    COMPARTMENT_POSTGRES_PASSWORD: 'postgres',
     COMPARTMENT_PUBLIC_PROTOCOL: 'http',
     COMPARTMENT_PUBLIC_HTTP_PORT: '9080',
     COMPARTMENT_PUBLIC_HTTPS_PORT: '9444',
@@ -370,4 +419,18 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-secret',
     ...overrides,
   };
+}
+
+function createSelfHostedApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.ProcessEnv {
+  return createApiConfigEnv({
+    COMPARTMENT_DATABASE_URL: `postgresql://postgres:${generated24ByteSecret}@postgres:5432/compartment`,
+    COMPARTMENT_EDGE_TOKEN: generated24ByteSecret,
+    COMPARTMENT_ENV: 'self-hosted',
+    COMPARTMENT_POSTGRES_PASSWORD: generated24ByteSecret,
+    COMPARTMENT_RUNTIME_CONTROL_TOKEN: generated24ByteSecret,
+    COMPARTMENT_SESSION_SECRET: generated32ByteSecret,
+    COMPARTMENT_SYSTEM_TOKEN: generated24ByteSecret,
+    COMPARTMENT_VARIABLES_MASTER_KEY: generated32ByteSecret,
+    ...overrides,
+  });
 }

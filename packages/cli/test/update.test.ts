@@ -4,6 +4,9 @@ import { readFileModePermissions } from '@compartment/test-support';
 import { describe, expect, it } from 'vitest';
 import {
   createUpdateRuntimeTestHarness,
+  generatedSelfHosted24ByteSecret,
+  generatedSelfHostedAlternateVariablesMasterKey,
+  generatedSelfHostedVariablesMasterKey,
   type InstallStateJsonObject,
   type ReconcileNodeAgentRuntimeNetworksInput,
   type TemporaryInstallPaths,
@@ -54,6 +57,79 @@ describe.sequential('update runtime', (): void => {
     );
   });
 
+  it.each([
+    [
+      'missing COMPARTMENT_ENV',
+      removeEnvironmentAssignments(createCurrentEnvironmentText(), ['COMPARTMENT_ENV']),
+      'The self-hosted environment is missing COMPARTMENT_ENV.',
+    ],
+    [
+      'non-self-hosted COMPARTMENT_ENV',
+      createCurrentEnvironmentText().replace('COMPARTMENT_ENV=self-hosted', 'COMPARTMENT_ENV=dev'),
+      'The self-hosted environment has an invalid COMPARTMENT_ENV value: dev. Expected self-hosted.',
+    ],
+  ])(
+    'rejects %s in existing env files before runtime mutation',
+    async (_caseName: string, previousEnvironmentText: string, expectedError: string): Promise<void> => {
+      const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
+      await writeCurrentInstallFiles(installPaths, previousEnvironmentText);
+      await writeInstallState(installPaths, {
+        imageSource: 'registry',
+        installationId: '11111111-1111-4111-8111-111111111111',
+        stateVersion: 1,
+      });
+      const { updateSelfHosted } = await import('../src/update');
+
+      await expect(
+        updateSelfHosted({
+          options: {
+            version: '1.2.3',
+          },
+        }),
+      ).rejects.toThrow(expectedError);
+      await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toBe(
+        previousEnvironmentText,
+      );
+      expect(mocks.ensureDockerExecutionContext).not.toHaveBeenCalled();
+      expect(mocks.prepareSelfHostedRuntimeImages).not.toHaveBeenCalled();
+      expect(mocks.stageNodeAgentHostService).not.toHaveBeenCalled();
+      expect(mocks.restartSelfHostedRuntime).not.toHaveBeenCalled();
+      expect(mocks.reconcileNodeAgentRuntimeNetworks).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects unsafe generated secret values in existing env files before runtime mutation', async (): Promise<void> => {
+    const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
+    const previousEnvironmentText: string = createCurrentEnvironmentText({
+      variablesMasterKey: '1'.repeat(64),
+    });
+    await writeCurrentInstallFiles(installPaths, previousEnvironmentText);
+    await writeInstallState(installPaths, {
+      imageSource: 'registry',
+      installationId: '11111111-1111-4111-8111-111111111111',
+      stateVersion: 1,
+    });
+    const { updateSelfHosted } = await import('../src/update');
+
+    await expect(
+      updateSelfHosted({
+        options: {
+          version: '1.2.3',
+        },
+      }),
+    ).rejects.toThrow(
+      'COMPARTMENT_VARIABLES_MASTER_KEY must not use one repeated hex character for self-hosted environments.',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toBe(
+      previousEnvironmentText,
+    );
+    expect(mocks.ensureDockerExecutionContext).not.toHaveBeenCalled();
+    expect(mocks.prepareSelfHostedRuntimeImages).not.toHaveBeenCalled();
+    expect(mocks.stageNodeAgentHostService).not.toHaveBeenCalled();
+    expect(mocks.restartSelfHostedRuntime).not.toHaveBeenCalled();
+    expect(mocks.reconcileNodeAgentRuntimeNetworks).not.toHaveBeenCalled();
+  });
+
   it('updates a current install, preserves env values, and keeps installation metadata', async (): Promise<void> => {
     const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
     const previousEnvironmentText: string = createCurrentEnvironmentText({
@@ -68,7 +144,7 @@ describe.sequential('update runtime', (): void => {
       publicIngressIpv4: '203.0.113.10',
       publicIngressIpv6: '2001:db8::10',
       publicProtocol: 'https',
-      variablesMasterKey: 'a'.repeat(64),
+      variablesMasterKey: generatedSelfHostedVariablesMasterKey,
     });
     await writeCurrentInstallFiles(installPaths, previousEnvironmentText);
     await writeManagedDomainInstallState(installPaths);
@@ -172,10 +248,10 @@ describe.sequential('update runtime', (): void => {
       `COMPARTMENT_DOCKER_WORK_DIR=${join(installPaths.dataDir, 'self-hosted/docker-work')}`,
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
-      `COMPARTMENT_VARIABLES_MASTER_KEY=${'a'.repeat(64)}`,
+      `COMPARTMENT_VARIABLES_MASTER_KEY=${generatedSelfHostedVariablesMasterKey}`,
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
-      'COMPARTMENT_RUNTIME_CONTROL_TOKEN=runtime-token',
+      `COMPARTMENT_RUNTIME_CONTROL_TOKEN=${generatedSelfHosted24ByteSecret}`,
     );
     const backupDirectory: string = readRequiredBackupDirectory(result);
     await expect(readFile(join(backupDirectory, '.env.self-hosted'), 'utf8')).resolves.toBe(previousEnvironmentText);
@@ -209,7 +285,7 @@ describe.sequential('update runtime', (): void => {
       createCurrentEnvironmentText({
         includeVariablesMasterKey: true,
         nodeVersion: '1.2.3',
-        variablesMasterKey: 'b'.repeat(64),
+        variablesMasterKey: generatedSelfHostedAlternateVariablesMasterKey,
       }),
     );
     await writeInstallState(installPaths, {
@@ -287,7 +363,7 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
     const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
     const previousEnvironmentText: string = createCurrentEnvironmentText({
       includeVariablesMasterKey: true,
-      variablesMasterKey: 'c'.repeat(64),
+      variablesMasterKey: generatedSelfHostedAlternateVariablesMasterKey,
     });
     await writeCurrentInstallFiles(installPaths, previousEnvironmentText);
     await writeInstallState(installPaths, {
@@ -333,7 +409,7 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
       createCurrentEnvironmentText({
         includeVariablesMasterKey: true,
         nodeVersion: '0.1.0',
-        variablesMasterKey: 'h'.repeat(64),
+        variablesMasterKey: generatedSelfHostedAlternateVariablesMasterKey,
       }),
     );
     await writeInstallState(installPaths, {
@@ -369,7 +445,7 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
       createCurrentEnvironmentText({
         includeVariablesMasterKey: true,
         nodeVersion: '1.2.3',
-        variablesMasterKey: 'd'.repeat(64),
+        variablesMasterKey: generatedSelfHostedAlternateVariablesMasterKey,
       }),
     );
     await writeInstallState(installPaths, {
@@ -406,7 +482,7 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
       createCurrentEnvironmentText({
         includeVariablesMasterKey: true,
         nodeVersion: '1.2.3',
-        variablesMasterKey: 'e'.repeat(64),
+        variablesMasterKey: generatedSelfHostedAlternateVariablesMasterKey,
       }),
     );
     await writeInstallState(installPaths, {
@@ -442,7 +518,7 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
       createCurrentEnvironmentText({
         includeVariablesMasterKey: true,
         nodeVersion: '1.2.3',
-        variablesMasterKey: 'g'.repeat(64),
+        variablesMasterKey: generatedSelfHostedAlternateVariablesMasterKey,
       }),
     );
     await writeInstallState(installPaths, {
@@ -476,7 +552,7 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
       installPaths,
       createCurrentEnvironmentText({
         includeVariablesMasterKey: true,
-        variablesMasterKey: 'b'.repeat(64),
+        variablesMasterKey: generatedSelfHostedAlternateVariablesMasterKey,
       }),
     );
     await writeInstallState(installPaths, {
@@ -559,7 +635,7 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
     const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths();
     const existingEnvironmentText: string = createCurrentEnvironmentText({
       includeVariablesMasterKey: true,
-      variablesMasterKey: 'f'.repeat(64),
+      variablesMasterKey: generatedSelfHostedAlternateVariablesMasterKey,
     });
     await writeCurrentInstallFiles(installPaths, existingEnvironmentText);
     await writeInstallState(installPaths, {
@@ -579,7 +655,7 @@ COMPARTMENT_ACME_DNS_TOKEN=legacy-token
     expect(result.imageSource).toBe('local');
     expect(result.skipReason).toBeNull();
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
-      `COMPARTMENT_VARIABLES_MASTER_KEY=${'f'.repeat(64)}`,
+      `COMPARTMENT_VARIABLES_MASTER_KEY=${generatedSelfHostedAlternateVariablesMasterKey}`,
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:1.2.3',

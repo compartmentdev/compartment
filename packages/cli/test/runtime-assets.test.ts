@@ -360,6 +360,29 @@ describe.sequential('runtime assets', (): void => {
     );
   });
 
+  it('passes self-hosted validation inputs to the API service', async (): Promise<void> => {
+    tempDirectory = await mkdtemp(join(tmpdir(), 'compartment-runtime-assets-'));
+    const configDir: string = join(tempDirectory, 'etc');
+    const dataDir: string = join(tempDirectory, 'var');
+    const { buildStagedAssetPaths, readBundledAssets, stageBundledAssets } = await import('../src/runtime-assets');
+    const packageDirectory: string = await createBundledPackageDirectory(tempDirectory);
+
+    const stagedAssetPaths: StagedAssetPaths = buildStagedAssetPaths(configDir, dataDir);
+    const bundledAssets: BundledAssets = readBundledAssets(packageDirectory);
+
+    await stageBundledAssets(stagedAssetPaths, bundledAssets);
+
+    const composeFile: RuntimeComposeFile = parse(
+      await readFile(stagedAssetPaths.composePath, 'utf8'),
+    ) as RuntimeComposeFile;
+    const apiEnvironment: Record<string, string> = readServiceEnvironment(composeFile, 'api');
+
+    expect(apiEnvironment.COMPARTMENT_ENV).toBe('${COMPARTMENT_ENV}');
+    expect(apiEnvironment.COMPARTMENT_POSTGRES_PASSWORD).toBe('${COMPARTMENT_POSTGRES_PASSWORD}');
+    expect(readServiceEnvironment(composeFile, 'api-migrate').COMPARTMENT_ENV).toBeUndefined();
+    expect(readServiceEnvironment(composeFile, 'api-migrate').COMPARTMENT_POSTGRES_PASSWORD).toBeUndefined();
+  });
+
   it('passes reset-password throttle settings to the API service', async (): Promise<void> => {
     tempDirectory = await mkdtemp(join(tmpdir(), 'compartment-runtime-assets-'));
     const configDir: string = join(tempDirectory, 'etc');

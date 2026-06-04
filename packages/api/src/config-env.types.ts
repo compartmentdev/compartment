@@ -10,6 +10,7 @@ export interface ApiConfigEnv extends AuditFileSinkConfigEnv {
   COMPARTMENT_EDGE_INTERNAL_HOST: string;
   COMPARTMENT_EDGE_PORT: number;
   COMPARTMENT_EDGE_TOKEN: string;
+  COMPARTMENT_ENV?: 'dev' | 'self-hosted' | undefined;
   COMPARTMENT_LOG_LEVEL: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: string;
   COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: string;
@@ -18,6 +19,7 @@ export interface ApiConfigEnv extends AuditFileSinkConfigEnv {
   COMPARTMENT_PUBLIC_PROTOCOL: 'http' | 'https';
   COMPARTMENT_PUBLIC_HTTP_PORT: number;
   COMPARTMENT_PUBLIC_HTTPS_PORT: number;
+  COMPARTMENT_POSTGRES_PASSWORD?: string | undefined;
   COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: string;
   COMPARTMENT_AUDIT_RETENTION_DAYS: number;
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE: number;

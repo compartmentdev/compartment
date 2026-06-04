@@ -5,6 +5,7 @@ import type { SystemDomainMutationResponse, SystemDomainStatusResponse } from '@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type * as SelfHostedInstallPathsSourceModule from '../src/self-hosted-install-paths';
 import type { SystemDomainApiRequest, SystemDomainClientConfig } from '../src/system-domain-client.types';
+import { generatedSelfHosted24ByteSecret, generatedSelfHostedVariablesMasterKey } from './update.test.harness';
 
 type PendingSystemDomainStatusRequest = SystemDomainApiRequest<SystemDomainStatusResponse> & { method: 'GET' };
 type AttachSystemDomainCertificateRequest = SystemDomainApiRequest<SystemDomainMutationResponse> & { method: 'POST' };
@@ -175,11 +176,20 @@ async function writeInstallFiles(installPaths: TemporaryInstallPaths): Promise<v
   await mkdir(installPaths.customTlsDirectory, { recursive: true });
   await writeFile(
     join(installPaths.configDir, '.env.self-hosted'),
-    `COMPARTMENT_CUSTOM_TLS_DIR=${installPaths.customTlsDirectory}
+    `COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_CUSTOM_TLS_DIR=${installPaths.customTlsDirectory}
+COMPARTMENT_DATABASE_URL=postgres://postgres:${generatedSelfHosted24ByteSecret}@postgres:5432/compartment
+COMPARTMENT_EDGE_TOKEN=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_ENV=self-hosted
+COMPARTMENT_POSTGRES_PASSWORD=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_RUNTIME_CONTROL_TOKEN=${generatedSelfHosted24ByteSecret}
 COMPARTMENT_RUNTIME_UID=10001
 COMPARTMENT_RUNTIME_GID=10001
+COMPARTMENT_SESSION_SECRET=${generatedSelfHostedVariablesMasterKey}
 COMPARTMENT_SYSTEM_API_SOCKET=/var/run/compartment/api/system-api.sock
-COMPARTMENT_SYSTEM_TOKEN=system-token
+COMPARTMENT_SYSTEM_TOKEN=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_VARIABLES_MASTER_KEY=${generatedSelfHostedVariablesMasterKey}
 `,
     'utf8',
   );

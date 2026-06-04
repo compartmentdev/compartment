@@ -7,6 +7,7 @@ import type { DockerExecutionContext, RestartSelfHostedRuntimeInput } from '../s
 import type * as NodeAgentRuntimeNetworkSourceModule from '../src/node-agent-runtime-network';
 import type * as NodeAgentServiceSourceModule from '../src/node-agent-service';
 import type * as SelfHostedInstallPathsSourceModule from '../src/self-hosted-install-paths';
+import { generatedSelfHosted24ByteSecret, generatedSelfHostedVariablesMasterKey } from './update.test.harness';
 
 type EnsureSelfHostedDockerExecutionContext = () => Promise<DockerExecutionContext>;
 type ReconcileNodeAgentRuntimeNetworks = (input: object) => Promise<void>;
@@ -152,7 +153,7 @@ describe.sequential('self-hosted domain runtime apply', (): void => {
   it('validates runtime network reconcile env before staging domain runtime changes', async (): Promise<void> => {
     const installPaths: TemporaryInstallPaths = await createTemporaryInstallPaths(temporaryDirectories);
     const previousEnvironmentText: string = createEnvironmentText().replace(
-      'COMPARTMENT_RUNTIME_CONTROL_TOKEN=runtime-token\n',
+      `COMPARTMENT_RUNTIME_CONTROL_TOKEN=${generatedSelfHosted24ByteSecret}\n`,
       '',
     );
     await writeInstallFiles(installPaths, previousEnvironmentText);
@@ -268,17 +269,26 @@ function createEnvironmentText(): string {
   return `COMPARTMENT_ACME_CA_URL=
 COMPARTMENT_ACME_EMAIL=admin@example.com
 COMPARTMENT_API_IMAGE=ghcr.io/compartmentdev/compartment-api:0.2.0
+COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD=${generatedSelfHosted24ByteSecret}
 COMPARTMENT_BASE_DOMAIN=localhost
 COMPARTMENT_CADDY_IMAGE=ghcr.io/compartmentdev/compartment-caddy:0.2.0
 COMPARTMENT_CADDY_TLS_MODE=internal
 COMPARTMENT_CUSTOM_TLS_CERT_FILE=/var/lib/compartment/self-hosted/custom-tls/fullchain.pem
 COMPARTMENT_CUSTOM_TLS_DIR=/var/lib/compartment/self-hosted/custom-tls
 COMPARTMENT_CUSTOM_TLS_KEY_FILE=/var/lib/compartment/self-hosted/custom-tls/privkey.pem
+COMPARTMENT_DATABASE_URL=postgres://postgres:${generatedSelfHosted24ByteSecret}@postgres:5432/compartment
 COMPARTMENT_EDGE_IMAGE=ghcr.io/compartmentdev/compartment-edge:0.2.0
+COMPARTMENT_EDGE_TOKEN=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_ENV=self-hosted
 COMPARTMENT_NODE_AGENT_SOCKET=/var/run/compartment/node/agent.sock
+COMPARTMENT_POSTGRES_PASSWORD=${generatedSelfHosted24ByteSecret}
 COMPARTMENT_PUBLIC_PROTOCOL=http
-COMPARTMENT_RUNTIME_CONTROL_TOKEN=runtime-token
+COMPARTMENT_RUNTIME_CONTROL_TOKEN=${generatedSelfHosted24ByteSecret}
 COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:0.2.0
+COMPARTMENT_SESSION_SECRET=${generatedSelfHostedVariablesMasterKey}
+COMPARTMENT_SYSTEM_TOKEN=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_VARIABLES_MASTER_KEY=${generatedSelfHostedVariablesMasterKey}
 COMPARTMENT_WORKER_IMAGE=ghcr.io/compartmentdev/compartment-worker:0.2.0
 `;
 }

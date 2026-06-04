@@ -12,6 +12,12 @@ import type * as NodeAgentRuntimeNetworkSourceModule from '../src/node-agent-run
 import type * as SelfHostedInstallPathsSourceModule from '../src/self-hosted-install-paths';
 import type { SelfHostedInstallState } from '../src/self-hosted-install-state.types';
 
+export const generatedSelfHosted24ByteSecret: string = '0123456789abcdef0123456789abcdef0123456789abcdef';
+export const generatedSelfHostedVariablesMasterKey: string =
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+export const generatedSelfHostedAlternateVariablesMasterKey: string =
+  'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+
 type AssertNodeAgentHostServiceInstallable = () => void;
 type EnsureDockerExecutionContext = () => Promise<DockerExecutionContext>;
 type InstallStateJsonValue = InstallStateJsonObject | InstallStateJsonValue[] | boolean | null | number | string;
@@ -324,22 +330,22 @@ function createCurrentEnvironmentText(options: CreateCurrentEnvironmentTextOptio
     'COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST=registry-auth',
     'COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_PORT=5000',
     'COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME=compartment-reader',
-    renderEnvironmentAssignment('COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD', 'read-credential'),
+    renderEnvironmentAssignment('COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD', generatedSelfHosted24ByteSecret),
     'COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME=compartment-writer',
-    renderEnvironmentAssignment('COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD', 'write-credential'),
+    renderEnvironmentAssignment('COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD', generatedSelfHosted24ByteSecret),
     `COMPARTMENT_BASE_DOMAIN=${options.baseDomain ?? 'example.com'}`,
     `COMPARTMENT_CADDY_TLS_MODE=${options.caddyTlsMode ?? 'internal'}`,
     'COMPARTMENT_CUSTOM_TLS_CERT_FILE=/var/lib/compartment/self-hosted/custom-tls/fullchain.pem',
     'COMPARTMENT_CUSTOM_TLS_DIR=/var/lib/compartment/self-hosted/custom-tls',
     'COMPARTMENT_CUSTOM_TLS_KEY_FILE=/var/lib/compartment/self-hosted/custom-tls/privkey.pem',
-    'COMPARTMENT_DATABASE_URL=postgresql://postgres:postgres@postgres:5432/compartment',
+    `COMPARTMENT_DATABASE_URL=postgresql://postgres:${generatedSelfHosted24ByteSecret}@postgres:5432/compartment`,
     'COMPARTMENT_DOCKER_NAMESPACE=compartment-test',
     'COMPARTMENT_DOCKER_WORK_DIR=/var/lib/compartment/self-hosted/docker-work',
     'COMPARTMENT_EDGE_BIND_HOST=0.0.0.0',
     'COMPARTMENT_EDGE_IMAGE=ghcr.io/compartmentdev/compartment-edge:0.1.0',
     'COMPARTMENT_EDGE_INTERNAL_HOST=edge',
     'COMPARTMENT_EDGE_PORT=39081',
-    'COMPARTMENT_EDGE_TOKEN=edge-token',
+    `COMPARTMENT_EDGE_TOKEN=${generatedSelfHosted24ByteSecret}`,
     `COMPARTMENT_LOG_LEVEL=${options.logLevel ?? 'info'}`,
     `COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN=${options.managedDomainBrokerToken ?? ''}`,
     `COMPARTMENT_MANAGED_DOMAIN_BROKER_URL=${options.managedDomainBrokerUrl ?? ''}`,
@@ -350,7 +356,7 @@ function createCurrentEnvironmentText(options: CreateCurrentEnvironmentTextOptio
     'COMPARTMENT_NODE_NAME=self-hosted-node',
     `COMPARTMENT_NODE_VERSION=${options.nodeVersion ?? '0.1.0'}`,
     'COMPARTMENT_POSTGRES_DB=compartment',
-    'COMPARTMENT_POSTGRES_PASSWORD=postgres',
+    `COMPARTMENT_POSTGRES_PASSWORD=${generatedSelfHosted24ByteSecret}`,
     'COMPARTMENT_POSTGRES_USER=postgres',
     'COMPARTMENT_PUBLIC_HTTP_PORT=80',
     'COMPARTMENT_PUBLIC_HTTPS_PORT=443',
@@ -359,7 +365,7 @@ function createCurrentEnvironmentText(options: CreateCurrentEnvironmentTextOptio
     'COMPARTMENT_CADDY_IMAGE=ghcr.io/compartmentdev/compartment-caddy:0.1.0',
     'COMPARTMENT_RUNTIME_CONNECTIVITY_MODE=network',
     'COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST=host.docker.internal',
-    'COMPARTMENT_SESSION_SECRET=session-secret',
+    `COMPARTMENT_SESSION_SECRET=${generatedSelfHostedVariablesMasterKey}`,
     'COMPARTMENT_SESSION_TTL=7d',
     'COMPARTMENT_SOURCE_ARCHIVE_DIR=/var/lib/compartment/source-archives',
     'COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES=104857600',
@@ -369,13 +375,15 @@ function createCurrentEnvironmentText(options: CreateCurrentEnvironmentTextOptio
   ];
 
   if (options.includeRuntimeControlToken !== false) {
-    values.push('COMPARTMENT_RUNTIME_CONTROL_TOKEN=runtime-token');
+    values.push(`COMPARTMENT_RUNTIME_CONTROL_TOKEN=${generatedSelfHosted24ByteSecret}`);
   }
   if (options.includeVariablesMasterKey !== false) {
-    values.push(`COMPARTMENT_VARIABLES_MASTER_KEY=${options.variablesMasterKey ?? 'a'.repeat(64)}`);
+    values.push(
+      `COMPARTMENT_VARIABLES_MASTER_KEY=${options.variablesMasterKey ?? generatedSelfHostedVariablesMasterKey}`,
+    );
   }
   values.push('COMPARTMENT_SYSTEM_API_SOCKET=/var/run/compartment/api/system-api.sock');
-  values.push('COMPARTMENT_SYSTEM_TOKEN=system-token');
+  values.push(`COMPARTMENT_SYSTEM_TOKEN=${generatedSelfHosted24ByteSecret}`);
 
   return `${values.join('\n')}\n`;
 }
