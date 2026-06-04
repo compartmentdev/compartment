@@ -472,7 +472,12 @@ jobs:
 
       - name: Verify stable release attestation
         run: |
-          if ! gh release verify --help >/dev/null 2>&1; then
+          release_help="$(gh release --help)"
+          if ! printf '%s\n' "$release_help" | grep -Eq '^[[:space:]]+verify:[[:space:]]'; then
+            echo "GitHub CLI 2.81.0 or newer is required to verify release attestations." >&2
+            exit 1
+          fi
+          if ! printf '%s\n' "$release_help" | grep -Eq '^[[:space:]]+verify-asset:[[:space:]]'; then
             echo "GitHub CLI 2.81.0 or newer is required to verify release attestations." >&2
             exit 1
           fi
