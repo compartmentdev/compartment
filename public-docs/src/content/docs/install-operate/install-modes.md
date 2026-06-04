@@ -42,12 +42,10 @@ Verified install from an immutable stable release with GitHub CLI 2.81.0 or newe
 gh release verify --repo compartmentdev/compartment
 gh release download --repo compartmentdev/compartment --pattern install.sh --clobber
 gh release verify-asset --repo compartmentdev/compartment ./install.sh
-sh ./install.sh
+sh ./install.sh --init-install
 ```
 
 The verified path checks the latest immutable GitHub Release and the downloaded `install.sh` asset before execution. If release verification reports that the latest release is not immutable, verified install is unavailable for that release; use the quick install path only if you accept the convenience trust model.
-
-To verify the installer and immediately start system setup on the target server, use `sh ./install.sh --init-install` as the final command.
 
 Install the CLI and immediately start the system install:
 
