@@ -253,6 +253,7 @@ describe('render-cli-install-script', (): void => {
 
     expect(checkedInInstallerScript).toBe(renderedInstallerScript);
     expect(checkedInInstallerScript).toContain('compartmentdev/compartment');
+    expect(checkedInInstallerScript).not.toContain('grep -o');
   });
 
   it('rejects unsafe release repository values before rendering the installer', async (): Promise<void> => {

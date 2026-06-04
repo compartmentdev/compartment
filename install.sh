@@ -115,9 +115,8 @@ resolve_main_release_tag() {
   main_commit_sha="$(
     curl -fsSL "$main_ref_url" \
       | tr -d '\n' \
-      | grep -o '"sha"[[:space:]]*:[[:space:]]*"[0-9a-f]\{40\}"' \
-      | head -n 1 \
-      | sed 's/.*"\([0-9a-f]\{40\}\)".*/\1/'
+      | sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' \
+      | head -n 1
   )"
 
   if [ -z "$main_commit_sha" ]; then
