@@ -66,11 +66,26 @@ Missing asset digests: checksums.txt
 Mismatched assets: install.sh
 Publish a new release tag instead.`);
   });
+
+  it('reports missing published assets before reading local asset files', async () => {
+    const temporaryDirectory = await createTemporaryDirectory();
+    const missingLocalAssetPath = join(temporaryDirectory, 'compartment-linux-x64.tar.gz');
+
+    await expect(
+      assertReleaseAssets({
+        assetPaths: [missingLocalAssetPath],
+        publishedAssets: [],
+        releaseTag: 'v0.9.0',
+        repairHint: 'Publish a new release tag instead.',
+      }),
+    ).rejects.toThrow(`Release v0.9.0 is already published with missing or mismatched immutable assets.
+Missing assets: compartment-linux-x64.tar.gz
+Publish a new release tag instead.`);
+  });
 });
 
 async function createAssetFiles(assetContents) {
-  const temporaryDirectory = await mkdtemp(join(tmpdir(), 'compartment-release-assets-'));
-  temporaryDirectories.push(temporaryDirectory);
+  const temporaryDirectory = await createTemporaryDirectory();
   const assetPaths = [];
 
   for (const [assetName, contents] of Object.entries(assetContents)) {
@@ -80,6 +95,12 @@ async function createAssetFiles(assetContents) {
   }
 
   return assetPaths;
+}
+
+async function createTemporaryDirectory() {
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), 'compartment-release-assets-'));
+  temporaryDirectories.push(temporaryDirectory);
+  return temporaryDirectory;
 }
 
 async function createPublishedAssets(assetPaths) {

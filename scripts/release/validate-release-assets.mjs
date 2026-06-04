@@ -20,7 +20,6 @@ export async function assertReleaseAssets({ assetPaths, publishedAssets, release
   for (const assetPath of assetPaths) {
     const assetName = basename(assetPath);
     const actualDigest = assetDigestByName.get(assetName);
-    const expectedDigest = `sha256:${await readSha256Digest(assetPath)}`;
 
     if (actualDigest === undefined) {
       missingAssets.push(assetName);
@@ -32,6 +31,7 @@ export async function assertReleaseAssets({ assetPaths, publishedAssets, release
       continue;
     }
 
+    const expectedDigest = `sha256:${await readSha256Digest(assetPath)}`;
     if (actualDigest !== expectedDigest) {
       mismatchedAssets.push(assetName);
     }
