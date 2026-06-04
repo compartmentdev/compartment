@@ -101,7 +101,7 @@ describe('render-cli-install-script', (): void => {
     expect(result.stdout).toContain(createCliOnlyInstallMessage(join(binDirectory, 'compartment')));
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
-      'https://api.github.com/repos/example/compartment/commits/main',
+      'https://api.github.com/repos/example/compartment/git/ref/heads/main',
       `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/${expectedArtifactName}`,
       `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/checksums.txt`,
     ]);
@@ -206,7 +206,7 @@ describe('render-cli-install-script', (): void => {
     expect(result.stdout).toContain(expectedInstalledVersion);
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
-      'https://api.github.com/repos/example/compartment/commits/main',
+      'https://api.github.com/repos/example/compartment/git/ref/heads/main',
       `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/${expectedArtifactName}`,
       `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/checksums.txt`,
     ]);
@@ -771,8 +771,8 @@ done
 printf '%s\\n' "$url" >> "\${state_dir}/urls.log"
 
 case "$url" in
-  https://api.github.com/repos/example/compartment/commits/main)
-    printf '{\\n  "sha": "${expectedMainCommitSha}"\\n}\\n'
+  https://api.github.com/repos/example/compartment/git/ref/heads/main)
+    printf '{"object":{"sha":"${expectedMainCommitSha}"}}\\n'
     ;;
   https://github.com/example/compartment/releases/download/sha-*/checksums.txt)
     cp "$checksums_path" "$output_path"

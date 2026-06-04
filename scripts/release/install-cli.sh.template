@@ -111,15 +111,17 @@ case "$channel" in
 esac
 
 resolve_main_release_tag() {
-  main_commit_url="https://api.github.com/repos/${release_repository}/commits/main"
+  main_ref_url="https://api.github.com/repos/${release_repository}/git/ref/heads/main"
   main_commit_sha="$(
-    curl -fsSL "$main_commit_url" \
-      | sed -n 's/^[[:space:]]*"sha":[[:space:]]*"\([0-9a-f]\{40\}\)",\{0,1\}[[:space:]]*$/\1/p' \
-      | head -n 1
+    curl -fsSL "$main_ref_url" \
+      | tr -d '\n' \
+      | grep -o '"sha"[[:space:]]*:[[:space:]]*"[0-9a-f]\{40\}"' \
+      | head -n 1 \
+      | sed 's/.*"\([0-9a-f]\{40\}\)".*/\1/'
   )"
 
   if [ -z "$main_commit_sha" ]; then
-    printf 'Missing main commit SHA in %s\n' "$main_commit_url" >&2
+    printf 'Missing main commit SHA in %s\n' "$main_ref_url" >&2
     exit 1
   fi
 
