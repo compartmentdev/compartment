@@ -20,7 +20,7 @@ export function assertSupportedSelfHostedDockerEngineVersion(rawVersion: string)
 }
 
 function readUnsupportedDockerEngineVersionMessage(version: SemVer): string {
-  return `${readMinimumDockerEngineVersionPrefix()} Found version ${version.version}. Upgrade Docker Engine and re-run \`compartment install\` or \`compartment system update\`.`;
+  return `${readMinimumDockerEngineVersionPrefix()} Found version ${version.version}. Upgrade it and re-run \`compartment install\` or \`compartment system update\`.`;
 }
 
 function readUnknownDockerEngineVersionMessage(rawVersion: string): string {

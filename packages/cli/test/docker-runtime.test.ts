@@ -320,7 +320,7 @@ describe('ensureDockerExecutionContext', (): void => {
       .mockResolvedValueOnce(createSuccessfulCommandResult('27.5.1'));
 
     await expect(ensureDockerExecutionContext()).rejects.toThrow(
-      'Docker Engine 28.0.0 or newer is required for self-hosted runtime management. Found version 27.5.1. Upgrade Docker Engine and re-run `compartment install` or `compartment system update`.',
+      'Docker Engine 28.0.0 or newer is required for self-hosted runtime management. Found version 27.5.1. Upgrade it and re-run `compartment install` or `compartment system update`.',
     );
   });
 
@@ -331,7 +331,7 @@ describe('ensureDockerExecutionContext', (): void => {
       .mockResolvedValueOnce(createSuccessfulCommandResult('28.0.0-rc.1'));
 
     await expect(ensureDockerExecutionContext()).rejects.toThrow(
-      'Docker Engine 28.0.0 or newer is required for self-hosted runtime management. Found version 28.0.0-rc.1. Upgrade Docker Engine and re-run `compartment install` or `compartment system update`.',
+      'Docker Engine 28.0.0 or newer is required for self-hosted runtime management. Found version 28.0.0-rc.1. Upgrade it and re-run `compartment install` or `compartment system update`.',
     );
   });
 
