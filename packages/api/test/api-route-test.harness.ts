@@ -56,11 +56,13 @@ export function applyApiRouteTestEnv({
   throttleAuthResetPasswordRouteMaxRequests = 10,
 }: ApiRouteTestEnvInput = {}): void {
   process.env.COMPARTMENT_EDGE_TOKEN = edgeToken;
+  process.env.COMPARTMENT_ENV = 'dev';
   process.env.COMPARTMENT_LOG_LEVEL = logLevel;
   process.env.COMPARTMENT_CADDY_TLS_MODE = 'internal';
   process.env.COMPARTMENT_PUBLIC_HTTP_PORT = String(publicHttpPort);
   process.env.COMPARTMENT_PUBLIC_HTTPS_PORT = String(publicHttpsPort);
   process.env.COMPARTMENT_PUBLIC_PROTOCOL = publicProtocol;
+  process.env.COMPARTMENT_POSTGRES_PASSWORD = 'postgres';
   process.env.COMPARTMENT_AUDIT_RETENTION_DAYS = '90';
   process.env.COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE = '1000';
   process.env.COMPARTMENT_AUDIT_RETENTION_CLEANUP_CRON = '0 3 * * *';

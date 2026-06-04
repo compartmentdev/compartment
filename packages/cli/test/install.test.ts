@@ -8,12 +8,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { findFreePort, readFileModePermissions } from '@compartment/test-support';
+import { assertSelfHostedGeneratedSecretEnvironment } from '@compartment/utils';
 import type { DockerExecutionContext, EnsureDockerExecutionContextOptions } from '../src/docker-runtime.types';
 import type {
   SelfHostedInstallInput,
   SelfHostedInstallPreflightInput,
   SelfHostedInstallResult,
 } from '../src/install.types';
+import { readSelfHostedEnvironmentValues } from '../src/self-hosted-env-file';
 import type { InstallInput } from '../src/services/install.service.types';
 import { findDistinctFreePorts, findFreePortExcluding, type DistinctFreePorts } from './public-port-test-support';
 
@@ -243,6 +245,10 @@ describe.sequential('install runtime', (): void => {
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_VARIABLES_MASTER_KEY=',
     );
+    const environmentText: string = await readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8');
+    expect((): void =>
+      assertSelfHostedGeneratedSecretEnvironment(readSelfHostedEnvironmentValues(environmentText)),
+    ).not.toThrow();
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_CADDY_TLS_MODE=internal',
     );

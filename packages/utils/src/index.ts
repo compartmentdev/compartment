@@ -20,6 +20,7 @@ export { type OutboundHttpResource } from './outbound-http/outbound-http-client.
 export { parseOptionalTrustedOutboundHostList } from './trusted-outbound-host';
 export { isSafeRelativePath, sanitizeSafeRelativePath } from './safe-relative-path';
 export { quoteShellArgument, quoteShellArgumentWhenNeeded } from './shell-argument';
+export { assertSelfHostedGeneratedSecretEnvironment } from './self-hosted-generated-secret-environment';
 export {
   buildPendingSystemDomainCertificatePaths,
   type PendingSystemDomainCertificatePaths,

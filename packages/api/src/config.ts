@@ -1,6 +1,7 @@
 import { buildControlPlaneHost } from '@compartment/contracts';
 import {
   assertValidUnixSocketPath,
+  assertSelfHostedGeneratedSecretEnvironment,
   buildInternalHttpUrl,
   createCompartmentUnixSocketPathPolicy,
   parseOptionalTrustedOutboundHostList,
@@ -34,6 +35,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_EDGE_INTERNAL_HOST: z.string().min(1),
   COMPARTMENT_EDGE_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_EDGE_TOKEN: z.string().min(1),
+  COMPARTMENT_ENV: z.enum(['dev', 'self-hosted']).optional(),
   COMPARTMENT_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
   COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: z.string(),
   COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: z.string(),
@@ -42,6 +44,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_PUBLIC_PROTOCOL: z.enum(['http', 'https']),
   COMPARTMENT_PUBLIC_HTTP_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_PUBLIC_HTTPS_PORT: z.coerce.number().int().positive(),
+  COMPARTMENT_POSTGRES_PASSWORD: z.string().optional(),
   COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: z.string().min(1),
   COMPARTMENT_AUDIT_RETENTION_DAYS: z.coerce.number().int().positive(),
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE: z.coerce.number().int().positive(),
@@ -134,6 +137,7 @@ type ApiSecretConfig = Pick<
 
 export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const parsed: ApiConfigEnv = apiConfigSchema.parse(env) as ApiConfigEnv;
+  assertSelfHostedGeneratedSecretEnvironment(env, { requireArtifactRegistrySecrets: false });
 
   return {
     throttle: readApiAuthThrottleConfig(env),

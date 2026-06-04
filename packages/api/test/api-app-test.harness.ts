@@ -57,6 +57,7 @@ export function createApiIntegrationTestContext(databaseName: string, runtimeSlu
 
   process.env.COMPARTMENT_DATABASE_URL = databaseUrl;
   process.env.COMPARTMENT_SESSION_SECRET = process.env.COMPARTMENT_SESSION_SECRET ?? 'test-secret';
+  process.env.COMPARTMENT_ENV = 'dev';
   process.env.COMPARTMENT_BASE_DOMAIN = 'localhost';
   process.env.COMPARTMENT_CADDY_TLS_MODE = 'internal';
   process.env.COMPARTMENT_CUSTOM_TLS_DIR = testCustomTlsDirectory;
@@ -65,6 +66,7 @@ export function createApiIntegrationTestContext(databaseName: string, runtimeSlu
   process.env.COMPARTMENT_PUBLIC_HTTPS_PORT = '443';
   process.env.COMPARTMENT_PUBLIC_INGRESS_IPV4 = '';
   process.env.COMPARTMENT_PUBLIC_INGRESS_IPV6 = '';
+  process.env.COMPARTMENT_POSTGRES_PASSWORD = 'postgres';
   process.env.COMPARTMENT_EDGE_TOKEN = 'test-edge-token';
   process.env.COMPARTMENT_NODE_AGENT_SOCKET = '/tmp/compartment/api-test/node/integration.sock';
   process.env.COMPARTMENT_SYSTEM_API_SOCKET = `/tmp/compartment/${runtimeSlug}/system-api.sock`;

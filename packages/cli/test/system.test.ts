@@ -11,6 +11,7 @@ import type {
   RestartSelfHostedRuntimeInput,
 } from '../src/docker-runtime.types';
 import type * as NodeAgentRuntimeNetworkSourceModule from '../src/node-agent-runtime-network';
+import { generatedSelfHosted24ByteSecret, generatedSelfHostedVariablesMasterKey } from './update.test.harness';
 
 type EnsureSelfHostedDockerExecutionContext = () => Promise<DockerExecutionContext>;
 type InspectSelfHostedRuntimeServices = (
@@ -404,7 +405,10 @@ describe.sequential('system maintenance runtime', (): void => {
     await writeCurrentInstallFiles(
       installPaths,
       'registry',
-      createCurrentEnvironmentText().replace('COMPARTMENT_RUNTIME_CONTROL_TOKEN=runtime-token\n', ''),
+      createCurrentEnvironmentText().replace(
+        `COMPARTMENT_RUNTIME_CONTROL_TOKEN=${generatedSelfHosted24ByteSecret}\n`,
+        '',
+      ),
     );
     const { restartSelfHostedSystem } = await import('../src/system-restart');
 
@@ -490,6 +494,8 @@ COMPARTMENT_PUBLIC_PROTOCOL=${publicProtocol}
 COMPARTMENT_PUBLIC_HTTP_PORT=${publicHttpPort.toString()}
 COMPARTMENT_PUBLIC_HTTPS_PORT=${publicHttpsPort.toString()}
 COMPARTMENT_API_URL=http://127.0.0.1:39444
+COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD=${generatedSelfHosted24ByteSecret}
 COMPARTMENT_API_IMAGE=${imageRepositoryPrefix}/compartment-api:0.2.0
 COMPARTMENT_CADDY_IMAGE=${imageRepositoryPrefix}/compartment-caddy:0.2.0
 COMPARTMENT_EDGE_IMAGE=${imageRepositoryPrefix}/compartment-edge:0.2.0
@@ -504,8 +510,14 @@ COMPARTMENT_SOURCE_ARCHIVE_DIR=/var/lib/compartment/source-archives
 COMPARTMENT_RESOURCE_BACKUP_DIR=/var/lib/compartment/resource-backups
 COMPARTMENT_AUDIT_FILE_SINK_DIR=/var/lib/compartment/audit-logs
 COMPARTMENT_CUSTOM_TLS_DIR=/etc/compartment/tls
+COMPARTMENT_DATABASE_URL=postgresql://postgres:${generatedSelfHosted24ByteSecret}@postgres:5432/compartment
+COMPARTMENT_EDGE_TOKEN=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_POSTGRES_PASSWORD=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_SESSION_SECRET=${generatedSelfHostedVariablesMasterKey}
 COMPARTMENT_NODE_AGENT_SOCKET=/var/run/compartment/node/agent.sock
-COMPARTMENT_RUNTIME_CONTROL_TOKEN=runtime-token
+COMPARTMENT_RUNTIME_CONTROL_TOKEN=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_SYSTEM_TOKEN=${generatedSelfHosted24ByteSecret}
+COMPARTMENT_VARIABLES_MASTER_KEY=${generatedSelfHostedVariablesMasterKey}
 COMPARTMENT_ENV=self-hosted`;
 }
 
