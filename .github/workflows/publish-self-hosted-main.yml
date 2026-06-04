@@ -397,8 +397,8 @@ jobs:
         run: |
           release_tag="sha-${PUBLISH_SHA}"
 
-          release_is_draft="$(gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
-          if [ "$release_is_draft" = "false" ]; then
+          release_state="$(node ./scripts/release/read-release-state.mjs --repo "$RELEASE_REPOSITORY" --tag "$release_tag")"
+          if [ "$release_state" = "published" ]; then
             node ./scripts/release/validate-release-assets.mjs \
               --repo "$RELEASE_REPOSITORY" \
               --tag "$release_tag" \
@@ -410,7 +410,7 @@ jobs:
             exit 0
           fi
 
-          if [ "$release_is_draft" = "true" ]; then
+          if [ "$release_state" = "draft" ]; then
             gh release edit "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${PUBLISH_SHA}." --prerelease --draft
           else
             gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${PUBLISH_SHA}." --prerelease --target "$PUBLISH_SHA" --draft

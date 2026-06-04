@@ -4,7 +4,7 @@ import { basename, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
 
-import { readRequiredOptionValue } from '../lib/options.mjs';
+import { readGitHubReleaseCliOptions } from '../lib/github-release-options.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -93,36 +93,22 @@ ${repairHint}`;
 }
 
 function readValidateReleaseAssetsOptions(args) {
-  let releaseRepository;
-  let releaseTag;
   let repairHint = 'Publish a new release instead of clobbering immutable assets.';
-  const assetPaths = [];
+  const { positionalArgs, releaseRepository, releaseTag } = readGitHubReleaseCliOptions(args, {
+    commandName: 'validate release assets',
+    readOption: ({ argument, args: cliArgs, index, readRequiredOptionValue: readOptionValue }) => {
+      if (argument !== '--repair-hint') {
+        return undefined;
+      }
 
-  for (let index = 0; index < args.length; index += 1) {
-    const argument = args[index];
-    if (argument === '--repo') {
-      releaseRepository = readRequiredOptionValue(args, ++index, '--repo');
-      continue;
-    }
+      repairHint = readOptionValue(cliArgs, index + 1, '--repair-hint');
+      return index + 1;
+    },
+    requiredUsage: 'Expected --repo <owner/repo>, --tag <tag>, and one or more asset paths.',
+  });
+  const assetPaths = positionalArgs.map((argument) => resolve(process.cwd(), argument));
 
-    if (argument === '--tag') {
-      releaseTag = readRequiredOptionValue(args, ++index, '--tag');
-      continue;
-    }
-
-    if (argument === '--repair-hint') {
-      repairHint = readRequiredOptionValue(args, ++index, '--repair-hint');
-      continue;
-    }
-
-    if (argument.startsWith('--')) {
-      throw new Error(`Unknown validate release assets argument: ${argument}`);
-    }
-
-    assetPaths.push(resolve(process.cwd(), argument));
-  }
-
-  if (releaseRepository === undefined || releaseTag === undefined || assetPaths.length === 0) {
+  if (assetPaths.length === 0) {
     throw new Error('Expected --repo <owner/repo>, --tag <tag>, and one or more asset paths.');
   }
 

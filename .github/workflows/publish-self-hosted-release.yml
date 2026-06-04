@@ -471,9 +471,9 @@ jobs:
         id: stable-release
         run: |
           release_tag="v${RELEASE_VERSION}"
-          release_is_draft="$(gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+          release_state="$(node ./scripts/release/read-release-state.mjs --repo "$RELEASE_REPOSITORY" --tag "$release_tag")"
 
-          if [ "$release_is_draft" = "false" ]; then
+          if [ "$release_state" = "published" ]; then
             node ./scripts/release/validate-release-assets.mjs \
               --repo "$RELEASE_REPOSITORY" \
               --tag "$release_tag" \
@@ -486,7 +486,7 @@ jobs:
             exit 0
           fi
 
-          if [ "$release_is_draft" = "true" ]; then
+          if [ "$release_state" = "draft" ]; then
             gh release edit "$release_tag" --repo "$RELEASE_REPOSITORY" --title "compartment ${RELEASE_VERSION}" --notes-file ./.compartment/release-assets/release-notes.md --prerelease=false --draft
           else
             gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "compartment ${RELEASE_VERSION}" --notes-file ./.compartment/release-assets/release-notes.md --draft --verify-tag
