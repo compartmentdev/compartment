@@ -45,6 +45,7 @@ interface InstallerRunOptions {
   allowFailure?: boolean | undefined;
   args: string[];
   binDir?: string | undefined;
+  defaultVersion?: string | undefined;
   installerTerminalPath?: string | undefined;
   osName?: string | undefined;
   pathEntries?: string[] | undefined;
@@ -153,6 +154,82 @@ describe('render-cli-install-script', (): void => {
     ]);
   });
 
+  it('downloads stable releases by explicit version without consulting the rolling pointer', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const explicitReleaseVersion: string = '0.8.0';
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: ['--version', explicitReleaseVersion],
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.stderr).not.toContain('Resolved main to');
+    expect(result.stdout).toContain(expectedInstalledVersion);
+    expect(result.stdout).toContain(createCliOnlyInstallMessage(join(binDirectory, 'compartment')));
+    expect(result.compartmentInvocations).toEqual(['--version']);
+    expect(result.urlLog).toEqual([
+      `https://github.com/example/compartment/releases/download/v${explicitReleaseVersion}/${expectedArtifactName}`,
+      `https://github.com/example/compartment/releases/download/v${explicitReleaseVersion}/checksums.txt`,
+    ]);
+  });
+
+  it('renders stable release installers pinned to their release by default', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const defaultReleaseVersion: string = '0.8.0';
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: [],
+      defaultVersion: defaultReleaseVersion,
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.stderr).not.toContain('Resolved main to');
+    expect(result.stdout).toContain(expectedInstalledVersion);
+    expect(result.stdout).toContain(createCliOnlyInstallMessage(join(binDirectory, 'compartment')));
+    expect(result.compartmentInvocations).toEqual(['--version']);
+    expect(result.urlLog).toEqual([
+      `https://github.com/example/compartment/releases/download/v${defaultReleaseVersion}/${expectedArtifactName}`,
+      `https://github.com/example/compartment/releases/download/v${defaultReleaseVersion}/checksums.txt`,
+    ]);
+  });
+
+  it('lets stable release installers override their pinned default with the main channel', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: ['--channel', 'main'],
+      defaultVersion: '0.8.0',
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.stderr).toContain(`Resolved main to ${expectedMainReleaseTag}`);
+    expect(result.stdout).toContain(expectedInstalledVersion);
+    expect(result.compartmentInvocations).toEqual(['--version']);
+    expect(result.urlLog).toEqual([
+      'https://github.com/example/compartment/releases/download/main/main-release-tag.txt',
+      `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/${expectedArtifactName}`,
+      `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/checksums.txt`,
+    ]);
+  });
+
+  it('lets stable release installers override their pinned default with the latest channel', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: ['--channel', 'latest'],
+      defaultVersion: '0.8.0',
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.stderr).not.toContain('Resolved main to');
+    expect(result.stdout).toContain(expectedInstalledVersion);
+    expect(result.compartmentInvocations).toEqual(['--version']);
+    expect(result.urlLog).toEqual([
+      `https://github.com/example/compartment/releases/latest/download/${expectedArtifactName}`,
+      'https://github.com/example/compartment/releases/latest/download/checksums.txt',
+    ]);
+  });
+
   it('keeps the checked-in source installer rendered from the template', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const renderedInstallerScriptPath: string = join(temporaryDirectory, 'install.sh');
@@ -176,6 +253,37 @@ describe('render-cli-install-script', (): void => {
 
     expect(checkedInInstallerScript).toBe(renderedInstallerScript);
     expect(checkedInInstallerScript).toContain('compartmentdev/compartment');
+  });
+
+  it('rejects unsafe release repository values before rendering the installer', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const renderedInstallerScriptPath: string = join(temporaryDirectory, 'install.sh');
+
+    let caughtError: ExecFileFailure | undefined;
+    try {
+      await execFile(
+        'node',
+        [
+          renderInstallerScriptPath,
+          '--repository',
+          'example/compartment$(touch compromised)',
+          '--output',
+          relative(repositoryRoot, renderedInstallerScriptPath),
+        ],
+        {
+          cwd: repositoryRoot,
+        },
+      );
+    } catch (error) {
+      caughtError = error as ExecFileFailure;
+    }
+
+    if (caughtError === undefined) {
+      throw new Error('Expected unsafe release repository rendering to fail.');
+    }
+    expect(readExecFileOutput(caughtError.stderr)).toContain(
+      'Expected --repository to use the owner/repo format with only GitHub repository characters.',
+    );
   });
 
   it('falls back to HOME/.local/bin and only prints PATH instructions without an interactive shell', async (): Promise<void> => {
@@ -502,7 +610,7 @@ async function runInstallerScript(
   const fixture: InstallerFixture = await createInstallerFixture(temporaryDirectory, options.osName);
   const pathEntries: string[] = options.pathEntries ?? [join(temporaryDirectory, '.local', 'bin')];
 
-  await renderInstallerScript(installerScriptPath, options.installerTerminalPath);
+  await renderInstallerScript(installerScriptPath, options);
   await createStubCommands(stubCommandDirectory, options.osName);
 
   const environment: NodeJS.ProcessEnv = {
@@ -573,24 +681,20 @@ async function executeInstallerScript(
   }
 }
 
-async function renderInstallerScript(outputPath: string, installerTerminalPath?: string): Promise<void> {
-  await execFile(
-    'node',
-    [
-      renderInstallerScriptPath,
-      '--repository',
-      'example/compartment',
-      '--output',
-      relative(repositoryRoot, outputPath),
-    ],
-    {
-      cwd: repositoryRoot,
-    },
-  );
+async function renderInstallerScript(outputPath: string, options: InstallerRunOptions): Promise<void> {
+  const args: string[] = [renderInstallerScriptPath, '--repository', 'example/compartment'];
+  if (options.defaultVersion !== undefined) {
+    args.push('--default-version', options.defaultVersion);
+  }
+  args.push('--output', relative(repositoryRoot, outputPath));
 
-  if (installerTerminalPath !== undefined) {
+  await execFile('node', args, {
+    cwd: repositoryRoot,
+  });
+
+  if (options.installerTerminalPath !== undefined) {
     const scriptText: string = await readFile(outputPath, 'utf8');
-    await writeFile(outputPath, scriptText.replaceAll('/dev/tty', installerTerminalPath), 'utf8');
+    await writeFile(outputPath, scriptText.replaceAll('/dev/tty', options.installerTerminalPath), 'utf8');
     await chmod(outputPath, 0o755);
   }
 }
@@ -623,7 +727,8 @@ async function createInstallerFixture(temporaryDirectory: string, osName?: strin
 async function createChecksumsFile(artifactName: string, tarballPath: string): Promise<string> {
   const tarballContents: Buffer = await readFile(tarballPath);
   const checksum: string = createHash('sha256').update(tarballContents).digest('hex');
-  return `${checksum}  ${artifactName}\n`;
+  const installerChecksum: string = createHash('sha256').update('# stable installer asset\n').digest('hex');
+  return `${checksum}  ${artifactName}\n${installerChecksum}  install.sh\n`;
 }
 
 function readExpectedArtifactName(osName?: string): string {
@@ -678,6 +783,18 @@ case "$url" in
     cp "$checksums_path" "$output_path"
     ;;
   https://github.com/example/compartment/releases/download/sha-*/compartment-*.tar.gz)
+    cp "$artifact_path" "$output_path"
+    ;;
+  https://github.com/example/compartment/releases/download/v*/checksums.txt)
+    cp "$checksums_path" "$output_path"
+    ;;
+  https://github.com/example/compartment/releases/download/v*/compartment-*.tar.gz)
+    cp "$artifact_path" "$output_path"
+    ;;
+  https://github.com/example/compartment/releases/latest/download/checksums.txt)
+    cp "$checksums_path" "$output_path"
+    ;;
+  https://github.com/example/compartment/releases/latest/download/compartment-*.tar.gz)
     cp "$artifact_path" "$output_path"
     ;;
   *)

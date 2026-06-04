@@ -40,6 +40,17 @@ Install the CLI only:
 curl -fsSL https://compartment.dev/install.sh | sh
 ```
 
+Verified install from an immutable stable release with GitHub CLI 2.81.0 or newer:
+
+```bash
+gh release verify --repo compartmentdev/compartment
+gh release download --repo compartmentdev/compartment --pattern install.sh --clobber
+gh release verify-asset --repo compartmentdev/compartment ./install.sh
+sh ./install.sh --init-install
+```
+
+The verified path checks the latest immutable GitHub Release and the downloaded `install.sh` asset before execution.
+
 Install the CLI and immediately start the system install:
 
 ```bash
