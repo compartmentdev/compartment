@@ -159,6 +159,8 @@ services:
     restart: unless-stopped
     command: ['node', 'dist/registry-auth-proxy.js']
     environment:
+      # Intentionally listens on all container interfaces so BuildKit and worker paths can reach it;
+      # host access stays loopback-only through the ports mapping below.
       COMPARTMENT_ARTIFACT_REGISTRY_PROXY_BIND_HOST: 0.0.0.0
       COMPARTMENT_ARTIFACT_REGISTRY_PROXY_PORT: 5000
       COMPARTMENT_ARTIFACT_REGISTRY_PROXY_TARGET_URL: http://registry:5000

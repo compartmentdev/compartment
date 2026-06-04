@@ -113,7 +113,8 @@ describe('ensureDockerExecutionContext', (): void => {
   it('uses direct docker when compose and daemon access already work', async (): Promise<void> => {
     mocks.runCommand
       .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
-      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp","name=rootless"]'));
+      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp","name=rootless"]'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('28.0.0'));
 
     const context: DockerExecutionContext = await ensureDockerExecutionContext();
 
@@ -133,7 +134,8 @@ describe('ensureDockerExecutionContext', (): void => {
       .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
       .mockResolvedValueOnce(createFailedCommandResult('permission denied', 1))
       .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
-      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp"]'));
+      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp"]'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('28.0.1'));
 
     const context: DockerExecutionContext = await ensureDockerExecutionContext({
       reportProgress: reportProgressMock,
@@ -158,7 +160,8 @@ describe('ensureDockerExecutionContext', (): void => {
     mocks.runInheritedCommand.mockResolvedValueOnce(createSuccessfulCommandResult());
     mocks.runCappedCommand
       .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
-      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp"]'));
+      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp"]'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('28.1.0'));
 
     const context: DockerExecutionContext = await ensureDockerExecutionContext({
       allowInteractiveSudo: true,
@@ -203,7 +206,8 @@ describe('ensureDockerExecutionContext', (): void => {
       .mockResolvedValueOnce(createFailedCommandResult('docker: command not found', 127))
       .mockResolvedValueOnce(createFailedCommandResult('sudo: docker: command not found', 127))
       .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
-      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp"]'));
+      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp"]'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('28.0.0'));
     mocks.installDockerEngine.mockResolvedValueOnce();
 
     const context: DockerExecutionContext = await ensureDockerExecutionContext({
@@ -263,7 +267,8 @@ describe('ensureDockerExecutionContext', (): void => {
       .mockResolvedValueOnce(createFailedCommandResult('docker: command not found', 127))
       .mockResolvedValueOnce(createFailedCommandResult('sudo: a password is required', 1))
       .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
-      .mockResolvedValueOnce(createSuccessfulCommandResult('not-json'));
+      .mockResolvedValueOnce(createSuccessfulCommandResult('not-json'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('28.0.0'));
     mocks.runInheritedCommand.mockResolvedValueOnce(createSuccessfulCommandResult());
     mocks.runCappedCommand.mockResolvedValueOnce(createFailedCommandResult('sudo: docker: command not found', 127));
     mocks.installDockerEngine.mockImplementationOnce(async (reportProgress?: ReportProgress): Promise<void> => {
@@ -296,7 +301,8 @@ describe('ensureDockerExecutionContext', (): void => {
   it('defaults rootless detection to false when docker info security options cannot be parsed', async (): Promise<void> => {
     mocks.runCommand
       .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
-      .mockResolvedValueOnce(createSuccessfulCommandResult('not-json'));
+      .mockResolvedValueOnce(createSuccessfulCommandResult('not-json'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('28.0.0'));
 
     const context: DockerExecutionContext = await ensureDockerExecutionContext();
 
@@ -305,6 +311,50 @@ describe('ensureDockerExecutionContext', (): void => {
       isRootlessDocker: false,
       mode: 'direct',
     });
+  });
+
+  it('fails when the Docker Engine server version is below the self-hosted minimum', async (): Promise<void> => {
+    mocks.runCommand
+      .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp"]'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('27.5.1'));
+
+    await expect(ensureDockerExecutionContext()).rejects.toThrow(
+      'Docker Engine 28.0.0 or newer is required for self-hosted runtime management. Found version 27.5.1. Upgrade it and re-run `compartment install` or `compartment system update`.',
+    );
+  });
+
+  it('fails when the Docker Engine server version is a prerelease below the stable minimum', async (): Promise<void> => {
+    mocks.runCommand
+      .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp"]'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('28.0.0-rc.1'));
+
+    await expect(ensureDockerExecutionContext()).rejects.toThrow(
+      'Docker Engine 28.0.0 or newer is required for self-hosted runtime management. Found version 28.0.0-rc.1. Upgrade it and re-run `compartment install` or `compartment system update`.',
+    );
+  });
+
+  it('fails when the Docker Engine server version cannot be parsed', async (): Promise<void> => {
+    mocks.runCommand
+      .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp"]'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('Error: Docker Engine 99.0.0 is unavailable'));
+
+    await expect(ensureDockerExecutionContext()).rejects.toThrow(
+      'Docker Engine 28.0.0 or newer is required for self-hosted runtime management. Unable to determine the Docker Engine server version. Docker reported server version: "Error: Docker Engine 99.0.0 is unavailable".',
+    );
+  });
+
+  it('fails when the Docker Engine server version command fails without parsing error output', async (): Promise<void> => {
+    mocks.runCommand
+      .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
+      .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp"]'))
+      .mockResolvedValueOnce(createFailedCommandResult('Error: Docker Engine 99.0.0 is unavailable', 1));
+
+    await expect(ensureDockerExecutionContext()).rejects.toThrow(
+      'Docker Engine 28.0.0 or newer is required for self-hosted runtime management. Unable to determine the Docker Engine server version.',
+    );
   });
 });
 

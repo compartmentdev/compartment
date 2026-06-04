@@ -171,6 +171,9 @@ importers:
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
+      semver:
+        specifier: ^7.7.4
+        version: 7.8.1
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -181,6 +184,9 @@ importers:
       '@compartment/test-support':
         specifier: workspace:*
         version: link:../test-support
+      '@types/semver':
+        specifier: ^7.7.1
+        version: 7.7.1
       zod:
         specifier: ^3.24.2
         version: 3.25.76
@@ -3309,6 +3315,10 @@ packages:
   '@types/sax@1.2.7':
     resolution:
       { integrity: sha512-rO73L89PJxeYM3s3pPPjiPgVVcymqU490g0YO5n5By0k2Erzj6tay/4lr1CHAAU4JyOWd1rpQ8bCf6cZfHU96A== }
+
+  '@types/semver@7.7.1':
+    resolution:
+      { integrity: sha512-FmgJfu+MOcQ370SD0ev7EI8TlCAfKYU+B4m5T3yXc1CiRN94g/SZPtsCkk506aUDtlMnFZvasDwHHUcZUEaYuA== }
 
   '@types/set-cookie-parser@2.4.10':
     resolution:
@@ -11073,6 +11083,8 @@ snapshots:
   '@types/sax@1.2.7':
     dependencies:
       '@types/node': 24.12.2
+
+  '@types/semver@7.7.1': {}
 
   '@types/set-cookie-parser@2.4.10':
     dependencies:
