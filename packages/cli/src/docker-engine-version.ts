@@ -1,4 +1,4 @@
-import { coerce, gte, type SemVer } from 'semver';
+import { coerce, gte, parse, type SemVer } from 'semver';
 
 const minimumSelfHostedDockerEngineVersionText: string = '28.0.0';
 const dockerEngineVersionTextPattern: RegExp = /^v?\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?$/u;
@@ -9,7 +9,7 @@ export function assertSupportedSelfHostedDockerEngineVersion(rawVersion: string)
     throw new Error(readUnknownDockerEngineVersionMessage(rawVersion));
   }
 
-  const version: SemVer | null = coerce(versionText);
+  const version: SemVer | null = parse(versionText, { loose: true }) ?? coerce(versionText);
   if (version === null) {
     throw new Error(readUnknownDockerEngineVersionMessage(rawVersion));
   }
