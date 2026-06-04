@@ -329,10 +329,10 @@ describe('ensureDockerExecutionContext', (): void => {
     mocks.runCommand
       .mockResolvedValueOnce(createSuccessfulCommandResult('Docker Compose version v2.33.0'))
       .mockResolvedValueOnce(createSuccessfulCommandResult('["name=seccomp"]'))
-      .mockResolvedValueOnce(createSuccessfulCommandResult('unknown-version'));
+      .mockResolvedValueOnce(createSuccessfulCommandResult('Error: Docker Engine 99.0.0 is unavailable'));
 
     await expect(ensureDockerExecutionContext()).rejects.toThrow(
-      'Docker Engine 28.0.0 or newer is required for self-hosted runtime management. Unable to determine the Docker Engine server version. Docker reported server version: "unknown-version".',
+      'Docker Engine 28.0.0 or newer is required for self-hosted runtime management. Unable to determine the Docker Engine server version. Docker reported server version: "Error: Docker Engine 99.0.0 is unavailable".',
     );
   });
 });
