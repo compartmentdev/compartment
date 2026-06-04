@@ -7,6 +7,7 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 const releaseRepositoryPlaceholder = '__COMPARTMENT_RELEASES_REPOSITORY__';
 const defaultReleaseVersionPlaceholder = '__COMPARTMENT_DEFAULT_RELEASE_VERSION__';
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
+const releaseRepositoryPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/u;
 
 async function main() {
   const options = readInstallerRenderOptions(process.argv.slice(2), repositoryRoot);
@@ -47,6 +48,10 @@ function readInstallerRenderOptions(args, repositoryRoot) {
 
   if (!/^[A-Za-z0-9._+-]*$/u.test(defaultReleaseVersion)) {
     throw new Error('Expected --default-version to contain only release-version characters.');
+  }
+
+  if (typeof releaseRepository === 'string' && !releaseRepositoryPattern.test(releaseRepository)) {
+    throw new Error('Expected --repository to use the owner/repo format with only GitHub repository characters.');
   }
 
   if (

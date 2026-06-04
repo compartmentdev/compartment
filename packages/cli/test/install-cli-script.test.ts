@@ -255,6 +255,37 @@ describe('render-cli-install-script', (): void => {
     expect(checkedInInstallerScript).toContain('compartmentdev/compartment');
   });
 
+  it('rejects unsafe release repository values before rendering the installer', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const renderedInstallerScriptPath: string = join(temporaryDirectory, 'install.sh');
+
+    let caughtError: ExecFileFailure | undefined;
+    try {
+      await execFile(
+        'node',
+        [
+          renderInstallerScriptPath,
+          '--repository',
+          'example/compartment$(touch compromised)',
+          '--output',
+          relative(repositoryRoot, renderedInstallerScriptPath),
+        ],
+        {
+          cwd: repositoryRoot,
+        },
+      );
+    } catch (error) {
+      caughtError = error as ExecFileFailure;
+    }
+
+    if (caughtError === undefined) {
+      throw new Error('Expected unsafe release repository rendering to fail.');
+    }
+    expect(readExecFileOutput(caughtError.stderr)).toContain(
+      'Expected --repository to use the owner/repo format with only GitHub repository characters.',
+    );
+  });
+
   it('falls back to HOME/.local/bin and only prints PATH instructions without an interactive shell', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
