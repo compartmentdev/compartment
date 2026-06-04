@@ -467,13 +467,46 @@ jobs:
           probe_release_verification_command verify-asset "__compartment-release-verification-probe__" ./.compartment/release-assets/install.sh \
             --repo "$RELEASE_REPOSITORY"
 
-      - name: Ensure stable release draft exists
+      - name: Resolve stable release publish mode
+        id: stable-release
         run: |
           release_tag="v${RELEASE_VERSION}"
           release_is_draft="$(gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+
           if [ "$release_is_draft" = "false" ]; then
-            echo "Stable release ${release_tag} is already published. Immutable release assets cannot be clobbered; publish a new release tag instead." >&2
-            exit 1
+            gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" --json assets --jq '.assets[] | [.name, .digest] | @tsv' > ./.compartment/release-assets/published-assets.tsv
+
+            missing_assets=""
+            mismatched_assets=""
+            for asset_path in ./.compartment/release-assets/compartment-*.tar.gz ./.compartment/release-assets/checksums.txt ./.compartment/release-assets/install.sh; do
+              asset_name="$(basename "$asset_path")"
+              expected_digest="sha256:$(sha256sum "$asset_path" | awk '{ print $1 }')"
+              actual_digest="$(awk -F "$(printf '\t')" -v asset_name="$asset_name" '$1 == asset_name { print $2 }' ./.compartment/release-assets/published-assets.tsv)"
+
+              if [ -z "$actual_digest" ]; then
+                missing_assets="${missing_assets} ${asset_name}"
+                continue
+              fi
+
+              if [ "$actual_digest" != "$expected_digest" ]; then
+                mismatched_assets="${mismatched_assets} ${asset_name}"
+              fi
+            done
+
+            if [ -n "$missing_assets" ] || [ -n "$mismatched_assets" ]; then
+              echo "Stable release ${release_tag} is already published with missing or mismatched immutable assets." >&2
+              if [ -n "$missing_assets" ]; then
+                echo "Missing assets:${missing_assets}" >&2
+              fi
+              if [ -n "$mismatched_assets" ]; then
+                echo "Mismatched assets:${mismatched_assets}" >&2
+              fi
+              echo "Publish a new release tag instead of clobbering immutable assets." >&2
+              exit 1
+            fi
+
+            echo "upload_assets=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           if [ "$release_is_draft" = "true" ]; then
@@ -482,13 +515,17 @@ jobs:
             gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "compartment ${RELEASE_VERSION}" --notes-file ./.compartment/release-assets/release-notes.md --draft --verify-tag
           fi
 
+          echo "upload_assets=true" >> "$GITHUB_OUTPUT"
+
       - name: Upload stable CLI artifacts
+        if: steps.stable-release.outputs.upload_assets == 'true'
         run: |
           gh release upload "v${RELEASE_VERSION}" ./.compartment/release-assets/compartment-*.tar.gz ./.compartment/release-assets/checksums.txt ./.compartment/release-assets/install.sh \
             --repo "$RELEASE_REPOSITORY" \
             --clobber
 
       - name: Publish stable release
+        if: steps.stable-release.outputs.upload_assets == 'true'
         run: |
           gh release edit "v${RELEASE_VERSION}" \
             --repo "$RELEASE_REPOSITORY" \
@@ -499,7 +536,19 @@ jobs:
 
       - name: Verify stable release attestation
         run: |
-          gh release verify "v${RELEASE_VERSION}" \
-            --repo "$RELEASE_REPOSITORY"
-          gh release verify-asset "v${RELEASE_VERSION}" ./.compartment/release-assets/install.sh \
-            --repo "$RELEASE_REPOSITORY"
+          release_tag="v${RELEASE_VERSION}"
+          verify_attempt=1
+          max_verify_attempts=30
+          verify_delay_seconds=10
+
+          until gh release verify "$release_tag" --repo "$RELEASE_REPOSITORY" \
+            && gh release verify-asset "$release_tag" ./.compartment/release-assets/install.sh --repo "$RELEASE_REPOSITORY"; do
+            if [ "$verify_attempt" -ge "$max_verify_attempts" ]; then
+              echo "Release attestation verification did not pass for ${release_tag} after ${max_verify_attempts} attempts." >&2
+              exit 1
+            fi
+
+            echo "Release attestation for ${release_tag} is not available yet; retrying in ${verify_delay_seconds}s."
+            verify_attempt=$((verify_attempt + 1))
+            sleep "$verify_delay_seconds"
+          done

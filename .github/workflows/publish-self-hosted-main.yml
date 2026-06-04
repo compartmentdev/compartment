@@ -392,66 +392,71 @@ jobs:
           cd ./.compartment/release-assets
           sha256sum compartment-*.tar.gz > checksums.txt
 
-      - name: Ensure immutable main release exists
+      - name: Resolve immutable main release publish mode
+        id: main-release
         run: |
           release_tag="sha-${PUBLISH_SHA}"
-          if gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${PUBLISH_SHA}." --prerelease --draft=false
-          else
-            gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${PUBLISH_SHA}." --prerelease --target "$PUBLISH_SHA"
+
+          release_is_draft="$(gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+          if [ "$release_is_draft" = "false" ]; then
+            gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" --json assets --jq '.assets[] | [.name, .digest] | @tsv' > ./.compartment/release-assets/published-assets.tsv
+
+            missing_assets=""
+            mismatched_assets=""
+            for asset_path in ./.compartment/release-assets/compartment-*.tar.gz ./.compartment/release-assets/checksums.txt; do
+              asset_name="$(basename "$asset_path")"
+              expected_digest="sha256:$(sha256sum "$asset_path" | awk '{ print $1 }')"
+              actual_digest="$(awk -F "$(printf '\t')" -v asset_name="$asset_name" '$1 == asset_name { print $2 }' ./.compartment/release-assets/published-assets.tsv)"
+
+              if [ -z "$actual_digest" ]; then
+                missing_assets="${missing_assets} ${asset_name}"
+                continue
+              fi
+
+              if [ "$actual_digest" != "$expected_digest" ]; then
+                mismatched_assets="${mismatched_assets} ${asset_name}"
+              fi
+            done
+
+            if [ -n "$missing_assets" ] || [ -n "$mismatched_assets" ]; then
+              echo "Main release ${release_tag} is already published with missing or mismatched immutable assets." >&2
+              if [ -n "$missing_assets" ]; then
+                echo "Missing assets:${missing_assets}" >&2
+              fi
+              if [ -n "$mismatched_assets" ]; then
+                echo "Mismatched assets:${mismatched_assets}" >&2
+              fi
+              echo "Push a new main commit instead of clobbering immutable assets." >&2
+              exit 1
+            fi
+
+            echo "upload_assets=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
+          if [ "$release_is_draft" = "true" ]; then
+            gh release edit "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${PUBLISH_SHA}." --prerelease --draft
+          else
+            gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "$release_tag" --notes "Compartment CLI main build from ${PUBLISH_SHA}." --prerelease --target "$PUBLISH_SHA" --draft
+          fi
+
+          echo "upload_assets=true" >> "$GITHUB_OUTPUT"
+
       - name: Upload immutable main CLI artifacts
+        if: steps.main-release.outputs.upload_assets == 'true'
         run: |
           release_tag="sha-${PUBLISH_SHA}"
           gh release upload "$release_tag" ./.compartment/release-assets/compartment-*.tar.gz ./.compartment/release-assets/checksums.txt \
             --repo "$RELEASE_REPOSITORY" \
             --clobber
 
-      - name: Resolve rolling main publish
-        id: rolling-main
+      - name: Publish immutable main release
+        if: steps.main-release.outputs.upload_assets == 'true'
         run: |
-          read_current_main_sha() {
-            gh api "repos/${RELEASE_REPOSITORY}/git/ref/heads/main" --jq '.object.sha'
-          }
-
-          current_main_sha="$(read_current_main_sha)"
-          if [ "$current_main_sha" = "$PUBLISH_SHA" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Write rolling main pointer
-        if: steps.rolling-main.outputs.enabled == 'true'
-        run: printf 'sha-%s\n' "${PUBLISH_SHA}" > ./.compartment/release-assets/main-release-tag.txt
-
-      - name: Ensure rolling release exists
-        if: steps.rolling-main.outputs.enabled == 'true'
-        run: |
-          if gh release view main --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit main --repo "$RELEASE_REPOSITORY" --title "main" --notes "Pointer to the latest main CLI build: sha-${PUBLISH_SHA}." --prerelease --draft=false
-          else
-            gh release create main --repo "$RELEASE_REPOSITORY" --title "main" --notes "Pointer to the latest main CLI build: sha-${PUBLISH_SHA}." --prerelease --target "$PUBLISH_SHA"
-          fi
-
-      - name: Remove legacy rolling binary assets
-        if: steps.rolling-main.outputs.enabled == 'true'
-        run: |
-          removable_assets="$(gh release view main --repo "$RELEASE_REPOSITORY" --json assets --jq '.assets[]?.name | select(. == "checksums.txt" or startswith("compartment-"))')"
-          if [ -z "$removable_assets" ]; then
-            exit 0
-          fi
-
-          while IFS= read -r asset_name; do
-            gh release delete-asset main "$asset_name" --repo "$RELEASE_REPOSITORY" --yes
-          done <<EOF
-          $removable_assets
-          EOF
-
-      - name: Upload rolling main pointer
-        if: steps.rolling-main.outputs.enabled == 'true'
-        run: |
-          gh release upload main ./.compartment/release-assets/main-release-tag.txt \
+          release_tag="sha-${PUBLISH_SHA}"
+          gh release edit "$release_tag" \
             --repo "$RELEASE_REPOSITORY" \
-            --clobber
+            --title "$release_tag" \
+            --notes "Compartment CLI main build from ${PUBLISH_SHA}." \
+            --prerelease \
+            --draft=false

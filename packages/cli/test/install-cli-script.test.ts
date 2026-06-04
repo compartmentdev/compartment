@@ -17,7 +17,8 @@ const execFile: (
 ) => Promise<ExecFileSuccess> = promisify(execFileCallback);
 const expectedArtifactName: string = 'compartment-linux-x64.tar.gz';
 const expectedInstalledVersion: string = '0.1.0-main+1234567';
-const expectedMainReleaseTag: string = 'sha-1234567890abcdef1234567890abcdef12345678';
+const expectedMainCommitSha: string = '1234567890abcdef1234567890abcdef12345678';
+const expectedMainReleaseTag: string = `sha-${expectedMainCommitSha}`;
 const repositoryRoot: string = resolve(__dirname, '../../..');
 const renderInstallerScriptPath: string = resolve(repositoryRoot, 'scripts/release/render-cli-install-script.mjs');
 const sourceInstallerScriptPath: string = resolve(repositoryRoot, 'install.sh');
@@ -26,7 +27,6 @@ const temporaryDirectories: string[] = [];
 interface InstallerFixture {
   artifactName: string;
   checksumsPath: string;
-  pointerPath: string;
   tarballPath: string;
 }
 
@@ -87,7 +87,7 @@ describe('render-cli-install-script', (): void => {
     temporaryDirectories.length = 0;
   });
 
-  it('resolves main installs through the rolling pointer before downloading the immutable binary', async (): Promise<void> => {
+  it('resolves main installs through the current main commit before downloading the immutable binary', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
@@ -101,7 +101,7 @@ describe('render-cli-install-script', (): void => {
     expect(result.stdout).toContain(createCliOnlyInstallMessage(join(binDirectory, 'compartment')));
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
-      'https://github.com/example/compartment/releases/download/main/main-release-tag.txt',
+      'https://api.github.com/repos/example/compartment/commits/main',
       `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/${expectedArtifactName}`,
       `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/checksums.txt`,
     ]);
@@ -135,7 +135,7 @@ describe('render-cli-install-script', (): void => {
     expect(result.urlLog).toEqual([]);
   });
 
-  it('downloads explicitly pinned sha builds without consulting the rolling pointer', async (): Promise<void> => {
+  it('downloads explicitly pinned sha builds without resolving main', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const explicitReleaseTag: string = 'sha-deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
@@ -154,7 +154,7 @@ describe('render-cli-install-script', (): void => {
     ]);
   });
 
-  it('downloads stable releases by explicit version without consulting the rolling pointer', async (): Promise<void> => {
+  it('downloads stable releases by explicit version without resolving main', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const explicitReleaseVersion: string = '0.8.0';
@@ -206,7 +206,7 @@ describe('render-cli-install-script', (): void => {
     expect(result.stdout).toContain(expectedInstalledVersion);
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
-      'https://github.com/example/compartment/releases/download/main/main-release-tag.txt',
+      'https://api.github.com/repos/example/compartment/commits/main',
       `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/${expectedArtifactName}`,
       `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/checksums.txt`,
     ]);
@@ -620,7 +620,6 @@ async function runInstallerScript(
     SHELL: options.shell ?? process.env.SHELL,
     COMPARTMENT_TEST_ARTIFACT_PATH: fixture.tarballPath,
     COMPARTMENT_TEST_CHECKSUMS_PATH: fixture.checksumsPath,
-    COMPARTMENT_TEST_POINTER_PATH: fixture.pointerPath,
     COMPARTMENT_TEST_STATE_DIR: stateDirectory,
   };
   if (options.acceptPathUpdate === true) {
@@ -706,20 +705,17 @@ async function createInstallerFixture(temporaryDirectory: string, osName?: strin
   const compartmentBinaryPath: string = join(packageDirectory, 'compartment');
   const tarballPath: string = join(fixtureDirectory, artifactName);
   const checksumsPath: string = join(fixtureDirectory, 'checksums.txt');
-  const pointerPath: string = join(fixtureDirectory, 'main-release-tag.txt');
 
   await mkdir(packageDirectory, { recursive: true });
   await writeExecutableScript(compartmentBinaryPath, buildInstalledCompartmentScript());
   await execFile('tar', ['-czf', tarballPath, '-C', packageDirectory, 'compartment'], {
     cwd: temporaryDirectory,
   });
-  await writeFile(pointerPath, `${expectedMainReleaseTag}\n`, 'utf8');
   await writeFile(checksumsPath, await createChecksumsFile(artifactName, tarballPath), 'utf8');
 
   return {
     artifactName,
     checksumsPath,
-    pointerPath,
     tarballPath,
   };
 }
@@ -750,7 +746,6 @@ function buildStubCurlScript(): string {
   return createShellScript(`
 artifact_path="\${COMPARTMENT_TEST_ARTIFACT_PATH:?}"
 checksums_path="\${COMPARTMENT_TEST_CHECKSUMS_PATH:?}"
-pointer_path="\${COMPARTMENT_TEST_POINTER_PATH:?}"
 state_dir="\${COMPARTMENT_TEST_STATE_DIR:?}"
 
 mkdir -p "$state_dir"
@@ -776,8 +771,8 @@ done
 printf '%s\\n' "$url" >> "\${state_dir}/urls.log"
 
 case "$url" in
-  https://github.com/example/compartment/releases/download/main/main-release-tag.txt)
-    cat "$pointer_path"
+  https://api.github.com/repos/example/compartment/commits/main)
+    printf '{\\n  "sha": "${expectedMainCommitSha}"\\n}\\n'
     ;;
   https://github.com/example/compartment/releases/download/sha-*/checksums.txt)
     cp "$checksums_path" "$output_path"

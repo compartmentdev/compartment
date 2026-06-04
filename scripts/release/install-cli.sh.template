@@ -14,7 +14,6 @@ login_api_url=""
 login_email=""
 login_organization=""
 login_onboarding_session=""
-main_release_tag_asset="main-release-tag.txt"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -112,24 +111,21 @@ case "$channel" in
 esac
 
 resolve_main_release_tag() {
-  main_release_tag_url="https://github.com/${release_repository}/releases/download/main/${main_release_tag_asset}"
-  resolved_release_tag="$(curl -fsSL "$main_release_tag_url" | tr -d '\r\n')"
+  main_commit_url="https://api.github.com/repos/${release_repository}/commits/main"
+  main_commit_sha="$(
+    curl -fsSL "$main_commit_url" \
+      | sed -n 's/^[[:space:]]*"sha":[[:space:]]*"\([0-9a-f]\{40\}\)",\{0,1\}[[:space:]]*$/\1/p' \
+      | head -n 1
+  )"
 
-  if [ -z "$resolved_release_tag" ]; then
-    printf 'Missing main release tag pointer in %s\n' "$main_release_tag_url" >&2
+  if [ -z "$main_commit_sha" ]; then
+    printf 'Missing main commit SHA in %s\n' "$main_commit_url" >&2
     exit 1
   fi
 
-  case "$resolved_release_tag" in
-    sha-*)
-      printf 'Resolved main to %s\n' "$resolved_release_tag" >&2
-      printf '%s' "$resolved_release_tag"
-      ;;
-    *)
-      printf 'Invalid main release tag pointer: %s\n' "$resolved_release_tag" >&2
-      exit 1
-      ;;
-  esac
+  resolved_release_tag="sha-${main_commit_sha}"
+  printf 'Resolved main to %s\n' "$resolved_release_tag" >&2
+  printf '%s' "$resolved_release_tag"
 }
 
 can_use_installer_terminal() {

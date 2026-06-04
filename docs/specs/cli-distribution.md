@@ -9,12 +9,10 @@ Standalone CLI install artifacts are published in `compartmentdev/compartment`:
 - the same SEA binary can be installed as `/usr/local/bin/compartment-node-agent` by `sudo compartment install`;
 - `install.sh` is checked into the source repository and defaults to releases from `compartmentdev/compartment`;
 - stable release `install.sh` assets default to their own release version so verified installer execution installs the verified release;
-- rolling `main` binaries publish after successful main CI under immutable
-  `sha-<commit>` prereleases, while the `main` prerelease stores a pointer to
-  the latest immutable build only when that commit is still current `main`;
-- the installer resolves `install.sh --version main` to the latest `sha-<commit>` build, and `install.sh --version sha-<commit>` pins an exact `main` binary.
+- rolling `main` binaries publish after successful main CI under immutable `sha-<commit>` prereleases;
+- the installer resolves `install.sh --version main` by reading the current GitHub `main` commit and downloading the matching `sha-<commit>` release, while `install.sh --version sha-<commit>` pins an exact `main` binary.
 
-Stable CLI releases are tag-driven. Release-please maintains one release PR on `main`; merging it updates checked-in versions and `CHANGELOG.md`, creates the semver tag, and may create the GitHub release before the publish workflow runs. The tag workflow edits the existing `vX.Y.Z` draft release or creates it when missing, renders a self-pinned stable `install.sh`, uploads CLI artifacts, `checksums.txt`, and `install.sh` with `--clobber`, publishes the release, then verifies the release attestation and the `install.sh` asset. Published stable releases are immutable and are not prereleases. If the release is already published, the workflow fails instead of replacing assets.
+Stable CLI releases are tag-driven. Release-please maintains one release PR on `main`; merging it updates checked-in versions and `CHANGELOG.md`, creates the semver tag, and may create the GitHub release before the publish workflow runs. The tag workflow edits the existing `vX.Y.Z` draft release or creates it when missing, renders a self-pinned stable `install.sh`, uploads CLI artifacts, `checksums.txt`, and `install.sh` with `--clobber`, publishes the release, then verifies the release attestation and the `install.sh` asset. Published stable releases are immutable and are not prereleases. If the release is already published, the workflow validates the existing asset digests instead of replacing assets.
 
 Stable `checksums.txt` includes the CLI archives and `install.sh`. The checksum file protects installer downloads against accidental corruption; GitHub immutable release verification protects the published release and local asset from post-publication replacement.
 
