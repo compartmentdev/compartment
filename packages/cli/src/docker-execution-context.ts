@@ -1,5 +1,5 @@
 import type { CommandResult } from './command-runner.types';
-import { readCommandOutput, runInheritedCommand } from './command-runner';
+import { runInheritedCommand } from './command-runner';
 import { runDockerCommand, runQuietDockerCommand } from './docker-command';
 import { assertSupportedSelfHostedDockerEngineVersion } from './docker-engine-version';
 import {
@@ -176,9 +176,8 @@ async function readDockerDaemonProbe(
   }
 
   const versionResult: CommandResult = await runCommand(context, [...dockerServerVersionArguments]);
-  assertSupportedSelfHostedDockerEngineVersion(
-    versionResult.exitCode === 0 ? versionResult.stdout : readCommandOutput(versionResult),
-  );
+  const versionOutput: string = versionResult.exitCode === 0 ? versionResult.stdout : '';
+  assertSupportedSelfHostedDockerEngineVersion(versionOutput);
   return {
     daemonResult,
   };
