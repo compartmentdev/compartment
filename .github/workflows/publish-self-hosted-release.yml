@@ -474,36 +474,13 @@ jobs:
           release_is_draft="$(gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
 
           if [ "$release_is_draft" = "false" ]; then
-            gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" --json assets --jq '.assets[] | [.name, .digest] | @tsv' > ./.compartment/release-assets/published-assets.tsv
-
-            missing_assets=""
-            mismatched_assets=""
-            for asset_path in ./.compartment/release-assets/compartment-*.tar.gz ./.compartment/release-assets/checksums.txt ./.compartment/release-assets/install.sh; do
-              asset_name="$(basename "$asset_path")"
-              expected_digest="sha256:$(sha256sum "$asset_path" | awk '{ print $1 }')"
-              actual_digest="$(awk -F "$(printf '\t')" -v asset_name="$asset_name" '$1 == asset_name { print $2 }' ./.compartment/release-assets/published-assets.tsv)"
-
-              if [ -z "$actual_digest" ]; then
-                missing_assets="${missing_assets} ${asset_name}"
-                continue
-              fi
-
-              if [ "$actual_digest" != "$expected_digest" ]; then
-                mismatched_assets="${mismatched_assets} ${asset_name}"
-              fi
-            done
-
-            if [ -n "$missing_assets" ] || [ -n "$mismatched_assets" ]; then
-              echo "Stable release ${release_tag} is already published with missing or mismatched immutable assets." >&2
-              if [ -n "$missing_assets" ]; then
-                echo "Missing assets:${missing_assets}" >&2
-              fi
-              if [ -n "$mismatched_assets" ]; then
-                echo "Mismatched assets:${mismatched_assets}" >&2
-              fi
-              echo "Publish a new release tag instead of clobbering immutable assets." >&2
-              exit 1
-            fi
+            node ./scripts/release/validate-release-assets.mjs \
+              --repo "$RELEASE_REPOSITORY" \
+              --tag "$release_tag" \
+              --repair-hint "Publish a new release tag instead of clobbering immutable assets." \
+              ./.compartment/release-assets/compartment-*.tar.gz \
+              ./.compartment/release-assets/checksums.txt \
+              ./.compartment/release-assets/install.sh
 
             echo "upload_assets=false" >> "$GITHUB_OUTPUT"
             exit 0
