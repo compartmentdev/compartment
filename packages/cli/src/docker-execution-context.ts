@@ -1,6 +1,7 @@
 import type { CommandResult } from './command-runner.types';
-import { runInheritedCommand } from './command-runner';
+import { readCommandOutput, runInheritedCommand } from './command-runner';
 import { runDockerCommand, runQuietDockerCommand } from './docker-command';
+import { assertSupportedSelfHostedDockerEngineVersion } from './docker-engine-version';
 import {
   readDockerExecutionContextMessage,
   readDockerExecutionSwitchMessage,
@@ -16,6 +17,7 @@ import type {
 } from './docker-runtime.types';
 
 const dockerInfoSecurityOptionsArguments: readonly string[] = ['info', '--format', '{{json .SecurityOptions}}'];
+const dockerServerVersionArguments: readonly string[] = ['version', '--format', '{{.Server.Version}}'];
 
 interface DockerExecutionProbe {
   composeResult: CommandResult;
@@ -130,10 +132,14 @@ async function runDockerExecutionProbe(context: DockerExecutionContext): Promise
     };
   }
 
+  const daemonProbe: Pick<DockerExecutionProbe, 'daemonResult'> = await readDockerDaemonProbe(
+    context,
+    runDockerCommand,
+  );
   return {
     composeResult,
     context,
-    daemonResult: await runDockerCommand(context, [...dockerInfoSecurityOptionsArguments]),
+    ...daemonProbe,
   };
 }
 
@@ -147,10 +153,34 @@ async function runValidatedSudoDockerExecutionProbe(): Promise<DockerExecutionPr
     };
   }
 
+  const daemonProbe: Pick<DockerExecutionProbe, 'daemonResult'> = await readDockerDaemonProbe(
+    context,
+    runQuietDockerCommand,
+  );
   return {
     composeResult,
     context,
-    daemonResult: await runQuietDockerCommand(context, [...dockerInfoSecurityOptionsArguments]),
+    ...daemonProbe,
+  };
+}
+
+async function readDockerDaemonProbe(
+  context: DockerExecutionContext,
+  runCommand: (context: DockerExecutionContext, args: readonly string[]) => Promise<CommandResult>,
+): Promise<Pick<DockerExecutionProbe, 'daemonResult'>> {
+  const daemonResult: CommandResult = await runCommand(context, [...dockerInfoSecurityOptionsArguments]);
+  if (daemonResult.exitCode !== 0) {
+    return {
+      daemonResult,
+    };
+  }
+
+  const versionResult: CommandResult = await runCommand(context, [...dockerServerVersionArguments]);
+  assertSupportedSelfHostedDockerEngineVersion(
+    versionResult.exitCode === 0 ? versionResult.stdout : readCommandOutput(versionResult),
+  );
+  return {
+    daemonResult,
   };
 }
 
@@ -159,26 +189,11 @@ function createDockerExecutionContext(
   isRootlessDocker: boolean = false,
 ): DockerExecutionContext {
   if (mode === 'direct') {
-    return {
-      dockerCommand: ['docker'],
-      isRootlessDocker,
-      mode,
-    };
+    return { dockerCommand: ['docker'], isRootlessDocker, mode };
   }
 
-  if (mode === 'sudo-n') {
-    return {
-      dockerCommand: ['sudo', '-n', 'docker'],
-      isRootlessDocker,
-      mode,
-    };
-  }
-
-  return {
-    dockerCommand: ['sudo', 'docker'],
-    isRootlessDocker,
-    mode,
-  };
+  const dockerCommand: readonly string[] = mode === 'sudo-n' ? ['sudo', '-n', 'docker'] : ['sudo', 'docker'];
+  return { dockerCommand, isRootlessDocker, mode };
 }
 
 function probeSucceeded(probe: DockerExecutionProbe): boolean {

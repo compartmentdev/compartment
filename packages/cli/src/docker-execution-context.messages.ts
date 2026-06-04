@@ -1,8 +1,14 @@
 import type { DockerExecutionMode } from './docker-runtime.types';
 
-interface DockerExecutionFailureProbe {
+type DockerExecutionFailureProbe = MissingDockerExecutionProbe | UnavailableDockerExecutionProbe;
+
+interface MissingDockerExecutionProbe {
+  kind: 'missing';
+}
+
+interface UnavailableDockerExecutionProbe {
   interactiveSudoTried?: boolean | undefined;
-  kind: 'missing' | 'unavailable';
+  kind: 'unavailable';
 }
 
 export function readDockerExecutionSwitchMessage(mode: DockerExecutionMode, directComposeExitCode: number): string {

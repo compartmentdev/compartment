@@ -105,6 +105,8 @@ Registry installs and updates must use the runtime tag embedded in the packaged 
 
 ## Host Dependencies
 
+Self-hosted runtime management requires Docker Engine `28.0.0` or newer with the Docker Compose plugin.
+
 On Ubuntu and Debian hosts, `compartment install` can install Docker Engine and the Docker Compose plugin when they are missing, but it first asks for confirmation. The install flow may prompt for `sudo` while it checks Docker access or installs the packages.
 
 To initialize a running local dev API from the repository instead of packaged self-hosted runtime, use:

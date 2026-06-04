@@ -11,6 +11,10 @@ compartment install
 
 Before you run `compartment install`, the CLI must already be installed on the target server. The public bootstrapper can either install the CLI only or install the CLI and immediately start `compartment install`.
 
+## Host prerequisites
+
+Self-hosted runtime management requires Docker Engine `28.0.0` or newer with the Docker Compose plugin.
+
 ## Default mode
 
 With no explicit mode flags, `compartment install` allocates a managed base domain through the broker and configures the self-hosted runtime with trusted HTTPS.
