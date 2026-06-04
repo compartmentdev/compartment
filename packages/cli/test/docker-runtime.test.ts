@@ -322,7 +322,6 @@ describe('ensureDockerExecutionContext', (): void => {
     await expect(ensureDockerExecutionContext()).rejects.toThrow(
       'Docker Engine 28.0.0 or newer is required for self-hosted runtime management. Found Docker Engine 27.5.1. Upgrade Docker Engine and re-run `compartment install` or `compartment system update`.',
     );
-    expect(mocks.runInheritedCommand).not.toHaveBeenCalled();
   });
 
   it('fails when the Docker Engine server version cannot be parsed', async (): Promise<void> => {

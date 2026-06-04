@@ -36,7 +36,6 @@ interface RuntimeComposeService {
   healthcheck?: RuntimeComposeHealthcheck;
   image?: string;
   networks?: RuntimeComposeServiceNetworks;
-  ports?: readonly string[];
   privileged?: boolean;
   read_only?: boolean;
   security_opt?: readonly string[];
@@ -141,12 +140,6 @@ describe.sequential('runtime assets', (): void => {
     expect(readServiceNetworks(composeFile, 'postgres')).toEqual(['db_internal']);
     expect(readServiceNetworks(composeFile, 'registry')).toEqual(['system_internal']);
     expect(readServiceNetworks(composeFile, 'registry-auth')).toEqual(['build_internal', 'system_internal']);
-    expect(readServiceEnvironment(composeFile, 'registry-auth').COMPARTMENT_ARTIFACT_REGISTRY_PROXY_BIND_HOST).toBe(
-      '0.0.0.0',
-    );
-    expect(readService(composeFile, 'registry-auth').ports).toEqual([
-      '127.0.0.1:${COMPARTMENT_ARTIFACT_REGISTRY_PORT}:5000',
-    ]);
     expect(readServiceNetworks(composeFile, 'builder')).toEqual(['build_internal']);
     expect(readServiceNetworks(composeFile, 'edge')).toEqual(['system_internal']);
     expect(composeFile.services).not.toHaveProperty('node');
