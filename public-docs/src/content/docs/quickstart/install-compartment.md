@@ -27,7 +27,7 @@ gh release verify-asset --repo compartmentdev/compartment ./install.sh
 sh ./install.sh --init-install
 ```
 
-This verifies the latest immutable GitHub Release and the downloaded `install.sh` asset. The verified release installer is pinned to its own stable release. If release verification reports that the latest release is not immutable, verified install is unavailable for that release; use the quick install path only if you accept the convenience trust model.
+This verifies the latest immutable GitHub Release and the downloaded `install.sh` asset. The verified release installer is pinned to its own stable release.
 
 If you are already on the target server and want the installer to continue directly into system setup, use:
 

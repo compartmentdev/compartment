@@ -45,7 +45,7 @@ gh release verify-asset --repo compartmentdev/compartment ./install.sh
 sh ./install.sh --init-install
 ```
 
-The verified path checks the latest immutable GitHub Release and the downloaded `install.sh` asset before execution. If release verification reports that the latest release is not immutable, verified install is unavailable for that release; use the quick install path only if you accept the convenience trust model.
+The verified path checks the latest immutable GitHub Release and the downloaded `install.sh` asset before execution.
 
 Install the CLI and immediately start the system install:
 
