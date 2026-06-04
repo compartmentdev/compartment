@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/compartmentdev/compartment/compare/v0.8.0...v0.9.0) (2026-06-04)
+
+
+### Features
+
+* **console:** align action menu patterns ([#78](https://github.com/compartmentdev/compartment/issues/78)) ([b55a391](https://github.com/compartmentdev/compartment/commit/b55a391ce81c09195b4d0439d63133aa73296dfb))
+* **console:** polish deployment detail pages ([#80](https://github.com/compartmentdev/compartment/issues/80)) ([278a6a7](https://github.com/compartmentdev/compartment/commit/278a6a71f0d078eac25983b45a0859986ffbd873))
+* **console:** polish project overview layout ([#79](https://github.com/compartmentdev/compartment/issues/79)) ([9ebcdad](https://github.com/compartmentdev/compartment/commit/9ebcdad971a9f3da5dd11391effb314dded0d886))
+* **console:** refresh console UI foundations ([#77](https://github.com/compartmentdev/compartment/issues/77)) ([84ec663](https://github.com/compartmentdev/compartment/commit/84ec663b0e82ca7a15723765c2d4c7905ba2a68b))
+* **release:** add verified stable installer ([#86](https://github.com/compartmentdev/compartment/issues/86)) ([dd357d1](https://github.com/compartmentdev/compartment/commit/dd357d1f209cf4114219bb0af4bbfd3508c953eb))
+
+
+### Bug Fixes
+
+* **cli:** require Docker Engine 28 for self-hosted runtime ([#85](https://github.com/compartmentdev/compartment/issues/85)) ([c568a57](https://github.com/compartmentdev/compartment/commit/c568a572fbeabb78ed7a8436ba205076fd35577c))
+* **utils:** validate self-hosted generated secrets ([#84](https://github.com/compartmentdev/compartment/issues/84)) ([b18fa3f](https://github.com/compartmentdev/compartment/commit/b18fa3fbe94131afbc88101cece70b70e1679e7a))
+
 ## [0.8.0](https://github.com/compartmentdev/compartment/compare/v0.7.0...v0.8.0) (2026-06-03)
 
 
