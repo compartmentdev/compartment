@@ -5,6 +5,7 @@ set -eu
 release_repository="${COMPARTMENT_RELEASES_REPOSITORY:-compartmentdev/compartment}"
 channel="latest"
 version=""
+version_argument="0"
 bin_dir=""
 init_install="0"
 init_update="0"
@@ -19,10 +20,14 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --channel)
       channel="$2"
+      if [ "$version_argument" = "0" ]; then
+        version=""
+      fi
       shift 2
       ;;
     --version)
       version="$2"
+      version_argument="1"
       shift 2
       ;;
     --bin-dir)
@@ -64,7 +69,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ -n "$version" ] && [ "$channel" != "latest" ]; then
+if [ "$version_argument" = "1" ] && [ "$channel" != "latest" ]; then
   printf 'Choose either --version or --channel, not both.\n' >&2
   exit 1
 fi

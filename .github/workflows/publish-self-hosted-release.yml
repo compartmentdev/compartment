@@ -421,10 +421,17 @@ jobs:
           pattern: compartment-*.tar.gz
           path: ./.compartment/release-assets
 
+      - name: Render stable installer
+        run: |
+          node ./scripts/release/render-cli-install-script.mjs \
+            --repository "$RELEASE_REPOSITORY" \
+            --default-version "$RELEASE_VERSION" \
+            --output ./.compartment/release-assets/install.sh
+
       - name: Build release checksums
         run: |
           cd ./.compartment/release-assets
-          sha256sum compartment-*.tar.gz > checksums.txt
+          sha256sum compartment-*.tar.gz install.sh > checksums.txt
 
       - name: Write stable release notes
         run: |
@@ -436,7 +443,13 @@ jobs:
       - name: Ensure stable release draft exists
         run: |
           release_tag="v${RELEASE_VERSION}"
-          if gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+          release_is_draft="$(gh release view "$release_tag" --repo "$RELEASE_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+          if [ "$release_is_draft" = "false" ]; then
+            echo "Stable release ${release_tag} is already published. Immutable release assets cannot be clobbered; publish a new release tag instead." >&2
+            exit 1
+          fi
+
+          if [ "$release_is_draft" = "true" ]; then
             gh release edit "$release_tag" --repo "$RELEASE_REPOSITORY" --title "compartment ${RELEASE_VERSION}" --notes-file ./.compartment/release-assets/release-notes.md --prerelease=false --draft
           else
             gh release create "$release_tag" --repo "$RELEASE_REPOSITORY" --title "compartment ${RELEASE_VERSION}" --notes-file ./.compartment/release-assets/release-notes.md --draft --verify-tag
@@ -444,7 +457,7 @@ jobs:
 
       - name: Upload stable CLI artifacts
         run: |
-          gh release upload "v${RELEASE_VERSION}" ./.compartment/release-assets/compartment-*.tar.gz ./.compartment/release-assets/checksums.txt ./install.sh \
+          gh release upload "v${RELEASE_VERSION}" ./.compartment/release-assets/compartment-*.tar.gz ./.compartment/release-assets/checksums.txt ./.compartment/release-assets/install.sh \
             --repo "$RELEASE_REPOSITORY" \
             --clobber
 
@@ -456,3 +469,15 @@ jobs:
             --notes-file ./.compartment/release-assets/release-notes.md \
             --prerelease=false \
             --draft=false
+
+      - name: Verify stable release attestation
+        run: |
+          if ! gh release verify --help >/dev/null 2>&1; then
+            echo "GitHub CLI 2.81.0 or newer is required to verify release attestations." >&2
+            exit 1
+          fi
+
+          gh release verify "v${RELEASE_VERSION}" \
+            --repo "$RELEASE_REPOSITORY"
+          gh release verify-asset "v${RELEASE_VERSION}" ./.compartment/release-assets/install.sh \
+            --repo "$RELEASE_REPOSITORY"

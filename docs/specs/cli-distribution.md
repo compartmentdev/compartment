@@ -5,15 +5,20 @@ This document captures the source-repository GitHub Releases flow for the CLI.
 Standalone CLI install artifacts are published in `compartmentdev/compartment`:
 
 - public self-hosted image publishing is covered by [Self-Hosted Image Publishing](./self-hosted-image-publishing.md);
-- Node SEA binaries and `checksums.txt` are attached to GitHub Releases in this repository;
+- Node SEA binaries, `install.sh`, and `checksums.txt` are attached to stable GitHub Releases in this repository;
 - the same SEA binary can be installed as `/usr/local/bin/compartment-node-agent` by `sudo compartment install`;
 - `install.sh` is checked into the source repository and defaults to releases from `compartmentdev/compartment`;
+- stable release `install.sh` assets default to their own release version so verified installer execution installs the verified release;
 - rolling `main` binaries publish after successful main CI under immutable
   `sha-<commit>` prereleases, while the `main` prerelease stores a pointer to
   the latest immutable build only when that commit is still current `main`;
 - the installer resolves `install.sh --version main` to the latest `sha-<commit>` build, and `install.sh --version sha-<commit>` pins an exact `main` binary.
 
-Stable CLI releases are tag-driven. Release-please maintains one release PR on `main`; merging it updates checked-in versions and `CHANGELOG.md`, creates the semver tag, and may create the GitHub release before the publish workflow runs. The tag workflow edits the existing `vX.Y.Z` release or creates it when missing, then uploads CLI artifacts, `checksums.txt`, and the checked-in `install.sh` with `--clobber`. Stable releases are not prereleases.
+Stable CLI releases are tag-driven. Release-please maintains one release PR on `main`; merging it updates checked-in versions and `CHANGELOG.md`, creates the semver tag, and may create the GitHub release before the publish workflow runs. The tag workflow edits the existing `vX.Y.Z` draft release or creates it when missing, renders a self-pinned stable `install.sh`, uploads CLI artifacts, `checksums.txt`, and `install.sh` with `--clobber`, publishes the release, then verifies the release attestation and the `install.sh` asset. Published stable releases are immutable and are not prereleases. If the release is already published, the workflow fails instead of replacing assets.
+
+Stable `checksums.txt` includes the CLI archives and `install.sh`. The checksum file protects installer downloads against accidental corruption; GitHub immutable release verification protects the published release and local asset from post-publication replacement.
+
+Releases created before repository release immutability was enabled are not retroactively attested.
 
 ## Local Smoke
 
@@ -26,5 +31,7 @@ pnpm cli:render:installer --repository compartmentdev/compartment --output ./.co
 ## Required GitHub Actions Configuration
 
 - repo Actions setting allowing `GITHUB_TOKEN` `contents: write` for release upload jobs;
+- repo release immutability enabled so GitHub creates release attestations for published stable releases;
+- GitHub CLI 2.81.0 or newer available in the release job for `gh release verify` and `gh release verify-asset`;
 - repo secret `RELEASE_PLEASE_APP_ID` with a GitHub App ID installed on this repository with contents, issues, and pull request write permissions;
 - repo secret `RELEASE_PLEASE_APP_PRIVATE_KEY` with that GitHub App private key contents.

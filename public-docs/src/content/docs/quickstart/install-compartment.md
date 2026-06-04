@@ -18,6 +18,19 @@ curl -fsSL https://compartment.dev/install.sh | sh
 
 The public bootstrapper installs the CLI only by default.
 
+For an optional verified install from an immutable stable release, use GitHub CLI 2.81.0 or newer before running the installer:
+
+```bash
+gh release verify --repo compartmentdev/compartment
+gh release download --repo compartmentdev/compartment --pattern install.sh --clobber
+gh release verify-asset --repo compartmentdev/compartment ./install.sh
+sh ./install.sh
+```
+
+This verifies the latest immutable GitHub Release and the downloaded `install.sh` asset. The verified release installer is pinned to its own stable release. If release verification reports that the latest release is not immutable, verified install is unavailable for that release; use the quick install path only if you accept the convenience trust model.
+
+To verify the installer and immediately start system setup on the target server, use `sh ./install.sh --init-install` as the final command.
+
 If you are already on the target server and want the installer to continue directly into system setup, use:
 
 ```bash
