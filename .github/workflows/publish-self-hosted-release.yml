@@ -440,6 +440,33 @@ jobs:
             --fallback-notes "Manual compartment release ${RELEASE_VERSION}." \
             --output ./.compartment/release-assets/release-notes.md
 
+      - name: Check GitHub CLI release verification support
+        run: |
+          probe_release_verification_command() {
+            command_name="$1"
+            shift
+
+            set +e
+            command_output="$(gh release "$command_name" "$@" 2>&1 >/dev/null)"
+            command_status="$?"
+            set -e
+
+            if [ "$command_status" -eq 0 ]; then
+              return 0
+            fi
+
+            if printf '%s\n' "$command_output" | grep -Eiq 'unknown command|unknown flag|Usage:[[:space:]]+gh release <command>'; then
+              echo "GitHub CLI 2.81.0 or newer is required to verify release attestations." >&2
+              printf '%s\n' "$command_output" >&2
+              exit 1
+            fi
+          }
+
+          probe_release_verification_command verify "__compartment-release-verification-probe__" \
+            --repo "$RELEASE_REPOSITORY"
+          probe_release_verification_command verify-asset "__compartment-release-verification-probe__" ./.compartment/release-assets/install.sh \
+            --repo "$RELEASE_REPOSITORY"
+
       - name: Ensure stable release draft exists
         run: |
           release_tag="v${RELEASE_VERSION}"
@@ -472,16 +499,6 @@ jobs:
 
       - name: Verify stable release attestation
         run: |
-          release_help="$(gh release --help)"
-          if ! printf '%s\n' "$release_help" | grep -Eq '^[[:space:]]+verify:[[:space:]]'; then
-            echo "GitHub CLI 2.81.0 or newer is required to verify release attestations." >&2
-            exit 1
-          fi
-          if ! printf '%s\n' "$release_help" | grep -Eq '^[[:space:]]+verify-asset:[[:space:]]'; then
-            echo "GitHub CLI 2.81.0 or newer is required to verify release attestations." >&2
-            exit 1
-          fi
-
           gh release verify "v${RELEASE_VERSION}" \
             --repo "$RELEASE_REPOSITORY"
           gh release verify-asset "v${RELEASE_VERSION}" ./.compartment/release-assets/install.sh \
