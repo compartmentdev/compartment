@@ -2,10 +2,6 @@ name: Self-hosted image cache reusable
 
 on:
   workflow_call:
-    inputs:
-      runner_labels_json:
-        required: true
-        type: string
     outputs:
       cache_key:
         value: ${{ jobs.build-and-check-images.outputs.cache_key }}
@@ -17,7 +13,7 @@ permissions:
 jobs:
   build-and-check-images:
     name: build and check images
-    runs-on: ${{ fromJson(inputs.runner_labels_json) }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     outputs:
       cache_key: ${{ steps.cache-key.outputs.value }}

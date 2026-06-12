@@ -2,10 +2,6 @@ name: DB integration reusable
 
 on:
   workflow_call:
-    inputs:
-      runner_labels_json:
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -14,7 +10,7 @@ permissions:
 jobs:
   run-db-integration:
     name: run DB integration checks
-    runs-on: ${{ fromJson(inputs.runner_labels_json) }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
       postgres:
