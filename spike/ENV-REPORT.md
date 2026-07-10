@@ -14,7 +14,7 @@ Run the doctor before any other command:
 spike/env/doctor.sh
 ```
 
-It installs missing `docker`, `colima`, `k3d`, `kind`, Helm 4, `kubectl`, and `hey` with Homebrew, prints versions, and starts or resizes Colima to 4 CPU, 10 GiB memory, and 60 GiB disk.
+It installs missing `docker`, `colima`, `k3d`, `kind`, Helm 4, `kubectl`, `hey`, Node.js 24, and `pnpm` with Homebrew, prints versions, and starts or resizes Colima to 4 CPU, 10 GiB memory, and 60 GiB disk.
 
 Create an isolated k3d stand:
 

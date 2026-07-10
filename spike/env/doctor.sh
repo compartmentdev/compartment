@@ -28,10 +28,22 @@ require_command kind kind
 require_command helm helm
 require_command kubectl kubernetes-cli
 require_command hey hey
+require_command node node@24
+require_command pnpm pnpm
 
 if ((${#missing_formulae[@]} > 0)); then
   echo "Installing missing tools: ${missing_formulae[*]}"
   brew install "${missing_formulae[@]}"
+fi
+
+if ! command -v node >/dev/null 2>&1 && brew list --versions node@24 >/dev/null 2>&1; then
+  brew link --overwrite --force node@24
+fi
+
+node_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
+if [[ "${node_major}" != "24" ]]; then
+  echo "Node.js 24 is required; found: $(node --version)" >&2
+  exit 1
 fi
 
 helm_major="$(helm version --template '{{.Version}}' | sed -E 's/^v([0-9]+).*/\1/')"
@@ -91,6 +103,8 @@ kind version
 helm version --short
 kubectl version --client=true --output=yaml | awk '/gitVersion:/ { print "kubectl " $2; exit }'
 brew list --versions hey
+printf 'node %s\n' "$(node --version)"
+printf 'pnpm %s\n' "$(pnpm --version)"
 
 echo
 echo "Colima resources"
