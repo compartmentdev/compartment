@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "compartment.fullname" . }}-api
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "compartment.fullname" . }}-api-migrate-reader
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "compartment.fullname" . }}-api-migrate-reader
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "compartment.fullname" . }}-api-migrate-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "compartment.fullname" . }}-api
+    namespace: {{ .Release.Namespace }}

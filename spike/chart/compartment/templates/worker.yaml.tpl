@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "compartment.fullname" . }}-worker
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "worker") | nindent 8 }}
+      annotations:
+        {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "compartment.image" .Values.images.worker }}
+          imagePullPolicy: {{ .Values.images.worker.pullPolicy }}
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 10001
+            runAsGroup: 10001
+          envFrom:
+            - configMapRef:
+                name: {{ include "compartment.fullname" . }}
+          env:
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: registry-read-password}
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: registry-write-password}
+            - name: COMPARTMENT_RUNTIME_CONTROL_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: runtime-control-token}
+            - name: DOCKER_CONFIG
+              value: /tmp/.docker
+            - name: TMPDIR
+              value: /compartment/docker-work
+          volumeMounts:
+            - {name: docker-work, mountPath: /compartment/docker-work}
+            - {name: node-run, mountPath: /var/run/compartment/node}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: docker-work, emptyDir: {}}
+        - {name: node-run, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}

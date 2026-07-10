@@ -1,0 +1,9 @@
+:8080 {
+	handle_path /api/* {
+		reverse_proxy bench-backoffice:3000
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+}
