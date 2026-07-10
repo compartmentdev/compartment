@@ -28,4 +28,7 @@ jobs:
     uses: ./.github/workflows/_hetzner-runner-control.yml
     with:
       command: ${{ github.event_name == 'schedule' && 'reconcile' || (github.event_name == 'workflow_run' || (github.event_name == 'pull_request_target' && github.event.action == 'closed')) && 'cleanup' || 'ensure-fleet' }}
-    secrets: inherit
+    secrets:
+      CI_RUNNER_APP_ID: ${{ secrets.CI_RUNNER_APP_ID }}
+      CI_RUNNER_APP_PRIVATE_KEY: ${{ secrets.CI_RUNNER_APP_PRIVATE_KEY }}
+      HCLOUD_CI_TOKEN: ${{ secrets.HCLOUD_CI_TOKEN }}
