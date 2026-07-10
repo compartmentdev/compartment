@@ -8,6 +8,8 @@ readonly CHART_DIR="${REPO_ROOT}/spike/chart/compartment"
 export CHART_DIR
 readonly STATE_DIR="${TMPDIR:-/tmp}/compartment-spike-${USER}"
 readonly LOCK_FILE="${STATE_DIR}/resource.lock"
+readonly KIND_CLUSTER_FILE="${STATE_DIR}/kind-cluster-name"
+export KIND_CLUSTER_FILE
 readonly RESERVATIONS_FILE="${STATE_DIR}/reservations"
 readonly SOURCE_IMAGE_REFS=(
   ghcr.io/compartmentdev/compartment-api:latest
@@ -20,26 +22,18 @@ TRACK_IMAGE_REFS=()
 LOCK_HELD=false
 
 acquire_resource_lock() {
-  local owner_pid
   mkdir -p "${STATE_DIR}"
-  while ! (set -o noclobber; printf '%s\n' "$$" >"${LOCK_FILE}") 2>/dev/null; do
-    owner_pid="$(head -1 "${LOCK_FILE}" 2>/dev/null || true)"
-    if [[ ! "${owner_pid}" =~ ^[0-9]+$ ]] \
-      || ! kill -0 "${owner_pid}" 2>/dev/null \
-      || ! ps -p "${owner_pid}" -o command= | grep -Eq 'spike/env/(up|up-kind|down)\.sh'; then
-      echo "Reclaiming stale shared image/port lock."
-      rm -f "${LOCK_FILE}"
-      continue
-    fi
+  exec 9>"${LOCK_FILE}"
+  if ! lockf -t 0 9; then
     echo "Waiting for the shared image/port lock..."
-    sleep 1
-  done
+    lockf 9
+  fi
   LOCK_HELD=true
 }
 
 release_resource_lock() {
   if [[ "${LOCK_HELD}" == true ]]; then
-    rm -f "${LOCK_FILE}"
+    exec 9>&-
     LOCK_HELD=false
   fi
 }

@@ -5,13 +5,13 @@
 {{- $data = $existing.data -}}
 {{- end -}}
 {{- $postgresPassword := default (default (sha256sum (randAlphaNum 64)) .Values.secrets.postgresPassword) (dig "postgres-password" "" $data | b64dec) -}}
-{{- $registryReadPassword := default (default (sha256sum (randAlphaNum 64)) (dig "registry-read-password" "" $data | b64dec)) .Values.secrets.registryReadPassword -}}
-{{- $registryWritePassword := default (default (sha256sum (randAlphaNum 64)) (dig "registry-write-password" "" $data | b64dec)) .Values.secrets.registryWritePassword -}}
-{{- $edgeToken := default (default (sha256sum (randAlphaNum 64)) (dig "edge-token" "" $data | b64dec)) .Values.secrets.edgeToken -}}
-{{- $runtimeControlToken := default (default (sha256sum (randAlphaNum 64)) (dig "runtime-control-token" "" $data | b64dec)) .Values.secrets.runtimeControlToken -}}
-{{- $sessionSecret := default (default (sha256sum (randAlphaNum 64)) (dig "session-secret" "" $data | b64dec)) .Values.secrets.sessionSecret -}}
-{{- $systemToken := default (default (sha256sum (randAlphaNum 64)) (dig "system-token" "" $data | b64dec)) .Values.secrets.systemToken -}}
-{{- $variablesMasterKey := default (default (sha256sum (randAlphaNum 64)) (dig "variables-master-key" "" $data | b64dec)) .Values.secrets.variablesMasterKey -}}
+{{- $registryReadPassword := default (default (sha256sum (randAlphaNum 64)) .Values.secrets.registryReadPassword) (dig "registry-read-password" "" $data | b64dec) -}}
+{{- $registryWritePassword := default (default (sha256sum (randAlphaNum 64)) .Values.secrets.registryWritePassword) (dig "registry-write-password" "" $data | b64dec) -}}
+{{- $edgeToken := default (default (sha256sum (randAlphaNum 64)) .Values.secrets.edgeToken) (dig "edge-token" "" $data | b64dec) -}}
+{{- $runtimeControlToken := default (default (sha256sum (randAlphaNum 64)) .Values.secrets.runtimeControlToken) (dig "runtime-control-token" "" $data | b64dec) -}}
+{{- $sessionSecret := default (default (sha256sum (randAlphaNum 64)) .Values.secrets.sessionSecret) (dig "session-secret" "" $data | b64dec) -}}
+{{- $systemToken := default (default (sha256sum (randAlphaNum 64)) .Values.secrets.systemToken) (dig "system-token" "" $data | b64dec) -}}
+{{- $variablesMasterKey := default (default (sha256sum (randAlphaNum 64)) .Values.secrets.variablesMasterKey) (dig "variables-master-key" "" $data | b64dec) -}}
 apiVersion: v1
 kind: Secret
 metadata:

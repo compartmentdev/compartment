@@ -12,7 +12,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 validate_track_id "${TRACK_ID}"
-readonly CLUSTER_NAME="cpt-${TRACK_ID}"
 
 if ! docker context inspect colima >/dev/null 2>&1; then
   echo "Docker context 'colima' is unavailable; run spike/env/doctor.sh first." >&2
@@ -22,6 +21,11 @@ docker context use colima >/dev/null
 
 acquire_resource_lock
 trap release_resource_lock EXIT INT TERM
+CLUSTER_NAME="cpt-${TRACK_ID}"
+if [[ "${TRACK_ID}" == kind && -s "${KIND_CLUSTER_FILE}" ]]; then
+  CLUSTER_NAME="$(cat "${KIND_CLUSTER_FILE}")"
+fi
+readonly CLUSTER_NAME
 read -r RUNTIME _ < <(read_reservation "${TRACK_ID}") || true
 
 if [[ -z "${RUNTIME:-}" ]]; then
@@ -53,4 +57,7 @@ case "${RUNTIME}" in
 esac
 
 release_reservation "${TRACK_ID}"
+if [[ "${RUNTIME}" == kind ]]; then
+  rm -f "${KIND_CLUSTER_FILE}"
+fi
 echo "Removed ${CLUSTER_NAME}; other spike clusters were not touched."

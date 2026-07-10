@@ -6,17 +6,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 readonly TRACK_ID=kind
-readonly CLUSTER_NAME=cpt-kind
-readonly CONTEXT=kind-cpt-kind
+readonly CLUSTER_OWNER="$$-${RANDOM}-${RANDOM}"
+readonly CLUSTER_NAME="cpt-kind-${CLUSTER_OWNER}"
+readonly CONTEXT="kind-${CLUSTER_NAME}"
 "${SCRIPT_DIR}/doctor.sh"
 
 reservation_active=false
-cluster_created=false
+cluster_creation_started=false
 cleanup_failed_up() {
   trap - ERR INT TERM
   release_resource_lock
-  if [[ "${cluster_created}" == true ]]; then
+  if [[ "${cluster_creation_started}" == true ]]; then
     kind delete cluster --name "${CLUSTER_NAME}" >/dev/null 2>&1 || true
+  fi
+  if [[ "$(cat "${KIND_CLUSTER_FILE}" 2>/dev/null || true)" == "${CLUSTER_NAME}" ]]; then
+    rm -f "${KIND_CLUSTER_FILE}"
   fi
   if [[ "${reservation_active}" == true ]]; then
     acquire_resource_lock
@@ -27,16 +31,23 @@ cleanup_failed_up() {
 trap cleanup_failed_up ERR INT TERM
 
 acquire_resource_lock
+if [[ -s "${KIND_CLUSTER_FILE}" ]]; then
+  echo "A kind spike cluster is already recorded; run down.sh kind first." >&2
+  release_resource_lock
+  exit 1
+fi
 read -r HOST_HTTP_PORT HOST_HTTPS_PORT < <(reserve_ports "${TRACK_ID}" kind)
 reservation_active=true
+printf '%s\n' "${CLUSTER_NAME}" >"${KIND_CLUSTER_FILE}"
 prepare_track_images "${TRACK_ID}"
 release_resource_lock
 
 readonly KIND_CONFIG="${STATE_DIR}/kind-${TRACK_ID}.yaml"
-sed -e "s/HOST_HTTP_PORT/${HOST_HTTP_PORT}/" -e "s/HOST_HTTPS_PORT/${HOST_HTTPS_PORT}/" \
+sed -e "s/HOST_HTTP_PORT/${HOST_HTTP_PORT}/" \
+  -e "s/HOST_HTTPS_PORT/${HOST_HTTPS_PORT}/" \
   "${SPIKE_ENV_DIR}/kind.yaml" >"${KIND_CONFIG}"
+cluster_creation_started=true
 kind create cluster --name "${CLUSTER_NAME}" --config "${KIND_CONFIG}" --wait 2m
-cluster_created=true
 import_kind_images "${CLUSTER_NAME}" "${TRACK_ID}"
 
 kubectl --context "${CONTEXT}" create namespace compartment --dry-run=client -o yaml \

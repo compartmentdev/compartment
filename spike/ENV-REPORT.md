@@ -33,11 +33,12 @@ Create the PSA stand:
 
 ```bash
 spike/env/up-kind.sh
-spike/bench/deploy.sh kind-cpt-kind
+CONTEXT=kind-cpt-kind-... # use the context printed by up-kind.sh
+spike/bench/deploy.sh "$CONTEXT"
 spike/env/down.sh kind
 ```
 
-The lifecycle scripts run `pnpm self-hosted:build`, tag the result with the track ID, import those immutable per-track references, install Helm with `--wait`, and print the context and host URLs. An atomic PID lock serializes local image builds and host-port allocation and recovers stale owners. Reservations remain in `${TMPDIR:-/tmp}/compartment-spike-$USER/reservations` until `down.sh` releases them.
+The lifecycle scripts run `pnpm self-hosted:build`, tag the result with the track ID, import those immutable per-track references, install Helm with `--wait`, and print the context and host URLs. The macOS `lockf` primitive serializes local image builds and host-port allocation and releases automatically if its owner exits. Reservations remain in `${TMPDIR:-/tmp}/compartment-spike-$USER/reservations` until `down.sh` releases them.
 
 ## Component compatibility
 

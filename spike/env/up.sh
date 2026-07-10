@@ -15,13 +15,15 @@ validate_track_id "${TRACK_ID}"
 "${SCRIPT_DIR}/doctor.sh"
 
 readonly CLUSTER_NAME="cpt-${TRACK_ID}"
+readonly CLUSTER_OWNER="$$-${RANDOM}-${RANDOM}"
 reservation_active=false
-cluster_created=false
+cluster_creation_started=false
 
 cleanup_failed_up() {
   trap - ERR INT TERM
   release_resource_lock
-  if [[ "${cluster_created}" == true ]]; then
+  if [[ "${cluster_creation_started}" == true ]] \
+    && docker ps --all --quiet --filter "label=compartment.spike.owner=${CLUSTER_OWNER}" | grep -q .; then
     k3d cluster delete "${CLUSTER_NAME}" >/dev/null 2>&1 || true
   fi
   if [[ "${reservation_active}" == true ]]; then
@@ -33,17 +35,23 @@ cleanup_failed_up() {
 trap cleanup_failed_up ERR INT TERM
 
 acquire_resource_lock
+if k3d cluster list --no-headers | awk '{print $1}' | grep -Fxq "${CLUSTER_NAME}"; then
+  echo "Cluster ${CLUSTER_NAME} already exists." >&2
+  release_resource_lock
+  exit 1
+fi
 read -r HOST_HTTP_PORT HOST_HTTPS_PORT < <(reserve_ports "${TRACK_ID}" k3d)
 reservation_active=true
 prepare_track_images "${TRACK_ID}"
 release_resource_lock
 
+cluster_creation_started=true
 k3d cluster create "${CLUSTER_NAME}" \
+  --runtime-label "compartment.spike.owner=${CLUSTER_OWNER}@server:0" \
   --k3s-arg '--disable=traefik@server:*' \
   --port "127.0.0.1:${HOST_HTTP_PORT}:30080@server:0" \
   --port "127.0.0.1:${HOST_HTTPS_PORT}:30443@server:0" \
   --wait
-cluster_created=true
 import_k3d_images "${CLUSTER_NAME}" "${TRACK_ID}"
 
 readonly CONTEXT="k3d-${CLUSTER_NAME}"

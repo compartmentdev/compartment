@@ -7,6 +7,12 @@ readonly SCRIPT_DIR
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 readonly REPO_ROOT
 
+if ! docker context inspect colima >/dev/null 2>&1; then
+  echo "Docker context 'colima' is unavailable; run spike/env/doctor.sh first." >&2
+  exit 1
+fi
+docker context use colima >/dev/null
+
 docker build --tag compartment-bench-ws:local "${SCRIPT_DIR}/ws-server"
 case "${CONTEXT}" in
   k3d-*)
