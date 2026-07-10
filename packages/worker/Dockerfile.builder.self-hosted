@@ -56,11 +56,27 @@ COPY --chmod=755 packages/worker/scripts/build-buildkit-runc.sh /usr/local/bin/b
 
 RUN build-buildkit-runc
 
-FROM ${COMPARTMENT_BUILDKIT_BASE_IMAGE}
+FROM ${COMPARTMENT_BUILDKIT_BASE_IMAGE} AS buildkit-runtime-assets
+
+FROM go-build-base AS runtime-root
+
+RUN apk upgrade --no-cache \
+  && apk add --no-cache fuse3 ip6tables iptables openssh openssl pigz util-linux-misc xz \
+  && ln -s fusermount3 /usr/bin/fusermount \
+  && mkdir -p /etc/buildkit/cdi /etc/cdi /var/run/cdi \
+  && rm -rf /go /usr/local/go /workspace
+
+FROM scratch
 
 LABEL org.opencontainers.image.source="https://github.com/compartmentdev/compartment"
 
-RUN apk upgrade --no-cache
+COPY --from=runtime-root / /
+COPY --from=buildkit-runtime-assets \
+  /usr/bin/buildctl-daemonless.sh \
+  /usr/bin/buildkit-qemu-* \
+  /usr/bin/buildkitd-entrypoint \
+  /usr/bin/with-cgroupfs-remount \
+  /usr/bin/
 
 COPY --from=buildkit-build /out/buildctl /usr/bin/buildctl
 COPY --from=buildkit-build /out/buildkitd /usr/bin/buildkitd
@@ -73,3 +89,11 @@ COPY --from=runc-build /out/buildkit-runc /usr/bin/buildkit-runc
 RUN buildctl --version \
   && buildkitd --version \
   && buildkit-runc --version
+
+ENV BUILDKIT_SETUP_CGROUPV2_ROOT=1
+
+VOLUME /var/lib/buildkit
+
+WORKDIR /
+
+ENTRYPOINT ["/usr/bin/buildkitd-entrypoint"]
