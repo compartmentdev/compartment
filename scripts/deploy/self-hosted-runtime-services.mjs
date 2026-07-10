@@ -1,4 +1,4 @@
-const selfHostedRuntimeServices = Object.freeze(['api', 'caddy', 'edge', 'worker']);
+const selfHostedRuntimeServices = Object.freeze(['api', 'caddy', 'edge', 'worker', 'builder']);
 export const selfHostedRuntimeImageArtifacts = Object.freeze([...selfHostedRuntimeServices, 'runtime-probe']);
 export const defaultSelfHostedImageRepositoryPrefix = 'ghcr.io/compartmentdev';
 const dockerHubSelfHostedImageRepositoryPrefix = 'docker.io/compartmentdev';

@@ -2,6 +2,7 @@ import type { SystemServiceName } from '@compartment/contracts';
 import type { CommandResult } from './command-runner.types';
 import { runDockerCommand } from './docker-command';
 import { selfHostedCoreRuntimeServiceNames } from './docker-runtime.service-names';
+import { legacySelfHostedBuilderImageRef } from './self-hosted-runtime-selection';
 import type { DockerExecutionContext } from './docker-runtime.types';
 import type { SelfHostedImageRefs } from './self-hosted-env.types';
 
@@ -9,7 +10,6 @@ const mutableRegistryImageTags: ReadonlySet<string> = new Set<string>(['latest',
 const postgresBackedSelfHostedRuntimeServiceNames: readonly SystemServiceName[] = ['api', 'edge', 'caddy'];
 const thirdPartySelfHostedRuntimeImageRefs: ReadonlyMap<SystemServiceName, string> = new Map<SystemServiceName, string>(
   [
-    ['builder', 'moby/buildkit:v0.30.0'],
     ['postgres', 'postgres:16'],
     ['registry', 'registry:2'],
   ],
@@ -47,7 +47,7 @@ export function usesMutableRegistryImageTag(imageRefs: SelfHostedImageRefs): boo
 function readRequiredRuntimeImageRefs(imageRefs: SelfHostedImageRefs): string[] {
   return [
     ...readCoreRuntimeImageRefs(imageRefs),
-    ...readThirdPartySelfHostedRuntimeImageRefs(selfHostedCoreRuntimeServiceNames, true),
+    ...readThirdPartySelfHostedRuntimeImageRefs(imageRefs, selfHostedCoreRuntimeServiceNames, true),
   ];
 }
 
@@ -62,6 +62,7 @@ function readCoreRuntimeImageRefs(imageRefs: SelfHostedImageRefs): string[] {
 }
 
 export function readThirdPartySelfHostedRuntimeImageRefs(
+  imageRefs: SelfHostedImageRefs,
   services: readonly SystemServiceName[],
   includeDependencies: boolean,
 ): string[] {
@@ -76,11 +77,15 @@ export function readThirdPartySelfHostedRuntimeImageRefs(
   if (includeDependencies && services.some(usesPostgresDependency)) {
     serviceNames.add('postgres');
   }
-  if (includeDependencies && services.includes('worker')) {
-    serviceNames.add('builder');
+  const selectedImageRefs: string[] = [...serviceNames].map(readRequiredThirdPartySelfHostedRuntimeImageRef);
+  if (
+    imageRefs.builderImage === legacySelfHostedBuilderImageRef &&
+    (services.includes('builder') || (includeDependencies && services.includes('worker')))
+  ) {
+    selectedImageRefs.push(legacySelfHostedBuilderImageRef);
   }
 
-  return [...serviceNames].map(readRequiredThirdPartySelfHostedRuntimeImageRef);
+  return selectedImageRefs;
 }
 
 function readRequiredThirdPartySelfHostedRuntimeImageRef(serviceName: SystemServiceName): string {

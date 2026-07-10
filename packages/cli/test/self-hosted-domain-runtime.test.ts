@@ -269,6 +269,7 @@ function createEnvironmentText(): string {
   return `COMPARTMENT_ACME_CA_URL=
 COMPARTMENT_ACME_EMAIL=admin@example.com
 COMPARTMENT_API_IMAGE=ghcr.io/compartmentdev/compartment-api:0.2.0
+COMPARTMENT_BUILDER_IMAGE=ghcr.io/compartmentdev/compartment-builder:0.2.0
 COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD=${generatedSelfHosted24ByteSecret}
 COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD=${generatedSelfHosted24ByteSecret}
 COMPARTMENT_BASE_DOMAIN=localhost

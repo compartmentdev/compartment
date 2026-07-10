@@ -52,8 +52,11 @@ jobs:
 
       - name: Build self-hosted images
         env:
+          COMPARTMENT_BUILDKIT_BASE_IMAGE: moby/buildkit:v0.31.1
+          COMPARTMENT_BUILDKIT_VERSION: v0.31.1
           COMPARTMENT_CADDY_BUILDER_IMAGE: public.ecr.aws/docker/library/caddy:2.11.4-builder
           COMPARTMENT_CADDY_RUNTIME_IMAGE: public.ecr.aws/docker/library/alpine:3.22
+          COMPARTMENT_GO_ALPINE_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.5-alpine3.23
           COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.5-bookworm
           COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
           COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
@@ -67,6 +70,7 @@ jobs:
         run: |
           docker image save \
             "docker.io/compartmentdev/compartment-api:sha-${PUBLISH_SHA}" \
+            "docker.io/compartmentdev/compartment-builder:sha-${PUBLISH_SHA}" \
             "docker.io/compartmentdev/compartment-caddy:sha-${PUBLISH_SHA}" \
             "docker.io/compartmentdev/compartment-edge:sha-${PUBLISH_SHA}" \
             "docker.io/compartmentdev/compartment-runtime-probe:sha-${PUBLISH_SHA}" \
@@ -149,9 +153,11 @@ jobs:
 
       - name: Push self-hosted images
         env:
-          COMPARTMENT_BUILDKIT_VERSION: v0.30.0
+          COMPARTMENT_BUILDKIT_BASE_IMAGE: moby/buildkit:v0.31.1
+          COMPARTMENT_BUILDKIT_VERSION: v0.31.1
           COMPARTMENT_CADDY_BUILDER_IMAGE: public.ecr.aws/docker/library/caddy:2.11.4-builder
           COMPARTMENT_CADDY_RUNTIME_IMAGE: public.ecr.aws/docker/library/alpine:3.22
+          COMPARTMENT_GO_ALPINE_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.5-alpine3.23
           COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.5-bookworm
           COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
           COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
@@ -160,7 +166,7 @@ jobs:
           PRIMARY_TAG: sha-${{ env.PUBLISH_SHA }}
           STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.PUBLISH_SHA }}
         run: |
-          common_args=(--push --provenance=mode=max --sbom=true)
+          common_args=(--push --pull --provenance=mode=max --sbom=true)
           node_args=(
             --build-arg "COMPARTMENT_NODE_BUILD_IMAGE=${COMPARTMENT_NODE_BUILD_IMAGE}"
             --build-arg "COMPARTMENT_NODE_RUNTIME_IMAGE=${COMPARTMENT_NODE_RUNTIME_IMAGE}"
@@ -169,6 +175,11 @@ jobs:
             "${node_args[@]}"
             --build-arg "COMPARTMENT_BUILDKIT_VERSION=${COMPARTMENT_BUILDKIT_VERSION}"
             --build-arg "COMPARTMENT_GO_BUILD_IMAGE=${COMPARTMENT_GO_BUILD_IMAGE}"
+          )
+          builder_args=(
+            --build-arg "COMPARTMENT_BUILDKIT_BASE_IMAGE=${COMPARTMENT_BUILDKIT_BASE_IMAGE}"
+            --build-arg "COMPARTMENT_BUILDKIT_VERSION=${COMPARTMENT_BUILDKIT_VERSION}"
+            --build-arg "COMPARTMENT_GO_ALPINE_BUILD_IMAGE=${COMPARTMENT_GO_ALPINE_BUILD_IMAGE}"
           )
           caddy_args=(
             --build-arg "COMPARTMENT_CADDY_BUILDER_IMAGE=${COMPARTMENT_CADDY_BUILDER_IMAGE}"
@@ -217,6 +228,7 @@ jobs:
           }
 
           push_dockerhub_image compartment-api packages/api/Dockerfile.self-hosted "${node_args[@]}"
+          push_dockerhub_image compartment-builder packages/worker/Dockerfile.builder.self-hosted "${builder_args[@]}"
           push_dockerhub_image compartment-caddy packages/edge/Dockerfile.caddy.self-hosted "${caddy_args[@]}"
           push_dockerhub_image compartment-edge packages/edge/Dockerfile.self-hosted "${node_args[@]}"
           push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"

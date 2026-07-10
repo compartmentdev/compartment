@@ -11,5 +11,8 @@ services:
   caddy:
     pull_policy: never
 
+  builder:
+    pull_policy: never
+
   worker:
     pull_policy: never

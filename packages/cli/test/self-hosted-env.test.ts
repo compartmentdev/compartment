@@ -136,6 +136,7 @@ describe('self-hosted environment helpers', (): void => {
     });
 
     expect(rendered.values.COMPARTMENT_API_IMAGE).toBe('docker.io/compartmentdev/compartment-api:1.2.3');
+    expect(rendered.values.COMPARTMENT_BUILDER_IMAGE).toBe('docker.io/compartmentdev/compartment-builder:1.2.3');
     expect(rendered.values.COMPARTMENT_CADDY_IMAGE).toBe('docker.io/compartmentdev/compartment-caddy:1.2.3');
     expect(rendered.values.COMPARTMENT_RUNTIME_PROBE_IMAGE).toBe(
       'docker.io/compartmentdev/compartment-runtime-probe:1.2.3',
@@ -145,11 +146,18 @@ describe('self-hosted environment helpers', (): void => {
   it('reads installed self-hosted image refs from environment text', (): void => {
     expect(readSelfHostedImageRefsFromEnvironmentText(buildTemplateText())).toEqual({
       apiImage: 'docker.io/compartmentdev/compartment-api:latest',
+      builderImage: 'docker.io/compartmentdev/compartment-builder:latest',
       caddyImage: 'docker.io/compartmentdev/compartment-caddy:latest',
       edgeImage: 'docker.io/compartmentdev/compartment-edge:latest',
       runtimeProbeImage: 'docker.io/compartmentdev/compartment-runtime-probe:latest',
       workerImage: 'docker.io/compartmentdev/compartment-worker:latest',
     });
+  });
+
+  it('reads the legacy builder image ref from installed environments without a builder image variable', (): void => {
+    expect(
+      readSelfHostedImageRefsFromEnvironmentText(buildTemplateTextWithout('COMPARTMENT_BUILDER_IMAGE')).builderImage,
+    ).toBe('moby/buildkit:v0.30.0');
   });
 
   it('renders managed-domain TLS values for managed self-hosted installs', (): void => {
@@ -570,6 +578,7 @@ function buildTemplateText(): string {
   return `BUILDKIT_ADDR=tcp://builder:1234
 COMPARTMENT_API_URL=http://127.0.0.1:39444
 COMPARTMENT_API_IMAGE=docker.io/compartmentdev/compartment-api:latest
+COMPARTMENT_BUILDER_IMAGE=docker.io/compartmentdev/compartment-builder:latest
 COMPARTMENT_RUNTIME_PROBE_IMAGE=docker.io/compartmentdev/compartment-runtime-probe:latest
 COMPARTMENT_ACME_CA_URL=
 COMPARTMENT_ACME_EMAIL=

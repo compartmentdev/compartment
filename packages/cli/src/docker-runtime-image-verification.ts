@@ -11,6 +11,7 @@ import {
   verifyLocalSelfHostedRuntimeImageSignatures,
 } from './docker-runtime-signature';
 import { selfHostedBuildRuntimeServiceNames } from './docker-runtime.service-names';
+import type { SelfHostedImageRefs } from './self-hosted-env.types';
 import type {
   DockerExecutionContext,
   PrepareSelfHostedRuntimeImagesInput,
@@ -142,7 +143,12 @@ async function verifyRegistryRuntimeImagesBeforeStart(input: RuntimeImagesBefore
 
 async function pullMissingVerifiedRuntimeDependencies(input: RuntimeImagesBeforeStartVerification): Promise<void> {
   if (input.pullMissingRegistryImages) {
-    await pullMissingThirdPartyRuntimeImagesBeforeStart(input.context, input.services, input.includePullDependencies);
+    await pullMissingThirdPartyRuntimeImagesBeforeStart(
+      input.context,
+      input.runtimeInput.imageRefs,
+      input.services,
+      input.includePullDependencies,
+    );
   }
 }
 
@@ -178,10 +184,11 @@ async function pullSignedRuntimeImagesBeforeStart(input: RuntimeImagesBeforeStar
 
 async function pullMissingThirdPartyRuntimeImagesBeforeStart(
   context: DockerExecutionContext,
+  runtimeImageRefs: SelfHostedImageRefs,
   services: readonly SystemServiceName[],
   includeDependencies: boolean,
 ): Promise<void> {
-  const imageRefs: string[] = readThirdPartySelfHostedRuntimeImageRefs(services, includeDependencies);
+  const imageRefs: string[] = readThirdPartySelfHostedRuntimeImageRefs(runtimeImageRefs, services, includeDependencies);
   const missingImageRefs: string[] = await readMissingDockerImageRefs(context, imageRefs);
 
   for (const imageRef of missingImageRefs) {
@@ -209,15 +216,16 @@ export async function pullVerifiedRegistryRuntimeImages(
     return signedPullResult;
   }
 
-  return await pullThirdPartySelfHostedRuntimeImages(context, services, includePullDependencies);
+  return await pullThirdPartySelfHostedRuntimeImages(context, input.imageRefs, services, includePullDependencies);
 }
 
 async function pullThirdPartySelfHostedRuntimeImages(
   context: DockerExecutionContext,
+  runtimeImageRefs: SelfHostedImageRefs,
   services: readonly SystemServiceName[],
   includeDependencies: boolean,
 ): Promise<CommandResult | null> {
-  for (const imageRef of readThirdPartySelfHostedRuntimeImageRefs(services, includeDependencies)) {
+  for (const imageRef of readThirdPartySelfHostedRuntimeImageRefs(runtimeImageRefs, services, includeDependencies)) {
     const pullResult: CommandResult = await runDockerCommand(context, ['pull', imageRef]);
     if (pullResult.exitCode !== 0) {
       return pullResult;

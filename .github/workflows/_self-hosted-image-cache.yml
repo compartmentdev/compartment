@@ -77,8 +77,11 @@ jobs:
       - name: Build self-hosted images
         if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'
         env:
+          COMPARTMENT_BUILDKIT_BASE_IMAGE: moby/buildkit:v0.31.1
+          COMPARTMENT_BUILDKIT_VERSION: v0.31.1
           COMPARTMENT_CADDY_BUILDER_IMAGE: public.ecr.aws/docker/library/caddy:2.11.4-builder
           COMPARTMENT_CADDY_RUNTIME_IMAGE: public.ecr.aws/docker/library/alpine:3.22
+          COMPARTMENT_GO_ALPINE_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.5-alpine3.23
           COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.5-bookworm
           COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
           COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
@@ -94,6 +97,7 @@ jobs:
           set +a
 
           docker save "$COMPARTMENT_API_IMAGE" --output ./.compartment/self-hosted-image-cache/api.tar
+          docker save "$COMPARTMENT_BUILDER_IMAGE" --output ./.compartment/self-hosted-image-cache/builder.tar
           docker save "$COMPARTMENT_CADDY_IMAGE" --output ./.compartment/self-hosted-image-cache/caddy.tar
           docker save "$COMPARTMENT_EDGE_IMAGE" --output ./.compartment/self-hosted-image-cache/edge.tar
           docker save "$COMPARTMENT_RUNTIME_PROBE_IMAGE" --output ./.compartment/self-hosted-image-cache/runtime-probe.tar
@@ -102,7 +106,7 @@ jobs:
       - name: Load cached self-hosted images
         if: steps.self-hosted-image-cache.outputs.cache-hit == 'true'
         run: |
-          for service in api caddy edge worker runtime-probe; do
+          for service in api builder caddy edge worker runtime-probe; do
             docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
           done
 

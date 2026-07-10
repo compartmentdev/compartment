@@ -226,9 +226,17 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
 
   builder:
-    image: moby/buildkit:v0.30.0
+    image: ${COMPARTMENT_BUILDER_IMAGE}
     restart: unless-stopped
-    command: ['--addr', 'unix:///run/buildkit/buildkitd.sock', '--group', '${COMPARTMENT_RUNTIME_GID}']
+    command:
+      [
+        '--addr',
+        'unix:///run/buildkit/buildkitd.sock',
+        '--group',
+        '${COMPARTMENT_RUNTIME_GID}',
+        '--oci-worker-net',
+        'bridge',
+      ]
     privileged: true
     volumes:
       - compartment-buildkit-socket:/run/buildkit

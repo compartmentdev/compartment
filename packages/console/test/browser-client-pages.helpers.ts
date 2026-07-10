@@ -57,9 +57,9 @@ export function createLoaderArgs(request: Request, params: TestRouteParams = {})
   return {
     context: undefined,
     params,
+    pattern: new URL(request.url).pathname,
     request,
-    unstable_pattern: new URL(request.url).pathname,
-    unstable_url: new URL(request.url),
+    url: new URL(request.url),
   };
 }
 

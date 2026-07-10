@@ -209,6 +209,9 @@ describe.sequential('update runtime', (): void => {
       'COMPARTMENT_RUNTIME_PROBE_IMAGE=ghcr.io/compartmentdev/compartment-runtime-probe:1.2.3',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
+      'COMPARTMENT_BUILDER_IMAGE=ghcr.io/compartmentdev/compartment-builder:1.2.3',
+    );
+    await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_LOG_LEVEL=debug',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(

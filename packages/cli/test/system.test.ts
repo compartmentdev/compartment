@@ -497,6 +497,7 @@ COMPARTMENT_API_URL=http://127.0.0.1:39444
 COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD=${generatedSelfHosted24ByteSecret}
 COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD=${generatedSelfHosted24ByteSecret}
 COMPARTMENT_API_IMAGE=${imageRepositoryPrefix}/compartment-api:0.2.0
+COMPARTMENT_BUILDER_IMAGE=${imageRepositoryPrefix}/compartment-builder:0.2.0
 COMPARTMENT_CADDY_IMAGE=${imageRepositoryPrefix}/compartment-caddy:0.2.0
 COMPARTMENT_EDGE_IMAGE=${imageRepositoryPrefix}/compartment-edge:0.2.0
 COMPARTMENT_RUNTIME_PROBE_IMAGE=${imageRepositoryPrefix}/compartment-runtime-probe:0.2.0

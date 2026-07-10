@@ -20,7 +20,7 @@ that draft, then publishes the stable release only after the upload succeeds.
 
 Before pushing a tag, the publish job scans each self-hosted runtime image artifact with Trivy and Docker Scout and fails before publication on fixable high or critical vulnerabilities. The scan does not stop on the first failing image; it reports every failing image before exiting.
 
-The published image artifact set includes the long-running runtime services (`api`, `caddy`, `edge`, `worker`) and the one-shot `runtime-probe` image used by the node agent for readiness and network probes.
+The published image artifact set includes the long-running runtime services (`api`, `builder`, `caddy`, `edge`, `worker`) and the one-shot `runtime-probe` image used by the node agent for readiness and network probes.
 
 Pull request and main CI build or restore the self-hosted image cache once per commit, then fan out e2e jobs and a separate self-hosted image security gate from that same cache. The gate loads the cached tar images and scans the exact refs from the rendered `.env.self-hosted` with the same Trivy and Docker Scout policy before the workflow can pass. Main publish runs only after main CI succeeds for the same commit. Fork pull requests cannot receive Docker Hub credentials, so they run the Trivy gate only; internal pull requests, main CI, and publish workflows keep Docker Scout enabled.
 

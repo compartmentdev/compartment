@@ -24,7 +24,7 @@ const originalDockerTlsVerify: string | undefined = process.env.DOCKER_TLS_VERIF
 const mocks: DockerClientTestMocks = vi.hoisted(
   (): DockerClientTestMocks => ({
     createdClients: [],
-    dockerConstructor: vi.fn<DockerFactory>((): MockDockerClient => {
+    dockerConstructor: vi.fn<DockerFactory>(function DockerConstructor(): MockDockerClient {
       const client: MockDockerClient = {
         dockerCertPath: process.env.DOCKER_CERT_PATH,
         dockerHost: process.env.DOCKER_HOST,

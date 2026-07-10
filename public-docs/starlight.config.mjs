@@ -41,9 +41,12 @@ const docsSidebar = [
     label: 'Reference',
     items: [
       'reference/cli-reference',
-      { label: 'Generated CLI Reference', autogenerate: { directory: 'reference/generated/cli' } },
+      { label: 'Generated CLI Reference', items: [{ autogenerate: { directory: 'reference/generated/cli' } }] },
       'reference/schema-reference',
-      { label: 'Generated Schema Reference', autogenerate: { directory: 'reference/generated/schema' } },
+      {
+        label: 'Generated Schema Reference',
+        items: [{ autogenerate: { directory: 'reference/generated/schema' } }],
+      },
       'reference/glossary',
     ],
   },

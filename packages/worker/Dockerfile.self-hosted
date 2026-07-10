@@ -2,7 +2,9 @@
 
 ARG COMPARTMENT_NODE_BUILD_IMAGE=node:24.15.0-bookworm
 ARG COMPARTMENT_NODE_RUNTIME_IMAGE=node:24.15.0-bookworm-slim
-ARG COMPARTMENT_BUILDKIT_VERSION=v0.30.0
+ARG COMPARTMENT_BUILDKIT_VERSION=v0.31.1
+ARG COMPARTMENT_CONTAINERD_VERSION=v2.2.6
+ARG COMPARTMENT_BUILDKIT_X_CRYPTO_VERSION=v0.53.0
 ARG COMPARTMENT_GO_BUILD_IMAGE=golang:1.26.5-bookworm
 
 FROM ${COMPARTMENT_NODE_BUILD_IMAGE} AS build
@@ -21,26 +23,29 @@ RUN HUSKY=0 NODE_ENV=production pnpm --filter=@compartment/worker deploy --legac
 FROM --platform=$BUILDPLATFORM ${COMPARTMENT_GO_BUILD_IMAGE} AS buildctl-build
 
 ARG COMPARTMENT_BUILDKIT_VERSION
-ARG TARGETARCH=amd64
-ARG TARGETOS=linux
+ARG COMPARTMENT_BUILDKIT_X_CRYPTO_VERSION
+ARG COMPARTMENT_CONTAINERD_VERSION
+ARG TARGETARCH
+ARG TARGETOS
 
-ENV GOTOOLCHAIN=local
+ENV COMPARTMENT_BUILDKIT_TARGET=buildctl \
+  GOTOOLCHAIN=local
 
 WORKDIR /workspace
 
-COPY --chmod=755 packages/worker/scripts/build-buildctl.sh /usr/local/bin/build-buildctl
+COPY --chmod=755 packages/worker/scripts/build-buildkit.sh /usr/local/bin/build-buildkit
 
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends ca-certificates git \
   && rm -rf /var/lib/apt/lists/*
 
-RUN build-buildctl
+RUN build-buildkit
 
 FROM --platform=$BUILDPLATFORM ${COMPARTMENT_GO_BUILD_IMAGE} AS railpack-build
 
-ARG COMPARTMENT_RAILPACK_VERSION=v0.23.0
-ARG TARGETARCH=amd64
-ARG TARGETOS=linux
+ARG COMPARTMENT_RAILPACK_VERSION=v0.30.1
+ARG TARGETARCH
+ARG TARGETOS
 
 ENV GOTOOLCHAIN=local
 

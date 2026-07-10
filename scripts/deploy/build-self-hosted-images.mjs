@@ -9,12 +9,15 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { parseSelfHostedEnvFile, readRequiredSelfHostedEnvValue } from './self-hosted-env-file.mjs';
 
 const defaultBaseImages = Object.freeze({
+  COMPARTMENT_BUILDKIT_BASE_IMAGE: 'moby/buildkit:v0.31.1',
   COMPARTMENT_CADDY_BUILDER_IMAGE: 'caddy:2.11.4-builder',
   COMPARTMENT_CADDY_RUNTIME_IMAGE: 'alpine:3.22',
+  COMPARTMENT_GO_ALPINE_BUILD_IMAGE: 'golang:1.26.5-alpine3.23',
   COMPARTMENT_GO_BUILD_IMAGE: 'golang:1.26.5-bookworm',
   COMPARTMENT_NODE_BUILD_IMAGE: 'node:24.15.0-bookworm',
   COMPARTMENT_NODE_RUNTIME_IMAGE: 'node:24.15.0-bookworm-slim',
 });
+const defaultBuildKitVersion = 'v0.31.1';
 const dockerRateLimitRetryDelaysMs = Object.freeze([90_000, 180_000, 300_000]);
 const capturedOutputTailMaxLength = 96_000;
 const dockerRegistryRateLimitPatterns = [
@@ -37,6 +40,7 @@ export async function buildSelfHostedImages(input) {
 }
 
 function buildSelfHostedImageBuildPlan(envValues, env) {
+  const buildKitVersion = env.COMPARTMENT_BUILDKIT_VERSION ?? defaultBuildKitVersion;
   const nodeArgs = [
     '--build-arg',
     `COMPARTMENT_NODE_BUILD_IMAGE=${readBaseImage(env, 'COMPARTMENT_NODE_BUILD_IMAGE')}`,
@@ -45,6 +49,22 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
   ];
 
   return [
+    {
+      args: [
+        '--build-arg',
+        `COMPARTMENT_BUILDKIT_BASE_IMAGE=${readBaseImage(env, 'COMPARTMENT_BUILDKIT_BASE_IMAGE')}`,
+        '--build-arg',
+        `COMPARTMENT_BUILDKIT_VERSION=${buildKitVersion}`,
+        '--build-arg',
+        `COMPARTMENT_GO_ALPINE_BUILD_IMAGE=${readBaseImage(env, 'COMPARTMENT_GO_ALPINE_BUILD_IMAGE')}`,
+        '--tag',
+        readRequiredSelfHostedEnvValue(envValues, 'COMPARTMENT_BUILDER_IMAGE', 'the self-hosted env file'),
+        '--file',
+        'packages/worker/Dockerfile.builder.self-hosted',
+        '.',
+      ],
+      name: 'builder',
+    },
     {
       args: [
         ...nodeArgs,
@@ -70,6 +90,8 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
     {
       args: [
         ...nodeArgs,
+        '--build-arg',
+        `COMPARTMENT_BUILDKIT_VERSION=${buildKitVersion}`,
         '--build-arg',
         `COMPARTMENT_GO_BUILD_IMAGE=${readBaseImage(env, 'COMPARTMENT_GO_BUILD_IMAGE')}`,
         '--tag',
@@ -107,7 +129,7 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
       name: 'caddy',
     },
   ].map((build) => ({
-    args: ['buildx', 'build', '--load', ...build.args],
+    args: ['buildx', 'build', '--load', '--pull', ...build.args],
     name: build.name,
   }));
 }

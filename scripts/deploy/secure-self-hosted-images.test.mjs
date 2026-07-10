@@ -153,6 +153,7 @@ describe('scanSelfHostedImages', () => {
         'localhost:5000/custom-caddy:from-env',
         'localhost:5000/custom-edge:from-env',
         'localhost:5000/custom-worker:from-env',
+        'localhost:5000/custom-builder:from-env',
         'localhost:5000/custom-runtime-probe:from-env',
       ];
 
@@ -247,6 +248,7 @@ describe('scanSelfHostedImages', () => {
 
 function renderSelfHostedImageRefsEnv() {
   return `COMPARTMENT_API_IMAGE=localhost:5000/custom-api:from-env
+COMPARTMENT_BUILDER_IMAGE=localhost:5000/custom-builder:from-env
 COMPARTMENT_CADDY_IMAGE=localhost:5000/custom-caddy:from-env
 COMPARTMENT_EDGE_IMAGE=localhost:5000/custom-edge:from-env
 COMPARTMENT_WORKER_IMAGE=localhost:5000/custom-worker:from-env
@@ -404,7 +406,7 @@ import { appendFileSync } from 'node:fs';
 appendFileSync(process.env.COMMAND_ARGS_LOG, JSON.stringify({ file: 'docker', args: process.argv.slice(2) }) + '\\n');
 const imageRef = process.argv.at(-1) ?? '';
 const service = imageRef.match(/compartment-([a-z-]+):/)?.[1] ?? 'api';
-const digestByService = { api: '${'a'.repeat(64)}', caddy: '${'b'.repeat(64)}', edge: '${'c'.repeat(64)}', worker: '${'d'.repeat(64)}', 'runtime-probe': '${'e'.repeat(64)}' };
+const digestByService = { api: '${'a'.repeat(64)}', builder: '${'f'.repeat(64)}', caddy: '${'b'.repeat(64)}', edge: '${'c'.repeat(64)}', worker: '${'d'.repeat(64)}', 'runtime-probe': '${'e'.repeat(64)}' };
 process.stdout.write('sha256:' + digestByService[service]);
 `;
 }
@@ -435,6 +437,7 @@ function renderExpectedScannedImageRefs() {
     'ghcr.io/compartmentdev/compartment-caddy:sha-test',
     'ghcr.io/compartmentdev/compartment-edge:sha-test',
     'ghcr.io/compartmentdev/compartment-worker:sha-test',
+    'ghcr.io/compartmentdev/compartment-builder:sha-test',
     'ghcr.io/compartmentdev/compartment-runtime-probe:sha-test',
   ];
 }

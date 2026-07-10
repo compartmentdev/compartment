@@ -17,8 +17,6 @@
     ],
     "overrides": {
       "@esbuild-kit/core-utils>esbuild": "0.25.11",
-      "@grpc/grpc-js": "1.14.4",
-      "protobufjs": "7.6.1",
       "yaml-language-server@1.20.0>yaml": "2.8.3"
     }
   },
@@ -31,7 +29,7 @@
     "docs:check": "node ./scripts/docs/public-docs/check-public-docs.mjs",
     "dev:caddy": "dotenv -e .env -- node ./scripts/dev/run-caddy.mjs",
     "dev:registry": "dotenv -e .env -- node ./scripts/dev/ensure-dev-artifact-registry.mjs",
-    "self-hosted:build": "docker compose --project-directory . --env-file .env.self-hosted -f docker-compose.self-hosted.yml -f docker-compose.self-hosted.build.yml build api edge worker caddy runtime-probe",
+    "self-hosted:build": "docker compose --project-directory . --env-file .env.self-hosted -f docker-compose.self-hosted.yml -f docker-compose.self-hosted.build.yml build --pull api edge builder worker caddy runtime-probe",
     "self-hosted:check-runtime-surface": "node ./scripts/deploy/check-self-hosted-runtime-surface.mjs",
     "self-hosted:publish": "node ./scripts/deploy/publish-self-hosted-images.mjs",
     "self-hosted:up": "sh -lc 'mkdir -p .compartment/self-hosted/docker-work && docker compose --project-directory . --env-file .env.self-hosted -f docker-compose.self-hosted.yml up -d --wait api registry registry-auth edge worker caddy && mkdir -p .compartment/self-hosted && if [ -f .compartment/self-hosted/node-agent.pid ] && kill -0 \"$(cat .compartment/self-hosted/node-agent.pid)\" 2>/dev/null; then echo compartment-node-agent already running; else pnpm self-hosted:node-agent > .compartment/self-hosted/node-agent.log 2>&1 & echo $! > .compartment/self-hosted/node-agent.pid; fi'",
@@ -87,7 +85,7 @@
     "@commitlint/config-conventional": "^20.5.0",
     "@types/node": "^24.0.0",
     "@vercel/ncc": "^0.38.4",
-    "@vitest/coverage-v8": "^3.0.7",
+    "@vitest/coverage-v8": "^4.1.10",
     "dotenv": "^16.6.1",
     "dotenv-cli": "^11.0.0",
     "eslint": "^9.22.0",
@@ -97,9 +95,9 @@
     "lint-staged": "^16.4.0",
     "postject": "1.0.0-alpha.6",
     "prettier": "^3.8.3",
-    "tsx": "^4.19.3",
+    "tsx": "^4.23.0",
     "turbo": "^2.9.14",
     "typescript": "^5.8.2",
-    "vitest": "^3.0.7"
+    "vitest": "^4.1.10"
   }
 }

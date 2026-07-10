@@ -164,9 +164,9 @@ function createAuditEventsLoaderArgs(url: string): LoaderFunctionArgs {
   return {
     context: undefined,
     params: {},
+    pattern: '/audit',
     request: new Request(url),
-    unstable_pattern: '/audit',
-    unstable_url: new URL(url),
+    url: new URL(url),
   };
 }
 

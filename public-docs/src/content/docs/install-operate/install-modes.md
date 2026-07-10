@@ -21,7 +21,7 @@ With no explicit mode flags, `compartment install` allocates a managed base doma
 
 Registry installs verify Compartment runtime image signatures with the bundled CLI verifier before pulling images and before activating runtime files or starting containers. A failed verification leaves the install directory retryable.
 
-Registry installs pull the `api`, `caddy`, `edge`, `worker`, and `runtime-probe` images from GitHub Container Registry by default. Use `--image-registry docker-hub` when you need Docker Hub image refs instead. The selected registry is stored for later `system update` runs.
+Registry installs pull the `api`, `builder`, `caddy`, `edge`, `worker`, and `runtime-probe` images from GitHub Container Registry by default. Use `--image-registry docker-hub` when you need Docker Hub image refs instead. The selected registry is stored for later `system update` runs.
 
 Use other modes only when you need a different ownership model:
 

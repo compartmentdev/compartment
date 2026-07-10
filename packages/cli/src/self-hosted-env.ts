@@ -173,6 +173,7 @@ function buildResourceBackupOverrides(): Record<string, string> {
 function buildSelfHostedImageOverrides(imageRefs: SelfHostedImageRefs): Record<string, string> {
   return {
     COMPARTMENT_API_IMAGE: imageRefs.apiImage,
+    COMPARTMENT_BUILDER_IMAGE: imageRefs.builderImage,
     COMPARTMENT_CADDY_IMAGE: imageRefs.caddyImage,
     COMPARTMENT_EDGE_IMAGE: imageRefs.edgeImage,
     COMPARTMENT_RUNTIME_PROBE_IMAGE: imageRefs.runtimeProbeImage,
