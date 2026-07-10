@@ -3,7 +3,6 @@ import type {
   WorkerFailGitSourceSyncTaskRequest,
   WorkerCompleteGitSourceSyncTaskRequest,
 } from '@compartment/contracts';
-import { decryptVariableValueFromStorage } from '../../lib/variables-crypto';
 import { createId } from '../../lib/tokens';
 import { sourceSyncTaskLeaseMs } from '../../git-source.constants';
 import { findGitProviderRegistrationById } from '../../queries/git-provider-registration.query';
@@ -22,15 +21,11 @@ import type { SourceMutationTransaction, SourceRow } from '../../queries/source.
 import { getApiConfig, getApiDatabase } from '../../runtime/runtime-access';
 import { recordAuditEvent, writeCommittedAuditEventsToLocalFileSink } from '../audit-events.service';
 import type { AuditEventResult } from '../audit-events.service.types';
-import { mintGitHubInstallationToken, type GitHubInstallationTokenInput } from './github-app-http.adapter';
+import { getGitProviderAdapter } from './git-source-provider.registry';
 import { completeClaimedGitSourceSyncTask } from './git-source-sync-completion.service';
 import type { CompleteClaimedGitSourceSyncTaskResult } from './git-source-sync-completion.service.types';
 import { buildGitSourceSyncAuditEventInput } from './git-source-audit.service';
-import {
-  requireActiveSource,
-  requireEncryptedRegistrationField,
-  requireGitProviderRegistration,
-} from './git-source-resolution-worker.support';
+import { requireActiveSource, requireGitProviderRegistration } from './git-source-resolution-worker.support';
 
 const sourceSyncCanceledFailureReason: string = 'Source is no longer active for sync completion.';
 
@@ -206,7 +201,7 @@ async function buildClaimedSourceSyncTask(task: SourceSyncTaskRow): Promise<Work
       claimedByWorkerId: requireClaimedByWorkerId(task.claimedByWorkerId),
       secret: getApiConfig().runtimeControlToken,
     }),
-    installationToken: await mintGitHubInstallationToken(buildGitHubInstallationTokenInput(source, registration)),
+    installationToken: await mintSourceSyncRuntimeToken(source, registration),
     providerHost: source.providerHost,
     repositoryName: source.repositoryName,
     repositoryOwner: source.repositoryOwner,
@@ -217,20 +212,14 @@ async function buildClaimedSourceSyncTask(task: SourceSyncTaskRow): Promise<Work
   };
 }
 
-function buildGitHubInstallationTokenInput(
+async function mintSourceSyncRuntimeToken(
   source: SourceRow,
   registration: GitProviderRegistrationRow,
-): GitHubInstallationTokenInput {
-  return {
-    appId: requireEncryptedRegistrationField(registration.appId, 'app_id'),
-    installationId: source.providerInstallationId,
-    privateKeyPem: decryptVariableValueFromStorage(
-      requireEncryptedRegistrationField(registration.privateKeyPemCiphertext, 'private_key_pem_ciphertext'),
-      requireEncryptedRegistrationField(registration.privateKeyPemEncryptionKeyId, 'private_key_pem_encryption_key_id'),
-      getApiConfig().variablesMasterKey,
-    ),
-    providerHost: source.providerHost,
-  };
+): Promise<string> {
+  return await getGitProviderAdapter(registration.providerType).mintRuntimeAccessToken({
+    registration,
+    source,
+  });
 }
 
 function isTerminalSourceSyncTaskStatus(status: string): boolean {

@@ -3,7 +3,6 @@ import type {
   WorkerCompleteGitSourceResolutionTaskRequest,
   WorkerFailGitSourceResolutionTaskRequest,
 } from '@compartment/contracts';
-import { decryptVariableValueFromStorage } from '../../lib/variables-crypto';
 import { createId } from '../../lib/tokens';
 import { listDeploymentsBySourceResolutionTaskId } from '../../queries/deployments.query';
 import type { DeploymentRow } from '../../queries/deployments.query.types';
@@ -20,12 +19,12 @@ import {
   retrySourceResolutionTask,
 } from '../../queries/source-resolution.query';
 import type { SourceResolutionTaskRow } from '../../queries/source-resolution.query.types';
-import { getApiConfig, getApiDatabase } from '../../runtime/runtime-access';
+import { getApiDatabase } from '../../runtime/runtime-access';
 import { createDeploymentsFromSourceUpload } from '../deployment-creation.service';
 import type { DeploymentSummaryInput, DeployResponseInput } from '../presenter.types';
 import { createSourceUploadFromArchivePath } from '../source-uploads.service';
 import type { CreatedSourceUpload } from '../source-uploads.service.types';
-import { mintGitHubInstallationToken } from './github-app-http.adapter';
+import { getGitProviderAdapter } from './git-source-provider.registry';
 import { ensureSourceAutomationPrincipal } from './git-source-automation-principal.service';
 import {
   completeSourceEventIfTerminal,
@@ -41,7 +40,6 @@ import {
   isSourceResolutionTaskStillDeployable,
   requireActiveBinding,
   requireActiveSource,
-  requireEncryptedRegistrationField,
   requireGitProviderRegistration,
   requireOrganization,
   requireSourceResolutionTask,
@@ -117,7 +115,10 @@ async function buildClaimedSourceResolutionTask(
     branchName: claimed.branchName,
     commitSha: claimed.commitSha,
     descriptorPath: binding.descriptorPath,
-    installationToken: await mintSourceInstallationToken(source, registration),
+    installationToken: await getGitProviderAdapter(registration.providerType).mintRuntimeAccessToken({
+      registration,
+      source,
+    }),
     projectName: binding.projectName,
     providerHost: source.providerHost,
     repositoryName: source.repositoryName,
@@ -236,20 +237,4 @@ function buildSourceProvenance(
     sourceRepositorySnapshotJson: serializeSourceRepositorySnapshot(state.source, task),
     sourceResolutionTaskId: task.id,
   };
-}
-
-async function mintSourceInstallationToken(
-  source: SourceRow,
-  registration: GitProviderRegistrationRow,
-): Promise<string> {
-  return await mintGitHubInstallationToken({
-    appId: requireEncryptedRegistrationField(registration.appId, 'app_id'),
-    installationId: source.providerInstallationId,
-    privateKeyPem: decryptVariableValueFromStorage(
-      requireEncryptedRegistrationField(registration.privateKeyPemCiphertext, 'private_key_pem_ciphertext'),
-      requireEncryptedRegistrationField(registration.privateKeyPemEncryptionKeyId, 'private_key_pem_encryption_key_id'),
-      getApiConfig().variablesMasterKey,
-    ),
-    providerHost: source.providerHost,
-  });
 }

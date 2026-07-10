@@ -12,14 +12,7 @@ import {
 import { cancelNonTerminalSourceResolutionTasksBySource } from '../../queries/source-resolution.query';
 import { cancelNonTerminalSourceSyncTasksBySource } from '../../queries/source-sync.query';
 import type { SourceMutationTransaction, SourceRow } from '../../queries/source.query.types';
-import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import { getApiDatabase } from '../../runtime/runtime-access';
-import {
-  assertGitHubRepositoryBranchExists,
-  readGitHubRepositoryMetadata,
-  resolveGitHubRepositoryInstallation,
-} from './github-app-client.adapter';
-import type { GitHubRepositoryInstallation, GitHubRepositoryMetadata } from './github-app-client.adapter.types';
 import { type ResolvedRepositoryAccess } from './git-source-connect.validation';
 import { persistConnectedGitSource, type PersistConnectedGitSourceInput } from './git-source-connect.persistence';
 import {
@@ -32,8 +25,15 @@ import {
   requireConnectedSource,
 } from './git-source.service.support';
 import { connectExistingGitSource } from './git-source-existing-connection.service';
-import { buildGitSourceSummary, buildGitSourceView, requireGitProviderField } from './git-source-view.service';
-import { requireActiveGitHubProviderAccess, type GitHubProviderAccess } from './git-source-provider-access.service';
+import { requireActiveGitProviderAccess } from './git-source-provider-access.service';
+import { getGitProviderAdapter } from './git-source-provider.registry';
+import type {
+  GitProviderAccess,
+  GitProviderAdapter,
+  GitRepositoryMetadata,
+  GitRepositoryRef,
+} from './git-source-provider.types';
+import { buildGitSourceSummary, buildGitSourceView } from './git-source-view.service';
 import type {
   ConnectGitSourceInput,
   ConnectGitSourceResult,
@@ -44,9 +44,13 @@ import type {
   GitSourceView,
 } from './git-source.service.types';
 import { queueGitSourceSyncTaskForConnect } from './git-source-sync-task.service';
-import { isGitHubRepositoryAccessFailure } from './github-app-http.adapter';
 
 const disconnectGitSourceFailureReason: string = 'Git source was disconnected.';
+
+interface ResolvedConnectRepository {
+  repository: GitRepositoryMetadata;
+  repositoryAccess: ResolvedRepositoryAccess;
+}
 
 export async function listGitSources(input: GitSourceContextInput): Promise<GitSourceListItem[]> {
   return (await listConnectedSourcesByOrganization(input.organizationId)).map(
@@ -59,49 +63,75 @@ export async function readGitSource(input: DisconnectGitSourceInput): Promise<Gi
   return await buildGitSourceView(await requireConnectedSource(input));
 }
 export async function connectGitSource(input: ConnectGitSourceInput): Promise<ConnectGitSourceResult> {
-  const repositoryAccess: ResolvedRepositoryAccess = await resolveRepositoryAccess(input);
-  const repository: GitHubRepositoryMetadata = await readGitHubRepositoryMetadata({
-    appId: requireGitProviderField(repositoryAccess.registration.appId, 'app_id'),
-    installationId: repositoryAccess.installation.installationId,
-    owner: input.request.repositoryOwner,
-    privateKeyPem: repositoryAccess.privateKeyPem,
-    providerHost: input.request.providerHost,
-    repositoryName: input.request.repositoryName,
-  });
-  await assertSelectedRepositoryBranchExists(input, repositoryAccess);
-
+  const resolved: ResolvedConnectRepository = await resolveConnectRepository(input);
   const activeSource: SourceRow | undefined = await findActiveSourceByRepository(
     input.organizationId,
     input.request.providerHost,
-    repository.repositoryExternalId,
+    resolved.repository.repositoryExternalId,
   );
   if (activeSource !== undefined) {
-    return await connectExistingGitSource(input, activeSource, repositoryAccess, repository);
+    return await connectExistingGitSource(input, activeSource, resolved.repositoryAccess, resolved.repository);
   }
 
   return {
     sourceConnected: true,
     syncRequest: null,
-    view: await buildGitSourceView(await persistConnectedSourceSummary(input, repositoryAccess, repository)),
+    view: await buildGitSourceView(
+      await persistConnectedSourceSummary(input, resolved.repositoryAccess, resolved.repository),
+    ),
   };
 }
 
+async function resolveConnectRepository(input: ConnectGitSourceInput): Promise<ResolvedConnectRepository> {
+  const access: GitProviderAccess = await requireActiveGitProviderAccess(
+    input.organizationId,
+    input.request.providerHost,
+    input.request.repositoryOwner,
+  );
+  const adapter: GitProviderAdapter = getGitProviderAdapter(access.registration.providerType);
+  const ref: GitRepositoryRef = buildConnectRepositoryRef(input.request);
+  const providerInstallationId: string | null = await resolveConnectRepositoryInstallationId(adapter, access, ref);
+  const repository: GitRepositoryMetadata = await adapter.readRepositoryMetadata(access, ref, providerInstallationId);
+  await assertSelectedRepositoryBranchExists(
+    adapter,
+    access,
+    ref,
+    providerInstallationId,
+    input.request.syncBranchName,
+  );
+
+  return {
+    repository,
+    repositoryAccess: {
+      providerInstallationId: requireResolvedInstallationId(providerInstallationId),
+      registration: { id: access.registration.id },
+    },
+  };
+}
+
+async function resolveConnectRepositoryInstallationId(
+  adapter: GitProviderAdapter,
+  access: GitProviderAccess,
+  ref: GitRepositoryRef,
+): Promise<string | null> {
+  try {
+    return (await adapter.resolveRepositoryInstallation(access, ref)).providerInstallationId;
+  } catch (error) {
+    throw createGitSourceRepositoryAccessDeniedError(error instanceof Error ? error.message : undefined);
+  }
+}
+
 async function assertSelectedRepositoryBranchExists(
-  input: ConnectGitSourceInput,
-  repositoryAccess: ResolvedRepositoryAccess,
+  adapter: GitProviderAdapter,
+  access: GitProviderAccess,
+  ref: GitRepositoryRef,
+  providerInstallationId: string | null,
+  syncBranchName: string,
 ): Promise<void> {
   try {
-    await assertGitHubRepositoryBranchExists({
-      appId: requireGitProviderField(repositoryAccess.registration.appId, 'app_id'),
-      branchName: input.request.syncBranchName,
-      installationId: repositoryAccess.installation.installationId,
-      owner: input.request.repositoryOwner,
-      privateKeyPem: repositoryAccess.privateKeyPem,
-      providerHost: input.request.providerHost,
-      repositoryName: input.request.repositoryName,
-    });
+    await adapter.assertRepositoryBranchExists(access, ref, providerInstallationId, syncBranchName);
   } catch (error) {
-    if (isGitHubRepositoryAccessFailure(error instanceof Error ? error : undefined)) {
+    if (adapter.isRepositoryAccessFailure(error instanceof Error ? error : undefined)) {
       throw createGitSourceRepositoryAccessDeniedError('The selected repository branch could not be read.');
     }
     throw error;
@@ -135,7 +165,7 @@ export async function disconnectGitSource(input: DisconnectGitSourceInput): Prom
 async function persistConnectedSourceSummary(
   input: ConnectGitSourceInput,
   repositoryAccess: ResolvedRepositoryAccess,
-  repository: GitHubRepositoryMetadata,
+  repository: GitRepositoryMetadata,
 ): Promise<SourceRow> {
   try {
     return await runPersistConnectedSourceTransaction(input, repositoryAccess, repository);
@@ -155,7 +185,7 @@ async function persistConnectedSourceSummary(
 async function runPersistConnectedSourceTransaction(
   input: ConnectGitSourceInput,
   repositoryAccess: ResolvedRepositoryAccess,
-  repository: GitHubRepositoryMetadata,
+  repository: GitRepositoryMetadata,
 ): Promise<SourceRow> {
   return await getApiDatabase().transaction(async (transaction: SourceMutationTransaction): Promise<SourceRow> => {
     const now: Date = new Date();
@@ -173,11 +203,11 @@ async function runPersistConnectedSourceTransaction(
 function buildPersistConnectedGitSourceInput(
   input: ConnectGitSourceInput,
   repositoryAccess: ResolvedRepositoryAccess,
-  repository: GitHubRepositoryMetadata,
+  repository: GitRepositoryMetadata,
 ): PersistConnectedGitSourceInput {
   return {
     actorPrincipalId: input.actor.principalId,
-    installationId: repositoryAccess.installation.installationId,
+    installationId: repositoryAccess.providerInstallationId,
     organizationId: input.organizationId,
     providerHost: input.request.providerHost,
     providerRegistrationId: repositoryAccess.registration.id,
@@ -187,39 +217,18 @@ function buildPersistConnectedGitSourceInput(
   };
 }
 
-async function resolveRepositoryAccess(input: ConnectGitSourceInput): Promise<ResolvedRepositoryAccess> {
-  const providerAccess: GitHubProviderAccess = await requireActiveGitHubProviderAccess(
-    input.organizationId,
-    input.request.providerHost,
-    input.request.repositoryOwner,
-  );
-  const installation: GitHubRepositoryInstallation = await resolveRepositoryInstallation(
-    providerAccess.registration,
-    providerAccess.privateKeyPem,
-    input.request,
-  );
-
+function buildConnectRepositoryRef(request: GitSourceRepositoryRequest): GitRepositoryRef {
   return {
-    installation,
-    privateKeyPem: providerAccess.privateKeyPem,
-    registration: providerAccess.registration,
+    name: request.repositoryName,
+    owner: request.repositoryOwner,
+    providerHost: request.providerHost,
   };
 }
 
-async function resolveRepositoryInstallation(
-  registration: Pick<GitProviderRegistrationRow, 'appId' | 'providerHost'>,
-  privateKeyPem: string,
-  request: GitSourceRepositoryRequest,
-): Promise<GitHubRepositoryInstallation> {
-  try {
-    return await resolveGitHubRepositoryInstallation({
-      appId: requireGitProviderField(registration.appId, 'app_id'),
-      owner: request.repositoryOwner,
-      privateKeyPem,
-      providerHost: registration.providerHost,
-      repositoryName: request.repositoryName,
-    });
-  } catch (error) {
-    throw createGitSourceRepositoryAccessDeniedError(error instanceof Error ? error.message : undefined);
+function requireResolvedInstallationId(providerInstallationId: string | null): string {
+  if (providerInstallationId === null) {
+    throw new Error('Connecting a GitHub source requires a resolved installation id.');
   }
+
+  return providerInstallationId;
 }

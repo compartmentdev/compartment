@@ -4,13 +4,13 @@ import {
   type GitDescriptorDraftFile,
 } from '@compartment/contracts';
 import { createGitSourceRequestInvalidError } from '../../errors/api-business-error';
-import type { GitHubRepositoryTreeEntry } from './github-app-client.adapter.types';
+import type { GitRepositoryTreeEntry } from './git-source-provider.types';
 import { buildDescriptorCandidates, readFirstDescriptorPath } from './git-source-descriptor-candidate.service';
 import { sortGitDescriptorDraftFiles } from './git-source-descriptor-draft-file.support';
 
 export function assertDescriptorPullRequestMatchesPlan(
   input: CreateGitDescriptorPullRequestRequest,
-  tree: readonly GitHubRepositoryTreeEntry[],
+  tree: readonly GitRepositoryTreeEntry[],
 ): void {
   if (readFirstDescriptorPath(tree) !== null) {
     throw createGitSourceRequestInvalidError('Descriptor already exists in the selected branch.');

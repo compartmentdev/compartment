@@ -1,4 +1,3 @@
-import { decryptVariableValueFromStorage } from '../../lib/variables-crypto';
 import {
   createGitSourceRegistrationFailedError,
   createGitSourceRegistrationPendingError,
@@ -6,36 +5,24 @@ import {
 import { findActiveGitProviderRegistration } from '../../queries/git-provider-registration.query';
 import { findPendingGitProviderRegistration } from '../../queries/git-provider-registration-bootstrap.query';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
-import { getApiConfig } from '../../runtime/runtime-access';
-import { requireGitProviderField } from './git-source-view.service';
+import { getGitProviderAdapter } from './git-source-provider.registry';
+import type { GitProviderAccess } from './git-source-provider.types';
 
-export interface GitHubProviderAccess {
-  privateKeyPem: string;
-  registration: GitProviderRegistrationRow;
-}
-
-export async function requireActiveGitHubProviderAccess(
+export async function requireActiveGitProviderAccess(
   organizationId: string,
   providerHost: string,
   repositoryOwner: string,
-): Promise<GitHubProviderAccess> {
-  const registration: GitProviderRegistrationRow = await requireActiveGitProviderRegistration(
-    organizationId,
-    providerHost,
-    repositoryOwner,
+): Promise<GitProviderAccess> {
+  return buildGitProviderAccess(
+    await requireActiveGitProviderRegistration(organizationId, providerHost, repositoryOwner),
   );
-  return {
-    privateKeyPem: readGitHubRegistrationPrivateKey(registration),
-    registration,
-  };
 }
 
-export function readGitHubRegistrationPrivateKey(registration: GitProviderRegistrationRow): string {
-  return decryptVariableValueFromStorage(
-    requireGitProviderField(registration.privateKeyPemCiphertext, 'private_key_pem_ciphertext'),
-    requireGitProviderField(registration.privateKeyPemEncryptionKeyId, 'private_key_pem_encryption_key_id'),
-    getApiConfig().variablesMasterKey,
-  );
+export function buildGitProviderAccess(registration: GitProviderRegistrationRow): GitProviderAccess {
+  return {
+    credential: getGitProviderAdapter(registration.providerType).readRegistrationCredential(registration),
+    registration,
+  };
 }
 
 async function requireActiveGitProviderRegistration(

@@ -6,25 +6,19 @@ import {
 } from '../../errors/api-business-error';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import { requireGitProviderRegistration } from './git-source-bootstrap.read';
-import { readGitHubRegistrationPrivateKey } from './git-source-provider-access.service';
+import { buildGitProviderAccess } from './git-source-provider-access.service';
+import type { GitProviderAccess } from './git-source-provider.types';
 import type { GitSourceContextInput } from './git-source.service.types';
-import { requireGitProviderField } from './git-source-view.service';
-import type { GitHubInstallationOctokitInput } from './github-app-http.adapter';
 
-export interface GitHubRegistrationAccess {
-  privateKeyPem: string;
-  registration: GitProviderRegistrationRow;
-}
-
-interface GitHubRegistrationAccessInput extends GitSourceContextInput {
+interface GitProviderRegistrationAccessInput extends GitSourceContextInput {
   providerHost: string;
   registrationId: string;
   repositoryOwner: string;
 }
 
-export async function requireGitHubRegistrationAccess(
-  input: GitHubRegistrationAccessInput,
-): Promise<GitHubRegistrationAccess> {
+export async function requireGitProviderRegistrationAccess(
+  input: GitProviderRegistrationAccessInput,
+): Promise<GitProviderAccess> {
   const registration: GitProviderRegistrationRow = await requireGitProviderRegistration({
     organizationId: input.organizationId,
     registrationId: input.registrationId,
@@ -32,19 +26,7 @@ export async function requireGitHubRegistrationAccess(
   validateRegistrationRequest(registration, input.providerHost, input.repositoryOwner);
   validateActiveRegistrationMaterial(registration);
 
-  return {
-    privateKeyPem: readGitHubRegistrationPrivateKey(registration),
-    registration,
-  };
-}
-
-export function buildGitHubRegistrationClientAuth(access: GitHubRegistrationAccess): GitHubInstallationOctokitInput {
-  return {
-    appId: requireGitProviderField(access.registration.appId, 'app_id'),
-    installationId: requireGitProviderField(access.registration.installationId, 'installation_id'),
-    privateKeyPem: access.privateKeyPem,
-    providerHost: access.registration.providerHost,
-  };
+  return buildGitProviderAccess(registration);
 }
 
 function validateRegistrationRequest(

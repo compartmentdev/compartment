@@ -8,7 +8,7 @@ import {
   isGitHubRequestFailure,
   isGitHubTransportFailure,
 } from './github-app-http.adapter';
-import { readGitHubRegistrationPrivateKey } from './git-source-provider-access.service';
+import { readGitHubRegistrationPrivateKey } from './github-provider.adapter';
 
 export type ActiveGitHubRegistrationState = 'app_missing' | 'installation_missing' | 'valid';
 
