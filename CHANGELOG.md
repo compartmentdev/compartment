@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/compartmentdev/compartment/compare/v0.9.1...v0.9.2) (2026-07-10)
+
+
+### Bug Fixes
+
+* **root-config:** update Caddy and Go security baseline ([#89](https://github.com/compartmentdev/compartment/issues/89)) ([7ebe18c](https://github.com/compartmentdev/compartment/commit/7ebe18c51ca17f998dc78b3137627d67b0336b56))
+
 ## [0.9.1](https://github.com/compartmentdev/compartment/compare/v0.9.0...v0.9.1) (2026-06-04)
 
 
