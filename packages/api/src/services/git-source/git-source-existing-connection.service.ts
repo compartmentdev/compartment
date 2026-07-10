@@ -2,7 +2,7 @@ import { createGitSourceConflictError } from '../../errors/api-business-error';
 import { updateSourceToActive } from '../../queries/source.query';
 import type { SourceMutationTransaction, SourceRow } from '../../queries/source.query.types';
 import { getApiDatabase } from '../../runtime/runtime-access';
-import type { GitHubRepositoryMetadata } from './github-app-client.adapter.types';
+import type { GitRepositoryMetadata } from './git-source-provider.types';
 import { buildUpdateSourceInput } from './git-source-connect.persistence.support';
 import { type ResolvedRepositoryAccess } from './git-source-connect.validation';
 import { includeGitSourceDescriptorWithinTransaction } from './git-source-exclusion.service';
@@ -27,7 +27,7 @@ export async function connectExistingGitSource(
   input: ConnectGitSourceInput,
   source: SourceRow,
   repositoryAccess: ResolvedRepositoryAccess,
-  repository: GitHubRepositoryMetadata,
+  repository: GitRepositoryMetadata,
 ): Promise<ConnectGitSourceResult> {
   assertExistingSourceMatchesConnectRequest(input, source);
   const mutationResult: ExistingSourceConnectMutationResult = await mutateExistingSourceConnection(
@@ -52,7 +52,7 @@ async function mutateExistingSourceConnection(
   input: ConnectGitSourceInput,
   source: SourceRow,
   repositoryAccess: ResolvedRepositoryAccess,
-  repository: GitHubRepositoryMetadata,
+  repository: GitRepositoryMetadata,
 ): Promise<ExistingSourceConnectMutationResult> {
   let refreshedSource: SourceRow = source;
   const syncRequest: GitSourceConnectSyncRequestView = await getApiDatabase().transaction(
@@ -130,7 +130,7 @@ async function refreshExistingSourceProviderMetadata(
   transaction: SourceMutationTransaction,
   source: SourceRow,
   repositoryAccess: ResolvedRepositoryAccess,
-  repository: GitHubRepositoryMetadata,
+  repository: GitRepositoryMetadata,
   now: Date,
 ): Promise<SourceRow> {
   return await updateSourceToActive(
@@ -140,7 +140,7 @@ async function refreshExistingSourceProviderMetadata(
         autoAdoptNewApps: source.autoAdoptNewApps,
         defaultAutoDeployEnabled: source.defaultAutoDeployEnabled,
         defaultEnvironmentName: source.defaultEnvironmentName,
-        installationId: repositoryAccess.installation.installationId,
+        installationId: repositoryAccess.providerInstallationId,
         providerHost: source.providerHost,
         providerRegistrationId: repositoryAccess.registration.id,
         repository,

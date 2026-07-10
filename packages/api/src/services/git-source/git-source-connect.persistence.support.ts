@@ -11,7 +11,7 @@ import type {
   SourceMutationTransaction,
   UpdateSourceToActiveInput,
 } from '../../queries/source.query.types';
-import type { GitHubRepositoryMetadata } from './github-app-client.adapter.types';
+import type { GitRepositoryMetadata } from './git-source-provider.types';
 
 interface GitSourceUpsertInput {
   actorPrincipalId: string;
@@ -22,7 +22,7 @@ interface GitSourceUpsertInput {
   organizationId: string;
   providerHost: string;
   providerRegistrationId: string;
-  repository: GitHubRepositoryMetadata;
+  repository: GitRepositoryMetadata;
   syncBranchName: string;
 }
 

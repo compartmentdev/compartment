@@ -2,14 +2,9 @@ import {
   type GitHubInstallationRepositoryListResponse,
   type GitHubInstallationRepositorySummary,
 } from '@compartment/contracts';
-import { listGitHubInstallationRepositories as listGitHubInstallationRepositoriesFromGitHub } from './github-app-client.adapter';
-import type { GitHubInstallationRepository } from './github-app-client.adapter.types';
-import { isGitHubAppAuthenticationFailure, isGitHubRepositoryAccessFailure } from './github-app-http.adapter';
-import {
-  buildGitHubRegistrationClientAuth,
-  requireGitHubRegistrationAccess,
-  type GitHubRegistrationAccess,
-} from './git-source-descriptor-registration-access.service';
+import { requireGitProviderRegistrationAccess } from './git-source-descriptor-registration-access.service';
+import { getGitProviderAdapter } from './git-source-provider.registry';
+import type { GitProviderAccess, GitProviderAdapter, GitRepositorySummary } from './git-source-provider.types';
 import type { GitSourceContextInput } from './git-source.service.types';
 
 export interface ListGitHubInstallationRepositoriesInput extends GitSourceContextInput {
@@ -21,49 +16,39 @@ export interface ListGitHubInstallationRepositoriesInput extends GitSourceContex
 export async function listGitHubInstallationRepositories(
   input: ListGitHubInstallationRepositoriesInput,
 ): Promise<GitHubInstallationRepositoryListResponse> {
-  const access: GitHubRegistrationAccess = await requireGitHubRegistrationAccess(input);
+  const access: GitProviderAccess = await requireGitProviderRegistrationAccess(input);
+  const adapter: GitProviderAdapter = getGitProviderAdapter(access.registration.providerType);
   try {
-    return buildReadyGitHubInstallationRepositoriesResponse(
-      await listGitHubInstallationRepositoriesFromGitHub({
-        ...buildGitHubRegistrationClientAuth(access),
-      }),
-    );
+    return buildReadyRegistrationRepositoriesResponse(await adapter.listRegistrationRepositories(access));
   } catch (error) {
-    return recoverGitHubInstallationRepositories(error instanceof Error ? error : undefined);
+    return recoverRegistrationRepositories(adapter, error instanceof Error ? error : undefined);
   }
 }
 
-function buildReadyGitHubInstallationRepositoriesResponse(
-  repositories: GitHubInstallationRepository[],
+function buildReadyRegistrationRepositoriesResponse(
+  repositories: GitRepositorySummary[],
 ): GitHubInstallationRepositoryListResponse {
   return {
-    repositories: repositories.map(toGitHubInstallationRepositorySummary),
+    repositories: repositories.map(toInstallationRepositorySummary),
     status: 'ready',
   };
 }
 
-function recoverGitHubInstallationRepositories(error: Error | undefined): GitHubInstallationRepositoryListResponse {
-  if (!isGitHubProviderRecoveryFailure(error)) {
-    throw error ?? new Error('GitHub repository list failed.');
+function recoverRegistrationRepositories(
+  adapter: GitProviderAdapter,
+  error: Error | undefined,
+): GitHubInstallationRepositoryListResponse {
+  if (adapter.isRepositoryAccessFailure(error) || adapter.isAuthenticationFailure(error)) {
+    return {
+      repositories: [],
+      status: 'provider_bootstrap_required',
+    };
   }
 
-  return buildProviderBootstrapRequiredGitHubInstallationRepositoriesResponse();
+  throw error ?? new Error('Git repository list failed.');
 }
 
-function isGitHubProviderRecoveryFailure(error: Error | undefined): boolean {
-  return isGitHubRepositoryAccessFailure(error) || isGitHubAppAuthenticationFailure(error);
-}
-
-function buildProviderBootstrapRequiredGitHubInstallationRepositoriesResponse(): GitHubInstallationRepositoryListResponse {
-  return {
-    repositories: [],
-    status: 'provider_bootstrap_required',
-  };
-}
-
-function toGitHubInstallationRepositorySummary(
-  repository: GitHubInstallationRepository,
-): GitHubInstallationRepositorySummary {
+function toInstallationRepositorySummary(repository: GitRepositorySummary): GitHubInstallationRepositorySummary {
   return {
     defaultBranchName: repository.defaultBranchName,
     fullName: repository.fullName,

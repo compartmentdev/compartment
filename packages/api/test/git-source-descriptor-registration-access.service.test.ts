@@ -4,10 +4,8 @@ import type { GitProviderRegistrationRow } from '../src/queries/git-provider-reg
 import type { Actor } from '../src/services/auth-actor.types';
 import type * as VariablesCrypto from '../src/lib/variables-crypto';
 import type * as GitSourceBootstrapRead from '../src/services/git-source/git-source-bootstrap.read';
-import {
-  requireGitHubRegistrationAccess,
-  type GitHubRegistrationAccess,
-} from '../src/services/git-source/git-source-descriptor-registration-access.service';
+import { requireGitProviderRegistrationAccess } from '../src/services/git-source/git-source-descriptor-registration-access.service';
+import type { GitProviderAccess } from '../src/services/git-source/git-source-provider.types';
 
 type RequireGitProviderRegistration = typeof GitSourceBootstrapRead.requireGitProviderRegistration;
 type DecryptVariableValueFromStorage = typeof VariablesCrypto.decryptVariableValueFromStorage;
@@ -67,7 +65,7 @@ describe('git source descriptor registration access', (): void => {
     );
     mocks.decryptVariableValueFromStorage.mockReturnValueOnce('private-key');
 
-    const access: GitHubRegistrationAccess = await requireGitHubRegistrationAccess({
+    const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
       actor: createActor('prn_followup_admin'),
       organizationId: 'org_123',
       providerHost: 'github.enterprise.example',
@@ -75,7 +73,7 @@ describe('git source descriptor registration access', (): void => {
       repositoryOwner: 'acme',
     });
 
-    expect(access.privateKeyPem).toBe('private-key');
+    expect(access.credential.privateKeyPem).toBe('private-key');
     expect(access.registration.id).toBe('gpr_123');
   });
 
@@ -83,7 +81,7 @@ describe('git source descriptor registration access', (): void => {
     mocks.requireGitProviderRegistration.mockResolvedValueOnce(createRegistration());
 
     await expect(
-      requireGitHubRegistrationAccess({
+      requireGitProviderRegistrationAccess({
         actor: createActor('prn_followup_admin'),
         organizationId: 'org_123',
         providerHost: 'github.com',
@@ -99,7 +97,7 @@ describe('git source descriptor registration access', (): void => {
     mocks.requireGitProviderRegistration.mockResolvedValueOnce(createRegistration({ repositoryOwner: 'ACME' }));
     mocks.decryptVariableValueFromStorage.mockReturnValueOnce('private-key');
 
-    const access: GitHubRegistrationAccess = await requireGitHubRegistrationAccess({
+    const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
       actor: createActor('prn_followup_admin'),
       organizationId: 'org_123',
       providerHost: 'github.enterprise.example',
@@ -107,14 +105,14 @@ describe('git source descriptor registration access', (): void => {
       repositoryOwner: 'acme',
     });
 
-    expect(access.privateKeyPem).toBe('private-key');
+    expect(access.credential.privateKeyPem).toBe('private-key');
   });
 
   it('rejects pending registrations before reading private key material', async (): Promise<void> => {
     mocks.requireGitProviderRegistration.mockResolvedValueOnce(createRegistration({ status: 'pending' }));
 
     await expect(
-      requireGitHubRegistrationAccess({
+      requireGitProviderRegistrationAccess({
         actor: createActor('prn_followup_admin'),
         organizationId: 'org_123',
         providerHost: 'github.enterprise.example',
@@ -131,7 +129,7 @@ describe('git source descriptor registration access', (): void => {
     mocks.requireGitProviderRegistration.mockResolvedValueOnce(createRegistration({ installationId: null }));
 
     await expect(
-      requireGitHubRegistrationAccess({
+      requireGitProviderRegistrationAccess({
         actor: createActor('prn_followup_admin'),
         organizationId: 'org_123',
         providerHost: 'github.enterprise.example',
