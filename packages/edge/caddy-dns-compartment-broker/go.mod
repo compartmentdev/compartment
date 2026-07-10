@@ -1,9 +1,9 @@
 module github.com/compartmentdev/compartment/packages/edge/caddy-dns-compartment-broker
 
-go 1.25.0
+go 1.25.1
 
 require (
-	github.com/caddyserver/caddy/v2 v2.11.3
+	github.com/caddyserver/caddy/v2 v2.11.4
 	github.com/libdns/libdns v1.1.1
 )
 
@@ -25,7 +25,7 @@ require (
 	github.com/quic-go/quic-go v0.59.1 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.1 // indirect
+	go.uber.org/zap v1.28.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
