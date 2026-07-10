@@ -9,9 +9,9 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { parseSelfHostedEnvFile, readRequiredSelfHostedEnvValue } from './self-hosted-env-file.mjs';
 
 const defaultBaseImages = Object.freeze({
-  COMPARTMENT_CADDY_BUILDER_IMAGE: 'caddy:2.11.3-builder',
+  COMPARTMENT_CADDY_BUILDER_IMAGE: 'caddy:2.11.4-builder',
   COMPARTMENT_CADDY_RUNTIME_IMAGE: 'alpine:3.22',
-  COMPARTMENT_GO_BUILD_IMAGE: 'golang:1.26.3-bookworm',
+  COMPARTMENT_GO_BUILD_IMAGE: 'golang:1.26.5-bookworm',
   COMPARTMENT_NODE_BUILD_IMAGE: 'node:24.15.0-bookworm',
   COMPARTMENT_NODE_RUNTIME_IMAGE: 'node:24.15.0-bookworm-slim',
 });
