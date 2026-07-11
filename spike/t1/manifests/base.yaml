@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bench-web
+  namespace: compartment-bench
+  labels: { spike.compartment.dev/track: t1 }
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 45
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: bench-web }
+  template:
+    metadata:
+      labels: { app: bench-web, spike.compartment.dev/track: t1 }
+    spec:
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: web
+          image: compartment-t1:local
+          imagePullPolicy: Never
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          env:
+            - { name: PORT, value: '8080' }
+            - { name: VERSION, value: v1 }
+            - { name: READY, value: 'true' }
+          ports: [{ name: http, containerPort: 8080 }]
+          lifecycle:
+            preStop:
+              exec: { command: [sleep, '3'] }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: 1, memory: 128Mi }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bench-web
+  namespace: compartment-bench
+  labels: { spike.compartment.dev/track: t1 }
+spec:
+  selector: { app: bench-web }
+  ports: [{ name: http, port: 8080, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bench-ws
+  namespace: compartment-bench
+  labels: { spike.compartment.dev/track: t1 }
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 45
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: bench-ws }
+  template:
+    metadata:
+      labels: { app: bench-ws, spike.compartment.dev/track: t1 }
+    spec:
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: echo
+          image: compartment-t1:local
+          imagePullPolicy: Never
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          env:
+            - { name: PORT, value: '8080' }
+            - { name: VERSION, value: v1 }
+            - { name: READY, value: 'true' }
+          ports: [{ name: http, containerPort: 8080 }]
+          lifecycle:
+            preStop:
+              exec: { command: [sleep, '3'] }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 1
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: 1, memory: 128Mi }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bench-ws
+  namespace: compartment-bench
+  labels: { spike.compartment.dev/track: t1 }
+spec:
+  selector: { app: bench-ws }
+  ports: [{ name: http, port: 8080, targetPort: http }]
