@@ -1,0 +1,16 @@
+without-policy	1	allow	allow	PASS
+without-policy	2	allow	deny	FAIL
+without-policy	3	allow	allow	PASS
+without-policy	4	allow	allow	PASS
+without-policy	5	allow	allow	PASS
+without-policy	6	allow	allow	PASS
+without-policy	7	allow	allow	PASS
+latency_ms	1000
+with-policy	1	deny	deny	PASS
+with-policy	2	deny	deny	PASS
+with-policy	3	deny	deny	PASS
+with-policy	4	allow	allow	PASS
+with-policy	5	allow	allow	PASS
+with-policy	6	allow	allow	PASS
+with-policy	7	deny	allow	FAIL
+restart	8	deny-throughout	fail_open=0,post=deny	PASS
