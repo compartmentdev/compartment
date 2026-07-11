@@ -12,6 +12,9 @@ interface EdgeConfigEnvironment {
   COMPARTMENT_EDGE_TOKEN: string;
   COMPARTMENT_LOG_LEVEL: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   COMPARTMENT_PUBLIC_PROTOCOL: 'http' | 'https';
+  // SPIKE-T7: throwaway persisted last-known-good configuration.
+  COMPARTMENT_EDGE_SNAPSHOT_MAX_AGE_MS: number;
+  COMPARTMENT_EDGE_SNAPSHOT_PATH: string;
 }
 
 const edgeConfigSchema: z.ZodTypeAny = z.object({
@@ -24,6 +27,9 @@ const edgeConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_EDGE_TOKEN: z.string().min(1),
   COMPARTMENT_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
   COMPARTMENT_PUBLIC_PROTOCOL: z.enum(['http', 'https']),
+  // SPIKE-T7: 24h bounds stale authorization exposure during a control-plane outage.
+  COMPARTMENT_EDGE_SNAPSHOT_MAX_AGE_MS: z.coerce.number().int().positive().default(86_400_000),
+  COMPARTMENT_EDGE_SNAPSHOT_PATH: z.string().min(1).default('/var/lib/compartment-edge/access-state.json'),
 });
 
 export interface EdgeConfig {
@@ -35,6 +41,9 @@ export interface EdgeConfig {
   port: number;
   controlPlaneHost: string;
   publicProtocol: 'http' | 'https';
+  // SPIKE-T7: prototype-only local persistence settings.
+  snapshotMaxAgeMs: number;
+  snapshotPath: string;
 }
 
 export function readEdgeConfig(env: NodeJS.ProcessEnv = process.env): EdgeConfig {
@@ -49,5 +58,7 @@ export function readEdgeConfig(env: NodeJS.ProcessEnv = process.env): EdgeConfig
     port: parsed.COMPARTMENT_EDGE_PORT,
     controlPlaneHost: buildControlPlaneHost(parsed.COMPARTMENT_BASE_DOMAIN.trim().toLowerCase()),
     publicProtocol: parsed.COMPARTMENT_PUBLIC_PROTOCOL,
+    snapshotMaxAgeMs: parsed.COMPARTMENT_EDGE_SNAPSHOT_MAX_AGE_MS,
+    snapshotPath: parsed.COMPARTMENT_EDGE_SNAPSHOT_PATH,
   };
 }

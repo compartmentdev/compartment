@@ -56,6 +56,8 @@ storage:
   buildkit: 4Gi
   caddy: 1Gi
   api: 1Gi
+  # SPIKE-T7: throwaway edge LKG PVC.
+  edge: 1Gi
 
 platform:
   startupStage: full
@@ -76,6 +78,8 @@ platform:
   sourceArchiveMaxBytes: 104857600
   sessionTtl: 7d
   rolloutMarker: ''
+  # SPIKE-T7: proposed default balances outage survival with stale-revocation exposure.
+  edgeSnapshotMaxAgeMs: 86400000
 
 postgres:
   database: compartment

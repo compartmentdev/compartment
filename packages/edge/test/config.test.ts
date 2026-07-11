@@ -21,6 +21,8 @@ describe('readEdgeConfig', (): void => {
     expect(config.internalHost).toBe('127.0.0.1');
     expect(config.port).toBe(39548);
     expect(config.publicProtocol).toBe('http');
+    expect(config.snapshotMaxAgeMs).toBe(86_400_000);
+    expect(config.snapshotPath).toBe('/var/lib/compartment-edge/access-state.json');
   });
 
   it('rejects missing required runtime env values instead of silently falling back', (): void => {

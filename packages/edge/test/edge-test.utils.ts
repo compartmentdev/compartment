@@ -75,6 +75,9 @@ function createEdgeConfig(overrides: Partial<EdgeConfig> | undefined = undefined
     controlPlaneHost: 'console.localhost',
     port: 9081,
     publicProtocol: 'http',
+    // SPIKE-T7: keep package tests isolated from the prototype persistence path.
+    snapshotMaxAgeMs: 86_400_000,
+    snapshotPath: '/tmp/compartment-edge-test/access-state.json',
     ...overrides,
   };
 }

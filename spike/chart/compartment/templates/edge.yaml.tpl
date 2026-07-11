@@ -54,6 +54,11 @@ spec:
             - name: COMPARTMENT_EDGE_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: edge-token}
+            # SPIKE-T7: prototype-only persisted last-known-good settings.
+            - name: COMPARTMENT_EDGE_SNAPSHOT_PATH
+              value: /var/lib/compartment-edge/access-state.json
+            - name: COMPARTMENT_EDGE_SNAPSHOT_MAX_AGE_MS
+              value: {{ .Values.platform.edgeSnapshotMaxAgeMs | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.ports.edge }}
@@ -67,7 +72,13 @@ spec:
             periodSeconds: 10
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
+            # SPIKE-T7: RWO PVC for the persisted authorization snapshot.
+            - {name: edge-state, mountPath: /var/lib/compartment-edge}
       volumes:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - {name: tmp, emptyDir: {}}
+        # SPIKE-T7: PVC survives edge pod replacement.
+        - name: edge-state
+          persistentVolumeClaim:
+            claimName: {{ include "compartment.fullname" . }}-edge
 {{- end }}
