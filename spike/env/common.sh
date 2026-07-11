@@ -6,11 +6,15 @@ REPO_ROOT="$(cd "${SPIKE_ENV_DIR}/../.." && pwd)"
 readonly REPO_ROOT
 readonly CHART_DIR="${REPO_ROOT}/spike/chart/compartment"
 export CHART_DIR
-readonly STATE_DIR="${TMPDIR:-/tmp}/compartment-spike-${USER}"
+readonly SPIKE_USER="${USER:-$(id -un)}"
+readonly STATE_DIR="${TMPDIR:-/tmp}/compartment-spike-${SPIKE_USER}"
 readonly LOCK_FILE="${STATE_DIR}/resource.lock"
 readonly KIND_CLUSTER_FILE="${STATE_DIR}/kind-cluster-name"
 export KIND_CLUSTER_FILE
 readonly RESERVATIONS_FILE="${STATE_DIR}/reservations"
+readonly COLIMA_REQUIRED_CPUS=6
+readonly COLIMA_REQUIRED_MEMORY_GIB=10
+readonly COLIMA_REQUIRED_DISK_GIB=60
 readonly SOURCE_IMAGE_REFS=(
   ghcr.io/compartmentdev/compartment-api:latest
   ghcr.io/compartmentdev/compartment-worker:latest
@@ -157,9 +161,15 @@ wait_for_docker_api() {
     else
       stable_checks=0
       if ((attempt == 5)); then
-        colima start --cpu 6 --memory 10 --disk 60 >/dev/null 2>&1 || true
+        colima start \
+          --cpu "${COLIMA_REQUIRED_CPUS}" \
+          --memory "${COLIMA_REQUIRED_MEMORY_GIB}" \
+          --disk "${COLIMA_REQUIRED_DISK_GIB}" >/dev/null 2>&1 || true
       elif ((attempt == 15)); then
-        colima restart --cpu 6 --memory 10 --disk 60 >/dev/null 2>&1 || true
+        colima restart \
+          --cpu "${COLIMA_REQUIRED_CPUS}" \
+          --memory "${COLIMA_REQUIRED_MEMORY_GIB}" \
+          --disk "${COLIMA_REQUIRED_DISK_GIB}" >/dev/null 2>&1 || true
       fi
     fi
     sleep 2

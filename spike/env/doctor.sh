@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly REQUIRED_CPUS=6
-readonly REQUIRED_MEMORY_GIB=10
-readonly REQUIRED_DISK_GIB=60
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=spike/env/common.sh
+source "${SCRIPT_DIR}/common.sh"
 
 if ! command -v brew >/dev/null 2>&1; then
   echo "Homebrew is required to install the spike toolchain: https://brew.sh" >&2
@@ -28,16 +28,20 @@ require_command kind kind
 require_command helm helm
 require_command kubectl kubernetes-cli
 require_command hey hey
-require_command node node@24
 require_command pnpm pnpm
+
+if ! brew list --versions node@24 >/dev/null 2>&1; then
+  missing_formulae+=(node@24)
+fi
 
 if ((${#missing_formulae[@]} > 0)); then
   echo "Installing missing tools: ${missing_formulae[*]}"
   brew install "${missing_formulae[@]}"
 fi
 
-if ! command -v node >/dev/null 2>&1 && brew list --versions node@24 >/dev/null 2>&1; then
+if ! command -v node >/dev/null 2>&1 || [[ "$(node --version | sed -E 's/^v([0-9]+).*/\1/')" != "24" ]]; then
   brew link --overwrite --force node@24
+  hash -r
 fi
 
 node_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
@@ -69,18 +73,18 @@ colima_resources_sufficient() {
   disk_kib="$(colima ssh -- df -Pk /var/lib/docker | awk 'NR == 2 { print $2 }')"
 
   # The guest reports usable capacity after VM/filesystem overhead.
-  ((cpus >= REQUIRED_CPUS)) \
-    && ((memory_kib >= REQUIRED_MEMORY_GIB * 1024 * 1024 * 95 / 100)) \
-    && ((disk_kib >= REQUIRED_DISK_GIB * 1024 * 1024 * 95 / 100))
+  ((cpus >= COLIMA_REQUIRED_CPUS)) \
+    && ((memory_kib >= COLIMA_REQUIRED_MEMORY_GIB * 1024 * 1024 * 95 / 100)) \
+    && ((disk_kib >= COLIMA_REQUIRED_DISK_GIB * 1024 * 1024 * 95 / 100))
 }
 
 if [[ "${colima_is_running}" == false ]]; then
-  echo "Starting Colima with ${REQUIRED_CPUS} CPU, ${REQUIRED_MEMORY_GIB} GiB memory, and ${REQUIRED_DISK_GIB} GiB disk."
-  colima start --cpu "${REQUIRED_CPUS}" --memory "${REQUIRED_MEMORY_GIB}" --disk "${REQUIRED_DISK_GIB}"
+  echo "Starting Colima with ${COLIMA_REQUIRED_CPUS} CPU, ${COLIMA_REQUIRED_MEMORY_GIB} GiB memory, and ${COLIMA_REQUIRED_DISK_GIB} GiB disk."
+  colima start --cpu "${COLIMA_REQUIRED_CPUS}" --memory "${COLIMA_REQUIRED_MEMORY_GIB}" --disk "${COLIMA_REQUIRED_DISK_GIB}"
 elif ! colima_resources_sufficient; then
   echo "Restarting Colima with sufficient resources."
   colima stop
-  colima start --cpu "${REQUIRED_CPUS}" --memory "${REQUIRED_MEMORY_GIB}" --disk "${REQUIRED_DISK_GIB}"
+  colima start --cpu "${COLIMA_REQUIRED_CPUS}" --memory "${COLIMA_REQUIRED_MEMORY_GIB}" --disk "${COLIMA_REQUIRED_DISK_GIB}"
 fi
 
 docker context use colima >/dev/null
