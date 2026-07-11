@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: t3-postgres
+  namespace: cpt-t3-stateful
+  labels:
+    spike.compartment.dev/track: t3
+spec:
+  replicas: 0
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: t3-postgres
+  template:
+    metadata:
+      labels:
+        app: t3-postgres
+        spike.compartment.dev/track: t3
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: postgres
+          image: postgres:16.9-alpine
+          env:
+            - {name: POSTGRES_USER, value: t3}
+            - {name: POSTGRES_PASSWORD, value: t3-password}
+            - {name: POSTGRES_DB, value: t3}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+          ports:
+            - {name: postgres, containerPort: 5432}
+          readinessProbe:
+            exec:
+              command: [sh, -c, "pg_isready -U t3 -d t3"]
+            periodSeconds: 2
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: t3-postgres
+  namespace: cpt-t3-stateful
+spec:
+  selector: {app: t3-postgres}
+  ports:
+    - {port: 5432, targetPort: postgres}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: t3-writer
+  namespace: cpt-t3-stateful
+spec:
+  replicas: 0
+  selector:
+    matchLabels: {app: t3-writer}
+  template:
+    metadata:
+      labels:
+        app: t3-writer
+        spike.compartment.dev/track: t3
+    spec:
+      containers:
+        - name: writer
+          image: postgres:16.9-alpine
+          env:
+            - {name: PGPASSWORD, value: t3-password}
+          command: [sh, -ec]
+          args:
+            - |
+              until psql -h t3-postgres -U t3 -d t3 -c 'select 1'; do sleep 1; done
+              psql -h t3-postgres -U t3 -d t3 -v ON_ERROR_STOP=1 -c "create table if not exists ledger(seq bigint primary key, checksum text not null);"
+              while true; do
+                psql -h t3-postgres -U t3 -d t3 -v ON_ERROR_STOP=1 -c "insert into ledger select n, md5(n::text || ':t3') from generate_series((select coalesce(max(seq),0)+1 from ledger), (select coalesce(max(seq),0)+10 from ledger)) n on conflict do nothing;"
+                sleep 0.1
+              done
