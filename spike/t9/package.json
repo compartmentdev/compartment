@@ -1,0 +1,33 @@
+{
+  "name": "compartment-t9-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "controller": "tsx src/main.ts",
+    "scenarios": "bash test/scenarios.sh all"
+  },
+  "lint-staged": {
+    "*": "prettier --write --ignore-unknown"
+  },
+  "knip": {
+    "entry": [
+      "src/main.ts",
+      "test/store.test.ts"
+    ],
+    "project": [
+      "src/**/*.ts",
+      "test/**/*.ts"
+    ]
+  },
+  "dependencies": {
+    "@kubernetes/client-node": "1.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
