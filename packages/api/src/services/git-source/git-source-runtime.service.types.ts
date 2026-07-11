@@ -26,7 +26,6 @@ export interface NormalizedGitSourcePush {
   changedFilesState: PushChangedFilesState;
   commitSha: string;
   payloadJson: string;
-  repositoryExternalId: string;
 }
 
 export interface GitHubPushWebhookPayload extends GitHubWebhookObject {

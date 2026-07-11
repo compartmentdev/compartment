@@ -9,8 +9,8 @@ export type PersistedGitProviderRegistrationRow = typeof gitProviderRegistration
 export type PersistedGitProviderBootstrapStateRow = typeof gitProviderBootstrapStates.$inferSelect;
 
 export interface GitProviderRegistrationRow {
-  accessTokenCiphertext?: string | null | undefined;
-  accessTokenEncryptionKeyId?: string | null | undefined;
+  accessTokenCiphertext: string | null;
+  accessTokenEncryptionKeyId: string | null;
   appId: string | null;
   appName: string | null;
   appSlug: string | null;
@@ -158,4 +158,18 @@ export interface UpsertGitLabProviderRegistrationInput {
   webhookSecretCiphertext: string;
   webhookSecretEncryptionKeyId: string;
   webhookUrl: string;
+}
+
+export interface FindActiveGitLabProviderRegistrationInput {
+  organizationId: string;
+  providerHost: string;
+  repositoryOwner: string;
+}
+
+export interface RotateGitLabProviderRegistrationTokenInput {
+  accessTokenCiphertext: string;
+  accessTokenEncryptionKeyId: string;
+  organizationId: string;
+  registrationId: string;
+  updatedAt: Date;
 }

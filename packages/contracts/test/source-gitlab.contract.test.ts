@@ -13,6 +13,7 @@ describe('GitLab source contracts', (): void => {
     ).toEqual({ accessToken: 'token', providerHost: 'gitlab.com' });
     expect(
       gitLabProviderRegistrationListResponseSchema.parse({
+        activeGitHubProviderHosts: ['github.example.com'],
         registrations: [
           {
             createdAt: '2026-01-01T00:00:00Z',

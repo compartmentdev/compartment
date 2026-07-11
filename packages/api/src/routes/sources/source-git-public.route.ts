@@ -3,7 +3,6 @@ import {
   compartmentGitHubProviderCallbackPathname,
   compartmentGitHubProviderSetupPathname,
   compartmentGitHubSourceWebhookPathnameTemplate,
-  compartmentGitLabSourceWebhookPathnameTemplate,
 } from '@compartment/contracts';
 import { hasText, isSafeRelativePath, readHeaderValue } from '@compartment/utils';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -29,19 +28,15 @@ import {
   renderGitHubProviderBootstrapSuccessPage,
 } from '../../services/git-source/git-source-bootstrap.service';
 import { handleGitHubSourceWebhook } from '../../services/git-source/git-source-runtime.service';
-import { handleGitLabSourceWebhook } from '../../services/git-source/git-source-runtime-gitlab.service';
-import type { GitLabJsonObject } from '../../services/git-source/gitlab-http.adapter.types';
 import {
   gitHubBootstrapStateRouteParamsSchema,
   gitHubCallbackQuerySchema,
   gitHubSetupQuerySchema,
   gitHubSourceWebhookRouteParamsSchema,
-  gitLabSourceWebhookRouteParamsSchema,
   type GitHubBootstrapStateRouteParams,
   type GitHubCallbackQuery,
   type GitHubSetupQuery,
   type GitHubSourceWebhookRouteParams,
-  type GitLabSourceWebhookRouteParams,
 } from './source-git.route.types';
 import type { GitHubWebhookObject } from '../../services/git-source/git-source-runtime.service.types';
 import type { GitHubProviderBootstrapPage } from '../../services/git-source/git-source.service.types';
@@ -54,7 +49,6 @@ const gitHubBootstrapStartPathname: string = compartmentGitHubProviderBootstrapS
 const gitHubCallbackPathname: string = compartmentGitHubProviderCallbackPathname;
 const gitHubSetupPathname: string = compartmentGitHubProviderSetupPathname;
 const gitHubSourceWebhookPathname: string = compartmentGitHubSourceWebhookPathnameTemplate;
-const gitLabSourceWebhookPathname: string = compartmentGitLabSourceWebhookPathnameTemplate;
 const gitHubAppInstallRedirectDelayMs: number = 3_000;
 
 export function registerGitSourcePublicRoutes(app: ApiApp): void {
@@ -62,7 +56,6 @@ export function registerGitSourcePublicRoutes(app: ApiApp): void {
   app.get(gitHubCallbackPathname, gitSourcePublicRateLimitRouteOptions, handleGitHubProviderBootstrapCallback);
   app.get(gitHubSetupPathname, gitSourcePublicRateLimitRouteOptions, handleGitHubProviderBootstrapSetup);
   app.post(gitHubSourceWebhookPathname, gitSourceWebhookRateLimitRouteOptions, handleGitHubSourceWebhookRoute);
-  app.post(gitLabSourceWebhookPathname, gitSourceWebhookRateLimitRouteOptions, handleGitLabSourceWebhookRoute);
 }
 
 async function handleGitHubProviderBootstrapStartPage(
@@ -155,23 +148,6 @@ async function handleGitHubSourceWebhookRoute(request: FastifyRequest, reply: Fa
     organizationId: params.organizationId,
     registrationId: params.registrationId,
     signature: requireGitHubHeaderValue(request.headers['x-hub-signature-256'], 'x-hub-signature-256'),
-  });
-  return await reply.code(202).send(null);
-}
-
-async function handleGitLabSourceWebhookRoute(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
-  const params: GitLabSourceWebhookRouteParams = parseRequestValue(
-    gitLabSourceWebhookRouteParamsSchema,
-    request.params,
-    gitSourceInvalidRequestErrorCode,
-  );
-  await handleGitLabSourceWebhook({
-    body: request.body as GitLabJsonObject,
-    eventType: requireGitHubHeaderValue(request.headers['x-gitlab-event'], 'x-gitlab-event'),
-    organizationId: params.organizationId,
-    providerDeliveryId: requireGitHubHeaderValue(request.headers['x-gitlab-event-uuid'], 'x-gitlab-event-uuid'),
-    registrationId: params.registrationId,
-    token: requireGitHubHeaderValue(request.headers['x-gitlab-token'], 'x-gitlab-token'),
   });
   return await reply.code(202).send(null);
 }

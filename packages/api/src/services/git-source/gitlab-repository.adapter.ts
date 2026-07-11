@@ -13,8 +13,8 @@ interface GitLabProject {
   empty_repo?: boolean | undefined;
   http_url_to_repo: string;
   id: number;
-  name: string;
   namespace: { full_path: string };
+  path: string;
   path_with_namespace: string;
   visibility: string;
 }
@@ -38,8 +38,8 @@ const projectSchema: z.ZodType<GitLabProject> = z
     empty_repo: z.boolean().optional(),
     http_url_to_repo: z.string(),
     id: z.number(),
-    name: z.string(),
     namespace: z.object({ full_path: z.string() }),
+    path: z.string(),
     path_with_namespace: z.string(),
     visibility: z.string(),
   })
@@ -56,13 +56,16 @@ export async function readGitLabProject(client: GitLabHttpClient, owner: string,
   return projectSchema.parse(await client.request({ path: `/projects/${encodeGitLabProjectPath(owner, name)}` }));
 }
 
+export const gitLabEmptyRepositoryFailureMessage: string = 'Git Repository is empty';
+
 export function toGitRepositoryMetadata(project: GitLabProject): GitRepositoryMetadata {
-  if (project.default_branch === null || project.empty_repo === true) throw new Error('Git Repository is empty');
+  if (project.default_branch === null || project.empty_repo === true)
+    throw new Error(gitLabEmptyRepositoryFailureMessage);
   return {
     defaultBranchName: project.default_branch,
     repositoryCloneUrl: project.http_url_to_repo,
     repositoryExternalId: String(project.id),
-    repositoryName: project.name,
+    repositoryName: project.path,
     repositoryOwner: project.namespace.full_path,
   };
 }
@@ -74,12 +77,15 @@ export async function assertGitLabBranch(client: GitLabHttpClient, projectId: st
 }
 
 export async function listGitLabProjects(client: GitLabHttpClient): Promise<GitRepositorySummary[]> {
+  // Maintainer (40) access is the minimum that can create project hooks, which
+  // source connect requires; listing lower-access projects would offer repos
+  // whose connect is guaranteed to fail.
   const rows: GitLabProject[] = await client.requestPages(
     {
       path: '/projects',
-      query: { archived: false, membership: true, min_access_level: 30, order_by: 'last_activity_at', simple: false },
+      query: { archived: false, membership: true, min_access_level: 40, order_by: 'last_activity_at', simple: false },
     },
-    10,
+    50,
   );
   return rows.map((row: GitLabProject): GitRepositorySummary => toSummary(projectSchema.parse(row)));
 }
@@ -123,7 +129,7 @@ function toSummary(project: GitLabProject): GitRepositorySummary {
     fullName: project.path_with_namespace,
     private: project.visibility !== 'public',
     repositoryExternalId: String(project.id),
-    repositoryName: project.name,
+    repositoryName: project.path,
     repositoryOwner: project.namespace.full_path,
   };
 }

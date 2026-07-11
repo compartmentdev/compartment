@@ -1,9 +1,33 @@
+import type { GitProviderType } from '@compartment/contracts';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import type { OrganizationRow } from '../../queries/organizations.query.types';
 import type { SourceBindingBranchMappingRow, SourceBindingRow, SourceRow } from '../../queries/source.query.types';
 import type { SourceResolutionTaskRow } from '../../queries/source-resolution.query.types';
+import { getGitProviderAdapter } from './git-source-provider.registry';
 
 const automationPrincipalEmailDomain: string = 'compartment.internal';
+
+interface ClaimedTaskProviderFields {
+  providerType?: GitProviderType | undefined;
+  repositoryExternalId?: string | undefined;
+}
+
+/**
+ * Older workers parse claim responses with strict schemas, so GitHub tasks keep the
+ * legacy wire shape (absent fields default to github_app on the worker); only
+ * non-GitHub tasks carry the provider fields.
+ */
+export function buildClaimedTaskProviderFields(
+  registration: GitProviderRegistrationRow,
+  source: SourceRow,
+): ClaimedTaskProviderFields {
+  const providerType: GitProviderType = getGitProviderAdapter(registration.providerType).providerType;
+  if (providerType === 'github_app') {
+    return {};
+  }
+
+  return { providerType, repositoryExternalId: source.repositoryExternalId };
+}
 
 export function buildSourceAutomationPrincipalEmail(sourceId: string): string {
   return `git-source+${sourceId}@${automationPrincipalEmailDomain}`;

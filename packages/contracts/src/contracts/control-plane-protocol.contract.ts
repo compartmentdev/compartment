@@ -57,7 +57,7 @@ export const compartmentGitHubProviderRegistrationRepositoriesPathnameTemplate: 
 export const compartmentGitHubProviderCallbackPathname: string = `${compartmentSourcesPathname}/git/providers/github/callback`;
 export const compartmentGitHubProviderSetupPathname: string = `${compartmentSourcesPathname}/git/providers/github/setup`;
 export const compartmentGitLabProviderRegistrationsPathname: string = `${compartmentSourcesPathname}/git/providers/gitlab/registrations`;
-const compartmentGitLabProviderRegistrationRepositoriesPathnameTemplate: string = `${compartmentGitLabProviderRegistrationsPathname}/:registrationId/repositories`;
+export const compartmentGitLabProviderRegistrationRepositoriesPathnameTemplate: string = `${compartmentGitLabProviderRegistrationsPathname}/:registrationId/repositories`;
 export const compartmentGitSourceConnectPathname: string = `${compartmentSourcesPathname}/git/connect`;
 export const compartmentGitDescriptorPlanPathname: string = `${compartmentSourcesPathname}/git/descriptor-plan`;
 export const compartmentGitDescriptorPullRequestPathname: string = `${compartmentSourcesPathname}/git/descriptor-pr`;

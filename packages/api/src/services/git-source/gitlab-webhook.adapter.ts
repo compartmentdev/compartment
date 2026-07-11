@@ -5,7 +5,7 @@ import {
   createGitSourceRequestUnauthorizedError,
 } from '../../errors/api-business-error';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
-import { readGitHubWebhookSecret } from './git-source-runtime.support';
+import { readGitProviderWebhookSecret } from './git-source-runtime.support';
 import type { GitLabJsonObject } from './gitlab-http.adapter.types';
 import type { GitLabPushCommit, GitLabPushPayload, ParsedGitLabPush } from './gitlab-webhook.adapter.types';
 
@@ -26,7 +26,7 @@ const pushSchema: z.ZodType<GitLabPushPayload> = z.object({
 });
 
 export function verifyGitLabWebhookToken(registration: GitProviderRegistrationRow, token: string): void {
-  const expected: Buffer = Buffer.from(readGitHubWebhookSecret(registration));
+  const expected: Buffer = Buffer.from(readGitProviderWebhookSecret(registration));
   const actual: Buffer = Buffer.from(token);
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
     throw createGitSourceRequestUnauthorizedError('GitLab webhook token is invalid.');
@@ -38,17 +38,17 @@ export function parseGitLabPushPayload(body: GitLabJsonObject): ParsedGitLabPush
   if (!parsed.success) throw createGitSourceRequestInvalidError('GitLab push payload is invalid.');
   const payload: GitLabPushPayload = parsed.data;
   if (!payload.ref.startsWith(branchPrefix) || payload.checkout_sha === null) return null;
-  return buildParsedPush(payload);
+  return buildParsedPush(payload, payload.checkout_sha);
 }
 
-function buildParsedPush(payload: GitLabPushPayload): ParsedGitLabPush {
+function buildParsedPush(payload: GitLabPushPayload, commitSha: string): ParsedGitLabPush {
   const changedFiles: string[] = [...new Set(payload.commits.flatMap(readCommitFiles))];
   return {
     branchName: payload.ref.slice(branchPrefix.length),
     changedFiles,
     changedFilesComplete:
       payload.commits.length > 0 && (payload.total_commits_count ?? payload.commits.length) <= payload.commits.length,
-    commitSha: payload.checkout_sha!,
+    commitSha,
     repositoryExternalId: String(payload.project.id),
   };
 }

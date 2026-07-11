@@ -1,11 +1,16 @@
 import type { SourceRow } from '../../queries/source.query.types';
-import { createGitSourceRepositoryAccessDeniedError } from '../../errors/api-business-error';
+import {
+  createGitLabTokenInvalidError,
+  createGitSourceRepositoryAccessDeniedError,
+  createGitSourceRepositoryEmptyError,
+} from '../../errors/api-business-error';
 import type { ResolvedRepositoryAccess } from './git-source-connect.validation';
 import type {
   GitProviderAccess,
   GitProviderAdapter,
   GitRepositoryMetadata,
   GitRepositoryRef,
+  SourceProviderHookTarget,
 } from './git-source-provider.types';
 import type { ConnectGitSourceInput, GitSourceRepositoryRequest } from './git-source.service.types';
 import {
@@ -14,28 +19,9 @@ import {
 } from './git-source-provider-access.service';
 import { getGitProviderAdapter } from './git-source-provider.registry';
 
-interface LifecycleSourceBase {
-  automationPrincipalId: null;
-  autoAdoptNewApps: boolean;
-  createdAt: Date;
-  createdByPrincipalId: string;
-  defaultAutoDeployEnabled: boolean;
-  defaultEnvironmentName: string;
-  disconnectedAt: null;
-  id: string;
-  lastSyncAt: null;
-  organizationId: string;
-  providerHost: string;
-  providerWebhookId: null;
-  status: 'active';
-  syncBranchName: string;
-  type: 'git';
-  updatedAt: Date;
-}
-
 export interface ResolvedConnectRepository {
   adapter: GitProviderAdapter;
-  lifecycleSource: SourceRow;
+  hookTarget: SourceProviderHookTarget;
   providerAccess: GitProviderAccess;
   repository: GitRepositoryMetadata;
   repositoryAccess: ResolvedRepositoryAccess;
@@ -53,10 +39,9 @@ export async function resolveConnectRepository(input: ConnectGitSourceInput): Pr
     providerInstallationId,
     input.request.syncBranchName,
   );
-  const lifecycleSource: SourceRow = buildConnectLifecycleSource(input, access, repository, providerInstallationId);
   return {
     adapter,
-    lifecycleSource,
+    hookTarget: { providerWebhookId: null, repositoryExternalId: repository.repositoryExternalId },
     providerAccess: access,
     repository,
     repositoryAccess: { providerInstallationId, providerWebhookId: null, registration: { id: access.registration.id } },
@@ -65,17 +50,15 @@ export async function resolveConnectRepository(input: ConnectGitSourceInput): Pr
 
 export async function connectResolvedProviderHook(
   resolved: ResolvedConnectRepository,
-  activeSource: SourceRow | undefined,
 ): Promise<ResolvedConnectRepository> {
-  const lifecycleSource: SourceRow = activeSource ?? resolved.lifecycleSource;
   const providerWebhookId: string | null = await connectProviderHook(
     resolved.adapter,
     resolved.providerAccess,
-    lifecycleSource,
+    resolved.hookTarget,
   );
   return {
     ...resolved,
-    lifecycleSource: { ...lifecycleSource, providerWebhookId },
+    hookTarget: { ...resolved.hookTarget, providerWebhookId },
     repositoryAccess: { ...resolved.repositoryAccess, providerWebhookId },
   };
 }
@@ -87,7 +70,16 @@ async function readConnectRepository(
   providerInstallationId: string | null,
   syncBranchName: string,
 ): Promise<GitRepositoryMetadata> {
-  const repository: GitRepositoryMetadata = await adapter.readRepositoryMetadata(access, ref, providerInstallationId);
+  let repository: GitRepositoryMetadata;
+  try {
+    repository = await adapter.readRepositoryMetadata(access, ref, providerInstallationId);
+  } catch (error) {
+    throwConnectRepositoryFailure(
+      adapter,
+      error instanceof Error ? error : undefined,
+      'The selected repository could not be read.',
+    );
+  }
   await assertSelectedRepositoryBranchExists(adapter, access, ref, providerInstallationId, syncBranchName);
   return repository;
 }
@@ -128,9 +120,11 @@ async function assertSelectedRepositoryBranchExists(
   try {
     await adapter.assertRepositoryBranchExists(access, ref, providerInstallationId, syncBranchName);
   } catch (error) {
-    if (adapter.isRepositoryAccessFailure(error instanceof Error ? error : undefined))
-      throw createGitSourceRepositoryAccessDeniedError('The selected repository branch could not be read.');
-    throw error;
+    throwConnectRepositoryFailure(
+      adapter,
+      error instanceof Error ? error : undefined,
+      'The selected repository branch could not be read.',
+    );
   }
 }
 
@@ -141,18 +135,39 @@ function buildConnectRepositoryRef(request: GitSourceRepositoryRequest): GitRepo
 async function connectProviderHook(
   adapter: GitProviderAdapter,
   access: GitProviderAccess,
-  source: SourceRow,
+  target: SourceProviderHookTarget,
 ): Promise<string | null> {
-  return (await adapter.onSourceConnected(access, source)).providerWebhookId;
+  try {
+    return (await adapter.onSourceConnected(access, target)).providerWebhookId;
+  } catch (error) {
+    throwConnectRepositoryFailure(
+      adapter,
+      error instanceof Error ? error : undefined,
+      'The repository webhook could not be created.',
+    );
+  }
+}
+
+function throwConnectRepositoryFailure(adapter: GitProviderAdapter, error: Error | undefined, message: string): never {
+  if (adapter.isRepositoryEmptyFailure(error)) {
+    throw createGitSourceRepositoryEmptyError();
+  }
+  if (adapter.isRepositoryAccessFailure(error)) {
+    throw createGitSourceRepositoryAccessDeniedError(message);
+  }
+  if (adapter.providerType === 'gitlab' && adapter.isAuthenticationFailure(error)) {
+    throw createGitLabTokenInvalidError();
+  }
+  throw error ?? new Error(message);
 }
 
 export async function cleanupProviderHook(
   adapter: GitProviderAdapter,
   access: GitProviderAccess,
-  source: SourceRow,
+  target: SourceProviderHookTarget,
 ): Promise<void> {
   try {
-    await adapter.onSourceDisconnected(access, source);
+    await adapter.onSourceDisconnected(access, target);
   } catch {
     /* best-effort compensation */
   }
@@ -165,49 +180,11 @@ export async function disconnectSourceProviderHook(source: SourceRow): Promise<v
       source.providerRegistrationId,
       source.providerHost,
     );
-    await getGitProviderAdapter(access.registration.providerType).onSourceDisconnected(access, source);
+    await getGitProviderAdapter(access.registration.providerType).onSourceDisconnected(access, {
+      providerWebhookId: source.providerWebhookId,
+      repositoryExternalId: source.repositoryExternalId,
+    });
   } catch {
     /* best-effort cleanup */
   }
-}
-
-function buildConnectLifecycleSource(
-  input: ConnectGitSourceInput,
-  access: GitProviderAccess,
-  repository: GitRepositoryMetadata,
-  providerInstallationId: string | null,
-): SourceRow {
-  const now: Date = new Date();
-  return {
-    ...buildLifecycleSourceBase(input, now),
-    defaultBranchName: repository.defaultBranchName,
-    displayName: `${repository.repositoryOwner}/${repository.repositoryName}`,
-    providerInstallationId,
-    providerRegistrationId: access.registration.id,
-    repositoryCloneUrl: repository.repositoryCloneUrl,
-    repositoryExternalId: repository.repositoryExternalId,
-    repositoryName: repository.repositoryName,
-    repositoryOwner: repository.repositoryOwner,
-  };
-}
-
-function buildLifecycleSourceBase(input: ConnectGitSourceInput, now: Date): LifecycleSourceBase {
-  return {
-    automationPrincipalId: null,
-    autoAdoptNewApps: input.request.autoAdoptNewApps,
-    createdAt: now,
-    createdByPrincipalId: input.actor.principalId,
-    defaultAutoDeployEnabled: input.request.defaultAutoDeployEnabled,
-    defaultEnvironmentName: input.request.defaultEnvironmentName,
-    disconnectedAt: null,
-    id: '',
-    lastSyncAt: null,
-    organizationId: input.organizationId,
-    providerHost: input.request.providerHost,
-    providerWebhookId: null,
-    status: 'active',
-    syncBranchName: input.request.syncBranchName,
-    type: 'git',
-    updatedAt: now,
-  };
 }

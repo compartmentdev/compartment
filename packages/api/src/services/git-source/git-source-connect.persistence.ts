@@ -2,7 +2,11 @@ import type { ConnectGitSourceRequest } from '@compartment/contracts';
 import { createSource, findReconnectableSourceByRepository, updateSourceToActive } from '../../queries/source.query';
 import type { SourceMutationTransaction, SourceRow } from '../../queries/source.query.types';
 import type { GitRepositoryMetadata } from './git-source-provider.types';
-import { buildCreateSourceInput, buildUpdateSourceInput } from './git-source-connect.persistence.support';
+import {
+  buildCreateSourceInput,
+  buildUpdateSourceInput,
+  type GitSourceUpsertInput,
+} from './git-source-connect.persistence.support';
 
 export interface PersistConnectedGitSourceInput {
   actorPrincipalId: string;
@@ -13,20 +17,6 @@ export interface PersistConnectedGitSourceInput {
   providerRegistrationId: string;
   repository: GitRepositoryMetadata;
   request: ConnectGitSourceRequest;
-  syncBranchName: string;
-}
-
-interface GitSourceUpsertInput {
-  actorPrincipalId: string;
-  autoAdoptNewApps: boolean;
-  defaultAutoDeployEnabled: boolean;
-  defaultEnvironmentName: string;
-  installationId: string | null;
-  organizationId: string;
-  providerHost: string;
-  providerRegistrationId: string;
-  providerWebhookId: string | null;
-  repository: GitRepositoryMetadata;
   syncBranchName: string;
 }
 

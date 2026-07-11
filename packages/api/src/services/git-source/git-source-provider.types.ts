@@ -3,8 +3,8 @@ import type { GitProviderRegistrationRow } from '../../queries/git-provider-regi
 import type { SourceRow } from '../../queries/source.query.types';
 
 /**
- * Provider kinds Compartment can integrate with. GitHub is the only member today;
- * the value is persisted as `git_provider_registrations.provider_type`.
+ * Provider kinds Compartment can integrate with. The value is persisted as
+ * `git_provider_registrations.provider_type`.
  */
 export type { GitProviderType } from '@compartment/contracts';
 
@@ -105,6 +105,16 @@ export interface MintRuntimeAccessTokenInput {
   source: SourceRow;
 }
 
+/** Provider-side webhook a source is (or should be) attached to. */
+export interface SourceProviderHookTarget {
+  providerWebhookId: string | null;
+  repositoryExternalId: string;
+}
+
+export interface SourceProviderHookAttachment {
+  providerWebhookId: string | null;
+}
+
 /**
  * The single seam every git provider integration implements. Domain `git-source-*`
  * services depend only on this interface plus {@link getGitProviderAdapter}; nothing
@@ -169,11 +179,17 @@ export interface GitProviderAdapter {
     pullRequestNumber: number,
   ): Promise<GitPullRequestStatus>;
 
-  /** Mint the short-lived bearer token the worker uses to fetch source for a deploy. */
+  /**
+   * Mint the bearer token the worker uses to fetch source for a deploy. GitHub mints
+   * a short-lived installation token; GitLab returns the stored access token.
+   */
   mintRuntimeAccessToken(input: MintRuntimeAccessTokenInput): Promise<string>;
 
-  onSourceConnected(access: GitProviderAccess, source: SourceRow): Promise<{ providerWebhookId: string | null }>;
-  onSourceDisconnected(access: GitProviderAccess, source: SourceRow): Promise<void>;
+  /** Attach the provider-side webhook for a repository being connected as a source. */
+  onSourceConnected(access: GitProviderAccess, target: SourceProviderHookTarget): Promise<SourceProviderHookAttachment>;
+
+  /** Best-effort removal of the provider-side webhook for a source. */
+  onSourceDisconnected(access: GitProviderAccess, target: SourceProviderHookTarget): Promise<void>;
 
   isRepositoryAccessFailure(error: Error | undefined): boolean;
   isRepositoryEmptyFailure(error: Error | undefined): boolean;

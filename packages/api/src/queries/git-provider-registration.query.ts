@@ -55,6 +55,20 @@ export async function findGitProviderRegistrationByWebhookTarget(
   return await findGitProviderRegistrationByIdWithExecutor(getApiDatabase(), input);
 }
 
+export async function listActiveGitHubProviderHosts(organizationId: string): Promise<string[]> {
+  const rows: { providerHost: string }[] = await getApiDatabase()
+    .select({ providerHost: gitProviderRegistrations.providerHost })
+    .from(gitProviderRegistrations)
+    .where(
+      and(
+        eq(gitProviderRegistrations.providerType, 'github_app'),
+        eq(gitProviderRegistrations.status, 'active'),
+        buildGitProviderRegistrationOrganizationFilter(organizationId),
+      ),
+    );
+  return [...new Set(rows.map((row: { providerHost: string }): string => row.providerHost))];
+}
+
 export async function findGitProviderRegistrationByIdWithExecutor(
   executor: GitProviderReadExecutor,
   input: FindGitProviderRegistrationByIdInput,

@@ -8,7 +8,7 @@ export interface GitHubBootstrapStateRouteParams {
   bootstrapStateId: string;
 }
 
-export interface GitHubProviderRegistrationRouteParams {
+export interface GitProviderRegistrationRouteParams {
   registrationId: string;
 }
 
@@ -49,7 +49,7 @@ export const gitHubBootstrapStateRouteParamsSchema: z.ZodType<GitHubBootstrapSta
   })
   .strict();
 
-export const gitHubProviderRegistrationRouteParamsSchema: z.ZodType<GitHubProviderRegistrationRouteParams> = z
+export const gitProviderRegistrationRouteParamsSchema: z.ZodType<GitProviderRegistrationRouteParams> = z
   .object({
     registrationId: z.string().min(1),
   })

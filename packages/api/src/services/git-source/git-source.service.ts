@@ -60,17 +60,9 @@ export async function connectGitSource(input: ConnectGitSourceInput): Promise<Co
     input.request.providerHost,
     resolved.repository.repositoryExternalId,
   );
-  const connected: ResolvedConnectRepository = await connectResolvedProviderHook(resolved, activeSource);
+  const connected: ResolvedConnectRepository = await connectResolvedProviderHook(resolved);
   if (activeSource !== undefined) {
-    return await connectExistingGitSourceWithProviderHook(
-      input,
-      activeSource,
-      connected.repositoryAccess,
-      connected.repository,
-      connected.adapter,
-      connected.providerAccess,
-      connected.lifecycleSource,
-    );
+    return await connectExistingGitSourceWithProviderHook(input, activeSource, connected);
   }
 
   return {
@@ -83,6 +75,7 @@ export async function connectGitSource(input: ConnectGitSourceInput): Promise<Co
 export async function disconnectGitSource(input: DisconnectGitSourceInput): Promise<GitSourceView> {
   const source: SourceRow = await requireActiveConnectedSource(input);
   const view: GitSourceView = await buildGitSourceView(source);
+  // Provider-hook deletion precedes the transaction and is deliberately best-effort.
   await disconnectSourceProviderHook(source);
   await getApiDatabase().transaction(async (transaction: SourceMutationTransaction): Promise<void> => {
     const now: Date = new Date();
@@ -112,7 +105,7 @@ async function persistConnectedSourceSummary(
   try {
     return await runPersistConnectedSourceTransaction(input, resolved.repositoryAccess, resolved.repository);
   } catch (error) {
-    await cleanupProviderHook(resolved.adapter, resolved.providerAccess, resolved.lifecycleSource);
+    await cleanupProviderHook(resolved.adapter, resolved.providerAccess, resolved.hookTarget);
     const persistedError: Error | undefined = error instanceof Error ? error : undefined;
     if (isUniqueConstraintError(persistedError)) {
       const knownConflictMessage: string | undefined = readKnownConnectConflictMessage(persistedError);

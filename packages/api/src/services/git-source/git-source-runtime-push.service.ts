@@ -48,7 +48,6 @@ export async function handleGitHubPushWebhook(
     changedFilesState: readChangedFiles(payload),
     commitSha: payload.after,
     payloadJson: JSON.stringify(payload),
-    repositoryExternalId: readRepositoryExternalId(payload.repository),
   });
 }
 

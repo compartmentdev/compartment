@@ -1,4 +1,5 @@
 import {
+  compartmentGitLabProviderRegistrationRepositoriesPathnameTemplate,
   compartmentGitLabProviderRegistrationsPathname,
   createGitLabProviderRegistrationRequestSchema,
   createGitLabProviderRegistrationResponseSchema,
@@ -16,6 +17,7 @@ import { gitSourceInvalidParamsErrorCode, gitSourceInvalidRequestErrorCode } fro
 import { parseRequestValue } from '../../http/validation';
 import {
   createGitLabRegistration,
+  listActiveGitHubProviderHostsForOrganization,
   listGitLabRegistrationRepositories,
   listGitLabRegistrations,
 } from '../../services/git-source/gitlab-registration.service';
@@ -23,8 +25,8 @@ import type { GitLabRegistrationView } from '../../services/git-source/gitlab-re
 import type { GitRepositorySummary } from '../../services/git-source/git-source-provider.types';
 import { createCurrentOrganizationRouteResponseOptions } from '../protected/current-organization-route';
 import {
-  gitHubProviderRegistrationRouteParamsSchema,
-  type GitHubProviderRegistrationRouteParams,
+  gitProviderRegistrationRouteParamsSchema,
+  type GitProviderRegistrationRouteParams,
 } from './source-git.route.types';
 
 export function registerGitLabSourceRoutes(app: ApiApp): void {
@@ -40,9 +42,13 @@ export function registerGitLabSourceRoutes(app: ApiApp): void {
     createCurrentOrganizationRouteResponseOptions('source.read', { 200: gitLabProviderRegistrationListResponseSchema }),
     handleList,
   );
+  // Repository enumeration exercises the stored access token, so it requires the
+  // same manage permission as the GitHub registration repositories route; the
+  // registrations list above exposes only host + token-holder metadata and stays
+  // readable to source.read principals.
   app.get(
-    `${compartmentGitLabProviderRegistrationsPathname}/:registrationId/repositories`,
-    createCurrentOrganizationRouteResponseOptions('source.read', {
+    compartmentGitLabProviderRegistrationRepositoriesPathnameTemplate,
+    createCurrentOrganizationRouteResponseOptions('source.manage', {
       200: gitLabRegistrationRepositoryListResponseSchema,
     }),
     handleRepositories,
@@ -68,14 +74,15 @@ async function handleCreate(request: FastifyRequest, reply: FastifyReply): Promi
 
 async function handleList(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const response: GitLabProviderRegistrationListResponse = gitLabProviderRegistrationListResponseSchema.parse({
+    activeGitHubProviderHosts: await listActiveGitHubProviderHostsForOrganization(request.currentOrganization.id),
     registrations: await listGitLabRegistrations(request.currentOrganization.id),
   });
   return await reply.send(response);
 }
 
 async function handleRepositories(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
-  const params: GitHubProviderRegistrationRouteParams = parseRequestValue(
-    gitHubProviderRegistrationRouteParamsSchema,
+  const params: GitProviderRegistrationRouteParams = parseRequestValue(
+    gitProviderRegistrationRouteParamsSchema,
     request.params,
     gitSourceInvalidParamsErrorCode,
   );

@@ -2,6 +2,7 @@ import {
   defaultCompartmentEnvironmentName,
   type GitHubInstallationRepositorySummary,
   type GitHubProviderBootstrapResponse,
+  type GitLabProviderRegistrationListResponse,
   type GitSourceResponse,
 } from '@compartment/contracts';
 import { hasText } from '@compartment/utils';
@@ -20,7 +21,11 @@ import {
   resolveGitRepositoryOwner,
 } from './source-connect-git-repository-list';
 import { parseEnabledDisabledState, promptYesNoChoice } from './source.command.helpers';
-import { isGitLabRepositoryProvider, resolveGitLabRepositorySelection } from './source-connect-gitlab.command';
+import {
+  isGitLabRepositoryProvider,
+  listGitLabRegistrationsForSelection,
+  resolveGitLabRepositorySelection,
+} from './source-connect-gitlab.command';
 import { runSourceConnectGitCommand } from './source-connect-git-run.command';
 
 export interface GitSourceRepositorySelection {
@@ -79,9 +84,28 @@ export async function resolveGitSourceRepositorySelection(
   plan: LocalGitSourcePlan,
   gitLabToken: string | undefined,
 ): Promise<GitSourceRepositorySelection> {
-  if (await isGitLabRepositoryProvider(context, plan.providerHost, gitLabToken)) {
-    return await resolveGitLabRepositorySelection(context, plan, gitLabToken);
+  if (plan.providerHost === 'github.com') {
+    return await resolveGitHubRepositorySelection(dependencies, context, plan);
   }
+  const gitLabState: GitLabProviderRegistrationListResponse = await listGitLabRegistrationsForSelection(context);
+  if (
+    isGitLabRepositoryProvider(
+      plan.providerHost,
+      gitLabToken,
+      gitLabState.registrations,
+      gitLabState.activeGitHubProviderHosts,
+    )
+  ) {
+    return await resolveGitLabRepositorySelection(context, plan, gitLabToken, gitLabState.registrations);
+  }
+  return await resolveGitHubRepositorySelection(dependencies, context, plan);
+}
+
+async function resolveGitHubRepositorySelection(
+  dependencies: CliCommandDependencies,
+  context: AuthenticatedContext,
+  plan: LocalGitSourcePlan,
+): Promise<GitSourceRepositorySelection> {
   const repositoryOwner: string = await resolveGitRepositoryOwner(dependencies, plan);
   const bootstrap: GitHubProviderBootstrapResponse = await waitForGitHubSourceBootstrap(dependencies, context, {
     providerHost: plan.providerHost,

@@ -1,7 +1,7 @@
 import { createGitSourceRequestInvalidError } from '../../errors/api-business-error';
 import { findGitProviderRegistrationByWebhookTarget } from '../../queries/git-provider-registration.query';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
-import { readGitHubWebhookSecret, verifyGitHubWebhookSignature } from './git-source-runtime.support';
+import { readGitProviderWebhookSecret, verifyGitHubWebhookSignature } from './git-source-runtime.support';
 import {
   handleGitHubInstallationRepositoriesWebhook,
   handleGitHubInstallationWebhook,
@@ -16,7 +16,7 @@ export async function handleGitHubSourceWebhook(input: HandleGitHubSourceWebhook
       registrationId: input.registrationId,
     }),
   );
-  verifyGitHubWebhookSignature(input.rawBody, input.signature, readGitHubWebhookSecret(registration));
+  verifyGitHubWebhookSignature(input.rawBody, input.signature, readGitProviderWebhookSecret(registration));
   await handleVerifiedGitHubSourceWebhook(registration, input);
 }
 
@@ -40,7 +40,7 @@ async function handleVerifiedGitHubSourceWebhook(
 function requireGitProviderRegistration(
   registration: GitProviderRegistrationRow | undefined,
 ): GitProviderRegistrationRow {
-  if (registration === undefined) {
+  if (registration?.providerType !== 'github_app') {
     throw createGitSourceRequestInvalidError('Git provider registration was not found for the webhook request.');
   }
 

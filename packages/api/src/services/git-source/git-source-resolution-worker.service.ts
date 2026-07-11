@@ -37,6 +37,7 @@ import {
   resolveSourceResolutionTaskArchivePath,
 } from './source-resolution-task-archive-storage.service';
 import {
+  buildClaimedTaskProviderFields,
   isSourceResolutionTaskStillDeployable,
   requireActiveBinding,
   requireActiveSource,
@@ -111,14 +112,13 @@ async function buildClaimedSourceResolutionTask(
   const binding: SourceBindingRow = requireActiveBinding(await findSourceBindingById(claimed.sourceBindingId));
   const registration: GitProviderRegistrationRow = await readSourceGitProviderRegistration(source);
   return {
+    ...buildClaimedTaskProviderFields(registration, source),
     branchName: claimed.branchName,
     commitSha: claimed.commitSha,
     descriptorPath: binding.descriptorPath,
     installationToken: await mintResolutionRuntimeAccessToken(source, registration),
     projectName: binding.projectName,
-    providerType: getGitProviderAdapter(registration.providerType).providerType,
     providerHost: source.providerHost,
-    repositoryExternalId: source.repositoryExternalId,
     repositoryName: source.repositoryName,
     repositoryOwner: source.repositoryOwner,
     sourceBindingId: binding.id,

@@ -3,19 +3,10 @@ import { findGitProviderRegistrationByWebhookTarget } from '../../queries/git-pr
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import { listActiveSourcesByProviderRepository } from '../../queries/source.query';
 import type { SourceRow } from '../../queries/source.query.types';
-import type { GitLabJsonObject } from './gitlab-http.adapter.types';
+import type { HandleGitLabSourceWebhookInput } from './git-source-runtime-gitlab.service.types';
 import { parseGitLabPushPayload, verifyGitLabWebhookToken } from './gitlab-webhook.adapter';
 import type { ParsedGitLabPush } from './gitlab-webhook.adapter.types';
 import { persistNormalizedGitSourcePush } from './git-source-runtime-push.service';
-
-interface HandleGitLabSourceWebhookInput {
-  body: GitLabJsonObject;
-  eventType: string;
-  organizationId: string;
-  providerDeliveryId: string;
-  registrationId: string;
-  token: string;
-}
 
 export async function handleGitLabSourceWebhook(input: HandleGitLabSourceWebhookInput): Promise<void> {
   const registration: GitProviderRegistrationRow = requireRegistration(
@@ -35,7 +26,6 @@ export async function handleGitLabSourceWebhook(input: HandleGitLabSourceWebhook
     changedFilesState: { changedFiles: push.changedFiles, changedFilesComplete: push.changedFilesComplete },
     commitSha: push.commitSha,
     payloadJson: JSON.stringify(input.body),
-    repositoryExternalId: push.repositoryExternalId,
   });
 }
 

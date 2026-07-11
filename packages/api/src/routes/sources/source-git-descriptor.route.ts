@@ -36,8 +36,8 @@ import {
 import { createCurrentOrganizationRouteResponseOptions } from '../protected/current-organization-route';
 import { buildGitSourceRouteContext } from './source-git-route-context';
 import {
-  gitHubProviderRegistrationRouteParamsSchema,
-  type GitHubProviderRegistrationRouteParams,
+  gitProviderRegistrationRouteParamsSchema,
+  type GitProviderRegistrationRouteParams,
 } from './source-git.route.types';
 
 export function registerGitSourceDescriptorRoutes(app: ApiApp): void {
@@ -89,8 +89,8 @@ async function handleGitHubProviderRegistrationRepositories(
 }
 
 function readGitHubInstallationRepositoryListInput(request: FastifyRequest): ListGitHubInstallationRepositoriesInput {
-  const params: GitHubProviderRegistrationRouteParams = parseRequestValue(
-    gitHubProviderRegistrationRouteParamsSchema,
+  const params: GitProviderRegistrationRouteParams = parseRequestValue(
+    gitProviderRegistrationRouteParamsSchema,
     request.params,
     gitSourceInvalidParamsErrorCode,
   );

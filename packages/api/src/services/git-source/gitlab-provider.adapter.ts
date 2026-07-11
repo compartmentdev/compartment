@@ -1,6 +1,5 @@
 import { decryptVariableValueFromStorage } from '../../lib/variables-crypto';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
-import type { SourceRow } from '../../queries/source.query.types';
 import { getApiConfig } from '../../runtime/runtime-access';
 import type {
   CreateDescriptorPullRequestPlan,
@@ -16,9 +15,13 @@ import type {
   GitRepositoryTreeEntry,
   MintRuntimeAccessTokenInput,
   ResolvedRepositoryInstallation,
+  SourceProviderHookAttachment,
+  SourceProviderHookTarget,
 } from './git-source-provider.types';
+import { readGitProviderWebhookSecret } from './git-source-runtime.support';
 import { requireGitProviderField } from './git-source-view.service';
 import {
+  encodeGitLabProjectPath,
   isGitLabAuthenticationFailure,
   isGitLabRepositoryAccessFailure,
   GitLabHttpClient,
@@ -27,6 +30,7 @@ import { createGitLabDescriptorMergeRequest, readGitLabMergeRequestStatus } from
 import { createGitLabProjectHook, deleteGitLabProjectHook } from './gitlab-project-hook.adapter';
 import {
   assertGitLabBranch,
+  gitLabEmptyRepositoryFailureMessage,
   listGitLabProjects,
   readGitLabFile,
   readGitLabProject,
@@ -58,8 +62,7 @@ class GitLabProviderAdapter implements GitProviderAdapter {
     _installationId: string | null,
     branch: string,
   ): Promise<void> {
-    const repository: GitRepositoryMetadata = await this.readRepositoryMetadata(access, ref);
-    await assertGitLabBranch(client(access), repository.repositoryExternalId, branch);
+    await assertGitLabBranch(client(access), encodeGitLabProjectPath(ref.owner, ref.name), branch);
   }
 
   public async listRegistrationRepositories(access: GitProviderAccess): Promise<GitRepositorySummary[]> {
@@ -71,6 +74,8 @@ class GitLabProviderAdapter implements GitProviderAdapter {
     ref: GitRepositoryRef,
     branch: string,
   ): Promise<GitRepositoryTreeEntry[]> {
+    // Resolve the project first so an empty repository surfaces as the empty-repo
+    // failure instead of a generic tree read error.
     const repository: GitRepositoryMetadata = await this.readRepositoryMetadata(access, ref);
     return await readGitLabTree(client(access), repository.repositoryExternalId, branch);
   }
@@ -81,8 +86,7 @@ class GitLabProviderAdapter implements GitProviderAdapter {
     branch: string,
     path: string,
   ): Promise<GitRepositoryFile> {
-    const repository: GitRepositoryMetadata = await this.readRepositoryMetadata(access, ref);
-    return await readGitLabFile(client(access), repository.repositoryExternalId, branch, path);
+    return await readGitLabFile(client(access), encodeGitLabProjectPath(ref.owner, ref.name), branch, path);
   }
 
   public async createDescriptorPullRequest(
@@ -90,8 +94,7 @@ class GitLabProviderAdapter implements GitProviderAdapter {
     ref: GitRepositoryRef,
     plan: CreateDescriptorPullRequestPlan,
   ): Promise<GitPullRequestRef> {
-    const repository: GitRepositoryMetadata = await this.readRepositoryMetadata(access, ref);
-    return await createGitLabDescriptorMergeRequest(client(access), repository.repositoryExternalId, plan);
+    return await createGitLabDescriptorMergeRequest(client(access), encodeGitLabProjectPath(ref.owner, ref.name), plan);
   }
 
   public async readDescriptorPullRequestStatus(
@@ -99,8 +102,7 @@ class GitLabProviderAdapter implements GitProviderAdapter {
     ref: GitRepositoryRef,
     number: number,
   ): Promise<GitPullRequestStatus> {
-    const repository: GitRepositoryMetadata = await this.readRepositoryMetadata(access, ref);
-    return await readGitLabMergeRequestStatus(client(access), repository.repositoryExternalId, number);
+    return await readGitLabMergeRequestStatus(client(access), encodeGitLabProjectPath(ref.owner, ref.name), number);
   }
 
   public async mintRuntimeAccessToken(input: MintRuntimeAccessTokenInput): Promise<string> {
@@ -109,27 +111,27 @@ class GitLabProviderAdapter implements GitProviderAdapter {
 
   public async onSourceConnected(
     access: GitProviderAccess,
-    source: SourceRow,
-  ): Promise<{ providerWebhookId: string | null }> {
+    target: SourceProviderHookTarget,
+  ): Promise<SourceProviderHookAttachment> {
     const id: string = await createGitLabProjectHook(
       client(access),
-      source.repositoryExternalId,
+      target.repositoryExternalId,
       access.registration.webhookUrl,
-      readWebhookSecret(access.registration),
+      readGitProviderWebhookSecret(access.registration),
     );
     return { providerWebhookId: id };
   }
 
-  public async onSourceDisconnected(access: GitProviderAccess, source: SourceRow): Promise<void> {
-    if (source.providerWebhookId != null)
-      await deleteGitLabProjectHook(client(access), source.repositoryExternalId, source.providerWebhookId);
+  public async onSourceDisconnected(access: GitProviderAccess, target: SourceProviderHookTarget): Promise<void> {
+    if (target.providerWebhookId !== null)
+      await deleteGitLabProjectHook(client(access), target.repositoryExternalId, target.providerWebhookId);
   }
 
   public isRepositoryAccessFailure(error: Error | undefined): boolean {
     return isGitLabRepositoryAccessFailure(error);
   }
   public isRepositoryEmptyFailure(error: Error | undefined): boolean {
-    return error?.message === 'Git Repository is empty';
+    return error?.message === gitLabEmptyRepositoryFailureMessage;
   }
   public isAuthenticationFailure(error: Error | undefined): boolean {
     return isGitLabAuthenticationFailure(error);
@@ -139,10 +141,10 @@ class GitLabProviderAdapter implements GitProviderAdapter {
 export const gitlabProviderAdapter: GitProviderAdapter = new GitLabProviderAdapter();
 
 function readGitLabRegistrationToken(registration: GitProviderRegistrationRow): string {
-  return decryptRegistrationField(
-    registration.accessTokenCiphertext ?? null,
-    registration.accessTokenEncryptionKeyId ?? null,
-    'access token',
+  return decryptVariableValueFromStorage(
+    requireGitProviderField(registration.accessTokenCiphertext, 'access_token_ciphertext'),
+    requireGitProviderField(registration.accessTokenEncryptionKeyId, 'access_token_encryption_key_id'),
+    getApiConfig().variablesMasterKey,
   );
 }
 
@@ -159,20 +161,4 @@ function requireGitLabTokenCredential(
   if (credential.kind !== 'gitlab_token')
     throw new Error('GitLab provider operation requires a GitLab token credential.');
   return credential;
-}
-
-function readWebhookSecret(registration: GitProviderRegistrationRow): string {
-  return decryptRegistrationField(
-    registration.webhookSecretCiphertext,
-    registration.webhookSecretEncryptionKeyId,
-    'webhook secret',
-  );
-}
-
-function decryptRegistrationField(ciphertext: string | null, keyId: string | null, name: string): string {
-  return decryptVariableValueFromStorage(
-    requireGitProviderField(ciphertext, `${name}_ciphertext`),
-    requireGitProviderField(keyId, `${name}_encryption_key_id`),
-    getApiConfig().variablesMasterKey,
-  );
 }

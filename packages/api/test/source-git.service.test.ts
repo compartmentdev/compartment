@@ -506,6 +506,8 @@ function createApiConfig(): ApiConfig {
 
 function createActiveRegistration(): GitProviderRegistrationRow {
   return {
+    accessTokenCiphertext: null,
+    accessTokenEncryptionKeyId: null,
     appId: 'app_123',
     appName: 'Compartment GitHub App',
     appSlug: 'compartment',

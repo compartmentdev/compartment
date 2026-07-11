@@ -20,6 +20,7 @@ export interface CreateGitLabProviderRegistrationResponse {
 }
 
 export interface GitLabProviderRegistrationListResponse {
+  activeGitHubProviderHosts: string[];
   registrations: GitLabProviderRegistrationSummary[];
 }
 
@@ -52,6 +53,7 @@ export const createGitLabProviderRegistrationResponseSchema: ContractSchema<Crea
 
 export const gitLabProviderRegistrationListResponseSchema: ContractSchema<GitLabProviderRegistrationListResponse> = z
   .object({
+    activeGitHubProviderHosts: z.array(gitProviderHostSchema),
     registrations: z.array(gitLabProviderRegistrationSummarySchema),
   })
   .strict();

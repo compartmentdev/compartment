@@ -34,6 +34,7 @@ import type {
   GitRepositoryTreeEntry,
   MintRuntimeAccessTokenInput,
   ResolvedRepositoryInstallation,
+  SourceProviderHookAttachment,
 } from './git-source-provider.types';
 import { requireGitProviderField } from './git-source-view.service';
 
@@ -183,7 +184,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
     });
   }
 
-  public async onSourceConnected(): Promise<{ providerWebhookId: string | null }> {
+  public async onSourceConnected(): Promise<SourceProviderHookAttachment> {
     return await Promise.resolve({ providerWebhookId: null });
   }
 

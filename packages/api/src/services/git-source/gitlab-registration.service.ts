@@ -10,7 +10,11 @@ import {
   rotateGitLabProviderRegistrationToken,
 } from '../../queries/gitlab-provider-registration.query';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
-import { findGitProviderRegistrationById } from '../../queries/git-provider-registration.query';
+import {
+  findGitProviderRegistrationById,
+  listActiveGitHubProviderHosts,
+} from '../../queries/git-provider-registration.query';
+import { isUniqueConstraintError } from '../../queries/query-error';
 import { getApiConfig, getApiDatabase } from '../../runtime/runtime-access';
 import { isTrustedGitLabProviderHost } from '../outbound-http.service';
 import { buildRuntimePublicSettings } from '../public-hosts.service';
@@ -28,18 +32,46 @@ import type {
 export async function createGitLabRegistration(input: CreateGitLabRegistrationInput): Promise<GitLabRegistrationView> {
   assertTrustedHost(input.request.providerHost);
   const username: string = await readValidatedUsername(input.request.providerHost, input.request.accessToken);
-  const existing: GitProviderRegistrationRow | undefined = await findActiveGitLabProviderRegistration(
-    input.organizationId,
-    input.request.providerHost,
-    username,
-  );
+  const existing: GitProviderRegistrationRow | undefined = await findActiveGitLabProviderRegistration({
+    organizationId: input.organizationId,
+    providerHost: input.request.providerHost,
+    repositoryOwner: username,
+  });
   const registration: GitProviderRegistrationRow =
-    existing === undefined ? await persistNewRegistration(input, username) : await rotateRegistration(input, existing);
+    existing === undefined
+      ? await persistNewRegistrationOrRotateAfterRace(input, username)
+      : await rotateRegistration(input, existing);
   return toRegistrationView(registration);
+}
+
+async function persistNewRegistrationOrRotateAfterRace(
+  input: CreateGitLabRegistrationInput,
+  username: string,
+): Promise<GitProviderRegistrationRow> {
+  try {
+    return await persistNewRegistration(input, username);
+  } catch (error) {
+    if (!isUniqueConstraintError(error instanceof Error ? error : undefined)) {
+      throw error;
+    }
+    const raced: GitProviderRegistrationRow | undefined = await findActiveGitLabProviderRegistration({
+      organizationId: input.organizationId,
+      providerHost: input.request.providerHost,
+      repositoryOwner: username,
+    });
+    if (raced === undefined) {
+      throw error;
+    }
+    return await rotateRegistration(input, raced);
+  }
 }
 
 export async function listGitLabRegistrations(organizationId: string): Promise<GitLabRegistrationView[]> {
   return (await listActiveGitLabProviderRegistrations(organizationId)).map(toRegistrationView);
+}
+
+export async function listActiveGitHubProviderHostsForOrganization(organizationId: string): Promise<string[]> {
+  return await listActiveGitHubProviderHosts(organizationId);
 }
 
 export async function listGitLabRegistrationRepositories(
@@ -93,14 +125,13 @@ async function rotateRegistration(
     input.request.accessToken,
     getApiConfig().variablesMasterKey,
   );
-  return await rotateGitLabProviderRegistrationToken(
-    getApiDatabase(),
-    existing.id,
-    input.organizationId,
-    encrypted.valueCiphertext,
-    encrypted.encryptionKeyId,
-    new Date(),
-  );
+  return await rotateGitLabProviderRegistrationToken(getApiDatabase(), {
+    accessTokenCiphertext: encrypted.valueCiphertext,
+    accessTokenEncryptionKeyId: encrypted.encryptionKeyId,
+    organizationId: input.organizationId,
+    registrationId: existing.id,
+    updatedAt: new Date(),
+  });
 }
 
 async function readValidatedUsername(providerHost: string, token: string): Promise<string> {

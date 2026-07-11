@@ -2,8 +2,8 @@ import { createGitSourceConflictError } from '../../errors/api-business-error';
 import { updateSourceToActive } from '../../queries/source.query';
 import type { SourceMutationTransaction, SourceRow, UpdateSourceToActiveInput } from '../../queries/source.query.types';
 import { getApiDatabase } from '../../runtime/runtime-access';
-import type { GitProviderAccess, GitProviderAdapter, GitRepositoryMetadata } from './git-source-provider.types';
-import { cleanupProviderHook } from './git-source-lifecycle.support';
+import type { GitRepositoryMetadata } from './git-source-provider.types';
+import { cleanupProviderHook, type ResolvedConnectRepository } from './git-source-lifecycle.support';
 import { buildUpdateSourceInput } from './git-source-connect.persistence.support';
 import { type ResolvedRepositoryAccess } from './git-source-connect.validation';
 import { includeGitSourceDescriptorWithinTransaction } from './git-source-exclusion.service';
@@ -27,18 +27,23 @@ interface ExistingSourceConnectMutationResult {
 export async function connectExistingGitSourceWithProviderHook(
   input: ConnectGitSourceInput,
   source: SourceRow,
-  repositoryAccess: ResolvedRepositoryAccess,
-  repository: GitRepositoryMetadata,
-  adapter: GitProviderAdapter,
-  access: GitProviderAccess,
-  lifecycleSource: SourceRow,
+  connected: ResolvedConnectRepository,
 ): Promise<ConnectGitSourceResult> {
   try {
-    const result: ConnectGitSourceResult = await connectExistingGitSource(input, source, repositoryAccess, repository);
-    await cleanupProviderHook(adapter, access, source);
+    const result: ConnectGitSourceResult = await connectExistingGitSource(
+      input,
+      source,
+      connected.repositoryAccess,
+      connected.repository,
+    );
+    // Reconnect cleanup is post-commit; delivery-id dedup makes the brief two-hook overlap harmless.
+    await cleanupProviderHook(connected.adapter, connected.providerAccess, {
+      providerWebhookId: source.providerWebhookId,
+      repositoryExternalId: source.repositoryExternalId,
+    });
     return result;
   } catch (error) {
-    await cleanupProviderHook(adapter, access, lifecycleSource);
+    await cleanupProviderHook(connected.adapter, connected.providerAccess, connected.hookTarget);
     throw error;
   }
 }

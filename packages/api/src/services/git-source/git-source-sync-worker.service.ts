@@ -25,7 +25,11 @@ import { getGitProviderAdapter } from './git-source-provider.registry';
 import { completeClaimedGitSourceSyncTask } from './git-source-sync-completion.service';
 import type { CompleteClaimedGitSourceSyncTaskResult } from './git-source-sync-completion.service.types';
 import { buildGitSourceSyncAuditEventInput } from './git-source-audit.service';
-import { requireActiveSource, requireGitProviderRegistration } from './git-source-resolution-worker.support';
+import {
+  buildClaimedTaskProviderFields,
+  requireActiveSource,
+  requireGitProviderRegistration,
+} from './git-source-resolution-worker.support';
 
 const sourceSyncCanceledFailureReason: string = 'Source is no longer active for sync completion.';
 
@@ -189,15 +193,14 @@ async function buildClaimedSourceSyncTask(task: SourceSyncTaskRow): Promise<Work
   const source: SourceRow = requireActiveSource(await findSourceById(task.sourceId));
   const registration: GitProviderRegistrationRow = await readSourceSyncRegistration(source);
   return {
+    ...buildClaimedTaskProviderFields(registration, source),
     claimToken: createSourceSyncClaimToken({
       claimedAt: requireClaimedAt(task.claimedAt),
       claimedByWorkerId: requireClaimedByWorkerId(task.claimedByWorkerId),
       secret: getApiConfig().runtimeControlToken,
     }),
     installationToken: await mintSourceSyncRuntimeToken(source, registration),
-    providerType: getGitProviderAdapter(registration.providerType).providerType,
     providerHost: source.providerHost,
-    repositoryExternalId: source.repositoryExternalId,
     repositoryName: source.repositoryName,
     repositoryOwner: source.repositoryOwner,
     requestedBranchName: task.requestedBranchName,

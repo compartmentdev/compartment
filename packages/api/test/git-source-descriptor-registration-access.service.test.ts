@@ -108,6 +108,30 @@ describe('git source descriptor registration access', (): void => {
     expect(access.credential.privateKeyPem).toBe('private-key');
   });
 
+  it('uses GitLab token material without applying GitHub owner matching', async (): Promise<void> => {
+    mocks.requireGitProviderRegistration.mockResolvedValueOnce(
+      createRegistration({
+        accessTokenCiphertext: 'encrypted-token',
+        accessTokenEncryptionKeyId: 'token-key',
+        installationId: null,
+        privateKeyPemCiphertext: null,
+        privateKeyPemEncryptionKeyId: null,
+        providerHost: 'gitlab.com',
+        providerType: 'gitlab',
+        repositoryOwner: 'token-holder',
+      }),
+    );
+    mocks.decryptVariableValueFromStorage.mockReturnValueOnce('gitlab-token');
+    const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
+      actor: createActor('prn_followup_admin'),
+      organizationId: 'org_123',
+      providerHost: 'gitlab.com',
+      registrationId: 'gpr_123',
+      repositoryOwner: 'group/subgroup',
+    });
+    expect(access.credential).toEqual({ kind: 'gitlab_token', token: 'gitlab-token' });
+  });
+
   it('rejects pending registrations before reading private key material', async (): Promise<void> => {
     mocks.requireGitProviderRegistration.mockResolvedValueOnce(createRegistration({ status: 'pending' }));
 
@@ -161,6 +185,8 @@ function createActor(principalId: string): Actor {
 
 function createRegistration(overrides: Partial<GitProviderRegistrationRow> = {}): GitProviderRegistrationRow {
   return {
+    accessTokenCiphertext: null,
+    accessTokenEncryptionKeyId: null,
     appId: '12345',
     appName: 'Compartment',
     appSlug: 'compartment',

@@ -31,6 +31,14 @@ describe('GitLab HTTP adapter', (): void => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('fails when pagination exceeds its safety cap', async (): Promise<void> => {
+    vi.mocked(createGitLabTrustedOutboundFetch).mockReturnValue(
+      vi.fn().mockResolvedValue(jsonResponse([{ id: 1 }], '2')),
+    );
+    const client: GitLabHttpClient = new GitLabHttpClient({ providerHost: 'gitlab.com', token: 'token' });
+    await expect(client.requestPages({ path: '/projects' }, 1)).rejects.toThrow(/page safety cap/u);
+  });
+
   it.each([
     [401, true, false],
     [403, false, true],

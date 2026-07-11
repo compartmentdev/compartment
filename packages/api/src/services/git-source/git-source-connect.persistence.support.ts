@@ -13,7 +13,7 @@ import type {
 } from '../../queries/source.query.types';
 import type { GitRepositoryMetadata } from './git-source-provider.types';
 
-interface GitSourceUpsertInput {
+export interface GitSourceUpsertInput {
   actorPrincipalId: string;
   autoAdoptNewApps: boolean;
   defaultAutoDeployEnabled: boolean;

@@ -76,6 +76,10 @@ export function isGitLabRepositoryAccessFailure(error: Error | undefined): boole
   return error instanceof GitLabHttpError && (error.status === 403 || error.status === 404);
 }
 
+export function isGitLabNotFoundFailure(error: Error | undefined): boolean {
+  return error instanceof GitLabHttpError && error.status === 404;
+}
+
 async function readFailureMessage(response: Response): Promise<string> {
   const body: string = await response.text();
   return `GitLab API request failed with ${String(response.status)}${body.length > 0 ? `: ${body}` : ''}.`;

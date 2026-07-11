@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { GitLabHttpClient } from './gitlab-http.adapter';
+import { isGitLabNotFoundFailure, type GitLabHttpClient } from './gitlab-http.adapter';
 
 interface GitLabProjectHook {
   id: number;
@@ -27,5 +27,9 @@ export async function deleteGitLabProjectHook(
   projectId: string,
   hookId: string,
 ): Promise<void> {
-  await client.request({ method: 'DELETE', path: `/projects/${projectId}/hooks/${hookId}` });
+  try {
+    await client.request({ method: 'DELETE', path: `/projects/${projectId}/hooks/${hookId}` });
+  } catch (error) {
+    if (!isGitLabNotFoundFailure(error instanceof Error ? error : undefined)) throw error;
+  }
 }
