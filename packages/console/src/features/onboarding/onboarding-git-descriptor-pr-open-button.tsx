@@ -6,11 +6,13 @@ import { GitBranch, LoaderCircle } from '../../components/ui/icons';
 type DescriptorPullRequestOpenStatus = 'failed' | 'idle' | 'loading';
 
 interface OpenDescriptorPullRequestButtonProps {
+  isGitLab: boolean;
   onCreatePr: () => Promise<GitDescriptorPullRequestResponse>;
   onPrCreated: (response: GitDescriptorPullRequestResponse) => void;
 }
 
 interface DescriptorPullRequestOpenButtonProps {
+  isGitLab: boolean;
   state: DescriptorPullRequestOpenButtonState;
 }
 
@@ -27,6 +29,7 @@ class DescriptorPullRequestOpenButtonStateValue implements DescriptorPullRequest
 }
 
 export function OpenDescriptorPullRequestButton({
+  isGitLab,
   onCreatePr,
   onPrCreated,
 }: Readonly<OpenDescriptorPullRequestButtonProps>): JSX.Element {
@@ -37,12 +40,15 @@ export function OpenDescriptorPullRequestButton({
       {state.status === 'failed' ? (
         <p className="text-[13px] leading-5 text-[#b42318]">Could not create pull request. Try again.</p>
       ) : null}
-      <DescriptorPullRequestOpenButton state={state} />
+      <DescriptorPullRequestOpenButton isGitLab={isGitLab} state={state} />
     </div>
   );
 }
 
-function DescriptorPullRequestOpenButton({ state }: Readonly<DescriptorPullRequestOpenButtonProps>): JSX.Element {
+function DescriptorPullRequestOpenButton({
+  isGitLab,
+  state,
+}: Readonly<DescriptorPullRequestOpenButtonProps>): JSX.Element {
   const isLoading: boolean = state.status === 'loading';
   return (
     <Button className="w-fit" disabled={isLoading} onClick={state.onClick} type="button">
@@ -51,7 +57,9 @@ function DescriptorPullRequestOpenButton({ state }: Readonly<DescriptorPullReque
       ) : (
         <GitBranch aria-hidden="true" size={15} />
       )}
-      {isLoading ? 'Creating pull request' : 'Open pull request'}
+      {isLoading
+        ? `Creating ${isGitLab ? 'merge request' : 'pull request'}`
+        : `Open ${isGitLab ? 'MR' : 'pull request'}`}
     </Button>
   );
 }

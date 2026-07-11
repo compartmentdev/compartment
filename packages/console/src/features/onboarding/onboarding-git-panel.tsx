@@ -1,4 +1,5 @@
 import { useCallback, type JSX } from 'react';
+import { Button } from '../../components/ui/button';
 import { handleRepositorySelected, type GitRepositorySelectionResult } from './onboarding-git-actions';
 import { GitConnectLink } from './onboarding-git-connect';
 import { GitDescriptorCreationStep } from './onboarding-git-descriptor-step';
@@ -6,8 +7,15 @@ import { GitLoadingStep } from './onboarding-git-loading-step';
 import { GitDeployStep } from './onboarding-git-result';
 import { GitRepositoryPicker } from './onboarding-git-repository-picker';
 import { useGitOnboardingState, type GitOnboardingState } from './onboarding-git-state';
-import type { GitConnectFormInput, OnboardingRouteNavigate, OnboardingRouteState } from './onboarding-page.types';
+import type {
+  GitConnectFormInput,
+  OnboardingGitProvider,
+  OnboardingRouteNavigate,
+  OnboardingRouteState,
+} from './onboarding-page.types';
 import { readSelectedRepositoryRoutePatch } from './onboarding-git-route-patch';
+import { GitProviderSelect } from './onboarding-git-provider-select';
+import { GitLabConnect } from './onboarding-gitlab-connect';
 
 interface GitOnboardingPanelProps {
   consoleOrigin: string;
@@ -26,6 +34,8 @@ interface GitOnboardingStepContentProps extends GitOnboardingPanelProps {
 }
 
 interface GitRepositoryLoadStepProps {
+  navigate: OnboardingRouteNavigate;
+  provider: OnboardingGitProvider | undefined;
   state: Pick<GitOnboardingState, 'reloadRepositories' | 'repositoryLoadStatus'>;
 }
 
@@ -33,6 +43,8 @@ export function GitOnboardingPanel(props: Readonly<GitOnboardingPanelProps>): JS
   const state: GitOnboardingState = useGitOnboardingState({
     initialBranchName: props.routeState.branchName,
     initialEnvironmentName: props.routeState.environmentName,
+    provider: props.routeState.provider ?? 'github',
+    providerHost: props.routeState.providerHost ?? 'github.com',
     registrationId: props.routeState.registrationId,
     repositoryOwner: props.routeState.repositoryOwner,
     sessionId: props.routeState.sessionId,
@@ -77,6 +89,16 @@ function renderGitDeployStep(props: Readonly<GitOnboardingStepContentProps>, onC
 
 function GitPrepareStep(props: Readonly<GitPrepareStepProps>): JSX.Element {
   if (!props.isConnected) {
+    if (props.routeState.provider === undefined) return <GitProviderSelect navigate={props.navigate} />;
+    if (props.routeState.provider === 'gitlab') {
+      return (
+        <GitLabConnect
+          initialProviderHost={props.routeState.providerHost ?? 'gitlab.com'}
+          navigate={props.navigate}
+          selectedOrganizationSlug={props.selectedOrganizationSlug}
+        />
+      );
+    }
     return (
       <GitConnectLink
         consoleOrigin={props.consoleOrigin}
@@ -93,7 +115,7 @@ function GitPrepareStep(props: Readonly<GitPrepareStepProps>): JSX.Element {
 
 function GitConnectedPrepareStep(props: Readonly<GitPrepareStepProps>): JSX.Element {
   if (props.state.formInput === null) {
-    return <GitRepositoryLoadStep state={props.state} />;
+    return <GitRepositoryLoadStep navigate={props.navigate} provider={props.routeState.provider} state={props.state} />;
   }
 
   return (
@@ -111,28 +133,51 @@ function GitConnectedPrepareStep(props: Readonly<GitPrepareStepProps>): JSX.Elem
   );
 }
 
-function GitRepositoryLoadStep({ state }: Readonly<GitRepositoryLoadStepProps>): JSX.Element {
+function GitRepositoryLoadStep({ navigate, provider, state }: Readonly<GitRepositoryLoadStepProps>): JSX.Element {
   if (state.repositoryLoadStatus === 'loading' || state.repositoryLoadStatus === 'idle') {
     return <GitLoadingStep label="Repositories" value="Loading repositories" />;
   }
   if (state.repositoryLoadStatus === 'failed') {
-    return (
-      <GitLoadingStep
-        label="Repositories"
-        onRefresh={state.reloadRepositories}
-        state="error"
-        value="GitHub installation cannot be read. Reconnect GitHub."
-      />
-    );
+    return renderGitRepositoryLoadFailure(provider, state.reloadRepositories);
   }
+  if (state.repositoryLoadStatus === 'token_invalid') return renderGitLabTokenFailure(navigate);
 
   return (
     <GitLoadingStep
       label="Repositories"
       onRefresh={state.reloadRepositories}
       state="error"
-      value="No repositories are available for this GitHub installation"
+      value={`No repositories are available for this ${provider === 'gitlab' ? 'GitLab registration' : 'GitHub installation'}`}
     />
+  );
+}
+
+function renderGitRepositoryLoadFailure(
+  provider: OnboardingGitProvider | undefined,
+  reloadRepositories: () => void,
+): JSX.Element {
+  return (
+    <GitLoadingStep
+      label="Repositories"
+      onRefresh={reloadRepositories}
+      state="error"
+      value={
+        provider === 'gitlab'
+          ? 'GitLab repositories cannot be read. Try again.'
+          : 'GitHub installation cannot be read. Reconnect GitHub.'
+      }
+    />
+  );
+}
+
+function renderGitLabTokenFailure(navigate: OnboardingRouteNavigate): JSX.Element {
+  return (
+    <div className="grid gap-3 p-5">
+      <p className="text-[14px] text-[#b42318]">GitLab token could not be used.</p>
+      <Button onClick={(): void => navigate({ gitConnected: false })} type="button">
+        Re-enter token
+      </Button>
+    </div>
   );
 }
 

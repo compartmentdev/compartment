@@ -14,6 +14,9 @@ export function readSelectedRepositoryRoutePatch(formInput: GitConnectFormInput)
   return {
     branchName: formInput.branchName,
     environmentName: formInput.environmentName,
+    provider: formInput.repository.provider,
+    providerHost: formInput.repository.providerHost,
+    registrationId: formInput.repository.registrationId,
     repositoryId: formInput.repository.id,
     repositoryName: formInput.repository.name,
     repositoryOwner: formInput.repository.owner,

@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import {
-  type GitHubInstallationRepositoryListRequest,
-  type GitHubInstallationRepositoryListResponse,
-  type GitHubInstallationRepositorySummary,
-  type GitHubProviderBootstrapResponse,
-} from '@compartment/contracts/browser';
-import { listBrowserGitHubInstallationRepositories, startBrowserGitHubProviderBootstrap } from './onboarding-git-api';
-import { gitOnboardingProviderHost } from './onboarding-git-constants';
-import { buildGitHubBootstrapReturnPath } from './onboarding-git-connect-actions';
+import { BrowserApiError } from '../../lib/browser-api';
+import { loadGitHubRepositoryOptions } from './onboarding-github-repositories';
 import { readInitialGitFormInput } from './onboarding-git-repository-form-input';
-import type { GitConnectFormInput, OnboardingRepositoryOption } from './onboarding-page.types';
+import { loadGitLabRepositoryOptions } from './onboarding-gitlab-repositories';
+import type { GitConnectFormInput, OnboardingGitProvider, OnboardingRepositoryOption } from './onboarding-page.types';
 
-export type GitRepositoryLoadStatus = 'failed' | 'idle' | 'loading' | 'ready';
+export type GitRepositoryLoadStatus = 'failed' | 'idle' | 'loading' | 'ready' | 'token_invalid';
 
 export interface GitRepositoryOptionsState {
   formInput: GitConnectFormInput | null;
@@ -24,6 +18,8 @@ export interface GitRepositoryOptionsState {
 interface UseGitRepositoryOptionsInput {
   initialBranchName: string | undefined;
   initialEnvironmentName: string | undefined;
+  provider: OnboardingGitProvider;
+  providerHost: string;
   registrationId: string | undefined;
   repositoryOwner: string | undefined;
   sessionId: string | undefined;
@@ -42,6 +38,8 @@ interface UseLoadGitRepositoryOptionsInput {
 interface LoadGitRepositoryOptionsEffectInput {
   initialBranchName: string | undefined;
   initialEnvironmentName: string | undefined;
+  provider: OnboardingGitProvider;
+  providerHost: string;
   registrationId: string | undefined;
   repositoryOwner: string | undefined;
   sessionId: string | undefined;
@@ -50,11 +48,6 @@ interface LoadGitRepositoryOptionsEffectInput {
   setFormInput: Dispatch<SetStateAction<GitConnectFormInput | null>>;
   setRepositoryLoadStatus: Dispatch<SetStateAction<GitRepositoryLoadStatus>>;
   setRepositoryOptions: Dispatch<SetStateAction<OnboardingRepositoryOption[]>>;
-}
-
-interface GitHubInstallationRepositoryListRequestInput {
-  repositoryOwner: string;
-  sessionId: string | undefined;
 }
 
 type LoadGitRepositoryOptionsResult =
@@ -125,6 +118,7 @@ function useLoadGitRepositoryOptionsEffectInput(
   input: UseLoadGitRepositoryOptionsInput,
 ): LoadGitRepositoryOptionsEffectInput {
   const { input: options, setFormInput, setRepositoryLoadStatus, setRepositoryOptions } = input;
+  const optionsKey: string = JSON.stringify(options);
   return useMemo(
     (): LoadGitRepositoryOptionsEffectInput => ({
       ...options,
@@ -132,18 +126,7 @@ function useLoadGitRepositoryOptionsEffectInput(
       setRepositoryLoadStatus,
       setRepositoryOptions,
     }),
-    [
-      options.initialBranchName,
-      options.initialEnvironmentName,
-      options.registrationId,
-      options.repositoryOwner,
-      options.sessionId,
-      options.selectedOrganizationSlug,
-      options.selectedRepositoryId,
-      setFormInput,
-      setRepositoryLoadStatus,
-      setRepositoryOptions,
-    ],
+    [optionsKey, setFormInput, setRepositoryLoadStatus, setRepositoryOptions],
   );
 }
 
@@ -154,9 +137,11 @@ function startLoadGitRepositoryOptions(input: LoadGitRepositoryOptionsEffectInpu
     .then((result: LoadGitRepositoryOptionsResult): void => {
       updateLoadedRepositories(input, result, canceled);
     })
-    .catch((): void => {
+    .catch((error: Error): void => {
       if (!canceled) {
-        input.setRepositoryLoadStatus('failed');
+        input.setRepositoryLoadStatus(
+          error instanceof BrowserApiError && error.code === 'gitlab_token_invalid' ? 'token_invalid' : 'failed',
+        );
       }
     });
   return (): void => {
@@ -185,38 +170,22 @@ function updateLoadedRepositories(
 }
 
 async function loadGitRepositoryOptions(input: UseGitRepositoryOptionsInput): Promise<LoadGitRepositoryOptionsResult> {
-  if (input.registrationId === undefined || input.repositoryOwner === undefined) {
+  if (input.registrationId === undefined) {
     return buildReadyGitRepositoryOptionsResult([]);
   }
   const registrationId: string = input.registrationId;
-  const repositoryOwner: string = input.repositoryOwner;
-  const response: GitHubInstallationRepositoryListResponse = await listBrowserGitHubInstallationRepositories(
-    input.selectedOrganizationSlug,
-    registrationId,
-    buildGitHubInstallationRepositoryListRequest({
-      repositoryOwner,
-      sessionId: input.sessionId,
-    }),
-  );
-  if (response.status === 'provider_bootstrap_required') {
-    await redirectToGitHubProviderBootstrap(input, repositoryOwner);
-    return { kind: 'redirecting' };
+  if (input.provider === 'gitlab') {
+    return buildReadyGitRepositoryOptionsResult(
+      await loadGitLabRepositoryOptions(input.selectedOrganizationSlug, registrationId, input.providerHost),
+    );
   }
-  return buildReadyGitRepositoryOptionsResult(
-    response.repositories.map(
-      (repository: GitHubInstallationRepositorySummary): OnboardingRepositoryOption =>
-        toRepositoryOption(registrationId, repository),
-    ),
-  );
-}
-
-function buildGitHubInstallationRepositoryListRequest(
-  input: GitHubInstallationRepositoryListRequestInput,
-): GitHubInstallationRepositoryListRequest {
-  return {
-    providerHost: gitOnboardingProviderHost,
+  if (input.repositoryOwner === undefined) return buildReadyGitRepositoryOptionsResult([]);
+  return await loadGitHubRepositoryOptions({
+    registrationId,
     repositoryOwner: input.repositoryOwner,
-  };
+    selectedOrganizationSlug: input.selectedOrganizationSlug,
+    sessionId: input.sessionId,
+  });
 }
 
 function buildReadyGitRepositoryOptionsResult(
@@ -225,47 +194,5 @@ function buildReadyGitRepositoryOptionsResult(
   return {
     kind: 'ready',
     repositories,
-  };
-}
-
-async function redirectToGitHubProviderBootstrap(
-  input: UseGitRepositoryOptionsInput,
-  repositoryOwner: string,
-): Promise<void> {
-  const bootstrap: GitHubProviderBootstrapResponse = await startBrowserGitHubProviderBootstrap(
-    input.selectedOrganizationSlug,
-    {
-      providerHost: gitOnboardingProviderHost,
-      repositoryOwner,
-      returnTo: readGitHubInstallationRepositoryListReturnTo({
-        repositoryOwner,
-        sessionId: input.sessionId,
-      }),
-    },
-  );
-  if (bootstrap.browserUrl === null) {
-    throw new Error('GitHub provider bootstrap did not return a browser URL.');
-  }
-  window.location.assign(bootstrap.browserUrl);
-}
-
-function readGitHubInstallationRepositoryListReturnTo(
-  input: GitHubInstallationRepositoryListRequestInput,
-): string | undefined {
-  return input.sessionId === undefined
-    ? undefined
-    : buildGitHubBootstrapReturnPath(input.sessionId, undefined, input.repositoryOwner);
-}
-
-function toRepositoryOption(
-  registrationId: string,
-  repository: GitHubInstallationRepositorySummary,
-): OnboardingRepositoryOption {
-  return {
-    defaultBranchName: repository.defaultBranchName,
-    id: repository.id,
-    name: repository.name,
-    owner: repository.owner,
-    registrationId,
   };
 }

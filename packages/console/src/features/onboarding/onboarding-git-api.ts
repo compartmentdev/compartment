@@ -1,5 +1,6 @@
 import {
   buildCompartmentGitHubProviderRegistrationRepositoriesPathname,
+  buildCompartmentGitLabProviderRegistrationRepositoriesPathname,
   buildCompartmentGitSourceSyncTaskPathname,
   compartmentDeploymentsStatusPathname,
   compartmentGitDescriptorPlanPathname,
@@ -8,8 +9,11 @@ import {
   compartmentGitHubProviderAccountDiscoveryPathname,
   compartmentGitHubProviderAccountDiscoveryResultPathname,
   compartmentGitHubProviderBootstrapPathname,
+  compartmentGitLabProviderRegistrationsPathname,
   compartmentGitSourceConnectPathname,
   connectGitSourceRequestSchema,
+  createGitLabProviderRegistrationRequestSchema,
+  createGitLabProviderRegistrationResponseSchema,
   createGitDescriptorPullRequestRequestSchema,
   deploymentStatusQuerySchema,
   deploymentStatusResponseSchema,
@@ -28,7 +32,10 @@ import {
   gitHubProviderBootstrapResponseSchema,
   gitSourceResponseSchema,
   gitSourceSyncTaskResponseSchema,
+  gitLabRegistrationRepositoryListResponseSchema,
   type ConnectGitSourceRequest,
+  type CreateGitLabProviderRegistrationRequest,
+  type CreateGitLabProviderRegistrationResponse,
   type CreateGitDescriptorPullRequestRequest,
   type DeploymentStatusQuery,
   type DeploymentStatusResponse,
@@ -47,6 +54,7 @@ import {
   type GitHubProviderBootstrapResponse,
   type GitSourceResponse,
   type GitSourceSyncTaskResponse,
+  type GitLabRegistrationRepositoryListResponse,
 } from '@compartment/contracts/browser';
 import { requestBrowserApi } from '../../lib/browser-api';
 
@@ -102,6 +110,28 @@ export async function listBrowserGitHubInstallationRepositories(
       gitHubInstallationRepositoryListRequestSchema.parse(query),
     ),
     gitHubInstallationRepositoryListResponseSchema,
+    { currentOrganization },
+  );
+}
+
+export async function createBrowserGitLabProviderRegistration(
+  currentOrganization: string,
+  body: CreateGitLabProviderRegistrationRequest,
+): Promise<CreateGitLabProviderRegistrationResponse> {
+  return await requestBrowserApi(
+    compartmentGitLabProviderRegistrationsPathname,
+    createGitLabProviderRegistrationResponseSchema,
+    { currentOrganization, json: createGitLabProviderRegistrationRequestSchema.parse(body), method: 'POST' },
+  );
+}
+
+export async function listBrowserGitLabRegistrationRepositories(
+  currentOrganization: string,
+  registrationId: string,
+): Promise<GitLabRegistrationRepositoryListResponse> {
+  return await requestBrowserApi(
+    buildCompartmentGitLabProviderRegistrationRepositoriesPathname(registrationId),
+    gitLabRegistrationRepositoryListResponseSchema,
     { currentOrganization },
   );
 }

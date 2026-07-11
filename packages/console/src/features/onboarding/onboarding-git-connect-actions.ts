@@ -113,6 +113,8 @@ function buildGitHubReturnPath(
     ...createDefaultOnboardingRouteState(),
     gitConnected,
     method: 'git',
+    provider: 'github',
+    providerHost: 'github.com',
     registrationId,
     repositoryOwner,
     sessionId,

@@ -107,7 +107,7 @@ describe('browser onboarding route state', (): void => {
         href:
           'http://console.localhost/onboarding?method=git&step=deploy&branch=main&env=production&owner=acme' +
           '&registration=gpr_123&repo=repo_123&repository=web&source=src_123&sync=sst_123&git=connected' +
-          '&session=fdo_123#pr_token=prt_123',
+          '&session=fdo_123&provider=gitlab&provider_host=gitlab.example.com#pr_token=prt_123',
       },
     });
 
@@ -117,6 +117,8 @@ describe('browser onboarding route state', (): void => {
       environmentName: 'production',
       gitConnected: true,
       method: 'git',
+      provider: 'gitlab',
+      providerHost: 'gitlab.example.com',
       registrationId: 'gpr_123',
       repositoryId: 'repo_123',
       repositoryName: 'web',
@@ -171,6 +173,15 @@ describe('browser onboarding route state', (): void => {
       sourceId: undefined,
       syncTaskId: undefined,
     });
+  });
+
+  it('preserves the selected Git provider before connection', (): void => {
+    const nextState: OnboardingRouteState = readNextRouteState(
+      { ...createDefaultOnboardingRouteState(), method: 'git', step: 'prepare' },
+      { provider: 'gitlab', providerHost: 'gitlab.example.com' },
+    );
+
+    expect(nextState).toMatchObject({ provider: 'gitlab', providerHost: 'gitlab.example.com' });
   });
 
   it('disables step links while first deployment is pending', (): void => {
