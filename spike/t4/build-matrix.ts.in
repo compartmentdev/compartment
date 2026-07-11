@@ -1,0 +1,154 @@
+import { access, mkdir, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
+import { buildDockerImage, type DockerBuildImageInput } from '../../packages/docker/src/index';
+
+interface Scenario {
+  appPath?: string;
+  buildCommand?: string;
+  buildEnv?: Record<string, string>;
+  context: string;
+  dockerfile?: string;
+  name: string;
+  packer: DockerBuildImageInput['packer'];
+  runtimeAptPackages?: string[];
+  staticOutputDirectory?: string;
+}
+
+interface BuildResult {
+  durationSeconds: number;
+  error?: string;
+  imageRef?: string;
+  name: string;
+  ok: boolean;
+  phase: string;
+}
+
+const scenarios: Scenario[] = [
+  { context: 'examples/dockerfile', dockerfile: 'Dockerfile', name: 'dockerfile/web', packer: 'dockerfile' },
+  {
+    appPath: 'apps/web',
+    context: 'examples/dockerfile-monorepo',
+    dockerfile: 'apps/web/Dockerfile',
+    name: 'dockerfile-monorepo/web',
+    packer: 'dockerfile',
+  },
+  { context: 'examples/railpack', name: 'railpack/web', packer: 'railpack' },
+  {
+    context: 'examples/railpack-build-packages',
+    name: 'railpack-build-packages/web',
+    packer: 'railpack',
+    runtimeAptPackages: ['jq'],
+  },
+  { appPath: 'apps/web', context: 'examples/railpack-monorepo', name: 'railpack-monorepo/web', packer: 'railpack' },
+  {
+    appPath: 'packages/api',
+    buildCommand: 'pnpm --filter @compartment-e2e/pnpm-api build',
+    context: 'examples/railpack-pnpm-workspace',
+    name: 'railpack-pnpm-workspace/web',
+    packer: 'railpack',
+  },
+  {
+    buildCommand: 'node build.mjs',
+    buildEnv: { VITE_PUBLIC_GREETING: 't4' },
+    context: 'examples/static-vite-react',
+    name: 'static-vite-react/web',
+    packer: 'static',
+    staticOutputDirectory: 'dist',
+  },
+  {
+    buildCommand: 'node build.mjs',
+    buildEnv: { VITE_PUBLIC_GREETING: 't4' },
+    context: 'examples/vite-react',
+    name: 'vite-react/web',
+    packer: 'railpack',
+  },
+  { context: 'examples/python', name: 'python/web', packer: 'railpack', runtimeAptPackages: ['ffmpeg'] },
+  {
+    buildCommand: 'node build.mjs',
+    context: 'examples/java-api-frontend/services/web',
+    name: 'java-api-frontend/web',
+    packer: 'railpack',
+  },
+  {
+    context: 'examples/java-api-frontend/services/api',
+    dockerfile: 'Dockerfile',
+    name: 'java-api-frontend/api',
+    packer: 'dockerfile',
+  },
+  {
+    context: 'examples/multi-service/services/web',
+    dockerfile: 'Dockerfile',
+    name: 'multi-service/web',
+    packer: 'dockerfile',
+  },
+  {
+    context: 'examples/multi-service/services/backoffice',
+    name: 'multi-service/backoffice',
+    packer: 'railpack',
+  },
+];
+
+function required(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+async function main(): Promise<void> {
+  const phase = process.argv[2] ?? 'cold';
+  const selected = process.argv.slice(3);
+  const registry = required('T4_REGISTRY');
+  const password = required('T4_REGISTRY_PASSWORD');
+  const repo = resolve(process.cwd());
+  const output = resolve(process.env.T4_RESULTS_DIR ?? join(repo, 'spike/t4/results'));
+  await mkdir(output, { recursive: true });
+  const results: BuildResult[] = [];
+
+  for (const scenario of scenarios.filter(({ name }) => selected.length === 0 || selected.includes(name))) {
+    const contextDirectory = join(repo, scenario.context);
+    await access(contextDirectory);
+    const tagName = scenario.name.replace('/', '-');
+    const pushImageTag = `${registry}/t4/${tagName}:${phase}`;
+    const started = performance.now();
+    try {
+      const result = await buildDockerImage({
+        appPath: scenario.appPath,
+        buildCommand: scenario.buildCommand,
+        buildEnv: scenario.buildEnv,
+        contextDirectory,
+        dockerfilePath: scenario.dockerfile,
+        imageTag: `t4-${tagName}:${phase}`,
+        onProgressLine: ({ message, stream }) => process[stream].write(`[${scenario.name}] ${message}\n`),
+        packer: scenario.packer,
+        pushImageInsecureRegistry: true,
+        pushImageTag,
+        pushRegistryCredentials: { password, serverAddress: registry, username: 'compartment-writer' },
+        runtimeAptPackages: scenario.runtimeAptPackages,
+        staticOutputDirectory: scenario.staticOutputDirectory,
+      });
+      results.push({
+        durationSeconds: (performance.now() - started) / 1000,
+        imageRef: result.imageRef,
+        name: scenario.name,
+        ok: true,
+        phase,
+      });
+    } catch (error) {
+      results.push({
+        durationSeconds: (performance.now() - started) / 1000,
+        error: error instanceof Error ? error.message : String(error),
+        name: scenario.name,
+        ok: false,
+        phase,
+      });
+    }
+    await writeFile(join(output, `${phase}.json`), `${JSON.stringify(results, null, 2)}\n`);
+  }
+  if (results.some(({ ok }) => !ok)) process.exitCode = 1;
+}
+
+void main().catch((error: unknown): void => {
+  console.error(error);
+  process.exitCode = 1;
+});

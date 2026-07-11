@@ -1,0 +1,9 @@
+[
+  {
+    "durationSeconds": 0.5082296169999999,
+    "imageRef": "t4-dockerfile-web@sha256:0ee7614d14e84e91b11a5a23d9712c76ae16ed3f4f464ef9953799a7e5eac247",
+    "name": "dockerfile/web",
+    "ok": true,
+    "phase": "recovery"
+  }
+]

@@ -1,0 +1,12 @@
+dockerfile-web 200
+dockerfile-monorepo-web 200
+railpack-web 200
+railpack-build-packages-web 200
+railpack-monorepo-web 200
+static-vite-react-web 200
+vite-react-web 200
+python-web 200
+java-api-frontend-web 200
+java-api-frontend-api 200
+multi-service-web 200
+multi-service-backoffice 200
