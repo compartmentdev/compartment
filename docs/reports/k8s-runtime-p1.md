@@ -64,9 +64,13 @@ cutover:
 - `deployments.nodeId`, `containerId`, `drainingContainerId`, and `drainingNodeId`;
 - `deployments.upstreamHost` and `upstreamPort`;
 - Docker runtime deployment, release, and network-reservation coordination;
+- repository registration for the removed node and Docker-engine surfaces:
+  commitlint scopes, both Knip configs, CI package rows, layer index/docs, and
+  every `.codex/skills` package or ownership list.
 
 These items are deleted vertically in the integration branch before its
-single cutover merge to `main`; no fallback path is retained.
+single cutover merge to `main`; deregistration is part of the G1 grep gate and
+no fallback path is retained.
 
 ## Validation scope
 

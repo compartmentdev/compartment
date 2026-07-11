@@ -7,6 +7,7 @@ const packageScopes = [
   'edge',
   'eslint-config',
   'eslint-plugin',
+  'kube-runtime',
   'node',
   'sdk',
   'source-archive',

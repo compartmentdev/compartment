@@ -13,6 +13,7 @@ const PACKAGE_ORDER = [
   'edge',
   'worker',
   'docker',
+  'kube-runtime',
   'utils',
   'test-support',
 ];

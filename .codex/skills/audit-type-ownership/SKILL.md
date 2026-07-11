@@ -17,7 +17,7 @@ Use this skill for non-mutating type ownership audits in the compartment repo.
 ## Workflow
 
 1. Run `node .codex/skills/audit-type-ownership/scripts/audit_type_ownership.mjs` from the repo root.
-2. Narrow with `--package <api|contracts|sdk|cli|node|edge|worker|docker|utils|test-support>` when the request is scoped. Use `--format json` only when a structured artifact is more useful than Markdown.
+2. Narrow with `--package <api|contracts|sdk|cli|node|edge|worker|docker|kube-runtime|utils|test-support>` when the request is scoped. Use `--format json` only when a structured artifact is more useful than Markdown.
 3. Read the script output before making claims. It is a heuristic inventory, not proof.
 4. Treat declared workspace dependencies as package context, not automatic findings. A non-`contracts` import matters only when it is undeclared in the owning package or it conflicts with the relevant layer doc.
 5. Treat duplicate names as move candidates only when they imply a shared serialized or cross-package owner. Package-local families such as `*Input`, `*Context`, `*Plan`, `*Result`, `*Options`, `*State`, `*Config`, and `*App` can legitimately exist in multiple packages.
@@ -35,7 +35,7 @@ Use this skill for non-mutating type ownership audits in the compartment repo.
 ## Default scope
 
 - Start with `api`.
-- Then sweep `contracts`, `sdk`, `cli`, `node`, `edge`, `worker`, `docker`, `utils`, and `test-support`.
+- Then sweep `contracts`, `sdk`, `cli`, `node`, `edge`, `worker`, `docker`, `kube-runtime`, `utils`, and `test-support`.
 - Keep the audit non-mutating unless the user explicitly asks for implementation after the audit.
 
 ## Output
