@@ -9,6 +9,7 @@ export type AuditEventMetadata = Record<string, AuditEventMetadataValue>;
 export type AuditEventListOrderBy = 'eventType' | 'occurredAt' | 'status';
 export type AuditEventType =
   | 'audit.export.created'
+  | 'deployment.kubernetes.drift_detected'
   | 'organization.assignment.created'
   | 'organization.assignment.deleted'
   | 'organization.auth_settings.updated'

@@ -1,0 +1,61 @@
+import type {
+  KubeDeploymentState,
+  KubeDeploymentStateRow,
+  KubeReconcileAction,
+  KubeDriftKind,
+  KubeDriftAudit,
+  KubeObservedDeployment,
+  KubeStateTransition,
+} from './kube-runtime.types';
+
+export function calculateKubeStateTransition(
+  row: KubeDeploymentStateRow,
+  observed: KubeObservedDeployment,
+  now: Date,
+): KubeStateTransition {
+  if (row.state === 'desired') return transition('apply', 'pending', null, row.observedAt);
+  const recovery: KubeStateTransition | null = recoveryTransition(row, observed);
+  if (recovery !== null) return recovery;
+  const ready: boolean =
+    observed.generation !== null &&
+    observed.observedGeneration === observed.generation &&
+    observed.availableReplicas >= row.desiredReplicas;
+  if (ready) return transition('none', 'active', null, now);
+
+  return transition(
+    'none',
+    'pending',
+    driftAudit(row, 'non-ready', 'Active Kubernetes Deployment became non-Ready.'),
+    row.observedAt,
+  );
+}
+
+function recoveryTransition(row: KubeDeploymentStateRow, observed: KubeObservedDeployment): KubeStateTransition | null {
+  if (!observed.exists || !observed.requiredObjectsPresent)
+    return transition(
+      'apply',
+      'pending',
+      driftAudit(row, 'deleted', 'A required Kubernetes application object is missing.'),
+      row.observedAt,
+    );
+  if (!observed.desiredFieldsDrifted) return null;
+  return transition(
+    'apply',
+    'pending',
+    driftAudit(row, 'drifted', 'Controller-owned Kubernetes fields drifted.'),
+    row.observedAt,
+  );
+}
+
+function driftAudit(row: KubeDeploymentStateRow, kind: KubeDriftKind, message: string): KubeDriftAudit | null {
+  return row.state === 'active' ? { kind, message } : null;
+}
+
+function transition(
+  action: KubeReconcileAction,
+  nextState: KubeDeploymentState,
+  audit: KubeDriftAudit | null,
+  observedAt: Date | null,
+): KubeStateTransition {
+  return { action, audit, nextState, observedAt };
+}

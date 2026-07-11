@@ -53,6 +53,11 @@
         },
         {
           "type": "json",
+          "path": "packages/kube-runtime/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
           "path": "packages/node/package.json",
           "jsonpath": "$.version"
         },

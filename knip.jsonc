@@ -68,6 +68,12 @@
       "entry": ["src/bin.ts!"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
     },
+    "packages/kube-runtime": {
+      // Library-first P1 has no production consumer until the integration cutover.
+      "includeEntryExports": false,
+      "entry": ["src/index.ts!"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+    },
     "packages/worker": {
       // registry-auth-proxy is launched by docker-compose through dist/registry-auth-proxy.js.
       "entry": ["src/index.ts!", "src/server.ts!", "src/registry-auth-proxy.ts!"],

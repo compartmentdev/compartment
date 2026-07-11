@@ -24,6 +24,11 @@
       "entry": ["src/index.ts!"],
       "project": ["src/**/*.ts!", "!test/**!"],
     },
+    "packages/kube-runtime": {
+      "includeEntryExports": false,
+      "entry": ["src/index.ts!"],
+      "project": ["src/**/*.ts!", "!test/**!"],
+    },
     "packages/cli": {
       "entry": ["src/bin.ts!"],
       "project": ["src/**/*.ts!", "!test/**!"],
