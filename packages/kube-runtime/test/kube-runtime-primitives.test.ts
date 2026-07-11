@@ -1,5 +1,5 @@
-import { KubernetesObjectApi, PatchStrategy, type KubernetesObject } from '@kubernetes/client-node';
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { KubernetesObjectApi, PatchStrategy, type KubeConfig, type KubernetesObject } from '@kubernetes/client-node';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   KubeRuntime,
   kubeJobName,
@@ -8,6 +8,7 @@ import {
   type KubeManifest,
   type KubeObservation,
   type KubeObservationHealth,
+  type ObserveLabels,
 } from '../src';
 import type { KubeObservationListener } from '../src/kube-runtime.types';
 
@@ -17,6 +18,11 @@ vi.mock('../src/kube-observation', (): object => ({ createKubeObservation: creat
 
 interface JobManifestSpec {
   backoffLimit: number;
+  template: { spec: { containers: JobContainerSpec[] } };
+}
+
+interface JobContainerSpec {
+  env: { name: string; value: string }[];
 }
 
 type KubePatchInvocation = [
@@ -46,10 +52,15 @@ describe('KubeRuntime Job primitive', (): void => {
   const coreApi: PrimitiveCoreApi = new PrimitiveCoreApi();
 
   beforeEach((): void => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     objectApi.patches.length = 0;
     coreApi.readNamespacedPodLog.mockClear();
     vi.spyOn(KubernetesObjectApi, 'makeApiClient').mockReturnValue(objectApi as never);
+  });
+
+  afterEach((): void => {
+    vi.useRealTimers();
   });
 
   it('reuses a deterministic release Job, reads cached completion, and returns logs', async (): Promise<void> => {
@@ -64,6 +75,10 @@ describe('KubeRuntime Job primitive', (): void => {
     const manifest: KubeManifest = objectApi.patches[0]![0];
     expect(manifest.metadata?.name).toBe(jobName);
     expect((manifest.spec as JobManifestSpec).backoffLimit).toBe(0);
+    expect((manifest.spec as JobManifestSpec).template.spec.containers[0]?.env).toEqual([
+      { name: 'ALPHA', value: 'a' },
+      { name: 'ZETA', value: 'z' },
+    ]);
     expect(objectApi.patches[0]?.slice(3)).toEqual(['compartment', false, PatchStrategy.ServerSideApply]);
     expect(coreApi.readNamespacedPodLog).toHaveBeenCalledWith({
       container: 'job',
@@ -87,6 +102,32 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(result.exitCode).toBe(23);
     expect(stop).toHaveBeenCalledOnce();
   });
+
+  it('applies one timeout to informer startup and terminal observation', async (): Promise<void> => {
+    vi.useFakeTimers();
+    createObservationMock.mockImplementation(
+      async (
+        kubeConfig: KubeConfig,
+        objectClient: KubernetesObjectApi,
+        input: ObserveLabels,
+        signal: AbortSignal,
+      ): Promise<KubeObservation> => {
+        void kubeConfig;
+        void objectClient;
+        void input;
+        return await new Promise<KubeObservation>(
+          (_resolve: (value: KubeObservation) => void, reject: (reason: Error) => void): void => {
+            signal.addEventListener('abort', (): void => reject(signal.reason as Error), { once: true });
+          },
+        );
+      },
+    );
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+    const pending: Promise<KubeJobResult> = runtime.runJob({ ...jobSpec('release'), timeoutMs: 100 });
+    const rejection: Promise<void> = expect(pending).rejects.toThrow('did not finish within 100ms');
+    await vi.advanceTimersByTimeAsync(100);
+    await rejection;
+  });
 });
 
 function jobSpec(jobClass: 'operation' | 'release'): KubeJobSpec {
@@ -94,6 +135,7 @@ function jobSpec(jobClass: 'operation' | 'release'): KubeJobSpec {
     id: 'job-01jz',
     image: 'registry.example/release@sha256:abc',
     jobClass,
+    env: { ZETA: 'z', ALPHA: 'a' },
     labels: { 'compartment.dev/deployment-id': 'dep-01jz' },
     namespace: 'cpt-prj-01jz',
     timeoutMs: 1_000,

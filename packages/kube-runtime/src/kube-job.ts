@@ -51,7 +51,9 @@ function jobContainer(spec: KubeJobSpec): object {
   return {
     args: spec.args,
     command: spec.command,
-    env: Object.entries(spec.env ?? {}).map(([name, value]: [string, string]): object => ({ name, value })),
+    env: Object.entries(spec.env ?? {})
+      .sort(([leftName]: [string, string], [rightName]: [string, string]): number => leftName.localeCompare(rightName))
+      .map(([name, value]: [string, string]): object => ({ name, value })),
     image: spec.image,
     name: 'job',
   };

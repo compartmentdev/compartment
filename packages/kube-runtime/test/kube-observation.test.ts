@@ -20,6 +20,8 @@ class FakeInformer {
   private readonly connectCallbacks: ErrorCallback[] = [];
   private readonly objectCallbacks: Map<string, ObjectCallback[]> = new Map<string, ObjectCallback[]>();
 
+  public constructor(private readonly connects: boolean = true) {}
+
   public on(event: string, callback: ObjectCallback | ErrorCallback): void {
     if (event === 'error') this.errorCallbacks.push(callback as ErrorCallback);
     else if (event === 'connect') this.connectCallbacks.push(callback as ErrorCallback);
@@ -29,7 +31,8 @@ class FakeInformer {
   public async start(): Promise<void> {
     await Promise.resolve();
     this.startCount += 1;
-    queueMicrotask((): void => this.connectCallbacks.forEach((callback: ErrorCallback): void => callback()));
+    if (this.connects)
+      queueMicrotask((): void => this.connectCallbacks.forEach((callback: ErrorCallback): void => callback()));
   }
 
   public async stop(): Promise<void> {
@@ -142,6 +145,59 @@ describe('informer lifecycle', (): void => {
     await observation.stop();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it('backs off repeated delivery failures while retaining the same event', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const informer: FakeInformer = new FakeInformer();
+    createInformerMock.mockReturnValue(informer);
+    const observation: KubeObservation = await createKubeObservation({} as never, new FakeObjectApi() as never, {
+      labels: { 'compartment.dev/deployment-id': 'dep-1' },
+      namespace: 'cpt-prj-1',
+      resources: ['deployments'],
+    });
+    const delivered: KubeObservationEvent[] = [];
+    const listener: Mock = vi.fn(async (event: KubeObservationEvent): Promise<void> => {
+      await Promise.resolve();
+      delivered.push(event);
+      if (delivered.length < 3) throw new Error('database unavailable');
+    });
+    observation.onEvent(listener);
+    informer.emitObject('add', deploymentObject());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(listener).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(375);
+    expect(listener).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(750);
+    expect(listener).toHaveBeenCalledTimes(3);
+    expect(delivered[1]).toBe(delivered[0]);
+    expect(delivered[2]).toBe(delivered[0]);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(listener).toHaveBeenCalledTimes(3);
+    await observation.stop();
+  });
+
+  it('stops every informer when startup is aborted after a partial connect', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const connectedInformer: FakeInformer = new FakeInformer();
+    const hangingInformer: FakeInformer = new FakeInformer(false);
+    createInformerMock.mockReturnValueOnce(connectedInformer).mockReturnValueOnce(hangingInformer);
+    const controller: AbortController = new AbortController();
+    const startup: Promise<KubeObservation> = createKubeObservation(
+      {} as never,
+      new FakeObjectApi() as never,
+      {
+        labels: { 'compartment.dev/job-id': 'job-1' },
+        namespace: 'cpt-prj-1',
+        resources: ['jobs', 'pods'],
+      },
+      controller.signal,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort(new Error('deadline'));
+    await expect(startup).rejects.toThrow('deadline');
+    expect(connectedInformer.stopCount).toBe(1);
+    expect(hangingInformer.stopCount).toBe(1);
   });
 });
 

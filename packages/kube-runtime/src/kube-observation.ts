@@ -27,15 +27,38 @@ interface KubeInformerError extends Error {
   statusCode?: number | undefined;
 }
 
+class AbortWait {
+  public readonly promise: Promise<never>;
+  private onAbort: () => void = (): undefined => undefined;
+
+  public constructor(private readonly signal: AbortSignal) {
+    this.promise = new Promise<never>((_resolve: (value: never) => void, reject: (reason: Error) => void): void => {
+      this.onAbort = (): void =>
+        reject(signal.reason instanceof Error ? signal.reason : new Error('Kubernetes observation startup aborted.'));
+      signal.addEventListener('abort', this.onAbort, { once: true });
+    });
+  }
+
+  public dispose(): void {
+    this.signal.removeEventListener('abort', this.onAbort);
+  }
+}
+
 export async function createKubeObservation(
   kubeConfig: KubeConfig,
   objectApi: KubernetesObjectApi,
   input: ObserveLabels,
+  signal?: AbortSignal,
 ): Promise<KubeObservation> {
   const registered: RegisteredInformer[] = createRegisteredInformers(kubeConfig, objectApi, input);
   const observation: RuntimeObservation = new RuntimeObservation();
-  await observation.start(registered);
-  return observation;
+  try {
+    await observation.start(registered, signal);
+    return observation;
+  } catch (error) {
+    await observation.stop();
+    throw error;
+  }
 }
 
 class RuntimeObservation implements KubeObservation {
@@ -45,10 +68,11 @@ class RuntimeObservation implements KubeObservation {
   private readonly states: InformerState[] = [];
   private stopping: boolean = false;
 
-  public async start(registered: RegisteredInformer[]): Promise<void> {
-    await Promise.all(
+  public async start(registered: RegisteredInformer[], signal?: AbortSignal): Promise<void> {
+    const startup: Promise<void[]> = Promise.all(
       registered.map(async (item: RegisteredInformer): Promise<void> => await this.startInformer(item)),
     );
+    await waitForStartup(startup, signal);
   }
 
   public health(): KubeObservationHealth {
@@ -136,17 +160,16 @@ class RuntimeObservation implements KubeObservation {
     }
   }
 
-  private async accept(
+  private accept(
     type: KubeObservationEventType,
     resource: KubeObservedResource,
     object: KubernetesObject,
-  ): Promise<void> {
+  ): KubeObservationEvent {
     const manifest: KubeManifest = object;
     const key: string = `${resource}/${object.metadata?.namespace ?? ''}/${object.metadata?.name ?? ''}`;
     if (type === 'delete') this.cache.delete(key);
     else this.cache.set(key, manifest);
-    const event: KubeObservationEvent = { object: manifest, observedAt: new Date(), resource, type };
-    await this.dispatch(event);
+    return { object: manifest, observedAt: new Date(), resource, type };
   }
 
   private async dispatch(event: KubeObservationEvent): Promise<void> {
@@ -156,24 +179,21 @@ class RuntimeObservation implements KubeObservation {
   }
 
   private acceptSafely(type: KubeObservationEventType, resource: KubeObservedResource, object: KubernetesObject): void {
-    void this.accept(type, resource, object).catch((): void => {
-      if (this.stopping) return;
-      this.scheduleDelivery((): void => this.acceptSafely(type, resource, object));
-    });
+    this.dispatchSafely(this.accept(type, resource, object));
   }
 
-  private dispatchSafely(event: KubeObservationEvent): void {
+  private dispatchSafely(event: KubeObservationEvent, attempt: number = 0): void {
     void this.dispatch(event).catch((): void => {
       if (this.stopping) return;
-      this.scheduleDelivery((): void => this.dispatchSafely(event));
+      this.scheduleDelivery((): void => this.dispatchSafely(event, attempt + 1), attempt);
     });
   }
 
-  private scheduleDelivery(deliver: () => void): void {
+  private scheduleDelivery(deliver: () => void, attempt: number): void {
     const timer: NodeJS.Timeout = setTimeout((): void => {
       this.deliveryTimers.delete(timer);
       if (!this.stopping) deliver();
-    }, restartDelay(0));
+    }, restartDelay(attempt));
     this.deliveryTimers.add(timer);
   }
 
@@ -182,6 +202,20 @@ class RuntimeObservation implements KubeObservation {
       state.lastConnectedAt !== null &&
       (state.lastErrorAt === null || state.lastConnectedAt.getTime() >= state.lastErrorAt.getTime())
     );
+  }
+}
+
+async function waitForStartup(startup: Promise<void[]>, signal?: AbortSignal): Promise<void> {
+  if (signal === undefined) {
+    await startup;
+    return;
+  }
+  signal.throwIfAborted();
+  const abortWait: AbortWait = new AbortWait(signal);
+  try {
+    await Promise.race([startup, abortWait.promise]);
+  } finally {
+    abortWait.dispose();
   }
 }
 

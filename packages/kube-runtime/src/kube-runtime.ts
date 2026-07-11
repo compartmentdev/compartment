@@ -14,6 +14,12 @@ import type {
 
 const fieldManager: string = 'compartment';
 
+interface JobDeadline {
+  controller: AbortController;
+  expiresAt: number;
+  timer: NodeJS.Timeout;
+}
+
 export class KubeRuntime {
   private readonly coreApi: CoreV1Api;
   private readonly objectApi: KubernetesObjectApi;
@@ -56,25 +62,51 @@ export class KubeRuntime {
     const jobName: string = kubeJobName(spec.id);
     const labels: Record<string, string> = { ...spec.labels, 'compartment.dev/job-id': spec.id };
     await this.apply({ objects: [kubeJobManifest(spec, jobName, labels)] });
-    const observation: KubeObservation = await this.observe(jobObservationInput(spec));
+    return await this.completeJob(spec, jobName);
+  }
+
+  private async completeJob(spec: KubeJobSpec, jobName: string): Promise<KubeJobResult> {
+    const deadline: JobDeadline = startJobDeadline(jobName, spec.timeoutMs);
+    let observation: KubeObservation | null = null;
     try {
-      const terminal: TerminalJob = await waitForTerminalJob(observation, jobName, spec.timeoutMs);
-      const output: string = await this.logs({
-        container: 'job',
-        namespace: spec.namespace,
-        podName: terminal.podName,
-      });
-      return {
-        completedAt: new Date(),
-        exitCode: terminal.succeeded ? 0 : terminal.exitCode,
-        jobName,
-        logs: output,
-        podName: terminal.podName,
-      };
+      observation = await createKubeObservation(
+        this.kubeConfig,
+        this.objectApi,
+        jobObservationInput(spec),
+        deadline.controller.signal,
+      );
+      return await this.readJobResult(spec, jobName, observation, deadline.expiresAt);
     } finally {
-      await observation.stop();
+      clearTimeout(deadline.timer);
+      if (observation !== null) await observation.stop();
     }
   }
+
+  private async readJobResult(
+    spec: KubeJobSpec,
+    jobName: string,
+    observation: KubeObservation,
+    expiresAt: number,
+  ): Promise<KubeJobResult> {
+    const remainingMs: number = Math.max(0, expiresAt - Date.now());
+    const terminal: TerminalJob = await waitForTerminalJob(observation, jobName, remainingMs);
+    const output: string = await this.logs({ container: 'job', namespace: spec.namespace, podName: terminal.podName });
+    return {
+      completedAt: new Date(),
+      exitCode: terminal.succeeded ? 0 : terminal.exitCode,
+      jobName,
+      logs: output,
+      podName: terminal.podName,
+    };
+  }
+}
+
+function startJobDeadline(jobName: string, timeoutMs: number): JobDeadline {
+  const controller: AbortController = new AbortController();
+  const expiresAt: number = Date.now() + timeoutMs;
+  const timeoutError: Error = new Error(`Kubernetes Job ${jobName} did not finish within ${timeoutMs}ms.`);
+  const timer: NodeJS.Timeout = setTimeout((): void => controller.abort(timeoutError), timeoutMs);
+  return { controller, expiresAt, timer };
 }
 
 function jobObservationInput(spec: KubeJobSpec): ObserveLabels {

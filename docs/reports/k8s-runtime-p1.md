@@ -17,10 +17,10 @@ listed in `docs/reports/k8s-runtime-inventory.md`.
 
 | Surface                           | Production | Test/harness |
 | --------------------------------- | ---------: | -----------: |
-| `packages/kube-runtime`           |      1,046 |          633 |
+| `packages/kube-runtime`           |      1,114 |          731 |
 | API schema and transition queries |        209 |          248 |
 
-The package runtime is 1,954 lines below the D33 limit of 3,000. Generated
+The package runtime is 1,886 lines below the D33 limit of 3,000. Generated
 migration SQL, snapshots, manifests, docs, and configuration are not runtime
 source. The test/harness column is reported separately and is not charged to
 the runtime budget.
