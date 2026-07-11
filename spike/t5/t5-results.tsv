@@ -1,0 +1,38 @@
+kind	actor	operation	namespace	expected	actual	verdict
+rbac	system:serviceaccount:project-a:compartment-controller	create deployments.apps	project-b	no	no	PASS
+rbac	system:serviceaccount:project-a:compartment-controller	create secrets	project-b	no	no	PASS
+rbac	system:serviceaccount:project-a:compartment-controller	create deployments.apps	platform-ns	no	no	PASS
+rbac	system:serviceaccount:project-a:compartment-controller	create namespaces	-	no	no	PASS
+rbac	system:serviceaccount:project-a:compartment-controller	create clusterrolebindings.rbac.authorization.k8s.io	-	no	no	PASS
+rbac	system:serviceaccount:compartment:compartment-bootstrap	create deployments.apps	project-a	no	no	PASS
+rbac	system:serviceaccount:compartment:compartment-bootstrap	get secrets	project-a	no	no	PASS
+rbac	system:serviceaccount:compartment:compartment-bootstrap	create clusterroles.rbac.authorization.k8s.io	-	no	no	PASS
+rbac	system:serviceaccount:compartment:compartment-bootstrap	create clusterrolebindings.rbac.authorization.k8s.io	-	no	no	PASS
+rbac	system:serviceaccount:project-a:workload-user	get secrets	project-a	no	no	PASS
+rbac	system:serviceaccount:project-a:workload-user	get secrets	project-b	no	no	PASS
+rbac	system:serviceaccount:compartment:compartment-bootstrap	create namespaces	-	yes	yes	PASS
+rbac	system:serviceaccount:compartment:compartment-bootstrap	create serviceaccounts	project-a	yes	yes	PASS
+rbac	system:serviceaccount:compartment:compartment-bootstrap	create roles.rbac.authorization.k8s.io	project-a	yes	yes	PASS
+rbac	system:serviceaccount:compartment:compartment-bootstrap	create rolebindings.rbac.authorization.k8s.io	project-a	yes	yes	PASS
+rbac	system:serviceaccount:compartment:compartment-bootstrap	bind clusterroles.rbac.authorization.k8s.io/compartment-controller	-	yes	yes	PASS
+rbac	system:serviceaccount:project-a:compartment-controller	create deployments.apps	project-a	yes	yes	PASS
+rbac	system:serviceaccount:project-a:compartment-controller	create secrets	project-a	yes	yes	PASS
+rbac	system:serviceaccount:project-a:compartment-controller	create services	project-a	yes	yes	PASS
+rbac	system:serviceaccount:project-a:compartment-controller	create jobs.batch	project-a	yes	yes	PASS
+rbac	system:serviceaccount:project-a:compartment-controller	create networkpolicies.networking.k8s.io	project-a	yes	yes	PASS
+rbac	system:serviceaccount:project-a:compartment-controller	get pods/log	project-a	yes	yes	PASS
+probe	controller	create own Secret	-	allowed	allowed	PASS
+probe	controller	create own Deployment	-	allowed	allowed	PASS
+probe	controller	create foreign Secret	-	forbidden	forbidden	PASS
+probe	controller	create platform Deployment	-	forbidden	forbidden	PASS
+probe	bootstrap	read workload Secret	-	forbidden	forbidden	PASS
+probe	bootstrap	create workload Deployment	-	forbidden	forbidden	PASS
+rbac	system:serviceaccount:compartment:compartment-bootstrap	create namespaces after binding deletion	-	no	no	PASS
+probe	workload-user	service-account token absent	-	absent	absent	PASS
+api	workload-user	read own Secret	-	401/403	401	PASS
+api	workload-user	read foreign Secret	-	401/403	401	PASS
+datastore	k3s	plaintext marker before encryption	-	present	present	PASS
+datastore	k3s	marker with encryption	-	absent	absent	PASS
+datastore	k3s	encryption status	-	enabled	enabled	PASS
+rotation	workload-user	manual pod restart	project-a	t5-manual-rotation-4ad183	t5-manual-rotation-4ad183	PASS
+rotation	workload-user	checksum rollout	project-a	new pod and t5-checksum-rotation-b50c91	workload-user-7dcb99f469-q6p7m / t5-checksum-rotation-b50c91	PASS

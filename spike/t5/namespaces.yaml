@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: project-a
+  labels:
+    managed-by: compartment
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: project-b
+  labels:
+    managed-by: compartment
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-ns

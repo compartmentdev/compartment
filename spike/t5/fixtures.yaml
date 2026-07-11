@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: workload-user
+  namespace: project-a
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: workload-secret
+  namespace: project-a
+type: Opaque
+stringData:
+  value: t5-plaintext-datastore-marker-7ec9b2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workload-user
+  namespace: project-a
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workload-user
+  template:
+    metadata:
+      labels:
+        app: workload-user
+      annotations:
+        compartment.dev/secret-checksum: initial
+    spec:
+      serviceAccountName: workload-user
+      automountServiceAccountToken: false
+      containers:
+        - name: workload
+          image: curlimages/curl:8.17.0
+          command: ['sh', '-c', 'printf ''%s'' "$SECRET_VALUE" >/tmp/secret-value; sleep 86400']
+          env:
+            - name: SECRET_VALUE
+              valueFrom:
+                secretKeyRef:
+                  name: workload-secret
+                  key: value
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        seccompProfile:
+          type: RuntimeDefault
