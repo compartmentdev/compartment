@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly REQUIRED_CPUS=4
+readonly REQUIRED_CPUS=6
 readonly REQUIRED_MEMORY_GIB=10
 readonly REQUIRED_DISK_GIB=60
 

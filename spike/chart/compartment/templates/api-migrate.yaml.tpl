@@ -1,3 +1,4 @@
+{{- if eq .Values.platform.startupStage "full" }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -12,9 +13,12 @@ spec:
       labels:
         {{- include "compartment.componentLabels" (dict "root" . "component" "api-migrate") | nindent 8 }}
     spec:
+      {{- include "compartment.waiterPodSpec" . | nindent 6 }}
       restartPolicy: OnFailure
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- include "compartment.waitForFoundationInit" . | nindent 8 }}
       containers:
         - name: api-migrate
           image: {{ include "compartment.image" .Values.images.api }}
@@ -24,6 +28,8 @@ spec:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 10001
             runAsGroup: 10001
+          resources:
+            {{- toYaml .Values.resources.apiMigrate | nindent 12 }}
           env:
             - name: COMPARTMENT_DATABASE_URL
               valueFrom:
@@ -34,5 +40,7 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - name: tmp
           emptyDir: {}
+{{- end }}

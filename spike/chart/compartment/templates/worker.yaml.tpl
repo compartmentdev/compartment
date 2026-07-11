@@ -1,3 +1,4 @@
+{{- if eq .Values.platform.startupStage "full" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,8 +20,11 @@ spec:
       annotations:
         {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
     spec:
+      {{- include "compartment.waiterPodSpec" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
       containers:
         - name: worker
           image: {{ include "compartment.image" .Values.images.worker }}
@@ -29,6 +33,8 @@ spec:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 10001
             runAsGroup: 10001
+          resources:
+            {{- toYaml .Values.resources.worker | nindent 12 }}
           envFrom:
             - configMapRef:
                 name: {{ include "compartment.fullname" . }}
@@ -51,6 +57,8 @@ spec:
             - {name: node-run, mountPath: /var/run/compartment/node}
             - {name: tmp, mountPath: /tmp}
       volumes:
+        {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - {name: docker-work, emptyDir: {}}
         - {name: node-run, emptyDir: {}}
         - {name: tmp, emptyDir: {}}
+{{- end }}

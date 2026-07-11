@@ -21,6 +21,7 @@ docker context use colima >/dev/null
 
 acquire_resource_lock
 trap release_resource_lock EXIT INT TERM
+wait_for_docker_api
 CLUSTER_NAME="cpt-${TRACK_ID}"
 if [[ "${TRACK_ID}" == kind && -s "${KIND_CLUSTER_FILE}" ]]; then
   CLUSTER_NAME="$(cat "${KIND_CLUSTER_FILE}")"
@@ -41,14 +42,10 @@ fi
 
 case "${RUNTIME}" in
   k3d)
-    if k3d cluster list --no-headers | awk '{print $1}' | grep -Fxq "${CLUSTER_NAME}"; then
-      k3d cluster delete "${CLUSTER_NAME}"
-    fi
+    remove_k3d_cluster_resources "${CLUSTER_NAME}"
     ;;
   kind)
-    if kind get clusters | grep -Fxq "${CLUSTER_NAME}"; then
-      kind delete cluster --name "${CLUSTER_NAME}"
-    fi
+    remove_kind_cluster_resources "${CLUSTER_NAME}"
     ;;
   *)
     echo "Unknown recorded runtime: ${RUNTIME}" >&2

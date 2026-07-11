@@ -1,6 +1,10 @@
 {{- $root := . -}}
-{{- $claims := dict "api" .Values.storage.api "caddy" .Values.storage.caddy "postgres" .Values.storage.postgres "registry" .Values.storage.registry -}}
-{{- if .Values.buildkit.enabled -}}
+{{- $claims := dict "postgres" .Values.storage.postgres "registry" .Values.storage.registry -}}
+{{- if eq .Values.platform.startupStage "full" -}}
+{{- $_ := set $claims "api" .Values.storage.api -}}
+{{- $_ := set $claims "caddy" .Values.storage.caddy -}}
+{{- end -}}
+{{- if and .Values.buildkit.enabled (eq .Values.platform.startupStage "full") -}}
 {{- $_ := set $claims "buildkit" .Values.storage.buildkit -}}
 {{- end -}}
 {{- range $name, $size := $claims }}

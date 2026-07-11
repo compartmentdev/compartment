@@ -14,19 +14,23 @@ readonly CONTEXT="kind-${CLUSTER_NAME}"
 reservation_active=false
 cluster_creation_started=false
 cleanup_failed_up() {
+  local cleanup_status=0
   trap - ERR INT TERM
   release_resource_lock
   if [[ "${cluster_creation_started}" == true ]]; then
-    kind delete cluster --name "${CLUSTER_NAME}" >/dev/null 2>&1 || true
+    remove_kind_cluster_resources "${CLUSTER_NAME}" || cleanup_status=1
   fi
-  if [[ "$(cat "${KIND_CLUSTER_FILE}" 2>/dev/null || true)" == "${CLUSTER_NAME}" ]]; then
+  if [[ "${cleanup_status}" == 0 && "$(cat "${KIND_CLUSTER_FILE}" 2>/dev/null || true)" == "${CLUSTER_NAME}" ]]; then
     rm -f "${KIND_CLUSTER_FILE}"
   fi
-  if [[ "${reservation_active}" == true ]]; then
+  if [[ "${reservation_active}" == true && "${cleanup_status}" == 0 ]]; then
     acquire_resource_lock
     release_reservation "${TRACK_ID}"
     release_resource_lock
+  elif [[ "${reservation_active}" == true ]]; then
+    echo "Reservation retained for ${TRACK_ID}; run down.sh after Docker recovers." >&2
   fi
+  return "${cleanup_status}"
 }
 trap cleanup_failed_up ERR INT TERM
 
@@ -57,20 +61,8 @@ kubectl --context "${CONTEXT}" label namespace compartment \
   pod-security.kubernetes.io/audit=restricted \
   pod-security.kubernetes.io/warn=restricted \
   --overwrite
-helm upgrade --install compartment "${CHART_DIR}" \
-  --kube-context "${CONTEXT}" \
-  --namespace compartment \
-  --values "${CHART_DIR}/values-kind.yaml" \
-  --set ports.http="${HOST_HTTP_PORT}" \
-  --set ports.https="${HOST_HTTPS_PORT}" \
-  --set images.api.tag="spike-${TRACK_ID}" \
-  --set images.worker.tag="spike-${TRACK_ID}" \
-  --set images.edge.tag="spike-${TRACK_ID}" \
-  --set images.caddy.tag="spike-${TRACK_ID}" \
-  --rollback-on-failure \
-  --wait \
-  --timeout 8m
-kubectl --context "${CONTEXT}" --namespace compartment wait deployment --all --for=condition=Available --timeout=2m
+install_platform_with_retry "${CONTEXT}" "${TRACK_ID}" "${HOST_HTTP_PORT}" "${HOST_HTTPS_PORT}" \
+  --values "${CHART_DIR}/values-kind.yaml"
 
 reservation_active=false
 trap - ERR INT TERM

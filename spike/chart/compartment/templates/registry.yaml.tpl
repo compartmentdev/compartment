@@ -43,6 +43,8 @@ spec:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 1000
             runAsGroup: 1000
+          resources:
+            {{- toYaml .Values.resources.registry | nindent 12 }}
           env:
             - name: REGISTRY_HTTP_ADDR
               value: {{ printf "0.0.0.0:%v" .Values.ports.registry | quote }}

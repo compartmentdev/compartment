@@ -1,7 +1,8 @@
+{{- if eq .Values.platform.startupStage "full" }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "compartment.fullname" . }}-api
+  name: {{ include "compartment.fullname" . }}-waiter
   labels:
     {{- include "compartment.labels" . | nindent 4 }}
 ---
@@ -14,6 +15,9 @@ metadata:
 rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -28,5 +32,6 @@ roleRef:
   name: {{ include "compartment.fullname" . }}-api-migrate-reader
 subjects:
   - kind: ServiceAccount
-    name: {{ include "compartment.fullname" . }}-api
+    name: {{ include "compartment.fullname" . }}-waiter
     namespace: {{ .Release.Namespace }}
+{{- end }}

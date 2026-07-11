@@ -4,6 +4,7 @@ set -euo pipefail
 readonly TRACK_ID="${1:-}"
 if [[ -z "${TRACK_ID}" ]]; then
   echo "Usage: $0 <track-id>" >&2
+  echo "STATUS=failed"
   exit 2
 fi
 
@@ -11,28 +12,48 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=spike/env/common.sh
 source "${SCRIPT_DIR}/common.sh"
 
-validate_track_id "${TRACK_ID}"
-"${SCRIPT_DIR}/doctor.sh"
-
 readonly CLUSTER_NAME="cpt-${TRACK_ID}"
 readonly CLUSTER_OWNER="$$-${RANDOM}-${RANDOM}"
 reservation_active=false
 cluster_creation_started=false
+run_status=failed
 
 cleanup_failed_up() {
-  trap - ERR INT TERM
+  local cleanup_status=0
   release_resource_lock
-  if [[ "${cluster_creation_started}" == true ]] \
-    && docker ps --all --quiet --filter "label=compartment.spike.owner=${CLUSTER_OWNER}" | grep -q .; then
-    k3d cluster delete "${CLUSTER_NAME}" >/dev/null 2>&1 || true
+  if [[ "${cluster_creation_started}" == true ]]; then
+    remove_k3d_cluster_resources "${CLUSTER_NAME}" || cleanup_status=1
   fi
-  if [[ "${reservation_active}" == true ]]; then
+  if [[ "${reservation_active}" == true && "${cleanup_status}" == 0 ]]; then
     acquire_resource_lock
     release_reservation "${TRACK_ID}"
     release_resource_lock
+    reservation_active=false
+  elif [[ "${reservation_active}" == true ]]; then
+    echo "Reservation retained for ${TRACK_ID}; run down.sh after Docker recovers." >&2
   fi
+  return "${cleanup_status}"
 }
-trap cleanup_failed_up ERR INT TERM
+
+finish_up() {
+  local exit_status=$?
+  trap - EXIT INT TERM
+  if [[ "${run_status}" == ok ]]; then
+    echo "STATUS=ok"
+    exit 0
+  fi
+  cleanup_failed_up || exit_status=1
+  echo "STATUS=failed"
+  if ((exit_status == 0)); then
+    exit_status=1
+  fi
+  exit "${exit_status}"
+}
+trap finish_up EXIT
+trap 'exit 130' INT TERM
+
+validate_track_id "${TRACK_ID}"
+"${SCRIPT_DIR}/doctor.sh"
 
 acquire_resource_lock
 if k3d cluster list --no-headers | awk '{print $1}' | grep -Fxq "${CLUSTER_NAME}"; then
@@ -56,22 +77,10 @@ import_k3d_images "${CLUSTER_NAME}" "${TRACK_ID}"
 
 readonly CONTEXT="k3d-${CLUSTER_NAME}"
 kubectl --context "${CONTEXT}" create namespace compartment --dry-run=client -o yaml | kubectl --context "${CONTEXT}" apply -f -
-helm upgrade --install compartment "${CHART_DIR}" \
-  --kube-context "${CONTEXT}" \
-  --namespace compartment \
-  --set ports.http="${HOST_HTTP_PORT}" \
-  --set ports.https="${HOST_HTTPS_PORT}" \
-  --set images.api.tag="spike-${TRACK_ID}" \
-  --set images.worker.tag="spike-${TRACK_ID}" \
-  --set images.edge.tag="spike-${TRACK_ID}" \
-  --set images.caddy.tag="spike-${TRACK_ID}" \
-  --rollback-on-failure \
-  --wait \
-  --timeout 8m
-kubectl --context "${CONTEXT}" --namespace compartment wait deployment --all --for=condition=Available --timeout=2m
+install_platform_with_retry "${CONTEXT}" "${TRACK_ID}" "${HOST_HTTP_PORT}" "${HOST_HTTPS_PORT}"
 
 reservation_active=false
-trap - ERR INT TERM
+run_status=ok
 
 echo
 echo "context: ${CONTEXT}"

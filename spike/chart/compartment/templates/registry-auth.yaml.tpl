@@ -1,3 +1,4 @@
+{{- if eq .Values.platform.startupStage "full" }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -31,8 +32,11 @@ spec:
       annotations:
         {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
     spec:
+      {{- include "compartment.waiterPodSpec" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
       containers:
         - name: registry-auth
           image: {{ include "compartment.image" .Values.images.worker }}
@@ -42,6 +46,8 @@ spec:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 10001
             runAsGroup: 10001
+          resources:
+            {{- toYaml .Values.resources.registryAuth | nindent 12 }}
           env:
             - name: COMPARTMENT_ARTIFACT_REGISTRY_PROXY_BIND_HOST
               value: "0.0.0.0"
@@ -80,5 +86,7 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - name: tmp
           emptyDir: {}
+{{- end }}

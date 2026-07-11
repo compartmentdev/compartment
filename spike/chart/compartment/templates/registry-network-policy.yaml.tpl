@@ -1,3 +1,4 @@
+{{- if eq .Values.platform.startupStage "full" }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -18,3 +19,4 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.ports.registry }}
+{{- end }}

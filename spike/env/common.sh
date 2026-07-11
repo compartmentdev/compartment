@@ -145,3 +145,218 @@ import_kind_images() {
   set_track_image_refs "${track_id}"
   kind load docker-image --name "${cluster_name}" "${TRACK_IMAGE_REFS[@]}"
 }
+
+wait_for_docker_api() {
+  local attempt stable_checks=0
+  for attempt in $(seq 1 90); do
+    if docker info >/dev/null 2>&1; then
+      stable_checks=$((stable_checks + 1))
+      if ((stable_checks == 3)); then
+        return 0
+      fi
+    else
+      stable_checks=0
+      if ((attempt == 5)); then
+        colima start --cpu 6 --memory 10 --disk 60 >/dev/null 2>&1 || true
+      elif ((attempt == 15)); then
+        colima restart --cpu 6 --memory 10 --disk 60 >/dev/null 2>&1 || true
+      fi
+    fi
+    sleep 2
+  done
+  echo "Docker API did not recover within 180 seconds." >&2
+  return 1
+}
+
+k3d_cluster_resources_absent() {
+  local cluster_name="$1"
+  local containers networks volumes
+  docker info >/dev/null 2>&1 || return 1
+  containers="$(docker ps --all --quiet --filter "label=k3d.cluster=${cluster_name}")" || return 1
+  networks="$(docker network ls --format '{{.Name}}')" || return 1
+  volumes="$(docker volume ls --quiet --filter "label=k3d.cluster=${cluster_name}")" || return 1
+  [[ -z "${containers}" ]] \
+    && ! grep -Fxq "k3d-${cluster_name}" <<<"${networks}" \
+    && [[ -z "${volumes}" ]]
+}
+
+remove_k3d_cluster_resources() {
+  local cluster_name="$1"
+  local attempt id stable_checks=0
+  local -a container_ids=()
+  local -a volume_names=()
+
+  wait_for_docker_api || return 1
+  k3d cluster delete "${cluster_name}" >/dev/null 2>&1 || true
+
+  # Colima can report a live Docker API before the daemon has restored all
+  # containers after a VM restart. Keep sweeping until absence is stable.
+  for attempt in $(seq 1 30); do
+    container_ids=()
+    volume_names=()
+    while IFS= read -r id; do
+      [[ -n "${id}" ]] && container_ids+=("${id}")
+    done < <(docker ps --all --quiet --filter "label=k3d.cluster=${cluster_name}")
+    if ((${#container_ids[@]} > 0)); then
+      docker rm --force "${container_ids[@]}" >/dev/null 2>&1 || true
+    fi
+    if docker network inspect "k3d-${cluster_name}" >/dev/null 2>&1; then
+      docker network rm "k3d-${cluster_name}" >/dev/null 2>&1 || true
+    fi
+    while IFS= read -r id; do
+      [[ -n "${id}" ]] && volume_names+=("${id}")
+    done < <(docker volume ls --quiet --filter "label=k3d.cluster=${cluster_name}")
+    if ((${#volume_names[@]} > 0)); then
+      docker volume rm --force "${volume_names[@]}" >/dev/null 2>&1 || true
+    fi
+
+    if k3d_cluster_resources_absent "${cluster_name}"; then
+      stable_checks=$((stable_checks + 1))
+      if ((stable_checks == 5)); then
+        if colima ssh -- sync >/dev/null 2>&1; then
+          sleep 2
+          k3d_cluster_resources_absent "${cluster_name}" && return 0
+        fi
+        stable_checks=0
+      fi
+    else
+      stable_checks=0
+    fi
+    sleep 2
+  done
+
+  echo "Cluster Docker resources remain for ${cluster_name}." >&2
+  return 1
+}
+
+kind_cluster_resources_absent() {
+  local cluster_name="$1"
+  local containers
+  docker info >/dev/null 2>&1 || return 1
+  containers="$(docker ps --all --quiet --filter "label=io.x-k8s.kind.cluster=${cluster_name}")" || return 1
+  [[ -z "${containers}" ]]
+}
+
+remove_kind_cluster_resources() {
+  local cluster_name="$1"
+  local attempt id stable_checks=0
+  local -a container_ids=()
+
+  wait_for_docker_api || return 1
+  kind delete cluster --name "${cluster_name}" >/dev/null 2>&1 || true
+  for attempt in $(seq 1 30); do
+    container_ids=()
+    while IFS= read -r id; do
+      [[ -n "${id}" ]] && container_ids+=("${id}")
+    done < <(docker ps --all --quiet --filter "label=io.x-k8s.kind.cluster=${cluster_name}")
+    if ((${#container_ids[@]} > 0)); then
+      docker rm --force "${container_ids[@]}" >/dev/null 2>&1 || true
+    fi
+    if kind_cluster_resources_absent "${cluster_name}"; then
+      stable_checks=$((stable_checks + 1))
+      if ((stable_checks == 5)); then
+        if colima ssh -- sync >/dev/null 2>&1; then
+          sleep 2
+          kind_cluster_resources_absent "${cluster_name}" && return 0
+        fi
+        stable_checks=0
+      fi
+    else
+      stable_checks=0
+    fi
+    sleep 2
+  done
+
+  echo "Cluster Docker resources remain for ${cluster_name}." >&2
+  return 1
+}
+
+wait_for_cluster_api() {
+  local context="$1"
+  local attempt
+  wait_for_docker_api || return 1
+  for attempt in $(seq 1 90); do
+    if kubectl --context "${context}" --request-timeout=5s get --raw=/readyz >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "Kubernetes API did not recover within 180 seconds for ${context}." >&2
+  return 1
+}
+
+recover_pending_helm_release() {
+  local context="$1"
+  local status last_deployed
+  status="$(helm status compartment --kube-context "${context}" --namespace compartment --output json 2>/dev/null \
+    | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).info.status ?? "")}catch{}})' || true)"
+  case "${status}" in
+    pending-*)
+      last_deployed="$(helm history compartment --kube-context "${context}" --namespace compartment --output json 2>/dev/null \
+        | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const h=JSON.parse(s).filter(x=>x.status==="deployed");process.stdout.write(String(h.at(-1)?.revision ?? ""))}catch{}})' || true)"
+      if [[ -n "${last_deployed}" ]]; then
+        helm rollback compartment "${last_deployed}" --kube-context "${context}" --namespace compartment --wait --timeout 4m || return 1
+      else
+        helm uninstall compartment --kube-context "${context}" --namespace compartment --wait --timeout 4m || true
+      fi
+      ;;
+  esac
+}
+
+run_staged_helm_install() {
+  local context="$1"
+  local track_id="$2"
+  local http_port="$3"
+  local https_port="$4"
+  shift 4
+  local current_stage
+  local -a common_args=(
+    --kube-context "${context}"
+    --namespace compartment
+    --set "ports.http=${http_port}"
+    --set "ports.https=${https_port}"
+    --set "images.api.tag=spike-${track_id}"
+    --set "images.worker.tag=spike-${track_id}"
+    --set "images.edge.tag=spike-${track_id}"
+    --set "images.caddy.tag=spike-${track_id}"
+    --rollback-on-failure
+    --wait
+    --timeout 8m
+  )
+
+  current_stage="$(helm get values compartment --kube-context "${context}" --namespace compartment --all --output json 2>/dev/null \
+    | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).platform?.startupStage ?? "")}catch{}})' || true)"
+  if [[ "${current_stage}" != full ]]; then
+    helm upgrade --install compartment "${CHART_DIR}" \
+      "${common_args[@]}" "$@" \
+      --set platform.startupStage=foundation || return 1
+  fi
+  kubectl --context "${context}" --namespace compartment wait \
+    deployment/compartment-compartment-postgres \
+    deployment/compartment-compartment-registry \
+    --for=condition=Available --timeout=2m || return 1
+  helm upgrade compartment "${CHART_DIR}" \
+    "${common_args[@]}" "$@" \
+    --set platform.startupStage=full \
+    --wait-for-jobs || return 1
+  kubectl --context "${context}" --namespace compartment wait deployment --all \
+    --for=condition=Available --timeout=2m || return 1
+}
+
+install_platform_with_retry() {
+  local context="$1"
+  local track_id="$2"
+  local http_port="$3"
+  local https_port="$4"
+  shift 4
+
+  if run_staged_helm_install "${context}" "${track_id}" "${http_port}" "${https_port}" "$@"; then
+    return 0
+  fi
+
+  echo "Initial Helm install failed; checking Kubernetes API before the single retry." >&2
+  wait_for_cluster_api "${context}" || return 1
+  recover_pending_helm_release "${context}" || return 1
+  echo "Retrying Helm install once." >&2
+  run_staged_helm_install "${context}" "${track_id}" "${http_port}" "${https_port}" "$@"
+}

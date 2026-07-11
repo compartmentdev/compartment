@@ -1,4 +1,4 @@
-{{- if .Values.buildkit.enabled }}
+{{- if and .Values.buildkit.enabled (eq .Values.platform.startupStage "full") }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -32,11 +32,14 @@ spec:
       labels:
         {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit") | nindent 8 }}
     spec:
+      {{- include "compartment.waiterPodSpec" . | nindent 6 }}
       securityContext:
         seccompProfile:
           {{- toYaml .Values.buildkit.seccompProfile | nindent 10 }}
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
       containers:
         - name: buildkit
           image: {{ include "compartment.image" .Values.images.buildkit }}
@@ -53,6 +56,8 @@ spec:
             runAsNonRoot: true
             runAsUser: 1000
             runAsGroup: 1000
+          resources:
+            {{- toYaml .Values.resources.buildkit | nindent 12 }}
           env:
             - name: HOME
               value: /home/user
@@ -75,6 +80,7 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "compartment.fullname" . }}-buildkit

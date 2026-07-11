@@ -1,3 +1,4 @@
+{{- if eq .Values.platform.startupStage "full" }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -31,8 +32,11 @@ spec:
       annotations:
         {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
     spec:
+      {{- include "compartment.waiterPodSpec" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
       containers:
         - name: edge
           image: {{ include "compartment.image" .Values.images.edge }}
@@ -41,6 +45,8 @@ spec:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 1000
             runAsGroup: 1000
+          resources:
+            {{- toYaml .Values.resources.edge | nindent 12 }}
           envFrom:
             - configMapRef:
                 name: {{ include "compartment.fullname" . }}
@@ -62,4 +68,6 @@ spec:
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
       volumes:
+        {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - {name: tmp, emptyDir: {}}
+{{- end }}

@@ -58,6 +58,7 @@ storage:
   api: 1Gi
 
 platform:
+  startupStage: full
   baseDomain: localhost
   publicProtocol: http
   tlsMode: custom-http
@@ -102,3 +103,38 @@ secrets:
 podSecurityContext:
   seccompProfile:
     type: RuntimeDefault
+
+resources:
+  api:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: '1', memory: 768Mi }
+  apiMigrate:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  worker:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: '1', memory: 1Gi }
+  edge:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 384Mi }
+  caddy:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  caddyInit:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: 100m, memory: 128Mi }
+  postgres:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: '1', memory: 1Gi }
+  registry:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  registryAuth:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  buildkit:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: '2', memory: 2Gi }
+  wait:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: 100m, memory: 128Mi }

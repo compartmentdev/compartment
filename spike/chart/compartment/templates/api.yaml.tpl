@@ -1,3 +1,4 @@
+{{- if eq .Values.platform.startupStage "full" }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -33,35 +34,13 @@ spec:
       annotations:
         {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "compartment.fullname" . }}-api
-      automountServiceAccountToken: false
+      {{- include "compartment.waiterPodSpec" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
         fsGroup: 10001
         fsGroupChangePolicy: OnRootMismatch
       initContainers:
-        - name: wait-for-api-migrate
-          image: {{ include "compartment.image" .Values.images.kubectl }}
-          imagePullPolicy: {{ .Values.images.kubectl.pullPolicy }}
-          command: ["kubectl"]
-          args:
-            - wait
-            - --for=condition=complete
-            - job/{{ include "compartment.fullname" . }}-api-migrate-{{ .Release.Revision }}
-            - --timeout=6m
-          securityContext:
-            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
-            runAsUser: 1000
-            runAsGroup: 1000
-          env:
-            - name: HOME
-              value: /tmp
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-            - name: kube-api-access
-              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
-              readOnly: true
+        {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
       containers:
         - name: api
           image: {{ include "compartment.image" .Values.images.api }}
@@ -70,6 +49,8 @@ spec:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 10001
             runAsGroup: 10001
+          resources:
+            {{- toYaml .Values.resources.api | nindent 12 }}
           envFrom:
             - configMapRef:
                 name: {{ include "compartment.fullname" . }}
@@ -112,26 +93,11 @@ spec:
             - {name: tls, mountPath: /etc/compartment/tls, readOnly: true}
             - {name: tmp, mountPath: /tmp}
       volumes:
-        - name: kube-api-access
-          projected:
-            defaultMode: 420
-            sources:
-              - serviceAccountToken:
-                  path: token
-                  expirationSeconds: 3600
-              - configMap:
-                  name: kube-root-ca.crt
-                  items:
-                    - {key: ca.crt, path: ca.crt}
-              - downwardAPI:
-                  items:
-                    - path: namespace
-                      fieldRef:
-                        apiVersion: v1
-                        fieldPath: metadata.namespace
+        {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "compartment.fullname" . }}-api
         - {name: runtime, emptyDir: {}}
         - {name: tls, emptyDir: {}}
         - {name: tmp, emptyDir: {}}
+{{- end }}

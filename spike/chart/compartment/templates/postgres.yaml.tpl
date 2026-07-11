@@ -45,6 +45,8 @@ spec:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 999
             runAsGroup: 999
+          resources:
+            {{- toYaml .Values.resources.postgres | nindent 12 }}
           env:
             - name: POSTGRES_DB
               value: {{ .Values.postgres.database | quote }}

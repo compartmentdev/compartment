@@ -1,3 +1,4 @@
+{{- if eq .Values.platform.startupStage "full" }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -43,11 +44,13 @@ spec:
       annotations:
         {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
     spec:
+      {{- include "compartment.waiterPodSpec" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
         fsGroup: 1000
         fsGroupChangePolicy: OnRootMismatch
       initContainers:
+        {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
         - name: prepare-caddy
           image: {{ include "compartment.image" .Values.images.caddy }}
           imagePullPolicy: {{ .Values.images.caddy.pullPolicy }}
@@ -56,6 +59,8 @@ spec:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 1000
             runAsGroup: 1000
+          resources:
+            {{- toYaml .Values.resources.caddyInit | nindent 12 }}
           volumeMounts:
             - {name: executable, mountPath: /work}
       containers:
@@ -70,6 +75,8 @@ spec:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 1000
             runAsGroup: 1000
+          resources:
+            {{- toYaml .Values.resources.caddy | nindent 12 }}
           envFrom:
             - configMapRef:
                 name: {{ include "compartment.fullname" . }}
@@ -86,6 +93,7 @@ spec:
             - {name: tls, mountPath: /etc/compartment/tls, readOnly: true}
             - {name: tmp, mountPath: /tmp}
       volumes:
+        {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - {name: executable, emptyDir: {}}
         - name: data
           persistentVolumeClaim:
@@ -93,3 +101,4 @@ spec:
         - {name: config, emptyDir: {}}
         - {name: tls, emptyDir: {}}
         - {name: tmp, emptyDir: {}}
+{{- end }}
