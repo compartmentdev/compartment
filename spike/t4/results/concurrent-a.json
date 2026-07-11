@@ -1,0 +1,9 @@
+[
+  {
+    "durationSeconds": 32.639414691,
+    "imageRef": "t4-railpack-web@sha256:56fee6c44b9f3188f3d83e63a6c0c15d0be407eb628ccbf2d25b84944a1741f3",
+    "name": "railpack/web",
+    "ok": true,
+    "phase": "concurrent-a"
+  }
+]

@@ -1,0 +1,93 @@
+[
+  {
+    "durationSeconds": 4.880762664,
+    "imageRef": "t4-dockerfile-web@sha256:427aa7fb9f8bef7601e70c3115c2ebe71636f3f671c8c0279377112cd1fcdebf",
+    "name": "dockerfile/web",
+    "ok": true,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 0.6935087149999999,
+    "imageRef": "t4-dockerfile-monorepo-web@sha256:f9a73e545612fbf78fb104086a309797d3cfc49e84788d09fe1f01b31be60f44",
+    "name": "dockerfile-monorepo/web",
+    "ok": true,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 35.17862287999999,
+    "imageRef": "t4-railpack-web@sha256:51e7cc1501a8a0fbe3d5d556a246c3181ae05f5323be596b4f81fdf451f217d7",
+    "name": "railpack/web",
+    "ok": true,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 5.490252582000001,
+    "imageRef": "t4-railpack-build-packages-web@sha256:bebb68ae9f958900910e3fb0ab01a73395269424c3f132f361551c610fb46070",
+    "name": "railpack-build-packages/web",
+    "ok": true,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 2.5152139860000027,
+    "imageRef": "t4-railpack-monorepo-web@sha256:0986db8be9b6a91e6eb9d41b2409863803291da500dbd302e3ce83e0e14be11d",
+    "name": "railpack-monorepo/web",
+    "ok": true,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 1.3331834220000018,
+    "error": "buildctl --addr tcp://127.0.0.1:12340 build --progress=plain --frontend gateway.v0 --local context=/root/compartment-t4/examples/railpack-pnpm-workspace --local dockerfile=/tmp/compartment-railpack-h85V1B --opt source=ghcr.io/railwayapp/railpack-frontend@sha256:ba4c430961d9ee3215c64807727a4b11e2198daac31250e9db9eaf9cee4624d6 --output type=image,name=compartment-compartment-registry-auth.compartment.svc.cluster.local:5000/t4/railpack-pnpm-workspace-web:cold,push=true,registry.insecure=true --metadata-file /tmp/compartment-buildkit-metadata-ton3EF/buildkit-metadata.json failed with exit code 1.",
+    "name": "railpack-pnpm-workspace/web",
+    "ok": false,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 11.49701915,
+    "error": "buildctl --addr tcp://127.0.0.1:12340 build --progress=plain --frontend gateway.v0 --local context=/root/compartment-t4/examples/static-vite-react --local dockerfile=/tmp/compartment-railpack-05gste --opt source=ghcr.io/railwayapp/railpack-frontend@sha256:ba4c430961d9ee3215c64807727a4b11e2198daac31250e9db9eaf9cee4624d6 --opt secrets-hash=693c371ac0a5464f654a5dc35780943fa95bd6775d77f07a60fde239da6881fa --secret id=RAILPACK_SPA_OUTPUT_DIR,src=/tmp/compartment-railpack-05gste/build-secret-0.txt --secret id=RAILPACK_STATIC_FILE_ROOT,src=/tmp/compartment-railpack-05gste/build-secret-1.txt --output type=image,name=compartment-compartment-registry-auth.compartment.svc.cluster.local:5000/t4/static-vite-react-web:cold,push=true,registry.insecure=true --metadata-file /tmp/compartment-buildkit-metadata-REar6A/buildkit-metadata.json failed with exit code 1.",
+    "name": "static-vite-react/web",
+    "ok": false,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 4.156299021000006,
+    "error": "buildctl --addr tcp://127.0.0.1:12340 build --progress=plain --frontend gateway.v0 --local context=/root/compartment-t4/examples/vite-react --local dockerfile=/tmp/compartment-railpack-QU24rN --opt source=ghcr.io/railwayapp/railpack-frontend@sha256:ba4c430961d9ee3215c64807727a4b11e2198daac31250e9db9eaf9cee4624d6 --output type=image,name=compartment-compartment-registry-auth.compartment.svc.cluster.local:5000/t4/vite-react-web:cold,push=true,registry.insecure=true --metadata-file /tmp/compartment-buildkit-metadata-AccNUq/buildkit-metadata.json failed with exit code 1.",
+    "name": "vite-react/web",
+    "ok": false,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 62.058470829,
+    "imageRef": "t4-python-web@sha256:3743636a7945ff98c53a6f822b4e6b11f1a281dd8e60500c3258990a4536feef",
+    "name": "python/web",
+    "ok": true,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 0.7433949630000134,
+    "error": "buildctl --addr tcp://127.0.0.1:12340 build --progress=plain --frontend gateway.v0 --local context=/root/compartment-t4/examples/java-api-frontend --local dockerfile=/tmp/compartment-railpack-ggu6ZE --opt source=ghcr.io/railwayapp/railpack-frontend@sha256:ba4c430961d9ee3215c64807727a4b11e2198daac31250e9db9eaf9cee4624d6 --output type=image,name=compartment-compartment-registry-auth.compartment.svc.cluster.local:5000/t4/java-api-frontend-web:cold,push=true,registry.insecure=true --metadata-file /tmp/compartment-buildkit-metadata-SYXpv9/buildkit-metadata.json failed with exit code 1.",
+    "name": "java-api-frontend/web",
+    "ok": false,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 1.3878859820000071,
+    "error": "buildctl --addr tcp://127.0.0.1:12340 build --progress=plain --frontend dockerfile.v0 --local context=/root/compartment-t4/examples/java-api-frontend --local dockerfile=/root/compartment-t4/examples/java-api-frontend/services/api --opt filename=Dockerfile --output type=image,name=compartment-compartment-registry-auth.compartment.svc.cluster.local:5000/t4/java-api-frontend-api:cold,push=true,registry.insecure=true --metadata-file /tmp/compartment-buildkit-metadata-nzSG22/buildkit-metadata.json failed with exit code 1.",
+    "name": "java-api-frontend/api",
+    "ok": false,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 0.3115326830000122,
+    "error": "buildctl --addr tcp://127.0.0.1:12340 build --progress=plain --frontend dockerfile.v0 --local context=/root/compartment-t4/examples/multi-service --local dockerfile=/root/compartment-t4/examples/multi-service/services/web --opt filename=Dockerfile --output type=image,name=compartment-compartment-registry-auth.compartment.svc.cluster.local:5000/t4/multi-service-web:cold,push=true,registry.insecure=true --metadata-file /tmp/compartment-buildkit-metadata-TrkKeR/buildkit-metadata.json failed with exit code 1.",
+    "name": "multi-service/web",
+    "ok": false,
+    "phase": "cold"
+  },
+  {
+    "durationSeconds": 0.5174835659999953,
+    "error": "buildctl --addr tcp://127.0.0.1:12340 build --progress=plain --frontend gateway.v0 --local context=/root/compartment-t4/examples/multi-service --local dockerfile=/tmp/compartment-railpack-XjrL89 --opt source=ghcr.io/railwayapp/railpack-frontend@sha256:ba4c430961d9ee3215c64807727a4b11e2198daac31250e9db9eaf9cee4624d6 --output type=image,name=compartment-compartment-registry-auth.compartment.svc.cluster.local:5000/t4/multi-service-backoffice:cold,push=true,registry.insecure=true --metadata-file /tmp/compartment-buildkit-metadata-nJjAIB/buildkit-metadata.json failed with exit code 1.",
+    "name": "multi-service/backoffice",
+    "ok": false,
+    "phase": "cold"
+  }
+]

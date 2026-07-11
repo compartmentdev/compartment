@@ -1,0 +1,13 @@
+deployment.apps/compartment-compartment-buildkit patched
+Waiting for deployment "compartment-compartment-buildkit" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "compartment-compartment-buildkit" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "compartment-compartment-buildkit" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "compartment-compartment-buildkit" rollout to finish: 0 of 1 updated replicas are available...
+error: timed out waiting for the condition
+rollout=1
+NAME                                                READY   STATUS             RESTARTS      AGE   IP           NODE                  NOMINATED NODE   READINESS GATES
+compartment-compartment-buildkit-5498b7d4bd-qxf6l   0/1     CrashLoopBackOff   2 (15s ago)   34s   10.42.0.20   k3d-cpt-t4-server-0   <none>           <none>
+job.batch/compartment-compartment-api-migrate-2 condition met
+[rootlesskit:parent] error: failed to setup UID/GID map: newuidmap 12 [0 1000 1 1 100000 65536] failed: newuidmap: Could not set caps
+: exit status 1
+[rootlesskit:child ] error: EOF

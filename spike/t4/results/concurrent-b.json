@@ -1,0 +1,9 @@
+[
+  {
+    "durationSeconds": 68.177111065,
+    "imageRef": "t4-python-web@sha256:247ce031c5a60bb6b2bff0f32fa3d9ecab56df0e063b8f247ab861690bc29070",
+    "name": "python/web",
+    "ok": true,
+    "phase": "concurrent-b"
+  }
+]

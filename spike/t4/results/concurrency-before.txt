@@ -1,0 +1,2 @@
+NAME                                               CPU(cores)   MEMORY(bytes)   
+compartment-compartment-buildkit-7659dc675-pkphb   1m           1021Mi          

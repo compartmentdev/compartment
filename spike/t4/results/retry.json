@@ -1,0 +1,51 @@
+[
+  {
+    "durationSeconds": 0.6313238769999999,
+    "error": "buildctl --addr tcp://127.0.0.1:12340 build --progress=plain --frontend gateway.v0 --local context=/root/compartment-t4/examples/railpack-pnpm-workspace --local dockerfile=/tmp/compartment-railpack-cy135J --opt source=ghcr.io/railwayapp/railpack-frontend@sha256:ba4c430961d9ee3215c64807727a4b11e2198daac31250e9db9eaf9cee4624d6 --output type=image,name=compartment-compartment-registry-auth.compartment.svc.cluster.local:5000/t4/railpack-pnpm-workspace-web:retry,push=true,registry.insecure=true --metadata-file /tmp/compartment-buildkit-metadata-MciVUo/buildkit-metadata.json failed with exit code 1.",
+    "name": "railpack-pnpm-workspace/web",
+    "ok": false,
+    "phase": "retry"
+  },
+  {
+    "durationSeconds": 11.397804329000001,
+    "imageRef": "t4-static-vite-react-web@sha256:57e8cc4e9cfd7376b624ed93cd96917edb755947e1315b4fe1df3011bc11bc62",
+    "name": "static-vite-react/web",
+    "ok": true,
+    "phase": "retry"
+  },
+  {
+    "durationSeconds": 12.139470881000001,
+    "imageRef": "t4-vite-react-web@sha256:82cde6c3976831eb5d72d72c932504d37ddff042c0eb2733031cb8b56f4a4bcb",
+    "name": "vite-react/web",
+    "ok": true,
+    "phase": "retry"
+  },
+  {
+    "durationSeconds": 8.943949412999999,
+    "imageRef": "t4-java-api-frontend-web@sha256:870e5da371f7d5b231e16b73cd5c673e5b4557c47d8c89198e1f13039168bae3",
+    "name": "java-api-frontend/web",
+    "ok": true,
+    "phase": "retry"
+  },
+  {
+    "durationSeconds": 8.235426915000003,
+    "imageRef": "t4-java-api-frontend-api@sha256:9659d94916465aa98d6b69961d75d28cbe1ff43851a9fbaeb3c1d605c0b658cc",
+    "name": "java-api-frontend/api",
+    "ok": true,
+    "phase": "retry"
+  },
+  {
+    "durationSeconds": 0.6312288059999992,
+    "imageRef": "t4-multi-service-web@sha256:f9f938cd467f93f2a711ce1e93650c9d126e0d230c33bdfe0d4cada80793f7fd",
+    "name": "multi-service/web",
+    "ok": true,
+    "phase": "retry"
+  },
+  {
+    "durationSeconds": 2.6108278999999968,
+    "imageRef": "t4-multi-service-backoffice@sha256:2d4529653fda71ab45bd384848fd5cfe70843746e153db5c4029f7ebb2ea538d",
+    "name": "multi-service/backoffice",
+    "ok": true,
+    "phase": "retry"
+  }
+]

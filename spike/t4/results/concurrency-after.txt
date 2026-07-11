@@ -1,0 +1,4 @@
+NAME                                               CPU(cores)   MEMORY(bytes)   
+compartment-compartment-buildkit-7659dc675-pkphb   1132m        896Mi           
+NAME                                               READY   STATUS    RESTARTS   AGE     IP           NODE                  NOMINATED NODE   READINESS GATES
+compartment-compartment-buildkit-7659dc675-pkphb   1/1     Running   0          8m21s   10.42.0.18   k3d-cpt-t4-server-0   <none>           <none>
