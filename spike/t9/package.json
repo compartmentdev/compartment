@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "node --import tsx --test test/store.test.ts",
     "controller": "tsx src/main.ts",
     "scenarios": "bash test/scenarios.sh all"
   },
@@ -27,7 +27,6 @@
   "devDependencies": {
     "@types/node": "24.10.1",
     "tsx": "4.21.0",
-    "typescript": "5.9.3",
-    "vitest": "3.2.4"
+    "typescript": "5.9.3"
   }
 }
