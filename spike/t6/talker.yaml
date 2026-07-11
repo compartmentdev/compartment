@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: talker
+  namespace: t6
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: t6-talker}
+  template:
+    metadata:
+      labels: {app: t6-talker}
+    spec:
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: talker
+          image: python:3.13-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: RUN, value: baseline}
+            - {name: RATE, value: "100"}
+            - {name: PAYLOAD, value: "32"}
+            - {name: MODE, value: stream}
+          command: [sh, -c]
+          args:
+            - |
+              python -u - <<'PY' &
+              import os,time,signal
+              run=os.environ['RUN']; rate=float(os.environ['RATE']); payload=int(os.environ['PAYLOAD'])
+              mode=os.environ['MODE']; i=0; alive=True; junk=[]
+              def stop(*_):
+                global alive
+                alive=False
+              signal.signal(signal.SIGTERM,stop)
+              while alive:
+                i+=1; print(f"T6|{run}|{i:012d}|"+'x'*payload,flush=True)
+                if mode=='oom' and i==500: 
+                  while True: junk.append(bytearray(1024*1024))
+                if rate: time.sleep(1/rate)
+              PY
+              child=$!; echo "$child" >/tmp/workload.pid; wait "$child"
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: "1", memory: 64Mi}

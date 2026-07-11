@@ -1,0 +1,2 @@
+error: error from server (NotFound): pods "talker-f7cf446cb-d8hkr" not found in namespace "t6"
+error: error from server (NotFound): pods "talker-f7cf446cb-d8hkr" not found in namespace "t6"

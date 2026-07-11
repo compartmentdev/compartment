@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: t6
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-config
+  namespace: t6
+data:
+  vector.yaml: |
+    data_dir: /vector-data
+    sources:
+      pod_logs:
+        type: file
+        include:
+          - /var/log/pods/t6_*/*/*.log
+        read_from: beginning
+        fingerprint:
+          strategy: device_and_inode
+    transforms:
+      messages:
+        type: remap
+        inputs: [pod_logs]
+        source: |
+          parsed, err = parse_regex(.message, r'^[^ ]+ [^ ]+ [^ ]+ (?P<line>T6\|.*)$')
+          if err != null { abort }
+          .message = parsed.line
+    sinks:
+      capture:
+        type: file
+        inputs: [messages]
+        path: /vector-data/captured.log
+        encoding:
+          codec: text
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vector
+  namespace: t6
+spec:
+  selector:
+    matchLabels: {app: t6-vector}
+  template:
+    metadata:
+      labels: {app: t6-vector}
+    spec:
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: vector
+          image: timberio/vector:0.49.0-alpine
+          args: [--config, /etc/vector/vector.yaml]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: "1", memory: 256Mi}
+          volumeMounts:
+            - {name: config, mountPath: /etc/vector}
+            - {name: pod-logs, mountPath: /var/log/pods, readOnly: true}
+            - {name: data, mountPath: /vector-data}
+      volumes:
+        - name: config
+          configMap: {name: vector-config}
+        - name: pod-logs
+          hostPath: {path: /var/log/pods, type: Directory}
+        - name: data
+          hostPath: {path: /var/lib/t6-vector, type: DirectoryOrCreate}
