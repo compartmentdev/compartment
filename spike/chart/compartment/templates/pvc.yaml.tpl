@@ -3,6 +3,7 @@
 {{- if eq .Values.platform.startupStage "full" -}}
 {{- $_ := set $claims "api" .Values.storage.api -}}
 {{- $_ := set $claims "caddy" .Values.storage.caddy -}}
+{{- $_ := set $claims "edge" .Values.storage.edge -}}{{/* SPIKE-T7 */}}
 {{- end -}}
 {{- if and .Values.buildkit.enabled (eq .Values.platform.startupStage "full") -}}
 {{- $_ := set $claims "buildkit" .Values.storage.buildkit -}}
