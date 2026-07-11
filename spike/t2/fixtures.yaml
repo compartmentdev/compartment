@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ns-a
+  labels: {compartment.test/namespace: ns-a}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ns-b
+  labels: {compartment.test/namespace: ns-b}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-ns
+  labels: {compartment.test/namespace: platform-ns}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: app, namespace: ns-a}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: app}}
+  template:
+    metadata: {labels: {app: app}}
+    spec:
+      containers:
+        - name: server
+          image: busybox:1.37.0
+          command: [sh, -c, "echo ok >/tmp/index.html; httpd -f -p 8080 -h /tmp"]
+          ports: [{containerPort: 8080}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+      securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: app, namespace: ns-a}
+spec: {selector: {app: app}, ports: [{port: 8080, targetPort: 8080}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: resource, namespace: ns-a}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: resource}}
+  template:
+    metadata: {labels: {app: resource}}
+    spec:
+      containers:
+        - name: server
+          image: busybox:1.37.0
+          command: [sh, -c, "echo ok >/tmp/index.html; httpd -f -p 8080 -h /tmp"]
+          ports: [{containerPort: 8080}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+      securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: resource, namespace: ns-a}
+spec: {selector: {app: resource}, ports: [{port: 8080, targetPort: 8080}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: client, namespace: ns-a}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: client}}
+  template:
+    metadata: {labels: {app: client}}
+    spec:
+      containers:
+        - {name: client, image: busybox:1.37.0, command: [sh, -c, "sleep 86400"], securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}}
+      securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: foreign, namespace: ns-b}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: foreign}}
+  template:
+    metadata: {labels: {app: foreign}}
+    spec:
+      containers:
+        - {name: server, image: busybox:1.37.0, command: [sh, -c, "echo ok >/tmp/index.html; httpd -f -p 8080 -h /tmp"], ports: [{containerPort: 8080}], securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}}
+      securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: foreign, namespace: ns-b}
+spec: {selector: {app: foreign}, ports: [{port: 8080, targetPort: 8080}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: platform, namespace: platform-ns}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: platform}}
+  template:
+    metadata: {labels: {app: platform}}
+    spec:
+      containers:
+        - {name: server, image: busybox:1.37.0, command: [sh, -c, "echo ok >/tmp/index.html; httpd -f -p 8080 -h /tmp"], ports: [{containerPort: 8080}], securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}}
+      securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: platform, namespace: platform-ns}
+spec: {selector: {app: platform}, ports: [{port: 8080, targetPort: 8080}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: caddy, namespace: platform-ns}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: caddy}}
+  template:
+    metadata: {labels: {app: caddy}}
+    spec:
+      containers:
+        - {name: client, image: busybox:1.37.0, command: [sh, -c, "sleep 86400"], securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}}
+      securityContext: {runAsNonRoot: true, runAsUser: 65534, seccompProfile: {type: RuntimeDefault}}
