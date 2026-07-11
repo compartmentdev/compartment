@@ -5,8 +5,8 @@ import type { WorkerClaimedGitSourceResolutionTask, WorkerClaimedGitSourceSyncTa
 import { buildGitHubApiBaseUrl } from '@compartment/utils';
 import { Octokit } from '@octokit/rest';
 import {
-  createWorkerGitHubArchiveTrustedOutboundFetch,
-  createWorkerGitHubTrustedOutboundFetch,
+  createWorkerGitProviderArchiveTrustedOutboundFetch,
+  createWorkerGitProviderTrustedOutboundFetch,
 } from './worker-outbound-http.service';
 
 type WorkerClaimedGitSourceArchiveTask = WorkerClaimedGitSourceResolutionTask | WorkerClaimedGitSourceSyncTask;
@@ -24,7 +24,7 @@ export async function downloadGitHubRepositoryArchive(
   resolvedCommitSha: string,
   archivePath: string,
 ): Promise<void> {
-  const response: Response = await createWorkerGitHubArchiveTrustedOutboundFetch()(
+  const response: Response = await createWorkerGitProviderArchiveTrustedOutboundFetch()(
     buildGitHubArchiveUrl(task, resolvedCommitSha),
     {
       headers: {
@@ -64,7 +64,7 @@ function createWorkerGitHubOctokit(input: WorkerClaimedGitSourceArchiveTask): Oc
     auth: input.installationToken,
     baseUrl: buildGitHubApiBaseUrl(input.providerHost),
     request: {
-      fetch: createWorkerGitHubTrustedOutboundFetch(),
+      fetch: createWorkerGitProviderTrustedOutboundFetch(),
     },
     userAgent: 'compartment-worker',
   });

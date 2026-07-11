@@ -94,6 +94,10 @@ export function createGitSourceRegistrationPendingError(): ApiBusinessError {
   return new ApiBusinessError('git_source_registration_pending');
 }
 
+export function createGitLabTokenInvalidError(message?: string): ApiBusinessError {
+  return new ApiBusinessError('gitlab_token_invalid', message);
+}
+
 export function createGitSourceRepositoryAccessDeniedError(message?: string): ApiBusinessError {
   return new ApiBusinessError('git_source_repository_access_denied', message);
 }

@@ -27,6 +27,11 @@ export interface GitHubSourceWebhookRouteParams {
   registrationId: string;
 }
 
+export interface GitLabSourceWebhookRouteParams {
+  organizationId: string;
+  registrationId: string;
+}
+
 export interface GitHubSetupQuery {
   installation_id: string;
   state: string;
@@ -65,6 +70,13 @@ export const gitHubCallbackQuerySchema: z.ZodType<GitHubCallbackQuery> = z
   .passthrough();
 
 export const gitHubSourceWebhookRouteParamsSchema: z.ZodType<GitHubSourceWebhookRouteParams> = z
+  .object({
+    organizationId: z.string().min(1),
+    registrationId: z.string().min(1),
+  })
+  .strict();
+
+export const gitLabSourceWebhookRouteParamsSchema: z.ZodType<GitLabSourceWebhookRouteParams> = z
   .object({
     organizationId: z.string().min(1),
     registrationId: z.string().min(1),

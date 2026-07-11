@@ -1,8 +1,10 @@
 import { githubProviderAdapter } from './github-provider.adapter';
+import { gitlabProviderAdapter } from './gitlab-provider.adapter';
 import type { GitProviderAdapter, GitProviderType } from './git-source-provider.types';
 
 const gitProviderAdapters: Readonly<Record<GitProviderType, GitProviderAdapter>> = {
   github_app: githubProviderAdapter,
+  gitlab: gitlabProviderAdapter,
 };
 
 /**
@@ -23,5 +25,5 @@ function requireGitProviderType(value: string): GitProviderType {
 }
 
 function isGitProviderType(value: string): value is GitProviderType {
-  return value === 'github_app';
+  return value === 'github_app' || value === 'gitlab';
 }

@@ -15,7 +15,7 @@ import {
 } from '@compartment/contracts';
 import { extractTarArchiveWithoutSameOwner } from './worker-archive-extraction.service';
 import { readExtractedRepositoryRoot } from './worker-git-source-archive.support';
-import { downloadGitHubRepositoryArchive, readGitHubBranchHeadSha } from './worker-git-source-github.service';
+import { downloadGitSourceRepositoryArchive, readGitSourceBranchHeadSha } from './worker-git-source-provider.service';
 import { parseGitSourceYaml } from './worker-git-source-yaml.service';
 
 export interface ResolvedGitSourceSyncDiscovery {
@@ -26,7 +26,7 @@ export interface ResolvedGitSourceSyncDiscovery {
 export async function resolveGitSourceSyncDiscovery(
   task: WorkerClaimedGitSourceSyncTask,
 ): Promise<ResolvedGitSourceSyncDiscovery> {
-  const resolvedCommitSha: string = task.triggerCommitSha ?? (await readGitHubBranchHeadSha(task));
+  const resolvedCommitSha: string = task.triggerCommitSha ?? (await readGitSourceBranchHeadSha(task));
   const tempDirectory: string = await mkdtemp(join(tmpdir(), 'compartment-git-source-sync-'));
 
   try {
@@ -44,7 +44,7 @@ async function resolveGitSourceSyncDiscoveryInDirectory(
   const downloadedArchivePath: string = join(tempDirectory, 'provider.tgz');
   const extractionDirectory: string = join(tempDirectory, 'extract');
 
-  await downloadGitHubRepositoryArchive(task, resolvedCommitSha, downloadedArchivePath);
+  await downloadGitSourceRepositoryArchive(task, resolvedCommitSha, downloadedArchivePath);
   await mkdir(extractionDirectory, { recursive: true });
   await extractTarArchiveWithoutSameOwner(downloadedArchivePath, extractionDirectory);
 

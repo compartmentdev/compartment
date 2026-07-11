@@ -2,7 +2,10 @@ import {
   createGitSourceRegistrationFailedError,
   createGitSourceRegistrationPendingError,
 } from '../../errors/api-business-error';
-import { findActiveGitProviderRegistration } from '../../queries/git-provider-registration.query';
+import {
+  findActiveGitProviderRegistration,
+  findGitProviderRegistrationById,
+} from '../../queries/git-provider-registration.query';
 import { findPendingGitProviderRegistration } from '../../queries/git-provider-registration-bootstrap.query';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import { getGitProviderAdapter } from './git-source-provider.registry';
@@ -16,6 +19,21 @@ export async function requireActiveGitProviderAccess(
   return buildGitProviderAccess(
     await requireActiveGitProviderRegistration(organizationId, providerHost, repositoryOwner),
   );
+}
+
+export async function requireGitProviderAccessByRegistrationId(
+  organizationId: string,
+  registrationId: string,
+  providerHost: string,
+): Promise<GitProviderAccess> {
+  const registration: GitProviderRegistrationRow | undefined = await findGitProviderRegistrationById({
+    organizationId,
+    registrationId,
+  });
+  if (registration?.status !== 'active' || registration.providerHost !== providerHost) {
+    throw createGitSourceRegistrationFailedError('The selected git provider registration is not active.');
+  }
+  return buildGitProviderAccess(registration);
 }
 
 export function buildGitProviderAccess(registration: GitProviderRegistrationRow): GitProviderAccess {
@@ -34,6 +52,7 @@ async function requireActiveGitProviderRegistration(
     organizationId,
     providerHost,
     repositoryOwner,
+    providerType: 'github_app',
   });
   if (activeRegistration !== undefined) {
     return activeRegistration;

@@ -29,11 +29,15 @@ interface GitProviderRegistrationManifestExchangeUpdate {
 }
 
 export async function findActiveGitProviderRegistration(
-  input: Pick<FindGitProviderRegistrationByStatusInput, 'organizationId' | 'providerHost' | 'repositoryOwner'>,
+  input: Pick<
+    FindGitProviderRegistrationByStatusInput,
+    'organizationId' | 'providerHost' | 'providerType' | 'repositoryOwner'
+  >,
 ): Promise<GitProviderRegistrationRow | undefined> {
   return await findGitProviderRegistrationByStatusWithExecutor(getApiDatabase(), {
     organizationId: input.organizationId,
     providerHost: input.providerHost,
+    providerType: input.providerType,
     repositoryOwner: input.repositoryOwner,
     status: 'active',
   });
@@ -208,6 +212,7 @@ export async function findGitProviderRegistrationByStatusWithExecutor(
         buildGitProviderRegistrationOrganizationFilter(input.organizationId),
         eq(sql`lower(${gitProviderRegistrations.repositoryOwner})`, input.repositoryOwner.toLowerCase()),
         eq(gitProviderRegistrations.status, input.status),
+        ...(input.providerType === undefined ? [] : [eq(gitProviderRegistrations.providerType, input.providerType)]),
         ...(input.expiresAfter === undefined
           ? []
           : [gt(gitProviderRegistrations.pendingExpiresAt, input.expiresAfter)]),

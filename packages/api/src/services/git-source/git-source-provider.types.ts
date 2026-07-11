@@ -1,4 +1,4 @@
-import type { GitDescriptorDraftFile } from '@compartment/contracts';
+import type { GitDescriptorDraftFile, GitProviderType } from '@compartment/contracts';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import type { SourceRow } from '../../queries/source.query.types';
 
@@ -6,7 +6,7 @@ import type { SourceRow } from '../../queries/source.query.types';
  * Provider kinds Compartment can integrate with. GitHub is the only member today;
  * the value is persisted as `git_provider_registrations.provider_type`.
  */
-export type GitProviderType = 'github_app';
+export type { GitProviderType } from '@compartment/contracts';
 
 /**
  * Decrypted secret material for a single provider registration. Discriminated so
@@ -14,11 +14,18 @@ export type GitProviderType = 'github_app';
  * path. Non-secret identifiers (GitHub app/installation ids) are read from the
  * registration row at the point of use, so the credential carries only decrypted secrets.
  */
-export type GitProviderCredential = GitHubAppProviderCredential;
+export type GitProviderCredential = GitHubAppProviderCredential | GitLabTokenProviderCredential;
 
 interface GitHubAppProviderCredential {
   kind: 'github_app';
   privateKeyPem: string;
+  token?: never;
+}
+
+interface GitLabTokenProviderCredential {
+  kind: 'gitlab_token';
+  privateKeyPem?: never;
+  token: string;
 }
 
 /**
@@ -164,6 +171,9 @@ export interface GitProviderAdapter {
 
   /** Mint the short-lived bearer token the worker uses to fetch source for a deploy. */
   mintRuntimeAccessToken(input: MintRuntimeAccessTokenInput): Promise<string>;
+
+  onSourceConnected(access: GitProviderAccess, source: SourceRow): Promise<{ providerWebhookId: string | null }>;
+  onSourceDisconnected(access: GitProviderAccess, source: SourceRow): Promise<void>;
 
   isRepositoryAccessFailure(error: Error | undefined): boolean;
   isRepositoryEmptyFailure(error: Error | undefined): boolean;

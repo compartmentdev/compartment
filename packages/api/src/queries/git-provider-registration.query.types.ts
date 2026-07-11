@@ -9,6 +9,8 @@ export type PersistedGitProviderRegistrationRow = typeof gitProviderRegistration
 export type PersistedGitProviderBootstrapStateRow = typeof gitProviderBootstrapStates.$inferSelect;
 
 export interface GitProviderRegistrationRow {
+  accessTokenCiphertext?: string | null | undefined;
+  accessTokenEncryptionKeyId?: string | null | undefined;
   appId: string | null;
   appName: string | null;
   appSlug: string | null;
@@ -99,6 +101,7 @@ export interface FindGitProviderRegistrationByStatusInput {
   expiresAfter?: Date | undefined;
   organizationId: string;
   providerHost: string;
+  providerType?: string | undefined;
   repositoryOwner: string;
   status: string;
 }
@@ -138,4 +141,21 @@ export interface FindGitProviderRegistrationByIdInput {
 export interface FindGitProviderBootstrapStateByIdInput {
   bootstrapStateId: string;
   organizationId: string;
+}
+
+export interface UpsertGitLabProviderRegistrationInput {
+  accessTokenCiphertext: string;
+  accessTokenEncryptionKeyId: string;
+  callbackUrl: string;
+  createdByPrincipalId: string;
+  id: string;
+  installationAccountLogin: string;
+  installationAccountType: string;
+  organizationId: string;
+  providerHost: string;
+  repositoryOwner: string;
+  updatedAt: Date;
+  webhookSecretCiphertext: string;
+  webhookSecretEncryptionKeyId: string;
+  webhookUrl: string;
 }

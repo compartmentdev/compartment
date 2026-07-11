@@ -17,6 +17,18 @@ export interface HandleGitHubSourceWebhookInput {
   signature: string;
 }
 
+export interface ProviderPushDeliveryInput {
+  providerDeliveryId: string;
+}
+
+export interface NormalizedGitSourcePush {
+  branchName: string;
+  changedFilesState: PushChangedFilesState;
+  commitSha: string;
+  payloadJson: string;
+  repositoryExternalId: string;
+}
+
 export interface GitHubPushWebhookPayload extends GitHubWebhookObject {
   after: string;
   commits?: GitHubPushCommitPayload[] | undefined;

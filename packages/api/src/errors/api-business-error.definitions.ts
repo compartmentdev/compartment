@@ -58,6 +58,10 @@ export const businessErrorDefinitions: Record<ApiBusinessErrorCode, ApiBusinessE
     message: 'Complete the GitHub App registration before connecting this source.',
     statusCode: 409,
   },
+  gitlab_token_invalid: {
+    message: 'The GitLab token is invalid or no longer has access.',
+    statusCode: 401,
+  },
   git_source_repository_access_denied: {
     message: 'The GitHub App is not installed on the selected repository.',
     statusCode: 409,

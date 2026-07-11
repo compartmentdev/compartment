@@ -8,17 +8,24 @@ import { hasText } from '@compartment/utils';
 import type { Command } from 'commander';
 import { promptVisibleText } from '../../prompts/prompt';
 import { connectGitSource } from '../../services/sources.service';
-import { readLocalGitSourcePlan } from '../../services/source-git-local.service';
 import type { LocalGitSourcePlan } from '../../services/source-git-local.service.types';
 import type { AuthenticatedContext } from '../../services/context.types';
 import type { CliCommandDependencies, SourceConnectGitCommandOptions } from '../command.types';
-import { addRemoteOption, createRemoteAuthenticatedContext } from '../remote.command.helpers';
+import { addRemoteOption } from '../remote.command.helpers';
 import { waitForGitHubSourceBootstrap } from './source-connect-git-bootstrap.command';
-import { readGitHubInstallationRepositoriesForSelection } from './source-connect-git-repository-list';
-import { createGitSourceConnectMessage, parseEnabledDisabledState, promptYesNoChoice } from './source.command.helpers';
+import {
+  formatGitRepositoryListItem,
+  readDefaultGitRepositoryFullName,
+  readGitHubInstallationRepositoriesForSelection,
+  resolveGitRepositoryOwner,
+} from './source-connect-git-repository-list';
+import { parseEnabledDisabledState, promptYesNoChoice } from './source.command.helpers';
+import { isGitLabRepositoryProvider, resolveGitLabRepositorySelection } from './source-connect-gitlab.command';
+import { runSourceConnectGitCommand } from './source-connect-git-run.command';
 
-interface GitSourceRepositorySelection {
+export interface GitSourceRepositorySelection {
   providerHost: string;
+  registrationId?: string | undefined;
   repository: GitHubInstallationRepositorySummary;
 }
 
@@ -28,10 +35,11 @@ interface ConnectSelectedGitSourceInput {
   defaultAutoDeployEnabled: boolean;
   defaultEnvironmentName: string;
   providerHost: string;
+  registrationId?: string | undefined;
   repository: GitHubInstallationRepositorySummary;
 }
 
-interface GitSourceConnectionSettings {
+export interface GitSourceConnectionSettings {
   autoAdoptNewApps: boolean;
   branchName: string;
   defaultAutoDeployEnabled: boolean;
@@ -53,32 +61,7 @@ export function registerSourceConnectGitCommand(program: Command, dependencies: 
   });
 }
 
-async function runSourceConnectGitCommand(
-  dependencies: CliCommandDependencies,
-  options: SourceConnectGitCommandOptions,
-): Promise<void> {
-  validateConnectOptions(options);
-  const context: AuthenticatedContext = await createRemoteAuthenticatedContext(options);
-  const plan: LocalGitSourcePlan = await readLocalGitSourcePlan(process.cwd());
-  const selection: GitSourceRepositorySelection = await resolveGitSourceRepositorySelection(
-    dependencies,
-    context,
-    plan,
-  );
-  const settings: GitSourceConnectionSettings = await resolveGitSourceConnectionSettings(
-    dependencies,
-    options,
-    selection.repository.defaultBranchName,
-  );
-  const response: GitSourceResponse = await connectSelectedGitSource(context, {
-    ...settings,
-    providerHost: selection.providerHost,
-    repository: selection.repository,
-  });
-  dependencies.io.stdout(`${createGitSourceConnectMessage(response)}\n`);
-}
-
-async function resolveGitSourceConnectionSettings(
+export async function resolveGitSourceConnectionSettings(
   dependencies: CliCommandDependencies,
   options: SourceConnectGitCommandOptions,
   defaultBranchName: string,
@@ -90,13 +73,16 @@ async function resolveGitSourceConnectionSettings(
     defaultAutoDeployEnabled: await resolveAutoDeployOption(dependencies, options),
   };
 }
-
-async function resolveGitSourceRepositorySelection(
+export async function resolveGitSourceRepositorySelection(
   dependencies: CliCommandDependencies,
   context: AuthenticatedContext,
   plan: LocalGitSourcePlan,
+  gitLabToken: string | undefined,
 ): Promise<GitSourceRepositorySelection> {
-  const repositoryOwner: string = await resolveRepositoryOwner(dependencies, plan);
+  if (await isGitLabRepositoryProvider(context, plan.providerHost, gitLabToken)) {
+    return await resolveGitLabRepositorySelection(context, plan, gitLabToken);
+  }
+  const repositoryOwner: string = await resolveGitRepositoryOwner(dependencies, plan);
   const bootstrap: GitHubProviderBootstrapResponse = await waitForGitHubSourceBootstrap(dependencies, context, {
     providerHost: plan.providerHost,
     repositoryOwner,
@@ -112,8 +98,7 @@ async function resolveGitSourceRepositorySelection(
   );
   return { providerHost: bootstrap.providerHost, repository };
 }
-
-async function connectSelectedGitSource(
+export async function connectSelectedGitSource(
   context: AuthenticatedContext,
   input: ConnectSelectedGitSourceInput,
 ): Promise<GitSourceResponse> {
@@ -122,14 +107,11 @@ async function connectSelectedGitSource(
     defaultAutoDeployEnabled: input.defaultAutoDeployEnabled,
     defaultEnvironmentName: input.defaultEnvironmentName,
     providerHost: input.providerHost,
+    registrationId: input.registrationId,
     repositoryName: input.repository.name,
     repositoryOwner: input.repository.owner,
     syncBranchName: input.branchName,
   });
-}
-
-async function resolveRepositoryOwner(dependencies: CliCommandDependencies, plan: LocalGitSourcePlan): Promise<string> {
-  return await promptVisibleText(dependencies.io, 'GitHub account or organization', plan.repositoryOwner);
 }
 
 async function resolveRepositorySelection(
@@ -154,16 +136,15 @@ async function resolveRepositorySelection(
   return await promptForRepositorySelection(
     dependencies,
     repositories,
-    readDefaultRepositoryFullName(repositoryOwner, plan),
+    readDefaultGitRepositoryFullName(repositoryOwner, plan),
   );
 }
-
 async function promptForRepositorySelection(
   dependencies: CliCommandDependencies,
   repositories: GitHubInstallationRepositorySummary[],
   preferredRepositoryFullName: string,
 ): Promise<GitHubInstallationRepositorySummary> {
-  dependencies.io.stderr(`Available repositories:\n${repositories.map(formatRepositoryListItem).join('\n')}\n`);
+  dependencies.io.stderr(`Available repositories:\n${repositories.map(formatGitRepositoryListItem).join('\n')}\n`);
   const defaultRepositoryFullName: string = readDefaultRepositorySelection(repositories, preferredRepositoryFullName);
   for (;;) {
     const repositoryFullName: string = await promptVisibleText(
@@ -181,11 +162,6 @@ async function promptForRepositorySelection(
     dependencies.io.stderr('Select one of the listed repositories by full name.\n');
   }
 }
-
-function formatRepositoryListItem(repository: GitHubInstallationRepositorySummary): string {
-  return `- ${repository.fullName}\tdefault branch: ${repository.defaultBranchName}`;
-}
-
 function readDefaultRepositorySelection(
   repositories: GitHubInstallationRepositorySummary[],
   preferredRepositoryFullName: string,
@@ -195,18 +171,12 @@ function readDefaultRepositorySelection(
   );
   return (preferredRepository ?? repositories[0]!).fullName;
 }
-
-function readDefaultRepositoryFullName(repositoryOwner: string, plan: LocalGitSourcePlan): string {
-  return `${repositoryOwner}/${plan.repositoryName}`;
-}
-
 function readCanonicalRepositoryOwner(
   bootstrap: GitHubProviderBootstrapResponse,
   requestedRepositoryOwner: string,
 ): string {
   return hasText(bootstrap.installationAccountLogin) ? bootstrap.installationAccountLogin : requestedRepositoryOwner;
 }
-
 async function resolveBranchName(
   dependencies: CliCommandDependencies,
   options: SourceConnectGitCommandOptions,
@@ -214,7 +184,6 @@ async function resolveBranchName(
 ): Promise<string> {
   return options.branch ?? (await promptVisibleText(dependencies.io, 'Branch', defaultBranchName));
 }
-
 async function resolveEnvironmentName(
   dependencies: CliCommandDependencies,
   options: SourceConnectGitCommandOptions,
@@ -233,7 +202,6 @@ async function resolveAutoDeployOption(
   }
   return await promptForAutoDeployChoice(dependencies);
 }
-
 async function resolveAutoAdoptNewAppsOption(
   dependencies: CliCommandDependencies,
   options: SourceConnectGitCommandOptions,
@@ -247,8 +215,7 @@ async function resolveAutoAdoptNewAppsOption(
 
   return await promptForAutoAdoptNewAppsChoice(dependencies);
 }
-
-function validateConnectOptions(options: SourceConnectGitCommandOptions): void {
+export function validateConnectOptions(options: SourceConnectGitCommandOptions): void {
   if (options.autoDeploy === true && options.manual === true) {
     throw new Error('Use only one of --auto-deploy or --manual.');
   }

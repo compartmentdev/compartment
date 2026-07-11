@@ -145,6 +145,7 @@ function buildUpdateSourceToActiveValues(input: UpdateSourceToActiveInput): Part
     ...(input.lastSyncAt !== undefined ? { lastSyncAt: input.lastSyncAt } : {}),
     providerInstallationId: input.providerInstallationId,
     providerRegistrationId: input.providerRegistrationId,
+    ...(input.providerWebhookId !== undefined ? { providerWebhookId: input.providerWebhookId } : {}),
     repositoryCloneUrl: input.repositoryCloneUrl,
     repositoryName: input.repositoryName,
     repositoryOwner: input.repositoryOwner,

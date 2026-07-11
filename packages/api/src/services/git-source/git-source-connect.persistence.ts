@@ -6,12 +6,27 @@ import { buildCreateSourceInput, buildUpdateSourceInput } from './git-source-con
 
 export interface PersistConnectedGitSourceInput {
   actorPrincipalId: string;
-  installationId: string;
+  installationId: string | null;
+  providerWebhookId?: string | null | undefined;
   organizationId: string;
   providerHost: string;
   providerRegistrationId: string;
   repository: GitRepositoryMetadata;
   request: ConnectGitSourceRequest;
+  syncBranchName: string;
+}
+
+interface GitSourceUpsertInput {
+  actorPrincipalId: string;
+  autoAdoptNewApps: boolean;
+  defaultAutoDeployEnabled: boolean;
+  defaultEnvironmentName: string;
+  installationId: string | null;
+  organizationId: string;
+  providerHost: string;
+  providerRegistrationId: string;
+  providerWebhookId: string | null;
+  repository: GitRepositoryMetadata;
   syncBranchName: string;
 }
 
@@ -36,18 +51,7 @@ export async function persistConnectedGitSource(
   );
 }
 
-function buildSourceUpsertInput(input: PersistConnectedGitSourceInput): {
-  actorPrincipalId: string;
-  autoAdoptNewApps: boolean;
-  defaultAutoDeployEnabled: boolean;
-  defaultEnvironmentName: string;
-  installationId: string;
-  organizationId: string;
-  providerHost: string;
-  providerRegistrationId: string;
-  repository: GitRepositoryMetadata;
-  syncBranchName: string;
-} {
+function buildSourceUpsertInput(input: PersistConnectedGitSourceInput): GitSourceUpsertInput {
   return {
     actorPrincipalId: input.actorPrincipalId,
     autoAdoptNewApps: input.request.autoAdoptNewApps,
@@ -57,6 +61,7 @@ function buildSourceUpsertInput(input: PersistConnectedGitSourceInput): {
     organizationId: input.organizationId,
     providerHost: input.providerHost,
     providerRegistrationId: input.providerRegistrationId,
+    providerWebhookId: input.providerWebhookId ?? null,
     repository: input.repository,
     syncBranchName: input.syncBranchName,
   };

@@ -20,7 +20,8 @@ import { persistSourcePushEventsForAudit } from './git-source-runtime-push-persi
 import type {
   GitHubPushWebhookPayload,
   HandleGitHubSourceWebhookInput,
-  PushChangedFilesState,
+  NormalizedGitSourcePush,
+  ProviderPushDeliveryInput,
 } from './git-source-runtime.service.types';
 
 export async function handleGitHubPushWebhook(
@@ -42,7 +43,13 @@ export async function handleGitHubPushWebhook(
     return;
   }
 
-  await persistPushSourceEvents(input, payload, sources, branchName, readChangedFiles(payload));
+  await persistNormalizedGitSourcePush(input, sources, {
+    branchName,
+    changedFilesState: readChangedFiles(payload),
+    commitSha: payload.after,
+    payloadJson: JSON.stringify(payload),
+    repositoryExternalId: readRepositoryExternalId(payload.repository),
+  });
 }
 
 async function readMatchedPushSources(
@@ -60,34 +67,30 @@ async function readMatchedPushSources(
   );
 }
 
-async function persistPushSourceEvents(
-  input: HandleGitHubSourceWebhookInput,
-  payload: GitHubPushWebhookPayload,
+export async function persistNormalizedGitSourcePush(
+  input: ProviderPushDeliveryInput,
   sources: readonly SourceRow[],
-  branchName: string,
-  changedFilesState: PushChangedFilesState,
+  push: NormalizedGitSourcePush,
 ): Promise<void> {
   const recordedAuditEvents: AuditEventResult[] = await getApiDatabase().transaction(
     async (tx: SourceResolutionMutationTransaction): Promise<AuditEventResult[]> =>
-      await recordPushAuditEventsInTransaction(tx, input, payload, sources, branchName, changedFilesState),
+      await recordPushAuditEventsInTransaction(tx, input, sources, push),
   );
   writeCommittedAuditEventsToLocalFileSink(recordedAuditEvents);
 }
 
 async function recordPushAuditEventsInTransaction(
   tx: SourceResolutionMutationTransaction,
-  input: HandleGitHubSourceWebhookInput,
-  payload: GitHubPushWebhookPayload,
+  input: ProviderPushDeliveryInput,
   sources: readonly SourceRow[],
-  branchName: string,
-  changedFilesState: PushChangedFilesState,
+  push: NormalizedGitSourcePush,
 ): Promise<AuditEventResult[]> {
   const auditEventResults: AuditEventResult[] = [];
   const auditEvents: BuildGitSourcePushAuditEventInputsInput[] = await persistSourcePushEventsForAudit(tx, input, {
-    branchName,
-    changedFilesState,
-    commitSha: payload.after,
-    payloadJson: JSON.stringify(payload),
+    branchName: push.branchName,
+    changedFilesState: push.changedFilesState,
+    commitSha: push.commitSha,
+    payloadJson: push.payloadJson,
     sources,
   });
   for (const auditEvent of auditEvents) {

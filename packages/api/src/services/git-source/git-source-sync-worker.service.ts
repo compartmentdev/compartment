@@ -36,7 +36,6 @@ export async function claimGitSourceSyncTaskForWorker(): Promise<WorkerClaimedGi
     now,
     new Date(now.getTime() + sourceSyncTaskLeaseMs),
   );
-
   return task === null ? null : await buildClaimedSourceSyncTask(task);
 }
 
@@ -188,13 +187,7 @@ async function cancelSourceSyncTasksForInactiveSource(sourceId: string): Promise
 
 async function buildClaimedSourceSyncTask(task: SourceSyncTaskRow): Promise<WorkerClaimedGitSourceSyncTask> {
   const source: SourceRow = requireActiveSource(await findSourceById(task.sourceId));
-  const registration: GitProviderRegistrationRow = requireGitProviderRegistration(
-    await findGitProviderRegistrationById({
-      organizationId: source.organizationId,
-      registrationId: source.providerRegistrationId,
-    }),
-  );
-
+  const registration: GitProviderRegistrationRow = await readSourceSyncRegistration(source);
   return {
     claimToken: createSourceSyncClaimToken({
       claimedAt: requireClaimedAt(task.claimedAt),
@@ -202,7 +195,9 @@ async function buildClaimedSourceSyncTask(task: SourceSyncTaskRow): Promise<Work
       secret: getApiConfig().runtimeControlToken,
     }),
     installationToken: await mintSourceSyncRuntimeToken(source, registration),
+    providerType: getGitProviderAdapter(registration.providerType).providerType,
     providerHost: source.providerHost,
+    repositoryExternalId: source.repositoryExternalId,
     repositoryName: source.repositoryName,
     repositoryOwner: source.repositoryOwner,
     requestedBranchName: task.requestedBranchName,
@@ -210,6 +205,15 @@ async function buildClaimedSourceSyncTask(task: SourceSyncTaskRow): Promise<Work
     taskId: task.id,
     triggerCommitSha: task.triggerCommitSha,
   };
+}
+
+async function readSourceSyncRegistration(source: SourceRow): Promise<GitProviderRegistrationRow> {
+  return requireGitProviderRegistration(
+    await findGitProviderRegistrationById({
+      organizationId: source.organizationId,
+      registrationId: source.providerRegistrationId,
+    }),
+  );
 }
 
 async function mintSourceSyncRuntimeToken(

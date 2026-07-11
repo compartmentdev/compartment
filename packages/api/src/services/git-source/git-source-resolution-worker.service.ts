@@ -110,17 +110,15 @@ async function buildClaimedSourceResolutionTask(
   const source: SourceRow = requireActiveSource(await findSourceById(claimed.sourceId));
   const binding: SourceBindingRow = requireActiveBinding(await findSourceBindingById(claimed.sourceBindingId));
   const registration: GitProviderRegistrationRow = await readSourceGitProviderRegistration(source);
-
   return {
     branchName: claimed.branchName,
     commitSha: claimed.commitSha,
     descriptorPath: binding.descriptorPath,
-    installationToken: await getGitProviderAdapter(registration.providerType).mintRuntimeAccessToken({
-      registration,
-      source,
-    }),
+    installationToken: await mintResolutionRuntimeAccessToken(source, registration),
     projectName: binding.projectName,
+    providerType: getGitProviderAdapter(registration.providerType).providerType,
     providerHost: source.providerHost,
+    repositoryExternalId: source.repositoryExternalId,
     repositoryName: source.repositoryName,
     repositoryOwner: source.repositoryOwner,
     sourceBindingId: binding.id,
@@ -129,6 +127,13 @@ async function buildClaimedSourceResolutionTask(
     targetEnvironmentName: claimed.targetEnvironmentName,
     taskId: claimed.id,
   };
+}
+
+async function mintResolutionRuntimeAccessToken(
+  source: SourceRow,
+  registration: GitProviderRegistrationRow,
+): Promise<string> {
+  return await getGitProviderAdapter(registration.providerType).mintRuntimeAccessToken({ registration, source });
 }
 
 async function readSourceGitProviderRegistration(source: SourceRow): Promise<GitProviderRegistrationRow> {

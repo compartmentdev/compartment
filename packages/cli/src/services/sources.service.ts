@@ -8,10 +8,14 @@ import type {
   GitSourceResponse,
   GitSourceSettingsResponse,
   GitSourceSyncTaskResponse,
+  CreateGitLabProviderRegistrationResponse,
+  GitLabProviderRegistrationListResponse,
+  GitLabRegistrationRepositoryListResponse,
   UpdateGitSourceSettingsRequest,
 } from '@compartment/contracts';
 import {
   connectGitSource as connectGitSourceApi,
+  createGitLabProviderRegistration as createGitLabProviderRegistrationApi,
   disconnectGitSource as disconnectGitSourceApi,
   excludeGitSourceDescriptor as excludeGitSourceDescriptorApi,
   getGitHubProviderBootstrapStatus as getGitHubProviderBootstrapStatusApi,
@@ -20,6 +24,8 @@ import {
   getGitSourceSyncTask as getGitSourceSyncTaskApi,
   includeGitSourceDescriptor as includeGitSourceDescriptorApi,
   listGitHubInstallationRepositories as listGitHubInstallationRepositoriesApi,
+  listGitLabProviderRegistrations as listGitLabProviderRegistrationsApi,
+  listGitLabRegistrationRepositories as listGitLabRegistrationRepositoriesApi,
   listGitSources as listGitSourcesApi,
   startGitSourceSync as startGitSourceSyncApi,
   startGitHubProviderBootstrap as startGitHubProviderBootstrapApi,
@@ -31,6 +37,27 @@ import type { AuthenticatedContext } from './context.types';
 
 export async function listSources(context: AuthenticatedContext): Promise<GitSourceListResponse> {
   return await listGitSourcesApi(createSourceRequester(context));
+}
+
+export async function createGitLabSourceRegistration(
+  context: AuthenticatedContext,
+  providerHost: string,
+  accessToken: string,
+): Promise<CreateGitLabProviderRegistrationResponse> {
+  return await createGitLabProviderRegistrationApi(createSourceRequester(context), { accessToken, providerHost });
+}
+
+export async function listGitLabSourceRegistrations(
+  context: AuthenticatedContext,
+): Promise<GitLabProviderRegistrationListResponse> {
+  return await listGitLabProviderRegistrationsApi(createSourceRequester(context));
+}
+
+export async function listGitLabRepositoriesForSource(
+  context: AuthenticatedContext,
+  registrationId: string,
+): Promise<GitLabRegistrationRepositoryListResponse> {
+  return await listGitLabRegistrationRepositoriesApi(createSourceRequester(context), registrationId);
 }
 
 export async function showSource(context: AuthenticatedContext, sourceId: string): Promise<GitSourceResponse> {

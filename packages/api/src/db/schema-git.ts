@@ -52,7 +52,8 @@ export const sources: GitSchemaTypes.SourcesTable = pgTable(
     providerRegistrationId: text('provider_registration_id')
       .notNull()
       .references((): typeof gitProviderRegistrations.id => gitProviderRegistrations.id, { onDelete: 'restrict' }),
-    providerInstallationId: text('provider_installation_id').notNull(),
+    providerInstallationId: text('provider_installation_id'),
+    providerWebhookId: text('provider_webhook_id'),
     repositoryExternalId: text('repository_external_id').notNull(),
     repositoryOwner: text('repository_owner').notNull(),
     repositoryName: text('repository_name').notNull(),

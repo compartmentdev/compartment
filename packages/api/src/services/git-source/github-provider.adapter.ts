@@ -54,7 +54,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
     const installation: { installationId: string } = await resolveGitHubRepositoryInstallation({
       appId: requireRegistrationAppId(access.registration),
       owner: ref.owner,
-      privateKeyPem: access.credential.privateKeyPem,
+      privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       providerHost: ref.providerHost,
       repositoryName: ref.name,
     });
@@ -71,7 +71,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
       appId: requireRegistrationAppId(access.registration),
       installationId: requireResolvedInstallationId(providerInstallationId),
       owner: ref.owner,
-      privateKeyPem: access.credential.privateKeyPem,
+      privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       providerHost: ref.providerHost,
       repositoryName: ref.name,
     });
@@ -88,7 +88,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
       branchName,
       installationId: requireResolvedInstallationId(providerInstallationId),
       owner: ref.owner,
-      privateKeyPem: access.credential.privateKeyPem,
+      privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       providerHost: ref.providerHost,
       repositoryName: ref.name,
     });
@@ -98,7 +98,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
     const repositories: GitHubInstallationRepository[] = await listGitHubInstallationRepositories({
       appId: requireRegistrationAppId(access.registration),
       installationId: requireRegistrationInstallationId(access.registration),
-      privateKeyPem: access.credential.privateKeyPem,
+      privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       providerHost: access.registration.providerHost,
     });
 
@@ -115,7 +115,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
       branchName,
       installationId: requireRegistrationInstallationId(access.registration),
       owner: ref.owner,
-      privateKeyPem: access.credential.privateKeyPem,
+      privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       providerHost: ref.providerHost,
       repositoryName: ref.name,
     });
@@ -133,7 +133,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
       installationId: requireRegistrationInstallationId(access.registration),
       owner: ref.owner,
       path,
-      privateKeyPem: access.credential.privateKeyPem,
+      privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       providerHost: ref.providerHost,
       repositoryName: ref.name,
     });
@@ -151,7 +151,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
       files: plan.files,
       installationId: requireRegistrationInstallationId(access.registration),
       owner: ref.owner,
-      privateKeyPem: access.credential.privateKeyPem,
+      privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       projectName: plan.projectName,
       providerHost: ref.providerHost,
       repositoryName: ref.name,
@@ -167,7 +167,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
       appId: requireRegistrationAppId(access.registration),
       installationId: requireRegistrationInstallationId(access.registration),
       owner: ref.owner,
-      privateKeyPem: access.credential.privateKeyPem,
+      privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       providerHost: ref.providerHost,
       pullRequestNumber,
       repositoryName: ref.name,
@@ -177,10 +177,18 @@ class GitHubProviderAdapter implements GitProviderAdapter {
   public async mintRuntimeAccessToken(input: MintRuntimeAccessTokenInput): Promise<string> {
     return await mintGitHubInstallationToken({
       appId: requireEncryptedRegistrationField(input.registration.appId, 'app_id'),
-      installationId: input.source.providerInstallationId,
+      installationId: requireResolvedInstallationId(input.source.providerInstallationId),
       privateKeyPem: decryptEncryptedRegistrationPrivateKey(input.registration),
       providerHost: input.source.providerHost,
     });
+  }
+
+  public async onSourceConnected(): Promise<{ providerWebhookId: string | null }> {
+    return await Promise.resolve({ providerWebhookId: null });
+  }
+
+  public async onSourceDisconnected(): Promise<void> {
+    return await Promise.resolve();
   }
 
   public isRepositoryAccessFailure(error: Error | undefined): boolean {
@@ -194,6 +202,16 @@ class GitHubProviderAdapter implements GitProviderAdapter {
   public isAuthenticationFailure(error: Error | undefined): boolean {
     return isGitHubAppAuthenticationFailure(error);
   }
+}
+
+function requireGitHubAppCredential(
+  credential: GitProviderCredential,
+): Extract<GitProviderCredential, { kind: 'github_app' }> {
+  if (credential.kind !== 'github_app') {
+    throw new Error('GitHub provider operation requires a GitHub App credential.');
+  }
+
+  return credential;
 }
 
 export const githubProviderAdapter: GitProviderAdapter = new GitHubProviderAdapter();

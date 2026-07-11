@@ -1,8 +1,9 @@
 import { createGitSourceConflictError } from '../../errors/api-business-error';
 import { updateSourceToActive } from '../../queries/source.query';
-import type { SourceMutationTransaction, SourceRow } from '../../queries/source.query.types';
+import type { SourceMutationTransaction, SourceRow, UpdateSourceToActiveInput } from '../../queries/source.query.types';
 import { getApiDatabase } from '../../runtime/runtime-access';
-import type { GitRepositoryMetadata } from './git-source-provider.types';
+import type { GitProviderAccess, GitProviderAdapter, GitRepositoryMetadata } from './git-source-provider.types';
+import { cleanupProviderHook } from './git-source-lifecycle.support';
 import { buildUpdateSourceInput } from './git-source-connect.persistence.support';
 import { type ResolvedRepositoryAccess } from './git-source-connect.validation';
 import { includeGitSourceDescriptorWithinTransaction } from './git-source-exclusion.service';
@@ -23,7 +24,26 @@ interface ExistingSourceConnectMutationResult {
   syncRequest: GitSourceConnectSyncRequestView;
 }
 
-export async function connectExistingGitSource(
+export async function connectExistingGitSourceWithProviderHook(
+  input: ConnectGitSourceInput,
+  source: SourceRow,
+  repositoryAccess: ResolvedRepositoryAccess,
+  repository: GitRepositoryMetadata,
+  adapter: GitProviderAdapter,
+  access: GitProviderAccess,
+  lifecycleSource: SourceRow,
+): Promise<ConnectGitSourceResult> {
+  try {
+    const result: ConnectGitSourceResult = await connectExistingGitSource(input, source, repositoryAccess, repository);
+    await cleanupProviderHook(adapter, access, source);
+    return result;
+  } catch (error) {
+    await cleanupProviderHook(adapter, access, lifecycleSource);
+    throw error;
+  }
+}
+
+async function connectExistingGitSource(
   input: ConnectGitSourceInput,
   source: SourceRow,
   repositoryAccess: ResolvedRepositoryAccess,
@@ -135,19 +155,29 @@ async function refreshExistingSourceProviderMetadata(
 ): Promise<SourceRow> {
   return await updateSourceToActive(
     transaction,
-    buildUpdateSourceInput(
-      {
-        autoAdoptNewApps: source.autoAdoptNewApps,
-        defaultAutoDeployEnabled: source.defaultAutoDeployEnabled,
-        defaultEnvironmentName: source.defaultEnvironmentName,
-        installationId: repositoryAccess.providerInstallationId,
-        providerHost: source.providerHost,
-        providerRegistrationId: repositoryAccess.registration.id,
-        repository,
-        syncBranchName: source.syncBranchName,
-      },
-      source.id,
-      now,
-    ),
+    buildExistingSourceUpdateInput(source, repositoryAccess, repository, now),
+  );
+}
+
+function buildExistingSourceUpdateInput(
+  source: SourceRow,
+  repositoryAccess: ResolvedRepositoryAccess,
+  repository: GitRepositoryMetadata,
+  now: Date,
+): UpdateSourceToActiveInput {
+  return buildUpdateSourceInput(
+    {
+      autoAdoptNewApps: source.autoAdoptNewApps,
+      defaultAutoDeployEnabled: source.defaultAutoDeployEnabled,
+      defaultEnvironmentName: source.defaultEnvironmentName,
+      installationId: repositoryAccess.providerInstallationId,
+      providerHost: source.providerHost,
+      providerRegistrationId: repositoryAccess.registration.id,
+      providerWebhookId: repositoryAccess.providerWebhookId,
+      repository,
+      syncBranchName: source.syncBranchName,
+    },
+    source.id,
+    now,
   );
 }
