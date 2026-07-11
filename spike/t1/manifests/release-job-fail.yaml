@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: bench-release-fail
+  namespace: compartment-bench
+  labels: { spike.compartment.dev/track: t1 }
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels: { spike.compartment.dev/track: t1 }
+    spec:
+      restartPolicy: Never
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: release
+          image: busybox:1.37.0
+          command: [sh, -c, 'echo release failed >&2; exit 42']
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          resources:
+            requests: { cpu: 5m, memory: 8Mi }
+            limits: { cpu: 50m, memory: 32Mi }
