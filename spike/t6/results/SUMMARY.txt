@@ -1,0 +1,18 @@
+environment: k3s v1.35.5+k3s1, containerd 2.2.3-k3s1, aarch64
+vector: timberio/vector:0.49.0-alpine, native aarch64
+negative deleted pod: kubectl logs=NotFound; kubectl logs --previous=NotFound
+s1 rolling: A max=609 unique=609 missing=0; B max=609 unique=609 missing=0
+s2 OOMKilled exit=137: A max=500 unique=500 missing=0; B max=500 unique=500 missing=0 duplicates=500
+s3 SIGKILL Error exit=137: A max=668 unique=668 missing=0; B max=1087 unique=1087 missing=0 duplicates=668
+s4 force-delete: A max=776 unique=776; B max=1720 unique=1720 missing=0 duplicates=776; A tail loss=944
+s5 A rotation repeat: max=2901475 unique=592796 missing_to_max=2308679
+s5 B unthrottled repeat: max=5219439 unique=410194 missing_to_max=4809245
+s5 unbounded Vector file sink: 940 MiB after about 75 seconds; exhausted Colima disk
+s6 collector restart at target 1000 lines/s: A max=19198 unique=19198 missing=0; B max=19198 unique=19198 missing=0
+rate100: duration=8s max=1350 unique=1350 missing=0 achieved=169 lines/s
+rate1000: duration=9s max=10810 unique=10810 missing=0 achieved=1201 lines/s
+rate5000: duration=9s max=38411 unique=38411 missing=0 achieved=4268 lines/s
+rate10000: duration=9s max=70872 unique=70872 missing=0 achieved=7875 lines/s
+rate50000: duration=8s max=128575 unique=128575 missing=0 achieved=16072 lines/s
+rate100000: duration=9s max=93135 unique=93135 missing=0 achieved=10348 lines/s
+rate0: duration=9s max=5219439 unique=410194 missing=4809245 emitted=579938 lines/s
