@@ -2,6 +2,7 @@ import {
   type GitHubInstallationRepositoryListResponse,
   type GitHubInstallationRepositorySummary,
 } from '@compartment/contracts';
+import { createGitSourceRequestInvalidError } from '../../errors/api-business-error';
 import { requireGitProviderRegistrationAccess } from './git-source-descriptor-registration-access.service';
 import { getGitProviderAdapter } from './git-source-provider.registry';
 import type { GitProviderAccess, GitProviderAdapter, GitRepositorySummary } from './git-source-provider.types';
@@ -17,6 +18,9 @@ export async function listGitHubInstallationRepositories(
   input: ListGitHubInstallationRepositoriesInput,
 ): Promise<GitHubInstallationRepositoryListResponse> {
   const access: GitProviderAccess = await requireGitProviderRegistrationAccess(input);
+  if (access.registration.providerType !== 'github_app') {
+    throw createGitSourceRequestInvalidError('The selected registration is not a GitHub App registration.');
+  }
   const adapter: GitProviderAdapter = getGitProviderAdapter(access.registration.providerType);
   try {
     return buildReadyRegistrationRepositoriesResponse(await adapter.listRegistrationRepositories(access));

@@ -95,6 +95,19 @@ describe('git source repository list service', (): void => {
       status: 'provider_bootstrap_required',
     });
   });
+
+  it('rejects non-GitHub registrations on the GitHub repository listing path', async (): Promise<void> => {
+    prepareRepositoryListMocks();
+    mocks.requireGitProviderRegistrationAccess.mockResolvedValueOnce({
+      credential: { kind: 'gitlab_token', token: 'gitlab-token' },
+      registration: { ...createRegistration(), providerType: 'gitlab' },
+    });
+
+    await expect(listGitHubInstallationRepositories(createListInput())).rejects.toMatchObject({
+      code: 'git_source_request_invalid',
+    });
+    expect(mocks.listGitHubInstallationRepositories).not.toHaveBeenCalled();
+  });
 });
 
 function prepareRepositoryListMocks(): void {

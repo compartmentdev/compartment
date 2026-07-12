@@ -18,6 +18,10 @@ interface GitLabProject {
   path_with_namespace: string;
   visibility: string;
 }
+type ListableGitLabProject = GitLabProject & {
+  default_branch: string;
+  empty_repo?: false | undefined;
+};
 interface GitLabBranch {
   commit: { id: string };
 }
@@ -87,7 +91,10 @@ export async function listGitLabProjects(client: GitLabHttpClient): Promise<GitR
     },
     50,
   );
-  return rows.map((row: GitLabProject): GitRepositorySummary => toSummary(projectSchema.parse(row)));
+  return rows
+    .map((row: GitLabProject): GitLabProject => projectSchema.parse(row))
+    .filter(isListableGitLabProject)
+    .map(toSummary);
 }
 
 export async function readGitLabTree(
@@ -123,9 +130,13 @@ export async function readGitLabFile(
   };
 }
 
-function toSummary(project: GitLabProject): GitRepositorySummary {
+function isListableGitLabProject(project: GitLabProject): project is ListableGitLabProject {
+  return project.default_branch !== null && project.empty_repo !== true;
+}
+
+function toSummary(project: ListableGitLabProject): GitRepositorySummary {
   return {
-    defaultBranchName: project.default_branch ?? '',
+    defaultBranchName: project.default_branch,
     fullName: project.path_with_namespace,
     private: project.visibility !== 'public',
     repositoryExternalId: String(project.id),
