@@ -1,4 +1,3 @@
-import type { CompartmentAccessScopeType } from '@compartment/contracts';
 import { and, asc, desc, eq, isNotNull, or, sql, type SQL } from 'drizzle-orm';
 import { deploymentRoutes, deployments, projectServices } from '../db/schema';
 import { buildPublicRouteHost } from '../lib/public-route-host';
@@ -8,28 +7,8 @@ import { createDeploymentRouteLookupQuery } from './deployment-route-lookup-sele
 import type {
   DeploymentRouteLookupRow,
   DeploymentRouteSubdomainRow,
-  DeploymentRouteOwnerRow,
-  DeploymentRouteOwnerSelection,
-  DeploymentRouteQueryExecutor,
-  InsertedDeploymentRouteRow,
   PersistedDeploymentRouteLookupRow,
-  UpsertDeploymentRouteInput,
 } from './deployment-routes.query.types';
-
-interface DeploymentRouteInsertInput {
-  accessScopeId: string;
-  accessScopeType: CompartmentAccessScopeType;
-  deploymentId: string;
-  id: string;
-  subdomain: string;
-  updatedAt: Date;
-}
-
-const deploymentRouteOwnerSelection: DeploymentRouteOwnerSelection = {
-  environmentId: deployments.environmentId,
-  serviceId: deployments.projectServiceId,
-  subdomain: deploymentRoutes.subdomain,
-};
 
 export async function findActiveDeploymentRouteByHost(
   host: string,
@@ -159,33 +138,6 @@ export async function listDeploymentRouteSubdomains(): Promise<string[]> {
   return rows.map((row: DeploymentRouteSubdomainRow): string => row.subdomain);
 }
 
-export async function upsertDeploymentRouteWithExecutor(
-  executor: DeploymentRouteQueryExecutor,
-  input: UpsertDeploymentRouteInput,
-): Promise<void> {
-  if (await tryInsertDeploymentRouteWithExecutor(executor, input)) {
-    return;
-  }
-
-  const existingRouteOwner: DeploymentRouteOwnerRow | undefined = await findDeploymentRouteOwnerBySubdomainWithExecutor(
-    executor,
-    input.subdomain,
-  );
-  if (existingRouteOwner === undefined || !isMatchingDeploymentRouteOwner(existingRouteOwner, input)) {
-    throw createDeploymentRouteConflictError(input.subdomain);
-  }
-
-  await executor
-    .update(deploymentRoutes)
-    .set({
-      accessScopeId: input.accessScopeId,
-      accessScopeType: input.accessScopeType,
-      deploymentId: input.deploymentId,
-      updatedAt: input.updatedAt,
-    })
-    .where(eq(deploymentRoutes.subdomain, input.subdomain));
-}
-
 async function findActiveCanonicalDeploymentRouteByHost(
   host: string,
   baseDomain: string,
@@ -221,53 +173,4 @@ function readRouteSubdomainFromHost(host: string, baseDomain: string): string | 
 
   const routeSubdomain: string = host.slice(0, -suffix.length);
   return routeSubdomain.length === 0 ? null : routeSubdomain;
-}
-
-export async function tryInsertDeploymentRouteWithExecutor(
-  executor: DeploymentRouteQueryExecutor,
-  input: UpsertDeploymentRouteInput,
-): Promise<boolean> {
-  const insertedRoutes: InsertedDeploymentRouteRow[] = await executor
-    .insert(deploymentRoutes)
-    .values(buildDeploymentRouteInsertInput(input))
-    .onConflictDoNothing({
-      target: deploymentRoutes.subdomain,
-    })
-    .returning({ id: deploymentRoutes.id });
-
-  return insertedRoutes.length > 0;
-}
-
-function buildDeploymentRouteInsertInput(input: UpsertDeploymentRouteInput): DeploymentRouteInsertInput {
-  return {
-    accessScopeId: input.accessScopeId,
-    accessScopeType: input.accessScopeType,
-    deploymentId: input.deploymentId,
-    id: input.id,
-    subdomain: input.subdomain,
-    updatedAt: input.updatedAt,
-  };
-}
-async function findDeploymentRouteOwnerBySubdomainWithExecutor(
-  executor: DeploymentRouteQueryExecutor,
-  routeSubdomain: string,
-): Promise<DeploymentRouteOwnerRow | undefined> {
-  const rows: DeploymentRouteOwnerRow[] = await executor
-    .select(deploymentRouteOwnerSelection)
-    .from(deploymentRoutes)
-    .innerJoin(deployments, eq(deploymentRoutes.deploymentId, deployments.id))
-    .where(eq(deploymentRoutes.subdomain, routeSubdomain))
-    .limit(1);
-
-  return rows[0];
-}
-function isMatchingDeploymentRouteOwner(
-  existingRouteOwner: DeploymentRouteOwnerRow,
-  input: UpsertDeploymentRouteInput,
-): boolean {
-  return existingRouteOwner.environmentId === input.environmentId && existingRouteOwner.serviceId === input.serviceId;
-}
-
-function createDeploymentRouteConflictError(routeSubdomain: string): Error {
-  return new Error(`Public route subdomain ${routeSubdomain} is already assigned to another deployment route.`);
 }

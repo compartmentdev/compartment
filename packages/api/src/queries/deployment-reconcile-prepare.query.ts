@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { buildArtifacts, deploymentKubeReferences, deployments } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
-import { upsertDeploymentRouteWithExecutor } from './deployment-routes.query';
+import { ensureDeploymentRouteWithExecutor } from './deployment-route-persistence.query';
 import type { DeploymentTransaction } from './deployments.query.types';
 import {
   buildDeploymentKubeReferenceValues,
@@ -56,7 +56,7 @@ async function upsertPreparedRoute(
   deployment: PrepareDeploymentRow,
   now: Date,
 ): Promise<void> {
-  await upsertDeploymentRouteWithExecutor(tx, {
+  await ensureDeploymentRouteWithExecutor(tx, {
     accessScopeId: deployment.environmentId,
     accessScopeType: 'environment',
     deploymentId: input.deploymentId,
