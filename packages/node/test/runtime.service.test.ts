@@ -310,7 +310,7 @@ describe('deployRuntimeContainer', (): void => {
     });
     mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
     mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'container_123' });
-    mocks.inspectDockerContainer.mockResolvedValueOnce({
+    mocks.inspectDockerContainer.mockResolvedValue({
       containerId: 'container_123',
       imageRef: 'sha256:image',
       isRunning: true,
@@ -324,6 +324,7 @@ describe('deployRuntimeContainer', (): void => {
     );
 
     expect(response.upstreamPort).toBe(31000);
+    expect(mocks.inspectDockerContainer).toHaveBeenCalledTimes(2);
   });
 
   it('fails deployments without readiness when the runtime exits right after start', async (): Promise<void> => {
@@ -334,13 +335,21 @@ describe('deployRuntimeContainer', (): void => {
     });
     mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
     mocks.runDockerContainer.mockResolvedValueOnce({ containerId: 'container_123' });
-    mocks.inspectDockerContainer.mockResolvedValueOnce({
-      containerId: 'container_123',
-      imageRef: 'sha256:image',
-      isRunning: false,
-      labels: {},
-      publishedPorts: [],
-    });
+    mocks.inspectDockerContainer
+      .mockResolvedValueOnce({
+        containerId: 'container_123',
+        imageRef: 'sha256:image',
+        isRunning: true,
+        labels: {},
+        publishedPorts: [],
+      })
+      .mockResolvedValueOnce({
+        containerId: 'container_123',
+        imageRef: 'sha256:image',
+        isRunning: false,
+        labels: {},
+        publishedPorts: [],
+      });
     mocks.removeDockerContainer.mockResolvedValueOnce(undefined);
 
     let failure: Error | undefined;
@@ -355,6 +364,7 @@ describe('deployRuntimeContainer', (): void => {
     if (isNodeRuntimeError(failure)) {
       expect(failure.code).toBe(nodeRuntimeServiceStartupFailedErrorCode);
     }
+    expect(mocks.inspectDockerContainer).toHaveBeenCalledTimes(2);
   });
 
   it('surfaces Docker container start failures as service startup errors', async (): Promise<void> => {

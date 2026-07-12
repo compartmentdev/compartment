@@ -31,6 +31,8 @@ import { resolveRuntimeUpstreamTarget, type RuntimeUpstreamTarget } from './runt
 import { buildRuntimeEnv, resolveRuntimeContainerPort } from './runtime-env.service';
 import type { ResolvedRuntimeDeploymentContext, RuntimeDeployConfig } from './runtime.types';
 
+const runtimeStartupStabilityDelayMs: number = 500;
+
 export async function deployRuntimeContainer(
   input: NodeDeployRequest,
   config: RuntimeDeployConfig,
@@ -138,7 +140,7 @@ async function verifyPreparedRuntimeHealth(
   config: RuntimeDeployConfig,
 ): Promise<void> {
   if (input.readiness === null) {
-    await ensureRuntimeContainerIsRunning(containerId);
+    await ensureRuntimeContainerStartupIsStable(containerId);
     return;
   }
 
@@ -218,6 +220,12 @@ function createPreparedRuntimeResponse(
   };
 }
 
+async function ensureRuntimeContainerStartupIsStable(containerId: string): Promise<void> {
+  await ensureRuntimeContainerIsRunning(containerId);
+  await waitForRuntimeStartupStability();
+  await ensureRuntimeContainerIsRunning(containerId);
+}
+
 async function ensureRuntimeContainerIsRunning(containerId: string): Promise<void> {
   const container: DockerInspectContainerResult | null = await inspectDockerContainer({
     containerRef: containerId,
@@ -225,6 +233,12 @@ async function ensureRuntimeContainerIsRunning(containerId: string): Promise<voi
   if (container?.isRunning !== true) {
     throw new Error(`Expected runtime container ${containerId} to remain running after startup.`);
   }
+}
+
+async function waitForRuntimeStartupStability(): Promise<void> {
+  await new Promise<void>((resolve: () => void): void => {
+    setTimeout(resolve, runtimeStartupStabilityDelayMs);
+  });
 }
 
 async function runManagedContainer(
