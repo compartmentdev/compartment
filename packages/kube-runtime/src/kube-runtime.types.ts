@@ -119,12 +119,7 @@ export interface KubeDeploymentManifestSpec {
 export interface KubeJobManifestSpec {
   backoffLimit: number;
   template: KubePodTemplate;
-}
-
-export interface KubeSecretEnvironment {
-  checksum: string;
-  keys: readonly string[];
-  secretName: string;
+  ttlSecondsAfterFinished?: number | undefined;
 }
 
 export interface ApplyBundle {
@@ -184,7 +179,7 @@ export interface KubeLogReference {
 export interface KubeJobSpec {
   args?: string[] | undefined;
   command?: string[] | undefined;
-  env: KubeSecretEnvironment;
+  env: Readonly<Record<string, string>>;
   id: string;
   image: string;
   jobClass: 'release' | 'operation';

@@ -1,4 +1,5 @@
-export { createKubeRuntimeFromEnvironment, KubeRuntime } from './kube-runtime';
+export { createKubeRuntimeFromEnvironment } from './kube-runtime-factory';
+export { KubeRuntime } from './kube-runtime';
 export { kubeApplicationName, kubeJobName, kubeNamespaceName, kubeSecretName } from './kube-naming';
 export { projectApplicationManifests } from './kube-projections';
 export type { ProjectNetworkPolicyProjection } from './kube-network-policy-projection.types';

@@ -1,8 +1,25 @@
-import { CoreV1Api, KubeConfig, KubernetesObjectApi, PatchStrategy } from '@kubernetes/client-node';
+import { CoreV1Api, KubernetesObjectApi, type KubeConfig } from '@kubernetes/client-node';
 import { createKubeObservation } from './kube-observation';
-import { kubeFinalizedJobManifest, kubeJobManifest, waitForTerminalJob, type TerminalJob } from './kube-job';
-import { kubeJobName } from './kube-naming';
+import {
+  kubeFinalizedJobManifest,
+  kubeJobManifest,
+  kubeJobSecretManifest,
+  waitForTerminalJob,
+  type TerminalJob,
+} from './kube-job';
+import { kubeJobName, kubeSecretName } from './kube-naming';
 import { createOrValidate } from './kube-provisioning-validation';
+import {
+  applyObject,
+  deleteObjectIgnoringNotFound,
+  deleteObjectsPreservingPrimary,
+  findJobPodNames,
+  isJobTimeoutError,
+  jobObservationInput,
+  readHttpStatusCode,
+  startJobDeadline,
+  type JobDeadline,
+} from './kube-runtime-operations';
 import type {
   ApplyBundle,
   KubeJobResult,
@@ -14,14 +31,6 @@ import type {
   ObserveLabels,
 } from './kube-runtime.types';
 
-const fieldManager: string = 'compartment';
-
-interface JobDeadline {
-  controller: AbortController;
-  expiresAt: number;
-  timer: NodeJS.Timeout;
-}
-
 interface TerminalJobResult {
   completedAt: Date;
   exitCode: number | null;
@@ -29,10 +38,6 @@ interface TerminalJobResult {
   logs: string;
   podName: string | null;
   status: 'succeeded' | 'failed' | 'timed-out';
-}
-
-interface KubeHttpError extends Error {
-  statusCode?: number | undefined;
 }
 
 type FinalizeJob = () => Promise<void>;
@@ -134,7 +139,7 @@ export class KubeRuntime {
     }
     if (!jobExists) {
       try {
-        await this.apply({ objects: [kubeJobManifest(spec, jobName, labels)] });
+        await this.apply({ objects: [kubeJobSecretManifest(spec, labels), kubeJobManifest(spec, jobName, labels)] });
       } catch (error) {
         if (!(error instanceof Error && readHttpStatusCode(error) === 409)) throw error;
       }
@@ -152,8 +157,18 @@ export class KubeRuntime {
   ): KubeJobResult {
     return new CapturedKubeJobResult(result, async (): Promise<void> => {
       if (!jobExists) return await Promise.resolve();
-      if (result.status === 'timed-out') await this.deleteJob(spec.namespace, jobName);
-      else await this.apply({ objects: [kubeFinalizedJobManifest(spec, jobName, labels)] });
+      if (result.status === 'timed-out') {
+        await deleteObjectIgnoringNotFound(
+          this.objectApi,
+          { apiVersion: 'batch/v1', kind: 'Job', metadata: { name: jobName, namespace: spec.namespace } },
+          'Foreground',
+        );
+      } else await this.apply({ objects: [kubeFinalizedJobManifest(spec, jobName, labels)] });
+      await deleteObjectIgnoringNotFound(this.objectApi, {
+        apiVersion: 'v1',
+        kind: 'Secret',
+        metadata: { name: kubeSecretName(spec.id), namespace: spec.namespace },
+      });
     });
   }
 
@@ -245,101 +260,4 @@ export class KubeRuntime {
       return '';
     }
   }
-
-  private async deleteJob(namespace: string, jobName: string): Promise<void> {
-    try {
-      await this.objectApi.delete(
-        { apiVersion: 'batch/v1', kind: 'Job', metadata: { name: jobName, namespace } },
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        'Foreground',
-      );
-    } catch (error) {
-      if (!(error instanceof Error && readHttpStatusCode(error) === 404)) throw error;
-    }
-  }
-}
-
-export function createKubeRuntimeFromEnvironment(env: NodeJS.ProcessEnv = process.env): KubeRuntime {
-  const kubeConfig: KubeConfig = new KubeConfig();
-  try {
-    kubeConfig.loadFromCluster();
-  } catch (clusterError) {
-    const kubeconfigPath: string | undefined = env.KUBECONFIG;
-    if (kubeconfigPath === undefined || kubeconfigPath.trim() === '') throw clusterError;
-    kubeConfig.loadFromFile(kubeconfigPath);
-  }
-  return new KubeRuntime(kubeConfig);
-}
-
-async function applyObject(
-  objectApi: KubernetesObjectApi,
-  object: KubeManifest,
-  force: boolean,
-): Promise<KubeManifest> {
-  return await objectApi.patch(object, undefined, undefined, fieldManager, force, PatchStrategy.ServerSideApply);
-}
-
-async function deleteObjectsPreservingPrimary(
-  objectApi: KubernetesObjectApi | null,
-  objects: KubeManifest[],
-  primaryError: Error | null,
-): Promise<void> {
-  try {
-    await deleteObjects(objectApi, objects);
-  } catch (cleanupError) {
-    if (primaryError !== null) {
-      throw new AggregateError(
-        [primaryError, cleanupError as Error],
-        'Kubernetes provisioning and bootstrap cleanup both failed.',
-        { cause: primaryError },
-      );
-    }
-    throw cleanupError;
-  }
-}
-
-async function deleteObjects(objectApi: KubernetesObjectApi | null, objects: KubeManifest[]): Promise<void> {
-  if (objectApi === null) {
-    return;
-  }
-  for (const object of objects) {
-    await objectApi.delete(object);
-  }
-}
-
-function startJobDeadline(jobName: string, timeoutMs: number): JobDeadline {
-  const controller: AbortController = new AbortController();
-  const expiresAt: number = Date.now() + timeoutMs;
-  const timeoutError: Error = new Error(`Kubernetes Job ${jobName} did not finish within ${timeoutMs}ms.`);
-  const timer: NodeJS.Timeout = setTimeout((): void => controller.abort(timeoutError), timeoutMs);
-  return { controller, expiresAt, timer };
-}
-
-function jobObservationInput(spec: KubeJobSpec): ObserveLabels {
-  return {
-    labels: { 'compartment.dev/job-id': spec.id },
-    namespace: spec.namespace,
-    resources: ['jobs', 'pods'],
-  };
-}
-
-function readHttpStatusCode(error: Error): number | undefined {
-  return (error as KubeHttpError).statusCode;
-}
-
-function isJobTimeoutError(error: Error): boolean {
-  return error.message.includes('did not finish within');
-}
-
-function findJobPodNames(cache: ReadonlyMap<string, KubeManifest>, jobName: string): string[] {
-  return [...cache.values()]
-    .filter(
-      (object: KubeManifest): boolean => object.kind === 'Pod' && object.metadata?.labels?.['job-name'] === jobName,
-    )
-    .map((pod: KubeManifest): string => pod.metadata?.name ?? '')
-    .filter((podName: string): boolean => podName !== '')
-    .sort((leftName: string, rightName: string): number => leftName.localeCompare(rightName));
 }

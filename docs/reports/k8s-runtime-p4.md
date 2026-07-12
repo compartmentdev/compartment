@@ -17,10 +17,10 @@ terminal state. Timeout deletes the Job after capturing available logs.
 
 | Surface                     | Baseline | P4 delta | Total |
 | --------------------------- | -------: | -------: | ----: |
-| `packages/kube-runtime/src` |    1,114 |     +190 | 1,304 |
-| `packages/worker/src`       |    3,686 |     +178 | 3,864 |
+| `packages/kube-runtime/src` |    1,537 |     +245 | 1,782 |
+| `packages/worker/src`       |    3,686 |     +177 | 3,863 |
 
-The Kubernetes runtime remains 1,696 lines below the D33 limit of 3,000.
+The Kubernetes runtime remains 1,218 lines below the D33 limit of 3,000.
 Worker LOC is reported separately and is not charged to D33.
 
 Reproduce:

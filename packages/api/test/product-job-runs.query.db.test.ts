@@ -36,13 +36,13 @@ describe('product Job persistence', (): void => {
     expect(initialClaim.persistedResult).toBeNull();
     const terminalResult: WorkerPersistProductJobResultRequest = {
       completedAt: '2026-07-12T12:00:00.000Z',
-      exitCode: 17,
+      exitCode: null,
       identityId: 'dep_job',
       jobClass: 'release',
       jobName: 'cpt-job-dep-job',
       logs: 'first line\nlast line\n',
-      podName: 'cpt-job-dep-job-pod',
-      status: 'failed',
+      podName: null,
+      status: 'timed-out',
     };
     await persistProductJobResult(terminalResult);
     await persistProductJobResult(terminalResult);
@@ -50,7 +50,12 @@ describe('product Job persistence', (): void => {
 
     const rows: object[] = await db.select().from(productJobRuns);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ exitCode: 17, logs: 'first line\nlast line\n', status: 'failed' });
+    expect(rows[0]).toMatchObject({
+      exitCode: null,
+      logs: 'first line\nlast line\n',
+      podName: null,
+      status: 'timed-out',
+    });
     const cleanupClaim: ClaimedProductJobQueryResult = await claimProductJob();
     expect(cleanupClaim.intent).toMatchObject({ deploymentId: 'dep_job', jobClass: 'release' });
     expect(cleanupClaim.persistedResult).toEqual(terminalResult);

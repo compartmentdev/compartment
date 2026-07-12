@@ -2,6 +2,7 @@ import type {
   KubeJobSpec,
   KubeJobManifest,
   KubeJobManifestSpec,
+  KubeManifest,
   KubeObservation,
   KubeObservationEvent,
   KubeObservedManifest,
@@ -10,6 +11,8 @@ import type {
   KubeSecretEnvVariable,
 } from './kube-runtime.types';
 import { compareKubeKey } from './kube-key-order';
+import { kubeSecretName } from './kube-naming';
+import { secretChecksum } from './kube-secret-projection';
 
 export interface TerminalJob {
   exitCode: number;
@@ -33,7 +36,7 @@ export function kubeFinalizedJobManifest(
   labels: Record<string, string>,
 ): KubeJobManifest {
   const manifest: KubeJobManifest = kubeJobManifest(spec, jobName, labels);
-  return { ...manifest, spec: { ...manifest.spec, ttlSecondsAfterFinished: 300 } };
+  return { ...manifest, spec: { ...jobSpec(spec, labels), ttlSecondsAfterFinished: 300 } };
 }
 
 export function kubeJobManifest(spec: KubeJobSpec, jobName: string, labels: Record<string, string>): KubeJobManifest {
@@ -42,6 +45,16 @@ export function kubeJobManifest(spec: KubeJobSpec, jobName: string, labels: Reco
     kind: 'Job',
     metadata: { labels, name: jobName, namespace: spec.namespace },
     spec: jobSpec(spec, labels),
+  };
+}
+
+export function kubeJobSecretManifest(spec: KubeJobSpec, labels: Record<string, string>): KubeManifest {
+  return {
+    apiVersion: 'v1',
+    kind: 'Secret',
+    metadata: { labels, name: kubeSecretName(spec.id), namespace: spec.namespace },
+    stringData: spec.env,
+    type: 'Opaque',
   };
 }
 
@@ -63,19 +76,21 @@ function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobMani
   return {
     backoffLimit: spec.jobClass === 'release' ? 0 : 1,
     template: {
-      metadata: { annotations: { 'compartment.dev/secret-checksum': spec.env.checksum }, labels },
+      metadata: { annotations: { 'compartment.dev/secret-checksum': secretChecksum(spec.env) }, labels },
       spec: podSpec,
     },
   };
 }
 
 function jobContainer(spec: KubeJobSpec): KubeProjectedContainer {
-  const env: KubeSecretEnvVariable[] = [...new Set(spec.env.keys)].sort(compareKubeKey).map(
-    (name: string): KubeSecretEnvVariable => ({
-      name,
-      valueFrom: { secretKeyRef: { key: name, name: spec.env.secretName } },
-    }),
-  );
+  const env: KubeSecretEnvVariable[] = Object.keys(spec.env)
+    .sort(compareKubeKey)
+    .map(
+      (name: string): KubeSecretEnvVariable => ({
+        name,
+        valueFrom: { secretKeyRef: { key: name, name: kubeSecretName(spec.id) } },
+      }),
+    );
   return {
     args: spec.args,
     command: spec.command,
@@ -132,7 +147,8 @@ function readTerminalPod(
   succeeded: boolean,
 ): TerminalJob | null {
   const pods: KubeObservedManifest[] = [...cache.values()].filter(
-    (object: KubeObservedManifest): boolean => object.kind === 'Pod' && object.metadata?.labels?.['job-name'] === jobName,
+    (object: KubeObservedManifest): boolean =>
+      object.kind === 'Pod' && object.metadata?.labels?.['job-name'] === jobName,
   );
   const terminalPods: KubeObservedManifest[] = pods.filter(
     (pod: KubeObservedManifest): boolean => readPodExitCode(pod) !== null,
@@ -146,12 +162,16 @@ function readTerminalPod(
   return {
     exitCode: readPodExitCode(pod) ?? 1,
     podName: pod.metadata.name,
-    podNames: terminalPods
-      .map((candidate: KubeObservedManifest): string => candidate.metadata?.name ?? '')
-      .filter((name: string): boolean => name !== '')
-      .sort((leftName: string, rightName: string): number => leftName.localeCompare(rightName)),
+    podNames: readTerminalPodNames(terminalPods),
     succeeded,
   };
+}
+
+function readTerminalPodNames(pods: KubeObservedManifest[]): string[] {
+  return pods
+    .map((candidate: KubeObservedManifest): string => candidate.metadata?.name ?? '')
+    .filter((name: string): boolean => name !== '')
+    .sort((leftName: string, rightName: string): number => leftName.localeCompare(rightName));
 }
 
 function readPodExitCode(pod: KubeObservedManifest): number | null {

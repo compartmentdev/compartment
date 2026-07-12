@@ -1,9 +1,10 @@
-import { KubernetesObjectApi, PatchStrategy, type KubernetesObject } from '@kubernetes/client-node';
+import { KubernetesObjectApi, type KubernetesObject, type PatchStrategy } from '@kubernetes/client-node';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   KubeRuntime,
   kubeJobName,
   kubeNamespaceName,
+  kubeSecretName,
   projectNamespaceProvisioningBundle,
   type KubeJobResult,
   type KubeJobSpec,
@@ -54,10 +55,12 @@ class PrimitiveObjectApi {
   public readonly events: string[] = [];
   public readonly patches: KubePatchInvocation[] = [];
   public readonly readOverrides: Map<string, KubeManifest> = new Map<string, KubeManifest>();
+  public deleteError: Error | null = null;
   public failCreateKind: string | null = null;
   public failDelete: boolean = false;
   public jobExists: boolean = false;
   public patchError: Error | null = null;
+  public patchErrorKind: string | null = null;
   public useStatusCodeConflict: boolean = false;
 
   public async create(object: KubeManifest): Promise<KubernetesObject> {
@@ -82,6 +85,7 @@ class PrimitiveObjectApi {
     if (this.failDelete) {
       throw new Error('generated cleanup failure');
     }
+    if (this.deleteError !== null) throw this.deleteError;
     return await Promise.resolve(object);
   });
 
@@ -96,7 +100,7 @@ class PrimitiveObjectApi {
   public async patch(...input: KubePatchInvocation): Promise<KubernetesObject> {
     this.patches.push(input);
     this.events.push(`patch:${input[0].kind}`);
-    if (this.patchError !== null) {
+    if (this.patchError !== null && input[0].kind === this.patchErrorKind) {
       const error: Error = this.patchError;
       this.patchError = null;
       throw error;
@@ -122,10 +126,12 @@ describe('KubeRuntime Job primitive', (): void => {
     objectApi.conflicts.clear();
     objectApi.failCreateKind = null;
     objectApi.failDelete = false;
+    objectApi.deleteError = null;
     objectApi.readOverrides.clear();
     objectApi.useStatusCodeConflict = false;
     objectApi.jobExists = false;
     objectApi.patchError = null;
+    objectApi.patchErrorKind = null;
     objectApi.delete.mockClear();
     coreApi.readNamespacedPodLog.mockClear();
     vi.spyOn(KubernetesObjectApi, 'makeApiClient').mockReturnValue(objectApi as never);
@@ -145,19 +151,21 @@ describe('KubeRuntime Job primitive', (): void => {
     const result: KubeJobResult = await runtime.runJob(spec);
     await result.finalize();
 
-    const manifest: KubeManifest = objectApi.patches[0]![0];
+    const manifest: KubeManifest = objectApi.patches.find(
+      ([object]: KubePatchInvocation): boolean => object.kind === 'Job',
+    )![0];
     expect(manifest.metadata?.name).toBe(jobName);
     expect((manifest.spec as JobManifestSpec).backoffLimit).toBe(0);
     expect((manifest.spec as JobManifestSpec).template.spec.containers[0]?.env).toEqual([
-      { name: 'ALPHA', valueFrom: { secretKeyRef: { key: 'ALPHA', name: 'secret-job' } } },
-      { name: 'ZETA', valueFrom: { secretKeyRef: { key: 'ZETA', name: 'secret-job' } } },
+      { name: 'ALPHA', valueFrom: { secretKeyRef: { key: 'ALPHA', name: kubeSecretName(spec.id) } } },
+      { name: 'ZETA', valueFrom: { secretKeyRef: { key: 'ZETA', name: kubeSecretName(spec.id) } } },
     ]);
     expect((manifest.spec as JobManifestSpec).template.spec.automountServiceAccountToken).toBe(false);
-    expect((manifest.spec as JobManifestSpec).template.metadata.annotations['compartment.dev/secret-checksum']).toBe(
-      'generated-checksum',
+    expect((manifest.spec as JobManifestSpec).template.metadata.annotations['compartment.dev/secret-checksum']).toMatch(
+      /^[a-f0-9]{64}$/,
     );
     expect(result).toMatchObject({ exitCode: 0, jobName, logs: 'done\n', podName: 'job-pod', status: 'succeeded' });
-    expect(objectApi.patches[1]![0].spec).toMatchObject({ ttlSecondsAfterFinished: 300 });
+    expect(objectApi.patches.at(-1)![0].spec).toMatchObject({ ttlSecondsAfterFinished: 300 });
     expect(stop).toHaveBeenCalledOnce();
   });
 
@@ -178,13 +186,14 @@ describe('KubeRuntime Job primitive', (): void => {
     const spec: KubeJobSpec = jobSpec('release');
     const jobName: string = kubeJobName(spec.id);
     objectApi.patchError = Object.assign(new Error('already exists'), { statusCode: 409 });
+    objectApi.patchErrorKind = 'Job';
     createObservationMock.mockResolvedValue(terminalObservation(jobName, true, 0, vi.fn()));
     const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
 
     const result: KubeJobResult = await runtime.runJob(spec);
 
     expect(result).toMatchObject({ jobName, status: 'succeeded' });
-    expect(objectApi.patches).toHaveLength(1);
+    expect(objectApi.patches.filter(([object]: KubePatchInvocation): boolean => object.kind === 'Job')).toHaveLength(1);
   });
 
   it('rejoins the same Job after the worker is killed between creation and terminal observation', async (): Promise<void> => {
@@ -199,7 +208,7 @@ describe('KubeRuntime Job primitive', (): void => {
     const recovered: KubeJobResult = await runtime.runJob(spec);
 
     expect(recovered).toMatchObject({ jobName, logs: 'done\n', status: 'succeeded' });
-    expect(objectApi.patches).toHaveLength(1);
+    expect(objectApi.patches.filter(([object]: KubePatchInvocation): boolean => object.kind === 'Job')).toHaveLength(1);
   });
 
   it('returns the cached failed container exit code and still stops observation', async (): Promise<void> => {
@@ -211,7 +220,7 @@ describe('KubeRuntime Job primitive', (): void => {
 
     const result: KubeJobResult = await runtime.runJob(spec);
 
-    expect(objectApi.patches[0]![0].spec).toMatchObject({ backoffLimit: 1 });
+    expect(objectApi.patches.at(-1)![0].spec).toMatchObject({ backoffLimit: 1 });
     expect(result.exitCode).toBe(23);
     expect(stop).toHaveBeenCalledOnce();
   });
@@ -334,7 +343,43 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(result).toMatchObject({ exitCode: null, logs: 'done\n', podName: 'job-pod', status: 'timed-out' });
     expect(objectApi.delete).not.toHaveBeenCalled();
     await result.finalize();
-    expect(objectApi.delete).toHaveBeenCalledOnce();
+    expect(objectApi.delete).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'Job' }),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'Foreground',
+    );
+  });
+
+  it('captures a timeout before Pod creation without inventing a Pod identity', async (): Promise<void> => {
+    vi.useFakeTimers();
+    createObservationMock.mockResolvedValue(new TerminalObservation(new Map(), vi.fn()));
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+    const pending: Promise<KubeJobResult> = runtime.runJob({ ...jobSpec('release'), timeoutMs: 100 });
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(pending).resolves.toMatchObject({ logs: '', podName: null, status: 'timed-out' });
+  });
+
+  it('treats missing timeout cleanup as converged and propagates other deletion failures', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const jobName: string = kubeJobName('job-01jz');
+    createObservationMock.mockResolvedValue(nonTerminalObservation(jobName));
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+    const missingPending: Promise<KubeJobResult> = runtime.runJob({ ...jobSpec('release'), timeoutMs: 100 });
+    await vi.advanceTimersByTimeAsync(100);
+    const missingResult: KubeJobResult = await missingPending;
+    objectApi.deleteError = Object.assign(new Error('not found'), { statusCode: 404 });
+    await expect(missingResult.finalize()).resolves.toBeUndefined();
+
+    objectApi.jobExists = true;
+    const failingPending: Promise<KubeJobResult> = runtime.runJob({ ...jobSpec('release'), timeoutMs: 100 });
+    await vi.advanceTimersByTimeAsync(100);
+    const failingResult: KubeJobResult = await failingPending;
+    objectApi.deleteError = new Error('cleanup failed');
+    await expect(failingResult.finalize()).rejects.toThrow('cleanup failed');
   });
 });
 
@@ -343,7 +388,7 @@ function jobSpec(jobClass: 'operation' | 'release'): KubeJobSpec {
     id: 'job-01jz',
     image: 'registry.example/release@sha256:abc',
     jobClass,
-    env: { checksum: 'generated-checksum', keys: ['ZETA', 'ALPHA', 'ZETA'], secretName: 'secret-job' },
+    env: { ZETA: 'z', ALPHA: 'a' },
     labels: { 'compartment.dev/deployment-id': 'dep-01jz' },
     namespace: 'cpt-prj-01jz',
     timeoutMs: 1_000,

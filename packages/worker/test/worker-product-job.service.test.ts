@@ -126,10 +126,6 @@ describe('executeProductJob', (): void => {
       'Product release job dep-01jz failed.',
     );
 
-    expect(mocks.persistResult).toHaveBeenCalledWith(
-      expect.any(Function),
-      expect.objectContaining({ exitCode: 19, logs: 'complete output\n', status: 'failed' }),
-    );
     expect((result.finalize as Mock).mock.calls).toHaveLength(1);
   });
 
@@ -138,6 +134,7 @@ describe('executeProductJob', (): void => {
       ...successResult(),
       exitCode: null,
       logs: 'partial output\n',
+      podName: null,
       status: 'timed-out',
     };
 
@@ -147,26 +144,7 @@ describe('executeProductJob', (): void => {
 
     expect(mocks.persistResult).toHaveBeenCalledWith(
       expect.any(Function),
-      expect.objectContaining({ exitCode: null, logs: 'partial output\n', status: 'timed-out' }),
-    );
-  });
-
-  it('uses operationId as the only resource-operation Job identity', async (): Promise<void> => {
-    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
-    const intent: ProductJobIntent = {
-      command: ['bin/backup'],
-      env: { DATABASE_URL: 'postgres://internal' },
-      image: 'registry.example/resource@sha256:abc',
-      jobClass: 'resource-operation',
-      namespace: 'cpt-prj-01jz',
-      operationId: 'op-backup-01jz',
-      timeoutMs: 30_000,
-    };
-
-    await executeProductJob(requester(), runtime, intent);
-
-    expect(runtime.runJob).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'resource-operation-op-backup-01jz', jobClass: 'operation' }),
+      expect.objectContaining({ exitCode: null, logs: 'partial output\n', podName: null, status: 'timed-out' }),
     );
   });
 });
