@@ -56,7 +56,7 @@ function readNextPullRequestState(
   method: OnboardingDeployMethod,
   patch: OnboardingRouteStatePatch,
 ): OnboardingPullRequestState | undefined {
-  if (method === 'cli' || patch.step === 'prepare') {
+  if (method === 'cli' || patch.gitConnected === false || patch.step === 'prepare') {
     return undefined;
   }
   if (patch.repositoryId !== undefined && patch.pullRequestState === undefined) {
@@ -78,6 +78,13 @@ function readNextGitRouteState(
 ): GitRouteState {
   if (method === 'cli') {
     return createEmptyGitRouteState();
+  }
+  if (patch.gitConnected === false) {
+    return {
+      ...createEmptyGitRouteState(),
+      provider: patch.provider ?? currentState.provider,
+      providerHost: patch.providerHost ?? currentState.providerHost,
+    };
   }
 
   const resetRepositoryFlow: boolean = patch.step === 'prepare' || patch.repositoryId !== undefined;

@@ -197,6 +197,43 @@ describe('browser onboarding route state', (): void => {
     expect(nextState).toMatchObject({ provider: 'gitlab', providerHost: 'gitlab.example.com' });
   });
 
+  it('clears stale Git connection state when re-entering provider credentials', (): void => {
+    const nextState: OnboardingRouteState = readNextRouteState(
+      {
+        ...createDefaultOnboardingRouteState(),
+        branchName: 'main',
+        descriptorPath: 'compartment.yml',
+        environmentName: 'production',
+        gitAccountDiscoverySessionId: 'discovery_123',
+        gitAccountDiscoveryToken: 'token_123',
+        gitConnected: true,
+        method: 'git',
+        projectName: 'web',
+        provider: 'gitlab',
+        providerHost: 'gitlab.example.com',
+        pullRequestNumber: 12,
+        pullRequestState: 'pending',
+        pullRequestStatusToken: 'prt_123',
+        registrationId: 'gpr_123',
+        repositoryId: 'repo_123',
+        repositoryName: 'web',
+        repositoryOwner: 'acme',
+        sourceId: 'src_123',
+        step: 'prepare',
+        syncTaskId: 'sst_123',
+      },
+      { gitConnected: false },
+    );
+
+    expect(nextState).toEqual({
+      ...createDefaultOnboardingRouteState(),
+      method: 'git',
+      provider: 'gitlab',
+      providerHost: 'gitlab.example.com',
+      step: 'prepare',
+    });
+  });
+
   it('disables step links while first deployment is pending', (): void => {
     const readStepHref: OnboardingProcessStepHrefReader = readStepHrefReader({
       ...createDefaultOnboardingRouteState(),
