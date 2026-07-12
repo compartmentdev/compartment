@@ -30,6 +30,9 @@ export async function requireGitProviderAccessByRegistrationId(
     organizationId,
     registrationId,
   });
+  if (registration?.status === 'pending' && registration.providerHost === providerHost) {
+    throw createGitSourceRegistrationPendingError();
+  }
   if (registration?.status !== 'active' || registration.providerHost !== providerHost) {
     throw createGitSourceRegistrationFailedError('The selected git provider registration is not active.');
   }

@@ -38,6 +38,7 @@ export const gitProviderRegistrations: GitSchemaTypes.GitProviderRegistrationsTa
     activeOwnerUnique: uniqueIndex('git_provider_registrations_active_owner_unique')
       .on(table.providerType, table.providerHost, table.repositoryOwner)
       .where(sql`${table.status} = 'active' AND ${table.providerType} = 'github_app'`),
+    // This organization extractor depends on the buildWebhookUrl path format and must change with it.
     activeGitLabOrganizationOwnerUnique: uniqueIndex(
       'git_provider_registrations_active_gitlab_organization_owner_unique',
     )

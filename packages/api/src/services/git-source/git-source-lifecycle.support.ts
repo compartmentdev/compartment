@@ -106,7 +106,11 @@ async function resolveConnectRepositoryInstallationId(
   try {
     return (await adapter.resolveRepositoryInstallation(access, ref)).providerInstallationId;
   } catch (error) {
-    throw createGitSourceRepositoryAccessDeniedError(error instanceof Error ? error.message : undefined);
+    throwConnectRepositoryFailure(
+      adapter,
+      error instanceof Error ? error : undefined,
+      'The selected repository installation could not be resolved.',
+    );
   }
 }
 
