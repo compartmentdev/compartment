@@ -53,6 +53,7 @@
     "test": "pnpm test:scripts && turbo run test",
     "test:fast:ci": "pnpm test",
     "test:db": "dotenv -e .env -e .env.test.local -- vitest run --config ./vitest.db.config.mts",
+    "test:gitlab:e2e": "dotenv -e .env -e .env.test.local -- vitest run --config ./vitest.config.mts packages/api/test/gitlab-live.test.ts",
     "test:integration": "pnpm test:db",
     "test:deploy:e2e": "pnpm cli:build:sea:source && pnpm --filter @compartment/node test:docker-boundary && pnpm --filter @compartment/cli test:e2e",
     "test:ci": "pnpm test:scripts && turbo run test --force --concurrency=1 && pnpm test:db && pnpm test:deploy:e2e",
