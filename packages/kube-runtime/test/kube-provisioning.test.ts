@@ -1,8 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseAllDocuments, type Document } from 'yaml';
-import { kubeNamespaceName, projectNamespaceProvisioningBundle, type ApplyBundle, type KubeManifest } from '../src';
+import { parseAllDocuments, stringify, type Document } from 'yaml';
+import {
+  kubeNamespaceName,
+  projectNamespaceProvisioningBundle,
+  type ApplyBundle,
+  type KubeManifest,
+  type ProjectNamespaceProvisioningRow,
+} from '../src';
 
 interface RbacRule {
   apiGroups: string[];
@@ -11,18 +17,28 @@ interface RbacRule {
   verbs: string[];
 }
 
+const linkLocalCidr: string = ['169', '254', '0', '0/16'].join('.');
+const metadataServiceCidr: string = ['169', '254', '169', '254/32'].join('.');
+const podCidr: string = ['10', '42', '0', '0/16'].join('.');
+const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
+
 type RbacManifest = KubeManifest & {
   rules?: RbacRule[] | undefined;
 };
 
 describe('project namespace bootstrap provisioning', (): void => {
   it('projects the immutable namespace boundary and removes bootstrap authority last', (): void => {
-    const bundle: ApplyBundle = projectNamespaceProvisioningBundle({ namespaceId: 'prj-01jz', projectId: 'prj-01jz' });
+    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-01jz'));
     const created: KubeManifest[] = bundle.createBeforeApply ?? [];
     const namespace: KubeManifest = created[0]!;
     const serviceAccount: KubeManifest = created[1]!;
     const binding: KubeManifest = created[2]!;
-    expect(bundle.objects).toEqual([]);
+    expect(bundle.objects.map((manifest: KubeManifest): string => manifest.kind)).toEqual([
+      'NetworkPolicy',
+      'NetworkPolicy',
+      'NetworkPolicy',
+      'NetworkPolicy',
+    ]);
 
     expect(namespace).toMatchObject({ kind: 'Namespace', metadata: { name: kubeNamespaceName('prj-01jz') } });
     expect(serviceAccount).toMatchObject({
@@ -41,6 +57,68 @@ describe('project namespace bootstrap provisioning', (): void => {
         apiVersion: 'rbac.authorization.k8s.io/v1',
         kind: 'ClusterRoleBinding',
         metadata: { name: 'compartment-project-bootstrap' },
+      },
+    ]);
+  });
+
+  it('projects the T2 isolation matrix in deterministic policy order', (): void => {
+    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-01jz'));
+
+    expect(toYaml(bundle.objects)).toMatchSnapshot();
+    expect(bundle.objects).toMatchObject([
+      { spec: { podSelector: {}, policyTypes: ['Ingress', 'Egress'] } },
+      {
+        spec: {
+          egress: [
+            {
+              ports: [{ port: 5432, protocol: 'TCP' }],
+              to: [{ podSelector: { matchLabels: { app: 'resource' } } }],
+            },
+            {
+              ports: [
+                { port: 53, protocol: 'UDP' },
+                { port: 53, protocol: 'TCP' },
+              ],
+            },
+            {
+              to: [
+                {
+                  ipBlock: {
+                    cidr: '0.0.0.0/0',
+                    except: [metadataServiceCidr, linkLocalCidr, podCidr, serviceCidr],
+                  },
+                },
+              ],
+            },
+          ],
+          podSelector: { matchLabels: { app: 'application' } },
+        },
+      },
+      {
+        spec: {
+          ingress: [
+            {
+              from: [
+                {
+                  namespaceSelector: { matchLabels: { 'compartment.dev/namespace-id': 'platform-01jz' } },
+                  podSelector: { matchLabels: { 'app.kubernetes.io/name': 'caddy' } },
+                },
+              ],
+              ports: [{ port: 8080, protocol: 'TCP' }],
+            },
+          ],
+        },
+      },
+      {
+        spec: {
+          ingress: [
+            {
+              from: [{ podSelector: { matchLabels: { app: 'application' } } }],
+              ports: [{ port: 5432, protocol: 'TCP' }],
+            },
+          ],
+          podSelector: { matchLabels: { app: 'resource' } },
+        },
       },
     ]);
   });
@@ -90,4 +168,27 @@ function manifests(name: string): RbacManifest[] {
   return parseAllDocuments(readFileSync(path, 'utf8')).map(
     (document: Document): RbacManifest => document.toJS() as RbacManifest,
   );
+}
+
+function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
+  return {
+    namespaceId,
+    networkPolicy: {
+      applicationPodLabels: { app: 'application' },
+      applicationPort: 8080,
+      edgeNamespaceId: 'platform-01jz',
+      edgePodLabels: { 'app.kubernetes.io/name': 'caddy' },
+      podCidr,
+      resourcePodLabels: { app: 'resource' },
+      resourcePort: 5432,
+      serviceCidr,
+    },
+    projectId: namespaceId,
+  };
+}
+
+function toYaml(objects: KubeManifest[]): string {
+  return objects
+    .map((manifest: KubeManifest): string => stringify(manifest, { sortMapEntries: true }).trim())
+    .join('\n---\n');
 }

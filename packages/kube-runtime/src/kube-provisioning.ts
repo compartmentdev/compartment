@@ -1,4 +1,5 @@
 import { kubeNamespaceName } from './kube-naming';
+import { projectNetworkPolicyManifests } from './kube-network-policy-projection';
 import type { ProjectNamespaceProvisioningRow } from './kube-provisioning.types';
 import type { ApplyBundle, KubeManifest } from './kube-runtime.types';
 
@@ -20,7 +21,7 @@ export function projectNamespaceProvisioningBundle(row: ProjectNamespaceProvisio
         metadata: { name: bootstrapBindingName },
       },
     ],
-    objects: [],
+    objects: projectNetworkPolicyManifests(namespace, row.namespaceId, row.projectId, row.networkPolicy),
   };
 }
 

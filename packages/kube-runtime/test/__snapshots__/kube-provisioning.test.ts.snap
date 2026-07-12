@@ -1,0 +1,113 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`project namespace bootstrap provisioning > projects the T2 isolation matrix in deterministic policy order 1`] = `
+"apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    compartment.dev/namespace-id: prj-01jz
+    compartment.dev/project-id: prj-01jz
+  name: np-default-deny-prj-01jz-243118a73be1a00d
+  namespace: cpt-prj-01jz-243118a73be1a00d
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    compartment.dev/namespace-id: prj-01jz
+    compartment.dev/project-id: prj-01jz
+  name: np-application-egress-prj-01jz-243118a73be1a00d
+  namespace: cpt-prj-01jz-243118a73be1a00d
+spec:
+  egress:
+    - ports:
+        - port: 5432
+          protocol: TCP
+      to:
+        - podSelector:
+            matchLabels:
+              app: resource
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32
+              - 169.254.0.0/16
+              - 10.42.0.0/16
+              - 10.43.0.0/16
+  podSelector:
+    matchLabels:
+      app: application
+  policyTypes:
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    compartment.dev/namespace-id: prj-01jz
+    compartment.dev/project-id: prj-01jz
+  name: np-application-ingress-prj-01jz-243118a73be1a00d
+  namespace: cpt-prj-01jz-243118a73be1a00d
+spec:
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              compartment.dev/namespace-id: platform-01jz
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: caddy
+      ports:
+        - port: 8080
+          protocol: TCP
+  podSelector:
+    matchLabels:
+      app: application
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    compartment.dev/namespace-id: prj-01jz
+    compartment.dev/project-id: prj-01jz
+  name: np-resource-ingress-prj-01jz-243118a73be1a00d
+  namespace: cpt-prj-01jz-243118a73be1a00d
+spec:
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: application
+      ports:
+        - port: 5432
+          protocol: TCP
+  podSelector:
+    matchLabels:
+      app: resource
+  policyTypes:
+    - Ingress"
+`;

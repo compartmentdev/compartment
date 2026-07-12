@@ -1,5 +1,4 @@
 import type {
-  ApplicationProjectionOptions,
   ApplicationProjectionRow,
   KubeDeploymentManifest,
   KubeDeploymentManifestSpec,
@@ -8,11 +7,10 @@ import type {
   KubeProjectedPodSpec,
   KubeSecretEnvVariable,
 } from './kube-runtime.types';
-import { kubeApplicationName, kubeNamespaceName, kubeNetworkPolicyName, kubeSecretName } from './kube-naming';
+import { kubeApplicationName, kubeNamespaceName, kubeSecretName } from './kube-naming';
 import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
-const metadataServiceCidr: string = ['169', '254', '0', '0/16'].join('.');
 
 interface ApplicationProjectionContext {
   annotations: Record<string, string>;
@@ -22,12 +20,7 @@ interface ApplicationProjectionContext {
   namespace: string;
 }
 
-type NetworkPolicyKind = 'default-deny' | 'egress' | 'ingress';
-
-export function projectApplicationManifests(
-  row: ApplicationProjectionRow,
-  options: ApplicationProjectionOptions,
-): KubeManifest[] {
+export function projectApplicationManifests(row: ApplicationProjectionRow): KubeManifest[] {
   const context: ApplicationProjectionContext = applicationProjectionContext(row);
   const secret: KubeManifest = projectSecretManifest({
     data: row.env,
@@ -35,14 +28,7 @@ export function projectApplicationManifests(
     namespaceId: row.namespaceId,
     secretId: row.secretId,
   });
-  return [
-    secret,
-    deploymentManifest(row, context),
-    serviceManifest(row, context),
-    defaultDenyManifest(context),
-    applicationIngressManifest(row, options, context),
-    applicationEgressManifest(options, context),
-  ];
+  return [secret, deploymentManifest(row, context), serviceManifest(row, context)];
 }
 
 function applicationProjectionContext(row: ApplicationProjectionRow): ApplicationProjectionContext {
@@ -140,88 +126,6 @@ function serviceManifest(row: ApplicationProjectionRow, context: ApplicationProj
   };
 }
 
-function defaultDenyManifest(context: ApplicationProjectionContext): KubeManifest {
-  return {
-    apiVersion: 'networking.k8s.io/v1',
-    kind: 'NetworkPolicy',
-    metadata: policyMetadata(context, 'default-deny'),
-    spec: { podSelector: {}, policyTypes: ['Ingress', 'Egress'] },
-  };
-}
-
-function applicationIngressManifest(
-  row: ApplicationProjectionRow,
-  options: ApplicationProjectionOptions,
-  context: ApplicationProjectionContext,
-): KubeManifest {
-  return {
-    apiVersion: 'networking.k8s.io/v1',
-    kind: 'NetworkPolicy',
-    metadata: policyMetadata(context, 'ingress'),
-    spec: applicationIngressSpec(row, options, context.labels),
-  };
-}
-
-function applicationIngressSpec(
-  row: ApplicationProjectionRow,
-  options: ApplicationProjectionOptions,
-  labels: Record<string, string>,
-): object {
-  const from: object = {
-    namespaceSelector: { matchLabels: { 'compartment.dev/namespace-id': options.ingressNamespaceId } },
-    podSelector: { matchLabels: options.ingressPodLabels },
-  };
-  return {
-    ingress: [{ from: [from], ports: [{ port: row.containerPort, protocol: 'TCP' }] }],
-    podSelector: { matchLabels: labels },
-    policyTypes: ['Ingress'],
-  };
-}
-
-function applicationEgressManifest(
-  options: ApplicationProjectionOptions,
-  context: ApplicationProjectionContext,
-): KubeManifest {
-  return {
-    apiVersion: 'networking.k8s.io/v1',
-    kind: 'NetworkPolicy',
-    metadata: policyMetadata(context, 'egress'),
-    spec: applicationEgressSpec(options, context.labels),
-  };
-}
-
-function applicationEgressSpec(options: ApplicationProjectionOptions, labels: Record<string, string>): object {
-  const dnsTarget: object = {
-    namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'kube-system' } },
-    podSelector: { matchLabels: { 'k8s-app': 'kube-dns' } },
-  };
-  const internetTarget: object = {
-    ipBlock: { cidr: '0.0.0.0/0', except: [metadataServiceCidr, options.podCidr, options.serviceCidr] },
-  };
-  return {
-    egress: [
-      {
-        ports: [
-          { port: 53, protocol: 'UDP' },
-          { port: 53, protocol: 'TCP' },
-        ],
-        to: [dnsTarget],
-      },
-      { to: [internetTarget] },
-    ],
-    podSelector: { matchLabels: labels },
-    policyTypes: ['Egress'],
-  };
-}
-
 function manifestMetadata(context: ApplicationProjectionContext): object {
   return { annotations: context.annotations, labels: context.labels, name: context.name, namespace: context.namespace };
-}
-
-function policyMetadata(context: ApplicationProjectionContext, suffix: NetworkPolicyKind): object {
-  return {
-    labels: context.labels,
-    name: kubeNetworkPolicyName(context.deploymentId, suffix),
-    namespace: context.namespace,
-  };
 }

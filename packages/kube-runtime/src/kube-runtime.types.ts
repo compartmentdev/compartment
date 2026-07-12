@@ -219,13 +219,6 @@ export interface ApplicationProjectionRow {
   secretId: string;
 }
 
-export interface ApplicationProjectionOptions {
-  ingressNamespaceId: string;
-  ingressPodLabels: Readonly<Record<string, string>>;
-  podCidr: string;
-  serviceCidr: string;
-}
-
 export interface SecretProjectionRow {
   data: Readonly<Record<string, string>>;
   deploymentId: string;

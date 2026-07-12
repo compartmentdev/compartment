@@ -18,8 +18,11 @@ export function kubeJobName(jobId: string): string {
   return immutableKubeName('job', jobId);
 }
 
-export function kubeNetworkPolicyName(deploymentId: string, policy: 'default-deny' | 'egress' | 'ingress'): string {
-  return immutableKubeName(`np-${policy}`, deploymentId);
+export function kubeNetworkPolicyName(
+  namespaceId: string,
+  policy: 'application-egress' | 'application-ingress' | 'default-deny' | 'resource-ingress',
+): string {
+  return immutableKubeName(`np-${policy}`, namespaceId);
 }
 
 function immutableKubeName(prefix: string, immutableId: string): string {
