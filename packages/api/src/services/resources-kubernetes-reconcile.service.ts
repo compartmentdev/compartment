@@ -10,6 +10,7 @@ import type { ProjectResourceRow, ResourceTransaction } from '../queries/resourc
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { EffectiveVariable } from './effective-variables.service.types';
 import { requestResourceBootstrap, requestResourceReconcileWithExecutor } from './resource-reconcile-run.service';
+import { loadResourceEffectiveVariables } from './resources-effective-variables.service';
 import { prepareResourceEffectiveVariables, persistResourceIntent } from './resources-reconcile-persistence.service';
 import { assertAllowedVolumeChange } from './resources-reconcile.validation';
 import { resolveStoredResourceIntent } from './resources-stored-intent.service';
@@ -82,7 +83,7 @@ async function persistKubernetesDesiredAndRun(
     new Date(),
     'kubernetes',
   );
-  const projected: ResourceReconcileIntent = buildKubernetesResourceIntent(context, persisted);
+  const projected: ResourceReconcileIntent = buildKubernetesResourceIntent(context, persisted, intent);
   await enqueueKubernetesReconcileWhenReady(tx, projected, persisted);
   return persisted;
 }
@@ -119,7 +120,13 @@ export async function bootstrapKubernetesResource(
   context: ResourceEnvironmentContext,
   resource: ProjectResourceRow,
 ): Promise<void> {
-  const intent: ResourceReconcileIntent = buildKubernetesResourceIntent(context, resource);
+  const variables: EffectiveVariable[] = await loadResourceEffectiveVariables(
+    context.environment.id,
+    context.organization.id,
+    resource.name,
+  );
+  const resolved: ResolvedResourceIntent = resolveStoredResourceIntent(resource, variables);
+  const intent: ResourceReconcileIntent = buildKubernetesResourceIntent(context, resource, resolved);
   const operationId: string = createId('resource_operation');
   await requestResourceBootstrap(operationId, intent);
 }
@@ -127,8 +134,8 @@ export async function bootstrapKubernetesResource(
 function buildKubernetesResourceIntent(
   context: ResourceEnvironmentContext,
   resource: ProjectResourceRow,
+  intent: ResolvedResourceIntent,
 ): ResourceReconcileIntent {
-  const intent: ResolvedResourceIntent = resolveStoredResourceIntent(resource, []);
   const containerPort: number | undefined = intent.ports[0];
   if (containerPort === undefined) {
     throw new Error(`Kubernetes resource ${resource.id} requires one service port.`);
