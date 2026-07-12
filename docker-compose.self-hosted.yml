@@ -193,14 +193,12 @@ services:
       COMPARTMENT_EDGE_BIND_HOST: ${COMPARTMENT_EDGE_BIND_HOST}
       COMPARTMENT_EDGE_INTERNAL_HOST: ${COMPARTMENT_EDGE_INTERNAL_HOST}
       COMPARTMENT_EDGE_PORT: ${COMPARTMENT_EDGE_PORT}
+      COMPARTMENT_EDGE_SNAPSHOT_PATH: ${COMPARTMENT_EDGE_SNAPSHOT_PATH}
       COMPARTMENT_EDGE_TOKEN: ${COMPARTMENT_EDGE_TOKEN}
       COMPARTMENT_LOG_LEVEL: ${COMPARTMENT_LOG_LEVEL}
       COMPARTMENT_PUBLIC_PROTOCOL: ${COMPARTMENT_PUBLIC_PROTOCOL}
     ports:
       - '127.0.0.1:${COMPARTMENT_EDGE_PORT}:${COMPARTMENT_EDGE_PORT}'
-    depends_on:
-      api:
-        condition: service_healthy
     networks:
       - system_internal
     healthcheck:
@@ -217,6 +215,8 @@ services:
       start_period: 2s
     extra_hosts:
       - host.docker.internal:host-gateway
+    volumes:
+      - compartment-edge-snapshot:/var/lib/compartment-edge
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -371,6 +371,7 @@ volumes:
   compartment-buildkit-socket:
   compartment-buildkit-rootful-state:
   compartment-caddy-data:
+  compartment-edge-snapshot:
   compartment-postgres-data:
 
 networks:

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compartment-edge
+spec:
+  template:
+    spec:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: prepare-edge-snapshot-volume
+          image: busybox:1.37.0
+          command: [sh, -c, 'chown 1000:1000 /snapshot && chmod 0700 /snapshot']
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: edge-snapshot
+              mountPath: /snapshot
+      containers:
+        - name: edge
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: edge-snapshot
+              mountPath: /var/lib/compartment-edge
+      volumes:
+        - name: edge-snapshot
+          persistentVolumeClaim:
+            claimName: compartment-edge-snapshot

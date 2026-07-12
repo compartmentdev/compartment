@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - edge-snapshot-pvc.yaml
+patches:
+  - path: edge-snapshot-workload.projection.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: compartment-edge

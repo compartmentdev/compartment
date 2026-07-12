@@ -6,7 +6,7 @@ import { bootstrapEdgeAccessStateUntilReady } from './services/edge-bootstrap.se
 async function startServer(): Promise<void> {
   const config: EdgeConfig = readEdgeConfig();
   const app: EdgeApp = createEdgeApp({ config });
-  await bootstrapEdgeAccessStateUntilReady(config, app.edgeStore, app.log);
+  await bootstrapEdgeAccessStateUntilReady(config, app.edgeStore, app.edgeSnapshotMetrics, app.log);
   const address: string = await app.listen({
     host: config.bindHost,
     port: config.port,

@@ -3,6 +3,7 @@ import type { EdgeApp } from '../../app.types';
 import { registerGetOnDemandTlsAskRoute } from '../get-on-demand-tls-ask.route';
 import { authenticateInternalEdgeRequest } from './authenticate-internal-edge-request';
 import { registerPostInvalidateAppSessionsRoute } from './post-invalidate-app-sessions.route';
+import { registerGetEdgeMetricsRoute } from './get-edge-metrics.route';
 import { registerPutAppAccessStateRoute } from './put-app-access-state.route';
 
 export function registerInternalEdgeRoutes(
@@ -30,6 +31,7 @@ function registerAuthenticatedInternalEdgeRoutes(
   done: (err?: Error) => void,
 ): void {
   app.addHook('preHandler', authenticateInternalEdgeRequest);
+  registerGetEdgeMetricsRoute(app);
   registerPutAppAccessStateRoute(app, app.edgeStore);
   registerPostInvalidateAppSessionsRoute(app, app.edgeStore);
   done();
