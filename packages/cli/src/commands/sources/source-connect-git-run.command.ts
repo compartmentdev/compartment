@@ -24,7 +24,7 @@ export async function runSourceConnectGitCommand(
     dependencies,
     context,
     plan,
-    process.env.COMPARTMENT_GITLAB_TOKEN,
+    readGitLabToken(),
   );
   const settings: GitSourceConnectionSettings = await resolveGitSourceConnectionSettings(
     dependencies,
@@ -38,6 +38,11 @@ export async function runSourceConnectGitCommand(
     repository: selection.repository,
   });
   dependencies.io.stdout(`${createGitSourceConnectMessage(response)}\n`);
+}
+
+function readGitLabToken(): string | undefined {
+  const token: string | undefined = process.env.COMPARTMENT_GITLAB_TOKEN;
+  return token === undefined || token.length === 0 ? undefined : token;
 }
 
 async function createValidatedContext(options: SourceConnectGitCommandOptions): Promise<AuthenticatedContext> {

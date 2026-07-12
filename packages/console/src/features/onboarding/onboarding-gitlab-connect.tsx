@@ -87,6 +87,7 @@ function useGitLabConnectState(props: Readonly<GitLabConnectProps>): GitLabConne
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const canceledRef: MutableRefObject<boolean> = useRef<boolean>(false);
   useEffect((): (() => void) => {
+    canceledRef.current = false;
     return (): void => {
       canceledRef.current = true;
     };
@@ -159,7 +160,7 @@ function readGitLabConnectError(error: Error): string {
   if (error instanceof BrowserApiError && error.code === compartmentGitLabTokenInvalidErrorCode) {
     return 'GitLab token could not be used. Check the token and try again.';
   }
-  return error instanceof Error ? error.message : 'Could not connect GitLab.';
+  return error.message.length > 0 ? error.message : 'Could not connect GitLab.';
 }
 
 async function createGitLabRegistration(
