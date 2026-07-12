@@ -12,9 +12,9 @@ import {
 import { sanitizeStorageArtifactId } from './storage-artifact-id.service';
 
 export interface ResourceBackupArtifactSummary {
-  checksum: string;
+  checksum: string | null;
   location: string;
-  sizeBytes: number;
+  sizeBytes: number | null;
 }
 
 export async function prepareResourceBackupArtifactDirectory(backupId: string): Promise<string> {

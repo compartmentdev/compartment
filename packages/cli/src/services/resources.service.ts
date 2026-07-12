@@ -15,6 +15,7 @@ import {
 } from '@compartment/contracts';
 import {
   deleteResource as deleteResourceApi,
+  bootstrapResource as bootstrapResourceApi,
   createResourceBackup as createResourceBackupApi,
   getResource as getResourceApi,
   getResourceOutput as getResourceOutputApi,
@@ -105,6 +106,13 @@ export async function startResource(
   input: ResourceTargetInput,
 ): Promise<ResourceResponse> {
   return await startResourceApi(createResourceRequester(context), await resolveResourceTarget(input));
+}
+
+export async function bootstrapResource(
+  context: AuthenticatedContext,
+  input: ResourceTargetInput,
+): Promise<ResourceResponse> {
+  return await bootstrapResourceApi(createResourceRequester(context), await resolveResourceTarget(input));
 }
 
 export async function stopResource(

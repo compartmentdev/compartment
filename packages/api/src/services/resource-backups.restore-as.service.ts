@@ -125,7 +125,7 @@ async function createRestoredResourceWithLock(
   );
   const resource: ProjectResourceRow = await createProjectResourceWithExecutor(
     tx,
-    createResourceInsert(context.environment.id, intent, new Date()),
+    createResourceInsert(context.environment.id, intent, new Date(), 'node'),
   );
 
   return await updateProjectResourceRuntimeWithExecutor(tx, {
@@ -176,25 +176,38 @@ function createSnapshotResourceRow(snapshot: StoredResourceDefinitionSnapshot): 
     operationsJson: snapshot.operationsJson,
     portsJson: snapshot.portsJson,
     readinessJson: snapshot.readinessJson,
+    expectedClaimsJson: '[]',
+    runtimeKind: 'node',
     restartPolicy: snapshot.restartPolicy,
     runtimeDefinitionHash: snapshot.runtimeDefinitionHash,
     volumesJson: snapshot.volumesJson,
   };
 }
 
-function createSnapshotResourceIdentity(
-  now: Date,
-): Pick<
+type SnapshotResourceIdentity = Pick<
   ProjectResourceRow,
-  'containerId' | 'createdAt' | 'environmentId' | 'hostname' | 'id' | 'name' | 'status' | 'updatedAt'
-> {
+  | 'containerId'
+  | 'createdAt'
+  | 'environmentId'
+  | 'expectedClaimsJson'
+  | 'hostname'
+  | 'id'
+  | 'name'
+  | 'runtimeKind'
+  | 'status'
+  | 'updatedAt'
+>;
+
+function createSnapshotResourceIdentity(now: Date): SnapshotResourceIdentity {
   return {
     containerId: null,
     createdAt: now,
     environmentId: '',
+    expectedClaimsJson: '[]',
     hostname: '',
     id: '',
     name: '',
+    runtimeKind: 'node',
     status: 'stopped',
     updatedAt: now,
   };

@@ -15,9 +15,11 @@ export function createResourceInsert(
   environmentId: string,
   intent: ResolvedResourceIntent,
   now: Date,
+  runtimeKind: 'node' | 'kubernetes',
 ): CreateProjectResourceInput {
   return {
     ...createResourceInsertDefinition(environmentId, intent),
+    runtimeKind,
     id: createId('res'),
     status: 'stopped',
     updatedAt: now,
@@ -27,7 +29,7 @@ export function createResourceInsert(
 function createResourceInsertDefinition(
   environmentId: string,
   intent: ResolvedResourceIntent,
-): Omit<CreateProjectResourceInput, 'id' | 'status' | 'updatedAt'> {
+): Omit<CreateProjectResourceInput, 'id' | 'runtimeKind' | 'status' | 'updatedAt'> {
   return {
     commandJson: serializeResourceCommand(intent.command),
     envJson: serializeResourceEnv(intent.storedEnv),

@@ -302,6 +302,8 @@ function createProjectResourceRow(): ProjectResourceRow {
     envJson: '[]',
     environmentId: 'env_prod',
     hostname: 'postgres.prod.internal-tools.resource.internal',
+    runtimeKind: 'node',
+    expectedClaimsJson: '[]',
     id: 'res_postgres',
     image: 'postgres:16',
     name: 'postgres',

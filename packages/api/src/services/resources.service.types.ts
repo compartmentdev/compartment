@@ -15,6 +15,7 @@ import type { EnvironmentRow } from '../queries/deployments.query.types';
 import type { OrganizationRow } from '../queries/organizations.query.types';
 import type { ProjectRow } from '../queries/projects.query.types';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
+import type { DeploymentResourceSummaryInput } from './presenter.types';
 
 export interface ResourceEnvironmentContext {
   environment: EnvironmentRow;
@@ -134,7 +135,7 @@ export interface ResourceOutputInput {
   query: ResourceOutputQuery;
 }
 
-export type ResourceSummaryInput = ProjectResourceRow;
+export type ResourceSummaryInput = DeploymentResourceSummaryInput;
 export type ResourceResponseInput = ResourceLookupResult;
 export type ResourceListResponseInput = ResourceListResult;
 export type ResourceOutputListResponseInput = ResourceOutputListResult;

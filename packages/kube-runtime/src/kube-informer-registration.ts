@@ -57,6 +57,12 @@ const definitions: Readonly<Record<KubeObservedResource, InformerDefinition>> = 
     'networkpolicies',
   ),
   pods: createDefinition('v1', 'Pod', 'api/v1/pods', 'pods'),
+  persistentvolumeclaims: createDefinition(
+    'v1',
+    'PersistentVolumeClaim',
+    'api/v1/persistentvolumeclaims',
+    'persistentvolumeclaims',
+  ),
   secrets: createDefinition('v1', 'Secret', 'api/v1/secrets', 'secrets'),
   services: createDefinition('v1', 'Service', 'api/v1/services', 'services'),
 };

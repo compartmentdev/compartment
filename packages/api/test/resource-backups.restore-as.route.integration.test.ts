@@ -355,6 +355,8 @@ function createSourceResourceRow(
     envJson: '[]',
     environmentId: 'env_production',
     hostname: 'postgres.production.smoke-web.resource.internal',
+    runtimeKind: 'node',
+    expectedClaimsJson: '[]',
     id: 'res_postgres',
     image: 'postgres:16',
     name: 'postgres',

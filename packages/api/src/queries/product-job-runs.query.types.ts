@@ -2,6 +2,7 @@ import type {
   ProductJobClass,
   ProductJobIntent,
   ProductJobStatus,
+  ProductJobVolumeMount,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
 
@@ -20,7 +21,13 @@ export interface ProductJobRunRow {
   podName: string | null;
   status: ProductJobStatus;
   timeoutMs: number;
+  volumeMountsJson: string;
 }
+
+export type ProductJobResultRow = Pick<
+  ProductJobRunRow,
+  'completedAt' | 'exitCode' | 'identityId' | 'jobClass' | 'jobName' | 'logs' | 'podName' | 'status'
+>;
 
 export interface PersistProductJobIntentInput {
   identityId: string;
@@ -33,6 +40,7 @@ export interface ProductJobCommonSpec {
   image: string;
   namespace: string;
   timeoutMs: number;
+  volumeMounts?: ProductJobVolumeMount[] | undefined;
 }
 
 export type PersistProductJobResultInput = WorkerPersistProductJobResultRequest;

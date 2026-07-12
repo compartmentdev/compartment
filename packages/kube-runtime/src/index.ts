@@ -5,11 +5,19 @@ export {
   kubeApplicationName,
   kubeJobName,
   kubeNamespaceName,
+  kubeResourceName,
+  kubeResourceVolumeName,
   kubeSecretName,
 } from './kube-naming';
 export { platformBuildManifests } from './kube-platform-build-projection';
 export type { PlatformBuildProjectionInput } from './kube-platform-build-projection.types';
 export { projectApplicationManifests } from './kube-projections';
+export {
+  assertResourceClaimIdentity,
+  projectResourceBootstrapClaims,
+  projectResourceManifests,
+  resourcePodsFullyTerminated,
+} from './kube-resource-projection';
 export type { ProjectNetworkPolicyProjection } from './kube-network-policy-projection.types';
 export { projectSecretManifest } from './kube-secret-projection';
 export { projectNamespaceProvisioningBundle } from './kube-provisioning';
@@ -31,7 +39,6 @@ export type {
   KubeObservedManifest,
   KubeObservedResource,
   ObserveLabels,
-  ResourceProjectionRow,
   SecretProjectionRow,
 } from './kube-runtime.types';
 export type { ApplicationProjectionRow } from './kube-application-projection.types';
@@ -44,3 +51,10 @@ export type {
   KubeObservedDeployment,
   KubeStateTransition,
 } from './kube-state.types';
+export type {
+  ExpectedResourceClaim,
+  ObservedResourceClaim,
+  ResourceProjectionRow,
+  ResourceVolumeProjection,
+} from './kube-resource-projection.types';
+export type { KubeJobVolumeMount, KubePodVolume, KubeVolumeMount } from './kube-volume.types';

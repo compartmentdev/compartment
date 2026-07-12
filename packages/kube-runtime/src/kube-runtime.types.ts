@@ -4,6 +4,9 @@ import type {
   KubeContainerPort,
   KubeReadinessProbe,
 } from './kube-application-projection.types';
+import type { KubeJobVolumeMount, KubePodVolume, KubeVolumeMount } from './kube-volume.types';
+
+export type { KubeJobVolumeMount, KubePodVolume, KubeVolumeMount } from './kube-volume.types';
 
 export type KubeManifestKind =
   | 'ConfigMap'
@@ -105,7 +108,7 @@ export interface KubeProjectedContainer {
   readinessProbe?: KubeReadinessProbe | undefined;
   resources?: object | undefined;
   securityContext?: object | undefined;
-  volumeMounts?: object[] | undefined;
+  volumeMounts?: KubeVolumeMount[] | undefined;
 }
 
 export interface KubeProjectedPodSpec {
@@ -115,7 +118,7 @@ export interface KubeProjectedPodSpec {
   restartPolicy?: 'Never' | 'OnFailure' | undefined;
   securityContext?: object | undefined;
   terminationGracePeriodSeconds?: number | undefined;
-  volumes?: object[] | undefined;
+  volumes?: KubePodVolume[] | undefined;
 }
 
 export interface KubeLocalObjectReference {
@@ -186,7 +189,14 @@ export interface ObserveLabels {
   resources: KubeObservedResource[];
 }
 
-export type KubeObservedResource = 'deployments' | 'services' | 'networkpolicies' | 'secrets' | 'jobs' | 'pods';
+export type KubeObservedResource =
+  | 'deployments'
+  | 'services'
+  | 'networkpolicies'
+  | 'persistentvolumeclaims'
+  | 'secrets'
+  | 'jobs'
+  | 'pods';
 
 export type KubeObservationEventType = 'add' | 'update' | 'delete';
 
@@ -237,6 +247,7 @@ export interface KubeJobSpec {
   labels: Readonly<Record<string, string>>;
   namespace: string;
   timeoutMs: number;
+  volumeMounts?: KubeJobVolumeMount[] | undefined;
 }
 
 export interface KubeJobResult {
@@ -268,11 +279,4 @@ export interface SecretProjectionRow {
   deploymentId: string;
   namespaceId: string;
   secretId: string;
-}
-
-export interface ResourceProjectionRow {
-  environmentId: string;
-  image: string;
-  namespaceId: string;
-  resourceId: string;
 }

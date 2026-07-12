@@ -10,6 +10,8 @@ export interface ProjectResourceRow {
   envJson: string;
   environmentId: string;
   hostname: string;
+  runtimeKind: 'node' | 'kubernetes';
+  expectedClaimsJson: string;
   id: string;
   image: string;
   name: string;
@@ -35,6 +37,8 @@ export interface CreateProjectResourceInput {
   envJson: string;
   environmentId: string;
   hostname: string;
+  runtimeKind: 'node' | 'kubernetes';
+  expectedClaimsJson?: string | undefined;
   id: string;
   image: string;
   name: string;
@@ -60,6 +64,7 @@ export interface UpdateProjectResourceIntentInput {
   outputsJson: string;
   portsJson: string;
   projectResourceId: string;
+  runtimeKind: 'node' | 'kubernetes';
   readinessJson: string;
   restartPolicy: string;
   runtimeDefinitionHash: string;

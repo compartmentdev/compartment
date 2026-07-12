@@ -18,7 +18,7 @@ import { readApiAuthThrottleConfig, type ApiAuthThrottleConfig } from './auth-th
 import type { ApiConfigEnv } from './config-env.types';
 import { parseOptionalAbsoluteUrl, parseOptionalPositiveInt, readRequiredCronExpression } from './config-parsers';
 import { parseVariablesMasterKey } from './lib/variables-crypto';
-import { readRequiredDurationMs } from './read-required-duration-ms';
+import { normalizeApiHostValue, parseSessionTtl, readOptionalConfigText } from './config-value';
 import { assertValidSystemApiSocketPath } from './system-api-socket-path';
 
 export type { AuditFileSinkConfig } from './audit-file-sink-config';
@@ -59,6 +59,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_SYSTEM_API_SOCKET: z.string().min(1),
   COMPARTMENT_SYSTEM_TOKEN: z.string().min(1),
   COMPARTMENT_VARIABLES_MASTER_KEY: z.string().min(1),
+  COMPARTMENT_WORKER_IMAGE: z.string().min(1).optional(),
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),
 });
 
@@ -104,6 +105,7 @@ export interface ApiConfig {
   systemToken: string;
   variablesMasterKey: Buffer;
   runtimeControlToken: string;
+  workerImageRef?: string | null;
 }
 
 type ApiCoreConfig = Pick<
@@ -129,6 +131,7 @@ type ApiRuntimeConfig = Pick<
   | 'runtimeDefaultUpstreamHost'
   | 'sourceArchiveDirectory'
   | 'sourceArchiveMaxBytes'
+  | 'workerImageRef'
 >;
 type ApiSecretConfig = Pick<
   ApiConfig,
@@ -236,6 +239,7 @@ function readApiRuntimeConfig(parsed: ApiConfigEnv): ApiRuntimeConfig {
     runtimeDefaultUpstreamHost: parsed.COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST,
     sourceArchiveDirectory: parsed.COMPARTMENT_SOURCE_ARCHIVE_DIR,
     sourceArchiveMaxBytes: parsed.COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES,
+    workerImageRef: readOptionalConfigText(parsed.COMPARTMENT_WORKER_IMAGE),
   };
 }
 
@@ -254,17 +258,4 @@ function readApiSecretConfig(parsed: ApiConfigEnv): ApiSecretConfig {
 
 function assertValidNodeAgentSocketPath(socketPath: string): void {
   assertValidUnixSocketPath(socketPath, nodeAgentSocketPolicy);
-}
-
-function parseSessionTtl(value: string): number {
-  return readRequiredDurationMs(value, 'COMPARTMENT_SESSION_TTL');
-}
-
-function normalizeApiHostValue(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function readOptionalConfigText(value: string | undefined): string | null {
-  const normalizedValue: string = value?.trim() ?? '';
-  return normalizedValue === '' ? null : normalizedValue;
 }

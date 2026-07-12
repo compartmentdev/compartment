@@ -159,8 +159,25 @@ interface ProjectResourcesColumnBuilders {
   restartPolicy: RequiredTextBuilder<'restart_policy'>;
   runtimeDefinitionHash: RequiredTextBuilder<'runtime_definition_hash'>;
   hostname: RequiredTextBuilder<'hostname'>;
+  runtimeKind: DefaultEnumTextBuilder<'runtime_kind', ['node', 'kubernetes']>;
+  expectedClaimsJson: DefaultTextBuilder<'expected_claims_json'>;
   status: RequiredEnumTextBuilder<'status', ['running', 'stopped']>;
   containerId: OptionalTextBuilder<'container_id'>;
+  createdAt: DefaultTimestampBuilder<'created_at'>;
+  updatedAt: DefaultTimestampBuilder<'updated_at'>;
+}
+
+interface ResourceReconcileRunsColumnBuilders {
+  id: PrimaryTextBuilder<'id'>;
+  projectResourceId: RequiredTextBuilder<'project_resource_id'>;
+  intentJson: RequiredTextBuilder<'intent_json'>;
+  expectedClaimsJson: RequiredTextBuilder<'expected_claims_json'>;
+  previousManifestJson: OptionalTextBuilder<'previous_manifest_json'>;
+  operationType: RequiredEnumTextBuilder<'operation_type', ['bootstrap', 'reconcile']>;
+  leaseId: OptionalTextBuilder<'lease_id'>;
+  leaseExpiresAt: OptionalTimestampBuilder<'lease_expires_at'>;
+  phase: RequiredEnumTextBuilder<'phase', ['bootstrap-pending', 'reconcile-pending', 'running', 'succeeded', 'failed']>;
+  failureMessage: OptionalTextBuilder<'failure_message'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;
 }
@@ -221,6 +238,7 @@ export type ProjectResourcesExtraConfigColumns = PgExtraConfigColumnsOf<
   'project_resources',
   ProjectResourcesColumnBuilders
 >;
+export type ResourceReconcileRunsTable = PgTableOf<'resource_reconcile_runs', ResourceReconcileRunsColumnBuilders>;
 export type ResourceBackupsTable = PgTableOf<'resource_backups', ResourceBackupsColumnBuilders>;
 export type ResourceBackupsExtraConfigColumns = PgExtraConfigColumnsOf<
   'resource_backups',

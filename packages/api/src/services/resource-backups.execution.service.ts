@@ -29,7 +29,16 @@ import {
 } from './resource-backups.operation-context.service';
 import { createResourceNodeRequester } from './resource-node-requester.service';
 import { readOperationErrorOutput, summarizeOperationOutput } from './resource-operation-output.service';
+import {
+  completeResourceBackupOperationRecord,
+  readOperationFailureSummary,
+} from './resource-backups.execution.support';
 import { serializeResourceDefinitionSnapshot } from './resources.service.storage';
+import {
+  runKubernetesResourceOperation,
+  runVerifiedKubernetesRestore,
+  summarizeKubernetesBackupArtifact,
+} from './resource-backups.kubernetes.service';
 import type {
   ResourceBackupResult,
   ResourceEnvironmentContext,
@@ -42,9 +51,7 @@ interface RunningResourceBackup {
   operationRecord: OperationRecord;
 }
 
-interface ResourceBackupRuntimeState extends RunningResourceBackup {
-  backupId: string;
-}
+type ResourceBackupRuntimeState = RunningResourceBackup & { backupId: string };
 
 interface CompleteResourceBackupOperationInput {
   artifact: ResourceBackupArtifactSummary;
@@ -60,7 +67,10 @@ export async function runResourceBackup(
   const runningBackup: RunningResourceBackup = await createRunningResourceBackup(input);
 
   try {
-    const runtimeState: ResourceBackupRuntimeState = await prepareRunningResourceBackupRuntimeState(runningBackup);
+    const runtimeState: ResourceBackupRuntimeState = await prepareRunningResourceBackupRuntimeState(
+      input.resource,
+      runningBackup,
+    );
     return await completeResourceBackupOperation(input, operationContext, runtimeState);
   } catch (error) {
     const operationError: Error = error instanceof Error ? error : new Error('Resource backup failed.');
@@ -71,8 +81,17 @@ export async function runResourceBackup(
 
 export async function runResourceRestore(input: RunResourceRestoreInput): Promise<void> {
   const operationContext: ResourceBackupOperationContext = await resolveRestoreOperationContext(input);
+  if (input.resource.runtimeKind === 'kubernetes') {
+    await runVerifiedKubernetesRestore({
+      backup: input.backup,
+      context: input.context,
+      operationContext,
+      operationId: createId('job'),
+      resource: input.resource,
+    });
+    return;
+  }
   const backupId: string = requireBackupArtifactId(input.backup);
-
   await runNodeResourceRestoreOperation(
     await createResourceNodeRequester(input.context),
     buildResourceOperationRequest(input.context, input.resource, operationContext, backupId),
@@ -93,7 +112,7 @@ async function completeResourceBackupOperation(
   runtimeState: ResourceBackupRuntimeState,
 ): Promise<Pick<ResourceBackupResult, 'backup' | 'manifest'>> {
   const response: NodeResourceOperationResponse = await runBackupCommand(input, operationContext, runtimeState);
-  const artifact: ResourceBackupArtifactSummary = await summarizeResourceBackupArtifact(runtimeState.backup.id);
+  const artifact: ResourceBackupArtifactSummary = await summarizeCompletedBackupArtifact(input, runtimeState);
   const completedBackup: ResourceBackupRow = await persistCompletedResourceBackup(input, {
     artifact,
     operationContext,
@@ -105,15 +124,39 @@ async function completeResourceBackupOperation(
   return { backup: completedBackup, manifest: completedBackup.manifestJson };
 }
 
+async function summarizeCompletedBackupArtifact(
+  input: RunResourceBackupInput,
+  runtimeState: ResourceBackupRuntimeState,
+): Promise<ResourceBackupArtifactSummary> {
+  if (input.resource.runtimeKind === 'node') {
+    return await summarizeResourceBackupArtifact(runtimeState.backup.id);
+  }
+  return await summarizeKubernetesBackupArtifact({
+    backupId: runtimeState.backup.id,
+    context: input.context,
+    operationId: runtimeState.operationRecord.id,
+    resource: input.resource,
+  });
+}
+
 async function runBackupCommand(
   input: RunResourceBackupInput,
   operationContext: ResourceBackupOperationContext,
   runtimeState: ResourceBackupRuntimeState,
 ): Promise<NodeResourceOperationResponse> {
-  return await runNodeResourceBackupOperation(
-    await createResourceNodeRequester(input.context),
-    buildResourceOperationRequest(input.context, input.resource, operationContext, runtimeState.backupId),
-  );
+  return input.resource.runtimeKind === 'kubernetes'
+    ? await runKubernetesResourceOperation({
+        backupId: runtimeState.backupId,
+        context: input.context,
+        operationContext,
+        operationId: runtimeState.operationRecord.id,
+        operationKind: 'backup',
+        resource: input.resource,
+      })
+    : await runNodeResourceBackupOperation(
+        await createResourceNodeRequester(input.context),
+        buildResourceOperationRequest(input.context, input.resource, operationContext, runtimeState.backupId),
+      );
 }
 
 async function createRunningResourceBackup(input: RunResourceBackupInput): Promise<RunningResourceBackup> {
@@ -134,9 +177,12 @@ async function createRunningResourceBackup(input: RunResourceBackupInput): Promi
 }
 
 async function prepareRunningResourceBackupRuntimeState(
+  resource: ProjectResourceRow,
   runningBackup: RunningResourceBackup,
 ): Promise<ResourceBackupRuntimeState> {
-  await prepareResourceBackupArtifactDirectory(runningBackup.backup.id);
+  if (resource.runtimeKind === 'node') {
+    await prepareResourceBackupArtifactDirectory(runningBackup.backup.id);
+  }
 
   return { backupId: runningBackup.backup.id, ...runningBackup };
 }
@@ -192,21 +238,6 @@ function buildCompletedBackupManifest(
   );
 }
 
-async function completeResourceBackupOperationRecord(
-  input: RunResourceBackupInput,
-  operationRecord: OperationRecord,
-  backup: ResourceBackupRow,
-): Promise<void> {
-  await getApiDatabase().transaction(async (tx: ResourceTransaction): Promise<void> => {
-    await updateOperationRecordWithExecutor(tx, {
-      completedAt: backup.completedAt,
-      operationId: operationRecord.id,
-      status: 'succeeded',
-      summary: `Resource ${input.resource.name} backup succeeded.`,
-    });
-  });
-}
-
 async function failRunningResourceBackup(
   input: RunResourceBackupInput,
   runningBackup: RunningResourceBackup,
@@ -227,8 +258,4 @@ async function failRunningResourceBackup(
       summary: error.message,
     });
   });
-}
-
-function readOperationFailureSummary(error: Error): string {
-  return error.message === '' ? 'Resource backup failed.' : error.message;
 }

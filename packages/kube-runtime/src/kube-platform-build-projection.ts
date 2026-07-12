@@ -20,6 +20,8 @@ import type {
   KubeProjectedContainer,
   KubeProjectedPodSpec,
   KubeSecretEnvVariable,
+  KubePodVolume,
+  KubeVolumeMount,
 } from './kube-runtime.types';
 
 const buildkitPort: number = 1234;
@@ -190,7 +192,7 @@ function buildkitContainer(input: PlatformBuildProjectionInput): KubeProjectedCo
   };
 }
 
-function buildkitVolumeMounts(): object[] {
+function buildkitVolumeMounts(): KubeVolumeMount[] {
   return [
     { mountPath: '/home/user/.local/share/buildkit', name: 'data' },
     { mountPath: '/home/user/.local/tmp', name: 'rootless-tmp' },
@@ -205,7 +207,7 @@ function buildkitVolumeMounts(): object[] {
   ];
 }
 
-function buildkitVolumes(secretId: string): object[] {
+function buildkitVolumes(secretId: string): KubePodVolume[] {
   return [
     { name: 'data', persistentVolumeClaim: { claimName: 'buildkit-data' } },
     { name: 'registry-auth', secret: { secretName: kubeSecretName(secretId) } },

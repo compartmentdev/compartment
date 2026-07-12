@@ -343,6 +343,8 @@ function createProjectResourceRow(overrides: Partial<ProjectResourceRow> = {}): 
     ]),
     environmentId: 'env_production',
     hostname: 'postgres.production.billing.resource.internal',
+    runtimeKind: 'node',
+    expectedClaimsJson: '[]',
     id: 'res_postgres',
     image: 'postgres:16',
     name: 'postgres',

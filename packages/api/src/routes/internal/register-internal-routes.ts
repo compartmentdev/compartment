@@ -23,6 +23,7 @@ import { registerPostRunNextScheduledResourceOperationRoute } from './post-run-n
 import { registerPostUploadGitSourceResolutionTaskArchiveRoute } from './post-upload-git-source-resolution-task-archive.route';
 import { registerProductJobRoutes } from './product-job.routes';
 import { registerDeploymentReconcileRoutes } from './deployment-reconcile.routes';
+import { registerResourceReconcileRoutes } from './resource-reconcile.routes';
 
 type RegisterInternalRoutesDone = (err?: Error) => void;
 interface InternalApiRoutesOptions extends FastifyPluginOptions {
@@ -75,6 +76,7 @@ function registerWorkerOperationRoutes(app: ApiApp): void {
   registerDeploymentReconcileRoutes(app);
   registerPostRunNextScheduledResourceOperationRoute(app);
   registerProductJobRoutes(app);
+  registerResourceReconcileRoutes(app);
 }
 
 function registerGitSourceResolutionWorkerRoutes(app: ApiApp, sourceArchiveMaxBytes: number): void {

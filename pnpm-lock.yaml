@@ -381,6 +381,9 @@ importers:
 
   packages/kube-runtime:
     dependencies:
+      '@compartment/utils':
+        specifier: workspace:*
+        version: link:../utils
       '@kubernetes/client-node':
         specifier: ^1.4.0
         version: 1.4.0

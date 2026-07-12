@@ -34,5 +34,6 @@ export interface ApiConfigEnv extends AuditFileSinkConfigEnv {
   COMPARTMENT_SYSTEM_API_SOCKET: string;
   COMPARTMENT_SYSTEM_TOKEN: string;
   COMPARTMENT_VARIABLES_MASTER_KEY: string;
+  COMPARTMENT_WORKER_IMAGE?: string | undefined;
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: string;
 }

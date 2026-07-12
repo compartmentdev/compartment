@@ -1,4 +1,5 @@
 import type { CompartmentResourceOutputConfig } from '@compartment/contracts';
+import { kubeResourceServiceDns } from '@compartment/utils';
 import { createInvalidDeployConfigError } from '../errors/api-business-error';
 import { createVariableValueFingerprint } from '../lib/variables-crypto';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
@@ -9,6 +10,7 @@ import type { ResourceOutputSummaryInput } from './resources.service.types';
 
 interface ResourceOutputResolutionContext {
   environmentName: string;
+  namespaceId: string;
   projectName: string;
   resource: ProjectResourceRow;
 }
@@ -41,11 +43,12 @@ export function resolveResourceOutputPlaintext(
   outputName: string,
   projectName: string,
   environmentName: string,
+  namespaceId: string,
   effectiveVariables: EffectiveVariable[],
 ): ResolvedResourceOutputPlaintext {
   const output: ResourceOutputSummaryInput = resolveResourceOutputSummary(
     outputName,
-    { environmentName, projectName, resource },
+    { environmentName, namespaceId, projectName, resource },
     effectiveVariables,
     true,
   );
@@ -152,7 +155,9 @@ function resolveKnownResourceOutputPlaceholder(key: string, context: ResourceOut
     return context.projectName;
   }
   if (key === 'resource.host') {
-    return context.resource.hostname;
+    return context.resource.runtimeKind === 'kubernetes'
+      ? kubeResourceServiceDns(context.resource.id, context.namespaceId)
+      : context.resource.hostname;
   }
   if (key === 'resource.name') {
     return context.resource.name;

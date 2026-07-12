@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, isNull, or, type SQL } from 'drizzle-orm';
-import type { ProductJobClass, ProductJobIntent, WorkerPersistProductJobResultRequest } from '@compartment/contracts';
+import type { SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
+import type {
+  ProductJobClass,
+  ProductJobIntent,
+  ProductJobVolumeMount,
+  WorkerPersistProductJobResultRequest,
+} from '@compartment/contracts';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import { productJobRuns } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -10,7 +16,26 @@ import type {
   PersistProductJobResultInput,
   ProductJobCommonSpec,
   ProductJobRunRow,
+  ProductJobResultRow,
 } from './product-job-runs.query.types';
+
+interface ProductJobRunSelection extends SelectedFields {
+  commandJson: typeof productJobRuns.commandJson;
+  completedAt: typeof productJobRuns.completedAt;
+  createdAt: typeof productJobRuns.createdAt;
+  envJson: typeof productJobRuns.envJson;
+  exitCode: typeof productJobRuns.exitCode;
+  identityId: typeof productJobRuns.identityId;
+  image: typeof productJobRuns.image;
+  jobClass: typeof productJobRuns.jobClass;
+  jobName: typeof productJobRuns.jobName;
+  logs: typeof productJobRuns.logs;
+  namespace: typeof productJobRuns.namespace;
+  podName: typeof productJobRuns.podName;
+  status: typeof productJobRuns.status;
+  timeoutMs: typeof productJobRuns.timeoutMs;
+  volumeMountsJson: typeof productJobRuns.volumeMountsJson;
+}
 
 export async function persistProductJobIntent(input: PersistProductJobIntentInput): Promise<void> {
   await getApiDatabase()
@@ -25,12 +50,34 @@ export async function persistProductJobIntent(input: PersistProductJobIntentInpu
       namespace: input.intent.namespace,
       status: 'queued',
       timeoutMs: input.intent.timeoutMs,
+      volumeMountsJson: JSON.stringify(input.intent.volumeMounts ?? []),
     })
     .onConflictDoNothing({ target: [productJobRuns.jobClass, productJobRuns.identityId] });
 }
 
 export async function claimProductJob(): Promise<ClaimedProductJobQueryResult> {
   return await getApiDatabase().transaction(claimProductJobWithTransaction);
+}
+
+export async function readProductJobResult(
+  jobClass: ProductJobClass,
+  identityId: string,
+): Promise<WorkerPersistProductJobResultRequest | null> {
+  const [row] = await getApiDatabase()
+    .select({
+      completedAt: productJobRuns.completedAt,
+      exitCode: productJobRuns.exitCode,
+      identityId: productJobRuns.identityId,
+      jobClass: productJobRuns.jobClass,
+      jobName: productJobRuns.jobName,
+      logs: productJobRuns.logs,
+      podName: productJobRuns.podName,
+      status: productJobRuns.status,
+    })
+    .from(productJobRuns)
+    .where(and(eq(productJobRuns.jobClass, jobClass), eq(productJobRuns.identityId, identityId)))
+    .limit(1);
+  return row === undefined ? null : buildPersistedProductJobResult(row);
 }
 
 async function claimProductJobWithTransaction(
@@ -49,30 +96,34 @@ async function claimProductJobWithTransaction(
   return { intent: buildProductJobIntent(row), persistedResult: buildPersistedProductJobResult(row) };
 }
 
+const claimableProductJobSelection: ProductJobRunSelection = {
+  commandJson: productJobRuns.commandJson,
+  completedAt: productJobRuns.completedAt,
+  createdAt: productJobRuns.createdAt,
+  envJson: productJobRuns.envJson,
+  exitCode: productJobRuns.exitCode,
+  identityId: productJobRuns.identityId,
+  image: productJobRuns.image,
+  jobClass: productJobRuns.jobClass,
+  jobName: productJobRuns.jobName,
+  logs: productJobRuns.logs,
+  namespace: productJobRuns.namespace,
+  podName: productJobRuns.podName,
+  status: productJobRuns.status,
+  timeoutMs: productJobRuns.timeoutMs,
+  volumeMountsJson: productJobRuns.volumeMountsJson,
+};
+
 async function readClaimableProductJobRow(transaction: ApiDatabaseTransaction): Promise<ProductJobRunRow | undefined> {
-  const [row] = await transaction
-    .select({
-      commandJson: productJobRuns.commandJson,
-      completedAt: productJobRuns.completedAt,
-      createdAt: productJobRuns.createdAt,
-      envJson: productJobRuns.envJson,
-      exitCode: productJobRuns.exitCode,
-      identityId: productJobRuns.identityId,
-      image: productJobRuns.image,
-      jobClass: productJobRuns.jobClass,
-      jobName: productJobRuns.jobName,
-      logs: productJobRuns.logs,
-      namespace: productJobRuns.namespace,
-      podName: productJobRuns.podName,
-      status: productJobRuns.status,
-      timeoutMs: productJobRuns.timeoutMs,
-    })
-    .from(productJobRuns)
-    .where(claimableProductJobPredicate())
-    .orderBy(asc(productJobRuns.createdAt))
-    .limit(1)
-    .for('update', { skipLocked: true });
-  return row;
+  return (
+    await transaction
+      .select(claimableProductJobSelection)
+      .from(productJobRuns)
+      .where(claimableProductJobPredicate())
+      .orderBy(asc(productJobRuns.createdAt))
+      .limit(1)
+      .for('update', { skipLocked: true })
+  )[0];
 }
 
 function claimableProductJobPredicate(): SQL | undefined {
@@ -82,7 +133,7 @@ function claimableProductJobPredicate(): SQL | undefined {
   );
 }
 
-function buildPersistedProductJobResult(row: ProductJobRunRow): WorkerPersistProductJobResultRequest | null {
+function buildPersistedProductJobResult(row: ProductJobResultRow): WorkerPersistProductJobResultRequest | null {
   if (row.status === 'queued' || row.status === 'running') {
     return null;
   }
@@ -136,6 +187,7 @@ function buildProductJobIntent(row: ProductJobRunRow): ProductJobIntent {
     image: row.image,
     namespace: row.namespace,
     timeoutMs: Math.max(1, row.createdAt.getTime() + row.timeoutMs - Date.now()),
+    volumeMounts: JSON.parse(row.volumeMountsJson) as ProductJobVolumeMount[],
   };
   return row.jobClass === 'release'
     ? { ...spec, deploymentId: row.identityId, jobClass: 'release' }

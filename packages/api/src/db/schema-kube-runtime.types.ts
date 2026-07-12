@@ -1,5 +1,6 @@
 import type {
   DefaultTimestampBuilder,
+  DefaultTextBuilder,
   DefaultIntegerBuilder,
   OptionalIntegerBuilder,
   OptionalTextBuilder,
@@ -43,6 +44,7 @@ interface ProductJobRunsColumnBuilders {
   image: RequiredTextBuilder<'image'>;
   commandJson: RequiredTextBuilder<'command_json'>;
   envJson: RequiredTextBuilder<'env_json'>;
+  volumeMountsJson: DefaultTextBuilder<'volume_mounts_json'>;
   namespace: RequiredTextBuilder<'namespace'>;
   timeoutMs: RequiredIntegerBuilder<'timeout_ms'>;
   status: RequiredEnumTextBuilder<'status', ['queued', 'running', 'succeeded', 'failed', 'timed-out']>;

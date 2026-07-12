@@ -1,5 +1,6 @@
 import type { ApiApp } from '../../app.types';
 import { registerResourceBackupRoutes } from './resource-backup.route';
+import { registerPostResourceBootstrapRoute } from './resource-bootstrap.route';
 import { registerDeleteResourceRoute } from './resource-delete.route';
 import { registerGetResourceListRoute } from './resource-list.route';
 import { registerGetResourceLogsRoute } from './resource-logs.route';
@@ -15,6 +16,7 @@ export function registerResourceRoutes(app: ApiApp): void {
   const registrars: ResourceRouteRegistrar[] = [
     registerDeleteResourceRoute,
     registerResourceBackupRoutes,
+    registerPostResourceBootstrapRoute,
     registerGetResourceListRoute,
     registerGetResourceLogsRoute,
     registerResourceOutputRoutes,

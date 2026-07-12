@@ -27,6 +27,10 @@ export {
   resourceTargetQuerySchema,
 } from './contracts/resources.contract';
 export {
+  buildCompartmentResourceBootstrapPathname,
+  compartmentResourceBootstrapPathnameTemplate,
+} from './contracts/control-plane-protocol.contract';
+export {
   type ResourceOutputListResponse,
   type ResourceOutputResponse,
   type ResourceOutputSummary,

@@ -2,13 +2,19 @@ import { createKubeRuntimeFromEnvironment, type KubeRuntime } from '@compartment
 import {
   claimDeploymentReconcile,
   claimProductJob,
+  claimResourceReconcile,
   createCompartmentRequester,
   type CompartmentRequester,
 } from '@compartment/sdk';
-import type { WorkerClaimDeploymentReconcileResponse, WorkerClaimProductJobResponse } from '@compartment/contracts';
+import type {
+  WorkerClaimDeploymentReconcileResponse,
+  WorkerClaimProductJobResponse,
+  WorkerClaimResourceReconcileResponse,
+} from '@compartment/contracts';
 import type { WorkerConfig } from './config';
 import { executeProductJob, finalizeRecoveredProductJob } from './services/worker-product-job.service';
 import { reconcileDeploymentTarget } from './services/worker-deployment-reconcile.service';
+import { executeResourceReconcile } from './services/worker-resource-reconcile.service';
 
 export interface KubeControllerHost {
   enabled: boolean;
@@ -70,6 +76,22 @@ class DeploymentReconcileArea implements KubeReconcileArea {
   }
 }
 
+class ResourceReconcileArea implements KubeReconcileArea {
+  public constructor(
+    private readonly request: CompartmentRequester,
+    private readonly runtime: KubeRuntime,
+  ) {}
+
+  public async reconcile(): Promise<boolean> {
+    const claimed: WorkerClaimResourceReconcileResponse = await claimResourceReconcile(this.request);
+    if (claimed.intent === null) {
+      return false;
+    }
+    await executeResourceReconcile(this.request, this.runtime, claimed);
+    return true;
+  }
+}
+
 class DisabledKubeControllerHost implements KubeControllerHost {
   public readonly enabled: boolean = false;
 
@@ -89,6 +111,7 @@ export function createKubeControllerHost(config: WorkerConfig): KubeControllerHo
   const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
   return new RegisteredKubeControllerHost([
     new DeploymentReconcileArea(request, runtime),
+    new ResourceReconcileArea(request, runtime),
     new ProductJobReconcileArea(request, runtime),
   ]);
 }

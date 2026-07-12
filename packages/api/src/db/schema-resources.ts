@@ -23,6 +23,10 @@ export const projectResources: DeploySchemaTypes.ProjectResourcesTable = pgTable
     restartPolicy: text('restart_policy').notNull(),
     runtimeDefinitionHash: text('runtime_definition_hash').notNull(),
     hostname: text('hostname').notNull(),
+    runtimeKind: text('runtime_kind', { enum: ['node', 'kubernetes'] })
+      .default('node')
+      .notNull(),
+    expectedClaimsJson: text('expected_claims_json').default('[]').notNull(),
     status: text('status', { enum: ['running', 'stopped'] }).notNull(),
     containerId: text('container_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -32,6 +36,25 @@ export const projectResources: DeploySchemaTypes.ProjectResourcesTable = pgTable
     environmentNameUnique: unique('project_resources_environment_id_name_unique').on(table.environmentId, table.name),
   }),
 );
+
+export const resourceReconcileRuns: DeploySchemaTypes.ResourceReconcileRunsTable = pgTable('resource_reconcile_runs', {
+  id: text('id').primaryKey(),
+  projectResourceId: text('project_resource_id')
+    .notNull()
+    .references((): typeof projectResources.id => projectResources.id, { onDelete: 'cascade' }),
+  intentJson: text('intent_json').notNull(),
+  expectedClaimsJson: text('expected_claims_json').notNull(),
+  previousManifestJson: text('previous_manifest_json'),
+  operationType: text('operation_type', { enum: ['bootstrap', 'reconcile'] }).notNull(),
+  leaseId: text('lease_id'),
+  leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+  phase: text('phase', {
+    enum: ['bootstrap-pending', 'reconcile-pending', 'running', 'succeeded', 'failed'],
+  }).notNull(),
+  failureMessage: text('failure_message'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
 export const resourceBackups: DeploySchemaTypes.ResourceBackupsTable = pgTable(
   'resource_backups',

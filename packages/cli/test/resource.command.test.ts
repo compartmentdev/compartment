@@ -44,6 +44,7 @@ interface ResourceCommandMocks {
 }
 
 interface ResourceServiceModule {
+  bootstrapResource: UnusedResourceServiceMock;
   createResourceBackup: UnusedResourceServiceMock;
   deleteResource: DeleteResourceMock;
   inspectResource: UnusedResourceServiceMock;
@@ -183,6 +184,7 @@ function mockResourceCommandModules(
   vi.doMock(
     '../src/services/resources.service',
     (): ResourceServiceModule => ({
+      bootstrapResource: createUnusedResourceServiceMock(),
       createResourceBackup: createUnusedResourceServiceMock(),
       deleteResource: deleteResourceMock,
       inspectResource: createUnusedResourceServiceMock(),

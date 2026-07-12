@@ -12,6 +12,7 @@ import {
   principals,
   projectResources,
   projects,
+  resourceReconcileRuns,
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
@@ -25,6 +26,13 @@ import {
 import { listScheduledResourceOperationCandidates } from '../src/queries/resource-operation-scheduler.query';
 import type { ResourceBackupRow } from '../src/queries/resource-backups.query.types';
 import { findProjectResourceByName, lockProjectResourceReferenceByName } from '../src/queries/resources.query';
+import {
+  acknowledgeResourceReconcileRun,
+  claimResourceReconcileRun,
+  createResourceReconcileRun,
+} from '../src/queries/resource-reconcile-runs.query';
+import type { ResourceReconcileIntent } from '@compartment/contracts';
+import type { ClaimedResourceReconcileRun } from '../src/queries/resource-reconcile-runs.query.types';
 import type { ProjectResourceRow, ResourceTransaction } from '../src/queries/resources.query.types';
 import { parseStoredResourceOperations } from '../src/services/resources.service.storage';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
@@ -217,7 +225,94 @@ describe('resource backup queries', (): void => {
       });
     });
   });
+
+  it('leases explicit bootstrap, persists canonical UIDs, and recovers only stale work', async (): Promise<void> => {
+    const intent: ResourceReconcileIntent = resourceIntent();
+    await createResourceReconcileRun({ expectedClaims: [], intent, operationId: 'rr_bootstrap', type: 'bootstrap' });
+    const bootstrap: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+    expect(bootstrap).toMatchObject({ operationId: 'rr_bootstrap', type: 'bootstrap' });
+    expect(await claimResourceReconcileRun()).toBeNull();
+    await acknowledgeResourceReconcileRun({
+      expectedClaims: [{ claimName: 'claim-data', uid: 'uid-original' }],
+      leaseId: bootstrap!.leaseId,
+      operationId: 'rr_bootstrap',
+      status: 'succeeded',
+    });
+    const [resource] = await db.select().from(projectResources).where(eq(projectResources.id, 'res_postgres'));
+    expect(resource?.expectedClaimsJson).toBe('[{"claimName":"claim-data","uid":"uid-original"}]');
+
+    const ordinary: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+    expect(ordinary).toMatchObject({
+      expectedClaims: [{ claimName: 'claim-data', uid: 'uid-original' }],
+      type: 'reconcile',
+    });
+    await db
+      .update(resourceReconcileRuns)
+      .set({ leaseExpiresAt: new Date(0) })
+      .where(eq(resourceReconcileRuns.id, ordinary!.operationId));
+    const recovered: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+    expect(recovered?.leaseId).not.toBe(ordinary?.leaseId);
+    expect(recovered?.operationId).toBe(ordinary?.operationId);
+    await acknowledgeResourceReconcileRun({
+      leaseId: ordinary!.leaseId,
+      operationId: ordinary!.operationId,
+      status: 'succeeded',
+    });
+    const [stillRunning] = await db
+      .select()
+      .from(resourceReconcileRuns)
+      .where(eq(resourceReconcileRuns.id, ordinary!.operationId));
+    expect(stillRunning?.phase).toBe('running');
+    await acknowledgeResourceReconcileRun({
+      leaseId: recovered!.leaseId,
+      operationId: recovered!.operationId,
+      status: 'running',
+    });
+    const [renewed] = await db
+      .select()
+      .from(resourceReconcileRuns)
+      .where(eq(resourceReconcileRuns.id, recovered!.operationId));
+    expect(renewed?.leaseExpiresAt?.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('serializes concurrent reconcile claims for one resource', async (): Promise<void> => {
+    const intent: ResourceReconcileIntent = resourceIntent();
+    await Promise.all([
+      createResourceReconcileRun({ expectedClaims: [], intent, operationId: 'rr_serial_1', type: 'reconcile' }),
+      createResourceReconcileRun({ expectedClaims: [], intent, operationId: 'rr_serial_2', type: 'reconcile' }),
+    ]);
+
+    const claimed: (ClaimedResourceReconcileRun | null)[] = await Promise.all([
+      claimResourceReconcileRun(),
+      claimResourceReconcileRun(),
+    ]);
+    const active: ClaimedResourceReconcileRun[] = claimed.filter(
+      (run: ClaimedResourceReconcileRun | null): run is ClaimedResourceReconcileRun => run !== null,
+    );
+    expect(active).toHaveLength(1);
+    await acknowledgeResourceReconcileRun({
+      leaseId: active[0]!.leaseId,
+      operationId: active[0]!.operationId,
+      status: 'succeeded',
+    });
+
+    const next: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+    expect(next?.operationId).not.toBe(active[0]!.operationId);
+  });
 });
+
+function resourceIntent(): ResourceReconcileIntent {
+  return {
+    containerPort: 5432,
+    environmentId: 'env_resource_backups',
+    env: {},
+    image: 'postgres:17',
+    namespaceId: 'prj_resource_backups',
+    resourceId: 'res_postgres',
+    secretId: 'res_postgres',
+    volumes: [{ mountPath: '/var/lib/postgresql/data', size: '1Gi', volumeHandle: 'data' }],
+  };
+}
 
 async function seedResourceBackupScope(): Promise<void> {
   await db.insert(organizations).values({ id: 'org_resource_backups', name: 'Acme Dev', slug: 'acme-dev' });
