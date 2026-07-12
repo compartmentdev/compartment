@@ -7,10 +7,10 @@ class NonRetryableGitSourceTaskError extends Error {
   }
 }
 
-export function createNonRetryableGitSourceResolutionError(message: string): NonRetryableGitSourceTaskError {
+export function createNonRetryableGitSourceTaskError(message: string): NonRetryableGitSourceTaskError {
   return new NonRetryableGitSourceTaskError(message);
 }
 
-export function isRetryableGitSourceResolutionFailure(error: Error | undefined): boolean {
+export function isRetryableGitSourceTaskError(error: Error | undefined): boolean {
   return !(error instanceof NonRetryableGitSourceTaskError);
 }

@@ -74,6 +74,7 @@ async function handleCreate(request: FastifyRequest, reply: FastifyReply): Promi
 
 async function handleList(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const response: GitLabProviderRegistrationListResponse = gitLabProviderRegistrationListResponseSchema.parse({
+    // Temporary multi-provider bridge; replace with provider-neutral active registrations before provider three.
     activeGitHubProviderHosts: await listActiveGitHubProviderHostsForOrganization(request.currentOrganization.id),
     registrations: await listGitLabRegistrations(request.currentOrganization.id),
   });

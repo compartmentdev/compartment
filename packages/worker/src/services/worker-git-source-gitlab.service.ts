@@ -8,7 +8,7 @@ import {
   createWorkerGitProviderArchiveTrustedOutboundFetch,
   createWorkerGitProviderTrustedOutboundFetch,
 } from './worker-outbound-http.service';
-import { createNonRetryableGitSourceResolutionError } from './worker-git-source-resolution-failure.support';
+import { createNonRetryableGitSourceTaskError } from './worker-git-source-resolution-failure.support';
 
 type WorkerClaimedGitLabArchiveTask = WorkerClaimedGitSourceResolutionTask | WorkerClaimedGitSourceSyncTask;
 interface GitLabBranchResponse {
@@ -52,7 +52,7 @@ export async function readGitLabBranchHeadSha(task: WorkerClaimedGitSourceSyncTa
 function requireRepositoryExternalId(value: string | undefined): string {
   if (value === undefined || value.length === 0) {
     // Sync has no retryable wire flag, so this task-neutral failure deliberately retries to maxAttempts there.
-    throw createNonRetryableGitSourceResolutionError('GitLab git-source task is missing repositoryExternalId.');
+    throw createNonRetryableGitSourceTaskError('GitLab git-source task is missing repositoryExternalId.');
   }
   return value;
 }

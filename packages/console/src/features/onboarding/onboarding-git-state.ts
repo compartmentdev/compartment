@@ -37,6 +37,7 @@ export interface GitDescriptorLoadResult {
 }
 
 interface UseGitOnboardingStateInput {
+  gitConnected: boolean;
   initialBranchName: string | undefined;
   initialEnvironmentName: string | undefined;
   provider: OnboardingGitProvider;

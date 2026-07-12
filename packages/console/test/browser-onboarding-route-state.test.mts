@@ -131,6 +131,19 @@ describe('browser onboarding route state', (): void => {
     });
   });
 
+  it('keeps legacy Git URLs compatible without provider parameters', (): void => {
+    vi.stubGlobal('window', {
+      location: { href: 'http://console.localhost/onboarding?method=git&step=prepare&git=connected' },
+    });
+
+    expect(readCurrentOnboardingRouteState()).toMatchObject({
+      method: 'git',
+      provider: undefined,
+      providerHost: undefined,
+      step: 'prepare',
+    });
+  });
+
   it('resets stale Git repository flow state when the repository changes', (): void => {
     const nextState: OnboardingRouteState = readNextRouteState(
       {

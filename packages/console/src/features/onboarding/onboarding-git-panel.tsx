@@ -40,11 +40,14 @@ interface GitRepositoryLoadStepProps {
 }
 
 export function GitOnboardingPanel(props: Readonly<GitOnboardingPanelProps>): JSX.Element {
+  const provider: OnboardingGitProvider = props.routeState.provider ?? 'github';
+  const providerHost: string = props.routeState.providerHost ?? (provider === 'gitlab' ? 'gitlab.com' : 'github.com');
   const state: GitOnboardingState = useGitOnboardingState({
+    gitConnected: props.routeState.gitConnected,
     initialBranchName: props.routeState.branchName,
     initialEnvironmentName: props.routeState.environmentName,
-    provider: props.routeState.provider ?? 'github',
-    providerHost: props.routeState.providerHost ?? 'github.com',
+    provider,
+    providerHost,
     registrationId: props.routeState.registrationId,
     repositoryOwner: props.routeState.repositoryOwner,
     sessionId: props.routeState.sessionId,

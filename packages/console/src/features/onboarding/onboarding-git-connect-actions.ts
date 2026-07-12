@@ -114,7 +114,7 @@ function buildGitHubReturnPath(
     gitConnected,
     method: 'git',
     provider: 'github',
-    providerHost: 'github.com',
+    providerHost: gitOnboardingProviderHost,
     registrationId,
     repositoryOwner,
     sessionId,

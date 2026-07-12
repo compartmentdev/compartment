@@ -3,12 +3,13 @@ import {
   type GitHubInstallationRepositorySummary,
   type GitHubProviderBootstrapResponse,
   type GitLabProviderRegistrationListResponse,
+  type GitProviderRepositorySummary,
   type GitSourceResponse,
 } from '@compartment/contracts';
 import { hasText } from '@compartment/utils';
 import type { Command } from 'commander';
 import { promptVisibleText } from '../../prompts/prompt';
-import { connectGitSource } from '../../services/sources.service';
+import { connectGitSource, listGitLabSourceRegistrations } from '../../services/sources.service';
 import type { LocalGitSourcePlan } from '../../services/source-git-local.service.types';
 import type { AuthenticatedContext } from '../../services/context.types';
 import type { CliCommandDependencies, SourceConnectGitCommandOptions } from '../command.types';
@@ -21,17 +22,13 @@ import {
   resolveGitRepositoryOwner,
 } from './source-connect-git-repository-list';
 import { parseEnabledDisabledState, promptYesNoChoice } from './source.command.helpers';
-import {
-  isGitLabRepositoryProvider,
-  listGitLabRegistrationsForSelection,
-  resolveGitLabRepositorySelection,
-} from './source-connect-gitlab.command';
+import { isGitLabRepositoryProvider, resolveGitLabRepositorySelection } from './source-connect-gitlab.command';
 import { runSourceConnectGitCommand } from './source-connect-git-run.command';
 
 export interface GitSourceRepositorySelection {
   providerHost: string;
   registrationId?: string | undefined;
-  repository: GitHubInstallationRepositorySummary;
+  repository: GitProviderRepositorySummary;
 }
 
 interface ConnectSelectedGitSourceInput {
@@ -87,7 +84,7 @@ export async function resolveGitSourceRepositorySelection(
   if (plan.providerHost === 'github.com') {
     return await resolveGitHubRepositorySelection(dependencies, context, plan);
   }
-  const gitLabState: GitLabProviderRegistrationListResponse = await listGitLabRegistrationsForSelection(context);
+  const gitLabState: GitLabProviderRegistrationListResponse = await listGitLabSourceRegistrations(context);
   if (
     isGitLabRepositoryProvider(
       plan.providerHost,

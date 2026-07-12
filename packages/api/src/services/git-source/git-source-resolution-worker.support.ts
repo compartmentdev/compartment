@@ -21,6 +21,7 @@ export function buildClaimedTaskProviderFields(
   registration: GitProviderRegistrationRow,
   source: SourceRow,
 ): ClaimedTaskProviderFields {
+  // Legacy compatibility: retire this GitHub omission once same-version task producers are guaranteed.
   const providerType: GitProviderType = getGitProviderAdapter(registration.providerType).providerType;
   if (providerType === 'github_app') {
     return {};

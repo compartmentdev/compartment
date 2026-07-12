@@ -11,6 +11,7 @@ export {
   compartmentGitLabProviderRegistrationsPathname,
   buildCompartmentGitLabProviderRegistrationRepositoriesPathname,
 } from './contracts/control-plane-protocol.contract';
+export { compartmentGitLabTokenInvalidErrorCode } from './contracts/control-plane-browser-errors.contract';
 export {
   type DeploymentStatusQuery,
   type DeploymentStatusResponse,

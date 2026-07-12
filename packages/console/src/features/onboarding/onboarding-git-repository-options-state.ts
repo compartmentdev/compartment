@@ -1,3 +1,4 @@
+import { compartmentGitLabTokenInvalidErrorCode } from '@compartment/contracts/browser';
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { BrowserApiError } from '../../lib/browser-api';
 import { loadGitHubRepositoryOptions } from './onboarding-github-repositories';
@@ -16,6 +17,7 @@ export interface GitRepositoryOptionsState {
 }
 
 interface UseGitRepositoryOptionsInput {
+  gitConnected: boolean;
   initialBranchName: string | undefined;
   initialEnvironmentName: string | undefined;
   provider: OnboardingGitProvider;
@@ -36,6 +38,7 @@ interface UseLoadGitRepositoryOptionsInput {
 }
 
 interface LoadGitRepositoryOptionsEffectInput {
+  gitConnected: boolean;
   initialBranchName: string | undefined;
   initialEnvironmentName: string | undefined;
   provider: OnboardingGitProvider;
@@ -118,7 +121,6 @@ function useLoadGitRepositoryOptionsEffectInput(
   input: UseLoadGitRepositoryOptionsInput,
 ): LoadGitRepositoryOptionsEffectInput {
   const { input: options, setFormInput, setRepositoryLoadStatus, setRepositoryOptions } = input;
-  const optionsKey: string = JSON.stringify(options);
   return useMemo(
     (): LoadGitRepositoryOptionsEffectInput => ({
       ...options,
@@ -126,11 +128,13 @@ function useLoadGitRepositoryOptionsEffectInput(
       setRepositoryLoadStatus,
       setRepositoryOptions,
     }),
-    [optionsKey, setFormInput, setRepositoryLoadStatus, setRepositoryOptions],
+    // prettier-ignore
+    [options.gitConnected, options.initialBranchName, options.initialEnvironmentName, options.provider, options.providerHost, options.registrationId, options.repositoryOwner, options.sessionId, options.selectedRepositoryId, options.selectedOrganizationSlug, setFormInput, setRepositoryLoadStatus, setRepositoryOptions],
   );
 }
 
 function startLoadGitRepositoryOptions(input: LoadGitRepositoryOptionsEffectInput): () => void {
+  if (!input.gitConnected) return skipRepositoryLoad(input);
   let canceled: boolean = false;
   input.setRepositoryLoadStatus('loading');
   void loadGitRepositoryOptions(input)
@@ -139,14 +143,23 @@ function startLoadGitRepositoryOptions(input: LoadGitRepositoryOptionsEffectInpu
     })
     .catch((error: Error): void => {
       if (!canceled) {
-        input.setRepositoryLoadStatus(
-          error instanceof BrowserApiError && error.code === 'gitlab_token_invalid' ? 'token_invalid' : 'failed',
-        );
+        input.setRepositoryLoadStatus(readRepositoryLoadFailureStatus(error));
       }
     });
   return (): void => {
     canceled = true;
   };
+}
+
+function skipRepositoryLoad(input: LoadGitRepositoryOptionsEffectInput): () => void {
+  input.setRepositoryLoadStatus('idle');
+  return (): void => undefined;
+}
+
+function readRepositoryLoadFailureStatus(error: Error): GitRepositoryLoadStatus {
+  return error instanceof BrowserApiError && error.code === compartmentGitLabTokenInvalidErrorCode
+    ? 'token_invalid'
+    : 'failed';
 }
 
 function updateLoadedRepositories(

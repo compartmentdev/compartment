@@ -39,6 +39,7 @@ describe('GitLab source provider detection', (): void => {
       token: 'stray',
     },
     { activeGitHubProviderHosts: [], expected: true, host: 'code.example.com', registrations: [], token: 'token' },
+    { activeGitHubProviderHosts: [], expected: false, host: 'code.example.com', registrations: [], token: undefined },
     {
       activeGitHubProviderHosts: [],
       expected: true,
@@ -95,6 +96,17 @@ describe('GitLab source provider detection', (): void => {
         [registration],
       ),
     ).rejects.toThrow('group/repo');
+  });
+
+  it('guides token setup when gitlab.com has no registration', async (): Promise<void> => {
+    await expect(
+      resolveGitLabRepositorySelection(
+        createContext(),
+        { providerHost: 'gitlab.com', repositoryName: 'repo', repositoryOwner: 'group' },
+        undefined,
+        [],
+      ),
+    ).rejects.toThrow('Set COMPARTMENT_GITLAB_TOKEN to register GitLab.');
   });
 });
 

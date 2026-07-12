@@ -75,7 +75,7 @@ function parseSshRemoteUrl(value: string): ParsedGitHubRemote | null {
   }
 
   return {
-    providerHost: match[1]!,
+    providerHost: match[1]!.toLowerCase(),
     repositoryName: match[3]!,
     repositoryOwner: match[2]!,
   };
@@ -95,7 +95,7 @@ function parseStandardRemoteUrl(value: string): ParsedGitHubRemote | null {
   }
 
   return {
-    providerHost: parsed.host,
+    providerHost: parsed.host.toLowerCase(),
     repositoryName: pathSegments[1]?.replace(/\.git$/, '') ?? '',
     repositoryOwner: pathSegments[0] ?? '',
   };

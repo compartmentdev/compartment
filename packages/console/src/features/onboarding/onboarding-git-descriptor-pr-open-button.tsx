@@ -38,7 +38,9 @@ export function OpenDescriptorPullRequestButton({
   return (
     <div className="grid gap-3">
       {state.status === 'failed' ? (
-        <p className="text-[13px] leading-5 text-[#b42318]">Could not create pull request. Try again.</p>
+        <p className="text-[13px] leading-5 text-[#b42318]">
+          Could not create {isGitLab ? 'merge request' : 'pull request'}. Try again.
+        </p>
       ) : null}
       <DescriptorPullRequestOpenButton isGitLab={isGitLab} state={state} />
     </div>

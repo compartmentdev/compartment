@@ -1,15 +1,7 @@
-import type {
-  GitLabProviderRegistrationListResponse,
-  GitLabProviderRegistrationSummary,
-  GitProviderRepositorySummary,
-} from '@compartment/contracts';
+import type { GitLabProviderRegistrationSummary, GitProviderRepositorySummary } from '@compartment/contracts';
 import type { AuthenticatedContext } from '../../services/context.types';
 import type { LocalGitSourcePlan } from '../../services/source-git-local.service.types';
-import {
-  createGitLabSourceRegistration,
-  listGitLabRepositoriesForSource,
-  listGitLabSourceRegistrations,
-} from '../../services/sources.service';
+import { createGitLabSourceRegistration, listGitLabRepositoriesForSource } from '../../services/sources.service';
 
 interface GitLabRepositorySelection {
   providerHost: string;
@@ -17,10 +9,9 @@ interface GitLabRepositorySelection {
   repository: GitProviderRepositorySummary;
 }
 
-export async function listGitLabRegistrationsForSelection(
-  context: AuthenticatedContext,
-): Promise<GitLabProviderRegistrationListResponse> {
-  return await listGitLabSourceRegistrations(context);
+interface GitLabRegistrationRepositorySelection {
+  registration: GitLabProviderRegistrationSummary;
+  repository: GitProviderRepositorySummary;
 }
 
 export async function resolveGitLabRepositorySelection(
@@ -30,21 +21,14 @@ export async function resolveGitLabRepositorySelection(
   registrations: GitLabProviderRegistrationSummary[],
 ): Promise<GitLabRepositorySelection> {
   const fullName: string = `${plan.repositoryOwner}/${plan.repositoryName}`;
-  const registration: GitLabProviderRegistrationSummary | undefined = await resolveGitLabRegistrationForRepository(
+  const selection: GitLabRegistrationRepositorySelection = await resolveGitLabRegistrationForRepository(
     context,
     plan.providerHost,
     token,
     registrations,
     fullName,
   );
-  if (registration === undefined)
-    throw new Error(`GitLab repository ${fullName} was not found for a registration on ${plan.providerHost}.`);
-  const repository: GitProviderRepositorySummary = await requireRegisteredGitLabRepository(
-    context,
-    registration,
-    fullName,
-  );
-  return buildGitLabRepositorySelection(plan.providerHost, registration.registrationId, repository);
+  return buildGitLabRepositorySelection(plan.providerHost, selection.registration.registrationId, selection.repository);
 }
 
 function buildGitLabRepositorySelection(
@@ -55,63 +39,59 @@ function buildGitLabRepositorySelection(
   return { providerHost, registrationId, repository };
 }
 
-async function requireRegisteredGitLabRepository(
-  context: AuthenticatedContext,
-  registration: GitLabProviderRegistrationSummary,
-  fullName: string,
-): Promise<GitProviderRepositorySummary> {
-  const repositories: GitProviderRepositorySummary[] = (
-    await listGitLabRepositoriesForSource(context, registration.registrationId)
-  ).repositories;
-  const repository: GitProviderRepositorySummary | undefined = repositories.find(
-    (candidate: GitProviderRepositorySummary): boolean => candidate.fullName === fullName,
-  );
-  if (repository === undefined)
-    throw new Error(
-      `GitLab repository ${fullName} was not found for the registration on ${registration.providerHost}.`,
-    );
-  return repository;
-}
-
 async function resolveGitLabRegistrationForRepository(
   context: AuthenticatedContext,
   providerHost: string,
   token: string | undefined,
   registrations: GitLabProviderRegistrationSummary[],
   fullName: string,
-): Promise<GitLabProviderRegistrationSummary | undefined> {
-  if (token !== undefined) return await resolveGitLabRegistration(context, providerHost, token, registrations);
-  for (const registration of registrations.filter(
+): Promise<GitLabRegistrationRepositorySelection> {
+  if (token !== undefined) {
+    const registration: GitLabProviderRegistrationSummary = await resolveGitLabRegistration(
+      context,
+      providerHost,
+      token,
+    );
+    return await findRegisteredGitLabRepository(context, registration, fullName);
+  }
+  return await findGitLabRepositoryWithoutToken(context, providerHost, registrations, fullName);
+}
+
+async function findGitLabRepositoryWithoutToken(
+  context: AuthenticatedContext,
+  providerHost: string,
+  registrations: GitLabProviderRegistrationSummary[],
+  fullName: string,
+): Promise<GitLabRegistrationRepositorySelection> {
+  const matchingRegistrations: GitLabProviderRegistrationSummary[] = registrations.filter(
     (candidate: GitLabProviderRegistrationSummary): boolean => candidate.providerHost === providerHost,
-  )) {
+  );
+  for (const registration of matchingRegistrations) {
     const repositories: GitProviderRepositorySummary[] = (
       await listGitLabRepositoriesForSource(context, registration.registrationId)
     ).repositories;
-    if (repositories.some((repository: GitProviderRepositorySummary): boolean => repository.fullName === fullName))
-      return registration;
+    const repository: GitProviderRepositorySummary | undefined = repositories.find(
+      (candidate: GitProviderRepositorySummary): boolean => candidate.fullName === fullName,
+    );
+    if (repository !== undefined) return { registration, repository };
   }
-  return undefined;
+  if (matchingRegistrations.length === 0) throw new Error('Set COMPARTMENT_GITLAB_TOKEN to register GitLab.');
+  throw new Error(`GitLab repository ${fullName} was not found for a registration on ${providerHost}.`);
 }
 
 async function resolveGitLabRegistration(
   context: AuthenticatedContext,
   providerHost: string,
-  token: string | undefined,
-  registrations: GitLabProviderRegistrationSummary[],
+  token: string,
 ): Promise<GitLabProviderRegistrationSummary> {
-  const existing: GitLabProviderRegistrationSummary | undefined = registrations.find(
-    (registration: GitLabProviderRegistrationSummary): boolean => registration.providerHost === providerHost,
-  );
-  return token === undefined
-    ? requireGitLabRegistration(existing)
-    : (await createGitLabSourceRegistration(context, providerHost, token)).registration;
+  return (await createGitLabSourceRegistration(context, providerHost, token)).registration;
 }
 
 export function isGitLabRepositoryProvider(
   providerHost: string,
   token: string | undefined,
   registrations: GitLabProviderRegistrationSummary[],
-  activeGitHubProviderHosts: string[] = [],
+  activeGitHubProviderHosts: string[],
 ): boolean {
   if (providerHost === 'gitlab.com') return true;
   if (providerHost === 'github.com') return false;
@@ -122,11 +102,20 @@ export function isGitLabRepositoryProvider(
   return token !== undefined && !activeGitHubProviderHosts.includes(providerHost);
 }
 
-function requireGitLabRegistration(
-  registration: GitLabProviderRegistrationSummary | undefined,
-): GitLabProviderRegistrationSummary {
-  if (registration === undefined) {
-    throw new Error('Set COMPARTMENT_GITLAB_TOKEN to register GitLab.');
-  }
-  return registration;
+async function findRegisteredGitLabRepository(
+  context: AuthenticatedContext,
+  registration: GitLabProviderRegistrationSummary,
+  fullName: string,
+): Promise<GitLabRegistrationRepositorySelection> {
+  const repositories: GitProviderRepositorySummary[] = (
+    await listGitLabRepositoriesForSource(context, registration.registrationId)
+  ).repositories;
+  const repository: GitProviderRepositorySummary | undefined = repositories.find(
+    (candidate: GitProviderRepositorySummary): boolean => candidate.fullName === fullName,
+  );
+  if (repository === undefined)
+    throw new Error(
+      `GitLab repository ${fullName} was not found for the registration on ${registration.providerHost}.`,
+    );
+  return { registration, repository };
 }

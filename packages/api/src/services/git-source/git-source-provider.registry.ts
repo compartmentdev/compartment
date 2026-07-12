@@ -25,5 +25,5 @@ function requireGitProviderType(value: string): GitProviderType {
 }
 
 function isGitProviderType(value: string): value is GitProviderType {
-  return value in gitProviderAdapters;
+  return Object.hasOwn(gitProviderAdapters, value);
 }
