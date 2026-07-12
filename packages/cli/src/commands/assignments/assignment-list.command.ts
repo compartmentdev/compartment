@@ -30,8 +30,12 @@ function formatAssignmentRow(assignment: AccessAssignmentSummary): string {
 }
 
 function formatScope(scope: AccessAssignmentScopeTarget): string {
-  if (scope.scopeType === 'organization') return 'organization';
-  if (scope.scopeType === 'project') return `project:${scope.projectName}`;
+  if (scope.scopeType === 'organization') {
+    return 'organization';
+  }
+  if (scope.scopeType === 'project') {
+    return `project:${scope.projectName}`;
+  }
   return `environment:${scope.projectName}/${scope.environmentName}`;
 }
 

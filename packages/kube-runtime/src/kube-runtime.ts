@@ -104,7 +104,9 @@ export class KubeRuntime {
       return await this.readJobResult(spec, jobName, observation, deadline.expiresAt);
     } finally {
       clearTimeout(deadline.timer);
-      if (observation !== null) await observation.stop();
+      if (observation !== null) {
+        await observation.stop();
+      }
     }
   }
 

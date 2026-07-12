@@ -364,7 +364,9 @@ async function readOrganizationIdBySlug(organizationSlug: string): Promise<strin
       .where(eq(organizations.slug, organizationSlug))
       .limit(1)
   )[0]?.id;
-  if (organizationId === undefined) throw new Error(`Expected organization ${organizationSlug}.`);
+  if (organizationId === undefined) {
+    throw new Error(`Expected organization ${organizationSlug}.`);
+  }
   return organizationId;
 }
 

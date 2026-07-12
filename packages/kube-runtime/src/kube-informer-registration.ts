@@ -86,7 +86,9 @@ function labelSelector(labels: Readonly<Record<string, string>>): string {
   const entries: [string, string][] = Object.entries(labels).sort(
     ([left]: [string, string], [right]: [string, string]): number => left.localeCompare(right),
   );
-  if (entries.length === 0) throw new Error('observe(labels) requires at least one ownership label.');
+  if (entries.length === 0) {
+    throw new Error('observe(labels) requires at least one ownership label.');
+  }
   return entries.map(([key, value]: [string, string]): string => `${key}=${value}`).join(',');
 }
 

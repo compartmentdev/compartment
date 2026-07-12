@@ -8,7 +8,7 @@ import type {
   AuditRetentionMode,
   ListSortDirection,
 } from '@compartment/contracts';
-import { and, asc, count, desc, eq, gte, lte, or, sql, type SQL } from 'drizzle-orm';
+import { asc, count, desc, sql, type SQL } from 'drizzle-orm';
 import { auditEvents, organizations } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -23,7 +23,7 @@ import type {
   InsertAuditEventInput,
   ListAuditEventsPageInput,
 } from './audit-events.query.types';
-import { buildPrincipalEmailLookup } from './principal-email.query.helpers';
+import { buildAuditEventFilter } from './audit-events.query.filters';
 
 export const auditEventExportRowLimit: number = 10_000;
 
@@ -168,17 +168,6 @@ async function countAuditEvents(input: AuditEventFilterInput): Promise<number> {
   return rows[0]?.value ?? 0;
 }
 
-function buildAuditEventFilter(input: AuditEventFilterInput): SQL {
-  const filters: SQL[] = [
-    eq(auditEvents.organizationId, input.organizationId),
-    eq(auditEvents.scopeType, 'organization'),
-  ];
-  appendAuditEventTimeFilters(filters, input);
-  appendAuditEventAttributeFilters(filters, input);
-
-  return and(...filters)!;
-}
-
 function buildAuditEventInsertRecord(input: InsertAuditEventInput): StoredAuditEventRow {
   return {
     actorEmail: input.actorEmail ?? null,
@@ -202,22 +191,6 @@ function buildAuditEventInsertRecord(input: InsertAuditEventInput): StoredAuditE
     targetType: input.targetType,
     userAgent: input.userAgent ?? null,
   };
-}
-
-function appendAuditEventTimeFilters(filters: SQL[], input: AuditEventFilterInput): void {
-  if (input.from !== undefined) filters.push(gte(auditEvents.occurredAt, input.from));
-  if (input.to !== undefined) filters.push(lte(auditEvents.occurredAt, input.to));
-}
-
-function appendAuditEventAttributeFilters(filters: SQL[], input: AuditEventFilterInput): void {
-  if (input.eventType !== undefined) filters.push(eq(auditEvents.eventType, input.eventType));
-  if (input.actor !== undefined) filters.push(buildAuditEventActorFilter(input.actor));
-  if (input.targetType !== undefined) filters.push(eq(auditEvents.targetType, input.targetType));
-  if (input.project !== undefined) filters.push(eq(auditEvents.projectId, input.project));
-}
-
-function buildAuditEventActorFilter(actor: string): SQL {
-  return or(eq(auditEvents.actorPrincipalId, actor), buildPrincipalEmailLookup(actor, auditEvents.actorEmail))!;
 }
 
 function buildAuditEventOrderBy(

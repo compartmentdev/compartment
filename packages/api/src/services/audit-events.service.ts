@@ -186,8 +186,12 @@ async function readAuditRetentionStart(organizationId: string): Promise<Date | u
 }
 
 function readLatestDate(left: Date | undefined, right: Date | undefined): Date | undefined {
-  if (left === undefined) return right;
-  if (right === undefined) return left;
+  if (left === undefined) {
+    return right;
+  }
+  if (right === undefined) {
+    return left;
+  }
 
   return left > right ? left : right;
 }

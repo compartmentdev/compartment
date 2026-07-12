@@ -31,7 +31,9 @@ describe('browser roles loader', (): void => {
       ),
     );
 
-    if (result instanceof Response) throw new Error('Expected roles page result.');
+    if (result instanceof Response) {
+      throw new Error('Expected roles page result.');
+    }
     expect(result.backHref).toBe('/orgs/acme-dev/users?page=2');
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).toEqual([
       '/v1/orgs',
@@ -52,7 +54,9 @@ describe('browser roles loader', (): void => {
       ),
     );
 
-    if (result instanceof Response) throw new Error('Expected roles page result.');
+    if (result instanceof Response) {
+      throw new Error('Expected roles page result.');
+    }
     expect(result.backHref).toBeUndefined();
   });
 });

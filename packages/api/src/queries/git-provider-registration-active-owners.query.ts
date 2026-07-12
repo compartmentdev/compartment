@@ -12,7 +12,9 @@ export async function findActiveGitProviderRegistrationsByRepositoryOwners(
   input: FindActiveGitProviderRegistrationsByRepositoryOwnersInput,
 ): Promise<GitProviderRegistrationRow[]> {
   const repositoryOwners: string[] = readNormalizedRepositoryOwners(input.repositoryOwners);
-  if (repositoryOwners.length === 0) return [];
+  if (repositoryOwners.length === 0) {
+    return [];
+  }
 
   const rows: PersistedGitProviderRegistrationRow[] = await getApiDatabase()
     .select()

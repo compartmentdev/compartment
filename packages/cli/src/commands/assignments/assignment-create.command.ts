@@ -63,7 +63,9 @@ function buildScope(options: AssignmentCreateCommandOptions): AccessAssignmentSc
     case 'organization':
       return { scopeType: 'organization' };
     case 'project':
-      if (options.project === undefined) throw new Error('--project is required for project scope.');
+      if (options.project === undefined) {
+        throw new Error('--project is required for project scope.');
+      }
       return { projectName: options.project, scopeType: 'project' };
     case 'environment':
       if (options.project === undefined || options.environment === undefined) {

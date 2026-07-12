@@ -54,8 +54,9 @@ export class KubeRuntimeRecoveryHarness {
   }
 
   public async run(killPoint: RecoveryKillPoint): Promise<RecoveryResult> {
-    if (killPoint === 'after-desired-before-apply') await this.restart();
-    else if (killPoint === 'after-apply-before-pending') {
+    if (killPoint === 'after-desired-before-apply') {
+      await this.restart();
+    } else if (killPoint === 'after-apply-before-pending') {
       await this.applyBundle();
       await this.restart();
     } else if (killPoint === 'after-pending-before-ready') {
@@ -93,8 +94,12 @@ export class KubeRuntimeRecoveryHarness {
         this.objects.get(this.row.id) ?? this.missingObject(),
         new Date('2026-07-11T12:00:00.000Z'),
       );
-      if (transition.action === 'apply') await this.applyBundle();
-      if (transition.audit !== null && this.row.state === 'active') this.row.audit.push(transition.audit);
+      if (transition.action === 'apply') {
+        await this.applyBundle();
+      }
+      if (transition.audit !== null && this.row.state === 'active') {
+        this.row.audit.push(transition.audit);
+      }
       this.row.state = transition.nextState;
       this.row.observedAt = transition.observedAt;
     });
@@ -155,7 +160,9 @@ class RecoveryObjectApi {
 
   public async patch(object: KubernetesObject): Promise<KubernetesObject> {
     const deploymentId: string | undefined = object.metadata?.labels?.['compartment.dev/deployment-id'];
-    if (deploymentId === undefined) throw new Error('Recovery apply is missing the immutable deployment label.');
+    if (deploymentId === undefined) {
+      throw new Error('Recovery apply is missing the immutable deployment label.');
+    }
     this.onApply(deploymentId);
     return await Promise.resolve(object);
   }

@@ -94,8 +94,12 @@ class RuntimeObservation implements KubeObservation {
 
   public async stop(): Promise<void> {
     this.stopping = true;
-    for (const state of this.states) cancelRestart(state);
-    for (const timer of this.deliveryTimers) clearTimeout(timer);
+    for (const state of this.states) {
+      cancelRestart(state);
+    }
+    for (const timer of this.deliveryTimers) {
+      clearTimeout(timer);
+    }
     this.deliveryTimers.clear();
     await Promise.all(this.states.map(async (state: InformerState): Promise<void> => await state.informer.stop()));
   }
@@ -122,20 +126,27 @@ class RuntimeObservation implements KubeObservation {
   }
 
   private attemptStart(state: InformerState): void {
-    if (this.stopping) return;
+    if (this.stopping) {
+      return;
+    }
     void state.informer.start().catch((error: Error): void => this.scheduleRestart(state, error));
   }
 
   private scheduleRestart(state: InformerState, error?: KubeInformerError): void {
-    if (this.stopping || state.restartTimer !== null) return;
+    if (this.stopping || state.restartTimer !== null) {
+      return;
+    }
     state.lastErrorAt = new Date();
     const relist: boolean = error?.statusCode === 410 || error?.code === 410;
     const delay: number = relist ? 0 : restartDelay(state.attempt);
     state.attempt += 1;
     state.restartTimer = setTimeout((): void => {
       state.restartTimer = null;
-      if (relist) void this.relist(state);
-      else this.attemptStart(state);
+      if (relist) {
+        void this.relist(state);
+      } else {
+        this.attemptStart(state);
+      }
     }, delay);
   }
 
@@ -156,7 +167,9 @@ class RuntimeObservation implements KubeObservation {
 
   private clearResourceCache(resource: KubeObservedResource): void {
     for (const key of this.cache.keys()) {
-      if (key.startsWith(`${resource}/`)) this.cache.delete(key);
+      if (key.startsWith(`${resource}/`)) {
+        this.cache.delete(key);
+      }
     }
   }
 
@@ -167,8 +180,11 @@ class RuntimeObservation implements KubeObservation {
   ): KubeObservationEvent {
     const manifest: KubeObservedManifest = object as KubeObservedManifest;
     const key: string = `${resource}/${object.metadata?.namespace ?? ''}/${object.metadata?.name ?? ''}`;
-    if (type === 'delete') this.cache.delete(key);
-    else this.cache.set(key, manifest);
+    if (type === 'delete') {
+      this.cache.delete(key);
+    } else {
+      this.cache.set(key, manifest);
+    }
     return { object: manifest, observedAt: new Date(), resource, type };
   }
 
@@ -184,7 +200,9 @@ class RuntimeObservation implements KubeObservation {
 
   private dispatchSafely(event: KubeObservationEvent, attempt: number = 0): void {
     void this.dispatch(event).catch((): void => {
-      if (this.stopping) return;
+      if (this.stopping) {
+        return;
+      }
       this.scheduleDelivery((): void => this.dispatchSafely(event, attempt + 1), attempt);
     });
   }
@@ -192,7 +210,9 @@ class RuntimeObservation implements KubeObservation {
   private scheduleDelivery(deliver: () => void, attempt: number): void {
     const timer: NodeJS.Timeout = setTimeout((): void => {
       this.deliveryTimers.delete(timer);
-      if (!this.stopping) deliver();
+      if (!this.stopping) {
+        deliver();
+      }
     }, restartDelay(attempt));
     this.deliveryTimers.add(timer);
   }
@@ -237,7 +257,9 @@ function markConnected(state: InformerState): void {
 }
 
 function cancelRestart(state: InformerState): void {
-  if (state.restartTimer !== null) clearTimeout(state.restartTimer);
+  if (state.restartTimer !== null) {
+    clearTimeout(state.restartTimer);
+  }
   state.restartTimer = null;
 }
 
