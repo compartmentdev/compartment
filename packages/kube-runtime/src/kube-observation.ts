@@ -3,7 +3,7 @@ import type { Informer, KubeConfig, KubernetesObject, KubernetesObjectApi } from
 import { calculateRestartDelay } from './kube-backoff';
 import { createRegisteredInformers, type RegisteredInformer } from './kube-informer-registration';
 import type {
-  KubeManifest,
+  KubeObservedManifest,
   KubeObservation,
   KubeObservationEvent,
   KubeObservationEventType,
@@ -62,7 +62,7 @@ export async function createKubeObservation(
 }
 
 class RuntimeObservation implements KubeObservation {
-  public readonly cache: Map<string, KubeManifest> = new Map<string, KubeManifest>();
+  public readonly cache: Map<string, KubeObservedManifest> = new Map<string, KubeObservedManifest>();
   private readonly deliveryTimers: Set<NodeJS.Timeout> = new Set<NodeJS.Timeout>();
   private readonly listeners: Set<KubeObservationListener> = new Set<KubeObservationListener>();
   private readonly states: InformerState[] = [];
@@ -165,7 +165,7 @@ class RuntimeObservation implements KubeObservation {
     resource: KubeObservedResource,
     object: KubernetesObject,
   ): KubeObservationEvent {
-    const manifest: KubeManifest = object;
+    const manifest: KubeObservedManifest = object as KubeObservedManifest;
     const key: string = `${resource}/${object.metadata?.namespace ?? ''}/${object.metadata?.name ?? ''}`;
     if (type === 'delete') this.cache.delete(key);
     else this.cache.set(key, manifest);

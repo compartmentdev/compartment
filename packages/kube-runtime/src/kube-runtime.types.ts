@@ -1,15 +1,135 @@
 import type { KubernetesObject } from '@kubernetes/client-node';
 
 export type KubeDeploymentState = 'desired' | 'pending' | 'active';
+export type KubeManifestKind =
+  | 'ClusterRole'
+  | 'ClusterRoleBinding'
+  | 'Deployment'
+  | 'Job'
+  | 'Namespace'
+  | 'NetworkPolicy'
+  | 'RoleBinding'
+  | 'Secret'
+  | 'Service'
+  | 'ServiceAccount';
 
-export interface KubeManifest extends KubernetesObject {
+interface KubeManifestBase extends KubernetesObject {
+  automountServiceAccountToken?: false | undefined;
+  roleRef?: KubeRoleReference | undefined;
   spec?: object | undefined;
   status?: object | undefined;
   stringData?: Record<string, string> | undefined;
+  subjects?: KubeSubject[] | undefined;
   type?: string | undefined;
 }
 
+export interface KubeDeploymentManifest extends KubeManifestBase {
+  kind: 'Deployment';
+  spec?: KubeDeploymentManifestSpec | undefined;
+}
+
+export interface KubeJobManifest extends KubeManifestBase {
+  kind: 'Job';
+  spec?: KubeJobManifestSpec | undefined;
+}
+
+export interface KubeNonWorkloadManifest extends KubeManifestBase {
+  kind:
+    | 'ClusterRole'
+    | 'ClusterRoleBinding'
+    | 'Namespace'
+    | 'NetworkPolicy'
+    | 'RoleBinding'
+    | 'Secret'
+    | 'Service'
+    | 'ServiceAccount';
+}
+
+export type KubeManifest = KubeDeploymentManifest | KubeJobManifest | KubeNonWorkloadManifest;
+
+export interface KubeObservedPodManifest extends KubeManifestBase {
+  kind: 'Pod';
+}
+
+export type KubeObservedManifest = KubeManifest | KubeObservedPodManifest;
+
+interface KubeRoleReference {
+  apiGroup: 'rbac.authorization.k8s.io';
+  kind: 'ClusterRole';
+  name: string;
+}
+
+interface KubeSubject {
+  kind: 'ServiceAccount';
+  name: string;
+  namespace: string;
+}
+
+export interface KubeSecretKeySelector {
+  key: string;
+  name: string;
+}
+
+export interface KubeSecretEnvValueSource {
+  secretKeyRef: KubeSecretKeySelector;
+}
+
+export interface KubeSecretEnvVariable {
+  name: string;
+  valueFrom: KubeSecretEnvValueSource;
+  value?: never;
+}
+
+export interface KubeProjectedContainer {
+  args?: string[] | undefined;
+  command?: string[] | undefined;
+  env: KubeSecretEnvVariable[];
+  image: string;
+  lifecycle?: object | undefined;
+  name: string;
+  ports?: object[] | undefined;
+  readinessProbe?: object | undefined;
+}
+
+export interface KubeProjectedPodSpec {
+  automountServiceAccountToken: false;
+  containers: KubeProjectedContainer[];
+  restartPolicy?: 'Never' | undefined;
+  terminationGracePeriodSeconds?: number | undefined;
+}
+
+export interface KubePodTemplate {
+  metadata: KubePodTemplateMetadata;
+  spec: KubeProjectedPodSpec;
+}
+
+export interface KubePodTemplateMetadata {
+  annotations?: Record<string, string> | undefined;
+  labels: Record<string, string>;
+}
+
+export interface KubeDeploymentManifestSpec {
+  progressDeadlineSeconds: number;
+  replicas: number;
+  selector: object;
+  strategy: object;
+  template: KubePodTemplate;
+}
+
+export interface KubeJobManifestSpec {
+  backoffLimit: number;
+  template: KubePodTemplate;
+}
+
+export interface KubeSecretEnvironment {
+  checksum: string;
+  keys: readonly string[];
+  secretName: string;
+}
+
 export interface ApplyBundle {
+  createBeforeApply?: KubeManifest[] | undefined;
+  deleteAfterApply?: KubeManifest[] | undefined;
   objects: KubeManifest[];
   force?: boolean | undefined;
 }
@@ -25,7 +145,7 @@ export type KubeObservedResource = 'deployments' | 'services' | 'networkpolicies
 export type KubeObservationEventType = 'add' | 'update' | 'delete';
 
 export interface KubeObjectObservationEvent {
-  object: KubeManifest;
+  object: KubeObservedManifest;
   observedAt: Date;
   resource: KubeObservedResource;
   type: KubeObservationEventType;
@@ -46,7 +166,7 @@ export interface KubeObservationHealth {
 }
 
 export interface KubeObservation {
-  cache: ReadonlyMap<string, KubeManifest>;
+  cache: ReadonlyMap<string, KubeObservedManifest>;
   health(): KubeObservationHealth;
   onEvent(listener: KubeObservationListener): () => void;
   stop(): Promise<void>;
@@ -64,7 +184,7 @@ export interface KubeLogReference {
 export interface KubeJobSpec {
   args?: string[] | undefined;
   command?: string[] | undefined;
-  env?: Readonly<Record<string, string>> | undefined;
+  env: KubeSecretEnvironment;
   id: string;
   image: string;
   jobClass: 'release' | 'operation';
@@ -96,6 +216,7 @@ export interface ApplicationProjectionRow {
   replicas: number;
   serviceId: string;
   serviceName: string;
+  secretId: string;
 }
 
 export interface ApplicationProjectionOptions {

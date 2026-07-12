@@ -5,7 +5,7 @@ exports[`Kubernetes manifest projection goldens > projects a secret row without 
 kind: Secret
 metadata:
   annotations:
-    compartment.dev/checksum: c3b2f078bc2fff5c45549ffabda395582ef55c96736489077e010c9dd8b89aa2
+    compartment.dev/checksum: <sha256>
   labels:
     app.kubernetes.io/managed-by: compartment
     compartment.dev/deployment-id: dep-01jz
@@ -19,10 +19,26 @@ type: Opaque"
 `;
 
 exports[`Kubernetes manifest projection goldens > projects an application row to the T1 and T2 workload bundle 1`] = `
-"apiVersion: apps/v1
+"apiVersion: v1
+kind: Secret
+metadata:
+  annotations:
+    compartment.dev/checksum: <sha256>
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    compartment.dev/deployment-id: dep-01jz
+    compartment.dev/secret-id: sec-01jz
+  name: secret-sec-01jz-a55b0604f5214e41
+  namespace: cpt-prj-01jz-243118a73be1a00d
+stringData:
+  FEATURE_FLAG: enabled
+  LOG_LEVEL: info
+type: Opaque
+---
+apiVersion: apps/v1
 kind: Deployment
 metadata:
-  annotations: &a2
+  annotations:
     compartment.dev/environment-name: Production
     compartment.dev/organization-name: Acme
     compartment.dev/project-name: Checkout
@@ -48,16 +64,27 @@ spec:
     type: RollingUpdate
   template:
     metadata:
-      annotations: *a2
+      annotations:
+        compartment.dev/environment-name: Production
+        compartment.dev/organization-name: Acme
+        compartment.dev/project-name: Checkout
+        compartment.dev/secret-checksum: <sha256>
+        compartment.dev/service-name: Web
       labels: *a1
     spec:
       automountServiceAccountToken: false
       containers:
         - env:
             - name: FEATURE_FLAG
-              value: enabled
+              valueFrom:
+                secretKeyRef:
+                  key: FEATURE_FLAG
+                  name: secret-sec-01jz-a55b0604f5214e41
             - name: LOG_LEVEL
-              value: info
+              valueFrom:
+                secretKeyRef:
+                  key: LOG_LEVEL
+                  name: secret-sec-01jz-a55b0604f5214e41
           image: registry.example/app@sha256:abc
           lifecycle:
             preStop:

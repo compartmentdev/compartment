@@ -1,4 +1,15 @@
-import type { KubeJobSpec, KubeManifest, KubeObservation, KubeObservationEvent } from './kube-runtime.types';
+import type {
+  KubeJobSpec,
+  KubeJobManifest,
+  KubeJobManifestSpec,
+  KubeObservation,
+  KubeObservationEvent,
+  KubeObservedManifest,
+  KubeProjectedContainer,
+  KubeProjectedPodSpec,
+  KubeSecretEnvVariable,
+} from './kube-runtime.types';
+import { compareKubeKey } from './kube-key-order';
 
 export interface TerminalJob {
   exitCode: number;
@@ -15,7 +26,7 @@ interface PodStatus {
   containerStatuses?: { state?: { terminated?: { exitCode?: number | undefined } | undefined } | undefined }[];
 }
 
-export function kubeJobManifest(spec: KubeJobSpec, jobName: string, labels: Record<string, string>): KubeManifest {
+export function kubeJobManifest(spec: KubeJobSpec, jobName: string, labels: Record<string, string>): KubeJobManifest {
   return {
     apiVersion: 'batch/v1',
     kind: 'Job',
@@ -33,27 +44,32 @@ export async function waitForTerminalJob(
   return cachedTerminal ?? (await waitForTerminalEvent(observation, jobName, timeoutMs));
 }
 
-function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): object {
+function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobManifestSpec {
+  const podSpec: KubeProjectedPodSpec = {
+    automountServiceAccountToken: false,
+    containers: [jobContainer(spec)],
+    restartPolicy: 'Never',
+  };
   return {
     backoffLimit: spec.jobClass === 'release' ? 0 : 1,
     template: {
-      metadata: { labels },
-      spec: {
-        automountServiceAccountToken: false,
-        containers: [jobContainer(spec)],
-        restartPolicy: 'Never',
-      },
+      metadata: { annotations: { 'compartment.dev/secret-checksum': spec.env.checksum }, labels },
+      spec: podSpec,
     },
   };
 }
 
-function jobContainer(spec: KubeJobSpec): object {
+function jobContainer(spec: KubeJobSpec): KubeProjectedContainer {
+  const env: KubeSecretEnvVariable[] = [...new Set(spec.env.keys)].sort(compareKubeKey).map(
+    (name: string): KubeSecretEnvVariable => ({
+      name,
+      valueFrom: { secretKeyRef: { key: name, name: spec.env.secretName } },
+    }),
+  );
   return {
     args: spec.args,
     command: spec.command,
-    env: Object.entries(spec.env ?? {})
-      .sort(([leftName]: [string, string], [rightName]: [string, string]): number => leftName.localeCompare(rightName))
-      .map(([name, value]: [string, string]): object => ({ name, value })),
+    env,
     image: spec.image,
     name: 'job',
   };
@@ -83,9 +99,9 @@ async function waitForTerminalEvent(
   );
 }
 
-function readTerminalJob(cache: ReadonlyMap<string, KubeManifest>, jobName: string): TerminalJob | null {
-  const job: KubeManifest | undefined = [...cache.values()].find(
-    (object: KubeManifest): boolean => object.kind === 'Job' && object.metadata?.name === jobName,
+function readTerminalJob(cache: ReadonlyMap<string, KubeObservedManifest>, jobName: string): TerminalJob | null {
+  const job: KubeObservedManifest | undefined = [...cache.values()].find(
+    (object: KubeObservedManifest): boolean => object.kind === 'Job' && object.metadata?.name === jobName,
   );
   const status: JobStatus | undefined = job?.status;
   if ((status?.succeeded ?? 0) === 0 && (status?.failed ?? 0) === 0) return null;
@@ -93,12 +109,13 @@ function readTerminalJob(cache: ReadonlyMap<string, KubeManifest>, jobName: stri
 }
 
 function readTerminalPod(
-  cache: ReadonlyMap<string, KubeManifest>,
+  cache: ReadonlyMap<string, KubeObservedManifest>,
   jobName: string,
   succeeded: boolean,
 ): TerminalJob | null {
-  const pod: KubeManifest | undefined = [...cache.values()].find(
-    (object: KubeManifest): boolean => object.kind === 'Pod' && object.metadata?.labels?.['job-name'] === jobName,
+  const pod: KubeObservedManifest | undefined = [...cache.values()].find(
+    (object: KubeObservedManifest): boolean =>
+      object.kind === 'Pod' && object.metadata?.labels?.['job-name'] === jobName,
   );
   if (pod?.metadata?.name === undefined) return null;
   const podStatus: PodStatus | undefined = pod.status;

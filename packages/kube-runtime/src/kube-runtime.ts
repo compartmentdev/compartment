@@ -2,6 +2,7 @@ import { CoreV1Api, KubernetesObjectApi, PatchStrategy, type KubeConfig } from '
 import { createKubeObservation } from './kube-observation';
 import { kubeJobManifest, waitForTerminalJob, type TerminalJob } from './kube-job';
 import { kubeJobName } from './kube-naming';
+import { createOrValidate } from './kube-provisioning-validation';
 import type {
   ApplyBundle,
   KubeJobResult,
@@ -21,28 +22,53 @@ interface JobDeadline {
 }
 
 export class KubeRuntime {
+  private readonly cleanupObjectApi: KubernetesObjectApi | null;
   private readonly coreApi: CoreV1Api;
   private readonly objectApi: KubernetesObjectApi;
 
-  public constructor(private readonly kubeConfig: KubeConfig) {
+  public constructor(
+    private readonly kubeConfig: KubeConfig,
+    cleanupKubeConfig?: KubeConfig,
+  ) {
     this.coreApi = kubeConfig.makeApiClient(CoreV1Api);
     this.objectApi = KubernetesObjectApi.makeApiClient(kubeConfig);
+    this.cleanupObjectApi =
+      cleanupKubeConfig === undefined ? null : KubernetesObjectApi.makeApiClient(cleanupKubeConfig);
   }
 
   public async apply(bundle: ApplyBundle): Promise<KubeManifest[]> {
-    const applied: KubeManifest[] = [];
-    for (const object of bundle.objects) {
-      const result: KubeManifest = await this.objectApi.patch(
-        object,
-        undefined,
-        undefined,
-        fieldManager,
-        bundle.force ?? false,
-        PatchStrategy.ServerSideApply,
-      );
-      applied.push(result);
+    const cleanup: KubeManifest[] = bundle.deleteAfterApply ?? [];
+    const cleanupObjectApi: KubernetesObjectApi | null = this.requiredCleanupApi(cleanup);
+    let applied: KubeManifest[] = [];
+    let primaryError: Error | null = null;
+    try {
+      applied = await this.applyObjects(bundle, cleanupObjectApi);
+    } catch (error) {
+      primaryError = error as Error;
+    }
+    await deleteObjectsPreservingPrimary(cleanupObjectApi, cleanup, primaryError);
+    if (primaryError !== null) {
+      throw primaryError;
     }
     return applied;
+  }
+
+  private async applyObjects(bundle: ApplyBundle, reader: KubernetesObjectApi | null): Promise<KubeManifest[]> {
+    const applied: KubeManifest[] = [];
+    for (const object of bundle.createBeforeApply ?? []) {
+      applied.push(await createOrValidate(this.objectApi, reader, object));
+    }
+    for (const object of bundle.objects) {
+      applied.push(await applyObject(this.objectApi, object, bundle.force ?? false));
+    }
+    return applied;
+  }
+
+  private requiredCleanupApi(cleanup: KubeManifest[]): KubernetesObjectApi | null {
+    if (cleanup.length > 0 && this.cleanupObjectApi === null) {
+      throw new Error('Kubernetes provisioning cleanup requires a separate installation identity.');
+    }
+    return this.cleanupObjectApi;
   }
 
   public async observe(input: ObserveLabels): Promise<KubeObservation> {
@@ -98,6 +124,42 @@ export class KubeRuntime {
       logs: output,
       podName: terminal.podName,
     };
+  }
+}
+
+async function applyObject(
+  objectApi: KubernetesObjectApi,
+  object: KubeManifest,
+  force: boolean,
+): Promise<KubeManifest> {
+  return await objectApi.patch(object, undefined, undefined, fieldManager, force, PatchStrategy.ServerSideApply);
+}
+
+async function deleteObjectsPreservingPrimary(
+  objectApi: KubernetesObjectApi | null,
+  objects: KubeManifest[],
+  primaryError: Error | null,
+): Promise<void> {
+  try {
+    await deleteObjects(objectApi, objects);
+  } catch (cleanupError) {
+    if (primaryError !== null) {
+      throw new AggregateError(
+        [primaryError, cleanupError as Error],
+        'Kubernetes provisioning and bootstrap cleanup both failed.',
+        { cause: primaryError },
+      );
+    }
+    throw cleanupError;
+  }
+}
+
+async function deleteObjects(objectApi: KubernetesObjectApi | null, objects: KubeManifest[]): Promise<void> {
+  if (objectApi === null) {
+    return;
+  }
+  for (const object of objects) {
+    await objectApi.delete(object);
   }
 }
 

@@ -1,11 +1,15 @@
-import { createHash } from 'node:crypto';
 import type {
   ApplicationProjectionOptions,
   ApplicationProjectionRow,
+  KubeDeploymentManifest,
+  KubeDeploymentManifestSpec,
   KubeManifest,
-  SecretProjectionRow,
+  KubeProjectedContainer,
+  KubeProjectedPodSpec,
+  KubeSecretEnvVariable,
 } from './kube-runtime.types';
 import { kubeApplicationName, kubeNamespaceName, kubeNetworkPolicyName, kubeSecretName } from './kube-naming';
+import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
 const metadataServiceCidr: string = ['169', '254', '0', '0/16'].join('.');
@@ -25,7 +29,14 @@ export function projectApplicationManifests(
   options: ApplicationProjectionOptions,
 ): KubeManifest[] {
   const context: ApplicationProjectionContext = applicationProjectionContext(row);
+  const secret: KubeManifest = projectSecretManifest({
+    data: row.env,
+    deploymentId: row.deploymentId,
+    namespaceId: row.namespaceId,
+    secretId: row.secretId,
+  });
   return [
+    secret,
     deploymentManifest(row, context),
     serviceManifest(row, context),
     defaultDenyManifest(context),
@@ -58,32 +69,10 @@ function applicationProjectionContext(row: ApplicationProjectionRow): Applicatio
   };
 }
 
-export function projectSecretManifest(row: SecretProjectionRow): KubeManifest {
-  const orderedData: Record<string, string> = Object.fromEntries(
-    Object.entries(row.data).sort(([left]: [string, string], [right]: [string, string]): number =>
-      left.localeCompare(right),
-    ),
-  );
-  const checksum: string = createHash('sha256').update(JSON.stringify(orderedData)).digest('hex');
-  return {
-    apiVersion: 'v1',
-    kind: 'Secret',
-    metadata: {
-      annotations: { 'compartment.dev/checksum': checksum },
-      labels: {
-        ...managedByLabel,
-        'compartment.dev/deployment-id': row.deploymentId,
-        'compartment.dev/secret-id': row.secretId,
-      },
-      name: kubeSecretName(row.secretId),
-      namespace: kubeNamespaceName(row.namespaceId),
-    },
-    stringData: orderedData,
-    type: 'Opaque',
-  };
-}
-
-function deploymentManifest(row: ApplicationProjectionRow, context: ApplicationProjectionContext): KubeManifest {
+function deploymentManifest(
+  row: ApplicationProjectionRow,
+  context: ApplicationProjectionContext,
+): KubeDeploymentManifest {
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
@@ -92,27 +81,32 @@ function deploymentManifest(row: ApplicationProjectionRow, context: ApplicationP
   };
 }
 
-function deploymentSpec(row: ApplicationProjectionRow, context: ApplicationProjectionContext): object {
+function deploymentSpec(
+  row: ApplicationProjectionRow,
+  context: ApplicationProjectionContext,
+): KubeDeploymentManifestSpec {
+  const podSpec: KubeProjectedPodSpec = {
+    automountServiceAccountToken: false,
+    containers: [applicationContainer(row)],
+    terminationGracePeriodSeconds: 45,
+  };
   return {
     progressDeadlineSeconds: 45,
     replicas: row.replicas,
     selector: { matchLabels: context.labels },
     strategy: { rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }, type: 'RollingUpdate' },
     template: {
-      metadata: { annotations: context.annotations, labels: context.labels },
-      spec: {
-        automountServiceAccountToken: false,
-        containers: [applicationContainer(row)],
-        terminationGracePeriodSeconds: 45,
+      metadata: {
+        annotations: { ...context.annotations, 'compartment.dev/secret-checksum': secretChecksum(row.env) },
+        labels: context.labels,
       },
+      spec: podSpec,
     },
   };
 }
 
-function applicationContainer(row: ApplicationProjectionRow): object {
-  const env: object[] = Object.entries(row.env)
-    .sort(([left]: [string, string], [right]: [string, string]): number => left.localeCompare(right))
-    .map(([name, value]: [string, string]): object => ({ name, value }));
+function applicationContainer(row: ApplicationProjectionRow): KubeProjectedContainer {
+  const env: KubeSecretEnvVariable[] = secretEnvironment(row.env, kubeSecretName(row.secretId));
   return {
     env,
     image: row.image,
