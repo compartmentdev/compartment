@@ -51,7 +51,8 @@ export async function readGitLabBranchHeadSha(task: WorkerClaimedGitSourceSyncTa
 
 function requireRepositoryExternalId(value: string | undefined): string {
   if (value === undefined || value.length === 0) {
-    // Sync has no retryable wire flag, so this task-neutral failure deliberately retries to maxAttempts there.
+    // A missing external id means the claimed task is malformed. Resolution marks it non-retryable;
+    // sync has no retryability field and follows its existing server-side failure policy.
     throw createNonRetryableGitSourceTaskError('GitLab git-source task is missing repositoryExternalId.');
   }
   return value;

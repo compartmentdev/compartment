@@ -73,9 +73,8 @@ This split keeps repository transport settings separate from app-specific deploy
 
 ## Provider Model
 
-- v1 prefers install-owned GitHub App registrations for GitHub and supported GHES hosts.
+- v1 prefers install-scoped GitHub App registrations for GitHub and supported GHES hosts.
 - v1 also supports token-based GitLab registrations for gitlab.com and trusted self-managed GitLab hosts. A registration stores the provider host and token-backed credential, is organization-scoped for selection, and is rotated in place when the same host/owner is connected again.
-- Registrations are install-scoped, not organization-scoped.
 - Managed-domain installs may use the broker only as a stateless short-lived GitHub OAuth helper, authorized by the existing managed-domain token, to list the user's account and organization choices before install-owned app bootstrap. That helper must not request repo scopes, store GitHub OAuth tokens or account lists, or proxy repository operations.
 - Source creation must verify that the selected repository is accessible through the active install-owned GitHub App registration before source creation.
 - Git auto-deploy requires a public HTTPS callback and webhook surface for the install.

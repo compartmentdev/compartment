@@ -765,7 +765,7 @@ describe('git source routes', (): void => {
       expect(response.json()).toEqual({
         error: {
           code: 'git_source_repository_access_denied',
-          message: 'The GitHub App is not installed on the selected repository.',
+          message: 'The active git provider registration cannot access the selected repository.',
         },
       });
     });
