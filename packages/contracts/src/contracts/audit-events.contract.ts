@@ -68,6 +68,7 @@ const auditEventActorTypeValues: readonly [AuditEventActorType, ...AuditEventAct
 ];
 export const auditEventTypeOptions: readonly [AuditEventType, ...AuditEventType[]] = [
   'audit.export.created',
+  'deployment.kubernetes.drift_detected',
   'organization.assignment.created',
   'organization.assignment.deleted',
   'organization.auth_settings.updated',

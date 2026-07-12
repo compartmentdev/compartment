@@ -102,6 +102,9 @@ jobs:
       - name: Run docker lint
         run: pnpm --filter @compartment/docker lint
 
+      - name: Run kube runtime lint
+        run: pnpm --filter @compartment/kube-runtime lint
+
       - name: Run utils lint
         run: pnpm --filter @compartment/utils lint
 
