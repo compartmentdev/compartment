@@ -165,3 +165,9 @@ export {
 } from './services/sso-oidc-provider.service';
 export { unarchiveProject } from './services/project-unarchive.service';
 export { updateDeploymentRuntime } from './services/worker-update-deployment-runtime.service';
+export {
+  claimProductJob,
+  finalizeProductJob,
+  persistProductJobIntent,
+  persistProductJobResult,
+} from './services/worker-product-job.service';

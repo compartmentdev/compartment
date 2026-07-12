@@ -1,11 +1,14 @@
 import type {
   DefaultTimestampBuilder,
   DefaultIntegerBuilder,
+  OptionalIntegerBuilder,
+  OptionalTextBuilder,
   OptionalTimestampBuilder,
   PgExtraConfigColumnsOf,
   PgTableOf,
   PrimaryTextBuilder,
   RequiredEnumTextBuilder,
+  RequiredIntegerBuilder,
   RequiredTextBuilder,
 } from './schema.shared.types';
 
@@ -32,3 +35,26 @@ export type DeploymentKubeReferencesExtraConfigColumns = PgExtraConfigColumnsOf<
   'deployment_kube_references',
   DeploymentKubeReferencesColumnBuilders
 >;
+
+interface ProductJobRunsColumnBuilders {
+  id: PrimaryTextBuilder<'id'>;
+  jobClass: RequiredEnumTextBuilder<'job_class', ['release', 'resource-operation']>;
+  identityId: RequiredTextBuilder<'identity_id'>;
+  image: RequiredTextBuilder<'image'>;
+  commandJson: RequiredTextBuilder<'command_json'>;
+  envJson: RequiredTextBuilder<'env_json'>;
+  namespace: RequiredTextBuilder<'namespace'>;
+  timeoutMs: RequiredIntegerBuilder<'timeout_ms'>;
+  status: RequiredEnumTextBuilder<'status', ['queued', 'running', 'succeeded', 'failed', 'timed-out']>;
+  exitCode: OptionalIntegerBuilder<'exit_code'>;
+  jobName: OptionalTextBuilder<'job_name'>;
+  podName: OptionalTextBuilder<'pod_name'>;
+  logs: OptionalTextBuilder<'logs'>;
+  completedAt: OptionalTimestampBuilder<'completed_at'>;
+  finalizedAt: OptionalTimestampBuilder<'finalized_at'>;
+  createdAt: DefaultTimestampBuilder<'created_at'>;
+  updatedAt: DefaultTimestampBuilder<'updated_at'>;
+}
+
+export type ProductJobRunsTable = PgTableOf<'product_job_runs', ProductJobRunsColumnBuilders>;
+export type ProductJobRunsExtraConfigColumns = PgExtraConfigColumnsOf<'product_job_runs', ProductJobRunsColumnBuilders>;

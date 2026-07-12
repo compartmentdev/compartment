@@ -14,6 +14,7 @@ import { compareKubeKey } from './kube-key-order';
 export interface TerminalJob {
   exitCode: number;
   podName: string;
+  podNames: string[];
   succeeded: boolean;
 }
 
@@ -24,6 +25,15 @@ interface JobStatus {
 
 interface PodStatus {
   containerStatuses?: { state?: { terminated?: { exitCode?: number | undefined } | undefined } | undefined }[];
+}
+
+export function kubeFinalizedJobManifest(
+  spec: KubeJobSpec,
+  jobName: string,
+  labels: Record<string, string>,
+): KubeJobManifest {
+  const manifest: KubeJobManifest = kubeJobManifest(spec, jobName, labels);
+  return { ...manifest, spec: { ...manifest.spec, ttlSecondsAfterFinished: 300 } };
 }
 
 export function kubeJobManifest(spec: KubeJobSpec, jobName: string, labels: Record<string, string>): KubeJobManifest {
@@ -121,17 +131,30 @@ function readTerminalPod(
   jobName: string,
   succeeded: boolean,
 ): TerminalJob | null {
-  const pod: KubeObservedManifest | undefined = [...cache.values()].find(
-    (object: KubeObservedManifest): boolean =>
-      object.kind === 'Pod' && object.metadata?.labels?.['job-name'] === jobName,
+  const pods: KubeObservedManifest[] = [...cache.values()].filter(
+    (object: KubeObservedManifest): boolean => object.kind === 'Pod' && object.metadata?.labels?.['job-name'] === jobName,
   );
+  const terminalPods: KubeObservedManifest[] = pods.filter(
+    (pod: KubeObservedManifest): boolean => readPodExitCode(pod) !== null,
+  );
+  const pod: KubeObservedManifest | undefined = succeeded
+    ? terminalPods.find((candidate: KubeObservedManifest): boolean => readPodExitCode(candidate) === 0)
+    : terminalPods.at(-1);
   if (pod?.metadata?.name === undefined) {
     return null;
   }
-  const podStatus: PodStatus | undefined = pod.status;
   return {
-    exitCode: podStatus?.containerStatuses?.[0]?.state?.terminated?.exitCode ?? 1,
+    exitCode: readPodExitCode(pod) ?? 1,
     podName: pod.metadata.name,
+    podNames: terminalPods
+      .map((candidate: KubeObservedManifest): string => candidate.metadata?.name ?? '')
+      .filter((name: string): boolean => name !== '')
+      .sort((leftName: string, rightName: string): number => leftName.localeCompare(rightName)),
     succeeded,
   };
+}
+
+function readPodExitCode(pod: KubeObservedManifest): number | null {
+  const podStatus: PodStatus | undefined = pod.status;
+  return podStatus?.containerStatuses?.[0]?.state?.terminated?.exitCode ?? null;
 }

@@ -15,6 +15,13 @@
       "when": 1783786185100,
       "tag": "0001_even_ravenous",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783863046900,
+      "tag": "0002_tearful_yellow_claw",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 # Kubernetes Runtime
 
 Status: migration decision
-Updated: 2026-07-11
+Updated: 2026-07-12
 
 ## Ownership
 
@@ -30,6 +30,14 @@ The implementation uses `@kubernetes/client-node`. It must not implement raw
 watching, object diffing, or a second write path. Pure naming, projection, and
 state-transition functions remain package-owned support, not extra runtime
 primitives.
+
+`runJob` is a two-phase product protocol. It creates a deterministic Job only
+when that name is absent, otherwise joins the existing Job and reads its
+terminal state and complete logs. The returned capture enables TTL only after
+the worker has durably persisted status, exit code, and logs. A timeout captures
+available logs and returns a `timed-out` capture for the worker to persist; the
+worker deletes the Job only after the database acknowledgement.
+Release Jobs use `backoffLimit: 0`; Kubernetes never retries a release command.
 
 ## Identity and names
 

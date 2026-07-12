@@ -497,6 +497,9 @@ importers:
       '@compartment/docker':
         specifier: workspace:*
         version: link:../docker
+      '@compartment/kube-runtime':
+        specifier: workspace:*
+        version: link:../kube-runtime
       '@compartment/sdk':
         specifier: workspace:*
         version: link:../sdk

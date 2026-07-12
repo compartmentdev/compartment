@@ -195,10 +195,21 @@ export interface KubeJobSpec {
 
 export interface KubeJobResult {
   completedAt: Date;
-  exitCode: number;
+  exitCode: number | null;
   jobName: string;
   logs: string;
-  podName: string;
+  podName: string | null;
+  status: 'succeeded' | 'failed' | 'timed-out';
+  finalize(): Promise<void>;
+}
+
+export interface KubePersistedJobResult {
+  completedAt: Date;
+  exitCode: number | null;
+  jobName: string;
+  logs: string;
+  podName: string | null;
+  status: 'succeeded' | 'failed' | 'timed-out';
 }
 
 export interface ApplicationProjectionRow {

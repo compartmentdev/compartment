@@ -26,6 +26,7 @@
   "dependencies": {
     "@compartment/contracts": "workspace:*",
     "@compartment/docker": "workspace:*",
+    "@compartment/kube-runtime": "workspace:*",
     "@compartment/source-archive": "workspace:*",
     "@compartment/sdk": "workspace:*",
     "@compartment/utils": "workspace:*",
