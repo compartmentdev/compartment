@@ -3,6 +3,7 @@ import type {
   GitDescriptorPullRequestStatusRequest,
 } from '@compartment/contracts';
 import {
+  createGitLabTokenInvalidError,
   createGitSourceRepositoryAccessDeniedError,
   createGitSourceRepositoryEmptyError,
 } from '../../errors/api-business-error';
@@ -73,6 +74,9 @@ export function throwGitDescriptorAccessFailure(
   error: Error | undefined,
   message: string,
 ): never {
+  if (adapter.providerType === 'gitlab' && adapter.isAuthenticationFailure(error)) {
+    throw createGitLabTokenInvalidError();
+  }
   if (adapter.isRepositoryEmptyFailure(error)) {
     throw createGitSourceRepositoryEmptyError();
   }

@@ -11,13 +11,13 @@ import type { GitProviderRegistrationRow } from '../../queries/git-provider-regi
 import { getGitProviderAdapter } from './git-source-provider.registry';
 import type { GitProviderAccess } from './git-source-provider.types';
 
-export async function requireActiveGitProviderAccess(
+export async function requireActiveGitHubProviderAccess(
   organizationId: string,
   providerHost: string,
   repositoryOwner: string,
 ): Promise<GitProviderAccess> {
   return buildGitProviderAccess(
-    await requireActiveGitProviderRegistration(organizationId, providerHost, repositoryOwner),
+    await requireActiveGitHubProviderRegistration(organizationId, providerHost, repositoryOwner),
   );
 }
 
@@ -46,7 +46,7 @@ export function buildGitProviderAccess(registration: GitProviderRegistrationRow)
   };
 }
 
-async function requireActiveGitProviderRegistration(
+async function requireActiveGitHubProviderRegistration(
   organizationId: string,
   providerHost: string,
   repositoryOwner: string,

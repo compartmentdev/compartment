@@ -14,7 +14,7 @@ import type {
 } from './git-source-provider.types';
 import type { ConnectGitSourceInput, GitSourceRepositoryRequest } from './git-source.service.types';
 import {
-  requireActiveGitProviderAccess,
+  requireActiveGitHubProviderAccess,
   requireGitProviderAccessByRegistrationId,
 } from './git-source-provider-access.service';
 import { getGitProviderAdapter } from './git-source-provider.registry';
@@ -86,7 +86,7 @@ async function readConnectRepository(
 
 async function resolveConnectProviderAccess(input: ConnectGitSourceInput): Promise<GitProviderAccess> {
   return input.request.registrationId === undefined
-    ? await requireActiveGitProviderAccess(
+    ? await requireActiveGitHubProviderAccess(
         input.organizationId,
         input.request.providerHost,
         input.request.repositoryOwner,
