@@ -8,7 +8,7 @@ if [[ -z "${CONTEXT}" ]]; then
 fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 readonly REPO_ROOT
 
 if ! docker context inspect colima >/dev/null 2>&1; then
