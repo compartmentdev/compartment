@@ -30,6 +30,11 @@ import {
 const rolloutTimeoutMs: number = 50_000;
 const releaseTimeoutMs: number = 600_000;
 
+interface RolloutWaitHandles {
+  timer?: NodeJS.Timeout;
+  unsubscribe?: () => void;
+}
+
 export async function reconcileDeploymentTarget(
   request: CompartmentRequester,
   runtime: KubeRuntime,
@@ -158,14 +163,15 @@ async function waitForReady(
     return;
   }
   await new Promise<void>((resolve: () => void, reject: (error: Error) => void): void => {
-    const timer: NodeJS.Timeout = setTimeout((): void => {
-      unsubscribe();
+    const handles: RolloutWaitHandles = {};
+    handles.timer = setTimeout((): void => {
+      handles.unsubscribe?.();
       reject(new Error('Saved active Kubernetes Deployment did not recover before the rollout timeout.'));
     }, timeoutMs);
-    const unsubscribe: () => void = observation.onEvent((): void => {
+    handles.unsubscribe = observation.onEvent((): void => {
       if (isObservedReady(observation, deployment, deadlineAt)) {
-        clearTimeout(timer);
-        unsubscribe();
+        clearTimeout(handles.timer);
+        handles.unsubscribe?.();
         resolve();
       }
     });
