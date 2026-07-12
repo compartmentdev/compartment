@@ -1,0 +1,93 @@
+{{- if eq .Values.platform.startupStage "full" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "compartment.fullname" . }}-registry-auth
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "compartment.componentLabels" (dict "root" . "component" "registry-auth") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.ports.registry }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "compartment.fullname" . }}-registry-auth
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: registry-auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "registry-auth") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "registry-auth") | nindent 8 }}
+      annotations:
+        {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
+    spec:
+      {{- include "compartment.waiterPodSpec" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
+      containers:
+        - name: registry-auth
+          image: {{ include "compartment.image" .Values.images.worker }}
+          imagePullPolicy: {{ .Values.images.worker.pullPolicy }}
+          command: ["node", "dist/registry-auth-proxy.js"]
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 10001
+            runAsGroup: 10001
+          resources:
+            {{- toYaml .Values.resources.registryAuth | nindent 12 }}
+          env:
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_PROXY_BIND_HOST
+              value: "0.0.0.0"
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_PROXY_PORT
+              value: {{ .Values.ports.registry | quote }}
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_PROXY_TARGET_URL
+              value: {{ printf "http://%s-registry:%v" (include "compartment.fullname" .) .Values.ports.registry | quote }}
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "compartment.fullname" . }}
+                  key: COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "compartment.fullname" . }}
+                  key: registry-read-password
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "compartment.fullname" . }}
+                  key: COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "compartment.fullname" . }}
+                  key: registry-write-password
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.registry }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 2
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
+        - name: tmp
+          emptyDir: {}
+{{- end }}
+

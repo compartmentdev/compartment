@@ -6,6 +6,7 @@ These files are the short source of truth for package boundaries:
 - [cli.md](./cli.md)
 - [console.md](./console.md)
 - [contracts.md](./contracts.md)
+- [deploy.md](./deploy.md)
 - [docker.md](./docker.md)
 - [edge.md](./edge.md)
 - [kube-runtime.md](./kube-runtime.md)

@@ -1,3 +1,4 @@
 CHANGELOG.md
 schemas/json-schema/*.json
 schemas/openapi/*.json
+deploy/chart/compartment/templates/*.yaml

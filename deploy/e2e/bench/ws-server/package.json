@@ -1,0 +1,8 @@
+{
+  "name": "compartment-e2e-ws-server",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ws": "8.21.0"
+  }
+}

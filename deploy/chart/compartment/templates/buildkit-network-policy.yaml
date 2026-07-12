@@ -1,0 +1,97 @@
+{{- if and .Values.buildkit.enabled (eq .Values.platform.startupStage "full") }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "compartment.fullname" . }}-build-default-deny
+  namespace: {{ .Values.buildkit.namespace }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "compartment.fullname" . }}-buildkit
+  namespace: {{ .Values.buildkit.namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- if .Values.buildkit.workerNamespaceSelector }}
+              {{- toYaml .Values.buildkit.workerNamespaceSelector | nindent 14 }}
+              {{- else }}
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.buildkit.workerPodSelector | nindent 14 }}
+      ports:
+        - {port: {{ .Values.ports.buildkit }}, protocol: TCP}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.buildkit.dnsNamespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.buildkit.dnsPodSelector | nindent 14 }}
+      ports:
+        - {port: 53, protocol: UDP}
+        - {port: 53, protocol: TCP}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32
+              - 169.254.0.0/16
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - {{ .Values.buildkit.podCidr }}
+              - {{ .Values.buildkit.serviceCidr }}
+      ports:
+        - {port: 80, protocol: TCP}
+        - {port: 443, protocol: TCP}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "registry-auth") | nindent 14 }}
+      ports:
+        - {port: {{ .Values.ports.registry }}, protocol: TCP}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "compartment.fullname" . }}-buildkit-prune
+  namespace: {{ .Values.buildkit.namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit-prune") | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.buildkit.dnsNamespaceSelector | nindent 14 }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.buildkit.dnsPodSelector | nindent 14 }}
+      ports:
+        - {port: 53, protocol: UDP}
+        - {port: 53, protocol: TCP}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit") | nindent 14 }}
+      ports:
+        - {port: {{ .Values.ports.buildkit }}, protocol: TCP}
+{{- end }}

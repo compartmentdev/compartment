@@ -1,0 +1,26 @@
+{{- $root := . -}}
+{{- $claims := dict "postgres" .Values.storage.postgres "registry" .Values.storage.registry -}}
+{{- if eq .Values.platform.startupStage "full" -}}
+{{- $_ := set $claims "api" .Values.storage.api -}}
+{{- $_ := set $claims "caddy" .Values.storage.caddy -}}
+{{- if .Values.edge.snapshots.enabled -}}
+{{- $_ := set $claims "edge-snapshots" .Values.storage.edgeSnapshots -}}
+{{- end -}}
+{{- end -}}
+{{- range $name, $size := $claims }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "compartment.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "compartment.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- include "compartment.storageClass" $root | nindent 2 }}
+  resources:
+    requests:
+      storage: {{ $size }}
+{{- end }}

@@ -1,0 +1,82 @@
+import process from 'node:process';
+
+const url = process.argv[2];
+const connectionCount = Number.parseInt(process.argv[3] ?? '10', 10);
+const durationSeconds = Number.parseInt(process.argv[4] ?? '60', 10);
+
+if (
+  !url ||
+  !Number.isInteger(connectionCount) ||
+  connectionCount < 1 ||
+  !Number.isInteger(durationSeconds) ||
+  durationSeconds < 1
+) {
+  console.error('Usage: spike/bench/ws.sh <context> [connections] [duration-seconds]');
+  process.exit(2);
+}
+
+let ending = false;
+let disconnects = 0;
+let totalOpened = 0;
+let currentOpen = 0;
+let maxConcurrent = 0;
+let holdTimer = null;
+const sockets = new Map();
+
+function timestamp() {
+  return new Date().toISOString();
+}
+
+function connect(id) {
+  if (ending) return;
+
+  const socket = new globalThis.WebSocket(url);
+  let wasOpen = false;
+  sockets.set(id, socket);
+  socket.addEventListener('open', () => {
+    wasOpen = true;
+    totalOpened += 1;
+    currentOpen += 1;
+    maxConcurrent = Math.max(maxConcurrent, currentOpen);
+    socket.send(`bench-${id}`);
+    if (currentOpen === connectionCount && holdTimer === null) {
+      clearTimeout(startupTimer);
+      console.warn(`${timestamp()} ready connections=${connectionCount}`);
+      holdTimer = setTimeout(() => finish(0), durationSeconds * 1000);
+    }
+  });
+  socket.addEventListener('close', (event) => {
+    if (sockets.get(id) === socket) sockets.delete(id);
+    if (wasOpen) currentOpen -= 1;
+    if (!ending) {
+      disconnects += 1;
+      console.warn(`${timestamp()} disconnect id=${id} code=${event.code} reason=${JSON.stringify(event.reason)}`);
+      setTimeout(() => connect(id), 250);
+    }
+  });
+  socket.addEventListener('error', () => {
+    console.warn(`${timestamp()} error id=${id}`);
+  });
+}
+
+for (let id = 0; id < connectionCount; id += 1) connect(id);
+
+const startupTimer = setTimeout(() => {
+  console.error(`${timestamp()} failed to establish ${connectionCount} concurrent connections`);
+  finish(1);
+}, 15_000);
+
+function finish(exitCode) {
+  if (ending) return;
+  ending = true;
+  clearTimeout(startupTimer);
+  if (holdTimer !== null) clearTimeout(holdTimer);
+  for (const socket of sockets.values()) socket.close(1000, 'bench complete');
+  setTimeout(() => {
+    console.warn(
+      `${timestamp()} summary requested=${connectionCount} totalOpened=${totalOpened} maxConcurrent=${maxConcurrent} disconnects=${disconnects}`,
+    );
+    process.exit(exitCode);
+  }, 500);
+}
+
