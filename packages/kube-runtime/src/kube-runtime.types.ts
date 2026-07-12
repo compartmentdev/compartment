@@ -1,6 +1,10 @@
 import type { KubernetesObject } from '@kubernetes/client-node';
+import type {
+  KubeContainerLifecycle,
+  KubeContainerPort,
+  KubeReadinessProbe,
+} from './kube-application-projection.types';
 
-export type KubeDeploymentState = 'desired' | 'pending' | 'active';
 export type KubeManifestKind =
   | 'ConfigMap'
   | 'ClusterRole'
@@ -36,6 +40,11 @@ export interface KubeJobManifest extends KubeManifestBase {
   spec?: KubeJobManifestSpec | undefined;
 }
 
+export interface KubeServiceManifest extends KubeManifestBase {
+  kind: 'Service';
+  spec: KubeServiceManifestSpec;
+}
+
 export interface KubeNonWorkloadManifest extends KubeManifestBase {
   kind:
     | 'ClusterRole'
@@ -47,11 +56,10 @@ export interface KubeNonWorkloadManifest extends KubeManifestBase {
     | 'PersistentVolumeClaim'
     | 'RoleBinding'
     | 'Secret'
-    | 'Service'
     | 'ServiceAccount';
 }
 
-export type KubeManifest = KubeDeploymentManifest | KubeJobManifest | KubeNonWorkloadManifest;
+export type KubeManifest = KubeDeploymentManifest | KubeJobManifest | KubeServiceManifest | KubeNonWorkloadManifest;
 
 export interface KubeObservedPodManifest extends KubeManifestBase {
   kind: 'Pod';
@@ -91,10 +99,10 @@ export interface KubeProjectedContainer {
   command?: string[] | undefined;
   env: KubeSecretEnvVariable[];
   image: string;
-  lifecycle?: object | undefined;
+  lifecycle?: KubeContainerLifecycle | undefined;
   name: string;
-  ports?: object[] | undefined;
-  readinessProbe?: object | undefined;
+  ports?: KubeContainerPort[] | undefined;
+  readinessProbe?: KubeReadinessProbe | undefined;
   resources?: object | undefined;
   securityContext?: object | undefined;
   volumeMounts?: object[] | undefined;
@@ -127,9 +135,36 @@ export interface KubePodTemplateMetadata {
 export interface KubeDeploymentManifestSpec {
   progressDeadlineSeconds: number;
   replicas: number;
-  selector: object;
-  strategy: object;
+  selector: KubeLabelSelector;
+  strategy: KubeDeploymentStrategy;
   template: KubePodTemplate;
+}
+
+export interface KubeLabelSelector {
+  matchLabels: Record<string, string>;
+}
+
+export interface KubeDeploymentStrategy {
+  rollingUpdate?: KubeRollingUpdateStrategy;
+  type: 'Recreate' | 'RollingUpdate';
+}
+
+export interface KubeRollingUpdateStrategy {
+  maxSurge: number;
+  maxUnavailable: number;
+}
+
+export interface KubeServiceManifestSpec {
+  ports: KubeServicePort[];
+  selector: Record<string, string>;
+  type?: string;
+}
+
+export interface KubeServicePort {
+  name: string;
+  port: number;
+  protocol: 'TCP';
+  targetPort: number;
 }
 
 export interface KubeJobManifestSpec {
@@ -223,31 +258,11 @@ export interface KubePersistedJobResult {
   status: 'succeeded' | 'failed' | 'timed-out';
 }
 
-export interface ApplicationProjectionRow {
-  containerPort: number;
-  deploymentId: string;
-  environmentId: string;
-  environmentName: string;
-  env: Readonly<Record<string, string>>;
-  image: string;
-  imagePullSecretId: string;
-  namespaceId: string;
-  organizationId: string;
-  organizationName: string;
-  projectId: string;
-  projectName: string;
-  replicas: number;
-  serviceId: string;
-  serviceName: string;
-  secretId: string;
-}
-
 export interface RegistryPullSecretProjectionRow {
   dockerConfigJson: string;
   namespaceId: string;
   secretId: string;
 }
-
 export interface SecretProjectionRow {
   data: Readonly<Record<string, string>>;
   deploymentId: string;
@@ -260,34 +275,4 @@ export interface ResourceProjectionRow {
   image: string;
   namespaceId: string;
   resourceId: string;
-}
-
-export interface KubeDeploymentStateRow {
-  desiredReplicas: number;
-  observedAt: Date | null;
-  state: KubeDeploymentState;
-}
-
-export interface KubeObservedDeployment {
-  availableReplicas: number;
-  desiredFieldsDrifted: boolean;
-  exists: boolean;
-  generation: number | null;
-  observedGeneration: number | null;
-  requiredObjectsPresent: boolean;
-}
-
-export type KubeReconcileAction = 'apply' | 'none';
-export type KubeDriftKind = 'deleted' | 'drifted' | 'non-ready';
-
-export interface KubeStateTransition {
-  action: KubeReconcileAction;
-  audit: KubeDriftAudit | null;
-  nextState: KubeDeploymentState;
-  observedAt: Date | null;
-}
-
-export interface KubeDriftAudit {
-  kind: KubeDriftKind;
-  message: string;
 }

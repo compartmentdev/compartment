@@ -11,6 +11,7 @@ import {
   buildArtifacts,
   deploymentKubeReferences,
   deploymentRuns,
+  deploymentRoutes,
   deployments,
   environments,
   nodes,
@@ -25,6 +26,9 @@ import {
   upsertDeploymentKubeReference,
 } from '../src/queries/deployment-kube-reference.query';
 import type { PersistDeploymentKubeTransitionInput } from '../src/queries/deployment-kube-reference.query.types';
+import { persistDeploymentReconcileObservation } from '../src/queries/deployment-reconcile.query';
+import { findActiveDeploymentRouteByHost } from '../src/queries/deployment-routes.query';
+import type { DeploymentRouteLookupRow } from '../src/queries/deployment-routes.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
@@ -121,6 +125,107 @@ describe('deployment Kubernetes transition persistence', (): void => {
     const [reference] = await db.select().from(deploymentKubeReferences);
     expect(reference).toMatchObject({ observedAt, revision: 1, state: 'active' });
   });
+
+  it('keeps pending candidate inactive, ignores stale revisions, and preserves the active deployment on failure', async (): Promise<void> => {
+    await seedCandidate();
+    const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'pending',
+        observedAt,
+        revision: 0,
+      }),
+    ).toBe(true);
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'ready',
+        observedAt,
+        revision: 0,
+      }),
+    ).toBe(false);
+    const beforeFailure: { id: string; isActive: boolean }[] = await db
+      .select({ id: deployments.id, isActive: deployments.isActive })
+      .from(deployments);
+    expect(beforeFailure).toEqual(
+      expect.arrayContaining([
+        { id: 'dep_candidate', isActive: false },
+        { id: 'dep_kube', isActive: true },
+      ]),
+    );
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: 'rollout failed',
+        observation: 'failed',
+        observedAt,
+        revision: 1,
+      }),
+    ).toBe(true);
+    const afterFailure: { id: string; isActive: boolean; status: string }[] = await db
+      .select({ id: deployments.id, isActive: deployments.isActive, status: deployments.status })
+      .from(deployments);
+    expect(afterFailure).toEqual(
+      expect.arrayContaining([
+        { id: 'dep_candidate', isActive: false, status: 'failed' },
+        { id: 'dep_kube', isActive: true, status: 'running' },
+      ]),
+    );
+  });
+
+  it('returns an active deployment to pending with one drift audit', async (): Promise<void> => {
+    const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_kube',
+        failureMessage: 'active pod missing',
+        observation: 'pending',
+        observedAt,
+        revision: 0,
+      }),
+    ).toBe(true);
+    const [reference] = await db.select().from(deploymentKubeReferences);
+    const events: object[] = await db
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.eventType, 'deployment.kubernetes.drift_detected'));
+    expect(reference).toMatchObject({ observedAt, revision: 1, state: 'pending' });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ targetId: 'dep_kube' });
+  });
+
+  it('promotes only after Ready and projects stable Kubernetes Service DNS on port 80', async (): Promise<void> => {
+    await seedCandidate();
+    const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_candidate',
+      failureMessage: null,
+      observation: 'pending',
+      observedAt,
+      revision: 0,
+    });
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'ready',
+        observedAt,
+        revision: 1,
+      }),
+    ).toBe(true);
+    const route: DeploymentRouteLookupRow | undefined = await findActiveDeploymentRouteByHost(
+      'kube.localhost',
+      'localhost',
+    );
+    expect(route).toMatchObject({
+      deploymentId: 'dep_candidate',
+      upstreamHost: 'app-env-kube-svc-kube.cpt-prj-kube.svc.cluster.local',
+      upstreamPort: 80,
+    });
+  });
 });
 
 function transitionInput(organizationId: string): PersistDeploymentKubeTransitionInput {
@@ -184,6 +289,7 @@ async function seedDeploymentRuntimeRows(): Promise<void> {
   await db.insert(buildArtifacts).values({
     id: 'bar_kube',
     imageRepository: 'repo/kube',
+    imageRef: 'repo/kube@sha256:active',
     projectId: 'prj_kube',
     projectServiceId: 'svc_kube',
     resolvedBuildEnvJson: '{}',
@@ -207,6 +313,60 @@ async function seedDeploymentRuntimeRows(): Promise<void> {
     resolvedRoutesJson: '[]',
     resolvedRunJson: '{}',
     status: 'running',
+  });
+}
+
+async function seedCandidate(): Promise<void> {
+  await db.insert(operations).values({
+    id: 'op_candidate',
+    status: 'running',
+    summary: 'Deploy',
+    targetId: 'dep_candidate',
+    targetType: 'deployment',
+    type: 'deployment.create',
+  });
+  await db.insert(buildArtifacts).values({
+    id: 'bar_candidate',
+    imageRef: 'repo/kube@sha256:candidate',
+    imageRepository: 'repo/kube',
+    projectId: 'prj_kube',
+    projectServiceId: 'svc_kube',
+    resolvedBuildEnvJson: '{}',
+    resolvedBuildJson: '{}',
+    sourceDigest: 'sha256:candidate',
+  });
+  await db.insert(deploymentRuns).values({ environmentId: 'env_kube', id: 'drn_candidate', triggerType: 'manual' });
+  await db.insert(deployments).values({
+    accessMode: 'authenticated',
+    buildArtifactId: 'bar_candidate',
+    deploymentRunId: 'drn_candidate',
+    environmentId: 'env_kube',
+    health: 'pending',
+    id: 'dep_candidate',
+    isActive: false,
+    nodeId: 'node_kube',
+    operationId: 'op_candidate',
+    projectServiceId: 'svc_kube',
+    promotionStage: 'starting_candidate',
+    resolvedReadinessJson: '[]',
+    resolvedRoutesJson: '[]',
+    resolvedRunJson: '{}',
+    status: 'running',
+  });
+  await db.insert(deploymentRoutes).values({
+    accessScopeId: 'org_kube',
+    accessScopeType: 'organization',
+    deploymentId: 'dep_candidate',
+    id: 'route_kube',
+    subdomain: 'kube',
+  });
+  await upsertDeploymentKubeReference({
+    deploymentId: 'dep_candidate',
+    deploymentName: 'app-env-kube-svc-kube',
+    id: 'kref_candidate',
+    namespace: 'cpt-prj-kube',
+    networkPolicyNames: [],
+    serviceName: 'app-env-kube-svc-kube',
   });
 }
 

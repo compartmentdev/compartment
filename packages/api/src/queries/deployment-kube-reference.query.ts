@@ -2,6 +2,10 @@ import { eq } from 'drizzle-orm';
 import { deploymentKubeReferences } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { insertAuditEventWithExecutor } from './audit-events.query';
+import {
+  buildDeploymentKubeReferenceValues,
+  type DeploymentKubeReferenceValues,
+} from './deployment-kube-reference-values';
 import type {
   DeploymentKubeState,
   DeploymentKubeTransitionTransaction,
@@ -9,20 +13,6 @@ import type {
   UpsertDeploymentKubeReferenceInput,
 } from './deployment-kube-reference.query.types';
 
-interface DeploymentKubeReferenceValues {
-  createdAt: Date;
-  deploymentId: string;
-  deploymentName: string;
-  id: string;
-  namespace: string;
-  networkPolicyNamesJson: string;
-  observedAt: Date | null;
-  revision: number;
-  serviceName: string;
-  state: 'desired';
-  transitionedAt: Date;
-  updatedAt: Date;
-}
 interface LockedReference {
   revision: number;
   state: DeploymentKubeState;
@@ -30,7 +20,7 @@ interface LockedReference {
 
 export async function upsertDeploymentKubeReference(input: UpsertDeploymentKubeReferenceInput): Promise<void> {
   const now: Date = new Date();
-  const values: DeploymentKubeReferenceValues = buildReferenceValues(input, now);
+  const values: DeploymentKubeReferenceValues = buildDeploymentKubeReferenceValues(input, now);
   await getApiDatabase()
     .insert(deploymentKubeReferences)
     .values(values)
@@ -127,21 +117,4 @@ function assertValidTransition(currentState: DeploymentKubeState, input: Persist
   if (requiresAudit !== (input.audit !== null)) {
     throw new Error(`Kubernetes deployment transition ${currentState} -> ${input.nextState} has invalid drift audit.`);
   }
-}
-
-function buildReferenceValues(input: UpsertDeploymentKubeReferenceInput, now: Date): DeploymentKubeReferenceValues {
-  return {
-    createdAt: now,
-    deploymentId: input.deploymentId,
-    deploymentName: input.deploymentName,
-    id: input.id,
-    namespace: input.namespace,
-    networkPolicyNamesJson: JSON.stringify(input.networkPolicyNames),
-    observedAt: null,
-    revision: 0,
-    serviceName: input.serviceName,
-    state: 'desired',
-    transitionedAt: now,
-    updatedAt: now,
-  };
 }

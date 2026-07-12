@@ -55,8 +55,8 @@ export interface DeploymentRouteLookupSelection extends SelectedFields {
   projectId: typeof projects.id;
   projectName: typeof projects.name;
   resolvedRoutesJson: typeof deployments.resolvedRoutesJson;
-  upstreamHost: typeof deployments.upstreamHost;
-  upstreamPort: typeof deployments.upstreamPort;
+  upstreamHost: SQL<string | null>;
+  upstreamPort: SQL<number | null>;
   serviceId: typeof projectServices.id;
   serviceName: typeof projectServices.name;
   subdomain: typeof deploymentRoutes.subdomain;

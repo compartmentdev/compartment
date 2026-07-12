@@ -1,8 +1,14 @@
 import { createKubeRuntimeFromEnvironment, type KubeRuntime } from '@compartment/kube-runtime';
-import { claimProductJob, createCompartmentRequester, type CompartmentRequester } from '@compartment/sdk';
-import type { WorkerClaimProductJobResponse } from '@compartment/contracts';
+import {
+  claimDeploymentReconcile,
+  claimProductJob,
+  createCompartmentRequester,
+  type CompartmentRequester,
+} from '@compartment/sdk';
+import type { WorkerClaimDeploymentReconcileResponse, WorkerClaimProductJobResponse } from '@compartment/contracts';
 import type { WorkerConfig } from './config';
 import { executeProductJob, finalizeRecoveredProductJob } from './services/worker-product-job.service';
+import { reconcileDeploymentTarget } from './services/worker-deployment-reconcile.service';
 
 export interface KubeControllerHost {
   enabled: boolean;
@@ -48,6 +54,22 @@ class ProductJobReconcileArea implements KubeReconcileArea {
   }
 }
 
+class DeploymentReconcileArea implements KubeReconcileArea {
+  public constructor(
+    private readonly request: CompartmentRequester,
+    private readonly runtime: KubeRuntime,
+  ) {}
+
+  public async reconcile(): Promise<boolean> {
+    const claimed: WorkerClaimDeploymentReconcileResponse = await claimDeploymentReconcile(this.request);
+    if (claimed.target === null) {
+      return false;
+    }
+    await reconcileDeploymentTarget(this.request, this.runtime, claimed.target);
+    return claimed.target.state !== 'active';
+  }
+}
+
 class DisabledKubeControllerHost implements KubeControllerHost {
   public readonly enabled: boolean = false;
 
@@ -57,7 +79,7 @@ class DisabledKubeControllerHost implements KubeControllerHost {
 }
 
 export function createKubeControllerHost(config: WorkerConfig): KubeControllerHost {
-  if (!hasKubeConfiguration(process.env)) {
+  if (!isKubeRuntimeConfigured()) {
     return new DisabledKubeControllerHost();
   }
   const request: CompartmentRequester = createCompartmentRequester({
@@ -65,7 +87,14 @@ export function createKubeControllerHost(config: WorkerConfig): KubeControllerHo
     internalToken: config.runtimeControlToken,
   });
   const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
-  return new RegisteredKubeControllerHost([new ProductJobReconcileArea(request, runtime)]);
+  return new RegisteredKubeControllerHost([
+    new DeploymentReconcileArea(request, runtime),
+    new ProductJobReconcileArea(request, runtime),
+  ]);
+}
+
+export function isKubeRuntimeConfigured(): boolean {
+  return hasKubeConfiguration(process.env);
 }
 
 function hasKubeConfiguration(env: NodeJS.ProcessEnv): boolean {

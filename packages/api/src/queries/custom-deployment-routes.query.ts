@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, type SQL } from 'drizzle-orm';
 import {
   deploymentCustomDomains,
+  deploymentKubeReferences,
   deploymentRoutes,
   deployments,
   environments,
@@ -69,7 +70,11 @@ function createCustomDeploymentRouteLookupQuery(): CustomDeploymentRouteLookupQu
         eq(deployments.projectServiceId, deploymentCustomDomains.projectServiceId),
       ),
     )
-    .innerJoin(deploymentRoutes, eq(deploymentRoutes.deploymentId, deployments.id));
+    .innerJoin(deploymentRoutes, eq(deploymentRoutes.deploymentId, deployments.id))
+    .leftJoin(
+      deploymentKubeReferences,
+      and(eq(deploymentKubeReferences.deploymentId, deployments.id), eq(deploymentKubeReferences.state, 'active')),
+    );
 }
 
 function buildVerifiedCustomDomainPredicate(): SQL {

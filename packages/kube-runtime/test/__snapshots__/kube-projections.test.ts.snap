@@ -43,20 +43,25 @@ metadata:
     compartment.dev/organization-name: Acme
     compartment.dev/project-name: Checkout
     compartment.dev/service-name: Web
-  labels: &a1
+  labels:
     app.kubernetes.io/managed-by: compartment
     compartment.dev/deployment-id: dep-01jz
     compartment.dev/environment-id: env-01jz
     compartment.dev/organization-id: org-01jz
     compartment.dev/project-id: prj-01jz
     compartment.dev/service-id: svc-01jz
-  name: app-dep-01jz-271c08c7e603c156
+  name: app-env-01jz-svc-01jz-6a4f00bb0d302109
   namespace: cpt-prj-01jz-243118a73be1a00d
 spec:
   progressDeadlineSeconds: 45
   replicas: 2
   selector:
-    matchLabels: *a1
+    matchLabels: &a1
+      app.kubernetes.io/managed-by: compartment
+      compartment.dev/environment-id: env-01jz
+      compartment.dev/organization-id: org-01jz
+      compartment.dev/project-id: prj-01jz
+      compartment.dev/service-id: svc-01jz
   strategy:
     rollingUpdate:
       maxSurge: 1
@@ -121,12 +126,11 @@ metadata:
     compartment.dev/service-name: Web
   labels: &a1
     app.kubernetes.io/managed-by: compartment
-    compartment.dev/deployment-id: dep-01jz
     compartment.dev/environment-id: env-01jz
     compartment.dev/organization-id: org-01jz
     compartment.dev/project-id: prj-01jz
     compartment.dev/service-id: svc-01jz
-  name: app-dep-01jz-271c08c7e603c156
+  name: app-env-01jz-svc-01jz-6a4f00bb0d302109
   namespace: cpt-prj-01jz-243118a73be1a00d
 spec:
   ports:
