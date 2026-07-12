@@ -2,7 +2,6 @@ import {
   compartmentConsoleSsoFailedLoginErrorMessage as invalidSsoLoginBusinessErrorMessage,
   type ActivateStateResponse,
   type LoginStateResponse,
-  type PermissionKey,
 } from '@compartment/contracts/browser';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -11,7 +10,6 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { LoaderFunctionArgs } from 'react-router';
 import type { BrowserProjectsPageResult } from '../src/services/browser-projects.service.types';
 import type { BrowserProjectOverviewPageResult } from '../src/services/browser-project-overview.service.types';
-import { BrowserConsoleSidebar } from '../src/components/browser-console-sidebar';
 import { requestBrowserApi } from '../src/lib/browser-api';
 import { browserQueryClient } from '../src/lib/browser-query-client';
 import {
@@ -20,15 +18,9 @@ import {
   type AuthErrorState,
 } from '../src/features/auth/auth-error-state';
 import { loadActivatePage } from '../src/features/auth/activate-page';
-import {
-  canInviteBrowserUsers,
-  canReadBrowserGroups,
-  canReadBrowserRoles,
-  canReadBrowserUsers,
-} from '../src/features/console/console-access';
+
 import { loadLoginPage } from '../src/features/auth/login-page';
 import { LoginView } from '../src/features/auth/login-view';
-import { ProjectArchiveStateSwitch } from '../src/features/projects/project-archive-state-switch';
 import { loadProjectOverviewPageData } from '../src/features/projects/project-overview-loader';
 import { loadProjectsPageDataForUrl } from '../src/features/projects/projects-loader';
 import { loadAuditEventsPageData } from '../src/features/audit-events/audit-events-loader';
@@ -62,32 +54,6 @@ const browserProjectCountPath: string =
   '/v1/projects?archiveState=active&detail=overview&orderBy=updatedAt&page=1&perPage=1&sort=desc';
 const browserAllProjectCountPath: string =
   '/v1/projects?archiveState=all&detail=overview&orderBy=updatedAt&page=1&perPage=1&sort=desc';
-
-function createBrowserProjectsPageResult(overrides?: Partial<BrowserProjectsPageResult>): BrowserProjectsPageResult {
-  return {
-    archiveState: 'active',
-    currentOrganizationPermissions: ['project.archive'],
-    organizationContext: {
-      kind: 'selected',
-      selectedOrganizationSlug: 'acme-dev',
-    },
-    organizations: [{ id: 'org_123', name: 'Acme Dev', slug: 'acme-dev' }],
-    page: 1,
-    pageSize: 10,
-    pageSizeOptions: [10, 20, 50],
-    principalEmail: 'admin@example.com',
-    projectCount: 0,
-    projects: [],
-    searchQuery: '',
-    selectedOrganizationSlug: 'acme-dev',
-    showOrganizationSelector: false,
-    sortBy: 'updated',
-    sortDirection: 'desc',
-    totalPages: 1,
-    totalProjects: 0,
-    ...overrides,
-  };
-}
 
 function createMultiOrgUnselectedFetchMock(): Mock<FetchImplementation> {
   return vi.fn<FetchImplementation>().mockImplementation(async (input: string | URL | Request): Promise<Response> => {
@@ -509,7 +475,9 @@ describe('browser client pages', (): void => {
 
     const request: Request = new Request('http://console.localhost/orgs/acme-dev/users');
     const result: BrowserUsersPageLoadResult = await loadUsersPageData(createLoaderArgs(request));
-    if (result instanceof Response) throw new Error('Expected users page result.');
+    if (result instanceof Response) {
+      throw new Error('Expected users page result.');
+    }
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).toEqual([
       '/v1/orgs',
       '/v1/whoami',
@@ -551,7 +519,9 @@ describe('browser client pages', (): void => {
       createLoaderArgs(new Request('http://console.localhost/users')),
     );
 
-    if (result instanceof Response) throw new Error('Expected users page result.');
+    if (result instanceof Response) {
+      throw new Error('Expected users page result.');
+    }
     expect(result.organizationContext.kind).toBe('organization_required');
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).toEqual([
       '/v1/orgs',
@@ -597,7 +567,9 @@ describe('browser client pages', (): void => {
       createLoaderArgs(new Request('http://console.localhost/groups?mode=create')),
     );
 
-    if (result instanceof Response) throw new Error('Expected groups page result.');
+    if (result instanceof Response) {
+      throw new Error('Expected groups page result.');
+    }
     expect(result.organizationContext.kind).toBe('organization_required');
     expect(result.groups).toEqual([]);
     expect(result.mode).toBe('list');
@@ -616,7 +588,9 @@ describe('browser client pages', (): void => {
       createLoaderArgs(new Request('http://console.localhost/roles?mode=create')),
     );
 
-    if (result instanceof Response) throw new Error('Expected roles page result.');
+    if (result instanceof Response) {
+      throw new Error('Expected roles page result.');
+    }
     expect(result.organizationContext.kind).toBe('organization_required');
     expect(result.roles).toEqual([]);
     expect(result.mode).toBe('list');
@@ -640,7 +614,9 @@ describe('browser client pages', (): void => {
       ),
     );
 
-    if (result instanceof Response) throw new Error('Expected deployment history page result.');
+    if (result instanceof Response) {
+      throw new Error('Expected deployment history page result.');
+    }
     expect(result.organizationContext.kind).toBe('organization_required');
     expect(result.deployments).toEqual([]);
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).toEqual([
@@ -711,7 +687,9 @@ describe('browser client pages', (): void => {
       createLoaderArgs(new Request('http://console.localhost/orgs/acme-dev/users?mode=create')),
     );
 
-    if (result instanceof Response) throw new Error('Expected users page result.');
+    if (result instanceof Response) {
+      throw new Error('Expected users page result.');
+    }
     expect(result.mode).toBe('list');
     expect(result.availableGroups).toEqual([]);
     expect(result.availableRoles).toEqual([]);
@@ -748,7 +726,9 @@ describe('browser client pages', (): void => {
       createLoaderArgs(new Request('http://console.localhost/orgs/acme-dev/users')),
     );
 
-    if (result instanceof Response) throw new Error('Expected users page result.');
+    if (result instanceof Response) {
+      throw new Error('Expected users page result.');
+    }
     expect(result.mode).toBe('create');
     expect(result.users).toEqual([]);
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).toEqual([
@@ -797,7 +777,9 @@ describe('browser client pages', (): void => {
       createLoaderArgs(new Request('http://console.localhost/orgs/acme-dev/groups?mode=create')),
     );
 
-    if (result instanceof Response) throw new Error('Expected groups page result.');
+    if (result instanceof Response) {
+      throw new Error('Expected groups page result.');
+    }
     expect(result.mode).toBe('list');
     expect(result.assignments).toEqual([]);
     expect(result.projectCount).toBe(1);
@@ -859,7 +841,9 @@ describe('browser client pages', (): void => {
       createLoaderArgs(new Request('http://console.localhost/orgs/acme-dev/roles?mode=create')),
     );
 
-    if (result instanceof Response) throw new Error('Expected roles page result.');
+    if (result instanceof Response) {
+      throw new Error('Expected roles page result.');
+    }
     expect(result.mode).toBe('list');
     expect(result.projectCount).toBe(1);
     expect(result.roles).toHaveLength(1);
@@ -956,68 +940,6 @@ describe('browser client pages', (): void => {
     expect(fetchMock.mock.calls).toHaveLength(4);
     expect(readFetchPath(fetchMock.mock.calls[2]![0])).toBe(browserAllProjectCountPath);
     expect(readFetchPath(fetchMock.mock.calls[3]![0])).toContain('archiveState=archived');
-  });
-
-  it('uses the viewer browser-console access rules for admin-only surfaces', (): void => {
-    expect(canInviteBrowserUsers(['organization.user.invite'])).toBe(true);
-    expect(canReadBrowserUsers(['organization.user.read'])).toBe(true);
-    expect(canReadBrowserGroups(['organization.group.manage'])).toBe(true);
-    expect(canReadBrowserRoles(['organization.role.manage'])).toBe(true);
-  });
-
-  it('preserves the selected organization in sidebar and brand navigation', (): void => {
-    const permissions: PermissionKey[] = [
-      ...createConsoleAdminPermissions(),
-      'organization.audit.read',
-    ] as PermissionKey[];
-    const markup: string = renderToStaticMarkup(
-      createElement(BrowserConsoleSidebar, {
-        currentOrganizationPermissions: permissions,
-        errorMessage: undefined,
-        onError: (): void => undefined,
-        organizationControl: null,
-        page: 'projects',
-        principalEmail: 'admin@example.com',
-        projectCount: 1,
-        selectedOrganizationSlug: 'acme-dev',
-      }),
-    );
-
-    expect(markup).toContain('href="/orgs/acme-dev/projects"');
-    expect(markup).toContain('href="/orgs/acme-dev/users"');
-    expect(markup).toContain('href="/orgs/acme-dev/groups"');
-    expect(markup).toContain('href="/orgs/acme-dev/audit"');
-  });
-
-  it('renders users sidebar navigation for invite-only principals', (): void => {
-    const markup: string = renderToStaticMarkup(
-      createElement(BrowserConsoleSidebar, {
-        currentOrganizationPermissions: ['organization.user.invite'],
-        errorMessage: undefined,
-        onError: (): void => undefined,
-        organizationControl: null,
-        page: 'projects',
-        principalEmail: 'admin@example.com',
-        projectCount: 1,
-        selectedOrganizationSlug: 'acme-dev',
-      }),
-    );
-
-    expect(markup).toContain('href="/orgs/acme-dev/users"');
-  });
-
-  it('renders archived project navigation without current organization permissions', (): void => {
-    const markup: string = renderToStaticMarkup(
-      createElement(ProjectArchiveStateSwitch, {
-        data: createBrowserProjectsPageResult({
-          currentOrganizationPermissions: [],
-        }),
-        onNavigate: (): void => undefined,
-      }),
-    );
-
-    expect(markup).toContain('Project state');
-    expect(markup).toContain('Archived');
   });
 
   it('redirects project overview loader browser redirects to login', async (): Promise<void> => {

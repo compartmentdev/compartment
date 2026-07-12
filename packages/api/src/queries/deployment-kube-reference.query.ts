@@ -23,6 +23,10 @@ interface DeploymentKubeReferenceValues {
   transitionedAt: Date;
   updatedAt: Date;
 }
+interface LockedReference {
+  revision: number;
+  state: DeploymentKubeState;
+}
 
 export async function upsertDeploymentKubeReference(input: UpsertDeploymentKubeReferenceInput): Promise<void> {
   const now: Date = new Date();
@@ -44,13 +48,13 @@ async function persistTransitionWithTransaction(
   transaction: DeploymentKubeTransitionTransaction,
   input: PersistDeploymentKubeTransitionInput,
 ): Promise<boolean> {
-  const [current] = await transaction
-    .select({ revision: deploymentKubeReferences.revision, state: deploymentKubeReferences.state })
-    .from(deploymentKubeReferences)
-    .where(eq(deploymentKubeReferences.deploymentId, input.deploymentId))
-    .for('update');
-  if (current === undefined) throw new Error(`Missing Kubernetes reference for deployment ${input.deploymentId}.`);
-  if (input.expectedRevision !== current.revision) return false;
+  const current: LockedReference | undefined = await lockReference(transaction, input);
+  if (current === undefined) {
+    throw new Error(`Missing Kubernetes reference for deployment ${input.deploymentId}.`);
+  }
+  if (input.expectedRevision !== current.revision) {
+    return false;
+  }
   assertValidTransition(current.state, input);
   await transaction
     .update(deploymentKubeReferences)
@@ -62,15 +66,39 @@ async function persistTransitionWithTransaction(
       updatedAt: new Date(),
     })
     .where(eq(deploymentKubeReferences.deploymentId, input.deploymentId));
-  if (input.audit !== null && current.state === 'active') await insertKubeDriftAudit(transaction, input);
+  await insertActiveDriftAudit(transaction, input, current.state);
   return true;
+}
+
+async function lockReference(
+  transaction: DeploymentKubeTransitionTransaction,
+  input: PersistDeploymentKubeTransitionInput,
+): Promise<LockedReference | undefined> {
+  const [current] = await transaction
+    .select({ revision: deploymentKubeReferences.revision, state: deploymentKubeReferences.state })
+    .from(deploymentKubeReferences)
+    .where(eq(deploymentKubeReferences.deploymentId, input.deploymentId))
+    .for('update');
+  return current;
+}
+
+async function insertActiveDriftAudit(
+  transaction: DeploymentKubeTransitionTransaction,
+  input: PersistDeploymentKubeTransitionInput,
+  state: DeploymentKubeState,
+): Promise<void> {
+  if (input.audit !== null && state === 'active') {
+    await insertKubeDriftAudit(transaction, input);
+  }
 }
 
 async function insertKubeDriftAudit(
   transaction: DeploymentKubeTransitionTransaction,
   input: PersistDeploymentKubeTransitionInput,
 ): Promise<void> {
-  if (input.audit === null) return;
+  if (input.audit === null) {
+    return;
+  }
   await insertAuditEventWithExecutor(transaction, {
     actorType: 'system',
     environmentId: input.environmentId,
@@ -93,9 +121,12 @@ function assertValidTransition(currentState: DeploymentKubeState, input: Persist
     (currentState === 'pending' && (input.nextState === 'pending' || input.nextState === 'active')) ||
     (currentState === 'active' && (input.nextState === 'active' || input.nextState === 'pending'));
   const requiresAudit: boolean = currentState === 'active' && input.nextState === 'pending';
-  if (!validEdge) throw new Error(`Invalid Kubernetes deployment transition ${currentState} -> ${input.nextState}.`);
-  if (requiresAudit !== (input.audit !== null))
+  if (!validEdge) {
+    throw new Error(`Invalid Kubernetes deployment transition ${currentState} -> ${input.nextState}.`);
+  }
+  if (requiresAudit !== (input.audit !== null)) {
     throw new Error(`Kubernetes deployment transition ${currentState} -> ${input.nextState} has invalid drift audit.`);
+  }
 }
 
 function buildReferenceValues(input: UpsertDeploymentKubeReferenceInput, now: Date): DeploymentKubeReferenceValues {

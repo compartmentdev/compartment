@@ -544,4 +544,9 @@ export const repoConfig = [
       ],
     },
   },
+  {
+    rules: {
+      curly: ['error', 'all'],
+    },
+  },
 ];

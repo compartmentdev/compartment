@@ -1,9 +1,5 @@
-import {
-  compartmentCurrentOrganizationHeaderName,
-  errorResponseSchema,
-  type ErrorResponse,
-} from '@compartment/contracts';
-import { hasText, type JsonValue } from '@compartment/utils';
+import { errorResponseSchema, type ErrorResponse } from '@compartment/contracts';
+import type { JsonValue } from '@compartment/utils';
 import { ZodError, type SafeParseReturnType } from 'zod';
 import type { ClientOptions } from '../client.types';
 import type {
@@ -23,12 +19,7 @@ import {
   type RequestTransportFailure,
   type RequestTransportOptions,
 } from './request-error';
-
-interface RequestHeaderOptions {
-  currentOrganization?: string | undefined;
-  internalToken?: string | undefined;
-  sessionToken?: string | undefined;
-}
+import { createRawRequestHeaders, createRequestHeaders } from './request-headers';
 
 interface CompartmentRequestErrorInput {
   code: string;
@@ -134,34 +125,6 @@ async function readJsonRequestResponse<TResult>(
   return parseResponsePayload(payload, path, schema);
 }
 
-function createRequestHeaders<TBody>(
-  body: TBody | undefined,
-  options: RequestHeaderOptions,
-  defaults: ClientOptions,
-): Headers {
-  return createRawRequestHeaders(shouldSetJsonContentType(body) ? 'application/json' : null, options, defaults);
-}
-
-function createRawRequestHeaders(
-  contentType: string | null,
-  options: RequestHeaderOptions,
-  defaults: ClientOptions,
-): Headers {
-  const headers: Headers = new Headers({
-    Accept: 'application/json',
-  });
-  if (contentType !== null) headers.set('Content-Type', contentType);
-  const authorizationToken: string | undefined = resolveAuthorizationToken(options, defaults);
-  if (hasText(authorizationToken)) headers.set('Authorization', `Bearer ${authorizationToken}`);
-  const currentOrganization: string | undefined = options.currentOrganization ?? defaults.currentOrganization;
-  if (hasText(currentOrganization)) headers.set(compartmentCurrentOrganizationHeaderName, currentOrganization);
-  return headers;
-}
-
-function resolveAuthorizationToken(options: RequestHeaderOptions, defaults: ClientOptions): string | undefined {
-  return options.sessionToken ?? defaults.sessionToken ?? options.internalToken ?? defaults.internalToken;
-}
-
 function createRequestUrl(defaultOptions: ClientOptions, path: string): string {
   return `${defaultOptions.apiUrl.replace(/\/$/, '')}${path}`;
 }
@@ -177,8 +140,12 @@ function createRequestInit<TBody>(
     method,
   };
   const signal: AbortSignal | undefined = createRequestSignal(requestTimeoutMs);
-  if (signal !== undefined) requestInit.signal = signal;
-  if (body !== undefined) requestInit.body = toRequestBody(body);
+  if (signal !== undefined) {
+    requestInit.signal = signal;
+  }
+  if (body !== undefined) {
+    requestInit.body = toRequestBody(body);
+  }
 
   return requestInit;
 }
@@ -195,7 +162,9 @@ function createRawRequestInit(
     method,
   };
   const signal: AbortSignal | undefined = createRequestSignal(requestTimeoutMs);
-  if (signal !== undefined) requestInit.signal = signal;
+  if (signal !== undefined) {
+    requestInit.signal = signal;
+  }
 
   return requestInit;
 }
@@ -255,10 +224,6 @@ function parseResponsePayload<TResult>(
 
     throw error;
   }
-}
-
-function shouldSetJsonContentType<TBody>(body: TBody | undefined): boolean {
-  return body !== undefined && !(body instanceof FormData);
 }
 
 async function readJsonPayload(response: Response): Promise<JsonValue> {

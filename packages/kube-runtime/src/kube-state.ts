@@ -13,14 +13,17 @@ export function calculateKubeStateTransition(
   observed: KubeObservedDeployment,
   now: Date,
 ): KubeStateTransition {
-  if (row.state === 'desired') return transition('apply', 'pending', null, row.observedAt);
+  if (row.state === 'desired') {
+    return transition('apply', 'pending', null, row.observedAt);
+  }
   const recovery: KubeStateTransition | null = recoveryTransition(row, observed);
-  if (recovery !== null) return recovery;
-  const ready: boolean =
-    observed.generation !== null &&
-    observed.observedGeneration === observed.generation &&
-    observed.availableReplicas >= row.desiredReplicas;
-  if (ready) return transition('none', 'active', null, now);
+  if (recovery !== null) {
+    return recovery;
+  }
+  const ready: boolean = isReady(row, observed);
+  if (ready) {
+    return transition('none', 'active', null, now);
+  }
 
   return transition(
     'none',
@@ -30,15 +33,26 @@ export function calculateKubeStateTransition(
   );
 }
 
+function isReady(row: KubeDeploymentStateRow, observed: KubeObservedDeployment): boolean {
+  return (
+    observed.generation !== null &&
+    observed.observedGeneration === observed.generation &&
+    observed.availableReplicas >= row.desiredReplicas
+  );
+}
+
 function recoveryTransition(row: KubeDeploymentStateRow, observed: KubeObservedDeployment): KubeStateTransition | null {
-  if (!observed.exists || !observed.requiredObjectsPresent)
+  if (!observed.exists || !observed.requiredObjectsPresent) {
     return transition(
       'apply',
       'pending',
       driftAudit(row, 'deleted', 'A required Kubernetes application object is missing.'),
       row.observedAt,
     );
-  if (!observed.desiredFieldsDrifted) return null;
+  }
+  if (!observed.desiredFieldsDrifted) {
+    return null;
+  }
   return transition(
     'apply',
     'pending',

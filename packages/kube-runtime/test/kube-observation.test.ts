@@ -23,16 +23,21 @@ class FakeInformer {
   public constructor(private readonly connects: boolean = true) {}
 
   public on(event: string, callback: ObjectCallback | ErrorCallback): void {
-    if (event === 'error') this.errorCallbacks.push(callback as ErrorCallback);
-    else if (event === 'connect') this.connectCallbacks.push(callback as ErrorCallback);
-    else this.objectCallbacks.set(event, [...(this.objectCallbacks.get(event) ?? []), callback as ObjectCallback]);
+    if (event === 'error') {
+      this.errorCallbacks.push(callback as ErrorCallback);
+    } else if (event === 'connect') {
+      this.connectCallbacks.push(callback as ErrorCallback);
+    } else {
+      this.objectCallbacks.set(event, [...(this.objectCallbacks.get(event) ?? []), callback as ObjectCallback]);
+    }
   }
 
   public async start(): Promise<void> {
     await Promise.resolve();
     this.startCount += 1;
-    if (this.connects)
+    if (this.connects) {
       queueMicrotask((): void => this.connectCallbacks.forEach((callback: ErrorCallback): void => callback()));
+    }
   }
 
   public async stop(): Promise<void> {
@@ -160,7 +165,9 @@ describe('informer lifecycle', (): void => {
     const listener: Mock = vi.fn(async (event: KubeObservationEvent): Promise<void> => {
       await Promise.resolve();
       delivered.push(event);
-      if (delivered.length < 3) throw new Error('database unavailable');
+      if (delivered.length < 3) {
+        throw new Error('database unavailable');
+      }
     });
     observation.onEvent(listener);
     informer.emitObject('add', deploymentObject());

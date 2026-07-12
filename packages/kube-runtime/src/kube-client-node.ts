@@ -14,6 +14,8 @@ export function createKubeInformer(
   list: KubeListPromise,
   selector: string,
 ): Informer<KubernetesObject> {
-  if (selector.length === 0) throw new Error('Kubernetes informer requires an ownership selector.');
+  if (selector.length === 0) {
+    throw new Error('Kubernetes informer requires an ownership selector.');
+  }
   return makeInformer(kubeConfig, path, list, selector);
 }

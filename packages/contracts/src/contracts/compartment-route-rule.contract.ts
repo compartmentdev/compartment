@@ -128,7 +128,9 @@ export function matchCompartmentRoute<TRoute extends CompartmentRouteRule>(
     }
 
     const proxyPath: string | null = readCompartmentRouteProxyPath(route, requestPath);
-    if (proxyPath === null) continue;
+    if (proxyPath === null) {
+      continue;
+    }
 
     return {
       proxyPath,
