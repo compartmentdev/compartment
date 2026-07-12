@@ -21,16 +21,17 @@ import { runGitSourceSyncIteration } from './worker-git-source-sync.service';
 import { runScheduledResourceOperationIteration } from './worker-resource-operation-scheduler.service';
 import { completeBuiltDeployment } from './worker-runtime-deploy.service';
 import { readWorkerFailureMessage } from './worker-failure-message.service';
-import {
-  cleanupClaimedDeploymentNetworkReservationBestEffort,
-  reserveClaimedDeploymentNetworks,
-} from './worker-runtime-network-reservation.service';
+import { cleanupClaimedDeploymentNetworkReservationBestEffort } from './worker-runtime-network-reservation.service';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
 import type {
   AttemptClaimedDeploymentCompletionInput,
   AttemptedClaimedDeploymentResult,
   WorkerRequesterInput,
 } from './worker-iteration.types';
+import {
+  handoffBuiltDeploymentToKubeIfConfigured,
+  reserveLegacyDeploymentNetworksIfNeeded,
+} from './worker-kube-deployment-handoff.service';
 
 export async function runWorkerIteration(
   apiUrl: string,
@@ -144,7 +145,7 @@ async function attemptClaimedDeploymentCompletion(
   let imageRef: string | undefined;
   let reservation: NodeRuntimeNetworkReservationResponse | undefined;
   try {
-    reservation = await reserveClaimedDeploymentNetworks(runtimeControlToken, deployment);
+    reservation = await reserveLegacyDeploymentNetworksIfNeeded(runtimeControlToken, deployment);
     const builtImageRef: string = await buildClaimedDeploymentImage(
       request,
       releaseArchiveRequest,
@@ -166,6 +167,9 @@ async function completeAttemptedClaimedDeployment(
   input: Readonly<AttemptClaimedDeploymentCompletionInput>,
   imageRef: string,
 ): Promise<void> {
+  if (await handoffBuiltDeploymentToKubeIfConfigured(input.request, input.deployment, imageRef)) {
+    return;
+  }
   await completeClaimedDeployment(
     input.request,
     input.deployment,

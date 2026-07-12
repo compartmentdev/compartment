@@ -171,3 +171,8 @@ export {
   persistProductJobIntent,
   persistProductJobResult,
 } from './services/worker-product-job.service';
+export {
+  claimDeploymentReconcile,
+  observeDeploymentReconcile,
+  prepareDeploymentReconcile,
+} from './services/worker-deployment-reconcile.service';

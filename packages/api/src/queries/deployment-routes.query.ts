@@ -1,13 +1,11 @@
 import type { CompartmentAccessScopeType } from '@compartment/contracts';
 import { and, asc, desc, eq, isNotNull, or, sql, type SQL } from 'drizzle-orm';
-import { deploymentRoutes, deployments, environments, organizations, projectServices, projects } from '../db/schema';
+import { deploymentRoutes, deployments, projectServices } from '../db/schema';
 import { buildPublicRouteHost } from '../lib/public-route-host';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { findActiveCustomDeploymentRouteByHost } from './custom-deployment-routes.query';
-import { createDeploymentRouteLookupSelection } from './deployment-route-lookup-selection';
+import { createDeploymentRouteLookupQuery } from './deployment-route-lookup-selection';
 import type {
-  DeploymentRouteLookupSelection,
-  DeploymentRouteLookupQuery,
   DeploymentRouteLookupRow,
   DeploymentRouteSubdomainRow,
   DeploymentRouteOwnerRow,
@@ -26,8 +24,6 @@ interface DeploymentRouteInsertInput {
   subdomain: string;
   updatedAt: Date;
 }
-
-const deploymentRouteLookupSelection: DeploymentRouteLookupSelection = createDeploymentRouteLookupSelection();
 
 const deploymentRouteOwnerSelection: DeploymentRouteOwnerSelection = {
   environmentId: deployments.environmentId,
@@ -201,17 +197,6 @@ async function findActiveCanonicalDeploymentRouteByHost(
   return rows[0] === undefined ? undefined : toDeploymentRouteLookupRow(rows[0], baseDomain);
 }
 
-function createDeploymentRouteLookupQuery(): DeploymentRouteLookupQuery {
-  return getApiDatabase()
-    .select(deploymentRouteLookupSelection)
-    .from(deploymentRoutes)
-    .innerJoin(deployments, eq(deploymentRoutes.deploymentId, deployments.id))
-    .innerJoin(environments, eq(deployments.environmentId, environments.id))
-    .innerJoin(projects, eq(environments.projectId, projects.id))
-    .innerJoin(organizations, eq(projects.organizationId, organizations.id))
-    .innerJoin(projectServices, eq(deployments.projectServiceId, projectServices.id));
-}
-
 function toDeploymentRouteLookupRow(
   row: PersistedDeploymentRouteLookupRow,
   baseDomain: string,
@@ -263,7 +248,6 @@ function buildDeploymentRouteInsertInput(input: UpsertDeploymentRouteInput): Dep
     updatedAt: input.updatedAt,
   };
 }
-
 async function findDeploymentRouteOwnerBySubdomainWithExecutor(
   executor: DeploymentRouteQueryExecutor,
   routeSubdomain: string,
@@ -277,7 +261,6 @@ async function findDeploymentRouteOwnerBySubdomainWithExecutor(
 
   return rows[0];
 }
-
 function isMatchingDeploymentRouteOwner(
   existingRouteOwner: DeploymentRouteOwnerRow,
   input: UpsertDeploymentRouteInput,

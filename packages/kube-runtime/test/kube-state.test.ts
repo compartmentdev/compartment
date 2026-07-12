@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { calculateKubeStateTransition, type KubeObservedDeployment } from '../src';
+import {
+  calculateKubeRolloutStatus,
+  calculateKubeStateTransition,
+  type KubeObservedDeployment,
+  type KubeRolloutObservation,
+} from '../src';
 
 const readyDeployment: KubeObservedDeployment = {
   availableReplicas: 1,
@@ -67,6 +72,40 @@ describe('T9 kill matrix', (): void => {
         now,
       ),
     ).toEqual({ action: 'apply', audit: null, nextState: 'pending', observedAt: null });
+  });
+});
+
+describe('rollout observation decisions', (): void => {
+  const rollout: KubeRolloutObservation = {
+    availableReplicas: 0,
+    conditions: [],
+    deadlineAt: new Date('2026-07-11T12:00:45.000Z'),
+    desiredReplicas: 1,
+    generation: 4,
+    observedGeneration: 3,
+  };
+
+  it('reports ProgressDeadlineExceeded before considering a rollout Ready', (): void => {
+    expect(
+      calculateKubeRolloutStatus(
+        {
+          ...rollout,
+          availableReplicas: 1,
+          conditions: [{ reason: 'ProgressDeadlineExceeded', status: 'False', type: 'Progressing' }],
+          observedGeneration: 4,
+        },
+        now,
+      ),
+    ).toBe('progress-deadline-exceeded');
+  });
+
+  it('times out a rollout without a terminal Kubernetes condition', (): void => {
+    expect(calculateKubeRolloutStatus(rollout, rollout.deadlineAt)).toBe('timed-out');
+  });
+
+  it('requires the current generation and desired replicas for Ready', (): void => {
+    expect(calculateKubeRolloutStatus({ ...rollout, availableReplicas: 1, observedGeneration: 4 }, now)).toBe('ready');
+    expect(calculateKubeRolloutStatus(rollout, now)).toBe('progressing');
   });
 });
 

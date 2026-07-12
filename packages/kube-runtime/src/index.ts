@@ -1,6 +1,12 @@
 export { createKubeRuntimeFromEnvironment } from './kube-runtime-factory';
 export { KubeRuntime } from './kube-runtime';
-export { kubeApplicationName, kubeJobName, kubeNamespaceName, kubeSecretName } from './kube-naming';
+export {
+  kubeApplicationIdentityName,
+  kubeApplicationName,
+  kubeJobName,
+  kubeNamespaceName,
+  kubeSecretName,
+} from './kube-naming';
 export { platformBuildManifests } from './kube-platform-build-projection';
 export type { PlatformBuildProjectionInput } from './kube-platform-build-projection.types';
 export { projectApplicationManifests } from './kube-projections';
@@ -8,14 +14,10 @@ export type { ProjectNetworkPolicyProjection } from './kube-network-policy-proje
 export { projectSecretManifest } from './kube-secret-projection';
 export { projectNamespaceProvisioningBundle } from './kube-provisioning';
 export type { ProjectNamespaceProvisioningRow } from './kube-provisioning.types';
-export { calculateKubeStateTransition } from './kube-state';
+export { calculateKubeRolloutStatus, calculateKubeStateTransition } from './kube-state';
 export type {
-  ApplicationProjectionRow,
   ApplyBundle,
-  KubeDeploymentState,
-  KubeDeploymentStateRow,
-  KubeDriftAudit,
-  KubeDriftKind,
+  KubeDeploymentManifest,
   KubeJobResult,
   KubePersistedJobResult,
   KubeJobSpec,
@@ -26,10 +28,19 @@ export type {
   KubeObjectObservationEvent,
   KubeRelistObservationEvent,
   KubeObservationHealth,
-  KubeObservedDeployment,
+  KubeObservedManifest,
   KubeObservedResource,
-  KubeStateTransition,
   ObserveLabels,
   ResourceProjectionRow,
   SecretProjectionRow,
 } from './kube-runtime.types';
+export type { ApplicationProjectionRow } from './kube-application-projection.types';
+export type { KubeDeploymentCondition, KubeRolloutObservation, KubeRolloutStatus } from './kube-rollout.types';
+export type {
+  KubeDeploymentState,
+  KubeDeploymentStateRow,
+  KubeDriftAudit,
+  KubeDriftKind,
+  KubeObservedDeployment,
+  KubeStateTransition,
+} from './kube-state.types';

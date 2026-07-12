@@ -6,7 +6,25 @@ import type {
   KubeDriftAudit,
   KubeObservedDeployment,
   KubeStateTransition,
-} from './kube-runtime.types';
+} from './kube-state.types';
+import type { KubeDeploymentCondition, KubeRolloutObservation, KubeRolloutStatus } from './kube-rollout.types';
+
+export function calculateKubeRolloutStatus(observed: KubeRolloutObservation, now: Date): KubeRolloutStatus {
+  if (
+    observed.conditions.some(
+      (condition: KubeDeploymentCondition): boolean =>
+        condition.type === 'Progressing' &&
+        condition.status === 'False' &&
+        condition.reason === 'ProgressDeadlineExceeded',
+    )
+  ) {
+    return 'progress-deadline-exceeded';
+  }
+  if (observed.observedGeneration === observed.generation && observed.availableReplicas >= observed.desiredReplicas) {
+    return 'ready';
+  }
+  return now.getTime() >= observed.deadlineAt.getTime() ? 'timed-out' : 'progressing';
+}
 
 export function calculateKubeStateTransition(
   row: KubeDeploymentStateRow,

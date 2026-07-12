@@ -10,6 +10,10 @@ export function kubeApplicationName(deploymentId: string): string {
   return immutableKubeName('app', deploymentId);
 }
 
+export function kubeApplicationIdentityName(environmentId: string, serviceId: string): string {
+  return immutableKubeName('app', `${environmentId}-${serviceId}`);
+}
+
 export function kubeSecretName(secretId: string): string {
   return immutableKubeName('secret', secretId);
 }

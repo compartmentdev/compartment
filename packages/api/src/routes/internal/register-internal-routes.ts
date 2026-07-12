@@ -22,6 +22,7 @@ import { registerPostRecoverRunningDeploymentsRoute } from './post-recover-runni
 import { registerPostRunNextScheduledResourceOperationRoute } from './post-run-next-scheduled-resource-operation.route';
 import { registerPostUploadGitSourceResolutionTaskArchiveRoute } from './post-upload-git-source-resolution-task-archive.route';
 import { registerProductJobRoutes } from './product-job.routes';
+import { registerDeploymentReconcileRoutes } from './deployment-reconcile.routes';
 
 type RegisterInternalRoutesDone = (err?: Error) => void;
 interface InternalApiRoutesOptions extends FastifyPluginOptions {
@@ -71,6 +72,7 @@ function registerWorkerInternalRoutes(
 }
 
 function registerWorkerOperationRoutes(app: ApiApp): void {
+  registerDeploymentReconcileRoutes(app);
   registerPostRunNextScheduledResourceOperationRoute(app);
   registerProductJobRoutes(app);
 }

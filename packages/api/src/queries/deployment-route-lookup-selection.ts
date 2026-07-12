@@ -1,5 +1,30 @@
-import { deploymentRoutes, deployments, environments, organizations, projectServices, projects } from '../db/schema';
-import type { DeploymentRouteLookupSelection } from './deployment-routes.query.types';
+import { and, eq, sql } from 'drizzle-orm';
+import {
+  deploymentKubeReferences,
+  deploymentRoutes,
+  deployments,
+  environments,
+  organizations,
+  projectServices,
+  projects,
+} from '../db/schema';
+import type { DeploymentRouteLookupQuery, DeploymentRouteLookupSelection } from './deployment-routes.query.types';
+import { getApiDatabase } from '../runtime/runtime-access';
+
+export function createDeploymentRouteLookupQuery(): DeploymentRouteLookupQuery {
+  return getApiDatabase()
+    .select(createDeploymentRouteLookupSelection())
+    .from(deploymentRoutes)
+    .innerJoin(deployments, eq(deploymentRoutes.deploymentId, deployments.id))
+    .innerJoin(environments, eq(deployments.environmentId, environments.id))
+    .innerJoin(projects, eq(environments.projectId, projects.id))
+    .innerJoin(organizations, eq(projects.organizationId, organizations.id))
+    .innerJoin(projectServices, eq(deployments.projectServiceId, projectServices.id))
+    .leftJoin(
+      deploymentKubeReferences,
+      and(eq(deploymentKubeReferences.deploymentId, deployments.id), eq(deploymentKubeReferences.state, 'active')),
+    );
+}
 
 export function createDeploymentRouteLookupSelection(): DeploymentRouteLookupSelection {
   return {
@@ -14,8 +39,12 @@ export function createDeploymentRouteLookupSelection(): DeploymentRouteLookupSel
     projectId: projects.id,
     projectName: projects.name,
     resolvedRoutesJson: deployments.resolvedRoutesJson,
-    upstreamHost: deployments.upstreamHost,
-    upstreamPort: deployments.upstreamPort,
+    upstreamHost: sql<
+      string | null
+    >`CASE WHEN ${deploymentKubeReferences.deploymentId} IS NULL THEN ${deployments.upstreamHost} ELSE ${deploymentKubeReferences.serviceName} || '.' || ${deploymentKubeReferences.namespace} || '.svc.cluster.local' END`,
+    upstreamPort: sql<
+      number | null
+    >`CASE WHEN ${deploymentKubeReferences.deploymentId} IS NULL THEN ${deployments.upstreamPort} ELSE 80 END`,
     serviceId: projectServices.id,
     serviceName: projectServices.name,
     subdomain: deploymentRoutes.subdomain,

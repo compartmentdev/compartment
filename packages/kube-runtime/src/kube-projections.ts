@@ -1,5 +1,6 @@
+import type { V1ObjectMeta } from '@kubernetes/client-node';
+import type { ApplicationProjectionRow, KubeReadinessProbe } from './kube-application-projection.types';
 import type {
-  ApplicationProjectionRow,
   KubeDeploymentManifest,
   KubeDeploymentManifestSpec,
   KubeManifest,
@@ -7,7 +8,7 @@ import type {
   KubeProjectedPodSpec,
   KubeSecretEnvVariable,
 } from './kube-runtime.types';
-import { kubeApplicationName, kubeNamespaceName, kubeSecretName } from './kube-naming';
+import { kubeApplicationIdentityName, kubeNamespaceName, kubeSecretName } from './kube-naming';
 import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
@@ -18,9 +19,13 @@ interface ApplicationProjectionContext {
   deploymentId: string;
   name: string;
   namespace: string;
+  workloadLabels: Record<string, string>;
 }
 
+const minimumTerminationGracePeriodSeconds: number = 45;
+
 export function projectApplicationManifests(row: ApplicationProjectionRow): KubeManifest[] {
+  assertTerminationGracePeriod(row.terminationGracePeriodSeconds ?? minimumTerminationGracePeriodSeconds);
   const context: ApplicationProjectionContext = applicationProjectionContext(row);
   const secret: KubeManifest = projectSecretManifest({
     data: row.env,
@@ -32,26 +37,33 @@ export function projectApplicationManifests(row: ApplicationProjectionRow): Kube
 }
 
 function applicationProjectionContext(row: ApplicationProjectionRow): ApplicationProjectionContext {
-  const selectorLabels: Record<string, string> = {
+  const workloadLabels: Record<string, string> = {
     ...managedByLabel,
-    'compartment.dev/deployment-id': row.deploymentId,
     'compartment.dev/environment-id': row.environmentId,
     'compartment.dev/organization-id': row.organizationId,
     'compartment.dev/project-id': row.projectId,
     'compartment.dev/service-id': row.serviceId,
   };
-  const displayAnnotations: Record<string, string> = {
+  const deploymentLabels: Record<string, string> = {
+    ...workloadLabels,
+    'compartment.dev/deployment-id': row.deploymentId,
+  };
+  return {
+    annotations: displayAnnotations(row),
+    labels: deploymentLabels,
+    deploymentId: row.deploymentId,
+    name: kubeApplicationIdentityName(row.environmentId, row.serviceId),
+    namespace: kubeNamespaceName(row.namespaceId),
+    workloadLabels,
+  };
+}
+
+function displayAnnotations(row: ApplicationProjectionRow): Record<string, string> {
+  return {
     'compartment.dev/environment-name': row.environmentName,
     'compartment.dev/organization-name': row.organizationName,
     'compartment.dev/project-name': row.projectName,
     'compartment.dev/service-name': row.serviceName,
-  };
-  return {
-    annotations: displayAnnotations,
-    labels: selectorLabels,
-    deploymentId: row.deploymentId,
-    name: kubeApplicationName(row.deploymentId),
-    namespace: kubeNamespaceName(row.namespaceId),
   };
 }
 
@@ -75,17 +87,17 @@ function deploymentSpec(
     automountServiceAccountToken: false,
     containers: [applicationContainer(row)],
     imagePullSecrets: [{ name: kubeSecretName(row.imagePullSecretId) }],
-    terminationGracePeriodSeconds: 45,
+    terminationGracePeriodSeconds: row.terminationGracePeriodSeconds ?? minimumTerminationGracePeriodSeconds,
   };
   return {
     progressDeadlineSeconds: 45,
     replicas: row.replicas,
-    selector: { matchLabels: context.labels },
+    selector: { matchLabels: context.workloadLabels },
     strategy: { rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }, type: 'RollingUpdate' },
     template: {
       metadata: {
         annotations: { ...context.annotations, 'compartment.dev/secret-checksum': secretChecksum(row.env) },
-        labels: context.labels,
+        labels: context.workloadLabels,
       },
       spec: podSpec,
     },
@@ -104,7 +116,7 @@ function applicationContainer(row: ApplicationProjectionRow): KubeProjectedConta
   };
 }
 
-function readinessProbe(): object {
+function readinessProbe(): KubeReadinessProbe {
   return {
     failureThreshold: 3,
     httpGet: { path: '/', port: 'http' },
@@ -116,17 +128,31 @@ function readinessProbe(): object {
 }
 
 function serviceManifest(row: ApplicationProjectionRow, context: ApplicationProjectionContext): KubeManifest {
+  const metadata: V1ObjectMeta = {
+    annotations: context.annotations,
+    labels: context.workloadLabels,
+    name: context.name,
+    namespace: context.namespace,
+  };
   return {
     apiVersion: 'v1',
     kind: 'Service',
-    metadata: manifestMetadata(context),
+    metadata,
     spec: {
       ports: [{ name: 'http', port: 80, protocol: 'TCP', targetPort: row.containerPort }],
-      selector: context.labels,
+      selector: context.workloadLabels,
     },
   };
 }
 
-function manifestMetadata(context: ApplicationProjectionContext): object {
+function manifestMetadata(context: ApplicationProjectionContext): V1ObjectMeta {
   return { annotations: context.annotations, labels: context.labels, name: context.name, namespace: context.namespace };
+}
+
+function assertTerminationGracePeriod(value: number): void {
+  if (!Number.isInteger(value) || value < minimumTerminationGracePeriodSeconds) {
+    throw new Error(
+      `Application termination grace period must be an integer of at least ${minimumTerminationGracePeriodSeconds} seconds.`,
+    );
+  }
 }

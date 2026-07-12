@@ -40,6 +40,7 @@ describe('Kubernetes manifest projection goldens', (): void => {
       serviceId: 'svc-01jz',
       serviceName: 'Web',
       secretId: 'sec-01jz',
+      terminationGracePeriodSeconds: 45,
     });
 
     expect(toYaml(manifests)).toMatchSnapshot();
@@ -147,12 +148,49 @@ describe('Kubernetes manifest projection goldens', (): void => {
     expect(second).toHaveLength(63);
     expect(first).not.toBe(second);
   });
+
+  it('rejects a termination grace period below the admitted minimum', (): void => {
+    expect((): KubeManifest[] =>
+      projectApplicationManifests({ ...applicationRow({}), terminationGracePeriodSeconds: 44 }),
+    ).toThrow('at least 45 seconds');
+    expect(toYaml(projectApplicationManifests({ ...applicationRow({}), terminationGracePeriodSeconds: 60 }))).toContain(
+      'terminationGracePeriodSeconds: 60',
+    );
+  });
+
+  it('keeps Deployment and Service identity stable while the candidate spec changes', (): void => {
+    const firstRow: ApplicationProjectionRow = applicationRow({});
+    const candidateRow: ApplicationProjectionRow = {
+      ...applicationRow({}),
+      deploymentId: 'dep-02jz',
+      image: 'registry.example/app@sha256:next',
+      secretId: 'sec-02jz',
+    };
+    const firstDeployment: KubeManifest = deploymentForRow(firstRow);
+    const candidateDeployment: KubeManifest = deploymentForRow(candidateRow);
+    const firstService: KubeManifest = serviceFor(firstRow);
+    const candidateService: KubeManifest = serviceFor(candidateRow);
+
+    expect(candidateDeployment.metadata?.name).toBe(firstDeployment.metadata?.name);
+    expect(candidateService.metadata?.name).toBe(firstService.metadata?.name);
+    expect(candidateDeployment.metadata?.name).toBe(candidateService.metadata?.name);
+    expect(candidateDeployment.spec).not.toEqual(firstDeployment.spec);
+    expect(JSON.stringify(candidateDeployment.spec)).toContain('registry.example/app@sha256:next');
+    expect(candidateService.spec).toEqual(firstService.spec);
+    expect(JSON.stringify(candidateService)).not.toContain('dep-02jz');
+  });
 });
 
 function deploymentFor(env: Readonly<Record<string, string>>): KubeManifest {
-  return projectApplicationManifests(applicationRow(env)).find(
-    (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
-  )!;
+  return deploymentForRow(applicationRow(env));
+}
+
+function deploymentForRow(row: ApplicationProjectionRow): KubeManifest {
+  return projectApplicationManifests(row).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+}
+
+function serviceFor(row: ApplicationProjectionRow): KubeManifest {
+  return projectApplicationManifests(row).find((manifest: KubeManifest): boolean => manifest.kind === 'Service')!;
 }
 
 function applicationRow(env: Readonly<Record<string, string>>): ApplicationProjectionRow {
@@ -173,6 +211,7 @@ function applicationRow(env: Readonly<Record<string, string>>): ApplicationProje
     secretId: 'sec-01jz',
     serviceId: 'svc-01jz',
     serviceName: 'Web',
+    terminationGracePeriodSeconds: 45,
   };
 }
 
