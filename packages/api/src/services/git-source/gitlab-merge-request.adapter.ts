@@ -1,5 +1,6 @@
 import type { GitDescriptorDraftFile } from '@compartment/contracts';
 import { z } from 'zod';
+import { createId } from '../../lib/tokens';
 import type {
   CreateDescriptorPullRequestPlan,
   GitPullRequestRef,
@@ -27,7 +28,7 @@ export async function createGitLabDescriptorMergeRequest(
   projectId: string,
   plan: CreateDescriptorPullRequestPlan,
 ): Promise<GitPullRequestRef> {
-  const branch: string = `compartment/add-descriptor-${Date.now().toString(36)}`;
+  const branch: string = `compartment/add-descriptor-${createId('gbr')}`;
   await createDescriptorBranch(client, projectId, branch, plan.baseBranchName);
   await commitDescriptorFiles(client, projectId, branch, plan);
   const mr: GitLabMergeRequest = await openDescriptorMergeRequest(client, projectId, branch, plan);
