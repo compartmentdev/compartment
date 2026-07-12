@@ -119,12 +119,7 @@ export interface KubeDeploymentManifestSpec {
 export interface KubeJobManifestSpec {
   backoffLimit: number;
   template: KubePodTemplate;
-}
-
-export interface KubeSecretEnvironment {
-  checksum: string;
-  keys: readonly string[];
-  secretName: string;
+  ttlSecondsAfterFinished?: number | undefined;
 }
 
 export interface ApplyBundle {
@@ -184,7 +179,7 @@ export interface KubeLogReference {
 export interface KubeJobSpec {
   args?: string[] | undefined;
   command?: string[] | undefined;
-  env: KubeSecretEnvironment;
+  env: Readonly<Record<string, string>>;
   id: string;
   image: string;
   jobClass: 'release' | 'operation';
@@ -195,10 +190,21 @@ export interface KubeJobSpec {
 
 export interface KubeJobResult {
   completedAt: Date;
-  exitCode: number;
+  exitCode: number | null;
   jobName: string;
   logs: string;
-  podName: string;
+  podName: string | null;
+  status: 'succeeded' | 'failed' | 'timed-out';
+  finalize(): Promise<void>;
+}
+
+export interface KubePersistedJobResult {
+  completedAt: Date;
+  exitCode: number | null;
+  jobName: string;
+  logs: string;
+  podName: string | null;
+  status: 'succeeded' | 'failed' | 'timed-out';
 }
 
 export interface ApplicationProjectionRow {

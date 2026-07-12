@@ -6,6 +6,7 @@
     "paths": {
       "@compartment/contracts": ["../contracts/src/index.ts"],
       "@compartment/docker": ["../docker/src/index.ts"],
+      "@compartment/kube-runtime": ["../kube-runtime/src/index.ts"],
       "@compartment/source-archive": ["../source-archive/src/index.ts"],
       "@compartment/sdk": ["../sdk/src/index.ts"],
       "@compartment/utils": ["../utils/src/index.ts"]

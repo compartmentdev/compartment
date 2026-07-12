@@ -15,6 +15,7 @@ The worker layer owns asynchronous deployment execution after a deployment becom
 - `sdk`
 - `source-archive`
 - `docker`
+- `kube-runtime`
 - `utils`
 
 ## Must not

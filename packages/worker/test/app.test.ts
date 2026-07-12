@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { WorkerRecoverDeploymentsQuery, WorkerRecoverDeploymentsResponse } from '@compartment/contracts';
 import type { CompartmentRequester } from '@compartment/sdk';
 import type { WorkerConfig } from '../src/config';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import { runWorker } from '../src/app';
+import type { KubeControllerHost } from '../src/kube-controller-host';
 
 type CreateCompartmentRequester = (input: { apiUrl: string; internalToken: string }) => CompartmentRequester;
 type CleanupWorkerArtifacts = (
@@ -31,6 +32,7 @@ interface WorkerAppMocks {
   prewarmSourceBuildToolchain: Mock<PrewarmSourceBuildToolchain>;
   recoverRunningDeployments: Mock<RecoverRunningDeployments>;
   runWorkerIteration: Mock<RunWorkerIteration>;
+  reconcileKube: Mock<() => Promise<boolean>>;
 }
 
 const mocks: WorkerAppMocks = vi.hoisted(
@@ -40,8 +42,13 @@ const mocks: WorkerAppMocks = vi.hoisted(
     prewarmSourceBuildToolchain: vi.fn<PrewarmSourceBuildToolchain>(),
     recoverRunningDeployments: vi.fn<RecoverRunningDeployments>(),
     runWorkerIteration: vi.fn<RunWorkerIteration>(),
+    reconcileKube: vi.fn<() => Promise<boolean>>(),
   }),
 );
+
+vi.mock('../src/kube-controller-host', (): { createKubeControllerHost: () => KubeControllerHost } => ({
+  createKubeControllerHost: (): KubeControllerHost => ({ enabled: false, reconcile: mocks.reconcileKube }),
+}));
 
 vi.mock('@compartment/docker', (): { prewarmSourceBuildToolchain: Mock<PrewarmSourceBuildToolchain> } => ({
   prewarmSourceBuildToolchain: mocks.prewarmSourceBuildToolchain,
@@ -75,6 +82,10 @@ describe('runWorker', (): void => {
   afterEach((): void => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
+  });
+
+  beforeEach((): void => {
+    mocks.reconcileKube.mockResolvedValue(false);
   });
 
   it('runs startup recovery once before switching steady-state recovery to pending drains', async (): Promise<void> => {

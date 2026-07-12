@@ -222,6 +222,7 @@ export {
   workerFailDeploymentRequestSchema,
   workerUpdateDeploymentRuntimeRequestSchema,
 } from './contracts/internal-worker.contract';
+export * from './contracts/internal-product-job.contract';
 export {
   type WorkerArtifactCleanupTarget,
   type WorkerCompleteDeploymentResponse,
