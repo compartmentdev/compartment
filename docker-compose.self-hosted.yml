@@ -199,6 +199,9 @@ services:
       COMPARTMENT_PUBLIC_PROTOCOL: ${COMPARTMENT_PUBLIC_PROTOCOL}
     ports:
       - '127.0.0.1:${COMPARTMENT_EDGE_PORT}:${COMPARTMENT_EDGE_PORT}'
+    depends_on:
+      api:
+        condition: service_started
     networks:
       - system_internal
     healthcheck:
