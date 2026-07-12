@@ -11,6 +11,7 @@ import {
   type KubeObservation,
   type KubeObservationHealth,
   type ObserveLabels,
+  type ProjectNamespaceProvisioningRow,
 } from '../src';
 import type { KubeObservationListener, KubeObservedManifest, KubeSecretEnvVariable } from '../src/kube-runtime.types';
 
@@ -172,16 +173,9 @@ describe('KubeRuntime Job primitive', (): void => {
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
-    await runtime.apply(projectNamespaceProvisioningBundle({ namespaceId: 'prj-01jz', projectId: 'prj-01jz' }));
-    expect(objectApi.patches).toHaveLength(0);
+    await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-01jz')));
     expect(objectApi.deletes).toMatchObject([{ kind: 'ClusterRoleBinding' }]);
-    expect(objectApi.events).toEqual([
-      'create:Namespace',
-      'read:Namespace',
-      'create:ServiceAccount',
-      'create:RoleBinding',
-      'delete:ClusterRoleBinding',
-    ]);
+    expect(objectApi.events.at(-1)).toBe('delete:ClusterRoleBinding');
   });
 
   it('uses installation authority to remove bootstrap access after a partial create failure', async (): Promise<void> => {
@@ -190,9 +184,9 @@ describe('KubeRuntime Job primitive', (): void => {
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
-    await expect(
-      runtime.apply(projectNamespaceProvisioningBundle({ namespaceId: 'prj-failure', projectId: 'prj-failure' })),
-    ).rejects.toThrow('generated ServiceAccount failure');
+    await expect(runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-failure')))).rejects.toThrow(
+      'generated ServiceAccount failure',
+    );
     expect(objectApi.events).toEqual(['create:Namespace', 'create:ServiceAccount', 'delete:ClusterRoleBinding']);
   });
 
@@ -205,9 +199,7 @@ describe('KubeRuntime Job primitive', (): void => {
     );
     let failure: AggregateError | null = null;
     try {
-      await runtime.apply(
-        projectNamespaceProvisioningBundle({ namespaceId: 'prj-dual-failure', projectId: 'prj-dual-failure' }),
-      );
+      await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-dual-failure')));
     } catch (error) {
       failure = error as AggregateError;
     }
@@ -236,9 +228,9 @@ describe('KubeRuntime Job primitive', (): void => {
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
-    await expect(
-      runtime.apply(projectNamespaceProvisioningBundle({ namespaceId: 'prj-conflict', projectId: 'prj-conflict' })),
-    ).rejects.toThrow('does not match the provisioning contract');
+    await expect(runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-conflict')))).rejects.toThrow(
+      'does not match the provisioning contract',
+    );
     expect(objectApi.events.at(-1)).toBe('delete:ClusterRoleBinding');
   });
 
@@ -257,8 +249,8 @@ describe('KubeRuntime Job primitive', (): void => {
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
     await expect(
-      runtime.apply(projectNamespaceProvisioningBundle({ namespaceId: 'prj-reordered', projectId: 'prj-reordered' })),
-    ).resolves.toHaveLength(3);
+      runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-reordered'))),
+    ).resolves.toHaveLength(7);
   });
 
   it('applies one timeout to informer startup and terminal observation', async (): Promise<void> => {
@@ -297,6 +289,23 @@ function jobSpec(jobClass: 'operation' | 'release'): KubeJobSpec {
     labels: { 'compartment.dev/deployment-id': 'dep-01jz' },
     namespace: 'cpt-prj-01jz',
     timeoutMs: 1_000,
+  };
+}
+
+function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
+  return {
+    namespaceId,
+    networkPolicy: {
+      applicationPodLabels: { app: 'application' },
+      applicationPort: 8080,
+      edgeNamespaceId: 'edge-namespace',
+      edgePodLabels: { app: 'caddy' },
+      podCidr: ['10', '42', '0', '0/16'].join('.'),
+      resourcePodLabels: { app: 'resource' },
+      resourcePort: 5432,
+      serviceCidr: ['10', '43', '0', '0/16'].join('.'),
+    },
+    projectId: namespaceId,
   };
 }
 

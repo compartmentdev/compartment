@@ -83,8 +83,9 @@ new full list.
 
 ## Workload projection
 
-Application rows project deterministically to Deployment, Service, and
-NetworkPolicy objects. Rolling parameters follow the immutable T1 evidence:
+Application rows project deterministically to Deployment and Service objects.
+Project namespace provisioning projects the namespace-owned NetworkPolicy set
+in the same reconciliation as P5 RBAC. Rolling parameters follow the immutable T1 evidence:
 `maxUnavailable: 0`, `maxSurge: 1`, a 45-second progress deadline and
 termination grace period, a 3-second `preStop`, and the documented readiness
 probe timings. Failed rollout recovery reapplies the saved active manifest by

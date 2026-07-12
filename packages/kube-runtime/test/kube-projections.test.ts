@@ -6,7 +6,6 @@ import {
   projectApplicationManifests,
   projectSecretManifest,
   type ApplicationProjectionRow,
-  type ApplicationProjectionOptions,
   type KubeManifest,
 } from '../src';
 import type { KubeSecretEnvVariable } from '../src/kube-runtime.types';
@@ -23,32 +22,24 @@ interface DeploymentContainer {
 }
 
 describe('Kubernetes manifest projection goldens', (): void => {
-  it('projects an application row to the T1 and T2 workload bundle', (): void => {
-    const manifests: KubeManifest[] = projectApplicationManifests(
-      {
-        containerPort: 8080,
-        deploymentId: 'dep-01jz',
-        environmentId: 'env-01jz',
-        environmentName: 'Production',
-        env: { LOG_LEVEL: 'info', FEATURE_FLAG: 'enabled' },
-        image: 'registry.example/app@sha256:abc',
-        namespaceId: 'prj-01jz',
-        organizationId: 'org-01jz',
-        organizationName: 'Acme',
-        projectId: 'prj-01jz',
-        projectName: 'Checkout',
-        replicas: 2,
-        serviceId: 'svc-01jz',
-        serviceName: 'Web',
-        secretId: 'sec-01jz',
-      },
-      {
-        ingressNamespaceId: 'platform-01jz',
-        ingressPodLabels: { 'app.kubernetes.io/name': 'caddy' },
-        podCidr: ['10', '42', '0', '0/16'].join('.'),
-        serviceCidr: ['10', '43', '0', '0/16'].join('.'),
-      },
-    );
+  it('projects an application row to the T1 workload bundle', (): void => {
+    const manifests: KubeManifest[] = projectApplicationManifests({
+      containerPort: 8080,
+      deploymentId: 'dep-01jz',
+      environmentId: 'env-01jz',
+      environmentName: 'Production',
+      env: { LOG_LEVEL: 'info', FEATURE_FLAG: 'enabled' },
+      image: 'registry.example/app@sha256:abc',
+      namespaceId: 'prj-01jz',
+      organizationId: 'org-01jz',
+      organizationName: 'Acme',
+      projectId: 'prj-01jz',
+      projectName: 'Checkout',
+      replicas: 2,
+      serviceId: 'svc-01jz',
+      serviceName: 'Web',
+      secretId: 'sec-01jz',
+    });
 
     expect(toYaml(manifests)).toMatchSnapshot();
   });
@@ -71,7 +62,7 @@ describe('Kubernetes manifest projection goldens', (): void => {
       GENERATED_PLAIN: 'value-17',
       GENERATED_SENSITIVE: 'value-29',
     });
-    const manifests: KubeManifest[] = projectApplicationManifests(row, applicationOptions());
+    const manifests: KubeManifest[] = projectApplicationManifests(row);
     const secret: KubeManifest = manifests.find((manifest: KubeManifest): boolean => manifest.kind === 'Secret')!;
     const deployment: KubeManifest = manifests.find(
       (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
@@ -103,14 +94,11 @@ describe('Kubernetes manifest projection goldens', (): void => {
     const first: KubeManifest = deploymentFor({ ALPHA: 'one', ZETA: 'two' });
     const reordered: KubeManifest = deploymentFor({ ZETA: 'two', ALPHA: 'one' });
     const changed: KubeManifest = deploymentFor({ ALPHA: 'changed', ZETA: 'two' });
-    const metadataChanged: KubeManifest = projectApplicationManifests(
-      {
-        ...applicationRow({ ALPHA: 'one', ZETA: 'two' }),
-        image: 'registry.example/other@sha256:generated',
-        replicas: 3,
-      },
-      applicationOptions(),
-    ).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+    const metadataChanged: KubeManifest = projectApplicationManifests({
+      ...applicationRow({ ALPHA: 'one', ZETA: 'two' }),
+      image: 'registry.example/other@sha256:generated',
+      replicas: 3,
+    }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
     const checksum: (manifest: KubeManifest) => string | undefined = (manifest: KubeManifest): string | undefined =>
       (manifest.spec as DeploymentSpec).template.metadata.annotations['compartment.dev/secret-checksum'];
     expect(checksum(first)).toBe(checksum(reordered));
@@ -161,7 +149,7 @@ describe('Kubernetes manifest projection goldens', (): void => {
 });
 
 function deploymentFor(env: Readonly<Record<string, string>>): KubeManifest {
-  return projectApplicationManifests(applicationRow(env), applicationOptions()).find(
+  return projectApplicationManifests(applicationRow(env)).find(
     (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
   )!;
 }
@@ -183,15 +171,6 @@ function applicationRow(env: Readonly<Record<string, string>>): ApplicationProje
     secretId: 'sec-01jz',
     serviceId: 'svc-01jz',
     serviceName: 'Web',
-  };
-}
-
-function applicationOptions(): ApplicationProjectionOptions {
-  return {
-    ingressNamespaceId: 'platform-01jz',
-    ingressPodLabels: { app: 'ingress' },
-    podCidr: ['10', '42', '0', '0/16'].join('.'),
-    serviceCidr: ['10', '43', '0', '0/16'].join('.'),
   };
 }
 
