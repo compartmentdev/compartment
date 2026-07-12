@@ -109,18 +109,7 @@ describe('git source descriptor registration access', (): void => {
   });
 
   it('uses GitLab token material without applying GitHub owner matching', async (): Promise<void> => {
-    mocks.requireGitProviderRegistration.mockResolvedValueOnce(
-      createRegistration({
-        accessTokenCiphertext: 'encrypted-token',
-        accessTokenEncryptionKeyId: 'token-key',
-        installationId: null,
-        privateKeyPemCiphertext: null,
-        privateKeyPemEncryptionKeyId: null,
-        providerHost: 'gitlab.com',
-        providerType: 'gitlab',
-        repositoryOwner: 'token-holder',
-      }),
-    );
+    mocks.requireGitProviderRegistration.mockResolvedValueOnce(createGitLabRegistration());
     mocks.decryptVariableValueFromStorage.mockReturnValueOnce('gitlab-token');
     const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
       actor: createActor('prn_followup_admin'),
@@ -131,6 +120,30 @@ describe('git source descriptor registration access', (): void => {
     });
     expect(access.credential).toEqual({ kind: 'gitlab_token', token: 'gitlab-token' });
   });
+
+  it.each([
+    ['webhookSecretCiphertext', 'webhook_secret_ciphertext'],
+    ['webhookSecretEncryptionKeyId', 'webhook_secret_encryption_key_id'],
+  ] as const)(
+    'rejects GitLab registrations missing %s',
+    async (field: 'webhookSecretCiphertext' | 'webhookSecretEncryptionKeyId', label: string): Promise<void> => {
+      mocks.requireGitProviderRegistration.mockResolvedValueOnce(createGitLabRegistration({ [field]: null }));
+
+      await expect(
+        requireGitProviderRegistrationAccess({
+          actor: createActor('prn_followup_admin'),
+          organizationId: 'org_123',
+          providerHost: 'gitlab.com',
+          registrationId: 'gpr_123',
+          repositoryOwner: 'group/subgroup',
+        }),
+      ).rejects.toMatchObject({
+        code: 'git_source_registration_failed',
+        message: `Git provider registration is missing ${label} and must be reconnected.`,
+      });
+      expect(mocks.decryptVariableValueFromStorage).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects pending registrations before reading private key material', async (): Promise<void> => {
     mocks.requireGitProviderRegistration.mockResolvedValueOnce(createRegistration({ status: 'pending' }));
@@ -213,4 +226,18 @@ function createRegistration(overrides: Partial<GitProviderRegistrationRow> = {})
     webhookUrl: 'https://console.example/v1/sources/git/providers/github/registrations/gpr_123/webhook',
     ...overrides,
   };
+}
+
+function createGitLabRegistration(overrides: Partial<GitProviderRegistrationRow> = {}): GitProviderRegistrationRow {
+  return createRegistration({
+    accessTokenCiphertext: 'encrypted-token',
+    accessTokenEncryptionKeyId: 'token-key',
+    installationId: null,
+    privateKeyPemCiphertext: null,
+    privateKeyPemEncryptionKeyId: null,
+    providerHost: 'gitlab.com',
+    providerType: 'gitlab',
+    repositoryOwner: 'token-holder',
+    ...overrides,
+  });
 }

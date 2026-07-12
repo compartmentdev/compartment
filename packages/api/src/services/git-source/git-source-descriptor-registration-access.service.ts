@@ -70,6 +70,8 @@ function listRequiredRegistrationMaterialFields(
     return [
       ['access_token_ciphertext', registration.accessTokenCiphertext],
       ['access_token_encryption_key_id', registration.accessTokenEncryptionKeyId],
+      ['webhook_secret_ciphertext', registration.webhookSecretCiphertext],
+      ['webhook_secret_encryption_key_id', registration.webhookSecretEncryptionKeyId],
     ];
   }
 
