@@ -86,7 +86,7 @@ function ruleFor(rules: RbacRule[], resource: string): RbacRule | undefined {
 }
 
 function manifests(name: string): RbacManifest[] {
-  const path: string = resolve(process.cwd(), 'manifests', name);
+  const path: string = resolve(__dirname, '../manifests', name);
   return parseAllDocuments(readFileSync(path, 'utf8')).map(
     (document: Document): RbacManifest => document.toJS() as RbacManifest,
   );

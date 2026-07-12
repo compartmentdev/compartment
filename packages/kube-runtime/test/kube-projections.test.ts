@@ -118,6 +118,16 @@ describe('Kubernetes manifest projection goldens', (): void => {
     expect(checksum(first)).not.toBe(checksum(changed));
   });
 
+  it('orders variable keys by locale-independent code-unit order', (): void => {
+    const secret: KubeManifest = projectSecretManifest({
+      data: { ä_KEY: 'generated-3', Z_KEY: 'generated-2', A_KEY: 'generated-1' },
+      deploymentId: 'dep-order',
+      namespaceId: 'prj-order',
+      secretId: 'sec-order',
+    });
+    expect(Object.keys(secret.stringData ?? {})).toEqual(['A_KEY', 'Z_KEY', 'ä_KEY']);
+  });
+
   it('makes plaintext projected env values unrepresentable', (): void => {
     // @ts-expect-error Plaintext Deployment env is forbidden by the root manifest union.
     const invalid: KubeManifest = {

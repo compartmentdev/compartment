@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { compareKubeKey } from './kube-key-order';
 import { kubeNamespaceName, kubeSecretName } from './kube-naming';
 import type { KubeManifest, KubeSecretEnvVariable, SecretProjectionRow } from './kube-runtime.types';
 
@@ -26,7 +27,7 @@ export function projectSecretManifest(row: SecretProjectionRow): KubeManifest {
 
 export function secretEnvironment(data: Readonly<Record<string, string>>, secretName: string): KubeSecretEnvVariable[] {
   return Object.keys(data)
-    .sort((left: string, right: string): number => left.localeCompare(right))
+    .sort(compareKubeKey)
     .map(
       (name: string): KubeSecretEnvVariable => ({
         name,
@@ -44,7 +45,7 @@ export function secretChecksum(data: Readonly<Record<string, string>>): string {
 function orderedSecretData(data: Readonly<Record<string, string>>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(data).sort(([left]: [string, string], [right]: [string, string]): number =>
-      left.localeCompare(right),
+      compareKubeKey(left, right),
     ),
   );
 }

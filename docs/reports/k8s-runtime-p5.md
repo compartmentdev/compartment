@@ -23,8 +23,8 @@ provisioning run; cleanup makes a second run fail closed until that happens.
 
 | Surface             | Baseline | P5 total | Delta | D33 headroom |
 | ------------------- | -------: | -------: | ----: | -----------: |
-| Production runtime  |    1,114 |    1,475 |  +361 |        1,525 |
-| Tests and harnesses |      731 |    1,056 |  +325 |          n/a |
+| Production runtime  |    1,114 |    1,537 |  +423 |        1,463 |
+| Tests and harnesses |      731 |    1,124 |  +393 |          n/a |
 
 Counts are physical lines in `packages/kube-runtime/src/**/*.ts` and
 `packages/kube-runtime/test/**/*.ts`. Manifests, snapshots, and docs are

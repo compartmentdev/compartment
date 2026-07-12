@@ -9,6 +9,7 @@ import type {
   KubeProjectedPodSpec,
   KubeSecretEnvVariable,
 } from './kube-runtime.types';
+import { compareKubeKey } from './kube-key-order';
 
 export interface TerminalJob {
   exitCode: number;
@@ -59,14 +60,12 @@ function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobMani
 }
 
 function jobContainer(spec: KubeJobSpec): KubeProjectedContainer {
-  const env: KubeSecretEnvVariable[] = [...spec.env.keys]
-    .sort((leftName: string, rightName: string): number => leftName.localeCompare(rightName))
-    .map(
-      (name: string): KubeSecretEnvVariable => ({
-        name,
-        valueFrom: { secretKeyRef: { key: name, name: spec.env.secretName } },
-      }),
-    );
+  const env: KubeSecretEnvVariable[] = [...new Set(spec.env.keys)].sort(compareKubeKey).map(
+    (name: string): KubeSecretEnvVariable => ({
+      name,
+      valueFrom: { secretKeyRef: { key: name, name: spec.env.secretName } },
+    }),
+  );
   return {
     args: spec.args,
     command: spec.command,
