@@ -55,14 +55,9 @@ async function reconcileActiveDeployment(
   await runtime.apply({ objects: projectApplicationManifests(target.candidate) });
   const observation: KubeObservation = await observeDeployment(runtime, deployment);
   try {
-    const observed: KubeRolloutObservation | null = readDeploymentObservation(
-      observation,
-      deployment,
-      new Date(Date.now() + rolloutTimeoutMs),
-    );
-    if (observed === null || calculateKubeRolloutStatus(observed, new Date()) !== 'ready') {
-      await persistObservation(request, target, 'pending', 'Active Kubernetes Deployment drifted or became non-Ready.');
-    }
+    await waitForReady(observation, deployment, rolloutTimeoutMs);
+  } catch {
+    await persistObservation(request, target, 'pending', 'Active Kubernetes Deployment drifted or became non-Ready.');
   } finally {
     await observation.stop();
   }

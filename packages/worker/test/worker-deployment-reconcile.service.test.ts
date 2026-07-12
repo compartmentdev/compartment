@@ -1,5 +1,14 @@
 import type { DeploymentReconcileProjection, DeploymentReconcileTarget } from '@compartment/contracts';
-import type { ApplyBundle, KubeManifest, KubeRuntime } from '@compartment/kube-runtime';
+import {
+  kubeApplicationIdentityName,
+  kubeNamespaceName,
+  type ApplyBundle,
+  type KubeManifest,
+  type KubeObservation,
+  type KubeObservationEvent,
+  type KubeObservationHealth,
+  type KubeRuntime,
+} from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { reconcileDeploymentTarget } from '../src/services/worker-deployment-reconcile.service';
@@ -8,6 +17,8 @@ interface ReconcileMocks {
   executeProductJob: Mock;
   observeDeploymentReconcile: Mock;
 }
+
+type TestObservationListener = (event: KubeObservationEvent) => void;
 
 const mocks: ReconcileMocks = vi.hoisted(
   (): ReconcileMocks => ({ executeProductJob: vi.fn(), observeDeploymentReconcile: vi.fn() }),
@@ -56,6 +67,16 @@ describe('deployment reconciliation', (): void => {
       expect.objectContaining({ observation: 'pending', revision: 0 }),
     );
   });
+
+  it('waits for the informer cache before evaluating an active Deployment', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock } = activeRuntimeStub();
+    const activeTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'active' };
+
+    await reconcileDeploymentTarget(requester(), runtime, activeTarget);
+
+    expect(runtime.apply).toHaveBeenCalledOnce();
+    expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
+  });
 });
 
 function target(candidate: DeploymentReconcileProjection): DeploymentReconcileTarget {
@@ -92,6 +113,42 @@ function projection(releaseCommand: string | null): DeploymentReconcileProjectio
 
 function runtimeStub(): KubeRuntime & { apply: Mock } {
   return { apply: vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([])) } as never;
+}
+
+function activeRuntimeStub(): KubeRuntime & { apply: Mock } {
+  const cache: Map<string, KubeManifest> = new Map<string, KubeManifest>();
+  return {
+    apply: vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([])),
+    observe: vi.fn(
+      async (): Promise<KubeObservation> =>
+        await Promise.resolve({
+          cache,
+          health: (): KubeObservationHealth => ({ healthy: true, lastConnectedAt: new Date(), lastErrorAt: null }),
+          onEvent: (listener: TestObservationListener): (() => void) => {
+            const timer: NodeJS.Timeout = setTimeout((): void => publishReadyDeployment(cache, listener), 0);
+            return (): void => clearTimeout(timer);
+          },
+          stop: async (): Promise<void> => await Promise.resolve(),
+        }),
+    ),
+  } as never;
+}
+
+function publishReadyDeployment(cache: Map<string, KubeManifest>, listener: TestObservationListener): void {
+  const namespace: string = kubeNamespaceName('prj_1');
+  const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
+  const event: KubeObservationEvent = { observedAt: new Date(), resource: 'deployments', type: 'relist' };
+  cache.set(`deployments/${namespace}/${name}`, readyDeployment(namespace, name));
+  listener(event);
+}
+
+function readyDeployment(namespace: string, name: string): KubeManifest {
+  return {
+    apiVersion: 'apps/v1',
+    kind: 'Deployment',
+    metadata: { generation: 1, name, namespace },
+    status: { availableReplicas: 1, observedGeneration: 1 },
+  } as never;
 }
 
 function requester(): CompartmentRequester {
