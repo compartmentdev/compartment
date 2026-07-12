@@ -96,6 +96,7 @@ describe('Kubernetes manifest projection goldens', (): void => {
     expect(spec.template.metadata.annotations['compartment.dev/secret-checksum']).toBe(
       secret.metadata?.annotations?.['compartment.dev/checksum'],
     );
+    expect(spec.template.metadata.annotations['compartment.dev/secret-checksum']).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('changes the pod checksum only when Secret data changes', (): void => {
@@ -187,5 +188,6 @@ function applicationOptions(): ApplicationProjectionOptions {
 function toYaml(manifests: KubeManifest[]): string {
   return manifests
     .map((manifest: KubeManifest): string => stringify(manifest, { sortMapEntries: true }).trim())
-    .join('\n---\n');
+    .join('\n---\n')
+    .replaceAll(/[a-f0-9]{64}/g, '<sha256>');
 }

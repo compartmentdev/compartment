@@ -5,7 +5,7 @@ exports[`Kubernetes manifest projection goldens > projects a secret row without 
 kind: Secret
 metadata:
   annotations:
-    compartment.dev/checksum: c3b2f078bc2fff5c45549ffabda395582ef55c96736489077e010c9dd8b89aa2
+    compartment.dev/checksum: <sha256>
   labels:
     app.kubernetes.io/managed-by: compartment
     compartment.dev/deployment-id: dep-01jz
@@ -23,7 +23,7 @@ exports[`Kubernetes manifest projection goldens > projects an application row to
 kind: Secret
 metadata:
   annotations:
-    compartment.dev/checksum: 80a994aca7c484bfd49d2c62376a4293001ac533384e5c1d630a8d7d09bf80d5
+    compartment.dev/checksum: <sha256>
   labels:
     app.kubernetes.io/managed-by: compartment
     compartment.dev/deployment-id: dep-01jz
@@ -68,7 +68,7 @@ spec:
         compartment.dev/environment-name: Production
         compartment.dev/organization-name: Acme
         compartment.dev/project-name: Checkout
-        compartment.dev/secret-checksum: 80a994aca7c484bfd49d2c62376a4293001ac533384e5c1d630a8d7d09bf80d5
+        compartment.dev/secret-checksum: <sha256>
         compartment.dev/service-name: Web
       labels: *a1
     spec:
