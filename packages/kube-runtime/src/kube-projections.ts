@@ -74,6 +74,7 @@ function deploymentSpec(
   const podSpec: KubeProjectedPodSpec = {
     automountServiceAccountToken: false,
     containers: [applicationContainer(row)],
+    imagePullSecrets: [{ name: kubeSecretName(row.imagePullSecretId) }],
     terminationGracePeriodSeconds: 45,
   };
   return {

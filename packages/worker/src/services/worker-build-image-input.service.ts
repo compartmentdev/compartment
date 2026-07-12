@@ -62,7 +62,7 @@ export function buildDockerImageInput(input: BuildDockerImageInputRequest): Dock
     labels: buildReleaseImageLabels(input.deployment, input.dockerNamespace),
     onProgressLine: createBuildProgressReporter(buildDeploymentEventContext(input.request, input.deployment)),
     packer: input.preparedSource.packer,
-    pushImageInsecureRegistry: true,
+    pushImageInsecureRegistry: input.artifactRegistry.mode === 'bundled',
     pushImageTag: input.pushImageTag,
     pushRegistryCredentials: buildPushRegistryCredentials(input.artifactRegistry),
     ...(input.preparedSource.runtimeAptPackages.length > 0

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { buildInternalHttpUrl } from '@compartment/utils';
 import {
   readSelfHostedEnvironmentAssignmentName,
   readSelfHostedEnvironmentAssignmentValue,
@@ -159,8 +160,8 @@ function buildArtifactRegistryOverrides(): Record<string, string> {
   return {
     COMPARTMENT_ARTIFACT_REGISTRY_HOST: '127.0.0.1',
     COMPARTMENT_ARTIFACT_REGISTRY_PORT: '39461',
-    COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST: 'registry-auth',
-    COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_PORT: '5000',
+    COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: buildInternalHttpUrl('registry-auth', 5000),
+    COMPARTMENT_ARTIFACT_REGISTRY_MODE: 'bundled',
   };
 }
 

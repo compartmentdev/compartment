@@ -34,6 +34,7 @@ interface DockerBuildImageResult {
 }
 
 type BuildDockerImage = (input: BuildDockerImageInput) => Promise<DockerBuildImageResult>;
+type ScheduleWorkerBuild = (run: () => Promise<DockerBuildImageResult>) => Promise<DockerBuildImageResult>;
 type PrepareServiceDirectory = (
   tempDirectory: string,
   sourceArchive: Buffer,
@@ -68,12 +69,16 @@ type EventRequest = (input: EventRequestOptions) => Promise<EventRequestBody | u
 interface WorkerBuildServiceTestMocks {
   buildDockerImage: Mock<BuildDockerImage>;
   prepareServiceDirectory: Mock<PrepareServiceDirectory>;
+  scheduleWorkerBuild: Mock<ScheduleWorkerBuild>;
 }
 
 const mocks: WorkerBuildServiceTestMocks = vi.hoisted(
   (): WorkerBuildServiceTestMocks => ({
     buildDockerImage: vi.fn<BuildDockerImage>(),
     prepareServiceDirectory: vi.fn<PrepareServiceDirectory>(),
+    scheduleWorkerBuild: vi.fn<ScheduleWorkerBuild>(
+      async (run: () => Promise<DockerBuildImageResult>): Promise<DockerBuildImageResult> => await run(),
+    ),
   }),
 );
 
@@ -90,6 +95,10 @@ vi.mock(
   }),
 );
 
+vi.mock('../src/services/worker-build-scheduler.service', (): { scheduleWorkerBuild: Mock<ScheduleWorkerBuild> } => ({
+  scheduleWorkerBuild: mocks.scheduleWorkerBuild,
+}));
+
 vi.mock('../src/services/worker-source.service', (): { prepareServiceDirectory: Mock<PrepareServiceDirectory> } => ({
   prepareServiceDirectory: mocks.prepareServiceDirectory,
 }));
@@ -97,6 +106,7 @@ vi.mock('../src/services/worker-source.service', (): { prepareServiceDirectory: 
 afterEach((): void => {
   mocks.buildDockerImage.mockReset();
   mocks.prepareServiceDirectory.mockReset();
+  mocks.scheduleWorkerBuild.mockClear();
 });
 
 describe('buildReleaseImageFromSource', (): void => {
@@ -114,14 +124,14 @@ describe('buildReleaseImageFromSource', (): void => {
         createClaimedDeployment({
           artifact: {
             id: 'art_123',
-            imageRef: 'sha256:existing-image',
+            imageRef: `registry.example/web@sha256:${'a'.repeat(64)}`,
             sourceDigest: 'sha256:source',
           },
         }),
         'compartment-e2e',
         createArtifactRegistryConfig(),
       ),
-    ).resolves.toBe('sha256:existing-image');
+    ).resolves.toBe(`registry.example/web@sha256:${'a'.repeat(64)}`);
 
     expect(mocks.prepareServiceDirectory).not.toHaveBeenCalled();
     expect(mocks.buildDockerImage).not.toHaveBeenCalled();
@@ -159,7 +169,7 @@ describe('buildReleaseImageFromSource', (): void => {
       serviceRelativePath: 'apps/web',
     });
     mocks.buildDockerImage.mockResolvedValueOnce({
-      imageRef: '127.0.0.1:5517/compartment/projects/prj_123/services/svc_123@sha256:rebuilt-image',
+      imageRef: `127.0.0.1:5517/compartment/projects/prj_123/services/svc_123@sha256:${'b'.repeat(64)}`,
       pushed: true,
     });
 
@@ -180,7 +190,7 @@ describe('buildReleaseImageFromSource', (): void => {
         'compartment-e2e',
         createArtifactRegistryConfig(),
       ),
-    ).resolves.toBe('127.0.0.1:5517/compartment/projects/prj_123/services/svc_123@sha256:rebuilt-image');
+    ).resolves.toBe(`127.0.0.1:5517/compartment/projects/prj_123/services/svc_123@sha256:${'b'.repeat(64)}`);
 
     expect(getArtifactSourceArchiveSpy).toHaveBeenCalledWith('art_123');
     expect(mocks.prepareServiceDirectory).toHaveBeenCalled();
@@ -195,7 +205,7 @@ describe('buildReleaseImageFromSource', (): void => {
     );
   });
 
-  it('rejects non-pushed build results instead of falling back to docker push', async (): Promise<void> => {
+  it('rejects an unpinned result and keeps external registry pushes secure', async (): Promise<void> => {
     const getArtifactSourceArchiveSpy: Mock<(artifactId: string) => Promise<Buffer>> = vi
       .fn<(artifactId: string) => Promise<Buffer>>()
       .mockResolvedValueOnce(Buffer.from('test'));
@@ -214,7 +224,7 @@ describe('buildReleaseImageFromSource', (): void => {
     });
     mocks.buildDockerImage.mockResolvedValueOnce({
       imageRef: 'sha256:local-image-id',
-      pushed: false,
+      pushed: true,
     });
 
     await expect(
@@ -229,16 +239,16 @@ describe('buildReleaseImageFromSource', (): void => {
           },
         }),
         'compartment-e2e',
-        createArtifactRegistryConfig(),
+        createArtifactRegistryConfig('external'),
       ),
     ).rejects.toThrow(
-      'Expected source image build for "127.0.0.1:5517/compartment/projects/prj_123/services/svc_123:art_123" to push directly through BuildKit.',
+      'Expected source image build for "127.0.0.1:5517/compartment/projects/prj_123/services/svc_123:art_123" to return a digest-pinned BuildKit push result.',
     );
 
     expect(mocks.buildDockerImage).toHaveBeenCalledWith(
       expect.objectContaining({
         imageTag: '127.0.0.1:5517/compartment/projects/prj_123/services/svc_123:art_123',
-        pushImageInsecureRegistry: true,
+        pushImageInsecureRegistry: false,
         pushImageTag: 'registry:5000/compartment/projects/prj_123/services/svc_123:art_123',
       }),
     );
@@ -328,10 +338,11 @@ describe('buildReleaseImageFromSource', (): void => {
   });
 });
 
-function createArtifactRegistryConfig(): WorkerArtifactRegistryConfig {
+function createArtifactRegistryConfig(mode: 'bundled' | 'external' = 'bundled'): WorkerArtifactRegistryConfig {
   return {
     address: '127.0.0.1:5517',
     internalUrl: 'http://registry:5000',
+    mode,
     readCredentials: {
       password: 'read-password',
       username: 'reader',

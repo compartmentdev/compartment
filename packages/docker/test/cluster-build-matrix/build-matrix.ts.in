@@ -1,0 +1,245 @@
+import { access, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
+import { buildDockerImage } from '../../src/docker-build';
+import { pruneBuildKitCache } from '../../src/docker-buildkit-prune';
+import type { DockerBuildImageResult } from '../../src/docker-models';
+
+type BuildPacker = 'dockerfile' | 'railpack' | 'static';
+
+interface BuildScenario {
+  appPath?: string | undefined;
+  buildCommand?: string | undefined;
+  buildEnv?: Record<string, string> | undefined;
+  context: string;
+  dockerfile?: string | undefined;
+  name: string;
+  packer: BuildPacker;
+  runtimeAptPackages?: string[] | undefined;
+  staticOutputDirectory?: string | undefined;
+}
+
+interface BuildEvidence {
+  imageRef: string;
+  name: string;
+  repository: string;
+  tag: string;
+}
+
+const scenarios: BuildScenario[] = [
+  { context: 'examples/dockerfile', dockerfile: 'Dockerfile', name: 'dockerfile/web', packer: 'dockerfile' },
+  { appPath: 'apps/web', context: 'examples/dockerfile-monorepo', dockerfile: 'apps/web/Dockerfile', name: 'dockerfile-monorepo/web', packer: 'dockerfile' },
+  { context: 'examples/railpack', name: 'railpack/web', packer: 'railpack' },
+  { context: 'examples/railpack-build-packages', name: 'railpack-build-packages/web', packer: 'railpack', runtimeAptPackages: ['jq'] },
+  { appPath: 'apps/web', context: 'examples/railpack-monorepo', name: 'railpack-monorepo/web', packer: 'railpack' },
+  { buildCommand: 'node build.mjs', buildEnv: { VITE_PUBLIC_GREETING: 'p9' }, context: 'examples/static-vite-react', name: 'static-vite-react/web', packer: 'static', staticOutputDirectory: 'dist' },
+  { buildCommand: 'node build.mjs', buildEnv: { VITE_PUBLIC_GREETING: 'p9' }, context: 'examples/vite-react', name: 'vite-react/web', packer: 'railpack' },
+  { context: 'examples/python', name: 'python/web', packer: 'railpack', runtimeAptPackages: ['ffmpeg'] },
+  { buildCommand: 'node build.mjs', context: 'examples/java-api-frontend/services/web', name: 'java-api-frontend/web', packer: 'railpack' },
+  { context: 'examples/java-api-frontend/services/api', dockerfile: 'Dockerfile', name: 'java-api-frontend/api', packer: 'dockerfile' },
+  { context: 'examples/multi-service/services/web', dockerfile: 'Dockerfile', name: 'multi-service/web', packer: 'dockerfile' },
+  { context: 'examples/multi-service/services/backoffice', name: 'multi-service/backoffice', packer: 'railpack' },
+];
+
+const excludedScenario: string = 'railpack-pnpm-workspace/web';
+const excludedServiceContext: string = 'examples/railpack-pnpm-workspace/packages/api';
+
+function required(name: string): string {
+  const value: string | undefined = process.env[name];
+  if (value === undefined || value === '') {
+    throw new Error(`${name} is required.`);
+  }
+  return value;
+}
+
+async function main(): Promise<void> {
+  const repo: string = resolve(required('CLUSTER_BUILD_REPO_ROOT'));
+  const resultsDirectory: string = resolve(required('CLUSTER_BUILD_RESULTS_DIR'));
+  await mkdir(resultsDirectory, { recursive: true });
+  await validateScenarioContexts(repo);
+
+  if (process.argv[2] === 'post-restart') {
+    const postRestart: BuildEvidence = await runScenario(repo, scenarios[0]!, 'post-restart');
+    await writeFile(join(resultsDirectory, 'post-restart-evidence.json'), `${JSON.stringify(postRestart, null, 2)}\n`);
+    return;
+  }
+
+  const evidence: BuildEvidence[] = [];
+  await exerciseFailureAndRecovery(repo, evidence);
+  for (const scenario of scenarios) {
+    evidence.push(await runScenario(repo, scenario, 'matrix'));
+  }
+  await exerciseConcurrency(repo, evidence);
+  await pruneBuildKitCache();
+  await writeFile(join(resultsDirectory, 'build-evidence.json'), `${JSON.stringify({ evidence, excludedScenario }, null, 2)}\n`);
+}
+
+async function validateScenarioContexts(repo: string): Promise<void> {
+  for (const scenario of scenarios) {
+    await access(join(repo, scenario.context));
+  }
+  if (scenarios.some((scenario: BuildScenario): boolean => scenario.name === excludedScenario)) {
+    throw new Error(`${excludedScenario} must remain explicitly excluded until its documented Railpack issue is fixed.`);
+  }
+  const actualExamples: string[] = (await readdir(join(repo, 'examples'))).sort();
+  const coveredExamples: string[] = [...new Set([
+    ...scenarios.map((scenario: BuildScenario): string => scenario.context.split('/')[1]!),
+    'railpack-pnpm-workspace',
+  ])].sort();
+  if (JSON.stringify(actualExamples) !== JSON.stringify(coveredExamples)) {
+    throw new Error(`Cluster build matrix inventory is stale: ${JSON.stringify({ actualExamples, coveredExamples })}`);
+  }
+  const actualServices: string[] = await discoverServiceContexts(repo, actualExamples);
+  const coveredServices: string[] = [
+    ...scenarios.map(scenarioServiceContext),
+    excludedServiceContext,
+  ].sort();
+  if (JSON.stringify(actualServices) !== JSON.stringify(coveredServices)) {
+    throw new Error(`Cluster build service inventory is stale: ${JSON.stringify({ actualServices, coveredServices })}`);
+  }
+}
+
+async function discoverServiceContexts(repo: string, examples: string[]): Promise<string[]> {
+  const contexts: string[] = [];
+  for (const example of examples) {
+    const exampleContext: string = join('examples', example);
+    if (example === 'railpack-pnpm-workspace') {
+      contexts.push(...await workspaceServiceContexts(repo, join(exampleContext, 'packages')));
+      continue;
+    }
+    const nestedRoot: string | null = await nestedServiceRoot(repo, exampleContext);
+    if (nestedRoot === null) {
+      contexts.push(exampleContext);
+      continue;
+    }
+    const children: string[] = await readdir(join(repo, nestedRoot));
+    for (const child of children) {
+      if ((await stat(join(repo, nestedRoot, child))).isDirectory()) {
+        contexts.push(join(nestedRoot, child));
+      }
+    }
+  }
+  return contexts.sort();
+}
+
+async function workspaceServiceContexts(repo: string, packagesContext: string): Promise<string[]> {
+  const contexts: string[] = [];
+  for (const child of await readdir(join(repo, packagesContext))) {
+    const packageContext: string = join(packagesContext, child);
+    const packageJson: { scripts?: { start?: string | undefined } | undefined } = JSON.parse(
+      await readFile(join(repo, packageContext, 'package.json'), 'utf8'),
+    ) as { scripts?: { start?: string | undefined } | undefined };
+    if (typeof packageJson.scripts?.start === 'string') {
+      contexts.push(packageContext);
+    }
+  }
+  return contexts;
+}
+
+async function nestedServiceRoot(repo: string, exampleContext: string): Promise<string | null> {
+  for (const directory of ['services', 'apps']) {
+    const candidate: string = join(exampleContext, directory);
+    try {
+      if ((await stat(join(repo, candidate))).isDirectory()) {
+        return candidate;
+      }
+    } catch {
+      // Absence selects the next explicit service-root convention.
+    }
+  }
+  return null;
+}
+
+function scenarioServiceContext(scenario: BuildScenario): string {
+  return scenario.appPath === undefined ? scenario.context : join(scenario.context, scenario.appPath);
+}
+
+async function runScenario(repo: string, scenario: BuildScenario, phase: string): Promise<BuildEvidence> {
+  const registry: string = required('CLUSTER_BUILD_REGISTRY');
+  const repository: string = `p9/${scenario.name}`;
+  const tag: string = phase;
+  const result: DockerBuildImageResult = await buildDockerImage({
+    appPath: scenario.appPath,
+    buildCommand: scenario.buildCommand,
+    buildEnv: scenario.buildEnv,
+    contextDirectory: join(repo, scenario.context),
+    dockerfilePath: scenario.dockerfile,
+    imageTag: `p9-${scenario.name.replaceAll('/', '-')}:${tag}`,
+    onProgressLine: ({ message, stream }): void => {
+      process[stream].write(`[${scenario.name}] ${message}\n`);
+    },
+    packer: scenario.packer,
+    pushImageInsecureRegistry: required('CLUSTER_BUILD_REGISTRY_INSECURE') === 'true',
+    pushImageTag: `${registry}/${repository}:${tag}`,
+    pushRegistryCredentials: registryCredentials(registry),
+    runtimeAptPackages: scenario.runtimeAptPackages,
+    staticOutputDirectory: scenario.staticOutputDirectory,
+  });
+  if (!result.pushed || !result.imageRef.includes('@sha256:')) {
+    throw new Error(`${scenario.name} did not return pushed digest evidence.`);
+  }
+  return { imageRef: result.imageRef, name: scenario.name, repository, tag };
+}
+
+async function exerciseFailureAndRecovery(repo: string, evidence: BuildEvidence[]): Promise<void> {
+  const context: string = await mkdtemp(join(tmpdir(), 'compartment-p9-invalid-'));
+  try {
+    await writeFile(join(context, 'Dockerfile'), 'FROM busybox\nRUN exit 23\n');
+    const started: number = performance.now();
+    await expectBuildFailure(context);
+    const elapsedSeconds: number = (performance.now() - started) / 1000;
+    if (elapsedSeconds > Number(required('CLUSTER_BUILD_FAILURE_MAX_SECONDS'))) {
+      throw new Error(`Invalid Dockerfile did not fail immediately (${elapsedSeconds.toFixed(2)}s).`);
+    }
+    evidence.push(await runScenario(repo, scenarios[0]!, 'recovery'));
+  } finally {
+    await rm(context, { force: true, recursive: true });
+  }
+}
+
+async function expectBuildFailure(contextDirectory: string): Promise<void> {
+  const registry: string = required('CLUSTER_BUILD_REGISTRY');
+  try {
+    await buildDockerImage({
+      contextDirectory,
+      dockerfilePath: 'Dockerfile',
+      imageTag: 'p9-invalid:failure',
+      packer: 'dockerfile',
+      pushImageInsecureRegistry: required('CLUSTER_BUILD_REGISTRY_INSECURE') === 'true',
+      pushImageTag: `${registry}/p9/invalid:failure`,
+      pushRegistryCredentials: registryCredentials(registry),
+    });
+  } catch {
+    return;
+  }
+  throw new Error('Invalid Dockerfile unexpectedly succeeded.');
+}
+
+async function exerciseConcurrency(repo: string, evidence: BuildEvidence[]): Promise<void> {
+  const concurrent: BuildScenario[] = [scenarioByName('railpack/web'), scenarioByName('python/web')];
+  evidence.push(...await Promise.all(concurrent.map(
+    async (scenario: BuildScenario): Promise<BuildEvidence> => await runScenario(repo, scenario, 'concurrent'),
+  )));
+}
+
+function scenarioByName(name: string): BuildScenario {
+  const scenario: BuildScenario | undefined = scenarios.find((candidate: BuildScenario): boolean => candidate.name === name);
+  if (scenario === undefined) {
+    throw new Error(`Missing required concurrent scenario ${name}.`);
+  }
+  return scenario;
+}
+
+function registryCredentials(serverAddress: string): { password: string; serverAddress: string; username: string } {
+  return {
+    password: required('CLUSTER_BUILD_REGISTRY_PASSWORD'),
+    serverAddress,
+    username: required('CLUSTER_BUILD_REGISTRY_USERNAME'),
+  };
+}
+
+void main().catch((error: unknown): void => {
+  console.error(error);
+  process.exitCode = 1;
+});

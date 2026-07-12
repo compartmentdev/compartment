@@ -107,6 +107,8 @@ spec:
             periodSeconds: 2
             successThreshold: 1
             timeoutSeconds: 1
+      imagePullSecrets:
+        - name: secret-pull-01jz-6be17b2de1a41fc5
       terminationGracePeriodSeconds: 45
 ---
 apiVersion: v1

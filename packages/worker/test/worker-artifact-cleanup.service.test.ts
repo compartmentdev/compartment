@@ -39,6 +39,7 @@ describe('worker artifact cleanup service', (): void => {
       {
         address: '127.0.0.1:39461',
         internalUrl: 'http://registry:5000',
+        mode: 'bundled',
         readCredentials: {
           password: 'read-password',
           username: 'reader',
@@ -55,6 +56,7 @@ describe('worker artifact cleanup service', (): void => {
       {
         address: '127.0.0.1:39461',
         internalUrl: 'http://registry:5000',
+        mode: 'bundled',
         readCredentials: {
           password: 'read-password',
           username: 'reader',
@@ -99,6 +101,7 @@ describe('worker artifact cleanup service', (): void => {
         {
           address: 'registry.example',
           internalUrl: 'http://registry-internal.example:5000',
+          mode: 'external',
           readCredentials: {
             password: 'read-password',
             username: 'reader',
@@ -120,5 +123,28 @@ describe('worker artifact cleanup service', (): void => {
       },
       'Skipped bundled registry garbage collection after deleting retained deployment manifests.',
     );
+  });
+
+  it('does not report bundled garbage collection for an external registry', async (): Promise<void> => {
+    const warnSpy: MockInstance<typeof console.warn> = vi
+      .spyOn(console, 'warn')
+      .mockImplementation((): void => undefined);
+    workerOutboundHttpMocks.fetchWorkerArtifactRegistryInternalHttp.mockResolvedValue(
+      new Response(null, { status: 202 }),
+    );
+
+    await cleanupWorkerArtifacts(
+      [{ imageRef: 'registry.example/repo@sha256:abc' }],
+      {
+        address: 'registry.example',
+        internalUrl: 'https://registry.example',
+        mode: 'external',
+        readCredentials: { password: 'read-password', username: 'reader' },
+        writeCredentials: { password: 'write-password', username: 'writer' },
+      },
+      'compartment-prod',
+    );
+
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });

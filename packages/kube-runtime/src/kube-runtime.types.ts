@@ -2,12 +2,15 @@ import type { KubernetesObject } from '@kubernetes/client-node';
 
 export type KubeDeploymentState = 'desired' | 'pending' | 'active';
 export type KubeManifestKind =
+  | 'ConfigMap'
   | 'ClusterRole'
   | 'ClusterRoleBinding'
+  | 'CronJob'
   | 'Deployment'
   | 'Job'
   | 'Namespace'
   | 'NetworkPolicy'
+  | 'PersistentVolumeClaim'
   | 'RoleBinding'
   | 'Secret'
   | 'Service'
@@ -37,8 +40,11 @@ export interface KubeNonWorkloadManifest extends KubeManifestBase {
   kind:
     | 'ClusterRole'
     | 'ClusterRoleBinding'
+    | 'ConfigMap'
+    | 'CronJob'
     | 'Namespace'
     | 'NetworkPolicy'
+    | 'PersistentVolumeClaim'
     | 'RoleBinding'
     | 'Secret'
     | 'Service'
@@ -89,13 +95,23 @@ export interface KubeProjectedContainer {
   name: string;
   ports?: object[] | undefined;
   readinessProbe?: object | undefined;
+  resources?: object | undefined;
+  securityContext?: object | undefined;
+  volumeMounts?: object[] | undefined;
 }
 
 export interface KubeProjectedPodSpec {
   automountServiceAccountToken: false;
   containers: KubeProjectedContainer[];
+  imagePullSecrets?: KubeLocalObjectReference[] | undefined;
   restartPolicy?: 'Never' | undefined;
+  securityContext?: object | undefined;
   terminationGracePeriodSeconds?: number | undefined;
+  volumes?: object[] | undefined;
+}
+
+export interface KubeLocalObjectReference {
+  name: string;
 }
 
 export interface KubePodTemplate {
@@ -214,6 +230,7 @@ export interface ApplicationProjectionRow {
   environmentName: string;
   env: Readonly<Record<string, string>>;
   image: string;
+  imagePullSecretId: string;
   namespaceId: string;
   organizationId: string;
   organizationName: string;
@@ -222,6 +239,12 @@ export interface ApplicationProjectionRow {
   replicas: number;
   serviceId: string;
   serviceName: string;
+  secretId: string;
+}
+
+export interface RegistryPullSecretProjectionRow {
+  dockerConfigJson: string;
+  namespaceId: string;
   secretId: string;
 }
 

@@ -20,7 +20,9 @@ export async function cleanupWorkerArtifacts(
   if (deletedManifestCount === 0) {
     return;
   }
-  warnBundledRegistryGcSkipped(dockerNamespace);
+  if (artifactRegistry.mode === 'bundled') {
+    warnBundledRegistryGcSkipped(dockerNamespace);
+  }
 }
 
 async function deleteArtifactManifests(

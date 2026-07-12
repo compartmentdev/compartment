@@ -195,6 +195,7 @@ describe('runWorker', (): void => {
       {
         address: '127.0.0.1:5517',
         internalUrl: 'http://registry:5000',
+        mode: 'bundled',
         readCredentials: {
           password: 'read-password',
           username: 'reader',
@@ -215,6 +216,7 @@ function createWorkerConfig(): WorkerConfig {
     artifactRegistry: {
       address: '127.0.0.1:5517',
       internalUrl: 'http://registry:5000',
+      mode: 'bundled',
       readCredentials: {
         password: 'read-password',
         username: 'reader',
