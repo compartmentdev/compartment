@@ -13,13 +13,27 @@ This is useful when:
 
 ## How it works
 
-`compartment source connect git` uses the current repository checkout as GitHub defaults, then asks which GitHub account, repository, branch, and environment to connect.
+`compartment source connect git` uses the current repository checkout, detects the provider, then asks which repository, branch, and environment to connect. The Console onboarding starts with a GitHub/GitLab provider choice.
 
-You can also connect Git from the Console install-time first-deploy setup or later from **Projects** -> **Deploy my first project** or **Add project**. The Console path is useful for first-time setup because it can guide GitHub App setup, repository selection, descriptor pull request creation, and the first deployment in one flow. For newly connected sources, the Console enables automatic descriptor adoption and automatic deploys for the selected branch and environment.
+You can also connect Git from the Console install-time first-deploy setup or later from **Projects** -> **Deploy my first project** or **Add project**. Choose GitHub to install or authorize the Compartment GitHub App; choose GitLab to enter a GitLab host and access token. The Console guides provider setup, repository selection, descriptor pull request or merge request creation, and the first deployment in one flow. For newly connected sources, the Console enables automatic descriptor adoption and automatic deploys for the selected branch and environment.
 
-When the selected repository has no `compartment.yml` and does not already look like an application repository, the Console can propose a starter pull request instead of a descriptor-only pull request. That PR adds the descriptor and a minimal `apps/site/index.html` so the repository becomes deployable immediately.
+When the selected repository has no `compartment.yml` and does not already look like an application repository, the Console can propose a starter pull request (GitHub) or merge request (GitLab) instead of a descriptor-only change. That change adds the descriptor and a minimal `apps/site/index.html` so the repository becomes deployable immediately.
 
-If GitHub App access is missing, the command opens a browser setup URL and waits. In GitHub, choose the repositories the Compartment GitHub App can access.
+If GitHub App access is missing, the command opens a browser setup URL and waits. In GitHub, choose the repositories the Compartment GitHub App can access. For GitLab, the CLI uses `COMPARTMENT_GITLAB_TOKEN` when a token-based registration is needed; the Console asks for the same token directly.
+
+## GitLab requirements
+
+Use a GitLab token with the `api` scope and Maintainer access. Maintainer access is required to create the source webhook, and the repository picker only lists projects where the token has at least Maintainer-level access.
+
+For self-managed GitLab, enter the GitLab host in the Console and add that host to `COMPARTMENT_TRUSTED_OUTBOUND_HOSTS` for both the API and worker services. Re-submit the GitLab form to rotate a token; the existing registration is rotated in place and its webhook remains connected. If a token is revoked, deployments fail with a request to re-enter the GitLab token and the Console shows **Re-enter token**.
+
+The CLI provider detection matrix is:
+
+- `github.com` -> GitHub;
+- `gitlab.com` -> GitLab;
+- a host with an active GitLab registration -> GitLab;
+- a token set and the host not active for GitHub -> GitLab;
+- otherwise -> GitHub.
 
 Each connected Git source also gets a system-managed automation account. Compartment uses that account for source sync and push-driven deploy work. It does not appear on the browser Users page, but CLI and API user lists can still return it as an automation entry. It is not a human login account.
 
