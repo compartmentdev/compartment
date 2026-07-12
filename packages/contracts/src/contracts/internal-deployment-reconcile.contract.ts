@@ -11,6 +11,7 @@ export interface DeploymentReconcileProjection {
   environmentName: string;
   env: Record<string, string>;
   image: string;
+  imagePullSecretId: string;
   namespaceId: string;
   organizationId: string;
   organizationName: string;
@@ -74,6 +75,7 @@ const deploymentReconcileProjectionSchema: ContractSchema<DeploymentReconcilePro
     environmentName: z.string().min(1),
     env: z.record(z.string(), z.string()),
     image: z.string().min(1),
+    imagePullSecretId: z.string().min(1),
     namespaceId: z.string().min(1),
     organizationId: z.string().min(1),
     organizationName: z.string().min(1),

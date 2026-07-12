@@ -97,6 +97,7 @@ function projection(releaseCommand: string | null): DeploymentReconcileProjectio
     environmentName: 'production',
     env: { PORT: '3000' },
     image: 'registry.example/app@sha256:candidate',
+    imagePullSecretId: 'prj_1',
     namespaceId: 'prj_1',
     organizationId: 'org_1',
     organizationName: 'Acme',

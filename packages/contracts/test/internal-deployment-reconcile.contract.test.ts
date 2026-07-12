@@ -15,6 +15,7 @@ describe('deployment reconcile contracts', (): void => {
       environmentName: 'production',
       env: { PORT: '3000' },
       image: 'registry/app@sha256:abc',
+      imagePullSecretId: 'prj_1',
       namespaceId: 'prj_1',
       organizationId: 'org_1',
       organizationName: 'Acme',

@@ -20,6 +20,11 @@ import { parseResolvedRelease } from './deployment-release.service';
 const defaultContainerPort: number = 3000;
 const defaultTerminationGracePeriodSeconds: number = 45;
 
+interface ProjectionRuntime {
+  env: Record<string, string>;
+  terminationGracePeriodSeconds: number;
+}
+
 export async function claimDeploymentReconcileTarget(): Promise<DeploymentReconcileTarget | null> {
   const pair: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
   if (pair === null) {
@@ -89,8 +94,9 @@ function createProjection(
     deploymentId: row.deploymentId,
     environmentId: row.environmentId,
     environmentName: row.environmentName,
-    env: runtimeEnvironment(plan, port),
+    ...projectionRuntime(plan, port),
     image: requiredImage(row),
+    imagePullSecretId: row.projectId,
     namespaceId: row.projectId,
     organizationId: row.organizationId,
     organizationName: row.organizationName,
@@ -101,16 +107,16 @@ function createProjection(
     secretId: row.deploymentId,
     serviceId: row.serviceId,
     serviceName: row.serviceName,
-    terminationGracePeriodSeconds: projectionGracePeriod(plan),
   };
 }
 
-function projectionGracePeriod(plan: DeploymentRuntimePlan): number {
-  return readTerminationGracePeriod(plan.runtimeEnv.COMPARTMENT_TERMINATION_GRACE_PERIOD_SECONDS);
-}
-
-function runtimeEnvironment(plan: DeploymentRuntimePlan, port: number): Record<string, string> {
-  return { ...plan.runtimeEnv, PORT: port.toString() };
+function projectionRuntime(plan: DeploymentRuntimePlan, port: number): ProjectionRuntime {
+  return {
+    env: { ...plan.runtimeEnv, PORT: port.toString() },
+    terminationGracePeriodSeconds: readTerminationGracePeriod(
+      plan.runtimeEnv.COMPARTMENT_TERMINATION_GRACE_PERIOD_SECONDS,
+    ),
+  };
 }
 
 function readTerminationGracePeriod(rawValue: string | undefined): number {
