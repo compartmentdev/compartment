@@ -1,6 +1,9 @@
 export { KubeRuntime } from './kube-runtime';
 export { kubeApplicationName, kubeJobName, kubeNamespaceName, kubeSecretName } from './kube-naming';
-export { projectApplicationManifests, projectSecretManifest } from './kube-projections';
+export { projectApplicationManifests } from './kube-projections';
+export { projectSecretManifest } from './kube-secret-projection';
+export { projectNamespaceProvisioningBundle } from './kube-provisioning';
+export type { ProjectNamespaceProvisioningRow } from './kube-provisioning.types';
 export { calculateKubeStateTransition } from './kube-state';
 export type {
   ApplicationProjectionOptions,

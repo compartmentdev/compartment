@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import {
   KubeRuntime,
   kubeJobName,
+  kubeNamespaceName,
+  projectNamespaceProvisioningBundle,
   type KubeJobResult,
   type KubeJobSpec,
   type KubeManifest,
@@ -10,7 +12,7 @@ import {
   type KubeObservationHealth,
   type ObserveLabels,
 } from '../src';
-import type { KubeObservationListener } from '../src/kube-runtime.types';
+import type { KubeObservationListener, KubeObservedManifest, KubeSecretEnvVariable } from '../src/kube-runtime.types';
 
 const createObservationMock: Mock = vi.hoisted((): Mock => vi.fn());
 
@@ -18,11 +20,14 @@ vi.mock('../src/kube-observation', (): object => ({ createKubeObservation: creat
 
 interface JobManifestSpec {
   backoffLimit: number;
-  template: { spec: { containers: JobContainerSpec[] } };
+  template: {
+    metadata: { annotations: Record<string, string> };
+    spec: { automountServiceAccountToken: false; containers: JobContainerSpec[] };
+  };
 }
 
 interface JobContainerSpec {
-  env: { name: string; value: string }[];
+  env: KubeSecretEnvVariable[];
 }
 
 type KubePatchInvocation = [
@@ -34,11 +39,46 @@ type KubePatchInvocation = [
   strategy: PatchStrategy,
 ];
 
+class KubeConflictError extends Error {
+  public readonly code: number = 409;
+}
+
 class PrimitiveObjectApi {
+  public readonly conflicts: Set<string> = new Set<string>();
+  public readonly deletes: KubeManifest[] = [];
+  public readonly events: string[] = [];
   public readonly patches: KubePatchInvocation[] = [];
+  public readonly readOverrides: Map<string, KubeManifest> = new Map<string, KubeManifest>();
+  public failCreateKind: string | null = null;
+
+  public async create(object: KubeManifest): Promise<KubernetesObject> {
+    this.events.push(`create:${object.kind}`);
+    if (object.kind === this.failCreateKind) {
+      throw new Error(`generated ${object.kind} failure`);
+    }
+    if (this.conflicts.has(object.kind)) {
+      if (!this.readOverrides.has(object.kind)) {
+        this.readOverrides.set(object.kind, object);
+      }
+      throw new KubeConflictError('generated existing object');
+    }
+    return await Promise.resolve(object);
+  }
+
+  public async delete(object: KubeManifest): Promise<KubernetesObject> {
+    this.deletes.push(object);
+    this.events.push(`delete:${object.kind}`);
+    return await Promise.resolve(object);
+  }
+
+  public async read(object: KubeManifest): Promise<KubernetesObject> {
+    this.events.push(`read:${object.kind}`);
+    return await Promise.resolve(this.readOverrides.get(object.kind) ?? object);
+  }
 
   public async patch(...input: KubePatchInvocation): Promise<KubernetesObject> {
     this.patches.push(input);
+    this.events.push(`patch:${input[0].kind}`);
     return await Promise.resolve(input[0]);
   }
 }
@@ -55,6 +95,11 @@ describe('KubeRuntime Job primitive', (): void => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     objectApi.patches.length = 0;
+    objectApi.deletes.length = 0;
+    objectApi.events.length = 0;
+    objectApi.conflicts.clear();
+    objectApi.failCreateKind = null;
+    objectApi.readOverrides.clear();
     coreApi.readNamespacedPodLog.mockClear();
     vi.spyOn(KubernetesObjectApi, 'makeApiClient').mockReturnValue(objectApi as never);
   });
@@ -76,9 +121,13 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(manifest.metadata?.name).toBe(jobName);
     expect((manifest.spec as JobManifestSpec).backoffLimit).toBe(0);
     expect((manifest.spec as JobManifestSpec).template.spec.containers[0]?.env).toEqual([
-      { name: 'ALPHA', value: 'a' },
-      { name: 'ZETA', value: 'z' },
+      { name: 'ALPHA', valueFrom: { secretKeyRef: { key: 'ALPHA', name: 'secret-job' } } },
+      { name: 'ZETA', valueFrom: { secretKeyRef: { key: 'ZETA', name: 'secret-job' } } },
     ]);
+    expect((manifest.spec as JobManifestSpec).template.spec.automountServiceAccountToken).toBe(false);
+    expect((manifest.spec as JobManifestSpec).template.metadata.annotations['compartment.dev/secret-checksum']).toBe(
+      'generated-checksum',
+    );
     expect(objectApi.patches[0]?.slice(3)).toEqual(['compartment', false, PatchStrategy.ServerSideApply]);
     expect(coreApi.readNamespacedPodLog).toHaveBeenCalledWith({
       container: 'job',
@@ -101,6 +150,57 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(objectApi.patches[0]![0].spec).toMatchObject({ backoffLimit: 1 });
     expect(result.exitCode).toBe(23);
     expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it('removes bootstrap authority after applying the namespace-local controller binding', async (): Promise<void> => {
+    objectApi.conflicts.add('Namespace');
+    const runtime: KubeRuntime = new KubeRuntime(
+      { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
+      { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
+    );
+    await runtime.apply(projectNamespaceProvisioningBundle({ namespaceId: 'prj-01jz', projectId: 'prj-01jz' }));
+    expect(objectApi.patches).toHaveLength(0);
+    expect(objectApi.deletes).toMatchObject([{ kind: 'ClusterRoleBinding' }]);
+    expect(objectApi.events).toEqual([
+      'create:Namespace',
+      'read:Namespace',
+      'create:ServiceAccount',
+      'create:RoleBinding',
+      'delete:ClusterRoleBinding',
+    ]);
+  });
+
+  it('uses installation authority to remove bootstrap access after a partial create failure', async (): Promise<void> => {
+    objectApi.failCreateKind = 'ServiceAccount';
+    const runtime: KubeRuntime = new KubeRuntime(
+      { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
+      { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
+    );
+    await expect(
+      runtime.apply(projectNamespaceProvisioningBundle({ namespaceId: 'prj-failure', projectId: 'prj-failure' })),
+    ).rejects.toThrow('generated ServiceAccount failure');
+    expect(objectApi.events).toEqual(['create:Namespace', 'create:ServiceAccount', 'delete:ClusterRoleBinding']);
+  });
+
+  it('rejects a conflicting RoleBinding that does not grant the canonical controller role', async (): Promise<void> => {
+    objectApi.conflicts.add('RoleBinding');
+    objectApi.readOverrides.set('RoleBinding', {
+      apiVersion: 'rbac.authorization.k8s.io/v1',
+      kind: 'RoleBinding',
+      metadata: { name: 'compartment-controller', namespace: kubeNamespaceName('prj-conflict') },
+      roleRef: { apiGroup: 'rbac.authorization.k8s.io', kind: 'ClusterRole', name: 'wrong-role' },
+      subjects: [
+        { kind: 'ServiceAccount', name: 'compartment-controller', namespace: kubeNamespaceName('prj-conflict') },
+      ],
+    });
+    const runtime: KubeRuntime = new KubeRuntime(
+      { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
+      { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
+    );
+    await expect(
+      runtime.apply(projectNamespaceProvisioningBundle({ namespaceId: 'prj-conflict', projectId: 'prj-conflict' })),
+    ).rejects.toThrow('does not match the provisioning contract');
+    expect(objectApi.events.at(-1)).toBe('delete:ClusterRoleBinding');
   });
 
   it('applies one timeout to informer startup and terminal observation', async (): Promise<void> => {
@@ -135,7 +235,7 @@ function jobSpec(jobClass: 'operation' | 'release'): KubeJobSpec {
     id: 'job-01jz',
     image: 'registry.example/release@sha256:abc',
     jobClass,
-    env: { ZETA: 'z', ALPHA: 'a' },
+    env: { checksum: 'generated-checksum', keys: ['ZETA', 'ALPHA'], secretName: 'secret-job' },
     labels: { 'compartment.dev/deployment-id': 'dep-01jz' },
     namespace: 'cpt-prj-01jz',
     timeoutMs: 1_000,
@@ -170,7 +270,7 @@ function terminalObservation(jobName: string, succeeded: boolean, exitCode: numb
 
 class TerminalObservation implements KubeObservation {
   public constructor(
-    public readonly cache: ReadonlyMap<string, KubeManifest>,
+    public readonly cache: ReadonlyMap<string, KubeObservedManifest>,
     private readonly stopMock: Mock,
   ) {}
 

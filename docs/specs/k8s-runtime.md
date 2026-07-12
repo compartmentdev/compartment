@@ -18,7 +18,10 @@ transport, observation, projections, and reconciliation decisions.
 
 The package has exactly four side-effecting primitives:
 
-- `apply(bundle)` uses server-side apply with field manager `compartment`;
+- `apply(bundle)` uses server-side apply with field manager `compartment`; a
+  bootstrap-configured bundle may first create its allowed provisioning
+  objects; a separate installation identity finishes by deleting explicitly
+  named temporary authority, including after partial failure;
 - `observe(labels)` reads label-scoped informer caches;
 - `logs(ref)` reads workload or Job logs;
 - `runJob(spec)` applies a deterministic Job and reads its terminal result.
@@ -107,8 +110,11 @@ production or seeded Compartment principal receives either role by default.
 Fresh installs explicitly provision a short-lived bootstrap binding, delete it
 after namespace provisioning, and create one namespace-local controller
 binding per managed project. Existing projects require explicit backfill or
-opt-in. This is Kubernetes installation authority, not a new Compartment user
-permission.
+opt-in. Each later provisioning run requires installation authority to
+re-establish the short-lived bootstrap binding before handing the bootstrap
+identity to the controller. The bootstrap identity cannot recreate that
+binding itself. This is Kubernetes installation authority, not a new
+Compartment user permission.
 
 ## Migration and deletion
 

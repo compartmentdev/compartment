@@ -8,6 +8,7 @@ import type {
   KubeJobSpec,
   KubeLogReference,
   KubeManifest,
+  KubeManifestKind,
   KubeObservation,
   ObserveLabels,
 } from './kube-runtime.types';
@@ -21,28 +22,46 @@ interface JobDeadline {
 }
 
 export class KubeRuntime {
+  private readonly cleanupObjectApi: KubernetesObjectApi | null;
   private readonly coreApi: CoreV1Api;
   private readonly objectApi: KubernetesObjectApi;
 
-  public constructor(private readonly kubeConfig: KubeConfig) {
+  public constructor(
+    private readonly kubeConfig: KubeConfig,
+    cleanupKubeConfig?: KubeConfig,
+  ) {
     this.coreApi = kubeConfig.makeApiClient(CoreV1Api);
     this.objectApi = KubernetesObjectApi.makeApiClient(kubeConfig);
+    this.cleanupObjectApi =
+      cleanupKubeConfig === undefined ? null : KubernetesObjectApi.makeApiClient(cleanupKubeConfig);
   }
 
   public async apply(bundle: ApplyBundle): Promise<KubeManifest[]> {
+    const cleanup: KubeManifest[] = bundle.deleteAfterApply ?? [];
+    const cleanupObjectApi: KubernetesObjectApi | null = this.requiredCleanupApi(cleanup);
+    try {
+      return await this.applyObjects(bundle, cleanupObjectApi);
+    } finally {
+      await deleteObjects(cleanupObjectApi, cleanup);
+    }
+  }
+
+  private async applyObjects(bundle: ApplyBundle, reader: KubernetesObjectApi | null): Promise<KubeManifest[]> {
     const applied: KubeManifest[] = [];
+    for (const object of bundle.createBeforeApply ?? []) {
+      applied.push(await createOrValidate(this.objectApi, reader, object));
+    }
     for (const object of bundle.objects) {
-      const result: KubeManifest = await this.objectApi.patch(
-        object,
-        undefined,
-        undefined,
-        fieldManager,
-        bundle.force ?? false,
-        PatchStrategy.ServerSideApply,
-      );
-      applied.push(result);
+      applied.push(await applyObject(this.objectApi, object, bundle.force ?? false));
     }
     return applied;
+  }
+
+  private requiredCleanupApi(cleanup: KubeManifest[]): KubernetesObjectApi | null {
+    if (cleanup.length > 0 && this.cleanupObjectApi === null) {
+      throw new Error('Kubernetes provisioning cleanup requires a separate installation identity.');
+    }
+    return this.cleanupObjectApi;
   }
 
   public async observe(input: ObserveLabels): Promise<KubeObservation> {
@@ -98,6 +117,99 @@ export class KubeRuntime {
       logs: output,
       podName: terminal.podName,
     };
+  }
+}
+
+interface KubeApiError {
+  code?: number | undefined;
+}
+
+interface KubeObjectHeaderMetadata {
+  name: string;
+  namespace?: string;
+}
+
+interface KubeObjectHeader {
+  apiVersion: string;
+  kind: KubeManifestKind;
+  metadata: KubeObjectHeaderMetadata;
+}
+
+async function createOrValidate(
+  objectApi: KubernetesObjectApi,
+  reader: KubernetesObjectApi | null,
+  object: KubeManifest,
+): Promise<KubeManifest> {
+  try {
+    return await objectApi.create(object);
+  } catch (error) {
+    if ((error as KubeApiError).code !== 409 || reader === null) {
+      throw error;
+    }
+    const existing: KubeManifest = await reader.read<KubeManifest>(objectHeader(object));
+    validateExistingProvisioningObject(existing, object);
+    return existing;
+  }
+}
+
+function objectHeader(object: KubeManifest): KubeObjectHeader {
+  const name: string | undefined = object.metadata?.name;
+  const apiVersion: string | undefined = object.apiVersion;
+  if (name === undefined || apiVersion === undefined) {
+    throw new Error(`Kubernetes ${object.kind} requires an API version and name.`);
+  }
+  return {
+    apiVersion,
+    kind: object.kind,
+    metadata: { name, ...(object.metadata?.namespace === undefined ? {} : { namespace: object.metadata.namespace }) },
+  };
+}
+
+function validateExistingProvisioningObject(existing: KubeManifest, desired: KubeManifest): void {
+  const sameIdentity: boolean =
+    existing.kind === desired.kind &&
+    existing.metadata?.name === desired.metadata?.name &&
+    existing.metadata?.namespace === desired.metadata?.namespace;
+  const sameProvisioningFields: boolean = hasSameProvisioningFields(existing, desired);
+  if (!sameIdentity || !sameProvisioningFields) {
+    throw new Error(`Existing Kubernetes ${desired.kind} does not match the provisioning contract.`);
+  }
+}
+
+function hasSameProvisioningFields(existing: KubeManifest, desired: KubeManifest): boolean {
+  if (desired.kind === 'Namespace') {
+    return hasDesiredLabels(existing, desired);
+  }
+  if (desired.kind === 'ServiceAccount') {
+    return existing.automountServiceAccountToken === false;
+  }
+  return (
+    desired.kind === 'RoleBinding' &&
+    JSON.stringify(existing.roleRef) === JSON.stringify(desired.roleRef) &&
+    JSON.stringify(existing.subjects) === JSON.stringify(desired.subjects)
+  );
+}
+
+function hasDesiredLabels(existing: KubeManifest, desired: KubeManifest): boolean {
+  return Object.entries(desired.metadata?.labels ?? {}).every(
+    ([key, value]: [string, string]): boolean => existing.metadata?.labels?.[key] === value,
+  );
+}
+
+async function applyObject(
+  objectApi: KubernetesObjectApi,
+  object: KubeManifest,
+  force: boolean,
+): Promise<KubeManifest> {
+  return await objectApi.patch(object, undefined, undefined, fieldManager, force, PatchStrategy.ServerSideApply);
+}
+
+async function deleteObjects(objectApi: KubernetesObjectApi | null, objects: KubeManifest[]): Promise<void> {
+  if (objectApi === null) {
+    return;
+  }
+  for (const object of objects) {
+    await objectApi.delete(object);
   }
 }
 
