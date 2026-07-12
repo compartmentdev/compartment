@@ -7,7 +7,7 @@ import {
   waitForTerminalJob,
   type TerminalJob,
 } from './kube-job';
-import { kubeJobName, kubeSecretName } from './kube-naming';
+import { kubeJobName } from './kube-naming';
 import { createOrValidate } from './kube-provisioning-validation';
 import {
   applyObject,
@@ -141,7 +141,9 @@ export class KubeRuntime {
       try {
         await this.apply({ objects: [kubeJobSecretManifest(spec, labels), kubeJobManifest(spec, jobName, labels)] });
       } catch (error) {
-        if (!(error instanceof Error && readHttpStatusCode(error) === 409)) throw error;
+        if (!(error instanceof Error && readHttpStatusCode(error) === 409)) {
+          throw error;
+        }
       }
     }
     const terminalResult: TerminalJobResult = await this.completeJob(spec, jobName);
@@ -156,19 +158,19 @@ export class KubeRuntime {
     jobExists: boolean,
   ): KubeJobResult {
     return new CapturedKubeJobResult(result, async (): Promise<void> => {
-      if (!jobExists) return await Promise.resolve();
+      if (!jobExists) {
+        return await Promise.resolve();
+      }
       if (result.status === 'timed-out') {
         await deleteObjectIgnoringNotFound(
           this.objectApi,
           { apiVersion: 'batch/v1', kind: 'Job', metadata: { name: jobName, namespace: spec.namespace } },
           'Foreground',
         );
-      } else await this.apply({ objects: [kubeFinalizedJobManifest(spec, jobName, labels)] });
-      await deleteObjectIgnoringNotFound(this.objectApi, {
-        apiVersion: 'v1',
-        kind: 'Secret',
-        metadata: { name: kubeSecretName(spec.id), namespace: spec.namespace },
-      });
+      } else {
+        await this.apply({ objects: [kubeFinalizedJobManifest(spec, jobName, labels)] });
+      }
+      await deleteObjectIgnoringNotFound(this.objectApi, kubeJobSecretManifest(spec, labels));
     });
   }
 
@@ -177,7 +179,9 @@ export class KubeRuntime {
       await this.objectApi.read({ apiVersion: 'batch/v1', kind: 'Job', metadata: { name: jobName, namespace } });
       return true;
     } catch (error) {
-      if (error instanceof Error && readHttpStatusCode(error) === 404) return false;
+      if (error instanceof Error && readHttpStatusCode(error) === 404) {
+        return false;
+      }
       throw error;
     }
   }
@@ -195,7 +199,9 @@ export class KubeRuntime {
       try {
         return await this.readJobResult(spec, jobName, observation, deadline.expiresAt);
       } catch (error) {
-        if (!deadline.controller.signal.aborted && !(error instanceof Error && isJobTimeoutError(error))) throw error;
+        if (!deadline.controller.signal.aborted && !(error instanceof Error && isJobTimeoutError(error))) {
+          throw error;
+        }
         return await this.captureTimedOutJob(spec, jobName, observation);
       }
     } finally {

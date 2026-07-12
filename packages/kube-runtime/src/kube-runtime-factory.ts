@@ -7,7 +7,9 @@ export function createKubeRuntimeFromEnvironment(env: NodeJS.ProcessEnv = proces
     kubeConfig.loadFromCluster();
   } catch (clusterError) {
     const kubeconfigPath: string | undefined = env.KUBECONFIG;
-    if (kubeconfigPath === undefined || kubeconfigPath.trim() === '') throw clusterError;
+    if (kubeconfigPath === undefined || kubeconfigPath.trim() === '') {
+      throw clusterError;
+    }
     kubeConfig.loadFromFile(kubeconfigPath);
   }
   return new KubeRuntime(kubeConfig);

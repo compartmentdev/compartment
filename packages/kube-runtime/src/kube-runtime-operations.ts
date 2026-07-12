@@ -64,7 +64,9 @@ export async function deleteObjectIgnoringNotFound(
   try {
     await objectApi.delete(object, undefined, undefined, undefined, undefined, propagationPolicy);
   } catch (error) {
-    if (!(error instanceof Error && readHttpStatusCode(error) === 404)) throw error;
+    if (!(error instanceof Error && readHttpStatusCode(error) === 404)) {
+      throw error;
+    }
   }
 }
 
@@ -88,6 +90,10 @@ export function findJobPodNames(cache: ReadonlyMap<string, KubeObservedManifest>
 }
 
 async function deleteObjects(objectApi: KubernetesObjectApi | null, objects: KubeManifest[]): Promise<void> {
-  if (objectApi === null) return;
-  for (const object of objects) await objectApi.delete(object);
+  if (objectApi === null) {
+    return;
+  }
+  for (const object of objects) {
+    await objectApi.delete(object);
+  }
 }

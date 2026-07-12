@@ -11,7 +11,6 @@ import {
   type KubeManifest,
   type KubeObservation,
   type KubeObservationHealth,
-  type ObserveLabels,
   type ProjectNamespaceProvisioningRow,
 } from '../src';
 import type { KubeObservationListener, KubeObservedManifest, KubeSecretEnvVariable } from '../src/kube-runtime.types';
@@ -85,7 +84,9 @@ class PrimitiveObjectApi {
     if (this.failDelete) {
       throw new Error('generated cleanup failure');
     }
-    if (this.deleteError !== null) throw this.deleteError;
+    if (this.deleteError !== null) {
+      throw this.deleteError;
+    }
     return await Promise.resolve(object);
   });
 

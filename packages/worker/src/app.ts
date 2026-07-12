@@ -31,7 +31,9 @@ export async function runWorker(config: WorkerConfig = readWorkerConfig()): Prom
   const kubeController: KubeControllerHost = createKubeControllerHost(config);
 
   void prewarmSourceBuildToolchainAtStartup(logger);
-  if (kubeController.enabled) void runKubeControllerLoop(config, logger, kubeController);
+  if (kubeController.enabled) {
+    void runKubeControllerLoop(config, logger, kubeController);
+  }
   await runWorkerLoop(config, logger, state);
 }
 
@@ -98,7 +100,9 @@ async function runKubeControllerLoop(
 ): Promise<void> {
   for (;;) {
     try {
-      if (!(await kubeController.reconcile())) await waitForNextPoll(config.pollIntervalMs);
+      if (!(await kubeController.reconcile())) {
+        await waitForNextPoll(config.pollIntervalMs);
+      }
     } catch (error) {
       logger.error(
         buildWorkerCaughtErrorLogPayload(error as WorkerCaughtError),

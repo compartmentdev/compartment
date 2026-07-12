@@ -20,7 +20,9 @@ class RegisteredKubeControllerHost implements KubeControllerHost {
 
   public async reconcile(): Promise<boolean> {
     for (const area of this.areas) {
-      if (await area.reconcile()) return true;
+      if (await area.reconcile()) {
+        return true;
+      }
     }
     return false;
   }
@@ -34,9 +36,14 @@ class ProductJobReconcileArea implements KubeReconcileArea {
 
   public async reconcile(): Promise<boolean> {
     const claimed: WorkerClaimProductJobResponse = await claimProductJob(this.request);
-    if (claimed.job === null) return false;
-    if (claimed.result === null) await executeProductJob(this.request, this.runtime, claimed.job);
-    else await finalizeRecoveredProductJob(this.request, this.runtime, claimed.job, claimed.result);
+    if (claimed.job === null) {
+      return false;
+    }
+    if (claimed.result === null) {
+      await executeProductJob(this.request, this.runtime, claimed.job);
+    } else {
+      await finalizeRecoveredProductJob(this.request, this.runtime, claimed.job, claimed.result);
+    }
     return true;
   }
 }
@@ -50,7 +57,9 @@ class DisabledKubeControllerHost implements KubeControllerHost {
 }
 
 export function createKubeControllerHost(config: WorkerConfig): KubeControllerHost {
-  if (!hasKubeConfiguration(process.env)) return new DisabledKubeControllerHost();
+  if (!hasKubeConfiguration(process.env)) {
+    return new DisabledKubeControllerHost();
+  }
   const request: CompartmentRequester = createCompartmentRequester({
     apiUrl: config.apiUrl,
     internalToken: config.runtimeControlToken,

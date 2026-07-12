@@ -37,7 +37,9 @@ async function claimProductJobWithTransaction(
   transaction: ApiDatabaseTransaction,
 ): Promise<ClaimedProductJobQueryResult> {
   const row: ProductJobRunRow | undefined = await readClaimableProductJobRow(transaction);
-  if (row === undefined) return { intent: null, persistedResult: null };
+  if (row === undefined) {
+    return { intent: null, persistedResult: null };
+  }
   if (row.status === 'queued' || row.status === 'running') {
     await transaction
       .update(productJobRuns)
@@ -81,7 +83,9 @@ function claimableProductJobPredicate(): SQL | undefined {
 }
 
 function buildPersistedProductJobResult(row: ProductJobRunRow): WorkerPersistProductJobResultRequest | null {
-  if (row.status === 'queued' || row.status === 'running') return null;
+  if (row.status === 'queued' || row.status === 'running') {
+    return null;
+  }
   if (row.completedAt === null || row.jobName === null || row.logs === null) {
     throw new Error(`Product Job ${row.jobClass}/${row.identityId} has incomplete terminal evidence.`);
   }

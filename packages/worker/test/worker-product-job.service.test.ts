@@ -75,7 +75,9 @@ describe('executeProductJob', (): void => {
     const result: KubeJobResult = {
       ...successResult(),
       finalize: vi.fn(async (): Promise<void> => {
-        if (!durable) throw new Error('TTL enabled before durable evidence.');
+        if (!durable) {
+          throw new Error('TTL enabled before durable evidence.');
+        }
         await Promise.resolve();
       }),
     };
@@ -181,8 +183,12 @@ function runtimeWithSequence(results: (KubeJobResult | Error)[]): KubeRuntime & 
   return {
     runJob: vi.fn(async (): Promise<KubeJobResult> => {
       const next: KubeJobResult | Error | undefined = results.shift();
-      if (next === undefined) throw new Error('Missing fake Job result.');
-      if (next instanceof Error) throw next;
+      if (next === undefined) {
+        throw new Error('Missing fake Job result.');
+      }
+      if (next instanceof Error) {
+        throw next;
+      }
       return await Promise.resolve(next);
     }),
   } as never;
