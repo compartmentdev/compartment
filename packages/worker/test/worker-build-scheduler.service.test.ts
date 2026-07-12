@@ -41,6 +41,7 @@ vi.mock('@compartment/docker', (): { pruneBuildKitCache: Mock<PruneBuildKitCache
 
 afterEach((): void => {
   mocks.pruneBuildKitCache.mockReset();
+  vi.restoreAllMocks();
 });
 
 describe('scheduleWorkerBuild', (): void => {

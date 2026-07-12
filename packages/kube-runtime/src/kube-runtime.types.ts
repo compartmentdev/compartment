@@ -104,7 +104,7 @@ export interface KubeProjectedPodSpec {
   automountServiceAccountToken: false;
   containers: KubeProjectedContainer[];
   imagePullSecrets?: KubeLocalObjectReference[] | undefined;
-  restartPolicy?: 'Never' | undefined;
+  restartPolicy?: 'Never' | 'OnFailure' | undefined;
   securityContext?: object | undefined;
   terminationGracePeriodSeconds?: number | undefined;
   volumes?: object[] | undefined;

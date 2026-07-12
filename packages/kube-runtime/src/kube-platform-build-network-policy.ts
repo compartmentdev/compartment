@@ -16,7 +16,7 @@ export function platformBuildNetworkPolicies(input: PlatformBuildProjectionInput
   return [
     networkPolicy(namespace, 'default-deny', {}, { podSelector: {}, policyTypes: ['Ingress', 'Egress'] }),
     buildkitNetworkPolicy(input, namespace),
-    pruneNetworkPolicy(namespace),
+    pruneNetworkPolicy(input, namespace),
     ...registryNetworkPolicies(input, namespace),
   ];
 }
@@ -40,9 +40,10 @@ function buildkitNetworkPolicy(input: PlatformBuildProjectionInput, namespace: s
   });
 }
 
-function pruneNetworkPolicy(namespace: string): KubeManifest {
+function pruneNetworkPolicy(input: PlatformBuildProjectionInput, namespace: string): KubeManifest {
   return networkPolicy(namespace, 'prune', componentLabels('prune'), {
     egress: [
+      dnsEgress(input),
       {
         ports: [{ port: buildkitPort, protocol: 'TCP' }],
         to: [{ podSelector: { matchLabels: componentLabels('buildkit') } }],

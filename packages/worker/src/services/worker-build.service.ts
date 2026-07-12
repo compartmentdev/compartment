@@ -226,11 +226,7 @@ function buildReleaseImageRepository(deployment: WorkerClaimedDeployment): strin
 
 function readReusableArtifactImageRef(deployment: WorkerClaimedDeployment): string | null {
   const imageRef: string | null = deployment.artifact.imageRef;
-  if (imageRef === null || isDigestPinnedImageRef(imageRef)) {
-    return imageRef;
-  }
-
-  throw new Error(`Expected artifact "${deployment.artifact.id}" image ref to be digest-pinned.`);
+  return imageRef !== null && isDigestPinnedImageRef(imageRef) ? imageRef : null;
 }
 
 function isDigestPinnedImageRef(imageRef: string): boolean {

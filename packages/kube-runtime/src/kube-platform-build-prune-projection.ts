@@ -5,7 +5,7 @@ import {
   workloadResources,
 } from './kube-platform-build-projection-support';
 import type { PlatformBuildProjectionInput } from './kube-platform-build-projection.types';
-import type { KubeManifest } from './kube-runtime.types';
+import type { KubeManifest, KubeProjectedPodSpec } from './kube-runtime.types';
 
 export function platformBuildPruneCronJob(input: PlatformBuildProjectionInput, namespace: string): KubeManifest {
   return {
@@ -21,7 +21,7 @@ export function platformBuildPruneCronJob(input: PlatformBuildProjectionInput, n
   };
 }
 
-function prunePodSpec(input: PlatformBuildProjectionInput): object {
+function prunePodSpec(input: PlatformBuildProjectionInput): KubeProjectedPodSpec {
   return {
     automountServiceAccountToken: false,
     containers: [

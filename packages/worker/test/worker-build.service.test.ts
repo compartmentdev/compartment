@@ -151,7 +151,7 @@ describe('buildReleaseImageFromSource', (): void => {
     });
   });
 
-  it('builds from source and returns the BuildKit-pushed image ref', async (): Promise<void> => {
+  it('rebuilds a legacy tagged artifact and returns the BuildKit-pushed image ref', async (): Promise<void> => {
     const getArtifactSourceArchiveSpy: Mock<(artifactId: string) => Promise<Buffer>> = vi
       .fn<(artifactId: string) => Promise<Buffer>>()
       .mockResolvedValueOnce(Buffer.from('test'));
@@ -180,7 +180,7 @@ describe('buildReleaseImageFromSource', (): void => {
         createClaimedDeployment({
           artifact: {
             id: 'art_123',
-            imageRef: null,
+            imageRef: 'registry.example/web:legacy',
             sourceDigest: 'sha256:source',
           },
           buildEnv: {
