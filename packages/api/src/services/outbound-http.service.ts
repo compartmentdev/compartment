@@ -18,7 +18,7 @@ const builtInTrustedPublicOutboundHosts: readonly string[] = [
   'openidconnect.googleapis.com',
   'www.googleapis.com',
 ];
-const gitHubTrustedOutboundMaxRedirects: number = 5;
+const gitProviderTrustedOutboundMaxRedirects: number = 5;
 const oidcTrustedOutboundMaxRedirects: number = 5;
 
 export const createGitHubTrustedOutboundFetch: () => typeof fetch = createGitProviderTrustedOutboundFetch;
@@ -28,7 +28,7 @@ function createGitProviderTrustedOutboundFetch(): typeof fetch {
   return createOutboundHttpFetch({
     addressPolicy: 'public',
     allowedProtocols: ['https:'],
-    maxRedirects: gitHubTrustedOutboundMaxRedirects,
+    maxRedirects: gitProviderTrustedOutboundMaxRedirects,
     trustedHosts: readTrustedPublicOutboundHosts(),
   });
 }

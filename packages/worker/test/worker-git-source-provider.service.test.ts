@@ -25,6 +25,7 @@ describe('git-source provider dispatcher', (): void => {
     const legacy: WorkerClaimedGitSourceResolutionTask = buildResolutionTask();
     const gitlab: WorkerClaimedGitSourceResolutionTask = {
       ...legacy,
+      providerHost: 'gitlab.com',
       providerType: 'gitlab',
       repositoryExternalId: '42',
     };
@@ -39,7 +40,12 @@ describe('git-source provider dispatcher', (): void => {
     vi.mocked(readGitLabBranchHeadSha).mockResolvedValue('gitlab-sha');
     expect(await readGitSourceBranchHeadSha(buildSyncTask())).toBe('github-sha');
     expect(
-      await readGitSourceBranchHeadSha({ ...buildSyncTask(), providerType: 'gitlab', repositoryExternalId: '42' }),
+      await readGitSourceBranchHeadSha({
+        ...buildSyncTask(),
+        providerHost: 'gitlab.com',
+        providerType: 'gitlab',
+        repositoryExternalId: '42',
+      }),
     ).toBe('gitlab-sha');
   });
 });
