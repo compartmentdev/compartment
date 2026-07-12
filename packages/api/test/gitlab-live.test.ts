@@ -9,7 +9,7 @@ let createdTopLevelGroup: boolean = false;
 let subgroupId: number | undefined;
 const createdProjectIds: number[] = [];
 
-describe.skipIf(!token)('GitLab live E2E smoke', (): void => {
+describe.skipIf(token === undefined || token.length === 0)('GitLab live E2E smoke', (): void => {
   it('creates projects, commits twice, lists subgroup paths, and merges a request', async (): Promise<void> => {
     let group: GitLabGroup;
     try {
