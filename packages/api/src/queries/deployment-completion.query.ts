@@ -1,7 +1,7 @@
 import { and, eq, ne } from 'drizzle-orm';
 import { buildArtifacts, deployments } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
-import { upsertDeploymentRouteWithExecutor } from './deployment-routes.query';
+import { upsertDeploymentRouteWithExecutor } from './deployment-route-persistence.query';
 import type { CompleteDeploymentWithRouteInput } from './deployment-completion.query.types';
 import type { DeploymentTransaction } from './deployments.query.types';
 import { updateOperationRecordWithExecutor } from './operations.query';

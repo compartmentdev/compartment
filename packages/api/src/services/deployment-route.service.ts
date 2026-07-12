@@ -1,8 +1,8 @@
 import {
   findLatestReservedDeploymentRouteSubdomainForOwner,
   listDeploymentRouteSubdomains,
-  tryInsertDeploymentRouteWithExecutor,
 } from '../queries/deployment-routes.query';
+import { tryInsertDeploymentRouteWithExecutor } from '../queries/deployment-route-persistence.query';
 import { buildPublicRouteHost, readPublicRouteSubdomain } from '../lib/public-route-host';
 import { createId } from '../lib/tokens';
 import type { DeploymentRow } from '../queries/deployments.query.types';

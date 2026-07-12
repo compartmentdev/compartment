@@ -26,7 +26,10 @@ import {
   upsertDeploymentKubeReference,
 } from '../src/queries/deployment-kube-reference.query';
 import type { PersistDeploymentKubeTransitionInput } from '../src/queries/deployment-kube-reference.query.types';
-import { persistDeploymentReconcileObservation } from '../src/queries/deployment-reconcile.query';
+import {
+  persistDeploymentReconcileObservation,
+  prepareDeploymentReconcileReference,
+} from '../src/queries/deployment-reconcile.query';
 import { findActiveDeploymentRouteByHost } from '../src/queries/deployment-routes.query';
 import type { DeploymentRouteLookupRow } from '../src/queries/deployment-routes.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
@@ -174,6 +177,26 @@ describe('deployment Kubernetes transition persistence', (): void => {
         { id: 'dep_kube', isActive: true, status: 'running' },
       ]),
     );
+  });
+
+  it('keeps the legacy active route attached until the Kubernetes candidate is Ready', async (): Promise<void> => {
+    await seedCandidate();
+    await db.update(deploymentRoutes).set({ deploymentId: 'dep_kube' });
+
+    await prepareDeploymentReconcileReference({
+      deploymentId: 'dep_candidate',
+      deploymentName: 'app-env-kube-svc-kube',
+      id: 'kref_candidate',
+      imageRef: 'repo/kube@sha256:candidate',
+      namespace: 'cpt-prj-kube',
+      networkPolicyNames: [],
+      routeId: 'route_kube',
+      routeSubdomain: 'kube',
+      serviceName: 'app-env-kube-svc-kube',
+    });
+
+    const [route] = await db.select({ deploymentId: deploymentRoutes.deploymentId }).from(deploymentRoutes);
+    expect(route).toEqual({ deploymentId: 'dep_kube' });
   });
 
   it('returns an active deployment to pending with one drift audit', async (): Promise<void> => {
