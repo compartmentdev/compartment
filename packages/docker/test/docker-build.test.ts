@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type * as BuildkitCommandModule from '../src/buildkit-command';
 import { buildDockerImage, hasDockerImage, inspectDockerImage, prewarmSourceBuildToolchain } from '../src/docker-build';
 import type { DockerCommandResult } from '../src/docker-command.types';
-import type { DockerProgressReporter, DockerRegistryCredentials } from '../src/docker-models';
+import type { DockerBuildImageInput, DockerProgressReporter, DockerRegistryCredentials } from '../src/docker-models';
 import type { PrepareRailpackPlanInput } from '../src/railpack-command.types';
 
 type RunDockerCommand = (args: string[]) => Promise<DockerCommandResult>;
@@ -125,8 +125,10 @@ describe('buildDockerImage', (): void => {
         'build-arg:NEXT_PUBLIC_API_URL=https://api.example.com',
         '--opt',
         'label:compartment.namespace=compartment-e2e',
+        '--opt',
+        'attest:sbom=',
         '--output',
-        'type=image,name=registry:5000/compartment-web:art_123,push=true,registry.insecure=true',
+        'type=image,name=registry:5000/compartment-web:art_123,push=true,oci-mediatypes=true,oci-artifact=true,registry.insecure=true',
         '--metadata-file',
         expect.stringMatching(/buildkit-metadata\.json$/),
       ],
@@ -249,8 +251,10 @@ describe('buildDockerImage', (): void => {
         expect.stringMatching(/^id=HOME,src=.*build-secret-0\.txt$/),
         '--secret',
         expect.stringMatching(/^id=PATH,src=.*build-secret-1\.txt$/),
+        '--opt',
+        'attest:sbom=',
         '--output',
-        'type=image,name=registry:5000/compartment-web:art_123,push=true,registry.insecure=true',
+        'type=image,name=registry:5000/compartment-web:art_123,push=true,oci-mediatypes=true,oci-artifact=true,registry.insecure=true',
       ]),
     );
     expect(mocks.runDockerCommand).not.toHaveBeenCalled();
@@ -380,6 +384,33 @@ describe('buildDockerImage', (): void => {
       },
     });
     expect(normalizedPlanText).not.toContain('"include": [\n          "."\n        ]');
+  });
+
+  it('recovers cleanly after a failed build writes invalid metadata', async (): Promise<void> => {
+    const recoveredDigest: string = `sha256:${'9'.repeat(64)}`;
+
+    process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
+    mocks.runBuildctlCommandWithOptionalProgressReporter.mockImplementationOnce(
+      async (args: string[]): Promise<void> => {
+        const metadataFile: string = requireBuildKitMetadataFile(args);
+        await writeFile(metadataFile, '{invalid', 'utf8');
+        throw new Error('invalid build definition');
+      },
+    );
+
+    const input: DockerBuildImageInput = {
+      contextDirectory: '/tmp/source',
+      imageTag: 'registry.example/compartment-web:art_123',
+      packer: 'dockerfile',
+    };
+
+    await expect(buildDockerImage(input)).rejects.toThrow('invalid build definition');
+
+    mockBuildKitImageOutput(recoveredDigest);
+    await expect(buildDockerImage(input)).resolves.toEqual({
+      imageRef: `registry.example/compartment-web@${recoveredDigest}`,
+      pushed: true,
+    });
   });
 });
 
@@ -527,10 +558,7 @@ function mockBuildKitImageOutput(digest: string): void {
 }
 
 async function writeBuildKitMetadata(args: readonly string[], digest: string): Promise<void> {
-  const metadataFile: string | undefined = args[args.indexOf('--metadata-file') + 1];
-  if (metadataFile === undefined) {
-    throw new Error('Expected test BuildKit args to include --metadata-file.');
-  }
+  const metadataFile: string = requireBuildKitMetadataFile(args);
 
   await writeFile(
     metadataFile,
@@ -539,4 +567,13 @@ async function writeBuildKitMetadata(args: readonly string[], digest: string): P
     }),
     'utf8',
   );
+}
+
+function requireBuildKitMetadataFile(args: readonly string[]): string {
+  const metadataFile: string | undefined = args[args.indexOf('--metadata-file') + 1];
+  if (metadataFile === undefined) {
+    throw new Error('Expected test BuildKit args to include --metadata-file.');
+  }
+
+  return metadataFile;
 }

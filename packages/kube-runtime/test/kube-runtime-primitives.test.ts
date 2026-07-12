@@ -310,7 +310,7 @@ describe('KubeRuntime Job primitive', (): void => {
     );
     await expect(
       runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-reordered'))),
-    ).resolves.toHaveLength(7);
+    ).resolves.toHaveLength(8);
   });
 
   it('captures every resource-operation attempt and selects the successful terminal Pod', async (): Promise<void> => {
@@ -410,6 +410,10 @@ function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
       serviceCidr: ['10', '43', '0', '0/16'].join('.'),
     },
     projectId: namespaceId,
+    registryPullCredentials: {
+      dockerConfigJson: '{"auths":{"registry.example":{"auth":"generated"}}}',
+      secretId: `pull-${namespaceId}`,
+    },
   };
 }
 

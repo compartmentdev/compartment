@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parseAllDocuments, stringify, type Document } from 'yaml';
 import {
   kubeNamespaceName,
+  kubeSecretName,
   projectNamespaceProvisioningBundle,
   type ApplyBundle,
   type KubeManifest,
@@ -34,6 +35,7 @@ describe('project namespace bootstrap provisioning', (): void => {
     const serviceAccount: KubeManifest = created[1]!;
     const binding: KubeManifest = created[2]!;
     expect(bundle.objects.map((manifest: KubeManifest): string => manifest.kind)).toEqual([
+      'Secret',
       'NetworkPolicy',
       'NetworkPolicy',
       'NetworkPolicy',
@@ -59,13 +61,23 @@ describe('project namespace bootstrap provisioning', (): void => {
         metadata: { name: 'compartment-project-bootstrap' },
       },
     ]);
+    expect(bundle.objects[0]).toMatchObject({
+      kind: 'Secret',
+      metadata: {
+        labels: { 'compartment.dev/namespace-id': 'prj-01jz' },
+        name: kubeSecretName('pull-prj-01jz'),
+        namespace: kubeNamespaceName('prj-01jz'),
+      },
+      stringData: { '.dockerconfigjson': '{"auths":{"registry.example":{"auth":"generated"}}}' },
+      type: 'kubernetes.io/dockerconfigjson',
+    });
   });
 
   it('projects the T2 isolation matrix in deterministic policy order', (): void => {
     const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-01jz'));
 
     expect(toYaml(bundle.objects)).toMatchSnapshot();
-    expect(bundle.objects).toMatchObject([
+    expect(bundle.objects.slice(1)).toMatchObject([
       { spec: { podSelector: {}, policyTypes: ['Ingress', 'Egress'] } },
       {
         spec: {
@@ -184,6 +196,10 @@ function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
       serviceCidr,
     },
     projectId: namespaceId,
+    registryPullCredentials: {
+      dockerConfigJson: '{"auths":{"registry.example":{"auth":"generated"}}}',
+      secretId: `pull-${namespaceId}`,
+    },
   };
 }
 

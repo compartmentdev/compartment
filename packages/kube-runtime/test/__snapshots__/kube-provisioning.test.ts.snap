@@ -1,7 +1,22 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`project namespace bootstrap provisioning > projects the T2 isolation matrix in deterministic policy order 1`] = `
-"apiVersion: networking.k8s.io/v1
+"apiVersion: v1
+kind: Secret
+metadata:
+  annotations:
+    compartment.dev/checksum: 61fe61b27432ae77a3de7c8296ccd8fa41865c346b020efc4e66970a3b582e12
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    compartment.dev/namespace-id: prj-01jz
+    compartment.dev/secret-id: pull-prj-01jz
+  name: secret-pull-prj-01jz-0afb376551749d7e
+  namespace: cpt-prj-01jz-243118a73be1a00d
+stringData:
+  .dockerconfigjson: '{"auths":{"registry.example":{"auth":"generated"}}}'
+type: kubernetes.io/dockerconfigjson
+---
+apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   labels:

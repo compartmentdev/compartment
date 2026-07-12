@@ -62,6 +62,7 @@ const mocks: WorkerServiceTestMocks = vi.hoisted(
 const testArtifactRegistry: WorkerArtifactRegistryConfig = {
   address: '127.0.0.1:5517',
   internalUrl: 'http://registry:5000',
+  mode: 'bundled',
   readCredentials: {
     password: 'read-password',
     username: 'reader',

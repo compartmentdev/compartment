@@ -1,6 +1,8 @@
 export { createKubeRuntimeFromEnvironment } from './kube-runtime-factory';
 export { KubeRuntime } from './kube-runtime';
 export { kubeApplicationName, kubeJobName, kubeNamespaceName, kubeSecretName } from './kube-naming';
+export { platformBuildManifests } from './kube-platform-build-projection';
+export type { PlatformBuildProjectionInput } from './kube-platform-build-projection.types';
 export { projectApplicationManifests } from './kube-projections';
 export type { ProjectNetworkPolicyProjection } from './kube-network-policy-projection.types';
 export { projectSecretManifest } from './kube-secret-projection';

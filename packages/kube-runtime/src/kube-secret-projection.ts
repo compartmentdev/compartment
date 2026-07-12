@@ -1,9 +1,34 @@
 import { createHash } from 'node:crypto';
 import { compareKubeKey } from './kube-key-order';
 import { kubeNamespaceName, kubeSecretName } from './kube-naming';
-import type { KubeManifest, KubeSecretEnvVariable, SecretProjectionRow } from './kube-runtime.types';
+import type {
+  KubeManifest,
+  KubeSecretEnvVariable,
+  RegistryPullSecretProjectionRow,
+  SecretProjectionRow,
+} from './kube-runtime.types';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
+
+export function registryPullSecretManifest(row: RegistryPullSecretProjectionRow): KubeManifest {
+  const data: Record<string, string> = { '.dockerconfigjson': row.dockerConfigJson };
+  return {
+    apiVersion: 'v1',
+    kind: 'Secret',
+    metadata: {
+      annotations: { 'compartment.dev/checksum': secretChecksum(data) },
+      labels: {
+        ...managedByLabel,
+        'compartment.dev/namespace-id': row.namespaceId,
+        'compartment.dev/secret-id': row.secretId,
+      },
+      name: kubeSecretName(row.secretId),
+      namespace: kubeNamespaceName(row.namespaceId),
+    },
+    stringData: data,
+    type: 'kubernetes.io/dockerconfigjson',
+  };
+}
 
 export function projectSecretManifest(row: SecretProjectionRow): KubeManifest {
   const orderedData: Record<string, string> = orderedSecretData(row.data);

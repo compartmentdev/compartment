@@ -215,10 +215,10 @@ describe.sequential('update runtime', (): void => {
       'COMPARTMENT_DOCKER_NAMESPACE=compartment-test',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
-      'COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST=registry-auth',
+      'COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL=http://registry-auth:5000',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
-      'COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_PORT=5000',
+      'COMPARTMENT_ARTIFACT_REGISTRY_MODE=bundled',
     );
     await expect(readFile(join(installPaths.configDir, '.env.self-hosted'), 'utf8')).resolves.toContain(
       'COMPARTMENT_PUBLIC_PROTOCOL=https',

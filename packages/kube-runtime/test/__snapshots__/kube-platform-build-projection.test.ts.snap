@@ -1,0 +1,785 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`platform build projection > projects external registry credentials and egress without bundled registry resources 1`] = `
+"apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    compartment.dev/platform-id: platform-01jz
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: baseline
+  name: cpt-platform-01jz-54e448961cd663d4
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  annotations:
+    compartment.dev/checksum: 3fde2f4fd24447b7ce5520643e36f98b73290f4151fc2a7e81550b21512d9251
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    compartment.dev/namespace-id: platform-01jz
+    compartment.dev/secret-id: external-pull-01jz
+  name: secret-external-pull-01jz-f371ff75e4199fd9
+  namespace: cpt-platform-01jz-54e448961cd663d4
+stringData:
+  .dockerconfigjson: '{"auths":{"registry.external":{"auth":"generated"}}}'
+type: kubernetes.io/dockerconfigjson
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+  name: buildkit-data
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    compartment.dev/registry-endpoint: registry.external:5443
+  labels: &a1
+    app.kubernetes.io/managed-by: compartment
+    app.kubernetes.io/name: buildkit
+  name: buildkit
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  progressDeadlineSeconds: 45
+  replicas: 1
+  selector:
+    matchLabels: *a1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels: *a1
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - args:
+            - --addr
+            - tcp://0.0.0.0:1234
+            - --oci-worker-no-process-sandbox
+            - --oci-worker-gc-keepstorage
+            - "2000"
+          env: []
+          image: moby/buildkit:v0.30.0-rootless
+          name: buildkit
+          ports:
+            - containerPort: 1234
+              name: buildkit
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: true
+            appArmorProfile:
+              type: Unconfined
+            readOnlyRootFilesystem: true
+            runAsGroup: 1000
+            runAsNonRoot: true
+            runAsUser: 1000
+          volumeMounts:
+            - mountPath: /home/user/.local/share/buildkit
+              name: data
+            - mountPath: /home/user/.local/tmp
+              name: rootless-tmp
+            - mountPath: /run/user/1000
+              name: run
+            - mountPath: /tmp
+              name: tmp
+            - mountPath: /home/user/.docker/config.json
+              name: registry-auth
+              readOnly: true
+              subPath: .dockerconfigjson
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: Unconfined
+      terminationGracePeriodSeconds: 45
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: buildkit-data
+        - name: registry-auth
+          secret:
+            secretName: secret-external-pull-01jz-f371ff75e4199fd9
+        - emptyDir: {}
+          name: rootless-tmp
+        - emptyDir: {}
+          name: run
+        - emptyDir: {}
+          name: tmp
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+  name: buildkit
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  ports:
+    - name: buildkit
+      port: 1234
+      protocol: TCP
+      targetPort: 1234
+  selector:
+    app.kubernetes.io/managed-by: compartment
+    app.kubernetes.io/name: buildkit
+  type: ClusterIP
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+  name: buildkit-prune
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/managed-by: compartment
+            app.kubernetes.io/name: prune
+        spec:
+          automountServiceAccountToken: false
+          containers:
+            - args:
+                - --addr
+                - tcp://buildkit:1234
+                - prune
+                - --all
+                - --keep-duration
+                - 24h
+                - --keep-storage
+                - "2000"
+              command:
+                - buildctl
+              env: []
+              image: moby/buildkit:v0.30.0-rootless
+              name: prune
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsGroup: 1000
+                runAsNonRoot: true
+                runAsUser: 1000
+          restartPolicy: OnFailure
+          securityContext:
+            fsGroup: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+  schedule: 0 3 * * *
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels: {}
+  name: default-deny
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    app.kubernetes.io/name: buildkit
+  name: buildkit
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+    - ports:
+        - port: 80
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+      to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32
+              - 169.254.0.0/16
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 10.42.0.0/16
+              - 10.43.0.0/16
+    - ports:
+        - port: 5443
+          protocol: TCP
+      to:
+        - ipBlock:
+            cidr: 203.0.113.10/32
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              compartment.dev/namespace-id: worker-01jz
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: worker
+      ports:
+        - port: 1234
+          protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: compartment
+      app.kubernetes.io/name: buildkit
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    app.kubernetes.io/name: prune
+  name: prune
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+    - ports:
+        - port: 1234
+          protocol: TCP
+      to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: compartment
+              app.kubernetes.io/name: buildkit
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: compartment
+      app.kubernetes.io/name: prune
+  policyTypes:
+    - Egress"
+`;
+
+exports[`platform build projection > projects the P9 rootless build platform as a private deterministic bundle 1`] = `
+"apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    compartment.dev/platform-id: platform-01jz
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: baseline
+  name: cpt-platform-01jz-54e448961cd663d4
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  annotations:
+    compartment.dev/checksum: 072548081455024f2283d961f0d36825f00fdffaf937c59388e977f35eb90046
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    compartment.dev/namespace-id: platform-01jz
+    compartment.dev/secret-id: registry-pull-01jz
+  name: secret-registry-pull-01jz-580c42d1c2c02379
+  namespace: cpt-platform-01jz-54e448961cd663d4
+stringData:
+  .dockerconfigjson: '{"auths":{"registry":{"auth":"generated"}}}'
+type: kubernetes.io/dockerconfigjson
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+  name: buildkit-data
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  annotations:
+    compartment.dev/checksum: 1abcd5de9356c23c202b24f681cef901f48148c0ab14a95f42072248ec034f4d
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    compartment.dev/deployment-id: platform-01jz
+    compartment.dev/secret-id: registry-auth-01jz
+  name: secret-registry-auth-01jz-aa79dd95a4862ea2
+  namespace: cpt-platform-01jz-54e448961cd663d4
+stringData:
+  REGISTRY_AUTH: htpasswd
+  REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+  REGISTRY_AUTH_HTPASSWD_REALM: Compartment Registry
+  htpasswd: compartment:$2y$generated
+type: Opaque
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+  name: registry-data
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations: {}
+  labels: &a1
+    app.kubernetes.io/managed-by: compartment
+    app.kubernetes.io/name: registry
+  name: registry
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  progressDeadlineSeconds: 45
+  replicas: 1
+  selector:
+    matchLabels: *a1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels: *a1
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - env:
+            - name: REGISTRY_AUTH
+              valueFrom:
+                secretKeyRef:
+                  key: REGISTRY_AUTH
+                  name: secret-registry-auth-01jz-aa79dd95a4862ea2
+            - name: REGISTRY_AUTH_HTPASSWD_REALM
+              valueFrom:
+                secretKeyRef:
+                  key: REGISTRY_AUTH_HTPASSWD_REALM
+                  name: secret-registry-auth-01jz-aa79dd95a4862ea2
+            - name: REGISTRY_AUTH_HTPASSWD_PATH
+              valueFrom:
+                secretKeyRef:
+                  key: REGISTRY_AUTH_HTPASSWD_PATH
+                  name: secret-registry-auth-01jz-aa79dd95a4862ea2
+          image: registry:2.8.3
+          name: registry
+          ports:
+            - containerPort: 5000
+              name: registry
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsGroup: 1000
+            runAsNonRoot: true
+            runAsUser: 1000
+          volumeMounts:
+            - mountPath: /auth
+              name: auth
+              readOnly: true
+            - mountPath: /var/lib/registry
+              name: data
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 45
+      volumes:
+        - name: auth
+          secret:
+            secretName: secret-registry-auth-01jz-aa79dd95a4862ea2
+        - name: data
+          persistentVolumeClaim:
+            claimName: registry-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+  name: registry
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  ports:
+    - name: registry
+      port: 5000
+      protocol: TCP
+      targetPort: 5000
+  selector:
+    app.kubernetes.io/managed-by: compartment
+    app.kubernetes.io/name: registry
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    compartment.dev/registry-endpoint: registry:5000
+  labels: &a1
+    app.kubernetes.io/managed-by: compartment
+    app.kubernetes.io/name: buildkit
+  name: buildkit
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  progressDeadlineSeconds: 45
+  replicas: 1
+  selector:
+    matchLabels: *a1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels: *a1
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - args:
+            - --addr
+            - tcp://0.0.0.0:1234
+            - --oci-worker-no-process-sandbox
+            - --oci-worker-gc-keepstorage
+            - "2000"
+          env: []
+          image: moby/buildkit:v0.30.0-rootless
+          name: buildkit
+          ports:
+            - containerPort: 1234
+              name: buildkit
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: true
+            appArmorProfile:
+              type: Unconfined
+            readOnlyRootFilesystem: true
+            runAsGroup: 1000
+            runAsNonRoot: true
+            runAsUser: 1000
+          volumeMounts:
+            - mountPath: /home/user/.local/share/buildkit
+              name: data
+            - mountPath: /home/user/.local/tmp
+              name: rootless-tmp
+            - mountPath: /run/user/1000
+              name: run
+            - mountPath: /tmp
+              name: tmp
+            - mountPath: /home/user/.docker/config.json
+              name: registry-auth
+              readOnly: true
+              subPath: .dockerconfigjson
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: Unconfined
+      terminationGracePeriodSeconds: 45
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: buildkit-data
+        - name: registry-auth
+          secret:
+            secretName: secret-registry-pull-01jz-580c42d1c2c02379
+        - emptyDir: {}
+          name: rootless-tmp
+        - emptyDir: {}
+          name: run
+        - emptyDir: {}
+          name: tmp
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+  name: buildkit
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  ports:
+    - name: buildkit
+      port: 1234
+      protocol: TCP
+      targetPort: 1234
+  selector:
+    app.kubernetes.io/managed-by: compartment
+    app.kubernetes.io/name: buildkit
+  type: ClusterIP
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+  name: buildkit-prune
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/managed-by: compartment
+            app.kubernetes.io/name: prune
+        spec:
+          automountServiceAccountToken: false
+          containers:
+            - args:
+                - --addr
+                - tcp://buildkit:1234
+                - prune
+                - --all
+                - --keep-duration
+                - 24h
+                - --keep-storage
+                - "2000"
+              command:
+                - buildctl
+              env: []
+              image: moby/buildkit:v0.30.0-rootless
+              name: prune
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsGroup: 1000
+                runAsNonRoot: true
+                runAsUser: 1000
+          restartPolicy: OnFailure
+          securityContext:
+            fsGroup: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+  schedule: 0 3 * * *
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels: {}
+  name: default-deny
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    app.kubernetes.io/name: buildkit
+  name: buildkit
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+    - ports:
+        - port: 80
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+      to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32
+              - 169.254.0.0/16
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 10.42.0.0/16
+              - 10.43.0.0/16
+    - ports:
+        - port: 5000
+          protocol: TCP
+      to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: compartment
+              app.kubernetes.io/name: registry
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              compartment.dev/namespace-id: worker-01jz
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: worker
+      ports:
+        - port: 1234
+          protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: compartment
+      app.kubernetes.io/name: buildkit
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    app.kubernetes.io/name: prune
+  name: prune
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+    - ports:
+        - port: 1234
+          protocol: TCP
+      to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: compartment
+              app.kubernetes.io/name: buildkit
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: compartment
+      app.kubernetes.io/name: prune
+  policyTypes:
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: compartment
+    app.kubernetes.io/name: registry
+  name: registry
+  namespace: cpt-platform-01jz-54e448961cd663d4
+spec:
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: compartment
+              app.kubernetes.io/name: buildkit
+      ports:
+        - port: 5000
+          protocol: TCP
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: compartment
+      app.kubernetes.io/name: registry
+  policyTypes:
+    - Ingress"
+`;

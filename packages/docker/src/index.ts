@@ -1,4 +1,5 @@
 export { buildDockerImage, inspectDockerImage, prewarmSourceBuildToolchain } from './docker-build';
+export { pruneBuildKitCache } from './docker-buildkit-prune';
 export { ensureDockerImageAvailable, requireDockerImageAvailable } from './docker-image-registry';
 export {
   connectDockerContainerToNetwork,

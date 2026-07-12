@@ -103,6 +103,34 @@ Network isolation follows the T2 evidence. Secret projection follows the T5
 no-service-account-token and checksum rollout model. Resource projection is
 type-only in P1.
 
+## Build pipeline
+
+Cluster source builds run through one rootless BuildKit pod in a dedicated
+build namespace. P9 exposes the platform build bundle for the existing `apply`
+primitive and the permanent cluster harness; production controller wiring is
+part of the later atomic cutover. No chart or additional Kubernetes write path
+owns these objects. The namespace uses Pod Security `enforce=privileged` with
+`audit=baseline` and `warn=baseline` because the tested AppArmor Unconfined
+profile is not admitted by baseline enforcement. The pod keeps the exact T4
+minimum security context and must never be described as baseline-compatible.
+
+BuildKit has an 8 GiB PVC, a 2 GiB GC target, and at most two concurrent builds.
+The worker and daily CronJob both use `buildctl prune --all --keep-duration 24h
+--keep-storage 2000`. NetworkPolicy defaults the namespace to deny and admits
+only selected worker ingress plus explicit DNS, base-image, and registry
+egress. Public internet egress excludes metadata, link-local, Pod, and Service
+CIDRs.
+
+Bundled registry mode projects a private persistent registry into the build
+namespace. External mode omits those objects and requires one explicit
+endpoint, credential Secret, port, and egress CIDR. Application namespaces use
+the P5 Secret path for deterministic Docker pull credentials. Kubelet registry
+reachability is node-side and remains an explicit M-check.
+
+Builds return only digest-pinned image references. BuildKit emits an SBOM OCI
+attestation into the selected registry. Keyed signing and verification before
+rollout are deferred to F2; P9 does not depend on public keyless Sigstore.
+
 ## Evidence
 
 - [T9 state, informer, and kill-matrix report](https://github.com/compartmentdev/compartment/blob/89aefb745424be49aecdf9aba93b03fc027782e4/spike/t9/T9-REPORT.md)
@@ -111,6 +139,7 @@ type-only in P1.
 - [T5 secrets and RBAC report](https://github.com/compartmentdev/compartment/blob/50986e66c3b2cc116644c245fd458ac80916a005/spike/t5/T5-REPORT.md)
 - [T5 bootstrap RBAC](https://github.com/compartmentdev/compartment/blob/50986e66c3b2cc116644c245fd458ac80916a005/spike/t5/bootstrap-rbac.yaml)
 - [T5 controller RBAC](https://github.com/compartmentdev/compartment/blob/50986e66c3b2cc116644c245fd458ac80916a005/spike/t5/controller-rbac.yaml)
+- [T4 rootless BuildKit report](https://github.com/compartmentdev/compartment/blob/spike/t4/spike/t4/T4-REPORT.md)
 
 ## RBAC rollout
 

@@ -1,5 +1,6 @@
 import { kubeNamespaceName } from './kube-naming';
 import { projectNetworkPolicyManifests } from './kube-network-policy-projection';
+import { registryPullSecretManifest } from './kube-secret-projection';
 import type { ProjectNamespaceProvisioningRow } from './kube-provisioning.types';
 import type { ApplyBundle, KubeManifest } from './kube-runtime.types';
 
@@ -21,7 +22,14 @@ export function projectNamespaceProvisioningBundle(row: ProjectNamespaceProvisio
         metadata: { name: bootstrapBindingName },
       },
     ],
-    objects: projectNetworkPolicyManifests(namespace, row.namespaceId, row.projectId, row.networkPolicy),
+    objects: [
+      registryPullSecretManifest({
+        dockerConfigJson: row.registryPullCredentials.dockerConfigJson,
+        namespaceId: row.namespaceId,
+        secretId: row.registryPullCredentials.secretId,
+      }),
+      ...projectNetworkPolicyManifests(namespace, row.namespaceId, row.projectId, row.networkPolicy),
+    ],
   };
 }
 

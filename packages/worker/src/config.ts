@@ -11,9 +11,9 @@ interface WorkerConfigEnvironment {
   COMPARTMENT_API_INTERNAL_HOST: string;
   COMPARTMENT_API_PORT: number;
   COMPARTMENT_ARTIFACT_REGISTRY_HOST: string;
+  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: string;
+  COMPARTMENT_ARTIFACT_REGISTRY_MODE: 'bundled' | 'external';
   COMPARTMENT_ARTIFACT_REGISTRY_PORT: number;
-  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_PORT: number;
   COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: string;
   COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: string;
   COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD: string;
@@ -34,9 +34,9 @@ const workerConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_API_INTERNAL_HOST: z.string().min(1),
   COMPARTMENT_API_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_ARTIFACT_REGISTRY_HOST: z.string().min(1),
+  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: z.string().url(),
+  COMPARTMENT_ARTIFACT_REGISTRY_MODE: z.enum(['bundled', 'external']),
   COMPARTMENT_ARTIFACT_REGISTRY_PORT: z.coerce.number().int().positive(),
-  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST: z.string().min(1),
-  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: z.string().min(1),
   COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: z.string().min(1),
   COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD: z.string().min(1),
@@ -60,6 +60,7 @@ export interface WorkerConfig {
 
 export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
   const parsed: WorkerConfigEnvironment = workerConfigSchema.parse(env) as WorkerConfigEnvironment;
+  assertExternalRegistryUsesTls(parsed);
   readWorkerTrustedOutboundHosts(parsed);
 
   return {
@@ -71,6 +72,15 @@ export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     pollIntervalMs: parsed.COMPARTMENT_WORKER_POLL_INTERVAL_MS,
     runtimeControlToken: parsed.COMPARTMENT_RUNTIME_CONTROL_TOKEN,
   };
+}
+
+function assertExternalRegistryUsesTls(parsed: WorkerConfigEnvironment): void {
+  if (
+    parsed.COMPARTMENT_ARTIFACT_REGISTRY_MODE === 'external' &&
+    new URL(parsed.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL).protocol !== 'https:'
+  ) {
+    throw new Error('COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL must use HTTPS in external registry mode.');
+  }
 }
 
 export function readWorkerTrustedOutboundHosts(env: WorkerTrustedOutboundHostsEnvironment = process.env): string[] {
@@ -86,10 +96,8 @@ function readWorkerArtifactRegistryConfig(parsed: WorkerConfigEnvironment): Work
       parsed.COMPARTMENT_ARTIFACT_REGISTRY_HOST,
       parsed.COMPARTMENT_ARTIFACT_REGISTRY_PORT,
     ),
-    internalUrl: buildInternalHttpUrl(
-      parsed.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST,
-      parsed.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_PORT,
-    ),
+    internalUrl: parsed.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL,
+    mode: parsed.COMPARTMENT_ARTIFACT_REGISTRY_MODE,
     readCredentials: {
       password: parsed.COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD,
       username: parsed.COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME,

@@ -14,6 +14,7 @@ import type { WorkerDeploymentEventContext } from './worker-deployment-tracking.
 import { readWorkerArtifactRegistryInternalHost } from '../worker-artifact-registry';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
 import { buildDockerImageInput } from './worker-build-image-input.service';
+import { scheduleWorkerBuild } from './worker-build-scheduler.service';
 import { prepareServiceDirectory } from './worker-source.service';
 import type { PreparedWorkerSource, WorkerSourceServiceInput } from './worker-source.service.types';
 import { runTrackedDeploymentStep } from './worker-step-runner.service';
@@ -183,16 +184,19 @@ async function buildPreparedSourceImage(input: BuildPreparedSourceImageInput): P
     eventContext: input.eventContext,
     failureSummary: 'image build failed',
     run: async (): Promise<DockerBuildImageResult> =>
-      await buildDockerImage(
-        buildDockerImageInput({
-          artifactRegistry: input.artifactRegistry,
-          deployment: input.deployment,
-          dockerNamespace: input.dockerNamespace,
-          imageTag: input.imageTag,
-          preparedSource: input.preparedSource,
-          pushImageTag: input.pushImageTag,
-          request: input.request,
-        }),
+      await scheduleWorkerBuild(
+        async (): Promise<DockerBuildImageResult> =>
+          await buildDockerImage(
+            buildDockerImageInput({
+              artifactRegistry: input.artifactRegistry,
+              deployment: input.deployment,
+              dockerNamespace: input.dockerNamespace,
+              imageTag: input.imageTag,
+              preparedSource: input.preparedSource,
+              pushImageTag: input.pushImageTag,
+              request: input.request,
+            }),
+          ),
       ),
     startMessage: 'image build started',
     stepKey: 'building_image',
@@ -201,11 +205,11 @@ async function buildPreparedSourceImage(input: BuildPreparedSourceImageInput): P
 }
 
 function readPushedPreparedSourceImageRef(buildResult: DockerBuildImageResult, imageTag: string): string {
-  if (buildResult.pushed) {
+  if (buildResult.pushed && isDigestPinnedImageRef(buildResult.imageRef)) {
     return buildResult.imageRef;
   }
 
-  throw new Error(`Expected source image build for "${imageTag}" to push directly through BuildKit.`);
+  throw new Error(`Expected source image build for "${imageTag}" to return a digest-pinned BuildKit push result.`);
 }
 
 function buildReleaseImageTag(deployment: WorkerClaimedDeployment, artifactRegistryAddress: string): string {
@@ -221,7 +225,12 @@ function buildReleaseImageRepository(deployment: WorkerClaimedDeployment): strin
 }
 
 function readReusableArtifactImageRef(deployment: WorkerClaimedDeployment): string | null {
-  return deployment.artifact.imageRef;
+  const imageRef: string | null = deployment.artifact.imageRef;
+  return imageRef !== null && isDigestPinnedImageRef(imageRef) ? imageRef : null;
+}
+
+function isDigestPinnedImageRef(imageRef: string): boolean {
+  return /@sha256:[a-f0-9]{64}$/u.test(imageRef);
 }
 
 async function readPreparedDeploymentSource(
