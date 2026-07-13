@@ -1,5 +1,5 @@
 {
-  "id": "485d0a36-3823-4d6d-bc50-2cf235b014aa",
+  "id": "ecc11641-bc26-4ee3-8134-0a9f0d25e4a5",
   "prevId": "fcef850f-b45a-4894-a224-69fc5d8b5643",
   "version": "7",
   "dialect": "postgresql",
@@ -3897,6 +3897,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "source_fingerprint": {
+          "name": "source_fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "source_offset": {
           "name": "source_offset",
           "type": "integer",
@@ -3979,7 +3985,7 @@
               "nulls": "last"
             },
             {
-              "expression": "occurred_at",
+              "expression": "source_fingerprint",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4183,6 +4189,32 @@
           "with": {}
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.product_log_store_quota": {
+      "name": "product_log_store_quota",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "used_bytes": {
+          "name": "used_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
