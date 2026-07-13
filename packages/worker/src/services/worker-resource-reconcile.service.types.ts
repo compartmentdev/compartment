@@ -18,5 +18,5 @@ export interface ManagedResourceUpdatePlan {
   desired: KubeManifest[];
   leaseId: string;
   operationId: string;
-  rollback: KubeManifest[];
+  rollback: KubeManifest[] | null;
 }

@@ -70,7 +70,7 @@ async function executeManagedUpdate(
   claimed: WorkerClaimResourceReconcileResponse,
   row: ResourceProjectionRow,
 ): Promise<void> {
-  const plan: ManagedResourceUpdatePlan = await prepareManagedUpdate(request, observation, claimed, row);
+  const plan: ManagedResourceUpdatePlan = await prepareManagedUpdate(request, runtime, observation, claimed, row);
   try {
     await applyManagedResourceState(runtime, observation, claimed.expectedClaims, row, plan.desired);
     await acknowledgeSuccess(request, plan);
@@ -129,21 +129,23 @@ async function acknowledgeSuccess(request: CompartmentRequester, plan: ManagedRe
 
 async function prepareManagedUpdate(
   request: CompartmentRequester,
+  runtime: KubeRuntime,
   observation: KubeObservation,
   claimed: WorkerClaimResourceReconcileResponse,
   row: ResourceProjectionRow,
 ): Promise<ManagedResourceUpdatePlan> {
+  const desired: KubeManifest[] = projectResourceManifests(row);
   const plan: ManagedResourceUpdatePlan = {
-    desired: projectResourceManifests(row),
+    desired,
     leaseId: requiredLeaseId(claimed.leaseId),
     operationId: requiredOperationId(claimed.operationId),
-    rollback: readRollbackManifest(claimed.previousManifestJson, observation),
+    rollback: await readRollbackManifest(claimed.previousManifestJson, runtime, desired),
   };
   assertResourceClaimOwnership(claimed.expectedClaims, readObservedClaims(observation));
   await acknowledgeResourceReconcile(request, {
     leaseId: plan.leaseId,
     operationId: plan.operationId,
-    previousManifestJson: JSON.stringify(plan.rollback),
+    ...(plan.rollback === null ? {} : { previousManifestJson: JSON.stringify(plan.rollback) }),
     status: 'running',
   });
   return plan;
@@ -155,13 +157,13 @@ async function recoverFromFailedUpdate(
   observation: KubeObservation,
   expectedClaims: ResourceClaimIdentity[],
   row: ResourceProjectionRow,
-  rollback: KubeManifest[],
+  rollback: KubeManifest[] | null,
   leaseId: string,
   operationId: string,
   originalError: Error,
 ): Promise<void> {
   try {
-    await applyManagedResourceState(runtime, observation, expectedClaims, row, rollback);
+    await recoverResourceState(runtime, observation, expectedClaims, row, rollback);
     await acknowledgeFailure(request, leaseId, operationId, originalError.message);
   } catch (rollbackError) {
     const failure: Error = readError(typeof rollbackError === 'object' ? rollbackError : null);
@@ -172,6 +174,23 @@ async function recoverFromFailedUpdate(
       `${originalError.message} Rollback failed: ${failure.message}`,
     );
   }
+}
+
+async function recoverResourceState(
+  runtime: KubeRuntime,
+  observation: KubeObservation,
+  expectedClaims: ResourceClaimIdentity[],
+  row: ResourceProjectionRow,
+  rollback: KubeManifest[] | null,
+): Promise<void> {
+  if (rollback !== null) {
+    await applyManagedResourceState(runtime, observation, expectedClaims, row, rollback);
+    return;
+  }
+  await runtime.apply({ objects: projectResourceManifests(row, 0) });
+  await waitUntil(observation, (): true | null =>
+    resourcePodsFullyTerminated(readResourcePods(observation)) ? true : null,
+  );
 }
 
 async function applyManagedResourceState(

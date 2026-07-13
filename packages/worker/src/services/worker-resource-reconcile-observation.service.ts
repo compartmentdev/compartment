@@ -3,6 +3,7 @@ import type {
   KubeManifest,
   KubeObservation,
   KubeObservedManifest,
+  KubeRuntime,
   ObservedResourceClaim,
 } from '@compartment/kube-runtime';
 import type { ObservedClaimStatus, ObservedDeploymentStatus } from './worker-resource-reconcile.service.types';
@@ -11,6 +12,10 @@ const reconcileTimeoutMs: number = 120_000;
 
 interface ObservedRollbackManifestData {
   data?: Record<string, string> | undefined;
+}
+
+interface ObservedRollbackDeploymentSpec {
+  replicas?: number | undefined;
 }
 
 interface RollbackManifestMetadata {
@@ -107,25 +112,33 @@ export async function waitUntil<T>(observation: KubeObservation, read: () => T |
   });
 }
 
-export function readRollbackManifest(previousJson: string | null, observation: KubeObservation): KubeManifest[] {
+export async function readRollbackManifest(
+  previousJson: string | null,
+  runtime: KubeRuntime,
+  desired: KubeManifest[],
+): Promise<KubeManifest[] | null> {
   if (previousJson !== null) {
     return JSON.parse(previousJson) as KubeManifest[];
   }
-  const active: KubeManifest[] = [...observation.cache.values()]
-    .filter(
-      (manifest: KubeObservedManifest): manifest is KubeManifest =>
-        manifest.kind === 'Deployment' || manifest.kind === 'Secret' || manifest.kind === 'Service',
-    )
+  const active: KubeManifest[] = await readActiveManifests(runtime, desired);
+  const deployment: KubeManifest | undefined = active.find(
+    (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+  );
+  return (deployment?.spec as ObservedRollbackDeploymentSpec | undefined)?.replicas === 1 ? active : null;
+}
+
+async function readActiveManifests(runtime: KubeRuntime, desired: KubeManifest[]): Promise<KubeManifest[]> {
+  const observed: (KubeObservedManifest | null)[] = await Promise.all(
+    desired.map(async (manifest: KubeManifest): Promise<KubeObservedManifest | null> => await runtime.read(manifest)),
+  );
+  return observed
+    .filter((manifest: KubeObservedManifest | null): manifest is KubeManifest => manifest !== null)
     .map(normalizeRollbackManifest)
     .sort((left: KubeManifest, right: KubeManifest): number =>
       `${left.kind}/${left.metadata?.namespace ?? ''}/${left.metadata?.name ?? ''}`.localeCompare(
         `${right.kind}/${right.metadata?.namespace ?? ''}/${right.metadata?.name ?? ''}`,
       ),
     );
-  if (!active.some((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')) {
-    throw new Error('Resource reconcile refused: active executable manifest is unavailable for rollback.');
-  }
-  return active;
 }
 
 function normalizeRollbackManifest(manifest: KubeManifest): KubeManifest {

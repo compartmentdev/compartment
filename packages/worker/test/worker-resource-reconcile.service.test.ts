@@ -59,13 +59,14 @@ describe('worker resource reconcile lifecycle', (): void => {
   });
 
   it('starts the first workload before requiring a WaitForFirstConsumer claim to bind', async (): Promise<void> => {
-    const observation: TestObservation = new TestObservation('uid-original', false, false);
+    const observation: TestObservation = new TestObservation('uid-original', false, false, false);
     const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
       const deployment: KubeManifest | undefined = bundle.objects.find(
         (object: KubeManifest): boolean => object.kind === 'Deployment',
       );
       if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 1) {
         observation.bindClaims();
+        observation.addReadyDeployment();
         observation.addPod('resource-first-pod');
       }
       return await Promise.resolve(bundle.objects);
@@ -125,7 +126,7 @@ describe('worker resource reconcile lifecycle', (): void => {
 
 class TestObservation implements KubeObservation {
   public readonly cache: Map<string, KubeObservedManifest> = new Map<string, KubeObservedManifest>();
-  public constructor(uid: string, withPod: boolean, bound: boolean = true) {
+  public constructor(uid: string, withPod: boolean, bound: boolean = true, withDeployment: boolean = true) {
     this.cache.set('persistentvolumeclaims/ns/claim-data', {
       metadata: { name: 'claim-data', uid },
       status: { phase: bound ? 'Bound' : 'Pending' },
@@ -175,6 +176,9 @@ class TestObservation implements KubeObservation {
       },
       status: { loadBalancer: {} },
     });
+    if (!withDeployment) {
+      this.cache.delete('deployments/ns/resource');
+    }
     if (withPod) {
       this.cache.set('pods/ns/resource-pod', { metadata: { name: 'resource-pod' } } as KubeObservedManifest);
     }
@@ -195,6 +199,15 @@ class TestObservation implements KubeObservation {
   public addPod(name: string): void {
     this.cache.set(`pods/ns/${name}`, { metadata: { name } } as KubeObservedManifest);
   }
+  public addReadyDeployment(): void {
+    this.cache.set('deployments/ns/resource', {
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: { name: 'resource' },
+      spec: { replicas: 1 },
+      status: { conditions: [{ status: 'True', type: 'Available' }], readyReplicas: 1 },
+    } as KubeObservedManifest);
+  }
   public bindClaims(): void {
     const observedClaim: KubeObservedManifest | undefined = this.cache.get('persistentvolumeclaims/ns/claim-data');
     if (observedClaim !== undefined) {
@@ -207,6 +220,14 @@ function runtime(apply: Mock, observation: KubeObservation): KubeRuntime {
   const value: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
   vi.spyOn(value, 'apply').mockImplementation(apply);
   vi.spyOn(value, 'observe').mockResolvedValue(observation);
+  vi.spyOn(value, 'read').mockImplementation(
+    async (manifest: KubeManifest): Promise<KubeObservedManifest | null> =>
+      await Promise.resolve(
+        [...observation.cache.values()].find(
+          (observed: KubeObservedManifest): boolean => observed.kind === manifest.kind,
+        ) ?? null,
+      ),
+  );
   return value;
 }
 
