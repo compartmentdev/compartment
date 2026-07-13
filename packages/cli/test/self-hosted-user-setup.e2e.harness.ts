@@ -12,6 +12,14 @@ import {
 } from './self-hosted-user-setup-app-fixture';
 import { findDistinctFreePorts, type DistinctFreePorts } from './public-port-test-support';
 import { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
+import {
+  configureK3dTrustedOutboundHosts,
+  isK3dPlatformMode,
+  provisionK3dSuiteOrganization,
+  readK3dPlatformSeed,
+  type K3dPlatformSeed,
+  type K3dSuiteOrganizationCredentials,
+} from './self-hosted-user-setup-k3d.harness';
 import { buildSelfHostedUserSetupClientEnv } from './self-hosted-user-setup-client-env.harness';
 import {
   assertBuiltCliAvailable,
@@ -142,6 +150,11 @@ export async function configureSelfHostedTrustedOutboundHosts(hosts: readonly st
     throw new Error('Trusted outbound host test fixture must not contain control characters.');
   }
 
+  if (isK3dPlatformMode()) {
+    await configureK3dTrustedOutboundHosts(trustedHostList);
+    return;
+  }
+
   const result: SelfHostedUserSetupCommandResult = await runCommand({
     argv: [
       'sudo',
@@ -214,15 +227,21 @@ class SelfHostedUserSetupHarnessHandle implements SelfHostedUserSetupHarness {
 
   async setup(): Promise<void> {
     await assertBuiltCliAvailable();
+    if (isK3dPlatformMode()) {
+      return;
+    }
+
     await prepareSelfHostedSystemctlShim();
     await cleanupSelfHostedInstall();
   }
 
   async cleanup(): Promise<void> {
-    await cleanupSelfHostedInstall();
-    await rm(selfHostedUserSetupSystemctlShimDirectory, { force: true, recursive: true });
-    await rm(selfHostedUserSetupSystemdStateDirectory, { force: true, recursive: true });
-    delete process.env[selfHostedUserSetupNodeAgentLogPathEnvName];
+    if (!isK3dPlatformMode()) {
+      await cleanupSelfHostedInstall();
+      await rm(selfHostedUserSetupSystemctlShimDirectory, { force: true, recursive: true });
+      await rm(selfHostedUserSetupSystemdStateDirectory, { force: true, recursive: true });
+      delete process.env[selfHostedUserSetupNodeAgentLogPathEnvName];
+    }
 
     for (const homeDirectory of this.#clientHomeDirectories) {
       await rm(homeDirectory, { force: true, recursive: true });
@@ -236,6 +255,13 @@ class SelfHostedUserSetupHarnessHandle implements SelfHostedUserSetupHarness {
   }
 
   async install(): Promise<SelfHostedUserSetupRuntime> {
+    if (isK3dPlatformMode()) {
+      return await runTimedStep(
+        'install',
+        async (): Promise<SelfHostedUserSetupRuntime> => await this.#provisionKubernetesSuiteOrganization(),
+      );
+    }
+
     const imageVersion: string = readSelfHostedUserSetupVersion();
     const [publicHttpPort, publicHttpsPort]: DistinctFreePorts = await findDistinctFreePorts();
     const installerHomeDirectory: string = await mkdtemp(join(selfHostedUserSetupTempRootDirectory, 'installer-home-'));
@@ -251,6 +277,23 @@ class SelfHostedUserSetupHarnessHandle implements SelfHostedUserSetupHarness {
           buildSelfHostedUserSetupClientEnv(installerHomeDirectory),
         ),
     );
+  }
+
+  async #provisionKubernetesSuiteOrganization(): Promise<SelfHostedUserSetupRuntime> {
+    const seed: K3dPlatformSeed = readK3dPlatformSeed();
+    const credentials: K3dSuiteOrganizationCredentials = createSelfHostedUserSetupInstallCredentials();
+    await provisionK3dSuiteOrganization(seed, credentials, async (): Promise<SelfHostedUserSetupCli> => {
+      return await this.createFreshCli();
+    });
+
+    return {
+      adminEmail: credentials.principalEmail,
+      adminPassword: credentials.password,
+      apiUrl: seed.apiUrl,
+      compartmentUrl: seed.compartmentUrl,
+      organizationName: credentials.organizationName,
+      organizationSlug: credentials.organizationSlug,
+    };
   }
 
   async createFreshCli(): Promise<SelfHostedUserSetupCli> {

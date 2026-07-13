@@ -252,6 +252,8 @@ function installHelmStage(stage) {
     `ports.https=${httpsPort}`,
     '--set',
     `platform.startupStage=${stage}`,
+    '--set',
+    'edge.snapshots.enabled=true',
     '--rollback-on-failure',
     '--wait',
     '--timeout',
