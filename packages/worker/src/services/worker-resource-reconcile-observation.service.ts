@@ -25,9 +25,9 @@ interface RollbackManifestMetadata {
   namespace?: string | undefined;
 }
 
-export function readCreatedClaims(observation: KubeObservation): ResourceClaimIdentity[] | null {
+export function readCreatedClaims(observation: KubeObservation, expectedCount: number): ResourceClaimIdentity[] | null {
   const claims: ObservedResourceClaim[] = readObservedClaims(observation);
-  if (claims.length === 0 || claims.some((claim: ObservedResourceClaim): boolean => claim.uid === null)) {
+  if (claims.length !== expectedCount || claims.some((claim: ObservedResourceClaim): boolean => claim.uid === null)) {
     return null;
   }
   return claims.map(

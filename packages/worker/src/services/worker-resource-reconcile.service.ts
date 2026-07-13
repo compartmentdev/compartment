@@ -56,9 +56,10 @@ async function executeBootstrap(
   operationId: string,
   row: ResourceProjectionRow,
 ): Promise<void> {
-  await runtime.apply({ objects: projectResourceBootstrapClaims(row) });
+  const claims: KubeManifest[] = projectResourceBootstrapClaims(row);
+  await runtime.apply({ objects: claims });
   const expectedClaims: ResourceClaimIdentity[] = await waitUntil(observation, (): ResourceClaimIdentity[] | null =>
-    readCreatedClaims(observation),
+    readCreatedClaims(observation, claims.length),
   );
   await acknowledgeResourceReconcile(request, { expectedClaims, leaseId, operationId, status: 'succeeded' });
 }

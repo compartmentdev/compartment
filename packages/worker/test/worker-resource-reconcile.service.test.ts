@@ -11,6 +11,7 @@ import {
 import type { CompartmentRequester } from '@compartment/sdk';
 import type * as CompartmentSdk from '@compartment/sdk';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { readCreatedClaims } from '../src/services/worker-resource-reconcile-observation.service';
 import { executeResourceReconcile } from '../src/services/worker-resource-reconcile.service';
 
 interface ResourceSdkMocks {
@@ -42,9 +43,11 @@ describe('worker resource reconcile lifecycle', (): void => {
 
   it('completes bootstrap after WaitForFirstConsumer claims have stable UIDs but remain pending', async (): Promise<void> => {
     const observation: TestObservation = new TestObservation('uid-created', false, false);
-    const apply: Mock = vi.fn(
-      async (bundle: ApplyBundle): Promise<KubeManifest[]> => await Promise.resolve(bundle.objects),
-    );
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      observation.addClaim('claim-backup', 'uid-backup', false);
+      return await Promise.resolve(bundle.objects);
+    });
+    expect(readCreatedClaims(observation, 2)).toBeNull();
 
     await executeResourceReconcile(requester(), runtime(apply, observation), bootstrapClaim());
 
@@ -52,7 +55,10 @@ describe('worker resource reconcile lifecycle', (): void => {
     expect(mocks.acknowledge).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        expectedClaims: [{ claimName: 'claim-data', uid: 'uid-created' }],
+        expectedClaims: [
+          { claimName: 'claim-data', uid: 'uid-created' },
+          { claimName: 'claim-backup', uid: 'uid-backup' },
+        ],
         status: 'succeeded',
       }),
     );
@@ -206,6 +212,12 @@ class TestObservation implements KubeObservation {
       metadata: { name: 'resource' },
       spec: { replicas: 1 },
       status: { conditions: [{ status: 'True', type: 'Available' }], readyReplicas: 1 },
+    } as KubeObservedManifest);
+  }
+  public addClaim(name: string, uid: string, bound: boolean): void {
+    this.cache.set(`persistentvolumeclaims/ns/${name}`, {
+      metadata: { name, uid },
+      status: { phase: bound ? 'Bound' : 'Pending' },
     } as KubeObservedManifest);
   }
   public bindClaims(): void {
