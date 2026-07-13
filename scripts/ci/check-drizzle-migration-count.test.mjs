@@ -21,6 +21,35 @@ describe('parseGitNameStatus', () => {
 });
 
 describe('findDrizzleMigrationCountValidationErrors', () => {
+  it('allows the one-time docker cutover migration reset', () => {
+    expect(findDrizzleMigrationCountValidationErrors(buildDockerCutoverResetChanges())).toEqual([]);
+  });
+
+  it('rejects the docker cutover reset when it carries an extra migration', () => {
+    const validationErrors = findDrizzleMigrationCountValidationErrors([
+      ...buildDockerCutoverResetChanges(),
+      {
+        path: 'packages/api/drizzle/0001_next.sql',
+        status: 'A',
+      },
+    ]);
+
+    expect(validationErrors[0]).toBe('Pull requests may change at most one migration file, but found 6.');
+    expect(validationErrors.at(-1)).toBe('Squash the PR migrations into a single file before merge.');
+  });
+
+  it('rejects the docker cutover reset when the initial migration is added instead of rewritten', () => {
+    const migrationChanges = buildDockerCutoverResetChanges().map((migrationChange) =>
+      migrationChange.path === 'packages/api/drizzle/0000_initial.sql'
+        ? { ...migrationChange, status: 'A' }
+        : migrationChange,
+    );
+
+    expect(findDrizzleMigrationCountValidationErrors(migrationChanges)[0]).toBe(
+      'Pull requests may change at most one migration file, but found 5.',
+    );
+  });
+
   it('allows a single migration change', () => {
     expect(
       findDrizzleMigrationCountValidationErrors([
@@ -62,6 +91,31 @@ describe('findDrizzleMigrationCountValidationErrors', () => {
     ]);
   });
 });
+
+function buildDockerCutoverResetChanges() {
+  return [
+    {
+      path: 'packages/api/drizzle/0000_initial.sql',
+      status: 'M',
+    },
+    {
+      path: 'packages/api/drizzle/0001_even_ravenous.sql',
+      status: 'D',
+    },
+    {
+      path: 'packages/api/drizzle/0002_tearful_yellow_claw.sql',
+      status: 'D',
+    },
+    {
+      path: 'packages/api/drizzle/0003_polite_sir_ram.sql',
+      status: 'D',
+    },
+    {
+      path: 'packages/api/drizzle/0004_greedy_overlord.sql',
+      status: 'D',
+    },
+  ];
+}
 
 function buildApiBaselineResetChanges() {
   return Array.from({ length: 51 }, (_, index) => {

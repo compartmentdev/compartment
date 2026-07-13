@@ -5,8 +5,40 @@ import { pathToFileURL } from 'node:url';
 
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 
+// One-time exemption for the D16 reinstall-only Docker→Kubernetes cutover squash.
+// It matches only the exact pre-squash packages/api migration file set, so any future
+// baseline reset needs its own explicit decision and exemption.
+const DOCKER_CUTOVER_SQUASH_REWRITTEN_PATH = 'packages/api/drizzle/0000_initial.sql';
+const DOCKER_CUTOVER_SQUASH_DELETED_PATHS = [
+  'packages/api/drizzle/0001_even_ravenous.sql',
+  'packages/api/drizzle/0002_tearful_yellow_claw.sql',
+  'packages/api/drizzle/0003_polite_sir_ram.sql',
+  'packages/api/drizzle/0004_greedy_overlord.sql',
+];
+
+export function isApprovedDockerCutoverMigrationReset(migrationChanges) {
+  if (migrationChanges.length !== DOCKER_CUTOVER_SQUASH_DELETED_PATHS.length + 1) {
+    return false;
+  }
+
+  const rewrittenChanges = migrationChanges.filter(
+    (migrationChange) => migrationChange.path === DOCKER_CUTOVER_SQUASH_REWRITTEN_PATH,
+  );
+  if (rewrittenChanges.length !== 1 || rewrittenChanges[0].status !== 'M') {
+    return false;
+  }
+
+  return DOCKER_CUTOVER_SQUASH_DELETED_PATHS.every((deletedPath) =>
+    migrationChanges.some((migrationChange) => migrationChange.path === deletedPath && migrationChange.status === 'D'),
+  );
+}
+
 export function findDrizzleMigrationCountValidationErrors(migrationChanges) {
   if (migrationChanges.length <= 1) {
+    return [];
+  }
+
+  if (isApprovedDockerCutoverMigrationReset(migrationChanges)) {
     return [];
   }
 

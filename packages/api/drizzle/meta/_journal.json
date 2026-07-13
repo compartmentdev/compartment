@@ -5,36 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1779700755038,
+      "when": 1783948017382,
       "tag": "0000_initial",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1783786185100,
-      "tag": "0001_even_ravenous",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1783863046900,
-      "tag": "0002_tearful_yellow_claw",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1783882325446,
-      "tag": "0003_polite_sir_ram",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1783934368212,
-      "tag": "0004_greedy_overlord",
       "breakpoints": true
     }
   ]

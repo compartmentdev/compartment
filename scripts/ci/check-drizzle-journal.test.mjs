@@ -18,6 +18,54 @@ describe('readPackageRootFromDrizzleJournalPath', () => {
 });
 
 describe('findDrizzleJournalDiffValidationErrors', () => {
+  it('allows the one-time docker cutover squash to a fresh 0000_initial', () => {
+    const headJournal = {
+      dialect: 'postgresql',
+      entries: [{ breakpoints: true, idx: 0, tag: '0000_initial', version: '7', when: 1783934368213 }],
+      version: '7',
+    };
+
+    expect(
+      findDrizzleJournalDiffValidationErrors(
+        'packages/api/drizzle/meta/_journal.json',
+        buildDockerCutoverBaseJournal(),
+        headJournal,
+      ),
+    ).toEqual([]);
+  });
+
+  it('rejects the docker cutover squash when the fresh entry is not newer than the base history', () => {
+    const headJournal = {
+      dialect: 'postgresql',
+      entries: [{ breakpoints: true, idx: 0, tag: '0000_initial', version: '7', when: 1783934368212 }],
+      version: '7',
+    };
+
+    expect(
+      findDrizzleJournalDiffValidationErrors(
+        'packages/api/drizzle/meta/_journal.json',
+        buildDockerCutoverBaseJournal(),
+        headJournal,
+      ),
+    ).toEqual(['packages/api/drizzle/meta/_journal.json: pull requests must not remove existing journal entries.']);
+  });
+
+  it('rejects the docker cutover squash for a journal outside packages/api', () => {
+    const headJournal = {
+      dialect: 'postgresql',
+      entries: [{ breakpoints: true, idx: 0, tag: '0000_initial', version: '7', when: 1783934368213 }],
+      version: '7',
+    };
+
+    expect(
+      findDrizzleJournalDiffValidationErrors(
+        'packages/audit/drizzle/meta/_journal.json',
+        buildDockerCutoverBaseJournal(),
+        headJournal,
+      ),
+    ).toEqual(['packages/audit/drizzle/meta/_journal.json: pull requests must not remove existing journal entries.']);
+  });
+
   it('still rejects removed journal entries for existing package journals', () => {
     const baseJournal = {
       dialect: 'postgresql',
@@ -55,3 +103,17 @@ describe('findDrizzleJournalDiffValidationErrors', () => {
     ).toEqual(['packages/api/drizzle/meta/_journal.json: pull requests must not remove existing journal entries.']);
   });
 });
+
+function buildDockerCutoverBaseJournal() {
+  return {
+    dialect: 'postgresql',
+    entries: [
+      { breakpoints: true, idx: 0, tag: '0000_initial', version: '7', when: 1779700755038 },
+      { breakpoints: true, idx: 1, tag: '0001_even_ravenous', version: '7', when: 1783786185100 },
+      { breakpoints: true, idx: 2, tag: '0002_tearful_yellow_claw', version: '7', when: 1783863046900 },
+      { breakpoints: true, idx: 3, tag: '0003_polite_sir_ram', version: '7', when: 1783882325446 },
+      { breakpoints: true, idx: 4, tag: '0004_greedy_overlord', version: '7', when: 1783934368212 },
+    ],
+    version: '7',
+  };
+}
