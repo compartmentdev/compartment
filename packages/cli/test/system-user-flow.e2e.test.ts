@@ -665,6 +665,13 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
         }),
       ]);
 
+      if (isK3dPlatformMode()) {
+        const bootstrapPayload: ResourceResponse = await admin.runJson(
+          `resource bootstrap --project ${app.projectName} --resource ${app.resourceName}`,
+          resourceResponseSchema,
+        );
+        expect(bootstrapPayload.resource.name).toBe(app.resourceName);
+      }
       await waitForRunningResource(admin, app.projectName, app.resourceName);
       const statusPayload: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,

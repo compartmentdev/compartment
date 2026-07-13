@@ -48,14 +48,17 @@ async function waitForDeploymentObservation(
         unsubscribe();
         resolve(null);
       }, observationSyncTimeoutMs);
-      const unsubscribe: () => void = observation.onEvent((): void => {
+      let unsubscribe: () => void = (): void => undefined;
+      const resolveWhenObserved: () => void = (): void => {
         const observed: KubeRolloutObservation | null = readDeploymentObservation(observation, deployment, deadlineAt);
         if (observed !== null) {
           clearTimeout(timer);
           unsubscribe();
           resolve(observed);
         }
-      });
+      };
+      unsubscribe = observation.onEvent(resolveWhenObserved);
+      resolveWhenObserved();
     },
   );
 }

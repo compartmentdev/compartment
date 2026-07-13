@@ -162,19 +162,31 @@ async function waitForReady(
   if (isObservedReady(observation, deployment, deadlineAt)) {
     return;
   }
+  await waitForObservedReady(observation, deployment, deadlineAt, timeoutMs);
+}
+
+async function waitForObservedReady(
+  observation: KubeObservation,
+  deployment: KubeDeploymentManifest,
+  deadlineAt: Date,
+  timeoutMs: number,
+): Promise<void> {
   await new Promise<void>((resolve: () => void, reject: (error: Error) => void): void => {
     const handles: RolloutWaitHandles = {};
+    const resolveWhenReady: () => void = (): void => {
+      if (!isObservedReady(observation, deployment, deadlineAt)) {
+        return;
+      }
+      clearTimeout(handles.timer);
+      handles.unsubscribe?.();
+      resolve();
+    };
     handles.timer = setTimeout((): void => {
       handles.unsubscribe?.();
       reject(new Error('Saved active Kubernetes Deployment did not recover before the rollout timeout.'));
     }, timeoutMs);
-    handles.unsubscribe = observation.onEvent((): void => {
-      if (isObservedReady(observation, deployment, deadlineAt)) {
-        clearTimeout(handles.timer);
-        handles.unsubscribe?.();
-        resolve();
-      }
-    });
+    handles.unsubscribe = observation.onEvent(resolveWhenReady);
+    resolveWhenReady();
   });
 }
 
