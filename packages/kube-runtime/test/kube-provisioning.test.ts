@@ -206,7 +206,14 @@ describe('project namespace bootstrap provisioning', (): void => {
     const controller: RbacManifest = manifests('controller-rbac.yaml')[0]!;
     const rules: RbacRule[] = controller.rules ?? [];
     const resources: string[] = rules.flatMap((rule: RbacRule): string[] => rule.resources);
-    for (const resource of ['deployments', 'jobs', 'services', 'secrets', 'networkpolicies']) {
+    for (const resource of [
+      'deployments',
+      'jobs',
+      'services',
+      'secrets',
+      'persistentvolumeclaims',
+      'networkpolicies',
+    ]) {
       expect(ruleFor(rules, resource)?.verbs).toEqual(['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']);
     }
     expect(ruleFor(rules, 'pods/log')?.verbs).toEqual(['get']);

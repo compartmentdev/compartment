@@ -25,6 +25,7 @@ grep -q 'COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: "http://compartment-compart
 grep -q '\\"compartment-compartment-registry-auth.default.svc:5000\\"' "${OUTPUT_DIR}/full.yaml"
 grep -q 'name: compartment-compartment-project-provisioner' "${OUTPUT_DIR}/full.yaml"
 grep -q 'command:.*project-provisioner-server.js' "${OUTPUT_DIR}/full.yaml"
+grep -q 'resources: \["services", "secrets", "persistentvolumeclaims"\]' "${OUTPUT_DIR}/full.yaml"
 if grep -q 'cluster-admin' "${OUTPUT_DIR}/full.yaml"; then
   echo 'Chart must not grant cluster-admin.' >&2
   exit 1
