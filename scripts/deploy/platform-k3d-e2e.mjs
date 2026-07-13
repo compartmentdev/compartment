@@ -1,4 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { get } from 'node:http';
+import { isIP } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { buildSelfHostedImages } from './build-self-hosted-images.mjs';
@@ -16,6 +20,9 @@ const registryName = 'compartment-e2e-registry';
 const registryHostPort = 15_500;
 const registryClusterHost = `k3d-${registryName}:${registryHostPort}`;
 const registryPushHost = `localhost:${registryHostPort}`;
+const bundledRegistryPort = 5000;
+const bundledRegistryHost = `compartment-compartment-registry-auth.compartment.svc:${bundledRegistryPort}`;
+const serverNodeName = `k3d-${clusterName}-server-0`;
 const platformImageTag = 'e2e';
 const platformServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
 const builtImageRefsByServiceName = Object.freeze(
@@ -107,6 +114,17 @@ export function isConsoleReadyStatus(status) {
   return status === 302;
 }
 
+export function renderK3dRegistryConfig(registryHost, serviceClusterIp) {
+  if (registryHost.trim() === '') {
+    throw new Error('Bundled registry host is required.');
+  }
+  if (isIP(serviceClusterIp) !== 4) {
+    throw new Error(`Bundled registry Service must have an IPv4 clusterIP, received: ${serviceClusterIp}`);
+  }
+
+  return `mirrors:\n  "${registryHost}":\n    endpoint:\n      - "http://${serviceClusterIp}:${bundledRegistryPort}"\n`;
+}
+
 async function upPlatform(command) {
   assertRequiredTools();
   if (clusterExists()) {
@@ -137,6 +155,7 @@ async function upPlatform(command) {
       repositoryRoot,
     );
     installHelmStage('full');
+    await configureK3dRegistryMirror();
     runCommand(
       'kubectl',
       [
@@ -144,6 +163,21 @@ async function upPlatform(command) {
         contextName,
         '--namespace',
         'compartment',
+        'wait',
+        'deployment',
+        '--all',
+        '--for=condition=Available',
+        '--timeout=2m',
+      ],
+      repositoryRoot,
+    );
+    runCommand(
+      'kubectl',
+      [
+        '--context',
+        contextName,
+        '--namespace',
+        'compartment-build',
         'wait',
         'deployment',
         '--all',
@@ -254,7 +288,7 @@ function installHelmStage(stage) {
     `platform.startupStage=${stage}`,
     '--set',
     'edge.snapshots.enabled=true',
-    '--atomic',
+    '--rollback-on-failure',
     '--wait',
     '--timeout',
     '8m',
@@ -271,6 +305,57 @@ function installHelmStage(stage) {
     args.push('--wait-for-jobs');
   }
   runCommand('helm', args, repositoryRoot);
+}
+
+async function configureK3dRegistryMirror() {
+  const serviceClusterIp = captureCommand(
+    'kubectl',
+    [
+      '--context',
+      contextName,
+      '--namespace',
+      'compartment',
+      'get',
+      'service/compartment-compartment-registry-auth',
+      '--output',
+      'jsonpath={.spec.clusterIP}',
+    ],
+    repositoryRoot,
+  ).trim();
+  const configDirectory = mkdtempSync(join(tmpdir(), 'compartment-k3d-registry-'));
+  const configPath = join(configDirectory, 'registries.yaml');
+
+  try {
+    writeFileSync(configPath, renderK3dRegistryConfig(bundledRegistryHost, serviceClusterIp), { mode: 0o600 });
+    runCommand('docker', ['exec', serverNodeName, 'mkdir', '-p', '/etc/rancher/k3s'], repositoryRoot);
+    runCommand('docker', ['cp', configPath, `${serverNodeName}:/etc/rancher/k3s/registries.yaml`], repositoryRoot);
+    runCommand('docker', ['restart', serverNodeName], repositoryRoot);
+  } finally {
+    rmSync(configDirectory, { force: true, recursive: true });
+  }
+
+  await waitForK3dApiAfterRestart();
+  runCommand(
+    'kubectl',
+    ['--context', contextName, 'wait', `node/${serverNodeName}`, '--for=condition=Ready', '--timeout=2m'],
+    repositoryRoot,
+  );
+}
+
+async function waitForK3dApiAfterRestart() {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      captureCommand(
+        'kubectl',
+        ['--context', contextName, '--request-timeout=2s', 'get', `node/${serverNodeName}`, '--output', 'name'],
+        repositoryRoot,
+      );
+      return;
+    } catch {
+      await delay(1_000);
+    }
+  }
+  throw new Error(`Kubernetes API did not recover after restarting ${serverNodeName}.`);
 }
 
 async function waitForConsole() {

@@ -48,8 +48,8 @@ jobs:
 
       - name: Install pinned k3d, kubectl, and Helm
         env:
-          HELM_SHA256: f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1
-          HELM_VERSION: v3.18.4
+          HELM_SHA256: e9b88b4ee95b18c706839c28d3a0220e5bc470e9cd9262410c90793c45ff8b7c
+          HELM_VERSION: v4.2.3
           K3D_SHA256: dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e
           K3D_VERSION: v5.8.3
           KUBECTL_SHA256: 33d0cdec6967817468f0a4a90f537dfef394dcf815d91966ca651cc118393eea

@@ -5,6 +5,7 @@ import {
   parseK3dClusterNames,
   parseLoadedImageRefs,
   readPlatformK3dCommand,
+  renderK3dRegistryConfig,
 } from './platform-k3d-e2e.mjs';
 
 describe('platform k3d e2e command boundary', () => {
@@ -64,5 +65,25 @@ describe('platform k3d e2e command boundary', () => {
     expect(isConsoleReadyStatus(302)).toBe(true);
     expect(isConsoleReadyStatus(200)).toBe(false);
     expect(isConsoleReadyStatus(503)).toBe(false);
+  });
+
+  it('maps the bundled registry authority to its node-reachable Service IP', () => {
+    const config = renderK3dRegistryConfig('compartment-compartment-registry-auth.compartment.svc:5000', '10.43.12.34');
+
+    expect(config).toBe(`mirrors:
+  "compartment-compartment-registry-auth.compartment.svc:5000":
+    endpoint:
+      - "http://10.43.12.34:5000"
+`);
+    expect(config).not.toContain('cluster.local');
+  });
+
+  it('rejects an unusable bundled registry Service address', () => {
+    expect(() => renderK3dRegistryConfig('', '10.43.12.34')).toThrow('Bundled registry host is required');
+    for (const clusterIp of ['', 'None', 'registry.compartment.svc', '2001:db8::1']) {
+      expect(() =>
+        renderK3dRegistryConfig('compartment-compartment-registry-auth.compartment.svc:5000', clusterIp),
+      ).toThrow('must have an IPv4 clusterIP');
+    }
   });
 });

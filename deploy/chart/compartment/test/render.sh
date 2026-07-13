@@ -23,6 +23,11 @@ grep -q 'namespace: compartment-build' "${OUTPUT_DIR}/full.yaml"
 grep -q 'COMPARTMENT_ARTIFACT_REGISTRY_HOST: "compartment-compartment-registry-auth.default.svc"' "${OUTPUT_DIR}/full.yaml"
 grep -q 'COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: "http://compartment-compartment-registry-auth.default.svc:5000"' "${OUTPUT_DIR}/full.yaml"
 grep -q '\\"compartment-compartment-registry-auth.default.svc:5000\\"' "${OUTPUT_DIR}/full.yaml"
+sed -n '/^kind: NetworkPolicy$/,/^---$/p' "${OUTPUT_DIR}/full.yaml" | sed -n '/name: compartment-compartment-registry-auth/,/^---$/p' >"${OUTPUT_DIR}/registry-auth-policy.yaml"
+grep -q 'app.kubernetes.io/component: worker' "${OUTPUT_DIR}/registry-auth-policy.yaml"
+grep -q 'app.kubernetes.io/component: buildkit' "${OUTPUT_DIR}/registry-auth-policy.yaml"
+grep -A1 -q '^    - ports:$' "${OUTPUT_DIR}/registry-auth-policy.yaml"
+grep -q 'port: 5000' "${OUTPUT_DIR}/registry-auth-policy.yaml"
 grep -q 'compartment-compartment-edge-snapshots' "${OUTPUT_DIR}/edge.yaml"
 if grep -q 'kind: CronJob' "${OUTPUT_DIR}/foundation.yaml"; then
   echo 'Foundation stage unexpectedly rendered the BuildKit prune job.' >&2

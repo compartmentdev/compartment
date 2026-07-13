@@ -1,14 +1,22 @@
 import {
+  accessAssignmentListResponseSchema,
   accessAssignmentResponseSchema,
   accessRoleListResponseSchema,
   activateResponseSchema,
   createOrganizationResponseSchema,
   inviteUserResponseSchema,
   removeUserResponseSchema,
+  userListResponseSchema,
+  type AccessAssignmentListResponse,
+  type AccessAssignmentResponse,
+  type AccessAssignmentSummary,
   type AccessRoleListResponse,
   type AccessRoleListRow,
   type InviteUserResponse,
+  type OrganizationUserListRow,
+  type UserListResponse,
 } from '@compartment/contracts';
+import { expect } from 'vitest';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import { requireActivationToken } from './self-hosted-user-setup-cli-response.harness';
 import {
@@ -94,7 +102,7 @@ export async function provisionK3dSuiteOrganization(
   const activationToken: string = requireActivationToken(invitePayload);
   const roleList: AccessRoleListResponse = await seedCli.runJson('role list', accessRoleListResponseSchema);
   const systemAdminRoleId: string = requireSystemAdminRoleId(roleList);
-  await seedCli.runJson(
+  const temporaryAssignment: AccessAssignmentResponse = await seedCli.runJson(
     `assignment create --role ${systemAdminRoleId} --scope organization --user ${credentials.principalEmail}`,
     accessAssignmentResponseSchema,
   );
@@ -120,6 +128,29 @@ export async function provisionK3dSuiteOrganization(
     createOrganizationResponseSchema,
   );
   await seedCli.runJson(`user remove ${credentials.principalEmail} --yes`, removeUserResponseSchema);
+
+  const users: UserListResponse = await seedCli.runJson('user list --per-page 100', userListResponseSchema);
+  expect(users.pagination.totalItems).toBeLessThanOrEqual(users.pagination.perPage);
+  expect(users.users.some((user: OrganizationUserListRow): boolean => user.email === credentials.principalEmail)).toBe(
+    false,
+  );
+
+  const assignments: AccessAssignmentListResponse = await seedCli.runJson(
+    'assignment list',
+    accessAssignmentListResponseSchema,
+  );
+  expect(
+    assignments.assignments.some(
+      (assignment: AccessAssignmentSummary): boolean => assignment.id === temporaryAssignment.assignment.id,
+    ),
+  ).toBe(false);
+  expect(
+    assignments.assignments.some(
+      (assignment: AccessAssignmentSummary): boolean =>
+        assignment.subject.subjectType === 'principal' &&
+        assignment.subject.principalEmail === credentials.principalEmail,
+    ),
+  ).toBe(false);
 }
 
 function requireSystemAdminRoleId(roleList: AccessRoleListResponse): string {
