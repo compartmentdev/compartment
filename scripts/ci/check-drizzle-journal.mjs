@@ -7,8 +7,57 @@ export function readDrizzleMigrationJournal(rawJournal) {
   return JSON.parse(rawJournal);
 }
 
+// One-time exemption for the D16 reinstall-only Docker→Kubernetes cutover squash.
+// It matches only the exact pre-squash packages/api journal history, so any future
+// baseline reset needs its own explicit decision and exemption.
+const DOCKER_CUTOVER_SQUASH_JOURNAL_PATH = 'packages/api/drizzle/meta/_journal.json';
+const DOCKER_CUTOVER_SQUASH_BASE_ENTRIES = [
+  { idx: 0, tag: '0000_initial', when: 1779700755038 },
+  { idx: 1, tag: '0001_even_ravenous', when: 1783786185100 },
+  { idx: 2, tag: '0002_tearful_yellow_claw', when: 1783863046900 },
+  { idx: 3, tag: '0003_polite_sir_ram', when: 1783882325446 },
+  { idx: 4, tag: '0004_greedy_overlord', when: 1783934368212 },
+];
+
+export function isApprovedDockerCutoverJournalSquash(journalPath, baseJournal, headJournal) {
+  if (journalPath !== DOCKER_CUTOVER_SQUASH_JOURNAL_PATH) {
+    return false;
+  }
+
+  if (baseJournal.entries.length !== DOCKER_CUTOVER_SQUASH_BASE_ENTRIES.length) {
+    return false;
+  }
+
+  const baseMatchesSquashBaseline = DOCKER_CUTOVER_SQUASH_BASE_ENTRIES.every((expectedEntry, index) => {
+    const baseEntry = baseJournal.entries[index];
+    return (
+      baseEntry.idx === expectedEntry.idx &&
+      baseEntry.tag === expectedEntry.tag &&
+      baseEntry.when === expectedEntry.when
+    );
+  });
+  if (!baseMatchesSquashBaseline) {
+    return false;
+  }
+
+  if (headJournal.entries.length !== 1) {
+    return false;
+  }
+
+  const headEntry = headJournal.entries[0];
+  return (
+    headEntry.idx === 0 &&
+    headEntry.tag === '0000_initial' &&
+    headEntry.when > readMaxWhenEntry(baseJournal.entries).when
+  );
+}
+
 export function findDrizzleJournalDiffValidationErrors(journalPath, baseJournal, headJournal) {
   const validationErrors = [];
+
+  if (isApprovedDockerCutoverJournalSquash(journalPath, baseJournal, headJournal)) {
+    return validationErrors;
+  }
 
   if (headJournal.entries.length < baseJournal.entries.length) {
     validationErrors.push(`${journalPath}: pull requests must not remove existing journal entries.`);
