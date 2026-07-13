@@ -254,7 +254,7 @@ function installHelmStage(stage) {
     `platform.startupStage=${stage}`,
     '--set',
     'edge.snapshots.enabled=true',
-    '--rollback-on-failure',
+    '--atomic',
     '--wait',
     '--timeout',
     '8m',
