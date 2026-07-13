@@ -9,6 +9,7 @@ import { runMain } from '../lib/run-main.mjs';
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const platformUrl = 'http://console.localhost:18080';
 const seedOrganizationSlug = 'platform-e2e';
+const compatibilityNodeName = 'platform-k3d-compatibility';
 
 export function readSeedPlatformOptions(args, env) {
   if (args.length !== 0) {
@@ -39,6 +40,29 @@ export function parseInstallResult(output, expectedEmail) {
     result.organization?.slug !== seedOrganizationSlug
   ) {
     throw new Error('Platform seed install returned an unexpected result.');
+  }
+
+  return result;
+}
+
+export function parseCompatibilityNodeResult(output) {
+  let result;
+  try {
+    result = JSON.parse(output);
+  } catch {
+    throw new Error('Platform compatibility node registration did not return JSON.');
+  }
+
+  if (
+    result === null ||
+    typeof result !== 'object' ||
+    result.node?.name !== compatibilityNodeName ||
+    typeof result.node?.id !== 'string' ||
+    result.node.id === '' ||
+    typeof result.registeredAt !== 'string' ||
+    result.registeredAt === ''
+  ) {
+    throw new Error('Platform compatibility node registration returned an unexpected result.');
   }
 
   return result;
@@ -93,10 +117,59 @@ async function main() {
   }
 
   parseInstallResult(install.stdout, seedAdminEmail);
+  registerCompatibilityNode();
   await appendFile(options.githubEnvPath, `${buildSeedEnvironment(seedAdminEmail, seedAdminPassword)}\n`, {
     mode: 0o600,
   });
   process.stdout.write(`Seeded ${seedOrganizationSlug} with ${seedAdminEmail}.\n`);
+}
+
+function registerCompatibilityNode() {
+  const registration = spawnSync(
+    'kubectl',
+    [
+      '--context',
+      'k3d-compartment-e2e',
+      '--namespace',
+      'compartment',
+      'exec',
+      'deployment/compartment-compartment-api',
+      '--',
+      'node',
+      '--input-type=module',
+      '--eval',
+      buildCompatibilityNodeRegistrationScript(),
+    ],
+    { cwd: repositoryRoot, encoding: 'utf8', env: process.env },
+  );
+  if (registration.status !== 0) {
+    process.stderr.write(registration.stderr);
+    throw new Error(
+      `Platform compatibility node registration failed with exit code ${registration.status?.toString() ?? 'unknown'}.`,
+    );
+  }
+
+  parseCompatibilityNodeResult(registration.stdout);
+}
+
+function buildCompatibilityNodeRegistrationScript() {
+  return `
+const port = process.env.COMPARTMENT_API_PORT;
+const runtimeControlToken = process.env.COMPARTMENT_RUNTIME_CONTROL_TOKEN;
+const nodeSocketPath = process.env.COMPARTMENT_NODE_AGENT_SOCKET;
+if (!port || !runtimeControlToken || !nodeSocketPath) throw new Error('API compatibility node environment is incomplete.');
+const response = await fetch(\`http://127.0.0.1:\${port}/internal/nodes/register\`, {
+  body: JSON.stringify({ nodeName: '${compatibilityNodeName}', nodeSocketPath, nodeVersion: 'kubernetes-compatibility' }),
+  headers: { authorization: \`Bearer \${runtimeControlToken}\`, 'content-type': 'application/json' },
+  method: 'POST',
+});
+const body = await response.text();
+if (!response.ok) {
+  process.stderr.write(body);
+  process.exit(1);
+}
+process.stdout.write(body);
+`;
 }
 
 runMain(import.meta.url, process.argv[1], main);
