@@ -1040,4 +1040,18 @@ CREATE UNIQUE INDEX "environment_variable_values_env_id_resource_name_key_name_u
 CREATE INDEX "variable_access_events_actor_created_at_idx" ON "variable_access_events" USING btree ("actor_principal_id","created_at");--> statement-breakpoint
 CREATE INDEX "variable_access_events_organization_created_at_idx" ON "variable_access_events" USING btree ("organization_id","created_at");--> statement-breakpoint
 CREATE INDEX "variable_access_events_production_created_at_idx" ON "variable_access_events" USING btree ("organization_id","production","created_at");--> statement-breakpoint
-CREATE INDEX "variable_access_events_target_created_at_idx" ON "variable_access_events" USING btree ("organization_id","target_project_name","target_environment_name","created_at");
+CREATE INDEX "variable_access_events_target_created_at_idx" ON "variable_access_events" USING btree ("organization_id","target_project_name","target_environment_name","created_at");--> statement-breakpoint
+INSERT INTO "product_log_store_quota" ("id", "used_bytes") VALUES ('global', 0);
+--> statement-breakpoint
+CREATE FUNCTION decrement_product_log_store_usage() RETURNS trigger AS $$
+BEGIN
+  UPDATE "product_log_store_quota"
+  SET "used_bytes" = GREATEST(0, "used_bytes" - octet_length(OLD."message") - 1024)
+  WHERE "id" = 'global';
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+CREATE TRIGGER deployment_product_logs_quota_delete
+AFTER DELETE ON "deployment_product_logs"
+FOR EACH ROW EXECUTE FUNCTION decrement_product_log_store_usage();
