@@ -18,7 +18,6 @@ import {
   deploymentListResponseSchema,
   deploymentLogsResponseSchema,
   deploymentRunLogsResponseSchema,
-  deploymentStatusResponseSchema,
   gitSourceListResponseSchema,
   importVariableGroupResponseSchema,
   importVariablesResponseSchema,
@@ -163,6 +162,7 @@ import {
 import type { SelfHostedUserSetupBrowserSessions } from './self-hosted-user-setup-http.harness';
 import {
   deployCommandResponseParser,
+  deploymentStatusCommandResponseParser,
   expectAuditEvents,
   readAuditExportEventTypes,
   requireActivationToken,
@@ -662,7 +662,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const statusPayload: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,
-        deploymentStatusResponseSchema,
+        deploymentStatusCommandResponseParser,
       );
       routeUrl = requireRouteUrl(statusPayload, app.serviceName);
       activeDeployment = requireSingleActiveDeployment(statusPayload, app.serviceName);
@@ -883,7 +883,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const detachedStatus: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,
-        deploymentStatusResponseSchema,
+        deploymentStatusCommandResponseParser,
       );
       activeDeployment = requireSingleActiveDeployment(detachedStatus, app.serviceName);
       expect(activeDeployment.deploymentRunId).toBe(detachedDeploymentRunId);
@@ -915,7 +915,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const explicitStatusPayload: DeploymentStatusResponse = await admin.runJson(
         `status --project ${explicitProjectName}`,
-        deploymentStatusResponseSchema,
+        deploymentStatusCommandResponseParser,
       );
       expect(requireRouteUrl(explicitStatusPayload, app.serviceName)).toBe(explicitRouteUrl);
 
@@ -1074,7 +1074,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const rollbackPayload: DeploymentStatusResponse = await admin.runJson(
         `rollback --project ${app.projectName}`,
-        deploymentStatusResponseSchema,
+        deploymentStatusCommandResponseParser,
       );
       const rolledBackDeployment: DeploymentReadSummary = requireSingleActiveDeployment(
         rollbackPayload,
@@ -1108,7 +1108,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const promotedPayload: DeploymentStatusResponse = await admin.runJson(
         `promote --project ${app.projectName} --from staging --to production`,
-        deploymentStatusResponseSchema,
+        deploymentStatusCommandResponseParser,
       );
       const promotedDeployment: DeploymentReadSummary = requireSingleActiveDeployment(promotedPayload, app.serviceName);
       expect(promotedDeployment.id).not.toBe(stagingDeployment.id);
@@ -1117,13 +1117,13 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const productionStatus: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName} --env production`,
-        deploymentStatusResponseSchema,
+        deploymentStatusCommandResponseParser,
       );
       expect(requireSingleActiveDeployment(productionStatus, app.serviceName).id).toBe(promotedDeployment.id);
 
       const stagingStatus: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName} --env staging`,
-        deploymentStatusResponseSchema,
+        deploymentStatusCommandResponseParser,
       );
       expect(requireSingleActiveDeployment(stagingStatus, app.serviceName).id).toBe(stagingDeployment.id);
 
@@ -1247,7 +1247,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const viewerStatusPayload: DeploymentStatusResponse = await viewer.runJson(
         `status --project ${app.projectName}`,
-        deploymentStatusResponseSchema,
+        deploymentStatusCommandResponseParser,
       );
       expect(requireRouteUrl(viewerStatusPayload, app.serviceName)).toBe(routeUrl);
 
@@ -1359,7 +1359,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const viewerStatusAfterUnblock: DeploymentStatusResponse = await viewer.runJson(
         `status --project ${app.projectName}`,
-        deploymentStatusResponseSchema,
+        deploymentStatusCommandResponseParser,
       );
       expect(requireRouteUrl(viewerStatusAfterUnblock, app.serviceName)).toBe(routeUrl);
       viewerAppSessionCookie = await readAppSessionCookieWithRetry(routeUrl, {
@@ -1502,7 +1502,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const restoredStatus: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,
-        deploymentStatusResponseSchema,
+        deploymentStatusCommandResponseParser,
       );
       expect(restoredStatus.project.name).toBe(app.projectName);
       expect(
@@ -1526,7 +1526,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const renamedStatus: DeploymentStatusResponse = await admin.runJson(
         `status --project ${renamedProjectName}`,
-        deploymentStatusResponseSchema,
+        deploymentStatusCommandResponseParser,
       );
       expect(renamedStatus.project.name).toBe(renamedProjectName);
 

@@ -6,7 +6,6 @@ import { expect, it } from 'vitest';
 import {
   deploymentInspectResponseSchema,
   deploymentLogsResponseSchema,
-  deploymentStatusResponseSchema,
   variableResponseSchema,
   type DeploymentInspectResponse,
   type DeploymentInspectRuntimeSummary,
@@ -24,6 +23,7 @@ import {
 } from './cli-http-test.harness';
 import {
   deployCommandResponseParser,
+  deploymentStatusCommandResponseParser,
   requireRouteUrl,
   requireSingleActiveDeployment,
   type SelfHostedDeployCommandResponse,
@@ -126,7 +126,7 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
 
             const statusPayload: DeploymentStatusResponse = await admin.runJson(
               `status --project ${fixture.name}`,
-              deploymentStatusResponseSchema,
+              deploymentStatusCommandResponseParser,
             );
             expect(requireRouteUrl(statusPayload, 'web')).toBe(routeUrl);
 
@@ -164,13 +164,13 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
 
           const statusPayload: DeploymentStatusResponse = await admin.runJson(
             `status --project ${fixture.name}`,
-            deploymentStatusResponseSchema,
+            deploymentStatusCommandResponseParser,
           );
           expect(statusPayload.deployments).toHaveLength(fixture.services.length);
 
           const scopedStatusPayload: DeploymentStatusResponse = await admin.runJson(
             `status --project ${fixture.name} --service ${fixture.routedServiceName}`,
-            deploymentStatusResponseSchema,
+            deploymentStatusCommandResponseParser,
           );
           expect(requireSingleDeployment(scopedStatusPayload).serviceName).toBe(fixture.routedServiceName);
 
@@ -450,7 +450,7 @@ async function expectMultiServiceRollback(
 ): Promise<void> {
   const firstStatus: DeploymentStatusResponse = await admin.runJson(
     `status --project ${fixture.name}`,
-    deploymentStatusResponseSchema,
+    deploymentStatusCommandResponseParser,
   );
   const firstInspect: DeploymentInspectResponse = await admin.runJson(
     `inspect --project ${fixture.name}`,
@@ -469,7 +469,7 @@ async function expectMultiServiceRollback(
 
   const rollbackPayload: DeploymentStatusResponse = await admin.runJson(
     `rollback --project ${fixture.name}`,
-    deploymentStatusResponseSchema,
+    deploymentStatusCommandResponseParser,
   );
   const rollbackInspect: DeploymentInspectResponse = await admin.runJson(
     `inspect --project ${fixture.name}`,
