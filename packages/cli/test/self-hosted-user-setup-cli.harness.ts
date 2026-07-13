@@ -37,6 +37,10 @@ export class SelfHostedUserSetupCli {
     this.#timeoutMs = timeoutMs;
   }
 
+  readCommandEnvironment(): NodeJS.ProcessEnv {
+    return { ...this.#env };
+  }
+
   async runBrowserLogin(
     command: string,
     credentials: SelfHostedUserSetupLoginCredentials,

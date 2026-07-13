@@ -1,4 +1,3 @@
-import { setTimeout as delay } from 'node:timers/promises';
 import {
   activateResponseSchema,
   createOrganizationResponseSchema,
@@ -145,22 +144,4 @@ export async function configureK3dTrustedOutboundHosts(trustedHostList: string):
     });
     expectSuccessfulCommand(result, `configure trusted outbound hosts: ${argv.slice(5).join(' ')}`, '');
   }
-
-  await waitForK3dApiReadiness(seed.apiUrl);
-}
-
-async function waitForK3dApiReadiness(apiUrl: string): Promise<void> {
-  for (let waitedSeconds: number = 0; waitedSeconds < 60; waitedSeconds += 2) {
-    try {
-      const response: Response = await fetch(`${apiUrl}/readyz`);
-      if (response.ok) {
-        return;
-      }
-    } catch {
-      // The API is expected to refuse connections while the rollout converges.
-    }
-    await delay(2_000);
-  }
-
-  throw new Error(`Timed out waiting for API readiness at ${apiUrl}/readyz after the trusted host update.`);
 }

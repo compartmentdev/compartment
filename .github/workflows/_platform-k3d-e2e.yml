@@ -1,0 +1,155 @@
+name: Platform k3d e2e reusable
+
+on:
+  workflow_call:
+    inputs:
+      self_hosted_image_cache_key:
+        required: true
+        type: string
+      runner_labels_json:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  run-platform-k3d-e2e:
+    name: run platform k3d e2e
+    runs-on: ${{ fromJson(inputs.runner_labels_json) }}
+    timeout-minutes: 120
+    env:
+      COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E: '1'
+      COMPARTMENT_SELF_HOSTED_USER_SETUP_VERSION: sha-${{ github.sha }}
+      COMPARTMENT_TEST_APP_NODE_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
+      COMPARTMENT_TEST_POSTGRES_IMAGE: postgres:16
+      DOCKER_CONFIG: ${{ github.workspace }}/.compartment/docker-config
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        env:
+          AGENT_TOOLSDIRECTORY: ${{ runner.temp }}/tool-cache
+          RUNNER_TOOL_CACHE: ${{ runner.temp }}/tool-cache
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
+        env:
+          npm_config_cache: ${{ runner.temp }}/npm-cache
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+          version: 10.6.3
+          cache: true
+
+      - name: Install pinned k3d, kubectl, and Helm
+        env:
+          HELM_SHA256: f8180838c23d7c7d797b208861fecb591d9ce1690d8704ed1e4cb8e2add966c1
+          HELM_VERSION: v3.18.4
+          K3D_SHA256: dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e
+          K3D_VERSION: v5.8.3
+          KUBECTL_SHA256: 33d0cdec6967817468f0a4a90f537dfef394dcf815d91966ca651cc118393eea
+          KUBECTL_VERSION: v1.33.2
+        run: |
+          curl --fail --location --show-error \
+            "https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d-linux-amd64" \
+            --output /tmp/k3d
+          echo "${K3D_SHA256}  /tmp/k3d" | sha256sum --check
+          sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
+
+          curl --fail --location --show-error \
+            "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+            --output /tmp/kubectl
+          echo "${KUBECTL_SHA256}  /tmp/kubectl" | sha256sum --check
+          sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+
+          helm_archive="helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          curl --fail --location --show-error "https://get.helm.sh/${helm_archive}" --output "/tmp/${helm_archive}"
+          echo "${HELM_SHA256}  /tmp/${helm_archive}" | sha256sum --check
+          tar -xzf "/tmp/${helm_archive}" -C /tmp
+          sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+
+          k3d version
+          kubectl version --client
+          helm version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Register local control-plane host
+        run: echo '127.0.0.1 console.localhost' | sudo tee -a /etc/hosts >/dev/null
+
+      - name: Restore self-hosted image cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ./.compartment/self-hosted-image-cache
+          key: ${{ inputs.self_hosted_image_cache_key }}
+          fail-on-cache-miss: true
+
+      - name: Install cosign for CLI artifact build
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
+        with:
+          cosign-release: v2.6.1
+
+      - name: Build CLI artifact
+        env:
+          BUILD_COMMIT_SHA: ${{ github.sha }}
+          PRIMARY_TAG: sha-${{ github.sha }}
+        run: |
+          pnpm cli:build:sea \
+            --distribution-channel source \
+            --default-registry-image-tag "$PRIMARY_TAG" \
+            --build-commit-sha "$BUILD_COMMIT_SHA" \
+            --output-dir ./.compartment/cli-dist
+
+      - name: Start k3d platform from cached images
+        run: node ./scripts/deploy/platform-k3d-e2e.mjs up --image-source archive --image-archive-dir ./.compartment/self-hosted-image-cache
+
+      - name: Seed platform once
+        run: node ./scripts/deploy/seed-platform-k3d-e2e.mjs
+
+      - name: Run system user flow suite
+        env:
+          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/system-user-flow.e2e.test.ts
+        run: pnpm --filter @compartment/cli test:e2e
+
+      - name: Install console Playwright browser
+        run: pnpm --filter @compartment/console test:e2e:install
+
+      - name: Run console suite
+        env:
+          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/console.e2e.test.ts
+        run: pnpm --filter @compartment/cli test:e2e
+
+      - name: Run system build matrix suite
+        env:
+          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/system-build-matrix.e2e.test.ts
+        run: pnpm --filter @compartment/cli test:e2e
+
+      - name: Verify edge LKG and measure revocation convergence
+        env:
+          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/platform-k3d-g1.e2e.test.ts
+        run: pnpm --filter @compartment/cli test:e2e
+
+      - name: Verify bounded product-log buffers under load
+        run: ./scripts/deploy/run-platform-k3d-product-log-gate.sh
+
+      - name: Collect k3d diagnostics
+        if: ${{ failure() }}
+        run: ./scripts/deploy/collect-platform-k3d-e2e-diagnostics.sh ./.compartment/platform-k3d-diagnostics
+
+      - name: Upload k3d diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: platform-k3d-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ./.compartment/platform-k3d-diagnostics
+          if-no-files-found: error
+
+      - name: Tear down k3d platform
+        if: ${{ always() }}
+        run: node ./scripts/deploy/platform-k3d-e2e.mjs down
