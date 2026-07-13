@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "platform": {
+      "type": "object",
+      "properties": {
+        "startupStage": { "type": "string", "enum": ["foundation", "full"] }
+      }
+    },
+    "buildkit": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "namespace",
+        "gcKeepStorageMb",
+        "pruneSchedule",
+        "pruneKeepDuration",
+        "podCidr",
+        "serviceCidr"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "namespace": { "type": "string", "minLength": 1 },
+        "gcKeepStorageMb": { "type": "integer", "minimum": 1 },
+        "pruneSchedule": { "type": "string", "minLength": 1 },
+        "pruneKeepDuration": { "type": "string", "minLength": 1 },
+        "workerNamespaceSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+        "workerPodSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+        "dnsNamespaceSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+        "dnsPodSelector": { "type": "object", "additionalProperties": { "type": "string" } },
+        "podCidr": { "type": "string", "minLength": 1 },
+        "serviceCidr": { "type": "string", "minLength": 1 },
+        "seccompProfile": { "type": "object" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "properties": {
+        "snapshots": {
+          "type": "object",
+          "required": ["enabled", "mountPath"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "mountPath": { "type": "string", "pattern": "^/" }
+          }
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "properties": { "edgeSnapshots": { "type": "string", "minLength": 1 } }
+    }
+  }
+}

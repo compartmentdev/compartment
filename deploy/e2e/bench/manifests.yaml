@@ -1,0 +1,175 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bench-backoffice
+  namespace: compartment-bench
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: bench-backoffice }
+  template:
+    metadata:
+      labels: { app: bench-backoffice }
+    spec:
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: backoffice
+          image: node:24.15.0-bookworm-slim
+          imagePullPolicy: IfNotPresent
+          command: ['node', '/app/server.mjs']
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ['ALL'] }
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          env: [{ name: PORT, value: '3000' }]
+          ports: [{ name: http, containerPort: 3000 }]
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            periodSeconds: 2
+          volumeMounts:
+            - { name: source, mountPath: /app, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: source
+          configMap: { name: bench-backoffice-source }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bench-backoffice
+  namespace: compartment-bench
+spec:
+  selector: { app: bench-backoffice }
+  ports: [{ name: http, port: 3000, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bench-web
+  namespace: compartment-bench
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: bench-web }
+  template:
+    metadata:
+      labels: { app: bench-web }
+    spec:
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      initContainers:
+        - name: prepare-caddy
+          image: caddy:2.11.4-alpine
+          command: ['/bin/sh', '-ec', 'cp /usr/bin/caddy /work/caddy && chmod 0755 /work/caddy']
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ['ALL'] }
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          volumeMounts:
+            - { name: executable, mountPath: /work }
+      containers:
+        - name: web
+          image: node:24.15.0-bookworm-slim
+          imagePullPolicy: IfNotPresent
+          command: ['node', '/app/server.mjs']
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ['ALL'] }
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          env: [{ name: PORT, value: '3000' }]
+          ports: [{ name: upstream, containerPort: 3000 }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: upstream }
+            periodSeconds: 2
+          volumeMounts:
+            - { name: source, mountPath: /app, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+        - name: route-proxy
+          image: caddy:2.11.4-alpine
+          imagePullPolicy: IfNotPresent
+          command: ['/work/caddy', 'run', '--config', '/etc/caddy/Caddyfile', '--adapter', 'caddyfile']
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ['ALL'] }
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 2
+          volumeMounts:
+            - { name: executable, mountPath: /work, readOnly: true }
+            - { name: caddy-config, mountPath: /etc/caddy, readOnly: true }
+            - { name: caddy-data, mountPath: /data }
+            - { name: caddy-runtime, mountPath: /config }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: executable, emptyDir: {} }
+        - name: source
+          configMap: { name: bench-web-source }
+        - name: caddy-config
+          configMap: { name: bench-caddy-config }
+        - { name: caddy-data, emptyDir: {} }
+        - { name: caddy-runtime, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bench-web
+  namespace: compartment-bench
+spec:
+  selector: { app: bench-web }
+  ports: [{ name: http, port: 8080, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bench-ws
+  namespace: compartment-bench
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: bench-ws }
+  template:
+    metadata:
+      labels: { app: bench-ws }
+    spec:
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: echo
+          image: compartment-bench-ws:local
+          imagePullPolicy: Never
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ['ALL'] }
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          ports: [{ name: http, containerPort: 8080 }]
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 2
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bench-ws
+  namespace: compartment-bench
+spec:
+  selector: { app: bench-ws }
+  ports: [{ name: http, port: 8080, targetPort: http }]

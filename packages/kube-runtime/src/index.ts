@@ -9,8 +9,6 @@ export {
   kubeResourceVolumeName,
   kubeSecretName,
 } from './kube-naming';
-export { platformBuildManifests } from './kube-platform-build-projection';
-export type { PlatformBuildProjectionInput } from './kube-platform-build-projection.types';
 export { projectApplicationManifests } from './kube-projections';
 export {
   assertResourceClaimIdentity,

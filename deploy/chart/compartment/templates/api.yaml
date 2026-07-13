@@ -1,0 +1,104 @@
+{{- if eq .Values.platform.startupStage "full" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "compartment.fullname" . }}-api
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "compartment.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.ports.api }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "compartment.fullname" . }}-api
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "api") | nindent 8 }}
+      annotations:
+        {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
+    spec:
+      {{- include "compartment.waiterPodSpec" . | nindent 6 }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
+      containers:
+        - name: api
+          image: {{ include "compartment.image" .Values.images.api }}
+          imagePullPolicy: {{ .Values.images.api.pullPolicy }}
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 10001
+            runAsGroup: 10001
+          resources:
+            {{- toYaml .Values.resources.api | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "compartment.fullname" . }}
+          env:
+            - name: COMPARTMENT_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: database-url}
+            - name: COMPARTMENT_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: postgres-password}
+            - name: COMPARTMENT_EDGE_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: edge-token}
+            - name: COMPARTMENT_RUNTIME_CONTROL_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: runtime-control-token}
+            - name: COMPARTMENT_SESSION_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: session-secret}
+            - name: COMPARTMENT_SYSTEM_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: system-token}
+            - name: COMPARTMENT_VARIABLES_MASTER_KEY
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: variables-master-key}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.api }}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/compartment}
+            - {name: runtime, mountPath: /var/run/compartment}
+            - {name: tls, mountPath: /etc/compartment/tls, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "compartment.fullname" . }}-api
+        - {name: runtime, emptyDir: {}}
+        - {name: tls, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
+{{- end }}
+

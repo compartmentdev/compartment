@@ -113,25 +113,23 @@ checksum and size. Restore verification finishes before the user restore command
 
 ## Build pipeline
 
-Cluster source builds run through one rootless BuildKit pod in a dedicated
-build namespace. P9 exposes the platform build bundle for the existing `apply`
-primitive and the permanent cluster harness; production controller wiring is
-part of the later atomic cutover. No chart or additional Kubernetes write path
-owns these objects. The namespace uses Pod Security `enforce=privileged` with
+Cluster source builds run through one rootless BuildKit pod installed by the
+platform Helm chart. The chart owns BuildKit deployment, storage, pruning, and
+network isolation; the worker remains the sole build orchestrator. The build
+namespace uses Pod Security `enforce=privileged` with
 `audit=baseline` and `warn=baseline` because the tested AppArmor Unconfined
 profile is not admitted by baseline enforcement. The pod keeps the exact T4
 minimum security context and must never be described as baseline-compatible.
 
 BuildKit has an 8 GiB PVC, a 2 GiB GC target, and at most two concurrent builds.
-The worker and daily CronJob both use `buildctl prune --all --keep-duration 24h
---keep-storage 2000`. NetworkPolicy defaults the namespace to deny and admits
+The daily CronJob uses `buildctl prune --all --keep-duration 24h --keep-storage
+2000`. NetworkPolicy defaults the namespace to deny and admits
 only selected worker ingress plus explicit DNS, base-image, and registry
 egress. Public internet egress excludes metadata, link-local, Pod, and Service
 CIDRs.
 
-Bundled registry mode projects a private persistent registry into the build
-namespace. External mode omits those objects and requires one explicit
-endpoint, credential Secret, port, and egress CIDR. Application namespaces use
+The F1 chart installs a private persistent bundled registry. External/BYO
+registry values are deferred to F2. Application namespaces use
 the P5 Secret path for deterministic Docker pull credentials. Kubelet registry
 reachability is node-side and remains an explicit M-check.
 
@@ -175,9 +173,11 @@ blocker, not an inferred fallback.
 
 ## Budget
 
-Production runtime code in `packages/kube-runtime` is limited to 3,000 physical
-lines. Tests and external scenario harnesses are reported separately. Exceeding
-the limit stops the change until the PR contains a written justification (D33).
+Production runtime code in `packages/kube-runtime` is limited to 1,500 core
+physical lines. Tests, named public contract types, package entrypoints, client
+adapters, pure naming/state-transition support, and external scenario harnesses
+are reported separately. The PR must show both total production runtime LOC and
+the D33 core count.
 
 ## Non-goals
 
