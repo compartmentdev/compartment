@@ -178,6 +178,7 @@ import {
   expectExplicitProjectLifecycleFlow,
   requireDetachedDeploymentRunId,
   waitForDeploymentRunCompletion,
+  waitForRunningResource,
 } from './self-hosted-user-setup-deployment-flow.harness';
 import { expectAuditFileExports, expectAuditFileSinkCoverage } from './self-hosted-user-setup-audit-flow.harness';
 import { expectCompartmentSkillInstallOnboarding } from './self-hosted-user-setup-agent-onboarding.harness';
@@ -661,10 +662,10 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       expect(deployPayload.resources).toEqual([
         expect.objectContaining({
           name: app.resourceName,
-          status: 'running',
         }),
       ]);
 
+      await waitForRunningResource(admin, app.projectName, app.resourceName);
       const statusPayload: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,
         deploymentStatusCommandResponseParser,
