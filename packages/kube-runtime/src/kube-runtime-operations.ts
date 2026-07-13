@@ -1,4 +1,4 @@
-import { PatchStrategy, type KubernetesObjectApi } from '@kubernetes/client-node';
+import { PatchStrategy, type KubernetesObject, type KubernetesObjectApi } from '@kubernetes/client-node';
 import type { KubeJobSpec, KubeManifest, KubeObservedManifest, ObserveLabels } from './kube-runtime.types';
 
 const fieldManager: string = 'compartment';
@@ -87,6 +87,21 @@ export async function deleteObjectIgnoringNotFound(
     if (!(error instanceof Error && readHttpStatusCode(error) === 404)) {
       throw error;
     }
+  }
+}
+
+export async function readObjectIgnoringNotFound(
+  objectApi: KubernetesObjectApi,
+  object: KubeManifest,
+): Promise<KubeObservedManifest | null> {
+  try {
+    const observed: KubernetesObject = await objectApi.read(object as never);
+    return observed as KubeObservedManifest;
+  } catch (error) {
+    if (error instanceof Error && readHttpStatusCode(error) === 404) {
+      return null;
+    }
+    throw error;
   }
 }
 

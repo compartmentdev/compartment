@@ -67,6 +67,7 @@ class PrimitiveObjectApi {
   public jobExists: boolean = false;
   public patchError: Error | null = null;
   public patchErrorKind: string | null = null;
+  public readError: Error | null = null;
   public useStatusCodeConflict: boolean = false;
 
   public async create(object: KubeManifest): Promise<KubernetesObject> {
@@ -99,6 +100,9 @@ class PrimitiveObjectApi {
 
   public async read(object: KubeManifest): Promise<KubernetesObject> {
     this.events.push(`read:${object.kind}`);
+    if (this.readError !== null) {
+      throw this.readError;
+    }
     if (object.kind === 'Job' && !this.jobExists) {
       throw Object.assign(new Error('not found'), { statusCode: 404 });
     }
@@ -140,6 +144,7 @@ describe('KubeRuntime Job primitive', (): void => {
     objectApi.jobExists = false;
     objectApi.patchError = null;
     objectApi.patchErrorKind = null;
+    objectApi.readError = null;
     objectApi.delete.mockClear();
     coreApi.readNamespacedPodLog.mockClear();
     vi.spyOn(KubernetesObjectApi, 'makeApiClient').mockReturnValue(objectApi as never);
@@ -147,6 +152,21 @@ describe('KubeRuntime Job primitive', (): void => {
 
   afterEach((): void => {
     vi.useRealTimers();
+  });
+
+  it('reads an observed object and treats a missing object as absent', async (): Promise<void> => {
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+    const deployment: KubeManifest = {
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: { name: 'app-1', namespace: 'project-1' },
+    };
+
+    await expect(runtime.read(deployment)).resolves.toEqual(deployment);
+    objectApi.readError = Object.assign(new Error('not found'), { statusCode: 404 });
+    await expect(runtime.read(deployment)).resolves.toBeNull();
+    objectApi.readError = Object.assign(new Error('forbidden'), { statusCode: 403 });
+    await expect(runtime.read(deployment)).rejects.toThrow('forbidden');
   });
 
   it('creates a deterministic release Job, reads cached completion, and finalizes TTL after capture', async (): Promise<void> => {

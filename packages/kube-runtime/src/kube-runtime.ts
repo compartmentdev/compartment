@@ -19,6 +19,7 @@ import {
   requireCleanupObjectApi,
   isJobTimeoutError,
   jobObservationInput,
+  readObjectIgnoringNotFound,
   readHttpStatusCode,
   startJobDeadline,
   type JobDeadline,
@@ -31,6 +32,7 @@ import type {
   KubeLogReference,
   KubeManifest,
   KubeObservation,
+  KubeObservedManifest,
   ObserveLabels,
 } from './kube-runtime.types';
 
@@ -117,6 +119,10 @@ export class KubeRuntime {
     return await createKubeObservation(this.kubeConfig, this.objectApi, input);
   }
 
+  public async read(object: KubeManifest): Promise<KubeObservedManifest | null> {
+    return await readObjectIgnoringNotFound(this.objectApi, object);
+  }
+
   public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricObservation[]> {
     return await readKubePodMetrics(this.coreApi, new Metrics(this.kubeConfig), input);
   }
@@ -133,7 +139,12 @@ export class KubeRuntime {
   public async runJob(spec: KubeJobSpec, persistedResult?: KubePersistedJobResult): Promise<KubeJobResult> {
     const jobName: string = kubeJobName(spec.id);
     const labels: Record<string, string> = { ...spec.labels, 'compartment.dev/job-id': spec.id };
-    const jobExists: boolean = await this.jobExists(spec.namespace, jobName);
+    const jobExists: boolean =
+      (await this.read({
+        apiVersion: 'batch/v1',
+        kind: 'Job',
+        metadata: { name: jobName, namespace: spec.namespace },
+      })) !== null;
     if (persistedResult !== undefined) {
       return this.buildCapturedJobResult(spec, jobName, labels, persistedResult, jobExists);
     }
@@ -172,18 +183,6 @@ export class KubeRuntime {
       }
       await deleteObjectIgnoringNotFound(this.objectApi, kubeJobSecretManifest(spec, labels));
     });
-  }
-
-  private async jobExists(namespace: string, jobName: string): Promise<boolean> {
-    try {
-      await this.objectApi.read({ apiVersion: 'batch/v1', kind: 'Job', metadata: { name: jobName, namespace } });
-      return true;
-    } catch (error) {
-      if (error instanceof Error && readHttpStatusCode(error) === 404) {
-        return false;
-      }
-      throw error;
-    }
   }
 
   private async completeJob(spec: KubeJobSpec, jobName: string): Promise<TerminalJobResult> {

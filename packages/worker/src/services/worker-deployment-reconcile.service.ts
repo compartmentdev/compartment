@@ -93,18 +93,17 @@ async function reconcilePendingDeployment(
   target: DeploymentReconcileTarget,
 ): Promise<void> {
   const candidate: KubeDeploymentManifest = deploymentManifest(target.candidate);
-  const observation: KubeObservation = await observeDeployment(runtime, candidate);
-  try {
-    const rollout: KubeRolloutObservation | null = await readRolloutObservation(observation, candidate, target);
-    if (rollout === null) {
-      await handleMissingPendingDeployment(request, runtime, target);
-      return;
-    }
-    const status: KubeRolloutStatus = calculateKubeRolloutStatus(rollout, new Date());
-    await handleRolloutStatus(request, runtime, target, status);
-  } finally {
-    await observation.stop();
+  const rollout: KubeRolloutObservation | null = readRolloutObservation(
+    await runtime.read(candidate),
+    candidate,
+    target,
+  );
+  if (rollout === null) {
+    await handleMissingPendingDeployment(request, runtime, target);
+    return;
   }
+  const status: KubeRolloutStatus = calculateKubeRolloutStatus(rollout, new Date());
+  await handleRolloutStatus(request, runtime, target, status);
 }
 
 async function handleMissingPendingDeployment(

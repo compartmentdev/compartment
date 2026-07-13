@@ -11,7 +11,6 @@ import { deploymentConditionStatus, requiredDeploymentMetadata } from './worker-
 import type { ObservedDeploymentCondition, ObservedDeploymentStatus } from './worker-deployment-reconcile.types';
 
 const defaultRolloutTimeoutMs: number = 50_000;
-const observationSyncTimeoutMs: number = 1_000;
 
 export function isObservedReady(
   observation: KubeObservation,
@@ -22,45 +21,18 @@ export function isObservedReady(
   return observed !== null && calculateKubeRolloutStatus(observed, new Date()) === 'ready';
 }
 
-export async function readRolloutObservation(
-  observation: KubeObservation,
+export function readRolloutObservation(
+  observed: KubeObservedManifest | null,
   deployment: KubeDeploymentManifest,
   target: DeploymentReconcileTarget,
-): Promise<KubeRolloutObservation | null> {
+): KubeRolloutObservation | null {
   const startedAt: number = new Date(target.rolloutStartedAt).getTime();
   const deadlineAt: Date = new Date(startedAt + rolloutTimeoutMs(target.candidate));
-  const initial: KubeRolloutObservation | null = readDeploymentObservation(observation, deployment, deadlineAt);
-  return initial ?? (await waitForDeploymentObservation(observation, deployment, deadlineAt));
+  return projectDeploymentObservation(observed, deployment, deadlineAt);
 }
 
 export function rolloutTimeoutMs(projection: DeploymentReconcileProjection): number {
   return projection.readiness?.timeoutMs ?? defaultRolloutTimeoutMs;
-}
-
-async function waitForDeploymentObservation(
-  observation: KubeObservation,
-  deployment: KubeDeploymentManifest,
-  deadlineAt: Date,
-): Promise<KubeRolloutObservation | null> {
-  return await new Promise<KubeRolloutObservation | null>(
-    (resolve: (value: KubeRolloutObservation | null) => void): void => {
-      const timer: NodeJS.Timeout = setTimeout((): void => {
-        unsubscribe();
-        resolve(null);
-      }, observationSyncTimeoutMs);
-      let unsubscribe: () => void = (): void => undefined;
-      const resolveWhenObserved: () => void = (): void => {
-        const observed: KubeRolloutObservation | null = readDeploymentObservation(observation, deployment, deadlineAt);
-        if (observed !== null) {
-          clearTimeout(timer);
-          unsubscribe();
-          resolve(observed);
-        }
-      };
-      unsubscribe = observation.onEvent(resolveWhenObserved);
-      resolveWhenObserved();
-    },
-  );
 }
 
 function readDeploymentObservation(
@@ -71,6 +43,14 @@ function readDeploymentObservation(
   const namespace: string = requiredDeploymentMetadata(deployment, 'namespace');
   const name: string = requiredDeploymentMetadata(deployment, 'name');
   const observed: KubeObservedManifest | undefined = observation.cache.get(`deployments/${namespace}/${name}`);
+  return projectDeploymentObservation(observed ?? null, deployment, deadlineAt);
+}
+
+function projectDeploymentObservation(
+  observed: KubeObservedManifest | null,
+  deployment: KubeDeploymentManifest,
+  deadlineAt: Date,
+): KubeRolloutObservation | null {
   if (observed?.kind !== 'Deployment') {
     return null;
   }
