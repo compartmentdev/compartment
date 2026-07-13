@@ -10,6 +10,10 @@
 {{- end }}
 {{- end }}
 
+{{- define "compartment.registryAuthHost" -}}
+{{- printf "%s-registry-auth.%s.svc" (include "compartment.fullname" .) .Release.Namespace -}}
+{{- end }}
+
 {{- define "compartment.labels" -}}
 app.kubernetes.io/name: {{ include "compartment.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
