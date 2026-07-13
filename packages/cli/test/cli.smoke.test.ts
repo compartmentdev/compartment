@@ -735,6 +735,7 @@ function buildEdgeEnvironment(apiPort: number, edgePort: number, tempDirectory: 
     COMPARTMENT_BASE_DOMAIN: 'localhost',
     COMPARTMENT_EDGE_BIND_HOST: '127.0.0.1',
     COMPARTMENT_EDGE_PORT: edgePort.toString(),
+    COMPARTMENT_EDGE_SNAPSHOT_PATH: join(tempDirectory, 'edge', 'access-state.json'),
     COMPARTMENT_EDGE_TOKEN: cliTestEdgeToken,
     COMPARTMENT_LOG_LEVEL: 'silent',
     COMPARTMENT_PUBLIC_PROTOCOL: 'http',

@@ -9,10 +9,13 @@ interface EdgeConfigEnvironment {
   COMPARTMENT_EDGE_BIND_HOST: string;
   COMPARTMENT_EDGE_INTERNAL_HOST: string;
   COMPARTMENT_EDGE_PORT: number;
+  COMPARTMENT_EDGE_SNAPSHOT_PATH: string;
   COMPARTMENT_EDGE_TOKEN: string;
   COMPARTMENT_LOG_LEVEL: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   COMPARTMENT_PUBLIC_PROTOCOL: 'http' | 'https';
 }
+
+const edgeSnapshotMaxAgeMs: number = 86_400_000;
 
 const edgeConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_API_INTERNAL_HOST: z.string().min(1),
@@ -21,6 +24,7 @@ const edgeConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_EDGE_BIND_HOST: z.string().min(1),
   COMPARTMENT_EDGE_INTERNAL_HOST: z.string().min(1),
   COMPARTMENT_EDGE_PORT: z.coerce.number().int().positive(),
+  COMPARTMENT_EDGE_SNAPSHOT_PATH: z.string().min(1),
   COMPARTMENT_EDGE_TOKEN: z.string().min(1),
   COMPARTMENT_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
   COMPARTMENT_PUBLIC_PROTOCOL: z.enum(['http', 'https']),
@@ -35,6 +39,8 @@ export interface EdgeConfig {
   port: number;
   controlPlaneHost: string;
   publicProtocol: 'http' | 'https';
+  snapshotMaxAgeMs: number;
+  snapshotPath: string;
 }
 
 export function readEdgeConfig(env: NodeJS.ProcessEnv = process.env): EdgeConfig {
@@ -49,5 +55,7 @@ export function readEdgeConfig(env: NodeJS.ProcessEnv = process.env): EdgeConfig
     port: parsed.COMPARTMENT_EDGE_PORT,
     controlPlaneHost: buildControlPlaneHost(parsed.COMPARTMENT_BASE_DOMAIN.trim().toLowerCase()),
     publicProtocol: parsed.COMPARTMENT_PUBLIC_PROTOCOL,
+    snapshotMaxAgeMs: edgeSnapshotMaxAgeMs,
+    snapshotPath: parsed.COMPARTMENT_EDGE_SNAPSHOT_PATH,
   };
 }

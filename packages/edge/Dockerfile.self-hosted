@@ -32,6 +32,8 @@ WORKDIR /app
 
 COPY --from=build /runtime /app
 
+RUN install -d -o node -g node -m 0700 /var/lib/compartment-edge
+
 USER node
 
 ENTRYPOINT ["dumb-init", "--"]
