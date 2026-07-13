@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
   accessAssignmentListResponseSchema,
   accessAssignmentResponseSchema,
@@ -56,6 +57,9 @@ const k3dDefaultKubeContext: string = 'k3d-compartment-e2e';
 const k3dDefaultPlatformNamespace: string = 'compartment';
 const k3dPlatformResourceName: string = 'compartment-compartment';
 const k3dKubectlCommandTimeoutMs: number = 8 * 60_000;
+const k3dApiServiceProbeAttempts: number = 30;
+const k3dApiServiceProbeIntervalMs: number = 1_000;
+const k3dApiServiceProbeTimeoutMs: number = 10_000;
 
 export function isK3dPlatformMode(): boolean {
   return process.env[e2ePlatformModeEnvName] === 'k3d';
@@ -196,20 +200,20 @@ export async function configureK3dTrustedOutboundHosts(trustedHostList: string):
     data: { COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: trustedHostList },
   });
 
-  const commands: readonly (readonly string[])[] = [
+  const apiCommands: readonly (readonly string[])[] = [
     [...kubectlBaseArgv, 'patch', 'configmap', k3dPlatformResourceName, '--type', 'merge', '--patch', patchPayload],
     [...kubectlBaseArgv, 'rollout', 'restart', `deployment/${k3dPlatformResourceName}-api`],
     [...kubectlBaseArgv, 'rollout', 'status', `deployment/${k3dPlatformResourceName}-api`, '--timeout=2m'],
-    [
-      ...kubectlBaseArgv,
-      'wait',
-      '--for=jsonpath={.subsets[0].addresses[0].ip}',
-      `service/${k3dPlatformResourceName}-api`,
-      '--timeout=2m',
-    ],
+  ];
+  await runK3dKubectlCommands(apiCommands);
+  await waitForK3dApiService(seed);
+  await runK3dKubectlCommands([
     [...kubectlBaseArgv, 'rollout', 'restart', `deployment/${k3dPlatformResourceName}-worker`],
     [...kubectlBaseArgv, 'rollout', 'status', `deployment/${k3dPlatformResourceName}-worker`, '--timeout=2m'],
-  ];
+  ]);
+}
+
+async function runK3dKubectlCommands(commands: readonly (readonly string[])[]): Promise<void> {
   for (const argv of commands) {
     const result: SelfHostedUserSetupCommandResult = await runCommand({
       argv,
@@ -217,4 +221,21 @@ export async function configureK3dTrustedOutboundHosts(trustedHostList: string):
     });
     expectSuccessfulCommand(result, `configure trusted outbound hosts: ${argv.slice(5).join(' ')}`, '');
   }
+}
+
+async function waitForK3dApiService(seed: K3dPlatformSeed): Promise<void> {
+  const proxyPath: string = `/api/v1/namespaces/${seed.platformNamespace}/services/http:${k3dPlatformResourceName}-api:39444/proxy/readyz`;
+  let result: SelfHostedUserSetupCommandResult = await probeK3dApiService(seed, proxyPath);
+  for (let attempt: number = 1; result.exitCode !== 0 && attempt < k3dApiServiceProbeAttempts; attempt += 1) {
+    await sleep(k3dApiServiceProbeIntervalMs);
+    result = await probeK3dApiService(seed, proxyPath);
+  }
+  expectSuccessfulCommand(result, 'wait for the API service endpoint to answer /readyz', '');
+}
+
+async function probeK3dApiService(seed: K3dPlatformSeed, proxyPath: string): Promise<SelfHostedUserSetupCommandResult> {
+  return await runCommand({
+    argv: ['kubectl', '--context', seed.kubeContext, 'get', '--raw', proxyPath],
+    timeoutMs: k3dApiServiceProbeTimeoutMs,
+  });
 }
