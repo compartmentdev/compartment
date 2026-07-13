@@ -271,7 +271,7 @@ describe('KubeRuntime Job primitive', (): void => {
   });
 
   it('treats already-removed bootstrap cleanup objects as converged', async (): Promise<void> => {
-    objectApi.deleteError = Object.assign(new Error('not found'), { statusCode: 404 });
+    objectApi.deleteError = Object.assign(new Error('not found'), { code: 404 });
     const runtime: KubeRuntime = new KubeRuntime(
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,

@@ -10,6 +10,7 @@ export interface JobDeadline {
 }
 
 interface KubeHttpError extends Error {
+  code?: number | undefined;
   statusCode?: number | undefined;
 }
 
@@ -90,7 +91,8 @@ export async function deleteObjectIgnoringNotFound(
 }
 
 export function readHttpStatusCode(error: Error): number | undefined {
-  return (error as KubeHttpError).statusCode;
+  const httpError: KubeHttpError = error;
+  return httpError.statusCode ?? httpError.code;
 }
 
 export function isJobTimeoutError(error: Error): boolean {
