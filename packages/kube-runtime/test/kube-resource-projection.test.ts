@@ -3,6 +3,7 @@ import { stringify } from 'yaml';
 import { kubeResourceServiceDns } from '@compartment/utils';
 import {
   assertResourceClaimIdentity,
+  assertResourceClaimOwnership,
   kubeResourceVolumeName,
   projectResourceBootstrapClaims,
   projectResourceManifests,
@@ -26,16 +27,33 @@ describe('resource projection and fencing', (): void => {
   it('fails closed before mutation when expected identity, claim, binding, or UID is invalid', (): void => {
     const name: string = kubeResourceVolumeName(row.resourceId, 'data');
     expect((): void => assertResourceClaimIdentity([], [])).toThrow('Bootstrap is required');
-    expect((): void => assertResourceClaimIdentity([{ claimName: name, uid: 'uid-1' }], [])).toThrow(
-      'missing or unbound',
-    );
+    expect((): void => assertResourceClaimIdentity([{ claimName: name, uid: 'uid-1' }], [])).toThrow('is missing');
     expect((): void =>
-      assertResourceClaimIdentity([{ claimName: name, uid: 'uid-1' }], [{ bound: false, claimName: name, uid: null }]),
+      assertResourceClaimIdentity(
+        [{ claimName: name, uid: 'uid-1' }],
+        [{ bound: false, claimName: name, uid: 'uid-1' }],
+      ),
     ).toThrow('missing or unbound');
     expect((): void =>
       assertResourceClaimIdentity(
         [{ claimName: name, uid: 'uid-1' }],
         [{ bound: true, claimName: name, uid: 'uid-2' }],
+      ),
+    ).toThrow('UID changed');
+  });
+
+  it('fences an unbound WaitForFirstConsumer claim by its created UID', (): void => {
+    const name: string = kubeResourceVolumeName(row.resourceId, 'data');
+    expect((): void =>
+      assertResourceClaimOwnership(
+        [{ claimName: name, uid: 'uid-1' }],
+        [{ bound: false, claimName: name, uid: 'uid-1' }],
+      ),
+    ).not.toThrow();
+    expect((): void =>
+      assertResourceClaimOwnership(
+        [{ claimName: name, uid: 'uid-1' }],
+        [{ bound: false, claimName: name, uid: 'uid-2' }],
       ),
     ).toThrow('UID changed');
   });

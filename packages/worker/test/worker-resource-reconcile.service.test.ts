@@ -40,6 +40,46 @@ describe('worker resource reconcile lifecycle', (): void => {
     expect(apply).not.toHaveBeenCalled();
   });
 
+  it('completes bootstrap after WaitForFirstConsumer claims have stable UIDs but remain pending', async (): Promise<void> => {
+    const observation: TestObservation = new TestObservation('uid-created', false, false);
+    const apply: Mock = vi.fn(
+      async (bundle: ApplyBundle): Promise<KubeManifest[]> => await Promise.resolve(bundle.objects),
+    );
+
+    await executeResourceReconcile(requester(), runtime(apply, observation), bootstrapClaim());
+
+    expect(apply).toHaveBeenCalledOnce();
+    expect(mocks.acknowledge).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        expectedClaims: [{ claimName: 'claim-data', uid: 'uid-created' }],
+        status: 'succeeded',
+      }),
+    );
+  });
+
+  it('starts the first workload before requiring a WaitForFirstConsumer claim to bind', async (): Promise<void> => {
+    const observation: TestObservation = new TestObservation('uid-original', false, false);
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      const deployment: KubeManifest | undefined = bundle.objects.find(
+        (object: KubeManifest): boolean => object.kind === 'Deployment',
+      );
+      if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 1) {
+        observation.bindClaims();
+        observation.addPod('resource-first-pod');
+      }
+      return await Promise.resolve(bundle.objects);
+    });
+
+    await executeResourceReconcile(requester(), runtime(apply, observation), claim(null));
+
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(mocks.acknowledge).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 'succeeded' }),
+    );
+  });
+
   it('scales to zero before starting and rolls back saved executable manifests on apply failure', async (): Promise<void> => {
     const observation: TestObservation = new TestObservation('uid-original', true);
     const bundles: ApplyBundle[] = [];
@@ -85,10 +125,10 @@ describe('worker resource reconcile lifecycle', (): void => {
 
 class TestObservation implements KubeObservation {
   public readonly cache: Map<string, KubeObservedManifest> = new Map<string, KubeObservedManifest>();
-  public constructor(uid: string, withPod: boolean) {
+  public constructor(uid: string, withPod: boolean, bound: boolean = true) {
     this.cache.set('persistentvolumeclaims/ns/claim-data', {
       metadata: { name: 'claim-data', uid },
-      status: { phase: 'Bound' },
+      status: { phase: bound ? 'Bound' : 'Pending' },
     } as KubeObservedManifest);
     this.cache.set('deployments/ns/resource', {
       apiVersion: 'apps/v1',
@@ -155,6 +195,12 @@ class TestObservation implements KubeObservation {
   public addPod(name: string): void {
     this.cache.set(`pods/ns/${name}`, { metadata: { name } } as KubeObservedManifest);
   }
+  public bindClaims(): void {
+    const observedClaim: KubeObservedManifest | undefined = this.cache.get('persistentvolumeclaims/ns/claim-data');
+    if (observedClaim !== undefined) {
+      observedClaim.status = { phase: 'Bound' };
+    }
+  }
 }
 
 function runtime(apply: Mock, observation: KubeObservation): KubeRuntime {
@@ -189,5 +235,13 @@ function claim(
     operationId: 'operation-1',
     previousManifestJson,
     type: 'reconcile',
+  };
+}
+
+function bootstrapClaim(): WorkerClaimResourceReconcileResponse {
+  return {
+    ...claim(null),
+    expectedClaims: [],
+    type: 'bootstrap',
   };
 }

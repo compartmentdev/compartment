@@ -20,12 +20,9 @@ interface RollbackManifestMetadata {
   namespace?: string | undefined;
 }
 
-export function readBoundClaims(observation: KubeObservation): ResourceClaimIdentity[] | null {
+export function readCreatedClaims(observation: KubeObservation): ResourceClaimIdentity[] | null {
   const claims: ObservedResourceClaim[] = readObservedClaims(observation);
-  if (
-    claims.length === 0 ||
-    claims.some((claim: ObservedResourceClaim): boolean => !claim.bound || claim.uid === null)
-  ) {
+  if (claims.length === 0 || claims.some((claim: ObservedResourceClaim): boolean => claim.uid === null)) {
     return null;
   }
   return claims.map(
@@ -92,18 +89,21 @@ export async function waitUntil<T>(observation: KubeObservation, read: () => T |
     return initial;
   }
   return await new Promise<T>((resolve: (value: T) => void, reject: (error: Error) => void): void => {
-    const timer: NodeJS.Timeout = setTimeout((): void => {
-      unsubscribe();
-      reject(new Error('Timed out waiting for Kubernetes resource lifecycle evidence.'));
-    }, reconcileTimeoutMs);
-    const unsubscribe: () => void = observation.onEvent((): void => {
+    let unsubscribe: () => void = (): void => undefined;
+    const resolveWhenReady: () => void = (): void => {
       const value: T | null = read();
       if (value !== null) {
         clearTimeout(timer);
         unsubscribe();
         resolve(value);
       }
-    });
+    };
+    const timer: NodeJS.Timeout = setTimeout((): void => {
+      unsubscribe();
+      reject(new Error('Timed out waiting for Kubernetes resource lifecycle evidence.'));
+    }, reconcileTimeoutMs);
+    unsubscribe = observation.onEvent(resolveWhenReady);
+    resolveWhenReady();
   });
 }
 

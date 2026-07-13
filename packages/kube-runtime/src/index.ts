@@ -12,6 +12,7 @@ export {
 export { projectApplicationManifests } from './kube-projections';
 export {
   assertResourceClaimIdentity,
+  assertResourceClaimOwnership,
   projectResourceBootstrapClaims,
   projectResourceManifests,
   resourcePodsFullyTerminated,

@@ -1,6 +1,7 @@
 import type { ResourceClaimIdentity, WorkerClaimResourceReconcileResponse } from '@compartment/contracts';
 import {
   assertResourceClaimIdentity,
+  assertResourceClaimOwnership,
   kubeNamespaceName,
   projectResourceBootstrapClaims,
   projectResourceManifests,
@@ -12,7 +13,7 @@ import {
 } from '@compartment/kube-runtime';
 import { acknowledgeResourceReconcile, type CompartmentRequester } from '@compartment/sdk';
 import {
-  readBoundClaims,
+  readCreatedClaims,
   readObservedClaims,
   readResourcePodNames,
   readResourcePods,
@@ -57,7 +58,7 @@ async function executeBootstrap(
 ): Promise<void> {
   await runtime.apply({ objects: projectResourceBootstrapClaims(row) });
   const expectedClaims: ResourceClaimIdentity[] = await waitUntil(observation, (): ResourceClaimIdentity[] | null =>
-    readBoundClaims(observation),
+    readCreatedClaims(observation),
   );
   await acknowledgeResourceReconcile(request, { expectedClaims, leaseId, operationId, status: 'succeeded' });
 }
@@ -138,7 +139,7 @@ async function prepareManagedUpdate(
     operationId: requiredOperationId(claimed.operationId),
     rollback: readRollbackManifest(claimed.previousManifestJson, observation),
   };
-  assertResourceClaimIdentity(claimed.expectedClaims, readObservedClaims(observation));
+  assertResourceClaimOwnership(claimed.expectedClaims, readObservedClaims(observation));
   await acknowledgeResourceReconcile(request, {
     leaseId: plan.leaseId,
     operationId: plan.operationId,
@@ -185,11 +186,12 @@ async function applyManagedResourceState(
   await waitUntil(observation, (): true | null =>
     resourcePodsFullyTerminated(readResourcePods(observation)) ? true : null,
   );
-  assertResourceClaimIdentity(expectedClaims, readObservedClaims(observation));
+  assertResourceClaimOwnership(expectedClaims, readObservedClaims(observation));
   await runtime.apply({ objects: manifests });
   await waitUntil(observation, (): true | null =>
     resourceDeploymentFreshAndReady(observation, previousPodNames) ? true : null,
   );
+  assertResourceClaimIdentity(expectedClaims, readObservedClaims(observation));
 }
 
 async function acknowledgeFailure(
