@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import type { ContractSchema } from './schema.types';
+import {
+  resolvedOptionalServiceReadinessConfigSchema,
+  type ResolvedOptionalServiceReadinessConfig,
+} from './service-readiness.contract';
 
 export type DeploymentReconcileState = 'desired' | 'pending' | 'active';
 export type DeploymentReconcileObservation = 'pending' | 'ready' | 'failed';
@@ -17,6 +21,7 @@ export interface DeploymentReconcileProjection {
   organizationName: string;
   projectId: string;
   projectName: string;
+  readiness: ResolvedOptionalServiceReadinessConfig;
   releaseCommand: string | null;
   replicas: number;
   secretId: string;
@@ -81,6 +86,7 @@ const deploymentReconcileProjectionSchema: ContractSchema<DeploymentReconcilePro
     organizationName: z.string().min(1),
     projectId: z.string().min(1),
     projectName: z.string().min(1),
+    readiness: resolvedOptionalServiceReadinessConfigSchema,
     releaseCommand: z.string().min(1).nullable(),
     replicas: z.number().int().positive(),
     secretId: z.string().min(1),

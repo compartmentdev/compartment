@@ -11,6 +11,7 @@ import {
 import type { KubeSecretEnvVariable } from '../src/kube-runtime.types';
 
 interface DeploymentSpec {
+  progressDeadlineSeconds: number;
   template: {
     metadata: { annotations: Record<string, string> };
     spec: { automountServiceAccountToken: false; containers: DeploymentContainer[] };
@@ -19,6 +20,7 @@ interface DeploymentSpec {
 
 interface DeploymentContainer {
   env: KubeSecretEnvVariable[];
+  readinessProbe?: { httpGet?: { path: string; port: string } | undefined } | undefined;
 }
 
 describe('Kubernetes manifest projection goldens', (): void => {
@@ -36,6 +38,7 @@ describe('Kubernetes manifest projection goldens', (): void => {
       organizationName: 'Acme',
       projectId: 'prj-01jz',
       projectName: 'Checkout',
+      readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
       replicas: 2,
       serviceId: 'svc-01jz',
       serviceName: 'Web',
@@ -158,6 +161,19 @@ describe('Kubernetes manifest projection goldens', (): void => {
     );
   });
 
+  it('projects descriptor readiness and omits probes when readiness is disabled', (): void => {
+    const configured: DeploymentSpec = deploymentForRow(applicationRow({})).spec as DeploymentSpec;
+    const disabled: DeploymentSpec = deploymentForRow({ ...applicationRow({}), readiness: null })
+      .spec as DeploymentSpec;
+
+    expect(configured.progressDeadlineSeconds).toBe(60);
+    expect(configured.template.spec.containers[0]?.readinessProbe?.httpGet).toEqual({
+      path: '/healthz',
+      port: 'http',
+    });
+    expect(disabled.template.spec.containers[0]?.readinessProbe).toBeUndefined();
+  });
+
   it('keeps Deployment and Service identity stable while the candidate spec changes', (): void => {
     const firstRow: ApplicationProjectionRow = applicationRow({});
     const candidateRow: ApplicationProjectionRow = {
@@ -207,6 +223,7 @@ function applicationRow(env: Readonly<Record<string, string>>): ApplicationProje
     organizationName: 'Generated',
     projectId: 'prj-01jz',
     projectName: 'Generated',
+    readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
     replicas: 1,
     secretId: 'sec-01jz',
     serviceId: 'svc-01jz',

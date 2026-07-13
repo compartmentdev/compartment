@@ -103,6 +103,7 @@ function projection(releaseCommand: string | null): DeploymentReconcileProjectio
     organizationName: 'Acme',
     projectId: 'prj_1',
     projectName: 'checkout',
+    readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
     releaseCommand,
     replicas: 1,
     secretId: 'dep_candidate',

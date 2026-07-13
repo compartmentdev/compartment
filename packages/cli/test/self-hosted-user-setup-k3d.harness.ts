@@ -198,14 +198,16 @@ export async function configureK3dTrustedOutboundHosts(trustedHostList: string):
 
   const commands: readonly (readonly string[])[] = [
     [...kubectlBaseArgv, 'patch', 'configmap', k3dPlatformResourceName, '--type', 'merge', '--patch', patchPayload],
+    [...kubectlBaseArgv, 'rollout', 'restart', `deployment/${k3dPlatformResourceName}-api`],
+    [...kubectlBaseArgv, 'rollout', 'status', `deployment/${k3dPlatformResourceName}-api`, '--timeout=2m'],
     [
       ...kubectlBaseArgv,
-      'rollout',
-      'restart',
-      `deployment/${k3dPlatformResourceName}-api`,
-      `deployment/${k3dPlatformResourceName}-worker`,
+      'wait',
+      '--for=jsonpath={.subsets[0].addresses[0].ip}',
+      `service/${k3dPlatformResourceName}-api`,
+      '--timeout=2m',
     ],
-    [...kubectlBaseArgv, 'rollout', 'status', `deployment/${k3dPlatformResourceName}-api`, '--timeout=2m'],
+    [...kubectlBaseArgv, 'rollout', 'restart', `deployment/${k3dPlatformResourceName}-worker`],
     [...kubectlBaseArgv, 'rollout', 'status', `deployment/${k3dPlatformResourceName}-worker`, '--timeout=2m'],
   ];
   for (const argv of commands) {

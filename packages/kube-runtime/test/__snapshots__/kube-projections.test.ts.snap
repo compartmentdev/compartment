@@ -53,7 +53,7 @@ metadata:
   name: app-env-01jz-svc-01jz-6a4f00bb0d302109
   namespace: cpt-prj-01jz-243118a73be1a00d
 spec:
-  progressDeadlineSeconds: 45
+  progressDeadlineSeconds: 60
   replicas: 2
   selector:
     matchLabels:
@@ -112,7 +112,7 @@ spec:
           readinessProbe:
             failureThreshold: 3
             httpGet:
-              path: /
+              path: /healthz
               port: http
             initialDelaySeconds: 1
             periodSeconds: 2

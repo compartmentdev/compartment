@@ -21,6 +21,7 @@ describe('deployment reconcile contracts', (): void => {
       organizationName: 'Acme',
       projectId: 'prj_1',
       projectName: 'app',
+      readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
       releaseCommand: null,
       replicas: 1,
       secretId: 'dep_candidate',

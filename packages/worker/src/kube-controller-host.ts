@@ -17,6 +17,8 @@ import { reconcileDeploymentTarget } from './services/worker-deployment-reconcil
 import { executeResourceReconcile } from './services/worker-resource-reconcile.service';
 import { collectAndPublishPodMetrics } from './services/worker-pod-metrics.service';
 
+const controllerRequestTimeoutMs: number = 15_000;
+
 export interface KubeControllerHost {
   enabled: boolean;
   reconcile(): Promise<boolean>;
@@ -125,6 +127,7 @@ export function createKubeControllerHost(config: WorkerConfig): KubeControllerHo
   const request: CompartmentRequester = createCompartmentRequester({
     apiUrl: config.apiUrl,
     internalToken: config.runtimeControlToken,
+    requestTimeoutMs: controllerRequestTimeoutMs,
   });
   const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
   return new RegisteredKubeControllerHost([
