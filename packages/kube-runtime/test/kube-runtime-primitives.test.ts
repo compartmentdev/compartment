@@ -270,6 +270,17 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(objectApi.events.at(-1)).toBe('delete:ClusterRoleBinding');
   });
 
+  it('treats already-removed bootstrap cleanup objects as converged', async (): Promise<void> => {
+    objectApi.deleteError = Object.assign(new Error('not found'), { statusCode: 404 });
+    const runtime: KubeRuntime = new KubeRuntime(
+      { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
+      { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
+    );
+
+    await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-retry')));
+    expect(objectApi.deletes).toMatchObject([{ kind: 'RoleBinding' }, { kind: 'ClusterRoleBinding' }]);
+  });
+
   it('uses installation authority to remove bootstrap access after a partial create failure', async (): Promise<void> => {
     objectApi.failCreateKind = 'RoleBinding';
     const runtime: KubeRuntime = new KubeRuntime(

@@ -66,6 +66,15 @@ export function jobObservationInput(spec: KubeJobSpec): ObserveLabels {
   };
 }
 
+async function deleteObjects(objectApi: KubernetesObjectApi | null, objects: KubeManifest[]): Promise<void> {
+  if (objectApi === null) {
+    return;
+  }
+  for (const object of objects) {
+    await deleteObjectIgnoringNotFound(objectApi, object);
+  }
+}
+
 export async function deleteObjectIgnoringNotFound(
   objectApi: KubernetesObjectApi,
   object: KubeManifest,
@@ -97,13 +106,4 @@ export function findJobPodNames(cache: ReadonlyMap<string, KubeObservedManifest>
     .map((pod: KubeObservedManifest): string => pod.metadata?.name ?? '')
     .filter((podName: string): boolean => podName !== '')
     .sort((leftName: string, rightName: string): number => leftName.localeCompare(rightName));
-}
-
-async function deleteObjects(objectApi: KubernetesObjectApi | null, objects: KubeManifest[]): Promise<void> {
-  if (objectApi === null) {
-    return;
-  }
-  for (const object of objects) {
-    await objectApi.delete(object);
-  }
 }
