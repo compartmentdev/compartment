@@ -20,6 +20,7 @@ import { expect } from 'vitest';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import { requireActivationToken } from './self-hosted-user-setup-cli-response.harness';
 import {
+  expectFailedCommand,
   expectSuccessfulCommand,
   runCommand,
   type SelfHostedUserSetupCommandResult,
@@ -72,7 +73,7 @@ export async function expectK3dWorkerNamespaceIsolation(): Promise<void> {
       argv: ['kubectl', '--context', seed.kubeContext, 'auth', 'can-i', ...assertion, `--as=${workerIdentity}`],
       timeoutMs: k3dKubectlCommandTimeoutMs,
     });
-    expectSuccessfulCommand(result, `verify worker RBAC denial: ${assertion.join(' ')}`, 'no');
+    expectFailedCommand(result, `verify worker RBAC denial: ${assertion.join(' ')}`);
     expect(result.stdout.trim()).toBe('no');
   }
 }
