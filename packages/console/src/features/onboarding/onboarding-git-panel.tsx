@@ -117,6 +117,9 @@ function GitPrepareStep(props: Readonly<GitPrepareStepProps>): JSX.Element {
 }
 
 function GitConnectedPrepareStep(props: Readonly<GitPrepareStepProps>): JSX.Element {
+  if (props.state.repositoryLoadStatus === 'token_invalid') {
+    return renderGitLabTokenFailure(props.navigate);
+  }
   if (props.state.formInput === null) {
     return <GitRepositoryLoadStep navigate={props.navigate} provider={props.routeState.provider} state={props.state} />;
   }

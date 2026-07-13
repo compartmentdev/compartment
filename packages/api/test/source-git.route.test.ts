@@ -314,6 +314,21 @@ describe('git source routes', (): void => {
     });
   });
 
+  it('requires source management permission to list GitLab registration repositories', async (): Promise<void> => {
+    prepareAuthenticatedRoute('deployer');
+
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const response: LightMyRequestResponse = await app.inject({
+        headers: createAuthenticatedHeaders(),
+        method: 'GET',
+        url: '/v1/sources/git/providers/gitlab/registrations/gpr_123/repositories',
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(response.body).toContain('forbidden');
+    });
+  });
+
   it('rejects bootstrap start with an unsafe return path', async (): Promise<void> => {
     prepareAuthenticatedRoute('admin');
 

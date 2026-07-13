@@ -166,6 +166,33 @@ describe('git source connect persistence', (): void => {
     });
   });
 
+  it('rejects a duplicate active GitLab registration in the same organization', async (): Promise<void> => {
+    await expect(
+      createGitLabProviderRegistration(db, {
+        accessTokenCiphertext: 'duplicate-token',
+        accessTokenEncryptionKeyId: 'duplicate-key',
+        callbackUrl: 'https://console.example',
+        createdByPrincipalId: 'prn_git_sources',
+        id: 'gpr_gitlab_duplicate',
+        installationAccountLogin: 'alice',
+        installationAccountType: 'User',
+        organizationId: 'org_git_sources',
+        providerHost: 'gitlab.com',
+        repositoryOwner: 'alice',
+        updatedAt: new Date('2026-04-28T12:00:00.000Z'),
+        webhookSecretCiphertext: 'duplicate-secret',
+        webhookSecretEncryptionKeyId: 'duplicate-secret-key',
+        webhookUrl:
+          'https://console.example/v1/sources/git/providers/gitlab/organizations/org_git_sources/registrations/gpr_gitlab_duplicate/webhook',
+      }),
+    ).rejects.toMatchObject({
+      cause: {
+        code: '23505',
+        constraint: 'git_provider_registrations_active_gitlab_organization_owner_uni',
+      },
+    });
+  });
+
   it('reactivates a disconnected source and updates source defaults on reconnect', async (): Promise<void> => {
     await db.transaction(async (transaction: SourceMutationTransaction): Promise<void> => {
       await persistConnectedGitSource(transaction, buildPersistInput('repo_1'), new Date('2026-04-28T10:00:00.000Z'));

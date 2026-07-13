@@ -52,6 +52,20 @@ describe('GitLab registration service', (): void => {
     expect(rotateGitLabProviderRegistrationToken).toHaveBeenCalledOnce();
     expect(createGitLabProviderRegistration).not.toHaveBeenCalled();
   });
+
+  it('rotates the registration created by a concurrent request', async (): Promise<void> => {
+    const raced: GitProviderRegistrationRow = buildRegistration();
+    const postgresError: NodeJS.ErrnoException = new Error('duplicate registration');
+    postgresError.code = '23505';
+    const uniqueError: Error = new Error('query failed', { cause: postgresError });
+    vi.mocked(readGitLabUser).mockResolvedValue({ username: 'alice' });
+    vi.mocked(findActiveGitLabProviderRegistration).mockResolvedValueOnce(undefined).mockResolvedValueOnce(raced);
+    vi.mocked(createGitLabProviderRegistration).mockRejectedValueOnce(uniqueError);
+    vi.mocked(rotateGitLabProviderRegistrationToken).mockResolvedValueOnce(raced);
+
+    await expect(createGitLabRegistration(buildInput())).resolves.toMatchObject({ registrationId: raced.id });
+    expect(rotateGitLabProviderRegistrationToken).toHaveBeenCalledOnce();
+  });
 });
 
 function buildInput(): CreateGitLabRegistrationInput {
