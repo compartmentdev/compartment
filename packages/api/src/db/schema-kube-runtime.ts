@@ -1,4 +1,13 @@
-import { index, integer, pgTable, text, timestamp, uniqueIndex, type PgTableExtraConfig } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  type PgTableExtraConfig,
+} from 'drizzle-orm/pg-core';
 import { deployments } from './schema-deploy';
 import type * as KubeRuntimeSchemaTypes from './schema-kube-runtime.types';
 
@@ -66,7 +75,7 @@ export const deploymentProductLogs: KubeRuntimeSchemaTypes.DeploymentProductLogs
     containerName: text('container_name').notNull(),
     restartIdentity: text('restart_identity').notNull(),
     sourceFingerprint: text('source_fingerprint').notNull(),
-    sourceOffset: integer('source_offset').notNull(),
+    sourceOffset: bigint('source_offset', { mode: 'number' }).notNull(),
     stream: text('stream', { enum: ['stdout', 'stderr'] }).notNull(),
     message: text('message').notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),

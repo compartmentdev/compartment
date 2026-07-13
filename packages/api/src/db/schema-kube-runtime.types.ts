@@ -8,6 +8,7 @@ import type {
   PgExtraConfigColumnsOf,
   PgTableOf,
   PrimaryTextBuilder,
+  RequiredBigIntNumberBuilder,
   RequiredEnumTextBuilder,
   RequiredIntegerBuilder,
   RequiredTimestampBuilder,
@@ -70,7 +71,7 @@ interface DeploymentProductLogsColumnBuilders {
   containerName: RequiredTextBuilder<'container_name'>;
   restartIdentity: RequiredTextBuilder<'restart_identity'>;
   sourceFingerprint: RequiredTextBuilder<'source_fingerprint'>;
-  sourceOffset: RequiredIntegerBuilder<'source_offset'>;
+  sourceOffset: RequiredBigIntNumberBuilder<'source_offset'>;
   stream: RequiredEnumTextBuilder<'stream', ['stdout', 'stderr']>;
   message: RequiredTextBuilder<'message'>;
   occurredAt: RequiredTimestampBuilder<'occurred_at'>;

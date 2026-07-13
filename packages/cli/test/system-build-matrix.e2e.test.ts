@@ -6,6 +6,7 @@ import { expect, it } from 'vitest';
 import {
   deploymentInspectResponseSchema,
   deploymentLogsResponseSchema,
+  deploymentStatusResponseSchema,
   variableResponseSchema,
   type DeploymentInspectResponse,
   type DeploymentInspectRuntimeSummary,
@@ -469,7 +470,7 @@ async function expectMultiServiceRollback(
 
   const rollbackPayload: DeploymentStatusResponse = await admin.runJson(
     `rollback --project ${fixture.name}`,
-    deploymentStatusCommandResponseParser,
+    deploymentStatusResponseSchema,
   );
   const rollbackInspect: DeploymentInspectResponse = await admin.runJson(
     `inspect --project ${fixture.name}`,

@@ -5,7 +5,7 @@ CREATE TABLE "deployment_product_logs" (
 	"namespace" text NOT NULL,
 	"container_name" text NOT NULL,
 	"restart_identity" text NOT NULL,
-	"source_offset" integer NOT NULL,
+	"source_offset" bigint NOT NULL,
 	"source_fingerprint" text NOT NULL,
 	"stream" text NOT NULL,
 	"message" text NOT NULL,

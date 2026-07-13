@@ -3905,7 +3905,7 @@
         },
         "source_offset": {
           "name": "source_offset",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },

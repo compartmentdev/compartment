@@ -209,6 +209,26 @@ describe('deployment Kubernetes transition persistence', (): void => {
     ).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
   });
 
+  it('stores source offsets beyond the PostgreSQL integer range', async (): Promise<void> => {
+    const [event]: ProductLogIngestEvent[] = buildProductLogSequence(
+      '77777777-7777-4777-8777-777777777777',
+      'large-offset',
+      0,
+      1,
+    );
+
+    await expect(ingestDeploymentProductLogs([{ ...event!, sourceOffset: 2_147_483_648 }])).resolves.toEqual({
+      accepted: 1,
+      duplicates: 0,
+      rejected: 0,
+    });
+    const [storedEvent] = await db
+      .select({ sourceOffset: deploymentProductLogs.sourceOffset })
+      .from(deploymentProductLogs)
+      .where(eq(deploymentProductLogs.podUid, '77777777-7777-4777-8777-777777777777'));
+    expect(storedEvent?.sourceOffset).toBe(2_147_483_648);
+  });
+
   it('deletes expired product logs in bounded retention batches', async (): Promise<void> => {
     const retainedEvents: ProductLogIngestEvent[] = [
       {

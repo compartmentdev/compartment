@@ -18,6 +18,7 @@ import {
   deploymentListResponseSchema,
   deploymentLogsResponseSchema,
   deploymentRunLogsResponseSchema,
+  deploymentStatusResponseSchema,
   gitSourceListResponseSchema,
   importVariableGroupResponseSchema,
   importVariablesResponseSchema,
@@ -1074,7 +1075,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const rollbackPayload: DeploymentStatusResponse = await admin.runJson(
         `rollback --project ${app.projectName}`,
-        deploymentStatusCommandResponseParser,
+        deploymentStatusResponseSchema,
       );
       const rolledBackDeployment: DeploymentReadSummary = requireSingleActiveDeployment(
         rollbackPayload,
@@ -1108,7 +1109,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       const promotedPayload: DeploymentStatusResponse = await admin.runJson(
         `promote --project ${app.projectName} --from staging --to production`,
-        deploymentStatusCommandResponseParser,
+        deploymentStatusResponseSchema,
       );
       const promotedDeployment: DeploymentReadSummary = requireSingleActiveDeployment(promotedPayload, app.serviceName);
       expect(promotedDeployment.id).not.toBe(stagingDeployment.id);
