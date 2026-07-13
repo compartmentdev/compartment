@@ -1,8 +1,10 @@
 import { expect } from 'vitest';
 import {
+  deploymentMetricsSnapshotSchema,
   deploymentStatusResponseSchema,
   type AuditEventListResponse,
   type AuditEventSummary,
+  type DeploymentMetricsSnapshot,
   type DeploymentInspectResponse,
   type DeploymentInspectTarget,
   type DeploymentReadSummary,
@@ -17,6 +19,25 @@ import type { SelfHostedUserSetupJsonParser } from './self-hosted-user-setup-com
 export interface SelfHostedDeployCommandResponse extends DeploymentStatusResponse {
   readonly resources: ResourceSummary[];
 }
+
+interface DeploymentStatusCommandResponse extends DeploymentStatusResponse {
+  readonly metrics: DeploymentMetricsSnapshot;
+}
+
+class DeploymentStatusCommandResponseParser implements SelfHostedUserSetupJsonParser<DeploymentStatusCommandResponse> {
+  parse(input: JsonValue): DeploymentStatusCommandResponse {
+    const payload: Record<string, JsonValue | undefined> = readJsonRecord(input);
+    const { metrics, ...statusPayload } = payload;
+
+    return {
+      ...deploymentStatusResponseSchema.parse(statusPayload),
+      metrics: deploymentMetricsSnapshotSchema.parse(metrics),
+    };
+  }
+}
+
+export const deploymentStatusCommandResponseParser: SelfHostedUserSetupJsonParser<DeploymentStatusCommandResponse> =
+  new DeploymentStatusCommandResponseParser();
 
 type ParsedDeployResource = JsonValue & ResourceSummary;
 

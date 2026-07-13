@@ -4,6 +4,7 @@ import {
   type DeploymentRunLogsResponse,
   type DeploymentRunStepSummary,
   type DeploymentRunSummary,
+  type DeploymentMetricsSnapshot,
 } from '@compartment/contracts/browser';
 import type {
   BrowserDeploymentDetailsPageResult,
@@ -64,6 +65,7 @@ export function createDeploymentDetailsPageResult(
     deployments,
     environmentName: 'production',
     lines,
+    metrics: { observedAt: null, pods: [], state: 'unavailable' },
     organizationContext: { kind: 'selected', selectedOrganizationSlug: 'acme-dev' },
     organizations: [
       {
@@ -82,6 +84,10 @@ export function createDeploymentDetailsPageResult(
   };
 
   return result;
+}
+
+export function createDeploymentMetricsSnapshot(): DeploymentMetricsSnapshot {
+  return { observedAt: null, pods: [], state: 'unavailable' };
 }
 
 export function createDeploymentReadSummary(overrides?: Partial<DeploymentReadSummary>): DeploymentReadSummary {

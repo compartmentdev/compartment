@@ -1,5 +1,6 @@
 import type {
   DeploymentReadSummary,
+  DeploymentMetricsSnapshot,
   DeploymentRunLogLine,
   DeploymentRunStepSummary,
   DeploymentRunSummary,
@@ -32,6 +33,7 @@ export interface BrowserDeploymentDetailsPageResult {
   errorMessage?: string | undefined;
   environmentName: string;
   lines: DeploymentRunLogLine[];
+  metrics: DeploymentMetricsSnapshot;
   organizationContext: BrowserConsoleOrganizationContext;
   organizations: BrowserOrganizationOption[];
   principalEmail: string;

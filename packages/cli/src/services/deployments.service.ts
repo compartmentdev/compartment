@@ -1,13 +1,16 @@
 import type {
   DeployResponse,
   DeploymentInspectResponse,
+  DeploymentMetricsSnapshot,
   DeploymentLogsResponse,
   DeploymentStatusResponse,
+  DeploymentStatusQuery,
   CompartmentAuthoredDescriptor,
 } from '@compartment/contracts';
 import {
   deployProject as deployProjectApi,
   getDeploymentInspect,
+  getDeploymentMetrics,
   getDeploymentLogs,
   getDeploymentStatus,
   type CompartmentRequester,
@@ -22,6 +25,7 @@ import type {
   DeployCommandResult,
   InspectCommandInput,
   LogsCommandInput,
+  DeploymentStatusView,
   StatusCommandInput,
 } from './deployments.types';
 import type { StoredProjectDescriptor } from './project-descriptor.types';
@@ -74,16 +78,32 @@ async function submitProjectDeployment(
 export async function getProjectDeploymentStatus(
   context: AuthenticatedContext,
   input: StatusCommandInput,
-): Promise<DeploymentStatusResponse> {
+): Promise<DeploymentStatusView> {
   const request: CompartmentRequester = createProjectRequester(context);
   const target: ResolvedProjectTarget = await resolveProjectTarget(input.cwd, input.projectName);
   const environmentName: string | undefined = input.environmentName;
 
-  return await getDeploymentStatus(request, {
+  const query: DeploymentStatusQuery = {
     environmentName,
     projectName: target.projectName,
     serviceName: input.serviceName,
-  });
+  };
+  const [status, metrics]: [DeploymentStatusResponse, DeploymentMetricsSnapshot] = await Promise.all([
+    getDeploymentStatus(request, query),
+    readDeploymentMetrics(request, query),
+  ]);
+  return { ...status, metrics };
+}
+
+async function readDeploymentMetrics(
+  request: CompartmentRequester,
+  query: DeploymentStatusQuery,
+): Promise<DeploymentMetricsSnapshot> {
+  try {
+    return await getDeploymentMetrics(request, query);
+  } catch {
+    return { observedAt: null, pods: [], state: 'unavailable' };
+  }
 }
 
 export async function getProjectDeploymentInspect(

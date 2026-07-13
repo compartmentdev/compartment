@@ -58,7 +58,7 @@
     "test:fast:ci": "pnpm test",
     "test:db": "dotenv -e .env -e .env.test.local -- vitest run --config ./vitest.db.config.mts",
     "test:integration": "pnpm test:db",
-    "test:deploy:e2e": "pnpm cli:build:sea:source && pnpm --filter @compartment/node test:docker-boundary && pnpm --filter @compartment/cli test:e2e",
+    "test:deploy:e2e": "pnpm cli:build:sea:source && pnpm --filter @compartment/node test:docker-boundary && pnpm --filter @compartment/worker test:e2e && pnpm --filter @compartment/cli test:e2e",
     "test:ci": "pnpm test:scripts && turbo run test --force --concurrency=1 && pnpm test:db && pnpm test:deploy:e2e",
     "test:coverage": "vitest run --config ./vitest.config.mts --dir packages --passWithNoTests --coverage",
     "test:coverage:all": "dotenv -e .env -e .env.test.local -- vitest run --config ./vitest.coverage.all.config.mts --dir packages --passWithNoTests --coverage",

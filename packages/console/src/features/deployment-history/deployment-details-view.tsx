@@ -21,6 +21,7 @@ import { buildBrowserConsoleProjectsHref } from '../console/console-hrefs';
 import { readBrowserConsoleOrganizationControl } from '../console/console-organization-control';
 import {
   DeploymentDetailsLogsSection,
+  DeploymentDetailsMetricsSection,
   DeploymentDetailsServicesSection,
   DeploymentDetailsSummarySection,
   DeploymentDetailsTimelineSection,
@@ -99,6 +100,7 @@ function DeploymentDetailsSections({ data }: Readonly<DeploymentDetailsSectionsP
       <DeploymentDetailsSummarySection deployment={data.deployment} />
       <DeploymentDetailsServicesSection deployments={data.deployments} />
       <DeploymentDetailsTimelineSection steps={data.steps} />
+      <DeploymentDetailsMetricsSection metrics={data.metrics} />
       <DeploymentDetailsLogsSection lines={data.lines} />
     </>
   );

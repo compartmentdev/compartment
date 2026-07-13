@@ -14,6 +14,7 @@ import { registerPostDeployRoute } from '../deployments/post-deploy.route';
 import { registerPostPromoteRoute } from '../deployments/post-promote.route';
 import { registerPostRollbackRoute } from '../deployments/post-rollback.route';
 import { registerGetDeploymentStatusRoute } from '../deployments/get-deployment-status.route';
+import { registerGetDeploymentMetricsRoute } from '../deployments/get-deployment-metrics.route';
 import { registerGetWhoAmIRoute } from '../identity/get-whoami.route';
 import { registerGetOrganizationsRoute } from '../organizations/get-organizations.route';
 import { registerOrganizationSettingsRoutes } from '../organization-settings/organization-settings.route';
@@ -87,6 +88,7 @@ const currentOrganizationProtectedRouteRegistrars: ProtectedRouteRegistrar[] = [
   registerPostRollbackRoute,
   registerGetDeploymentInspectRoute,
   registerGetDeploymentStatusRoute,
+  registerGetDeploymentMetricsRoute,
   registerGetDeploymentLogsRoute,
   registerGetDeploymentRunLogsRoute,
   registerGetDeploymentListRoute,

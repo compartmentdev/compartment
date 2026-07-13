@@ -4,7 +4,6 @@ import {
   projectDeleteResponseSchema,
   projectLifecycleResponseSchema,
   projectResponseSchema,
-  deploymentStatusResponseSchema,
   deploymentRunLogsResponseSchema,
   type DeploymentReadSummary,
   type DeploymentRunLogsResponse,
@@ -18,6 +17,7 @@ import { expect } from 'vitest';
 import { sendCliHttpTextRequest, type CliHttpTextResponse } from './cli-http-test.harness';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-command.harness';
+import { deploymentStatusCommandResponseParser } from './self-hosted-user-setup-cli-response.harness';
 
 const deploymentRunPollAttempts: number = 90;
 const deploymentRunPollDelayMs: number = 2_000;
@@ -149,7 +149,7 @@ async function waitForSingleActiveDeployment(
   for (let attempt: number = 0; attempt < deploymentRunPollAttempts; attempt += 1) {
     const payload: DeploymentStatusResponse = await cli.runJson(
       `status --project ${projectName}`,
-      deploymentStatusResponseSchema,
+      deploymentStatusCommandResponseParser,
     );
     const deployments: DeploymentReadSummary[] = payload.activeDeployments.filter(
       (candidate: DeploymentReadSummary): boolean => candidate.serviceName === serviceName,
@@ -195,7 +195,7 @@ export async function expectExplicitProjectLifecycleFlow(
 
   const stoppedStatus: DeploymentStatusResponse = await cli.runJson(
     `status --project ${projectName}`,
-    deploymentStatusResponseSchema,
+    deploymentStatusCommandResponseParser,
   );
   expect(stoppedStatus.activeDeployments).toEqual([]);
   expect(stoppedStatus.deployments.some(isStoppedDeployment(serviceName))).toBe(true);

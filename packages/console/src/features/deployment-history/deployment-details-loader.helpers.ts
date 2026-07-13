@@ -1,6 +1,10 @@
 import {
   compartmentDeploymentRunLogsPathname,
   compartmentDeploymentsPathname,
+  compartmentDeploymentMetricsPathname,
+  type DeploymentMetricsSnapshot,
+  type DeploymentReadSummary,
+  type PodResourceMetric,
   type DeploymentRunLogsQuery,
   type DeploymentRunLogsResponse,
 } from '@compartment/contracts/browser';
@@ -16,6 +20,7 @@ interface BuildDeploymentDetailsPageResultInput {
   projectName: string;
   query: DeploymentHistoryLocationQuery;
   runLogs: DeploymentRunLogsResponse;
+  metrics: DeploymentMetricsSnapshot;
   selectedOrganizationSlug: string;
 }
 
@@ -69,6 +74,13 @@ export function buildDeploymentRunLogsPath(projectName: string, deploymentRunId:
   return `${compartmentDeploymentRunLogsPathname}?${searchParams.toString()}`;
 }
 
+export function buildDeploymentMetricsStatusPath(projectName: string, environmentName: string): string {
+  const searchParams: URLSearchParams = new URLSearchParams();
+  appendOptionalSearchParam(searchParams, 'projectName', projectName);
+  appendOptionalSearchParam(searchParams, 'environmentName', environmentName);
+  return `${compartmentDeploymentMetricsPathname}?${searchParams.toString()}`;
+}
+
 export function buildDeploymentDetailsPageResult(
   input: BuildDeploymentDetailsPageResultInput,
 ): BrowserDeploymentDetailsPageResult {
@@ -81,8 +93,22 @@ export function buildDeploymentDetailsPageResult(
     deployments: input.runLogs.deployments,
     environmentName: input.runLogs.environment.name,
     lines: input.runLogs.lines,
+    metrics: filterRunMetrics(input.metrics, input.runLogs),
     projectName: input.runLogs.project.name,
     steps: input.runLogs.steps,
+  };
+}
+
+function filterRunMetrics(
+  metrics: DeploymentMetricsSnapshot,
+  runLogs: DeploymentRunLogsResponse,
+): DeploymentMetricsSnapshot {
+  const deploymentIds: Set<string> = new Set<string>(
+    runLogs.deployments.map((deployment: DeploymentReadSummary): string => deployment.id),
+  );
+  return {
+    ...metrics,
+    pods: metrics.pods.filter((pod: PodResourceMetric): boolean => deploymentIds.has(pod.deploymentId)),
   };
 }
 

@@ -1,15 +1,22 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { CompartmentAuthoredDescriptor, DeployResponse, DeploymentStatusResponse } from '@compartment/contracts';
+import type {
+  CompartmentAuthoredDescriptor,
+  DeployResponse,
+  DeploymentMetricsSnapshot,
+  DeploymentStatusResponse,
+} from '@compartment/contracts';
 import type * as CompartmentSdk from '@compartment/sdk';
 import type {
   CompartmentRequester,
   deployProject as deployProjectApi,
+  getDeploymentMetrics,
+  getDeploymentStatus,
   promoteDeployment,
   rollbackDeployment,
 } from '@compartment/sdk';
 import type * as SourceArchiveModule from '@compartment/source-archive';
 import type { createSourceArchive } from '@compartment/source-archive';
-import { deployProject } from '../src/services/deployments.service';
+import { deployProject, getProjectDeploymentStatus } from '../src/services/deployments.service';
 import { promoteProjectDeployment, rollbackProjectDeployment } from '../src/services/deployment-movement.service';
 import type * as DeploymentOperationRunnerModule from '../src/services/deployment-operation-runner.service';
 import type {
@@ -26,6 +33,8 @@ import { createActiveDeploymentStatusResponseFixture, createDeployResponseFixtur
 type CreateProjectRequester = typeof createProjectRequester;
 type CreateSourceArchive = typeof createSourceArchive;
 type DeployProjectApi = typeof deployProjectApi;
+type GetDeploymentMetrics = typeof getDeploymentMetrics;
+type GetDeploymentStatus = typeof getDeploymentStatus;
 type ImportCompartmentSdkOriginal = () => Promise<typeof CompartmentSdk>;
 type PromoteDeploymentApi = typeof promoteDeployment;
 type ResolveProjectTarget = typeof resolveProjectTarget;
@@ -36,6 +45,8 @@ interface DeploymentProgressServiceMocks {
   createProjectRequester: Mock<CreateProjectRequester>;
   createSourceArchive: Mock<CreateSourceArchive>;
   deployProjectApi: Mock<DeployProjectApi>;
+  getDeploymentMetrics: Mock<GetDeploymentMetrics>;
+  getDeploymentStatus: Mock<GetDeploymentStatus>;
   promoteDeploymentApi: Mock<PromoteDeploymentApi>;
   resolveProjectTarget: Mock<ResolveProjectTarget>;
   rollbackDeploymentApi: Mock<RollbackDeploymentApi>;
@@ -47,6 +58,8 @@ const mocks: DeploymentProgressServiceMocks = vi.hoisted(
     createProjectRequester: vi.fn<CreateProjectRequester>(),
     createSourceArchive: vi.fn<CreateSourceArchive>(),
     deployProjectApi: vi.fn<DeployProjectApi>(),
+    getDeploymentMetrics: vi.fn<GetDeploymentMetrics>(),
+    getDeploymentStatus: vi.fn<GetDeploymentStatus>(),
     promoteDeploymentApi: vi.fn<PromoteDeploymentApi>(),
     resolveProjectTarget: vi.fn<ResolveProjectTarget>(),
     rollbackDeploymentApi: vi.fn<RollbackDeploymentApi>(),
@@ -59,6 +72,8 @@ vi.mock('@compartment/sdk', async (importOriginal: ImportCompartmentSdkOriginal)
   return {
     ...actual,
     deployProject: mocks.deployProjectApi,
+    getDeploymentMetrics: mocks.getDeploymentMetrics,
+    getDeploymentStatus: mocks.getDeploymentStatus,
     promoteDeployment: mocks.promoteDeploymentApi,
     rollbackDeployment: mocks.rollbackDeploymentApi,
   };
@@ -97,6 +112,8 @@ describe('deployment progress services', (): void => {
     mocks.createProjectRequester.mockReset();
     mocks.createSourceArchive.mockReset();
     mocks.deployProjectApi.mockReset();
+    mocks.getDeploymentMetrics.mockReset();
+    mocks.getDeploymentStatus.mockReset();
     mocks.promoteDeploymentApi.mockReset();
     mocks.resolveProjectTarget.mockReset();
     mocks.rollbackDeploymentApi.mockReset();
@@ -112,6 +129,8 @@ describe('deployment progress services', (): void => {
       },
     });
     mocks.deployProjectApi.mockResolvedValue(deployResponse);
+    mocks.getDeploymentMetrics.mockResolvedValue({ observedAt: null, pods: [], state: 'unavailable' });
+    mocks.getDeploymentStatus.mockResolvedValue(statusResponse);
     mocks.promoteDeploymentApi.mockResolvedValue(deployResponse);
     mocks.resolveProjectTarget.mockResolvedValue(createResolvedProjectTarget());
     mocks.rollbackDeploymentApi.mockResolvedValue(deployResponse);
@@ -134,6 +153,21 @@ describe('deployment progress services', (): void => {
       'Submitting deployment...',
       'Waiting for deployment to finish...',
     ]);
+  });
+
+  it('keeps status available when the optional metrics request fails', async (): Promise<void> => {
+    mocks.getDeploymentMetrics.mockRejectedValueOnce(new Error('metrics-server unavailable'));
+
+    const result: DeploymentStatusResponse & { metrics: DeploymentMetricsSnapshot } = await getProjectDeploymentStatus(
+      createAuthenticatedContext(),
+      {
+        cwd: '/tmp/smoke-web',
+        projectName: 'smoke-web',
+      },
+    );
+
+    expect(result.metrics).toEqual({ observedAt: null, pods: [], state: 'unavailable' });
+    expect(result.deployments).toEqual(createActiveDeploymentStatusResponseFixture().deployments);
   });
 
   it('reports promote and rollback phases from the service path', async (): Promise<void> => {

@@ -54,6 +54,7 @@ export {
   compartmentDeploymentsRollbackPathname,
   compartmentDeploymentRunLogsPathname,
   compartmentDeploymentsStatusPathname,
+  compartmentDeploymentMetricsPathname,
   compartmentAuditEventsPathname,
   compartmentFirstDeployOnboardingPathname,
   compartmentGroupsPathname,
@@ -137,6 +138,11 @@ export {
   deploymentListResponseSchema,
 } from './contracts/deployment-movement.contract';
 export { type DeploymentReadSummary } from './contracts/deployment-read.contract';
+export {
+  deploymentMetricsSnapshotSchema,
+  type DeploymentMetricsSnapshot,
+  type PodResourceMetric,
+} from './contracts/deployment-metrics.contract';
 export {
   type DeploymentReadRunGroup,
   buildDeploymentReadRunGroups,

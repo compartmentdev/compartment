@@ -1,5 +1,7 @@
-import { CoreV1Api, KubernetesObjectApi, type KubeConfig } from '@kubernetes/client-node';
+import { CoreV1Api, KubernetesObjectApi, Metrics, type KubeConfig } from '@kubernetes/client-node';
 import { createKubeObservation } from './kube-observation';
+import { readKubePodMetrics } from './kube-pod-metrics';
+import type { KubePodMetricObservation, ObservePodMetrics } from './kube-pod-metrics.types';
 import {
   kubeFinalizedJobManifest,
   kubeJobManifest,
@@ -14,6 +16,7 @@ import {
   deleteObjectIgnoringNotFound,
   deleteObjectsPreservingPrimary,
   findJobPodNames,
+  requireCleanupObjectApi,
   isJobTimeoutError,
   jobObservationInput,
   readHttpStatusCode,
@@ -84,7 +87,7 @@ export class KubeRuntime {
 
   public async apply(bundle: ApplyBundle): Promise<KubeManifest[]> {
     const cleanup: KubeManifest[] = bundle.deleteAfterApply ?? [];
-    const cleanupObjectApi: KubernetesObjectApi | null = this.requiredCleanupApi(cleanup);
+    const cleanupObjectApi: KubernetesObjectApi | null = requireCleanupObjectApi(cleanup, this.cleanupObjectApi);
     let applied: KubeManifest[] = [];
     let primaryError: Error | null = null;
     try {
@@ -110,15 +113,12 @@ export class KubeRuntime {
     return applied;
   }
 
-  private requiredCleanupApi(cleanup: KubeManifest[]): KubernetesObjectApi | null {
-    if (cleanup.length > 0 && this.cleanupObjectApi === null) {
-      throw new Error('Kubernetes provisioning cleanup requires a separate installation identity.');
-    }
-    return this.cleanupObjectApi;
-  }
-
   public async observe(input: ObserveLabels): Promise<KubeObservation> {
     return await createKubeObservation(this.kubeConfig, this.objectApi, input);
+  }
+
+  public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricObservation[]> {
+    return await readKubePodMetrics(this.coreApi, new Metrics(this.kubeConfig), input);
   }
 
   public async logs(reference: KubeLogReference): Promise<string> {

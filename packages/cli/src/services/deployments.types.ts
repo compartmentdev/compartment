@@ -2,11 +2,16 @@ import type {
   DeploymentLatestRunLogsQuery,
   DeploymentRunLogsByIdQuery,
   DeploymentStatusResponse,
+  DeploymentMetricsSnapshot,
   ResourceSummary,
 } from '@compartment/contracts';
 import type { CommandProgressReporter } from './progress.types';
 
 export type DeploymentStatusReporter = (status: DeploymentStatusResponse) => void;
+
+export interface DeploymentStatusView extends DeploymentStatusResponse {
+  metrics: DeploymentMetricsSnapshot;
+}
 
 export interface DeployCommandResult extends DeploymentStatusResponse {
   resources: ResourceSummary[];

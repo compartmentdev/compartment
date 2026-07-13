@@ -1,4 +1,13 @@
-import { index, integer, pgTable, text, timestamp, uniqueIndex, type PgTableExtraConfig } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  type PgTableExtraConfig,
+} from 'drizzle-orm/pg-core';
 import { deployments } from './schema-deploy';
 import type * as KubeRuntimeSchemaTypes from './schema-kube-runtime.types';
 
@@ -52,4 +61,46 @@ export const productJobRuns: KubeRuntimeSchemaTypes.ProductJobRunsTable = pgTabl
     identityIndex: uniqueIndex('product_job_runs_class_identity_idx').on(table.jobClass, table.identityId),
     statusIndex: index('product_job_runs_status_created_at_idx').on(table.status, table.createdAt),
   }),
+);
+
+export const deploymentProductLogs: KubeRuntimeSchemaTypes.DeploymentProductLogsTable = pgTable(
+  'deployment_product_logs',
+  {
+    deploymentId: text('deployment_id')
+      .notNull()
+      .references((): typeof deployments.id => deployments.id, { onDelete: 'cascade' }),
+    podUid: text('pod_uid').notNull(),
+    podName: text('pod_name').notNull(),
+    namespace: text('namespace').notNull(),
+    containerName: text('container_name').notNull(),
+    restartIdentity: text('restart_identity').notNull(),
+    sourceFingerprint: text('source_fingerprint').notNull(),
+    sourceOffset: bigint('source_offset', { mode: 'number' }).notNull(),
+    stream: text('stream', { enum: ['stdout', 'stderr'] }).notNull(),
+    message: text('message').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table: KubeRuntimeSchemaTypes.DeploymentProductLogsExtraConfigColumns): PgTableExtraConfig => ({
+    deploymentOccurredAtIndex: index('deployment_product_logs_deployment_occurred_at_idx').on(
+      table.deploymentId,
+      table.occurredAt,
+    ),
+    identityOffsetIndex: uniqueIndex('deployment_product_logs_identity_offset_idx').on(
+      table.podUid,
+      table.containerName,
+      table.restartIdentity,
+      table.sourceOffset,
+      table.sourceFingerprint,
+    ),
+    retentionIndex: index('deployment_product_logs_captured_at_idx').on(table.capturedAt),
+  }),
+);
+
+export const productLogStoreQuota: KubeRuntimeSchemaTypes.ProductLogStoreQuotaTable = pgTable(
+  'product_log_store_quota',
+  {
+    id: text('id').primaryKey(),
+    usedBytes: integer('used_bytes').default(0).notNull(),
+  },
 );

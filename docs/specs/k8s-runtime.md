@@ -173,11 +173,15 @@ blocker, not an inferred fallback.
 
 ## Budget
 
-Production runtime code in `packages/kube-runtime` is limited to 1,500 core
-physical lines. Tests, named public contract types, package entrypoints, client
-adapters, pure naming/state-transition support, and external scenario harnesses
-are reported separately. The PR must show both total production runtime LOC and
-the D33 core count.
+The coordination core in `packages/kube-runtime` is limited to 1,500 physical
+lines (D33). The core is `kube-runtime.ts`, `kube-observation.ts`,
+`kube-job.ts`, `kube-state.ts`, `kube-informer-registration.ts`,
+`kube-runtime-operations.ts`, `kube-naming.ts`, `kube-runtime-factory.ts`, and
+`kube-client-node.ts`. Declarative projections (`*-projection*.ts`),
+provisioning, and `*.types.ts` are counted and reported separately and remain
+subject to the zero-duplication check. Agent, worker, tests, and external
+scenario harness code are reported separately. Exceeding the core limit stops
+the change until the PR contains a written justification.
 
 ## Non-goals
 

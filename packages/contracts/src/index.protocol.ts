@@ -97,6 +97,7 @@ export {
   compartmentSourcesPathname,
   compartmentSsoOidcProvidersPathname,
   compartmentDeploymentsStatusPathname,
+  compartmentDeploymentMetricsPathname,
   compartmentSystemDomainActivatePathname,
   compartmentSystemDomainAttachCertificatePathname,
   compartmentSystemDomainResetManagedPathname,

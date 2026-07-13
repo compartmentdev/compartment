@@ -1,8 +1,7 @@
 import type { Command } from 'commander';
-import type { DeploymentStatusResponse } from '@compartment/contracts';
 import { renderOutput } from '../../output/render';
 import { getProjectDeploymentStatus } from '../../services/deployments.service';
-import type { StatusCommandInput } from '../../services/deployments.types';
+import type { DeploymentStatusView, StatusCommandInput } from '../../services/deployments.types';
 import { assertValidProjectName } from '../projects/project.command.helpers';
 import type { CliCommandDependencies, EnvironmentCommandOptions } from '../command.types';
 import { addRemoteOption, createRemoteAuthenticatedContext } from '../remote.command.helpers';
@@ -27,7 +26,7 @@ async function executeStatusCommand(
   options: EnvironmentCommandOptions,
 ): Promise<void> {
   assertValidStatusOptions(options);
-  const response: DeploymentStatusResponse = await getProjectDeploymentStatus(
+  const response: DeploymentStatusView = await getProjectDeploymentStatus(
     await createRemoteAuthenticatedContext(options),
     createStatusInput(options),
   );

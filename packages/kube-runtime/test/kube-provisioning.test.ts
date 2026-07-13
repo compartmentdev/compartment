@@ -165,14 +165,18 @@ describe('project namespace bootstrap provisioning', (): void => {
       expect(ruleFor(rules, resource)?.verbs).toEqual(['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']);
     }
     expect(ruleFor(rules, 'pods/log')?.verbs).toEqual(['get']);
+    expect(ruleFor(rules, 'pods', 'metrics.k8s.io')?.verbs).toEqual(['get', 'list']);
     expect(resources).not.toContain('namespaces');
     expect(resources).not.toContain('clusterroles');
     expect(resources).not.toContain('clusterrolebindings');
   });
 });
 
-function ruleFor(rules: RbacRule[], resource: string): RbacRule | undefined {
-  return rules.find((rule: RbacRule): boolean => rule.resources.includes(resource));
+function ruleFor(rules: RbacRule[], resource: string, apiGroup?: string): RbacRule | undefined {
+  return rules.find(
+    (rule: RbacRule): boolean =>
+      rule.resources.includes(resource) && (apiGroup === undefined || rule.apiGroups.includes(apiGroup)),
+  );
 }
 
 function manifests(name: string): RbacManifest[] {

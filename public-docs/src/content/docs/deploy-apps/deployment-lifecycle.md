@@ -92,6 +92,10 @@ Without `--run`, `compartment deployment logs` reads the latest deployment run i
 
 The browser control plane also exposes deployment history and deployment run details for projects, which is useful when you want to inspect older rollouts interactively instead of staying in the CLI.
 
+`compartment logs` reads the retained product log store. `--follow` polls that same store for new lines; it is a viewing convenience and does not replace durable capture. Logs remain available after a Kubernetes Pod is replaced or removed until the install retention window expires.
+
+`compartment status` includes the latest raw CPU and RAM sample for each active Pod when metrics-server is available. The deployment details page shows the same samples. These values are point-in-time operational data, not monitoring or alerting; stale and unavailable samples are labelled explicitly.
+
 In text output, `compartment deployment list` is grouped by deployment run. Each run block shows the aggregate run state first, then the service deployments that belong to that run.
 
 Browser deployment history is grouped by deployment run for the selected environment. Each row shows the aggregate run status. If one service in the run fails, the row shows the run as failed and the details page shows which service failed, along with the run timeline and logs.

@@ -3,6 +3,8 @@ import {
   readDeploymentRunTriggerRepositoryLabel,
   type DeploymentRunLogLine,
   type DeploymentRunSummary,
+  type DeploymentMetricsSnapshot,
+  type PodResourceMetric,
 } from '@compartment/contracts/browser';
 import type { JSX } from 'react';
 import { StatusTag } from '../../components/ui/status-tag';
@@ -25,6 +27,10 @@ interface DeploymentDetailsSummarySectionProps {
 
 interface DeploymentDetailsLogsSectionProps {
   lines: DeploymentRunLogLine[];
+}
+
+interface DeploymentDetailsMetricsSectionProps {
+  metrics: DeploymentMetricsSnapshot;
 }
 
 interface DetailItemProps {
@@ -95,6 +101,41 @@ export function DeploymentDetailsLogsSection({ lines }: Readonly<DeploymentDetai
         </pre>
       )}
     </section>
+  );
+}
+
+export function DeploymentDetailsMetricsSection({
+  metrics,
+}: Readonly<DeploymentDetailsMetricsSectionProps>): JSX.Element {
+  return (
+    <section className="rounded-card border border-border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-[14px] font-semibold text-foreground">Pod resources</h2>
+        <span className="text-[12px] text-muted-foreground">{metrics.state}</span>
+      </div>
+      {metrics.pods.length === 0 ? (
+        <p className="text-[13px] text-muted-foreground">CPU and RAM samples are unavailable.</p>
+      ) : (
+        <dl className="grid gap-3 sm:grid-cols-2">
+          {metrics.pods.map(
+            (pod: PodResourceMetric): JSX.Element => (
+              <PodResourceMetricItem key={pod.podUid} pod={pod} />
+            ),
+          )}
+        </dl>
+      )}
+    </section>
+  );
+}
+
+function PodResourceMetricItem({ pod }: Readonly<{ pod: PodResourceMetric }>): JSX.Element {
+  return (
+    <div className="rounded-field border border-border p-3">
+      <dt className="truncate font-mono text-[12px] text-muted-foreground">{pod.podName}</dt>
+      <dd className="mt-1 text-[13px] text-foreground">
+        {pod.cpuMillicores.toFixed(3)}m CPU · {(pod.memoryBytes / 1_048_576).toFixed(2)} MiB RAM
+      </dd>
+    </div>
   );
 }
 

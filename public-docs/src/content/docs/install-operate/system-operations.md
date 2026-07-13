@@ -39,6 +39,10 @@ Set `COMPARTMENT_AUDIT_RETENTION_DAYS` in the install env to choose the default 
 
 Audit retention cleanup runs automatically from the API job scheduler. New installs use `COMPARTMENT_AUDIT_RETENTION_CLEANUP_CRON="0 3 * * *"`. Each run deletes expired rows in bounded batches controlled by `COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE` and `COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES`.
 
+The same install retention window and bounded cleanup run apply to captured application logs. Kubernetes capture uses a per-node disk buffer capped at 256 MiB, and the product log store has a 1 GiB logical quota. When the store is full, ingest applies backpressure until retention frees capacity. Buffer fill, dropped-event, component health, and log-buffer filesystem usage metrics are exposed by the log agent on port `9598`; investigate sustained buffer growth or disk pressure before kubelet rotation removes unread files.
+
+Raw Pod CPU and RAM values require metrics-server and a worker credential that can list core and `metrics.k8s.io` Pods cluster-wide. Compartment reports them as point-in-time status data and marks missing or stale samples; it does not treat metrics-server as a monitoring or alerting system.
+
 Set `COMPARTMENT_TRUSTED_OUTBOUND_HOSTS` when an external service used by the install has a public HTTPS host that is not trusted by default. OIDC SSO browser authorization endpoints use this allowlist when the provider is not a built-in Google or Microsoft host.
 
 For install-level domain work, use:

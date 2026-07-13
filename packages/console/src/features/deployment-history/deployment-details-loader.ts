@@ -1,4 +1,9 @@
-import { deploymentRunLogsResponseSchema, type DeploymentRunLogsResponse } from '@compartment/contracts/browser';
+import {
+  deploymentRunLogsResponseSchema,
+  deploymentMetricsSnapshotSchema,
+  type DeploymentMetricsSnapshot,
+  type DeploymentRunLogsResponse,
+} from '@compartment/contracts/browser';
 import { redirect, type LoaderFunctionArgs } from 'react-router';
 import { BrowserApiError, requestBrowserApi } from '../../lib/browser-api';
 import { BrowserRedirect } from '../../lib/browser-redirect';
@@ -8,6 +13,7 @@ import {
   buildDeploymentDetailsPageResult,
   buildDeploymentDetailsRefreshContext,
   buildDeploymentDetailsUnavailableHref,
+  buildDeploymentMetricsStatusPath,
   buildDeploymentRunLogsPath,
   buildHistoryHrefInput,
 } from './deployment-details-loader.helpers';
@@ -85,15 +91,31 @@ async function loadDeploymentDetailsPageResult(
   if (runLogs === null) {
     throwDeploymentDetailsUnavailableRedirect(context, selectedOrganizationSlug);
   }
-
   return buildDeploymentDetailsPageResult({
     consoleContext: context.consoleContext,
     deploymentRunId: context.deploymentRunId,
     projectName: context.projectName,
     query: context.query,
     runLogs,
+    metrics: await readDeploymentMetricsStatus(context, runLogs, selectedOrganizationSlug),
     selectedOrganizationSlug,
   });
+}
+
+async function readDeploymentMetricsStatus(
+  context: DeploymentDetailsLoaderContext,
+  runLogs: DeploymentRunLogsResponse,
+  selectedOrganizationSlug: string,
+): Promise<DeploymentMetricsSnapshot> {
+  try {
+    return await requestBrowserApi<DeploymentMetricsSnapshot>(
+      buildDeploymentMetricsStatusPath(context.projectName, runLogs.environment.name),
+      deploymentMetricsSnapshotSchema,
+      { currentOrganization: selectedOrganizationSlug },
+    );
+  } catch {
+    return { observedAt: null, pods: [], state: 'unavailable' };
+  }
 }
 
 function throwDeploymentDetailsUnavailableRedirect(

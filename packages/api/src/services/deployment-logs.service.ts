@@ -26,6 +26,8 @@ import type {
   ResolvedEnvironmentContext,
 } from './deployments.service.types';
 import { parseLogsSince } from './deployment-log-query.service';
+import { readStoredDeploymentProductLogs } from './deployment-product-logs.service';
+import { listKubeDeploymentIds } from '../queries/deployment-log-workload.query';
 import { createNodeRuntimeRequester } from './node-runtime-requester';
 
 export async function getDeploymentLogsForEnvironment(
@@ -56,22 +58,45 @@ async function collectDeploymentLogs(
   sinceDate: Date | undefined,
   tailLines: number | undefined,
 ): Promise<DeploymentLogLine[]> {
-  const logLineGroups: DeploymentLogLine[][] = await Promise.all(
-    activeDeployments.map(
+  const logLineGroups: DeploymentLogLine[][] = await Promise.all([
+    collectNodeDeploymentLogLines(activeDeployments, environmentName, since, tailLines),
+    resolveCompartmentEventLines(activeDeployments, environmentName, sinceDate),
+    readStoredDeploymentProductLogs(activeDeployments, environmentName, sinceDate, tailLines),
+  ]);
+
+  return trimMergedDeploymentLines(logLineGroups.flat().sort(compareDeploymentLogLinesByTimestamp), tailLines);
+}
+
+async function collectNodeDeploymentLogLines(
+  deployments: DeploymentJoinedRow[],
+  environmentName: string,
+  since: string | undefined,
+  tailLines: number | undefined,
+): Promise<DeploymentLogLine[]> {
+  return await collectNodeLogLines(await selectNodeDeployments(deployments), environmentName, since, tailLines);
+}
+
+async function selectNodeDeployments(deployments: DeploymentJoinedRow[]): Promise<DeploymentJoinedRow[]> {
+  const ids: string[] = deployments.map((deployment: DeploymentJoinedRow): string => deployment.deployment.id);
+  const kubeDeploymentIds: Set<string> = new Set<string>(await listKubeDeploymentIds(ids));
+  return deployments.filter(
+    (deployment: DeploymentJoinedRow): boolean => !kubeDeploymentIds.has(deployment.deployment.id),
+  );
+}
+
+async function collectNodeLogLines(
+  deployments: DeploymentJoinedRow[],
+  environmentName: string,
+  since: string | undefined,
+  tailLines: number | undefined,
+): Promise<DeploymentLogLine[]> {
+  const groups: DeploymentLogLine[][] = await Promise.all(
+    deployments.map(
       async (deployment: DeploymentJoinedRow): Promise<DeploymentLogLine[]> =>
         await resolveNodeLogLines(deployment, environmentName, since, tailLines),
     ),
   );
-  const compartmentEventLines: DeploymentLogLine[] = await resolveCompartmentEventLines(
-    activeDeployments,
-    environmentName,
-    sinceDate,
-  );
-
-  return trimMergedDeploymentLines(
-    [...logLineGroups.flat(), ...compartmentEventLines].sort(compareDeploymentLogLinesByTimestamp),
-    tailLines,
-  );
+  return groups.flat();
 }
 
 async function resolveNodeLogLines(

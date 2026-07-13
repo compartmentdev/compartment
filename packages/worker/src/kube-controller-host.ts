@@ -15,6 +15,7 @@ import type { WorkerConfig } from './config';
 import { executeProductJob, finalizeRecoveredProductJob } from './services/worker-product-job.service';
 import { reconcileDeploymentTarget } from './services/worker-deployment-reconcile.service';
 import { executeResourceReconcile } from './services/worker-resource-reconcile.service';
+import { collectAndPublishPodMetrics } from './services/worker-pod-metrics.service';
 
 export interface KubeControllerHost {
   enabled: boolean;
@@ -22,7 +23,7 @@ export interface KubeControllerHost {
 }
 
 interface KubeReconcileArea {
-  reconcile(): Promise<boolean>;
+  reconcile(): Promise<boolean | undefined>;
 }
 
 class RegisteredKubeControllerHost implements KubeControllerHost {
@@ -32,7 +33,7 @@ class RegisteredKubeControllerHost implements KubeControllerHost {
 
   public async reconcile(): Promise<boolean> {
     for (const area of this.areas) {
-      if (await area.reconcile()) {
+      if ((await area.reconcile()) === true) {
         return true;
       }
     }
@@ -92,6 +93,23 @@ class ResourceReconcileArea implements KubeReconcileArea {
   }
 }
 
+class PodMetricsReconcileArea implements KubeReconcileArea {
+  private nextCollectionAt: number = 0;
+
+  public constructor(
+    private readonly request: CompartmentRequester,
+    private readonly runtime: KubeRuntime,
+  ) {}
+
+  public async reconcile(): Promise<undefined> {
+    if (Date.now() < this.nextCollectionAt) {
+      return;
+    }
+    this.nextCollectionAt = Date.now() + 10_000;
+    await collectAndPublishPodMetrics(this.request, this.runtime);
+  }
+}
+
 class DisabledKubeControllerHost implements KubeControllerHost {
   public readonly enabled: boolean = false;
 
@@ -110,6 +128,7 @@ export function createKubeControllerHost(config: WorkerConfig): KubeControllerHo
   });
   const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
   return new RegisteredKubeControllerHost([
+    new PodMetricsReconcileArea(request, runtime),
     new DeploymentReconcileArea(request, runtime),
     new ResourceReconcileArea(request, runtime),
     new ProductJobReconcileArea(request, runtime),
