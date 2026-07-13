@@ -39,6 +39,7 @@ export type {
   ObserveLabels,
   SecretProjectionRow,
 } from './kube-runtime.types';
+export type { KubeContainerMetricUsage, KubePodMetricObservation, ObservePodMetrics } from './kube-pod-metrics.types';
 export type { ApplicationProjectionRow } from './kube-application-projection.types';
 export type { KubeDeploymentCondition, KubeRolloutObservation, KubeRolloutStatus } from './kube-rollout.types';
 export type {

@@ -15,7 +15,7 @@ import {
   createLogsResultMessage,
   createStatusResultMessage,
 } from '../src/commands/deployments/deployment.command.output';
-import type { DeploymentStatusReporter } from '../src/services/deployments.types';
+import type { DeploymentStatusReporter, DeploymentStatusView } from '../src/services/deployments.types';
 import {
   createActiveDeploymentReadSummaryFixture,
   createDeploymentStatusResponseFixture,
@@ -26,7 +26,7 @@ import {
 
 describe('deployment output service', (): void => {
   it('shows deployment duration in the deploy summary', (): void => {
-    const response: DeploymentStatusResponse = createDeploymentStatusResponse({
+    const response: DeploymentStatusView = createDeploymentStatusResponse({
       completedAt: '2026-03-23T12:00:05.000Z',
       createdAt: '2026-03-23T12:00:00.000Z',
       operationCompletedAt: '2026-03-23T12:00:05.000Z',
@@ -39,7 +39,7 @@ describe('deployment output service', (): void => {
   });
 
   it('shows deployment labels in summary output', (): void => {
-    const response: DeploymentStatusResponse = createDeploymentStatusResponse({
+    const response: DeploymentStatusView = createDeploymentStatusResponse({
       completedAt: '2026-03-23T12:00:05.000Z',
       createdAt: '2026-03-23T12:00:00.000Z',
       label: 'release=1;hotfix',
@@ -83,7 +83,7 @@ describe('deployment output service', (): void => {
   });
 
   it('shows verbose deployment details in the status output', (): void => {
-    const response: DeploymentStatusResponse = createDeploymentStatusResponse({
+    const response: DeploymentStatusView = createDeploymentStatusResponse({
       completedAt: '2026-03-23T12:01:15.000Z',
       createdAt: '2026-03-23T12:00:00.000Z',
       operationCompletedAt: '2026-03-23T12:01:15.000Z',
@@ -103,7 +103,7 @@ describe('deployment output service', (): void => {
   });
 
   it('does not leak inspect-only fields in verbose deployment status output', (): void => {
-    const response: DeploymentStatusResponse = createDeploymentStatusResponse({
+    const response: DeploymentStatusView = createDeploymentStatusResponse({
       completedAt: '2026-03-23T12:01:15.000Z',
       createdAt: '2026-03-23T12:00:00.000Z',
       operationCompletedAt: '2026-03-23T12:01:15.000Z',
@@ -123,11 +123,33 @@ describe('deployment output service', (): void => {
   });
 
   it('does not describe a historical deployment route as active', (): void => {
-    const response: DeploymentStatusResponse = createHistoricalDeploymentStatusResponse();
+    const response: DeploymentStatusView = createHistoricalDeploymentStatusResponse();
 
     expect(createStatusResultMessage(response)).toBe(
-      'Deployment dep_123 is succeeded in 4.0s. Recorded route: http://127.0.0.1:31002. No active deployment.',
+      'Deployment dep_123 is succeeded in 4.0s. Recorded route: http://127.0.0.1:31002. No active deployment.\nPod metrics: unavailable.',
     );
+  });
+
+  it('shows raw pod CPU and RAM samples in status output', (): void => {
+    const response: DeploymentStatusView = createHistoricalDeploymentStatusResponse();
+    response.metrics = {
+      observedAt: '2026-03-23T12:00:04.000Z',
+      pods: [
+        {
+          cpuMillicores: 12.5,
+          deploymentId: 'dep_123',
+          memoryBytes: 67_108_864,
+          namespace: 'cpt-prj-123',
+          observedAt: '2026-03-23T12:00:04.000Z',
+          podName: 'web-abc',
+          podUid: '11111111-1111-4111-8111-111111111111',
+          serviceName: 'web',
+        },
+      ],
+      state: 'available',
+    };
+
+    expect(createStatusResultMessage(response)).toContain('web/web-abc: 12.500m CPU, 64.00 MiB RAM');
   });
 
   it('adds deployment details above log lines in verbose mode', (): void => {
@@ -152,13 +174,16 @@ describe('deployment output service', (): void => {
       now: Date.parse('2026-03-23T12:00:05.000Z'),
     });
 
-    expect(message).toBe('Deployments for smoke-web/production: web=succeeded in 5.0s; admin=succeeded in 5.0s.');
+    expect(message).toBe(
+      'Deployments for smoke-web/production: web=succeeded in 5.0s; admin=succeeded in 5.0s.\nPod metrics: unavailable.',
+    );
   });
 
   it('includes resource summaries in aggregate deploy output', (): void => {
-    const response: DeploymentStatusResponse & { resources: ResourceSummary[] } =
-      createAggregateDeploymentStatusResponse() as DeploymentStatusResponse & { resources: ResourceSummary[] };
-    response.resources = [createResourceSummary()];
+    const response: DeploymentStatusResponse & { resources: ResourceSummary[] } = {
+      ...createAggregateDeploymentStatusResponse(),
+      resources: [createResourceSummary()],
+    };
 
     expect(createDeployResultMessage(response)).toBe(
       'Deployments for smoke-web/production: web active at http://127.0.0.1:31000; admin active at http://127.0.0.1:31001.\nResource postgres is running at postgres.production.smoke-web.resource.internal.',
@@ -282,7 +307,7 @@ interface CreateDeploymentStatusResponseInput {
   status: 'queued' | 'running' | 'succeeded' | 'failed';
 }
 
-function createDeploymentStatusResponse(input: CreateDeploymentStatusResponseInput): DeploymentStatusResponse {
+function createDeploymentStatusResponse(input: CreateDeploymentStatusResponseInput): DeploymentStatusView {
   const deployment: DeploymentReadSummary = createActiveDeploymentReadSummaryFixture({
     completedAt: input.completedAt,
     createdAt: input.createdAt,
@@ -299,13 +324,16 @@ function createDeploymentStatusResponse(input: CreateDeploymentStatusResponseInp
     status: input.status,
   });
 
-  return createDeploymentStatusResponseFixture({
-    activeDeployments: deployment.isActive ? [deployment] : [],
-    deployments: [deployment],
-    environment: {
-      name: 'production',
-    },
-  });
+  return {
+    ...createDeploymentStatusResponseFixture({
+      activeDeployments: deployment.isActive ? [deployment] : [],
+      deployments: [deployment],
+      environment: {
+        name: 'production',
+      },
+    }),
+    metrics: { observedAt: null, pods: [], state: 'unavailable' },
+  };
 }
 
 function createDeploymentLogsResponse(): DeploymentLogsResponse {
@@ -339,27 +367,30 @@ function createDeploymentLogsResponse(): DeploymentLogsResponse {
   };
 }
 
-function createHistoricalDeploymentStatusResponse(): DeploymentStatusResponse {
-  return createHistoricalDeploymentStatusResponseFixture({
-    deployment: {
-      completedAt: '2026-03-23T12:00:04.000Z',
-      createdAt: '2026-03-23T12:00:00.000Z',
-      health: 'unhealthy',
-      operation: {
+function createHistoricalDeploymentStatusResponse(): DeploymentStatusView {
+  return {
+    ...createHistoricalDeploymentStatusResponseFixture({
+      deployment: {
         completedAt: '2026-03-23T12:00:04.000Z',
         createdAt: '2026-03-23T12:00:00.000Z',
+        health: 'unhealthy',
+        operation: {
+          completedAt: '2026-03-23T12:00:04.000Z',
+          createdAt: '2026-03-23T12:00:00.000Z',
+          status: 'succeeded',
+        },
+        routeUrl: 'http://127.0.0.1:31002',
         status: 'succeeded',
       },
-      routeUrl: 'http://127.0.0.1:31002',
-      status: 'succeeded',
-    },
-    environment: {
-      name: 'production',
-    },
-    project: {
-      name: 'smoke-web',
-    },
-  });
+      environment: {
+        name: 'production',
+      },
+      project: {
+        name: 'smoke-web',
+      },
+    }),
+    metrics: { observedAt: null, pods: [], state: 'unavailable' },
+  };
 }
 
 function createAggregateDeploymentLogsResponse(): DeploymentLogsResponse {
@@ -407,7 +438,7 @@ function createAggregateDeploymentLogsResponse(): DeploymentLogsResponse {
   };
 }
 
-function createAggregateDeploymentStatusResponse(): DeploymentStatusResponse {
+function createAggregateDeploymentStatusResponse(): DeploymentStatusView {
   const webDeployment: DeploymentReadSummary = createDeploymentStatusResponse({
     completedAt: '2026-03-23T12:00:05.000Z',
     createdAt: '2026-03-23T12:00:00.000Z',
@@ -429,6 +460,7 @@ function createAggregateDeploymentStatusResponse(): DeploymentStatusResponse {
     environment: {
       name: 'production',
     },
+    metrics: { observedAt: null, pods: [], state: 'unavailable' },
     project: {
       name: 'smoke-web',
     },

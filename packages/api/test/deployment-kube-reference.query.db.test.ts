@@ -1,6 +1,8 @@
 import type { Pool } from 'pg';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
+import { immutableKubeName } from '@compartment/utils';
+import type { ProductLogIngestEvent } from '@compartment/contracts';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
@@ -10,6 +12,7 @@ import {
   auditEvents,
   buildArtifacts,
   deploymentKubeReferences,
+  deploymentProductLogs,
   deploymentRuns,
   deploymentRoutes,
   deployments,
@@ -19,6 +22,7 @@ import {
   organizations,
   projectServices,
   projects,
+  productLogStoreQuota,
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
@@ -33,6 +37,16 @@ import {
 import { findActiveDeploymentRouteByHost } from '../src/queries/deployment-routes.query';
 import type { DeploymentRouteLookupRow } from '../src/queries/deployment-routes.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import {
+  ingestDeploymentProductLogs,
+  readStoredDeploymentProductLogs,
+} from '../src/services/deployment-product-logs.service';
+import { runProductLogRetentionCleanup } from '../src/services/product-log-retention.service';
+import { listDeploymentProductLogLines } from '../src/queries/deployment-product-logs.query';
+import type { DeploymentProductLogLine } from '../src/queries/deployment-product-logs.query.types';
+import { productLogRecordOverheadBytes, productLogStoreMaxBytes } from '../src/queries/product-log-storage-policy';
+import { findActiveJoinedDeployment } from '../src/queries/deployment-joined.query';
+import type { DeploymentJoinedRow } from '../src/queries/deployments.query.types';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'deployment_kube_reference');
@@ -60,6 +74,207 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(applied.filter((value: boolean): boolean => value)).toHaveLength(1);
     expect(applied.filter((value: boolean): boolean => !value)).toHaveLength(1);
     expect(events[0]).toMatchObject({ occurredAt: input.eventAt });
+  });
+
+  it('deduplicates reopened kubelet files by Pod UID, restart identity, and offset', async (): Promise<void> => {
+    const event: ProductLogIngestEvent = {
+      containerName: immutableKubeName('app', 'dep_kube'),
+      message: 'ready',
+      namespace: 'cpt-prj-kube',
+      podName: 'app-env-kube-svc-kube-abc',
+      podUid: '11111111-1111-4111-8111-111111111111',
+      restartIdentity: '0',
+      sourceFingerprint: 'a'.repeat(64),
+      sourceOffset: 17,
+      stream: 'stdout',
+      timestamp: '2026-07-12T10:00:00.000Z',
+    };
+
+    await expect(ingestDeploymentProductLogs([event])).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
+    await expect(ingestDeploymentProductLogs([event])).resolves.toEqual({ accepted: 0, duplicates: 1, rejected: 0 });
+    await expect(
+      ingestDeploymentProductLogs([{ ...event, message: 'after rotation', sourceFingerprint: 'b'.repeat(64) }]),
+    ).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
+    await expect(db.select().from(deploymentProductLogs)).resolves.toHaveLength(2);
+  });
+
+  it('keeps every stored line across the P2-style Pod replacement', async (): Promise<void> => {
+    await seedCandidate();
+    await db.update(deploymentKubeReferences).set({ deploymentName: 'app-stable-workload' });
+    const oldPod: ProductLogIngestEvent[] = buildProductLogSequence(
+      '11111111-1111-4111-8111-111111111111',
+      'old',
+      0,
+      200,
+    );
+    const newPod: ProductLogIngestEvent[] = buildProductLogSequence(
+      '22222222-2222-4222-8222-222222222222',
+      'new',
+      200,
+      200,
+      '0',
+      'dep_candidate',
+    );
+
+    await expect(ingestDeploymentProductLogs(oldPod)).resolves.toMatchObject({ accepted: 200 });
+    await expect(ingestDeploymentProductLogs(newPod)).resolves.toMatchObject({ accepted: 200 });
+    await db.update(deployments).set({ isActive: false }).where(eq(deployments.id, 'dep_kube'));
+    await db.update(deployments).set({ isActive: true }).where(eq(deployments.id, 'dep_candidate'));
+    const active: DeploymentJoinedRow | undefined = await findActiveJoinedDeployment(
+      'env_kube',
+      'svc_kube',
+      'localhost',
+    );
+    expect(active?.deployment.id).toBe('dep_candidate');
+    if (active === undefined) {
+      throw new Error('Expected the candidate deployment to be active.');
+    }
+    const lines: DeploymentProductLogLine[] = await readStoredDeploymentProductLogs(
+      [active],
+      'production',
+      undefined,
+      500,
+    );
+    expect(lines).toHaveLength(400);
+    expect(lines.map((line: DeploymentProductLogLine): string => line.message)).toEqual([
+      ...oldPod.map((event: ProductLogIngestEvent): string => event.message),
+      ...newPod.map((event: ProductLogIngestEvent): string => event.message),
+    ]);
+  });
+
+  it('backpressures ingest when the global product-log storage quota is exhausted', async (): Promise<void> => {
+    await db
+      .update(productLogStoreQuota)
+      .set({ usedBytes: productLogStoreMaxBytes - productLogRecordOverheadBytes })
+      .where(eq(productLogStoreQuota.id, 'global'));
+    const [event] = buildProductLogSequence('55555555-5555-4555-8555-555555555555', 'quota', 0, 1);
+
+    await expect(ingestDeploymentProductLogs([event!])).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
+    await expect(db.select().from(deploymentProductLogs)).resolves.toHaveLength(0);
+  });
+
+  it('bounds OOM-restart loss to zero persisted lines and deduplicates the replay', async (): Promise<void> => {
+    const beforeOom: ProductLogIngestEvent[] = buildProductLogSequence(
+      '33333333-3333-4333-8333-333333333333',
+      'before-oom',
+      0,
+      50,
+    );
+    const afterOom: ProductLogIngestEvent[] = buildProductLogSequence(
+      '33333333-3333-4333-8333-333333333333',
+      'after-oom',
+      50,
+      50,
+      '1',
+    );
+    await ingestDeploymentProductLogs(beforeOom);
+    await ingestDeploymentProductLogs(afterOom);
+    await expect(ingestDeploymentProductLogs([...beforeOom, ...afterOom])).resolves.toEqual({
+      accepted: 0,
+      duplicates: 100,
+      rejected: 0,
+    });
+    await expect(listDeploymentProductLogLines({ deploymentIds: ['dep_kube'], limit: 500 })).resolves.toHaveLength(100);
+  });
+
+  it('rejects non-product container identities instead of guessing a deployment', async (): Promise<void> => {
+    await expect(
+      ingestDeploymentProductLogs([
+        {
+          containerName: 'app-unknown',
+          message: 'ignored',
+          namespace: 'cpt-prj-kube',
+          podName: 'unknown',
+          podUid: '22222222-2222-4222-8222-222222222222',
+          restartIdentity: '0',
+          sourceFingerprint: 'c'.repeat(64),
+          sourceOffset: 0,
+          stream: 'stderr',
+          timestamp: '2026-07-12T10:00:00.000Z',
+        },
+      ]),
+    ).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
+  });
+
+  it('captures the legacy app container during the P7 cutover rollout', async (): Promise<void> => {
+    const [event]: ProductLogIngestEvent[] = buildProductLogSequence(
+      '44444444-4444-4444-8444-444444444444',
+      'legacy',
+      0,
+      1,
+    );
+    expect(event).toBeDefined();
+    await expect(
+      ingestDeploymentProductLogs([{ ...event!, containerName: 'app', podName: 'app-dep-kube-oldpod' }]),
+    ).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
+  });
+
+  it('deletes expired product logs in bounded retention batches', async (): Promise<void> => {
+    const retainedEvents: ProductLogIngestEvent[] = [
+      {
+        containerName: immutableKubeName('app', 'dep_kube'),
+        message: 'expired',
+        namespace: 'cpt-prj-kube',
+        podName: 'old-pod',
+        podUid: '33333333-3333-4333-8333-333333333333',
+        restartIdentity: '0',
+        sourceFingerprint: 'd'.repeat(64),
+        sourceOffset: 0,
+        stream: 'stdout',
+        timestamp: '2025-01-01T00:00:00.000Z',
+      },
+      {
+        containerName: immutableKubeName('app', 'dep_kube'),
+        message: 'also-expired',
+        namespace: 'cpt-prj-kube',
+        podName: 'old-pod',
+        podUid: '33333333-3333-4333-8333-333333333333',
+        restartIdentity: '0',
+        sourceFingerprint: 'e'.repeat(64),
+        sourceOffset: 128,
+        stream: 'stdout',
+        timestamp: '2025-01-01T00:00:01.000Z',
+      },
+      {
+        containerName: immutableKubeName('app', 'dep_kube'),
+        message: 'fresh',
+        namespace: 'cpt-prj-kube',
+        podName: 'current-pod',
+        podUid: '44444444-4444-4444-8444-444444444444',
+        restartIdentity: '0',
+        sourceFingerprint: 'f'.repeat(64),
+        sourceOffset: 0,
+        stream: 'stdout',
+        timestamp: '2026-07-14T00:00:00.000Z',
+      },
+    ];
+    await ingestDeploymentProductLogs(retainedEvents);
+    await db
+      .update(deploymentProductLogs)
+      .set({ capturedAt: new Date('2025-01-01T00:00:00.000Z') })
+      .where(eq(deploymentProductLogs.podUid, '33333333-3333-4333-8333-333333333333'));
+    const [quotaBeforeCleanup] = await db.select().from(productLogStoreQuota);
+
+    await expect(runProductLogRetentionCleanup()).resolves.toEqual({ deletedCount: 1 });
+    const remaining: (typeof deploymentProductLogs.$inferSelect)[] = await db.select().from(deploymentProductLogs);
+    const [quotaAfterCleanup] = await db.select().from(productLogStoreQuota);
+    expect(remaining).toHaveLength(2);
+    expect(remaining.some((row: typeof deploymentProductLogs.$inferSelect): boolean => row.message === 'fresh')).toBe(
+      true,
+    );
+    expect(quotaAfterCleanup!.usedBytes).toBeLessThan(quotaBeforeCleanup!.usedBytes);
+  });
+
+  it('releases product-log quota when deployment cascade deletes stored logs', async (): Promise<void> => {
+    const [event] = buildProductLogSequence('55555555-5555-4555-8555-555555555555', 'cascade', 0, 1);
+    await ingestDeploymentProductLogs([event!]);
+    const [quotaBeforeDelete] = await db.select().from(productLogStoreQuota);
+
+    await db.delete(deployments).where(eq(deployments.id, 'dep_kube'));
+
+    const [quotaAfterDelete] = await db.select().from(productLogStoreQuota);
+    expect(quotaBeforeDelete!.usedBytes).toBeGreaterThan(0);
+    expect(quotaAfterDelete!.usedBytes).toBe(0);
   });
 
   it('rolls back the state transition when drift audit persistence fails', async (): Promise<void> => {
@@ -393,12 +608,37 @@ async function seedCandidate(): Promise<void> {
   });
 }
 
+function buildProductLogSequence(
+  podUid: string,
+  marker: string,
+  start: number,
+  count: number,
+  restartIdentity: string = '0',
+  deploymentId: string = 'dep_kube',
+): ProductLogIngestEvent[] {
+  return [...Array<number>(count).keys()].map((index: number): ProductLogIngestEvent => {
+    const sequence: number = start + index;
+    return {
+      containerName: immutableKubeName('app', deploymentId),
+      message: `${marker}-${sequence.toString().padStart(6, '0')}`,
+      namespace: 'cpt-prj-kube',
+      podName: `${marker}-pod`,
+      podUid,
+      restartIdentity,
+      sourceFingerprint: sequence.toString(16).padStart(64, '0'),
+      sourceOffset: index * 128,
+      stream: 'stdout',
+      timestamp: new Date(Date.parse('2026-07-14T10:00:00.000Z') + sequence).toISOString(),
+    };
+  });
+}
+
 function buildApiConfig(url: string): ApiConfig {
   return {
     auditFileSink: defaultAuditFileSinkConfig,
-    auditRetentionCleanupBatchSize: 1_000,
+    auditRetentionCleanupBatchSize: 1,
     auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
+    auditRetentionCleanupMaxBatches: 1,
     auditRetentionDays: 90,
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',

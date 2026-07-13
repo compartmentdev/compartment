@@ -13,6 +13,16 @@ interface KubeHttpError extends Error {
   statusCode?: number | undefined;
 }
 
+export function requireCleanupObjectApi(
+  cleanup: KubeManifest[],
+  objectApi: KubernetesObjectApi | null,
+): KubernetesObjectApi | null {
+  if (cleanup.length > 0 && objectApi === null) {
+    throw new Error('Kubernetes provisioning cleanup requires a separate installation identity.');
+  }
+  return objectApi;
+}
+
 export async function applyObject(
   objectApi: KubernetesObjectApi,
   object: KubeManifest,

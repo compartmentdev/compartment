@@ -2,6 +2,7 @@ import type { FastifyPluginOptions } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import { authenticateInternalEdgeRequest } from './authenticate-internal-edge-request';
 import { authenticateInternalWorkerRequest } from './authenticate-internal-worker-request';
+import { authenticateProductLogIngestRequest } from './authenticate-product-log-ingest-request';
 import { registerGetAppAccessStateRoute } from './get-app-access-state.route';
 import { registerGetArtifactSourceArchiveRoute } from './get-artifact-source-archive.route';
 import { registerPostAppAccessExchangeRoute } from './post-app-access-exchange.route';
@@ -21,6 +22,8 @@ import { registerPostFailGitSourceSyncTaskRoute } from './post-fail-git-source-s
 import { registerPostRecoverRunningDeploymentsRoute } from './post-recover-running-deployments.route';
 import { registerPostRunNextScheduledResourceOperationRoute } from './post-run-next-scheduled-resource-operation.route';
 import { registerPostUploadGitSourceResolutionTaskArchiveRoute } from './post-upload-git-source-resolution-task-archive.route';
+import { registerPostProductLogsRoute } from './post-product-logs.route';
+import { registerPostPodMetricsRoute } from './post-pod-metrics.route';
 import { registerProductJobRoutes } from './product-job.routes';
 import { registerDeploymentReconcileRoutes } from './deployment-reconcile.routes';
 import { registerResourceReconcileRoutes } from './resource-reconcile.routes';
@@ -37,7 +40,18 @@ export function registerInternalApiRoutes(
   done: RegisterInternalRoutesDone,
 ): void {
   app.register(registerEdgeInternalRoutes);
+  app.register(registerProductLogInternalRoutes);
   app.register(registerWorkerInternalRoutes, options);
+  done();
+}
+
+function registerProductLogInternalRoutes(
+  app: ApiApp,
+  _options: FastifyPluginOptions,
+  done: RegisterInternalRoutesDone,
+): void {
+  app.addHook('preHandler', authenticateProductLogIngestRequest);
+  registerPostProductLogsRoute(app);
   done();
 }
 
@@ -64,12 +78,17 @@ function registerWorkerInternalRoutes(
   registerPostRecoverRunningDeploymentsRoute(app);
   registerPostClaimDeploymentRoute(app);
   registerPostCompleteDeploymentRoute(app);
-  registerPostDeploymentRuntimeStateRoute(app);
-  registerPostDeploymentRuntimeEventRoute(app);
+  registerWorkerRuntimeRoutes(app);
+  registerPostPodMetricsRoute(app);
   registerPostFailDeploymentRoute(app);
   registerWorkerOperationRoutes(app);
   registerGitSourceResolutionWorkerRoutes(app, options.sourceArchiveMaxBytes);
   done();
+}
+
+function registerWorkerRuntimeRoutes(app: ApiApp): void {
+  registerPostDeploymentRuntimeStateRoute(app);
+  registerPostDeploymentRuntimeEventRoute(app);
 }
 
 function registerWorkerOperationRoutes(app: ApiApp): void {

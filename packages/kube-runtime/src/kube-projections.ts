@@ -8,7 +8,7 @@ import type {
   KubeProjectedPodSpec,
   KubeSecretEnvVariable,
 } from './kube-runtime.types';
-import { kubeApplicationIdentityName, kubeNamespaceName, kubeSecretName } from './kube-naming';
+import { kubeApplicationIdentityName, kubeApplicationName, kubeNamespaceName, kubeSecretName } from './kube-naming';
 import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
@@ -97,7 +97,7 @@ function deploymentSpec(
     template: {
       metadata: {
         annotations: { ...context.annotations, 'compartment.dev/secret-checksum': secretChecksum(row.env) },
-        labels: context.workloadLabels,
+        labels: { ...context.workloadLabels, 'compartment.dev/deployment-id': row.deploymentId },
       },
       spec: podSpec,
     },
@@ -110,7 +110,7 @@ function applicationContainer(row: ApplicationProjectionRow): KubeProjectedConta
     env,
     image: row.image,
     lifecycle: { preStop: { exec: { command: ['sh', '-c', 'sleep 3'] } } },
-    name: 'app',
+    name: kubeApplicationName(row.deploymentId),
     ports: [{ containerPort: row.containerPort, name: 'http', protocol: 'TCP' }],
     readinessProbe: readinessProbe(),
   };

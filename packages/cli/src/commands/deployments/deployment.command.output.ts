@@ -3,6 +3,7 @@ import type {
   DeploymentLogLine,
   DeploymentReadSummary,
   DeploymentLogsResponse,
+  PodResourceMetric,
   DeploymentStatusResponse,
   ResourceSummary,
   DeploymentSummary,
@@ -21,6 +22,7 @@ import type {
   DeploymentSummaryParts,
   LogsMessageParts,
 } from './deployment.command.output.types';
+import type { DeploymentStatusView } from '../../services/deployments.types';
 
 export function createDeployResultMessage(
   response: DeploymentStatusResponse,
@@ -59,7 +61,7 @@ export function createDeployDetachMessage(response: DeployResponse): string {
 }
 
 export function createStatusResultMessage(
-  response: DeploymentStatusResponse,
+  response: DeploymentStatusView,
   options: DeploymentFormatOptions = {},
 ): string {
   const deployments: DeploymentReadSummary[] = readDisplayedDeployments(response);
@@ -67,7 +69,10 @@ export function createStatusResultMessage(
     return buildNoDeploymentsMessage(response);
   }
   if (deployments.length > 1) {
-    return appendVerboseDetails(buildMultiDeploymentStatusMessage(response, options.now), response, options.verbose);
+    return appendPodMetrics(
+      appendVerboseDetails(buildMultiDeploymentStatusMessage(response, options.now), response, options.verbose),
+      response,
+    );
   }
 
   const deployment: DeploymentReadSummary = deployments[0]!;
@@ -78,7 +83,28 @@ export function createStatusResultMessage(
     deployment,
   )}`;
 
-  return appendVerboseDetails(baseMessage, response, options.verbose);
+  return appendPodMetrics(appendVerboseDetails(baseMessage, response, options.verbose), response);
+}
+
+function appendPodMetrics(baseMessage: string, response: DeploymentStatusView): string {
+  if (response.metrics.state === 'unavailable') {
+    return `${baseMessage}\nPod metrics: unavailable.`;
+  }
+  const freshness: string = response.metrics.state === 'stale' ? ' (stale)' : '';
+  if (response.metrics.pods.length === 0) {
+    return `${baseMessage}\nPod metrics${freshness}: no product Pod samples.`;
+  }
+  const lines: string = response.metrics.pods
+    .map(
+      (pod: PodResourceMetric): string =>
+        `${pod.serviceName}/${pod.podName}: ${pod.cpuMillicores.toFixed(3)}m CPU, ${formatMemoryMiB(pod.memoryBytes)} MiB RAM`,
+    )
+    .join('\n');
+  return `${baseMessage}\nPod metrics${freshness}:\n${lines}`;
+}
+
+function formatMemoryMiB(memoryBytes: number): string {
+  return (memoryBytes / 1_048_576).toFixed(2);
 }
 
 export function createLogsResultMessage(

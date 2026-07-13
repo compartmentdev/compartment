@@ -96,6 +96,7 @@ export {
   compartmentDeploymentsPromotePathname,
   compartmentDeploymentsRollbackPathname,
   compartmentDeploymentsStatusPathname,
+  compartmentDeploymentMetricsPathname,
   compartmentDeploymentLogsPathname,
   compartmentDeploymentRunLogsPathname,
   compartmentGitHubProviderBootstrapPathname,

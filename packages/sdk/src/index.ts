@@ -22,6 +22,7 @@ export {
 export { getOrganizationSettings, updateOrganizationSettings } from './services/organization-settings.service';
 export { archiveProject } from './services/project-archive.service';
 export { appendDeploymentEvent } from './services/worker-append-deployment-event.service';
+export { publishPodMetrics } from './services/worker-publish-pod-metrics.service';
 export { claimNextDeployment } from './services/worker-claim-deployment.service';
 export { completeDeployment } from './services/worker-complete-deployment.service';
 export { exchangeAppAccess } from './services/app-access-exchange.service';
@@ -31,6 +32,7 @@ export { getDeploymentInspect } from './services/deployment-inspect.service';
 export { getDeploymentLogs } from './services/deployment-logs.service';
 export { getDeploymentRunLogs } from './services/deployment-run-logs.service';
 export { getDeploymentStatus } from './services/deployment-status.service';
+export { getDeploymentMetrics } from './services/deployment-metrics.service';
 export {
   createCustomDomain,
   getCustomDomain,

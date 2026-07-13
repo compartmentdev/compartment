@@ -72,7 +72,7 @@ export function createRegisteredInformers(
   objectApi: KubernetesObjectApi,
   input: ObserveLabels,
 ): RegisteredInformer[] {
-  const selector: string = labelSelector(input.labels);
+  const selector: string = kubeLabelSelector(input.labels);
   return input.resources.map(
     (resource: KubeObservedResource): RegisteredInformer =>
       new RegisteredInformer(definitions[resource], kubeConfig, objectApi, input.namespace, selector),
@@ -88,7 +88,7 @@ function createDefinition(
   return { apiVersion, kind, path, resource };
 }
 
-function labelSelector(labels: Readonly<Record<string, string>>): string {
+export function kubeLabelSelector(labels: Readonly<Record<string, string>>): string {
   const entries: [string, string][] = Object.entries(labels).sort(
     ([left]: [string, string], [right]: [string, string]): number => left.localeCompare(right),
   );

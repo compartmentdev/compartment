@@ -24,6 +24,7 @@ export const compartmentDeploymentsPathname: string = '/v1/deployments';
 export const compartmentDeploymentsRollbackPathname: string = `${compartmentDeploymentsPathname}/rollback`;
 export const compartmentDeploymentsPromotePathname: string = `${compartmentDeploymentsPathname}/promote`;
 export const compartmentDeploymentsStatusPathname: string = `${compartmentDeploymentsPathname}/status`;
+export const compartmentDeploymentMetricsPathname: string = `${compartmentDeploymentsPathname}/metrics`;
 export const compartmentDeploymentsInspectPathname: string = `${compartmentDeploymentsPathname}/inspect`;
 export const compartmentDeploymentLogsPathname: string = `${compartmentDeploymentsPathname}/logs`;
 export const compartmentDeploymentRunLogsPathname: string = `${compartmentDeploymentsPathname}/runs/logs`;

@@ -16,3 +16,5 @@ export {
   isDeploymentRollbackAvailable,
   resolveCompartmentEnvironmentName,
 } from './contracts/deployments.contract';
+export * from './contracts/deployment-metrics.contract';
+export * from './contracts/product-logs.contract';

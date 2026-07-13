@@ -2,6 +2,7 @@ import {
   buildCompartmentVariableGroupPathname,
   buildCompartmentVariableGroupUsagesPathname,
   type DeploymentInspectResponse,
+  type DeploymentMetricsSnapshot,
   type DeploymentStatusResponse,
   type ListCustomDomainsResponse,
   type ProjectStatusListResponse,
@@ -16,6 +17,7 @@ import { listAccessGroups } from '../src/services/access-group.service';
 import { listAccessRoles } from '../src/services/access-role.service';
 import { listCustomDomains } from '../src/services/custom-domain.service';
 import { getDeploymentInspect } from '../src/services/deployment-inspect.service';
+import { getDeploymentMetrics } from '../src/services/deployment-metrics.service';
 import { getDeploymentStatus } from '../src/services/deployment-status.service';
 import { listProjects } from '../src/services/project-list.service';
 import { listUsers } from '../src/services/users-list.service';
@@ -67,6 +69,17 @@ describe('sdk query path services', (): void => {
 
     expect(readUrls(fetchState)).toEqual([
       'https://console.example/v1/deployments/status?projectName=smoke-web&environmentName=production&deploymentId=dep_123&serviceName=web',
+    ]);
+  });
+
+  it('builds the additive deployment metrics path', async (): Promise<void> => {
+    const metrics: DeploymentMetricsSnapshot = { observedAt: null, pods: [], state: 'unavailable' };
+    const fetchState: FetchMockState = mockFetchSequence([createJsonResponse(metrics)]);
+
+    await getDeploymentMetrics(createRequest(), { environmentName: 'production', projectName: 'smoke-web' });
+
+    expect(readUrls(fetchState)).toEqual([
+      'https://console.example/v1/deployments/metrics?projectName=smoke-web&environmentName=production',
     ]);
   });
 

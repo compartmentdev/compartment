@@ -53,3 +53,45 @@ export const productJobRuns: KubeRuntimeSchemaTypes.ProductJobRunsTable = pgTabl
     statusIndex: index('product_job_runs_status_created_at_idx').on(table.status, table.createdAt),
   }),
 );
+
+export const deploymentProductLogs: KubeRuntimeSchemaTypes.DeploymentProductLogsTable = pgTable(
+  'deployment_product_logs',
+  {
+    deploymentId: text('deployment_id')
+      .notNull()
+      .references((): typeof deployments.id => deployments.id, { onDelete: 'cascade' }),
+    podUid: text('pod_uid').notNull(),
+    podName: text('pod_name').notNull(),
+    namespace: text('namespace').notNull(),
+    containerName: text('container_name').notNull(),
+    restartIdentity: text('restart_identity').notNull(),
+    sourceFingerprint: text('source_fingerprint').notNull(),
+    sourceOffset: integer('source_offset').notNull(),
+    stream: text('stream', { enum: ['stdout', 'stderr'] }).notNull(),
+    message: text('message').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table: KubeRuntimeSchemaTypes.DeploymentProductLogsExtraConfigColumns): PgTableExtraConfig => ({
+    deploymentOccurredAtIndex: index('deployment_product_logs_deployment_occurred_at_idx').on(
+      table.deploymentId,
+      table.occurredAt,
+    ),
+    identityOffsetIndex: uniqueIndex('deployment_product_logs_identity_offset_idx').on(
+      table.podUid,
+      table.containerName,
+      table.restartIdentity,
+      table.sourceOffset,
+      table.sourceFingerprint,
+    ),
+    retentionIndex: index('deployment_product_logs_captured_at_idx').on(table.capturedAt),
+  }),
+);
+
+export const productLogStoreQuota: KubeRuntimeSchemaTypes.ProductLogStoreQuotaTable = pgTable(
+  'product_log_store_quota',
+  {
+    id: text('id').primaryKey(),
+    usedBytes: integer('used_bytes').default(0).notNull(),
+  },
+);

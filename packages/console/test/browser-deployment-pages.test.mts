@@ -29,6 +29,7 @@ import {
   createDeploymentHistoryPageResult,
   createDeploymentReadSummary,
   createDeploymentRunLogsResponse,
+  createDeploymentMetricsSnapshot,
 } from './browser-deployment-history.fixtures';
 import {
   createDeploymentListResponse,
@@ -92,6 +93,7 @@ const browserProjectCountPath: string =
   '/v1/projects?archiveState=active&detail=overview&orderBy=updatedAt&page=1&perPage=1&sort=desc';
 const browserDeploymentRunLogsPath: string =
   '/v1/deployments/runs/logs?projectName=billing&selector=run&deploymentRunId=drn_123';
+const browserDeploymentStatusPath: string = '/v1/deployments/metrics?projectName=billing&environmentName=production';
 
 function readFirstDeploymentRun(data: BrowserDeploymentHistoryPageResult): DeploymentReadRunGroup {
   const run: DeploymentReadRunGroup | undefined = buildDeploymentReadRunGroups(data.deployments)[0];
@@ -250,6 +252,9 @@ describe('browser deployment pages', (): void => {
         if (path === browserDeploymentRunLogsPath) {
           return createJsonResponse(createDeploymentRunLogsResponse());
         }
+        if (path === browserDeploymentStatusPath) {
+          return createJsonResponse(createDeploymentMetricsSnapshot());
+        }
 
         throw new Error(`Unexpected browser API request: ${path}`);
       });
@@ -276,7 +281,45 @@ describe('browser deployment pages', (): void => {
       '/v1/orgs',
       '/v1/whoami',
       browserDeploymentRunLogsPath,
+      browserDeploymentStatusPath,
     ]);
+  });
+
+  it('keeps deployment details available when metrics are unavailable', async (): Promise<void> => {
+    const fetchMock: Mock<FetchImplementation> = vi
+      .fn<FetchImplementation>()
+      .mockImplementation(async (input: string | URL | Request): Promise<Response> => {
+        await Promise.resolve();
+        const path: string = readFetchPath(input);
+        if (path === '/v1/whoami') {
+          return createJsonResponse(createWhoamiResponse());
+        }
+        if (path === '/v1/orgs') {
+          return createJsonResponse(createOrganizationListResponse());
+        }
+        if (path === browserDeploymentRunLogsPath) {
+          return createJsonResponse(createDeploymentRunLogsResponse());
+        }
+        if (path === browserDeploymentStatusPath) {
+          return new Response('{"message":"metrics unavailable"}', { status: 503 });
+        }
+
+        throw new Error(`Unexpected browser API request: ${path}`);
+      });
+    vi.stubGlobal('document', { cookie: '' });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result: BrowserDeploymentDetailsPageResult = await loadDeploymentDetailsPageData(
+      createLoaderArgs(
+        new Request(
+          'http://console.localhost/orgs/acme-dev/projects/billing/deployments/drn_123?environmentName=production',
+        ),
+        { deploymentRunId: 'drn_123', projectName: 'billing' },
+      ),
+    );
+
+    expect(result.metrics).toEqual({ observedAt: null, pods: [], state: 'unavailable' });
+    expect(result.deployment.id).toBe('drn_123');
   });
 
   it('keeps deployment details back links scoped for multi-org sessions', async (): Promise<void> => {
@@ -301,6 +344,9 @@ describe('browser deployment pages', (): void => {
         }
         if (path === browserDeploymentRunLogsPath) {
           return createJsonResponse(createDeploymentRunLogsResponse());
+        }
+        if (path === browserDeploymentStatusPath) {
+          return createJsonResponse(createDeploymentMetricsSnapshot());
         }
 
         throw new Error(`Unexpected browser API request: ${path}`);
@@ -342,6 +388,9 @@ describe('browser deployment pages', (): void => {
         if (path === browserDeploymentRunLogsPath) {
           return createJsonResponse(createDeploymentRunLogsResponse());
         }
+        if (path === browserDeploymentStatusPath) {
+          return createJsonResponse(createDeploymentMetricsSnapshot());
+        }
 
         throw new Error(`Unexpected browser API request: ${path}`);
       });
@@ -361,6 +410,7 @@ describe('browser deployment pages', (): void => {
       '/v1/orgs',
       '/v1/whoami',
       browserDeploymentRunLogsPath,
+      browserDeploymentStatusPath,
     ]);
   });
 
@@ -403,6 +453,9 @@ describe('browser deployment pages', (): void => {
         if (path === browserDeploymentRunLogsPath) {
           return createJsonResponse(refreshedRunLogsResponse);
         }
+        if (path === browserDeploymentStatusPath) {
+          return createJsonResponse(createDeploymentMetricsSnapshot());
+        }
 
         throw new Error(`Unexpected browser API request: ${path}`);
       });
@@ -423,6 +476,7 @@ describe('browser deployment pages', (): void => {
     expect(result.steps).toEqual(refreshedRunLogsResponse.steps);
     expect(fetchMock.mock.calls.map((call: BrowserFetchCall): string => readFetchPath(call[0]))).toEqual([
       browserDeploymentRunLogsPath,
+      browserDeploymentStatusPath,
     ]);
   });
 
@@ -816,11 +870,29 @@ describe('browser deployment pages', (): void => {
             }),
           ],
           deploymentRunId: 'drn_2c8c4d620ec34092a0f42102b6e57e8b',
+          metrics: {
+            observedAt: '2026-07-13T12:00:00.000Z',
+            pods: [
+              {
+                cpuMillicores: 125,
+                deploymentId: 'dep_d8b8dea28548415490480cacbb40a884',
+                memoryBytes: 67_108_864,
+                namespace: 'cpt-project',
+                observedAt: '2026-07-13T12:00:00.000Z',
+                podName: 'web-abc',
+                podUid: '11111111-1111-4111-8111-111111111111',
+                serviceName: 'web',
+              },
+            ],
+            state: 'available',
+          },
         }),
         onNavigate: noopBrowserNavigate,
       }),
     );
     expect(html).toContain('Deployment run details');
+    expect(html).toContain('web-abc');
+    expect(html).toContain('125.000m CPU · 64.00 MiB RAM');
     expect(html).toContain('lucide-file-box');
     expect(html).toContain('border-b-0 pb-0 pt-0');
     expect(html).toContain('flex h-12 items-center border-b border-border');

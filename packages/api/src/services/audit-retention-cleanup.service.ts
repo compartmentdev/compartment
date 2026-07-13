@@ -14,6 +14,8 @@ import type {
   AuditRetentionCleanupOrganizationResult,
   AuditRetentionCleanupResult,
 } from './audit-retention-cleanup.service.types';
+import { runProductLogRetentionCleanup } from './product-log-retention.service';
+import type { ProductLogRetentionCleanupResult } from './product-log-retention.service.types';
 
 const dayMs: number = 24 * 60 * 60 * 1000;
 
@@ -23,6 +25,7 @@ export async function runAuditRetentionCleanup(): Promise<AuditRetentionCleanupR
   const candidates: AuditRetentionCleanupCandidateRow[] = await listAuditRetentionCleanupCandidates();
   const instanceDefault: AuditRetentionEffectivePolicy = readInstanceAuditRetentionPolicy();
   const organizations: AuditRetentionCleanupOrganizationResult[] = [];
+  const productLogs: ProductLogRetentionCleanupResult = await runProductLogRetentionCleanup();
 
   for (const candidate of candidates) {
     organizations.push(await cleanupOrganizationAuditEvents(candidate, instanceDefault, limits));
@@ -31,6 +34,7 @@ export async function runAuditRetentionCleanup(): Promise<AuditRetentionCleanupR
   return {
     deletedCount: sumDeletedAuditEvents(organizations),
     organizations,
+    productLogsDeletedCount: productLogs.deletedCount,
   };
 }
 

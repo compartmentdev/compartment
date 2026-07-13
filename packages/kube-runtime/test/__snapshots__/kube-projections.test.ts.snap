@@ -56,7 +56,7 @@ spec:
   progressDeadlineSeconds: 45
   replicas: 2
   selector:
-    matchLabels: &a1
+    matchLabels:
       app.kubernetes.io/managed-by: compartment
       compartment.dev/environment-id: env-01jz
       compartment.dev/organization-id: org-01jz
@@ -75,7 +75,13 @@ spec:
         compartment.dev/project-name: Checkout
         compartment.dev/secret-checksum: <sha256>
         compartment.dev/service-name: Web
-      labels: *a1
+      labels:
+        app.kubernetes.io/managed-by: compartment
+        compartment.dev/deployment-id: dep-01jz
+        compartment.dev/environment-id: env-01jz
+        compartment.dev/organization-id: org-01jz
+        compartment.dev/project-id: prj-01jz
+        compartment.dev/service-id: svc-01jz
     spec:
       automountServiceAccountToken: false
       containers:
@@ -98,7 +104,7 @@ spec:
                   - sh
                   - -c
                   - sleep 3
-          name: app
+          name: app-dep-01jz-271c08c7e603c156
           ports:
             - containerPort: 8080
               name: http
