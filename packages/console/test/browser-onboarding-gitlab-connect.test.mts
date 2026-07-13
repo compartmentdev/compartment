@@ -21,6 +21,12 @@ describe('browser onboarding GitLab connection', (): void => {
     expect(markup).toContain('GitLab host');
     expect(markup).toContain('value="gitlab.example.com"');
     expect(markup).toContain('type="password"');
-    expect(markup).toContain('api scope and Maintainer access');
+    expect(markup).toContain('Create a personal access token');
+    expect(markup).toContain(
+      'href="https://gitlab.example.com/-/user_settings/personal_access_tokens?name=Compartment&amp;scopes=api"',
+    );
+    expect(markup).toContain('target="_blank"');
+    expect(markup).toContain('rel="noreferrer"');
+    expect(markup).toContain('with the api scope. Your account needs Maintainer access to the repository.');
   });
 });

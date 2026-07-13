@@ -73,10 +73,26 @@ function GitLabConnectForm({ state }: Readonly<{ state: GitLabConnectState }>): 
           value={state.accessToken}
         />
       </label>
-      <p className="text-[13px] text-[#485259]">The token needs the api scope and Maintainer access.</p>
+      {renderGitLabTokenHelp(state.providerHost)}
       {renderGitLabSubmitButton(state.isSubmitting)}
       {state.error !== null ? renderGitLabConnectError(state.error) : null}
     </form>
+  );
+}
+
+function renderGitLabTokenHelp(providerHost: string): JSX.Element {
+  return (
+    <p className="text-[13px] text-[#485259]">
+      <a
+        className="text-foreground underline underline-offset-2"
+        href={`https://${providerHost}/-/user_settings/personal_access_tokens?name=Compartment&scopes=api`}
+        rel="noreferrer"
+        target="_blank"
+      >
+        Create a personal access token
+      </a>{' '}
+      with the api scope. Your account needs Maintainer access to the repository.
+    </p>
   );
 }
 

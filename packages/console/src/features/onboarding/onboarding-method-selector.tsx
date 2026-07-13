@@ -31,7 +31,7 @@ interface OnboardingMethodOption {
 
 const onboardingMethodOptions: OnboardingMethodOption[] = [
   {
-    description: 'Connect GitHub, pick a repository, then deploy from pushes.',
+    description: 'Connect a Git provider, pick a repository, then deploy from pushes.',
     icon: GitBranch,
     method: 'git',
     title: 'Git',
