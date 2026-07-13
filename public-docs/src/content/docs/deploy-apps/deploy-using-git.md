@@ -13,7 +13,7 @@ This is useful when:
 
 ## How it works
 
-`compartment source connect git` uses the current repository checkout, detects the provider, then asks which repository, branch, and environment to connect. The Console onboarding starts with a GitHub/GitLab provider choice.
+`compartment source connect git` uses the current repository checkout, detects the provider, then asks which repository owner or namespace, repository, branch, and environment to connect. The Console onboarding starts with a GitHub/GitLab provider choice.
 
 You can also connect Git from the Console install-time first-deploy setup or later from **Projects** -> **Deploy my first project** or **Add project**. Choose GitHub to install or authorize the Compartment GitHub App; choose GitLab to enter a GitLab host and access token. The Console guides provider setup, repository selection, descriptor pull request or merge request creation, and the first deployment in one flow. For newly connected sources, the Console enables automatic descriptor adoption and automatic deploys for the selected branch and environment.
 
@@ -59,7 +59,7 @@ compartment source connect git --all --auto-adopt-new-apps enabled
 
 What the command asks for:
 
-- the GitHub account, repository, and branch to watch;
+- the repository owner or namespace, repository, and branch to watch;
 - the target environment;
 - whether newly discovered descriptor apps should be adopted automatically;
 - whether pushes should auto-deploy.
