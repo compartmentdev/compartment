@@ -19,12 +19,11 @@ import { createNodeRuntimeRequester } from './node-runtime-requester';
 import { resolveResourceEnvironmentContext } from './resource-environment-context.service';
 import type { EffectiveVariable } from './effective-variables.service.types';
 import { auditResourceOutputReveal, requireResourceOutputRevealPermission } from './resource-output-disclosure.service';
-import {
-  listResolvedResourceOutputSummaries,
-  resolveResourceOutputSummary,
-} from './resource-output-resolution.service';
+import { resolveResourceOutputForLookup } from './resource-output-lookup.service';
+import { listResolvedResourceOutputSummaries } from './resource-output-resolution.service';
 import { loadResourceEffectiveVariables } from './resources-effective-variables.service';
 import { resolveResourceNode } from './resources-node.service';
+import { bootstrapKubernetesResource } from './resources-kubernetes-reconcile.service';
 import { requireRunningResourceContainerId } from './resources-runtime-container.service';
 import { resolveStoredResourceIntent } from './resources-stored-intent.service';
 import { buildNodeResourceRequest, type ResolvedResourceIntent } from './resources.service.helpers';
@@ -69,6 +68,7 @@ export async function listResourceOutputsForPrincipal(input: ResourceActionInput
     outputs: listResolvedResourceOutputSummaries(
       {
         environmentName: lookup.environment.name,
+        namespaceId: lookup.project.id,
         projectName: lookup.project.name,
         resource: lookup.resource,
       },
@@ -88,16 +88,7 @@ export async function getResourceOutputForPrincipal(input: ResourceOutputInput):
     lookup.resource.name,
   );
 
-  const output: ResourceOutputSummaryInput = resolveResourceOutputSummary(
-    input.query.outputName,
-    {
-      environmentName: lookup.environment.name,
-      projectName: lookup.project.name,
-      resource: lookup.resource,
-    },
-    effectiveVariables,
-    reveal,
-  );
+  const output: ResourceOutputSummaryInput = resolveResourceOutputForLookup(input, lookup, effectiveVariables, reveal);
   await auditResourceOutputReveal(input, lookup, output, reveal);
 
   return {
@@ -119,6 +110,7 @@ export async function getResourceForPrincipal(input: ResourceActionInput): Promi
 export async function startResourceForPrincipal(input: ResourceActionInput): Promise<ResourceLookupResult> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
+  assertNodeResourceOperation(resource, 'start');
   const node: NodeRow = await resolveResourceNode(context);
   const response: NodeResourceResponse = await startPreparedResource(context, resource, node);
 
@@ -126,6 +118,19 @@ export async function startResourceForPrincipal(input: ResourceActionInput): Pro
     ...context,
     resource: await persistResourceRuntime(resource.id, response),
   };
+}
+
+export async function bootstrapResourceForPrincipal(input: ResourceActionInput): Promise<ResourceLookupResult> {
+  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
+  const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
+  if (resource.runtimeKind !== 'kubernetes') {
+    throw new Error('Resource bootstrap is only available for Kubernetes resources.');
+  }
+  if (resource.expectedClaimsJson !== '[]') {
+    throw new Error(`Resource ${resource.name} is already bootstrapped.`);
+  }
+  await bootstrapKubernetesResource(context, resource);
+  return { ...context, resource };
 }
 
 async function startPreparedResource(
@@ -164,6 +169,7 @@ function buildStoredResourceStartRequest(
 export async function stopResourceForPrincipal(input: ResourceActionInput): Promise<ResourceLookupResult> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
+  assertNodeResourceOperation(resource, 'stop');
   const node: NodeRow = await resolveResourceNode(context);
   const response: NodeResourceResponse = await stopNodeResource(createNodeRuntimeRequester(node.nodeSocketPath), {
     containerId: requireRunningResourceContainerId(resource),
@@ -182,6 +188,7 @@ export async function stopResourceForPrincipal(input: ResourceActionInput): Prom
 export async function deleteResourceForPrincipal(input: ResourceDeleteInput): Promise<string[]> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
+  assertNodeResourceOperation(resource, 'delete');
   const volumes: ResourceVolumeSummary[] = parseResourceVolumes(resource);
   const node: NodeRow = await resolveResourceNode(context);
   await deleteNodeResource(createNodeRuntimeRequester(node.nodeSocketPath), {
@@ -201,6 +208,7 @@ export async function getResourceLogsForPrincipal(input: ResourceLogsInput): Pro
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'deployment.create');
   await requireResourceEnvironmentPermission(input.actorPrincipalId, context, 'deployment.logs.read');
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
+  assertNodeResourceOperation(resource, 'logs');
   const node: NodeRow = await resolveResourceNode(context);
   const response: NodeResourceLogsResponse = await tailNodeResourceLogs(
     createNodeRuntimeRequester(node.nodeSocketPath),
@@ -230,6 +238,12 @@ async function requireResourceEnvironmentPermission(
 
 async function resolveRequiredResource(environmentId: string, resourceName: string): Promise<ProjectResourceRow> {
   return (await findProjectResourceByName(environmentId, resourceName)) ?? failResourceLookup();
+}
+
+function assertNodeResourceOperation(resource: ProjectResourceRow, operation: string): void {
+  if (resource.runtimeKind === 'kubernetes') {
+    throw new Error(`Resource ${operation} is not implemented for Kubernetes resources.`);
+  }
 }
 
 async function persistResourceRuntime(

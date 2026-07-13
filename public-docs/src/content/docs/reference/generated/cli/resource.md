@@ -17,24 +17,26 @@ Usage: compartment resource [options] [command]
 Resource commands
 
 Options:
-  -h, --help         display help for command
+  -h, --help           display help for command
 
 Commands:
   list [options]
   inspect [options]
+  bootstrap [options]
   logs [options]
-  output             Resource output commands
+  output               Resource output commands
   start [options]
   stop [options]
   delete [options]
-  backup             Resource backup commands
-  help [command]     display help for command
+  backup               Resource backup commands
+  help [command]       display help for command
 ```
 
 ## Related Commands
 
 - [compartment resource list](/reference/generated/cli/resource/list/)
 - [compartment resource inspect](/reference/generated/cli/resource/inspect/)
+- [compartment resource bootstrap](/reference/generated/cli/resource/bootstrap/)
 - [compartment resource logs](/reference/generated/cli/resource/logs/)
 - [compartment resource output](/reference/generated/cli/resource/output/)
 - [compartment resource start](/reference/generated/cli/resource/start/)

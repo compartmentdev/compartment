@@ -23,11 +23,16 @@ export interface KubeHttpGetAction {
 
 export interface KubeReadinessProbe {
   failureThreshold: number;
-  httpGet: KubeHttpGetAction;
-  initialDelaySeconds: number;
+  httpGet?: KubeHttpGetAction | undefined;
+  initialDelaySeconds?: number | undefined;
   periodSeconds: number;
   successThreshold: number;
+  tcpSocket?: KubeTcpSocketAction | undefined;
   timeoutSeconds: number;
+}
+
+export interface KubeTcpSocketAction {
+  port: number | string;
 }
 
 export interface ApplicationProjectionRow {

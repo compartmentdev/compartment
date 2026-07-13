@@ -43,6 +43,7 @@ export { deleteProject } from './services/project-delete.service';
 export { getProject } from './services/project-get.service';
 export {
   createResourceBackup,
+  bootstrapResource,
   deleteResource,
   getResource,
   getResourceLogs,
@@ -176,3 +177,4 @@ export {
   observeDeploymentReconcile,
   prepareDeploymentReconcile,
 } from './services/worker-deployment-reconcile.service';
+export { acknowledgeResourceReconcile, claimResourceReconcile } from './services/worker-resource-reconcile.service';

@@ -17,6 +17,8 @@ const projectResourceLockSelection: SQL[] = [
   sql`${projectResources.envJson} as "envJson"`,
   sql`${projectResources.environmentId} as "environmentId"`,
   sql`${projectResources.hostname} as "hostname"`,
+  sql`${projectResources.runtimeKind} as "runtimeKind"`,
+  sql`${projectResources.expectedClaimsJson} as "expectedClaimsJson"`,
   sql`${projectResources.id} as "id"`,
   sql`${projectResources.image} as "image"`,
   sql`${projectResources.name} as "name"`,
@@ -112,25 +114,19 @@ export async function updateProjectResourceIntentWithExecutor(
 ): Promise<ProjectResourceRow> {
   const [resource] = await tx
     .update(projectResources)
-    .set({
-      commandJson: input.commandJson,
-      envJson: input.envJson,
-      hostname: input.hostname,
-      image: input.image,
-      operationConfigHash: input.operationConfigHash,
-      operationsJson: input.operationsJson,
-      outputsJson: input.outputsJson,
-      portsJson: input.portsJson,
-      readinessJson: input.readinessJson,
-      restartPolicy: input.restartPolicy,
-      runtimeDefinitionHash: input.runtimeDefinitionHash,
-      updatedAt: input.updatedAt,
-      volumesJson: input.volumesJson,
-    })
+    .set(projectResourceIntentUpdate(input))
     .where(eq(projectResources.id, input.projectResourceId))
     .returning();
 
   return requireProjectResourceRow(resource !== undefined ? toProjectResourceRow(resource) : undefined);
+}
+
+function projectResourceIntentUpdate(
+  input: UpdateProjectResourceIntentInput,
+): Omit<UpdateProjectResourceIntentInput, 'projectResourceId'> {
+  const update: Partial<UpdateProjectResourceIntentInput> = { ...input };
+  Reflect.deleteProperty(update, 'projectResourceId');
+  return update as Omit<UpdateProjectResourceIntentInput, 'projectResourceId'>;
 }
 
 export async function updateProjectResourceRuntime(

@@ -15,6 +15,7 @@ import { renderOutput } from '../../output/render';
 import { isInteractivePromptInput, readPromptLine } from '../../prompts/prompt-reader';
 import {
   deleteResource,
+  bootstrapResource,
   createResourceBackup,
   inspectResource,
   listResourceBackups,
@@ -49,6 +50,7 @@ export function registerResourceCommands(program: Command, dependencies: CliComm
   const resourceCommand: Command = program.command('resource').description('Resource commands');
   registerListCommand(resourceCommand, dependencies);
   registerTargetCommand(resourceCommand, 'inspect', inspectResource, dependencies);
+  registerTargetCommand(resourceCommand, 'bootstrap', bootstrapResource, dependencies);
   registerLogsCommand(resourceCommand, dependencies);
   registerOutputCommands(resourceCommand, dependencies);
   registerTargetCommand(resourceCommand, 'start', startResource, dependencies);

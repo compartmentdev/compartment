@@ -1,0 +1,161 @@
+import type {
+  ExpectedResourceClaim,
+  ObservedResourceClaim,
+  ResourceProjectionRow,
+  ResourceVolumeProjection,
+} from './kube-resource-projection.types';
+import type {
+  KubeDeploymentManifest,
+  KubeManifest,
+  KubePodTemplate,
+  KubePodVolume,
+  KubeProjectedContainer,
+  KubeVolumeMount,
+} from './kube-runtime.types';
+import { kubeNamespaceName, kubeResourceName, kubeResourceVolumeName, kubeSecretName } from './kube-naming';
+import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
+
+const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
+
+/** Ordinary reconcile bundle. PVC creation is deliberately not representable here. */
+export function projectResourceManifests(row: ResourceProjectionRow, replicas: 0 | 1 = 1): KubeManifest[] {
+  const name: string = kubeResourceName(row.resourceId);
+  const namespace: string = kubeNamespaceName(row.namespaceId);
+  const labels: Record<string, string> = {
+    ...managedByLabel,
+    'compartment.dev/environment-id': row.environmentId,
+    'compartment.dev/resource-id': row.resourceId,
+  };
+  const secret: KubeManifest = resourceSecret(row);
+  const deployment: KubeManifest = resourceDeployment(row, replicas, labels, name, namespace);
+  return [secret, deployment, resourceService(row, labels, name, namespace)];
+}
+
+function resourceSecret(row: ResourceProjectionRow): KubeManifest {
+  return projectSecretManifest({
+    data: row.env,
+    deploymentId: row.resourceId,
+    namespaceId: row.namespaceId,
+    secretId: row.secretId,
+  });
+}
+
+function resourceDeployment(
+  row: ResourceProjectionRow,
+  replicas: 0 | 1,
+  labels: Record<string, string>,
+  name: string,
+  namespace: string,
+): KubeDeploymentManifest {
+  return {
+    apiVersion: 'apps/v1',
+    kind: 'Deployment',
+    metadata: { labels, name, namespace },
+    spec: {
+      progressDeadlineSeconds: 90,
+      replicas,
+      selector: { matchLabels: labels },
+      strategy: { type: 'Recreate' },
+      template: resourcePodTemplate(row, labels),
+    },
+  };
+}
+
+function resourcePodTemplate(row: ResourceProjectionRow, labels: Record<string, string>): KubePodTemplate {
+  return {
+    metadata: { annotations: { 'compartment.dev/secret-checksum': secretChecksum(row.env) }, labels },
+    spec: {
+      automountServiceAccountToken: false,
+      containers: [resourceContainer(row)],
+      terminationGracePeriodSeconds: 60,
+      volumes: row.volumes.map(
+        (volume: ResourceVolumeProjection): KubePodVolume => ({
+          name: kubeResourceVolumeName(row.resourceId, volume.volumeHandle),
+          persistentVolumeClaim: { claimName: kubeResourceVolumeName(row.resourceId, volume.volumeHandle) },
+        }),
+      ),
+    },
+  };
+}
+
+function resourceContainer(row: ResourceProjectionRow): KubeProjectedContainer {
+  return {
+    env: secretEnvironment(row.env, kubeSecretName(row.secretId)),
+    image: row.image,
+    name: 'resource',
+    ports: [{ containerPort: row.containerPort, name: 'resource', protocol: 'TCP' }],
+    readinessProbe: {
+      failureThreshold: 3,
+      periodSeconds: 2,
+      successThreshold: 1,
+      tcpSocket: { port: 'resource' },
+      timeoutSeconds: 1,
+    },
+    volumeMounts: row.volumes.map(
+      (volume: ResourceVolumeProjection): KubeVolumeMount => ({
+        mountPath: volume.mountPath,
+        name: kubeResourceVolumeName(row.resourceId, volume.volumeHandle),
+      }),
+    ),
+  };
+}
+
+function resourceService(
+  row: ResourceProjectionRow,
+  labels: Record<string, string>,
+  name: string,
+  namespace: string,
+): KubeManifest {
+  return {
+    apiVersion: 'v1',
+    kind: 'Service',
+    metadata: { labels, name, namespace },
+    spec: {
+      ports: [{ name: 'resource', port: row.containerPort, protocol: 'TCP', targetPort: row.containerPort }],
+      selector: labels,
+    },
+  };
+}
+
+/** Explicit bootstrap-only PVC projection. Never add this result to projectResourceManifests. */
+export function projectResourceBootstrapClaims(row: ResourceProjectionRow): KubeManifest[] {
+  return [...row.volumes, { mountPath: '/backup', size: '1Gi', volumeHandle: 'backup-artifacts' }].map(
+    (volume: ResourceVolumeProjection): KubeManifest => ({
+      apiVersion: 'v1',
+      kind: 'PersistentVolumeClaim',
+      metadata: {
+        labels: { ...managedByLabel, 'compartment.dev/resource-id': row.resourceId },
+        name: kubeResourceVolumeName(row.resourceId, volume.volumeHandle),
+        namespace: kubeNamespaceName(row.namespaceId),
+      },
+      spec: { accessModes: ['ReadWriteOnce'], resources: { requests: { storage: volume.size } } },
+    }),
+  );
+}
+
+export function assertResourceClaimIdentity(
+  expected: readonly ExpectedResourceClaim[],
+  observed: readonly ObservedResourceClaim[],
+): void {
+  if (expected.length === 0) {
+    throw new Error('Resource reconcile refused: expected PVC identity is missing. Bootstrap is required.');
+  }
+  for (const claim of expected) {
+    const actual: ObservedResourceClaim | undefined = observed.find(
+      (candidate: ObservedResourceClaim): boolean => candidate.claimName === claim.claimName,
+    );
+    if (actual === undefined || !actual.bound || actual.uid === null) {
+      throw new Error(`Resource reconcile refused: PVC ${claim.claimName} is missing or unbound.`);
+    }
+    if (actual.uid !== claim.uid) {
+      throw new Error(`Resource reconcile refused: PVC ${claim.claimName} UID changed.`);
+    }
+  }
+  if (observed.length !== expected.length) {
+    throw new Error('Resource reconcile refused: PVC handle mapping changed.');
+  }
+}
+
+export function resourcePodsFullyTerminated(pods: readonly { deletionTimestamp?: string | undefined }[]): boolean {
+  return pods.length === 0;
+}

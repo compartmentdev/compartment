@@ -35,6 +35,7 @@ export const productJobRuns: KubeRuntimeSchemaTypes.ProductJobRunsTable = pgTabl
     image: text('image').notNull(),
     commandJson: text('command_json').notNull(),
     envJson: text('env_json').notNull(),
+    volumeMountsJson: text('volume_mounts_json').default('[]').notNull(),
     namespace: text('namespace').notNull(),
     timeoutMs: integer('timeout_ms').notNull(),
     status: text('status', { enum: ['queued', 'running', 'succeeded', 'failed', 'timed-out'] }).notNull(),

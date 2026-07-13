@@ -39,11 +39,11 @@ export interface CreateResourceBackupInput {
 export interface CompleteResourceBackupInput {
   artifactLocation: string;
   backupId: string;
-  checksum: string;
+  checksum: string | null;
   completedAt: Date;
   manifestJson: string;
   resourceDefinitionJson: string;
-  sizeBytes: number;
+  sizeBytes: number | null;
   stderrSummary: string;
   stdoutSummary: string;
 }

@@ -110,8 +110,10 @@ export interface DeploymentResourceSummaryInput
   extends DeploymentResourceDefinitionSummaryInput, DeploymentResourceRuntimeSummaryInput {
   createdAt: Date;
   environmentId: string;
+  expectedClaimsJson: string;
   id: string;
   name: string;
+  runtimeKind: 'node' | 'kubernetes';
   updatedAt: Date;
 }
 

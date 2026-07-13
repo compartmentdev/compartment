@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { kubeResourceServiceDns } from '@compartment/utils';
 import { afterEach, describe, expect, it } from 'vitest';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
@@ -16,6 +17,7 @@ import type { EffectiveVariable } from '../src/services/effective-variables.serv
 import type { ResourceOutputSummaryInput } from '../src/services/resources.service.types';
 
 const variablesMasterKey: Buffer = parseVariablesMasterKey('11'.repeat(32));
+const namespaceId: string = 'prj-billing';
 
 describe('resource output resolution service', (): void => {
   afterEach((): void => {
@@ -25,6 +27,7 @@ describe('resource output resolution service', (): void => {
   it('renders supported resource output placeholders and hides sensitive plaintext by default', (): void => {
     configureResourceOutputRuntime();
     const resource: ProjectResourceRow = createProjectResourceRow({
+      runtimeKind: 'kubernetes',
       outputsJson: JSON.stringify({
         'connection-url': {
           sensitive: true,
@@ -45,6 +48,7 @@ describe('resource output resolution service', (): void => {
     const hiddenOutputs: ResourceOutputSummaryInput[] = listResolvedResourceOutputSummaries(
       {
         environmentName: 'production',
+        namespaceId,
         projectName: 'billing',
         resource,
       },
@@ -92,6 +96,7 @@ describe('resource output resolution service', (): void => {
       'connection-url',
       'billing',
       'production',
+      namespaceId,
       [
         createEffectiveVariable('POSTGRES_DB', 'app'),
         createEffectiveVariable('POSTGRES_PASSWORD', 'secret'),
@@ -101,18 +106,18 @@ describe('resource output resolution service', (): void => {
 
     expect(revealed).toMatchObject({
       sensitivity: 'sensitive',
-      value: 'postgres://app:secret@postgres.production.billing.resource.internal/app?app=billing-production',
+      value: `postgres://app:secret@${kubeResourceServiceDns(resource.id, namespaceId)}/app?app=billing-production`,
     });
     expect(revealed.valueFingerprint).toMatch(/^[0-9a-f]{64}$/u);
     expect(revealed.valueFingerprint).toBe(
       createVariableValueFingerprint(
-        'postgres://app:secret@postgres.production.billing.resource.internal/app?app=billing-production',
+        `postgres://app:secret@${kubeResourceServiceDns(resource.id, namespaceId)}/app?app=billing-production`,
         variablesMasterKey,
       ),
     );
     expect(revealed.valueFingerprint).not.toBe(
       createRawSha256Fingerprint(
-        'postgres://app:secret@postgres.production.billing.resource.internal/app?app=billing-production',
+        `postgres://app:secret@${kubeResourceServiceDns(resource.id, namespaceId)}/app?app=billing-production`,
       ),
     );
   });
@@ -133,6 +138,7 @@ describe('resource output resolution service', (): void => {
         'connection-url',
         'billing',
         'production',
+        namespaceId,
         [],
       );
     }).toThrow('Resource output template references missing env value "POSTGRES_PASSWORD".');
@@ -198,6 +204,8 @@ function createProjectResourceRow(overrides: Partial<ProjectResourceRow> = {}): 
     ]),
     environmentId: 'env_production',
     hostname: 'postgres.production.billing.resource.internal',
+    runtimeKind: 'node',
+    expectedClaimsJson: '[]',
     id: 'res_postgres',
     image: 'postgres:16',
     name: 'postgres',

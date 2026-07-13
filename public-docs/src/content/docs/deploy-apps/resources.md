@@ -226,13 +226,26 @@ Run deploy from the repository root:
 compartment deploy
 ```
 
-During deploy, Compartment reconciles declared resources before app services. It creates or updates the resource
-container, attaches declared volumes, and waits for resource readiness before building and starting the selected
-services.
+During deploy, Compartment reconciles declared resources before app services. Node-backed installs create or update the
+resource container, attach declared volumes, and wait for readiness as before.
+
+On a Kubernetes-backed install, the first deploy records a resource with volumes but does not create missing storage.
+Bootstrap that storage explicitly, then deploy again:
+
+```bash
+compartment resource bootstrap --resource db
+compartment deploy
+```
+
+Bootstrap fails when the resource is not Kubernetes-backed or its storage was already bootstrapped. Later deploys fail
+closed if a claim is missing, unbound, or has a different identity; Compartment does not replace it with an empty volume.
+For an update, Compartment stops the existing resource, waits until its pod is absent, verifies the storage identities,
+and only then starts the replacement. If start or readiness fails, it restores the previous executable manifest with the
+same storage; rollback does not downgrade data written in a newer format.
 
 ## Connect from an app
 
-Apps connect to a resource by its internal hostname:
+Node-backed resources keep the legacy internal hostname:
 
 ```text
 <resource>.<environment>.<project>.resource.internal
@@ -250,6 +263,10 @@ An API service can use that host with the declared internal port:
 postgres://app:<password>@db.production.internal-tools.resource.internal:5432/app
 ```
 
+Kubernetes-backed resources derive `${resource.host}` from an immutable internal Service name in the project namespace.
+Use the declared output or injected connection variable instead of constructing that DNS name from mutable project,
+environment, or resource names.
+
 Keep this connection string in runtime variables or app config. Do not expose resource ports through public domains or
 route rules.
 
@@ -260,6 +277,7 @@ Use `compartment resource` commands after deploy:
 ```bash
 compartment resource list
 compartment resource inspect --resource db
+compartment resource bootstrap --resource db
 compartment resource logs --resource db --tail 50
 compartment resource stop --resource db
 compartment resource start --resource db
@@ -270,7 +288,7 @@ Use `--project`, `--env`, `--remote`, or `--output json` when you need an explic
 Built-in `deployer` and `admin` roles can inspect resource inventory and logs. Built-in `readonly` and `viewer` roles cannot.
 
 If you use custom roles, `resource list`, `inspect`, `logs`, `output list`, `output show`, and
-`backup create|list|show|restore` require `deployment.create` on the target environment. This includes
+`bootstrap` requires `project.lifecycle.write`. `backup create|list|show|restore` require `deployment.create` on the target environment. This includes
 restore-to-new-resource with `--as`. Deploy-time creation of missing `generatedVariables` also uses
 `deployment.create`. `resource logs` also requires `deployment.logs.read`. Revealing a sensitive resource output with
 `output show --reveal` also requires `variable.value.read`.
@@ -281,13 +299,21 @@ The PostgreSQL preset already includes backup and restore operations, plus a sch
 For generic or full resources, add `operations.backup.command` before running `resource backup create`. In-place restore
 also requires `operations.restore.command`, because it creates a pre-restore backup before applying the selected backup.
 Restore-to-new-resource with `--as` uses the operation configuration saved with the selected backup. `resource backup
-list` and `resource backup show` read existing backup records and do not require operation commands. Compartment runs
-each command in a disposable container on the resource network and mounts the backup artifact workspace at `/backup`.
-Backup commands can write to `/backup`; restore commands receive `/backup` read-only, so use another writable path such
-as `/tmp` for restore scratch files. On self-hosted installs, backup and restore operation containers run as
+list` and `resource backup show` read existing backup records and do not require operation commands.
+
+Node-backed resources run each command in a disposable container on the resource network and mount the host-backed
+artifact workspace at `/backup`. Set `COMPARTMENT_RESOURCE_BACKUP_DIR` to the same persistent absolute host directory
+for the API and node processes.
+
+Kubernetes-backed resources run durable Jobs and store artifacts on a per-resource artifact volume created by the
+explicit bootstrap command. Compartment records and checks that volume's identity before every Job. It verifies the
+artifact checksum and size after backup and again before restore; missing or changed metadata stops restore before the
+restore command starts. Backup commands receive a writable artifact directory, while restore commands receive it
+read-only, so use another writable path such as `/tmp` for restore scratch files.
+
+On self-hosted installs, node-backed backup and restore operation containers run as
 `10001:10001`, so custom operation images must work without root privileges.
 
-Set `COMPARTMENT_RESOURCE_BACKUP_DIR` to the same persistent absolute host directory for the API and node processes.
 Relative backup directories are rejected. When upgrading from a relative backup directory, resolve the old directory
 against the previous API working directory, move the artifact directories under the chosen absolute backup directory,
 and reconcile stored backup artifact locations before relying on restore.
@@ -298,7 +324,7 @@ not inject every project or environment variable automatically.
 
 Compartment injects these variables into backup and restore commands:
 
-- `COMPARTMENT_BACKUP_DIR=/backup`
+- `COMPARTMENT_BACKUP_DIR` — `/backup` for node-backed resources; an isolated artifact directory for Kubernetes resources
 - `COMPARTMENT_RESOURCE_HOST`
 - `COMPARTMENT_RESOURCE_NAME`
 - `COMPARTMENT_PROJECT_NAME`

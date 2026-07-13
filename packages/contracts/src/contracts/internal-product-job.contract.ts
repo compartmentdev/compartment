@@ -10,6 +10,17 @@ interface ProductJobSpec {
   image: string;
   namespace: string;
   timeoutMs: number;
+  volumeMounts?: ProductJobVolumeMount[] | undefined;
+}
+
+export interface ProductJobVolumeMount {
+  claimName: string;
+  expectedClaimUid: string;
+  mountPath: string;
+  name: string;
+  readOnly?: boolean | undefined;
+  resourceId: string;
+  subPath?: string | undefined;
 }
 
 export interface ReleaseProductJobIntent extends ProductJobSpec {
@@ -51,6 +62,7 @@ interface ProductJobSpecSchemaShape {
   image: z.ZodString;
   namespace: z.ZodString;
   timeoutMs: z.ZodNumber;
+  volumeMounts: z.ZodOptional<ContractSchema<ProductJobVolumeMount[]>>;
 }
 
 export const workerClaimProductJobPathname: string = '/internal/kube-jobs/claim-next';
@@ -64,6 +76,21 @@ const productJobSpecShape: ProductJobSpecSchemaShape = {
   image: z.string().min(1),
   namespace: z.string().min(1),
   timeoutMs: z.number().int().positive(),
+  volumeMounts: z
+    .array(
+      z
+        .object({
+          claimName: z.string().min(1),
+          expectedClaimUid: z.string().min(1),
+          mountPath: z.string().startsWith('/'),
+          name: z.string().min(1),
+          readOnly: z.boolean().optional(),
+          resourceId: z.string().min(1),
+          subPath: z.string().min(1).optional(),
+        })
+        .strict(),
+    )
+    .optional(),
 };
 
 export const productJobIntentSchema: ContractSchema<ProductJobIntent> = z.discriminatedUnion('jobClass', [

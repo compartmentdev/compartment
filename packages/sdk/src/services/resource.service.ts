@@ -1,5 +1,6 @@
 import {
   buildCompartmentResourceBackupCollectionPathname,
+  buildCompartmentResourceBootstrapPathname,
   buildCompartmentResourceBackupRestorePathname,
   buildCompartmentResourceBackupShowPathname,
   buildCompartmentResourceLogsPathname,
@@ -113,6 +114,17 @@ export async function startResource(
   return await request<ResourceResponse, undefined>({
     method: 'POST',
     path: buildResourceRequestPath(buildCompartmentResourceStartPathname(query.resourceName), query),
+    schema: resourceResponseSchema,
+  });
+}
+
+export async function bootstrapResource(
+  request: CompartmentRequester,
+  query: ResourceTargetQuery,
+): Promise<ResourceResponse> {
+  return await request<ResourceResponse, undefined>({
+    method: 'POST',
+    path: buildResourceRequestPath(buildCompartmentResourceBootstrapPathname(query.resourceName), query),
     schema: resourceResponseSchema,
   });
 }

@@ -44,6 +44,7 @@ export const compartmentResourceBackupCollectionPathnameTemplate: string = `${co
 export const compartmentResourceLogsPathnameTemplate: string = `${compartmentResourcePathnameTemplate}/logs`;
 export const compartmentResourceRestorePathnameTemplate: string = `${compartmentResourcePathnameTemplate}/restore`;
 export const compartmentResourceStartPathnameTemplate: string = `${compartmentResourcePathnameTemplate}/start`;
+export const compartmentResourceBootstrapPathnameTemplate: string = `${compartmentResourcePathnameTemplate}/bootstrap`;
 export const compartmentResourceStopPathnameTemplate: string = `${compartmentResourcePathnameTemplate}/stop`;
 export const compartmentRolesPathname: string = '/v1/roles';
 export const compartmentUsersApiPathname: string = '/v1/users';
@@ -182,6 +183,10 @@ export function buildCompartmentResourceRestorePathname(resourceName: string): s
 
 export function buildCompartmentResourceStartPathname(resourceName: string): string {
   return `${buildCompartmentResourcePathname(resourceName)}/start`;
+}
+
+export function buildCompartmentResourceBootstrapPathname(resourceName: string): string {
+  return `${buildCompartmentResourcePathname(resourceName)}/bootstrap`;
 }
 
 export function buildCompartmentResourceStopPathname(resourceName: string): string {

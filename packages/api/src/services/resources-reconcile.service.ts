@@ -7,10 +7,8 @@ import {
 } from '@compartment/contracts';
 import { reconcileNodeResource } from '@compartment/sdk';
 import {
-  createProjectResourceWithExecutor,
   lockProjectResourceByName,
   lockProjectResourceReconciliation,
-  updateProjectResourceIntentWithExecutor,
   updateProjectResourceRuntimeWithExecutor,
 } from '../queries/resources.query';
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
@@ -19,10 +17,13 @@ import { resolveOrCreateEnvironmentContext } from './deployment-context.service'
 import type { EffectiveVariable } from './effective-variables.service.types';
 import { createResourceNodeRequester } from './resource-node-requester.service';
 import { assertNoUndeclaredResources } from './resources-declared-resources.validation';
-import { loadResourceEffectiveVariables } from './resources-effective-variables.service';
-import { ensureGeneratedResourceVariables } from './resources-generated-variables.service';
 import { applyResourceRestartPolicyUpdate } from './resources-restart-policy.service';
-import { createResourceInsert } from './resources-resource-insert.service';
+import { hasKubernetesRuntime, reconcileKubernetesResource } from './resources-kubernetes-reconcile.service';
+import {
+  prepareResourceEffectiveVariables,
+  persistResourceIntent,
+  updateResourceIntent,
+} from './resources-reconcile-persistence.service';
 import {
   buildNodeResourceRequest,
   resolveResourceIntent,
@@ -73,45 +74,38 @@ async function reconcileDeclaredResource(
   resourceName: string,
   resource: CompartmentAuthoredResourceConfig,
 ): Promise<ProjectResourceRow> {
-  return await getApiDatabase().transaction(async (tx: ResourceTransaction): Promise<ProjectResourceRow> => {
-    await lockProjectResourceReconciliation(tx, context.environment.id, resourceName);
-    const effectiveVariables: EffectiveVariable[] = await prepareResourceEffectiveVariables(
-      tx,
-      actorPrincipalId,
-      context,
-      resourceName,
-      resource,
-    );
-    const intent: ResolvedResourceIntent = resolveResourceIntent(
-      context.project.name,
-      context.environment.name,
-      resourceName,
-      resource,
-      effectiveVariables,
-    );
-    return await reconcileDeclaredResourceWithLock(tx, context, resourceName, intent);
-  });
+  if (hasKubernetesRuntime(process.env)) {
+    return await reconcileKubernetesResource(actorPrincipalId, context, resourceName, resource);
+  }
+  return await getApiDatabase().transaction(
+    async (tx: ResourceTransaction): Promise<ProjectResourceRow> =>
+      await reconcileNodeResourceTransaction(tx, actorPrincipalId, context, resourceName, resource),
+  );
 }
 
-async function prepareResourceEffectiveVariables(
+async function reconcileNodeResourceTransaction(
   tx: ResourceTransaction,
   actorPrincipalId: string,
   context: ResourceEnvironmentContext,
   resourceName: string,
   resource: CompartmentAuthoredResourceConfig,
-): Promise<EffectiveVariable[]> {
-  return await ensureGeneratedResourceVariables({
+): Promise<ProjectResourceRow> {
+  await lockProjectResourceReconciliation(tx, context.environment.id, resourceName);
+  const effectiveVariables: EffectiveVariable[] = await prepareResourceEffectiveVariables(
+    tx,
     actorPrincipalId,
     context,
-    effectiveVariables: await loadResourceEffectiveVariables(
-      context.environment.id,
-      context.organization.id,
-      resourceName,
-    ),
-    resource,
     resourceName,
-    tx,
-  });
+    resource,
+  );
+  const intent: ResolvedResourceIntent = resolveResourceIntent(
+    context.project.name,
+    context.environment.name,
+    resourceName,
+    resource,
+    effectiveVariables,
+  );
+  return await reconcileDeclaredResourceWithLock(tx, context, resourceName, intent);
 }
 
 async function reconcileDeclaredResourceWithLock(
@@ -133,7 +127,7 @@ async function reconcileDeclaredResourceWithLock(
       await applyResourceRestartPolicyUpdate(context, existingResource, intent.restartPolicy);
     }
     return shouldPersistIntentOnlyUpdate(existingResource, intent)
-      ? await updateResourceIntent(tx, existingResource, intent, new Date())
+      ? await updateResourceIntent(tx, existingResource, intent, new Date(), existingResource.runtimeKind)
       : existingResource;
   }
 
@@ -169,6 +163,7 @@ async function persistReconciledResource(
     existingResource,
     intent,
     new Date(),
+    'node',
   );
 
   return await persistPreparedResourceRuntime(tx, persistedResource.id, response);
@@ -214,41 +209,5 @@ async function persistPreparedResourceRuntime(
     projectResourceId,
     status: response.status,
     updatedAt: new Date(),
-  });
-}
-
-async function persistResourceIntent(
-  tx: ResourceTransaction,
-  context: ResourceEnvironmentContext,
-  existingResource: ProjectResourceRow | undefined,
-  intent: ResolvedResourceIntent,
-  now: Date,
-): Promise<ProjectResourceRow> {
-  return existingResource === undefined
-    ? await createProjectResourceWithExecutor(tx, createResourceInsert(context.environment.id, intent, now))
-    : await updateResourceIntent(tx, existingResource, intent, now);
-}
-
-async function updateResourceIntent(
-  tx: ResourceTransaction,
-  existingResource: ProjectResourceRow,
-  intent: ResolvedResourceIntent,
-  now: Date,
-): Promise<ProjectResourceRow> {
-  return await updateProjectResourceIntentWithExecutor(tx, {
-    commandJson: serializeResourceCommand(intent.command),
-    envJson: serializeResourceEnv(intent.storedEnv),
-    hostname: intent.hostname,
-    image: intent.image,
-    operationConfigHash: intent.operationConfigHash,
-    operationsJson: serializeResourceOperations(intent.operations),
-    outputsJson: serializeResourceOutputs(intent.outputs),
-    portsJson: serializeResourcePorts(intent.ports),
-    projectResourceId: existingResource.id,
-    readinessJson: serializeResourceReadiness(intent.readiness),
-    restartPolicy: intent.restartPolicy,
-    runtimeDefinitionHash: intent.runtimeHash,
-    updatedAt: now,
-    volumesJson: serializeResourceVolumes(intent.volumes),
   });
 }

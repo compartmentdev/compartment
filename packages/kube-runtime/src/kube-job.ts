@@ -1,5 +1,6 @@
 import type {
   KubeJobSpec,
+  KubeJobVolumeMount,
   KubeJobManifest,
   KubeJobManifestSpec,
   KubeManifest,
@@ -9,6 +10,8 @@ import type {
   KubeProjectedContainer,
   KubeProjectedPodSpec,
   KubeSecretEnvVariable,
+  KubePodVolume,
+  KubeVolumeMount,
 } from './kube-runtime.types';
 import { compareKubeKey } from './kube-key-order';
 import { kubeSecretName } from './kube-naming';
@@ -72,6 +75,15 @@ function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobMani
     automountServiceAccountToken: false,
     containers: [jobContainer(spec)],
     restartPolicy: 'Never',
+    volumes: spec.volumeMounts?.map(
+      (mount: KubeJobVolumeMount): KubePodVolume => ({
+        name: mount.name,
+        persistentVolumeClaim: {
+          claimName: mount.claimName,
+          ...(mount.readOnly === undefined ? {} : { readOnly: mount.readOnly }),
+        },
+      }),
+    ),
   };
   return {
     backoffLimit: spec.jobClass === 'release' ? 0 : 1,
@@ -97,6 +109,14 @@ function jobContainer(spec: KubeJobSpec): KubeProjectedContainer {
     env,
     image: spec.image,
     name: 'job',
+    volumeMounts: spec.volumeMounts?.map(
+      (mount: KubeJobVolumeMount): KubeVolumeMount => ({
+        mountPath: mount.mountPath,
+        name: mount.name,
+        ...(mount.readOnly === undefined ? {} : { readOnly: mount.readOnly }),
+        ...(mount.subPath === undefined ? {} : { subPath: mount.subPath }),
+      }),
+    ),
   };
 }
 

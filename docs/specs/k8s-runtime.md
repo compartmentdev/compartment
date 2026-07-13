@@ -100,8 +100,16 @@ probe timings. Failed rollout recovery reapplies the saved active manifest by
 SSA; it does not use `kubectl rollout undo`.
 
 Network isolation follows the T2 evidence. Secret projection follows the T5
-no-service-account-token and checksum rollout model. Resource projection is
-type-only in P1.
+no-service-account-token and checksum rollout model. Resource rows project to
+`Recreate` Deployments, internal Services, Secrets, and stable PVC references.
+PVC creation is a separate explicit bootstrap operation. Stateful updates stop
+the old pod, prove absence, verify persisted claim UIDs, start the new manifest,
+and restore the saved executable manifest on failure.
+
+Resource backup and restore use durable product Jobs. They mount only the
+per-resource artifact PVC, verify its persisted UID before execution, and use a
+platform-worker verifier Job to persist and compare deterministic artifact
+checksum and size. Restore verification finishes before the user restore command.
 
 ## Build pipeline
 
@@ -177,4 +185,4 @@ the limit stops the change until the PR contains a written justification (D33).
 - mirroring Kubernetes live state into PostgreSQL;
 - raw watches, client-side diff/apply, or `kubectl` runtime calls;
 - Docker-path removal before the integration cutover;
-- P3 resource manifests or P10 end-to-end coverage.
+- P10 end-to-end coverage.

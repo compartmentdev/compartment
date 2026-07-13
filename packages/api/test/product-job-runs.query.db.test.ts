@@ -62,6 +62,31 @@ describe('product Job persistence', (): void => {
     await persistProductJobFinalized('release', 'dep_job');
     expect(await claimProductJob()).toEqual({ intent: null, persistedResult: null });
   });
+
+  it('persists resource-operation PVC mounts across claim and recovery', async (): Promise<void> => {
+    const intent: ProductJobIntent = {
+      command: ['sh', '-c', 'pg_dump'],
+      env: { COMPARTMENT_BACKUP_DIR: '/backup' },
+      image: 'postgres@sha256:abc',
+      jobClass: 'resource-operation',
+      namespace: 'cpt-project',
+      operationId: 'op_backup',
+      timeoutMs: 30_000,
+      volumeMounts: [
+        {
+          claimName: 'backup-artifacts',
+          expectedClaimUid: 'uid-backup',
+          mountPath: '/backup',
+          name: 'backup',
+          resourceId: 'res-db',
+          subPath: 'rbak_test',
+        },
+      ],
+    };
+    await persistProductJobIntent({ identityId: 'op_backup', intent });
+
+    await expect(claimProductJob()).resolves.toMatchObject({ intent: { volumeMounts: intent.volumeMounts } });
+  });
 });
 
 function releaseIntent(): ProductJobIntent {

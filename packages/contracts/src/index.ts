@@ -57,6 +57,7 @@ export * from './contracts/onboarding-first-deploy.contract';
 export * from './index.deployments';
 export { logTailLineLimit } from './contracts/logs.contract';
 export * from './index.resources';
+export * from './contracts/internal-resource-reconcile.contract';
 export {
   compartmentSourceUploadsPathname,
   type SourceUploadCreateQuery,

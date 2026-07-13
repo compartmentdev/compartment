@@ -27,6 +27,7 @@ import {
   resolveResourceOutputPlaintext,
   type ResolvedResourceOutputPlaintext,
 } from './resource-output-resolution.service';
+import { resolveResourceOutputNamespaceId } from './resource-output-namespace.service';
 import { createInvalidDeployConfigError } from '../errors/api-business-error';
 
 export async function loadEffectiveVariables(input: LoadEffectiveVariablesInput): Promise<EffectiveVariable[]> {
@@ -156,6 +157,7 @@ async function resolveResourceOutputVariable(
   binding: EnvironmentResourceOutputVariableBindingRow,
 ): Promise<StoredEffectiveVariable> {
   const resource: ProjectResourceRow = await resolveResourceOutputBindingResource(input, binding);
+  const namespaceId: string = await resolveResourceOutputNamespaceId(resource, input.environmentId);
   const resourceVariables: EffectiveVariable[] = resolveStoredEffectiveVariables(
     buildResourceOutputVariableLoadInput(input, binding),
     rows,
@@ -165,6 +167,7 @@ async function resolveResourceOutputVariable(
     binding.outputName,
     input.projectName,
     input.environmentName,
+    namespaceId,
     resourceVariables,
   );
 
