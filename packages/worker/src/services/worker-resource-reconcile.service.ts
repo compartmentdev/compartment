@@ -15,7 +15,7 @@ import { acknowledgeResourceReconcile, type CompartmentRequester } from '@compar
 import {
   assertFinalClaimState,
   readCreatedClaims,
-  readObservedClaims,
+  readLiveClaims,
   readResourcePods,
   readRollbackManifest,
   resourceDeploymentFreshAndReady,
@@ -143,7 +143,7 @@ async function prepareManagedUpdate(
     operationId: requiredOperationId(claimed.operationId),
     rollback: await readRollbackManifest(claimed.previousManifestJson, runtime, desired),
   };
-  assertResourceClaimOwnership(claimed.expectedClaims, readObservedClaims(observation));
+  assertResourceClaimOwnership(claimed.expectedClaims, await readLiveClaims(runtime, row));
   await acknowledgeResourceReconcile(request, {
     leaseId: plan.leaseId,
     operationId: plan.operationId,
@@ -206,14 +206,14 @@ async function applyManagedResourceState(
   await waitUntil(observation, (): true | null =>
     resourcePodsFullyTerminated(readResourcePods(observation)) ? true : null,
   );
-  assertResourceClaimOwnership(expectedClaims, readObservedClaims(observation));
+  assertResourceClaimOwnership(expectedClaims, await readLiveClaims(runtime, row));
   await runtime.apply({ objects: manifests });
   const desiredDeployment: KubeDeploymentManifest = requiredDeployment(manifests);
   await waitUntilLive(
     async (): Promise<true | null> =>
       resourceDeploymentFreshAndReady(await runtime.read(desiredDeployment), desiredDeployment) ? true : null,
   );
-  assertFinalClaimState(expectedClaims, readObservedClaims(observation), row);
+  assertFinalClaimState(expectedClaims, await readLiveClaims(runtime, row), row);
 }
 
 function requiredDeployment(manifests: KubeManifest[]): KubeDeploymentManifest {

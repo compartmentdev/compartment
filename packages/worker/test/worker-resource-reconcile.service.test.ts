@@ -1,6 +1,7 @@
 import type { WorkerClaimResourceReconcileResponse } from '@compartment/contracts';
 import {
   kubeResourceVolumeName,
+  kubeResourceName,
   KubeRuntime,
   type ApplyBundle,
   type KubeManifest,
@@ -17,6 +18,7 @@ import { executeResourceReconcile } from '../src/services/worker-resource-reconc
 
 const dataClaimName: string = kubeResourceVolumeName('resource', 'data');
 const backupClaimName: string = kubeResourceVolumeName('resource', 'backup-artifacts');
+const resourceName: string = kubeResourceName('resource');
 
 interface ResourceSdkMocks {
   acknowledge: Mock;
@@ -87,6 +89,34 @@ describe('worker resource reconcile lifecycle', (): void => {
     await executeResourceReconcile(requester(), runtime(apply, observation), claim(null));
 
     expect(apply).toHaveBeenCalledTimes(2);
+    expect(mocks.acknowledge).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 'succeeded' }),
+    );
+  });
+
+  it('fences PVCs through live reads when the informer initial list is partial', async (): Promise<void> => {
+    const observation: TestObservation = new TestObservation('uid-original', false);
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      const deployment: KubeManifest | undefined = bundle.objects.find(
+        (object: KubeManifest): boolean => object.kind === 'Deployment',
+      );
+      if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 1) {
+        observation.bindClaims();
+        observation.addReadyDeployment();
+      }
+      return await Promise.resolve(bundle.objects);
+    });
+    const read: Mock = vi.fn(async (manifest: KubeManifest): Promise<KubeObservedManifest | null> => {
+      if (manifest.kind === 'PersistentVolumeClaim' && manifest.metadata?.name === backupClaimName) {
+        return liveClaim(backupClaimName, 'uid-backup', false);
+      }
+      return await readFromObservation(observation, manifest);
+    });
+
+    await executeResourceReconcile(requester(), runtime(apply, observation, read), claim(null));
+
+    expect(observation.cache.has(`persistentvolumeclaims/ns/${backupClaimName}`)).toBe(false);
     expect(mocks.acknowledge).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({ status: 'succeeded' }),
@@ -181,10 +211,12 @@ class TestObservation implements KubeObservation {
   public readonly cache: Map<string, KubeObservedManifest> = new Map<string, KubeObservedManifest>();
   public constructor(uid: string, withPod: boolean, bound: boolean = true, withDeployment: boolean = true) {
     this.cache.set(`persistentvolumeclaims/ns/${dataClaimName}`, {
+      apiVersion: 'v1',
+      kind: 'PersistentVolumeClaim',
       metadata: { name: dataClaimName, uid },
       status: { phase: bound ? 'Bound' : 'Pending' },
-    } as KubeObservedManifest);
-    this.cache.set('deployments/ns/resource', {
+    });
+    this.cache.set(`deployments/ns/${resourceName}`, {
       apiVersion: 'apps/v1',
       kind: 'Deployment',
       metadata: {
@@ -193,7 +225,7 @@ class TestObservation implements KubeObservation {
         labels: { 'compartment.dev/resource-id': 'resource' },
         generation: 1,
         managedFields: [{ manager: 'kube-controller-manager' }],
-        name: 'resource',
+        name: resourceName,
         namespace: 'cpt-project',
         resourceVersion: '42',
         uid: 'deployment-uid',
@@ -258,10 +290,10 @@ class TestObservation implements KubeObservation {
     this.cache.set(`pods/ns/${name}`, { metadata: { name } } as KubeObservedManifest);
   }
   public addReadyDeployment(): void {
-    this.cache.set('deployments/ns/resource', {
+    this.cache.set(`deployments/ns/${resourceName}`, {
       apiVersion: 'apps/v1',
       kind: 'Deployment',
-      metadata: { generation: 1, name: 'resource' },
+      metadata: { generation: 1, name: resourceName },
       spec: { replicas: 1 },
       status: {
         conditions: [{ status: 'True', type: 'Available' }],
@@ -272,9 +304,11 @@ class TestObservation implements KubeObservation {
   }
   public addClaim(name: string, uid: string, bound: boolean): void {
     this.cache.set(`persistentvolumeclaims/ns/${name}`, {
+      apiVersion: 'v1',
+      kind: 'PersistentVolumeClaim',
       metadata: { name, uid },
       status: { phase: bound ? 'Bound' : 'Pending' },
-    } as KubeObservedManifest);
+    });
   }
   public bindClaims(): void {
     const observedClaim: KubeObservedManifest | undefined = this.cache.get(
@@ -304,16 +338,27 @@ async function readFromObservation(
 ): Promise<KubeObservedManifest | null> {
   return await Promise.resolve(
     [...observation.cache.values()].find(
-      (observed: KubeObservedManifest): boolean => observed.kind === manifest.kind,
+      (observed: KubeObservedManifest): boolean =>
+        observed.kind === manifest.kind &&
+        (manifest.metadata?.name === undefined || observed.metadata?.name === manifest.metadata.name),
     ) ?? null,
   );
+}
+
+function liveClaim(name: string, uid: string, bound: boolean): KubeObservedManifest {
+  return {
+    apiVersion: 'v1',
+    kind: 'PersistentVolumeClaim',
+    metadata: { name, uid },
+    status: { phase: bound ? 'Bound' : 'Pending' },
+  };
 }
 
 function liveDeployment(ready: boolean): KubeObservedManifest {
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
-    metadata: { generation: 2, name: 'resource', namespace: 'cpt-project' },
+    metadata: { generation: 2, name: resourceName, namespace: 'cpt-project' },
     spec: { replicas: 1 },
     status: {
       conditions: [{ status: ready ? 'True' : 'False', type: 'Available' }],

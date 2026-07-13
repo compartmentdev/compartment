@@ -4,6 +4,7 @@ import {
   assertResourceClaimIdentity,
   assertResourceClaimOwnership,
   kubeResourceVolumeName,
+  projectResourceBootstrapClaims,
   type KubeManifest,
   type KubeObservation,
   type KubeObservedManifest,
@@ -45,7 +46,7 @@ export function readCreatedClaims(observation: KubeObservation, expectedCount: n
   );
 }
 
-export function readObservedClaims(observation: KubeObservation): ObservedResourceClaim[] {
+function readObservedClaims(observation: KubeObservation): ObservedResourceClaim[] {
   return [...observation.cache.entries()]
     .filter(([key]: [string, KubeObservedManifest]): boolean => key.startsWith('persistentvolumeclaims/'))
     .map(
@@ -55,6 +56,22 @@ export function readObservedClaims(observation: KubeObservation): ObservedResour
         uid: claim.metadata?.uid ?? null,
       }),
     );
+}
+
+export async function readLiveClaims(
+  runtime: KubeRuntime,
+  row: ResourceProjectionRow,
+): Promise<ObservedResourceClaim[]> {
+  return await Promise.all(
+    projectResourceBootstrapClaims(row).map(async (claim: KubeManifest): Promise<ObservedResourceClaim> => {
+      const observed: KubeObservedManifest | null = await runtime.read(claim);
+      return {
+        bound: (observed?.status as ObservedClaimStatus | undefined)?.phase === 'Bound',
+        claimName: claim.metadata?.name ?? '',
+        uid: observed?.metadata?.uid ?? null,
+      };
+    }),
+  );
 }
 
 export function assertFinalClaimState(
