@@ -135,7 +135,7 @@ function renderProbeServiceDescriptor(name: string, options: ProbeServiceDescrip
     readiness:
       type: http
       path: /healthz
-      timeoutMs: 60000
+      timeoutMs: 90000
 ${resourceConnections}`;
 }
 
