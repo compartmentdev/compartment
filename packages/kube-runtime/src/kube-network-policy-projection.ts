@@ -83,7 +83,7 @@ function applicationIngressManifest(
       {
         from: [
           {
-            namespaceSelector: { matchLabels: { 'compartment.dev/namespace-id': projection.edgeNamespaceId } },
+            namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': projection.edgeNamespaceName } },
             podSelector: { matchLabels: projection.edgePodLabels },
           },
         ],

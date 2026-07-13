@@ -1,5 +1,6 @@
 import type {
   DefaultTimestampBuilder,
+  DefaultEnumTextBuilder,
   DefaultTextBuilder,
   DefaultIntegerBuilder,
   OptionalIntegerBuilder,
@@ -90,3 +91,23 @@ interface ProductLogStoreQuotaColumnBuilders {
 }
 
 export type ProductLogStoreQuotaTable = PgTableOf<'product_log_store_quota', ProductLogStoreQuotaColumnBuilders>;
+
+interface ProjectKubeProvisioningColumnBuilders {
+  projectId: PrimaryTextBuilder<'project_id'>;
+  state: DefaultEnumTextBuilder<'state', ['pending', 'running', 'succeeded', 'failed']>;
+  leaseId: OptionalTextBuilder<'lease_id'>;
+  leaseExpiresAt: OptionalTimestampBuilder<'lease_expires_at'>;
+  failureMessage: OptionalTextBuilder<'failure_message'>;
+  attempts: DefaultIntegerBuilder<'attempts'>;
+  createdAt: DefaultTimestampBuilder<'created_at'>;
+  updatedAt: DefaultTimestampBuilder<'updated_at'>;
+}
+
+export type ProjectKubeProvisioningTable = PgTableOf<
+  'project_kube_provisioning',
+  ProjectKubeProvisioningColumnBuilders
+>;
+export type ProjectKubeProvisioningExtraConfigColumns = PgExtraConfigColumnsOf<
+  'project_kube_provisioning',
+  ProjectKubeProvisioningColumnBuilders
+>;

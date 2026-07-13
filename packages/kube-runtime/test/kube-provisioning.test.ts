@@ -5,10 +5,13 @@ import { parseAllDocuments, stringify, type Document } from 'yaml';
 import {
   kubeNamespaceName,
   kubeSecretName,
+  projectProvisioningAuthorityBundle,
+  projectProvisioningAuthorityCleanup,
   projectNamespaceProvisioningBundle,
   type ApplyBundle,
   type KubeManifest,
   type ProjectNamespaceProvisioningRow,
+  type ProjectProvisioningAuthorityInput,
 } from '../src';
 
 interface RbacRule {
@@ -28,33 +31,64 @@ type RbacManifest = KubeManifest & {
 };
 
 describe('project namespace bootstrap provisioning', (): void => {
+  it('projects bootstrap identity only for one Job and removes every credential-bearing object', (): void => {
+    const input: ProjectProvisioningAuthorityInput = {
+      jobId: 'project-provision-prj-01jz',
+      namespace: 'compartment',
+      serviceAccountName: 'compartment-project-bootstrap',
+    };
+    const authority: ApplyBundle = projectProvisioningAuthorityBundle(input);
+    const cleanup: ApplyBundle = projectProvisioningAuthorityCleanup(input);
+
+    expect(authority.objects.map((manifest: KubeManifest): string => manifest.kind)).toEqual([
+      'ServiceAccount',
+      'ClusterRoleBinding',
+    ]);
+    expect(cleanup.deleteAfterApply?.map((manifest: KubeManifest): string => manifest.kind)).toEqual([
+      'ClusterRoleBinding',
+      'ServiceAccount',
+      'Job',
+      'Secret',
+    ]);
+    expect(manifests('bootstrap-rbac.yaml').map((manifest: RbacManifest): string => manifest.kind)).toEqual([
+      'ClusterRole',
+    ]);
+  });
+
   it('projects the immutable namespace boundary and removes bootstrap authority last', (): void => {
     const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-01jz'));
     const created: KubeManifest[] = bundle.createBeforeApply ?? [];
     const namespace: KubeManifest = created[0]!;
-    const serviceAccount: KubeManifest = created[1]!;
-    const binding: KubeManifest = created[2]!;
+    const binding: KubeManifest = created[1]!;
     expect(bundle.objects.map((manifest: KubeManifest): string => manifest.kind)).toEqual([
       'Secret',
       'NetworkPolicy',
       'NetworkPolicy',
       'NetworkPolicy',
       'NetworkPolicy',
+      'RoleBinding',
     ]);
 
     expect(namespace).toMatchObject({ kind: 'Namespace', metadata: { name: kubeNamespaceName('prj-01jz') } });
-    expect(serviceAccount).toMatchObject({
-      automountServiceAccountToken: false,
-      kind: 'ServiceAccount',
-      metadata: { name: 'compartment-controller', namespace: kubeNamespaceName('prj-01jz') },
-    });
     expect(binding).toMatchObject({
       kind: 'RoleBinding',
-      metadata: { namespace: kubeNamespaceName('prj-01jz') },
+      metadata: { name: 'compartment-project-bootstrap', namespace: kubeNamespaceName('prj-01jz') },
       roleRef: { kind: 'ClusterRole', name: 'compartment-controller' },
-      subjects: [{ kind: 'ServiceAccount', name: 'compartment-controller', namespace: kubeNamespaceName('prj-01jz') }],
+      subjects: [
+        { kind: 'ServiceAccount', name: 'compartment-project-bootstrap', namespace: 'compartment' },
+        { kind: 'ServiceAccount', name: 'compartment-worker', namespace: 'compartment' },
+      ],
+    });
+    expect(bundle.objects.at(-1)).toMatchObject({
+      kind: 'RoleBinding',
+      subjects: [{ kind: 'ServiceAccount', name: 'compartment-worker', namespace: 'compartment' }],
     });
     expect(bundle.deleteAfterApply).toEqual([
+      {
+        apiVersion: 'rbac.authorization.k8s.io/v1',
+        kind: 'RoleBinding',
+        metadata: { name: 'compartment-project-bootstrap', namespace: kubeNamespaceName('prj-01jz') },
+      },
       {
         apiVersion: 'rbac.authorization.k8s.io/v1',
         kind: 'ClusterRoleBinding',
@@ -77,7 +111,7 @@ describe('project namespace bootstrap provisioning', (): void => {
     const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-01jz'));
 
     expect(toYaml(bundle.objects)).toMatchSnapshot();
-    expect(bundle.objects.slice(1)).toMatchObject([
+    expect(bundle.objects.slice(1, -1)).toMatchObject([
       { spec: { podSelector: {}, policyTypes: ['Ingress', 'Egress'] } },
       {
         spec: {
@@ -112,7 +146,7 @@ describe('project namespace bootstrap provisioning', (): void => {
             {
               from: [
                 {
-                  namespaceSelector: { matchLabels: { 'compartment.dev/namespace-id': 'platform-01jz' } },
+                  namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'platform-01jz' } },
                   podSelector: { matchLabels: { 'app.kubernetes.io/name': 'caddy' } },
                 },
               ],
@@ -148,12 +182,23 @@ describe('project namespace bootstrap provisioning', (): void => {
       verbs: ['bind'],
     });
     expect(ruleFor(rules, 'namespaces')).toMatchObject({ verbs: ['create'] });
-    expect(ruleFor(rules, 'serviceaccounts')).toMatchObject({ verbs: ['create'] });
-    expect(ruleFor(rules, 'roles')).toMatchObject({ verbs: ['create'] });
     expect(ruleFor(rules, 'rolebindings')).toMatchObject({ verbs: ['create'] });
+    expect(ruleFor(rules, 'serviceaccounts')).toBeUndefined();
+    expect(ruleFor(rules, 'roles')).toBeUndefined();
     expect(rules.some((rule: RbacRule): boolean => rule.resources.includes('secrets'))).toBe(false);
     expect(rules.some((rule: RbacRule): boolean => rule.resources.includes('deployments'))).toBe(false);
-    expect(rules.some((rule: RbacRule): boolean => rule.resources.includes('clusterrolebindings'))).toBe(false);
+    expect(ruleFor(rules, 'clusterrolebindings')).toMatchObject({
+      resourceNames: ['compartment-project-bootstrap'],
+      verbs: ['delete'],
+    });
+    expect(ruleFor(rules, 'rolebindings')?.verbs).toEqual(['create']);
+    expect(
+      rules.find(
+        (rule: RbacRule): boolean =>
+          rule.resources.includes('rolebindings') &&
+          rule.resourceNames?.includes('compartment-project-bootstrap') === true,
+      ),
+    ).toMatchObject({ verbs: ['delete'] });
     expect(rules.some((rule: RbacRule): boolean => rule.verbs.includes('escalate'))).toBe(false);
   });
 
@@ -188,11 +233,12 @@ function manifests(name: string): RbacManifest[] {
 
 function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
   return {
+    bootstrapServiceAccount: { name: 'compartment-project-bootstrap', namespace: 'compartment' },
     namespaceId,
     networkPolicy: {
       applicationPodLabels: { app: 'application' },
       applicationPort: 8080,
-      edgeNamespaceId: 'platform-01jz',
+      edgeNamespaceName: 'platform-01jz',
       edgePodLabels: { 'app.kubernetes.io/name': 'caddy' },
       podCidr,
       resourcePodLabels: { app: 'resource' },
@@ -204,6 +250,7 @@ function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
       dockerConfigJson: '{"auths":{"registry.example":{"auth":"generated"}}}',
       secretId: `pull-${namespaceId}`,
     },
+    workerServiceAccount: { name: 'compartment-worker', namespace: 'compartment' },
   };
 }
 

@@ -23,6 +23,22 @@ grep -q 'namespace: compartment-build' "${OUTPUT_DIR}/full.yaml"
 grep -q 'COMPARTMENT_ARTIFACT_REGISTRY_HOST: "compartment-compartment-registry-auth.default.svc"' "${OUTPUT_DIR}/full.yaml"
 grep -q 'COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: "http://compartment-compartment-registry-auth.default.svc:5000"' "${OUTPUT_DIR}/full.yaml"
 grep -q '\\"compartment-compartment-registry-auth.default.svc:5000\\"' "${OUTPUT_DIR}/full.yaml"
+grep -q 'name: compartment-compartment-project-provisioner' "${OUTPUT_DIR}/full.yaml"
+grep -q 'command:.*project-provisioner-server.js' "${OUTPUT_DIR}/full.yaml"
+if grep -q 'cluster-admin' "${OUTPUT_DIR}/full.yaml"; then
+  echo 'Chart must not grant cluster-admin.' >&2
+  exit 1
+fi
+sed -n '/^kind: ClusterRoleBinding$/,/^---$/p' "${OUTPUT_DIR}/full.yaml" >"${OUTPUT_DIR}/cluster-role-bindings.yaml"
+if grep -q 'name: compartment-compartment-worker' "${OUTPUT_DIR}/cluster-role-bindings.yaml"; then
+  echo 'Worker must not receive cluster-scoped authority.' >&2
+  exit 1
+fi
+sed -n '/^kind: ServiceAccount$/,/^---$/p' "${OUTPUT_DIR}/full.yaml" >"${OUTPUT_DIR}/service-accounts.yaml"
+if grep -q 'name: compartment-compartment-project-bootstrap' "${OUTPUT_DIR}/service-accounts.yaml"; then
+  echo 'Bootstrap ServiceAccount must be created only for a provisioning Job.' >&2
+  exit 1
+fi
 sed -n '/^kind: NetworkPolicy$/,/^---$/p' "${OUTPUT_DIR}/full.yaml" | sed -n '/name: compartment-compartment-registry-auth/,/^---$/p' >"${OUTPUT_DIR}/registry-auth-policy.yaml"
 sed -n '/^kind: Deployment$/,/^---$/p' "${OUTPUT_DIR}/full.yaml" | sed -n '/name: compartment-compartment-worker/,/^---$/p' >"${OUTPUT_DIR}/worker.yaml"
 sed -n '/^      containers:$/,/^      volumes:$/p' "${OUTPUT_DIR}/worker.yaml" >"${OUTPUT_DIR}/worker-container.yaml"

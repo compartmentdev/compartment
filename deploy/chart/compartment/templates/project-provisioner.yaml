@@ -2,34 +2,35 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "compartment.fullname" . }}-worker
+  name: {{ include "compartment.fullname" . }}-project-provisioner
   labels:
     {{- include "compartment.labels" . | nindent 4 }}
-    app.kubernetes.io/component: worker
+    app.kubernetes.io/component: project-provisioner
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      {{- include "compartment.componentLabels" (dict "root" . "component" "worker") | nindent 6 }}
+      {{- include "compartment.componentLabels" (dict "root" . "component" "project-provisioner") | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "compartment.componentLabels" (dict "root" . "component" "worker") | nindent 8 }}
+        {{- include "compartment.componentLabels" (dict "root" . "component" "project-provisioner") | nindent 8 }}
       annotations:
         {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "compartment.fullname" . }}-worker
+      serviceAccountName: {{ include "compartment.fullname" . }}-project-provisioner
       automountServiceAccountToken: false
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
         {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
       containers:
-        - name: worker
+        - name: project-provisioner
           image: {{ include "compartment.image" .Values.images.worker }}
           imagePullPolicy: {{ .Values.images.worker.pullPolicy }}
+          command: ["node", "dist/project-provisioner-server.js"]
           securityContext:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 10001
@@ -49,18 +50,17 @@ spec:
             - name: COMPARTMENT_RUNTIME_CONTROL_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: runtime-control-token}
-            - name: DOCKER_CONFIG
-              value: /tmp/.docker
-            - name: TMPDIR
-              value: /compartment/docker-work
+            - {name: COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME, value: {{ printf "%s-project-bootstrap" (include "compartment.fullname" .) | quote }}}
+            - {name: COMPARTMENT_EDGE_NAMESPACE, value: {{ .Release.Namespace | quote }}}
+            - {name: COMPARTMENT_KUBE_POD_CIDR, value: {{ .Values.buildkit.podCidr | quote }}}
+            - {name: COMPARTMENT_KUBE_SERVICE_CIDR, value: {{ .Values.buildkit.serviceCidr | quote }}}
+            - {name: COMPARTMENT_PLATFORM_NAMESPACE, value: {{ .Release.Namespace | quote }}}
+            - {name: COMPARTMENT_PROJECT_PROVISIONER_IMAGE, value: {{ include "compartment.image" .Values.images.worker | quote }}}
+            - {name: COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME, value: {{ printf "%s-worker" (include "compartment.fullname" .) | quote }}}
           volumeMounts:
-            - {name: docker-work, mountPath: /compartment/docker-work}
             - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
-            - {name: node-run, mountPath: /var/run/compartment/node}
             - {name: tmp, mountPath: /tmp}
       volumes:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
-        - {name: docker-work, emptyDir: {}}
-        - {name: node-run, emptyDir: {}}
         - {name: tmp, emptyDir: {}}
 {{- end }}

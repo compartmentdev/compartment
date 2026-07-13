@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { ResourceClaimIdentity, ResourceReconcileIntent } from '@compartment/contracts';
 import type { ApiDatabaseTransaction } from '../db/client.types';
-import { projectResources, resourceReconcileRuns } from '../db/schema';
+import { environments, projectKubeProvisioning, projectResources, resourceReconcileRuns } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type {
   AcknowledgeResourceReconcileRunInput,
@@ -41,7 +41,9 @@ async function claimResourceReconcileRunWithTransaction(
     .select({ run: resourceReconcileRuns })
     .from(resourceReconcileRuns)
     .innerJoin(projectResources, eq(projectResources.id, resourceReconcileRuns.projectResourceId))
-    .where(claimableResourceReconcileCondition())
+    .innerJoin(environments, eq(environments.id, projectResources.environmentId))
+    .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, environments.projectId))
+    .where(and(eq(projectKubeProvisioning.state, 'succeeded'), claimableResourceReconcileCondition()))
     .orderBy(asc(resourceReconcileRuns.createdAt))
     .limit(1)
     .for('update', { of: projectResources, skipLocked: true });

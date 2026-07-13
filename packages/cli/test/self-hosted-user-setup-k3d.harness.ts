@@ -60,6 +60,23 @@ export function isK3dPlatformMode(): boolean {
   return process.env[e2ePlatformModeEnvName] === 'k3d';
 }
 
+export async function expectK3dWorkerNamespaceIsolation(): Promise<void> {
+  const seed: K3dPlatformSeed = readK3dPlatformSeed();
+  const workerIdentity: string = `system:serviceaccount:${seed.platformNamespace}:${k3dPlatformResourceName}-worker`;
+  const assertions: readonly (readonly string[])[] = [
+    ['patch', 'secrets', '--namespace', 'default'],
+    ['create', 'namespaces'],
+  ];
+  for (const assertion of assertions) {
+    const result: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: ['kubectl', '--context', seed.kubeContext, 'auth', 'can-i', ...assertion, `--as=${workerIdentity}`],
+      timeoutMs: k3dKubectlCommandTimeoutMs,
+    });
+    expectSuccessfulCommand(result, `verify worker RBAC denial: ${assertion.join(' ')}`, 'no');
+    expect(result.stdout.trim()).toBe('no');
+  }
+}
+
 export function readK3dPlatformSeed(): K3dPlatformSeed {
   return {
     apiUrl: readRequiredK3dEnv(k3dApiUrlEnvName),

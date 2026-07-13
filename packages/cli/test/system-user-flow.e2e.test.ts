@@ -183,6 +183,7 @@ import { expectAuditFileExports, expectAuditFileSinkCoverage } from './self-host
 import { expectCompartmentSkillInstallOnboarding } from './self-hosted-user-setup-agent-onboarding.harness';
 import { expectCurrentOrganizationSlug } from './cli-response-test.harness';
 import { cliRemoteListResponseSchema, cliRemoteResponseSchema } from './remote-command-response.harness';
+import { expectK3dWorkerNamespaceIsolation, isK3dPlatformMode } from './self-hosted-user-setup-k3d.harness';
 import {
   expectedAuditEventTypes,
   organizationUseResponseSchema,
@@ -240,6 +241,9 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       viewer = await setup.createFreshCli();
 
       await expectBlockedPublicControlPlanePaths(runtime.compartmentUrl);
+      if (isK3dPlatformMode()) {
+        await expectK3dWorkerNamespaceIsolation();
+      }
 
       const adminBeforeLogin: SelfHostedUserSetupCommandResult = await admin.runFailure('whoami --output json');
       expect(adminBeforeLogin.stderr).toContain(noConfiguredLoginMessage);

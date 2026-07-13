@@ -9,6 +9,7 @@ import {
   type PgTableExtraConfig,
 } from 'drizzle-orm/pg-core';
 import { deployments } from './schema-deploy';
+import { projects } from './schema-platform';
 import type * as KubeRuntimeSchemaTypes from './schema-kube-runtime.types';
 
 export const deploymentKubeReferences: KubeRuntimeSchemaTypes.DeploymentKubeReferencesTable = pgTable(
@@ -103,4 +104,25 @@ export const productLogStoreQuota: KubeRuntimeSchemaTypes.ProductLogStoreQuotaTa
     id: text('id').primaryKey(),
     usedBytes: integer('used_bytes').default(0).notNull(),
   },
+);
+
+export const projectKubeProvisioning: KubeRuntimeSchemaTypes.ProjectKubeProvisioningTable = pgTable(
+  'project_kube_provisioning',
+  {
+    projectId: text('project_id')
+      .primaryKey()
+      .references((): typeof projects.id => projects.id, { onDelete: 'cascade' }),
+    state: text('state', { enum: ['pending', 'running', 'succeeded', 'failed'] })
+      .default('pending')
+      .notNull(),
+    leaseId: text('lease_id'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    failureMessage: text('failure_message'),
+    attempts: integer('attempts').default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table: KubeRuntimeSchemaTypes.ProjectKubeProvisioningExtraConfigColumns): PgTableExtraConfig => ({
+    stateLeaseIndex: index('project_kube_provisioning_state_lease_idx').on(table.state, table.leaseExpiresAt),
+  }),
 );

@@ -27,6 +27,8 @@ import { registerPostPodMetricsRoute } from './post-pod-metrics.route';
 import { registerProductJobRoutes } from './product-job.routes';
 import { registerDeploymentReconcileRoutes } from './deployment-reconcile.routes';
 import { registerResourceReconcileRoutes } from './resource-reconcile.routes';
+import { registerPostClaimProjectProvisioningRoute } from './post-claim-project-provisioning.route';
+import { registerPostCompleteProjectProvisioningRoute } from './post-complete-project-provisioning.route';
 
 type RegisterInternalRoutesDone = (err?: Error) => void;
 interface InternalApiRoutesOptions extends FastifyPluginOptions {
@@ -92,6 +94,8 @@ function registerWorkerRuntimeRoutes(app: ApiApp): void {
 }
 
 function registerWorkerOperationRoutes(app: ApiApp): void {
+  registerPostClaimProjectProvisioningRoute(app);
+  registerPostCompleteProjectProvisioningRoute(app);
   registerDeploymentReconcileRoutes(app);
   registerPostRunNextScheduledResourceOperationRoute(app);
   registerProductJobRoutes(app);

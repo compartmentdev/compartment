@@ -7,6 +7,7 @@ import {
   environments,
   organizations,
   projectServices,
+  projectKubeProvisioning,
   projects,
 } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -70,6 +71,7 @@ async function findActiveReconcileRows(
     .innerJoin(environments, eq(deployments.environmentId, environments.id))
     .innerJoin(buildArtifacts, eq(deployments.buildArtifactId, buildArtifacts.id))
     .innerJoin(projects, eq(environments.projectId, projects.id))
+    .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, projects.id))
     .innerJoin(organizations, eq(projects.organizationId, organizations.id))
     .innerJoin(projectServices, eq(deployments.projectServiceId, projectServices.id))
     .where(
@@ -91,6 +93,7 @@ async function findCandidateReconcileRows(tx: DeploymentTransaction): Promise<De
       .innerJoin(buildArtifacts, eq(deployments.buildArtifactId, buildArtifacts.id))
       .innerJoin(environments, eq(deployments.environmentId, environments.id))
       .innerJoin(projects, eq(environments.projectId, projects.id))
+      .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, projects.id))
       .innerJoin(organizations, eq(projects.organizationId, organizations.id))
       .innerJoin(projectServices, eq(deployments.projectServiceId, projectServices.id))
       .where(candidateFilter())
@@ -106,6 +109,7 @@ function candidatePriority(): SQL {
 
 function candidateFilter(): SQL | undefined {
   return and(
+    eq(projectKubeProvisioning.state, 'succeeded'),
     lte(deploymentKubeReferences.updatedAt, new Date()),
     or(
       and(ne(deploymentKubeReferences.state, 'active'), eq(deployments.status, 'running')),

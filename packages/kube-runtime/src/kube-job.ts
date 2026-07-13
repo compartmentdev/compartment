@@ -75,17 +75,11 @@ function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobMani
     automountServiceAccountToken: false,
     containers: [jobContainer(spec)],
     restartPolicy: 'Never',
-    volumes: spec.volumeMounts?.map(
-      (mount: KubeJobVolumeMount): KubePodVolume => ({
-        name: mount.name,
-        persistentVolumeClaim: {
-          claimName: mount.claimName,
-          ...(mount.readOnly === undefined ? {} : { readOnly: mount.readOnly }),
-        },
-      }),
-    ),
+    serviceAccountName: spec.serviceAccountName,
+    volumes: kubeJobVolumes(spec),
   };
   return {
+    activeDeadlineSeconds: Math.max(1, Math.ceil(spec.timeoutMs / 1_000)),
     backoffLimit: spec.jobClass === 'release' ? 0 : 1,
     template: {
       metadata: { annotations: { 'compartment.dev/secret-checksum': secretChecksum(spec.env) }, labels },
@@ -109,15 +103,69 @@ function jobContainer(spec: KubeJobSpec): KubeProjectedContainer {
     env,
     image: spec.image,
     name: 'job',
-    volumeMounts: spec.volumeMounts?.map(
+    volumeMounts: kubeJobVolumeMounts(spec),
+  };
+}
+
+function kubeJobVolumes(spec: KubeJobSpec): KubePodVolume[] {
+  const persistentVolumes: KubePodVolume[] =
+    spec.volumeMounts?.map(
+      (mount: KubeJobVolumeMount): KubePodVolume => ({
+        name: mount.name,
+        persistentVolumeClaim: {
+          claimName: mount.claimName,
+          ...(mount.readOnly === undefined ? {} : { readOnly: mount.readOnly }),
+        },
+      }),
+    ) ?? [];
+  const kubeApiAccess: KubePodVolume | null = kubeApiAccessVolume(spec);
+  return [...persistentVolumes, ...(kubeApiAccess === null ? [] : [kubeApiAccess])];
+}
+
+function kubeApiAccessVolume(spec: KubeJobSpec): KubePodVolume | null {
+  if (spec.serviceAccountName === undefined && spec.serviceAccountTokenExpirationSeconds === undefined) {
+    return null;
+  }
+  if (spec.serviceAccountName === undefined || spec.serviceAccountTokenExpirationSeconds === undefined) {
+    throw new Error('Kubernetes Job service account name and token expiration must be configured together.');
+  }
+  return projectedKubeApiAccessVolume(spec.serviceAccountTokenExpirationSeconds);
+}
+
+function projectedKubeApiAccessVolume(expirationSeconds: number): KubePodVolume {
+  return {
+    name: 'kube-api-access',
+    projected: {
+      defaultMode: 420,
+      sources: [
+        { serviceAccountToken: { expirationSeconds, path: 'token' } },
+        { configMap: { items: [{ key: 'ca.crt', path: 'ca.crt' }], name: 'kube-root-ca.crt' } },
+        {
+          downwardAPI: {
+            items: [{ fieldRef: { apiVersion: 'v1', fieldPath: 'metadata.namespace' }, path: 'namespace' }],
+          },
+        },
+      ],
+    },
+  };
+}
+
+function kubeJobVolumeMounts(spec: KubeJobSpec): KubeVolumeMount[] {
+  const mounts: KubeVolumeMount[] =
+    spec.volumeMounts?.map(
       (mount: KubeJobVolumeMount): KubeVolumeMount => ({
         mountPath: mount.mountPath,
         name: mount.name,
         ...(mount.readOnly === undefined ? {} : { readOnly: mount.readOnly }),
         ...(mount.subPath === undefined ? {} : { subPath: mount.subPath }),
       }),
-    ),
-  };
+    ) ?? [];
+  return spec.serviceAccountName === undefined
+    ? mounts
+    : [
+        ...mounts,
+        { mountPath: '/var/run/secrets/kubernetes.io/serviceaccount', name: 'kube-api-access', readOnly: true },
+      ];
 }
 
 async function waitForTerminalEvent(

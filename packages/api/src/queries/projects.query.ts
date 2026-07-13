@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
-import { projects } from '../db/schema';
+import { projectKubeProvisioning, projects } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type {
   CreateProjectInput,
@@ -14,7 +14,10 @@ import type {
 } from './projects.query.types';
 
 export async function createOrGetProject(input: CreateProjectInput): Promise<ProjectRow> {
-  return await createOrGetProjectWithExecutor(getApiDatabase(), input);
+  return await getApiDatabase().transaction(
+    async (transaction: ProjectsMutationTransaction): Promise<ProjectRow> =>
+      await createOrGetProjectWithExecutor(transaction, input),
+  );
 }
 
 export async function createOrGetProjectWithExecutor(
@@ -29,14 +32,14 @@ export async function createOrGetProjectWithExecutor(
     })
     .returning();
 
-  if (project !== undefined) {
-    return project;
-  }
-
-  return requirePersistedRow(
-    await findProjectByOrganizationAndNameWithExecutor(executor, input.organizationId, input.name),
-    'project',
-  );
+  const persisted: ProjectRow =
+    project ??
+    requirePersistedRow(
+      await findProjectByOrganizationAndNameWithExecutor(executor, input.organizationId, input.name),
+      'project',
+    );
+  await executor.insert(projectKubeProvisioning).values({ projectId: persisted.id }).onConflictDoNothing();
+  return persisted;
 }
 
 export async function listProjectsByOrganization(

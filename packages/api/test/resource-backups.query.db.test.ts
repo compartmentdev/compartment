@@ -11,6 +11,7 @@ import {
   organizations,
   principals,
   projectResources,
+  projectKubeProvisioning,
   projects,
   resourceReconcileRuns,
 } from '../src/db/schema';
@@ -31,9 +32,16 @@ import {
   claimResourceReconcileRun,
   createResourceReconcileRun,
 } from '../src/queries/resource-reconcile-runs.query';
+import {
+  claimPendingProjectProvisioning,
+  completeProjectProvisioning,
+} from '../src/queries/project-provisioning.query';
+import { createOrGetProject } from '../src/queries/projects.query';
 import type { ResourceReconcileIntent } from '@compartment/contracts';
 import type { ClaimedResourceReconcileRun } from '../src/queries/resource-reconcile-runs.query.types';
 import type { ProjectResourceRow, ResourceTransaction } from '../src/queries/resources.query.types';
+import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
+import type { ProjectRow } from '../src/queries/projects.query.types';
 import { parseStoredResourceOperations } from '../src/services/resources.service.storage';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
@@ -275,6 +283,58 @@ describe('resource backup queries', (): void => {
     expect(renewed?.leaseExpiresAt?.getTime()).toBeGreaterThan(Date.now());
   });
 
+  it('blocks resource reconciliation until project namespace provisioning succeeds', async (): Promise<void> => {
+    await db
+      .update(projectKubeProvisioning)
+      .set({ state: 'pending' })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_before_project_provisioning',
+      type: 'bootstrap',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+    await db
+      .update(projectKubeProvisioning)
+      .set({ state: 'succeeded' })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({
+      operationId: 'rr_before_project_provisioning',
+    });
+  });
+
+  it('creates, leases, and acknowledges the project provisioning companion row', async (): Promise<void> => {
+    const project: ProjectRow = await createOrGetProject({
+      id: 'prj_new_provisioning',
+      name: 'new-provisioning',
+      organizationId: 'org_resource_backups',
+      updatedAt: new Date(),
+    });
+    const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
+    expect(target).toMatchObject({ namespaceId: project.id, projectId: project.id });
+    await expect(
+      completeProjectProvisioning({
+        failureMessage: null,
+        leaseId: 'stale-lease',
+        projectId: project.id,
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      completeProjectProvisioning({
+        failureMessage: null,
+        leaseId: target!.leaseId,
+        projectId: project.id,
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      db.select().from(projectKubeProvisioning).where(eq(projectKubeProvisioning.projectId, project.id)),
+    ).resolves.toMatchObject([{ state: 'succeeded' }]);
+  });
+
   it('serializes concurrent reconcile claims for one resource', async (): Promise<void> => {
     const intent: ResourceReconcileIntent = resourceIntent();
     await Promise.all([
@@ -333,6 +393,7 @@ async function seedResourceBackupScope(): Promise<void> {
     name: 'internal-tools',
     organizationId: 'org_resource_backups',
   });
+  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_internal_tools', state: 'succeeded' });
   await db.insert(environments).values({
     id: 'env_production',
     name: 'production',
