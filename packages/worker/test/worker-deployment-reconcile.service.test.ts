@@ -79,7 +79,7 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('keeps a pending rollout alive for the configured readiness timeout', async (): Promise<void> => {
-    const runtime: KubeRuntime & { apply: Mock } = pendingRuntimeStub();
+    const runtime: KubeRuntime & { apply: Mock } = pendingRuntimeStub(false);
     const pendingTarget: DeploymentReconcileTarget = {
       ...target(projection(null)),
       rolloutStartedAt: new Date(Date.now() - 55_000).toISOString(),
@@ -88,8 +88,24 @@ describe('deployment reconciliation', (): void => {
 
     await reconcileDeploymentTarget(requester(), runtime, pendingTarget);
 
-    expect(runtime.apply).toHaveBeenCalledOnce();
+    expect(runtime.apply).not.toHaveBeenCalled();
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
+  });
+
+  it('waits for the informer initial list before timing out a pending rollout', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock } = pendingRuntimeStub(true);
+    const pendingTarget: DeploymentReconcileTarget = {
+      ...target(projection(null)),
+      rolloutStartedAt: '2026-07-12T12:00:00.000Z',
+      state: 'pending',
+    };
+
+    await reconcileDeploymentTarget(requester(), runtime, pendingTarget);
+
+    expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'ready', revision: 0 }),
+    );
   });
 });
 
@@ -150,19 +166,39 @@ function activeRuntimeStub(): KubeRuntime & { apply: Mock } {
   } as never;
 }
 
-function pendingRuntimeStub(): KubeRuntime & { apply: Mock } {
+function pendingRuntimeStub(publishAfterSubscribe: boolean): KubeRuntime & { apply: Mock } {
   const runtime: KubeRuntime & { apply: Mock } = runtimeStub();
+  const cache: Map<string, KubeManifest> = new Map<string, KubeManifest>();
+  if (!publishAfterSubscribe) {
+    const namespace: string = kubeNamespaceName('prj_1');
+    const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
+    cache.set(`deployments/${namespace}/${name}`, progressingDeployment(namespace, name));
+  }
   return {
     ...runtime,
     observe: vi.fn(
       async (): Promise<KubeObservation> =>
         await Promise.resolve({
-          cache: new Map<string, KubeManifest>(),
+          cache,
           health: (): KubeObservationHealth => ({ healthy: true, lastConnectedAt: new Date(), lastErrorAt: null }),
-          onEvent: (): (() => void) => (): void => undefined,
+          onEvent: (listener: TestObservationListener): (() => void) => {
+            const timer: NodeJS.Timeout | undefined = publishAfterSubscribe
+              ? setTimeout((): void => publishReadyDeployment(cache, listener), 0)
+              : undefined;
+            return (): void => clearTimeout(timer);
+          },
           stop: async (): Promise<void> => await Promise.resolve(),
         }),
     ),
+  } as never;
+}
+
+function progressingDeployment(namespace: string, name: string): KubeManifest {
+  return {
+    apiVersion: 'apps/v1',
+    kind: 'Deployment',
+    metadata: { generation: 1, name, namespace },
+    status: { availableReplicas: 0, observedGeneration: 1 },
   } as never;
 }
 

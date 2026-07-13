@@ -1,5 +1,4 @@
 import type {
-  DeploymentReconcileProjection,
   DeploymentReconcileTarget,
   ProductJobIntent,
   WorkerObserveDeploymentReconcileRequest,
@@ -8,27 +7,27 @@ import {
   calculateKubeRolloutStatus,
   projectApplicationManifests,
   type KubeDeploymentManifest,
-  type KubeDeploymentCondition,
   type KubeManifest,
   type KubeObservation,
-  type KubeObservedManifest,
   type KubeRolloutObservation,
   type KubeRolloutStatus,
   type KubeRuntime,
 } from '@compartment/kube-runtime';
 import { observeDeploymentReconcile, type CompartmentRequester } from '@compartment/sdk';
 import { executeProductJob } from './worker-product-job.service';
-import type { ObservedDeploymentCondition, ObservedDeploymentStatus } from './worker-deployment-reconcile.types';
 import {
-  deploymentConditionStatus,
   deploymentFromObjects,
   deploymentManifest,
   releaseIntent,
   requiredDeploymentMetadata,
   rolloutFailureMessage,
 } from './worker-deployment-reconcile.helpers';
+import {
+  isObservedReady,
+  readRolloutObservation,
+  rolloutTimeoutMs,
+} from './worker-deployment-rollout-observation.service';
 
-const defaultRolloutTimeoutMs: number = 50_000;
 const releaseTimeoutMs: number = 600_000;
 
 interface RolloutWaitHandles {
@@ -96,7 +95,7 @@ async function reconcilePendingDeployment(
   const candidate: KubeDeploymentManifest = deploymentManifest(target.candidate);
   const observation: KubeObservation = await observeDeployment(runtime, candidate);
   try {
-    const rollout: KubeRolloutObservation | null = readRolloutObservation(observation, candidate, target);
+    const rollout: KubeRolloutObservation | null = await readRolloutObservation(observation, candidate, target);
     if (rollout === null) {
       await handleMissingPendingDeployment(request, runtime, target);
       return;
@@ -177,57 +176,6 @@ async function waitForReady(
       }
     });
   });
-}
-
-function isObservedReady(observation: KubeObservation, deployment: KubeDeploymentManifest, deadlineAt: Date): boolean {
-  const observed: KubeRolloutObservation | null = readDeploymentObservation(observation, deployment, deadlineAt);
-  return observed !== null && calculateKubeRolloutStatus(observed, new Date()) === 'ready';
-}
-
-function readRolloutObservation(
-  observation: KubeObservation,
-  deployment: KubeDeploymentManifest,
-  target: DeploymentReconcileTarget,
-): KubeRolloutObservation | null {
-  const startedAt: number = new Date(target.rolloutStartedAt).getTime();
-  return readDeploymentObservation(observation, deployment, new Date(startedAt + rolloutTimeoutMs(target.candidate)));
-}
-
-function rolloutTimeoutMs(projection: DeploymentReconcileProjection): number {
-  return projection.readiness?.timeoutMs ?? defaultRolloutTimeoutMs;
-}
-
-function readDeploymentObservation(
-  observation: KubeObservation,
-  deployment: KubeDeploymentManifest,
-  deadlineAt: Date,
-): KubeRolloutObservation | null {
-  const namespace: string = requiredDeploymentMetadata(deployment, 'namespace');
-  const name: string = requiredDeploymentMetadata(deployment, 'name');
-  const observed: KubeObservedManifest | undefined = observation.cache.get(`deployments/${namespace}/${name}`);
-  if (observed?.kind !== 'Deployment') {
-    return null;
-  }
-  const status: ObservedDeploymentStatus = observed.status ?? {};
-  const generation: number = observed.metadata?.generation ?? 0;
-  return {
-    availableReplicas: status.availableReplicas ?? 0,
-    conditions: rolloutConditions(status),
-    deadlineAt,
-    desiredReplicas: deployment.spec?.replicas ?? 1,
-    generation,
-    observedGeneration: status.observedGeneration ?? null,
-  };
-}
-
-function rolloutConditions(status: ObservedDeploymentStatus): KubeDeploymentCondition[] {
-  return (status.conditions ?? []).map(
-    (condition: ObservedDeploymentCondition): KubeDeploymentCondition => ({
-      reason: condition.reason ?? '',
-      status: deploymentConditionStatus(condition.status),
-      type: condition.type ?? '',
-    }),
-  );
 }
 
 async function observeDeployment(runtime: KubeRuntime, deployment: KubeDeploymentManifest): Promise<KubeObservation> {
