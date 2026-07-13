@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import type { ResourceClaimIdentity } from '@compartment/contracts';
 import {
   assertResourceClaimIdentity,
@@ -6,6 +7,7 @@ import {
   type KubeManifest,
   type KubeObservation,
   type KubeObservedManifest,
+  type KubeDeploymentManifest,
   type KubeRuntime,
   type ObservedResourceClaim,
   type ResourceProjectionRow,
@@ -82,30 +84,19 @@ export function readResourcePods(observation: KubeObservation): { deletionTimest
 }
 
 export function resourceDeploymentFreshAndReady(
-  observation: KubeObservation,
-  previousPodNames: ReadonlySet<string>,
+  observed: KubeObservedManifest | null,
+  desired: KubeDeploymentManifest,
 ): boolean {
-  const hasFreshPod: boolean = [...readResourcePodNames(observation)].some(
-    (podName: string): boolean => podName !== '' && !previousPodNames.has(podName),
-  );
-  return hasFreshPod && resourceDeploymentReady(observation);
-}
-
-export function readResourcePodNames(observation: KubeObservation): Set<string> {
-  return new Set(
-    [...observation.cache.entries()]
-      .filter(([key]: [string, KubeObservedManifest]): boolean => key.startsWith('pods/'))
-      .map(([, pod]: [string, KubeObservedManifest]): string => pod.metadata?.name ?? ''),
-  );
-}
-
-function resourceDeploymentReady(observation: KubeObservation): boolean {
-  const deployment: KubeObservedManifest | undefined = [...observation.cache.entries()].find(
-    ([key]: [string, KubeObservedManifest]): boolean => key.startsWith('deployments/'),
-  )?.[1];
-  const status: ObservedDeploymentStatus | undefined = deployment?.status;
+  if (observed?.kind !== 'Deployment') {
+    return false;
+  }
+  const generation: number | undefined = observed.metadata?.generation;
+  const status: ObservedDeploymentStatus | undefined = observed.status;
   return (
-    status?.readyReplicas === 1 &&
+    generation !== undefined &&
+    status?.observedGeneration !== undefined &&
+    status.observedGeneration >= generation &&
+    status.readyReplicas === desired.spec?.replicas &&
     status.conditions?.some(
       (condition: { status?: string | undefined; type?: string | undefined }): boolean =>
         condition.type === 'Available' && condition.status === 'True',
@@ -135,6 +126,18 @@ export async function waitUntil<T>(observation: KubeObservation, read: () => T |
     unsubscribe = observation.onEvent(resolveWhenReady);
     resolveWhenReady();
   });
+}
+
+export async function waitUntilLive<T>(read: () => Promise<T | null>): Promise<T> {
+  const deadlineAt: number = Date.now() + reconcileTimeoutMs;
+  while (Date.now() < deadlineAt) {
+    const value: T | null = await read();
+    if (value !== null) {
+      return value;
+    }
+    await delay(1_000);
+  }
+  throw new Error('Timed out waiting for live Kubernetes resource lifecycle evidence.');
 }
 
 export async function readRollbackManifest(

@@ -93,6 +93,46 @@ describe('worker resource reconcile lifecycle', (): void => {
     );
   });
 
+  it('completes from live Deployment state when the informer cache misses readiness updates', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const observation: TestObservation = new TestObservation('uid-original', false);
+      observation.addClaim(backupClaimName, 'uid-backup', false);
+      let desiredApplied: boolean = false;
+      let liveReadyReads: number = 0;
+      const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+        desiredApplied = bundle.objects.some(
+          (object: KubeManifest): boolean => object.kind === 'Deployment' && object.spec?.replicas === 1,
+        );
+        return await Promise.resolve(bundle.objects);
+      });
+      const read: Mock = vi.fn(async (manifest: KubeManifest): Promise<KubeObservedManifest | null> => {
+        if (manifest.kind === 'Deployment' && desiredApplied) {
+          liveReadyReads += 1;
+          return liveDeployment(liveReadyReads > 1);
+        }
+        return await readFromObservation(observation, manifest);
+      });
+
+      const execution: Promise<void> = executeResourceReconcile(
+        requester(),
+        runtime(apply, observation, read),
+        claim(null),
+      );
+      await vi.advanceTimersByTimeAsync(1_000);
+      await execution;
+
+      expect(liveReadyReads).toBe(2);
+      expect(observation.cache.has('pods/ns/resource-new-pod')).toBe(false);
+      expect(mocks.acknowledge).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.objectContaining({ status: 'succeeded' }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('scales to zero before starting and rolls back saved executable manifests on apply failure', async (): Promise<void> => {
     const observation: TestObservation = new TestObservation('uid-original', true);
     observation.addClaim(backupClaimName, 'uid-backup', false);
@@ -151,6 +191,7 @@ class TestObservation implements KubeObservation {
         annotations: { 'compartment.dev/revision': 'old' },
         creationTimestamp: new Date('2026-07-12T00:00:00Z'),
         labels: { 'compartment.dev/resource-id': 'resource' },
+        generation: 1,
         managedFields: [{ manager: 'kube-controller-manager' }],
         name: 'resource',
         namespace: 'cpt-project',
@@ -170,7 +211,11 @@ class TestObservation implements KubeObservation {
           },
         },
       },
-      status: { conditions: [{ status: 'True', type: 'Available' }], readyReplicas: 1 },
+      status: {
+        conditions: [{ status: 'True', type: 'Available' }],
+        observedGeneration: 1,
+        readyReplicas: 1,
+      },
     });
     this.cache.set('secrets/ns/resource', {
       apiVersion: 'v1',
@@ -216,9 +261,13 @@ class TestObservation implements KubeObservation {
     this.cache.set('deployments/ns/resource', {
       apiVersion: 'apps/v1',
       kind: 'Deployment',
-      metadata: { name: 'resource' },
+      metadata: { generation: 1, name: 'resource' },
       spec: { replicas: 1 },
-      status: { conditions: [{ status: 'True', type: 'Available' }], readyReplicas: 1 },
+      status: {
+        conditions: [{ status: 'True', type: 'Available' }],
+        observedGeneration: 1,
+        readyReplicas: 1,
+      },
     } as KubeObservedManifest);
   }
   public addClaim(name: string, uid: string, bound: boolean): void {
@@ -237,19 +286,41 @@ class TestObservation implements KubeObservation {
   }
 }
 
-function runtime(apply: Mock, observation: KubeObservation): KubeRuntime {
+function runtime(apply: Mock, observation: KubeObservation, read?: Mock): KubeRuntime {
   const value: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
   vi.spyOn(value, 'apply').mockImplementation(apply);
   vi.spyOn(value, 'observe').mockResolvedValue(observation);
   vi.spyOn(value, 'read').mockImplementation(
-    async (manifest: KubeManifest): Promise<KubeObservedManifest | null> =>
-      await Promise.resolve(
-        [...observation.cache.values()].find(
-          (observed: KubeObservedManifest): boolean => observed.kind === manifest.kind,
-        ) ?? null,
-      ),
+    read ??
+      (async (manifest: KubeManifest): Promise<KubeObservedManifest | null> =>
+        await readFromObservation(observation, manifest)),
   );
   return value;
+}
+
+async function readFromObservation(
+  observation: KubeObservation,
+  manifest: KubeManifest,
+): Promise<KubeObservedManifest | null> {
+  return await Promise.resolve(
+    [...observation.cache.values()].find(
+      (observed: KubeObservedManifest): boolean => observed.kind === manifest.kind,
+    ) ?? null,
+  );
+}
+
+function liveDeployment(ready: boolean): KubeObservedManifest {
+  return {
+    apiVersion: 'apps/v1',
+    kind: 'Deployment',
+    metadata: { generation: 2, name: 'resource', namespace: 'cpt-project' },
+    spec: { replicas: 1 },
+    status: {
+      conditions: [{ status: ready ? 'True' : 'False', type: 'Available' }],
+      observedGeneration: ready ? 2 : 1,
+      readyReplicas: ready ? 1 : 0,
+    },
+  } as KubeObservedManifest;
 }
 
 function requester(): CompartmentRequester {

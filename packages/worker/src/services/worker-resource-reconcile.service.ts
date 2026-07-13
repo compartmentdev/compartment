@@ -5,6 +5,7 @@ import {
   projectResourceBootstrapClaims,
   projectResourceManifests,
   resourcePodsFullyTerminated,
+  type KubeDeploymentManifest,
   type KubeManifest,
   type KubeObservation,
   type KubeRuntime,
@@ -15,11 +16,11 @@ import {
   assertFinalClaimState,
   readCreatedClaims,
   readObservedClaims,
-  readResourcePodNames,
   readResourcePods,
   readRollbackManifest,
   resourceDeploymentFreshAndReady,
   waitUntil,
+  waitUntilLive,
 } from './worker-resource-reconcile-observation.service';
 import type { ManagedResourceUpdatePlan } from './worker-resource-reconcile.service.types';
 
@@ -201,17 +202,28 @@ async function applyManagedResourceState(
   row: ResourceProjectionRow,
   manifests: KubeManifest[],
 ): Promise<void> {
-  const previousPodNames: Set<string> = readResourcePodNames(observation);
   await runtime.apply({ objects: projectResourceManifests(row, 0) });
   await waitUntil(observation, (): true | null =>
     resourcePodsFullyTerminated(readResourcePods(observation)) ? true : null,
   );
   assertResourceClaimOwnership(expectedClaims, readObservedClaims(observation));
   await runtime.apply({ objects: manifests });
-  await waitUntil(observation, (): true | null =>
-    resourceDeploymentFreshAndReady(observation, previousPodNames) ? true : null,
+  const desiredDeployment: KubeDeploymentManifest = requiredDeployment(manifests);
+  await waitUntilLive(
+    async (): Promise<true | null> =>
+      resourceDeploymentFreshAndReady(await runtime.read(desiredDeployment), desiredDeployment) ? true : null,
   );
   assertFinalClaimState(expectedClaims, readObservedClaims(observation), row);
+}
+
+function requiredDeployment(manifests: KubeManifest[]): KubeDeploymentManifest {
+  const deployment: KubeManifest | undefined = manifests.find(
+    (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+  );
+  if (deployment?.kind !== 'Deployment') {
+    throw new Error('Resource reconcile Deployment manifest is missing.');
+  }
+  return deployment;
 }
 
 async function acknowledgeFailure(

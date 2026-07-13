@@ -11,6 +11,7 @@ export interface ObservedDeploymentCondition {
 
 export interface ObservedDeploymentStatus {
   conditions?: ObservedDeploymentCondition[] | undefined;
+  observedGeneration?: number | undefined;
   readyReplicas?: number | undefined;
 }
 
