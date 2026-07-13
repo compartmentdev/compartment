@@ -1,10 +1,15 @@
 import type { ResourceClaimIdentity } from '@compartment/contracts';
-import type {
-  KubeManifest,
-  KubeObservation,
-  KubeObservedManifest,
-  KubeRuntime,
-  ObservedResourceClaim,
+import {
+  assertResourceClaimIdentity,
+  assertResourceClaimOwnership,
+  kubeResourceVolumeName,
+  type KubeManifest,
+  type KubeObservation,
+  type KubeObservedManifest,
+  type KubeRuntime,
+  type ObservedResourceClaim,
+  type ResourceProjectionRow,
+  type ResourceVolumeProjection,
 } from '@compartment/kube-runtime';
 import type { ObservedClaimStatus, ObservedDeploymentStatus } from './worker-resource-reconcile.service.types';
 
@@ -48,6 +53,26 @@ export function readObservedClaims(observation: KubeObservation): ObservedResour
         uid: claim.metadata?.uid ?? null,
       }),
     );
+}
+
+export function assertFinalClaimState(
+  expectedClaims: ResourceClaimIdentity[],
+  observedClaims: ObservedResourceClaim[],
+  row: ResourceProjectionRow,
+): void {
+  assertResourceClaimOwnership(expectedClaims, observedClaims);
+  const mountedNames: Set<string> = new Set<string>(
+    row.volumes.map((volume: ResourceVolumeProjection): string =>
+      kubeResourceVolumeName(row.resourceId, volume.volumeHandle),
+    ),
+  );
+  if (mountedNames.size === 0) {
+    return;
+  }
+  assertResourceClaimIdentity(
+    expectedClaims.filter((claim: ResourceClaimIdentity): boolean => mountedNames.has(claim.claimName)),
+    observedClaims.filter((claim: ObservedResourceClaim): boolean => mountedNames.has(claim.claimName)),
+  );
 }
 
 export function readResourcePods(observation: KubeObservation): { deletionTimestamp?: string | undefined }[] {

@@ -1,6 +1,5 @@
 import type { ResourceClaimIdentity, WorkerClaimResourceReconcileResponse } from '@compartment/contracts';
 import {
-  assertResourceClaimIdentity,
   assertResourceClaimOwnership,
   kubeNamespaceName,
   projectResourceBootstrapClaims,
@@ -13,6 +12,7 @@ import {
 } from '@compartment/kube-runtime';
 import { acknowledgeResourceReconcile, type CompartmentRequester } from '@compartment/sdk';
 import {
+  assertFinalClaimState,
   readCreatedClaims,
   readObservedClaims,
   readResourcePodNames,
@@ -211,7 +211,7 @@ async function applyManagedResourceState(
   await waitUntil(observation, (): true | null =>
     resourceDeploymentFreshAndReady(observation, previousPodNames) ? true : null,
   );
-  assertResourceClaimIdentity(expectedClaims, readObservedClaims(observation));
+  assertFinalClaimState(expectedClaims, readObservedClaims(observation), row);
 }
 
 async function acknowledgeFailure(
