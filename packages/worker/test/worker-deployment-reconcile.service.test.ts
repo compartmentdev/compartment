@@ -77,6 +77,20 @@ describe('deployment reconciliation', (): void => {
     expect(runtime.apply).toHaveBeenCalledOnce();
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
   });
+
+  it('keeps a pending rollout alive for the configured readiness timeout', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock } = pendingRuntimeStub();
+    const pendingTarget: DeploymentReconcileTarget = {
+      ...target(projection(null)),
+      rolloutStartedAt: new Date(Date.now() - 55_000).toISOString(),
+      state: 'pending',
+    };
+
+    await reconcileDeploymentTarget(requester(), runtime, pendingTarget);
+
+    expect(runtime.apply).toHaveBeenCalledOnce();
+    expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
+  });
 });
 
 function target(candidate: DeploymentReconcileProjection): DeploymentReconcileTarget {
@@ -130,6 +144,22 @@ function activeRuntimeStub(): KubeRuntime & { apply: Mock } {
             const timer: NodeJS.Timeout = setTimeout((): void => publishReadyDeployment(cache, listener), 0);
             return (): void => clearTimeout(timer);
           },
+          stop: async (): Promise<void> => await Promise.resolve(),
+        }),
+    ),
+  } as never;
+}
+
+function pendingRuntimeStub(): KubeRuntime & { apply: Mock } {
+  const runtime: KubeRuntime & { apply: Mock } = runtimeStub();
+  return {
+    ...runtime,
+    observe: vi.fn(
+      async (): Promise<KubeObservation> =>
+        await Promise.resolve({
+          cache: new Map<string, KubeManifest>(),
+          health: (): KubeObservationHealth => ({ healthy: true, lastConnectedAt: new Date(), lastErrorAt: null }),
+          onEvent: (): (() => void) => (): void => undefined,
           stop: async (): Promise<void> => await Promise.resolve(),
         }),
     ),

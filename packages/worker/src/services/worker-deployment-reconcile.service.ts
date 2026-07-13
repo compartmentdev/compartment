@@ -1,4 +1,5 @@
 import type {
+  DeploymentReconcileProjection,
   DeploymentReconcileTarget,
   ProductJobIntent,
   WorkerObserveDeploymentReconcileRequest,
@@ -27,7 +28,7 @@ import {
   rolloutFailureMessage,
 } from './worker-deployment-reconcile.helpers';
 
-const rolloutTimeoutMs: number = 50_000;
+const defaultRolloutTimeoutMs: number = 50_000;
 const releaseTimeoutMs: number = 600_000;
 
 interface RolloutWaitHandles {
@@ -60,7 +61,7 @@ async function reconcileActiveDeployment(
   await runtime.apply({ objects: projectApplicationManifests(target.candidate) });
   const observation: KubeObservation = await observeDeployment(runtime, deployment);
   try {
-    await waitForReady(observation, deployment, rolloutTimeoutMs);
+    await waitForReady(observation, deployment, rolloutTimeoutMs(target.candidate));
   } catch {
     await persistObservation(request, target, 'pending', 'Active Kubernetes Deployment drifted or became non-Ready.');
   } finally {
@@ -112,7 +113,7 @@ async function handleMissingPendingDeployment(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
 ): Promise<void> {
-  const deadline: number = new Date(target.rolloutStartedAt).getTime() + rolloutTimeoutMs;
+  const deadline: number = new Date(target.rolloutStartedAt).getTime() + rolloutTimeoutMs(target.candidate);
   if (Date.now() < deadline) {
     await runtime.apply({ objects: projectApplicationManifests(target.candidate) });
     return;
@@ -147,7 +148,7 @@ async function recoverFailedRollout(runtime: KubeRuntime, target: DeploymentReco
   const activeDeployment: KubeDeploymentManifest = deploymentFromObjects(activeObjects);
   const observation: KubeObservation = await observeDeployment(runtime, activeDeployment);
   try {
-    await waitForReady(observation, activeDeployment, rolloutTimeoutMs);
+    await waitForReady(observation, activeDeployment, rolloutTimeoutMs(target.active));
   } finally {
     await observation.stop();
   }
@@ -189,7 +190,11 @@ function readRolloutObservation(
   target: DeploymentReconcileTarget,
 ): KubeRolloutObservation | null {
   const startedAt: number = new Date(target.rolloutStartedAt).getTime();
-  return readDeploymentObservation(observation, deployment, new Date(startedAt + rolloutTimeoutMs));
+  return readDeploymentObservation(observation, deployment, new Date(startedAt + rolloutTimeoutMs(target.candidate)));
+}
+
+function rolloutTimeoutMs(projection: DeploymentReconcileProjection): number {
+  return projection.readiness?.timeoutMs ?? defaultRolloutTimeoutMs;
 }
 
 function readDeploymentObservation(
