@@ -1,8 +1,12 @@
 import {
+  accessAssignmentResponseSchema,
+  accessRoleListResponseSchema,
   activateResponseSchema,
   createOrganizationResponseSchema,
   inviteUserResponseSchema,
   removeUserResponseSchema,
+  type AccessRoleListResponse,
+  type AccessRoleListRow,
   type InviteUserResponse,
 } from '@compartment/contracts';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
@@ -88,6 +92,12 @@ export async function provisionK3dSuiteOrganization(
     inviteUserResponseSchema,
   );
   const activationToken: string = requireActivationToken(invitePayload);
+  const roleList: AccessRoleListResponse = await seedCli.runJson('role list', accessRoleListResponseSchema);
+  const systemAdminRoleId: string = requireSystemAdminRoleId(roleList);
+  await seedCli.runJson(
+    `assignment create --role ${systemAdminRoleId} --scope organization --user ${credentials.principalEmail}`,
+    accessAssignmentResponseSchema,
+  );
 
   const suiteCli: SelfHostedUserSetupCli = await createFreshCli();
   await suiteCli.runJson(
@@ -110,6 +120,18 @@ export async function provisionK3dSuiteOrganization(
     createOrganizationResponseSchema,
   );
   await seedCli.runJson(`user remove ${credentials.principalEmail} --yes`, removeUserResponseSchema);
+}
+
+function requireSystemAdminRoleId(roleList: AccessRoleListResponse): string {
+  const adminRoles: AccessRoleListRow[] = roleList.roles.filter(
+    (role: AccessRoleListRow): boolean => role.kind === 'system' && role.name === 'admin',
+  );
+  const adminRole: AccessRoleListRow | undefined = adminRoles[0];
+  if (adminRole === undefined || adminRoles.length !== 1) {
+    throw new Error(`Expected exactly one system admin role, received ${String(adminRoles.length)}.`);
+  }
+
+  return adminRole.id;
 }
 
 export async function configureK3dTrustedOutboundHosts(trustedHostList: string): Promise<void> {
