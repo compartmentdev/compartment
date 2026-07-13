@@ -34,6 +34,8 @@
     "self-hosted:build": "docker compose --project-directory . --env-file .env.self-hosted -f docker-compose.self-hosted.yml -f docker-compose.self-hosted.build.yml build api edge worker caddy runtime-probe",
     "self-hosted:check-runtime-surface": "node ./scripts/deploy/check-self-hosted-runtime-surface.mjs",
     "self-hosted:publish": "node ./scripts/deploy/publish-self-hosted-images.mjs",
+    "platform:e2e:up": "node ./scripts/deploy/platform-k3d-e2e.mjs up",
+    "platform:e2e:down": "node ./scripts/deploy/platform-k3d-e2e.mjs down",
     "self-hosted:up": "sh -lc 'mkdir -p .compartment/self-hosted/docker-work && docker compose --project-directory . --env-file .env.self-hosted -f docker-compose.self-hosted.yml up -d --wait api registry registry-auth edge worker caddy && mkdir -p .compartment/self-hosted && if [ -f .compartment/self-hosted/node-agent.pid ] && kill -0 \"$(cat .compartment/self-hosted/node-agent.pid)\" 2>/dev/null; then echo compartment-node-agent already running; else pnpm self-hosted:node-agent > .compartment/self-hosted/node-agent.log 2>&1 & echo $! > .compartment/self-hosted/node-agent.pid; fi'",
     "self-hosted:down": "sh -lc 'if [ -f .compartment/self-hosted/node-agent.pid ]; then kill \"$(cat .compartment/self-hosted/node-agent.pid)\" 2>/dev/null || true; rm -f .compartment/self-hosted/node-agent.pid; fi; docker compose --project-directory . --env-file .env.self-hosted -f docker-compose.self-hosted.yml down --remove-orphans'",
     "broker:deploy:prod": "node ./scripts/deploy/deploy-broker-prod.mjs",
