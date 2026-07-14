@@ -206,7 +206,12 @@ describe('deployment Kubernetes transition persistence', (): void => {
       .where(eq(productLogStoreQuota.id, 'global'));
     const [event] = buildProductLogSequence('55555555-5555-4555-8555-555555555555', 'quota', 0, 1);
 
-    await expect(ingestDeploymentProductLogs([event!])).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
+    await expect(ingestDeploymentProductLogs([event!])).resolves.toEqual({
+      accepted: 0,
+      deferred: 1,
+      duplicates: 0,
+      rejected: 1,
+    });
     await expect(db.select().from(deploymentProductLogs)).resolves.toHaveLength(0);
   });
 

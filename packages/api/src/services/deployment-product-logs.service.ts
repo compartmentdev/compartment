@@ -38,10 +38,20 @@ export async function ingestDeploymentProductLogs(events: ProductLogIngestEvent[
     },
   );
   const result: InsertDeploymentProductLogsResult = await insertDeploymentProductLogs(acceptedEvents);
+  return buildProductLogIngestResult(events.length, acceptedEvents.length, result);
+}
+
+function buildProductLogIngestResult(
+  eventCount: number,
+  acceptedIdentityCount: number,
+  result: InsertDeploymentProductLogsResult,
+): ProductLogIngestResult {
+  const deferred: number = acceptedIdentityCount - result.quotaAccepted;
   return {
     accepted: result.inserted,
+    ...(deferred > 0 ? { deferred } : {}),
     duplicates: result.quotaAccepted - result.inserted,
-    rejected: events.length - result.quotaAccepted,
+    rejected: eventCount - result.quotaAccepted,
   };
 }
 
