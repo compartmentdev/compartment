@@ -15,12 +15,17 @@ describe('product log agent manifest', (): void => {
 
     expect(documents).toHaveLength(4);
     expect(manifest).toContain('offset_key: source_offset');
+    expect(manifest).toContain('fingerprint:\n          strategy: checksum');
+    expect(manifest).not.toContain('strategy: device_and_inode');
     expect(manifest).toContain('path: /var/lib/compartment/log-agent');
     expect(manifest).toContain('max_size: 268435488');
     expect(manifest).toContain('max_events: 200');
     expect(manifest).toContain('max_bytes: 786432');
     expect(manifest).toContain('retry_max_duration_secs: 30');
     expect(manifest).toContain('retry_attempts: 9223372036854775807');
+    expect(manifest).toContain('inputs: [product_events, product_store_flush_event]');
+    expect(manifest).toContain('condition: .name == "uptime_seconds"');
+    expect(manifest).toContain('namespace": "compartment-log-buffer-flush"');
     expect(manifest).toContain('type: prometheus_exporter');
     expect(manifest).toContain('type: host_metrics');
     expect(manifest).toMatch(/compartment\.dev\/log-slo-lines-per-second: ['"]12000['"]/);

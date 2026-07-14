@@ -28,7 +28,7 @@ data:
         host_key: ""
         offset_key: source_offset
         fingerprint:
-          strategy: device_and_inode
+          strategy: checksum
         glob_minimum_cooldown_ms: 250
         max_line_bytes: 4096
         max_read_bytes: 65536
@@ -44,6 +44,29 @@ data:
           mountpoints:
             includes: [/var/lib/vector]
     transforms:
+      product_store_flush_metric:
+        type: filter
+        inputs: [internal]
+        condition: .name == "uptime_seconds"
+      product_store_flush_log:
+        type: metric_to_log
+        inputs: [product_store_flush_metric]
+      product_store_flush_event:
+        type: remap
+        inputs: [product_store_flush_log]
+        source: |
+          . = {
+            "containerName": "vector-buffer-flush",
+            "message": "",
+            "namespace": "compartment-log-buffer-flush",
+            "podName": "vector-buffer-flush",
+            "podUid": "00000000-0000-0000-0000-000000000000",
+            "restartIdentity": "0",
+            "sourceFingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+            "sourceOffset": 0,
+            "stream": "stdout",
+            "timestamp": now()
+          }
       product_events:
         type: remap
         inputs: [pod_logs]
@@ -68,7 +91,7 @@ data:
     sinks:
       product_store:
         type: http
-        inputs: [product_events]
+        inputs: [product_events, product_store_flush_event]
         uri: ${COMPARTMENT_LOG_INGEST_URL}
         method: post
         auth:
