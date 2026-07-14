@@ -150,7 +150,7 @@ describe('executeProductJob', (): void => {
     );
   });
 
-  it('fences operation PVCs through a live read before creating the Job', async (): Promise<void> => {
+  it('fences a pending WaitForFirstConsumer PVC through a live read before creating the Job', async (): Promise<void> => {
     const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
     const read: Mock = vi.fn(
       async (): Promise<KubeObservedManifest> =>
@@ -158,7 +158,7 @@ describe('executeProductJob', (): void => {
           apiVersion: 'v1',
           kind: 'PersistentVolumeClaim',
           metadata: { name: 'backup-artifacts', uid: 'uid-backup' },
-          status: { phase: 'Bound' },
+          status: { phase: 'Pending' },
         }),
     );
     runtime.read = read;

@@ -6,7 +6,7 @@ import type {
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
 import {
-  assertResourceClaimIdentity,
+  assertResourceClaimOwnership,
   type KubeJobResult,
   type KubeJobSpec,
   type KubeManifest,
@@ -55,7 +55,7 @@ async function assertProductJobClaims(runtime: KubeRuntime, intent: ProductJobIn
   if (intent.volumeMounts === undefined || intent.volumeMounts.length === 0) {
     return;
   }
-  assertResourceClaimIdentity(
+  assertResourceClaimOwnership(
     intent.volumeMounts.map(
       (mount: ProductJobVolumeMount): ResourceClaimIdentity => ({
         claimName: mount.claimName,
