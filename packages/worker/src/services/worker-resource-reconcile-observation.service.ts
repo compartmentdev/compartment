@@ -109,16 +109,35 @@ export function resourceDeploymentFreshAndReady(
   }
   const generation: number | undefined = observed.metadata?.generation;
   const status: ObservedDeploymentStatus | undefined = observed.status;
+  if (status === undefined) {
+    return false;
+  }
+  const desiredReplicas: number | undefined = desired.spec?.replicas;
   return (
-    generation !== undefined &&
-    status?.observedGeneration !== undefined &&
-    status.observedGeneration >= generation &&
-    status.readyReplicas === desired.spec?.replicas &&
+    resourceDeploymentRevisionMatches(observed, desired) &&
+    generationIsCurrent(generation, status.observedGeneration) &&
+    status.availableReplicas === desiredReplicas &&
+    status.readyReplicas === desiredReplicas &&
     status.conditions?.some(
       (condition: { status?: string | undefined; type?: string | undefined }): boolean =>
         condition.type === 'Available' && condition.status === 'True',
     ) === true
   );
+}
+
+function resourceDeploymentRevisionMatches(observed: KubeDeploymentManifest, desired: KubeDeploymentManifest): boolean {
+  const observedImage: string | undefined = observed.spec?.template.spec.containers[0]?.image;
+  const desiredImage: string | undefined = desired.spec?.template.spec.containers[0]?.image;
+  return (
+    observed.spec?.replicas === desired.spec?.replicas &&
+    observedImage === desiredImage &&
+    observed.spec?.template.metadata.annotations?.['compartment.dev/secret-checksum'] ===
+      desired.spec?.template.metadata.annotations?.['compartment.dev/secret-checksum']
+  );
+}
+
+function generationIsCurrent(generation: number | undefined, observedGeneration: number | undefined): boolean {
+  return generation === undefined || observedGeneration === undefined || observedGeneration >= generation;
 }
 
 export async function waitUntil<T>(observation: KubeObservation, read: () => T | null): Promise<T> {

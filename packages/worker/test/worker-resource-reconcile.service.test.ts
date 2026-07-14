@@ -80,7 +80,7 @@ describe('worker resource reconcile lifecycle', (): void => {
       );
       if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 1) {
         observation.bindClaims();
-        observation.addReadyDeployment();
+        observation.addReadyDeployment(deployment);
         observation.addPod('resource-first-pod');
       }
       return await Promise.resolve(bundle.objects);
@@ -103,7 +103,7 @@ describe('worker resource reconcile lifecycle', (): void => {
       );
       if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 1) {
         observation.bindClaims();
-        observation.addReadyDeployment();
+        observation.addReadyDeployment(deployment);
       }
       return await Promise.resolve(bundle.objects);
     });
@@ -139,7 +139,7 @@ describe('worker resource reconcile lifecycle', (): void => {
       const read: Mock = vi.fn(async (manifest: KubeManifest): Promise<KubeObservedManifest | null> => {
         if (manifest.kind === 'Deployment' && desiredApplied) {
           liveReadyReads += 1;
-          return liveDeployment(liveReadyReads > 1);
+          return liveDeployment(liveReadyReads > 1, manifest);
         }
         return await readFromObservation(observation, manifest);
       });
@@ -244,6 +244,7 @@ class TestObservation implements KubeObservation {
         },
       },
       status: {
+        availableReplicas: 1,
         conditions: [{ status: 'True', type: 'Available' }],
         observedGeneration: 1,
         readyReplicas: 1,
@@ -289,18 +290,21 @@ class TestObservation implements KubeObservation {
   public addPod(name: string): void {
     this.cache.set(`pods/ns/${name}`, { metadata: { name } } as KubeObservedManifest);
   }
-  public addReadyDeployment(): void {
+  public addReadyDeployment(deployment: KubeManifest): void {
+    if (deployment.kind !== 'Deployment') {
+      throw new Error('Expected a Deployment manifest.');
+    }
     this.cache.set(`deployments/ns/${resourceName}`, {
       apiVersion: 'apps/v1',
       kind: 'Deployment',
-      metadata: { generation: 1, name: resourceName },
-      spec: { replicas: 1 },
+      metadata: { name: resourceName },
+      spec: deployment.spec,
       status: {
+        availableReplicas: 1,
         conditions: [{ status: 'True', type: 'Available' }],
-        observedGeneration: 1,
         readyReplicas: 1,
       },
-    } as KubeObservedManifest);
+    });
   }
   public addClaim(name: string, uid: string, bound: boolean): void {
     this.cache.set(`persistentvolumeclaims/ns/${name}`, {
@@ -354,18 +358,21 @@ function liveClaim(name: string, uid: string, bound: boolean): KubeObservedManif
   };
 }
 
-function liveDeployment(ready: boolean): KubeObservedManifest {
+function liveDeployment(ready: boolean, desired: KubeManifest): KubeObservedManifest {
+  if (desired.kind !== 'Deployment') {
+    throw new Error('Expected a Deployment manifest.');
+  }
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
-    metadata: { generation: 2, name: resourceName, namespace: 'cpt-project' },
-    spec: { replicas: 1 },
+    metadata: { name: resourceName, namespace: 'cpt-project' },
+    spec: desired.spec,
     status: {
+      availableReplicas: ready ? 1 : 0,
       conditions: [{ status: ready ? 'True' : 'False', type: 'Available' }],
-      observedGeneration: ready ? 2 : 1,
       readyReplicas: ready ? 1 : 0,
     },
-  } as KubeObservedManifest;
+  };
 }
 
 function requester(): CompartmentRequester {
