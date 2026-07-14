@@ -366,7 +366,7 @@ describe('buildDockerImage', (): void => {
             step: 'packages:caddy',
           },
           {
-            include: ['apps/site', '/Caddyfile'],
+            include: ['apps/site', 'Caddyfile'],
             step: 'build',
           },
         ],

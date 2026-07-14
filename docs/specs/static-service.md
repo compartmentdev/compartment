@@ -49,7 +49,7 @@ apps/site/index.html
 
 Its service uses `kind: static`, `path: .`, and `build.outputDirectory: apps/site`. Railpack generates the root
 `Caddyfile` in the same `build` step as the site output. Static deploy-plan normalization must narrow that step to
-both `apps/site` and `/Caddyfile`; keeping only `apps/site` produces an image whose start command fails with
+both `apps/site` and `Caddyfile`; keeping only `apps/site` produces an image whose start command fails with
 `open Caddyfile: no such file or directory`.
 
 The descriptor continues to forbid user-authored `readiness`. The control plane records the internal `/health`

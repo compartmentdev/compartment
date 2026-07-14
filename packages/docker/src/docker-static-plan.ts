@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
 const staticBuildStepName: string = 'build';
-const staticRuntimeCaddyfilePath: string = '/Caddyfile';
+const staticRuntimeCaddyfilePath: string = 'Caddyfile';
 
 type RailpackPlanJsonValue = boolean | null | number | RailpackPlanJsonObject | RailpackPlanJsonValue[] | string;
 
