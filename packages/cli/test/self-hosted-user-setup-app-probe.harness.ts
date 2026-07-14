@@ -213,14 +213,16 @@ export async function expectAppBuildMessage(
   appSessionCookie: string,
   message: string,
 ): Promise<void> {
-  const payload: SelfHostedAppBuildProbe = await readAppJsonWithRetry(
-    appBuildProbeSchema,
-    routeUrl,
-    appSessionCookie,
-    '/probe/build',
-  );
+  let payload: SelfHostedAppBuildProbe | undefined;
+  for (let attempt: number = 0; attempt < appProbePollAttempts; attempt += 1) {
+    payload = await readAppJsonWithRetry(appBuildProbeSchema, routeUrl, appSessionCookie, '/probe/build');
+    if (payload.E2E_BUILD_MESSAGE === message) {
+      return;
+    }
+    await sleep(appProbePollDelayMs);
+  }
 
-  expect(payload.E2E_BUILD_MESSAGE).toBe(message);
+  expect(payload?.E2E_BUILD_MESSAGE).toBe(message);
 }
 
 export async function writeAppDatabaseValue(routeUrl: string, appSessionCookie: string, value: string): Promise<void> {

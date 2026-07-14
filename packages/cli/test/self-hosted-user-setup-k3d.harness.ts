@@ -60,6 +60,7 @@ const k3dKubectlCommandTimeoutMs: number = 8 * 60_000;
 const k3dApiServiceProbeAttempts: number = 30;
 const k3dApiServiceProbeIntervalMs: number = 1_000;
 const k3dApiServiceProbeTimeoutMs: number = 10_000;
+const k3dAuditFileSinkPath: string = '/var/lib/compartment/audit-logs/audit.ndjson';
 
 export function isK3dPlatformMode(): boolean {
   return process.env[e2ePlatformModeEnvName] === 'k3d';
@@ -213,13 +214,57 @@ export async function configureK3dTrustedOutboundHosts(trustedHostList: string):
   ]);
 }
 
+export async function enableK3dAuditFileSink(): Promise<string> {
+  const seed: K3dPlatformSeed = readK3dPlatformSeed();
+  const kubectlBaseArgv: readonly string[] = buildK3dKubectlBaseArgv(seed);
+  const patchPayload: string = JSON.stringify({ data: { COMPARTMENT_AUDIT_FILE_SINK_ENABLED: 'true' } });
+  await runK3dKubectlCommands([
+    [
+      ...kubectlBaseArgv,
+      'exec',
+      `deployment/${k3dPlatformResourceName}-api`,
+      '--',
+      'sh',
+      '-c',
+      `rm -f ${k3dAuditFileSinkPath}`,
+    ],
+    [...kubectlBaseArgv, 'patch', 'configmap', k3dPlatformResourceName, '--type', 'merge', '--patch', patchPayload],
+    [...kubectlBaseArgv, 'rollout', 'restart', `deployment/${k3dPlatformResourceName}-api`],
+    [...kubectlBaseArgv, 'rollout', 'status', `deployment/${k3dPlatformResourceName}-api`, '--timeout=2m'],
+  ]);
+  await waitForK3dApiService(seed);
+  return k3dAuditFileSinkPath;
+}
+
+export async function readK3dAuditFileSink(): Promise<string> {
+  const seed: K3dPlatformSeed = readK3dPlatformSeed();
+  const result: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      ...buildK3dKubectlBaseArgv(seed),
+      'exec',
+      `deployment/${k3dPlatformResourceName}-api`,
+      '--',
+      'sh',
+      '-c',
+      `cat ${k3dAuditFileSinkPath} 2>/dev/null || true`,
+    ],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(result, 'read the k3d API audit file sink', '');
+  return result.stdout;
+}
+
+function buildK3dKubectlBaseArgv(seed: K3dPlatformSeed): readonly string[] {
+  return ['kubectl', '--context', seed.kubeContext, '--namespace', seed.platformNamespace];
+}
+
 async function runK3dKubectlCommands(commands: readonly (readonly string[])[]): Promise<void> {
   for (const argv of commands) {
     const result: SelfHostedUserSetupCommandResult = await runCommand({
       argv,
       timeoutMs: k3dKubectlCommandTimeoutMs,
     });
-    expectSuccessfulCommand(result, `configure trusted outbound hosts: ${argv.slice(5).join(' ')}`, '');
+    expectSuccessfulCommand(result, `run k3d platform command: ${argv.slice(5).join(' ')}`, '');
   }
 }
 

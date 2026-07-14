@@ -40,6 +40,7 @@ import {
   type SelfHostedUserSetupRuntime,
 } from './self-hosted-user-setup.e2e.harness';
 import { readAppSessionCookieWithRetry } from './self-hosted-user-setup-app-probe.harness';
+import { isK3dPlatformMode, readK3dPlatformSeed } from './self-hosted-user-setup-k3d.harness';
 import {
   selfHostedMultiServiceBuildFixtures,
   selfHostedSingleServiceBuildFixtures,
@@ -64,6 +65,7 @@ const selfHostedBuildMatrixDockerCommandTimeoutMs: number = 60_000;
 const selfHostedBuildMatrixHttpProbeAttempts: number = 60;
 const selfHostedBuildMatrixHttpProbeDelayMs: number = 1_000;
 const selfHostedBuildMatrixHttpProbeTimeoutMs: number = 2_000;
+const selfHostedBuildMatrixLogPollAttempts: number = 60;
 
 describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', (): void => {
   const setup: SelfHostedUserSetupHarness = useSelfHostedUserSetupHarness();
@@ -246,10 +248,14 @@ async function expectSingleServiceFixtureLogs(
     return;
   }
 
-  const logsPayload: DeploymentLogsResponse = await admin.runJson(
-    `logs --project ${fixture.name}`,
-    deploymentLogsResponseSchema,
-  );
+  let logsPayload: DeploymentLogsResponse = await readFixtureLogs(admin, fixture.name);
+  for (let attempt: number = 1; attempt < selfHostedBuildMatrixLogPollAttempts; attempt += 1) {
+    if (hasExpectedFixtureLogs(logsPayload, fixture)) {
+      break;
+    }
+    await sleep(selfHostedBuildMatrixHttpProbeDelayMs);
+    logsPayload = await readFixtureLogs(admin, fixture.name);
+  }
 
   if (fixture.expectedLogTexts !== undefined) {
     expectDeploymentLogs(logsPayload, fixture.expectedLogTexts);
@@ -260,6 +266,19 @@ async function expectSingleServiceFixtureLogs(
   for (const unexpectedLogText of fixture.unexpectedLogTexts ?? []) {
     expect(hasDeploymentLog(logsPayload, unexpectedLogText)).toBe(false);
   }
+}
+
+async function readFixtureLogs(admin: SelfHostedUserSetupCli, projectName: string): Promise<DeploymentLogsResponse> {
+  return await admin.runJson(`logs --project ${projectName}`, deploymentLogsResponseSchema);
+}
+
+function hasExpectedFixtureLogs(
+  response: DeploymentLogsResponse,
+  fixture: SelfHostedSingleServiceBuildFixture,
+): boolean {
+  return [...(fixture.expectedLogTexts ?? []), ...(fixture.expectedOrderedLogTexts ?? [])].every(
+    (expectedLogText: string): boolean => hasDeploymentLog(response, expectedLogText),
+  );
 }
 
 async function expectProtectedRouteRedirect(compartmentUrl: string, routeUrl: string): Promise<void> {
@@ -511,6 +530,9 @@ async function readRuntimeContainerCommandOutput(
   deploymentId: string,
   expectation: SelfHostedRuntimeCommandExpectation,
 ): Promise<string> {
+  if (isK3dPlatformMode()) {
+    return await readK3dRuntimeCommandOutput(deploymentId, expectation);
+  }
   const containerResult: SelfHostedUserSetupCommandResult = await runCommand({
     argv: ['docker', 'ps', '-q', '--filter', `label=compartment.deploymentId=${deploymentId}`],
     timeoutMs: selfHostedBuildMatrixDockerCommandTimeoutMs,
@@ -527,6 +549,49 @@ async function readRuntimeContainerCommandOutput(
   });
   expectSuccessfulCommand(outputResult, `docker exec ${expectation.command.join(' ')}`);
 
+  return outputResult.stdout.trim();
+}
+
+async function readK3dRuntimeCommandOutput(
+  deploymentId: string,
+  expectation: SelfHostedRuntimeCommandExpectation,
+): Promise<string> {
+  const kubeContext: string = readK3dPlatformSeed().kubeContext;
+  const podResult: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      kubeContext,
+      'get',
+      'pods',
+      '--all-namespaces',
+      '--selector',
+      `compartment.dev/deployment-id=${deploymentId}`,
+      '--output',
+      'jsonpath={.items[0].metadata.namespace}{"\\t"}{.items[0].metadata.name}',
+    ],
+    timeoutMs: selfHostedBuildMatrixDockerCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(podResult, `kubectl get pod for deployment ${deploymentId}`);
+  const [namespace, podName] = podResult.stdout.trim().split('\t');
+  if (namespace === undefined || podName === undefined) {
+    throw new Error(`Expected Kubernetes Pod for deployment ${deploymentId}.`);
+  }
+  const outputResult: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      kubeContext,
+      'exec',
+      '--namespace',
+      namespace,
+      podName,
+      '--',
+      ...expectation.command,
+    ],
+    timeoutMs: selfHostedBuildMatrixDockerCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(outputResult, `kubectl exec ${expectation.command.join(' ')}`);
   return outputResult.stdout.trim();
 }
 

@@ -48,6 +48,7 @@ const execFileAsync: (
   args: readonly string[],
   options: GateExecFileOptions,
 ) => Promise<GateExecFileResult> = promisify(execFile);
+const repositoryRoot: string = resolve(process.cwd(), '../..');
 
 describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
   const setup: SelfHostedUserSetupHarness = useSelfHostedUserSetupHarness();
@@ -64,6 +65,9 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
         { email: runtime.adminEmail, password: runtime.adminPassword },
         { requestOrigin: runtime.apiUrl },
       );
+      await admin.run(`variable set E2E_BUILD_MESSAGE g1-build-message --env ${app.environmentName}`, {
+        cwd: app.directory,
+      });
 
       const deploy: SelfHostedDeployCommandResponse = await admin.runJson('deploy', deployCommandResponseParser, {
         cwd: app.directory,
@@ -97,12 +101,14 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
 
       const commandDirectory: string = join(app.directory, 'g1-commands');
       const assignmentStatePath: string = join(commandDirectory, 'assignment-id');
+      const appSessionCookiePath: string = join(commandDirectory, 'app-session-cookie');
       const commandEnvironment: NodeJS.ProcessEnv = admin.readCommandEnvironment();
       const cliEnvironment: string = buildCliEnvironment(commandEnvironment);
       await mkdir(commandDirectory, { recursive: true });
       await writeFile(assignmentStatePath, `${assignment.assignment.id}\n`);
+      await writeFile(appSessionCookiePath, `${appSessionCookie}\n`);
       const commands: GateCommands = await writeGateCommands({
-        appSessionCookie,
+        appSessionCookiePath,
         assignmentStatePath,
         cliEnvironment,
         commandDirectory,
@@ -110,13 +116,14 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
         roleId: role.role.id,
         routeUrl,
         viewerEmail,
+        viewerPassword,
       });
 
       const result: GateExecFileResult = await execFileAsync(
-        resolve('packages/edge/test/k3d-lkg-verification.sh'),
+        join(repositoryRoot, 'packages/edge/test/k3d-lkg-verification.sh'),
         [],
         {
-          cwd: resolve('.'),
+          cwd: repositoryRoot,
           env: {
             ...process.env,
             COMPARTMENT_P10_API_DEPLOYMENT: 'compartment/compartment-compartment-api',
@@ -124,9 +131,11 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
             COMPARTMENT_P10_EDGE_DEPLOYMENT: 'compartment/compartment-compartment-edge',
             COMPARTMENT_P10_GRANT_COMMAND: commands.grant,
             COMPARTMENT_P10_KUBE_CONTEXT: 'k3d-compartment-e2e',
+            COMPARTMENT_P10_POST_RESTORE_COMMAND: commands.postRestore,
             COMPARTMENT_P10_RELOGIN_PROBE_COMMAND: commands.relogin,
             COMPARTMENT_P10_REVOKE_COMMAND: commands.revoke,
             COMPARTMENT_P10_SNAPSHOT_PATH: '/var/lib/compartment/snapshots/access-state.json',
+            COMPARTMENT_P10_SNAPSHOT_HOST: new URL(routeUrl).hostname,
             COMPARTMENT_P10_UPSTREAM_PROBE_COMMAND: commands.upstream,
           },
           timeout: selfHostedUserSetupTimeoutMs,
@@ -139,7 +148,7 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
 });
 
 interface GateCommandInput {
-  readonly appSessionCookie: string;
+  readonly appSessionCookiePath: string;
   readonly assignmentStatePath: string;
   readonly cliEnvironment: string;
   readonly commandDirectory: string;
@@ -147,11 +156,13 @@ interface GateCommandInput {
   readonly roleId: string;
   readonly routeUrl: string;
   readonly viewerEmail: string;
+  readonly viewerPassword: string;
 }
 
 interface GateCommands {
   readonly authorized: string;
   readonly grant: string;
+  readonly postRestore: string;
   readonly relogin: string;
   readonly revoke: string;
   readonly upstream: string;
@@ -165,17 +176,17 @@ async function writeGateCommands(input: GateCommandInput): Promise<GateCommands>
   const authorized: string = await writeCommand(
     input.commandDirectory,
     'authorized.sh',
-    `curl --fail --silent --show-error --header ${shellQuote(routeHostHeader)} --header ${shellQuote(`Cookie: ${input.appSessionCookie}`)} ${shellQuote(new URL('/probe/whoami', routeConnectUrl).toString())} >/dev/null`,
+    `cookie="$(cat ${shellQuote(input.appSessionCookiePath)})"\ncurl --silent --show-error --output /dev/null --write-out '%{http_code}\\n' --header ${shellQuote(routeHostHeader)} --header "Cookie: $cookie" ${shellQuote(new URL('/probe/whoami', routeConnectUrl).toString())} | grep --quiet '^200$'`,
   );
   const upstream: string = await writeCommand(
     input.commandDirectory,
     'upstream.sh',
-    `curl --fail --silent --show-error --header ${shellQuote(routeHostHeader)} --header ${shellQuote(`Cookie: ${input.appSessionCookie}`)} ${shellQuote(new URL('/probe/build', routeConnectUrl).toString())} | grep --quiet missing-build-message`,
+    `cookie="$(cat ${shellQuote(input.appSessionCookiePath)})"\ncurl --fail --silent --show-error --header ${shellQuote(routeHostHeader)} --header "Cookie: $cookie" ${shellQuote(new URL('/probe/build', routeConnectUrl).toString())} | grep --quiet g1-build-message`,
   );
   const relogin: string = await writeCommand(
     input.commandDirectory,
     'relogin.sh',
-    `headers="$(mktemp)"\ntrap 'rm -f "$headers"' EXIT\ncurl --silent --show-error --header ${shellQuote(routeHostHeader)} --dump-header "$headers" --output /dev/null ${shellQuote(new URL('/probe/whoami', routeConnectUrl).toString())}\ngrep --quiet '^HTTP/.* 302' "$headers"\ngrep --ignore-case --quiet '^location: http://console\\.localhost:18080/login' "$headers"`,
+    `headers="$(mktemp)"\ntrap 'rm -f "$headers"' EXIT\ncurl --fail --retry 30 --retry-all-errors --retry-delay 1 --silent --show-error --header ${shellQuote(routeHostHeader)} --dump-header "$headers" --output /dev/null ${shellQuote(new URL('/probe/whoami', routeConnectUrl).toString())}\ngrep --quiet '^HTTP/.* 302' "$headers"\ngrep --ignore-case --quiet '^location: http://console\\.compartment\\.localhost:18080/login' "$headers"`,
   );
   const grant: string = await writeCommand(
     input.commandDirectory,
@@ -187,7 +198,44 @@ async function writeGateCommands(input: GateCommandInput): Promise<GateCommands>
     'revoke.sh',
     `assignment_id="$(cat ${shellQuote(input.assignmentStatePath)})"\n${input.cliEnvironment} assignment delete "$assignment_id" --output json >/dev/null\nrm -f ${shellQuote(input.assignmentStatePath)}`,
   );
-  return { authorized, grant, relogin, revoke, upstream };
+  const postRestore: string = await writePostRestoreCommand(input);
+  return { authorized, grant, postRestore, relogin, revoke, upstream };
+}
+
+async function writePostRestoreCommand(input: GateCommandInput): Promise<string> {
+  const scriptPath: string = join(input.commandDirectory, 'post-restore.mjs');
+  await writeFile(scriptPath, buildPostRestoreScript(input));
+  return await writeCommand(input.commandDirectory, 'post-restore.sh', `node ${shellQuote(scriptPath)}`);
+}
+
+function buildPostRestoreScript(input: GateCommandInput): string {
+  return `import { writeFile } from 'node:fs/promises';
+const routeUrl = ${JSON.stringify(input.routeUrl)};
+const first = await fetch(routeUrl, { redirect: 'manual' });
+const loginUrl = new URL(first.headers.get('location'));
+const state = loginUrl.searchParams.get('state');
+const flowName = \`__Host-compartment_app_flow_\${state}\`;
+const flowCookie = readCookie(first, flowName);
+const page = await fetch(loginUrl, { redirect: 'manual' });
+const csrf = readCookie(page, '__Host-compartment_csrf');
+const login = await fetch(new URL('/v1/auth/login', loginUrl), {
+  body: JSON.stringify({ email: ${JSON.stringify(input.viewerEmail)}, host: loginUrl.searchParams.get('host'), password: ${JSON.stringify(input.viewerPassword)}, path: loginUrl.searchParams.get('path'), sessionDelivery: 'cookie', state }),
+  headers: { 'content-type': 'application/json', cookie: \`__Host-compartment_csrf=\${csrf}\`, origin: loginUrl.origin, 'x-compartment-csrf': csrf },
+  method: 'POST',
+  redirect: 'manual',
+});
+const payload = await login.json();
+const callback = await fetch(payload.redirectTo, { headers: { cookie: \`\${flowName}=\${flowCookie}\` }, redirect: 'manual' });
+const appSession = readCookie(callback, '__Host-compartment_app_session');
+await writeFile(${JSON.stringify(input.appSessionCookiePath)}, \`__Host-compartment_app_session=\${appSession}\\n\`);
+function readCookie(response, name) {
+  for (const value of response.headers.getSetCookie()) {
+    const pair = value.split(';', 1)[0];
+    if (pair.startsWith(\`\${name}=\`)) return pair.slice(name.length + 1);
+  }
+  throw new Error(\`Missing cookie \${name} from HTTP \${response.status}.\`);
+}
+`;
 }
 
 async function writeCommand(directory: string, name: string, body: string): Promise<string> {
@@ -198,7 +246,7 @@ async function writeCommand(directory: string, name: string, body: string): Prom
 }
 
 function buildCliEnvironment(env: NodeJS.ProcessEnv): string {
-  const cliPath: string = resolve('.compartment/cli-dist/compartment');
+  const cliPath: string = join(repositoryRoot, '.compartment/cli-dist/compartment');
   const assignments: string[] = ['HOME', 'XDG_CONFIG_HOME'].map((name: string): string => {
     const value: string | undefined = env[name];
     if (value === undefined || value === '') {

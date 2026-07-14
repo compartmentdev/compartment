@@ -22,6 +22,8 @@ const registryClusterHost = `k3d-${registryName}:${registryHostPort}`;
 const registryPushHost = `localhost:${registryHostPort}`;
 const bundledRegistryPort = 5000;
 const bundledRegistryHost = `compartment-compartment-registry-auth.compartment.svc:${bundledRegistryPort}`;
+const platformBaseDomain = 'compartment.localhost';
+const consoleHost = `console.${platformBaseDomain}`;
 const serverNodeName = `k3d-${clusterName}-server-0`;
 const platformImageTag = 'e2e';
 const platformServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
@@ -195,7 +197,7 @@ async function upPlatform(command) {
     throw error;
   }
 
-  process.stdout.write(`context: ${contextName}\nconsole: http://console.localhost:${httpPort}\nSTATUS=ok\n`);
+  process.stdout.write(`context: ${contextName}\nconsole: http://${consoleHost}:${httpPort}\nSTATUS=ok\n`);
 }
 
 async function createCluster() {
@@ -287,6 +289,8 @@ function installHelmStage(stage) {
     '--set',
     `platform.startupStage=${stage}`,
     '--set',
+    `platform.baseDomain=${platformBaseDomain}`,
+    '--set',
     'edge.snapshots.enabled=true',
     '--rollback-on-failure',
     '--wait',
@@ -359,7 +363,7 @@ async function waitForK3dApiAfterRestart() {
 }
 
 async function waitForConsole() {
-  const url = `http://console.localhost:${httpPort}/`;
+  const url = `http://${consoleHost}:${httpPort}/`;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
       if (isConsoleReadyStatus(await readConsoleStatus())) {
@@ -377,7 +381,7 @@ async function readConsoleStatus() {
   return await new Promise((resolveStatus, rejectStatus) => {
     const request = get(
       {
-        headers: { host: 'console.localhost' },
+        headers: { host: consoleHost },
         hostname: '127.0.0.1',
         path: '/',
         port: httpPort,

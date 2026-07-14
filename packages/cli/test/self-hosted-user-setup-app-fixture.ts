@@ -232,6 +232,7 @@ const server = createServer(async (request, response) => {
 
 server.listen(port, () => {
   console.log(\`\${listeningLogText} on \${port}\`);
+  console.log('self-hosted-e2e-app ready');
 });
 
 function handleCookieToss(requestUrl, request, response) {

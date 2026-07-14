@@ -9,6 +9,7 @@ import {
 import { quoteShellArgument } from '@compartment/utils';
 import { expect } from 'vitest';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
+import { enableK3dAuditFileSink, isK3dPlatformMode, readK3dAuditFileSink } from './self-hosted-user-setup-k3d.harness';
 import { readAuditExportEventTypes } from './self-hosted-user-setup-cli-response.harness';
 import {
   expectSuccessfulCommand,
@@ -91,6 +92,9 @@ export async function expectAuditFileExports(
 }
 
 async function enableSelfHostedAuditFileSink(): Promise<string> {
+  if (isK3dPlatformMode()) {
+    return await enableK3dAuditFileSink();
+  }
   const result: SelfHostedUserSetupCommandResult = await runCommand({
     argv: ['sudo', '-n', 'sh', '-c', enableSelfHostedAuditFileSinkScript],
     timeoutMs: 120_000,
@@ -103,6 +107,14 @@ async function enableSelfHostedAuditFileSink(): Promise<string> {
 async function expectSelfHostedAuditFileSinkEvent(auditFileSinkPath: string, eventType: AuditEventType): Promise<void> {
   let lastContent: string = '';
   for (let attempt: number = 0; attempt < selfHostedAuditFileSinkPollAttempts; attempt += 1) {
+    if (isK3dPlatformMode()) {
+      lastContent = await readK3dAuditFileSink();
+      if (readAuditFileSinkEventTypes(lastContent).includes(eventType)) {
+        return;
+      }
+      await sleep(selfHostedAuditFileSinkPollDelayMs);
+      continue;
+    }
     const result: SelfHostedUserSetupCommandResult = await runCommand({
       argv: ['sudo', '-n', 'sh', '-c', createReadSelfHostedAuditFileSinkScript(auditFileSinkPath)],
       timeoutMs: 15_000,

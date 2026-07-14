@@ -35,12 +35,12 @@ describe('platform k3d seed boundary', () => {
   it('accepts the expected install result and emits the suite contract', () => {
     const result = {
       adminEmail: 'admin@compartment.test',
-      compartmentUrl: 'http://console.localhost:18080',
+      compartmentUrl: 'http://console.compartment.localhost:18080',
       organization: { slug: 'platform-e2e' },
     };
     expect(parseInstallResult(JSON.stringify(result), result.adminEmail)).toEqual(result);
     expect(buildSeedEnvironment(result.adminEmail, 'generated-password')).toContain(
-      'COMPARTMENT_E2E_API_URL=http://console.localhost:18080',
+      'COMPARTMENT_E2E_API_URL=http://console.compartment.localhost:18080',
     );
     expect(buildSeedEnvironment(result.adminEmail, 'generated-password')).toContain(
       'COMPARTMENT_E2E_SEED_ADMIN_PASSWORD=generated-password',

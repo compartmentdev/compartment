@@ -6,8 +6,11 @@ import {
   projectDeleteResponseSchema,
   projectLifecycleResponseSchema,
   projectResponseSchema,
+  deploymentLogsResponseSchema,
   deploymentRunLogsResponseSchema,
   resourceListResponseSchema,
+  type DeploymentLogLine,
+  type DeploymentLogsResponse,
   type DeploymentReadSummary,
   type DeploymentRunLogsResponse,
   type DeploymentRunStepSummary,
@@ -155,6 +158,35 @@ export async function waitForDeploymentRunCompletion(
 
   throw new Error(
     `Timed out waiting for deployment run ${deploymentRunId}. Last payload: ${JSON.stringify(lastPayload)}`,
+  );
+}
+
+export async function waitForDeploymentRuntimeLog(
+  cli: SelfHostedUserSetupCli,
+  projectName: string,
+  serviceName: string,
+  expectedMessage: string,
+): Promise<DeploymentLogsResponse> {
+  let lastPayload: DeploymentLogsResponse | null = null;
+  for (let attempt: number = 0; attempt < deploymentRunPollAttempts; attempt += 1) {
+    const payload: DeploymentLogsResponse = await cli.runJson(
+      `logs --project ${projectName}`,
+      deploymentLogsResponseSchema,
+    );
+    if (
+      payload.lines.some(
+        (line: DeploymentLogLine): boolean =>
+          line.serviceName === serviceName && line.message.includes(expectedMessage),
+      )
+    ) {
+      return payload;
+    }
+    lastPayload = payload;
+    await sleep(deploymentRunPollDelayMs);
+  }
+
+  throw new Error(
+    `Timed out waiting for runtime log from ${projectName}/${serviceName}. Last payload: ${JSON.stringify(lastPayload)}`,
   );
 }
 

@@ -81,7 +81,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Register local control-plane host
-        run: echo '127.0.0.1 console.localhost' | sudo tee -a /etc/hosts >/dev/null
+        run: echo '127.0.0.1 console.compartment.localhost' | sudo tee -a /etc/hosts >/dev/null
 
       - name: Restore self-hosted image cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
@@ -136,11 +136,11 @@ jobs:
         run: pnpm --filter @compartment/cli test:e2e
 
       - name: Verify bounded product-log buffers under load
-        run: ./scripts/deploy/run-platform-k3d-product-log-gate.sh
+        run: node ./scripts/deploy/run-platform-k3d-product-log-gate.mjs
 
       - name: Collect k3d diagnostics
         if: ${{ failure() }}
-        run: ./scripts/deploy/collect-platform-k3d-e2e-diagnostics.sh ./.compartment/platform-k3d-diagnostics
+        run: node ./scripts/deploy/collect-platform-k3d-e2e-diagnostics.mjs ./.compartment/platform-k3d-diagnostics
 
       - name: Upload k3d diagnostics
         if: ${{ failure() }}

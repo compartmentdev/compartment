@@ -7,7 +7,8 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
-const platformUrl = 'http://console.localhost:18080';
+const platformUrl = 'http://console.compartment.localhost:18080';
+const platformBaseDomain = 'compartment.localhost';
 const seedOrganizationSlug = 'platform-e2e';
 const compatibilityNodeName = 'platform-k3d-compatibility';
 
@@ -87,41 +88,32 @@ async function main() {
   await writeFile(envPath, `COMPARTMENT_API_URL=${platformUrl}\n`, { mode: 0o600 });
   await chmod(envPath, 0o600);
 
-  const cliPath = resolve(repositoryRoot, '.compartment/cli-dist/compartment');
-  const install = spawnSync(
-    cliPath,
-    [
-      'install',
-      '--dev',
-      '--email',
-      seedAdminEmail,
-      '--organization',
-      'Platform E2E',
-      '--organization-slug',
-      seedOrganizationSlug,
-      '--skip-session-persist',
-      '--internal-install-result',
-      '--output',
-      'json',
-    ],
-    {
-      cwd: repositoryRoot,
-      encoding: 'utf8',
-      env: process.env,
-      input: `${seedAdminPassword}\n${seedAdminPassword}\n`,
-    },
-  );
-  if (install.status !== 0) {
-    process.stderr.write(install.stderr);
-    throw new Error(`Platform seed install failed with exit code ${install.status?.toString() ?? 'unknown'}.`);
-  }
-
-  parseInstallResult(install.stdout, seedAdminEmail);
+  const installOutput = await installPlatform(seedAdminEmail, seedAdminPassword);
+  parseInstallResult(installOutput, seedAdminEmail);
   registerCompatibilityNode();
   await appendFile(options.githubEnvPath, `${buildSeedEnvironment(seedAdminEmail, seedAdminPassword)}\n`, {
     mode: 0o600,
   });
   process.stdout.write(`Seeded ${seedOrganizationSlug} with ${seedAdminEmail}.\n`);
+}
+
+async function installPlatform(seedAdminEmail, seedAdminPassword) {
+  const response = await fetch(new URL('/v1/install', platformUrl), {
+    body: JSON.stringify({
+      adminEmail: seedAdminEmail,
+      adminPassword: seedAdminPassword,
+      baseDomain: platformBaseDomain,
+      organizationName: 'Platform E2E',
+      organizationSlug: seedOrganizationSlug,
+    }),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`Platform seed install failed with HTTP ${response.status.toString()}: ${body}`);
+  }
+  return body;
 }
 
 function registerCompatibilityNode() {
