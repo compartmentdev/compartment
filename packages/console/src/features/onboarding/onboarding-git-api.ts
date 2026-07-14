@@ -8,8 +8,12 @@ import {
   compartmentGitHubProviderAccountDiscoveryPathname,
   compartmentGitHubProviderAccountDiscoveryResultPathname,
   compartmentGitHubProviderBootstrapPathname,
+  compartmentGitLabProviderRegistrationsPathname,
+  compartmentGitProviderRegistrationsPathname,
   compartmentGitSourceConnectPathname,
   connectGitSourceRequestSchema,
+  createGitLabProviderRegistrationRequestSchema,
+  createGitProviderRegistrationResponseSchema,
   createGitDescriptorPullRequestRequestSchema,
   deploymentStatusQuerySchema,
   deploymentStatusResponseSchema,
@@ -23,11 +27,14 @@ import {
   gitHubAccountDiscoveryStartRequestSchema,
   gitHubAccountDiscoveryStartResponseSchema,
   gitProviderRegistrationRepositoryListResponseSchema,
+  gitProviderRegistrationListResponseSchema,
   gitHubProviderBootstrapRequestSchema,
   gitHubProviderBootstrapResponseSchema,
   gitSourceResponseSchema,
   gitSourceSyncTaskResponseSchema,
   type ConnectGitSourceRequest,
+  type CreateGitLabProviderRegistrationRequest,
+  type CreateGitProviderRegistrationResponse,
   type CreateGitDescriptorPullRequestRequest,
   type DeploymentStatusQuery,
   type DeploymentStatusResponse,
@@ -41,6 +48,7 @@ import {
   type GitHubAccountDiscoveryStartRequest,
   type GitHubAccountDiscoveryStartResponse,
   type GitProviderRegistrationRepositoryListResponse,
+  type GitProviderRegistrationListResponse,
   type GitHubProviderBootstrapRequest,
   type GitHubProviderBootstrapResponse,
   type GitSourceResponse,
@@ -89,7 +97,7 @@ export async function readBrowserGitHubAccountDiscoveryResult(
   );
 }
 
-export async function listBrowserGitHubInstallationRepositories(
+export async function listBrowserGitProviderRepositories(
   currentOrganization: string,
   registrationId: string,
 ): Promise<GitProviderRegistrationRepositoryListResponse> {
@@ -97,6 +105,27 @@ export async function listBrowserGitHubInstallationRepositories(
     buildCompartmentGitProviderRegistrationRepositoriesPathname(registrationId),
     gitProviderRegistrationRepositoryListResponseSchema,
     { currentOrganization },
+  );
+}
+
+export async function listBrowserGitProviderRegistrations(
+  currentOrganization: string,
+): Promise<GitProviderRegistrationListResponse> {
+  return await requestBrowserApi(
+    compartmentGitProviderRegistrationsPathname,
+    gitProviderRegistrationListResponseSchema,
+    { currentOrganization },
+  );
+}
+
+export async function createBrowserGitLabProviderRegistration(
+  currentOrganization: string,
+  body: CreateGitLabProviderRegistrationRequest,
+): Promise<CreateGitProviderRegistrationResponse> {
+  return await requestBrowserApi(
+    compartmentGitLabProviderRegistrationsPathname,
+    createGitProviderRegistrationResponseSchema,
+    { currentOrganization, json: createGitLabProviderRegistrationRequestSchema.parse(body), method: 'POST' },
   );
 }
 

@@ -1,4 +1,5 @@
 import {
+  gitProviderHostSchema,
   gitHubAccountDiscoverySessionSearchParamName,
   gitHubAccountDiscoveryTokenSearchParamName,
 } from '@compartment/contracts/browser';
@@ -13,6 +14,7 @@ type GitStringRouteStateKey =
   | 'gitAccountDiscoverySessionId'
   | 'gitAccountDiscoveryToken'
   | 'projectName'
+  | 'providerHost'
   | 'pullRequestStatusToken'
   | 'registrationId'
   | 'repositoryId'
@@ -23,7 +25,7 @@ type GitStringRouteStateKey =
 
 type GitRouteState = Pick<
   OnboardingRouteState,
-  GitStringRouteStateKey | 'gitConnected' | 'pullRequestNumber' | 'pullRequestState'
+  GitStringRouteStateKey | 'gitConnected' | 'provider' | 'pullRequestNumber' | 'pullRequestState'
 >;
 
 interface GitStringSearchParamDefinition {
@@ -57,6 +59,7 @@ export function writeGitRouteSearchParams(url: URL, state: OnboardingRouteState)
   if (state.pullRequestState !== undefined) {
     url.searchParams.set('pr', state.pullRequestState);
   }
+  if (state.provider !== undefined) url.searchParams.set('provider', state.provider);
   writeGitFragmentParams(url, state);
 }
 
@@ -67,9 +70,15 @@ export function readGitRouteState(url: URL, method: OnboardingDeployMethod): Par
   return {
     ...readGitStringRouteState(url),
     gitConnected: url.searchParams.get('git') === 'connected',
+    provider: readGitProvider(url.searchParams),
     pullRequestNumber: readOptionalPositiveInteger(url.searchParams, 'pr_number'),
     pullRequestState: readPullRequestState(url.searchParams),
   };
+}
+
+function readGitProvider(searchParams: URLSearchParams): 'github' | 'gitlab' | undefined {
+  const provider: string | null = searchParams.get('provider');
+  return provider === 'github' || provider === 'gitlab' ? provider : undefined;
 }
 
 export function createDefaultGitRouteState(): GitRouteState {
@@ -81,6 +90,8 @@ export function createDefaultGitRouteState(): GitRouteState {
     gitAccountDiscoveryToken: undefined,
     gitConnected: false,
     projectName: undefined,
+    provider: undefined,
+    providerHost: undefined,
     pullRequestNumber: undefined,
     pullRequestState: undefined,
     pullRequestStatusToken: undefined,
@@ -117,6 +128,7 @@ function readGitStringRouteState(url: URL): Pick<OnboardingRouteState, GitString
     environmentName: readOptionalOnboardingSearchParam(url.searchParams, 'env'),
     ...readGitAccountDiscoveryRouteState(url),
     projectName: readOptionalOnboardingSearchParam(url.searchParams, 'project'),
+    providerHost: readProviderHost(url.searchParams),
     pullRequestStatusToken: readOptionalOnboardingSearchParam(
       readRouteFragmentParams(url),
       gitPullRequestStatusTokenFragmentParamName,
@@ -128,6 +140,16 @@ function readGitStringRouteState(url: URL): Pick<OnboardingRouteState, GitString
     sourceId: readOptionalOnboardingSearchParam(url.searchParams, 'source'),
     syncTaskId: readOptionalOnboardingSearchParam(url.searchParams, 'sync'),
   };
+}
+
+function readProviderHost(searchParams: URLSearchParams): string | undefined {
+  const value: string | undefined = readOptionalOnboardingSearchParam(searchParams, 'provider_host');
+  if (value === undefined) return undefined;
+  try {
+    return gitProviderHostSchema.parse(value);
+  } catch {
+    return undefined;
+  }
 }
 
 function readGitAccountDiscoveryRouteState(

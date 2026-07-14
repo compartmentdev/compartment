@@ -13,8 +13,8 @@ export function readInitialGitFormInput(
   input: Readonly<InitialGitFormInputOptions>,
 ): GitConnectFormInput | null {
   const selectedRepository: OnboardingRepositoryOption | undefined = readRepositoryOption(repositoryOptions, input);
-  if (selectedRepository !== undefined) {
-    return readGitFormInputForRepository(selectedRepository, current, input);
+  if (input.selectedRepositoryId !== undefined) {
+    return selectedRepository === undefined ? null : readGitFormInputForRepository(selectedRepository, current, input);
   }
   const currentRepository: OnboardingRepositoryOption | undefined = readCurrentRepositoryOption(
     repositoryOptions,

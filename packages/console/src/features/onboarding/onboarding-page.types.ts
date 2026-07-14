@@ -3,6 +3,7 @@ import type { GitDescriptorDraftFile } from '@compartment/contracts/browser';
 export type OnboardingDeployMethod = 'cli' | 'git';
 export type OnboardingProcessStep = 'choose' | 'deploy' | 'prepare' | 'verify';
 export type OnboardingPullRequestState = 'merged' | 'pending';
+export type OnboardingGitProvider = 'github' | 'gitlab';
 
 export interface OnboardingRouteState {
   branchName: string | undefined;
@@ -12,6 +13,8 @@ export interface OnboardingRouteState {
   gitAccountDiscoverySessionId: string | undefined;
   gitAccountDiscoveryToken: string | undefined;
   gitConnected: boolean;
+  provider: OnboardingGitProvider | undefined;
+  providerHost: string | undefined;
   method: OnboardingDeployMethod | undefined;
   projectName: string | undefined;
   pullRequestNumber: number | undefined;
@@ -35,6 +38,8 @@ export interface OnboardingRouteStatePatch {
   gitAccountDiscoverySessionId?: string | undefined;
   gitAccountDiscoveryToken?: string | undefined;
   gitConnected?: boolean | undefined;
+  provider?: OnboardingGitProvider | undefined;
+  providerHost?: string | undefined;
   method?: OnboardingDeployMethod | undefined;
   projectName?: string | undefined;
   pullRequestNumber?: number | undefined;
@@ -78,5 +83,7 @@ export interface OnboardingRepositoryOption {
   id: string;
   name: string;
   owner: string;
+  provider: OnboardingGitProvider;
+  providerHost: string;
   registrationId: string;
 }

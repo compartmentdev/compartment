@@ -55,6 +55,7 @@ describe('browser onboarding Git descriptor preview', (): void => {
 
     expect(markup).toContain('Create starter app pull request');
     expect(markup).toContain('PR files');
+    expect(markup).toContain('Open pull request');
     expect(markup).toContain('compartment.yml');
     expect(markup).toContain('apps/site/index.html');
     expect(markup).toContain('Hello, this is your first Compartment app.');
@@ -88,6 +89,29 @@ describe('browser onboarding Git descriptor preview', (): void => {
       repositoryOwner: 'acme',
     });
   });
+
+  it('uses merge request wording for GitLab repositories', (): void => {
+    const target: GitDescriptorTargetOption = createStarterTarget();
+    const formInput: GitConnectFormInput = createFormInput();
+    formInput.repository = { ...formInput.repository, provider: 'gitlab', providerHost: 'gitlab.com' };
+    const markup: string = renderToStaticMarkup(
+      createElement(GitDescriptorPrStep, {
+        formInput,
+        isPrPending: false,
+        onCreatePr: async (): Promise<GitDescriptorPullRequestResponse> =>
+          await Promise.resolve(createPullRequestResponse()),
+        onPrCreated: (): void => undefined,
+        onPrMerged: async (): Promise<void> => await Promise.resolve(),
+        onTargetChange: (): void => undefined,
+        target,
+        targetOptions: [target],
+      }),
+    );
+
+    expect(markup).toContain('Create starter app merge request');
+    expect(markup).toContain('MR files');
+    expect(markup).toContain('Open merge request');
+  });
 });
 
 function createFormInput(): GitConnectFormInput {
@@ -99,6 +123,8 @@ function createFormInput(): GitConnectFormInput {
       id: 'repo_123',
       name: 'mono',
       owner: 'acme',
+      provider: 'github',
+      providerHost: 'github.com',
       registrationId: 'gpr_123',
     },
   };

@@ -7,6 +7,7 @@ export {
   compartmentGitHubProviderAccountDiscoveryPathname,
   compartmentGitHubProviderAccountDiscoveryResultPathname,
   compartmentGitHubProviderBootstrapPathname,
+  compartmentGitProviderRegistrationsPathname,
   compartmentGitSourceConnectPathname,
   compartmentGitLabProviderRegistrationsPathname,
 } from './contracts/control-plane-protocol.contract';
@@ -66,6 +67,7 @@ export {
   createGitProviderRegistrationResponseSchema,
   gitProviderRegistrationListResponseSchema,
   gitProviderRegistrationRepositoryListResponseSchema,
+  gitProviderHostSchema,
 } from './contracts/source-git-provider.contract';
 export {
   type GitSourceSyncCandidate,
