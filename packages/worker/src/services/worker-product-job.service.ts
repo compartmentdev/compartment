@@ -125,6 +125,7 @@ function buildKubeJobSpec(intent: ProductJobIntent, identityId: string): KubeJob
     env: intent.env,
     id: `${intent.jobClass}-${identityId}`,
     image: intent.image,
+    imagePullSecretId: intent.jobClass === 'release' ? intent.imagePullSecretId : undefined,
     jobClass: intent.jobClass === 'release' ? 'release' : 'operation',
     labels: { 'compartment.dev/job-class': intent.jobClass },
     namespace: intent.namespace,

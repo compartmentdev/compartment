@@ -18,6 +18,7 @@ import { synchronizeEdgeAppAccessState } from './app-access-edge.service';
 import { buildDeploymentRuntimePlan, type DeploymentRuntimePlan } from './deployment-runtime-plan.service';
 import { parseResolvedRelease } from './deployment-release.service';
 import { parseResolvedReadiness } from './deployment-readiness.service';
+import { parseResolvedRun } from './deployment-run.service';
 
 const defaultContainerPort: number = 3000;
 const defaultTerminationGracePeriodSeconds: number = 45;
@@ -30,6 +31,7 @@ interface ProjectionRuntime {
 interface ProjectionBehavior {
   readiness: ResolvedOptionalServiceReadinessConfig;
   releaseCommand: string | null;
+  runCommand: string | null;
 }
 
 export async function claimDeploymentReconcileTarget(): Promise<DeploymentReconcileTarget | null> {
@@ -121,6 +123,7 @@ function projectionBehavior(row: DeploymentReconcileRow): ProjectionBehavior {
   return {
     readiness: parseResolvedReadiness(row.resolvedReadinessJson),
     releaseCommand: parseResolvedRelease(row.resolvedReleaseJson)?.command ?? null,
+    runCommand: parseResolvedRun(row.resolvedRunJson).command ?? null,
   };
 }
 

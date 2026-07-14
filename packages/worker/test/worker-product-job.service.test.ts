@@ -198,6 +198,7 @@ function releaseIntent(): ProductJobIntent {
     deploymentId: 'dep-01jz',
     env: { DATABASE_URL: 'postgres://internal' },
     image: 'registry.example/release@sha256:abc',
+    imagePullSecretId: 'pull-01jz',
     jobClass: 'release',
     namespace: 'cpt-prj-01jz',
     timeoutMs: 30_000,

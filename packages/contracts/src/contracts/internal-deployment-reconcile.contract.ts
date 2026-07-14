@@ -24,6 +24,7 @@ export interface DeploymentReconcileProjection {
   readiness: ResolvedOptionalServiceReadinessConfig;
   releaseCommand: string | null;
   replicas: number;
+  runCommand: string | null;
   secretId: string;
   serviceId: string;
   serviceName: string;
@@ -89,6 +90,7 @@ const deploymentReconcileProjectionSchema: ContractSchema<DeploymentReconcilePro
     readiness: resolvedOptionalServiceReadinessConfigSchema,
     releaseCommand: z.string().min(1).nullable(),
     replicas: z.number().int().positive(),
+    runCommand: z.string().min(1).nullable(),
     secretId: z.string().min(1),
     serviceId: z.string().min(1),
     serviceName: z.string().min(1),

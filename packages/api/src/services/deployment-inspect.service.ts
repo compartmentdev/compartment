@@ -6,7 +6,7 @@ import type {
 import { inspectNodeDeployment } from '@compartment/sdk';
 import { findNodeById } from '../queries/node.query';
 import type { NodeRow } from '../queries/node.query.types';
-import { findActiveDeploymentKubeReference } from '../queries/deployment-kube-inspect.query';
+import { findDeploymentKubeReference } from '../queries/deployment-kube-inspect.query';
 import type { DeploymentKubeInspectReference } from '../queries/deployment-kube-inspect.query.types';
 import { requireNode } from './deployment-context.service';
 import type {
@@ -77,7 +77,7 @@ function buildNodeRuntimeDeployment(runtime: NodeInspectedDeployment): Deploymen
 async function resolveKubernetesRuntimeDeployment(
   deployment: DeploymentSummaryInput,
 ): Promise<DeploymentInspectRuntimeInput | null> {
-  const reference: DeploymentKubeInspectReference | undefined = await findActiveDeploymentKubeReference(
+  const reference: DeploymentKubeInspectReference | undefined = await findDeploymentKubeReference(
     deployment.deployment.id,
   );
   if (reference === undefined) {

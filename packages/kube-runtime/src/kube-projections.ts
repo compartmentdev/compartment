@@ -112,6 +112,7 @@ function deploymentSpec(
 function applicationContainer(row: ApplicationProjectionRow): KubeProjectedContainer {
   const env: KubeSecretEnvVariable[] = secretEnvironment(row.env, kubeSecretName(row.secretId));
   return {
+    ...(row.runCommand === null ? {} : { args: [row.runCommand] }),
     env,
     image: row.image,
     lifecycle: { preStop: { exec: { command: ['sh', '-c', 'sleep 3'] } } },

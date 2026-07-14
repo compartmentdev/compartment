@@ -11,6 +11,7 @@ export interface DeploymentReconcileRow {
   projectName: string;
   resolvedReadinessJson: string;
   resolvedReleaseJson: string;
+  resolvedRunJson: string;
   revision: number;
   serviceId: string;
   serviceName: string;

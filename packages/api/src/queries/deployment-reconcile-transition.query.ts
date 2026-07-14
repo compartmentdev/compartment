@@ -1,8 +1,9 @@
 import { and, eq, ne, type SQL } from 'drizzle-orm';
-import { deploymentKubeReferences, deploymentRoutes, deploymentRunEvents, deployments, operations } from '../db/schema';
+import { deploymentKubeReferences, deploymentRunEvents, deployments, operations } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { persistActiveDeploymentDrift } from './deployment-reconcile-transition-audit.query';
+import { switchReadyDeploymentRoute } from './deployment-reconcile-route.query';
 import { persistStoppedReconcileObservation } from './deployment-reconcile-stop.query';
 import {
   supersedePreviousKubeDeployment,
@@ -128,7 +129,7 @@ async function persistReady(
     previousActiveId,
   });
   await activateDeployment(tx, input);
-  await switchReconcileRoute(tx, input, candidate);
+  await switchReadyDeploymentRoute(tx, input, candidate);
   await publishReconcileSucceeded(tx, input, candidate.deploymentRunId);
   await updateReference(tx, input, 'active');
   return true;
@@ -208,31 +209,6 @@ async function activateDeployment(
       updatedAt: input.observedAt,
     })
     .where(eq(deployments.id, input.deploymentId));
-}
-
-async function switchReconcileRoute(
-  tx: DeploymentTransaction,
-  input: PersistDeploymentReconcileObservationInput,
-  candidate: SupersedeCandidateContext,
-): Promise<void> {
-  const [routeOwner] = await tx
-    .select({ deploymentId: deploymentRoutes.deploymentId })
-    .from(deploymentRoutes)
-    .innerJoin(deployments, eq(deploymentRoutes.deploymentId, deployments.id))
-    .where(
-      and(
-        eq(deployments.environmentId, candidate.environmentId),
-        eq(deployments.projectServiceId, candidate.serviceId),
-      ),
-    )
-    .limit(1);
-  if (routeOwner === undefined || routeOwner.deploymentId === input.deploymentId) {
-    return;
-  }
-  await tx
-    .update(deploymentRoutes)
-    .set({ deploymentId: input.deploymentId, updatedAt: input.observedAt })
-    .where(eq(deploymentRoutes.deploymentId, routeOwner.deploymentId));
 }
 
 async function markReconcileOperationSucceeded(

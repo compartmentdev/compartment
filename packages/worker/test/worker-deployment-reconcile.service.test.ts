@@ -160,6 +160,7 @@ function projection(releaseCommand: string | null): DeploymentReconcileProjectio
     readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
     releaseCommand,
     replicas: 1,
+    runCommand: null,
     secretId: 'dep_candidate',
     serviceId: 'svc_1',
     serviceName: 'web',

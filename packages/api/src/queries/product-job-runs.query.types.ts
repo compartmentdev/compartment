@@ -14,6 +14,7 @@ export interface ProductJobRunRow {
   exitCode: number | null;
   identityId: string;
   image: string;
+  imagePullSecretId: string | null;
   jobClass: ProductJobClass;
   jobName: string | null;
   logs: string | null;
@@ -38,6 +39,7 @@ export interface ProductJobCommonSpec {
   command: string[];
   env: Record<string, string>;
   image: string;
+  imagePullSecretId?: string | undefined;
   namespace: string;
   timeoutMs: number;
   volumeMounts?: ProductJobVolumeMount[] | undefined;

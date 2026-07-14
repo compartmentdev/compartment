@@ -20,6 +20,7 @@ interface DeploymentSpec {
 }
 
 interface DeploymentContainer {
+  args?: string[] | undefined;
   env: KubeSecretEnvVariable[];
   readinessProbe?: { httpGet?: { path: string; port: string } | undefined } | undefined;
 }
@@ -41,6 +42,7 @@ describe('Kubernetes manifest projection goldens', (): void => {
       projectName: 'Checkout',
       readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
       replicas: 2,
+      runCommand: 'npm run start:override',
       serviceId: 'svc-01jz',
       serviceName: 'Web',
       secretId: 'sec-01jz',
@@ -48,6 +50,10 @@ describe('Kubernetes manifest projection goldens', (): void => {
     });
 
     expect(toYaml(manifests)).toMatchSnapshot();
+    const deployment: DeploymentSpec = manifests.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+    )!.spec as DeploymentSpec;
+    expect(deployment.template.spec.containers[0]?.args).toEqual(['npm run start:override']);
   });
 
   it('projects a secret row without a service-account token', (): void => {
@@ -235,6 +241,7 @@ function applicationRow(env: Readonly<Record<string, string>>): ApplicationProje
     projectName: 'Generated',
     readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
     replicas: 1,
+    runCommand: null,
     secretId: 'sec-01jz',
     serviceId: 'svc-01jz',
     serviceName: 'Web',

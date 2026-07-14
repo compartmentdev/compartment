@@ -575,6 +575,18 @@ describe('deployment Kubernetes transition persistence', (): void => {
       observedAt,
       revision: 0,
     });
+    const [routeBeforeReady] = await db
+      .select({
+        accessScopeId: deploymentRoutes.accessScopeId,
+        accessScopeType: deploymentRoutes.accessScopeType,
+        deploymentId: deploymentRoutes.deploymentId,
+      })
+      .from(deploymentRoutes);
+    expect(routeBeforeReady).toEqual({
+      accessScopeId: 'org_kube',
+      accessScopeType: 'organization',
+      deploymentId: 'dep_candidate',
+    });
     expect(
       await persistDeploymentReconcileObservation({
         deploymentId: 'dep_candidate',
@@ -589,6 +601,8 @@ describe('deployment Kubernetes transition persistence', (): void => {
       'localhost',
     );
     expect(route).toMatchObject({
+      accessScopeId: 'env_kube',
+      accessScopeType: 'environment',
       deploymentId: 'dep_candidate',
       upstreamHost: 'app-env-kube-svc-kube.cpt-prj-kube.svc.cluster.local',
       upstreamPort: 80,
@@ -728,6 +742,7 @@ async function seedDeploymentRuntimeRows(): Promise<void> {
   await db.insert(deployments).values({
     accessMode: 'authenticated',
     buildArtifactId: 'bar_kube',
+    createdAt: new Date('2026-07-11T10:00:00.000Z'),
     deploymentRunId: 'drn_kube',
     environmentId: 'env_kube',
     health: 'healthy',
@@ -767,6 +782,7 @@ async function seedCandidate(): Promise<void> {
   await db.insert(deployments).values({
     accessMode: 'authenticated',
     buildArtifactId: 'bar_candidate',
+    createdAt: new Date('2026-07-12T10:00:00.000Z'),
     deploymentRunId: 'drn_candidate',
     environmentId: 'env_kube',
     health: 'pending',

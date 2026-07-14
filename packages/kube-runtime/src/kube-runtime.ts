@@ -2,13 +2,8 @@ import { CoreV1Api, KubernetesObjectApi, Metrics, type KubeConfig } from '@kuber
 import { createKubeObservation } from './kube-observation';
 import { readKubePodMetrics } from './kube-pod-metrics';
 import type { KubePodMetricObservation, ObservePodMetrics } from './kube-pod-metrics.types';
-import {
-  kubeFinalizedJobManifest,
-  kubeJobManifest,
-  kubeJobSecretManifest,
-  waitForTerminalJob,
-  type TerminalJob,
-} from './kube-job';
+import { waitForTerminalJob, type TerminalJob } from './kube-job';
+import { kubeFinalizedJobManifest, kubeJobManifest, kubeJobSecretManifest } from './kube-job-projection';
 import { kubeJobName } from './kube-naming';
 import type { TerminalJobResult } from './kube-runtime-job-result.types';
 import { createOrValidate } from './kube-provisioning-validation';

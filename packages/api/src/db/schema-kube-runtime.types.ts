@@ -45,6 +45,7 @@ interface ProductJobRunsColumnBuilders {
   jobClass: RequiredEnumTextBuilder<'job_class', ['release', 'resource-operation']>;
   identityId: RequiredTextBuilder<'identity_id'>;
   image: RequiredTextBuilder<'image'>;
+  imagePullSecretId: OptionalTextBuilder<'image_pull_secret_id'>;
   commandJson: RequiredTextBuilder<'command_json'>;
   envJson: RequiredTextBuilder<'env_json'>;
   volumeMountsJson: DefaultTextBuilder<'volume_mounts_json'>;

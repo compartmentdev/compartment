@@ -287,7 +287,7 @@ describe('deployment authorization integration', (): void => {
     deployResponseSchema.parse(rollbackResponse.json());
   });
 
-  it('projects active Kubernetes runtime details without a Docker container id', async (): Promise<void> => {
+  it('keeps active Kubernetes runtime details visible while drift reconciliation is pending', async (): Promise<void> => {
     const installPayload: InstallResponse = await installAndRegisterNode();
     const deployment: DeploymentSummary = await deployAndComplete(installPayload.sessionToken);
     await db.update(deployments).set({ containerId: null }).where(eq(deployments.id, deployment.id));
@@ -301,7 +301,7 @@ describe('deployment authorization integration', (): void => {
     });
     await db
       .update(deploymentKubeReferences)
-      .set({ state: 'active' })
+      .set({ state: 'pending' })
       .where(eq(deploymentKubeReferences.deploymentId, deployment.id));
 
     const inspectResponse: LightMyRequestResponse = await injectDeploymentRequestWithSession(

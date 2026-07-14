@@ -25,6 +25,7 @@ export interface ProductJobVolumeMount {
 
 export interface ReleaseProductJobIntent extends ProductJobSpec {
   deploymentId: string;
+  imagePullSecretId: string;
   jobClass: 'release';
 }
 
@@ -94,7 +95,14 @@ const productJobSpecShape: ProductJobSpecSchemaShape = {
 };
 
 export const productJobIntentSchema: ContractSchema<ProductJobIntent> = z.discriminatedUnion('jobClass', [
-  z.object({ ...productJobSpecShape, deploymentId: z.string().min(1), jobClass: z.literal('release') }).strict(),
+  z
+    .object({
+      ...productJobSpecShape,
+      deploymentId: z.string().min(1),
+      imagePullSecretId: z.string().min(1),
+      jobClass: z.literal('release'),
+    })
+    .strict(),
   z
     .object({ ...productJobSpecShape, jobClass: z.literal('resource-operation'), operationId: z.string().min(1) })
     .strict(),

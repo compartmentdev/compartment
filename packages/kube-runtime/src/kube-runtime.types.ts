@@ -245,6 +245,7 @@ export interface KubeJobSpec {
   env: Readonly<Record<string, string>>;
   id: string;
   image: string;
+  imagePullSecretId?: string | undefined;
   jobClass: 'release' | 'operation';
   labels: Readonly<Record<string, string>>;
   namespace: string;

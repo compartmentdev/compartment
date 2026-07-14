@@ -472,7 +472,8 @@ CREATE TABLE "deployment_kube_references" (
 );
 --> statement-breakpoint
 CREATE TABLE "deployment_product_logs" (
-	"deployment_id" text NOT NULL,
+	"deployment_id" text,
+	"resource_id" text,
 	"pod_uid" text NOT NULL,
 	"pod_name" text NOT NULL,
 	"namespace" text NOT NULL,
@@ -483,7 +484,8 @@ CREATE TABLE "deployment_product_logs" (
 	"stream" text NOT NULL,
 	"message" text NOT NULL,
 	"occurred_at" timestamp with time zone NOT NULL,
-	"captured_at" timestamp with time zone DEFAULT now() NOT NULL
+	"captured_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "deployment_product_logs_owner_check" CHECK (num_nonnulls("deployment_product_logs"."deployment_id", "deployment_product_logs"."resource_id") = 1)
 );
 --> statement-breakpoint
 CREATE TABLE "product_job_runs" (
@@ -491,6 +493,7 @@ CREATE TABLE "product_job_runs" (
 	"job_class" text NOT NULL,
 	"identity_id" text NOT NULL,
 	"image" text NOT NULL,
+	"image_pull_secret_id" text,
 	"command_json" text NOT NULL,
 	"env_json" text NOT NULL,
 	"volume_mounts_json" text DEFAULT '[]' NOT NULL,
@@ -510,6 +513,17 @@ CREATE TABLE "product_job_runs" (
 CREATE TABLE "product_log_store_quota" (
 	"id" text PRIMARY KEY NOT NULL,
 	"used_bytes" integer DEFAULT 0 NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "project_kube_provisioning" (
+	"project_id" text PRIMARY KEY NOT NULL,
+	"state" text DEFAULT 'pending' NOT NULL,
+	"lease_id" text,
+	"lease_expires_at" timestamp with time zone,
+	"failure_message" text,
+	"attempts" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "project_resources" (
@@ -931,6 +945,8 @@ ALTER TABLE "deployments" ADD CONSTRAINT "deployments_draining_node_id_nodes_id_
 ALTER TABLE "deployments" ADD CONSTRAINT "deployments_movement_source_deployment_id_deployments_id_fk" FOREIGN KEY ("movement_source_deployment_id") REFERENCES "public"."deployments"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "deployment_kube_references" ADD CONSTRAINT "deployment_kube_references_deployment_id_deployments_id_fk" FOREIGN KEY ("deployment_id") REFERENCES "public"."deployments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "deployment_product_logs" ADD CONSTRAINT "deployment_product_logs_deployment_id_deployments_id_fk" FOREIGN KEY ("deployment_id") REFERENCES "public"."deployments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "deployment_product_logs" ADD CONSTRAINT "deployment_product_logs_resource_id_project_resources_id_fk" FOREIGN KEY ("resource_id") REFERENCES "public"."project_resources"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "project_kube_provisioning" ADD CONSTRAINT "project_kube_provisioning_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_resources" ADD CONSTRAINT "project_resources_environment_id_environments_id_fk" FOREIGN KEY ("environment_id") REFERENCES "public"."environments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "resource_backups" ADD CONSTRAINT "resource_backups_project_resource_id_project_resources_id_fk" FOREIGN KEY ("project_resource_id") REFERENCES "public"."project_resources"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "resource_backups" ADD CONSTRAINT "resource_backups_operation_id_operations_id_fk" FOREIGN KEY ("operation_id") REFERENCES "public"."operations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1007,10 +1023,12 @@ CREATE INDEX "deployments_movement_lookup_idx" ON "deployments" USING btree ("en
 CREATE INDEX "deployments_status_created_at_id_idx" ON "deployments" USING btree ("status","created_at","id");--> statement-breakpoint
 CREATE INDEX "deployment_kube_references_state_updated_at_idx" ON "deployment_kube_references" USING btree ("state","updated_at");--> statement-breakpoint
 CREATE INDEX "deployment_product_logs_deployment_occurred_at_idx" ON "deployment_product_logs" USING btree ("deployment_id","occurred_at");--> statement-breakpoint
+CREATE INDEX "deployment_product_logs_resource_occurred_at_idx" ON "deployment_product_logs" USING btree ("resource_id","occurred_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "deployment_product_logs_identity_offset_idx" ON "deployment_product_logs" USING btree ("pod_uid","container_name","restart_identity","source_offset","source_fingerprint");--> statement-breakpoint
 CREATE INDEX "deployment_product_logs_captured_at_idx" ON "deployment_product_logs" USING btree ("captured_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "product_job_runs_class_identity_idx" ON "product_job_runs" USING btree ("job_class","identity_id");--> statement-breakpoint
 CREATE INDEX "product_job_runs_status_created_at_idx" ON "product_job_runs" USING btree ("status","created_at");--> statement-breakpoint
+CREATE INDEX "project_kube_provisioning_state_lease_idx" ON "project_kube_provisioning" USING btree ("state","lease_expires_at");--> statement-breakpoint
 CREATE INDEX "resource_backups_resource_created_at_idx" ON "resource_backups" USING btree ("project_resource_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "git_provider_bootstrap_states_state_nonce_unique" ON "git_provider_bootstrap_states" USING btree ("state_nonce");--> statement-breakpoint
 CREATE UNIQUE INDEX "git_provider_registrations_active_owner_unique" ON "git_provider_registrations" USING btree ("provider_type","provider_host","repository_owner") WHERE "git_provider_registrations"."status" = 'active';--> statement-breakpoint
@@ -1040,7 +1058,8 @@ CREATE UNIQUE INDEX "environment_variable_values_env_id_resource_name_key_name_u
 CREATE INDEX "variable_access_events_actor_created_at_idx" ON "variable_access_events" USING btree ("actor_principal_id","created_at");--> statement-breakpoint
 CREATE INDEX "variable_access_events_organization_created_at_idx" ON "variable_access_events" USING btree ("organization_id","created_at");--> statement-breakpoint
 CREATE INDEX "variable_access_events_production_created_at_idx" ON "variable_access_events" USING btree ("organization_id","production","created_at");--> statement-breakpoint
-CREATE INDEX "variable_access_events_target_created_at_idx" ON "variable_access_events" USING btree ("organization_id","target_project_name","target_environment_name","created_at");--> statement-breakpoint
+CREATE INDEX "variable_access_events_target_created_at_idx" ON "variable_access_events" USING btree ("organization_id","target_project_name","target_environment_name","created_at");
+--> statement-breakpoint
 INSERT INTO "product_log_store_quota" ("id", "used_bytes") VALUES ('global', 0);
 --> statement-breakpoint
 CREATE FUNCTION decrement_product_log_store_usage() RETURNS trigger AS $$

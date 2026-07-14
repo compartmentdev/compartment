@@ -46,6 +46,7 @@ export const productJobRuns: KubeRuntimeSchemaTypes.ProductJobRunsTable = pgTabl
     jobClass: text('job_class', { enum: ['release', 'resource-operation'] }).notNull(),
     identityId: text('identity_id').notNull(),
     image: text('image').notNull(),
+    imagePullSecretId: text('image_pull_secret_id'),
     commandJson: text('command_json').notNull(),
     envJson: text('env_json').notNull(),
     volumeMountsJson: text('volume_mounts_json').default('[]').notNull(),

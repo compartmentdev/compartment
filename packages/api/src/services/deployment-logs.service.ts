@@ -29,6 +29,7 @@ import { parseLogsSince } from './deployment-log-query.service';
 import { readStoredDeploymentProductLogs } from './deployment-product-logs.service';
 import { listKubeDeploymentIds } from '../queries/deployment-log-workload.query';
 import { createNodeRuntimeRequester } from './node-runtime-requester';
+import { collectReleaseJobLogLines } from './release-job-logs.service';
 
 export async function getDeploymentLogsForEnvironment(
   input: DeploymentLogsLookupInput,
@@ -60,6 +61,7 @@ async function collectDeploymentLogs(
 ): Promise<DeploymentLogLine[]> {
   const logLineGroups: DeploymentLogLine[][] = await Promise.all([
     collectNodeDeploymentLogLines(activeDeployments, environmentName, since, tailLines),
+    collectReleaseJobLogLines(activeDeployments, environmentName, sinceDate),
     resolveCompartmentEventLines(activeDeployments, environmentName, sinceDate),
     readStoredDeploymentProductLogs(activeDeployments, environmentName, sinceDate, tailLines),
   ]);

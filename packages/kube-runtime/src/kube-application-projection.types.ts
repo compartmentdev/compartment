@@ -56,6 +56,7 @@ export interface ApplicationProjectionRow {
   projectName: string;
   readiness: ApplicationReadinessConfig | null;
   replicas: number;
+  runCommand: string | null;
   serviceId: string;
   serviceName: string;
   secretId: string;

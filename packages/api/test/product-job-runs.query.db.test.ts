@@ -32,7 +32,11 @@ describe('product Job persistence', (): void => {
     await persistProductJobIntent({ identityId: 'dep_job', intent });
 
     const initialClaim: ClaimedProductJobQueryResult = await claimProductJob();
-    expect(initialClaim.intent).toMatchObject({ deploymentId: 'dep_job', jobClass: 'release' });
+    expect(initialClaim.intent).toMatchObject({
+      deploymentId: 'dep_job',
+      imagePullSecretId: 'pull-project',
+      jobClass: 'release',
+    });
     expect(initialClaim.persistedResult).toBeNull();
     const terminalResult: WorkerPersistProductJobResultRequest = {
       completedAt: '2026-07-12T12:00:00.000Z',
@@ -95,6 +99,7 @@ function releaseIntent(): ProductJobIntent {
     deploymentId: 'dep_job',
     env: { RELEASE: '1' },
     image: 'registry.example/release@sha256:abc',
+    imagePullSecretId: 'pull-project',
     jobClass: 'release',
     namespace: 'cpt-prj-job',
     timeoutMs: 30_000,

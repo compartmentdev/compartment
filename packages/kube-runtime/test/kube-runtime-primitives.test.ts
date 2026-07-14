@@ -28,6 +28,7 @@ interface JobManifestSpec {
     spec: {
       automountServiceAccountToken: false;
       containers: JobContainerSpec[];
+      imagePullSecrets?: { name: string }[] | undefined;
       serviceAccountName?: string | undefined;
       volumes: KubePodVolume[];
     };
@@ -190,6 +191,9 @@ describe('KubeRuntime Job primitive', (): void => {
       { name: 'ZETA', valueFrom: { secretKeyRef: { key: 'ZETA', name: kubeSecretName(spec.id) } } },
     ]);
     expect((manifest.spec as JobManifestSpec).template.spec.automountServiceAccountToken).toBe(false);
+    expect((manifest.spec as JobManifestSpec).template.spec.imagePullSecrets).toEqual([
+      { name: kubeSecretName(spec.imagePullSecretId ?? '') },
+    ]);
     expect((manifest.spec as JobManifestSpec).template.metadata.annotations['compartment.dev/secret-checksum']).toMatch(
       /^[a-f0-9]{64}$/,
     );
@@ -488,6 +492,7 @@ function jobSpec(jobClass: 'operation' | 'release'): KubeJobSpec {
   return {
     id: 'job-01jz',
     image: 'registry.example/release@sha256:abc',
+    ...(jobClass === 'release' ? { imagePullSecretId: 'pull-01jz' } : {}),
     jobClass,
     env: { ZETA: 'z', ALPHA: 'a' },
     labels: { 'compartment.dev/deployment-id': 'dep-01jz' },

@@ -29,7 +29,7 @@ describe('deployment reconcile projection', (): void => {
     vi.clearAllMocks();
   });
 
-  it('carries resolved descriptor readiness to the worker projection', async (): Promise<void> => {
+  it('carries resolved descriptor runtime behavior to the worker projection', async (): Promise<void> => {
     mocks.findPair.mockResolvedValue(pair());
     mocks.buildPlan.mockResolvedValue({
       runtimeEnv: { PORT: '3000' },
@@ -37,7 +37,10 @@ describe('deployment reconcile projection', (): void => {
     });
 
     await expect(claimDeploymentReconcileTarget()).resolves.toMatchObject({
-      candidate: { readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' } },
+      candidate: {
+        readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
+        runCommand: 'npm run start:override',
+      },
     });
   });
 });
@@ -56,6 +59,7 @@ function pair(): DeploymentReconcilePair {
       projectName: 'app',
       resolvedReadinessJson: '{"path":"/healthz","timeoutMs":60000,"type":"http"}',
       resolvedReleaseJson: 'null',
+      resolvedRunJson: '{"command":"npm run start:override","restart":{"policy":"unless-stopped"}}',
       revision: 1,
       serviceId: 'svc-1',
       serviceName: 'web',
