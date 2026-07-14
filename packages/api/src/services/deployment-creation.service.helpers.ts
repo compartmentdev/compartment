@@ -35,6 +35,8 @@ import type {
 } from './deployments.service.types';
 import { buildQueuedDeploymentBaseInput } from './queued-deployment-input.service';
 
+const staticServiceReadinessPath: string = '/health';
+
 export function buildQueuedDeploymentBatchItem(
   preparedState: PreparedQueuedDeploymentState,
   actorPrincipalId: string,
@@ -127,6 +129,10 @@ function buildQueuedDeploymentInput(
 function resolveDescriptorServiceReadiness(
   descriptorService: ResolvedDescriptorService | undefined,
 ): ResolvedOptionalServiceReadinessConfig {
+  if (descriptorService?.kind === 'static') {
+    return resolveServiceReadinessConfig({ path: staticServiceReadinessPath, type: 'http' });
+  }
+
   return descriptorService?.readiness ?? resolveServiceReadinessConfig(undefined);
 }
 

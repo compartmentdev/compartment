@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
 const staticBuildStepName: string = 'build';
+const staticRuntimeCaddyfilePath: string = '/Caddyfile';
 
 type RailpackPlanJsonValue = boolean | null | number | RailpackPlanJsonObject | RailpackPlanJsonValue[] | string;
 
@@ -59,7 +60,7 @@ function normalizeStaticDeployInputs(
   staticOutputDirectory: string,
 ): RailpackDeployInput[] {
   const normalizedStaticOutputInput: RailpackDeployInput = {
-    include: [staticOutputDirectory],
+    include: [staticOutputDirectory, staticRuntimeCaddyfilePath],
     step: staticBuildStepName,
   };
   const preservedInputs: RailpackDeployInput[] = inputs.filter(

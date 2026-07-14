@@ -290,7 +290,7 @@ describe('buildDockerImage', (): void => {
     );
   });
 
-  it('builds a static image with a narrowed deploy plan', async (): Promise<void> => {
+  it('preserves the generated Caddyfile in a narrowed starter-static deploy plan', async (): Promise<void> => {
     const digest: string = `sha256:${'f'.repeat(64)}`;
     let normalizedPlanText: string = '';
 
@@ -307,20 +307,20 @@ describe('buildDockerImage', (): void => {
                   step: 'packages:caddy',
                 },
                 {
-                  include: ['/Caddyfile'],
-                  step: 'caddy',
-                },
-                {
-                  include: ['public-docs/dist'],
-                  step: 'build',
-                },
-                {
                   include: ['.'],
                   step: 'build',
                 },
               ],
+              startCommand: 'caddy run --config Caddyfile --adapter caddyfile 2>&1',
             },
-            steps: [],
+            steps: [
+              {
+                assets: {
+                  Caddyfile: ':{$PORT:80} {\n\trespond /health 200\n\troot * .\n\tfile_server\n}\n',
+                },
+                name: 'build',
+              },
+            ],
           },
           null,
           2,
@@ -341,15 +341,13 @@ describe('buildDockerImage', (): void => {
 
     await expect(
       buildDockerImage({
-        buildCommand: 'pnpm docs:build',
         contextDirectory: '/tmp/source',
         imageTag: 'registry.example/compartment-web:art_123',
         labels: {
           'compartment.namespace': 'compartment-e2e',
         },
         packer: 'static',
-        runtimeAptPackages: ['jq'],
-        staticOutputDirectory: 'public-docs/dist',
+        staticOutputDirectory: 'apps/site',
       }),
     ).resolves.toEqual({
       imageRef: `registry.example/compartment-web@${digest}`,
@@ -358,9 +356,8 @@ describe('buildDockerImage', (): void => {
 
     const railpackInput: PrepareRailpackPlanInput | undefined = mocks.prepareRailpackPlan.mock.calls[0]?.[0];
     expect(railpackInput?.appPath).toBeUndefined();
-    expect(railpackInput?.buildCommand).toBe('pnpm docs:build');
-    expect(railpackInput?.runtimeAptPackages).toEqual(['jq']);
-    expect(railpackInput?.staticOutputDirectory).toBe('public-docs/dist');
+    expect(railpackInput?.buildCommand).toBeUndefined();
+    expect(railpackInput?.staticOutputDirectory).toBe('apps/site');
     expect(JSON.parse(normalizedPlanText)).toMatchObject({
       deploy: {
         inputs: [
@@ -369,11 +366,7 @@ describe('buildDockerImage', (): void => {
             step: 'packages:caddy',
           },
           {
-            include: ['/Caddyfile'],
-            step: 'caddy',
-          },
-          {
-            include: ['public-docs/dist'],
+            include: ['apps/site', '/Caddyfile'],
             step: 'build',
           },
         ],
