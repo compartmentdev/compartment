@@ -52,14 +52,13 @@ export async function listDeploymentLogIdentities(namespaces: string[]): Promise
 export async function listResourceLogIdentities(): Promise<ResourceLogIdentityRow[]> {
   return await getApiDatabase()
     .select({
-      createdAt: projectResources.createdAt,
       namespaceId: environments.projectId,
       resourceId: projectResources.id,
     })
     .from(projectResources)
     .innerJoin(environments, eq(environments.id, projectResources.environmentId))
     .where(eq(projectResources.runtimeKind, 'kubernetes'))
-    .orderBy(asc(projectResources.createdAt));
+    .orderBy(asc(projectResources.id));
 }
 
 export async function insertDeploymentProductLogs(

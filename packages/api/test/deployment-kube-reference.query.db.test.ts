@@ -135,16 +135,22 @@ describe('deployment Kubernetes transition persistence', (): void => {
       sourceFingerprint: 'c'.repeat(64),
       sourceOffset: 1,
       stream: 'stderr',
-      timestamp: '2026-07-12T10:00:00.000Z',
+      timestamp: '2026-07-10T10:00:00.000Z',
     };
 
+    await expect(
+      ingestDeploymentProductLogs([{ ...event, namespace: immutableKubeName('cpt', 'prj_other') }]),
+    ).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
+    await expect(
+      ingestDeploymentProductLogs([{ ...event, podName: `${immutableKubeName('resource', 'res_other')}-abc` }]),
+    ).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
     await expect(ingestDeploymentProductLogs([event])).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
     await expect(readStoredResourceProductLogs('res_kube', 'postgres', undefined, 50)).resolves.toEqual([
       {
         message: 'database system is ready',
         resourceName: 'postgres',
         stream: 'stderr',
-        timestamp: '2026-07-12T10:00:00.000Z',
+        timestamp: '2026-07-10T10:00:00.000Z',
       },
     ]);
   });

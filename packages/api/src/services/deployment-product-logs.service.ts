@@ -46,10 +46,8 @@ export async function ingestDeploymentProductLogs(events: ProductLogIngestEvent[
 }
 
 function resolveResourceIdentity(event: ProductLogIngestEvent, rows: ResourceLogIdentityRow[]): string | undefined {
-  const occurredAt: number = Date.parse(event.timestamp);
   return rows.findLast(
     (row: ResourceLogIdentityRow): boolean =>
-      row.createdAt.getTime() <= occurredAt &&
       event.namespace === immutableKubeName('cpt', row.namespaceId) &&
       event.podName.startsWith(`${immutableKubeName('resource', row.resourceId)}-`),
   )?.resourceId;

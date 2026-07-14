@@ -41,7 +41,6 @@ export interface ListDeploymentProductLogsInput {
 export type DeploymentProductLogLine = DeploymentLogLine;
 
 export interface ResourceLogIdentityRow {
-  createdAt: Date;
   namespaceId: string;
   resourceId: string;
 }
