@@ -533,6 +533,18 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(claimed?.candidate).toMatchObject({ deploymentId: 'dep_kube', state: 'pending' });
   });
 
+  it('does not reconcile the active workload while its replacement claim is leased', async (): Promise<void> => {
+    await seedCandidate();
+    await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+
+    const replacement: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
+    const duringReplacementLease: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
+
+    expect(replacement?.candidate).toMatchObject({ deploymentId: 'dep_candidate', state: 'desired' });
+    expect(duringReplacementLease).toBeNull();
+  });
+
   it('claims a requested stop and accepts the worker acknowledgement', async (): Promise<void> => {
     await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
     await requestDeploymentKubeStop('dep_kube', new Date('2026-07-12T10:00:00.000Z'));
