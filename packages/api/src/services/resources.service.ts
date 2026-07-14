@@ -21,7 +21,11 @@ import { resolveResourceOutputForLookup } from './resource-output-lookup.service
 import { listResolvedResourceOutputSummaries } from './resource-output-resolution.service';
 import { loadResourceEffectiveVariables } from './resources-effective-variables.service';
 import { resolveResourceNode } from './resources-node.service';
-import { bootstrapKubernetesResource } from './resources-kubernetes-reconcile.service';
+import {
+  bootstrapKubernetesResource,
+  deleteKubernetesResource,
+  reconcileKubernetesResourceReplicas,
+} from './resources-kubernetes-reconcile.service';
 import { requireRunningResourceContainerId } from './resources-runtime-container.service';
 import { resolveStoredResourceIntent } from './resources-stored-intent.service';
 import { buildNodeResourceRequest, type ResolvedResourceIntent } from './resources.service.helpers';
@@ -105,6 +109,9 @@ export async function getResourceForPrincipal(input: ResourceActionInput): Promi
 export async function startResourceForPrincipal(input: ResourceActionInput): Promise<ResourceLookupResult> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
+  if (resource.runtimeKind === 'kubernetes') {
+    return { ...context, resource: await reconcileKubernetesResourceReplicas(context, resource, 1) };
+  }
   assertNodeResourceOperation(resource, 'start');
   const node: NodeRow = await resolveResourceNode(context);
   const response: NodeResourceResponse = await startPreparedResource(context, resource, node);
@@ -164,6 +171,9 @@ function buildStoredResourceStartRequest(
 export async function stopResourceForPrincipal(input: ResourceActionInput): Promise<ResourceLookupResult> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
+  if (resource.runtimeKind === 'kubernetes') {
+    return { ...context, resource: await reconcileKubernetesResourceReplicas(context, resource, 0) };
+  }
   assertNodeResourceOperation(resource, 'stop');
   const node: NodeRow = await resolveResourceNode(context);
   const response: NodeResourceResponse = await stopNodeResource(createNodeRuntimeRequester(node.nodeSocketPath), {
@@ -183,8 +193,13 @@ export async function stopResourceForPrincipal(input: ResourceActionInput): Prom
 export async function deleteResourceForPrincipal(input: ResourceDeleteInput): Promise<string[]> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
-  assertNodeResourceOperation(resource, 'delete');
   const volumes: ResourceVolumeSummary[] = parseResourceVolumes(resource);
+  if (resource.runtimeKind === 'kubernetes') {
+    await deleteKubernetesResource(context, resource, input.body.deleteData === true);
+    await deleteProjectResource(resource.id);
+    return input.body.deleteData === true ? [] : volumes.map((volume: ResourceVolumeSummary): string => volume.name);
+  }
+  assertNodeResourceOperation(resource, 'delete');
   const node: NodeRow = await resolveResourceNode(context);
   await deleteNodeResource(createNodeRuntimeRequester(node.nodeSocketPath), {
     containerId: resource.containerId,

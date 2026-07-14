@@ -366,15 +366,40 @@ describe('resource backup queries', (): void => {
     const next: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
     expect(next?.operationId).not.toBe(active[0]!.operationId);
   });
+
+  it('persists stopped state only after a zero-replica reconcile succeeds', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: { ...resourceIntent(), replicas: 0 },
+      operationId: 'rr_stop',
+      type: 'reconcile',
+    });
+    const claimed: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+    expect(claimed?.operationId).toBe('rr_stop');
+    await acknowledgeResourceReconcileRun({
+      leaseId: claimed!.leaseId,
+      operationId: claimed!.operationId,
+      status: 'succeeded',
+    });
+    await expect(
+      db
+        .select({ status: projectResources.status })
+        .from(projectResources)
+        .where(eq(projectResources.id, 'res_postgres')),
+    ).resolves.toEqual([{ status: 'stopped' }]);
+  });
 });
 
 function resourceIntent(): ResourceReconcileIntent {
   return {
     containerPort: 5432,
+    deleteData: false,
     environmentId: 'env_resource_backups',
     env: {},
     image: 'postgres:17',
     namespaceId: 'prj_resource_backups',
+    operation: 'reconcile',
+    replicas: 1,
     resourceId: 'res_postgres',
     secretId: 'res_postgres',
     volumes: [{ mountPath: '/var/lib/postgresql/data', size: '1Gi', volumeHandle: 'data' }],

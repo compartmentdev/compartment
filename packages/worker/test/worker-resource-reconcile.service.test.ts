@@ -205,6 +205,30 @@ describe('worker resource reconcile lifecycle', (): void => {
       expect.objectContaining({ leaseId: 'lease-1', status: 'failed' }),
     );
   });
+
+  it('stops the workload before deleting manifests and explicitly requested data', async (): Promise<void> => {
+    const observation: TestObservation = new TestObservation('uid-original', true);
+    observation.addClaim(backupClaimName, 'uid-backup', false);
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      observation.removePods();
+      return await Promise.resolve(bundle.objects);
+    });
+    const removed: KubeManifest[][] = [];
+    const remove: Mock = vi.fn(async (objects: KubeManifest[]): Promise<void> => {
+      removed.push(objects);
+      await Promise.resolve();
+    });
+
+    await executeResourceReconcile(requester(), runtime(apply, observation, undefined, remove), deleteClaim());
+
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect(removed[0]?.map((object: KubeManifest): string => object.kind)).toEqual(['Secret', 'Deployment', 'Service']);
+    expect(removed[1]).toHaveLength(2);
+    expect(mocks.acknowledge).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 'succeeded' }),
+    );
+  });
 });
 
 class TestObservation implements KubeObservation {
@@ -323,9 +347,10 @@ class TestObservation implements KubeObservation {
   }
 }
 
-function runtime(apply: Mock, observation: KubeObservation, read?: Mock): KubeRuntime {
+function runtime(apply: Mock, observation: KubeObservation, read?: Mock, remove?: Mock): KubeRuntime {
   const value: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
   vi.spyOn(value, 'apply').mockImplementation(apply);
+  vi.spyOn(value, 'delete').mockImplementation(remove ?? vi.fn());
   vi.spyOn(value, 'observe').mockResolvedValue(observation);
   vi.spyOn(value, 'read').mockImplementation(
     read ??
@@ -388,10 +413,13 @@ function claim(
     ],
     intent: {
       containerPort: 5432,
+      deleteData: false,
       environmentId: 'env',
       env: {},
       image: 'postgres:17',
       namespaceId: 'project',
+      operation: 'reconcile',
+      replicas: 1,
       resourceId: 'resource',
       secretId: 'secret',
       volumes: [{ mountPath: '/data', size: '1Gi', volumeHandle: 'data' }],
@@ -408,5 +436,13 @@ function bootstrapClaim(): WorkerClaimResourceReconcileResponse {
     ...claim(null),
     expectedClaims: [],
     type: 'bootstrap',
+  };
+}
+
+function deleteClaim(): WorkerClaimResourceReconcileResponse {
+  const claimed: WorkerClaimResourceReconcileResponse = claim(null);
+  return {
+    ...claimed,
+    intent: claimed.intent === null ? null : { ...claimed.intent, deleteData: true, operation: 'delete', replicas: 0 },
   };
 }

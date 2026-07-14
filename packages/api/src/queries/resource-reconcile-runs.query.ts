@@ -8,12 +8,22 @@ import type {
   AcknowledgeResourceReconcileRunInput,
   ClaimedResourceReconcileRun,
   CreateResourceReconcileRunInput,
+  ResourceReconcileRunState,
 } from './resource-reconcile-runs.query.types';
 
 export async function createResourceReconcileRun(input: CreateResourceReconcileRunInput): Promise<void> {
   await getApiDatabase().transaction(
     async (tx: ApiDatabaseTransaction): Promise<void> => await createResourceReconcileRunWithExecutor(tx, input),
   );
+}
+
+export async function readResourceReconcileRunState(operationId: string): Promise<ResourceReconcileRunState | null> {
+  const [row] = await getApiDatabase()
+    .select({ failureMessage: resourceReconcileRuns.failureMessage, phase: resourceReconcileRuns.phase })
+    .from(resourceReconcileRuns)
+    .where(eq(resourceReconcileRuns.id, operationId))
+    .limit(1);
+  return row ?? null;
 }
 
 export async function createResourceReconcileRunWithExecutor(
@@ -172,8 +182,9 @@ async function persistReconcileCompletion(
   tx: ApiDatabaseTransaction,
   run: typeof resourceReconcileRuns.$inferSelect,
 ): Promise<void> {
+  const intent: ResourceReconcileIntent = JSON.parse(run.intentJson) as ResourceReconcileIntent;
   await tx
     .update(projectResources)
-    .set({ status: 'running', updatedAt: new Date() })
+    .set({ status: intent.replicas === 0 ? 'stopped' : 'running', updatedAt: new Date() })
     .where(eq(projectResources.id, run.projectResourceId));
 }

@@ -20,6 +20,7 @@ import {
   waitUntil,
   waitForFreshResourceDeployment,
 } from './worker-resource-reconcile-observation.service';
+import { executeManagedDelete } from './worker-resource-delete.service';
 import type { ManagedResourceUpdatePlan } from './worker-resource-reconcile.service.types';
 
 export async function executeResourceReconcile(
@@ -37,13 +38,32 @@ export async function executeResourceReconcile(
     resources: ['deployments', 'persistentvolumeclaims', 'pods', 'secrets', 'services'],
   });
   try {
-    if (claimed.type === 'bootstrap') {
-      await executeBootstrap(request, runtime, observation, claimed.leaseId, claimed.operationId, row);
-      return;
-    }
-    await executeManagedUpdate(request, runtime, observation, claimed, row);
+    await executeClaimedResource(request, runtime, observation, claimed, row);
   } finally {
     await observation.stop();
+  }
+}
+
+async function executeClaimedResource(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  observation: KubeObservation,
+  claimed: WorkerClaimResourceReconcileResponse,
+  row: ResourceProjectionRow,
+): Promise<void> {
+  if (claimed.type === 'bootstrap') {
+    await executeBootstrap(
+      request,
+      runtime,
+      observation,
+      requiredLeaseId(claimed.leaseId),
+      requiredOperationId(claimed.operationId),
+      row,
+    );
+  } else if (row.operation === 'delete') {
+    await executeManagedDelete(request, runtime, observation, claimed, row);
+  } else {
+    await executeManagedUpdate(request, runtime, observation, claimed, row);
   }
 }
 
@@ -134,7 +154,7 @@ async function prepareManagedUpdate(
   claimed: WorkerClaimResourceReconcileResponse,
   row: ResourceProjectionRow,
 ): Promise<ManagedResourceUpdatePlan> {
-  const desired: KubeManifest[] = projectResourceManifests(row);
+  const desired: KubeManifest[] = projectResourceManifests(row, row.replicas);
   const plan: ManagedResourceUpdatePlan = {
     desired,
     leaseId: requiredLeaseId(claimed.leaseId),

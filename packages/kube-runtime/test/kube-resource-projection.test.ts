@@ -14,10 +14,13 @@ import {
 
 const row: ResourceProjectionRow = {
   containerPort: 5432,
+  deleteData: false,
   environmentId: 'env-01jz',
   env: { POSTGRES_PASSWORD: 'generated' },
   image: 'postgres@sha256:abc',
   namespaceId: 'prj-01jz',
+  operation: 'reconcile',
+  replicas: 1,
   resourceId: 'res-01jz',
   secretId: 'sec-resource',
   volumes: [{ mountPath: '/var/lib/postgresql/data', size: '10Gi', volumeHandle: 'data' }],
