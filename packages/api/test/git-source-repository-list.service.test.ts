@@ -7,6 +7,7 @@ import type { GitHubInstallationRepository } from '../src/services/git-source/gi
 import type * as GitSourceDescriptorRegistrationAccess from '../src/services/git-source/git-source-descriptor-registration-access.service';
 import type { GitProviderAccess } from '../src/services/git-source/git-source-provider.types';
 import { listGitProviderRegistrationRepositories } from '../src/services/git-source/git-source-repository-list.service';
+import type * as OutboundHttpService from '../src/services/outbound-http.service';
 
 type ListGitHubInstallationRepositoriesFromGitHub = typeof GithubAppClientAdapter.listGitHubInstallationRepositories;
 type RequireGitProviderRegistrationAccess =
@@ -20,6 +21,10 @@ interface GitSourceDescriptorRegistrationAccessModule {
   requireGitProviderRegistrationAccess: Mock<RequireGitProviderRegistrationAccess>;
 }
 
+interface OutboundHttpServiceModule {
+  createGitLabTrustedOutboundFetch: Mock<CreateGitLabTrustedOutboundFetch>;
+}
+
 interface TestListGitProviderRegistrationRepositoriesInput {
   actor: Actor;
   organizationId: string;
@@ -29,13 +34,23 @@ interface TestListGitProviderRegistrationRepositoriesInput {
 const mocks: {
   listGitHubInstallationRepositories: Mock<ListGitHubInstallationRepositoriesFromGitHub>;
   requireGitProviderRegistrationAccess: Mock<RequireGitProviderRegistrationAccess>;
+  createGitLabTrustedOutboundFetch: Mock<CreateGitLabTrustedOutboundFetch>;
 } = vi.hoisted(
   (): {
     listGitHubInstallationRepositories: Mock<ListGitHubInstallationRepositoriesFromGitHub>;
     requireGitProviderRegistrationAccess: Mock<RequireGitProviderRegistrationAccess>;
+    createGitLabTrustedOutboundFetch: Mock<CreateGitLabTrustedOutboundFetch>;
   } => ({
     listGitHubInstallationRepositories: vi.fn<ListGitHubInstallationRepositoriesFromGitHub>(),
     requireGitProviderRegistrationAccess: vi.fn<RequireGitProviderRegistrationAccess>(),
+    createGitLabTrustedOutboundFetch: vi.fn<CreateGitLabTrustedOutboundFetch>(),
+  }),
+);
+
+vi.mock(
+  '../src/services/outbound-http.service',
+  (): OutboundHttpServiceModule => ({
+    createGitLabTrustedOutboundFetch: mocks.createGitLabTrustedOutboundFetch,
   }),
 );
 
@@ -92,6 +107,18 @@ describe('git source repository list service', (): void => {
       code: 'git_source_repository_access_denied',
     });
   });
+
+  it('classifies a revoked GitLab token on repository listing as token invalid', async (): Promise<void> => {
+    vi.resetAllMocks();
+    mocks.requireGitProviderRegistrationAccess.mockResolvedValue(createGitLabProviderAccess());
+    mocks.createGitLabTrustedOutboundFetch.mockReturnValue(
+      vi.fn<typeof fetch>().mockResolvedValue(new Response('revoked', { status: 401 })),
+    );
+
+    await expect(listGitProviderRegistrationRepositories(createListInput())).rejects.toMatchObject({
+      code: 'gitlab_token_invalid',
+    });
+  });
 });
 
 function prepareRepositoryListMocks(): void {
@@ -106,6 +133,17 @@ function createProviderAccess(): GitProviderAccess {
       privateKeyPem: 'private-key',
     },
     registration: createRegistration(),
+  };
+}
+
+function createGitLabProviderAccess(): GitProviderAccess {
+  return {
+    credential: { kind: 'gitlab_token', token: 'revoked-token' },
+    registration: {
+      ...createRegistration(),
+      providerHost: 'gitlab.example.com',
+      providerType: 'gitlab',
+    },
   };
 }
 
@@ -181,3 +219,4 @@ function createRegistration(): GitProviderRegistrationRow {
     webhookUrl: 'https://console.example/v1/sources/git/providers/github/registrations/gpr_123/webhook',
   };
 }
+type CreateGitLabTrustedOutboundFetch = typeof OutboundHttpService.createGitLabTrustedOutboundFetch;
