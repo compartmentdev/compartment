@@ -4,9 +4,6 @@ import {
   kubeNamespaceName,
   type ApplyBundle,
   type KubeManifest,
-  type KubeObservation,
-  type KubeObservationEvent,
-  type KubeObservationHealth,
   type KubeRuntime,
 } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
@@ -17,8 +14,6 @@ interface ReconcileMocks {
   executeProductJob: Mock;
   observeDeploymentReconcile: Mock;
 }
-
-type TestObservationListener = (event: KubeObservationEvent) => void;
 
 const mocks: ReconcileMocks = vi.hoisted(
   (): ReconcileMocks => ({ executeProductJob: vi.fn(), observeDeploymentReconcile: vi.fn() }),
@@ -68,7 +63,7 @@ describe('deployment reconciliation', (): void => {
     );
   });
 
-  it('waits for the informer cache before evaluating an active Deployment', async (): Promise<void> => {
+  it('reads active Deployment readiness directly without depending on the informer cache', async (): Promise<void> => {
     const runtime: KubeRuntime & { apply: Mock } = activeRuntimeStub();
     const activeTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'active' };
 
@@ -78,13 +73,16 @@ describe('deployment reconciliation', (): void => {
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
   });
 
-  it('does not lose an active Deployment cache update between the initial read and event subscription', async (): Promise<void> => {
-    const runtime: KubeRuntime & { apply: Mock } = activeRuntimeStub(true);
+  it('moves a non-ready active Deployment into recoverable pending reconciliation', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock } = activeRuntimeStub(false);
     const activeTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'active' };
 
     await reconcileDeploymentTarget(requester(), runtime, activeTarget);
 
-    expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
+    expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'pending', revision: 0 }),
+    );
   });
 
   it('keeps a pending rollout alive for the configured readiness timeout', async (): Promise<void> => {
@@ -159,25 +157,15 @@ function runtimeStub(): KubeRuntime & { apply: Mock } {
   } as never;
 }
 
-function activeRuntimeStub(populateWithoutEvent: boolean = false): KubeRuntime & { apply: Mock } {
-  const cache: Map<string, KubeManifest> = new Map<string, KubeManifest>();
+function activeRuntimeStub(ready: boolean = true): KubeRuntime & { apply: Mock } {
+  const namespace: string = kubeNamespaceName('prj_1');
+  const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
   return {
     apply: vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([])),
-    observe: vi.fn(
-      async (): Promise<KubeObservation> =>
-        await Promise.resolve({
-          cache,
-          health: (): KubeObservationHealth => ({ healthy: true, lastConnectedAt: new Date(), lastErrorAt: null }),
-          onEvent: (listener: TestObservationListener): (() => void) => {
-            if (populateWithoutEvent) {
-              publishReadyDeployment(cache);
-              return (): void => undefined;
-            }
-            const timer: NodeJS.Timeout = setTimeout((): void => publishReadyDeployment(cache, listener), 0);
-            return (): void => clearTimeout(timer);
-          },
-          stop: async (): Promise<void> => await Promise.resolve(),
-        }),
+    observe: vi.fn(),
+    read: vi.fn(
+      async (): Promise<KubeManifest> =>
+        await Promise.resolve(ready ? readyDeployment(namespace, name) : progressingDeployment(namespace, name)),
     ),
   } as never;
 }
@@ -204,14 +192,6 @@ function progressingDeployment(namespace: string, name: string): KubeManifest {
     metadata: { generation: 1, name, namespace },
     status: { availableReplicas: 0, observedGeneration: 1 },
   } as never;
-}
-
-function publishReadyDeployment(cache: Map<string, KubeManifest>, listener?: TestObservationListener): void {
-  const namespace: string = kubeNamespaceName('prj_1');
-  const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
-  const event: KubeObservationEvent = { observedAt: new Date(), resource: 'deployments', type: 'relist' };
-  cache.set(`deployments/${namespace}/${name}`, readyDeployment(namespace, name));
-  listener?.(event);
 }
 
 function readyDeployment(namespace: string, name: string): KubeManifest {

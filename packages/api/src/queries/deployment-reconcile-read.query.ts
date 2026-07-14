@@ -1,4 +1,4 @@
-import { and, asc, eq, lte, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, lte, or, sql, type SQL } from 'drizzle-orm';
 import type { SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import {
   buildArtifacts,
@@ -113,7 +113,11 @@ function candidateFilter(): SQL | undefined {
     eq(projectKubeProvisioning.state, 'succeeded'),
     lte(deploymentKubeReferences.updatedAt, new Date()),
     or(
-      and(ne(deploymentKubeReferences.state, 'active'), eq(deployments.status, 'running')),
+      and(eq(deploymentKubeReferences.state, 'desired'), eq(deployments.status, 'running')),
+      and(
+        eq(deploymentKubeReferences.state, 'pending'),
+        or(eq(deployments.status, 'running'), eq(deployments.status, 'succeeded')),
+      ),
       and(eq(deploymentKubeReferences.state, 'active'), eq(deployments.status, 'succeeded')),
     ),
   );

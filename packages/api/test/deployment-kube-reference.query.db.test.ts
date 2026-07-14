@@ -21,6 +21,7 @@ import {
   operations,
   organizations,
   projectServices,
+  projectKubeProvisioning,
   projects,
   productLogStoreQuota,
 } from '../src/db/schema';
@@ -31,9 +32,11 @@ import {
 } from '../src/queries/deployment-kube-reference.query';
 import type { PersistDeploymentKubeTransitionInput } from '../src/queries/deployment-kube-reference.query.types';
 import {
+  findNextDeploymentReconcilePair,
   persistDeploymentReconcileObservation,
   prepareDeploymentReconcileReference,
 } from '../src/queries/deployment-reconcile.query';
+import type { DeploymentReconcilePair } from '../src/queries/deployment-reconcile.query.types';
 import { findActiveDeploymentRouteByHost } from '../src/queries/deployment-routes.query';
 import type { DeploymentRouteLookupRow } from '../src/queries/deployment-routes.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
@@ -453,6 +456,22 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(reference).toMatchObject({ observedAt, revision: 1, state: 'pending' });
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ targetId: 'dep_kube' });
+  });
+
+  it('keeps a succeeded deployment claimable after active readiness drift', async (): Promise<void> => {
+    await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_kube',
+      failureMessage: 'active pod missing',
+      observation: 'pending',
+      observedAt: new Date('2026-07-12T10:00:00.000Z'),
+      revision: 0,
+    });
+
+    const claimed: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
+
+    expect(claimed?.candidate).toMatchObject({ deploymentId: 'dep_kube', state: 'pending' });
   });
 
   it('promotes only after Ready and projects stable Kubernetes Service DNS on port 80', async (): Promise<void> => {
