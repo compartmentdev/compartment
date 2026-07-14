@@ -104,7 +104,6 @@ describe('worker resource reconcile lifecycle', (): void => {
       if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 1) {
         observation.bindClaims();
         observation.addReadyDeployment(deployment);
-        observation.addPod('resource-partial-cache-pod');
       }
       return await Promise.resolve(bundle.objects);
     });
@@ -135,9 +134,6 @@ describe('worker resource reconcile lifecycle', (): void => {
         desiredApplied = bundle.objects.some(
           (object: KubeManifest): boolean => object.kind === 'Deployment' && object.spec?.replicas === 1,
         );
-        if (desiredApplied) {
-          observation.addPod('resource-new-pod');
-        }
         return await Promise.resolve(bundle.objects);
       });
       const read: Mock = vi.fn(async (manifest: KubeManifest): Promise<KubeObservedManifest | null> => {
@@ -157,7 +153,7 @@ describe('worker resource reconcile lifecycle', (): void => {
       await execution;
 
       expect(liveReadyReads).toBe(2);
-      expect(observation.cache.has('pods/ns/resource-new-pod')).toBe(true);
+      expect(observation.cache.has('pods/ns/resource-new-pod')).toBe(false);
       expect(mocks.acknowledge).toHaveBeenLastCalledWith(
         expect.anything(),
         expect.objectContaining({ status: 'succeeded' }),

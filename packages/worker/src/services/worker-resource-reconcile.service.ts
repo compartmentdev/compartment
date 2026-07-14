@@ -15,7 +15,6 @@ import {
   assertFinalClaimState,
   readCreatedClaims,
   readLiveClaims,
-  readResourcePodNames,
   readResourcePods,
   readRollbackManifest,
   waitUntil,
@@ -201,14 +200,13 @@ async function applyManagedResourceState(
   row: ResourceProjectionRow,
   manifests: KubeManifest[],
 ): Promise<void> {
-  const previousPodNames: Set<string> = readResourcePodNames(observation);
   await runtime.apply({ objects: projectResourceManifests(row, 0) });
   await waitUntil(observation, (): true | null =>
     resourcePodsFullyTerminated(readResourcePods(observation)) ? true : null,
   );
   assertResourceClaimOwnership(expectedClaims, await readLiveClaims(runtime, row));
   await runtime.apply({ objects: manifests });
-  await waitForFreshResourceDeployment(runtime, observation, manifests, previousPodNames);
+  await waitForFreshResourceDeployment(runtime, manifests);
   assertFinalClaimState(expectedClaims, await readLiveClaims(runtime, row), row);
 }
 

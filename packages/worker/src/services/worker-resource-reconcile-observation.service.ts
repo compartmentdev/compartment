@@ -100,26 +100,17 @@ export function readResourcePods(observation: KubeObservation): { deletionTimest
     .map((): { deletionTimestamp?: string | undefined } => ({}));
 }
 
-export async function waitForFreshResourceDeployment(
-  runtime: KubeRuntime,
-  observation: KubeObservation,
-  manifests: KubeManifest[],
-  previousPodNames: ReadonlySet<string>,
-): Promise<void> {
+export async function waitForFreshResourceDeployment(runtime: KubeRuntime, manifests: KubeManifest[]): Promise<void> {
   const desired: KubeDeploymentManifest = requiredDeployment(manifests);
   await waitUntilLive(
     async (): Promise<true | null> =>
-      resourceDeploymentFreshAndReady(await runtime.read(desired), desired, observation, previousPodNames)
-        ? true
-        : null,
+      resourceDeploymentFreshAndReady(await runtime.read(desired), desired) ? true : null,
   );
 }
 
 function resourceDeploymentFreshAndReady(
   observed: KubeObservedManifest | null,
   desired: KubeDeploymentManifest,
-  observation: KubeObservation,
-  previousPodNames: ReadonlySet<string>,
 ): boolean {
   if (observed?.kind !== 'Deployment') {
     return false;
@@ -130,28 +121,15 @@ function resourceDeploymentFreshAndReady(
   }
   const desiredReplicas: number | undefined = desired.spec?.replicas;
   return (
-    hasFreshResourcePod(observation, previousPodNames) &&
+    observed.spec?.replicas === desiredReplicas &&
+    generationIsCurrent(observed.metadata?.generation, status.observedGeneration) &&
     status.availableReplicas === desiredReplicas &&
-    status.readyReplicas === desiredReplicas &&
-    status.conditions?.some(
-      (condition: { status?: string | undefined; type?: string | undefined }): boolean =>
-        condition.type === 'Available' && condition.status === 'True',
-    ) === true
+    status.readyReplicas === desiredReplicas
   );
 }
 
-function hasFreshResourcePod(observation: KubeObservation, previousPodNames: ReadonlySet<string>): boolean {
-  return [...readResourcePodNames(observation)].some(
-    (podName: string): boolean => podName !== '' && !previousPodNames.has(podName),
-  );
-}
-
-export function readResourcePodNames(observation: KubeObservation): Set<string> {
-  return new Set(
-    [...observation.cache.entries()]
-      .filter(([key]: [string, KubeObservedManifest]): boolean => key.startsWith('pods/'))
-      .map(([, pod]: [string, KubeObservedManifest]): string => pod.metadata?.name ?? ''),
-  );
+function generationIsCurrent(generation: number | undefined, observedGeneration: number | undefined): boolean {
+  return generation === undefined || observedGeneration === undefined || observedGeneration >= generation;
 }
 
 export async function waitUntil<T>(observation: KubeObservation, read: () => T | null): Promise<T> {
