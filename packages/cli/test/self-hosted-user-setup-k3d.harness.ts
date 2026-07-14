@@ -56,6 +56,8 @@ const k3dPlatformNamespaceEnvName: string = 'COMPARTMENT_E2E_PLATFORM_NAMESPACE'
 const k3dDefaultKubeContext: string = 'k3d-compartment-e2e';
 const k3dDefaultPlatformNamespace: string = 'compartment';
 const k3dPlatformResourceName: string = 'compartment-compartment';
+const k3dBuildkitNamespace: string = 'compartment-build';
+const k3dBuildkitAddress: string = 'tcp://127.0.0.1:1234';
 const k3dKubectlCommandTimeoutMs: number = 8 * 60_000;
 const k3dApiServiceProbeAttempts: number = 30;
 const k3dApiServiceProbeIntervalMs: number = 1_000;
@@ -92,6 +94,48 @@ export function readK3dPlatformSeed(): K3dPlatformSeed {
     seedAdminEmail: readRequiredK3dEnv(k3dSeedAdminEmailEnvName),
     seedAdminPassword: readRequiredK3dEnv('COMPARTMENT_E2E_SEED_ADMIN_PASSWORD'),
   };
+}
+
+export async function reclaimK3dBuildStorage(): Promise<void> {
+  const seed: K3dPlatformSeed = readK3dPlatformSeed();
+  const nodeResult: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: ['kubectl', '--context', seed.kubeContext, 'get', 'nodes', '--output=jsonpath={.items[0].metadata.name}'],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(nodeResult, 'read the k3d server node name', '');
+  const nodeName: string = nodeResult.stdout.trim();
+  if (nodeName === '') {
+    throw new Error('Expected the k3d cluster to contain a server node.');
+  }
+
+  const commands: readonly (readonly string[])[] = [
+    [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      '--namespace',
+      k3dBuildkitNamespace,
+      'exec',
+      `deployment/${k3dPlatformResourceName}-buildkit`,
+      '--',
+      'buildctl',
+      '--addr',
+      k3dBuildkitAddress,
+      'prune',
+      '--all',
+    ],
+    ['docker', 'exec', nodeName, 'crictl', 'rmi', '--prune'],
+    [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'wait',
+      `node/${nodeName}`,
+      '--for=condition=DiskPressure=false',
+      '--timeout=2m',
+    ],
+  ];
+  await runK3dKubectlCommands(commands);
 }
 
 function readRequiredK3dEnv(envName: string): string {

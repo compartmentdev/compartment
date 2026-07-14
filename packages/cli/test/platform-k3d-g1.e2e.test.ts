@@ -210,24 +210,62 @@ async function writePostRestoreCommand(input: GateCommandInput): Promise<string>
 
 function buildPostRestoreScript(input: GateCommandInput): string {
   return `import { writeFile } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
 const routeUrl = ${JSON.stringify(input.routeUrl)};
-const first = await fetch(routeUrl, { redirect: 'manual' });
+const first = await waitForLoginRedirect(routeUrl);
 const loginUrl = new URL(first.headers.get('location'));
 const state = loginUrl.searchParams.get('state');
 const flowName = \`__Host-compartment_app_flow_\${state}\`;
 const flowCookie = readCookie(first, flowName);
-const page = await fetch(loginUrl, { redirect: 'manual' });
+const page = await request(loginUrl, { redirect: 'manual' });
 const csrf = readCookie(page, '__Host-compartment_csrf');
-const login = await fetch(new URL('/v1/auth/login', loginUrl), {
+const login = await request(new URL('/v1/auth/login', loginUrl), {
   body: JSON.stringify({ email: ${JSON.stringify(input.viewerEmail)}, host: loginUrl.searchParams.get('host'), password: ${JSON.stringify(input.viewerPassword)}, path: loginUrl.searchParams.get('path'), sessionDelivery: 'cookie', state }),
   headers: { 'content-type': 'application/json', cookie: \`__Host-compartment_csrf=\${csrf}\`, origin: loginUrl.origin, 'x-compartment-csrf': csrf },
   method: 'POST',
   redirect: 'manual',
 });
 const payload = await login.json();
-const callback = await fetch(payload.redirectTo, { headers: { cookie: \`\${flowName}=\${flowCookie}\` }, redirect: 'manual' });
+const callback = await request(payload.redirectTo, { headers: { cookie: \`\${flowName}=\${flowCookie}\` }, redirect: 'manual' });
 const appSession = readCookie(callback, '__Host-compartment_app_session');
 await writeFile(${JSON.stringify(input.appSessionCookiePath)}, \`__Host-compartment_app_session=\${appSession}\\n\`);
+async function waitForLoginRedirect(url) {
+  let lastStatus = 0;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const response = await request(url, { redirect: 'manual' });
+    lastStatus = response.status;
+    if (response.status >= 300 && response.status < 400 && response.headers.has('location')) return response;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(\`Route did not converge to a login redirect. Last status: \${lastStatus}.\`);
+}
+async function request(url, options) {
+  const target = new URL(url);
+  const connect = new URL(target);
+  const headers = new Headers(options?.headers);
+  if (target.hostname.endsWith('.localhost')) {
+    connect.hostname = '127.0.0.1';
+    headers.set('host', target.host);
+  }
+  return await new Promise((resolve, reject) => {
+    const request = httpRequest(connect, { headers: Object.fromEntries(headers), method: options?.method }, (incoming) => {
+      const chunks = [];
+      incoming.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      incoming.on('error', reject);
+      incoming.on('end', () => {
+        const responseHeaders = new Headers();
+        for (const [name, value] of Object.entries(incoming.headers)) {
+          for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) {
+            responseHeaders.append(name, item);
+          }
+        }
+        resolve(new Response(Buffer.concat(chunks), { headers: responseHeaders, status: incoming.statusCode ?? 500 }));
+      });
+    });
+    request.on('error', reject);
+    request.end(options?.body);
+  });
+}
 function readCookie(response, name) {
   for (const value of response.headers.getSetCookie()) {
     const pair = value.split(';', 1)[0];

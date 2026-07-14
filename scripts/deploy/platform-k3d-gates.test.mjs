@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { parseDeploymentReferences } from './collect-platform-k3d-e2e-diagnostics.mjs';
-import { findDegradedProductDeployments, parseNonNegativeInteger } from './run-platform-k3d-product-log-gate.mjs';
+import {
+  findDegradedProductDeployments,
+  parseNonNegativeInteger,
+  parseProductLogBufferBytes,
+  parseProductLogBufferMaxBytes,
+} from './run-platform-k3d-product-log-gate.mjs';
 
 describe('platform k3d diagnostics and product-log gates', () => {
   it('parses namespaced deployment references', () => {
@@ -15,6 +20,17 @@ describe('platform k3d diagnostics and product-log gates', () => {
   it('accepts only non-negative integer command output', () => {
     expect(parseNonNegativeInteger(' 123\n', 'quota')).toBe(123);
     expect(() => parseNonNegativeInteger('1.5', 'quota')).toThrow('Unable to read quota');
+  });
+
+  it('reads the product-log buffer gauge instead of allocated disk segments', () => {
+    const metrics = `vector_buffer_byte_size{buffer_id="metrics",buffer_type="memory"} 0
+vector_buffer_byte_size{buffer_id="product_store",component_id="product_store",buffer_type="disk"} 132581856 1234
+vector_buffer_max_byte_size{component_id="product_store",buffer_type="disk"} 268435488 1234`;
+    expect(parseProductLogBufferBytes(metrics)).toBe(132_581_856);
+    expect(parseProductLogBufferMaxBytes(metrics)).toBe(268_435_488);
+    expect(() => parseProductLogBufferBytes('vector_buffer_events{buffer_id="product_store"} 50')).toThrow(
+      'Unable to read product-log buffer size',
+    );
   });
 
   it('finds unavailable product deployments only', () => {

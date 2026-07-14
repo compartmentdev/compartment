@@ -7,6 +7,8 @@ import {
   deploymentInspectResponseSchema,
   deploymentLogsResponseSchema,
   deploymentStatusResponseSchema,
+  projectDeleteResponseSchema,
+  projectResponseSchema,
   variableResponseSchema,
   type DeploymentInspectResponse,
   type DeploymentInspectRuntimeSummary,
@@ -15,6 +17,8 @@ import {
   type DeploymentLogsResponse,
   type DeploymentReadSummary,
   type DeploymentStatusResponse,
+  type ProjectDeleteResponse,
+  type ProjectResponse,
   type VariableResponse,
 } from '@compartment/contracts';
 import {
@@ -40,7 +44,7 @@ import {
   type SelfHostedUserSetupRuntime,
 } from './self-hosted-user-setup.e2e.harness';
 import { readAppSessionCookieWithRetry } from './self-hosted-user-setup-app-probe.harness';
-import { isK3dPlatformMode, readK3dPlatformSeed } from './self-hosted-user-setup-k3d.harness';
+import { isK3dPlatformMode, readK3dPlatformSeed, reclaimK3dBuildStorage } from './self-hosted-user-setup-k3d.harness';
 import {
   selfHostedMultiServiceBuildFixtures,
   selfHostedSingleServiceBuildFixtures,
@@ -134,6 +138,7 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
             expect(requireRouteUrl(statusPayload, 'web')).toBe(routeUrl);
 
             await expectSingleServiceFixtureLogs(admin, fixture);
+            await cleanupK3dBuildFixture(admin, fixture.name);
           });
         }
       } finally {
@@ -212,6 +217,7 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
           if (fixture.checkRollback === true) {
             await expectMultiServiceRollback(admin, fixture, runtime);
           }
+          await cleanupK3dBuildFixture(admin, fixture.name);
         });
       }
       completedStepCount = 3;
@@ -219,6 +225,24 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
     selfHostedBuildMatrixTimeoutMs,
   );
 });
+
+async function cleanupK3dBuildFixture(admin: SelfHostedUserSetupCli, projectName: string): Promise<void> {
+  if (!isK3dPlatformMode()) {
+    return;
+  }
+
+  const archivedProject: ProjectResponse = await admin.runJson(
+    `project archive --project ${projectName} --yes`,
+    projectResponseSchema,
+  );
+  expect(archivedProject.project.archivedAt).not.toBeNull();
+  const deletedProject: ProjectDeleteResponse = await admin.runJson(
+    `project delete --project ${projectName} --yes`,
+    projectDeleteResponseSchema,
+  );
+  expect(deletedProject.projectName).toBe(projectName);
+  await reclaimK3dBuildStorage();
+}
 
 async function seedBuildVariables(
   admin: SelfHostedUserSetupCli,

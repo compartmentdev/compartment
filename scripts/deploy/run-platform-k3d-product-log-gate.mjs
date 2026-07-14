@@ -6,31 +6,30 @@ import { runMain } from '../lib/run-main.mjs';
 
 const context = 'k3d-compartment-e2e';
 const platformNamespace = 'compartment';
-const loadNamespace = 'cpt-p7-buffer-gate';
 const platformName = 'compartment-compartment';
 const observabilityNamespace = `${platformName}-observability`;
 const agentName = `${platformName}-log-agent`;
 const quotaMaxBytes = 1_073_741_824;
-const bufferMinBytes = 209_715_200;
-const bufferMaxBytes = 285_212_672;
+const configuredBufferMaxBytes = 268_435_488;
+const bufferMinBytes = 125_829_120;
+const bufferMaxBytes = 150_994_944;
+const loadPodCount = 7;
+const loadPodImage = 'public.ecr.aws/docker/library/node:24.15.0-bookworm';
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const loadProgram = `
-const line = "p7-bounded-buffer-" + "x".repeat(4000);
+const line = "p7-bounded-buffer-" + "x".repeat(3400);
 let index = 0;
-const writeBatch = () => {
-  if (index >= 75000) {
-    setInterval(() => {}, 60000);
-    return;
-  }
-  for (let count = 0; count < 1000; count += 1) {
-    if (!process.stdout.write(line + "-" + index++ + "\\n")) {
-      process.stdout.once("drain", writeBatch);
-      return;
+(async () => {
+  while (index < 6000) {
+    for (let count = 0; count < 250 && index < 6000; count += 1) {
+      if (!process.stdout.write(line + "-" + index++ + "\\n")) {
+        await new Promise((resolve) => process.stdout.once("drain", resolve));
+      }
     }
+    await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  setImmediate(writeBatch);
-};
-writeBatch();
+  setInterval(() => {}, 60000);
+})();
 `;
 
 export function parseNonNegativeInteger(output, label) {
@@ -39,6 +38,25 @@ export function parseNonNegativeInteger(output, label) {
     throw new Error(`Unable to read ${label}.`);
   }
   return Number.parseInt(value, 10);
+}
+
+export function parseProductLogBufferBytes(metrics) {
+  return parseProductLogBufferMetric(metrics, 'vector_buffer_byte_size', 'product-log buffer size');
+}
+
+export function parseProductLogBufferMaxBytes(metrics) {
+  return parseProductLogBufferMetric(metrics, 'vector_buffer_max_byte_size', 'product-log buffer maximum');
+}
+
+function parseProductLogBufferMetric(metrics, metricName, label) {
+  const line = metrics
+    .split('\n')
+    .find((candidate) => candidate.startsWith(`${metricName}{`) && candidate.includes('component_id="product_store"'));
+  const value = line?.match(/\}\s+(\d+)(?:\s|$)/u)?.[1];
+  if (value === undefined) {
+    throw new Error(`Unable to read ${label}.`);
+  }
+  return parseNonNegativeInteger(value, label);
 }
 
 export function findDegradedProductDeployments(rawDeployments) {
@@ -51,6 +69,7 @@ export function findDegradedProductDeployments(rawDeployments) {
 
 export async function runPlatformK3dProductLogGate() {
   let originalQuota;
+  let loadTarget;
   try {
     runCommand(
       'kubectl',
@@ -68,16 +87,18 @@ export async function runPlatformK3dProductLogGate() {
     );
     originalQuota = readQuota();
     writeQuota(quotaMaxBytes);
-    startLoadPod();
+    loadTarget = await startLoadPods();
     const bufferBytes = await waitForBoundedBuffer();
-    assertPlatformHealthy();
+    assertPlatformHealthy(loadTarget);
     const currentQuota = readQuota();
     if (currentQuota !== quotaMaxBytes) {
       throw new Error(`Product-log quota changed while ingest was backpressured: ${currentQuota}.`);
     }
-    process.stdout.write(`product_log_gate buffer_bytes=${bufferBytes} quota_bytes=${currentQuota} status=ok\n`);
+    process.stdout.write(
+      `product_log_gate buffer_bytes=${bufferBytes} buffer_max_bytes=${configuredBufferMaxBytes} quota_bytes=${currentQuota} status=ok\n`,
+    );
   } finally {
-    cleanup(originalQuota);
+    cleanup(originalQuota, loadTarget);
   }
 }
 
@@ -117,41 +138,70 @@ function writeQuota(value) {
   psql(`update product_log_store_quota set used_bytes = ${value} where id = 'global';`);
 }
 
-function startLoadPod() {
-  runCommand('kubectl', ['--context', context, 'create', 'namespace', loadNamespace], repositoryRoot);
-  runCommand(
-    'kubectl',
-    [
-      '--context',
-      context,
-      '--namespace',
-      loadNamespace,
-      'run',
-      'app-buffer-load',
-      '--image=public.ecr.aws/docker/library/node:24.15.0-bookworm',
-      '--restart=Never',
-      '--command',
-      '--',
-      'node',
-      '-e',
-      loadProgram,
-    ],
-    repositoryRoot,
+async function startLoadPods() {
+  const sourcePod = JSON.parse(
+    captureCommand(
+      'kubectl',
+      [
+        '--context',
+        context,
+        'get',
+        'pods',
+        '--all-namespaces',
+        '--field-selector=status.phase=Running',
+        '--output=json',
+      ],
+      repositoryRoot,
+    ),
+  ).items.find(
+    (pod) =>
+      pod.metadata.namespace.startsWith('cpt-prj-') &&
+      pod.status.containerStatuses?.some((container) => container.ready && container.name.startsWith('app-')),
   );
-  runCommand(
-    'kubectl',
-    [
-      '--context',
-      context,
-      '--namespace',
-      loadNamespace,
-      'wait',
-      'pod/app-buffer-load',
-      '--for=condition=Ready',
-      '--timeout=3m',
-    ],
-    repositoryRoot,
-  );
+  const namespace = sourcePod?.metadata.namespace;
+  const containerName = sourcePod?.status.containerStatuses?.find(
+    (container) => container.ready && container.name.startsWith('app-'),
+  )?.name;
+  if (namespace === undefined || containerName === undefined) {
+    throw new Error('No ready product deployment is available for the product-log buffer gate.');
+  }
+  const podNames = Array.from({ length: loadPodCount }, (_, index) => `p7-buffer-load-${index}`);
+  const overrides = JSON.stringify({
+    spec: { containers: [{ command: ['node', '-e', loadProgram], image: loadPodImage, name: containerName }] },
+  });
+  for (const podName of podNames) {
+    runCommand(
+      'kubectl',
+      [
+        '--context',
+        context,
+        '--namespace',
+        namespace,
+        'run',
+        podName,
+        `--image=${loadPodImage}`,
+        '--restart=Never',
+        `--overrides=${overrides}`,
+      ],
+      repositoryRoot,
+    );
+    runCommand(
+      'kubectl',
+      [
+        '--context',
+        context,
+        '--namespace',
+        namespace,
+        'wait',
+        `pod/${podName}`,
+        '--for=condition=Ready',
+        '--timeout=3m',
+      ],
+      repositoryRoot,
+    );
+    await delay(10_000);
+  }
+  return { namespace, podNames };
 }
 
 async function waitForBoundedBuffer() {
@@ -171,29 +221,30 @@ async function waitForBoundedBuffer() {
     ],
     repositoryRoot,
   );
-  const agentNode = captureCommand(
-    'kubectl',
-    [
-      '--context',
-      context,
-      '--namespace',
-      observabilityNamespace,
-      'get',
-      'pod',
-      agentPod,
-      '--output',
-      'jsonpath={.spec.nodeName}',
-    ],
-    repositoryRoot,
-  );
   let bufferBytes = 0;
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    const output = captureCommand(
-      'docker',
-      ['exec', agentNode, 'du', '-sb', `/var/lib/compartment/${agentName}`],
+  for (let attempt = 0; attempt < 300; attempt += 1) {
+    const metrics = captureCommand(
+      'kubectl',
+      [
+        '--context',
+        context,
+        '--namespace',
+        observabilityNamespace,
+        'exec',
+        agentPod,
+        '--',
+        'wget',
+        '--quiet',
+        '--output-document=-',
+        'http://127.0.0.1:9598/metrics',
+      ],
       repositoryRoot,
     );
-    bufferBytes = parseNonNegativeInteger(output.split(/\s+/u)[0] ?? '', 'product-log buffer size');
+    const configuredMaxBytes = parseProductLogBufferMaxBytes(metrics);
+    if (configuredMaxBytes !== configuredBufferMaxBytes) {
+      throw new Error(`Unexpected product-log buffer maximum: bytes=${configuredMaxBytes}.`);
+    }
+    bufferBytes = parseProductLogBufferBytes(metrics);
     if (bufferBytes >= bufferMinBytes) {
       break;
     }
@@ -205,7 +256,7 @@ async function waitForBoundedBuffer() {
   return bufferBytes;
 }
 
-function assertPlatformHealthy() {
+function assertPlatformHealthy(loadTarget) {
   runCommand('kubectl', ['--context', context, '--request-timeout=5s', 'get', '--raw=/readyz'], repositoryRoot);
   runCommand(
     'kubectl',
@@ -221,23 +272,25 @@ function assertPlatformHealthy() {
     ],
     repositoryRoot,
   );
-  const ready = captureCommand(
-    'kubectl',
-    [
-      '--context',
-      context,
-      '--namespace',
-      loadNamespace,
-      'get',
-      'pod',
-      'app-buffer-load',
-      '--output',
-      'jsonpath={.status.containerStatuses[0].ready}',
-    ],
-    repositoryRoot,
-  );
-  if (ready !== 'true') {
-    throw new Error('Product-log load pod is not Ready.');
+  for (const podName of loadTarget.podNames) {
+    const ready = captureCommand(
+      'kubectl',
+      [
+        '--context',
+        context,
+        '--namespace',
+        loadTarget.namespace,
+        'get',
+        'pod',
+        podName,
+        '--output',
+        'jsonpath={.status.containerStatuses[0].ready}',
+      ],
+      repositoryRoot,
+    );
+    if (ready !== 'true') {
+      throw new Error(`Product-log load pod ${podName} is not Ready.`);
+    }
   }
   const deployments = captureCommand(
     'kubectl',
@@ -249,7 +302,7 @@ function assertPlatformHealthy() {
   }
 }
 
-function cleanup(originalQuota) {
+function cleanup(originalQuota, loadTarget) {
   if (originalQuota !== undefined) {
     try {
       writeQuota(originalQuota);
@@ -257,14 +310,25 @@ function cleanup(originalQuota) {
       // Cleanup remains best-effort so the original gate failure is preserved.
     }
   }
-  try {
-    runCommand(
-      'kubectl',
-      ['--context', context, 'delete', 'namespace', loadNamespace, '--ignore-not-found', '--wait=false'],
-      repositoryRoot,
-    );
-  } catch {
-    // Cleanup remains best-effort so the original gate failure is preserved.
+  if (loadTarget !== undefined) {
+    try {
+      runCommand(
+        'kubectl',
+        [
+          '--context',
+          context,
+          '--namespace',
+          loadTarget.namespace,
+          'delete',
+          'pod',
+          ...loadTarget.podNames,
+          '--ignore-not-found',
+        ],
+        repositoryRoot,
+      );
+    } catch {
+      // Cleanup remains best-effort so the original gate failure is preserved.
+    }
   }
 }
 
