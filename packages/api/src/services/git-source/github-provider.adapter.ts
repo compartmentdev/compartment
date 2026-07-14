@@ -1,8 +1,6 @@
 import { createGitSourceRegistrationFailedError } from '../../errors/api-business-error';
 import type { ApiBusinessError } from '../../errors/api-business-error.shared';
-import { decryptVariableValueFromStorage } from '../../lib/variables-crypto';
-import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
-import { getApiConfig } from '../../runtime/runtime-access';
+import type { GitProviderReadExecutor } from '../../queries/git-provider-registration.query.types';
 import {
   assertGitHubRepositoryBranchExists,
   createGitHubRepositoryDescriptorPullRequest,
@@ -19,7 +17,6 @@ import {
   mintGitHubInstallationToken,
   readGitHubRequestFailureStatus,
 } from './github-app-http.adapter';
-import { requireEncryptedRegistrationField } from './git-source-resolution-worker.support';
 import { classifyGitProviderHttpStatus } from './git-source-provider-error.service';
 import type {
   CreateDescriptorPullRequestPlan,
@@ -40,21 +37,21 @@ import type {
   ResolvedRepositoryInstallation,
   SourceProviderHookAttachment,
 } from './git-source-provider.types';
-import { requireGitProviderField } from './git-source-view.service';
+import { readGitHubAppProviderCredential } from './github-provider-credential.adapter';
 
 class GitHubProviderAdapter implements GitProviderAdapter {
   public readonly providerType: GitProviderType = 'github_app';
 
-  public readRegistrationCredential(registration: GitProviderRegistrationRow): GitProviderCredential {
-    return {
-      kind: 'github_app',
-      privateKeyPem: readGitHubRegistrationPrivateKey(registration),
-    };
+  public async readRegistrationCredential(
+    executor: GitProviderReadExecutor,
+    registrationId: string,
+  ): Promise<GitProviderCredential> {
+    return await readGitHubAppProviderCredential(executor, registrationId);
   }
 
-  public readRegistrationMetadata(registration: GitProviderRegistrationRow): GitProviderRegistrationMetadata {
+  public readRegistrationMetadata(access: GitProviderAccess): GitProviderRegistrationMetadata {
     return {
-      accountLogin: requireGitProviderField(registration.installationAccountLogin, 'installation_account_login'),
+      accountLogin: requireGitHubAppCredential(access.credential).installationAccountLogin,
       expiresAt: null,
     };
   }
@@ -64,7 +61,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
     ref: GitRepositoryRef,
   ): Promise<ResolvedRepositoryInstallation> {
     const installation: { installationId: string } = await resolveGitHubRepositoryInstallation({
-      appId: requireRegistrationAppId(access.registration),
+      appId: requireGitHubAppCredential(access.credential).appId,
       owner: ref.owner,
       privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       providerHost: ref.providerHost,
@@ -80,7 +77,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
     providerInstallationId: string | null,
   ): Promise<GitRepositoryMetadata> {
     return await readGitHubRepositoryMetadata({
-      appId: requireRegistrationAppId(access.registration),
+      appId: requireGitHubAppCredential(access.credential).appId,
       installationId: requireResolvedInstallationId(providerInstallationId),
       owner: ref.owner,
       privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
@@ -96,7 +93,7 @@ class GitHubProviderAdapter implements GitProviderAdapter {
     branchName: string,
   ): Promise<void> {
     await assertGitHubRepositoryBranchExists({
-      appId: requireRegistrationAppId(access.registration),
+      appId: requireGitHubAppCredential(access.credential).appId,
       branchName,
       installationId: requireResolvedInstallationId(providerInstallationId),
       owner: ref.owner,
@@ -108,8 +105,8 @@ class GitHubProviderAdapter implements GitProviderAdapter {
 
   public async listRegistrationRepositories(access: GitProviderAccess): Promise<GitRepositorySummary[]> {
     const repositories: GitHubInstallationRepository[] = await listGitHubInstallationRepositories({
-      appId: requireRegistrationAppId(access.registration),
-      installationId: requireRegistrationInstallationId(access.registration),
+      appId: requireGitHubAppCredential(access.credential).appId,
+      installationId: requireGitHubAppCredential(access.credential).installationId,
       privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       providerHost: access.registration.providerHost,
     });
@@ -123,9 +120,9 @@ class GitHubProviderAdapter implements GitProviderAdapter {
     branchName: string,
   ): Promise<GitRepositoryTreeEntry[]> {
     return await readGitHubRepositoryTree({
-      appId: requireRegistrationAppId(access.registration),
+      appId: requireGitHubAppCredential(access.credential).appId,
       branchName,
-      installationId: requireRegistrationInstallationId(access.registration),
+      installationId: requireGitHubAppCredential(access.credential).installationId,
       owner: ref.owner,
       privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       providerHost: ref.providerHost,
@@ -140,9 +137,9 @@ class GitHubProviderAdapter implements GitProviderAdapter {
     path: string,
   ): Promise<GitRepositoryFile> {
     return await readGitHubRepositoryContent({
-      appId: requireRegistrationAppId(access.registration),
+      appId: requireGitHubAppCredential(access.credential).appId,
       branchName,
-      installationId: requireRegistrationInstallationId(access.registration),
+      installationId: requireGitHubAppCredential(access.credential).installationId,
       owner: ref.owner,
       path,
       privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
@@ -157,11 +154,11 @@ class GitHubProviderAdapter implements GitProviderAdapter {
     plan: CreateDescriptorPullRequestPlan,
   ): Promise<GitPullRequestRef> {
     return await createGitHubRepositoryDescriptorPullRequest({
-      appId: requireRegistrationAppId(access.registration),
+      appId: requireGitHubAppCredential(access.credential).appId,
       baseBranchName: plan.baseBranchName,
       descriptorPath: plan.descriptorPath,
       files: plan.files,
-      installationId: requireRegistrationInstallationId(access.registration),
+      installationId: requireGitHubAppCredential(access.credential).installationId,
       owner: ref.owner,
       privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       projectName: plan.projectName,
@@ -176,8 +173,8 @@ class GitHubProviderAdapter implements GitProviderAdapter {
     pullRequestNumber: number,
   ): Promise<GitPullRequestStatus> {
     return await readGitHubRepositoryPullRequestStatus({
-      appId: requireRegistrationAppId(access.registration),
-      installationId: requireRegistrationInstallationId(access.registration),
+      appId: requireGitHubAppCredential(access.credential).appId,
+      installationId: requireGitHubAppCredential(access.credential).installationId,
       owner: ref.owner,
       privateKeyPem: requireGitHubAppCredential(access.credential).privateKeyPem,
       providerHost: ref.providerHost,
@@ -187,10 +184,13 @@ class GitHubProviderAdapter implements GitProviderAdapter {
   }
 
   public async mintRuntimeAccessToken(input: MintRuntimeAccessTokenInput): Promise<string> {
+    const credential: Extract<GitProviderCredential, { kind: 'github_app' }> = requireGitHubAppCredential(
+      input.access.credential,
+    );
     return await mintGitHubInstallationToken({
-      appId: requireEncryptedRegistrationField(input.registration.appId, 'app_id'),
+      appId: credential.appId,
       installationId: requireResolvedInstallationId(input.source.providerInstallationId),
-      privateKeyPem: decryptEncryptedRegistrationPrivateKey(input.registration),
+      privateKeyPem: credential.privateKeyPem,
       providerHost: input.source.providerHost,
     });
   }
@@ -226,33 +226,6 @@ function requireGitHubAppCredential(
 }
 
 export const githubProviderAdapter: GitProviderAdapter = new GitHubProviderAdapter();
-
-// Interactive/connect paths decrypt via `requireGitProviderField` (rejects empty strings, matching the
-// original descriptor/connect behavior). The worker mint path below uses `requireEncryptedRegistrationField`
-// (rejects only null) to preserve the worker's original distinct error messages. Keep both as-is.
-export function readGitHubRegistrationPrivateKey(registration: GitProviderRegistrationRow): string {
-  return decryptVariableValueFromStorage(
-    requireGitProviderField(registration.privateKeyPemCiphertext, 'private_key_pem_ciphertext'),
-    requireGitProviderField(registration.privateKeyPemEncryptionKeyId, 'private_key_pem_encryption_key_id'),
-    getApiConfig().variablesMasterKey,
-  );
-}
-
-function decryptEncryptedRegistrationPrivateKey(registration: GitProviderRegistrationRow): string {
-  return decryptVariableValueFromStorage(
-    requireEncryptedRegistrationField(registration.privateKeyPemCiphertext, 'private_key_pem_ciphertext'),
-    requireEncryptedRegistrationField(registration.privateKeyPemEncryptionKeyId, 'private_key_pem_encryption_key_id'),
-    getApiConfig().variablesMasterKey,
-  );
-}
-
-function requireRegistrationAppId(registration: GitProviderRegistrationRow): string {
-  return requireGitProviderField(registration.appId, 'app_id');
-}
-
-function requireRegistrationInstallationId(registration: GitProviderRegistrationRow): string {
-  return requireGitProviderField(registration.installationId, 'installation_id');
-}
 
 function toGitRepositorySummary(repository: GitHubInstallationRepository): GitRepositorySummary {
   return {

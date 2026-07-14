@@ -3,9 +3,14 @@ import {
   activateGitProviderRegistration,
   createPendingGitProviderRegistration,
   failGitProviderRegistration,
-  persistGitProviderRegistrationManifestExchange,
+  persistGitProviderRegistrationWebhookSecret,
   setGitProviderRegistrationBootstrapState,
 } from '../../queries/git-provider-registration.query';
+import {
+  createGitHubAppRegistrationCredential,
+  deleteGitHubAppRegistrationCredential,
+  stageGitHubAppRegistrationCredential,
+} from '../../queries/github-app-registration-credential.query';
 import {
   createGitProviderBootstrapState,
   markGitProviderBootstrapStateCompleted,
@@ -16,12 +21,15 @@ import {
   reopenActiveGitProviderRegistrationBootstrap,
 } from '../../queries/git-provider-registration-bootstrap.query';
 import type {
+  CreateGitHubAppRegistrationCredentialInput,
+  GitProviderMutationTransaction,
   GitProviderRegistrationRow,
   GitProviderWriteExecutor,
 } from '../../queries/git-provider-registration.query.types';
 import type { GitHubAppInstallation, GitHubManifestConversionResult } from './github-app-client.adapter.types';
 import type { GitHubManifestSecrets, PendingGitHubBootstrapMaterial } from './git-source-bootstrap.support';
 import type { StartGitHubProviderBootstrapInput } from './git-source.service.types';
+import type { ClaimedGitHubBootstrapSetup } from './git-source-bootstrap-completion.support';
 
 const gitHubProviderType: string = 'github_app';
 
@@ -32,15 +40,18 @@ export async function persistPendingGitHubProviderManifestExchange(
   encryptedSecrets: GitHubManifestSecrets,
   now: Date,
 ): Promise<void> {
-  await persistGitProviderRegistrationManifestExchange(transaction, {
+  await stageGitHubAppRegistrationCredential(transaction, {
     appId: exchanged.appId,
     appName: exchanged.appName,
     appSlug: exchanged.appSlug,
     appUrl: exchanged.appUrl,
-    id: registration.id,
-    organizationId: registration.organizationId,
     privateKeyPemCiphertext: encryptedSecrets.privateKeyPemCiphertext,
     privateKeyPemEncryptionKeyId: encryptedSecrets.privateKeyPemEncryptionKeyId,
+    registrationId: registration.id,
+  });
+  await persistGitProviderRegistrationWebhookSecret(transaction, {
+    id: registration.id,
+    organizationId: registration.organizationId,
     webhookSecretCiphertext: encryptedSecrets.webhookSecretCiphertext,
     webhookSecretEncryptionKeyId: encryptedSecrets.webhookSecretEncryptionKeyId,
     updatedAt: now,
@@ -48,19 +59,16 @@ export async function persistPendingGitHubProviderManifestExchange(
 }
 
 export async function activatePersistedGitHubProviderRegistration(
-  transaction: GitProviderWriteExecutor,
-  registration: Pick<GitProviderRegistrationRow, 'id' | 'organizationId'>,
+  transaction: GitProviderMutationTransaction,
+  claimedSetup: ClaimedGitHubBootstrapSetup,
   installation: GitHubAppInstallation,
   now: Date,
 ): Promise<void> {
   const updatedRegistration: GitProviderRegistrationRow | undefined = await activateGitProviderRegistration(
     transaction,
     {
-      id: registration.id,
-      installationAccountLogin: installation.accountLogin,
-      installationAccountType: installation.accountType,
-      installationId: installation.installationId,
-      organizationId: registration.organizationId,
+      id: claimedSetup.registrationId,
+      organizationId: claimedSetup.organizationId,
       status: 'active',
       updatedAt: now,
     },
@@ -68,6 +76,28 @@ export async function activatePersistedGitHubProviderRegistration(
   if (updatedRegistration === undefined) {
     throw createGitSourceBootstrapInvalidError('Git provider registration is no longer pending.');
   }
+  await createGitHubAppRegistrationCredential(
+    transaction,
+    buildGitHubAppRegistrationCredential(claimedSetup, installation),
+  );
+}
+
+function buildGitHubAppRegistrationCredential(
+  claimedSetup: ClaimedGitHubBootstrapSetup,
+  installation: GitHubAppInstallation,
+): CreateGitHubAppRegistrationCredentialInput {
+  return {
+    appId: claimedSetup.appId,
+    appName: claimedSetup.appName,
+    appSlug: claimedSetup.appSlug,
+    appUrl: claimedSetup.appUrl,
+    installationAccountLogin: installation.accountLogin,
+    installationAccountType: installation.accountType,
+    installationId: installation.installationId,
+    privateKeyPemCiphertext: claimedSetup.privateKeyPemCiphertext,
+    privateKeyPemEncryptionKeyId: claimedSetup.privateKeyPemEncryptionKeyId,
+    registrationId: claimedSetup.registrationId,
+  };
 }
 
 export async function failPendingGitHubBootstrapForOwner(
@@ -124,6 +154,7 @@ export async function failActiveGitHubProviderRegistration(
     status: 'failed',
     updatedAt: now,
   });
+  await deleteGitHubAppRegistrationCredential(transaction, registration.id);
 }
 
 export async function persistPendingGitHubBootstrap(

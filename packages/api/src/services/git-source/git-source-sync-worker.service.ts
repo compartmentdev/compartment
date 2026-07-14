@@ -5,8 +5,6 @@ import type {
 } from '@compartment/contracts';
 import { createId } from '../../lib/tokens';
 import { sourceSyncTaskLeaseMs } from '../../git-source.constants';
-import { findGitProviderRegistrationById } from '../../queries/git-provider-registration.query';
-import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import { createSourceSyncClaimToken } from '../../queries/source-sync-claim-token.query.support';
 import {
   cancelNonTerminalSourceSyncTasksBySource,
@@ -22,14 +20,12 @@ import { getApiConfig, getApiDatabase } from '../../runtime/runtime-access';
 import { recordAuditEvent, writeCommittedAuditEventsToLocalFileSink } from '../audit-events.service';
 import type { AuditEventResult } from '../audit-events.service.types';
 import { getGitProviderAdapter } from './git-source-provider.registry';
+import { requireGitProviderAccessByRegistrationId } from './git-source-provider-access.service';
+import type { GitProviderAccess } from './git-source-provider.types';
 import { completeClaimedGitSourceSyncTask } from './git-source-sync-completion.service';
 import type { CompleteClaimedGitSourceSyncTaskResult } from './git-source-sync-completion.service.types';
 import { buildGitSourceSyncAuditEventInput } from './git-source-audit.service';
-import {
-  buildClaimedTaskProviderFields,
-  requireActiveSource,
-  requireGitProviderRegistration,
-} from './git-source-resolution-worker.support';
+import { buildClaimedTaskProviderFields, requireActiveSource } from './git-source-resolution-worker.support';
 
 const sourceSyncCanceledFailureReason: string = 'Source is no longer active for sync completion.';
 
@@ -191,15 +187,15 @@ async function cancelSourceSyncTasksForInactiveSource(sourceId: string): Promise
 
 async function buildClaimedSourceSyncTask(task: SourceSyncTaskRow): Promise<WorkerClaimedGitSourceSyncTask> {
   const source: SourceRow = requireActiveSource(await findSourceById(task.sourceId));
-  const registration: GitProviderRegistrationRow = await readSourceSyncRegistration(source);
+  const access: GitProviderAccess = await readSourceSyncAccess(source);
   return {
-    ...buildClaimedTaskProviderFields(registration, source),
+    ...buildClaimedTaskProviderFields(access.registration, source),
     claimToken: createSourceSyncClaimToken({
       claimedAt: requireClaimedAt(task.claimedAt),
       claimedByWorkerId: requireClaimedByWorkerId(task.claimedByWorkerId),
       secret: getApiConfig().runtimeControlToken,
     }),
-    providerAccessToken: await mintSourceSyncRuntimeToken(source, registration),
+    providerAccessToken: await mintSourceSyncRuntimeToken(source, access),
     providerHost: source.providerHost,
     repositoryName: source.repositoryName,
     repositoryOwner: source.repositoryOwner,
@@ -210,23 +206,12 @@ async function buildClaimedSourceSyncTask(task: SourceSyncTaskRow): Promise<Work
   };
 }
 
-async function readSourceSyncRegistration(source: SourceRow): Promise<GitProviderRegistrationRow> {
-  return requireGitProviderRegistration(
-    await findGitProviderRegistrationById({
-      organizationId: source.organizationId,
-      registrationId: source.providerRegistrationId,
-    }),
-  );
+async function readSourceSyncAccess(source: SourceRow): Promise<GitProviderAccess> {
+  return await requireGitProviderAccessByRegistrationId(source.organizationId, source.providerRegistrationId);
 }
 
-async function mintSourceSyncRuntimeToken(
-  source: SourceRow,
-  registration: GitProviderRegistrationRow,
-): Promise<string> {
-  return await getGitProviderAdapter(registration.providerType).mintRuntimeAccessToken({
-    registration,
-    source,
-  });
+async function mintSourceSyncRuntimeToken(source: SourceRow, access: GitProviderAccess): Promise<string> {
+  return await getGitProviderAdapter(access.registration.providerType).mintRuntimeAccessToken({ access, source });
 }
 
 function isTerminalSourceSyncTaskStatus(status: string): boolean {

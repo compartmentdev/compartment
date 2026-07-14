@@ -10,6 +10,9 @@ import type {
 
 export interface ClaimedGitHubBootstrapSetup {
   appId: string;
+  appName: string;
+  appSlug: string;
+  appUrl: string;
   organizationId: string;
   privateKeyPemCiphertext: string;
   privateKeyPemEncryptionKeyId: string;
@@ -20,28 +23,48 @@ export interface ClaimedGitHubBootstrapSetup {
   stateId: string;
 }
 
+interface GitHubBootstrapCredentialState extends GitProviderBootstrapStateRow {
+  appId: string;
+  appName: string;
+  appSlug: string;
+  appUrl: string;
+  privateKeyPemCiphertext: string;
+  privateKeyPemEncryptionKeyId: string;
+}
+
 export function buildClaimedGitHubBootstrapSetup(
   state: GitProviderBootstrapStateRow,
   registration: GitProviderRegistrationRow,
 ): ClaimedGitHubBootstrapSetup {
-  if (
-    registration.appId === null ||
-    registration.privateKeyPemCiphertext === null ||
-    registration.privateKeyPemEncryptionKeyId === null
-  ) {
-    throw createGitSourceBootstrapInvalidError();
-  }
+  const credentialState: GitHubBootstrapCredentialState = requireGitHubBootstrapCredentialState(state);
   return {
-    appId: registration.appId,
+    appId: credentialState.appId,
+    appName: credentialState.appName,
+    appSlug: credentialState.appSlug,
+    appUrl: credentialState.appUrl,
     organizationId: registration.organizationId,
-    privateKeyPemCiphertext: registration.privateKeyPemCiphertext,
-    privateKeyPemEncryptionKeyId: registration.privateKeyPemEncryptionKeyId,
+    privateKeyPemCiphertext: credentialState.privateKeyPemCiphertext,
+    privateKeyPemEncryptionKeyId: credentialState.privateKeyPemEncryptionKeyId,
     providerHost: registration.providerHost,
     registrationId: registration.id,
     repositoryOwner: state.repositoryOwner,
     returnTo: state.returnTo,
     stateId: state.id,
   };
+}
+
+function requireGitHubBootstrapCredentialState(state: GitProviderBootstrapStateRow): GitHubBootstrapCredentialState {
+  if (
+    state.appId === null ||
+    state.appName === null ||
+    state.appSlug === null ||
+    state.appUrl === null ||
+    state.privateKeyPemCiphertext === null ||
+    state.privateKeyPemEncryptionKeyId === null
+  ) {
+    throw createGitSourceBootstrapInvalidError();
+  }
+  return state as GitHubBootstrapCredentialState;
 }
 
 export function readClaimedGitHubBootstrapSetupPrivateKey(claimedSetup: ClaimedGitHubBootstrapSetup): string {

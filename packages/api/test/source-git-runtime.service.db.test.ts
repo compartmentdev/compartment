@@ -13,6 +13,8 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   auditEvents,
   gitProviderRegistrations,
+  githubAppRegistrationCredentials,
+  gitlabTokenRegistrationCredentials,
   localCredentials,
   organizations,
   organizationMemberships,
@@ -1242,19 +1244,12 @@ async function createRuntimeScope(): Promise<void> {
     );
   });
   await db.insert(gitProviderRegistrations).values({
-    appId: 'app_123',
-    appName: 'Compartment GitHub App',
-    appSlug: 'compartment-github-app',
-    appUrl: 'https://github.com/apps/compartment-github-app',
     bootstrapStateId: null,
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdByPrincipalId: 'prn_git_runtime',
     id: 'gpr_git_runtime',
-    installationId: 'inst_123',
     organizationId: 'org_git_runtime',
     pendingExpiresAt: null,
-    privateKeyPemCiphertext: 'private-key-ciphertext',
-    privateKeyPemEncryptionKeyId: 'private-key-id',
     providerHost: 'github.com',
     providerType: 'github_app',
     repositoryOwner: 'acme',
@@ -1264,10 +1259,19 @@ async function createRuntimeScope(): Promise<void> {
     webhookUrl:
       'https://console.example/v1/sources/git/providers/github/organizations/org_git_runtime/registrations/gpr_git_runtime/webhook',
   });
+  await db.insert(githubAppRegistrationCredentials).values({
+    appId: 'app_123',
+    appName: 'Compartment GitHub App',
+    appSlug: 'compartment-github-app',
+    appUrl: 'https://github.com/apps/compartment-github-app',
+    installationAccountLogin: 'acme',
+    installationAccountType: 'Organization',
+    installationId: 'inst_123',
+    privateKeyPemCiphertext: 'private-key-ciphertext',
+    privateKeyPemEncryptionKeyId: 'private-key-id',
+    registrationId: 'gpr_git_runtime',
+  });
   await db.insert(gitProviderRegistrations).values({
-    accessTokenCiphertext: encryptedWebhookSecret.valueCiphertext,
-    accessTokenEncryptionKeyId: encryptedWebhookSecret.encryptionKeyId,
-    accessTokenExpiresAt: null,
     providerAccountId: '101',
     providerAccountLogin: 'alice',
     callbackUrl: 'https://console.example',
@@ -1282,6 +1286,12 @@ async function createRuntimeScope(): Promise<void> {
     webhookSecretEncryptionKeyId: encryptedWebhookSecret.encryptionKeyId,
     webhookUrl:
       'https://console.example/v1/sources/git/providers/gitlab/organizations/org_git_runtime/registrations/gpr_gitlab_runtime/webhook',
+  });
+  await db.insert(gitlabTokenRegistrationCredentials).values({
+    accessTokenCiphertext: encryptedWebhookSecret.valueCiphertext,
+    accessTokenEncryptionKeyId: encryptedWebhookSecret.encryptionKeyId,
+    accessTokenExpiresAt: null,
+    registrationId: 'gpr_gitlab_runtime',
   });
 }
 

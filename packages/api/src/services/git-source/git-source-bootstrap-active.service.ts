@@ -1,10 +1,12 @@
-import { findActiveGitProviderRegistration } from '../../queries/git-provider-registration.query';
+import { findGitProviderRegistrationByStatusWithExecutor } from '../../queries/git-provider-registration.query';
 import type {
   GitProviderRegistrationRow,
   GitProviderWriteExecutor,
 } from '../../queries/git-provider-registration.query.types';
 import { isUniqueConstraintError } from '../../queries/query-error';
 import { getApiDatabase } from '../../runtime/runtime-access';
+import { buildGitProviderAccess } from './git-source-provider-access.service';
+import type { GitProviderAccess, GitProviderCredential } from './git-source-provider.types';
 import {
   failActiveGitHubProviderRegistration,
   failPendingGitHubBootstrapForOwner,
@@ -52,32 +54,39 @@ interface ReadActiveGitHubBootstrapViewInput {
 export async function readActiveGitHubBootstrapView(
   options: ReadActiveGitHubBootstrapViewInput,
 ): Promise<GitHubProviderBootstrapView | null> {
-  const registration: GitProviderRegistrationRow | undefined = await findActiveGitProviderRegistration({
-    organizationId: options.input.organizationId,
-    providerHost: options.input.providerHost,
-    providerType: 'github_app',
-    repositoryOwner: options.input.repositoryOwner,
-  });
-  if (registration === undefined) {
+  const access: GitProviderAccess | null = await getApiDatabase().transaction(
+    async (transaction: GitProviderWriteExecutor): Promise<GitProviderAccess | null> => {
+      const registration: GitProviderRegistrationRow | undefined =
+        await findGitProviderRegistrationByStatusWithExecutor(transaction, {
+          organizationId: options.input.organizationId,
+          providerHost: options.input.providerHost,
+          providerType: 'github_app',
+          repositoryOwner: options.input.repositoryOwner,
+          status: 'active',
+        });
+      return registration === undefined ? null : await buildGitProviderAccess(transaction, registration);
+    },
+  );
+  if (access === null) {
     return null;
   }
 
-  return await readActiveGitHubBootstrapViewForRegistration(options, registration);
+  return await readActiveGitHubBootstrapViewForRegistration(options, access);
 }
 
 async function readActiveGitHubBootstrapViewForRegistration(
   options: ReadActiveGitHubBootstrapViewInput,
-  registration: GitProviderRegistrationRow,
+  access: GitProviderAccess,
 ): Promise<GitHubProviderBootstrapView> {
-  const state: ActiveGitHubRegistrationState = await readActiveGitHubRegistrationState(registration);
+  const state: ActiveGitHubRegistrationState = await readActiveGitHubRegistrationState(access);
   if (state === 'valid') {
-    return buildActiveGitHubBootstrapView(registration);
+    return buildActiveGitHubBootstrapView(access);
   }
   if (state === 'installation_missing') {
-    return await reopenGitHubAppInstallationBootstrap(options, registration);
+    return await reopenGitHubAppInstallationBootstrap(options, access.registration);
   }
 
-  return await replaceMissingGitHubAppBootstrap(options, registration);
+  return await replaceMissingGitHubAppBootstrap(options, access.registration);
 }
 
 async function reopenGitHubAppInstallationBootstrap(
@@ -153,17 +162,28 @@ async function runGitHubBootstrapRecoveryMutation(
   }
 }
 
-function buildActiveGitHubBootstrapView(registration: GitProviderRegistrationRow): GitHubProviderBootstrapView {
+function buildActiveGitHubBootstrapView(access: GitProviderAccess): GitHubProviderBootstrapView {
+  const registration: GitProviderRegistrationRow = access.registration;
+  const credential: Extract<GitProviderCredential, { kind: 'github_app' }> = requireGitHubCredential(access.credential);
   return buildGitHubBootstrapView(
     registration.id,
     registration.providerHost,
     registration.repositoryOwner,
-    registration.installationAccountLogin,
-    registration.installationId,
+    credential.installationAccountLogin,
+    credential.installationId,
     'active',
     null,
     null,
   );
+}
+
+function requireGitHubCredential(
+  credential: GitProviderCredential,
+): Extract<GitProviderCredential, { kind: 'github_app' }> {
+  if (credential.kind !== 'github_app') {
+    throw new Error('GitHub bootstrap requires a GitHub App credential.');
+  }
+  return credential;
 }
 
 function buildActiveRegistrationBootstrapMaterial(

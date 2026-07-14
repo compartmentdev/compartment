@@ -6,8 +6,6 @@ import type {
 import { createId } from '../../lib/tokens';
 import { listDeploymentsBySourceResolutionTaskId } from '../../queries/deployments.query';
 import type { DeploymentRow } from '../../queries/deployments.query.types';
-import { findGitProviderRegistrationById } from '../../queries/git-provider-registration.query';
-import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import { findOrganizationById } from '../../queries/organizations.query';
 import type { OrganizationRow } from '../../queries/organizations.query.types';
 import { findSourceBindingById, findSourceById, listBranchMappingsByBindingIds } from '../../queries/source.query';
@@ -25,6 +23,8 @@ import type { DeploymentSummaryInput, DeployResponseInput } from '../presenter.t
 import { createSourceUploadFromArchivePath } from '../source-uploads.service';
 import type { CreatedSourceUpload } from '../source-uploads.service.types';
 import { getGitProviderAdapter } from './git-source-provider.registry';
+import { requireGitProviderAccessByRegistrationId } from './git-source-provider-access.service';
+import type { GitProviderAccess } from './git-source-provider.types';
 import { ensureSourceAutomationPrincipal } from './git-source-automation-principal.service';
 import {
   completeSourceEventIfTerminal,
@@ -41,7 +41,6 @@ import {
   isSourceResolutionTaskStillDeployable,
   requireActiveBinding,
   requireActiveSource,
-  requireGitProviderRegistration,
   requireOrganization,
   requireSourceResolutionTask,
   serializeSourceBindingSnapshot,
@@ -110,13 +109,13 @@ async function buildClaimedSourceResolutionTask(
 ): Promise<WorkerClaimedGitSourceResolutionTask> {
   const source: SourceRow = requireActiveSource(await findSourceById(claimed.sourceId));
   const binding: SourceBindingRow = requireActiveBinding(await findSourceBindingById(claimed.sourceBindingId));
-  const registration: GitProviderRegistrationRow = await readSourceGitProviderRegistration(source);
+  const access: GitProviderAccess = await readSourceGitProviderAccess(source);
   return {
-    ...buildClaimedTaskProviderFields(registration, source),
+    ...buildClaimedTaskProviderFields(access.registration, source),
     branchName: claimed.branchName,
     commitSha: claimed.commitSha,
     descriptorPath: binding.descriptorPath,
-    providerAccessToken: await mintResolutionRuntimeAccessToken(source, registration),
+    providerAccessToken: await mintResolutionRuntimeAccessToken(source, access),
     projectName: binding.projectName,
     providerHost: source.providerHost,
     repositoryName: source.repositoryName,
@@ -129,20 +128,12 @@ async function buildClaimedSourceResolutionTask(
   };
 }
 
-async function mintResolutionRuntimeAccessToken(
-  source: SourceRow,
-  registration: GitProviderRegistrationRow,
-): Promise<string> {
-  return await getGitProviderAdapter(registration.providerType).mintRuntimeAccessToken({ registration, source });
+async function mintResolutionRuntimeAccessToken(source: SourceRow, access: GitProviderAccess): Promise<string> {
+  return await getGitProviderAdapter(access.registration.providerType).mintRuntimeAccessToken({ access, source });
 }
 
-async function readSourceGitProviderRegistration(source: SourceRow): Promise<GitProviderRegistrationRow> {
-  return requireGitProviderRegistration(
-    await findGitProviderRegistrationById({
-      organizationId: source.organizationId,
-      registrationId: source.providerRegistrationId,
-    }),
-  );
+async function readSourceGitProviderAccess(source: SourceRow): Promise<GitProviderAccess> {
+  return await requireGitProviderAccessByRegistrationId(source.organizationId, source.providerRegistrationId);
 }
 
 async function completeFreshSourceResolutionTask(

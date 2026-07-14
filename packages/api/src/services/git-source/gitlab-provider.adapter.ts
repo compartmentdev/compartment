@@ -1,7 +1,11 @@
 import { createGitLabTokenInvalidError } from '../../errors/api-business-error';
 import type { ApiBusinessError } from '../../errors/api-business-error.shared';
 import { decryptVariableValueFromStorage } from '../../lib/variables-crypto';
-import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
+import { findGitLabTokenRegistrationCredential } from '../../queries/gitlab-token-registration-credential.query';
+import type {
+  GitLabTokenRegistrationCredentialRow,
+  GitProviderReadExecutor,
+} from '../../queries/git-provider-registration.query.types';
 import { getApiConfig } from '../../runtime/runtime-access';
 import type {
   CreateDescriptorPullRequestPlan,
@@ -46,14 +50,28 @@ import {
 class GitLabProviderAdapter implements GitProviderAdapter {
   public readonly providerType: 'gitlab' = 'gitlab';
 
-  public readRegistrationCredential(registration: GitProviderRegistrationRow): GitProviderCredential {
-    return { kind: 'gitlab_token', token: readGitLabRegistrationToken(registration) };
+  public async readRegistrationCredential(
+    executor: GitProviderReadExecutor,
+    registrationId: string,
+  ): Promise<GitProviderCredential> {
+    const credential: GitLabTokenRegistrationCredentialRow | undefined = await findGitLabTokenRegistrationCredential(
+      executor,
+      registrationId,
+    );
+    if (credential === undefined) {
+      throw new Error('GitLab token registration credential is missing.');
+    }
+    return {
+      expiresAt: credential.accessTokenExpiresAt,
+      kind: 'gitlab_token',
+      token: readGitLabRegistrationToken(credential),
+    };
   }
 
-  public readRegistrationMetadata(registration: GitProviderRegistrationRow): GitProviderRegistrationMetadata {
+  public readRegistrationMetadata(access: GitProviderAccess): GitProviderRegistrationMetadata {
     return {
-      accountLogin: requireGitProviderField(registration.providerAccountLogin, 'provider_account_login'),
-      expiresAt: registration.accessTokenExpiresAt,
+      accountLogin: requireGitProviderField(access.registration.providerAccountLogin, 'provider_account_login'),
+      expiresAt: requireGitLabTokenCredential(access.credential).expiresAt,
     };
   }
 
@@ -118,7 +136,7 @@ class GitLabProviderAdapter implements GitProviderAdapter {
   }
 
   public async mintRuntimeAccessToken(input: MintRuntimeAccessTokenInput): Promise<string> {
-    return await Promise.resolve(readGitLabRegistrationToken(input.registration));
+    return await Promise.resolve(requireGitLabTokenCredential(input.access.credential).token);
   }
 
   public async onSourceConnected(
@@ -157,10 +175,10 @@ class GitLabProviderAdapter implements GitProviderAdapter {
 
 export const gitlabProviderAdapter: GitProviderAdapter = new GitLabProviderAdapter();
 
-function readGitLabRegistrationToken(registration: GitProviderRegistrationRow): string {
+function readGitLabRegistrationToken(credential: GitLabTokenRegistrationCredentialRow): string {
   return decryptVariableValueFromStorage(
-    requireGitProviderField(registration.accessTokenCiphertext, 'access_token_ciphertext'),
-    requireGitProviderField(registration.accessTokenEncryptionKeyId, 'access_token_encryption_key_id'),
+    requireGitProviderField(credential.accessTokenCiphertext, 'access_token_ciphertext'),
+    requireGitProviderField(credential.accessTokenEncryptionKeyId, 'access_token_encryption_key_id'),
     getApiConfig().variablesMasterKey,
   );
 }

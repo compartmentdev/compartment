@@ -1,5 +1,6 @@
 import type {
   GitProviderRegistrationRow,
+  GitProviderMutationTransaction,
   GitProviderWriteExecutor,
 } from '../../queries/git-provider-registration.query.types';
 import { getApiDatabase } from '../../runtime/runtime-access';
@@ -35,12 +36,7 @@ export async function finalizeGitHubProviderBootstrapSetup(
   now: Date,
 ): Promise<void> {
   try {
-    await activateGitHubProviderRegistrationWithFailureCleanup(
-      toClaimedGitProviderRegistration(claimedSetup),
-      claimedSetup.stateId,
-      installation,
-      now,
-    );
+    await activateGitHubProviderRegistrationWithFailureCleanup(claimedSetup, claimedSetup.stateId, installation, now);
   } catch (error) {
     await failGitHubProviderBootstrap(toClaimedGitProviderRegistration(claimedSetup), claimedSetup.stateId, now);
     throw error;
@@ -75,14 +71,14 @@ export function buildGitHubProviderSetupReturnTo(
 }
 
 async function activateGitHubProviderRegistrationWithFailureCleanup(
-  registration: Pick<GitProviderRegistrationRow, 'id' | 'organizationId'>,
+  claimedSetup: ClaimedGitHubBootstrapSetup,
   stateId: string,
   installation: GitHubAppInstallation,
   now: Date,
 ): Promise<void> {
-  await getApiDatabase().transaction(async (transaction: GitProviderWriteExecutor): Promise<void> => {
-    await activatePersistedGitHubProviderRegistration(transaction, registration, installation, now);
-    await markGitProviderBootstrapStateCompleted(transaction, registration.organizationId, stateId, now);
+  await getApiDatabase().transaction(async (transaction: GitProviderMutationTransaction): Promise<void> => {
+    await activatePersistedGitHubProviderRegistration(transaction, claimedSetup, installation, now);
+    await markGitProviderBootstrapStateCompleted(transaction, claimedSetup.organizationId, stateId, now);
   });
 }
 

@@ -99,28 +99,10 @@ export function requireActiveBinding(binding: SourceBindingRow | undefined): Sou
   return binding;
 }
 
-export function requireGitProviderRegistration(
-  registration: GitProviderRegistrationRow | undefined,
-): GitProviderRegistrationRow {
-  if (registration === undefined) {
-    throw new Error('Git provider registration was not found.');
-  }
-
-  return registration;
-}
-
 export function requireOrganization(organization: OrganizationRow | undefined): OrganizationRow {
   if (organization === undefined) {
     throw new Error('Source organization was not found.');
   }
 
   return organization;
-}
-
-export function requireEncryptedRegistrationField(value: string | null, label: string): string {
-  if (value === null) {
-    throw new Error(`Git provider registration is missing ${label}.`);
-  }
-
-  return value;
 }

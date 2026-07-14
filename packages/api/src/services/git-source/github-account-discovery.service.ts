@@ -10,6 +10,8 @@ import { readUrlOrigin } from '@compartment/utils';
 import { createGitSourceRegistrationFailedError } from '../../errors/api-business-error';
 import { findActiveGitProviderRegistrationsByRepositoryOwners } from '../../queries/git-provider-registration-active-owners.query';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
+import { requireGitProviderAccessByRegistrationId } from './git-source-provider-access.service';
+import type { GitProviderAccess } from './git-source-provider.types';
 import { getApiConfig } from '../../runtime/runtime-access';
 import { buildRuntimePublicSettings } from '../public-hosts.service';
 import {
@@ -83,12 +85,15 @@ async function readInstalledGitHubAccountOwners(
 async function readValidatedGitHubAccountOwners(registrations: GitProviderRegistrationRow[]): Promise<string[]> {
   return (
     await Promise.all(
-      registrations.map(
-        async (registration: GitProviderRegistrationRow): Promise<string | null> =>
-          (await readActiveGitHubRegistrationState(registration)) === 'valid'
-            ? registration.repositoryOwner.toLowerCase()
-            : null,
-      ),
+      registrations.map(async (registration: GitProviderRegistrationRow): Promise<string | null> => {
+        const access: GitProviderAccess = await requireGitProviderAccessByRegistrationId(
+          registration.organizationId,
+          registration.id,
+        );
+        return (await readActiveGitHubRegistrationState(access)) === 'valid'
+          ? registration.repositoryOwner.toLowerCase()
+          : null;
+      }),
     )
   ).filter((repositoryOwner: string | null): repositoryOwner is string => repositoryOwner !== null);
 }

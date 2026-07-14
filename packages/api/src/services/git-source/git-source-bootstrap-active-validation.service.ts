@@ -8,19 +8,21 @@ import {
   isGitHubRequestFailure,
   isGitHubTransportFailure,
 } from './github-app-http.adapter';
-import { readGitHubRegistrationPrivateKey } from './github-provider.adapter';
+import type { GitProviderAccess, GitProviderCredential } from './git-source-provider.types';
 
 export type ActiveGitHubRegistrationState = 'app_missing' | 'installation_missing' | 'valid';
 
 interface ActiveGitHubRegistrationAuth {
   appId: string;
+  installationId: string;
   privateKeyPem: string;
 }
 
 export async function readActiveGitHubRegistrationState(
-  registration: GitProviderRegistrationRow,
+  access: GitProviderAccess,
 ): Promise<ActiveGitHubRegistrationState> {
-  const auth: ActiveGitHubRegistrationAuth | null = readActiveGitHubRegistrationAuth(registration);
+  const registration: GitProviderRegistrationRow = access.registration;
+  const auth: ActiveGitHubRegistrationAuth | null = readActiveGitHubRegistrationAuth(access.credential);
   if (auth === null) {
     return 'app_missing';
   }
@@ -52,13 +54,13 @@ async function readGitHubInstallationValidationState(
   registration: GitProviderRegistrationRow,
   auth: ActiveGitHubRegistrationAuth,
 ): Promise<ActiveGitHubRegistrationState> {
-  if (!hasText(registration.installationId)) {
+  if (!hasText(auth.installationId)) {
     return 'installation_missing';
   }
   try {
     const installation: GitHubAppInstallation = await readGitHubAppInstallation({
       appId: auth.appId,
-      installationId: registration.installationId,
+      installationId: auth.installationId,
       privateKeyPem: auth.privateKeyPem,
       providerHost: registration.providerHost,
     });
@@ -95,25 +97,18 @@ function readTransientGitHubValidationFailureState(
   throw error ?? new Error(fallbackMessage);
 }
 
-function readActiveGitHubRegistrationAuth(
-  registration: GitProviderRegistrationRow,
-): ActiveGitHubRegistrationAuth | null {
-  if (!hasActiveGitHubAppMaterial(registration)) {
+function readActiveGitHubRegistrationAuth(credential: GitProviderCredential): ActiveGitHubRegistrationAuth | null {
+  if (
+    credential.kind !== 'github_app' ||
+    !hasText(credential.appId) ||
+    !hasText(credential.appSlug) ||
+    !hasText(credential.installationId)
+  ) {
     return null;
   }
   return {
-    appId: registration.appId,
-    privateKeyPem: readGitHubRegistrationPrivateKey(registration),
+    appId: credential.appId,
+    installationId: credential.installationId,
+    privateKeyPem: credential.privateKeyPem,
   };
-}
-
-function hasActiveGitHubAppMaterial(
-  registration: GitProviderRegistrationRow,
-): registration is GitProviderRegistrationRow & { appId: string; appSlug: string } {
-  return (
-    hasText(registration.appId) &&
-    hasText(registration.appSlug) &&
-    hasText(registration.privateKeyPemCiphertext) &&
-    hasText(registration.privateKeyPemEncryptionKeyId)
-  );
 }

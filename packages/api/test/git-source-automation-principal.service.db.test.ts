@@ -14,6 +14,7 @@ import {
   accessAssignments,
   accessRoles,
   gitProviderRegistrations,
+  githubAppRegistrationCredentials,
   localCredentials,
   organizationMemberships,
   organizations,
@@ -178,16 +179,12 @@ async function seedAutomationPrincipalScope(): Promise<void> {
   });
   await assignSystemRole('prn_admin', 'admin');
   await db.insert(gitProviderRegistrations).values({
-    appId: 'app_123',
     callbackUrl: 'https://console.example.com/callback',
     createdByPrincipalId: 'prn_admin',
     id: 'gpr_123',
-    installationId: 'inst_123',
     organizationId: 'org_123',
     providerHost: 'github.example.com',
     providerType: 'github_app',
-    privateKeyPemCiphertext: 'private-key-ciphertext',
-    privateKeyPemEncryptionKeyId: 'private-key-id',
     repositoryOwner: 'acme',
     status: 'active',
     webhookSecretCiphertext: 'webhook-secret-ciphertext',
@@ -195,6 +192,18 @@ async function seedAutomationPrincipalScope(): Promise<void> {
     webhookUrl:
       'https://console.example.com/v1/sources/git/providers/github/organizations/org_123/registrations/gpr_123/webhook',
     updatedAt: new Date('2026-05-01T09:00:00.000Z'),
+  });
+  await db.insert(githubAppRegistrationCredentials).values({
+    appId: 'app_123',
+    appName: 'Compartment GitHub App',
+    appSlug: 'compartment-github-app',
+    appUrl: 'https://github.example.com/apps/compartment-github-app',
+    installationAccountLogin: 'acme',
+    installationAccountType: 'Organization',
+    installationId: 'inst_123',
+    privateKeyPemCiphertext: 'private-key-ciphertext',
+    privateKeyPemEncryptionKeyId: 'private-key-id',
+    registrationId: 'gpr_123',
   });
   await db.insert(sources).values({
     automationPrincipalId: null,

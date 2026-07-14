@@ -2,6 +2,11 @@ import { and, eq } from 'drizzle-orm';
 import { gitProviderRegistrations } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import {
+  deleteGitHubAppRegistrationCredential,
+  findGitHubAppRegistrationCredential,
+  stageGitHubAppRegistrationCredential,
+} from './github-app-registration-credential.query';
+import {
   failGitProviderRegistrationWithCurrentStatus,
   findGitProviderRegistrationByStatusWithExecutor,
   mapGitProviderRegistrationRow,
@@ -10,6 +15,7 @@ import type {
   FailGitProviderRegistrationInput,
   GitProviderReadExecutor,
   GitProviderRegistrationRow,
+  GitHubAppRegistrationCredentialRow,
   GitProviderWriteExecutor,
   PersistedGitProviderRegistrationRow,
   ReopenActiveGitProviderRegistrationBootstrapInput,
@@ -59,6 +65,20 @@ export async function reopenActiveGitProviderRegistrationBootstrap(
   executor: GitProviderWriteExecutor,
   input: ReopenActiveGitProviderRegistrationBootstrapInput,
 ): Promise<GitProviderRegistrationRow | undefined> {
+  if (!(await stageActiveGitHubCredentialForBootstrap(executor, input.id))) {
+    return undefined;
+  }
+  const registration: PersistedGitProviderRegistrationRow | undefined = await markRegistrationPending(executor, input);
+  if (registration !== undefined) {
+    await deleteGitHubAppRegistrationCredential(executor, registration.id);
+  }
+  return mapGitProviderRegistrationRow(registration);
+}
+
+async function markRegistrationPending(
+  executor: GitProviderWriteExecutor,
+  input: ReopenActiveGitProviderRegistrationBootstrapInput,
+): Promise<PersistedGitProviderRegistrationRow | undefined> {
   const [registration]: PersistedGitProviderRegistrationRow[] = await executor
     .update(gitProviderRegistrations)
     .set({
@@ -75,6 +95,21 @@ export async function reopenActiveGitProviderRegistrationBootstrap(
       ),
     )
     .returning();
+  return registration;
+}
 
-  return mapGitProviderRegistrationRow(registration);
+async function stageActiveGitHubCredentialForBootstrap(
+  executor: GitProviderWriteExecutor,
+  registrationId: string,
+): Promise<boolean> {
+  const credential: GitHubAppRegistrationCredentialRow | undefined = await findGitHubAppRegistrationCredential(
+    executor,
+    registrationId,
+  );
+  if (credential === undefined) return false;
+  await stageGitHubAppRegistrationCredential(executor, {
+    ...credential,
+    registrationId,
+  });
+  return true;
 }

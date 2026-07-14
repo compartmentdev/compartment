@@ -8,7 +8,10 @@ import {
   findActiveGitLabProviderRegistration,
   rotateGitLabProviderRegistrationToken,
 } from '../../queries/gitlab-provider-registration.query';
-import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
+import type {
+  GitProviderRegistrationRow,
+  GitProviderMutationTransaction,
+} from '../../queries/git-provider-registration.query.types';
 import { isUniqueConstraintError } from '../../queries/query-error';
 import { getApiConfig, getApiDatabase } from '../../runtime/runtime-access';
 import { isTrustedGitLabProviderHost } from '../outbound-http.service';
@@ -36,7 +39,7 @@ export async function createGitLabRegistration(input: CreateGitLabRegistrationIn
     existing === undefined
       ? await persistNewRegistrationOrRotateAfterRace(input, identity)
       : await rotateRegistration(input, existing, identity);
-  return toRegistrationView(registration);
+  return toRegistrationView(registration, identity.expiresAt);
 }
 
 async function persistNewRegistrationOrRotateAfterRace(
@@ -68,20 +71,23 @@ async function persistNewRegistration(
   const id: string = createId('gpr');
   const compartmentUrl: string = buildRuntimePublicSettings(getApiConfig()).compartmentUrl;
   const secrets: GitLabRegistrationSecrets = encryptRegistrationSecrets(input.request.accessToken);
-  return await createRegistration(getApiDatabase(), {
-    ...secrets,
-    callbackUrl: compartmentUrl,
-    createdByPrincipalId: input.actorPrincipalId,
-    id,
-    accessTokenExpiresAt: identity.expiresAt,
-    organizationId: input.organizationId,
-    providerAccountId: identity.userId,
-    providerAccountLogin: identity.username,
-    providerHost: input.request.providerHost,
-    repositoryOwner: identity.username,
-    updatedAt: new Date(),
-    webhookUrl: buildWebhookUrl(compartmentUrl, input.organizationId, id),
-  });
+  return await getApiDatabase().transaction(
+    async (transaction: GitProviderMutationTransaction): Promise<GitProviderRegistrationRow> =>
+      await createRegistration(transaction, {
+        ...secrets,
+        callbackUrl: compartmentUrl,
+        createdByPrincipalId: input.actorPrincipalId,
+        id,
+        accessTokenExpiresAt: identity.expiresAt,
+        organizationId: input.organizationId,
+        providerAccountId: identity.userId,
+        providerAccountLogin: identity.username,
+        providerHost: input.request.providerHost,
+        repositoryOwner: identity.username,
+        updatedAt: new Date(),
+        webhookUrl: buildWebhookUrl(compartmentUrl, input.organizationId, id),
+      }),
+  );
 }
 
 async function rotateRegistration(
@@ -93,15 +99,18 @@ async function rotateRegistration(
     input.request.accessToken,
     getApiConfig().variablesMasterKey,
   );
-  return await rotateGitLabProviderRegistrationToken(getApiDatabase(), {
-    accessTokenCiphertext: encrypted.valueCiphertext,
-    accessTokenEncryptionKeyId: encrypted.encryptionKeyId,
-    accessTokenExpiresAt: identity.expiresAt,
-    organizationId: input.organizationId,
-    registrationId: existing.id,
-    providerAccountLogin: identity.username,
-    updatedAt: new Date(),
-  });
+  return await getApiDatabase().transaction(
+    async (transaction: GitProviderMutationTransaction): Promise<GitProviderRegistrationRow> =>
+      await rotateGitLabProviderRegistrationToken(transaction, {
+        accessTokenCiphertext: encrypted.valueCiphertext,
+        accessTokenEncryptionKeyId: encrypted.encryptionKeyId,
+        accessTokenExpiresAt: identity.expiresAt,
+        organizationId: input.organizationId,
+        registrationId: existing.id,
+        providerAccountLogin: identity.username,
+        updatedAt: new Date(),
+      }),
+  );
 }
 
 async function readValidatedIdentity(providerHost: string, token: string): Promise<GitLabTokenIdentity> {
@@ -151,13 +160,13 @@ function assertTrustedHost(providerHost: string): void {
   }
 }
 
-function toRegistrationView(registration: GitProviderRegistrationRow): GitLabRegistrationView {
+function toRegistrationView(registration: GitProviderRegistrationRow, expiresAt: Date | null): GitLabRegistrationView {
   if (registration.providerAccountLogin === null) {
     throw new Error('Active GitLab registration is missing provider_account_login.');
   }
   return {
     createdAt: registration.createdAt.toISOString(),
-    expiresAt: registration.accessTokenExpiresAt?.toISOString() ?? null,
+    expiresAt: expiresAt?.toISOString() ?? null,
     providerAccountLogin: registration.providerAccountLogin,
     providerHost: registration.providerHost,
     providerType: 'gitlab',

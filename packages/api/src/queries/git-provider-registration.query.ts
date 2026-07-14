@@ -11,36 +11,9 @@ import type {
   GitProviderReadExecutor,
   GitProviderRegistrationRow,
   GitProviderWriteExecutor,
-  PersistGitProviderRegistrationManifestExchangeInput,
+  PersistGitProviderRegistrationWebhookSecretInput,
   PersistedGitProviderRegistrationRow,
 } from './git-provider-registration.query.types';
-
-interface GitProviderRegistrationManifestExchangeUpdate {
-  appId: string;
-  appName: string | null;
-  appSlug: string | null;
-  appUrl: string | null;
-  privateKeyPemCiphertext: string;
-  privateKeyPemEncryptionKeyId: string;
-  updatedAt: Date;
-  webhookSecretCiphertext: string;
-  webhookSecretEncryptionKeyId: string;
-}
-
-export async function findActiveGitProviderRegistration(
-  input: Pick<
-    FindGitProviderRegistrationByStatusInput,
-    'organizationId' | 'providerHost' | 'providerType' | 'repositoryOwner'
-  >,
-): Promise<GitProviderRegistrationRow | undefined> {
-  return await findGitProviderRegistrationByStatusWithExecutor(getApiDatabase(), {
-    organizationId: input.organizationId,
-    providerHost: input.providerHost,
-    providerType: input.providerType,
-    repositoryOwner: input.repositoryOwner,
-    status: 'active',
-  });
-}
 
 export async function findGitProviderRegistrationById(
   input: FindGitProviderRegistrationByIdInput,
@@ -54,10 +27,11 @@ export async function findGitProviderRegistrationByWebhookTarget(
   return await findGitProviderRegistrationByIdWithExecutor(getApiDatabase(), input);
 }
 
-export async function listActiveGitProviderRegistrations(
+export async function listActiveGitProviderRegistrationsWithExecutor(
+  executor: GitProviderReadExecutor,
   organizationId: string,
 ): Promise<GitProviderRegistrationRow[]> {
-  return await getApiDatabase()
+  return await executor
     .select()
     .from(gitProviderRegistrations)
     .where(
@@ -132,36 +106,20 @@ export async function activateGitProviderRegistration(
   executor: GitProviderWriteExecutor,
   input: ActivateGitProviderRegistrationInput,
 ): Promise<GitProviderRegistrationRow | undefined> {
-  const [registration]: PersistedGitProviderRegistrationRow[] = await executor
-    .update(gitProviderRegistrations)
-    .set({
-      bootstrapStateId: null,
-      installationAccountLogin: input.installationAccountLogin,
-      installationAccountType: input.installationAccountType,
-      installationId: input.installationId,
-      pendingExpiresAt: null,
-      status: input.status,
-      updatedAt: input.updatedAt,
-    })
-    .where(
-      and(
-        eq(gitProviderRegistrations.id, input.id),
-        eq(gitProviderRegistrations.organizationId, input.organizationId),
-        eq(gitProviderRegistrations.status, 'pending'),
-      ),
-    )
-    .returning();
-
-  return mapGitProviderRegistrationRow(registration);
+  return await transitionGitProviderRegistration(executor, input, 'pending');
 }
 
-export async function persistGitProviderRegistrationManifestExchange(
+export async function persistGitProviderRegistrationWebhookSecret(
   executor: GitProviderWriteExecutor,
-  input: PersistGitProviderRegistrationManifestExchangeInput,
+  input: PersistGitProviderRegistrationWebhookSecretInput,
 ): Promise<GitProviderRegistrationRow> {
   const [registration]: PersistedGitProviderRegistrationRow[] = await executor
     .update(gitProviderRegistrations)
-    .set(buildGitProviderRegistrationManifestExchangeUpdate(input))
+    .set({
+      updatedAt: input.updatedAt,
+      webhookSecretCiphertext: input.webhookSecretCiphertext,
+      webhookSecretEncryptionKeyId: input.webhookSecretEncryptionKeyId,
+    })
     .where(
       and(eq(gitProviderRegistrations.id, input.id), eq(gitProviderRegistrations.organizationId, input.organizationId)),
     )
@@ -182,7 +140,15 @@ export async function failGitProviderRegistrationWithCurrentStatus(
   input: FailGitProviderRegistrationInput,
   currentStatus: string,
 ): Promise<void> {
-  await executor
+  await transitionGitProviderRegistration(executor, input, currentStatus);
+}
+
+async function transitionGitProviderRegistration(
+  executor: GitProviderWriteExecutor,
+  input: ActivateGitProviderRegistrationInput | FailGitProviderRegistrationInput,
+  currentStatus: string,
+): Promise<GitProviderRegistrationRow | undefined> {
+  const [registration]: PersistedGitProviderRegistrationRow[] = await executor
     .update(gitProviderRegistrations)
     .set({
       bootstrapStateId: null,
@@ -196,7 +162,10 @@ export async function failGitProviderRegistrationWithCurrentStatus(
         eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(gitProviderRegistrations.status, currentStatus),
       ),
-    );
+    )
+    .returning();
+
+  return mapGitProviderRegistrationRow(registration);
 }
 
 export async function findGitProviderRegistrationByStatusWithExecutor(
@@ -231,20 +200,4 @@ export function mapGitProviderRegistrationRow(
 
 function mapRequiredGitProviderRegistrationRow(row: PersistedGitProviderRegistrationRow): GitProviderRegistrationRow {
   return row;
-}
-
-function buildGitProviderRegistrationManifestExchangeUpdate(
-  input: PersistGitProviderRegistrationManifestExchangeInput,
-): GitProviderRegistrationManifestExchangeUpdate {
-  return {
-    appId: input.appId,
-    appName: input.appName,
-    appSlug: input.appSlug,
-    appUrl: input.appUrl,
-    privateKeyPemCiphertext: input.privateKeyPemCiphertext,
-    privateKeyPemEncryptionKeyId: input.privateKeyPemEncryptionKeyId,
-    updatedAt: input.updatedAt,
-    webhookSecretCiphertext: input.webhookSecretCiphertext,
-    webhookSecretEncryptionKeyId: input.webhookSecretEncryptionKeyId,
-  };
 }

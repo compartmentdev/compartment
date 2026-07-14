@@ -1,6 +1,9 @@
 import type { GitDescriptorDraftFile, GitProviderType } from '@compartment/contracts';
 import type { ApiBusinessError } from '../../errors/api-business-error.shared';
-import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
+import type {
+  GitProviderReadExecutor,
+  GitProviderRegistrationRow,
+} from '../../queries/git-provider-registration.query.types';
 import type { SourceRow } from '../../queries/source.query.types';
 
 /**
@@ -11,19 +14,26 @@ export type { GitProviderType } from '@compartment/contracts';
 
 /**
  * Decrypted secret material for a single provider registration. Discriminated so
- * additional providers can carry their own secret shape without widening the GitHub
- * path. Non-secret identifiers (GitHub app/installation ids) are read from the
- * registration row at the point of use, so the credential carries only decrypted secrets.
+ * additional providers can carry their own secret and identifier shape without widening
+ * the provider-neutral registration row.
  */
 export type GitProviderCredential = GitHubAppProviderCredential | GitLabTokenProviderCredential;
 
 interface GitHubAppProviderCredential {
+  appId: string;
+  appName: string;
+  appSlug: string;
+  appUrl: string;
+  installationAccountLogin: string;
+  installationAccountType: string;
+  installationId: string;
   kind: 'github_app';
   privateKeyPem: string;
   token?: never;
 }
 
 interface GitLabTokenProviderCredential {
+  expiresAt: Date | null;
   kind: 'gitlab_token';
   privateKeyPem?: never;
   token: string;
@@ -136,7 +146,7 @@ export interface CreateDescriptorPullRequestPlan {
 }
 
 export interface MintRuntimeAccessTokenInput {
-  registration: GitProviderRegistrationRow;
+  access: GitProviderAccess;
   source: SourceRow;
 }
 
@@ -159,9 +169,9 @@ export interface GitProviderAdapter {
   readonly providerType: GitProviderType;
 
   /** Decrypt the stored credential material for a registration. */
-  readRegistrationCredential(registration: GitProviderRegistrationRow): GitProviderCredential;
+  readRegistrationCredential(executor: GitProviderReadExecutor, registrationId: string): Promise<GitProviderCredential>;
 
-  readRegistrationMetadata(registration: GitProviderRegistrationRow): GitProviderRegistrationMetadata;
+  readRegistrationMetadata(access: GitProviderAccess): GitProviderRegistrationMetadata;
 
   /** Resolve the installation that grants access to a repository at connect time. */
   resolveRepositoryInstallation(

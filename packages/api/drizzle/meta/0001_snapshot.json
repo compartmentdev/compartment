@@ -1,5 +1,5 @@
 {
-  "id": "e1f83033-7f64-4bc0-a20b-7d9a6df9fed5",
+  "id": "79960bed-26a6-4411-b235-591f642547d0",
   "prevId": "2f606002-3c79-4ffc-8120-1f06bd320625",
   "version": "7",
   "dialect": "postgresql",
@@ -4054,6 +4054,30 @@
       "name": "git_provider_bootstrap_states",
       "schema": "",
       "columns": {
+        "app_id": {
+          "name": "app_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "app_name": {
+          "name": "app_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "app_slug": {
+          "name": "app_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "app_url": {
+          "name": "app_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "id": {
           "name": "id",
           "type": "text",
@@ -4095,6 +4119,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "private_key_pem_ciphertext": {
+          "name": "private_key_pem_ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "private_key_pem_encryption_key_id": {
+          "name": "private_key_pem_encryption_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_by_principal_id": {
           "name": "created_by_principal_id",
@@ -4225,78 +4261,6 @@
         },
         "pending_expires_at": {
           "name": "pending_expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "app_id": {
-          "name": "app_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "app_name": {
-          "name": "app_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "app_slug": {
-          "name": "app_slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "app_url": {
-          "name": "app_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "installation_account_login": {
-          "name": "installation_account_login",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "installation_account_type": {
-          "name": "installation_account_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "installation_id": {
-          "name": "installation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "private_key_pem_ciphertext": {
-          "name": "private_key_pem_ciphertext",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "private_key_pem_encryption_key_id": {
-          "name": "private_key_pem_encryption_key_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "access_token_ciphertext": {
-          "name": "access_token_ciphertext",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "access_token_encryption_key_id": {
-          "name": "access_token_encryption_key_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "access_token_expires_at": {
-          "name": "access_token_expires_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -4444,7 +4408,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"git_provider_registrations\".\"status\" IN ('pending', 'failed')",
+          "where": "\"git_provider_registrations\".\"status\" = 'pending'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4473,16 +4437,137 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "git_provider_registrations_provider_type_check": {
-          "name": "git_provider_registrations_provider_type_check",
-          "value": "\"git_provider_registrations\".\"provider_type\" IN ('github_app', 'gitlab')"
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.github_app_registration_credentials": {
+      "name": "github_app_registration_credentials",
+      "schema": "",
+      "columns": {
+        "registration_id": {
+          "name": "registration_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
         },
-        "git_provider_registrations_credential_shape_check": {
-          "name": "git_provider_registrations_credential_shape_check",
-          "value": "(\n        \"git_provider_registrations\".\"provider_type\" = 'github_app'\n        AND \"git_provider_registrations\".\"access_token_ciphertext\" IS NULL\n        AND \"git_provider_registrations\".\"access_token_encryption_key_id\" IS NULL\n        AND \"git_provider_registrations\".\"access_token_expires_at\" IS NULL\n        AND \"git_provider_registrations\".\"provider_account_id\" IS NULL\n        AND \"git_provider_registrations\".\"provider_account_login\" IS NULL\n        AND (\n          \"git_provider_registrations\".\"status\" IN ('pending', 'failed')\n          OR (\n            \"git_provider_registrations\".\"status\" = 'active'\n            AND \"git_provider_registrations\".\"app_id\" IS NOT NULL\n            AND \"git_provider_registrations\".\"installation_id\" IS NOT NULL\n            AND \"git_provider_registrations\".\"private_key_pem_ciphertext\" IS NOT NULL\n            AND \"git_provider_registrations\".\"private_key_pem_encryption_key_id\" IS NOT NULL\n            AND \"git_provider_registrations\".\"webhook_secret_ciphertext\" IS NOT NULL\n            AND \"git_provider_registrations\".\"webhook_secret_encryption_key_id\" IS NOT NULL\n          )\n        )\n      ) OR (\n        \"git_provider_registrations\".\"provider_type\" = 'gitlab'\n        AND \"git_provider_registrations\".\"status\" = 'active'\n        AND \"git_provider_registrations\".\"bootstrap_state_id\" IS NULL\n        AND \"git_provider_registrations\".\"pending_expires_at\" IS NULL\n        AND \"git_provider_registrations\".\"app_id\" IS NULL\n        AND \"git_provider_registrations\".\"app_name\" IS NULL\n        AND \"git_provider_registrations\".\"app_slug\" IS NULL\n        AND \"git_provider_registrations\".\"app_url\" IS NULL\n        AND \"git_provider_registrations\".\"installation_account_login\" IS NULL\n        AND \"git_provider_registrations\".\"installation_account_type\" IS NULL\n        AND \"git_provider_registrations\".\"installation_id\" IS NULL\n        AND \"git_provider_registrations\".\"private_key_pem_ciphertext\" IS NULL\n        AND \"git_provider_registrations\".\"private_key_pem_encryption_key_id\" IS NULL\n        AND \"git_provider_registrations\".\"provider_account_id\" IS NOT NULL\n        AND \"git_provider_registrations\".\"provider_account_login\" IS NOT NULL\n        AND \"git_provider_registrations\".\"access_token_ciphertext\" IS NOT NULL\n        AND \"git_provider_registrations\".\"access_token_encryption_key_id\" IS NOT NULL\n        AND \"git_provider_registrations\".\"webhook_secret_ciphertext\" IS NOT NULL\n        AND \"git_provider_registrations\".\"webhook_secret_encryption_key_id\" IS NOT NULL\n      )"
+        "app_id": {
+          "name": "app_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "app_name": {
+          "name": "app_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "app_slug": {
+          "name": "app_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "app_url": {
+          "name": "app_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "installation_account_login": {
+          "name": "installation_account_login",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "installation_account_type": {
+          "name": "installation_account_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "installation_id": {
+          "name": "installation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "private_key_pem_ciphertext": {
+          "name": "private_key_pem_ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "private_key_pem_encryption_key_id": {
+          "name": "private_key_pem_encryption_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         }
       },
+      "indexes": {},
+      "foreignKeys": {
+        "github_app_registration_credentials_registration_id_git_provider_registrations_id_fk": {
+          "name": "github_app_registration_credentials_registration_id_git_provider_registrations_id_fk",
+          "tableFrom": "github_app_registration_credentials",
+          "tableTo": "git_provider_registrations",
+          "columnsFrom": ["registration_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.gitlab_token_registration_credentials": {
+      "name": "gitlab_token_registration_credentials",
+      "schema": "",
+      "columns": {
+        "registration_id": {
+          "name": "registration_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "access_token_ciphertext": {
+          "name": "access_token_ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access_token_encryption_key_id": {
+          "name": "access_token_encryption_key_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access_token_expires_at": {
+          "name": "access_token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "gitlab_token_registration_credentials_registration_id_git_provider_registrations_id_fk": {
+          "name": "gitlab_token_registration_credentials_registration_id_git_provider_registrations_id_fk",
+          "tableFrom": "gitlab_token_registration_credentials",
+          "tableTo": "git_provider_registrations",
+          "columnsFrom": ["registration_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.source_binding_branch_mappings": {

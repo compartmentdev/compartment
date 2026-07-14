@@ -7,6 +7,7 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   gitProviderBootstrapStates,
   gitProviderRegistrations,
+  githubAppRegistrationCredentials,
   organizationMemberships,
   organizations,
   principals,
@@ -14,7 +15,7 @@ import {
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { failGitProviderRegistration } from '../src/queries/git-provider-registration.query';
 import type {
-  GitProviderRegistrationRow,
+  GitProviderMutationTransaction,
   GitProviderWriteExecutor,
 } from '../src/queries/git-provider-registration.query.types';
 import type { Actor } from '../src/services/auth-actor.types';
@@ -22,6 +23,7 @@ import type * as GitHubAppClientAdapter from '../src/services/git-source/github-
 import type { GitHubAppInstallation } from '../src/services/git-source/github-app-client.adapter.types';
 import type * as GitHubAppBootstrapAdapter from '../src/services/git-source/github-app-bootstrap.adapter';
 import type * as GitSourceBootstrapPersistence from '../src/services/git-source/git-source-bootstrap.persistence';
+import type { ClaimedGitHubBootstrapSetup } from '../src/services/git-source/git-source-bootstrap-completion.support';
 import {
   readGitHubProviderBootstrapPage,
   readGitHubProviderBootstrapStatus,
@@ -327,6 +329,10 @@ describe('git source bootstrap service', (): void => {
       bootstrapStateId: bootstrap.bootstrapStateId!,
     });
     const [registration] = await db.select().from(gitProviderRegistrations);
+    const [stagedCredential] = await db
+      .select()
+      .from(gitProviderBootstrapStates)
+      .where(eq(gitProviderBootstrapStates.id, bootstrap.bootstrapStateId!));
 
     expect(installUrl).toBe(
       `https://github.com/apps/compartment/installations/new?state=${bootstrap.bootstrapStateId}`,
@@ -344,13 +350,15 @@ describe('git source bootstrap service', (): void => {
       kind: 'install',
     });
     expect(registration).toMatchObject({
-      appId: '12345',
-      appSlug: 'compartment',
       providerHost: 'github.com',
       repositoryOwner: 'acme',
       status: 'pending',
     });
-    expect(registration?.privateKeyPemCiphertext).toBeTruthy();
+    expect(stagedCredential).toMatchObject({
+      appId: '12345',
+      appSlug: 'compartment',
+    });
+    expect(stagedCredential?.privateKeyPemCiphertext).toBeTruthy();
     expect(registration?.webhookUrl).toBe(
       `https://console.example/v1/sources/git/providers/github/organizations/${gitSourceOrganizationId}/registrations/${registration?.id}/webhook`,
     );
@@ -365,6 +373,7 @@ describe('git source bootstrap service', (): void => {
       bootstrapStateId: bootstrap.bootstrapStateId!,
     });
     const [activeRegistration] = await db.select().from(gitProviderRegistrations);
+    const [activeCredential] = await db.select().from(githubAppRegistrationCredentials);
     const [state] = await db.select().from(gitProviderBootstrapStates);
 
     expect(activeStatus).toMatchObject({
@@ -376,11 +385,14 @@ describe('git source bootstrap service', (): void => {
       status: 'active',
     });
     expect(activeRegistration).toMatchObject({
-      appId: '12345',
-      appSlug: 'compartment',
       providerHost: 'github.com',
       repositoryOwner: 'acme',
       status: 'active',
+    });
+    expect(activeCredential).toMatchObject({
+      appId: '12345',
+      appSlug: 'compartment',
+      registrationId: activeRegistration?.id,
     });
     expect(state?.completedAt).not.toBeNull();
   });
@@ -711,11 +723,11 @@ describe('git source bootstrap service', (): void => {
     });
     expect(registrations).toHaveLength(1);
     expect(registrations[0]).toMatchObject({
-      appSlug: 'compartment',
       bootstrapStateId: reopenedBootstrap.bootstrapStateId,
       id: bootstrap.registrationId,
       status: 'pending',
     });
+    expect(await db.select().from(githubAppRegistrationCredentials)).toEqual([]);
     expect(states).toHaveLength(2);
     expect(
       states.find(
@@ -728,6 +740,7 @@ describe('git source bootstrap service', (): void => {
           state.id === reopenedBootstrap.bootstrapStateId,
       ),
     ).toMatchObject({
+      appSlug: 'compartment',
       completedAt: null,
       providerRegistrationId: bootstrap.registrationId,
       returnTo: '/onboarding?method=git',
@@ -793,20 +806,25 @@ describe('git source bootstrap service', (): void => {
     await db
       .update(gitProviderRegistrations)
       .set({
-        appId: '12345',
-        appName: 'Compartment',
-        appSlug: 'compartment',
-        appUrl: 'https://github.com/apps/compartment',
         bootstrapStateId: null,
-        installationId: '98765',
         pendingExpiresAt: null,
-        privateKeyPemCiphertext: 'encrypted-private-key',
-        privateKeyPemEncryptionKeyId: 'test-key',
         status: 'active',
         webhookSecretCiphertext: 'encrypted-webhook-secret',
         webhookSecretEncryptionKeyId: 'test-key',
       })
       .where(eq(gitProviderRegistrations.id, bootstrap.registrationId));
+    await db.insert(githubAppRegistrationCredentials).values({
+      appId: '12345',
+      appName: 'Compartment',
+      appSlug: 'compartment',
+      appUrl: 'https://github.com/apps/compartment',
+      installationAccountLogin: 'acme',
+      installationAccountType: 'Organization',
+      installationId: '98765',
+      privateKeyPemCiphertext: 'encrypted-private-key',
+      privateKeyPemEncryptionKeyId: 'test-key',
+      registrationId: bootstrap.registrationId,
+    });
 
     await db.transaction(async (transaction: GitProviderWriteExecutor): Promise<void> => {
       await failGitProviderRegistration(transaction, {
@@ -990,20 +1008,20 @@ describe('git source bootstrap service', (): void => {
     >('../src/services/git-source/git-source-bootstrap.persistence');
     persistenceMocks.activatePersistedGitHubProviderRegistration.mockImplementationOnce(
       async (
-        transaction: GitProviderWriteExecutor,
-        registration: Pick<GitProviderRegistrationRow, 'id' | 'organizationId'>,
+        transaction: GitProviderMutationTransaction,
+        claimedSetup: ClaimedGitHubBootstrapSetup,
         installation: GitHubAppInstallation,
         now: Date,
       ): Promise<void> => {
         await failGitProviderRegistration(transaction, {
-          id: registration.id,
-          organizationId: registration.organizationId,
+          id: claimedSetup.registrationId,
+          organizationId: claimedSetup.organizationId,
           status: 'failed',
           updatedAt: now,
         });
         await actualBootstrapPersistence.activatePersistedGitHubProviderRegistration(
           transaction,
-          registration,
+          claimedSetup,
           installation,
           now,
         );

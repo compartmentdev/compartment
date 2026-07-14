@@ -17,7 +17,9 @@ vi.mock('../src/services/git-source/gitlab-http.adapter');
 vi.mock('../src/queries/gitlab-provider-registration.query');
 vi.mock('../src/runtime/runtime-access', (): object => ({
   getApiConfig: (): object => ({ variablesMasterKey: Buffer.alloc(32) }),
-  getApiDatabase: (): object => ({}),
+  getApiDatabase: (): object => ({
+    transaction: async (callback: (transaction: object) => Promise<object>): Promise<object> => await callback({}),
+  }),
 }));
 vi.mock('../src/services/public-hosts.service', (): object => ({
   buildRuntimePublicSettings: (): object => ({ compartmentUrl: 'https://compartment.example' }),
@@ -91,27 +93,15 @@ function buildIdentity(): { expiresAt: Date; userId: string; username: string } 
 
 function buildRegistration(): GitProviderRegistrationRow {
   return {
-    accessTokenCiphertext: 'old',
-    accessTokenEncryptionKeyId: 'key',
-    accessTokenExpiresAt: null,
     providerAccountId: '101',
     providerAccountLogin: 'alice',
-    appId: null,
-    appName: null,
-    appSlug: null,
-    appUrl: null,
     bootstrapStateId: null,
     callbackUrl: 'https://compartment.example',
     createdAt: new Date(),
     createdByPrincipalId: 'prn_1',
     id: 'gpr_1',
-    installationAccountLogin: null,
-    installationAccountType: null,
-    installationId: null,
     organizationId: 'org_1',
     pendingExpiresAt: null,
-    privateKeyPemCiphertext: null,
-    privateKeyPemEncryptionKeyId: null,
     providerHost: 'gitlab.com',
     providerType: 'gitlab',
     repositoryOwner: 'alice',

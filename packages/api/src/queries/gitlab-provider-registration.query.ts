@@ -2,15 +2,18 @@ import { and, eq } from 'drizzle-orm';
 import { gitProviderRegistrations } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { requirePersistedRow } from './persisted-row.query.shared';
+import { upsertGitLabTokenRegistrationCredential } from './gitlab-token-registration-credential.query';
 import { mapGitProviderRegistrationRow } from './git-provider-registration.query';
 import type {
   FindActiveGitLabProviderRegistrationInput,
   GitProviderRegistrationRow,
-  GitProviderWriteExecutor,
+  GitProviderMutationTransaction,
   PersistedGitProviderRegistrationRow,
   RotateGitLabProviderRegistrationTokenInput,
   UpsertGitLabProviderRegistrationInput,
 } from './git-provider-registration.query.types';
+
+type GitProviderRegistrationInsert = typeof gitProviderRegistrations.$inferInsert;
 
 export async function findActiveGitLabProviderRegistration(
   input: FindActiveGitLabProviderRegistrationInput,
@@ -32,26 +35,25 @@ export async function findActiveGitLabProviderRegistration(
 }
 
 export async function createGitLabProviderRegistration(
-  executor: GitProviderWriteExecutor,
+  executor: GitProviderMutationTransaction,
   input: UpsertGitLabProviderRegistrationInput,
 ): Promise<GitProviderRegistrationRow> {
   const [row]: PersistedGitProviderRegistrationRow[] = await executor
     .insert(gitProviderRegistrations)
-    .values({ ...input, providerType: 'gitlab', status: 'active' })
+    .values(buildGitLabProviderRegistrationInsert(input))
     .returning();
-  return requirePersistedRow(row, 'GitLab provider registration');
+  const registration: PersistedGitProviderRegistrationRow = requirePersistedRow(row, 'GitLab provider registration');
+  await persistGitLabTokenCredential(executor, registration.id, input);
+  return registration;
 }
 
 export async function rotateGitLabProviderRegistrationToken(
-  executor: GitProviderWriteExecutor,
+  executor: GitProviderMutationTransaction,
   input: RotateGitLabProviderRegistrationTokenInput,
 ): Promise<GitProviderRegistrationRow> {
   const [row]: PersistedGitProviderRegistrationRow[] = await executor
     .update(gitProviderRegistrations)
     .set({
-      accessTokenCiphertext: input.accessTokenCiphertext,
-      accessTokenEncryptionKeyId: input.accessTokenEncryptionKeyId,
-      accessTokenExpiresAt: input.accessTokenExpiresAt,
       providerAccountLogin: input.providerAccountLogin,
       repositoryOwner: input.providerAccountLogin,
       status: 'active',
@@ -64,5 +66,41 @@ export async function rotateGitLabProviderRegistrationToken(
       ),
     )
     .returning();
-  return requirePersistedRow(row, 'GitLab provider registration');
+  const registration: PersistedGitProviderRegistrationRow = requirePersistedRow(row, 'GitLab provider registration');
+  await persistGitLabTokenCredential(executor, registration.id, input);
+  return registration;
+}
+
+function buildGitLabProviderRegistrationInsert(
+  input: UpsertGitLabProviderRegistrationInput,
+): GitProviderRegistrationInsert {
+  return {
+    callbackUrl: input.callbackUrl,
+    createdByPrincipalId: input.createdByPrincipalId,
+    id: input.id,
+    organizationId: input.organizationId,
+    providerAccountId: input.providerAccountId,
+    providerAccountLogin: input.providerAccountLogin,
+    providerHost: input.providerHost,
+    providerType: 'gitlab',
+    repositoryOwner: input.repositoryOwner,
+    status: 'active',
+    updatedAt: input.updatedAt,
+    webhookSecretCiphertext: input.webhookSecretCiphertext,
+    webhookSecretEncryptionKeyId: input.webhookSecretEncryptionKeyId,
+    webhookUrl: input.webhookUrl,
+  };
+}
+
+async function persistGitLabTokenCredential(
+  executor: GitProviderMutationTransaction,
+  registrationId: string,
+  input: UpsertGitLabProviderRegistrationInput | RotateGitLabProviderRegistrationTokenInput,
+): Promise<void> {
+  await upsertGitLabTokenRegistrationCredential(executor, {
+    accessTokenCiphertext: input.accessTokenCiphertext,
+    accessTokenEncryptionKeyId: input.accessTokenEncryptionKeyId,
+    accessTokenExpiresAt: input.accessTokenExpiresAt,
+    registrationId,
+  });
 }

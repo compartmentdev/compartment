@@ -242,6 +242,13 @@ function prepareDescriptorServiceMocks(tree: GitRepositoryTreeEntry[]): void {
 function createProviderAccess(): GitProviderAccess {
   return {
     credential: {
+      appId: '12345',
+      appName: 'Compartment',
+      appSlug: 'compartment',
+      appUrl: 'https://github.enterprise.example/apps/compartment',
+      installationAccountLogin: 'acme',
+      installationAccountType: 'Organization',
+      installationId: '98765',
       kind: 'github_app',
       privateKeyPem: 'private-key',
     },
@@ -309,27 +316,15 @@ function createActor(): Actor {
 
 function createRegistration(): GitProviderRegistrationRow {
   return {
-    accessTokenCiphertext: null,
-    accessTokenEncryptionKeyId: null,
-    accessTokenExpiresAt: null,
     providerAccountId: null,
     providerAccountLogin: null,
-    appId: '12345',
-    appName: 'Compartment',
-    appSlug: 'compartment',
-    appUrl: 'https://github.enterprise.example/apps/compartment',
     bootstrapStateId: null,
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdAt: new Date('2026-05-01T00:00:00.000Z'),
     createdByPrincipalId: 'prn_admin',
     id: 'gpr_123',
     organizationId: 'org_123',
-    installationAccountLogin: 'acme',
-    installationAccountType: 'Organization',
-    installationId: '98765',
     pendingExpiresAt: null,
-    privateKeyPemCiphertext: 'private-key-ciphertext',
-    privateKeyPemEncryptionKeyId: 'private-key-id',
     providerHost: 'github.enterprise.example',
     providerType: 'github_app',
     repositoryOwner: 'acme',

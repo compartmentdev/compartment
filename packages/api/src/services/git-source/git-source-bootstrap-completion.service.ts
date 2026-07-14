@@ -80,8 +80,8 @@ async function claimGitHubProviderBootstrapCallbackTransaction(
         stateNonce,
         now,
       );
-      const registration: GitProviderRegistrationRow = await requirePendingBootstrapRegistration(transaction, state);
-      if (registration.appId !== null) {
+      await requirePendingBootstrapRegistration(transaction, state);
+      if (state.appId !== null) {
         throw createGitSourceBootstrapInvalidError();
       }
       return state;

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { findActiveGitProviderRegistrationsByRepositoryOwners } from '../src/queries/git-provider-registration-active-owners.query';
 import type { GitProviderRegistrationRow } from '../src/queries/git-provider-registration.query.types';
 import type {
@@ -6,6 +6,8 @@ import type {
   startGitHubAccountDiscoveryBrokerSession,
 } from '../src/services/git-source/github-account-discovery-broker.adapter';
 import type { readActiveGitHubRegistrationState } from '../src/services/git-source/git-source-bootstrap-active-validation.service';
+import type { requireGitProviderAccessByRegistrationId } from '../src/services/git-source/git-source-provider-access.service';
+import type { GitProviderAccess } from '../src/services/git-source/git-source-provider.types';
 import {
   readGitHubAccountDiscoveryResult,
   startGitHubAccountDiscovery,
@@ -15,6 +17,7 @@ type StartGitHubAccountDiscoveryBrokerSession = typeof startGitHubAccountDiscove
 type ReadGitHubAccountDiscoveryBrokerResult = typeof readGitHubAccountDiscoveryBrokerResult;
 type FindActiveGitProviderRegistrationsByRepositoryOwners = typeof findActiveGitProviderRegistrationsByRepositoryOwners;
 type ReadActiveGitHubRegistrationState = typeof readActiveGitHubRegistrationState;
+type RequireGitProviderAccessByRegistrationId = typeof requireGitProviderAccessByRegistrationId;
 
 interface GitHubAccountDiscoveryBrokerAdapterModule {
   readGitHubAccountDiscoveryBrokerResult: Mock<ReadGitHubAccountDiscoveryBrokerResult>;
@@ -27,6 +30,10 @@ interface GitProviderRegistrationQueryModule {
 
 interface GitSourceBootstrapActiveValidationServiceModule {
   readActiveGitHubRegistrationState: Mock<ReadActiveGitHubRegistrationState>;
+}
+
+interface GitSourceProviderAccessServiceModule {
+  requireGitProviderAccessByRegistrationId: Mock<RequireGitProviderAccessByRegistrationId>;
 }
 
 interface RuntimeAccessModule {
@@ -45,17 +52,20 @@ interface PublicHostsServiceModule {
 const mocks: {
   findActiveGitProviderRegistrationsByRepositoryOwners: Mock<FindActiveGitProviderRegistrationsByRepositoryOwners>;
   readActiveGitHubRegistrationState: Mock<ReadActiveGitHubRegistrationState>;
+  requireGitProviderAccessByRegistrationId: Mock<RequireGitProviderAccessByRegistrationId>;
   readGitHubAccountDiscoveryBrokerResult: Mock<ReadGitHubAccountDiscoveryBrokerResult>;
   startGitHubAccountDiscoveryBrokerSession: Mock<StartGitHubAccountDiscoveryBrokerSession>;
 } = vi.hoisted(
   (): {
     findActiveGitProviderRegistrationsByRepositoryOwners: Mock<FindActiveGitProviderRegistrationsByRepositoryOwners>;
     readActiveGitHubRegistrationState: Mock<ReadActiveGitHubRegistrationState>;
+    requireGitProviderAccessByRegistrationId: Mock<RequireGitProviderAccessByRegistrationId>;
     readGitHubAccountDiscoveryBrokerResult: Mock<ReadGitHubAccountDiscoveryBrokerResult>;
     startGitHubAccountDiscoveryBrokerSession: Mock<StartGitHubAccountDiscoveryBrokerSession>;
   } => ({
     findActiveGitProviderRegistrationsByRepositoryOwners: vi.fn<FindActiveGitProviderRegistrationsByRepositoryOwners>(),
     readActiveGitHubRegistrationState: vi.fn<ReadActiveGitHubRegistrationState>(),
+    requireGitProviderAccessByRegistrationId: vi.fn<RequireGitProviderAccessByRegistrationId>(),
     readGitHubAccountDiscoveryBrokerResult: vi.fn<ReadGitHubAccountDiscoveryBrokerResult>(),
     startGitHubAccountDiscoveryBrokerSession: vi.fn<StartGitHubAccountDiscoveryBrokerSession>(),
   }),
@@ -66,6 +76,13 @@ vi.mock(
   (): GitHubAccountDiscoveryBrokerAdapterModule => ({
     readGitHubAccountDiscoveryBrokerResult: mocks.readGitHubAccountDiscoveryBrokerResult,
     startGitHubAccountDiscoveryBrokerSession: mocks.startGitHubAccountDiscoveryBrokerSession,
+  }),
+);
+
+vi.mock(
+  '../src/services/git-source/git-source-provider-access.service',
+  (): GitSourceProviderAccessServiceModule => ({
+    requireGitProviderAccessByRegistrationId: mocks.requireGitProviderAccessByRegistrationId,
   }),
 );
 
@@ -101,6 +118,26 @@ vi.mock(
 );
 
 describe('GitHub account discovery service', (): void => {
+  beforeEach((): void => {
+    mocks.requireGitProviderAccessByRegistrationId.mockImplementation(
+      async (_organizationId: string, registrationId: string): Promise<GitProviderAccess> =>
+        await Promise.resolve({
+          credential: {
+            appId: 'app_123',
+            appName: 'Compartment',
+            appSlug: 'compartment',
+            appUrl: 'https://github.com/apps/compartment',
+            installationAccountLogin: 'acme',
+            installationAccountType: 'Organization',
+            installationId: 'ins_123',
+            kind: 'github_app',
+            privateKeyPem: 'private-key',
+          },
+          registration: createGitProviderRegistrationRow(registrationId),
+        }),
+    );
+  });
+
   afterEach((): void => {
     vi.resetAllMocks();
   });
@@ -232,27 +269,15 @@ describe('GitHub account discovery service', (): void => {
 
 function createGitProviderRegistrationRow(repositoryOwner: string): GitProviderRegistrationRow {
   return {
-    accessTokenCiphertext: null,
-    accessTokenEncryptionKeyId: null,
-    accessTokenExpiresAt: null,
     providerAccountId: null,
     providerAccountLogin: null,
-    appId: 'app_123',
-    appName: 'Compartment',
-    appSlug: 'compartment',
-    appUrl: 'https://github.com/apps/compartment',
     bootstrapStateId: null,
     callbackUrl: 'https://console.example.com/v1/sources/git/providers/github/callback',
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     createdByPrincipalId: 'prn_123',
     id: 'gpr_123',
-    installationAccountLogin: repositoryOwner,
-    installationAccountType: 'Organization',
-    installationId: 'ins_123',
     organizationId: 'org_123',
     pendingExpiresAt: null,
-    privateKeyPemCiphertext: 'ciphertext',
-    privateKeyPemEncryptionKeyId: 'key_123',
     providerHost: 'github.com',
     providerType: 'github',
     repositoryOwner,

@@ -1,10 +1,14 @@
 import type { Pool } from 'pg';
+import { eq } from 'drizzle-orm';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import { describe, expect, it } from 'vitest';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
+import type { ApiDatabaseTransaction } from '../src/db/client.types';
 import {
   gitProviderRegistrations,
+  githubAppRegistrationCredentials,
+  gitlabTokenRegistrationCredentials,
   organizations,
   principals,
   sourceBindingBranchMappings,
@@ -15,6 +19,7 @@ import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { disconnectSource, updateSourceToDisabled } from '../src/queries/source.query';
 import type { SourceMutationTransaction } from '../src/queries/source.query.types';
 import { persistConnectedGitSource } from '../src/services/git-source/git-source-connect.persistence';
+import { requireGitProviderAccessByRegistrationId } from '../src/services/git-source/git-source-provider-access.service';
 import {
   createGitLabProviderRegistration,
   rotateGitLabProviderRegistrationToken,
@@ -128,32 +133,36 @@ describe('git source connect persistence', (): void => {
   });
 
   it('isolates GitLab registrations by organization and preserves webhook secrets on rotation', async (): Promise<void> => {
-    await rotateGitLabProviderRegistrationToken(db, {
-      accessTokenCiphertext: 'rotated-token',
-      accessTokenEncryptionKeyId: 'rotated-key',
-      accessTokenExpiresAt: null,
-      providerAccountLogin: 'alice',
-      organizationId: 'org_git_sources',
-      registrationId: 'gpr_gitlab_sources',
-      updatedAt: new Date('2026-04-28T12:00:00.000Z'),
+    await db.transaction(async (transaction: ApiDatabaseTransaction): Promise<void> => {
+      await rotateGitLabProviderRegistrationToken(transaction, {
+        accessTokenCiphertext: 'rotated-token',
+        accessTokenEncryptionKeyId: 'rotated-key',
+        accessTokenExpiresAt: null,
+        providerAccountLogin: 'alice',
+        organizationId: 'org_git_sources',
+        registrationId: 'gpr_gitlab_sources',
+        updatedAt: new Date('2026-04-28T12:00:00.000Z'),
+      });
     });
-    await createGitLabProviderRegistration(db, {
-      accessTokenCiphertext: 'other-token',
-      accessTokenEncryptionKeyId: 'other-key',
-      accessTokenExpiresAt: null,
-      providerAccountId: '101',
-      providerAccountLogin: 'alice',
-      callbackUrl: 'https://console.example',
-      createdByPrincipalId: 'prn_git_sources',
-      id: 'gpr_gitlab_other_org',
-      organizationId: 'org_other',
-      providerHost: 'gitlab.com',
-      repositoryOwner: 'alice',
-      updatedAt: new Date('2026-04-28T12:00:00.000Z'),
-      webhookSecretCiphertext: 'other-secret',
-      webhookSecretEncryptionKeyId: 'other-secret-key',
-      webhookUrl:
-        'https://console.example/v1/sources/git/providers/gitlab/organizations/org_other/registrations/gpr_gitlab_other_org/webhook',
+    await db.transaction(async (transaction: ApiDatabaseTransaction): Promise<void> => {
+      await createGitLabProviderRegistration(transaction, {
+        accessTokenCiphertext: 'other-token',
+        accessTokenEncryptionKeyId: 'other-key',
+        accessTokenExpiresAt: null,
+        providerAccountId: '101',
+        providerAccountLogin: 'alice',
+        callbackUrl: 'https://console.example',
+        createdByPrincipalId: 'prn_git_sources',
+        id: 'gpr_gitlab_other_org',
+        organizationId: 'org_other',
+        providerHost: 'gitlab.com',
+        repositoryOwner: 'alice',
+        updatedAt: new Date('2026-04-28T12:00:00.000Z'),
+        webhookSecretCiphertext: 'other-secret',
+        webhookSecretEncryptionKeyId: 'other-secret-key',
+        webhookUrl:
+          'https://console.example/v1/sources/git/providers/gitlab/organizations/org_other/registrations/gpr_gitlab_other_org/webhook',
+      });
     });
     const registrations: (typeof gitProviderRegistrations.$inferSelect)[] = await db
       .select()
@@ -164,37 +173,57 @@ describe('git source connect persistence', (): void => {
         (row: typeof gitProviderRegistrations.$inferSelect): boolean => row.id === 'gpr_gitlab_sources',
       ),
     ).toMatchObject({
-      accessTokenCiphertext: 'rotated-token',
       webhookSecretCiphertext: 'secret',
     });
+    expect(
+      await db
+        .select()
+        .from(gitlabTokenRegistrationCredentials)
+        .where(eq(gitlabTokenRegistrationCredentials.registrationId, 'gpr_gitlab_sources')),
+    ).toEqual([
+      expect.objectContaining({ accessTokenCiphertext: 'rotated-token', accessTokenEncryptionKeyId: 'rotated-key' }),
+    ]);
   });
 
   it('rejects a duplicate active GitLab registration in the same organization', async (): Promise<void> => {
     await expect(
-      createGitLabProviderRegistration(db, {
-        accessTokenCiphertext: 'duplicate-token',
-        accessTokenEncryptionKeyId: 'duplicate-key',
-        accessTokenExpiresAt: null,
-        providerAccountId: '101',
-        providerAccountLogin: 'alice',
-        callbackUrl: 'https://console.example',
-        createdByPrincipalId: 'prn_git_sources',
-        id: 'gpr_gitlab_duplicate',
-        organizationId: 'org_git_sources',
-        providerHost: 'gitlab.com',
-        repositoryOwner: 'alice',
-        updatedAt: new Date('2026-04-28T12:00:00.000Z'),
-        webhookSecretCiphertext: 'duplicate-secret',
-        webhookSecretEncryptionKeyId: 'duplicate-secret-key',
-        webhookUrl:
-          'https://console.example/v1/sources/git/providers/gitlab/organizations/org_git_sources/registrations/gpr_gitlab_duplicate/webhook',
-      }),
+      db.transaction(
+        async (transaction: ApiDatabaseTransaction): Promise<typeof gitProviderRegistrations.$inferSelect> =>
+          await createGitLabProviderRegistration(transaction, {
+            accessTokenCiphertext: 'duplicate-token',
+            accessTokenEncryptionKeyId: 'duplicate-key',
+            accessTokenExpiresAt: null,
+            providerAccountId: '101',
+            providerAccountLogin: 'alice',
+            callbackUrl: 'https://console.example',
+            createdByPrincipalId: 'prn_git_sources',
+            id: 'gpr_gitlab_duplicate',
+            organizationId: 'org_git_sources',
+            providerHost: 'gitlab.com',
+            repositoryOwner: 'alice',
+            updatedAt: new Date('2026-04-28T12:00:00.000Z'),
+            webhookSecretCiphertext: 'duplicate-secret',
+            webhookSecretEncryptionKeyId: 'duplicate-secret-key',
+            webhookUrl:
+              'https://console.example/v1/sources/git/providers/gitlab/organizations/org_git_sources/registrations/gpr_gitlab_duplicate/webhook',
+          }),
+      ),
     ).rejects.toMatchObject({
       cause: {
         code: '23505',
         constraint: 'git_provider_registrations_active_gitlab_account_unique',
       },
     });
+  });
+
+  it('rejects an active registration whose provider credential row is missing', async (): Promise<void> => {
+    await db
+      .delete(gitlabTokenRegistrationCredentials)
+      .where(eq(gitlabTokenRegistrationCredentials.registrationId, 'gpr_gitlab_sources'));
+
+    await expect(
+      requireGitProviderAccessByRegistrationId('org_git_sources', 'gpr_gitlab_sources'),
+    ).rejects.toMatchObject({ code: 'git_source_registration_failed' });
   });
 
   it('reactivates a disconnected source and updates source defaults on reconnect', async (): Promise<void> => {
@@ -287,19 +316,12 @@ async function createPersistScope(): Promise<void> {
     slug: 'other-org',
   });
   await db.insert(gitProviderRegistrations).values({
-    appId: 'app_123',
-    appName: 'Compartment GitHub App',
-    appSlug: 'compartment-github-app',
-    appUrl: 'https://github.com/apps/compartment-github-app',
     bootstrapStateId: null,
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdByPrincipalId: 'prn_git_sources',
     id: 'gpr_git_sources',
-    installationId: 'inst_123',
     organizationId: 'org_git_sources',
     pendingExpiresAt: null,
-    privateKeyPemCiphertext: 'private-key-ciphertext',
-    privateKeyPemEncryptionKeyId: 'private-key-id',
     providerHost: 'github.com',
     providerType: 'github_app',
     repositoryOwner: 'acme',
@@ -309,10 +331,19 @@ async function createPersistScope(): Promise<void> {
     webhookUrl:
       'https://console.example/v1/sources/git/providers/github/organizations/org_git_sources/registrations/gpr_git_sources/webhook',
   });
+  await db.insert(githubAppRegistrationCredentials).values({
+    appId: 'app_123',
+    appName: 'Compartment GitHub App',
+    appSlug: 'compartment-github-app',
+    appUrl: 'https://github.com/apps/compartment-github-app',
+    installationAccountLogin: 'acme',
+    installationAccountType: 'Organization',
+    installationId: 'inst_123',
+    privateKeyPemCiphertext: 'private-key-ciphertext',
+    privateKeyPemEncryptionKeyId: 'private-key-id',
+    registrationId: 'gpr_git_sources',
+  });
   await db.insert(gitProviderRegistrations).values({
-    accessTokenCiphertext: 'token',
-    accessTokenEncryptionKeyId: 'key',
-    accessTokenExpiresAt: null,
     providerAccountId: '101',
     providerAccountLogin: 'alice',
     callbackUrl: 'https://console.example',
@@ -327,6 +358,12 @@ async function createPersistScope(): Promise<void> {
     webhookSecretEncryptionKeyId: 'key',
     webhookUrl:
       'https://console.example/v1/sources/git/providers/gitlab/organizations/org_git_sources/registrations/gpr_gitlab_sources/webhook',
+  });
+  await db.insert(gitlabTokenRegistrationCredentials).values({
+    accessTokenCiphertext: 'token',
+    accessTokenEncryptionKeyId: 'key',
+    accessTokenExpiresAt: null,
+    registrationId: 'gpr_gitlab_sources',
   });
 }
 
