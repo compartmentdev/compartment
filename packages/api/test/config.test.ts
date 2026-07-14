@@ -40,6 +40,7 @@ describe('readApiConfig', (): void => {
     expect(config.publicProtocol).toBe('http');
     expect(config.publicHttpPort).toBe(9080);
     expect(config.publicHttpsPort).toBe(9444);
+    expect(config.productLogIngestToken).toBeNull();
     expect(config.customTlsDirectory).toBe('/etc/compartment/tls');
     expect(config.runtimeDefaultUpstreamHost).toBe('127.0.0.1');
     expect(config.resourceBackupDirectory).toBe('/tmp/compartment/dev/resource-backups');

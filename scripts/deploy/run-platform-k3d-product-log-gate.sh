@@ -3,9 +3,10 @@ set -euo pipefail
 
 context="k3d-compartment-e2e"
 platform_namespace="compartment"
-observability_namespace="compartment-observability"
 load_namespace="cpt-p7-buffer-gate"
 platform_name="compartment-compartment"
+observability_namespace="${platform_name}-observability"
+agent_name="${platform_name}-log-agent"
 quota_max_bytes="1073741824"
 buffer_min_bytes="209715200"
 buffer_max_bytes="285212672"
@@ -20,24 +21,12 @@ cleanup() {
   if [[ -n "$original_quota" ]]; then
     psql "update product_log_store_quota set used_bytes = ${original_quota} where id = 'global';" >/dev/null || true
   fi
-  kubectl --context "$context" delete namespace "$observability_namespace" --ignore-not-found --wait=false >/dev/null || true
   kubectl --context "$context" delete namespace "$load_namespace" --ignore-not-found --wait=false >/dev/null || true
 }
 trap cleanup EXIT
 
-runtime_control_token="$({
-  kubectl --context "$context" --namespace "$platform_namespace" get secret "$platform_name" \
-    --output 'jsonpath={.data.runtime-control-token}'
-} | base64 --decode)"
-ingest_token="$(node -e 'const { createHmac } = require("node:crypto"); process.stdout.write(createHmac("sha256", process.argv[1]).update("compartment-product-log-ingest-v1").digest("base64url"));' "$runtime_control_token")"
-
-kubectl --context "$context" apply --filename packages/worker/manifests/product-log-agent.yaml
-kubectl --context "$context" --namespace "$observability_namespace" create secret generic compartment-log-agent \
-  --from-literal "ingest-url=http://${platform_name}-api.${platform_namespace}.svc.cluster.local:39444/internal/kubernetes/logs" \
-  --from-literal "ingest-token=${ingest_token}" \
-  --dry-run=client --output yaml | kubectl --context "$context" apply --filename -
 kubectl --context "$context" --namespace "$observability_namespace" rollout status \
-  daemonset/compartment-log-agent --timeout=3m
+  "daemonset/${agent_name}" --timeout=3m
 
 original_quota="$(psql "select used_bytes from product_log_store_quota where id = 'global';" | tr -d '[:space:]')"
 if [[ ! "$original_quota" =~ ^[0-9]+$ ]]; then
@@ -74,12 +63,12 @@ kubectl --context "$context" --namespace "$load_namespace" wait pod/app-buffer-l
   --for=condition=Ready --timeout=3m
 
 agent_pod="$(kubectl --context "$context" --namespace "$observability_namespace" get pod \
-  --selector app.kubernetes.io/name=compartment-log-agent --output 'jsonpath={.items[0].metadata.name}')"
+  --selector "app.kubernetes.io/name=${agent_name}" --output 'jsonpath={.items[0].metadata.name}')"
 agent_node="$(kubectl --context "$context" --namespace "$observability_namespace" get pod "$agent_pod" \
   --output 'jsonpath={.spec.nodeName}')"
 buffer_bytes="0"
 for _attempt in {1..120}; do
-  buffer_bytes="$(docker exec "$agent_node" du -sb /var/lib/compartment/log-agent | awk '{print $1}')"
+  buffer_bytes="$(docker exec "$agent_node" du -sb "/var/lib/compartment/${agent_name}" | awk '{print $1}')"
   if (( buffer_bytes >= buffer_min_bytes )); then
     break
   fi

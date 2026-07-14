@@ -29,11 +29,11 @@ Permanent negative-first coverage includes a Docker-backed run of the production
 
 ## Manifest and rollout
 
-The static manifests are `packages/worker/manifests/product-log-agent.yaml` and `packages/worker/manifests/worker-observability-rbac.yaml`. The agent references a Secret containing the internal ingest URL and a scoped ingest token; no credential is committed. The token is `base64url(HMAC-SHA256(runtime-control-token, "compartment-product-log-ingest-v1"))`, so a compromised node reader cannot call worker mutation routes. Chart wiring is intentionally excluded from P7.
+The static manifests are `packages/worker/manifests/product-log-agent.yaml` and `packages/worker/manifests/worker-observability-rbac.yaml`. The agent references a Secret containing the internal ingest URL and a scoped ingest token; no credential is committed. Standalone installs can derive the token as `base64url(HMAC-SHA256(runtime-control-token, "compartment-product-log-ingest-v1"))`. The Helm chart instead generates a dedicated stable ingest secret and projects only that scoped credential into the agent, so a compromised node reader cannot call worker mutation routes.
 
 The worker observability manifest grants the `compartment/compartment-worker` service account cluster-scoped `get`/`list` for core Pods and `metrics.k8s.io` Pods. Workload mutation remains namespace-scoped through the existing RoleBindings.
 
-DaemonSet in chart — follow-up after #112.
+The P10.1 Helm wiring runs the DaemonSet in a dedicated privileged observability namespace, keeps its node-local buffer bounded, and waits for it during the full-stage rollout.
 
 ## D33 and LOC
 

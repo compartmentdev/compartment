@@ -64,6 +64,9 @@ spec:
             - name: COMPARTMENT_EDGE_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: edge-token}
+            - name: COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: product-log-ingest-token}
             - name: COMPARTMENT_RUNTIME_CONTROL_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: runtime-control-token}
@@ -101,4 +104,3 @@ spec:
         - {name: tls, emptyDir: {}}
         - {name: tmp, emptyDir: {}}
 {{- end }}
-

@@ -10,6 +10,7 @@ interface ApiRouteTestEnvInput {
   publicHttpPort?: number | undefined;
   publicHttpsPort?: number | undefined;
   publicProtocol?: 'http' | 'https' | undefined;
+  productLogIngestToken?: string | undefined;
   runtimeControlToken?: string | undefined;
   systemToken?: string | undefined;
   throttleAuthActivationRouteMaxRequests?: number | undefined;
@@ -49,6 +50,7 @@ export function applyApiRouteTestEnv({
   publicHttpPort = 9080,
   publicHttpsPort = 9444,
   publicProtocol = 'http',
+  productLogIngestToken,
   runtimeControlToken = 'test-runtime-control-token',
   systemToken = 'test-system-token',
   throttleAuthActivationRouteMaxRequests = 10,
@@ -63,6 +65,11 @@ export function applyApiRouteTestEnv({
   process.env.COMPARTMENT_PUBLIC_HTTPS_PORT = String(publicHttpsPort);
   process.env.COMPARTMENT_PUBLIC_PROTOCOL = publicProtocol;
   process.env.COMPARTMENT_POSTGRES_PASSWORD = 'postgres';
+  if (productLogIngestToken === undefined) {
+    delete process.env.COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN;
+  } else {
+    process.env.COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN = productLogIngestToken;
+  }
   process.env.COMPARTMENT_AUDIT_RETENTION_DAYS = '90';
   process.env.COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE = '1000';
   process.env.COMPARTMENT_AUDIT_RETENTION_CLEANUP_CRON = '0 3 * * *';

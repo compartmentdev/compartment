@@ -57,6 +57,17 @@ describe('product log ingest route', (): void => {
       expect(response.statusCode).toBe(503);
     });
   });
+
+  it('accepts a dedicated ingest credential without accepting the runtime control credential', async (): Promise<void> => {
+    applyApiRouteTestEnv({ productLogIngestToken: 'dedicated-product-log-token' });
+    ingestMock.mockResolvedValueOnce({ accepted: 1, duplicates: 0, rejected: 0 });
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const workerResponse: LightMyRequestResponse = await postLogs(app, 'test-runtime-control-token');
+      const ingestResponse: LightMyRequestResponse = await postLogs(app, 'dedicated-product-log-token');
+      expect(workerResponse.statusCode).toBe(401);
+      expect(ingestResponse.statusCode).toBe(200);
+    });
+  });
 });
 
 async function postLogs(app: ApiApp, token: string): Promise<LightMyRequestResponse> {
