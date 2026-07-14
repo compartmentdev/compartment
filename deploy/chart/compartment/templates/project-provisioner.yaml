@@ -50,11 +50,11 @@ spec:
             - name: COMPARTMENT_RUNTIME_CONTROL_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: runtime-control-token}
-            - {name: COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME, value: {{ printf "%s-project-bootstrap" (include "compartment.fullname" .) | quote }}}
             - {name: COMPARTMENT_EDGE_NAMESPACE, value: {{ .Release.Namespace | quote }}}
             - {name: COMPARTMENT_KUBE_POD_CIDR, value: {{ .Values.buildkit.podCidr | quote }}}
             - {name: COMPARTMENT_KUBE_SERVICE_CIDR, value: {{ .Values.buildkit.serviceCidr | quote }}}
             - {name: COMPARTMENT_PLATFORM_NAMESPACE, value: {{ .Release.Namespace | quote }}}
+            - {name: COMPARTMENT_PROVISIONING_NAMESPACE, value: {{ include "compartment.projectProvisioningNamespace" . | quote }}}
             - {name: COMPARTMENT_PROJECT_PROVISIONER_IMAGE, value: {{ include "compartment.image" .Values.images.worker | quote }}}
             - {name: COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME, value: {{ printf "%s-worker" (include "compartment.fullname" .) | quote }}}
           volumeMounts:

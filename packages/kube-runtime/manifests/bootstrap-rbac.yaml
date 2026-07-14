@@ -5,7 +5,7 @@ metadata:
 rules:
   - apiGroups: ['']
     resources: ['namespaces']
-    verbs: ['create']
+    verbs: ['get', 'create']
   - apiGroups: ['rbac.authorization.k8s.io']
     resources: ['rolebindings']
     verbs: ['create']

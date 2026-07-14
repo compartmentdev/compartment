@@ -83,6 +83,139 @@ export async function expectK3dWorkerNamespaceIsolation(): Promise<void> {
     expectFailedCommand(result, `verify worker RBAC denial: ${assertion.join(' ')}`);
     expect(result.stdout.trim()).toBe('no');
   }
+  await expectK3dProjectProvisionerIsolation(seed);
+  await expectK3dBootstrapAdmissionBoundary(seed);
+}
+
+async function expectK3dProjectProvisionerIsolation(seed: K3dPlatformSeed): Promise<void> {
+  const identity: string = `system:serviceaccount:${seed.platformNamespace}:${k3dPlatformResourceName}-project-provisioner`;
+  const assertions: readonly (readonly string[])[] = [
+    ['get', `secret/${k3dPlatformResourceName}`, '--namespace', seed.platformNamespace],
+    ['create', 'jobs', '--namespace', seed.platformNamespace],
+    ['delete', 'clusterrolebinding/cluster-admin'],
+  ];
+  for (const assertion of assertions) {
+    const result: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: ['kubectl', '--context', seed.kubeContext, 'auth', 'can-i', ...assertion, `--as=${identity}`],
+      timeoutMs: k3dKubectlCommandTimeoutMs,
+    });
+    expectFailedCommand(result, `verify project provisioner RBAC denial: ${assertion.join(' ')}`);
+    expect(result.stdout.trim()).toBe('no');
+  }
+}
+
+async function expectK3dBootstrapAdmissionBoundary(seed: K3dPlatformSeed): Promise<void> {
+  const targetNamespace: string = `cpt-rbac-${process.pid.toString()}`;
+  const provisioningNamespace: string = `${k3dPlatformResourceName}-project-provisioning`;
+  const identity: string = `system:serviceaccount:${provisioningNamespace}:${targetNamespace}`;
+  const existingBinding: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'get',
+      'clusterrolebinding',
+      'compartment-project-bootstrap',
+      '--ignore-not-found',
+      '--output=name',
+    ],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(existingBinding, 'verify the bootstrap authority is not already active', '');
+  expect(existingBinding.stdout.trim()).toBe('');
+  const setupCommands: readonly (readonly string[])[] = [
+    ['kubectl', '--context', seed.kubeContext, 'create', 'namespace', targetNamespace],
+    [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      '--namespace',
+      provisioningNamespace,
+      'create',
+      'serviceaccount',
+      targetNamespace,
+    ],
+    [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'create',
+      'clusterrolebinding',
+      'compartment-project-bootstrap',
+      '--clusterrole=compartment-project-bootstrap',
+      `--serviceaccount=${provisioningNamespace}:${targetNamespace}`,
+    ],
+  ];
+  try {
+    await runK3dKubectlCommands(setupCommands);
+    const denied: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        '--namespace',
+        'kube-system',
+        'create',
+        'rolebinding',
+        'compartment-project-bootstrap',
+        '--clusterrole=compartment-controller',
+        `--serviceaccount=${provisioningNamespace}:${targetNamespace}`,
+        `--as=${identity}`,
+      ],
+      timeoutMs: k3dKubectlCommandTimeoutMs,
+    });
+    expectFailedCommand(denied, 'deny bootstrap RoleBinding creation outside its encoded namespace');
+    expect(denied.stderr).toContain('Project bootstrap authority is restricted to its encoded target namespace.');
+
+    await runK3dKubectlCommands([
+      [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        '--namespace',
+        targetNamespace,
+        'create',
+        'rolebinding',
+        'compartment-project-bootstrap',
+        '--clusterrole=compartment-controller',
+        `--serviceaccount=${provisioningNamespace}:${targetNamespace}`,
+        `--as=${identity}`,
+      ],
+    ]);
+  } finally {
+    await runK3dKubectlCommands([
+      [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        '--namespace',
+        'kube-system',
+        'delete',
+        'rolebinding',
+        'compartment-project-bootstrap',
+        '--ignore-not-found',
+      ],
+      [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        'delete',
+        'clusterrolebinding',
+        'compartment-project-bootstrap',
+        '--ignore-not-found',
+      ],
+      [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        'delete',
+        'namespace',
+        targetNamespace,
+        '--ignore-not-found',
+        '--wait=false',
+      ],
+    ]);
+  }
 }
 
 export function readK3dPlatformSeed(): K3dPlatformSeed {

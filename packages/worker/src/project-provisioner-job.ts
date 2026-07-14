@@ -7,39 +7,33 @@ import {
   type ProjectNamespaceProvisioningRow,
 } from '@compartment/kube-runtime';
 import { z } from 'zod';
+import {
+  projectProvisioningEnvironmentSchema,
+  type ProjectProvisioningEnvironment,
+} from './project-provisioning-environment';
 
-interface ProjectProvisionerJobEnvironment {
+interface ProjectProvisionerJobEnvironment extends ProjectProvisioningEnvironment {
   COMPARTMENT_ARTIFACT_REGISTRY_HOST: string;
   COMPARTMENT_ARTIFACT_REGISTRY_PORT: number;
   COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: string;
   COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: string;
   COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: string;
-  COMPARTMENT_EDGE_NAMESPACE: string;
-  COMPARTMENT_KUBE_POD_CIDR: string;
-  COMPARTMENT_KUBE_SERVICE_CIDR: string;
-  COMPARTMENT_PLATFORM_NAMESPACE: string;
   COMPARTMENT_PROJECT_ID: string;
-  COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME: string;
 }
 
-const environmentSchema: z.ZodTypeAny = z.object({
-  COMPARTMENT_ARTIFACT_REGISTRY_HOST: z.string().min(1),
-  COMPARTMENT_ARTIFACT_REGISTRY_PORT: z.coerce.number().int().positive(),
-  COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: z.string().min(1),
-  COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: z.string().min(1),
-  COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: z.string().min(1),
-  COMPARTMENT_EDGE_NAMESPACE: z.string().min(1),
-  COMPARTMENT_KUBE_POD_CIDR: z.string().min(1),
-  COMPARTMENT_KUBE_SERVICE_CIDR: z.string().min(1),
-  COMPARTMENT_PLATFORM_NAMESPACE: z.string().min(1),
-  COMPARTMENT_PROJECT_ID: z.string().min(1),
-  COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME: z.string().min(1),
-});
+const environmentSchema: z.ZodType<ProjectProvisionerJobEnvironment> = projectProvisioningEnvironmentSchema.and(
+  z.object({
+    COMPARTMENT_ARTIFACT_REGISTRY_HOST: z.string().min(1),
+    COMPARTMENT_ARTIFACT_REGISTRY_PORT: z.coerce.number().int().positive(),
+    COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: z.string().min(1),
+    COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: z.string().min(1),
+    COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: z.string().min(1),
+    COMPARTMENT_PROJECT_ID: z.string().min(1),
+  }),
+);
 
 async function main(): Promise<void> {
-  const environment: ProjectProvisionerJobEnvironment = environmentSchema.parse(
-    process.env,
-  ) as ProjectProvisionerJobEnvironment;
+  const environment: ProjectProvisionerJobEnvironment = environmentSchema.parse(process.env);
   await createSelfCleaningKubeRuntimeFromEnvironment().apply(projectProvisioningBundle(environment));
 }
 
@@ -51,7 +45,7 @@ function projectProvisioningRow(environment: ProjectProvisionerJobEnvironment): 
   return {
     bootstrapServiceAccount: {
       name: environment.COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME,
-      namespace: environment.COMPARTMENT_PLATFORM_NAMESPACE,
+      namespace: environment.COMPARTMENT_PROVISIONING_NAMESPACE,
     },
     namespaceId: environment.COMPARTMENT_PROJECT_ID,
     networkPolicy: projectNetworkPolicy(environment),

@@ -1,8 +1,19 @@
 {{- if eq .Values.platform.startupStage "full" }}
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "compartment.projectProvisioningNamespace" . }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ include "compartment.fullname" . }}-project-provisioner
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "compartment.labels" . | nindent 4 }}
 ---
@@ -44,7 +55,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
-    verbs: ["create"]
+    verbs: ["get", "create"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["rolebindings"]
     verbs: ["create"]
@@ -69,32 +80,62 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ include "compartment.fullname" . }}-project-provisioner
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "compartment.labels" . | nindent 4 }}
 rules:
-  - apiGroups: [""]
-    resources: ["serviceaccounts", "secrets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch", "delete"]
-  - apiGroups: [""]
-    resources: ["pods/log"]
-    verbs: ["get"]
   - apiGroups: ["batch"]
     resources: ["jobs"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ include "compartment.fullname" . }}-project-provisioner
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "compartment.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: {{ include "compartment.fullname" . }}-project-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "compartment.fullname" . }}-project-provisioner
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "compartment.fullname" . }}-project-provisioning-job
+  namespace: {{ include "compartment.projectProvisioningNamespace" . }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts", "secrets"]
+    verbs: ["get", "create", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "compartment.fullname" . }}-project-provisioning-job
+  namespace: {{ include "compartment.projectProvisioningNamespace" . }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "compartment.fullname" . }}-project-provisioning-job
 subjects:
   - kind: ServiceAccount
     name: {{ include "compartment.fullname" . }}-project-provisioner
@@ -109,7 +150,11 @@ metadata:
 rules:
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterrolebindings"]
-    verbs: ["get", "create", "update", "patch", "delete"]
+    verbs: ["create"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterrolebindings"]
+    resourceNames: ["compartment-project-bootstrap"]
+    verbs: ["get", "update", "patch", "delete"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterroles"]
     resourceNames: ["compartment-project-bootstrap"]
@@ -129,4 +174,43 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "compartment.fullname" . }}-project-provisioner
     namespace: {{ .Release.Namespace }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ include "compartment.fullname" . }}-project-bootstrap-boundary
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["namespaces"]
+        scope: Cluster
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["rolebindings"]
+        scope: Namespaced
+  matchConditions:
+    - name: bootstrap-identity
+      expression: {{ printf "request.userInfo.username.startsWith('system:serviceaccount:%s:cpt-')" (include "compartment.projectProvisioningNamespace" .) | quote }}
+  validations:
+    - expression: {{ printf "request.resource.resource == 'namespaces' ? request.userInfo.username == 'system:serviceaccount:%s:' + object.metadata.name : request.userInfo.username == 'system:serviceaccount:%s:' + request.namespace" (include "compartment.projectProvisioningNamespace" .) (include "compartment.projectProvisioningNamespace" .) | quote }}
+      message: Project bootstrap authority is restricted to its encoded target namespace.
+    - expression: "request.resource.resource != 'rolebindings' || (request.operation == 'DELETE' ? request.name == 'compartment-project-bootstrap' : object.metadata.name in ['compartment-project-bootstrap', 'compartment-controller'] && object.roleRef.apiGroup == 'rbac.authorization.k8s.io' && object.roleRef.kind == 'ClusterRole' && object.roleRef.name == 'compartment-controller')"
+      message: Project bootstrap authority may manage only canonical controller RoleBindings.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ include "compartment.fullname" . }}-project-bootstrap-boundary
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  policyName: {{ include "compartment.fullname" . }}-project-bootstrap-boundary
+  validationActions: [Deny]
 {{- end }}

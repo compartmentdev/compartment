@@ -13,6 +13,12 @@ helm template compartment "${CHART_DIR}" --set platform.startupStage=foundation 
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/full.yaml"
 helm template compartment "${CHART_DIR}" -f "${CHART_DIR}/values-kind.yaml" >"${OUTPUT_DIR}/kind.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token --set edge.snapshots.enabled=true >"${OUTPUT_DIR}/edge.yaml"
+node "${CHART_DIR}/test/assert-project-provisioning-rbac.mjs" "${OUTPUT_DIR}/full.yaml"
+
+if helm template compartment "${CHART_DIR}" --kube-version 1.29.9 --set platform.startupStage=full --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >/dev/null 2>&1; then
+  echo 'Chart must fail closed on Kubernetes versions without admissionregistration.k8s.io/v1 ValidatingAdmissionPolicy.' >&2
+  exit 1
+fi
 
 grep -q 'kind: CronJob' "${OUTPUT_DIR}/full.yaml"
 grep -q 'kind: NetworkPolicy' "${OUTPUT_DIR}/full.yaml"

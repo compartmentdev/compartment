@@ -249,6 +249,7 @@ export interface KubeJobSpec {
   jobClass: 'release' | 'operation';
   labels: Readonly<Record<string, string>>;
   namespace: string;
+  securityProfile?: 'restricted' | undefined;
   serviceAccountName?: string | undefined;
   serviceAccountTokenExpirationSeconds?: number | undefined;
   timeoutMs: number;

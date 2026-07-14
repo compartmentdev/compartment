@@ -29,6 +29,7 @@ interface JobManifestSpec {
       automountServiceAccountToken: false;
       containers: JobContainerSpec[];
       imagePullSecrets?: { name: string }[] | undefined;
+      securityContext?: object | undefined;
       serviceAccountName?: string | undefined;
       volumes: KubePodVolume[];
     };
@@ -37,6 +38,7 @@ interface JobManifestSpec {
 
 interface JobContainerSpec {
   env: KubeSecretEnvVariable[];
+  securityContext?: object | undefined;
 }
 
 type KubePatchInvocation = [
@@ -234,6 +236,7 @@ describe('KubeRuntime Job primitive', (): void => {
   it('bounds bootstrap Job execution and mounts only an expiring projected credential', async (): Promise<void> => {
     const spec: KubeJobSpec = {
       ...jobSpec('operation'),
+      securityProfile: 'restricted',
       serviceAccountName: 'compartment-project-bootstrap',
       serviceAccountTokenExpirationSeconds: 600,
       timeoutMs: 300_000,
@@ -249,6 +252,16 @@ describe('KubeRuntime Job primitive', (): void => {
     )![0];
     const projectedSpec: JobManifestSpec = manifest.spec as JobManifestSpec;
     expect(projectedSpec.activeDeadlineSeconds).toBe(300);
+    expect(projectedSpec.template.spec.securityContext).toEqual({
+      runAsGroup: 10_001,
+      runAsNonRoot: true,
+      runAsUser: 10_001,
+      seccompProfile: { type: 'RuntimeDefault' },
+    });
+    expect(projectedSpec.template.spec.containers[0]?.securityContext).toEqual({
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ['ALL'] },
+    });
     expect(projectedSpec.template.spec.serviceAccountName).toBe('compartment-project-bootstrap');
     expect(projectedSpec.template.spec.volumes[0]?.projected?.sources[0]).toMatchObject({
       serviceAccountToken: { expirationSeconds: 600, path: 'token' },
