@@ -2,14 +2,10 @@ import { CoreV1Api, KubernetesObjectApi, Metrics, type KubeConfig } from '@kuber
 import { createKubeObservation } from './kube-observation';
 import { readKubePodMetrics } from './kube-pod-metrics';
 import type { KubePodMetricObservation, ObservePodMetrics } from './kube-pod-metrics.types';
-import {
-  kubeFinalizedJobManifest,
-  kubeJobManifest,
-  kubeJobSecretManifest,
-  waitForTerminalJob,
-  type TerminalJob,
-} from './kube-job';
+import { waitForTerminalJob, type TerminalJob } from './kube-job';
+import { kubeFinalizedJobManifest, kubeJobManifest, kubeJobSecretManifest } from './kube-job-projection';
 import { kubeJobName } from './kube-naming';
+import type { TerminalJobResult } from './kube-runtime-job-result.types';
 import { createOrValidate } from './kube-provisioning-validation';
 import {
   applyObject,
@@ -19,6 +15,7 @@ import {
   requireCleanupObjectApi,
   isJobTimeoutError,
   jobObservationInput,
+  readObjectIgnoringNotFound,
   readHttpStatusCode,
   startJobDeadline,
   type JobDeadline,
@@ -31,17 +28,9 @@ import type {
   KubeLogReference,
   KubeManifest,
   KubeObservation,
+  KubeObservedManifest,
   ObserveLabels,
 } from './kube-runtime.types';
-
-interface TerminalJobResult {
-  completedAt: Date;
-  exitCode: number | null;
-  jobName: string;
-  logs: string;
-  podName: string | null;
-  status: 'succeeded' | 'failed' | 'timed-out';
-}
 
 type FinalizeJob = () => Promise<void>;
 
@@ -117,6 +106,14 @@ export class KubeRuntime {
     return await createKubeObservation(this.kubeConfig, this.objectApi, input);
   }
 
+  public async read(object: KubeManifest): Promise<KubeObservedManifest | null> {
+    return await readObjectIgnoringNotFound(this.objectApi, object);
+  }
+
+  public async delete(objects: KubeManifest[]): Promise<void> {
+    await deleteObjectsPreservingPrimary(this.objectApi, objects, null);
+  }
+
   public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricObservation[]> {
     return await readKubePodMetrics(this.coreApi, new Metrics(this.kubeConfig), input);
   }
@@ -132,8 +129,13 @@ export class KubeRuntime {
 
   public async runJob(spec: KubeJobSpec, persistedResult?: KubePersistedJobResult): Promise<KubeJobResult> {
     const jobName: string = kubeJobName(spec.id);
-    const labels: Record<string, string> = { ...spec.labels, 'compartment.dev/job-id': spec.id };
-    const jobExists: boolean = await this.jobExists(spec.namespace, jobName);
+    const labels: Record<string, string> = { ...spec.labels, 'compartment.dev/job-id': jobName };
+    const jobExists: boolean =
+      (await this.read({
+        apiVersion: 'batch/v1',
+        kind: 'Job',
+        metadata: { name: jobName, namespace: spec.namespace },
+      })) !== null;
     if (persistedResult !== undefined) {
       return this.buildCapturedJobResult(spec, jobName, labels, persistedResult, jobExists);
     }
@@ -174,18 +176,6 @@ export class KubeRuntime {
     });
   }
 
-  private async jobExists(namespace: string, jobName: string): Promise<boolean> {
-    try {
-      await this.objectApi.read({ apiVersion: 'batch/v1', kind: 'Job', metadata: { name: jobName, namespace } });
-      return true;
-    } catch (error) {
-      if (error instanceof Error && readHttpStatusCode(error) === 404) {
-        return false;
-      }
-      throw error;
-    }
-  }
-
   private async completeJob(spec: KubeJobSpec, jobName: string): Promise<TerminalJobResult> {
     const deadline: JobDeadline = startJobDeadline(jobName, spec.timeoutMs);
     let observation: KubeObservation | null = null;
@@ -193,7 +183,7 @@ export class KubeRuntime {
       observation = await createKubeObservation(
         this.kubeConfig,
         this.objectApi,
-        jobObservationInput(spec),
+        jobObservationInput(spec, jobName),
         deadline.controller.signal,
       );
       try {

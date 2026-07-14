@@ -35,6 +35,12 @@ export interface KubeTcpSocketAction {
   port: number | string;
 }
 
+export interface ApplicationReadinessConfig {
+  path: string;
+  timeoutMs: number;
+  type: 'http';
+}
+
 export interface ApplicationProjectionRow {
   containerPort: number;
   deploymentId: string;
@@ -48,7 +54,9 @@ export interface ApplicationProjectionRow {
   organizationName: string;
   projectId: string;
   projectName: string;
+  readiness: ApplicationReadinessConfig | null;
   replicas: number;
+  runCommand: string | null;
   serviceId: string;
   serviceName: string;
   secretId: string;

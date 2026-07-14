@@ -1,5 +1,6 @@
 import type { RuntimeDrainState, WorkerRecoverDeploymentsMode } from '@compartment/contracts';
 import type { DeploymentJoinedRow } from '../queries/deployments.query.types';
+import { hasDeploymentKubeReference } from '../queries/deployment-kube-membership.query';
 import { findActiveJoinedDeployment, findJoinedDeploymentById } from '../queries/deployment-joined.query';
 import { listOrphanedRunningDeployments, listPendingDrainDeployments } from '../queries/deployment-recovery.query';
 import { findNodeById } from '../queries/node.query';
@@ -139,7 +140,7 @@ async function resolveClaimedPreviousDeployment(
     deployment.service.id,
     getApiConfig().baseDomain,
   );
-  if (previousDeployment === undefined) {
+  if (previousDeployment === undefined || (await hasDeploymentKubeReference(previousDeployment.deployment.id))) {
     return null;
   }
 

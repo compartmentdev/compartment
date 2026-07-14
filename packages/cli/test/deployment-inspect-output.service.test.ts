@@ -27,6 +27,23 @@ describe('deployment inspect output service', (): void => {
     expect(message).toContain('Restart Policy: on-failure');
   });
 
+  it('shows Kubernetes runtime kind when no container id exists', (): void => {
+    const response: DeploymentInspectResponse = createInspectResponse();
+    response.deployments[0]!.runtime = {
+      containerId: null,
+      imageRef: 'registry.example/app@sha256:abc',
+      routeHost: 'smoke-web.localhost',
+      runtimeKind: 'kubernetes',
+      upstreamHost: 'app-smoke.cpt-smoke.svc',
+      upstreamPort: 80,
+    };
+
+    const message: string = createInspectResultMessage(response, true);
+
+    expect(message).toContain('Runtime Container: n/a');
+    expect(message).toContain('Runtime Kind: kubernetes');
+  });
+
   it('shows redacted topology when inspect hides sensitive runtime details', (): void => {
     const message: string = createInspectResultMessage(
       createInspectResponse({

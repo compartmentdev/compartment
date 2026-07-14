@@ -11,6 +11,7 @@ import {
   type KubeManifest,
   type KubeObservation,
   type KubeObservationHealth,
+  type KubePodVolume,
   type ProjectNamespaceProvisioningRow,
 } from '../src';
 import type { KubeObservationListener, KubeObservedManifest, KubeSecretEnvVariable } from '../src/kube-runtime.types';
@@ -20,10 +21,17 @@ const createObservationMock: Mock = vi.hoisted((): Mock => vi.fn());
 vi.mock('../src/kube-observation', (): object => ({ createKubeObservation: createObservationMock }));
 
 interface JobManifestSpec {
+  activeDeadlineSeconds: number;
   backoffLimit: number;
   template: {
     metadata: { annotations: Record<string, string> };
-    spec: { automountServiceAccountToken: false; containers: JobContainerSpec[] };
+    spec: {
+      automountServiceAccountToken: false;
+      containers: JobContainerSpec[];
+      imagePullSecrets?: { name: string }[] | undefined;
+      serviceAccountName?: string | undefined;
+      volumes: KubePodVolume[];
+    };
   };
 }
 
@@ -60,6 +68,7 @@ class PrimitiveObjectApi {
   public jobExists: boolean = false;
   public patchError: Error | null = null;
   public patchErrorKind: string | null = null;
+  public readError: Error | null = null;
   public useStatusCodeConflict: boolean = false;
 
   public async create(object: KubeManifest): Promise<KubernetesObject> {
@@ -92,6 +101,9 @@ class PrimitiveObjectApi {
 
   public async read(object: KubeManifest): Promise<KubernetesObject> {
     this.events.push(`read:${object.kind}`);
+    if (this.readError !== null) {
+      throw this.readError;
+    }
     if (object.kind === 'Job' && !this.jobExists) {
       throw Object.assign(new Error('not found'), { statusCode: 404 });
     }
@@ -133,6 +145,7 @@ describe('KubeRuntime Job primitive', (): void => {
     objectApi.jobExists = false;
     objectApi.patchError = null;
     objectApi.patchErrorKind = null;
+    objectApi.readError = null;
     objectApi.delete.mockClear();
     coreApi.readNamespacedPodLog.mockClear();
     vi.spyOn(KubernetesObjectApi, 'makeApiClient').mockReturnValue(objectApi as never);
@@ -140,6 +153,21 @@ describe('KubeRuntime Job primitive', (): void => {
 
   afterEach((): void => {
     vi.useRealTimers();
+  });
+
+  it('reads an observed object and treats a missing object as absent', async (): Promise<void> => {
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+    const deployment: KubeManifest = {
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: { name: 'app-1', namespace: 'project-1' },
+    };
+
+    await expect(runtime.read(deployment)).resolves.toEqual(deployment);
+    objectApi.readError = Object.assign(new Error('not found'), { statusCode: 404 });
+    await expect(runtime.read(deployment)).resolves.toBeNull();
+    objectApi.readError = Object.assign(new Error('forbidden'), { statusCode: 403 });
+    await expect(runtime.read(deployment)).rejects.toThrow('forbidden');
   });
 
   it('creates a deterministic release Job, reads cached completion, and finalizes TTL after capture', async (): Promise<void> => {
@@ -157,17 +185,74 @@ describe('KubeRuntime Job primitive', (): void => {
     )![0];
     expect(manifest.metadata?.name).toBe(jobName);
     expect((manifest.spec as JobManifestSpec).backoffLimit).toBe(0);
+    expect((manifest.spec as JobManifestSpec).activeDeadlineSeconds).toBe(1);
     expect((manifest.spec as JobManifestSpec).template.spec.containers[0]?.env).toEqual([
       { name: 'ALPHA', valueFrom: { secretKeyRef: { key: 'ALPHA', name: kubeSecretName(spec.id) } } },
       { name: 'ZETA', valueFrom: { secretKeyRef: { key: 'ZETA', name: kubeSecretName(spec.id) } } },
     ]);
     expect((manifest.spec as JobManifestSpec).template.spec.automountServiceAccountToken).toBe(false);
+    expect((manifest.spec as JobManifestSpec).template.spec.imagePullSecrets).toEqual([
+      { name: kubeSecretName(spec.imagePullSecretId ?? '') },
+    ]);
     expect((manifest.spec as JobManifestSpec).template.metadata.annotations['compartment.dev/secret-checksum']).toMatch(
       /^[a-f0-9]{64}$/,
     );
     expect(result).toMatchObject({ exitCode: 0, jobName, logs: 'done\n', podName: 'job-pod', status: 'succeeded' });
     expect(objectApi.patches.at(-1)![0].spec).toMatchObject({ ttlSecondsAfterFinished: 300 });
     expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it('projects long logical Job IDs into Kubernetes-safe identity labels', async (): Promise<void> => {
+    const spec: KubeJobSpec = {
+      ...jobSpec('operation'),
+      id: 'resource-operation-op_b7ab86af4420406486b1b81f118d0b4c-artifact-verify',
+    };
+    const jobName: string = kubeJobName(spec.id);
+    createObservationMock.mockResolvedValue(terminalObservation(jobName, true, 0, vi.fn()));
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    await runtime.runJob(spec);
+
+    const createdObjects: KubeManifest[] = objectApi.patches.map(
+      ([object]: KubePatchInvocation): KubeManifest => object,
+    );
+    expect(createdObjects).toHaveLength(2);
+    expect(
+      createdObjects.map(
+        (object: KubeManifest): string | undefined => object.metadata?.labels?.['compartment.dev/job-id'],
+      ),
+    ).toEqual([jobName, jobName]);
+    expect(jobName.length).toBeLessThanOrEqual(63);
+    expect(createObservationMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ labels: { 'compartment.dev/job-id': jobName } }),
+      expect.any(AbortSignal),
+    );
+  });
+
+  it('bounds bootstrap Job execution and mounts only an expiring projected credential', async (): Promise<void> => {
+    const spec: KubeJobSpec = {
+      ...jobSpec('operation'),
+      serviceAccountName: 'compartment-project-bootstrap',
+      serviceAccountTokenExpirationSeconds: 600,
+      timeoutMs: 300_000,
+    };
+    const jobName: string = kubeJobName(spec.id);
+    createObservationMock.mockResolvedValue(terminalObservation(jobName, true, 0, vi.fn()));
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    await runtime.runJob(spec);
+
+    const manifest: KubeManifest = objectApi.patches.find(
+      ([object]: KubePatchInvocation): boolean => object.kind === 'Job',
+    )![0];
+    const projectedSpec: JobManifestSpec = manifest.spec as JobManifestSpec;
+    expect(projectedSpec.activeDeadlineSeconds).toBe(300);
+    expect(projectedSpec.template.spec.serviceAccountName).toBe('compartment-project-bootstrap');
+    expect(projectedSpec.template.spec.volumes[0]?.projected?.sources[0]).toMatchObject({
+      serviceAccountToken: { expirationSeconds: 600, path: 'token' },
+    });
   });
 
   it('joins an existing deterministic Job without applying another Job', async (): Promise<void> => {
@@ -234,24 +319,40 @@ describe('KubeRuntime Job primitive', (): void => {
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
     await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-01jz')));
-    expect(objectApi.deletes).toMatchObject([{ kind: 'ClusterRoleBinding' }]);
+    expect(objectApi.deletes).toMatchObject([{ kind: 'RoleBinding' }, { kind: 'ClusterRoleBinding' }]);
     expect(objectApi.events.at(-1)).toBe('delete:ClusterRoleBinding');
   });
 
+  it('treats already-removed bootstrap cleanup objects as converged', async (): Promise<void> => {
+    objectApi.deleteError = Object.assign(new Error('not found'), { code: 404 });
+    const runtime: KubeRuntime = new KubeRuntime(
+      { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
+      { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
+    );
+
+    await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-retry')));
+    expect(objectApi.deletes).toMatchObject([{ kind: 'RoleBinding' }, { kind: 'ClusterRoleBinding' }]);
+  });
+
   it('uses installation authority to remove bootstrap access after a partial create failure', async (): Promise<void> => {
-    objectApi.failCreateKind = 'ServiceAccount';
+    objectApi.failCreateKind = 'RoleBinding';
     const runtime: KubeRuntime = new KubeRuntime(
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
     await expect(runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-failure')))).rejects.toThrow(
-      'generated ServiceAccount failure',
+      'generated RoleBinding failure',
     );
-    expect(objectApi.events).toEqual(['create:Namespace', 'create:ServiceAccount', 'delete:ClusterRoleBinding']);
+    expect(objectApi.events).toEqual([
+      'create:Namespace',
+      'create:RoleBinding',
+      'delete:RoleBinding',
+      'delete:ClusterRoleBinding',
+    ]);
   });
 
   it('preserves provisioning and cleanup failures together', async (): Promise<void> => {
-    objectApi.failCreateKind = 'ServiceAccount';
+    objectApi.failCreateKind = 'RoleBinding';
     objectApi.failDelete = true;
     const runtime: KubeRuntime = new KubeRuntime(
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
@@ -267,10 +368,10 @@ describe('KubeRuntime Job primitive', (): void => {
       throw new Error('Expected provisioning and cleanup to fail.');
     }
     expect(failure.errors).toMatchObject([
-      { message: 'generated ServiceAccount failure' },
+      { message: 'generated RoleBinding failure' },
       { message: 'generated cleanup failure' },
     ]);
-    expect(failure.cause).toMatchObject({ message: 'generated ServiceAccount failure' });
+    expect(failure.cause).toMatchObject({ message: 'generated RoleBinding failure' });
   });
 
   it('rejects a conflicting RoleBinding that does not grant the canonical controller role', async (): Promise<void> => {
@@ -300,9 +401,12 @@ describe('KubeRuntime Job primitive', (): void => {
     objectApi.readOverrides.set('RoleBinding', {
       apiVersion: 'rbac.authorization.k8s.io/v1',
       kind: 'RoleBinding',
-      metadata: { namespace, name: 'compartment-controller' },
+      metadata: { namespace, name: 'compartment-project-bootstrap' },
       roleRef: { name: 'compartment-controller', kind: 'ClusterRole', apiGroup: 'rbac.authorization.k8s.io' },
-      subjects: [{ namespace, name: 'compartment-controller', kind: 'ServiceAccount' }],
+      subjects: [
+        { namespace: 'compartment', name: 'compartment-project-bootstrap', kind: 'ServiceAccount' },
+        { namespace: 'compartment', name: 'compartment-worker', kind: 'ServiceAccount' },
+      ],
     });
     const runtime: KubeRuntime = new KubeRuntime(
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
@@ -388,6 +492,7 @@ function jobSpec(jobClass: 'operation' | 'release'): KubeJobSpec {
   return {
     id: 'job-01jz',
     image: 'registry.example/release@sha256:abc',
+    ...(jobClass === 'release' ? { imagePullSecretId: 'pull-01jz' } : {}),
     jobClass,
     env: { ZETA: 'z', ALPHA: 'a' },
     labels: { 'compartment.dev/deployment-id': 'dep-01jz' },
@@ -398,11 +503,12 @@ function jobSpec(jobClass: 'operation' | 'release'): KubeJobSpec {
 
 function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
   return {
+    bootstrapServiceAccount: { name: 'compartment-project-bootstrap', namespace: 'compartment' },
     namespaceId,
     networkPolicy: {
       applicationPodLabels: { app: 'application' },
       applicationPort: 8080,
-      edgeNamespaceId: 'edge-namespace',
+      edgeNamespaceName: 'edge-namespace',
       edgePodLabels: { app: 'caddy' },
       podCidr: ['10', '42', '0', '0/16'].join('.'),
       resourcePodLabels: { app: 'resource' },
@@ -414,6 +520,7 @@ function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
       dockerConfigJson: '{"auths":{"registry.example":{"auth":"generated"}}}',
       secretId: `pull-${namespaceId}`,
     },
+    workerServiceAccount: { name: 'compartment-worker', namespace: 'compartment' },
   };
 }
 

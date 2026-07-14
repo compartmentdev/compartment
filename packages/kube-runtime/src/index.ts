@@ -1,4 +1,4 @@
-export { createKubeRuntimeFromEnvironment } from './kube-runtime-factory';
+export { createKubeRuntimeFromEnvironment, createSelfCleaningKubeRuntimeFromEnvironment } from './kube-runtime-factory';
 export { KubeRuntime } from './kube-runtime';
 export {
   kubeApplicationIdentityName,
@@ -12,6 +12,7 @@ export {
 export { projectApplicationManifests } from './kube-projections';
 export {
   assertResourceClaimIdentity,
+  assertResourceClaimOwnership,
   projectResourceBootstrapClaims,
   projectResourceManifests,
   resourcePodsFullyTerminated,
@@ -19,6 +20,11 @@ export {
 export type { ProjectNetworkPolicyProjection } from './kube-network-policy-projection.types';
 export { projectSecretManifest } from './kube-secret-projection';
 export { projectNamespaceProvisioningBundle } from './kube-provisioning';
+export {
+  projectProvisioningAuthorityBundle,
+  projectProvisioningAuthorityCleanup,
+} from './kube-project-provisioning-authority';
+export type { ProjectProvisioningAuthorityInput } from './kube-project-provisioning-authority.types';
 export type { ProjectNamespaceProvisioningRow } from './kube-provisioning.types';
 export { calculateKubeRolloutStatus, calculateKubeStateTransition } from './kube-state';
 export type {

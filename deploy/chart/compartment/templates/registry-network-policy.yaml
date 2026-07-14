@@ -44,4 +44,6 @@ spec:
               {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit") | nindent 14 }}
       ports:
         - {protocol: TCP, port: {{ .Values.ports.registry }}}
+    - ports:
+        - {protocol: TCP, port: {{ .Values.ports.registry }}}
 {{- end }}

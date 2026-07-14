@@ -1,4 +1,4 @@
-import { PatchStrategy, type KubernetesObjectApi } from '@kubernetes/client-node';
+import { PatchStrategy, type KubernetesObject, type KubernetesObjectApi } from '@kubernetes/client-node';
 import type { KubeJobSpec, KubeManifest, KubeObservedManifest, ObserveLabels } from './kube-runtime.types';
 
 const fieldManager: string = 'compartment';
@@ -10,6 +10,7 @@ export interface JobDeadline {
 }
 
 interface KubeHttpError extends Error {
+  code?: number | undefined;
   statusCode?: number | undefined;
 }
 
@@ -58,12 +59,21 @@ export function startJobDeadline(jobName: string, timeoutMs: number): JobDeadlin
   return { controller, expiresAt, timer };
 }
 
-export function jobObservationInput(spec: KubeJobSpec): ObserveLabels {
+export function jobObservationInput(spec: KubeJobSpec, jobName: string): ObserveLabels {
   return {
-    labels: { 'compartment.dev/job-id': spec.id },
+    labels: { 'compartment.dev/job-id': jobName },
     namespace: spec.namespace,
     resources: ['jobs', 'pods'],
   };
+}
+
+async function deleteObjects(objectApi: KubernetesObjectApi | null, objects: KubeManifest[]): Promise<void> {
+  if (objectApi === null) {
+    return;
+  }
+  for (const object of objects) {
+    await deleteObjectIgnoringNotFound(objectApi, object);
+  }
 }
 
 export async function deleteObjectIgnoringNotFound(
@@ -80,8 +90,24 @@ export async function deleteObjectIgnoringNotFound(
   }
 }
 
+export async function readObjectIgnoringNotFound(
+  objectApi: KubernetesObjectApi,
+  object: KubeManifest,
+): Promise<KubeObservedManifest | null> {
+  try {
+    const observed: KubernetesObject = await objectApi.read(object as never);
+    return observed as KubeObservedManifest;
+  } catch (error) {
+    if (error instanceof Error && readHttpStatusCode(error) === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export function readHttpStatusCode(error: Error): number | undefined {
-  return (error as KubeHttpError).statusCode;
+  const httpError: KubeHttpError = error;
+  return httpError.statusCode ?? httpError.code;
 }
 
 export function isJobTimeoutError(error: Error): boolean {
@@ -97,13 +123,4 @@ export function findJobPodNames(cache: ReadonlyMap<string, KubeObservedManifest>
     .map((pod: KubeObservedManifest): string => pod.metadata?.name ?? '')
     .filter((podName: string): boolean => podName !== '')
     .sort((leftName: string, rightName: string): number => leftName.localeCompare(rightName));
-}
-
-async function deleteObjects(objectApi: KubernetesObjectApi | null, objects: KubeManifest[]): Promise<void> {
-  if (objectApi === null) {
-    return;
-  }
-  for (const object of objects) {
-    await objectApi.delete(object);
-  }
 }

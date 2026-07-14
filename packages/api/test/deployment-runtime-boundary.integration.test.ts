@@ -19,6 +19,7 @@ import {
   deployAndActivateCurrentService,
   drainDeadlineAt,
   ensureRuntimeBoundaryDatabase,
+  markDeploymentAsKubernetes,
   readActiveDeploymentInspect,
   readStoredRuntimeState,
   requirePreviousDeployment,
@@ -115,6 +116,27 @@ describe('deployment runtime boundary integration', (): void => {
     const payload: TestErrorResponse = errorResponseSchema.parse(response.json());
     expect(payload.error.code).toBe('deployment_not_found');
   });
+
+  it(
+    'omits the node drain descriptor when the active deployment belongs to Kubernetes',
+    async (): Promise<void> => {
+      const installPayload: InstallResponse = await installCompartment(app);
+      await registerLocalNode(app);
+
+      const firstDeployment: DeploymentSummary = await deployAndActivateCurrentService(installPayload);
+      await markDeploymentAsKubernetes(firstDeployment.id);
+      const secondDeployResponse: LightMyRequestResponse = await injectDeployRequest(
+        app,
+        installPayload.sessionToken,
+        'acme-dev',
+      );
+      expect(secondDeployResponse.statusCode).toBe(200);
+
+      const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+      expect(claimedDeployment.previousDeployment).toBeUndefined();
+    },
+    deploymentRuntimeBoundaryTimeoutMs,
+  );
 
   it(
     'preserves and clears drain state through worker completion and runtime-state updates',

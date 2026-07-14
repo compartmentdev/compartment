@@ -1,9 +1,18 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import type { ResourceClaimIdentity } from '@compartment/contracts';
-import type {
-  KubeManifest,
-  KubeObservation,
-  KubeObservedManifest,
-  ObservedResourceClaim,
+import {
+  assertResourceClaimIdentity,
+  assertResourceClaimOwnership,
+  kubeResourceVolumeName,
+  projectResourceBootstrapClaims,
+  type KubeManifest,
+  type KubeObservation,
+  type KubeObservedManifest,
+  type KubeDeploymentManifest,
+  type KubeRuntime,
+  type ObservedResourceClaim,
+  type ResourceProjectionRow,
+  type ResourceVolumeProjection,
 } from '@compartment/kube-runtime';
 import type { ObservedClaimStatus, ObservedDeploymentStatus } from './worker-resource-reconcile.service.types';
 
@@ -13,6 +22,10 @@ interface ObservedRollbackManifestData {
   data?: Record<string, string> | undefined;
 }
 
+interface ObservedRollbackDeploymentSpec {
+  replicas?: number | undefined;
+}
+
 interface RollbackManifestMetadata {
   annotations?: Record<string, string> | undefined;
   labels?: Record<string, string> | undefined;
@@ -20,12 +33,9 @@ interface RollbackManifestMetadata {
   namespace?: string | undefined;
 }
 
-export function readBoundClaims(observation: KubeObservation): ResourceClaimIdentity[] | null {
+export function readCreatedClaims(observation: KubeObservation, expectedCount: number): ResourceClaimIdentity[] | null {
   const claims: ObservedResourceClaim[] = readObservedClaims(observation);
-  if (
-    claims.length === 0 ||
-    claims.some((claim: ObservedResourceClaim): boolean => !claim.bound || claim.uid === null)
-  ) {
+  if (claims.length !== expectedCount || claims.some((claim: ObservedResourceClaim): boolean => claim.uid === null)) {
     return null;
   }
   return claims.map(
@@ -36,7 +46,7 @@ export function readBoundClaims(observation: KubeObservation): ResourceClaimIden
   );
 }
 
-export function readObservedClaims(observation: KubeObservation): ObservedResourceClaim[] {
+function readObservedClaims(observation: KubeObservation): ObservedResourceClaim[] {
   return [...observation.cache.entries()]
     .filter(([key]: [string, KubeObservedManifest]): boolean => key.startsWith('persistentvolumeclaims/'))
     .map(
@@ -48,42 +58,77 @@ export function readObservedClaims(observation: KubeObservation): ObservedResour
     );
 }
 
+export async function readLiveClaims(
+  runtime: KubeRuntime,
+  row: ResourceProjectionRow,
+): Promise<ObservedResourceClaim[]> {
+  return await Promise.all(
+    projectResourceBootstrapClaims(row).map(async (claim: KubeManifest): Promise<ObservedResourceClaim> => {
+      const observed: KubeObservedManifest | null = await runtime.read(claim);
+      return {
+        bound: (observed?.status as ObservedClaimStatus | undefined)?.phase === 'Bound',
+        claimName: claim.metadata?.name ?? '',
+        uid: observed?.metadata?.uid ?? null,
+      };
+    }),
+  );
+}
+
+export function assertFinalClaimState(
+  expectedClaims: ResourceClaimIdentity[],
+  observedClaims: ObservedResourceClaim[],
+  row: ResourceProjectionRow,
+): void {
+  assertResourceClaimOwnership(expectedClaims, observedClaims);
+  const mountedNames: Set<string> = new Set<string>(
+    row.volumes.map((volume: ResourceVolumeProjection): string =>
+      kubeResourceVolumeName(row.resourceId, volume.volumeHandle),
+    ),
+  );
+  if (mountedNames.size === 0) {
+    return;
+  }
+  assertResourceClaimIdentity(
+    expectedClaims.filter((claim: ResourceClaimIdentity): boolean => mountedNames.has(claim.claimName)),
+    observedClaims.filter((claim: ObservedResourceClaim): boolean => mountedNames.has(claim.claimName)),
+  );
+}
+
 export function readResourcePods(observation: KubeObservation): { deletionTimestamp?: string | undefined }[] {
   return [...observation.cache.keys()]
     .filter((key: string): boolean => key.startsWith('pods/'))
     .map((): { deletionTimestamp?: string | undefined } => ({}));
 }
 
-export function resourceDeploymentFreshAndReady(
-  observation: KubeObservation,
-  previousPodNames: ReadonlySet<string>,
+export async function waitForFreshResourceDeployment(runtime: KubeRuntime, manifests: KubeManifest[]): Promise<void> {
+  const desired: KubeDeploymentManifest = requiredDeployment(manifests);
+  await waitUntilLive(
+    async (): Promise<true | null> =>
+      resourceDeploymentFreshAndReady(await runtime.read(desired), desired) ? true : null,
+  );
+}
+
+function resourceDeploymentFreshAndReady(
+  observed: KubeObservedManifest | null,
+  desired: KubeDeploymentManifest,
 ): boolean {
-  const hasFreshPod: boolean = [...readResourcePodNames(observation)].some(
-    (podName: string): boolean => podName !== '' && !previousPodNames.has(podName),
-  );
-  return hasFreshPod && resourceDeploymentReady(observation);
-}
-
-export function readResourcePodNames(observation: KubeObservation): Set<string> {
-  return new Set(
-    [...observation.cache.entries()]
-      .filter(([key]: [string, KubeObservedManifest]): boolean => key.startsWith('pods/'))
-      .map(([, pod]: [string, KubeObservedManifest]): string => pod.metadata?.name ?? ''),
-  );
-}
-
-function resourceDeploymentReady(observation: KubeObservation): boolean {
-  const deployment: KubeObservedManifest | undefined = [...observation.cache.entries()].find(
-    ([key]: [string, KubeObservedManifest]): boolean => key.startsWith('deployments/'),
-  )?.[1];
-  const status: ObservedDeploymentStatus | undefined = deployment?.status;
+  if (observed?.kind !== 'Deployment') {
+    return false;
+  }
+  const status: ObservedDeploymentStatus | undefined = observed.status;
+  if (status === undefined) {
+    return false;
+  }
+  const desiredReplicas: number | undefined = desired.spec?.replicas;
   return (
-    status?.readyReplicas === 1 &&
-    status.conditions?.some(
-      (condition: { status?: string | undefined; type?: string | undefined }): boolean =>
-        condition.type === 'Available' && condition.status === 'True',
-    ) === true
+    desiredReplicas !== undefined &&
+    generationIsCurrent(observed.metadata?.generation, status.observedGeneration) &&
+    (status.availableReplicas ?? 0) >= desiredReplicas
   );
+}
+
+function generationIsCurrent(generation: number | undefined, observedGeneration: number | undefined): boolean {
+  return generation === undefined || observedGeneration === undefined || observedGeneration >= generation;
 }
 
 export async function waitUntil<T>(observation: KubeObservation, read: () => T | null): Promise<T> {
@@ -92,40 +137,73 @@ export async function waitUntil<T>(observation: KubeObservation, read: () => T |
     return initial;
   }
   return await new Promise<T>((resolve: (value: T) => void, reject: (error: Error) => void): void => {
-    const timer: NodeJS.Timeout = setTimeout((): void => {
-      unsubscribe();
-      reject(new Error('Timed out waiting for Kubernetes resource lifecycle evidence.'));
-    }, reconcileTimeoutMs);
-    const unsubscribe: () => void = observation.onEvent((): void => {
+    let unsubscribe: () => void = (): void => undefined;
+    const resolveWhenReady: () => void = (): void => {
       const value: T | null = read();
       if (value !== null) {
         clearTimeout(timer);
         unsubscribe();
         resolve(value);
       }
-    });
+    };
+    const timer: NodeJS.Timeout = setTimeout((): void => {
+      unsubscribe();
+      reject(new Error('Timed out waiting for Kubernetes resource lifecycle evidence.'));
+    }, reconcileTimeoutMs);
+    unsubscribe = observation.onEvent(resolveWhenReady);
+    resolveWhenReady();
   });
 }
 
-export function readRollbackManifest(previousJson: string | null, observation: KubeObservation): KubeManifest[] {
+async function waitUntilLive<T>(read: () => Promise<T | null>): Promise<T> {
+  const deadlineAt: number = Date.now() + reconcileTimeoutMs;
+  while (Date.now() < deadlineAt) {
+    const value: T | null = await read();
+    if (value !== null) {
+      return value;
+    }
+    await delay(1_000);
+  }
+  throw new Error('Timed out waiting for live Kubernetes resource lifecycle evidence.');
+}
+
+function requiredDeployment(manifests: KubeManifest[]): KubeDeploymentManifest {
+  const deployment: KubeManifest | undefined = manifests.find(
+    (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+  );
+  if (deployment?.kind !== 'Deployment') {
+    throw new Error('Resource reconcile Deployment manifest is missing.');
+  }
+  return deployment;
+}
+
+export async function readRollbackManifest(
+  previousJson: string | null,
+  runtime: KubeRuntime,
+  desired: KubeManifest[],
+): Promise<KubeManifest[] | null> {
   if (previousJson !== null) {
     return JSON.parse(previousJson) as KubeManifest[];
   }
-  const active: KubeManifest[] = [...observation.cache.values()]
-    .filter(
-      (manifest: KubeObservedManifest): manifest is KubeManifest =>
-        manifest.kind === 'Deployment' || manifest.kind === 'Secret' || manifest.kind === 'Service',
-    )
+  const active: KubeManifest[] = await readActiveManifests(runtime, desired);
+  const deployment: KubeManifest | undefined = active.find(
+    (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+  );
+  return (deployment?.spec as ObservedRollbackDeploymentSpec | undefined)?.replicas === 1 ? active : null;
+}
+
+async function readActiveManifests(runtime: KubeRuntime, desired: KubeManifest[]): Promise<KubeManifest[]> {
+  const observed: (KubeObservedManifest | null)[] = await Promise.all(
+    desired.map(async (manifest: KubeManifest): Promise<KubeObservedManifest | null> => await runtime.read(manifest)),
+  );
+  return observed
+    .filter((manifest: KubeObservedManifest | null): manifest is KubeManifest => manifest !== null)
     .map(normalizeRollbackManifest)
     .sort((left: KubeManifest, right: KubeManifest): number =>
       `${left.kind}/${left.metadata?.namespace ?? ''}/${left.metadata?.name ?? ''}`.localeCompare(
         `${right.kind}/${right.metadata?.namespace ?? ''}/${right.metadata?.name ?? ''}`,
       ),
     );
-  if (!active.some((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')) {
-    throw new Error('Resource reconcile refused: active executable manifest is unavailable for rollback.');
-  }
-  return active;
 }
 
 function normalizeRollbackManifest(manifest: KubeManifest): KubeManifest {

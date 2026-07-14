@@ -14,7 +14,6 @@ import type {
   ResolvedCompartmentServiceRunConfig,
   ResolvedOptionalServiceReadinessConfig,
   ResourceRuntimeStatus,
-  RuntimeActiveDeployment,
   RuntimeNetworkIntent,
 } from '@compartment/contracts';
 import type { BuildEnvMap } from './deployment-build.types';
@@ -103,7 +102,16 @@ export interface DeploymentSummaryInput {
 }
 
 export interface DeploymentInspectTargetInput extends DeploymentSummaryInput {
-  runtime: RuntimeActiveDeployment | null;
+  runtime: DeploymentInspectRuntimeInput | null;
+}
+
+export interface DeploymentInspectRuntimeInput {
+  containerId: string | null;
+  imageRef: string;
+  routeHost: string;
+  runtimeKind: 'kubernetes' | 'node';
+  upstreamHost: string;
+  upstreamPort: number;
 }
 
 export interface DeploymentResourceSummaryInput

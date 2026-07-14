@@ -34,6 +34,10 @@ images:
     repository: registry.k8s.io/kubectl
     tag: v1.36.2
     pullPolicy: IfNotPresent
+  productLogAgent:
+    repository: timberio/vector
+    tag: 0.49.0-alpine
+    pullPolicy: IfNotPresent
 
 ports:
   api: 39444
@@ -109,11 +113,16 @@ registry:
   readUsername: compartment-reader
   writeUsername: compartment-writer
 
+productLogs:
+  enabled: true
+  namespace: ''
+
 secrets:
   postgresPassword: ''
   registryReadPassword: ''
   registryWritePassword: ''
   edgeToken: ''
+  productLogIngestToken: ''
   runtimeControlToken: ''
   sessionSecret: ''
   systemToken: ''
@@ -157,6 +166,9 @@ resources:
   buildkitPrune:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { cpu: 100m, memory: 128Mi }
+  productLogAgent:
+    requests: { cpu: 50m, memory: 64Mi, ephemeral-storage: 320Mi }
+    limits: { cpu: '1', memory: 256Mi, ephemeral-storage: 384Mi }
   wait:
     requests: { cpu: 10m, memory: 32Mi }
     limits: { cpu: 100m, memory: 128Mi }

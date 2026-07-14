@@ -27,6 +27,7 @@ interface ProductJobRunSelection extends SelectedFields {
   exitCode: typeof productJobRuns.exitCode;
   identityId: typeof productJobRuns.identityId;
   image: typeof productJobRuns.image;
+  imagePullSecretId: typeof productJobRuns.imagePullSecretId;
   jobClass: typeof productJobRuns.jobClass;
   jobName: typeof productJobRuns.jobName;
   logs: typeof productJobRuns.logs;
@@ -46,6 +47,7 @@ export async function persistProductJobIntent(input: PersistProductJobIntentInpu
       id: `job_${randomUUID().replaceAll('-', '')}`,
       identityId: input.identityId,
       image: input.intent.image,
+      imagePullSecretId: input.intent.jobClass === 'release' ? input.intent.imagePullSecretId : null,
       jobClass: input.intent.jobClass,
       namespace: input.intent.namespace,
       status: 'queued',
@@ -104,6 +106,7 @@ const claimableProductJobSelection: ProductJobRunSelection = {
   exitCode: productJobRuns.exitCode,
   identityId: productJobRuns.identityId,
   image: productJobRuns.image,
+  imagePullSecretId: productJobRuns.imagePullSecretId,
   jobClass: productJobRuns.jobClass,
   jobName: productJobRuns.jobName,
   logs: productJobRuns.logs,
@@ -185,11 +188,24 @@ function buildProductJobIntent(row: ProductJobRunRow): ProductJobIntent {
     command: JSON.parse(row.commandJson) as string[],
     env: JSON.parse(row.envJson) as Record<string, string>,
     image: row.image,
+    ...(row.imagePullSecretId === null ? {} : { imagePullSecretId: row.imagePullSecretId }),
     namespace: row.namespace,
     timeoutMs: Math.max(1, row.createdAt.getTime() + row.timeoutMs - Date.now()),
     volumeMounts: JSON.parse(row.volumeMountsJson) as ProductJobVolumeMount[],
   };
   return row.jobClass === 'release'
-    ? { ...spec, deploymentId: row.identityId, jobClass: 'release' }
+    ? {
+        ...spec,
+        deploymentId: row.identityId,
+        imagePullSecretId: requireReleaseImagePullSecretId(row),
+        jobClass: 'release',
+      }
     : { ...spec, jobClass: 'resource-operation', operationId: row.identityId };
+}
+
+function requireReleaseImagePullSecretId(row: ProductJobRunRow): string {
+  if (row.imagePullSecretId === null) {
+    throw new Error(`Release product Job ${row.identityId} has no image pull secret.`);
+  }
+  return row.imagePullSecretId;
 }

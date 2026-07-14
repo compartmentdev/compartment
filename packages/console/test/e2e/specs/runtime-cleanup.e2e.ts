@@ -8,6 +8,7 @@ import {
   compartmentCurrentOrganizationHeaderName,
 } from '@compartment/contracts/browser';
 import { LoginPage } from '../pages/login-page';
+import type { ProjectsPage } from '../pages/projects-page';
 import { test, type ConsoleFixtures } from '../fixtures/console-test';
 import { readConsoleE2eAdminAccount } from '../support/console-e2e-account';
 import type { ConsoleE2eCleanupProjectFixture } from '../support/console-e2e-fixture';
@@ -48,6 +49,7 @@ const dockerCleanupPollTimeoutMs: number = 60_000;
 const dockerProjectIdLabelName: string = 'compartment.projectId';
 const projectDeleteMutationPollTimeoutMs: number = 60_000;
 const runtimeCleanupTestTimeoutMs: number = 180_000;
+const k3dPlatformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
 
 interface StaleDockerProjectCleanupResult {
   readonly projectIds: string[];
@@ -56,11 +58,15 @@ interface StaleDockerProjectCleanupResult {
 test.describe('console project runtime cleanup', (): void => {
   test.setTimeout(runtimeCleanupTestTimeoutMs);
 
-  test('archives and deletes an isolated project without leaking Docker runtime resources', async ({
+  test('archives and deletes an isolated project without leaking runtime resources', async ({
     e2eCleanupProject,
     page,
     projectsPage,
   }: RuntimeCleanupFixtures, testInfo: TestInfo): Promise<void> => {
+    if (process.env[k3dPlatformModeEnvName] === 'k3d') {
+      await expectK3dProjectRuntimeCleanup(e2eCleanupProject, page, projectsPage);
+      return;
+    }
     const loginPage: LoginPage = new LoginPage(page, readConsoleE2eAdminAccount());
     const staleCleanup: StaleDockerProjectCleanupResult =
       await removeStaleDockerProjectRuntimeResources(e2eCleanupProject);
@@ -95,6 +101,67 @@ test.describe('console project runtime cleanup', (): void => {
     });
   });
 });
+
+async function expectK3dProjectRuntimeCleanup(
+  project: ConsoleE2eCleanupProjectFixture,
+  page: Page,
+  projectsPage: ProjectsPage,
+): Promise<void> {
+  const loginPage: LoginPage = new LoginPage(page, readConsoleE2eAdminAccount());
+  await projectsPage.goto();
+  await loginPage.login(projectsPage.getReadyLocator());
+  await projectsPage.expectReady();
+  const projectId: string = await readBrowserProjectId(page, project.projectName);
+  const namespace: string = await readK3dProjectNamespace(projectId);
+  expect(await listK3dProjectWorkloads(namespace)).not.toEqual([]);
+
+  await runProjectMutation(page, 'POST', buildCompartmentProjectArchiveApiPathname(project.projectName));
+  await expect
+    .poll(async (): Promise<string[]> => await listK3dProjectWorkloads(namespace), { timeout: 90_000 })
+    .toEqual([]);
+
+  await runProjectDeleteMutation(page, buildCompartmentProjectApiPathname(project.projectName));
+}
+
+async function readBrowserProjectId(page: Page, projectName: string): Promise<string> {
+  const body: string | null = await runProjectMutation(page, 'GET', buildCompartmentProjectApiPathname(projectName));
+  if (body === null) {
+    throw new Error(`Expected project ${projectName} to be readable before cleanup.`);
+  }
+  return parseProjectMutationPayload(body).project.id;
+}
+
+async function readK3dProjectNamespace(projectId: string): Promise<string> {
+  const namespace: string = (
+    await runKubectl([
+      'get',
+      'namespace',
+      '--selector',
+      `compartment.dev/project-id=${projectId}`,
+      '--output',
+      'jsonpath={.items[0].metadata.name}',
+    ])
+  ).trim();
+  if (namespace === '') {
+    throw new Error(`Expected a Kubernetes namespace for project ${projectId}.`);
+  }
+  return namespace;
+}
+
+async function listK3dProjectWorkloads(namespace: string): Promise<string[]> {
+  return await listKubectlNames(namespace, ['deployment', 'statefulset', 'pod', 'service']);
+}
+
+async function listKubectlNames(namespace: string, resourceTypes: string[]): Promise<string[]> {
+  return (await runKubectl(['--namespace', namespace, 'get', resourceTypes.join(','), '--output', 'name']))
+    .split('\n')
+    .filter((line: string): boolean => line !== '');
+}
+
+async function runKubectl(args: string[]): Promise<string> {
+  const context: string = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e';
+  return await runExecutable('kubectl', ['--context', context, ...args]);
+}
 
 async function runProjectMutation(page: Page, method: string, path: string): Promise<string | null> {
   const result: BrowserProjectMutationResult = await executeProjectMutation(page, method, path);
@@ -451,14 +518,18 @@ async function listDockerLines(args: string[]): Promise<string[]> {
 }
 
 async function runDocker(args: string[]): Promise<string> {
+  return await runExecutable('docker', args);
+}
+
+async function runExecutable(command: string, args: string[]): Promise<string> {
   return await new Promise<string>((resolve: (value: string) => void, reject: (reason?: Error) => void): void => {
     execFile(
-      'docker',
+      command,
       args,
       { encoding: 'utf8' },
       (error: ExecFileException | null, stdout: string, stderr: string): void => {
         if (error !== null) {
-          reject(new Error(`docker ${args.join(' ')} failed: ${stderr}`));
+          reject(new Error(`${command} ${args.join(' ')} failed: ${stderr}`));
           return;
         }
         resolve(stdout);

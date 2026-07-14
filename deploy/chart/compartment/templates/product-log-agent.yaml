@@ -1,0 +1,220 @@
+{{- if and (eq .Values.platform.startupStage "full") .Values.productLogs.enabled }}
+{{- $name := printf "%s-log-agent" (include "compartment.fullname" .) -}}
+{{- $namespace := default (printf "%s-observability" (include "compartment.fullname" .)) .Values.productLogs.namespace -}}
+{{- $platformSecret := lookup "v1" "Secret" .Release.Namespace (include "compartment.fullname" .) -}}
+{{- $productLogIngestToken := required "install the foundation stage first or set secrets.productLogIngestToken" (default .Values.secrets.productLogIngestToken (dig "data" "product-log-ingest-token" "" $platformSecret | b64dec)) -}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $namespace }}
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+data:
+  vector.yaml: |
+    data_dir: /var/lib/vector
+    api:
+      enabled: true
+      address: 0.0.0.0:8686
+    sources:
+      pod_logs:
+        type: file
+        include:
+          - /var/log/pods/cpt-*/app/*.log
+          - /var/log/pods/cpt-*/app-*/*.log
+          - /var/log/pods/cpt-*/resource/*.log
+        data_dir: /var/lib/vector
+        file_key: source_file
+        host_key: ""
+        offset_key: source_offset
+        fingerprint:
+          strategy: checksum
+        glob_minimum_cooldown_ms: 250
+        max_line_bytes: 4096
+        max_read_bytes: 65536
+        oldest_first: true
+        read_from: beginning
+      internal:
+        type: internal_metrics
+      disk_pressure:
+        type: host_metrics
+        collectors: [filesystem]
+        scrape_interval_secs: 10
+        filesystem:
+          mountpoints:
+            includes: [/var/lib/vector]
+    transforms:
+      product_store_flush_metric:
+        type: filter
+        inputs: [internal]
+        condition: .name == "uptime_seconds"
+      product_store_flush_log:
+        type: metric_to_log
+        inputs: [product_store_flush_metric]
+      product_store_flush_event:
+        type: remap
+        inputs: [product_store_flush_log]
+        source: |
+          . = {
+            "containerName": "vector-buffer-flush",
+            "message": "",
+            "namespace": "compartment-log-buffer-flush",
+            "podName": "vector-buffer-flush",
+            "podUid": "00000000-0000-0000-0000-000000000000",
+            "restartIdentity": "0",
+            "sourceFingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+            "sourceOffset": 0,
+            "stream": "stdout",
+            "timestamp": now()
+          }
+      product_events:
+        type: remap
+        inputs: [pod_logs]
+        drop_on_abort: true
+        source: |
+          path = parse_regex!(.source_file, r'^/var/log/pods/(?P<namespace>cpt-[a-z0-9-]+)_(?P<pod_name>[a-z0-9-]+)_(?P<pod_uid>[0-9a-f-]+)/(?P<container_name>app(?:-[a-z0-9-]+)?|resource)/(?P<restart_identity>[0-9]+)\.log$')
+          raw_record = string!(.message)
+          read_identity = to_string!(.timestamp)
+          cri = parse_regex!(raw_record, r'^(?P<timestamp>\S+) (?P<stream>stdout|stderr) [FP] (?P<message>.*)$')
+          . = {
+            "containerName": path.container_name,
+            "message": cri.message,
+            "namespace": path.namespace,
+            "podName": path.pod_name,
+            "podUid": path.pod_uid,
+            "restartIdentity": path.restart_identity,
+            "sourceFingerprint": sha2(read_identity + "|" + raw_record, variant: "SHA-256"),
+            "sourceOffset": to_int!(.source_offset),
+            "stream": cri.stream,
+            "timestamp": cri.timestamp
+          }
+    sinks:
+      product_store:
+        type: http
+        inputs: [product_events, product_store_flush_event]
+        uri: ${COMPARTMENT_LOG_INGEST_URL}
+        method: post
+        auth:
+          strategy: bearer
+          token: ${COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN}
+        encoding:
+          codec: json
+        batch:
+          max_bytes: 786432
+          max_events: 200
+          timeout_secs: 1
+        buffer:
+          type: disk
+          max_size: 268435488
+          when_full: block
+        request:
+          concurrency: 2
+          retry_attempts: 9223372036854775807
+          retry_max_duration_secs: 30
+          timeout_secs: 10
+      metrics:
+        type: prometheus_exporter
+        inputs: [internal, disk_pressure]
+        address: 0.0.0.0:9598
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  ingest-token: {{ $productLogIngestToken | quote }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+  annotations:
+    compartment.dev/log-slo-lines-per-second: '12000'
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $name }}
+      annotations:
+        prometheus.io/port: '9598'
+        prometheus.io/scrape: 'true'
+    spec:
+      automountServiceAccountToken: false
+      serviceAccountName: {{ $name }}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: vector
+          image: {{ include "compartment.image" .Values.images.productLogAgent }}
+          imagePullPolicy: {{ .Values.images.productLogAgent.pullPolicy }}
+          args: [--config, /etc/vector/vector.yaml]
+          env:
+            - name: COMPARTMENT_LOG_INGEST_URL
+              value: {{ printf "http://%s-api.%s.svc:%v/internal/kubernetes/logs" (include "compartment.fullname" .) .Release.Namespace .Values.ports.api | quote }}
+            - name: COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: ingest-token
+          ports:
+            - {name: api, containerPort: 8686}
+            - {name: metrics, containerPort: 9598}
+          livenessProbe:
+            httpGet: {path: /health, port: api}
+            periodSeconds: 10
+            timeoutSeconds: 2
+          readinessProbe:
+            httpGet: {path: /health, port: api}
+            periodSeconds: 5
+            timeoutSeconds: 2
+          resources:
+            {{- toYaml .Values.resources.productLogAgent | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: false
+            runAsUser: 0
+          volumeMounts:
+            - {name: config, mountPath: /etc/vector, readOnly: true}
+            - {name: pod-logs, mountPath: /var/log/pods, readOnly: true}
+            - {name: data, mountPath: /var/lib/vector}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods
+            type: Directory
+        - name: data
+          hostPath:
+            path: {{ printf "/var/lib/compartment/%s" $name }}
+            type: DirectoryOrCreate
+{{- end }}

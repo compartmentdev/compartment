@@ -44,6 +44,7 @@ metadata:
     compartment.dev/project-name: Checkout
     compartment.dev/service-name: Web
   labels:
+    app: application
     app.kubernetes.io/managed-by: compartment
     compartment.dev/deployment-id: dep-01jz
     compartment.dev/environment-id: env-01jz
@@ -53,10 +54,11 @@ metadata:
   name: app-env-01jz-svc-01jz-6a4f00bb0d302109
   namespace: cpt-prj-01jz-243118a73be1a00d
 spec:
-  progressDeadlineSeconds: 45
+  progressDeadlineSeconds: 60
   replicas: 2
   selector:
     matchLabels:
+      app: application
       app.kubernetes.io/managed-by: compartment
       compartment.dev/environment-id: env-01jz
       compartment.dev/organization-id: org-01jz
@@ -76,6 +78,7 @@ spec:
         compartment.dev/secret-checksum: <sha256>
         compartment.dev/service-name: Web
       labels:
+        app: application
         app.kubernetes.io/managed-by: compartment
         compartment.dev/deployment-id: dep-01jz
         compartment.dev/environment-id: env-01jz
@@ -85,7 +88,9 @@ spec:
     spec:
       automountServiceAccountToken: false
       containers:
-        - env:
+        - args:
+            - npm run start:override
+          env:
             - name: FEATURE_FLAG
               valueFrom:
                 secretKeyRef:
@@ -112,7 +117,7 @@ spec:
           readinessProbe:
             failureThreshold: 3
             httpGet:
-              path: /
+              path: /healthz
               port: http
             initialDelaySeconds: 1
             periodSeconds: 2
@@ -131,6 +136,7 @@ metadata:
     compartment.dev/project-name: Checkout
     compartment.dev/service-name: Web
   labels: &a1
+    app: application
     app.kubernetes.io/managed-by: compartment
     compartment.dev/environment-id: env-01jz
     compartment.dev/organization-id: org-01jz

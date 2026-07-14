@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import type { ContractSchema } from './schema.types';
+import {
+  resolvedOptionalServiceReadinessConfigSchema,
+  type ResolvedOptionalServiceReadinessConfig,
+} from './service-readiness.contract';
 
-export type DeploymentReconcileState = 'desired' | 'pending' | 'active';
-export type DeploymentReconcileObservation = 'pending' | 'ready' | 'failed';
+export type DeploymentReconcileState = 'desired' | 'pending' | 'active' | 'stopping' | 'stopped';
+export type DeploymentReconcileObservation = 'pending' | 'ready' | 'failed' | 'stopped';
 
 export interface DeploymentReconcileProjection {
   containerPort: number;
@@ -17,8 +21,10 @@ export interface DeploymentReconcileProjection {
   organizationName: string;
   projectId: string;
   projectName: string;
+  readiness: ResolvedOptionalServiceReadinessConfig;
   releaseCommand: string | null;
   replicas: number;
+  runCommand: string | null;
   secretId: string;
   serviceId: string;
   serviceName: string;
@@ -81,8 +87,10 @@ const deploymentReconcileProjectionSchema: ContractSchema<DeploymentReconcilePro
     organizationName: z.string().min(1),
     projectId: z.string().min(1),
     projectName: z.string().min(1),
+    readiness: resolvedOptionalServiceReadinessConfigSchema,
     releaseCommand: z.string().min(1).nullable(),
     replicas: z.number().int().positive(),
+    runCommand: z.string().min(1).nullable(),
     secretId: z.string().min(1),
     serviceId: z.string().min(1),
     serviceName: z.string().min(1),
@@ -96,7 +104,7 @@ const deploymentReconcileTargetSchema: ContractSchema<DeploymentReconcileTarget>
     candidate: deploymentReconcileProjectionSchema,
     revision: z.number().int().nonnegative(),
     rolloutStartedAt: z.string().datetime(),
-    state: z.enum(['desired', 'pending', 'active']),
+    state: z.enum(['desired', 'pending', 'active', 'stopping', 'stopped']),
   })
   .strict();
 
@@ -108,7 +116,7 @@ export const workerObserveDeploymentReconcileRequestSchema: ContractSchema<Worke
   .object({
     deploymentId: z.string().min(1),
     message: z.string().min(1).optional(),
-    observation: z.enum(['pending', 'ready', 'failed']),
+    observation: z.enum(['pending', 'ready', 'failed', 'stopped']),
     observedAt: z.string().datetime(),
     revision: z.number().int().nonnegative(),
   })

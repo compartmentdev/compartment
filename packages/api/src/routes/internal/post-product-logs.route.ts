@@ -10,6 +10,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import { parseRequestValue } from '../../http/validation';
 import { ingestDeploymentProductLogs } from '../../services/deployment-product-logs.service';
+import type { ProductLogIngestResult } from '../../services/deployment-product-logs.service.types';
 
 export function registerPostProductLogsRoute(app: ApiApp): void {
   app.post(
@@ -21,8 +22,8 @@ export function registerPostProductLogsRoute(app: ApiApp): void {
         request.body,
         'invalid_product_log_ingest_request',
       );
-      const response: ProductLogIngestResponse = await ingestDeploymentProductLogs(input);
-      if (response.rejected > 0) {
+      const result: ProductLogIngestResult = await ingestDeploymentProductLogs(input);
+      if ((result.deferred ?? 0) > 0) {
         return await reply.code(503).send({
           error: {
             code: 'product_log_ingest_deferred',
@@ -30,7 +31,12 @@ export function registerPostProductLogsRoute(app: ApiApp): void {
           },
         });
       }
+      const response: ProductLogIngestResponse = toProductLogIngestResponse(result);
       return await reply.send(productLogIngestResponseSchema.parse(response));
     },
   );
+}
+
+function toProductLogIngestResponse(result: ProductLogIngestResult): ProductLogIngestResponse {
+  return { accepted: result.accepted, duplicates: result.duplicates, rejected: result.rejected };
 }

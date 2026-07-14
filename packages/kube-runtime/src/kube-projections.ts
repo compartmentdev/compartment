@@ -1,5 +1,9 @@
 import type { V1ObjectMeta } from '@kubernetes/client-node';
-import type { ApplicationProjectionRow, KubeReadinessProbe } from './kube-application-projection.types';
+import type {
+  ApplicationProjectionRow,
+  ApplicationReadinessConfig,
+  KubeReadinessProbe,
+} from './kube-application-projection.types';
 import type {
   KubeDeploymentManifest,
   KubeDeploymentManifestSpec,
@@ -39,6 +43,7 @@ export function projectApplicationManifests(row: ApplicationProjectionRow): Kube
 function applicationProjectionContext(row: ApplicationProjectionRow): ApplicationProjectionContext {
   const workloadLabels: Record<string, string> = {
     ...managedByLabel,
+    app: 'application',
     'compartment.dev/environment-id': row.environmentId,
     'compartment.dev/organization-id': row.organizationId,
     'compartment.dev/project-id': row.projectId,
@@ -90,7 +95,7 @@ function deploymentSpec(
     terminationGracePeriodSeconds: row.terminationGracePeriodSeconds ?? minimumTerminationGracePeriodSeconds,
   };
   return {
-    progressDeadlineSeconds: 45,
+    progressDeadlineSeconds: progressDeadlineSeconds(row.readiness),
     replicas: row.replicas,
     selector: { matchLabels: context.workloadLabels },
     strategy: { rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }, type: 'RollingUpdate' },
@@ -107,24 +112,29 @@ function deploymentSpec(
 function applicationContainer(row: ApplicationProjectionRow): KubeProjectedContainer {
   const env: KubeSecretEnvVariable[] = secretEnvironment(row.env, kubeSecretName(row.secretId));
   return {
+    ...(row.runCommand === null ? {} : { args: [row.runCommand] }),
     env,
     image: row.image,
     lifecycle: { preStop: { exec: { command: ['sh', '-c', 'sleep 3'] } } },
     name: kubeApplicationName(row.deploymentId),
     ports: [{ containerPort: row.containerPort, name: 'http', protocol: 'TCP' }],
-    readinessProbe: readinessProbe(),
+    ...(row.readiness === null ? {} : { readinessProbe: readinessProbe(row.readiness) }),
   };
 }
 
-function readinessProbe(): KubeReadinessProbe {
+function readinessProbe(readiness: ApplicationReadinessConfig): KubeReadinessProbe {
   return {
     failureThreshold: 3,
-    httpGet: { path: '/', port: 'http' },
+    httpGet: { path: readiness.path, port: 'http' },
     initialDelaySeconds: 1,
     periodSeconds: 2,
     successThreshold: 1,
     timeoutSeconds: 1,
   };
+}
+
+function progressDeadlineSeconds(readiness: ApplicationReadinessConfig | null): number {
+  return readiness === null ? 45 : Math.ceil(readiness.timeoutMs / 1_000);
 }
 
 function serviceManifest(row: ApplicationProjectionRow, context: ApplicationProjectionContext): KubeManifest {

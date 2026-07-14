@@ -1,5 +1,6 @@
-import { and, asc, eq, lte, ne, or, sql, type SQL } from 'drizzle-orm';
-import type { SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
+import { and, asc, eq, lte, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
+import type { BuildAliasTable, SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import {
   buildArtifacts,
   deploymentKubeReferences,
@@ -7,11 +8,21 @@ import {
   environments,
   organizations,
   projectServices,
+  projectKubeProvisioning,
   projects,
 } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type { DeploymentReconcilePair, DeploymentReconcileRow } from './deployment-reconcile.query.types';
+
+const replacementDeployments: BuildAliasTable<typeof deployments, 'replacement_deployments'> = alias(
+  deployments,
+  'replacement_deployments',
+);
+const replacementReferences: BuildAliasTable<typeof deploymentKubeReferences, 'replacement_references'> = alias(
+  deploymentKubeReferences,
+  'replacement_references',
+);
 
 interface ReconcileSelection extends SelectedFields {
   deploymentId: typeof deployments.id;
@@ -22,7 +33,9 @@ interface ReconcileSelection extends SelectedFields {
   organizationName: typeof organizations.name;
   projectId: typeof projects.id;
   projectName: typeof projects.name;
+  resolvedReadinessJson: typeof deployments.resolvedReadinessJson;
   resolvedReleaseJson: typeof deployments.resolvedReleaseJson;
+  resolvedRunJson: typeof deployments.resolvedRunJson;
   revision: typeof deploymentKubeReferences.revision;
   serviceId: typeof projectServices.id;
   serviceName: typeof projectServices.name;
@@ -70,6 +83,7 @@ async function findActiveReconcileRows(
     .innerJoin(environments, eq(deployments.environmentId, environments.id))
     .innerJoin(buildArtifacts, eq(deployments.buildArtifactId, buildArtifacts.id))
     .innerJoin(projects, eq(environments.projectId, projects.id))
+    .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, projects.id))
     .innerJoin(organizations, eq(projects.organizationId, organizations.id))
     .innerJoin(projectServices, eq(deployments.projectServiceId, projectServices.id))
     .where(
@@ -91,9 +105,10 @@ async function findCandidateReconcileRows(tx: DeploymentTransaction): Promise<De
       .innerJoin(buildArtifacts, eq(deployments.buildArtifactId, buildArtifacts.id))
       .innerJoin(environments, eq(deployments.environmentId, environments.id))
       .innerJoin(projects, eq(environments.projectId, projects.id))
+      .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, projects.id))
       .innerJoin(organizations, eq(projects.organizationId, organizations.id))
       .innerJoin(projectServices, eq(deployments.projectServiceId, projectServices.id))
-      .where(candidateFilter())
+      .where(candidateFilter(tx))
       .orderBy(candidatePriority(), asc(deploymentKubeReferences.updatedAt))
       .limit(1)
       .for('update', { skipLocked: true }),
@@ -104,13 +119,47 @@ function candidatePriority(): SQL {
   return sql`CASE WHEN ${deploymentKubeReferences.state} = 'active' THEN 1 ELSE 0 END`;
 }
 
-function candidateFilter(): SQL | undefined {
+function candidateFilter(tx: DeploymentTransaction): SQL | undefined {
   return and(
+    eq(projectKubeProvisioning.state, 'succeeded'),
     lte(deploymentKubeReferences.updatedAt, new Date()),
     or(
-      and(ne(deploymentKubeReferences.state, 'active'), eq(deployments.status, 'running')),
-      and(eq(deploymentKubeReferences.state, 'active'), eq(deployments.status, 'succeeded')),
+      and(eq(deploymentKubeReferences.state, 'desired'), eq(deployments.status, 'running')),
+      and(
+        eq(deploymentKubeReferences.state, 'pending'),
+        or(eq(deployments.status, 'running'), eq(deployments.status, 'succeeded')),
+      ),
+      and(
+        eq(deploymentKubeReferences.state, 'active'),
+        eq(deployments.status, 'succeeded'),
+        eq(deployments.isActive, true),
+        noRunnableReplacement(tx),
+      ),
+      eq(deploymentKubeReferences.state, 'stopping'),
     ),
+  );
+}
+
+function noRunnableReplacement(tx: DeploymentTransaction): SQL {
+  return notExists(
+    tx
+      .select({ id: replacementReferences.id })
+      .from(replacementReferences)
+      .innerJoin(replacementDeployments, eq(replacementReferences.deploymentId, replacementDeployments.id))
+      .where(
+        and(
+          eq(replacementDeployments.environmentId, deployments.environmentId),
+          eq(replacementDeployments.projectServiceId, deployments.projectServiceId),
+          ne(replacementDeployments.id, deployments.id),
+          or(
+            and(eq(replacementReferences.state, 'desired'), eq(replacementDeployments.status, 'running')),
+            and(
+              eq(replacementReferences.state, 'pending'),
+              or(eq(replacementDeployments.status, 'running'), eq(replacementDeployments.status, 'succeeded')),
+            ),
+          ),
+        ),
+      ),
   );
 }
 
@@ -124,7 +173,9 @@ function reconcileSelection(): ReconcileSelection {
     organizationName: organizations.name,
     projectId: projects.id,
     projectName: projects.name,
+    resolvedReadinessJson: deployments.resolvedReadinessJson,
     resolvedReleaseJson: deployments.resolvedReleaseJson,
+    resolvedRunJson: deployments.resolvedRunJson,
     revision: deploymentKubeReferences.revision,
     serviceId: projectServices.id,
     serviceName: projectServices.name,

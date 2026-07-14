@@ -1,18 +1,20 @@
 import { and, eq, ne, type SQL } from 'drizzle-orm';
-import { deploymentKubeReferences, deploymentRoutes, deployments, operations } from '../db/schema';
+import { deploymentKubeReferences, deploymentRunEvents, deployments, operations } from '../db/schema';
+import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { persistActiveDeploymentDrift } from './deployment-reconcile-transition-audit.query';
+import { switchReadyDeploymentRoute } from './deployment-reconcile-route.query';
+import { persistStoppedReconcileObservation } from './deployment-reconcile-stop.query';
+import {
+  supersedePreviousKubeDeployment,
+  type SupersedeCandidateContext,
+} from './deployment-reconcile-supersede.query';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type { PersistDeploymentReconcileObservationInput } from './deployment-reconcile.query.types';
 
-interface CandidateContext {
-  environmentId: string;
-  serviceId: string;
-}
-
 interface ReconcileReferenceRow {
   revision: number;
-  state: 'active' | 'desired' | 'pending';
+  state: 'active' | 'desired' | 'pending' | 'stopping' | 'stopped';
 }
 
 export async function persistDeploymentReconcileObservation(
@@ -37,6 +39,9 @@ async function persistObservationWithTransaction(
   if (input.observation === 'failed') {
     return await persistFailure(tx, input, reference.state);
   }
+  if (input.observation === 'stopped') {
+    return await persistStoppedReconcileObservation(tx, input, reference.state);
+  }
   return await persistReady(tx, input, reference.state);
 }
 
@@ -51,7 +56,7 @@ async function lockReference(tx: DeploymentTransaction, deploymentId: string): P
 async function persistPendingObservation(
   tx: DeploymentTransaction,
   input: PersistDeploymentReconcileObservationInput,
-  state: 'active' | 'desired' | 'pending',
+  state: 'active' | 'desired' | 'pending' | 'stopping' | 'stopped',
 ): Promise<boolean> {
   if (state === 'active') {
     await persistActiveDeploymentDrift(tx, input);
@@ -112,15 +117,20 @@ async function persistReady(
   if (state !== 'pending') {
     return false;
   }
-  const candidate: CandidateContext | undefined = await findCandidateContext(tx, input.deploymentId);
+  const candidate: SupersedeCandidateContext | undefined = await findCandidateContext(tx, input.deploymentId);
   if (candidate === undefined) {
     return false;
   }
   const previousActiveId: string | undefined = await findPreviousActiveId(tx, input.deploymentId, candidate);
-  await deactivatePreviousDeployments(tx, input, candidate);
+  await supersedePreviousKubeDeployment(tx, {
+    candidate,
+    currentDeploymentId: input.deploymentId,
+    observedAt: input.observedAt,
+    previousActiveId,
+  });
   await activateDeployment(tx, input);
-  await switchReconcileRoute(tx, input, previousActiveId);
-  await markReconcileOperationSucceeded(tx, input);
+  await switchReadyDeploymentRoute(tx, input, candidate);
+  await publishReconcileSucceeded(tx, input, candidate.deploymentRunId);
   await updateReference(tx, input, 'active');
   return true;
 }
@@ -128,18 +138,41 @@ async function persistReady(
 async function findCandidateContext(
   tx: DeploymentTransaction,
   deploymentId: string,
-): Promise<CandidateContext | undefined> {
+): Promise<SupersedeCandidateContext | undefined> {
   const [candidate] = await tx
-    .select({ environmentId: deployments.environmentId, serviceId: deployments.projectServiceId })
+    .select({
+      deploymentRunId: deployments.deploymentRunId,
+      environmentId: deployments.environmentId,
+      serviceId: deployments.projectServiceId,
+    })
     .from(deployments)
     .where(eq(deployments.id, deploymentId));
   return candidate;
 }
 
+async function publishReconcileSucceeded(
+  tx: DeploymentTransaction,
+  input: PersistDeploymentReconcileObservationInput,
+  deploymentRunId: string,
+): Promise<void> {
+  await markReconcileOperationSucceeded(tx, input);
+  await tx.insert(deploymentRunEvents).values({
+    createdAt: input.observedAt,
+    deploymentId: input.deploymentId,
+    deploymentRunId,
+    id: createId('drev'),
+    level: 'info',
+    message: 'deployment completed',
+    status: 'succeeded',
+    stepKey: 'completed',
+    stream: 'compartment',
+  });
+}
+
 async function findPreviousActiveId(
   tx: DeploymentTransaction,
   deploymentId: string,
-  candidate: CandidateContext,
+  candidate: SupersedeCandidateContext,
 ): Promise<string | undefined> {
   const [previousActive] = await tx
     .select({ id: deployments.id })
@@ -149,18 +182,7 @@ async function findPreviousActiveId(
   return previousActive?.id;
 }
 
-async function deactivatePreviousDeployments(
-  tx: DeploymentTransaction,
-  input: PersistDeploymentReconcileObservationInput,
-  candidate: CandidateContext,
-): Promise<void> {
-  await tx
-    .update(deployments)
-    .set({ isActive: false, updatedAt: input.observedAt })
-    .where(activeDeploymentFilter(input.deploymentId, candidate));
-}
-
-function activeDeploymentFilter(deploymentId: string, candidate: CandidateContext): SQL | undefined {
+function activeDeploymentFilter(deploymentId: string, candidate: SupersedeCandidateContext): SQL | undefined {
   return and(
     eq(deployments.environmentId, candidate.environmentId),
     eq(deployments.projectServiceId, candidate.serviceId),
@@ -189,19 +211,6 @@ async function activateDeployment(
     .where(eq(deployments.id, input.deploymentId));
 }
 
-async function switchReconcileRoute(
-  tx: DeploymentTransaction,
-  input: PersistDeploymentReconcileObservationInput,
-  previousActiveId: string | undefined,
-): Promise<void> {
-  if (previousActiveId !== undefined) {
-    await tx
-      .update(deploymentRoutes)
-      .set({ deploymentId: input.deploymentId, updatedAt: input.observedAt })
-      .where(eq(deploymentRoutes.deploymentId, previousActiveId));
-  }
-}
-
 async function markReconcileOperationSucceeded(
   tx: DeploymentTransaction,
   input: PersistDeploymentReconcileObservationInput,
@@ -219,7 +228,7 @@ async function markReconcileOperationSucceeded(
 async function updateReference(
   tx: DeploymentTransaction,
   input: PersistDeploymentReconcileObservationInput,
-  state: 'pending' | 'active',
+  state: 'pending' | 'active' | 'stopped',
 ): Promise<void> {
   await tx
     .update(deploymentKubeReferences)

@@ -1,8 +1,12 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { get } from 'node:http';
+import { isIP } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { buildSelfHostedImages } from './build-self-hosted-images.mjs';
-import { captureCommand, runCommand } from '../lib/command.mjs';
+import { captureCommand, runCommand, runCommandAsync } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
@@ -12,16 +16,84 @@ const clusterName = 'compartment-e2e';
 const contextName = `k3d-${clusterName}`;
 const httpPort = 18_080;
 const httpsPort = 18_443;
-const imageRefs = Object.freeze(
-  ['api', 'worker', 'edge', 'caddy'].map((serviceName) => `ghcr.io/compartmentdev/compartment-${serviceName}:latest`),
+const registryName = 'compartment-e2e-registry';
+const registryHostPort = 15_500;
+const registryClusterHost = `k3d-${registryName}:${registryHostPort}`;
+const registryPushHost = `localhost:${registryHostPort}`;
+const bundledRegistryPort = 5000;
+const bundledRegistryHost = `compartment-compartment-registry-auth.compartment.svc:${bundledRegistryPort}`;
+const platformBaseDomain = 'compartment.localhost';
+const consoleHost = `console.${platformBaseDomain}`;
+const serverNodeName = `k3d-${clusterName}-server-0`;
+const platformImageTag = 'e2e';
+const platformServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
+const builtImageRefsByServiceName = Object.freeze(
+  Object.fromEntries(
+    platformServiceNames.map((serviceName) => [
+      serviceName,
+      `ghcr.io/compartmentdev/compartment-${serviceName}:latest`,
+    ]),
+  ),
 );
 
-export function readPlatformK3dAction(args) {
-  if (args.length === 1 && (args[0] === 'up' || args[0] === 'down')) {
-    return args[0];
+export function readPlatformK3dCommand(args) {
+  const [action, ...optionArgs] = args;
+
+  if (action === 'down') {
+    assertNoExtraArguments(optionArgs);
+    return { action };
   }
 
-  throw new Error('Usage: node ./scripts/deploy/platform-k3d-e2e.mjs <up|down>');
+  if (action === 'up') {
+    return { action, ...readPlatformK3dUpOptions(optionArgs) };
+  }
+
+  throw new Error(usageText());
+}
+
+function readPlatformK3dUpOptions(optionArgs) {
+  const options = { imageArchiveDir: undefined, imageSource: 'build' };
+
+  for (let index = 0; index < optionArgs.length; index += 1) {
+    const optionName = optionArgs[index];
+    const optionValue = optionArgs[index + 1];
+
+    if ((optionName === '--image-source' || optionName === '--image-archive-dir') && optionValue !== undefined) {
+      if (optionName === '--image-source') {
+        options.imageSource = optionValue;
+      } else {
+        options.imageArchiveDir = optionValue;
+      }
+      index += 1;
+      continue;
+    }
+
+    throw new Error(usageText());
+  }
+
+  if (options.imageSource !== 'build' && options.imageSource !== 'archive') {
+    throw new Error(usageText());
+  }
+
+  if (options.imageSource === 'archive' && options.imageArchiveDir === undefined) {
+    throw new Error(usageText());
+  }
+
+  if (options.imageSource === 'build' && options.imageArchiveDir !== undefined) {
+    throw new Error(usageText());
+  }
+
+  return options;
+}
+
+function usageText() {
+  return 'Usage: node ./scripts/deploy/platform-k3d-e2e.mjs <up [--image-source build|archive] [--image-archive-dir <dir>]|down>';
+}
+
+function assertNoExtraArguments(optionArgs) {
+  if (optionArgs.length > 0) {
+    throw new Error(usageText());
+  }
 }
 
 export function parseK3dClusterNames(output) {
@@ -31,40 +103,41 @@ export function parseK3dClusterNames(output) {
     .filter((name) => name !== undefined && name !== '');
 }
 
+export function parseLoadedImageRefs(output) {
+  return output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('Loaded image: '))
+    .map((line) => line.slice('Loaded image: '.length).trim())
+    .filter((imageRef) => imageRef !== '');
+}
+
 export function isConsoleReadyStatus(status) {
   return status === 302;
 }
 
-async function upPlatform() {
+export function renderK3dRegistryConfig(registryHost, serviceClusterIp) {
+  if (registryHost.trim() === '') {
+    throw new Error('Bundled registry host is required.');
+  }
+  if (isIP(serviceClusterIp) !== 4) {
+    throw new Error(`Bundled registry Service must have an IPv4 clusterIP, received: ${serviceClusterIp}`);
+  }
+
+  return `mirrors:\n  "${registryHost}":\n    endpoint:\n      - "http://${serviceClusterIp}:${bundledRegistryPort}"\n`;
+}
+
+async function upPlatform(command) {
   assertRequiredTools();
   if (clusterExists()) {
     throw new Error(`k3d cluster ${clusterName} already exists; run pnpm platform:e2e:down first.`);
   }
 
-  await buildSelfHostedImages({
-    envFilePath: `${repositoryRoot}/.env.self-hosted.example`,
-    env: process.env,
-    repositoryRoot,
-  });
+  recreateRegistry();
 
   try {
-    runCommand(
-      'k3d',
-      [
-        'cluster',
-        'create',
-        clusterName,
-        '--k3s-arg',
-        '--disable=traefik@server:*',
-        '--port',
-        `127.0.0.1:${httpPort}:30080@server:0`,
-        '--port',
-        `127.0.0.1:${httpsPort}:30443@server:0`,
-        '--wait',
-      ],
-      repositoryRoot,
-    );
-    runCommand('k3d', ['image', 'import', '--cluster', clusterName, ...imageRefs], repositoryRoot);
+    await Promise.all([createCluster(), prepareAndPushPlatformImages(command)]);
+
     runCommand('kubectl', ['--context', contextName, 'create', 'namespace', 'compartment'], repositoryRoot);
 
     installHelmStage('foundation');
@@ -84,6 +157,7 @@ async function upPlatform() {
       repositoryRoot,
     );
     installHelmStage('full');
+    await configureK3dRegistryMirror();
     runCommand(
       'kubectl',
       [
@@ -99,15 +173,94 @@ async function upPlatform() {
       ],
       repositoryRoot,
     );
+    runCommand(
+      'kubectl',
+      [
+        '--context',
+        contextName,
+        '--namespace',
+        'compartment-build',
+        'wait',
+        'deployment',
+        '--all',
+        '--for=condition=Available',
+        '--timeout=2m',
+      ],
+      repositoryRoot,
+    );
     runCommand('kubectl', ['--context', contextName, '--request-timeout=5s', 'get', '--raw=/readyz'], repositoryRoot);
     await waitForConsole();
   } catch (error) {
     deleteCluster();
+    deleteRegistry();
     process.stderr.write('STATUS=failed\n');
     throw error;
   }
 
-  process.stdout.write(`context: ${contextName}\nconsole: http://console.localhost:${httpPort}\nSTATUS=ok\n`);
+  process.stdout.write(`context: ${contextName}\nconsole: http://${consoleHost}:${httpPort}\nSTATUS=ok\n`);
+}
+
+async function createCluster() {
+  await runCommandAsync(
+    'k3d',
+    [
+      'cluster',
+      'create',
+      clusterName,
+      '--k3s-arg',
+      '--disable=traefik@server:*',
+      '--port',
+      `127.0.0.1:${httpPort}:30080@server:0`,
+      '--port',
+      `127.0.0.1:${httpsPort}:30443@server:0`,
+      '--registry-use',
+      registryClusterHost,
+      '--wait',
+    ],
+    repositoryRoot,
+  );
+}
+
+async function prepareAndPushPlatformImages(command) {
+  const imageRefsByServiceName =
+    command.imageSource === 'archive'
+      ? loadPlatformImageArchives(command.imageArchiveDir)
+      : await buildPlatformImages();
+
+  for (const serviceName of platformServiceNames) {
+    const sourceImageRef = imageRefsByServiceName[serviceName];
+    const registryImageRef = `${registryPushHost}/compartment-${serviceName}:${platformImageTag}`;
+    runCommand('docker', ['tag', sourceImageRef, registryImageRef], repositoryRoot);
+    runCommand('docker', ['push', '--quiet', registryImageRef], repositoryRoot);
+  }
+}
+
+async function buildPlatformImages() {
+  await buildSelfHostedImages({
+    envFilePath: `${repositoryRoot}/.env.self-hosted.example`,
+    env: process.env,
+    repositoryRoot,
+  });
+
+  return builtImageRefsByServiceName;
+}
+
+function loadPlatformImageArchives(imageArchiveDir) {
+  const imageRefsByServiceName = {};
+
+  for (const serviceName of platformServiceNames) {
+    const archivePath = `${imageArchiveDir}/${serviceName}.tar`;
+    const loadOutput = captureCommand('docker', ['load', '--input', archivePath], repositoryRoot);
+    const [imageRef, ...extraImageRefs] = parseLoadedImageRefs(loadOutput);
+
+    if (imageRef === undefined || extraImageRefs.length > 0) {
+      throw new Error(`Expected exactly one loaded image ref in ${archivePath}, received: ${loadOutput}`);
+    }
+
+    imageRefsByServiceName[serviceName] = imageRef;
+  }
+
+  return imageRefsByServiceName;
 }
 
 function downPlatform() {
@@ -115,6 +268,7 @@ function downPlatform() {
   if (clusterExists()) {
     deleteCluster();
   }
+  deleteRegistry();
   process.stdout.write(`Removed ${clusterName}.\n`);
 }
 
@@ -134,19 +288,82 @@ function installHelmStage(stage) {
     `ports.https=${httpsPort}`,
     '--set',
     `platform.startupStage=${stage}`,
+    '--set',
+    `platform.baseDomain=${platformBaseDomain}`,
+    '--set',
+    'edge.snapshots.enabled=true',
     '--rollback-on-failure',
     '--wait',
     '--timeout',
     '8m',
   ];
+  for (const serviceName of platformServiceNames) {
+    args.push(
+      '--set',
+      `images.${serviceName}.repository=${registryClusterHost}/compartment-${serviceName}`,
+      '--set',
+      `images.${serviceName}.tag=${platformImageTag}`,
+    );
+  }
   if (stage === 'full') {
     args.push('--wait-for-jobs');
   }
   runCommand('helm', args, repositoryRoot);
 }
 
+async function configureK3dRegistryMirror() {
+  const serviceClusterIp = captureCommand(
+    'kubectl',
+    [
+      '--context',
+      contextName,
+      '--namespace',
+      'compartment',
+      'get',
+      'service/compartment-compartment-registry-auth',
+      '--output',
+      'jsonpath={.spec.clusterIP}',
+    ],
+    repositoryRoot,
+  ).trim();
+  const configDirectory = mkdtempSync(join(tmpdir(), 'compartment-k3d-registry-'));
+  const configPath = join(configDirectory, 'registries.yaml');
+
+  try {
+    writeFileSync(configPath, renderK3dRegistryConfig(bundledRegistryHost, serviceClusterIp), { mode: 0o600 });
+    runCommand('docker', ['exec', serverNodeName, 'mkdir', '-p', '/etc/rancher/k3s'], repositoryRoot);
+    runCommand('docker', ['cp', configPath, `${serverNodeName}:/etc/rancher/k3s/registries.yaml`], repositoryRoot);
+    runCommand('docker', ['restart', serverNodeName], repositoryRoot);
+  } finally {
+    rmSync(configDirectory, { force: true, recursive: true });
+  }
+
+  await waitForK3dApiAfterRestart();
+  runCommand(
+    'kubectl',
+    ['--context', contextName, 'wait', `node/${serverNodeName}`, '--for=condition=Ready', '--timeout=2m'],
+    repositoryRoot,
+  );
+}
+
+async function waitForK3dApiAfterRestart() {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      captureCommand(
+        'kubectl',
+        ['--context', contextName, '--request-timeout=2s', 'get', `node/${serverNodeName}`, '--output', 'name'],
+        repositoryRoot,
+      );
+      return;
+    } catch {
+      await delay(1_000);
+    }
+  }
+  throw new Error(`Kubernetes API did not recover after restarting ${serverNodeName}.`);
+}
+
 async function waitForConsole() {
-  const url = `http://console.localhost:${httpPort}/`;
+  const url = `http://${consoleHost}:${httpPort}/`;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
       if (isConsoleReadyStatus(await readConsoleStatus())) {
@@ -164,7 +381,7 @@ async function readConsoleStatus() {
   return await new Promise((resolveStatus, rejectStatus) => {
     const request = get(
       {
-        headers: { host: 'console.localhost' },
+        headers: { host: consoleHost },
         hostname: '127.0.0.1',
         path: '/',
         port: httpPort,
@@ -199,14 +416,30 @@ function clusterExists() {
   return parseK3dClusterNames(output).includes(clusterName);
 }
 
+function registryExists() {
+  const output = captureCommand('k3d', ['registry', 'list', '--no-headers'], repositoryRoot);
+  return parseK3dClusterNames(output).includes(`k3d-${registryName}`);
+}
+
+function recreateRegistry() {
+  deleteRegistry();
+  runCommand('k3d', ['registry', 'create', registryName, '--port', `127.0.0.1:${registryHostPort}`], repositoryRoot);
+}
+
+function deleteRegistry() {
+  if (registryExists()) {
+    runCommand('k3d', ['registry', 'delete', `k3d-${registryName}`], repositoryRoot);
+  }
+}
+
 function deleteCluster() {
   runCommand('k3d', ['cluster', 'delete', clusterName], repositoryRoot);
 }
 
 async function main() {
-  const action = readPlatformK3dAction(process.argv.slice(2));
-  if (action === 'up') {
-    await upPlatform();
+  const command = readPlatformK3dCommand(process.argv.slice(2));
+  if (command.action === 'up') {
+    await upPlatform(command);
     return;
   }
   downPlatform();

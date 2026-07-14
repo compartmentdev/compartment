@@ -1,11 +1,9 @@
 import {
-  type PermissionKey,
   type NodeResourceRequest,
-  type NodeResourceLogsResponse,
   type NodeResourceResponse,
   type ResourceVolumeSummary,
 } from '@compartment/contracts';
-import { deleteNodeResource, startNodeResource, stopNodeResource, tailNodeResourceLogs } from '@compartment/sdk';
+import { deleteNodeResource, startNodeResource, stopNodeResource } from '@compartment/sdk';
 import { createResourceNotFoundError } from '../errors/api-business-error';
 import type { NodeRow } from '../queries/node.query.types';
 import {
@@ -23,7 +21,11 @@ import { resolveResourceOutputForLookup } from './resource-output-lookup.service
 import { listResolvedResourceOutputSummaries } from './resource-output-resolution.service';
 import { loadResourceEffectiveVariables } from './resources-effective-variables.service';
 import { resolveResourceNode } from './resources-node.service';
-import { bootstrapKubernetesResource } from './resources-kubernetes-reconcile.service';
+import {
+  bootstrapKubernetesResource,
+  deleteKubernetesResource,
+  reconcileKubernetesResourceReplicas,
+} from './resources-kubernetes-reconcile.service';
 import { requireRunningResourceContainerId } from './resources-runtime-container.service';
 import { resolveStoredResourceIntent } from './resources-stored-intent.service';
 import { buildNodeResourceRequest, type ResolvedResourceIntent } from './resources.service.helpers';
@@ -34,15 +36,12 @@ import type {
   ResourceEnvironmentContext,
   ResourceListInput,
   ResourceListResult,
-  ResourceLogsInput,
-  ResourceLogsResult,
   ResourceLookupResult,
   ResourceOutputInput,
   ResourceOutputListResult,
   ResourceOutputResult,
   ResourceOutputSummaryInput,
 } from './resources.service.types';
-import { requireEnvironmentPermission } from './deployment-context.service.scope';
 
 export { reconcileDeclaredResources } from './resources-reconcile.service';
 
@@ -110,6 +109,9 @@ export async function getResourceForPrincipal(input: ResourceActionInput): Promi
 export async function startResourceForPrincipal(input: ResourceActionInput): Promise<ResourceLookupResult> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
+  if (resource.runtimeKind === 'kubernetes') {
+    return { ...context, resource: await reconcileKubernetesResourceReplicas(context, resource, 1) };
+  }
   assertNodeResourceOperation(resource, 'start');
   const node: NodeRow = await resolveResourceNode(context);
   const response: NodeResourceResponse = await startPreparedResource(context, resource, node);
@@ -169,6 +171,9 @@ function buildStoredResourceStartRequest(
 export async function stopResourceForPrincipal(input: ResourceActionInput): Promise<ResourceLookupResult> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
+  if (resource.runtimeKind === 'kubernetes') {
+    return { ...context, resource: await reconcileKubernetesResourceReplicas(context, resource, 0) };
+  }
   assertNodeResourceOperation(resource, 'stop');
   const node: NodeRow = await resolveResourceNode(context);
   const response: NodeResourceResponse = await stopNodeResource(createNodeRuntimeRequester(node.nodeSocketPath), {
@@ -188,8 +193,13 @@ export async function stopResourceForPrincipal(input: ResourceActionInput): Prom
 export async function deleteResourceForPrincipal(input: ResourceDeleteInput): Promise<string[]> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
-  assertNodeResourceOperation(resource, 'delete');
   const volumes: ResourceVolumeSummary[] = parseResourceVolumes(resource);
+  if (resource.runtimeKind === 'kubernetes') {
+    await deleteKubernetesResource(context, resource, input.body.deleteData === true);
+    await deleteProjectResource(resource.id);
+    return input.body.deleteData === true ? [] : volumes.map((volume: ResourceVolumeSummary): string => volume.name);
+  }
+  assertNodeResourceOperation(resource, 'delete');
   const node: NodeRow = await resolveResourceNode(context);
   await deleteNodeResource(createNodeRuntimeRequester(node.nodeSocketPath), {
     containerId: resource.containerId,
@@ -202,38 +212,6 @@ export async function deleteResourceForPrincipal(input: ResourceDeleteInput): Pr
   await deleteProjectResource(resource.id);
 
   return input.body.deleteData === true ? [] : volumes.map((volume: ResourceVolumeSummary): string => volume.name);
-}
-
-export async function getResourceLogsForPrincipal(input: ResourceLogsInput): Promise<ResourceLogsResult> {
-  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'deployment.create');
-  await requireResourceEnvironmentPermission(input.actorPrincipalId, context, 'deployment.logs.read');
-  const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
-  assertNodeResourceOperation(resource, 'logs');
-  const node: NodeRow = await resolveResourceNode(context);
-  const response: NodeResourceLogsResponse = await tailNodeResourceLogs(
-    createNodeRuntimeRequester(node.nodeSocketPath),
-    {
-      containerId: requireRunningResourceContainerId(resource),
-      environmentName: context.environment.name,
-      resourceName: resource.name,
-      ...(input.query.since !== undefined ? { since: input.query.since } : {}),
-      ...(input.query.tailLines !== undefined ? { tailLines: input.query.tailLines } : {}),
-    },
-  );
-
-  return {
-    ...context,
-    lines: response.lines,
-    resource,
-  };
-}
-
-async function requireResourceEnvironmentPermission(
-  principalId: string,
-  context: ResourceEnvironmentContext,
-  permission: PermissionKey,
-): Promise<void> {
-  await requireEnvironmentPermission(principalId, context.organization.id, context.environment.id, permission);
 }
 
 async function resolveRequiredResource(environmentId: string, resourceName: string): Promise<ProjectResourceRow> {

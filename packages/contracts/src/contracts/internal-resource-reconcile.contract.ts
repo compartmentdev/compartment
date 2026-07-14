@@ -14,10 +14,13 @@ export interface ResourceVolumeIntent {
 
 export interface ResourceReconcileIntent {
   containerPort: number;
+  deleteData: boolean;
   environmentId: string;
   env: Record<string, string>;
   image: string;
   namespaceId: string;
+  operation: 'delete' | 'reconcile';
+  replicas: 0 | 1;
   resourceId: string;
   secretId: string;
   volumes: ResourceVolumeIntent[];
@@ -53,10 +56,13 @@ const resourceVolumeIntentSchema: ContractSchema<ResourceVolumeIntent> = z
 const resourceReconcileIntentSchema: ContractSchema<ResourceReconcileIntent> = z
   .object({
     containerPort: z.number().int().positive(),
+    deleteData: z.boolean(),
     environmentId: z.string().min(1),
     env: z.record(z.string(), z.string()),
     image: z.string().min(1),
     namespaceId: z.string().min(1),
+    operation: z.enum(['delete', 'reconcile']),
+    replicas: z.union([z.literal(0), z.literal(1)]),
     resourceId: z.string().min(1),
     secretId: z.string().min(1),
     volumes: z.array(resourceVolumeIntentSchema),

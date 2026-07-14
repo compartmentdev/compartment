@@ -42,7 +42,6 @@ export {
   buildCompartmentArtifactImageRepository,
   buildCompartmentArtifactImageTag,
   buildDeploymentDrainDeadline,
-  type RuntimeActiveDeployment,
   type RuntimeDrainState,
   type RuntimePreviousDeployment,
 } from './contracts/runtime-shared.contract';

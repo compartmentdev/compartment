@@ -3,6 +3,7 @@ import { stringify } from 'yaml';
 import { kubeResourceServiceDns } from '@compartment/utils';
 import {
   assertResourceClaimIdentity,
+  assertResourceClaimOwnership,
   kubeResourceVolumeName,
   projectResourceBootstrapClaims,
   projectResourceManifests,
@@ -13,10 +14,13 @@ import {
 
 const row: ResourceProjectionRow = {
   containerPort: 5432,
+  deleteData: false,
   environmentId: 'env-01jz',
   env: { POSTGRES_PASSWORD: 'generated' },
   image: 'postgres@sha256:abc',
   namespaceId: 'prj-01jz',
+  operation: 'reconcile',
+  replicas: 1,
   resourceId: 'res-01jz',
   secretId: 'sec-resource',
   volumes: [{ mountPath: '/var/lib/postgresql/data', size: '10Gi', volumeHandle: 'data' }],
@@ -26,16 +30,33 @@ describe('resource projection and fencing', (): void => {
   it('fails closed before mutation when expected identity, claim, binding, or UID is invalid', (): void => {
     const name: string = kubeResourceVolumeName(row.resourceId, 'data');
     expect((): void => assertResourceClaimIdentity([], [])).toThrow('Bootstrap is required');
-    expect((): void => assertResourceClaimIdentity([{ claimName: name, uid: 'uid-1' }], [])).toThrow(
-      'missing or unbound',
-    );
+    expect((): void => assertResourceClaimIdentity([{ claimName: name, uid: 'uid-1' }], [])).toThrow('is missing');
     expect((): void =>
-      assertResourceClaimIdentity([{ claimName: name, uid: 'uid-1' }], [{ bound: false, claimName: name, uid: null }]),
+      assertResourceClaimIdentity(
+        [{ claimName: name, uid: 'uid-1' }],
+        [{ bound: false, claimName: name, uid: 'uid-1' }],
+      ),
     ).toThrow('missing or unbound');
     expect((): void =>
       assertResourceClaimIdentity(
         [{ claimName: name, uid: 'uid-1' }],
         [{ bound: true, claimName: name, uid: 'uid-2' }],
+      ),
+    ).toThrow('UID changed');
+  });
+
+  it('fences an unbound WaitForFirstConsumer claim by its created UID', (): void => {
+    const name: string = kubeResourceVolumeName(row.resourceId, 'data');
+    expect((): void =>
+      assertResourceClaimOwnership(
+        [{ claimName: name, uid: 'uid-1' }],
+        [{ bound: false, claimName: name, uid: 'uid-1' }],
+      ),
+    ).not.toThrow();
+    expect((): void =>
+      assertResourceClaimOwnership(
+        [{ claimName: name, uid: 'uid-1' }],
+        [{ bound: false, claimName: name, uid: 'uid-2' }],
       ),
     ).toThrow('UID changed');
   });
@@ -67,5 +88,16 @@ describe('resource projection and fencing', (): void => {
     expect(yaml).toMatchSnapshot();
     expect(yaml).toContain('type: Recreate');
     expect(yaml).toContain('replicas: 1');
+  });
+
+  it('matches the provisioned resource NetworkPolicy selector', (): void => {
+    const manifests: KubeManifest[] = projectResourceManifests(row);
+    const deployment: KubeManifest = manifests.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+    )!;
+    const service: KubeManifest = manifests.find((manifest: KubeManifest): boolean => manifest.kind === 'Service')!;
+
+    expect(deployment.spec).toMatchObject({ selector: { matchLabels: { app: 'resource' } } });
+    expect(service.spec).toMatchObject({ selector: { app: 'resource' } });
   });
 });

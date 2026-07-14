@@ -16,7 +16,7 @@ async function runBin(): Promise<void> {
   }
 
   const exitCode: number = await runCli(process.argv.slice(2));
-  process.exit(exitCode);
+  process.exitCode = exitCode;
 }
 
 function isNodeAgentInvocation(): boolean {

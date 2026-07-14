@@ -3,6 +3,7 @@ export interface ObservedDeploymentStatus {
   conditions?: ObservedDeploymentCondition[] | undefined;
   observedGeneration?: number | undefined;
   replicas?: number | undefined;
+  updatedReplicas?: number | undefined;
 }
 
 export interface ObservedDeploymentCondition {

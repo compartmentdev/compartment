@@ -15,6 +15,7 @@ export function releaseIntent(projection: DeploymentReconcileProjection, timeout
     deploymentId: projection.deploymentId,
     env: projection.env,
     image: projection.image,
+    imagePullSecretId: projection.imagePullSecretId,
     jobClass: 'release',
     namespace: requiredDeploymentMetadata(deploymentManifest(projection), 'namespace'),
     timeoutMs,

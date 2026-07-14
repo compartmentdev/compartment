@@ -45,6 +45,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_PUBLIC_HTTP_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_PUBLIC_HTTPS_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_POSTGRES_PASSWORD: z.string().optional(),
+  COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN: z.string().min(1).optional(),
   COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: z.string().min(1),
   COMPARTMENT_AUDIT_RETENTION_DAYS: z.coerce.number().int().positive(),
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE: z.coerce.number().int().positive(),
@@ -91,6 +92,7 @@ export interface ApiConfig {
   publicProtocol: 'http' | 'https';
   publicHttpPort: number;
   publicHttpsPort: number;
+  productLogIngestToken?: string | null;
   auditRetentionDays: number;
   auditRetentionCleanupBatchSize: number;
   auditRetentionCleanupCron: string;
@@ -135,7 +137,12 @@ type ApiRuntimeConfig = Pick<
 >;
 type ApiSecretConfig = Pick<
   ApiConfig,
-  'nodeAgentSocketPath' | 'systemApiSocketPath' | 'systemToken' | 'variablesMasterKey' | 'runtimeControlToken'
+  | 'nodeAgentSocketPath'
+  | 'productLogIngestToken'
+  | 'systemApiSocketPath'
+  | 'systemToken'
+  | 'variablesMasterKey'
+  | 'runtimeControlToken'
 >;
 
 export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -244,18 +251,15 @@ function readApiRuntimeConfig(parsed: ApiConfigEnv): ApiRuntimeConfig {
 }
 
 function readApiSecretConfig(parsed: ApiConfigEnv): ApiSecretConfig {
-  assertValidNodeAgentSocketPath(parsed.COMPARTMENT_NODE_AGENT_SOCKET);
+  assertValidUnixSocketPath(parsed.COMPARTMENT_NODE_AGENT_SOCKET, nodeAgentSocketPolicy);
   assertValidSystemApiSocketPath(parsed.COMPARTMENT_SYSTEM_API_SOCKET);
 
   return {
     nodeAgentSocketPath: parsed.COMPARTMENT_NODE_AGENT_SOCKET,
+    productLogIngestToken: readOptionalConfigText(parsed.COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN),
     systemApiSocketPath: parsed.COMPARTMENT_SYSTEM_API_SOCKET,
     systemToken: parsed.COMPARTMENT_SYSTEM_TOKEN,
     runtimeControlToken: parsed.COMPARTMENT_RUNTIME_CONTROL_TOKEN,
     variablesMasterKey: parseVariablesMasterKey(parsed.COMPARTMENT_VARIABLES_MASTER_KEY),
   };
-}
-
-function assertValidNodeAgentSocketPath(socketPath: string): void {
-  assertValidUnixSocketPath(socketPath, nodeAgentSocketPolicy);
 }

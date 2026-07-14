@@ -20,4 +20,9 @@ export interface CreateResourceReconcileRunInput {
   type: 'bootstrap' | 'reconcile';
 }
 
+export interface ResourceReconcileRunState {
+  failureMessage: string | null;
+  phase: 'bootstrap-pending' | 'reconcile-pending' | 'running' | 'succeeded' | 'failed';
+}
+
 export type AcknowledgeResourceReconcileRunInput = WorkerAcknowledgeResourceReconcileRequest;

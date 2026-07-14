@@ -1,9 +1,12 @@
 export interface ResourceProjectionRow {
   containerPort: number;
+  deleteData: boolean;
   environmentId: string;
   env: Readonly<Record<string, string>>;
   image: string;
   namespaceId: string;
+  operation: 'delete' | 'reconcile';
+  replicas: 0 | 1;
   resourceId: string;
   secretId: string;
   volumes: ResourceVolumeProjection[];

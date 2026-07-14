@@ -18,6 +18,11 @@ import { createResourceNodeRequester } from './resource-node-requester.service';
 import type { EffectiveVariable } from './effective-variables.service.types';
 import { copyRestoreResourceVariables } from './resource-backups.restore-variables.service';
 import { createResourceInsert } from './resources-resource-insert.service';
+import { hasKubernetesRuntime } from './resources-kubernetes-reconcile.service';
+import {
+  createKubernetesRestoredResourceWithLock,
+  prepareRestoredResourceRuntime,
+} from './resource-backups.restore-as-kubernetes.service';
 import { resolveStoredResourceIntent } from './resources-stored-intent.service';
 import {
   buildNodeResourceOperationDefinition,
@@ -52,19 +57,21 @@ export async function restoreResourceBackupAsForPrincipal(
   assertResourceBackupBelongsToEnvironment(sourceResource, context.environment.id);
   assertBackupCanRestoreToNewResource(backup);
 
-  const resource: ProjectResourceRow = await createRestoredResourceFromBackup({
+  const createdResource: ProjectResourceRow = await createRestoredResourceFromBackup({
     backup,
     context,
     restoreInput: input,
     snapshot: resolveRequiredResourceDefinitionSnapshot(backup),
     sourceResource,
   });
-  await restoreBackupIntoCreatedResource({ backup, context, resource });
+  const resource: ProjectResourceRow = await prepareRestoredResourceRuntime(context, createdResource);
+  await restoreBackupIntoCreatedResource({ artifactResource: sourceResource, backup, context, resource });
 
   return { ...context, resource, restoredBackup: backup, sourceResource };
 }
 
 async function restoreBackupIntoCreatedResource(input: {
+  artifactResource: ProjectResourceRow;
   backup: ResourceBackupRow;
   context: ResourceEnvironmentContext;
   resource: ProjectResourceRow;
@@ -119,6 +126,9 @@ async function createRestoredResourceWithLock(
   context: ResourceEnvironmentContext,
   intent: ResolvedResourceIntent,
 ): Promise<ProjectResourceRow> {
+  if (hasKubernetesRuntime(process.env)) {
+    return await createKubernetesRestoredResourceWithLock(tx, context, intent);
+  }
   const response: NodeResourceResponse = await reconcileNodeResource(
     await createResourceNodeRequester(context),
     createRestoredResourceNodeRequest(context, intent),

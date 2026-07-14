@@ -104,6 +104,7 @@ describe('Kubernetes resource backup operations', (): void => {
     );
     await expect(
       runVerifiedKubernetesRestore({
+        artifactResource: operationInput('restore').resource,
         backup: backup({ checksum: 'cd'.repeat(32), sizeBytes: 42 }),
         context: context(),
         operationContext: operationContext(),
@@ -112,6 +113,31 @@ describe('Kubernetes resource backup operations', (): void => {
       }),
     ).rejects.toThrow('integrity verification failed');
     expect(createIntent).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores into the target resource while fencing the source artifact PVC', async (): Promise<void> => {
+    const checksum: string = 'ab'.repeat(32);
+    const artifactResource: ProjectResourceRow = operationInput('restore').resource;
+    const targetResource: ProjectResourceRow = { ...resource(), id: 'res_postgres_copy', name: 'postgres-copy' };
+    readResult
+      .mockResolvedValueOnce(terminalResult(`COMPARTMENT_ARTIFACT_METADATA {"checksum":"${checksum}","sizeBytes":42}`))
+      .mockResolvedValueOnce(terminalResult('restore complete'));
+
+    await runVerifiedKubernetesRestore({
+      artifactResource,
+      backup: backup({ checksum, sizeBytes: 42 }),
+      context: context(),
+      operationContext: operationContext(),
+      operationId: 'op_restore',
+      resource: targetResource,
+    });
+
+    const restoreIntent: ResourceOperationProductJobIntent | undefined = createIntent.mock.calls[1]?.[0];
+    expect(restoreIntent?.env.COMPARTMENT_RESOURCE_NAME).toBe('postgres-copy');
+    expect(restoreIntent?.env.COMPARTMENT_RESOURCE_HOST).toContain('resource-res-postgres-copy');
+    expect(restoreIntent?.volumeMounts).toEqual([
+      expect.objectContaining({ expectedClaimUid: 'uid-backup', resourceId: artifactResource.id }),
+    ]);
   });
 
   it('returns verifier checksum and size for backup persistence', async (): Promise<void> => {

@@ -10,13 +10,14 @@ export interface ObservedDeploymentCondition {
 }
 
 export interface ObservedDeploymentStatus {
+  availableReplicas?: number | undefined;
   conditions?: ObservedDeploymentCondition[] | undefined;
-  readyReplicas?: number | undefined;
+  observedGeneration?: number | undefined;
 }
 
 export interface ManagedResourceUpdatePlan {
   desired: KubeManifest[];
   leaseId: string;
   operationId: string;
-  rollback: KubeManifest[];
+  rollback: KubeManifest[] | null;
 }

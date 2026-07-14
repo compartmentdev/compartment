@@ -46,7 +46,7 @@ describe('product log ingest route', (): void => {
     });
   });
 
-  it('returns a retryable response while Pod identity persistence is racing', async (): Promise<void> => {
+  it('drops events without a durable workload identity without blocking later batches', async (): Promise<void> => {
     applyApiRouteTestEnv();
     ingestMock.mockResolvedValueOnce({ accepted: 0, duplicates: 0, rejected: 1 });
     await withApiRouteApp(async (app: ApiApp): Promise<void> => {
@@ -54,7 +54,31 @@ describe('product log ingest route', (): void => {
         app,
         deriveProductLogIngestToken('test-runtime-control-token'),
       );
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
+    });
+  });
+
+  it('returns a retryable response while product-log storage is at capacity', async (): Promise<void> => {
+    applyApiRouteTestEnv();
+    ingestMock.mockResolvedValueOnce({ accepted: 0, deferred: 1, duplicates: 0, rejected: 1 });
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const response: LightMyRequestResponse = await postLogs(
+        app,
+        deriveProductLogIngestToken('test-runtime-control-token'),
+      );
       expect(response.statusCode).toBe(503);
+    });
+  });
+
+  it('accepts a dedicated ingest credential without accepting the runtime control credential', async (): Promise<void> => {
+    applyApiRouteTestEnv({ productLogIngestToken: 'dedicated-product-log-token' });
+    ingestMock.mockResolvedValueOnce({ accepted: 1, duplicates: 0, rejected: 0 });
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const workerResponse: LightMyRequestResponse = await postLogs(app, 'test-runtime-control-token');
+      const ingestResponse: LightMyRequestResponse = await postLogs(app, 'dedicated-product-log-token');
+      expect(workerResponse.statusCode).toBe(401);
+      expect(ingestResponse.statusCode).toBe(200);
     });
   });
 });

@@ -1,6 +1,5 @@
 import type { ApiDatabaseTransaction } from '../db/client.types';
-
-export type DeploymentKubeState = 'desired' | 'pending' | 'active';
+import type { DeploymentKubeState } from './deployment-kube-state.types';
 
 export interface UpsertDeploymentKubeReferenceInput {
   deploymentId: string;

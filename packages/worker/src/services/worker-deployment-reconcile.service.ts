@@ -7,27 +7,27 @@ import {
   calculateKubeRolloutStatus,
   projectApplicationManifests,
   type KubeDeploymentManifest,
-  type KubeDeploymentCondition,
   type KubeManifest,
   type KubeObservation,
-  type KubeObservedManifest,
   type KubeRolloutObservation,
   type KubeRolloutStatus,
   type KubeRuntime,
 } from '@compartment/kube-runtime';
 import { observeDeploymentReconcile, type CompartmentRequester } from '@compartment/sdk';
 import { executeProductJob } from './worker-product-job.service';
-import type { ObservedDeploymentCondition, ObservedDeploymentStatus } from './worker-deployment-reconcile.types';
 import {
-  deploymentConditionStatus,
   deploymentFromObjects,
   deploymentManifest,
   releaseIntent,
   requiredDeploymentMetadata,
   rolloutFailureMessage,
 } from './worker-deployment-reconcile.helpers';
+import {
+  isObservedReady,
+  readRolloutObservation,
+  rolloutTimeoutMs,
+} from './worker-deployment-rollout-observation.service';
 
-const rolloutTimeoutMs: number = 50_000;
 const releaseTimeoutMs: number = 600_000;
 
 interface RolloutWaitHandles {
@@ -40,6 +40,9 @@ export async function reconcileDeploymentTarget(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
 ): Promise<void> {
+  if (await reconcileStopState(request, runtime, target)) {
+    return;
+  }
   if (target.state === 'desired') {
     await reconcileDesiredDeployment(request, runtime, target);
     return;
@@ -51,6 +54,19 @@ export async function reconcileDeploymentTarget(
   await reconcileActiveDeployment(request, runtime, target);
 }
 
+async function reconcileStopState(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  target: DeploymentReconcileTarget,
+): Promise<boolean> {
+  if (target.state !== 'stopping') {
+    return target.state === 'stopped';
+  }
+  await runtime.delete(projectApplicationManifests(target.candidate));
+  await persistObservation(request, target, 'stopped');
+  return true;
+}
+
 async function reconcileActiveDeployment(
   request: CompartmentRequester,
   runtime: KubeRuntime,
@@ -58,13 +74,13 @@ async function reconcileActiveDeployment(
 ): Promise<void> {
   const deployment: KubeDeploymentManifest = deploymentManifest(target.candidate);
   await runtime.apply({ objects: projectApplicationManifests(target.candidate) });
-  const observation: KubeObservation = await observeDeployment(runtime, deployment);
-  try {
-    await waitForReady(observation, deployment, rolloutTimeoutMs);
-  } catch {
+  const rollout: KubeRolloutObservation | null = readRolloutObservation(
+    await runtime.read(deployment),
+    deployment,
+    target,
+  );
+  if (rollout === null || calculateKubeRolloutStatus(rollout, new Date()) !== 'ready') {
     await persistObservation(request, target, 'pending', 'Active Kubernetes Deployment drifted or became non-Ready.');
-  } finally {
-    await observation.stop();
   }
 }
 
@@ -93,18 +109,17 @@ async function reconcilePendingDeployment(
   target: DeploymentReconcileTarget,
 ): Promise<void> {
   const candidate: KubeDeploymentManifest = deploymentManifest(target.candidate);
-  const observation: KubeObservation = await observeDeployment(runtime, candidate);
-  try {
-    const rollout: KubeRolloutObservation | null = readRolloutObservation(observation, candidate, target);
-    if (rollout === null) {
-      await handleMissingPendingDeployment(request, runtime, target);
-      return;
-    }
-    const status: KubeRolloutStatus = calculateKubeRolloutStatus(rollout, new Date());
-    await handleRolloutStatus(request, runtime, target, status);
-  } finally {
-    await observation.stop();
+  const rollout: KubeRolloutObservation | null = readRolloutObservation(
+    await runtime.read(candidate),
+    candidate,
+    target,
+  );
+  if (rollout === null) {
+    await handleMissingPendingDeployment(request, runtime, target);
+    return;
   }
+  const status: KubeRolloutStatus = calculateKubeRolloutStatus(rollout, new Date());
+  await handleRolloutStatus(request, runtime, target, status);
 }
 
 async function handleMissingPendingDeployment(
@@ -112,7 +127,7 @@ async function handleMissingPendingDeployment(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
 ): Promise<void> {
-  const deadline: number = new Date(target.rolloutStartedAt).getTime() + rolloutTimeoutMs;
+  const deadline: number = new Date(target.rolloutStartedAt).getTime() + rolloutTimeoutMs(target.candidate);
   if (Date.now() < deadline) {
     await runtime.apply({ objects: projectApplicationManifests(target.candidate) });
     return;
@@ -147,7 +162,7 @@ async function recoverFailedRollout(runtime: KubeRuntime, target: DeploymentReco
   const activeDeployment: KubeDeploymentManifest = deploymentFromObjects(activeObjects);
   const observation: KubeObservation = await observeDeployment(runtime, activeDeployment);
   try {
-    await waitForReady(observation, activeDeployment, rolloutTimeoutMs);
+    await waitForReady(observation, activeDeployment, rolloutTimeoutMs(target.active));
   } finally {
     await observation.stop();
   }
@@ -162,67 +177,32 @@ async function waitForReady(
   if (isObservedReady(observation, deployment, deadlineAt)) {
     return;
   }
+  await waitForObservedReady(observation, deployment, deadlineAt, timeoutMs);
+}
+
+async function waitForObservedReady(
+  observation: KubeObservation,
+  deployment: KubeDeploymentManifest,
+  deadlineAt: Date,
+  timeoutMs: number,
+): Promise<void> {
   await new Promise<void>((resolve: () => void, reject: (error: Error) => void): void => {
     const handles: RolloutWaitHandles = {};
+    const resolveWhenReady: () => void = (): void => {
+      if (!isObservedReady(observation, deployment, deadlineAt)) {
+        return;
+      }
+      clearTimeout(handles.timer);
+      handles.unsubscribe?.();
+      resolve();
+    };
     handles.timer = setTimeout((): void => {
       handles.unsubscribe?.();
       reject(new Error('Saved active Kubernetes Deployment did not recover before the rollout timeout.'));
     }, timeoutMs);
-    handles.unsubscribe = observation.onEvent((): void => {
-      if (isObservedReady(observation, deployment, deadlineAt)) {
-        clearTimeout(handles.timer);
-        handles.unsubscribe?.();
-        resolve();
-      }
-    });
+    handles.unsubscribe = observation.onEvent(resolveWhenReady);
+    resolveWhenReady();
   });
-}
-
-function isObservedReady(observation: KubeObservation, deployment: KubeDeploymentManifest, deadlineAt: Date): boolean {
-  const observed: KubeRolloutObservation | null = readDeploymentObservation(observation, deployment, deadlineAt);
-  return observed !== null && calculateKubeRolloutStatus(observed, new Date()) === 'ready';
-}
-
-function readRolloutObservation(
-  observation: KubeObservation,
-  deployment: KubeDeploymentManifest,
-  target: DeploymentReconcileTarget,
-): KubeRolloutObservation | null {
-  const startedAt: number = new Date(target.rolloutStartedAt).getTime();
-  return readDeploymentObservation(observation, deployment, new Date(startedAt + rolloutTimeoutMs));
-}
-
-function readDeploymentObservation(
-  observation: KubeObservation,
-  deployment: KubeDeploymentManifest,
-  deadlineAt: Date,
-): KubeRolloutObservation | null {
-  const namespace: string = requiredDeploymentMetadata(deployment, 'namespace');
-  const name: string = requiredDeploymentMetadata(deployment, 'name');
-  const observed: KubeObservedManifest | undefined = observation.cache.get(`deployments/${namespace}/${name}`);
-  if (observed?.kind !== 'Deployment') {
-    return null;
-  }
-  const status: ObservedDeploymentStatus = observed.status ?? {};
-  const generation: number = observed.metadata?.generation ?? 0;
-  return {
-    availableReplicas: status.availableReplicas ?? 0,
-    conditions: rolloutConditions(status),
-    deadlineAt,
-    desiredReplicas: deployment.spec?.replicas ?? 1,
-    generation,
-    observedGeneration: status.observedGeneration ?? null,
-  };
-}
-
-function rolloutConditions(status: ObservedDeploymentStatus): KubeDeploymentCondition[] {
-  return (status.conditions ?? []).map(
-    (condition: ObservedDeploymentCondition): KubeDeploymentCondition => ({
-      reason: condition.reason ?? '',
-      status: deploymentConditionStatus(condition.status),
-      type: condition.type ?? '',
-    }),
-  );
 }
 
 async function observeDeployment(runtime: KubeRuntime, deployment: KubeDeploymentManifest): Promise<KubeObservation> {
@@ -237,7 +217,7 @@ async function observeDeployment(runtime: KubeRuntime, deployment: KubeDeploymen
 async function persistObservation(
   request: CompartmentRequester,
   target: DeploymentReconcileTarget,
-  observation: 'pending' | 'ready' | 'failed',
+  observation: 'pending' | 'ready' | 'failed' | 'stopped',
   message?: string,
 ): Promise<void> {
   const input: WorkerObserveDeploymentReconcileRequest = {

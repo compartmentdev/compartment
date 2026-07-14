@@ -1,6 +1,7 @@
 import type {
   DeploymentReconcileProjection,
   DeploymentReconcileTarget,
+  ResolvedOptionalServiceReadinessConfig,
   WorkerObserveDeploymentReconcileRequest,
   WorkerPrepareDeploymentReconcileRequest,
 } from '@compartment/contracts';
@@ -16,6 +17,8 @@ import { getApiConfig } from '../runtime/runtime-access';
 import { synchronizeEdgeAppAccessState } from './app-access-edge.service';
 import { buildDeploymentRuntimePlan, type DeploymentRuntimePlan } from './deployment-runtime-plan.service';
 import { parseResolvedRelease } from './deployment-release.service';
+import { parseResolvedReadiness } from './deployment-readiness.service';
+import { parseResolvedRun } from './deployment-run.service';
 
 const defaultContainerPort: number = 3000;
 const defaultTerminationGracePeriodSeconds: number = 45;
@@ -23,6 +26,12 @@ const defaultTerminationGracePeriodSeconds: number = 45;
 interface ProjectionRuntime {
   env: Record<string, string>;
   terminationGracePeriodSeconds: number;
+}
+
+interface ProjectionBehavior {
+  readiness: ResolvedOptionalServiceReadinessConfig;
+  releaseCommand: string | null;
+  runCommand: string | null;
 }
 
 export async function claimDeploymentReconcileTarget(): Promise<DeploymentReconcileTarget | null> {
@@ -102,11 +111,19 @@ function createProjection(
     organizationName: row.organizationName,
     projectId: row.projectId,
     projectName: row.projectName,
-    releaseCommand: parseResolvedRelease(row.resolvedReleaseJson)?.command ?? null,
+    ...projectionBehavior(row),
     replicas: 1,
     secretId: row.deploymentId,
     serviceId: row.serviceId,
     serviceName: row.serviceName,
+  };
+}
+
+function projectionBehavior(row: DeploymentReconcileRow): ProjectionBehavior {
+  return {
+    readiness: parseResolvedReadiness(row.resolvedReadinessJson),
+    releaseCommand: parseResolvedRelease(row.resolvedReleaseJson)?.command ?? null,
+    runCommand: parseResolvedRun(row.resolvedRunJson).command ?? null,
   };
 }
 

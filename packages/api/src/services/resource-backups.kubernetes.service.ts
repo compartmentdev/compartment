@@ -9,8 +9,12 @@ import { readProductJobResult } from '../queries/product-job-runs.query';
 import type { ResourceBackupRow } from '../queries/resource-backups.query.types';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
-import { createInvalidDeployConfigError } from '../errors/api-business-error';
 import type { ResourceBackupArtifactSummary } from './resource-backup-artifact.service';
+import {
+  assertKubernetesArtifactLocation,
+  assertKubernetesRestoreArtifactIntegrity,
+  kubeBackupArtifactLocation,
+} from './resource-backups.kubernetes-artifact.service';
 import { createProductJobIntent } from './product-job.service';
 import type {
   ResourceBackupOperationContext,
@@ -36,24 +40,37 @@ interface KubernetesOperationDefinition {
   image: string;
 }
 
-interface KubernetesArtifactMetadata {
-  checksum: string;
-  sizeBytes: number;
-}
-
-export async function runVerifiedKubernetesRestore(input: {
+interface KubernetesVerifiedRestoreInput {
+  artifactResource: ProjectResourceRow;
   backup: ResourceBackupRow;
   context: ResourceEnvironmentContext;
   operationContext: ResourceBackupOperationContext;
   operationId: string;
   resource: ProjectResourceRow;
-}): Promise<void> {
+}
+
+interface KubernetesResourceOperationInput {
+  backupId: string;
+  context: ResourceEnvironmentContext;
+  operationContext: ResourceBackupOperationContext;
+  operationId: string;
+  operationKind: ResourceOperationKind;
+  resource: ProjectResourceRow;
+  volumeResource?: ProjectResourceRow | undefined;
+}
+
+export interface KubernetesArtifactMetadata {
+  checksum: string;
+  sizeBytes: number;
+}
+
+export async function runVerifiedKubernetesRestore(input: KubernetesVerifiedRestoreInput): Promise<void> {
   assertKubernetesArtifactLocation(input.backup);
   const metadata: KubernetesArtifactMetadata = await verifyKubernetesBackupArtifact({
     backupId: input.backup.id,
     context: input.context,
     operationId: input.operationId,
-    resource: input.resource,
+    resource: input.artifactResource,
   });
   assertKubernetesRestoreArtifactIntegrity(input.backup, metadata);
   await runKubernetesResourceOperation({
@@ -63,25 +80,8 @@ export async function runVerifiedKubernetesRestore(input: {
     operationId: input.operationId,
     operationKind: 'restore',
     resource: input.resource,
+    volumeResource: input.artifactResource,
   });
-}
-
-function assertKubernetesArtifactLocation(backup: ResourceBackupRow): void {
-  if (backup.artifactLocation !== kubeBackupArtifactLocation(backup.id)) {
-    throw createInvalidDeployConfigError(`Backup ${backup.id} does not have a Kubernetes backup artifact.`);
-  }
-}
-
-function assertKubernetesRestoreArtifactIntegrity(
-  backup: ResourceBackupRow,
-  metadata: KubernetesArtifactMetadata,
-): void {
-  if (backup.checksum === null || backup.sizeBytes === null) {
-    throw createInvalidDeployConfigError(`Backup ${backup.id} does not have integrity metadata.`);
-  }
-  if (metadata.checksum !== backup.checksum || metadata.sizeBytes !== backup.sizeBytes) {
-    throw createInvalidDeployConfigError(`Backup ${backup.id} artifact integrity verification failed.`);
-  }
 }
 
 export async function summarizeKubernetesBackupArtifact(input: {
@@ -94,18 +94,9 @@ export async function summarizeKubernetesBackupArtifact(input: {
   return { ...metadata, location: kubeBackupArtifactLocation(input.backupId) };
 }
 
-function kubeBackupArtifactLocation(backupId: string): string {
-  return `pvc://${backupId}`;
-}
-
-export async function runKubernetesResourceOperation(input: {
-  backupId: string;
-  context: ResourceEnvironmentContext;
-  operationContext: ResourceBackupOperationContext;
-  operationId: string;
-  operationKind: ResourceOperationKind;
-  resource: ProjectResourceRow;
-}): Promise<KubernetesResourceOperationResult> {
+export async function runKubernetesResourceOperation(
+  input: KubernetesResourceOperationInput,
+): Promise<KubernetesResourceOperationResult> {
   const intent: ResourceOperationProductJobIntent = buildProductJobIntent(input);
   await createProductJobIntent(intent);
   const result: WorkerPersistProductJobResultRequest = await waitForProductJob(intent.operationId, intent.timeoutMs);
@@ -184,6 +175,7 @@ function buildProductJobIntent(input: {
   operationId: string;
   operationKind: ResourceOperationKind;
   resource: ProjectResourceRow;
+  volumeResource?: ProjectResourceRow | undefined;
 }): ResourceOperationProductJobIntent {
   const definition: KubernetesOperationDefinition = buildNodeResourceOperationDefinition(
     input.operationContext.intent,
@@ -198,7 +190,7 @@ function buildProductJobIntent(input: {
     namespace: immutableKubeName('cpt', input.context.project.id),
     operationId: input.operationId,
     timeoutMs: input.operationContext.intent.readiness?.timeoutMs ?? 30_000,
-    volumeMounts: buildVolumeMounts(input.resource, input.backupId, input.operationKind),
+    volumeMounts: buildVolumeMounts(input.volumeResource ?? input.resource, input.backupId, input.operationKind),
   };
 }
 

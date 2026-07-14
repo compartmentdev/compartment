@@ -1,27 +1,26 @@
 import { kubeNamespaceName } from './kube-naming';
 import { projectNetworkPolicyManifests } from './kube-network-policy-projection';
 import { registryPullSecretManifest } from './kube-secret-projection';
-import type { ProjectNamespaceProvisioningRow } from './kube-provisioning.types';
+import type { ProjectNamespaceProvisioningRow, ProjectProvisioningServiceAccount } from './kube-provisioning.types';
 import type { ApplyBundle, KubeManifest } from './kube-runtime.types';
 
 const bootstrapBindingName: string = 'compartment-project-bootstrap';
 const controllerName: string = 'compartment-controller';
+
+interface ProjectProvisioningBindingSubject {
+  kind: 'ServiceAccount';
+  name: string;
+  namespace: string;
+}
 
 export function projectNamespaceProvisioningBundle(row: ProjectNamespaceProvisioningRow): ApplyBundle {
   const namespace: string = kubeNamespaceName(row.namespaceId);
   return {
     createBeforeApply: [
       namespaceManifest(row, namespace),
-      serviceAccountManifest(namespace),
-      roleBindingManifest(namespace),
+      roleBindingManifest(bootstrapBindingName, namespace, [row.bootstrapServiceAccount, row.workerServiceAccount]),
     ],
-    deleteAfterApply: [
-      {
-        apiVersion: 'rbac.authorization.k8s.io/v1',
-        kind: 'ClusterRoleBinding',
-        metadata: { name: bootstrapBindingName },
-      },
-    ],
+    deleteAfterApply: bootstrapCleanupManifests(namespace),
     objects: [
       registryPullSecretManifest({
         dockerConfigJson: row.registryPullCredentials.dockerConfigJson,
@@ -29,6 +28,7 @@ export function projectNamespaceProvisioningBundle(row: ProjectNamespaceProvisio
         secretId: row.registryPullCredentials.secretId,
       }),
       ...projectNetworkPolicyManifests(namespace, row.namespaceId, row.projectId, row.networkPolicy),
+      roleBindingManifest(controllerName, namespace, [row.workerServiceAccount]),
     ],
   };
 }
@@ -48,21 +48,37 @@ function namespaceManifest(row: ProjectNamespaceProvisioningRow, namespace: stri
   };
 }
 
-function serviceAccountManifest(namespace: string): KubeManifest {
-  return {
-    apiVersion: 'v1',
-    automountServiceAccountToken: false,
-    kind: 'ServiceAccount',
-    metadata: { name: controllerName, namespace },
-  };
-}
-
-function roleBindingManifest(namespace: string): KubeManifest {
+function roleBindingManifest(
+  name: string,
+  namespace: string,
+  subjects: ProjectProvisioningServiceAccount[],
+): KubeManifest {
   return {
     apiVersion: 'rbac.authorization.k8s.io/v1',
     kind: 'RoleBinding',
-    metadata: { name: controllerName, namespace },
+    metadata: { name, namespace },
     roleRef: { apiGroup: 'rbac.authorization.k8s.io', kind: 'ClusterRole', name: controllerName },
-    subjects: [{ kind: 'ServiceAccount', name: controllerName, namespace }],
+    subjects: subjects.map(
+      (subject: ProjectProvisioningServiceAccount): ProjectProvisioningBindingSubject => ({
+        kind: 'ServiceAccount',
+        name: subject.name,
+        namespace: subject.namespace,
+      }),
+    ),
   };
+}
+
+function bootstrapCleanupManifests(namespace: string): KubeManifest[] {
+  return [
+    {
+      apiVersion: 'rbac.authorization.k8s.io/v1',
+      kind: 'RoleBinding',
+      metadata: { name: bootstrapBindingName, namespace },
+    },
+    {
+      apiVersion: 'rbac.authorization.k8s.io/v1',
+      kind: 'ClusterRoleBinding',
+      metadata: { name: bootstrapBindingName },
+    },
+  ];
 }

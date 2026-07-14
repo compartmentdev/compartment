@@ -9,6 +9,12 @@ export interface KubePodVolume {
   emptyDir?: Record<string, never> | undefined;
   name: string;
   persistentVolumeClaim?: { claimName: string; readOnly?: boolean | undefined } | undefined;
+  projected?:
+    | {
+        defaultMode: number;
+        sources: object[];
+      }
+    | undefined;
   secret?: { secretName: string } | undefined;
 }
 

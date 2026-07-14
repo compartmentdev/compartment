@@ -28,6 +28,7 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 
 import {
   buildArtifacts,
+  deploymentKubeReferences,
   deploymentRoutes,
   deployments,
   environmentVariableValues,
@@ -36,6 +37,7 @@ import {
   organizations,
   principals,
   projectServices,
+  projectKubeProvisioning,
   projects,
   gitProviderRegistrations,
   sourceBindings,
@@ -352,6 +354,40 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     const recreatedProjects: ProjectRow[] = await db.select().from(projects).where(eq(projects.name, 'smoke-web'));
     expect(recreatedProjects).toHaveLength(1);
     expect(recreatedProjects[0]?.id).not.toBe(deletedProjectId);
+  });
+  it('archives a provisioned Kubernetes project without calling legacy node cleanup', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await registerLocalNode(app);
+    const deployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse((await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json()),
+    );
+    await completeQueuedDeployment(app, deployment.id);
+    const projectId: string =
+      (await db.select({ id: projects.id }).from(projects).where(eq(projects.name, 'smoke-web')).limit(1))[0]?.id ?? '';
+    await db
+      .update(projectKubeProvisioning)
+      .set({ state: 'succeeded' })
+      .where(eq(projectKubeProvisioning.projectId, projectId));
+    await db.insert(deploymentKubeReferences).values({
+      deploymentId: deployment.id,
+      deploymentName: 'app-smoke-web',
+      id: 'kref_archive',
+      namespace: 'cpt-prj-smoke-web',
+      networkPolicyNamesJson: '[]',
+      serviceName: 'app-smoke-web',
+      state: 'stopped',
+    });
+    clearIntegrationNodeAgentRequests();
+    queueIntegrationNodeAgentError('legacy node cleanup must not run');
+
+    const archiveResponse: LightMyRequestResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/projects/smoke-web/archive',
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+    });
+
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(readIntegrationNodeAgentRequests()).toEqual([]);
   });
   it('keeps an archived project retryable when delete runtime cleanup fails', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);

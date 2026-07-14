@@ -1,10 +1,16 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
   compartmentInternalNodeRegistrationPathname,
+  workerClaimProjectProvisioningPathname,
+  workerCompleteProjectProvisioningPathname,
   projectDeleteResponseSchema,
   projectLifecycleResponseSchema,
   projectResponseSchema,
+  deploymentLogsResponseSchema,
   deploymentRunLogsResponseSchema,
+  resourceListResponseSchema,
+  type DeploymentLogLine,
+  type DeploymentLogsResponse,
   type DeploymentReadSummary,
   type DeploymentRunLogsResponse,
   type DeploymentRunStepSummary,
@@ -12,6 +18,8 @@ import {
   type ProjectDeleteResponse,
   type ProjectLifecycleResponse,
   type ProjectResponse,
+  type ResourceListResponse,
+  type ResourceSummary,
 } from '@compartment/contracts';
 import { expect } from 'vitest';
 import { sendCliHttpTextRequest, type CliHttpTextResponse } from './cli-http-test.harness';
@@ -21,6 +29,7 @@ import { deploymentStatusCommandResponseParser } from './self-hosted-user-setup-
 
 const deploymentRunPollAttempts: number = 90;
 const deploymentRunPollDelayMs: number = 2_000;
+const kubernetesResourceStartupTimeoutMs: number = 180_000;
 const blockedPublicControlPlanePollAttempts: number = 6;
 const blockedPublicControlPlanePollDelayMs: number = 1_000;
 const detachedDeploymentRunPattern: RegExp = /Run:\s+([A-Za-z0-9_]+)/u;
@@ -33,6 +42,18 @@ const blockedPublicControlPlaneRequests: readonly BlockedPublicControlPlaneReque
     headers: { 'content-type': 'application/json' },
     method: 'POST',
     pathname: compartmentInternalNodeRegistrationPathname,
+  },
+  {
+    body: '{}',
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+    pathname: workerClaimProjectProvisioningPathname,
+  },
+  {
+    body: '{}',
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+    pathname: workerCompleteProjectProvisioningPathname,
   },
   { pathname: '/healthz' },
   { pathname: '/readyz' },
@@ -138,6 +159,58 @@ export async function waitForDeploymentRunCompletion(
   throw new Error(
     `Timed out waiting for deployment run ${deploymentRunId}. Last payload: ${JSON.stringify(lastPayload)}`,
   );
+}
+
+export async function waitForDeploymentRuntimeLog(
+  cli: SelfHostedUserSetupCli,
+  projectName: string,
+  serviceName: string,
+  expectedMessage: string,
+): Promise<DeploymentLogsResponse> {
+  let lastPayload: DeploymentLogsResponse | null = null;
+  for (let attempt: number = 0; attempt < deploymentRunPollAttempts; attempt += 1) {
+    const payload: DeploymentLogsResponse = await cli.runJson(
+      `logs --project ${projectName}`,
+      deploymentLogsResponseSchema,
+    );
+    if (
+      payload.lines.some(
+        (line: DeploymentLogLine): boolean =>
+          line.serviceName === serviceName && line.message.includes(expectedMessage),
+      )
+    ) {
+      return payload;
+    }
+    lastPayload = payload;
+    await sleep(deploymentRunPollDelayMs);
+  }
+
+  throw new Error(
+    `Timed out waiting for runtime log from ${projectName}/${serviceName}. Last payload: ${JSON.stringify(lastPayload)}`,
+  );
+}
+
+export async function waitForRunningResource(
+  cli: SelfHostedUserSetupCli,
+  projectName: string,
+  expectedResourceName: string,
+): Promise<void> {
+  const deadline: number = Date.now() + kubernetesResourceStartupTimeoutMs;
+  do {
+    const list: ResourceListResponse = await cli.runJson(
+      `resource list --project ${projectName}`,
+      resourceListResponseSchema,
+    );
+    if (
+      list.resources.some(
+        (resource: ResourceSummary): boolean => resource.name === expectedResourceName && resource.status === 'running',
+      )
+    ) {
+      return;
+    }
+    await sleep(deploymentRunPollDelayMs);
+  } while (Date.now() < deadline);
+  throw new Error(`Timed out waiting for Kubernetes resource ${expectedResourceName} to become running.`);
 }
 
 async function waitForSingleActiveDeployment(

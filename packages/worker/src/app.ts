@@ -13,6 +13,7 @@ import type { WorkerCaughtError } from './logging/worker-error-log.types';
 import { cleanupWorkerArtifacts } from './services/worker-artifact-cleanup.service';
 import { runWorkerIteration } from './services/worker.service';
 import { createKubeControllerHost, type KubeControllerHost } from './kube-controller-host';
+import { runKubeControllerLoop } from './kube-controller-loop';
 
 interface WorkerRuntimeState {
   hasReachedApi: boolean;
@@ -90,26 +91,6 @@ async function runWorkerCycle(
     await pollWorkerDeployments(config, state);
   } catch (error) {
     await handleWorkerIterationError(config, logger, state, error as WorkerCaughtError);
-  }
-}
-
-async function runKubeControllerLoop(
-  config: WorkerConfig,
-  logger: pino.Logger<never, boolean>,
-  kubeController: KubeControllerHost,
-): Promise<void> {
-  for (;;) {
-    try {
-      if (!(await kubeController.reconcile())) {
-        await waitForNextPoll(config.pollIntervalMs);
-      }
-    } catch (error) {
-      logger.error(
-        buildWorkerCaughtErrorLogPayload(error as WorkerCaughtError),
-        'Kubernetes controller iteration failed.',
-      );
-      await waitForNextPoll(config.pollIntervalMs);
-    }
   }
 }
 

@@ -11,6 +11,8 @@ export interface KubeRolloutObservation {
   desiredReplicas: number;
   generation: number;
   observedGeneration: number | null;
+  replicas: number;
+  updatedReplicas: number;
 }
 
 export type KubeRolloutStatus = 'progress-deadline-exceeded' | 'progressing' | 'ready' | 'timed-out';

@@ -20,7 +20,8 @@ spec:
       annotations:
         {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
     spec:
-      {{- include "compartment.waiterPodSpec" . | nindent 6 }}
+      serviceAccountName: {{ include "compartment.fullname" . }}-worker
+      automountServiceAccountToken: false
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
@@ -54,6 +55,7 @@ spec:
               value: /compartment/docker-work
           volumeMounts:
             - {name: docker-work, mountPath: /compartment/docker-work}
+            - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
             - {name: node-run, mountPath: /var/run/compartment/node}
             - {name: tmp, mountPath: /tmp}
       volumes:
@@ -62,4 +64,3 @@ spec:
         - {name: node-run, emptyDir: {}}
         - {name: tmp, emptyDir: {}}
 {{- end }}
-

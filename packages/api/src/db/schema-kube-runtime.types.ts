@@ -1,5 +1,6 @@
 import type {
   DefaultTimestampBuilder,
+  DefaultEnumTextBuilder,
   DefaultTextBuilder,
   DefaultIntegerBuilder,
   OptionalIntegerBuilder,
@@ -22,7 +23,7 @@ interface DeploymentKubeReferencesColumnBuilders {
   deploymentName: RequiredTextBuilder<'deployment_name'>;
   serviceName: RequiredTextBuilder<'service_name'>;
   networkPolicyNamesJson: RequiredTextBuilder<'network_policy_names_json'>;
-  state: RequiredEnumTextBuilder<'state', ['desired', 'pending', 'active']>;
+  state: RequiredEnumTextBuilder<'state', ['desired', 'pending', 'active', 'stopping', 'stopped']>;
   revision: DefaultIntegerBuilder<'revision'>;
   observedAt: OptionalTimestampBuilder<'observed_at'>;
   transitionedAt: DefaultTimestampBuilder<'transitioned_at'>;
@@ -44,6 +45,7 @@ interface ProductJobRunsColumnBuilders {
   jobClass: RequiredEnumTextBuilder<'job_class', ['release', 'resource-operation']>;
   identityId: RequiredTextBuilder<'identity_id'>;
   image: RequiredTextBuilder<'image'>;
+  imagePullSecretId: OptionalTextBuilder<'image_pull_secret_id'>;
   commandJson: RequiredTextBuilder<'command_json'>;
   envJson: RequiredTextBuilder<'env_json'>;
   volumeMountsJson: DefaultTextBuilder<'volume_mounts_json'>;
@@ -64,7 +66,8 @@ export type ProductJobRunsTable = PgTableOf<'product_job_runs', ProductJobRunsCo
 export type ProductJobRunsExtraConfigColumns = PgExtraConfigColumnsOf<'product_job_runs', ProductJobRunsColumnBuilders>;
 
 interface DeploymentProductLogsColumnBuilders {
-  deploymentId: RequiredTextBuilder<'deployment_id'>;
+  deploymentId: OptionalTextBuilder<'deployment_id'>;
+  resourceId: OptionalTextBuilder<'resource_id'>;
   podUid: RequiredTextBuilder<'pod_uid'>;
   podName: RequiredTextBuilder<'pod_name'>;
   namespace: RequiredTextBuilder<'namespace'>;
@@ -90,3 +93,23 @@ interface ProductLogStoreQuotaColumnBuilders {
 }
 
 export type ProductLogStoreQuotaTable = PgTableOf<'product_log_store_quota', ProductLogStoreQuotaColumnBuilders>;
+
+interface ProjectKubeProvisioningColumnBuilders {
+  projectId: PrimaryTextBuilder<'project_id'>;
+  state: DefaultEnumTextBuilder<'state', ['pending', 'running', 'succeeded', 'failed']>;
+  leaseId: OptionalTextBuilder<'lease_id'>;
+  leaseExpiresAt: OptionalTimestampBuilder<'lease_expires_at'>;
+  failureMessage: OptionalTextBuilder<'failure_message'>;
+  attempts: DefaultIntegerBuilder<'attempts'>;
+  createdAt: DefaultTimestampBuilder<'created_at'>;
+  updatedAt: DefaultTimestampBuilder<'updated_at'>;
+}
+
+export type ProjectKubeProvisioningTable = PgTableOf<
+  'project_kube_provisioning',
+  ProjectKubeProvisioningColumnBuilders
+>;
+export type ProjectKubeProvisioningExtraConfigColumns = PgExtraConfigColumnsOf<
+  'project_kube_provisioning',
+  ProjectKubeProvisioningColumnBuilders
+>;

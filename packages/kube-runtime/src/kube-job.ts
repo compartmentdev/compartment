@@ -1,21 +1,4 @@
-import type {
-  KubeJobSpec,
-  KubeJobVolumeMount,
-  KubeJobManifest,
-  KubeJobManifestSpec,
-  KubeManifest,
-  KubeObservation,
-  KubeObservationEvent,
-  KubeObservedManifest,
-  KubeProjectedContainer,
-  KubeProjectedPodSpec,
-  KubeSecretEnvVariable,
-  KubePodVolume,
-  KubeVolumeMount,
-} from './kube-runtime.types';
-import { compareKubeKey } from './kube-key-order';
-import { kubeSecretName } from './kube-naming';
-import { secretChecksum } from './kube-secret-projection';
+import type { KubeObservation, KubeObservationEvent, KubeObservedManifest } from './kube-runtime.types';
 
 export interface TerminalJob {
   exitCode: number;
@@ -33,34 +16,6 @@ interface PodStatus {
   containerStatuses?: { state?: { terminated?: { exitCode?: number | undefined } | undefined } | undefined }[];
 }
 
-export function kubeFinalizedJobManifest(
-  spec: KubeJobSpec,
-  jobName: string,
-  labels: Record<string, string>,
-): KubeJobManifest {
-  const manifest: KubeJobManifest = kubeJobManifest(spec, jobName, labels);
-  return { ...manifest, spec: { ...jobSpec(spec, labels), ttlSecondsAfterFinished: 300 } };
-}
-
-export function kubeJobManifest(spec: KubeJobSpec, jobName: string, labels: Record<string, string>): KubeJobManifest {
-  return {
-    apiVersion: 'batch/v1',
-    kind: 'Job',
-    metadata: { labels, name: jobName, namespace: spec.namespace },
-    spec: jobSpec(spec, labels),
-  };
-}
-
-export function kubeJobSecretManifest(spec: KubeJobSpec, labels: Record<string, string>): KubeManifest {
-  return {
-    apiVersion: 'v1',
-    kind: 'Secret',
-    metadata: { labels, name: kubeSecretName(spec.id), namespace: spec.namespace },
-    stringData: spec.env,
-    type: 'Opaque',
-  };
-}
-
 export async function waitForTerminalJob(
   observation: KubeObservation,
   jobName: string,
@@ -68,56 +23,6 @@ export async function waitForTerminalJob(
 ): Promise<TerminalJob> {
   const cachedTerminal: TerminalJob | null = readTerminalJob(observation.cache, jobName);
   return cachedTerminal ?? (await waitForTerminalEvent(observation, jobName, timeoutMs));
-}
-
-function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobManifestSpec {
-  const podSpec: KubeProjectedPodSpec = {
-    automountServiceAccountToken: false,
-    containers: [jobContainer(spec)],
-    restartPolicy: 'Never',
-    volumes: spec.volumeMounts?.map(
-      (mount: KubeJobVolumeMount): KubePodVolume => ({
-        name: mount.name,
-        persistentVolumeClaim: {
-          claimName: mount.claimName,
-          ...(mount.readOnly === undefined ? {} : { readOnly: mount.readOnly }),
-        },
-      }),
-    ),
-  };
-  return {
-    backoffLimit: spec.jobClass === 'release' ? 0 : 1,
-    template: {
-      metadata: { annotations: { 'compartment.dev/secret-checksum': secretChecksum(spec.env) }, labels },
-      spec: podSpec,
-    },
-  };
-}
-
-function jobContainer(spec: KubeJobSpec): KubeProjectedContainer {
-  const env: KubeSecretEnvVariable[] = Object.keys(spec.env)
-    .sort(compareKubeKey)
-    .map(
-      (name: string): KubeSecretEnvVariable => ({
-        name,
-        valueFrom: { secretKeyRef: { key: name, name: kubeSecretName(spec.id) } },
-      }),
-    );
-  return {
-    args: spec.args,
-    command: spec.command,
-    env,
-    image: spec.image,
-    name: 'job',
-    volumeMounts: spec.volumeMounts?.map(
-      (mount: KubeJobVolumeMount): KubeVolumeMount => ({
-        mountPath: mount.mountPath,
-        name: mount.name,
-        ...(mount.readOnly === undefined ? {} : { readOnly: mount.readOnly }),
-        ...(mount.subPath === undefined ? {} : { subPath: mount.subPath }),
-      }),
-    ),
-  };
 }
 
 async function waitForTerminalEvent(

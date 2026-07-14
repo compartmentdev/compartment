@@ -23,6 +23,7 @@ export function projectResourceManifests(row: ResourceProjectionRow, replicas: 0
   const namespace: string = kubeNamespaceName(row.namespaceId);
   const labels: Record<string, string> = {
     ...managedByLabel,
+    app: 'resource',
     'compartment.dev/environment-id': row.environmentId,
     'compartment.dev/resource-id': row.resourceId,
   };
@@ -137,6 +138,21 @@ export function assertResourceClaimIdentity(
   expected: readonly ExpectedResourceClaim[],
   observed: readonly ObservedResourceClaim[],
 ): void {
+  assertResourceClaimOwnership(expected, observed);
+  for (const claim of expected) {
+    const actual: ObservedResourceClaim | undefined = observed.find(
+      (candidate: ObservedResourceClaim): boolean => candidate.claimName === claim.claimName,
+    );
+    if (actual?.bound !== true) {
+      throw new Error(`Resource reconcile refused: PVC ${claim.claimName} is missing or unbound.`);
+    }
+  }
+}
+
+export function assertResourceClaimOwnership(
+  expected: readonly ExpectedResourceClaim[],
+  observed: readonly ObservedResourceClaim[],
+): void {
   if (expected.length === 0) {
     throw new Error('Resource reconcile refused: expected PVC identity is missing. Bootstrap is required.');
   }
@@ -144,10 +160,11 @@ export function assertResourceClaimIdentity(
     const actual: ObservedResourceClaim | undefined = observed.find(
       (candidate: ObservedResourceClaim): boolean => candidate.claimName === claim.claimName,
     );
-    if (actual === undefined || !actual.bound || actual.uid === null) {
-      throw new Error(`Resource reconcile refused: PVC ${claim.claimName} is missing or unbound.`);
+    const actualUid: string | null | undefined = actual?.uid;
+    if (actualUid === undefined || actualUid === null) {
+      throw new Error(`Resource reconcile refused: PVC ${claim.claimName} is missing.`);
     }
-    if (actual.uid !== claim.uid) {
+    if (actualUid !== claim.uid) {
       throw new Error(`Resource reconcile refused: PVC ${claim.claimName} UID changed.`);
     }
   }

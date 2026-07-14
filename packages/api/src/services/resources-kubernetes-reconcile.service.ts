@@ -9,7 +9,12 @@ import { lockProjectResourceByName, lockProjectResourceReconciliation } from '..
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { EffectiveVariable } from './effective-variables.service.types';
-import { requestResourceBootstrap, requestResourceReconcileWithExecutor } from './resource-reconcile-run.service';
+import {
+  requestResourceBootstrap,
+  requestResourceReconcile,
+  requestResourceReconcileWithExecutor,
+  waitForResourceReconcile,
+} from './resource-reconcile-run.service';
 import { loadResourceEffectiveVariables } from './resources-effective-variables.service';
 import { prepareResourceEffectiveVariables, persistResourceIntent } from './resources-reconcile-persistence.service';
 import { assertAllowedVolumeChange } from './resources-reconcile.validation';
@@ -83,7 +88,7 @@ async function persistKubernetesDesiredAndRun(
     new Date(),
     'kubernetes',
   );
-  const projected: ResourceReconcileIntent = buildKubernetesResourceIntent(context, persisted, intent);
+  const projected: ResourceReconcileIntent = buildKubernetesResourceIntent(context, persisted, intent, 1);
   await enqueueKubernetesReconcileWhenReady(tx, projected, persisted);
   return persisted;
 }
@@ -126,15 +131,58 @@ export async function bootstrapKubernetesResource(
     resource.name,
   );
   const resolved: ResolvedResourceIntent = resolveStoredResourceIntent(resource, variables);
-  const intent: ResourceReconcileIntent = buildKubernetesResourceIntent(context, resource, resolved);
+  const intent: ResourceReconcileIntent = buildKubernetesResourceIntent(context, resource, resolved, 1);
   const operationId: string = createId('resource_operation');
   await requestResourceBootstrap(operationId, intent);
+}
+
+export async function reconcileKubernetesResourceReplicas(
+  context: ResourceEnvironmentContext,
+  resource: ProjectResourceRow,
+  replicas: 0 | 1,
+): Promise<ProjectResourceRow> {
+  const variables: EffectiveVariable[] = await loadResourceEffectiveVariables(
+    context.environment.id,
+    context.organization.id,
+    resource.name,
+  );
+  const intent: ResourceReconcileIntent = buildKubernetesResourceIntent(
+    context,
+    resource,
+    resolveStoredResourceIntent(resource, variables),
+    replicas,
+  );
+  const operationId: string = createId('resource_operation');
+  await requestResourceReconcile(operationId, intent, resource);
+  await waitForResourceReconcile(operationId);
+  return { ...resource, status: replicas === 0 ? 'stopped' : 'running', updatedAt: new Date() };
+}
+
+export async function deleteKubernetesResource(
+  context: ResourceEnvironmentContext,
+  resource: ProjectResourceRow,
+  deleteData: boolean,
+): Promise<void> {
+  const variables: EffectiveVariable[] = await loadResourceEffectiveVariables(
+    context.environment.id,
+    context.organization.id,
+    resource.name,
+  );
+  const intent: ResourceReconcileIntent = {
+    ...buildKubernetesResourceIntent(context, resource, resolveStoredResourceIntent(resource, variables), 0),
+    deleteData,
+    operation: 'delete',
+  };
+  const operationId: string = createId('resource_operation');
+  await requestResourceReconcile(operationId, intent, resource);
+  await waitForResourceReconcile(operationId);
 }
 
 function buildKubernetesResourceIntent(
   context: ResourceEnvironmentContext,
   resource: ProjectResourceRow,
   intent: ResolvedResourceIntent,
+  replicas: 0 | 1,
 ): ResourceReconcileIntent {
   const containerPort: number | undefined = intent.ports[0];
   if (containerPort === undefined) {
@@ -142,10 +190,13 @@ function buildKubernetesResourceIntent(
   }
   return {
     containerPort,
+    deleteData: false,
     environmentId: context.environment.id,
     env: Object.fromEntries(intent.runtimeEnv.map(buildRuntimeEnvEntry)),
     image: intent.image,
     namespaceId: context.project.id,
+    operation: 'reconcile',
+    replicas,
     resourceId: resource.id,
     secretId: resource.id,
     volumes: intent.volumes.map(buildResourceVolumeIntent),

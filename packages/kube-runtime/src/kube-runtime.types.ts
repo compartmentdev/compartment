@@ -116,6 +116,7 @@ export interface KubeProjectedPodSpec {
   containers: KubeProjectedContainer[];
   imagePullSecrets?: KubeLocalObjectReference[] | undefined;
   restartPolicy?: 'Never' | 'OnFailure' | undefined;
+  serviceAccountName?: string | undefined;
   securityContext?: object | undefined;
   terminationGracePeriodSeconds?: number | undefined;
   volumes?: KubePodVolume[] | undefined;
@@ -171,6 +172,7 @@ export interface KubeServicePort {
 }
 
 export interface KubeJobManifestSpec {
+  activeDeadlineSeconds: number;
   backoffLimit: number;
   template: KubePodTemplate;
   ttlSecondsAfterFinished?: number | undefined;
@@ -243,9 +245,12 @@ export interface KubeJobSpec {
   env: Readonly<Record<string, string>>;
   id: string;
   image: string;
+  imagePullSecretId?: string | undefined;
   jobClass: 'release' | 'operation';
   labels: Readonly<Record<string, string>>;
   namespace: string;
+  serviceAccountName?: string | undefined;
+  serviceAccountTokenExpirationSeconds?: number | undefined;
   timeoutMs: number;
   volumeMounts?: KubeJobVolumeMount[] | undefined;
 }

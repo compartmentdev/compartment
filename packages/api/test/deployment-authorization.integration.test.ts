@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
+import { eq } from 'drizzle-orm';
 import type * as CompartmentSdk from '@compartment/sdk';
 import {
   compartmentCurrentOrganizationHeaderName,
@@ -36,6 +37,8 @@ import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
+import { deploymentKubeReferences, deployments } from '../src/db/schema';
+import { upsertDeploymentKubeReference } from '../src/queries/deployment-kube-reference.query';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
   claimNextQueuedDeployment,
@@ -283,6 +286,38 @@ describe('deployment authorization integration', (): void => {
     expect(rollbackResponse.statusCode).toBe(200);
     deployResponseSchema.parse(rollbackResponse.json());
   });
+
+  it('keeps active Kubernetes runtime details visible while drift reconciliation is pending', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installAndRegisterNode();
+    const deployment: DeploymentSummary = await deployAndComplete(installPayload.sessionToken);
+    await db.update(deployments).set({ containerId: null }).where(eq(deployments.id, deployment.id));
+    await upsertDeploymentKubeReference({
+      deploymentId: deployment.id,
+      deploymentName: 'app-smoke-web',
+      id: 'kref_inspect',
+      namespace: 'cpt-smoke-web',
+      networkPolicyNames: [],
+      serviceName: 'app-smoke-web',
+    });
+    await db
+      .update(deploymentKubeReferences)
+      .set({ state: 'pending' })
+      .where(eq(deploymentKubeReferences.deploymentId, deployment.id));
+
+    const inspectResponse: LightMyRequestResponse = await injectDeploymentRequestWithSession(
+      installPayload.sessionToken,
+      'GET',
+      '/v1/deployments/inspect?projectName=smoke-web',
+    );
+    expect(inspectResponse.statusCode).toBe(200);
+    const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
+    expect(inspectPayload.activeDeployments[0]?.runtime).toMatchObject({
+      containerId: null,
+      runtimeKind: 'kubernetes',
+      upstreamHost: 'app-smoke-web.cpt-smoke-web.svc',
+      upstreamPort: 80,
+    });
+  });
 });
 
 async function installAndRegisterNode(): Promise<InstallResponse> {
@@ -381,5 +416,6 @@ function expectPrivilegedInspectDeployment(deployment: DeploymentInspectTarget |
   expect(deployment?.upstreamPort).toBe(31000);
   expect(deployment?.runtime?.containerId).toBe('container_123');
   expect(deployment?.runtime?.imageRef).toBe('sha256:image');
+  expect(deployment?.runtime?.runtimeKind).toBe('node');
   expect(deployment).toHaveProperty('drain');
 }

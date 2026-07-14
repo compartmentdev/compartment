@@ -179,4 +179,5 @@ export {
   observeDeploymentReconcile,
   prepareDeploymentReconcile,
 } from './services/worker-deployment-reconcile.service';
+export { claimProjectProvisioning, completeProjectProvisioning } from './services/worker-project-provisioning.service';
 export { acknowledgeResourceReconcile, claimResourceReconcile } from './services/worker-resource-reconcile.service';

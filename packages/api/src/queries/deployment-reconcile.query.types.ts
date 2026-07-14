@@ -9,7 +9,9 @@ export interface DeploymentReconcileRow {
   organizationName: string;
   projectId: string;
   projectName: string;
+  resolvedReadinessJson: string;
   resolvedReleaseJson: string;
+  resolvedRunJson: string;
   revision: number;
   serviceId: string;
   serviceName: string;
@@ -25,7 +27,7 @@ export interface DeploymentReconcilePair {
 export interface PersistDeploymentReconcileObservationInput {
   deploymentId: string;
   failureMessage: string | null;
-  observation: 'pending' | 'ready' | 'failed';
+  observation: 'pending' | 'ready' | 'failed' | 'stopped';
   observedAt: Date;
   revision: number;
 }

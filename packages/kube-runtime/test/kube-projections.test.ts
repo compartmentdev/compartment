@@ -11,14 +11,18 @@ import {
 import type { KubeSecretEnvVariable } from '../src/kube-runtime.types';
 
 interface DeploymentSpec {
+  selector: { matchLabels: Record<string, string> };
+  progressDeadlineSeconds: number;
   template: {
-    metadata: { annotations: Record<string, string> };
+    metadata: { annotations: Record<string, string>; labels: Record<string, string> };
     spec: { automountServiceAccountToken: false; containers: DeploymentContainer[] };
   };
 }
 
 interface DeploymentContainer {
+  args?: string[] | undefined;
   env: KubeSecretEnvVariable[];
+  readinessProbe?: { httpGet?: { path: string; port: string } | undefined } | undefined;
 }
 
 describe('Kubernetes manifest projection goldens', (): void => {
@@ -36,7 +40,9 @@ describe('Kubernetes manifest projection goldens', (): void => {
       organizationName: 'Acme',
       projectId: 'prj-01jz',
       projectName: 'Checkout',
+      readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
       replicas: 2,
+      runCommand: 'npm run start:override',
       serviceId: 'svc-01jz',
       serviceName: 'Web',
       secretId: 'sec-01jz',
@@ -44,6 +50,10 @@ describe('Kubernetes manifest projection goldens', (): void => {
     });
 
     expect(toYaml(manifests)).toMatchSnapshot();
+    const deployment: DeploymentSpec = manifests.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+    )!.spec as DeploymentSpec;
+    expect(deployment.template.spec.containers[0]?.args).toEqual(['npm run start:override']);
   });
 
   it('projects a secret row without a service-account token', (): void => {
@@ -158,6 +168,19 @@ describe('Kubernetes manifest projection goldens', (): void => {
     );
   });
 
+  it('projects descriptor readiness and omits probes when readiness is disabled', (): void => {
+    const configured: DeploymentSpec = deploymentForRow(applicationRow({})).spec as DeploymentSpec;
+    const disabled: DeploymentSpec = deploymentForRow({ ...applicationRow({}), readiness: null })
+      .spec as DeploymentSpec;
+
+    expect(configured.progressDeadlineSeconds).toBe(60);
+    expect(configured.template.spec.containers[0]?.readinessProbe?.httpGet).toEqual({
+      path: '/healthz',
+      port: 'http',
+    });
+    expect(disabled.template.spec.containers[0]?.readinessProbe).toBeUndefined();
+  });
+
   it('keeps Deployment and Service identity stable while the candidate spec changes', (): void => {
     const firstRow: ApplicationProjectionRow = applicationRow({});
     const candidateRow: ApplicationProjectionRow = {
@@ -178,6 +201,15 @@ describe('Kubernetes manifest projection goldens', (): void => {
     expect(JSON.stringify(candidateDeployment.spec)).toContain('registry.example/app@sha256:next');
     expect(candidateService.spec).toEqual(firstService.spec);
     expect(JSON.stringify(candidateService)).not.toContain('dep-02jz');
+  });
+
+  it('matches the provisioned application NetworkPolicy selector', (): void => {
+    const deployment: DeploymentSpec = deploymentForRow(applicationRow({})).spec as DeploymentSpec;
+    const service: KubeManifest = serviceFor(applicationRow({}));
+
+    expect(deployment.selector.matchLabels).toMatchObject({ app: 'application' });
+    expect(deployment.template.metadata.labels).toMatchObject({ app: 'application' });
+    expect(service.spec).toMatchObject({ selector: { app: 'application' } });
   });
 });
 
@@ -207,7 +239,9 @@ function applicationRow(env: Readonly<Record<string, string>>): ApplicationProje
     organizationName: 'Generated',
     projectId: 'prj-01jz',
     projectName: 'Generated',
+    readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
     replicas: 1,
+    runCommand: null,
     secretId: 'sec-01jz',
     serviceId: 'svc-01jz',
     serviceName: 'Web',

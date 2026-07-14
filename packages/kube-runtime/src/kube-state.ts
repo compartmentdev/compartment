@@ -20,7 +20,12 @@ export function calculateKubeRolloutStatus(observed: KubeRolloutObservation, now
   ) {
     return 'progress-deadline-exceeded';
   }
-  if (observed.observedGeneration === observed.generation && observed.availableReplicas >= observed.desiredReplicas) {
+  if (
+    observed.observedGeneration === observed.generation &&
+    observed.updatedReplicas === observed.desiredReplicas &&
+    observed.replicas === observed.desiredReplicas &&
+    observed.availableReplicas >= observed.desiredReplicas
+  ) {
     return 'ready';
   }
   return now.getTime() >= observed.deadlineAt.getTime() ? 'timed-out' : 'progressing';

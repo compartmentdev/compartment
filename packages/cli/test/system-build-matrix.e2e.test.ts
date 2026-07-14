@@ -7,6 +7,8 @@ import {
   deploymentInspectResponseSchema,
   deploymentLogsResponseSchema,
   deploymentStatusResponseSchema,
+  projectDeleteResponseSchema,
+  projectResponseSchema,
   variableResponseSchema,
   type DeploymentInspectResponse,
   type DeploymentInspectRuntimeSummary,
@@ -15,6 +17,8 @@ import {
   type DeploymentLogsResponse,
   type DeploymentReadSummary,
   type DeploymentStatusResponse,
+  type ProjectDeleteResponse,
+  type ProjectResponse,
   type VariableResponse,
 } from '@compartment/contracts';
 import {
@@ -40,6 +44,7 @@ import {
   type SelfHostedUserSetupRuntime,
 } from './self-hosted-user-setup.e2e.harness';
 import { readAppSessionCookieWithRetry } from './self-hosted-user-setup-app-probe.harness';
+import { isK3dPlatformMode, readK3dPlatformSeed, reclaimK3dBuildStorage } from './self-hosted-user-setup-k3d.harness';
 import {
   selfHostedMultiServiceBuildFixtures,
   selfHostedSingleServiceBuildFixtures,
@@ -64,6 +69,7 @@ const selfHostedBuildMatrixDockerCommandTimeoutMs: number = 60_000;
 const selfHostedBuildMatrixHttpProbeAttempts: number = 60;
 const selfHostedBuildMatrixHttpProbeDelayMs: number = 1_000;
 const selfHostedBuildMatrixHttpProbeTimeoutMs: number = 2_000;
+const selfHostedBuildMatrixLogConvergenceTimeoutMs: number = 3 * 60_000;
 
 describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', (): void => {
   const setup: SelfHostedUserSetupHarness = useSelfHostedUserSetupHarness();
@@ -132,6 +138,7 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
             expect(requireRouteUrl(statusPayload, 'web')).toBe(routeUrl);
 
             await expectSingleServiceFixtureLogs(admin, fixture);
+            await cleanupK3dBuildFixture(admin, fixture.name);
           });
         }
       } finally {
@@ -189,20 +196,29 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
           );
           expect(requireSingleInspectTarget(scopedInspectPayload).serviceName).toBe(fixture.routedServiceName);
 
-          const logsPayload: DeploymentLogsResponse = await admin.runJson(
-            `logs --project ${fixture.name}`,
-            deploymentLogsResponseSchema,
+          const logsPayload: DeploymentLogsResponse = await readFixtureLogsUntil(
+            admin,
+            fixture.name,
+            fixture.services.flatMap(
+              (service: SelfHostedMultiServiceFixtureService): readonly string[] => service.logTexts,
+            ),
           );
           for (const service of fixture.services) {
             expectDeploymentLogs(logsPayload, service.logTexts);
           }
 
-          const scopedLogsPayload: DeploymentLogsResponse = await admin.runJson(
-            `logs --project ${fixture.name} --service ${fixture.routedServiceName}`,
-            deploymentLogsResponseSchema,
+          const routedService: SelfHostedMultiServiceFixtureService = requireFixtureService(
+            fixture,
+            fixture.routedServiceName,
+          );
+          const scopedLogsPayload: DeploymentLogsResponse = await readFixtureLogsUntil(
+            admin,
+            fixture.name,
+            routedService.logTexts,
+            fixture.routedServiceName,
           );
           expect(requireSingleDeployment(scopedLogsPayload).serviceName).toBe(fixture.routedServiceName);
-          expectDeploymentLogs(scopedLogsPayload, requireFixtureService(fixture, fixture.routedServiceName).logTexts);
+          expectDeploymentLogs(scopedLogsPayload, routedService.logTexts);
           expect(hasDeploymentLog(scopedLogsPayload, requireFixtureService(fixture, 'web').logTexts[0]!)).toBe(false);
 
           await expectProxyRoute(fixture, requireServiceRouteUrl(deployPayload, 'web'), runtime);
@@ -210,6 +226,7 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
           if (fixture.checkRollback === true) {
             await expectMultiServiceRollback(admin, fixture, runtime);
           }
+          await cleanupK3dBuildFixture(admin, fixture.name);
         });
       }
       completedStepCount = 3;
@@ -217,6 +234,24 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
     selfHostedBuildMatrixTimeoutMs,
   );
 });
+
+async function cleanupK3dBuildFixture(admin: SelfHostedUserSetupCli, projectName: string): Promise<void> {
+  if (!isK3dPlatformMode()) {
+    return;
+  }
+
+  const archivedProject: ProjectResponse = await admin.runJson(
+    `project archive --project ${projectName} --yes`,
+    projectResponseSchema,
+  );
+  expect(archivedProject.project.archivedAt).not.toBeNull();
+  const deletedProject: ProjectDeleteResponse = await admin.runJson(
+    `project delete --project ${projectName} --yes`,
+    projectDeleteResponseSchema,
+  );
+  expect(deletedProject.projectName).toBe(projectName);
+  await reclaimK3dBuildStorage();
+}
 
 async function seedBuildVariables(
   admin: SelfHostedUserSetupCli,
@@ -246,10 +281,11 @@ async function expectSingleServiceFixtureLogs(
     return;
   }
 
-  const logsPayload: DeploymentLogsResponse = await admin.runJson(
-    `logs --project ${fixture.name}`,
-    deploymentLogsResponseSchema,
-  );
+  const expectedLogTexts: readonly string[] = [
+    ...(fixture.expectedLogTexts ?? []),
+    ...(fixture.expectedOrderedLogTexts ?? []),
+  ];
+  const logsPayload: DeploymentLogsResponse = await readFixtureLogsUntil(admin, fixture.name, expectedLogTexts);
 
   if (fixture.expectedLogTexts !== undefined) {
     expectDeploymentLogs(logsPayload, fixture.expectedLogTexts);
@@ -260,6 +296,40 @@ async function expectSingleServiceFixtureLogs(
   for (const unexpectedLogText of fixture.unexpectedLogTexts ?? []) {
     expect(hasDeploymentLog(logsPayload, unexpectedLogText)).toBe(false);
   }
+}
+
+async function readFixtureLogs(admin: SelfHostedUserSetupCli, projectName: string): Promise<DeploymentLogsResponse> {
+  return await admin.runJson(`logs --project ${projectName}`, deploymentLogsResponseSchema);
+}
+
+async function readFixtureLogsUntil(
+  admin: SelfHostedUserSetupCli,
+  projectName: string,
+  expectedLogTexts: readonly string[],
+  serviceName?: string,
+): Promise<DeploymentLogsResponse> {
+  const deadline: number = Date.now() + selfHostedBuildMatrixLogConvergenceTimeoutMs;
+  let logsPayload: DeploymentLogsResponse = await readFixtureLogsForService(admin, projectName, serviceName);
+
+  while (!hasExpectedLogTexts(logsPayload, expectedLogTexts) && Date.now() < deadline) {
+    await sleep(selfHostedBuildMatrixHttpProbeDelayMs);
+    logsPayload = await readFixtureLogsForService(admin, projectName, serviceName);
+  }
+  return logsPayload;
+}
+
+async function readFixtureLogsForService(
+  admin: SelfHostedUserSetupCli,
+  projectName: string,
+  serviceName?: string,
+): Promise<DeploymentLogsResponse> {
+  return serviceName === undefined
+    ? await readFixtureLogs(admin, projectName)
+    : await admin.runJson(`logs --project ${projectName} --service ${serviceName}`, deploymentLogsResponseSchema);
+}
+
+function hasExpectedLogTexts(response: DeploymentLogsResponse, expectedLogTexts: readonly string[]): boolean {
+  return expectedLogTexts.every((expectedLogText: string): boolean => hasDeploymentLog(response, expectedLogText));
 }
 
 async function expectProtectedRouteRedirect(compartmentUrl: string, routeUrl: string): Promise<void> {
@@ -275,7 +345,7 @@ async function readAuthorizedRouteBody(routeUrl: string, runtime: SelfHostedUser
     email: runtime.adminEmail,
     password: runtime.adminPassword,
   });
-  const response: CliHttpTextResponse = await sendCliHttpTextRequestWithRetry(routeUrl, {
+  const response: CliHttpTextResponse = await sendCliHttpTextRequestUntilStatus(routeUrl, 200, {
     headers: {
       cookie: appSessionCookie,
     },
@@ -287,8 +357,9 @@ async function readAuthorizedRouteBody(routeUrl: string, runtime: SelfHostedUser
     return response.body;
   }
 
-  const assetResponse: CliHttpTextResponse = await sendCliHttpTextRequestWithRetry(
+  const assetResponse: CliHttpTextResponse = await sendCliHttpTextRequestUntilStatus(
     new URL(scriptAssetPath, routeUrl).toString(),
+    200,
     {
       headers: {
         cookie: appSessionCookie,
@@ -302,7 +373,9 @@ async function readAuthorizedRouteBody(routeUrl: string, runtime: SelfHostedUser
 
 function expectDeploymentLogs(response: DeploymentLogsResponse, expectedLogTexts: readonly string[]): void {
   for (const expectedLogText of expectedLogTexts) {
-    expect(hasDeploymentLog(response, expectedLogText)).toBe(true);
+    expect(hasDeploymentLog(response, expectedLogText), `Expected deployment logs to include: ${expectedLogText}`).toBe(
+      true,
+    );
   }
 }
 
@@ -385,8 +458,9 @@ async function expectProxyRoute(
     email: runtime.adminEmail,
     password: runtime.adminPassword,
   });
-  const proxiedReadyResponse: CliHttpTextResponse = await sendCliHttpTextRequestWithRetry(
+  const proxiedReadyResponse: CliHttpTextResponse = await sendCliHttpTextRequestUntilStatus(
     new URL('/api/ready', webRouteUrl).toString(),
+    200,
     {
       headers: {
         cookie: appSessionCookie,
@@ -433,6 +507,25 @@ async function sendCliHttpTextRequestWithRetry(
       lastError?.message ?? 'none'
     }`,
   );
+}
+
+async function sendCliHttpTextRequestUntilStatus(
+  url: string,
+  expectedStatusCode: number,
+  options: CliHttpTextRequestOptions = {},
+): Promise<CliHttpTextResponse> {
+  let response: CliHttpTextResponse = await sendCliHttpTextRequestWithRetry(url, options);
+
+  for (
+    let attempt: number = 1;
+    response.statusCode !== expectedStatusCode && attempt < selfHostedBuildMatrixHttpProbeAttempts;
+    attempt += 1
+  ) {
+    await sleep(selfHostedBuildMatrixHttpProbeDelayMs);
+    response = await sendCliHttpTextRequestWithRetry(url, options);
+  }
+
+  return response;
 }
 
 function isRetryableHttpProbeError(error: HttpProbeErrorInput): boolean {
@@ -511,6 +604,9 @@ async function readRuntimeContainerCommandOutput(
   deploymentId: string,
   expectation: SelfHostedRuntimeCommandExpectation,
 ): Promise<string> {
+  if (isK3dPlatformMode()) {
+    return await readK3dRuntimeCommandOutput(deploymentId, expectation);
+  }
   const containerResult: SelfHostedUserSetupCommandResult = await runCommand({
     argv: ['docker', 'ps', '-q', '--filter', `label=compartment.deploymentId=${deploymentId}`],
     timeoutMs: selfHostedBuildMatrixDockerCommandTimeoutMs,
@@ -527,6 +623,49 @@ async function readRuntimeContainerCommandOutput(
   });
   expectSuccessfulCommand(outputResult, `docker exec ${expectation.command.join(' ')}`);
 
+  return outputResult.stdout.trim();
+}
+
+async function readK3dRuntimeCommandOutput(
+  deploymentId: string,
+  expectation: SelfHostedRuntimeCommandExpectation,
+): Promise<string> {
+  const kubeContext: string = readK3dPlatformSeed().kubeContext;
+  const podResult: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      kubeContext,
+      'get',
+      'pods',
+      '--all-namespaces',
+      '--selector',
+      `compartment.dev/deployment-id=${deploymentId}`,
+      '--output',
+      'jsonpath={.items[0].metadata.namespace}{"\\t"}{.items[0].metadata.name}',
+    ],
+    timeoutMs: selfHostedBuildMatrixDockerCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(podResult, `kubectl get pod for deployment ${deploymentId}`);
+  const [namespace, podName] = podResult.stdout.trim().split('\t');
+  if (namespace === undefined || podName === undefined) {
+    throw new Error(`Expected Kubernetes Pod for deployment ${deploymentId}.`);
+  }
+  const outputResult: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      kubeContext,
+      'exec',
+      '--namespace',
+      namespace,
+      podName,
+      '--',
+      ...expectation.command,
+    ],
+    timeoutMs: selfHostedBuildMatrixDockerCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(outputResult, `kubectl exec ${expectation.command.join(' ')}`);
   return outputResult.stdout.trim();
 }
 

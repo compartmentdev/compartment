@@ -71,11 +71,11 @@ import {
   type CliRemoteSummary,
   type CreateOrganizationResponse,
   type DeleteSsoOidcProviderResponse,
+  type DeploymentLogLine,
+  type DeploymentLogsResponse,
   type DeploymentInspectResponse,
   type DeploymentInspectTarget,
   type DeploymentListResponse,
-  type DeploymentLogLine,
-  type DeploymentLogsResponse,
   type DeploymentReadSummary,
   type DeploymentRunLogLine,
   type DeploymentRunLogsResponse,
@@ -177,12 +177,15 @@ import {
   expectBlockedPublicControlPlanePaths,
   expectExplicitProjectLifecycleFlow,
   requireDetachedDeploymentRunId,
+  waitForDeploymentRuntimeLog,
   waitForDeploymentRunCompletion,
+  waitForRunningResource,
 } from './self-hosted-user-setup-deployment-flow.harness';
 import { expectAuditFileExports, expectAuditFileSinkCoverage } from './self-hosted-user-setup-audit-flow.harness';
 import { expectCompartmentSkillInstallOnboarding } from './self-hosted-user-setup-agent-onboarding.harness';
 import { expectCurrentOrganizationSlug } from './cli-response-test.harness';
 import { cliRemoteListResponseSchema, cliRemoteResponseSchema } from './remote-command-response.harness';
+import { expectK3dWorkerNamespaceIsolation, isK3dPlatformMode } from './self-hosted-user-setup-k3d.harness';
 import {
   expectedAuditEventTypes,
   organizationUseResponseSchema,
@@ -240,6 +243,9 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       viewer = await setup.createFreshCli();
 
       await expectBlockedPublicControlPlanePaths(runtime.compartmentUrl);
+      if (isK3dPlatformMode()) {
+        await expectK3dWorkerNamespaceIsolation();
+      }
 
       const adminBeforeLogin: SelfHostedUserSetupCommandResult = await admin.runFailure('whoami --output json');
       expect(adminBeforeLogin.stderr).toContain(noConfiguredLoginMessage);
@@ -657,10 +663,17 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       expect(deployPayload.resources).toEqual([
         expect.objectContaining({
           name: app.resourceName,
-          status: 'running',
         }),
       ]);
 
+      if (isK3dPlatformMode()) {
+        const bootstrapPayload: ResourceResponse = await admin.runJson(
+          `resource bootstrap --project ${app.projectName} --resource ${app.resourceName}`,
+          resourceResponseSchema,
+        );
+        expect(bootstrapPayload.resource.name).toBe(app.resourceName);
+      }
+      await waitForRunningResource(admin, app.projectName, app.resourceName);
       const statusPayload: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,
         deploymentStatusCommandResponseParser,
@@ -860,16 +873,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       expect(inspectedDeployment.id).toBe(activeDeployment.id);
       expect(inspectedDeployment.runtime).not.toBeNull();
 
-      const runtimeLogsPayload: DeploymentLogsResponse = await admin.runJson(
-        `logs --project ${app.projectName}`,
-        deploymentLogsResponseSchema,
-      );
-      expect(
-        runtimeLogsPayload.lines.some(
-          (line: DeploymentLogLine): boolean =>
-            line.serviceName === app.serviceName && line.message.includes(appListeningLogText),
-        ),
-      ).toBe(true);
+      await waitForDeploymentRuntimeLog(admin, app.projectName, app.serviceName, appListeningLogText);
 
       const detachedDeploy: SelfHostedUserSetupCommandResult = await admin.run('deploy --detach', {
         cwd: app.directory,
@@ -920,16 +924,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       );
       expect(requireRouteUrl(explicitStatusPayload, app.serviceName)).toBe(explicitRouteUrl);
 
-      const explicitLogsPayload: DeploymentLogsResponse = await admin.runJson(
-        `logs --project ${explicitProjectName}`,
-        deploymentLogsResponseSchema,
-      );
-      expect(
-        explicitLogsPayload.lines.some(
-          (line: DeploymentLogLine): boolean =>
-            line.serviceName === app.serviceName && line.message.includes(appListeningLogText),
-        ),
-      ).toBe(true);
+      await waitForDeploymentRuntimeLog(admin, explicitProjectName, app.serviceName, appListeningLogText);
 
       await expectExplicitProjectLifecycleFlow(admin, explicitProjectName, app.serviceName, explicitRouteUrl);
       completedCaseCount = 4;
@@ -1071,7 +1066,9 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       await expectAppEnvMessage(routeUrl, adminAppSessionCookie, rollbackMessage);
       await expectAppBuildMessage(routeUrl, adminAppSessionCookie, rollbackBuildMessage);
 
-      await removeLocalDockerImage(rollbackTargetRuntimeImageRef);
+      if (!isK3dPlatformMode()) {
+        await removeLocalDockerImage(rollbackTargetRuntimeImageRef);
+      }
 
       const rollbackPayload: DeploymentStatusResponse = await admin.runJson(
         `rollback --project ${app.projectName}`,
