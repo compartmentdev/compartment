@@ -8,6 +8,15 @@ import type { CompleteProjectProvisioningInput, ProjectProvisioningClaimRow } fr
 const leaseDurationMs: number = 7 * 60_000;
 const failedRetryDelayMs: number = 10_000;
 
+export async function hasSucceededProjectKubeProvisioning(projectId: string): Promise<boolean> {
+  const [row] = await getApiDatabase()
+    .select({ projectId: projectKubeProvisioning.projectId })
+    .from(projectKubeProvisioning)
+    .where(and(eq(projectKubeProvisioning.projectId, projectId), eq(projectKubeProvisioning.state, 'succeeded')))
+    .limit(1);
+  return row !== undefined;
+}
+
 export async function claimPendingProjectProvisioning(): Promise<ProjectProvisioningClaimRow | null> {
   return await getApiDatabase().transaction(claimPendingProjectProvisioningWithTransaction);
 }

@@ -13,6 +13,7 @@ import type { DeploymentJoinedRow, EnvironmentRow } from '../queries/deployments
 import { findNodeById } from '../queries/node.query';
 import type { NodeRow } from '../queries/node.query.types';
 import type { ProjectRow } from '../queries/projects.query.types';
+import { hasSucceededProjectKubeProvisioning } from '../queries/project-provisioning.query';
 import { listProjectResourcesByEnvironmentId, updateProjectResourceRuntime } from '../queries/resources.query';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
@@ -58,7 +59,9 @@ export async function cleanupDeletedProjectRuntime(project: ProjectRow): Promise
 async function buildProjectRuntimeCleanupPlan(project: ProjectRow): Promise<ProjectRuntimeCleanupPlan> {
   const environments: EnvironmentRow[] = await listProjectEnvironmentsByProjectIds([project.id]);
   const resources: ProjectRuntimeCleanupResource[] = await listProjectRuntimeCleanupResources(environments);
-  const nodeRows: NodeRow[] = await resolveProjectRuntimeNodes(environments);
+  const nodeRows: NodeRow[] = (await hasSucceededProjectKubeProvisioning(project.id))
+    ? []
+    : await resolveProjectRuntimeNodes(environments);
   const nodeResources: NodeProjectCleanupResource[] = buildNodeProjectCleanupResources(resources);
   const deployments: DeploymentJoinedRow[] = await listActiveJoinedDeploymentsForProject(
     project.id,
