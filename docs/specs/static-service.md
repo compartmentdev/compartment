@@ -47,10 +47,11 @@ compartment.yml
 apps/site/index.html
 ```
 
-Its service uses `kind: static`, `path: .`, and `build.outputDirectory: apps/site`. Railpack generates the root
-`Caddyfile` in the same `build` step as the site output. Static deploy-plan normalization must narrow that step to
-both `apps/site` and `Caddyfile`; keeping only `apps/site` produces an image whose start command fails with
-`open Caddyfile: no such file or directory`.
+Its service uses `kind: static`, `path: .`, and `build.outputDirectory: apps/site`. For this provider, Railpack
+generates the root `Caddyfile` in the same `build` step as the site output. Static deploy-plan normalization must
+narrow that step to both `apps/site` and `Caddyfile`; keeping only `apps/site` produces an image whose start command
+fails with `open Caddyfile: no such file or directory`. SPA providers may instead supply `/Caddyfile` from a separate
+`caddy` step, which normalization preserves without copying a nonexistent `Caddyfile` from `build`.
 
 The descriptor continues to forbid user-authored `readiness`. The control plane records the internal `/health`
 probe for static deployments so the runtime node must observe the serving container before the deployment can

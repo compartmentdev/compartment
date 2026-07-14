@@ -59,15 +59,29 @@ function normalizeStaticDeployInputs(
   inputs: readonly RailpackDeployInput[],
   staticOutputDirectory: string,
 ): RailpackDeployInput[] {
-  const normalizedStaticOutputInput: RailpackDeployInput = {
-    include: [staticOutputDirectory, staticRuntimeCaddyfilePath],
-    step: staticBuildStepName,
-  };
   const preservedInputs: RailpackDeployInput[] = inputs.filter(
     (input: RailpackDeployInput): boolean => !isBuildDeployInput(input),
   );
+  const normalizedStaticOutputInput: RailpackDeployInput = {
+    include: [
+      staticOutputDirectory,
+      ...(hasStaticRuntimeCaddyfileInput(preservedInputs) ? [] : [staticRuntimeCaddyfilePath]),
+    ],
+    step: staticBuildStepName,
+  };
 
   return [...preservedInputs, normalizedStaticOutputInput];
+}
+
+function hasStaticRuntimeCaddyfileInput(inputs: readonly RailpackDeployInput[]): boolean {
+  return inputs.some(
+    (input: RailpackDeployInput): boolean =>
+      input.include?.some((includePath: string): boolean => isStaticRuntimeCaddyfilePath(includePath)) === true,
+  );
+}
+
+function isStaticRuntimeCaddyfilePath(includePath: string): boolean {
+  return includePath === staticRuntimeCaddyfilePath || includePath === `/${staticRuntimeCaddyfilePath}`;
 }
 
 function isBuildDeployInput(input: RailpackDeployInput): boolean {
