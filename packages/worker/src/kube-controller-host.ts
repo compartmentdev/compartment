@@ -75,7 +75,7 @@ class DeploymentReconcileArea implements KubeReconcileArea {
       return false;
     }
     await reconcileDeploymentTarget(this.request, this.runtime, claimed.target);
-    return claimed.target.state !== 'active';
+    return claimed.target.state !== 'active' && claimed.target.state !== 'stopped';
   }
 }
 

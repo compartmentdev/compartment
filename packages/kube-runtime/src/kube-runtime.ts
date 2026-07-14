@@ -10,6 +10,7 @@ import {
   type TerminalJob,
 } from './kube-job';
 import { kubeJobName } from './kube-naming';
+import type { TerminalJobResult } from './kube-runtime-job-result.types';
 import { createOrValidate } from './kube-provisioning-validation';
 import {
   applyObject,
@@ -35,15 +36,6 @@ import type {
   KubeObservedManifest,
   ObserveLabels,
 } from './kube-runtime.types';
-
-interface TerminalJobResult {
-  completedAt: Date;
-  exitCode: number | null;
-  jobName: string;
-  logs: string;
-  podName: string | null;
-  status: 'succeeded' | 'failed' | 'timed-out';
-}
 
 type FinalizeJob = () => Promise<void>;
 
@@ -121,6 +113,10 @@ export class KubeRuntime {
 
   public async read(object: KubeManifest): Promise<KubeObservedManifest | null> {
     return await readObjectIgnoringNotFound(this.objectApi, object);
+  }
+
+  public async delete(objects: KubeManifest[]): Promise<void> {
+    await deleteObjectsPreservingPrimary(this.objectApi, objects, null);
   }
 
   public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricObservation[]> {

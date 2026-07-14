@@ -54,4 +54,15 @@ describe('deployment reconcile contracts', (): void => {
       workerObserveDeploymentReconcileRequestSchema.safeParse({ ...request, message: 'rollout failed' }).success,
     ).toBe(true);
   });
+
+  it('accepts the internal stop claim and acknowledgement', (): void => {
+    expect(
+      workerObserveDeploymentReconcileRequestSchema.safeParse({
+        deploymentId: 'dep_1',
+        observation: 'stopped',
+        observedAt: '2026-07-12T10:00:00.000Z',
+        revision: 3,
+      }).success,
+    ).toBe(true);
+  });
 });

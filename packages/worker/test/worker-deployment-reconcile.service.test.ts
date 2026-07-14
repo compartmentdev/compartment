@@ -114,6 +114,23 @@ describe('deployment reconciliation', (): void => {
       expect.objectContaining({ observation: 'ready', revision: 0 }),
     );
   });
+
+  it('deletes the projected application before acknowledging a Kubernetes stop', async (): Promise<void> => {
+    const runtime: KubeRuntime & { delete: Mock } = {
+      ...runtimeStub(),
+      delete: vi.fn(async (): Promise<void> => await Promise.resolve()),
+    } as never;
+    const stoppingTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'stopping' };
+
+    await reconcileDeploymentTarget(requester(), runtime, stoppingTarget);
+
+    const deleted: KubeManifest[] = runtime.delete.mock.calls[0]?.[0] as KubeManifest[];
+    expect(deleted.map((manifest: KubeManifest): string => manifest.kind)).toEqual(['Secret', 'Deployment', 'Service']);
+    expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'stopped', revision: 0 }),
+    );
+  });
 });
 
 function target(candidate: DeploymentReconcileProjection): DeploymentReconcileTarget {

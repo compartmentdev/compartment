@@ -23,7 +23,7 @@ interface DeploymentKubeReferencesColumnBuilders {
   deploymentName: RequiredTextBuilder<'deployment_name'>;
   serviceName: RequiredTextBuilder<'service_name'>;
   networkPolicyNamesJson: RequiredTextBuilder<'network_policy_names_json'>;
-  state: RequiredEnumTextBuilder<'state', ['desired', 'pending', 'active']>;
+  state: RequiredEnumTextBuilder<'state', ['desired', 'pending', 'active', 'stopping', 'stopped']>;
   revision: DefaultIntegerBuilder<'revision'>;
   observedAt: OptionalTimestampBuilder<'observed_at'>;
   transitionedAt: DefaultTimestampBuilder<'transitioned_at'>;

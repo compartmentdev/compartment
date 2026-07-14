@@ -3,6 +3,7 @@ import { deploymentKubeReferences, deploymentRoutes, deploymentRunEvents, deploy
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { persistActiveDeploymentDrift } from './deployment-reconcile-transition-audit.query';
+import { persistStoppedReconcileObservation } from './deployment-reconcile-stop.query';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type { PersistDeploymentReconcileObservationInput } from './deployment-reconcile.query.types';
 
@@ -14,7 +15,7 @@ interface CandidateContext {
 
 interface ReconcileReferenceRow {
   revision: number;
-  state: 'active' | 'desired' | 'pending';
+  state: 'active' | 'desired' | 'pending' | 'stopping' | 'stopped';
 }
 
 export async function persistDeploymentReconcileObservation(
@@ -39,6 +40,9 @@ async function persistObservationWithTransaction(
   if (input.observation === 'failed') {
     return await persistFailure(tx, input, reference.state);
   }
+  if (input.observation === 'stopped') {
+    return await persistStoppedReconcileObservation(tx, input, reference.state);
+  }
   return await persistReady(tx, input, reference.state);
 }
 
@@ -53,7 +57,7 @@ async function lockReference(tx: DeploymentTransaction, deploymentId: string): P
 async function persistPendingObservation(
   tx: DeploymentTransaction,
   input: PersistDeploymentReconcileObservationInput,
-  state: 'active' | 'desired' | 'pending',
+  state: 'active' | 'desired' | 'pending' | 'stopping' | 'stopped',
 ): Promise<boolean> {
   if (state === 'active') {
     await persistActiveDeploymentDrift(tx, input);
@@ -244,7 +248,7 @@ async function markReconcileOperationSucceeded(
 async function updateReference(
   tx: DeploymentTransaction,
   input: PersistDeploymentReconcileObservationInput,
-  state: 'pending' | 'active',
+  state: 'pending' | 'active' | 'stopped',
 ): Promise<void> {
   await tx
     .update(deploymentKubeReferences)

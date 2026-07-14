@@ -40,6 +40,9 @@ export async function reconcileDeploymentTarget(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
 ): Promise<void> {
+  if (await reconcileStopState(request, runtime, target)) {
+    return;
+  }
   if (target.state === 'desired') {
     await reconcileDesiredDeployment(request, runtime, target);
     return;
@@ -49,6 +52,19 @@ export async function reconcileDeploymentTarget(
     return;
   }
   await reconcileActiveDeployment(request, runtime, target);
+}
+
+async function reconcileStopState(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  target: DeploymentReconcileTarget,
+): Promise<boolean> {
+  if (target.state !== 'stopping') {
+    return target.state === 'stopped';
+  }
+  await runtime.delete(projectApplicationManifests(target.candidate));
+  await persistObservation(request, target, 'stopped');
+  return true;
 }
 
 async function reconcileActiveDeployment(
@@ -201,7 +217,7 @@ async function observeDeployment(runtime: KubeRuntime, deployment: KubeDeploymen
 async function persistObservation(
   request: CompartmentRequester,
   target: DeploymentReconcileTarget,
-  observation: 'pending' | 'ready' | 'failed',
+  observation: 'pending' | 'ready' | 'failed' | 'stopped',
   message?: string,
 ): Promise<void> {
   const input: WorkerObserveDeploymentReconcileRequest = {

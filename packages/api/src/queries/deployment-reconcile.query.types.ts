@@ -26,7 +26,7 @@ export interface DeploymentReconcilePair {
 export interface PersistDeploymentReconcileObservationInput {
   deploymentId: string;
   failureMessage: string | null;
-  observation: 'pending' | 'ready' | 'failed';
+  observation: 'pending' | 'ready' | 'failed' | 'stopped';
   observedAt: Date;
   revision: number;
 }

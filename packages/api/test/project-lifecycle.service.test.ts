@@ -8,6 +8,10 @@ import type {
   listJoinedDeploymentsForEnvironment,
 } from '../src/queries/deployment-joined.query';
 import type { markDeploymentStopped } from '../src/queries/deployment-lifecycle.query';
+import type {
+  findDeploymentKubeState,
+  requestDeploymentKubeStop,
+} from '../src/queries/deployment-kube-membership.query';
 import type { DeploymentJoinedRow, DeploymentRow, EnvironmentRow } from '../src/queries/deployments.query.types';
 import type { findNodeById } from '../src/queries/node.query';
 import type { NodeRow } from '../src/queries/node.query.types';
@@ -28,6 +32,7 @@ import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 type FindEnvironmentByProjectAndName = typeof findEnvironmentByProjectAndName;
 type FindJoinedDeploymentById = typeof findJoinedDeploymentById;
 type FindNodeById = typeof findNodeById;
+type FindDeploymentKubeState = typeof findDeploymentKubeState;
 type GetApiConfig = typeof getApiConfig;
 type InsertOperationRecord = typeof insertOperationRecord;
 type UpdateOperationRecord = typeof updateOperationRecord;
@@ -38,12 +43,14 @@ type RequireScopedPermission = typeof requireScopedPermission;
 type CreateNodeRuntimeRequester = typeof createNodeRuntimeRequester;
 type QueueArtifactStartDeployments = typeof queueArtifactStartDeployments;
 type ResolveActiveProjectScope = typeof resolveActiveProjectScope;
+type RequestDeploymentKubeStop = typeof requestDeploymentKubeStop;
 type StopNodeDeployment = typeof stopNodeDeployment;
 
 interface ProjectLifecycleServiceMocks {
   findEnvironmentByProjectAndName: Mock<FindEnvironmentByProjectAndName>;
   findJoinedDeploymentById: Mock<FindJoinedDeploymentById>;
   findNodeById: Mock<FindNodeById>;
+  findDeploymentKubeState: Mock<FindDeploymentKubeState>;
   getApiConfig: Mock<GetApiConfig>;
   createNodeRuntimeRequester: Mock<CreateNodeRuntimeRequester>;
   insertOperationRecord: Mock<InsertOperationRecord>;
@@ -53,6 +60,7 @@ interface ProjectLifecycleServiceMocks {
   queueArtifactStartDeployments: Mock<QueueArtifactStartDeployments>;
   requireScopedPermission: Mock<RequireScopedPermission>;
   resolveActiveProjectScope: Mock<ResolveActiveProjectScope>;
+  requestDeploymentKubeStop: Mock<RequestDeploymentKubeStop>;
   stopNodeDeployment: Mock<StopNodeDeployment>;
   updateOperationRecord: Mock<UpdateOperationRecord>;
 }
@@ -62,6 +70,7 @@ const mocks: ProjectLifecycleServiceMocks = vi.hoisted(
     findEnvironmentByProjectAndName: vi.fn<FindEnvironmentByProjectAndName>(),
     findJoinedDeploymentById: vi.fn<FindJoinedDeploymentById>(),
     findNodeById: vi.fn<FindNodeById>(),
+    findDeploymentKubeState: vi.fn<FindDeploymentKubeState>(),
     getApiConfig: vi.fn<GetApiConfig>(),
     createNodeRuntimeRequester: vi.fn<CreateNodeRuntimeRequester>(),
     insertOperationRecord: vi.fn<InsertOperationRecord>(),
@@ -71,6 +80,7 @@ const mocks: ProjectLifecycleServiceMocks = vi.hoisted(
     queueArtifactStartDeployments: vi.fn<QueueArtifactStartDeployments>(),
     requireScopedPermission: vi.fn<RequireScopedPermission>(),
     resolveActiveProjectScope: vi.fn<ResolveActiveProjectScope>(),
+    requestDeploymentKubeStop: vi.fn<RequestDeploymentKubeStop>(),
     stopNodeDeployment: vi.fn<StopNodeDeployment>(),
     updateOperationRecord: vi.fn<UpdateOperationRecord>(),
   }),
@@ -99,6 +109,17 @@ vi.mock(
 vi.mock('../src/queries/deployment-lifecycle.query', (): { markDeploymentStopped: Mock<MarkDeploymentStopped> } => ({
   markDeploymentStopped: mocks.markDeploymentStopped,
 }));
+
+vi.mock(
+  '../src/queries/deployment-kube-membership.query',
+  (): {
+    findDeploymentKubeState: Mock<FindDeploymentKubeState>;
+    requestDeploymentKubeStop: Mock<RequestDeploymentKubeStop>;
+  } => ({
+    findDeploymentKubeState: mocks.findDeploymentKubeState,
+    requestDeploymentKubeStop: mocks.requestDeploymentKubeStop,
+  }),
+);
 
 vi.mock('../src/queries/node.query', (): { findNodeById: Mock<FindNodeById> } => ({
   findNodeById: mocks.findNodeById,
@@ -183,6 +204,28 @@ describe('project lifecycle service', (): void => {
     expect(result.state).toBe('stopped');
     expect(mocks.stopNodeDeployment).not.toHaveBeenCalled();
     expect(mocks.markDeploymentStopped).not.toHaveBeenCalled();
+  });
+
+  it('waits for the Kubernetes worker acknowledgement before marking a deployment stopped', async (): Promise<void> => {
+    const runningDeployment: DeploymentJoinedRow = createDeployment('web', { containerId: null });
+    mockLifecycleContext([runningDeployment], [runningDeployment]);
+    mocks.findDeploymentKubeState.mockResolvedValueOnce('active').mockResolvedValueOnce('stopped');
+    mocks.insertOperationRecord.mockResolvedValueOnce(createOperationRecord('running'));
+    mocks.requestDeploymentKubeStop.mockResolvedValueOnce();
+    mocks.markDeploymentStopped.mockResolvedValueOnce(
+      createDeployment('web', { containerId: null, isActive: false, promotionStage: 'stopped', status: 'stopped' })
+        .deployment,
+    );
+    mocks.findJoinedDeploymentById.mockResolvedValueOnce(
+      createDeployment('web', { containerId: null, isActive: false, promotionStage: 'stopped', status: 'stopped' }),
+    );
+    mocks.updateOperationRecord.mockResolvedValueOnce(createOperationRecord('succeeded'));
+
+    const result: ProjectLifecycleResult = await stopProjectForPrincipal(createLifecycleInput());
+
+    expect(result.state).toBe('stopped');
+    expect(mocks.requestDeploymentKubeStop).toHaveBeenCalledWith('dep_web', expect.any(Date));
+    expect(mocks.stopNodeDeployment).not.toHaveBeenCalled();
   });
 
   it('blocks lifecycle actions while deployments are updating', async (): Promise<void> => {

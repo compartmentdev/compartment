@@ -14,6 +14,8 @@ import {
   listJoinedDeploymentsForEnvironment,
 } from '../queries/deployment-joined.query';
 import { markDeploymentStopped } from '../queries/deployment-lifecycle.query';
+import { findDeploymentKubeState } from '../queries/deployment-kube-membership.query';
+import type { DeploymentKubeState } from '../queries/deployment-kube-state.types';
 import type { DeploymentJoinedRow, DeploymentRow, EnvironmentRow } from '../queries/deployments.query.types';
 import { findNodeById } from '../queries/node.query';
 import type { NodeRow } from '../queries/node.query.types';
@@ -31,6 +33,7 @@ import {
 } from './project-lifecycle-operation.service';
 import { isReusableStoppedDeployment, readProjectLifecycleState } from './project-lifecycle-state.service';
 import type { ProjectLifecycleInput, ProjectLifecycleResult } from './project-lifecycle.service.types';
+import { stopKubeProjectDeployment } from './project-lifecycle-kube-stop.service';
 
 interface ProjectLifecycleContext {
   activeDeployments: DeploymentJoinedRow[];
@@ -192,12 +195,14 @@ async function stopActiveProjectDeployment(
   updatedAt: Date,
 ): Promise<DeploymentJoinedRow> {
   const routeBaseDomain: string = getApiConfig().baseDomain;
-  const node: NodeRow = await resolveDeploymentNode(deployment.deployment.nodeId);
+  const kubeState: DeploymentKubeState | undefined = await findDeploymentKubeState(deployment.deployment.id);
 
   try {
-    await stopNodeDeployment(createNodeRuntimeRequester(node.nodeSocketPath), {
-      containerId: requireDeploymentContainerId(deployment),
-    });
+    if (kubeState === undefined) {
+      await stopNodeProjectDeployment(deployment);
+    } else {
+      await stopKubeProjectDeployment(deployment.deployment.id, kubeState, updatedAt);
+    }
   } catch {
     throw createProjectLifecycleRuntimeStopFailedError();
   }
@@ -208,6 +213,13 @@ async function stopActiveProjectDeployment(
   });
 
   return requireJoinedDeployment(await findJoinedDeploymentById(stoppedDeployment.id, routeBaseDomain));
+}
+
+async function stopNodeProjectDeployment(deployment: DeploymentJoinedRow): Promise<void> {
+  const node: NodeRow = await resolveDeploymentNode(deployment.deployment.nodeId);
+  await stopNodeDeployment(createNodeRuntimeRequester(node.nodeSocketPath), {
+    containerId: requireDeploymentContainerId(deployment),
+  });
 }
 
 async function resolveDeploymentNode(nodeId: string): Promise<NodeRow> {

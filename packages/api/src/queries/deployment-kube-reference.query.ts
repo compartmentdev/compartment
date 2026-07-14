@@ -7,11 +7,11 @@ import {
   type DeploymentKubeReferenceValues,
 } from './deployment-kube-reference-values';
 import type {
-  DeploymentKubeState,
   DeploymentKubeTransitionTransaction,
   PersistDeploymentKubeTransitionInput,
   UpsertDeploymentKubeReferenceInput,
 } from './deployment-kube-reference.query.types';
+import type { DeploymentKubeState } from './deployment-kube-state.types';
 
 interface LockedReference {
   revision: number;
@@ -109,7 +109,8 @@ function assertValidTransition(currentState: DeploymentKubeState, input: Persist
   const validEdge: boolean =
     (currentState === 'desired' && input.nextState === 'pending') ||
     (currentState === 'pending' && (input.nextState === 'pending' || input.nextState === 'active')) ||
-    (currentState === 'active' && (input.nextState === 'active' || input.nextState === 'pending'));
+    (currentState === 'active' && (input.nextState === 'active' || input.nextState === 'pending')) ||
+    (currentState === 'stopping' && input.nextState === 'stopped');
   const requiresAudit: boolean = currentState === 'active' && input.nextState === 'pending';
   if (!validEdge) {
     throw new Error(`Invalid Kubernetes deployment transition ${currentState} -> ${input.nextState}.`);

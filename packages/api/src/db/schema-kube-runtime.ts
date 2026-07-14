@@ -24,7 +24,7 @@ export const deploymentKubeReferences: KubeRuntimeSchemaTypes.DeploymentKubeRefe
     deploymentName: text('deployment_name').notNull(),
     serviceName: text('service_name').notNull(),
     networkPolicyNamesJson: text('network_policy_names_json').notNull(),
-    state: text('state', { enum: ['desired', 'pending', 'active'] }).notNull(),
+    state: text('state', { enum: ['desired', 'pending', 'active', 'stopping', 'stopped'] }).notNull(),
     revision: integer('revision').default(0).notNull(),
     observedAt: timestamp('observed_at', { withTimezone: true }),
     transitionedAt: timestamp('transitioned_at', { withTimezone: true }).defaultNow().notNull(),

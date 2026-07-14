@@ -5,8 +5,8 @@ import {
   type ResolvedOptionalServiceReadinessConfig,
 } from './service-readiness.contract';
 
-export type DeploymentReconcileState = 'desired' | 'pending' | 'active';
-export type DeploymentReconcileObservation = 'pending' | 'ready' | 'failed';
+export type DeploymentReconcileState = 'desired' | 'pending' | 'active' | 'stopping' | 'stopped';
+export type DeploymentReconcileObservation = 'pending' | 'ready' | 'failed' | 'stopped';
 
 export interface DeploymentReconcileProjection {
   containerPort: number;
@@ -102,7 +102,7 @@ const deploymentReconcileTargetSchema: ContractSchema<DeploymentReconcileTarget>
     candidate: deploymentReconcileProjectionSchema,
     revision: z.number().int().nonnegative(),
     rolloutStartedAt: z.string().datetime(),
-    state: z.enum(['desired', 'pending', 'active']),
+    state: z.enum(['desired', 'pending', 'active', 'stopping', 'stopped']),
   })
   .strict();
 
@@ -114,7 +114,7 @@ export const workerObserveDeploymentReconcileRequestSchema: ContractSchema<Worke
   .object({
     deploymentId: z.string().min(1),
     message: z.string().min(1).optional(),
-    observation: z.enum(['pending', 'ready', 'failed']),
+    observation: z.enum(['pending', 'ready', 'failed', 'stopped']),
     observedAt: z.string().datetime(),
     revision: z.number().int().nonnegative(),
   })

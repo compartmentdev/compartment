@@ -7,6 +7,8 @@ import {
 import { listActiveJoinedDeploymentsForProject } from '../queries/deployment-joined.query';
 import { listProjectEnvironmentsByProjectIds } from '../queries/deployment-context.query';
 import { markDeploymentStopped } from '../queries/deployment-lifecycle.query';
+import { findDeploymentKubeState } from '../queries/deployment-kube-membership.query';
+import type { DeploymentKubeState } from '../queries/deployment-kube-state.types';
 import type { DeploymentJoinedRow, EnvironmentRow } from '../queries/deployments.query.types';
 import { findNodeById } from '../queries/node.query';
 import type { NodeRow } from '../queries/node.query.types';
@@ -16,6 +18,7 @@ import type { ProjectResourceRow } from '../queries/resources.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
 import { createNodeRuntimeRequester } from './node-runtime-requester';
 import { parseResourceVolumes } from './resources.service.storage';
+import { stopKubeProjectDeployment } from './project-lifecycle-kube-stop.service';
 
 interface ProjectRuntimeCleanupResource {
   environmentName: string;
@@ -23,6 +26,7 @@ interface ProjectRuntimeCleanupResource {
 }
 
 interface ProjectRuntimeCleanupPlan {
+  deployments: DeploymentJoinedRow[];
   nodeResources: NodeProjectCleanupResource[];
   nodeRows: NodeRow[];
   project: ProjectRow;
@@ -56,8 +60,13 @@ async function buildProjectRuntimeCleanupPlan(project: ProjectRow): Promise<Proj
   const resources: ProjectRuntimeCleanupResource[] = await listProjectRuntimeCleanupResources(environments);
   const nodeRows: NodeRow[] = await resolveProjectRuntimeNodes(environments);
   const nodeResources: NodeProjectCleanupResource[] = buildNodeProjectCleanupResources(resources);
+  const deployments: DeploymentJoinedRow[] = await listActiveJoinedDeploymentsForProject(
+    project.id,
+    getApiConfig().baseDomain,
+  );
 
   return {
+    deployments,
     nodeResources,
     nodeRows,
     project,
@@ -70,6 +79,7 @@ async function cleanupProjectRuntime(
   deleteData: boolean,
   caddyNetworkMode: NodeProjectCleanupCaddyNetworkMode,
 ): Promise<void> {
+  await cleanupKubeProjectRuntime(plan.deployments);
   for (const node of plan.nodeRows) {
     await cleanupNodeProjectRuntime(createNodeRuntimeRequester(node.nodeSocketPath), {
       caddyNetworkMode,
@@ -78,6 +88,17 @@ async function cleanupProjectRuntime(
       projectName: plan.project.name,
       resources: plan.nodeResources,
     });
+  }
+}
+
+async function cleanupKubeProjectRuntime(deployments: DeploymentJoinedRow[]): Promise<void> {
+  const updatedAt: Date = new Date();
+  for (const deployment of deployments) {
+    const deploymentId: string = deployment.deployment.id;
+    const state: DeploymentKubeState | undefined = await findDeploymentKubeState(deploymentId);
+    if (state !== undefined) {
+      await stopKubeProjectDeployment(deploymentId, state, updatedAt);
+    }
   }
 }
 

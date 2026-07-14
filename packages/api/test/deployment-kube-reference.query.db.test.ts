@@ -51,6 +51,7 @@ import type { DeploymentProductLogLine } from '../src/queries/deployment-product
 import { productLogRecordOverheadBytes, productLogStoreMaxBytes } from '../src/queries/product-log-storage-policy';
 import { findActiveJoinedDeployment } from '../src/queries/deployment-joined.query';
 import type { DeploymentJoinedRow } from '../src/queries/deployments.query.types';
+import { requestDeploymentKubeStop } from '../src/queries/deployment-kube-membership.query';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'deployment_kube_reference');
@@ -473,6 +474,26 @@ describe('deployment Kubernetes transition persistence', (): void => {
     const claimed: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
 
     expect(claimed?.candidate).toMatchObject({ deploymentId: 'dep_kube', state: 'pending' });
+  });
+
+  it('claims a requested stop and accepts the worker acknowledgement', async (): Promise<void> => {
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await requestDeploymentKubeStop('dep_kube', new Date('2026-07-12T10:00:00.000Z'));
+
+    const claimed: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
+
+    expect(claimed?.candidate).toMatchObject({ deploymentId: 'dep_kube', state: 'stopping' });
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_kube',
+        failureMessage: null,
+        observation: 'stopped',
+        observedAt: new Date('2026-07-12T10:00:01.000Z'),
+        revision: claimed?.candidate.revision ?? -1,
+      }),
+    ).toBe(true);
+    const [reference] = await db.select().from(deploymentKubeReferences);
+    expect(reference).toMatchObject({ revision: 2, state: 'stopped' });
   });
 
   it('promotes only after Ready and projects stable Kubernetes Service DNS on port 80', async (): Promise<void> => {
