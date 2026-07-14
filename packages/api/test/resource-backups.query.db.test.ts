@@ -281,6 +281,13 @@ describe('resource backup queries', (): void => {
       .from(resourceReconcileRuns)
       .where(eq(resourceReconcileRuns.id, recovered!.operationId));
     expect(renewed?.leaseExpiresAt?.getTime()).toBeGreaterThan(Date.now());
+    await acknowledgeResourceReconcileRun({
+      leaseId: recovered!.leaseId,
+      operationId: recovered!.operationId,
+      status: 'succeeded',
+    });
+    const [runningResource] = await db.select().from(projectResources).where(eq(projectResources.id, 'res_postgres'));
+    expect(runningResource?.status).toBe('running');
   });
 
   it('blocks resource reconciliation until project namespace provisioning succeeds', async (): Promise<void> => {

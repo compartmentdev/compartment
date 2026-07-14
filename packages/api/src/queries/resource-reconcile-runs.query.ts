@@ -116,8 +116,19 @@ async function acknowledgeWithTransaction(
     return;
   }
   await persistResourceReconcileAcknowledgement(tx, input);
+  await persistCompletedResourceState(tx, run, input);
+}
+
+async function persistCompletedResourceState(
+  tx: ApiDatabaseTransaction,
+  run: typeof resourceReconcileRuns.$inferSelect,
+  input: AcknowledgeResourceReconcileRunInput,
+): Promise<void> {
   if (run.operationType === 'bootstrap' && input.status === 'succeeded' && input.expectedClaims !== undefined) {
     await persistBootstrapCompletion(tx, run, input.expectedClaims);
+  }
+  if (run.operationType === 'reconcile' && input.status === 'succeeded') {
+    await persistReconcileCompletion(tx, run);
   }
 }
 
@@ -155,4 +166,14 @@ async function persistBootstrapCompletion(
     phase: 'reconcile-pending',
     projectResourceId: run.projectResourceId,
   });
+}
+
+async function persistReconcileCompletion(
+  tx: ApiDatabaseTransaction,
+  run: typeof resourceReconcileRuns.$inferSelect,
+): Promise<void> {
+  await tx
+    .update(projectResources)
+    .set({ status: 'running', updatedAt: new Date() })
+    .where(eq(projectResources.id, run.projectResourceId));
 }
