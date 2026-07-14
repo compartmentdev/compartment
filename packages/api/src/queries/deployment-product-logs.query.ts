@@ -1,16 +1,26 @@
 import { and, asc, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
-import { deploymentKubeReferences, deploymentProductLogs, deployments, productLogStoreQuota } from '../db/schema';
+import {
+  deploymentKubeReferences,
+  deploymentProductLogs,
+  deployments,
+  environments,
+  productLogStoreQuota,
+  projectResources,
+} from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import type {
   DeleteExpiredDeploymentProductLogsInput,
   DeploymentLogIdentityRow,
   DeploymentProductLogLine,
-  InsertDeploymentProductLogInput,
   InsertDeploymentProductLogsResult,
+  InsertProductLogInput,
   InsertedProductLogMessage,
   ListDeploymentProductLogsInput,
+  ListResourceProductLogsInput,
   ProductLogQuotaRow,
+  ResourceLogIdentityRow,
+  ResourceProductLogLine,
 } from './deployment-product-logs.query.types';
 import {
   productLogRecordBytes,
@@ -39,8 +49,21 @@ export async function listDeploymentLogIdentities(namespaces: string[]): Promise
     .orderBy(asc(deployments.createdAt));
 }
 
+export async function listResourceLogIdentities(): Promise<ResourceLogIdentityRow[]> {
+  return await getApiDatabase()
+    .select({
+      createdAt: projectResources.createdAt,
+      namespaceId: environments.projectId,
+      resourceId: projectResources.id,
+    })
+    .from(projectResources)
+    .innerJoin(environments, eq(environments.id, projectResources.environmentId))
+    .where(eq(projectResources.runtimeKind, 'kubernetes'))
+    .orderBy(asc(projectResources.createdAt));
+}
+
 export async function insertDeploymentProductLogs(
-  events: InsertDeploymentProductLogInput[],
+  events: InsertProductLogInput[],
 ): Promise<InsertDeploymentProductLogsResult> {
   if (events.length === 0) {
     return { inserted: 0, quotaAccepted: 0 };
@@ -53,13 +76,10 @@ export async function insertDeploymentProductLogs(
 
 async function insertDeploymentProductLogsWithQuota(
   transaction: ApiDatabaseTransaction,
-  events: InsertDeploymentProductLogInput[],
+  events: InsertProductLogInput[],
 ): Promise<InsertDeploymentProductLogsResult> {
   const quota: ProductLogQuotaRow = await lockProductLogQuota(transaction);
-  const quotaEvents: InsertDeploymentProductLogInput[] = takeEventsWithinQuota(
-    events,
-    productLogStoreMaxBytes - quota.usedBytes,
-  );
+  const quotaEvents: InsertProductLogInput[] = takeEventsWithinQuota(events, productLogStoreMaxBytes - quota.usedBytes);
   return quotaEvents.length === 0
     ? { inserted: 0, quotaAccepted: 0 }
     : await insertQuotaAcceptedProductLogs(transaction, quotaEvents);
@@ -67,7 +87,7 @@ async function insertDeploymentProductLogsWithQuota(
 
 async function insertQuotaAcceptedProductLogs(
   transaction: ApiDatabaseTransaction,
-  events: InsertDeploymentProductLogInput[],
+  events: InsertProductLogInput[],
 ): Promise<InsertDeploymentProductLogsResult> {
   const inserted: InsertedProductLogMessage[] = await transaction
     .insert(deploymentProductLogs)
@@ -93,12 +113,9 @@ async function addProductLogStoreUsage(transaction: ApiDatabaseTransaction, inse
     .where(eq(productLogStoreQuota.id, 'global'));
 }
 
-function takeEventsWithinQuota(
-  events: InsertDeploymentProductLogInput[],
-  availableBytes: number,
-): InsertDeploymentProductLogInput[] {
+function takeEventsWithinQuota(events: InsertProductLogInput[], availableBytes: number): InsertProductLogInput[] {
   let remainingBytes: number = Math.max(0, availableBytes);
-  return events.filter((event: InsertDeploymentProductLogInput): boolean => {
+  return events.filter((event: InsertProductLogInput): boolean => {
     const eventBytes: number = productLogRecordBytes(event);
     if (eventBytes > remainingBytes) {
       return false;
@@ -122,10 +139,43 @@ export async function listDeploymentProductLogLines(
     .limit(input.limit);
   return rows.toReversed().map(
     (row: typeof deploymentProductLogs.$inferSelect): DeploymentProductLogLine => ({
-      deploymentId: row.deploymentId,
+      deploymentId: requiredDeploymentId(row.deploymentId),
       environmentName: '',
       message: row.message,
       serviceName: '',
+      stream: row.stream,
+      timestamp: row.occurredAt.toISOString(),
+    }),
+  );
+}
+
+function requiredDeploymentId(deploymentId: string | null): string {
+  if (deploymentId === null) {
+    throw new Error('Stored deployment product log is missing its deployment owner.');
+  }
+  return deploymentId;
+}
+
+export async function listResourceProductLogLines(
+  input: ListResourceProductLogsInput,
+): Promise<ResourceProductLogLine[]> {
+  const predicate: SQL =
+    input.since === undefined
+      ? eq(deploymentProductLogs.resourceId, input.resourceId)
+      : and(
+          eq(deploymentProductLogs.resourceId, input.resourceId),
+          gte(deploymentProductLogs.occurredAt, input.since),
+        )!;
+  const rows: (typeof deploymentProductLogs.$inferSelect)[] = await getApiDatabase()
+    .select()
+    .from(deploymentProductLogs)
+    .where(predicate)
+    .orderBy(desc(deploymentProductLogs.occurredAt), desc(deploymentProductLogs.sourceOffset))
+    .limit(input.limit);
+  return rows.toReversed().map(
+    (row: typeof deploymentProductLogs.$inferSelect): ResourceProductLogLine => ({
+      message: row.message,
+      resourceName: '',
       stream: row.stream,
       timestamp: row.occurredAt.toISOString(),
     }),
@@ -179,11 +229,11 @@ async function lockProductLogQuota(transaction: ApiDatabaseTransaction): Promise
   return quota;
 }
 
-function toInsertValues(event: InsertDeploymentProductLogInput): typeof deploymentProductLogs.$inferInsert {
+function toInsertValues(event: InsertProductLogInput): typeof deploymentProductLogs.$inferInsert {
   return {
     capturedAt: new Date(),
     containerName: event.containerName,
-    deploymentId: event.deploymentId,
+    ...('deploymentId' in event ? { deploymentId: event.deploymentId } : { resourceId: event.resourceId }),
     message: event.message,
     namespace: event.namespace,
     occurredAt: new Date(event.timestamp),

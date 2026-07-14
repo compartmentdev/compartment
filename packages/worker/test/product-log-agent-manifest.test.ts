@@ -47,6 +47,8 @@ describe('product log agent manifest', (): void => {
     const manifest: string = await readFile(manifestPath, 'utf8');
 
     expect(manifest).toContain('mountPath: /var/log/pods');
+    expect(manifest).toContain('/var/log/pods/cpt-*/resource/*.log');
+    expect(manifest).toContain('app(?:-[a-z0-9-]+)?|resource');
     expect(manifest).toContain('readOnly: true');
     expect(manifest).toContain('secretKeyRef:');
     expect(manifest).toContain('key: ingest-token');

@@ -65,7 +65,8 @@ export type ProductJobRunsTable = PgTableOf<'product_job_runs', ProductJobRunsCo
 export type ProductJobRunsExtraConfigColumns = PgExtraConfigColumnsOf<'product_job_runs', ProductJobRunsColumnBuilders>;
 
 interface DeploymentProductLogsColumnBuilders {
-  deploymentId: RequiredTextBuilder<'deployment_id'>;
+  deploymentId: OptionalTextBuilder<'deployment_id'>;
+  resourceId: OptionalTextBuilder<'resource_id'>;
   podUid: RequiredTextBuilder<'pod_uid'>;
   podName: RequiredTextBuilder<'pod_name'>;
   namespace: RequiredTextBuilder<'namespace'>;

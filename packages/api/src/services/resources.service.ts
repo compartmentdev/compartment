@@ -1,11 +1,9 @@
 import {
-  type PermissionKey,
   type NodeResourceRequest,
-  type NodeResourceLogsResponse,
   type NodeResourceResponse,
   type ResourceVolumeSummary,
 } from '@compartment/contracts';
-import { deleteNodeResource, startNodeResource, stopNodeResource, tailNodeResourceLogs } from '@compartment/sdk';
+import { deleteNodeResource, startNodeResource, stopNodeResource } from '@compartment/sdk';
 import { createResourceNotFoundError } from '../errors/api-business-error';
 import type { NodeRow } from '../queries/node.query.types';
 import {
@@ -34,15 +32,12 @@ import type {
   ResourceEnvironmentContext,
   ResourceListInput,
   ResourceListResult,
-  ResourceLogsInput,
-  ResourceLogsResult,
   ResourceLookupResult,
   ResourceOutputInput,
   ResourceOutputListResult,
   ResourceOutputResult,
   ResourceOutputSummaryInput,
 } from './resources.service.types';
-import { requireEnvironmentPermission } from './deployment-context.service.scope';
 
 export { reconcileDeclaredResources } from './resources-reconcile.service';
 
@@ -202,38 +197,6 @@ export async function deleteResourceForPrincipal(input: ResourceDeleteInput): Pr
   await deleteProjectResource(resource.id);
 
   return input.body.deleteData === true ? [] : volumes.map((volume: ResourceVolumeSummary): string => volume.name);
-}
-
-export async function getResourceLogsForPrincipal(input: ResourceLogsInput): Promise<ResourceLogsResult> {
-  const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input, 'deployment.create');
-  await requireResourceEnvironmentPermission(input.actorPrincipalId, context, 'deployment.logs.read');
-  const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
-  assertNodeResourceOperation(resource, 'logs');
-  const node: NodeRow = await resolveResourceNode(context);
-  const response: NodeResourceLogsResponse = await tailNodeResourceLogs(
-    createNodeRuntimeRequester(node.nodeSocketPath),
-    {
-      containerId: requireRunningResourceContainerId(resource),
-      environmentName: context.environment.name,
-      resourceName: resource.name,
-      ...(input.query.since !== undefined ? { since: input.query.since } : {}),
-      ...(input.query.tailLines !== undefined ? { tailLines: input.query.tailLines } : {}),
-    },
-  );
-
-  return {
-    ...context,
-    lines: response.lines,
-    resource,
-  };
-}
-
-async function requireResourceEnvironmentPermission(
-  principalId: string,
-  context: ResourceEnvironmentContext,
-  permission: PermissionKey,
-): Promise<void> {
-  await requireEnvironmentPermission(principalId, context.organization.id, context.environment.id, permission);
 }
 
 async function resolveRequiredResource(environmentId: string, resourceName: string): Promise<ProjectResourceRow> {

@@ -23,6 +23,7 @@ import {
   organizations,
   projectServices,
   projectKubeProvisioning,
+  projectResources,
   projects,
   productLogStoreQuota,
 } from '../src/db/schema';
@@ -44,6 +45,7 @@ import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import {
   ingestDeploymentProductLogs,
   readStoredDeploymentProductLogs,
+  readStoredResourceProductLogs,
 } from '../src/services/deployment-product-logs.service';
 import { runProductLogRetentionCleanup } from '../src/services/product-log-retention.service';
 import { listDeploymentProductLogLines } from '../src/queries/deployment-product-logs.query';
@@ -101,6 +103,50 @@ describe('deployment Kubernetes transition persistence', (): void => {
       ingestDeploymentProductLogs([{ ...event, message: 'after rotation', sourceFingerprint: 'b'.repeat(64) }]),
     ).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
     await expect(db.select().from(deploymentProductLogs)).resolves.toHaveLength(2);
+  });
+
+  it('stores Kubernetes resource container logs under the resource identity', async (): Promise<void> => {
+    await db.insert(projectResources).values({
+      commandJson: '[]',
+      createdAt: new Date('2026-07-11T10:00:00.000Z'),
+      envJson: '[]',
+      environmentId: 'env_kube',
+      expectedClaimsJson: '[]',
+      hostname: 'postgres',
+      id: 'res_kube',
+      image: 'postgres:16',
+      name: 'postgres',
+      outputsJson: '{}',
+      portsJson: '[5432]',
+      readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
+      restartPolicy: 'on-failure',
+      runtimeDefinitionHash: 'resource-hash',
+      runtimeKind: 'kubernetes',
+      status: 'running',
+      volumesJson: '[]',
+    });
+    const event: ProductLogIngestEvent = {
+      containerName: 'resource',
+      message: 'database system is ready',
+      namespace: immutableKubeName('cpt', 'prj_kube'),
+      podName: `${immutableKubeName('resource', 'res_kube')}-abc`,
+      podUid: '12121212-1212-4212-8212-121212121212',
+      restartIdentity: '0',
+      sourceFingerprint: 'c'.repeat(64),
+      sourceOffset: 1,
+      stream: 'stderr',
+      timestamp: '2026-07-12T10:00:00.000Z',
+    };
+
+    await expect(ingestDeploymentProductLogs([event])).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
+    await expect(readStoredResourceProductLogs('res_kube', 'postgres', undefined, 50)).resolves.toEqual([
+      {
+        message: 'database system is ready',
+        resourceName: 'postgres',
+        stream: 'stderr',
+        timestamp: '2026-07-12T10:00:00.000Z',
+      },
+    ]);
   });
 
   it('keeps every stored line across the P2-style Pod replacement', async (): Promise<void> => {

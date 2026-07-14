@@ -29,8 +29,10 @@ import {
   type DeploymentRunLogsResponse,
   type DeployResponse,
   type NodeInspectDeploymentResponse,
+  type ProductLogIngestEvent,
   type InstallResponse,
 } from '@compartment/contracts';
+import { immutableKubeName } from '@compartment/utils';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { createApp } from '../src/app';
@@ -68,6 +70,7 @@ import {
   seedProject,
   type RbacTestHarness,
 } from './rbac-test.fixtures';
+import { ingestDeploymentProductLogs } from '../src/services/deployment-product-logs.service';
 
 interface AppAccessEdgeServiceModule {
   invalidateEdgeAppAccessSessions: () => Promise<void>;
@@ -448,6 +451,32 @@ describe('rbac permission-family integration', (): void => {
 
     expect(allowedLogsResponse.statusCode).toBe(200);
     expect(resourceLogsResponseSchema.parse(allowedLogsResponse.json()).lines[0]?.message).toBe('resource ok');
+    await harness.db
+      .update(projectResources)
+      .set({ runtimeKind: 'kubernetes' })
+      .where(eq(projectResources.id, 'res_postgres'));
+    const resourceEvent: ProductLogIngestEvent = {
+      containerName: 'resource',
+      message: 'database system is ready',
+      namespace: immutableKubeName('cpt', 'prj_resource'),
+      podName: `${immutableKubeName('resource', 'res_postgres')}-abc`,
+      podUid: '34343434-3434-4434-8434-343434343434',
+      restartIdentity: '0',
+      sourceFingerprint: 'd'.repeat(64),
+      sourceOffset: 1,
+      stream: 'stderr',
+      timestamp: new Date().toISOString(),
+    };
+    await ingestDeploymentProductLogs([resourceEvent]);
+    const kubernetesLogsResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders('operator-session'),
+      method: 'GET',
+      url: '/v1/resources/postgres/logs?projectName=billing&environmentName=production',
+    });
+    expect(kubernetesLogsResponse.statusCode).toBe(200);
+    expect(resourceLogsResponseSchema.parse(kubernetesLogsResponse.json()).lines[0]?.message).toBe(
+      'database system is ready',
+    );
     expect(revealOutputResponse.statusCode).toBe(200);
     expect(resourceOutputResponseSchema.parse(revealOutputResponse.json()).output.value).toBe(
       'postgres://postgres.production.billing.resource.internal/app',

@@ -7,7 +7,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import '../../http/request.types';
 import { parseRequestValue } from '../../http/validation';
-import { getResourceLogsForPrincipal } from '../../services/resources.service';
+import { getResourceLogsForPrincipal } from '../../services/resource-logs.service';
 import { createCurrentOrganizationRouteOptions } from '../protected/current-organization-route';
 import { requireAnyResourceAccess } from './resource-authorization';
 import { buildResourceLogsResponse } from './resource.presenter';
