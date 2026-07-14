@@ -8,6 +8,7 @@ This page is generated from the current shipped `compartment` help output.
 Related guides:
 
 - [Deploy using Git](/deploy-apps/deploy-using-git/)
+- [Connect GitLab repositories](/deploy-apps/gitlab-git-sources/)
 
 ## Help Output
 
