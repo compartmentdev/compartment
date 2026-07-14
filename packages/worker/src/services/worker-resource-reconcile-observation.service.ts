@@ -100,22 +100,37 @@ export function readResourcePods(observation: KubeObservation): { deletionTimest
     .map((): { deletionTimestamp?: string | undefined } => ({}));
 }
 
-export function resourceDeploymentFreshAndReady(
+export async function waitForFreshResourceDeployment(
+  runtime: KubeRuntime,
+  observation: KubeObservation,
+  manifests: KubeManifest[],
+  previousPodNames: ReadonlySet<string>,
+): Promise<void> {
+  const desired: KubeDeploymentManifest = requiredDeployment(manifests);
+  await waitUntilLive(
+    async (): Promise<true | null> =>
+      resourceDeploymentFreshAndReady(await runtime.read(desired), desired, observation, previousPodNames)
+        ? true
+        : null,
+  );
+}
+
+function resourceDeploymentFreshAndReady(
   observed: KubeObservedManifest | null,
   desired: KubeDeploymentManifest,
+  observation: KubeObservation,
+  previousPodNames: ReadonlySet<string>,
 ): boolean {
   if (observed?.kind !== 'Deployment') {
     return false;
   }
-  const generation: number | undefined = observed.metadata?.generation;
   const status: ObservedDeploymentStatus | undefined = observed.status;
   if (status === undefined) {
     return false;
   }
   const desiredReplicas: number | undefined = desired.spec?.replicas;
   return (
-    resourceDeploymentRevisionMatches(observed, desired) &&
-    generationIsCurrent(generation, status.observedGeneration) &&
+    hasFreshResourcePod(observation, previousPodNames) &&
     status.availableReplicas === desiredReplicas &&
     status.readyReplicas === desiredReplicas &&
     status.conditions?.some(
@@ -125,19 +140,18 @@ export function resourceDeploymentFreshAndReady(
   );
 }
 
-function resourceDeploymentRevisionMatches(observed: KubeDeploymentManifest, desired: KubeDeploymentManifest): boolean {
-  const observedImage: string | undefined = observed.spec?.template.spec.containers[0]?.image;
-  const desiredImage: string | undefined = desired.spec?.template.spec.containers[0]?.image;
-  return (
-    observed.spec?.replicas === desired.spec?.replicas &&
-    observedImage === desiredImage &&
-    observed.spec?.template.metadata.annotations?.['compartment.dev/secret-checksum'] ===
-      desired.spec?.template.metadata.annotations?.['compartment.dev/secret-checksum']
+function hasFreshResourcePod(observation: KubeObservation, previousPodNames: ReadonlySet<string>): boolean {
+  return [...readResourcePodNames(observation)].some(
+    (podName: string): boolean => podName !== '' && !previousPodNames.has(podName),
   );
 }
 
-function generationIsCurrent(generation: number | undefined, observedGeneration: number | undefined): boolean {
-  return generation === undefined || observedGeneration === undefined || observedGeneration >= generation;
+export function readResourcePodNames(observation: KubeObservation): Set<string> {
+  return new Set(
+    [...observation.cache.entries()]
+      .filter(([key]: [string, KubeObservedManifest]): boolean => key.startsWith('pods/'))
+      .map(([, pod]: [string, KubeObservedManifest]): string => pod.metadata?.name ?? ''),
+  );
 }
 
 export async function waitUntil<T>(observation: KubeObservation, read: () => T | null): Promise<T> {
@@ -164,7 +178,7 @@ export async function waitUntil<T>(observation: KubeObservation, read: () => T |
   });
 }
 
-export async function waitUntilLive<T>(read: () => Promise<T | null>): Promise<T> {
+async function waitUntilLive<T>(read: () => Promise<T | null>): Promise<T> {
   const deadlineAt: number = Date.now() + reconcileTimeoutMs;
   while (Date.now() < deadlineAt) {
     const value: T | null = await read();
@@ -174,6 +188,16 @@ export async function waitUntilLive<T>(read: () => Promise<T | null>): Promise<T
     await delay(1_000);
   }
   throw new Error('Timed out waiting for live Kubernetes resource lifecycle evidence.');
+}
+
+function requiredDeployment(manifests: KubeManifest[]): KubeDeploymentManifest {
+  const deployment: KubeManifest | undefined = manifests.find(
+    (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+  );
+  if (deployment?.kind !== 'Deployment') {
+    throw new Error('Resource reconcile Deployment manifest is missing.');
+  }
+  return deployment;
 }
 
 export async function readRollbackManifest(
