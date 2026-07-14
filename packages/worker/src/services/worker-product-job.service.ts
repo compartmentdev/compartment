@@ -9,7 +9,7 @@ import {
   assertResourceClaimIdentity,
   type KubeJobResult,
   type KubeJobSpec,
-  type KubeObservation,
+  type KubeManifest,
   type KubeObservedManifest,
   type KubePersistedJobResult,
   type KubeRuntime,
@@ -55,47 +55,33 @@ async function assertProductJobClaims(runtime: KubeRuntime, intent: ProductJobIn
   if (intent.volumeMounts === undefined || intent.volumeMounts.length === 0) {
     return;
   }
-  const observation: KubeObservation = await runtime.observe({
-    labels: { 'compartment.dev/resource-id': requiredResourceId(intent) },
-    namespace: intent.namespace,
-    resources: ['persistentvolumeclaims'],
-  });
-  try {
-    assertResourceClaimIdentity(
-      intent.volumeMounts.map(
-        (mount: ProductJobVolumeMount): ResourceClaimIdentity => ({
-          claimName: mount.claimName,
-          uid: mount.expectedClaimUid,
-        }),
-      ),
-      readMountedClaims(observation, intent.volumeMounts),
-    );
-  } finally {
-    await observation.stop();
-  }
-}
-
-function readMountedClaims(observation: KubeObservation, mounts: ProductJobVolumeMount[]): ObservedResourceClaim[] {
-  const expectedNames: Set<string> = new Set<string>(
-    mounts.map((mount: ProductJobVolumeMount): string => mount.claimName),
-  );
-  return [...observation.cache.values()]
-    .filter((claim: KubeObservedManifest): boolean => expectedNames.has(claim.metadata?.name ?? ''))
-    .map(
-      (claim: KubeObservedManifest): ObservedResourceClaim => ({
-        bound: (claim.status as { phase?: string | undefined } | undefined)?.phase === 'Bound',
-        claimName: claim.metadata?.name ?? '',
-        uid: claim.metadata?.uid ?? null,
+  assertResourceClaimIdentity(
+    intent.volumeMounts.map(
+      (mount: ProductJobVolumeMount): ResourceClaimIdentity => ({
+        claimName: mount.claimName,
+        uid: mount.expectedClaimUid,
       }),
-    );
+    ),
+    await readMountedClaims(runtime, intent),
+  );
 }
 
-function requiredResourceId(intent: ProductJobIntent): string {
-  const resourceId: string | undefined = intent.volumeMounts?.[0]?.resourceId;
-  if (resourceId === undefined) {
-    throw new Error('Product Job PVC verification requires a resource ID.');
-  }
-  return resourceId;
+async function readMountedClaims(runtime: KubeRuntime, intent: ProductJobIntent): Promise<ObservedResourceClaim[]> {
+  return await Promise.all(
+    (intent.volumeMounts ?? []).map(async (mount: ProductJobVolumeMount): Promise<ObservedResourceClaim> => {
+      const claim: KubeManifest = {
+        apiVersion: 'v1',
+        kind: 'PersistentVolumeClaim',
+        metadata: { name: mount.claimName, namespace: intent.namespace },
+      };
+      const observed: KubeObservedManifest | null = await runtime.read(claim);
+      return {
+        bound: (observed?.status as { phase?: string | undefined } | undefined)?.phase === 'Bound',
+        claimName: mount.claimName,
+        uid: observed?.metadata?.uid ?? null,
+      };
+    }),
+  );
 }
 
 export async function finalizeRecoveredProductJob(

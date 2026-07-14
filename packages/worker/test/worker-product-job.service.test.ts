@@ -3,7 +3,7 @@ import type {
   WorkerFinalizeProductJobRequest,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
-import type { KubeJobResult, KubeObservation, KubeRuntime } from '@compartment/kube-runtime';
+import type { KubeJobResult, KubeObservedManifest, KubeRuntime } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { executeProductJob } from '../src/services/worker-product-job.service';
@@ -150,27 +150,18 @@ describe('executeProductJob', (): void => {
     );
   });
 
-  it('passes resource and backup PVC mounts to the operation Job', async (): Promise<void> => {
+  it('fences operation PVCs through a live read before creating the Job', async (): Promise<void> => {
     const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
-    runtime.observe = vi.fn(
-      async (): Promise<KubeObservation> =>
+    const read: Mock = vi.fn(
+      async (): Promise<KubeObservedManifest> =>
         await Promise.resolve({
-          cache: new Map([
-            [
-              'persistentvolumeclaims/backup',
-              {
-                apiVersion: 'v1',
-                kind: 'PersistentVolumeClaim',
-                metadata: { name: 'backup-artifacts', uid: 'uid-backup' },
-                status: { phase: 'Bound' },
-              },
-            ],
-          ]),
-          health: vi.fn(),
-          onEvent: vi.fn(),
-          stop: vi.fn(async (): Promise<void> => await Promise.resolve()),
+          apiVersion: 'v1',
+          kind: 'PersistentVolumeClaim',
+          metadata: { name: 'backup-artifacts', uid: 'uid-backup' },
+          status: { phase: 'Bound' },
         }),
     );
+    runtime.read = read;
     const intent: ProductJobIntent = {
       command: ['bin/backup'],
       env: {},
@@ -192,6 +183,11 @@ describe('executeProductJob', (): void => {
 
     await executeProductJob(requester(), runtime, intent);
 
+    expect(read).toHaveBeenCalledWith({
+      apiVersion: 'v1',
+      kind: 'PersistentVolumeClaim',
+      metadata: { name: 'backup-artifacts', namespace: 'cpt-prj-01jz' },
+    });
     expect(runtime.runJob).toHaveBeenCalledWith(expect.objectContaining({ volumeMounts: intent.volumeMounts }));
   });
 });
