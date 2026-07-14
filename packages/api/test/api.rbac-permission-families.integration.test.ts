@@ -314,6 +314,7 @@ describe('rbac permission-family integration', (): void => {
   });
 
   it('resolves resource access at environment scope and keeps resource logs behind explicit log-read grants', async (): Promise<void> => {
+    const resourceId: string = 'res_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const installPayload: InstallResponse = await installCompartment(app);
     await seedProject(harness, {
       id: 'prj_resource',
@@ -331,7 +332,7 @@ describe('rbac permission-family integration', (): void => {
       envJson: '[]',
       environmentId: 'env_resource',
       hostname: 'postgres.production.billing.resource.internal',
-      id: 'res_postgres',
+      id: resourceId,
       image: 'postgres:16',
       name: 'postgres',
       outputsJson: '{"connection-url":{"sensitive":true,"value":"postgres://${resource.host}/app"}}',
@@ -454,12 +455,12 @@ describe('rbac permission-family integration', (): void => {
     await harness.db
       .update(projectResources)
       .set({ runtimeKind: 'kubernetes' })
-      .where(eq(projectResources.id, 'res_postgres'));
+      .where(eq(projectResources.id, resourceId));
     const resourceEvent: ProductLogIngestEvent = {
       containerName: 'resource',
       message: 'database system is ready',
       namespace: immutableKubeName('cpt', 'prj_resource'),
-      podName: `${immutableKubeName('resource', 'res_postgres')}-abc`,
+      podName: `${immutableKubeName('resource', resourceId)}-abc`,
       podUid: '34343434-3434-4434-8434-343434343434',
       restartIdentity: '0',
       sourceFingerprint: 'd'.repeat(64),
@@ -467,7 +468,11 @@ describe('rbac permission-family integration', (): void => {
       stream: 'stderr',
       timestamp: new Date().toISOString(),
     };
-    await ingestDeploymentProductLogs([resourceEvent]);
+    await expect(ingestDeploymentProductLogs([resourceEvent])).resolves.toEqual({
+      accepted: 1,
+      duplicates: 0,
+      rejected: 0,
+    });
     const kubernetesLogsResponse: LightMyRequestResponse = await app.inject({
       headers: buildOrganizationAuthorizationHeaders('operator-session'),
       method: 'GET',
