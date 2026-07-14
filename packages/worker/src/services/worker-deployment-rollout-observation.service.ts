@@ -62,6 +62,8 @@ function projectDeploymentObservation(
     desiredReplicas: deployment.spec?.replicas ?? 1,
     generation: observed.metadata?.generation ?? 0,
     observedGeneration: status.observedGeneration ?? null,
+    replicas: status.replicas ?? 0,
+    updatedReplicas: status.updatedReplicas ?? 0,
   };
 }
 

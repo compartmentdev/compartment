@@ -83,6 +83,8 @@ describe('rollout observation decisions', (): void => {
     desiredReplicas: 1,
     generation: 4,
     observedGeneration: 3,
+    replicas: 1,
+    updatedReplicas: 1,
   };
 
   it('reports ProgressDeadlineExceeded before considering a rollout Ready', (): void => {
@@ -106,6 +108,15 @@ describe('rollout observation decisions', (): void => {
   it('requires the current generation and desired replicas for Ready', (): void => {
     expect(calculateKubeRolloutStatus({ ...rollout, availableReplicas: 1, observedGeneration: 4 }, now)).toBe('ready');
     expect(calculateKubeRolloutStatus(rollout, now)).toBe('progressing');
+  });
+
+  it('waits for old replicas to leave the stable Service selector', (): void => {
+    expect(
+      calculateKubeRolloutStatus({ ...rollout, availableReplicas: 2, observedGeneration: 4, replicas: 2 }, now),
+    ).toBe('progressing');
+    expect(
+      calculateKubeRolloutStatus({ ...rollout, availableReplicas: 1, observedGeneration: 4, updatedReplicas: 0 }, now),
+    ).toBe('progressing');
   });
 });
 

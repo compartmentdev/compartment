@@ -216,7 +216,7 @@ function readyDeployment(namespace: string, name: string): KubeManifest {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
     metadata: { generation: 1, name, namespace },
-    status: { availableReplicas: 1, observedGeneration: 1 },
+    status: { availableReplicas: 1, observedGeneration: 1, replicas: 1, updatedReplicas: 1 },
   } as never;
 }
 
