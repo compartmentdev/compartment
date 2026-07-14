@@ -128,7 +128,7 @@ async function persistReady(
     previousActiveId,
   });
   await activateDeployment(tx, input);
-  await switchReconcileRoute(tx, input, previousActiveId);
+  await switchReconcileRoute(tx, input, candidate);
   await publishReconcileSucceeded(tx, input, candidate.deploymentRunId);
   await updateReference(tx, input, 'active');
   return true;
@@ -213,14 +213,26 @@ async function activateDeployment(
 async function switchReconcileRoute(
   tx: DeploymentTransaction,
   input: PersistDeploymentReconcileObservationInput,
-  previousActiveId: string | undefined,
+  candidate: SupersedeCandidateContext,
 ): Promise<void> {
-  if (previousActiveId !== undefined) {
-    await tx
-      .update(deploymentRoutes)
-      .set({ deploymentId: input.deploymentId, updatedAt: input.observedAt })
-      .where(eq(deploymentRoutes.deploymentId, previousActiveId));
+  const [routeOwner] = await tx
+    .select({ deploymentId: deploymentRoutes.deploymentId })
+    .from(deploymentRoutes)
+    .innerJoin(deployments, eq(deploymentRoutes.deploymentId, deployments.id))
+    .where(
+      and(
+        eq(deployments.environmentId, candidate.environmentId),
+        eq(deployments.projectServiceId, candidate.serviceId),
+      ),
+    )
+    .limit(1);
+  if (routeOwner === undefined || routeOwner.deploymentId === input.deploymentId) {
+    return;
   }
+  await tx
+    .update(deploymentRoutes)
+    .set({ deploymentId: input.deploymentId, updatedAt: input.observedAt })
+    .where(eq(deploymentRoutes.deploymentId, routeOwner.deploymentId));
 }
 
 async function markReconcileOperationSucceeded(

@@ -551,6 +551,40 @@ describe('deployment Kubernetes transition persistence', (): void => {
       candidate: { deploymentId: 'dep_candidate', state: 'active' },
     });
   });
+
+  it('reattaches the stopped deployment route when a project start becomes Ready', async (): Promise<void> => {
+    await seedCandidate();
+    await db
+      .update(deployments)
+      .set({ isActive: false, promotionStage: 'stopped', status: 'stopped' })
+      .where(eq(deployments.id, 'dep_kube'));
+    await db
+      .update(deploymentKubeReferences)
+      .set({ state: 'stopped' })
+      .where(eq(deploymentKubeReferences.deploymentId, 'dep_kube'));
+    await db.update(deploymentRoutes).set({ deploymentId: 'dep_kube' });
+    const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
+
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_candidate',
+      failureMessage: null,
+      observation: 'pending',
+      observedAt,
+      revision: 0,
+    });
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'ready',
+        observedAt,
+        revision: 1,
+      }),
+    ).toBe(true);
+
+    const [route] = await db.select({ deploymentId: deploymentRoutes.deploymentId }).from(deploymentRoutes);
+    expect(route).toEqual({ deploymentId: 'dep_candidate' });
+  });
 });
 
 function transitionInput(organizationId: string): PersistDeploymentKubeTransitionInput {
