@@ -29,6 +29,7 @@ import {
 } from '../../test-support/src';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { deployments } from '../src/db/schema';
+import { upsertDeploymentKubeReference } from '../src/queries/deployment-kube-reference.query';
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
@@ -126,6 +127,17 @@ export async function deployAndActivateCurrentService(installPayload: InstallRes
 
   await completeQueuedDeployment(app, deployment.id, claimedDeployment.routeHost);
   return deployment;
+}
+
+export async function markDeploymentAsKubernetes(deploymentId: string): Promise<void> {
+  await upsertDeploymentKubeReference({
+    deploymentId,
+    deploymentName: 'app-runtime-boundary',
+    id: `kref_${deploymentId}`,
+    namespace: 'cpt-runtime-boundary',
+    networkPolicyNames: [],
+    serviceName: 'app-runtime-boundary',
+  });
 }
 
 export async function completeDeploymentForWorker(input: WorkerCompleteDeploymentRequest): Promise<void> {
