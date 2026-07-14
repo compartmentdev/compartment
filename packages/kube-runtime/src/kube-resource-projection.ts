@@ -23,6 +23,7 @@ export function projectResourceManifests(row: ResourceProjectionRow, replicas: 0
   const namespace: string = kubeNamespaceName(row.namespaceId);
   const labels: Record<string, string> = {
     ...managedByLabel,
+    app: 'resource',
     'compartment.dev/environment-id': row.environmentId,
     'compartment.dev/resource-id': row.resourceId,
   };

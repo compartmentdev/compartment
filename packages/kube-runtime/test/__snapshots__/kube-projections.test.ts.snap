@@ -44,6 +44,7 @@ metadata:
     compartment.dev/project-name: Checkout
     compartment.dev/service-name: Web
   labels:
+    app: application
     app.kubernetes.io/managed-by: compartment
     compartment.dev/deployment-id: dep-01jz
     compartment.dev/environment-id: env-01jz
@@ -57,6 +58,7 @@ spec:
   replicas: 2
   selector:
     matchLabels:
+      app: application
       app.kubernetes.io/managed-by: compartment
       compartment.dev/environment-id: env-01jz
       compartment.dev/organization-id: org-01jz
@@ -76,6 +78,7 @@ spec:
         compartment.dev/secret-checksum: <sha256>
         compartment.dev/service-name: Web
       labels:
+        app: application
         app.kubernetes.io/managed-by: compartment
         compartment.dev/deployment-id: dep-01jz
         compartment.dev/environment-id: env-01jz
@@ -131,6 +134,7 @@ metadata:
     compartment.dev/project-name: Checkout
     compartment.dev/service-name: Web
   labels: &a1
+    app: application
     app.kubernetes.io/managed-by: compartment
     compartment.dev/environment-id: env-01jz
     compartment.dev/organization-id: org-01jz

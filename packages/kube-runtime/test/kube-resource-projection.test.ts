@@ -86,4 +86,15 @@ describe('resource projection and fencing', (): void => {
     expect(yaml).toContain('type: Recreate');
     expect(yaml).toContain('replicas: 1');
   });
+
+  it('matches the provisioned resource NetworkPolicy selector', (): void => {
+    const manifests: KubeManifest[] = projectResourceManifests(row);
+    const deployment: KubeManifest = manifests.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+    )!;
+    const service: KubeManifest = manifests.find((manifest: KubeManifest): boolean => manifest.kind === 'Service')!;
+
+    expect(deployment.spec).toMatchObject({ selector: { matchLabels: { app: 'resource' } } });
+    expect(service.spec).toMatchObject({ selector: { app: 'resource' } });
+  });
 });

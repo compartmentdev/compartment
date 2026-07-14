@@ -43,6 +43,7 @@ export function projectApplicationManifests(row: ApplicationProjectionRow): Kube
 function applicationProjectionContext(row: ApplicationProjectionRow): ApplicationProjectionContext {
   const workloadLabels: Record<string, string> = {
     ...managedByLabel,
+    app: 'application',
     'compartment.dev/environment-id': row.environmentId,
     'compartment.dev/organization-id': row.organizationId,
     'compartment.dev/project-id': row.projectId,

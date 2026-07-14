@@ -11,9 +11,10 @@ import {
 import type { KubeSecretEnvVariable } from '../src/kube-runtime.types';
 
 interface DeploymentSpec {
+  selector: { matchLabels: Record<string, string> };
   progressDeadlineSeconds: number;
   template: {
-    metadata: { annotations: Record<string, string> };
+    metadata: { annotations: Record<string, string>; labels: Record<string, string> };
     spec: { automountServiceAccountToken: false; containers: DeploymentContainer[] };
   };
 }
@@ -194,6 +195,15 @@ describe('Kubernetes manifest projection goldens', (): void => {
     expect(JSON.stringify(candidateDeployment.spec)).toContain('registry.example/app@sha256:next');
     expect(candidateService.spec).toEqual(firstService.spec);
     expect(JSON.stringify(candidateService)).not.toContain('dep-02jz');
+  });
+
+  it('matches the provisioned application NetworkPolicy selector', (): void => {
+    const deployment: DeploymentSpec = deploymentForRow(applicationRow({})).spec as DeploymentSpec;
+    const service: KubeManifest = serviceFor(applicationRow({}));
+
+    expect(deployment.selector.matchLabels).toMatchObject({ app: 'application' });
+    expect(deployment.template.metadata.labels).toMatchObject({ app: 'application' });
+    expect(service.spec).toMatchObject({ selector: { app: 'application' } });
   });
 });
 

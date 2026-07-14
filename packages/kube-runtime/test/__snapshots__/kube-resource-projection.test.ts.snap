@@ -20,6 +20,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels: &a1
+    app: resource
     app.kubernetes.io/managed-by: compartment
     compartment.dev/environment-id: env-01jz
     compartment.dev/resource-id: res-01jz
@@ -72,6 +73,7 @@ apiVersion: v1
 kind: Service
 metadata:
   labels: &a1
+    app: resource
     app.kubernetes.io/managed-by: compartment
     compartment.dev/environment-id: env-01jz
     compartment.dev/resource-id: res-01jz
