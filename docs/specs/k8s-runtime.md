@@ -1,7 +1,7 @@
 # Kubernetes Runtime
 
 Status: migration decision
-Updated: 2026-07-12
+Updated: 2026-07-14
 
 ## Ownership
 
@@ -58,13 +58,14 @@ The durable protocol follows the immutable T9 evidence linked below:
 
 1. persist `desired` before writing Kubernetes;
 2. apply the deterministic bundle, then persist `pending`;
-3. persist `active` only after the informer observes the desired generation as
+3. persist `active` only after a direct read observes the desired generation as
    Ready;
-4. when an active object is deleted, drifts, or becomes non-Ready, write a
-   drift audit event and return it to `pending` in the same transaction;
+4. tolerate transient non-Ready reads for an active Deployment and return it to
+   `pending` only after Kubernetes reports `ProgressDeadlineExceeded`;
 5. recover `desired` by applying, recover `pending` by reapplying only when the
-   cache is absent or drifted, and recover `active` through the same level-
-   triggered rules.
+   object is absent, and recover `active` through the same stateless direct-read
+   rules. Failed candidate recovery reapplies the previous active manifests but
+   never blocks the controller on a second observation loop.
 
 Informer callbacks are concurrent, repeatable signals. One database
 transaction owns each state transition and its drift audit event.
@@ -104,7 +105,8 @@ no-service-account-token and checksum rollout model. Resource rows project to
 `Recreate` Deployments, internal Services, Secrets, and stable PVC references.
 PVC creation is a separate explicit bootstrap operation. Stateful updates stop
 the old pod, prove absence, verify persisted claim UIDs, start the new manifest,
-and restore the saved executable manifest on failure.
+and restore the saved executable manifest on failure. A live workload without
+a complete executable rollback snapshot is refused before the first scale-to-zero.
 
 Resource backup and restore use durable product Jobs. They mount only the
 per-resource artifact PVC, verify its persisted UID before execution, and use a
@@ -151,14 +153,27 @@ rollout are deferred to F2; P9 does not depend on public keyless Sigstore.
 
 The bootstrap role and controller role are derived from the immutable T5 artifacts. No
 production or seeded Compartment principal receives either role by default.
-Fresh installs explicitly provision a short-lived bootstrap binding, delete it
-after namespace provisioning, and create one namespace-local controller
-binding per managed project. Existing projects require explicit backfill or
-opt-in. Each later provisioning run requires installation authority to
-re-establish the short-lived bootstrap binding before handing the bootstrap
-identity to the controller. The bootstrap identity cannot recreate that
-binding itself. This is Kubernetes installation authority, not a new
-Compartment user permission.
+Fresh installs require Kubernetes 1.30 or newer and install a fail-closed
+`ValidatingAdmissionPolicy`. Every short-lived bootstrap ServiceAccount is
+named after its immutable `cpt-*` target namespace. Admission permits that
+identity to create the namespace and canonical controller RoleBindings only
+when the request namespace matches the encoded target; the same request in
+`kube-system` is denied. The bootstrap ClusterRoleBinding is deleted after the
+Job and the admission guard remains permanent.
+
+Provisioning Jobs, their ServiceAccounts, and their environment Secrets live
+in a dedicated provisioning namespace. The permanent provisioner can manage
+those ephemeral objects there, but it cannot read platform-namespace Secrets
+or create Jobs there. Its ClusterRoleBinding mutation authority is restricted
+to the fixed bootstrap binding. No production or seeded Compartment principal
+receives Kubernetes authority.
+
+Project provisioning retries use a delayed lease and stop after three
+attempts. A failed third completion, or expiry of the third lease, marks the
+project provisioning row terminal and fails waiting deployment operations and
+resource reconcile runs with the provisioning error instead of leaving them
+unclaimable forever. Existing project controller RoleBindings remain unchanged;
+new projects and explicit retries use the target-bound bootstrap identity.
 
 ## Migration and deletion
 

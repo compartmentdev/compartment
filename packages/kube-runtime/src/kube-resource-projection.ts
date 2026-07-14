@@ -33,12 +33,19 @@ export function projectResourceManifests(row: ResourceProjectionRow, replicas: 0
 }
 
 function resourceSecret(row: ResourceProjectionRow): KubeManifest {
-  return projectSecretManifest({
+  const manifest: KubeManifest = projectSecretManifest({
     data: row.env,
     deploymentId: row.resourceId,
     namespaceId: row.namespaceId,
     secretId: row.secretId,
   });
+  return {
+    ...manifest,
+    metadata: {
+      ...manifest.metadata,
+      labels: { ...manifest.metadata?.labels, 'compartment.dev/resource-id': row.resourceId },
+    },
+  };
 }
 
 function resourceDeployment(

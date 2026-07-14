@@ -1,6 +1,7 @@
-import type { KubernetesObject } from '@kubernetes/client-node';
+import type { KubeConfig, KubernetesListObject, KubernetesObject } from '@kubernetes/client-node';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { calculateRestartDelay } from '../src/kube-backoff';
+import { createRegisteredInformers, type RegisteredInformer } from '../src/kube-informer-registration';
 import { createKubeObservation } from '../src/kube-observation';
 import type { KubeObservation, KubeObservationEvent } from '../src';
 
@@ -20,7 +21,7 @@ class FakeInformer {
   private readonly connectCallbacks: ErrorCallback[] = [];
   private readonly objectCallbacks: Map<string, ObjectCallback[]> = new Map<string, ObjectCallback[]>();
 
-  public constructor(private readonly connects: boolean = true) {}
+  public constructor(private readonly completesStartup: boolean = true) {}
 
   public on(event: string, callback: ObjectCallback | ErrorCallback): void {
     if (event === 'error') {
@@ -33,11 +34,12 @@ class FakeInformer {
   }
 
   public async start(): Promise<void> {
-    await Promise.resolve();
     this.startCount += 1;
-    if (this.connects) {
-      queueMicrotask((): void => this.connectCallbacks.forEach((callback: ErrorCallback): void => callback()));
+    queueMicrotask((): void => this.connectCallbacks.forEach((callback: ErrorCallback): void => callback()));
+    if (!this.completesStartup) {
+      await new Promise<void>((): void => undefined);
     }
+    await Promise.resolve();
   }
 
   public async stop(): Promise<void> {
@@ -54,10 +56,29 @@ class FakeInformer {
   }
 }
 
+class DeferredInitialListInformer extends FakeInformer {
+  private completeStartup: (() => void) | null = null;
+
+  public override async start(): Promise<void> {
+    this.startCount += 1;
+    await new Promise<void>((resolve: () => void): void => {
+      this.completeStartup = resolve;
+    });
+  }
+
+  public publishInitialObject(object: KubernetesObject): void {
+    this.emitObject('add', object);
+    this.completeStartup?.();
+    this.completeStartup = null;
+  }
+}
+
 class FakeObjectApi {
+  public constructor(private readonly items: KubernetesObject[] = []) {}
+
   public async list(): Promise<{ items: KubernetesObject[]; metadata: { resourceVersion: string } }> {
     await Promise.resolve();
-    return { items: [], metadata: { resourceVersion: '1' } };
+    return { items: this.items, metadata: { resourceVersion: '1' } };
   }
 }
 
@@ -70,6 +91,64 @@ describe('informer lifecycle', (): void => {
   it('applies jitter without exceeding the restart cap', (): void => {
     expect(calculateRestartDelay(0, 1_500)).toBe(375);
     expect(calculateRestartDelay(100, 1_500)).toBe(30_000);
+  });
+
+  it('does not expose an observation before the initial informer list populates its cache', async (): Promise<void> => {
+    const informer: DeferredInitialListInformer = new DeferredInitialListInformer();
+    createInformerMock.mockReturnValue(informer);
+    let settled: boolean = false;
+    const startup: Promise<KubeObservation> = createKubeObservation({} as never, new FakeObjectApi() as never, {
+      labels: { 'compartment.dev/deployment-id': 'dep-1' },
+      namespace: 'cpt-prj-1',
+      resources: ['deployments'],
+    }).then((observation: KubeObservation): KubeObservation => {
+      settled = true;
+      return observation;
+    });
+    await vi.waitFor((): void => {
+      expect(informer.startCount).toBe(1);
+    });
+    expect(settled).toBe(false);
+
+    informer.publishInitialObject(deploymentObject());
+    const observation: KubeObservation = await startup;
+
+    expect(observation.cache.has('deployments/cpt-prj-1/app-dep-1')).toBe(true);
+    await observation.stop();
+  });
+
+  it('normalizes initial list objects to the same manifest identity as watch events', async (): Promise<void> => {
+    let listObjects: (() => Promise<KubernetesListObject<KubernetesObject>>) | null = null;
+    createInformerMock.mockImplementation(
+      (
+        _config: KubeConfig,
+        _path: string,
+        list: () => Promise<KubernetesListObject<KubernetesObject>>,
+      ): FakeInformer => {
+        listObjects = list;
+        return new FakeInformer();
+      },
+    );
+    const [registration]: RegisteredInformer[] = createRegisteredInformers(
+      {} as never,
+      new FakeObjectApi([{ metadata: { name: 'app-dep-1', namespace: 'cpt-prj-1' } }]) as never,
+      {
+        labels: { 'compartment.dev/deployment-id': 'dep-1' },
+        namespace: 'cpt-prj-1',
+        resources: ['deployments'],
+      },
+    );
+    registration!.createInformer();
+
+    const listed: KubernetesListObject<KubernetesObject> = await listObjects!();
+
+    expect(listed.items).toEqual([
+      {
+        apiVersion: 'apps/v1',
+        kind: 'Deployment',
+        metadata: { name: 'app-dep-1', namespace: 'cpt-prj-1' },
+      },
+    ]);
   });
 
   it('restarts after disconnect and keeps health and observedAt cache state', async (): Promise<void> => {

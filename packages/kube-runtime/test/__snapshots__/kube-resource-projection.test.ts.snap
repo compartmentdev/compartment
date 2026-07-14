@@ -9,6 +9,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: compartment
     compartment.dev/deployment-id: res-01jz
+    compartment.dev/resource-id: res-01jz
     compartment.dev/secret-id: sec-resource
   name: secret-sec-resource-90f80517f3f2935b
   namespace: cpt-prj-01jz-243118a73be1a00d

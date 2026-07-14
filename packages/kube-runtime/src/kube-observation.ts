@@ -18,6 +18,7 @@ interface InformerState {
   informer: Informer<KubernetesObject>;
   lastConnectedAt: Date | null;
   lastErrorAt: Date | null;
+  onSynchronized: (() => void) | null;
   registration: RegisteredInformer;
   restartTimer: NodeJS.Timeout | null;
 }
@@ -33,8 +34,9 @@ class AbortWait {
 
   public constructor(private readonly signal: AbortSignal) {
     this.promise = new Promise<never>((_resolve: (value: never) => void, reject: (reason: Error) => void): void => {
-      this.onAbort = (): void =>
+      this.onAbort = (): void => {
         reject(signal.reason instanceof Error ? signal.reason : new Error('Kubernetes observation startup aborted.'));
+      };
       signal.addEventListener('abort', this.onAbort, { once: true });
     });
   }
@@ -76,8 +78,8 @@ class RuntimeObservation implements KubeObservation {
   }
 
   public health(): KubeObservationHealth {
-    const connections: Date[] = this.states.flatMap((state: InformerState): Date[] => dateValue(state.lastConnectedAt));
-    const errors: Date[] = this.states.flatMap((state: InformerState): Date[] => dateValue(state.lastErrorAt));
+    const connections: (Date | null)[] = this.states.map((state: InformerState): Date | null => state.lastConnectedAt);
+    const errors: (Date | null)[] = this.states.map((state: InformerState): Date | null => state.lastErrorAt);
     return {
       healthy: this.states.length > 0 && this.states.every((state: InformerState): boolean => this.isHealthy(state)),
       lastConnectedAt: latest(connections),
@@ -94,12 +96,8 @@ class RuntimeObservation implements KubeObservation {
 
   public async stop(): Promise<void> {
     this.stopping = true;
-    for (const state of this.states) {
-      cancelRestart(state);
-    }
-    for (const timer of this.deliveryTimers) {
-      clearTimeout(timer);
-    }
+    this.states.forEach(cancelRestart);
+    this.deliveryTimers.forEach((timer: NodeJS.Timeout): void => clearTimeout(timer));
     this.deliveryTimers.clear();
     await Promise.all(this.states.map(async (state: InformerState): Promise<void> => await state.informer.stop()));
   }
@@ -107,29 +105,45 @@ class RuntimeObservation implements KubeObservation {
   private async startInformer(registration: RegisteredInformer): Promise<void> {
     const state: InformerState = newInformerState(registration);
     this.states.push(state);
-    await new Promise<void>((resolve: () => void): void => {
-      this.registerCallbacks(state, resolve);
-      this.attemptStart(state);
-    });
+    this.registerCallbacks(state);
+    await this.synchronize(state);
   }
 
-  private registerCallbacks(state: InformerState, onConnect: () => void = (): void => undefined): void {
+  private registerCallbacks(state: InformerState): void {
     const resource: KubeObservedResource = state.registration.definition.resource;
-    state.informer.on('connect', (): void => {
-      markConnected(state);
-      onConnect();
-    });
     state.informer.on('add', (object: KubernetesObject): void => this.acceptSafely('add', resource, object));
     state.informer.on('update', (object: KubernetesObject): void => this.acceptSafely('update', resource, object));
     state.informer.on('delete', (object: KubernetesObject): void => this.acceptSafely('delete', resource, object));
     state.informer.on('error', (error?: KubeInformerError): void => this.scheduleRestart(state, error));
   }
 
+  private async synchronize(state: InformerState): Promise<void> {
+    await new Promise<void>((resolve: () => void): void => {
+      state.onSynchronized = resolve;
+      this.attemptStart(state);
+    });
+  }
+
   private attemptStart(state: InformerState): void {
     if (this.stopping) {
       return;
     }
-    void state.informer.start().catch((error: Error): void => this.scheduleRestart(state, error));
+    void state.informer
+      .start()
+      .then((): void => this.markSynchronized(state))
+      .catch((error: Error): void => this.scheduleRestart(state, error));
+  }
+
+  private markSynchronized(state: InformerState): void {
+    if (this.stopping) {
+      return;
+    }
+    state.attempt = 0;
+    state.lastConnectedAt = new Date();
+    cancelRestart(state);
+    const onSynchronized: (() => void) | null = state.onSynchronized;
+    state.onSynchronized = null;
+    onSynchronized?.();
   }
 
   private scheduleRestart(state: InformerState, error?: KubeInformerError): void {
@@ -156,10 +170,9 @@ class RuntimeObservation implements KubeObservation {
       const resource: KubeObservedResource = state.registration.definition.resource;
       this.clearResourceCache(resource);
       state.informer = state.registration.createInformer();
-      this.registerCallbacks(state, (): void => {
-        this.dispatchSafely({ observedAt: new Date(), resource, type: 'relist' });
-      });
-      this.attemptStart(state);
+      this.registerCallbacks(state);
+      await this.synchronize(state);
+      this.dispatchSafely({ observedAt: new Date(), resource, type: 'relist' });
     } catch (error) {
       this.scheduleRestart(state, error as KubeInformerError);
     }
@@ -245,15 +258,10 @@ function newInformerState(registration: RegisteredInformer): InformerState {
     informer: registration.createInformer(),
     lastConnectedAt: null,
     lastErrorAt: null,
+    onSynchronized: null,
     registration,
     restartTimer: null,
   };
-}
-
-function markConnected(state: InformerState): void {
-  state.attempt = 0;
-  state.lastConnectedAt = new Date();
-  cancelRestart(state);
 }
 
 function cancelRestart(state: InformerState): void {
@@ -263,14 +271,10 @@ function cancelRestart(state: InformerState): void {
   state.restartTimer = null;
 }
 
-function restartDelay(attempt: number): number {
-  return calculateRestartDelay(attempt, randomInt(500, 1_501));
-}
+const restartDelay: (attempt: number) => number = (attempt: number): number =>
+  calculateRestartDelay(attempt, randomInt(500, 1_501));
 
-function dateValue(value: Date | null): Date[] {
-  return value === null ? [] : [value];
-}
-
-function latest(values: Date[]): Date | null {
-  return values.length === 0 ? null : new Date(Math.max(...values.map((value: Date): number => value.getTime())));
+function latest(values: (Date | null)[]): Date | null {
+  const times: number[] = values.flatMap((value: Date | null): number[] => (value === null ? [] : [value.getTime()]));
+  return times.length === 0 ? null : new Date(Math.max(...times));
 }

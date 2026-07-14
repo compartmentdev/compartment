@@ -19,13 +19,12 @@ import { listDeploymentLogWorkloadScopes } from '../queries/deployment-log-workl
 import type { DeploymentLogWorkloadScopeRow } from '../queries/deployment-log-workload.query.types';
 import type { ProductLogIngestResult } from './deployment-product-logs.service.types';
 
+const canonicalResourcePodNamePattern: RegExp = /^resource-res-([0-9a-f]{32})-[0-9a-f]{16}-/;
+
 export async function ingestDeploymentProductLogs(events: ProductLogIngestEvent[]): Promise<ProductLogIngestResult> {
   const identities: DeploymentLogIdentityRow[] = await listDeploymentLogIdentities(uniqueNamespaces(events));
-  const resourceIdentities: ResourceLogIdentityRow[] = events.some(
-    (event: ProductLogIngestEvent): boolean => event.containerName === 'resource',
-  )
-    ? await listResourceLogIdentities()
-    : [];
+  const resourceIds: string[] = resourceIdsFromEvents(events);
+  const resourceIdentities: ResourceLogIdentityRow[] = await listResourceLogIdentities(resourceIds);
   const deploymentByContainer: Map<string, string> = buildDeploymentIdentityMap(identities);
   const acceptedEvents: InsertProductLogInput[] = events.flatMap(
     (event: ProductLogIngestEvent): InsertProductLogInput[] => {
@@ -61,6 +60,20 @@ function resolveResourceIdentity(event: ProductLogIngestEvent, rows: ResourceLog
       event.namespace === immutableKubeName('cpt', row.namespaceId) &&
       event.podName.startsWith(`${immutableKubeName('resource', row.resourceId)}-`),
   )?.resourceId;
+}
+
+function resourceIdsFromEvents(events: ProductLogIngestEvent[]): string[] {
+  return [
+    ...new Set(
+      events.flatMap((event: ProductLogIngestEvent): string[] => {
+        if (event.containerName !== 'resource') {
+          return [];
+        }
+        const match: RegExpExecArray | null = canonicalResourcePodNamePattern.exec(event.podName);
+        return match?.[1] === undefined ? [] : [`res_${match[1]}`];
+      }),
+    ),
+  ];
 }
 
 function resolveDeploymentIdentity(

@@ -67,6 +67,7 @@ describe('resource projection and fencing', (): void => {
       'Deployment',
       'Service',
     ]);
+    expect(projectResourceManifests(row)[0]?.metadata?.labels?.['compartment.dev/resource-id']).toBe(row.resourceId);
     expect(projectResourceBootstrapClaims(row)).toHaveLength(2);
     expect(projectResourceBootstrapClaims(row)[0]?.kind).toBe('PersistentVolumeClaim');
     expect(projectResourceBootstrapClaims(row)[1]?.metadata?.name).toBe(

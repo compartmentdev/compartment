@@ -34,7 +34,7 @@ export class RegisteredInformer {
   }
 
   private async listObjects(): Promise<KubernetesListObject<KubernetesObject>> {
-    return await this.objectApi.list(
+    const listed: KubernetesListObject<KubernetesObject> = await this.objectApi.list(
       this.definition.apiVersion,
       this.definition.kind,
       this.namespace,
@@ -44,6 +44,16 @@ export class RegisteredInformer {
       undefined,
       this.selector,
     );
+    return {
+      ...listed,
+      items: listed.items.map(
+        (object: KubernetesObject): KubernetesObject => ({
+          ...object,
+          apiVersion: this.definition.apiVersion,
+          kind: this.definition.kind,
+        }),
+      ),
+    };
   }
 }
 
