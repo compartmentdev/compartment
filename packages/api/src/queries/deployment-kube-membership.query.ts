@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { deploymentKubeReferences } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentKubeState } from './deployment-kube-state.types';
@@ -19,6 +19,16 @@ export async function findDeploymentKubeState(deploymentId: string): Promise<Dep
 export async function requestDeploymentKubeStop(deploymentId: string, updatedAt: Date): Promise<void> {
   await getApiDatabase()
     .update(deploymentKubeReferences)
-    .set({ state: 'stopping', transitionedAt: updatedAt, updatedAt })
-    .where(and(eq(deploymentKubeReferences.deploymentId, deploymentId), eq(deploymentKubeReferences.state, 'active')));
+    .set({
+      revision: sql`${deploymentKubeReferences.revision} + 1`,
+      state: 'stopping',
+      transitionedAt: updatedAt,
+      updatedAt,
+    })
+    .where(
+      and(
+        eq(deploymentKubeReferences.deploymentId, deploymentId),
+        inArray(deploymentKubeReferences.state, ['active', 'pending']),
+      ),
+    );
 }
