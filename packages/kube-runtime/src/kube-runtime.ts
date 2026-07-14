@@ -134,7 +134,7 @@ export class KubeRuntime {
 
   public async runJob(spec: KubeJobSpec, persistedResult?: KubePersistedJobResult): Promise<KubeJobResult> {
     const jobName: string = kubeJobName(spec.id);
-    const labels: Record<string, string> = { ...spec.labels, 'compartment.dev/job-id': spec.id };
+    const labels: Record<string, string> = { ...spec.labels, 'compartment.dev/job-id': jobName };
     const jobExists: boolean =
       (await this.read({
         apiVersion: 'batch/v1',
@@ -188,7 +188,7 @@ export class KubeRuntime {
       observation = await createKubeObservation(
         this.kubeConfig,
         this.objectApi,
-        jobObservationInput(spec),
+        jobObservationInput(spec, jobName),
         deadline.controller.signal,
       );
       try {

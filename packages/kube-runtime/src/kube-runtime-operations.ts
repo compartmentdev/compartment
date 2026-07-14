@@ -59,9 +59,9 @@ export function startJobDeadline(jobName: string, timeoutMs: number): JobDeadlin
   return { controller, expiresAt, timer };
 }
 
-export function jobObservationInput(spec: KubeJobSpec): ObserveLabels {
+export function jobObservationInput(spec: KubeJobSpec, jobName: string): ObserveLabels {
   return {
-    labels: { 'compartment.dev/job-id': spec.id },
+    labels: { 'compartment.dev/job-id': jobName },
     namespace: spec.namespace,
     resources: ['jobs', 'pods'],
   };

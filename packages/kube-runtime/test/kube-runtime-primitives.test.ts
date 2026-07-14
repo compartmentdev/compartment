@@ -198,6 +198,35 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(stop).toHaveBeenCalledOnce();
   });
 
+  it('projects long logical Job IDs into Kubernetes-safe identity labels', async (): Promise<void> => {
+    const spec: KubeJobSpec = {
+      ...jobSpec('operation'),
+      id: 'resource-operation-op_b7ab86af4420406486b1b81f118d0b4c-artifact-verify',
+    };
+    const jobName: string = kubeJobName(spec.id);
+    createObservationMock.mockResolvedValue(terminalObservation(jobName, true, 0, vi.fn()));
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    await runtime.runJob(spec);
+
+    const createdObjects: KubeManifest[] = objectApi.patches.map(
+      ([object]: KubePatchInvocation): KubeManifest => object,
+    );
+    expect(createdObjects).toHaveLength(2);
+    expect(
+      createdObjects.map(
+        (object: KubeManifest): string | undefined => object.metadata?.labels?.['compartment.dev/job-id'],
+      ),
+    ).toEqual([jobName, jobName]);
+    expect(jobName.length).toBeLessThanOrEqual(63);
+    expect(createObservationMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ labels: { 'compartment.dev/job-id': jobName } }),
+      expect.any(AbortSignal),
+    );
+  });
+
   it('bounds bootstrap Job execution and mounts only an expiring projected credential', async (): Promise<void> => {
     const spec: KubeJobSpec = {
       ...jobSpec('operation'),
