@@ -275,6 +275,7 @@ export function buildDeploymentInspectTarget(
       containerId: 'ctr_123',
       imageRef: 'sha256:image',
       routeHost: 'smoke-railpack.localhost',
+      runtimeKind: 'node',
       upstreamHost: '127.0.0.1',
       upstreamPort: 31000,
     },

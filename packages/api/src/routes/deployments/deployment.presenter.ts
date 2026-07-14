@@ -4,10 +4,10 @@ import {
   type DeploymentInspectResponse,
   type DeploymentInspectTarget,
   type DeploymentSummary,
-  type RuntimeActiveDeployment,
 } from '@compartment/contracts';
 import type {
   DeployResponseInput,
+  DeploymentInspectRuntimeInput,
   DeploymentInspectTargetInput,
   DeploymentSummaryInput,
 } from '../../services/presenter.types';
@@ -79,7 +79,7 @@ function buildDeploymentInspectTarget(
 }
 
 function buildDeploymentInspectRuntime(
-  runtime: RuntimeActiveDeployment | null,
+  runtime: DeploymentInspectRuntimeInput | null,
   sensitiveTopologyVisible: boolean,
 ): DeploymentInspectRuntimeSummary | null {
   if (runtime === null || !sensitiveTopologyVisible) {
@@ -90,6 +90,7 @@ function buildDeploymentInspectRuntime(
     containerId: runtime.containerId,
     imageRef: runtime.imageRef,
     routeHost: runtime.routeHost,
+    runtimeKind: runtime.runtimeKind,
     upstreamHost: runtime.upstreamHost,
     upstreamPort: runtime.upstreamPort,
   };

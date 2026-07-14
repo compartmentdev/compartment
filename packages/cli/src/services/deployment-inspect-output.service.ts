@@ -81,6 +81,7 @@ function buildInspectDetails(deployment: DeploymentInspectTarget, sensitiveTopol
     `Routes: ${formatRoutes(deployment)}`,
     `Container: ${deployment.containerId ?? 'n/a'}`,
     `Runtime Container: ${deployment.runtime?.containerId ?? 'n/a'}`,
+    `Runtime Kind: ${deployment.runtime?.runtimeKind ?? 'n/a'}`,
     `Runtime Image: ${deployment.runtime?.imageRef ?? 'n/a'}`,
     `Readiness: ${formatDeploymentReadiness(deployment.readiness)}`,
     `Restart Policy: ${formatDeploymentRestartPolicy(deployment.run.restart)}`,

@@ -12,9 +12,10 @@ interface DeploymentDrainState {
 }
 
 export interface DeploymentInspectRuntimeSummary {
-  containerId: string;
+  containerId: string | null;
   imageRef: string;
   routeHost: string;
+  runtimeKind: 'kubernetes' | 'node';
   upstreamHost: string | null;
   upstreamPort: number | null;
 }
@@ -52,9 +53,10 @@ const deploymentDrainStateSchema: ContractSchema<DeploymentDrainState> = z
 
 const deploymentInspectRuntimeSummarySchema: ContractSchema<DeploymentInspectRuntimeSummary> = z
   .object({
-    containerId: z.string().min(1),
+    containerId: z.string().min(1).nullable(),
     imageRef: z.string().min(1),
     routeHost: z.string().min(1),
+    runtimeKind: z.enum(['kubernetes', 'node']),
     upstreamHost: z.string().min(1).nullable(),
     upstreamPort: z.number().int().positive().nullable(),
   })

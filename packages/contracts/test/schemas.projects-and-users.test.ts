@@ -236,6 +236,26 @@ describe('contract schemas projects and users', (): void => {
     );
   });
 
+  it('accepts Kubernetes inspect runtime details without a container id', (): void => {
+    const activeDeployment: DeploymentInspectTarget = buildDeploymentInspectTarget({
+      containerId: null,
+      runtime: {
+        containerId: null,
+        imageRef: 'registry.example/app@sha256:abc',
+        routeHost: 'smoke-railpack.localhost',
+        runtimeKind: 'kubernetes',
+        upstreamHost: 'app-smoke.cpt-smoke.svc',
+        upstreamPort: 80,
+      },
+    });
+
+    const result: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(
+      buildDeploymentInspectResponse({ activeDeployments: [activeDeployment] }),
+    );
+
+    expect(result.activeDeployments[0]?.runtime).toMatchObject({ containerId: null, runtimeKind: 'kubernetes' });
+  });
+
   it('rejects deployment inspect payloads without rollback availability', (): void => {
     const activeDeployment: DeploymentInspectTarget = buildDeploymentInspectTarget({
       containerId: 'ctr_compat_123',
