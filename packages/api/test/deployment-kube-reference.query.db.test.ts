@@ -537,6 +537,19 @@ describe('deployment Kubernetes transition persistence', (): void => {
       stepKey: 'completed',
       stream: 'compartment',
     });
+    const references: { deploymentId: string; state: string }[] = await db
+      .select({ deploymentId: deploymentKubeReferences.deploymentId, state: deploymentKubeReferences.state })
+      .from(deploymentKubeReferences);
+    expect(references).toEqual(
+      expect.arrayContaining([
+        { deploymentId: 'dep_candidate', state: 'active' },
+        { deploymentId: 'dep_kube', state: 'stopped' },
+      ]),
+    );
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    expect(await findNextDeploymentReconcilePair()).toMatchObject({
+      candidate: { deploymentId: 'dep_candidate', state: 'active' },
+    });
   });
 });
 

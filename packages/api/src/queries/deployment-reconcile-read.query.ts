@@ -118,7 +118,11 @@ function candidateFilter(): SQL | undefined {
         eq(deploymentKubeReferences.state, 'pending'),
         or(eq(deployments.status, 'running'), eq(deployments.status, 'succeeded')),
       ),
-      and(eq(deploymentKubeReferences.state, 'active'), eq(deployments.status, 'succeeded')),
+      and(
+        eq(deploymentKubeReferences.state, 'active'),
+        eq(deployments.status, 'succeeded'),
+        eq(deployments.isActive, true),
+      ),
       eq(deploymentKubeReferences.state, 'stopping'),
     ),
   );

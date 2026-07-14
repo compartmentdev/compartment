@@ -4,14 +4,12 @@ import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { persistActiveDeploymentDrift } from './deployment-reconcile-transition-audit.query';
 import { persistStoppedReconcileObservation } from './deployment-reconcile-stop.query';
+import {
+  supersedePreviousKubeDeployment,
+  type SupersedeCandidateContext,
+} from './deployment-reconcile-supersede.query';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type { PersistDeploymentReconcileObservationInput } from './deployment-reconcile.query.types';
-
-interface CandidateContext {
-  deploymentRunId: string;
-  environmentId: string;
-  serviceId: string;
-}
 
 interface ReconcileReferenceRow {
   revision: number;
@@ -118,12 +116,17 @@ async function persistReady(
   if (state !== 'pending') {
     return false;
   }
-  const candidate: CandidateContext | undefined = await findCandidateContext(tx, input.deploymentId);
+  const candidate: SupersedeCandidateContext | undefined = await findCandidateContext(tx, input.deploymentId);
   if (candidate === undefined) {
     return false;
   }
   const previousActiveId: string | undefined = await findPreviousActiveId(tx, input.deploymentId, candidate);
-  await deactivatePreviousDeployments(tx, input, candidate);
+  await supersedePreviousKubeDeployment(tx, {
+    candidate,
+    currentDeploymentId: input.deploymentId,
+    observedAt: input.observedAt,
+    previousActiveId,
+  });
   await activateDeployment(tx, input);
   await switchReconcileRoute(tx, input, previousActiveId);
   await publishReconcileSucceeded(tx, input, candidate.deploymentRunId);
@@ -134,7 +137,7 @@ async function persistReady(
 async function findCandidateContext(
   tx: DeploymentTransaction,
   deploymentId: string,
-): Promise<CandidateContext | undefined> {
+): Promise<SupersedeCandidateContext | undefined> {
   const [candidate] = await tx
     .select({
       deploymentRunId: deployments.deploymentRunId,
@@ -168,7 +171,7 @@ async function publishReconcileSucceeded(
 async function findPreviousActiveId(
   tx: DeploymentTransaction,
   deploymentId: string,
-  candidate: CandidateContext,
+  candidate: SupersedeCandidateContext,
 ): Promise<string | undefined> {
   const [previousActive] = await tx
     .select({ id: deployments.id })
@@ -178,18 +181,7 @@ async function findPreviousActiveId(
   return previousActive?.id;
 }
 
-async function deactivatePreviousDeployments(
-  tx: DeploymentTransaction,
-  input: PersistDeploymentReconcileObservationInput,
-  candidate: CandidateContext,
-): Promise<void> {
-  await tx
-    .update(deployments)
-    .set({ isActive: false, updatedAt: input.observedAt })
-    .where(activeDeploymentFilter(input.deploymentId, candidate));
-}
-
-function activeDeploymentFilter(deploymentId: string, candidate: CandidateContext): SQL | undefined {
+function activeDeploymentFilter(deploymentId: string, candidate: SupersedeCandidateContext): SQL | undefined {
   return and(
     eq(deployments.environmentId, candidate.environmentId),
     eq(deployments.projectServiceId, candidate.serviceId),
