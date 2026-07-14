@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type {
   GitSourceExclusionMutationResponse,
   GitProviderRegistrationRepositoryListResponse,
+  GitProviderRegistrationListResponse,
   GitHubProviderBootstrapResponse,
   GitSourceListResponse,
   GitSourceResponse,
@@ -32,7 +33,7 @@ interface SourceCommandMocks {
   getGitHubSourceBootstrapStatusMock: Mock<GetGitHubSourceBootstrapStatus>;
   getGitSourceSyncTaskMock: Mock<GetGitSourceSyncTask>;
   includeSourceDescriptorMock: Mock<IncludeSourceDescriptor>;
-  listGitHubInstallationRepositoriesForSourceMock: Mock<ListGitHubInstallationRepositoriesForSource>;
+  listGitProviderRepositoriesForSourceMock: Mock<ListGitProviderRepositoriesForSource>;
   listSourcesMock: Mock<ListSources>;
   readCliConfigMock: Mock<ReadCliConfig>;
   readLocalGitSourcePlanMock: Mock<ReadLocalGitSourcePlan>;
@@ -50,7 +51,8 @@ interface SourceServiceModule {
   getGitHubSourceBootstrapStatus: Mock<GetGitHubSourceBootstrapStatus>;
   getGitSourceSyncTask: Mock<GetGitSourceSyncTask>;
   includeSourceDescriptor: Mock<IncludeSourceDescriptor>;
-  listGitHubInstallationRepositoriesForSource: Mock<ListGitHubInstallationRepositoriesForSource>;
+  listGitProviderRepositoriesForSource: Mock<ListGitProviderRepositoriesForSource>;
+  listGitSourceRegistrations: Mock<ListGitSourceRegistrations>;
   listSources: Mock<ListSources>;
   readSourceSettings: Mock<ReadSourceSettings>;
   showSource: Mock<ShowSource>;
@@ -108,10 +110,11 @@ type IncludeSourceDescriptor = (
   sourceId: string,
   descriptorPath: string,
 ) => Promise<GitSourceSyncTaskResponse>;
-type ListGitHubInstallationRepositoriesForSource = (
+type ListGitProviderRepositoriesForSource = (
   context: AuthenticatedContext,
   registrationId: string,
 ) => Promise<GitProviderRegistrationRepositoryListResponse>;
+type ListGitSourceRegistrations = (context: AuthenticatedContext) => Promise<GitProviderRegistrationListResponse>;
 type UpdateSourceSettingsForSource = (
   context: AuthenticatedContext,
   sourceId: string,
@@ -175,7 +178,7 @@ describe.sequential('source commands', (): void => {
     const mocks: SourceCommandMocks = mockSourceCommandModules();
     mocks.readLocalGitSourcePlanMock.mockResolvedValue(createLocalGitSourcePlanFixture());
     mocks.startGitHubSourceBootstrapMock.mockResolvedValue(createBootstrapResponseFixture());
-    mocks.listGitHubInstallationRepositoriesForSourceMock.mockResolvedValue(createRepositoryListResponseFixture());
+    mocks.listGitProviderRepositoriesForSourceMock.mockResolvedValue(createRepositoryListResponseFixture());
     mocks.connectGitSourceMock.mockResolvedValue(createGitSourceResponseFixture());
     const capture: CliCommandCapture = createCliCapture();
     capture.stdin.end('\n\n');
@@ -201,7 +204,7 @@ describe.sequential('source commands', (): void => {
       'Bootstrap discovery, auto-adopt, and initial deploy started on branch main.',
     );
     expect(mocks.startGitHubSourceBootstrapMock).toHaveBeenCalledWith(expect.any(Object), 'github.com', 'acme');
-    expect(mocks.listGitHubInstallationRepositoriesForSourceMock).toHaveBeenCalledWith(expect.any(Object), 'gpr_123');
+    expect(mocks.listGitProviderRepositoriesForSourceMock).toHaveBeenCalledWith(expect.any(Object), 'gpr_123');
     expect(mocks.connectGitSourceMock).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({
@@ -223,7 +226,7 @@ describe.sequential('source commands', (): void => {
     mocks.readLocalGitSourcePlanMock.mockResolvedValue(createLocalGitSourcePlanFixture());
     mocks.startGitHubSourceBootstrapMock.mockResolvedValue(createPendingBootstrapResponseFixture());
     mocks.getGitHubSourceBootstrapStatusMock.mockResolvedValue(createBootstrapResponseFixture());
-    mocks.listGitHubInstallationRepositoriesForSourceMock.mockResolvedValue(createRepositoryListResponseFixture());
+    mocks.listGitProviderRepositoriesForSourceMock.mockResolvedValue(createRepositoryListResponseFixture());
     mocks.connectGitSourceMock.mockResolvedValue(createGitSourceResponseFixture());
     delete process.env.NO_COLOR;
     const capture: CliCommandCapture = createCliCapture({ isTTY: true });
@@ -259,7 +262,7 @@ describe.sequential('source commands', (): void => {
       ...createBootstrapResponseFixture(),
       registrationId: 'gpr_recovered',
     });
-    mocks.listGitHubInstallationRepositoriesForSourceMock.mockResolvedValueOnce({ repositories: [] });
+    mocks.listGitProviderRepositoriesForSourceMock.mockResolvedValueOnce({ repositories: [] });
     mocks.connectGitSourceMock.mockResolvedValue(createGitSourceResponseFixture());
     const capture: CliCommandCapture = createCliCapture();
     capture.stdin.end('\n\n');
@@ -282,14 +285,14 @@ describe.sequential('source commands', (): void => {
 
     expectCliFailure(result, 'GitHub App installation does not include any repositories.');
     expect(mocks.startGitHubSourceBootstrapMock).toHaveBeenCalledOnce();
-    expect(mocks.listGitHubInstallationRepositoriesForSourceMock).toHaveBeenCalledWith(expect.any(Object), 'gpr_123');
+    expect(mocks.listGitProviderRepositoriesForSourceMock).toHaveBeenCalledWith(expect.any(Object), 'gpr_123');
   });
 
   it('prompts for owner, repository, branch, environment, and deploy policy when connect flags are omitted', async (): Promise<void> => {
     const mocks: SourceCommandMocks = mockSourceCommandModules();
     mocks.readLocalGitSourcePlanMock.mockResolvedValue(createLocalGitSourcePlanFixture());
     mocks.startGitHubSourceBootstrapMock.mockResolvedValue(createBootstrapResponseFixture());
-    mocks.listGitHubInstallationRepositoriesForSourceMock.mockResolvedValue(createRepositoryListResponseFixture());
+    mocks.listGitProviderRepositoriesForSourceMock.mockResolvedValue(createRepositoryListResponseFixture());
     mocks.connectGitSourceMock.mockResolvedValue(createGitSourceResponseFixture());
     const capture: CliCommandCapture = createCliCapture();
     capture.stdin.end('\n\nrelease\nstaging\nn\nn\n');
@@ -314,7 +317,7 @@ describe.sequential('source commands', (): void => {
       installationAccountLogin: 'other',
       repositoryOwner: 'other',
     });
-    mocks.listGitHubInstallationRepositoriesForSourceMock.mockResolvedValue({
+    mocks.listGitProviderRepositoriesForSourceMock.mockResolvedValue({
       repositories: [
         {
           defaultBranchName: 'main',
@@ -361,7 +364,7 @@ describe.sequential('source commands', (): void => {
       installationAccountLogin: 'acme',
       repositoryOwner: 'ACME',
     });
-    mocks.listGitHubInstallationRepositoriesForSourceMock.mockResolvedValue(createRepositoryListResponseFixture());
+    mocks.listGitProviderRepositoriesForSourceMock.mockResolvedValue(createRepositoryListResponseFixture());
     mocks.connectGitSourceMock.mockResolvedValue(createGitSourceResponseFixture());
     const capture: CliCommandCapture = createCliCapture();
     capture.stdin.end('ACME\n\n\n\nn\nn\n');
@@ -369,7 +372,7 @@ describe.sequential('source commands', (): void => {
     const result: CliCommandResult = await runCliCommand(['source', 'connect', 'git'], capture);
 
     expectCliSuccess(result);
-    expect(mocks.listGitHubInstallationRepositoriesForSourceMock).toHaveBeenCalledWith(expect.any(Object), 'gpr_123');
+    expect(mocks.listGitProviderRepositoriesForSourceMock).toHaveBeenCalledWith(expect.any(Object), 'gpr_123');
     expect(readCliStderr(result.capture)).toContain('Repository [acme/mono]: ');
   });
 
@@ -497,8 +500,11 @@ function mockSourceCommandModules(): SourceCommandMocks {
   const getGitHubSourceBootstrapStatusMock: Mock<GetGitHubSourceBootstrapStatus> =
     vi.fn<GetGitHubSourceBootstrapStatus>();
   const includeSourceDescriptorMock: Mock<IncludeSourceDescriptor> = vi.fn<IncludeSourceDescriptor>();
-  const listGitHubInstallationRepositoriesForSourceMock: Mock<ListGitHubInstallationRepositoriesForSource> =
-    vi.fn<ListGitHubInstallationRepositoriesForSource>();
+  const listGitProviderRepositoriesForSourceMock: Mock<ListGitProviderRepositoriesForSource> =
+    vi.fn<ListGitProviderRepositoriesForSource>();
+  const listGitSourceRegistrationsMock: Mock<ListGitSourceRegistrations> = vi
+    .fn<ListGitSourceRegistrations>()
+    .mockResolvedValue({ registrations: [] });
   const readLocalGitSourcePlanMock: Mock<ReadLocalGitSourcePlan> = vi.fn<ReadLocalGitSourcePlan>();
   const readSourceSettingsMock: Mock<ReadSourceSettings> = vi.fn<ReadSourceSettings>();
   const showSourceMock: Mock<ShowSource> = vi.fn<ShowSource>();
@@ -516,7 +522,8 @@ function mockSourceCommandModules(): SourceCommandMocks {
       getGitHubSourceBootstrapStatus: getGitHubSourceBootstrapStatusMock,
       getGitSourceSyncTask: getGitSourceSyncTaskMock,
       includeSourceDescriptor: includeSourceDescriptorMock,
-      listGitHubInstallationRepositoriesForSource: listGitHubInstallationRepositoriesForSourceMock,
+      listGitProviderRepositoriesForSource: listGitProviderRepositoriesForSourceMock,
+      listGitSourceRegistrations: listGitSourceRegistrationsMock,
       listSources: listSourcesMock,
       readSourceSettings: readSourceSettingsMock,
       showSource: showSourceMock,
@@ -545,7 +552,7 @@ function mockSourceCommandModules(): SourceCommandMocks {
     getGitHubSourceBootstrapStatusMock,
     getGitSourceSyncTaskMock,
     includeSourceDescriptorMock,
-    listGitHubInstallationRepositoriesForSourceMock,
+    listGitProviderRepositoriesForSourceMock,
     listSourcesMock,
     readCliConfigMock,
     readLocalGitSourcePlanMock,

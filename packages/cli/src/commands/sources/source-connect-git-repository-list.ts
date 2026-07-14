@@ -2,14 +2,14 @@ import type {
   GitProviderRegistrationRepositoryListResponse,
   GitProviderRepositorySummary,
 } from '@compartment/contracts';
-import { listGitHubInstallationRepositoriesForSource } from '../../services/sources.service';
+import { listGitProviderRepositoriesForSource } from '../../services/sources.service';
 import type { AuthenticatedContext } from '../../services/context.types';
 
-export async function readGitHubInstallationRepositoriesForSelection(
+export async function readGitProviderRepositoriesForSelection(
   context: AuthenticatedContext,
   registrationId: string,
 ): Promise<GitProviderRepositorySummary[]> {
-  const response: GitProviderRegistrationRepositoryListResponse = await listGitHubInstallationRepositoriesForSource(
+  const response: GitProviderRegistrationRepositoryListResponse = await listGitProviderRepositoriesForSource(
     context,
     registrationId,
   );
