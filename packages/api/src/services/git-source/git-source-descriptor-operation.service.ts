@@ -2,10 +2,7 @@ import type {
   CreateGitDescriptorPullRequestRequest,
   GitDescriptorPullRequestStatusRequest,
 } from '@compartment/contracts';
-import {
-  createGitSourceRepositoryAccessDeniedError,
-  createGitSourceRepositoryEmptyError,
-} from '../../errors/api-business-error';
+import { throwGitProviderBusinessError } from './git-source-provider-error.service';
 import { getGitProviderAdapter } from './git-source-provider.registry';
 import type {
   CreateDescriptorPullRequestPlan,
@@ -37,7 +34,7 @@ export async function createDescriptorPullRequest(input: CreateDescriptorPullReq
   try {
     return await adapter.createDescriptorPullRequest(
       input.access,
-      buildOperationRepositoryRef(input.request),
+      buildOperationRepositoryRef(input.request, input.access.registration.providerHost),
       buildDescriptorPullRequestPlan(input.request),
     );
   } catch (error) {
@@ -56,7 +53,7 @@ export async function readDescriptorPullRequestStatus(
   try {
     return await adapter.readDescriptorPullRequestStatus(
       input.access,
-      buildOperationRepositoryRef(input.request),
+      buildOperationRepositoryRef(input.request, input.access.registration.providerHost),
       input.request.pullRequestNumber,
     );
   } catch (error) {
@@ -73,20 +70,14 @@ export function throwGitDescriptorAccessFailure(
   error: Error | undefined,
   message: string,
 ): never {
-  if (adapter.isRepositoryEmptyFailure(error)) {
-    throw createGitSourceRepositoryEmptyError();
-  }
-  if (adapter.isRepositoryAccessFailure(error)) {
-    throw createGitSourceRepositoryAccessDeniedError(message);
-  }
-  throw error ?? new Error('Git descriptor operation failed.');
+  throwGitProviderBusinessError(adapter, error, message);
 }
 
-function buildOperationRepositoryRef(request: DescriptorRepositoryRefRequest): GitRepositoryRef {
+function buildOperationRepositoryRef(request: DescriptorRepositoryRefRequest, providerHost: string): GitRepositoryRef {
   return {
     name: request.repositoryName,
     owner: request.repositoryOwner,
-    providerHost: request.providerHost,
+    providerHost,
   };
 }
 

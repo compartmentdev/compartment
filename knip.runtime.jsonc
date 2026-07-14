@@ -14,6 +14,15 @@
   ],
   "ignoreBinaries": ["astro", "dotenv"],
   "ignoreDependencies": ["dotenv-cli"],
+  "ignoreIssues": {
+    // Git-provider registration contracts and SDK methods are public package entrypoints for external clients.
+    "packages/contracts/src/contracts/control-plane-browser-errors.contract.ts": ["exports"],
+    "packages/contracts/src/contracts/control-plane-protocol.contract.ts": ["exports"],
+    "packages/contracts/src/contracts/source-git-provider.contract.ts": ["exports", "types"],
+    "packages/contracts/src/index.browser-git.ts": ["exports", "types"],
+    "packages/sdk/src/index.ts": ["exports"],
+    "packages/sdk/src/services/source-git.service.ts": ["exports"],
+  },
   "ignoreWorkspaces": ["packages/test-support", "packages/eslint-config", "packages/eslint-plugin"],
   "workspaces": {
     "packages/api": {

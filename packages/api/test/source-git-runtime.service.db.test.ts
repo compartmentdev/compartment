@@ -32,7 +32,10 @@ import {
   completeGitSourceResolutionTaskForWorker,
   failGitSourceResolutionTaskForWorker,
 } from '../src/services/git-source/git-source-resolution-worker.service';
-import { handleGitHubSourceWebhook } from '../src/services/git-source/git-source-runtime.service';
+import { handleGitHubSourceWebhook } from '../src/services/git-source/github-source-webhook.service';
+import { handleGitLabSourceWebhook } from '../src/services/git-source/gitlab-source-webhook.service';
+import type { HandleGitLabSourceWebhookInput } from '../src/services/git-source/gitlab-source-webhook.service.types';
+import type { GitLabJsonObject } from '../src/services/git-source/gitlab-http.adapter.types';
 import { assignOrganizationSystemRoleToPrincipalWithExecutor } from '../src/services/rbac-seed.service';
 import {
   completeGitSourceSyncTaskForWorker as completeGitSourceSyncTaskForWorkerService,
@@ -200,6 +203,48 @@ describe('git source runtime service', (): void => {
     expect(await db.select().from(sourceResolutionTasks)).toHaveLength(1);
     expect(await db.select().from(sourceSyncTasks)).toHaveLength(1);
     expect(await db.select().from(auditEvents)).toHaveLength(2);
+  });
+
+  it('persists and deduplicates an incomplete GitLab subgroup push without an installation id', async (): Promise<void> => {
+    await connectGitLabRuntimeSource([createBinding('billing', 'apps/billing/compartment.yml')]);
+    const body: GitLabJsonObject = {
+      checkout_sha: 'sha_gitlab',
+      commits: [{ added: ['apps/billing/app.py'], modified: [], removed: [] }],
+      object_kind: 'push',
+      project: { id: 42, path_with_namespace: 'group/subgroup/mono' },
+      ref: 'refs/heads/main',
+      total_commits_count: 2,
+    };
+    const input: HandleGitLabSourceWebhookInput = {
+      body,
+      eventType: 'Push Hook',
+      organizationId: 'org_git_runtime',
+      providerDeliveryId: 'gitlab-delivery-1',
+      registrationId: 'gpr_gitlab_runtime',
+      token: webhookSecret,
+    };
+    await handleGitLabSourceWebhook(input);
+    await handleGitLabSourceWebhook(input);
+    expect(await db.select().from(sourceEvents)).toHaveLength(1);
+    expect(await db.select().from(sourceResolutionTasks)).toHaveLength(1);
+    expect(requireFirst(await db.select().from(sourceEvents), 'source event')).toMatchObject({
+      changedFilesComplete: false,
+      providerDeliveryId: 'gitlab-delivery-1',
+    });
+  });
+
+  it('rejects an invalid GitLab webhook token before persistence', async (): Promise<void> => {
+    await expect(
+      handleGitLabSourceWebhook({
+        body: {},
+        eventType: 'Push Hook',
+        organizationId: 'org_git_runtime',
+        providerDeliveryId: 'gitlab-delivery-invalid',
+        registrationId: 'gpr_gitlab_runtime',
+        token: 'invalid',
+      }),
+    ).rejects.toMatchObject({ code: 'git_source_request_unauthorized' });
+    expect(await db.select().from(sourceEvents)).toEqual([]);
   });
 
   it.each<ExistingResolutionTaskState>([
@@ -625,6 +670,7 @@ describe('git source runtime service', (): void => {
 
     await failGitSourceSyncTaskForWorker({
       failureReason: 'Worker could not inspect repository descriptors.',
+      retryable: false,
       taskId: failedTaskId,
     });
 
@@ -1204,9 +1250,11 @@ async function createRuntimeScope(): Promise<void> {
     callbackUrl: 'https://console.example/v1/sources/git/providers/github/callback',
     createdByPrincipalId: 'prn_git_runtime',
     id: 'gpr_git_runtime',
+    installationId: 'inst_123',
+    organizationId: 'org_git_runtime',
     pendingExpiresAt: null,
-    privateKeyPemCiphertext: null,
-    privateKeyPemEncryptionKeyId: null,
+    privateKeyPemCiphertext: 'private-key-ciphertext',
+    privateKeyPemEncryptionKeyId: 'private-key-id',
     providerHost: 'github.com',
     providerType: 'github_app',
     repositoryOwner: 'acme',
@@ -1215,6 +1263,72 @@ async function createRuntimeScope(): Promise<void> {
     webhookSecretEncryptionKeyId: encryptedWebhookSecret.encryptionKeyId,
     webhookUrl:
       'https://console.example/v1/sources/git/providers/github/organizations/org_git_runtime/registrations/gpr_git_runtime/webhook',
+  });
+  await db.insert(gitProviderRegistrations).values({
+    accessTokenCiphertext: encryptedWebhookSecret.valueCiphertext,
+    accessTokenEncryptionKeyId: encryptedWebhookSecret.encryptionKeyId,
+    accessTokenExpiresAt: null,
+    providerAccountId: '101',
+    providerAccountLogin: 'alice',
+    callbackUrl: 'https://console.example',
+    createdByPrincipalId: 'prn_git_runtime',
+    id: 'gpr_gitlab_runtime',
+    organizationId: 'org_git_runtime',
+    providerHost: 'gitlab.com',
+    providerType: 'gitlab',
+    repositoryOwner: 'alice',
+    status: 'active',
+    webhookSecretCiphertext: encryptedWebhookSecret.valueCiphertext,
+    webhookSecretEncryptionKeyId: encryptedWebhookSecret.encryptionKeyId,
+    webhookUrl:
+      'https://console.example/v1/sources/git/providers/gitlab/organizations/org_git_runtime/registrations/gpr_gitlab_runtime/webhook',
+  });
+}
+
+async function connectGitLabRuntimeSource(bindings: GitSourceBindingInput[]): Promise<void> {
+  await db.transaction(async (transaction: SourceMutationTransaction): Promise<void> => {
+    const source: SourceRow = await persistConnectedGitSource(
+      transaction,
+      {
+        actorPrincipalId: 'prn_git_runtime',
+        installationId: null,
+        organizationId: 'org_git_runtime',
+        providerHost: 'gitlab.com',
+        providerRegistrationId: 'gpr_gitlab_runtime',
+        providerWebhookId: 'hook_1',
+        repository: {
+          defaultBranchName: 'main',
+          repositoryCloneUrl: 'https://gitlab.com/group/subgroup/mono.git',
+          repositoryExternalId: '42',
+          repositoryName: 'mono',
+          repositoryOwner: 'group/subgroup',
+        },
+        request: {
+          autoAdoptNewApps: true,
+          defaultAutoDeployEnabled: true,
+          defaultEnvironmentName: 'production',
+          providerHost: 'gitlab.com',
+          repositoryName: 'mono',
+          repositoryOwner: 'group/subgroup',
+          syncBranchName: 'main',
+        },
+        syncBranchName: 'main',
+      },
+      new Date('2026-04-29T09:00:00.000Z'),
+    );
+    for (const binding of bindings) {
+      await adoptGitSourceBinding(
+        transaction,
+        {
+          actorPrincipalId: 'prn_git_runtime',
+          binding,
+          organizationId: 'org_git_runtime',
+          sourceId: source.id,
+          watchPathsJson: '[]',
+        },
+        new Date('2026-04-29T09:00:00.000Z'),
+      );
+    }
   });
 }
 

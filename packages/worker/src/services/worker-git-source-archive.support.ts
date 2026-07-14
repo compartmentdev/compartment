@@ -7,10 +7,10 @@ export async function readExtractedRepositoryRoot(extractionDirectory: string): 
   const roots: Dirent[] = entries.filter((entry: Dirent): boolean => entry.isDirectory());
   const [root]: Dirent[] = roots;
   if (root === undefined) {
-    throw new Error('GitHub repository archive did not contain a repository root directory.');
+    throw new Error('Git provider repository archive did not contain a repository root directory.');
   }
   if (roots.length > 1) {
-    throw new Error('GitHub repository archive contained multiple repository root directories.');
+    throw new Error('Git provider repository archive contained multiple repository root directories.');
   }
 
   return join(extractionDirectory, root.name);

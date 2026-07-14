@@ -19,6 +19,7 @@ import { registerPostInstallRoute } from './install/post-install.route';
 import { registerInternalApiRoutes } from './internal/register-internal-routes';
 import { registerProtectedApiRoutes } from './protected/register-protected-routes';
 import { registerGitSourcePublicRoutes } from './sources/source-git-public.route';
+import { registerGitLabSourcePublicRoutes } from './sources/source-gitlab-public.route';
 import { registerSystemDomainProbeRoute } from './system-domain/register-system-domain-probe-route';
 
 type RegisterRoutesDone = (err?: Error) => void;
@@ -77,6 +78,7 @@ function registerAuthRoutesWithNoStore(app: ApiApp, _options: FastifyPluginOptio
 
 function registerSourceRoutes(app: ApiApp): void {
   registerGitSourcePublicRoutes(app);
+  registerGitLabSourcePublicRoutes(app);
 }
 
 function registerSystemRoutes(app: ApiApp): void {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type {
   GitSourceExclusionMutationResponse,
-  GitHubInstallationRepositoryListResponse,
+  GitProviderRegistrationRepositoryListResponse,
   GitHubProviderBootstrapResponse,
   GitSourceListResponse,
   GitSourceResponse,
@@ -15,6 +15,7 @@ import { createCliConfigFixture } from './cli-test.fixtures';
 import {
   type CliCommandCapture,
   createCliCapture,
+  expectCliFailure,
   expectCliSuccess,
   readCliStderr,
   readCliStdout,
@@ -110,9 +111,7 @@ type IncludeSourceDescriptor = (
 type ListGitHubInstallationRepositoriesForSource = (
   context: AuthenticatedContext,
   registrationId: string,
-  providerHost: string,
-  repositoryOwner: string,
-) => Promise<GitHubInstallationRepositoryListResponse>;
+) => Promise<GitProviderRegistrationRepositoryListResponse>;
 type UpdateSourceSettingsForSource = (
   context: AuthenticatedContext,
   sourceId: string,
@@ -202,12 +201,7 @@ describe.sequential('source commands', (): void => {
       'Bootstrap discovery, auto-adopt, and initial deploy started on branch main.',
     );
     expect(mocks.startGitHubSourceBootstrapMock).toHaveBeenCalledWith(expect.any(Object), 'github.com', 'acme');
-    expect(mocks.listGitHubInstallationRepositoriesForSourceMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      'gpr_123',
-      'github.com',
-      'acme',
-    );
+    expect(mocks.listGitHubInstallationRepositoriesForSourceMock).toHaveBeenCalledWith(expect.any(Object), 'gpr_123');
     expect(mocks.connectGitSourceMock).toHaveBeenCalledWith(
       expect.any(Object),
       expect.objectContaining({
@@ -258,19 +252,14 @@ describe.sequential('source commands', (): void => {
     expect(mocks.getGitHubSourceBootstrapStatusMock).toHaveBeenCalledWith(expect.any(Object), 'gbs_123');
   });
 
-  it('restarts GitHub bootstrap when repository listing requires provider recovery', async (): Promise<void> => {
+  it('does not infer provider bootstrap state from an empty neutral repository listing', async (): Promise<void> => {
     const mocks: SourceCommandMocks = mockSourceCommandModules();
     mocks.readLocalGitSourcePlanMock.mockResolvedValue(createLocalGitSourcePlanFixture());
     mocks.startGitHubSourceBootstrapMock.mockResolvedValueOnce(createBootstrapResponseFixture()).mockResolvedValueOnce({
       ...createBootstrapResponseFixture(),
       registrationId: 'gpr_recovered',
     });
-    mocks.listGitHubInstallationRepositoriesForSourceMock
-      .mockResolvedValueOnce({
-        repositories: [],
-        status: 'provider_bootstrap_required',
-      })
-      .mockResolvedValueOnce(createRepositoryListResponseFixture());
+    mocks.listGitHubInstallationRepositoriesForSourceMock.mockResolvedValueOnce({ repositories: [] });
     mocks.connectGitSourceMock.mockResolvedValue(createGitSourceResponseFixture());
     const capture: CliCommandCapture = createCliCapture();
     capture.stdin.end('\n\n');
@@ -291,14 +280,9 @@ describe.sequential('source commands', (): void => {
       capture,
     );
 
-    expectCliSuccess(result);
-    expect(mocks.startGitHubSourceBootstrapMock).toHaveBeenCalledTimes(2);
-    expect(mocks.listGitHubInstallationRepositoriesForSourceMock).toHaveBeenLastCalledWith(
-      expect.any(Object),
-      'gpr_recovered',
-      'github.com',
-      'acme',
-    );
+    expectCliFailure(result, 'GitHub App installation does not include any repositories.');
+    expect(mocks.startGitHubSourceBootstrapMock).toHaveBeenCalledOnce();
+    expect(mocks.listGitHubInstallationRepositoriesForSourceMock).toHaveBeenCalledWith(expect.any(Object), 'gpr_123');
   });
 
   it('prompts for owner, repository, branch, environment, and deploy policy when connect flags are omitted', async (): Promise<void> => {
@@ -349,7 +333,6 @@ describe.sequential('source commands', (): void => {
           private: true,
         },
       ],
-      status: 'ready',
     });
     mocks.connectGitSourceMock.mockResolvedValue(createGitSourceResponseFixture());
     const capture: CliCommandCapture = createCliCapture();
@@ -386,12 +369,7 @@ describe.sequential('source commands', (): void => {
     const result: CliCommandResult = await runCliCommand(['source', 'connect', 'git'], capture);
 
     expectCliSuccess(result);
-    expect(mocks.listGitHubInstallationRepositoriesForSourceMock).toHaveBeenCalledWith(
-      expect.any(Object),
-      'gpr_123',
-      'github.com',
-      'acme',
-    );
+    expect(mocks.listGitHubInstallationRepositoriesForSourceMock).toHaveBeenCalledWith(expect.any(Object), 'gpr_123');
     expect(readCliStderr(result.capture)).toContain('Repository [acme/mono]: ');
   });
 
@@ -612,7 +590,7 @@ function createPendingBootstrapResponseFixture(): GitHubProviderBootstrapRespons
   };
 }
 
-function createRepositoryListResponseFixture(): GitHubInstallationRepositoryListResponse {
+function createRepositoryListResponseFixture(): GitProviderRegistrationRepositoryListResponse {
   return {
     repositories: [
       {
@@ -624,7 +602,6 @@ function createRepositoryListResponseFixture(): GitHubInstallationRepositoryList
         private: true,
       },
     ],
-    status: 'ready',
   };
 }
 

@@ -178,13 +178,20 @@ async function seedAutomationPrincipalScope(): Promise<void> {
   });
   await assignSystemRole('prn_admin', 'admin');
   await db.insert(gitProviderRegistrations).values({
+    appId: 'app_123',
     callbackUrl: 'https://console.example.com/callback',
     createdByPrincipalId: 'prn_admin',
     id: 'gpr_123',
+    installationId: 'inst_123',
+    organizationId: 'org_123',
     providerHost: 'github.example.com',
     providerType: 'github_app',
+    privateKeyPemCiphertext: 'private-key-ciphertext',
+    privateKeyPemEncryptionKeyId: 'private-key-id',
     repositoryOwner: 'acme',
     status: 'active',
+    webhookSecretCiphertext: 'webhook-secret-ciphertext',
+    webhookSecretEncryptionKeyId: 'webhook-secret-key-id',
     webhookUrl:
       'https://console.example.com/v1/sources/git/providers/github/organizations/org_123/registrations/gpr_123/webhook',
     updatedAt: new Date('2026-05-01T09:00:00.000Z'),

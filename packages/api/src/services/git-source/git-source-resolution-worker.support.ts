@@ -1,9 +1,24 @@
+import type { GitProviderType } from '@compartment/contracts';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import type { OrganizationRow } from '../../queries/organizations.query.types';
 import type { SourceBindingBranchMappingRow, SourceBindingRow, SourceRow } from '../../queries/source.query.types';
 import type { SourceResolutionTaskRow } from '../../queries/source-resolution.query.types';
+import { getGitProviderAdapter } from './git-source-provider.registry';
 
 const automationPrincipalEmailDomain: string = 'compartment.internal';
+
+interface ClaimedTaskProviderFields {
+  providerType: GitProviderType;
+  repositoryExternalId: string;
+}
+
+export function buildClaimedTaskProviderFields(
+  registration: GitProviderRegistrationRow,
+  source: SourceRow,
+): ClaimedTaskProviderFields {
+  const providerType: GitProviderType = getGitProviderAdapter(registration.providerType).providerType;
+  return { providerType, repositoryExternalId: source.repositoryExternalId };
+}
 
 export function buildSourceAutomationPrincipalEmail(sourceId: string): string {
   return `git-source+${sourceId}@${automationPrincipalEmailDomain}`;

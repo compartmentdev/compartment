@@ -52,9 +52,7 @@ interface ReadDescriptorTreeInput {
 export async function readGitDescriptorPlan(input: ReadGitDescriptorPlanInput): Promise<GitDescriptorPlanResponse> {
   const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
     ...input,
-    providerHost: input.request.providerHost,
     registrationId: input.request.registrationId,
-    repositoryOwner: input.request.repositoryOwner,
   });
   const tree: GitRepositoryTreeEntry[] = await readDescriptorPlanTree({
     access,
@@ -90,9 +88,7 @@ export async function createGitDescriptorPullRequest(
 ): Promise<GitDescriptorPullRequestResponse> {
   const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
     ...input,
-    providerHost: input.request.providerHost,
     registrationId: input.request.registrationId,
-    repositoryOwner: input.request.repositoryOwner,
   });
   assertDescriptorPullRequestMatchesPlan(
     input.request,
@@ -155,9 +151,7 @@ export async function readGitDescriptorPullRequestStatus(
   assertGitDescriptorPullRequestStatusToken(input.request);
   const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
     ...input,
-    providerHost: input.request.providerHost,
     registrationId: input.request.registrationId,
-    repositoryOwner: input.request.repositoryOwner,
   });
   const pullRequest: GitPullRequestStatus = await readDescriptorPullRequestStatus({
     access,

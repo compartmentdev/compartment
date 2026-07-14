@@ -416,16 +416,12 @@ describe('git source bootstrap service', (): void => {
       repositoryOwner: 'acme',
     });
 
-    await expect(
-      startGitHubProviderBootstrap({
-        actor: createGitSourceActor(),
-        organizationId: otherGitSourceOrganizationId,
-        compartmentUrl: 'https://console.example',
-        providerHost: 'github.com',
-        repositoryOwner: 'acme',
-      }),
-    ).rejects.toMatchObject({
-      code: 'git_source_registration_failed',
+    const otherOrganizationBootstrap: GitHubProviderBootstrapView = await startGitHubProviderBootstrap({
+      actor: createGitSourceActor(),
+      organizationId: otherGitSourceOrganizationId,
+      compartmentUrl: 'https://console.example',
+      providerHost: 'github.com',
+      repositoryOwner: 'acme',
     });
     await expect(
       readGitHubProviderBootstrapStatus({
@@ -446,10 +442,27 @@ describe('git source bootstrap service', (): void => {
       registrationId: firstBootstrap.registrationId,
       status: 'pending',
     });
+    await expect(
+      readGitHubProviderBootstrapStatus({
+        actor: createGitSourceActor(),
+        organizationId: otherGitSourceOrganizationId,
+        bootstrapStateId: otherOrganizationBootstrap.bootstrapStateId!,
+      }),
+    ).resolves.toMatchObject({
+      registrationId: otherOrganizationBootstrap.registrationId,
+      status: 'pending',
+    });
 
     const registrations: GitProviderRegistrationRowRecord[] = await db.select().from(gitProviderRegistrations);
-    expect(registrations).toHaveLength(1);
-    expect(registrations[0]?.webhookUrl).toContain(`/organizations/${gitSourceOrganizationId}/registrations/`);
+    expect(registrations).toHaveLength(2);
+    expect(
+      registrations.map((registration: GitProviderRegistrationRowRecord): string => registration.webhookUrl),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(`/organizations/${gitSourceOrganizationId}/registrations/`),
+        expect.stringContaining(`/organizations/${otherGitSourceOrganizationId}/registrations/`),
+      ]),
+    );
   });
 
   it('reuses a pending install bootstrap when the GitHub app still authenticates', async (): Promise<void> => {
@@ -785,8 +798,13 @@ describe('git source bootstrap service', (): void => {
         appSlug: 'compartment',
         appUrl: 'https://github.com/apps/compartment',
         bootstrapStateId: null,
+        installationId: '98765',
         pendingExpiresAt: null,
+        privateKeyPemCiphertext: 'encrypted-private-key',
+        privateKeyPemEncryptionKeyId: 'test-key',
         status: 'active',
+        webhookSecretCiphertext: 'encrypted-webhook-secret',
+        webhookSecretEncryptionKeyId: 'test-key',
       })
       .where(eq(gitProviderRegistrations.id, bootstrap.registrationId));
 

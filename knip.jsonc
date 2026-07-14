@@ -32,6 +32,14 @@
     "packages/contracts/src/contracts/compartment-descriptor.contract.ts": ["types"],
     "packages/contracts/src/index.misc.ts": ["types"],
     "packages/contracts/src/index.ts": ["types"],
+    // Git-provider registration contracts are public API for external clients; pass 2 adds in-repo UI consumers.
+    "packages/contracts/src/contracts/control-plane-browser-errors.contract.ts": ["exports"],
+    "packages/contracts/src/contracts/control-plane-protocol.contract.ts": ["exports"],
+    "packages/contracts/src/contracts/source-git-provider.contract.ts": ["exports", "types"],
+    "packages/contracts/src/index.browser-git.ts": ["exports", "types"],
+    // These SDK methods are the public client surface for the backend routes.
+    "packages/sdk/src/index.ts": ["exports"],
+    "packages/sdk/src/services/source-git.service.ts": ["exports"],
   },
   "entry": [
     "package.json",

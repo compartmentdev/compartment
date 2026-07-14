@@ -34,8 +34,34 @@ export async function createGitHubRepositoryDescriptorPullRequest(
   const baseSha: string = await readGitHubBranchHeadSha(input, octokit);
   const headBranchName: string = `compartment/add-descriptor-${Date.now().toString(36)}`;
   await createGitHubBranch(input, octokit, headBranchName, baseSha);
-  await putGitHubRepositoryFiles(input, octokit, headBranchName);
-  return await createGitHubPullRequest(input, octokit, headBranchName);
+  try {
+    await putGitHubRepositoryFiles(input, octokit, headBranchName);
+    return await createGitHubPullRequest(input, octokit, headBranchName);
+  } catch (error) {
+    const failure: Error = error instanceof Error ? error : new Error('Unknown GitHub pull request failure.');
+    await removeFailedGitHubPullRequestBranch(input, octokit, headBranchName, failure);
+    throw error;
+  }
+}
+
+async function removeFailedGitHubPullRequestBranch(
+  input: CreateGitHubRepositoryDescriptorPullRequestInput,
+  octokit: Octokit,
+  headBranchName: string,
+  failure: Error,
+): Promise<void> {
+  try {
+    await octokit.rest.git.deleteRef({
+      owner: input.owner,
+      ref: `heads/${headBranchName}`,
+      repo: input.repositoryName,
+    });
+  } catch (cleanupError) {
+    throw new AggregateError(
+      [failure, cleanupError],
+      'GitHub pull request failed and its branch could not be removed.',
+    );
+  }
 }
 
 async function readGitHubBranchHeadSha(

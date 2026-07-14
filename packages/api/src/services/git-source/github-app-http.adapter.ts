@@ -131,7 +131,7 @@ export function readOptionalGitHubField(value: string | null | undefined): strin
   return hasText(value) ? value : null;
 }
 
-function readGitHubRequestFailureStatus(error: Error | null | undefined): number | null {
+export function readGitHubRequestFailureStatus(error: Error | null | undefined): number | null {
   if (error !== null && error !== undefined && 'status' in error && typeof error.status === 'number') {
     return error.status;
   }

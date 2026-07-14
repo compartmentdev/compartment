@@ -9,6 +9,9 @@ export type PersistedGitProviderRegistrationRow = typeof gitProviderRegistration
 export type PersistedGitProviderBootstrapStateRow = typeof gitProviderBootstrapStates.$inferSelect;
 
 export interface GitProviderRegistrationRow {
+  accessTokenCiphertext: string | null;
+  accessTokenEncryptionKeyId: string | null;
+  accessTokenExpiresAt: Date | null;
   appId: string | null;
   appName: string | null;
   appSlug: string | null;
@@ -28,6 +31,8 @@ export interface GitProviderRegistrationRow {
   webhookSecretEncryptionKeyId: string | null;
   webhookUrl: string;
   organizationId: string;
+  providerAccountId: string | null;
+  providerAccountLogin: string | null;
   providerHost: string;
   providerType: string;
   repositoryOwner: string;
@@ -99,6 +104,7 @@ export interface FindGitProviderRegistrationByStatusInput {
   expiresAfter?: Date | undefined;
   organizationId: string;
   providerHost: string;
+  providerType?: string | undefined;
   repositoryOwner: string;
   status: string;
 }
@@ -138,4 +144,38 @@ export interface FindGitProviderRegistrationByIdInput {
 export interface FindGitProviderBootstrapStateByIdInput {
   bootstrapStateId: string;
   organizationId: string;
+}
+
+export interface UpsertGitLabProviderRegistrationInput {
+  accessTokenCiphertext: string;
+  accessTokenEncryptionKeyId: string;
+  accessTokenExpiresAt: Date | null;
+  callbackUrl: string;
+  createdByPrincipalId: string;
+  id: string;
+  organizationId: string;
+  providerAccountId: string;
+  providerAccountLogin: string;
+  providerHost: string;
+  repositoryOwner: string;
+  updatedAt: Date;
+  webhookSecretCiphertext: string;
+  webhookSecretEncryptionKeyId: string;
+  webhookUrl: string;
+}
+
+export interface FindActiveGitLabProviderRegistrationInput {
+  organizationId: string;
+  providerAccountId: string;
+  providerHost: string;
+}
+
+export interface RotateGitLabProviderRegistrationTokenInput {
+  accessTokenCiphertext: string;
+  accessTokenEncryptionKeyId: string;
+  accessTokenExpiresAt: Date | null;
+  organizationId: string;
+  providerAccountLogin: string;
+  registrationId: string;
+  updatedAt: Date;
 }

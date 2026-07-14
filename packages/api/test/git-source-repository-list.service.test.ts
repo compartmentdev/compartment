@@ -1,15 +1,12 @@
 import { describe, expect, it, vi, type Mock } from 'vitest';
-import type { GitHubInstallationRepositoryListResponse } from '@compartment/contracts';
+import type { GitProviderRegistrationRepositoryListResponse } from '@compartment/contracts';
 import type { Actor } from '../src/services/auth-actor.types';
 import type { GitProviderRegistrationRow } from '../src/queries/git-provider-registration.query.types';
 import type * as GithubAppClientAdapter from '../src/services/git-source/github-app-client.adapter';
 import type { GitHubInstallationRepository } from '../src/services/git-source/github-app-client.adapter.types';
 import type * as GitSourceDescriptorRegistrationAccess from '../src/services/git-source/git-source-descriptor-registration-access.service';
 import type { GitProviderAccess } from '../src/services/git-source/git-source-provider.types';
-import {
-  listGitHubInstallationRepositories,
-  type ListGitHubInstallationRepositoriesInput,
-} from '../src/services/git-source/git-source-repository-list.service';
+import { listGitProviderRegistrationRepositories } from '../src/services/git-source/git-source-repository-list.service';
 
 type ListGitHubInstallationRepositoriesFromGitHub = typeof GithubAppClientAdapter.listGitHubInstallationRepositories;
 type RequireGitProviderRegistrationAccess =
@@ -21,6 +18,12 @@ interface GithubAppClientAdapterModule {
 
 interface GitSourceDescriptorRegistrationAccessModule {
   requireGitProviderRegistrationAccess: Mock<RequireGitProviderRegistrationAccess>;
+}
+
+interface TestListGitProviderRegistrationRepositoriesInput {
+  actor: Actor;
+  organizationId: string;
+  registrationId: string;
 }
 
 const mocks: {
@@ -51,12 +54,12 @@ vi.mock(
 );
 
 describe('git source repository list service', (): void => {
-  it('returns ready repositories when the provider can list the registration', async (): Promise<void> => {
+  it('returns repositories when the provider can list the registration', async (): Promise<void> => {
     prepareRepositoryListMocks();
     mocks.listGitHubInstallationRepositories.mockResolvedValueOnce([createRepository()]);
 
-    const response: GitHubInstallationRepositoryListResponse =
-      await listGitHubInstallationRepositories(createListInput());
+    const response: GitProviderRegistrationRepositoryListResponse =
+      await listGitProviderRegistrationRepositories(createListInput());
 
     expect(response).toEqual({
       repositories: [
@@ -69,30 +72,24 @@ describe('git source repository list service', (): void => {
           private: true,
         },
       ],
-      status: 'ready',
     });
   });
 
-  it('returns bootstrap required when the persisted installation cannot list repositories', async (): Promise<void> => {
+  it('surfaces not-found as a provider-neutral access error', async (): Promise<void> => {
     prepareRepositoryListMocks();
     mocks.listGitHubInstallationRepositories.mockRejectedValueOnce(createGitHubRequestFailure(404));
 
-    const response: GitHubInstallationRepositoryListResponse =
-      await listGitHubInstallationRepositories(createListInput());
-
-    expect(response).toEqual({
-      repositories: [],
-      status: 'provider_bootstrap_required',
+    await expect(listGitProviderRegistrationRepositories(createListInput())).rejects.toMatchObject({
+      code: 'git_source_repository_access_denied',
     });
   });
 
-  it('returns bootstrap required for repository access denial without mutating bootstrap state', async (): Promise<void> => {
+  it('surfaces access denial through the same neutral error', async (): Promise<void> => {
     prepareRepositoryListMocks();
     mocks.listGitHubInstallationRepositories.mockRejectedValueOnce(createGitHubRequestFailure(403));
 
-    await expect(listGitHubInstallationRepositories(createListInput())).resolves.toEqual({
-      repositories: [],
-      status: 'provider_bootstrap_required',
+    await expect(listGitProviderRegistrationRepositories(createListInput())).rejects.toMatchObject({
+      code: 'git_source_repository_access_denied',
     });
   });
 });
@@ -112,13 +109,11 @@ function createProviderAccess(): GitProviderAccess {
   };
 }
 
-function createListInput(): ListGitHubInstallationRepositoriesInput {
+function createListInput(): TestListGitProviderRegistrationRepositoriesInput {
   return {
     actor: createActor(),
     organizationId: 'org_123',
-    providerHost: 'github.enterprise.example',
     registrationId: 'gpr_123',
-    repositoryOwner: 'acme',
   };
 }
 
@@ -155,6 +150,11 @@ function createActor(): Actor {
 
 function createRegistration(): GitProviderRegistrationRow {
   return {
+    accessTokenCiphertext: null,
+    accessTokenEncryptionKeyId: null,
+    accessTokenExpiresAt: null,
+    providerAccountId: null,
+    providerAccountLogin: null,
     appId: '12345',
     appName: 'Compartment',
     appSlug: 'compartment',

@@ -2,48 +2,35 @@ import {
   createGitSourceRegistrationFailedError,
   createGitSourceRegistrationPendingError,
 } from '../../errors/api-business-error';
-import { findActiveGitProviderRegistration } from '../../queries/git-provider-registration.query';
-import { findPendingGitProviderRegistration } from '../../queries/git-provider-registration-bootstrap.query';
+import { findGitProviderRegistrationById } from '../../queries/git-provider-registration.query';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import { getGitProviderAdapter } from './git-source-provider.registry';
 import type { GitProviderAccess } from './git-source-provider.types';
 
-export async function requireActiveGitProviderAccess(
+export async function requireGitProviderAccessByRegistrationId(
   organizationId: string,
-  providerHost: string,
-  repositoryOwner: string,
+  registrationId: string,
 ): Promise<GitProviderAccess> {
-  return buildGitProviderAccess(
-    await requireActiveGitProviderRegistration(organizationId, providerHost, repositoryOwner),
-  );
+  const registration: GitProviderRegistrationRow | undefined = await findGitProviderRegistrationById({
+    organizationId,
+    registrationId,
+  });
+  if (registration?.status === 'pending') {
+    throw createGitSourceRegistrationPendingError();
+  }
+  if (registration?.status !== 'active') {
+    throw createGitSourceRegistrationFailedError('The selected git provider registration is not active.');
+  }
+  return buildGitProviderAccess(registration);
 }
 
 export function buildGitProviderAccess(registration: GitProviderRegistrationRow): GitProviderAccess {
-  return {
-    credential: getGitProviderAdapter(registration.providerType).readRegistrationCredential(registration),
-    registration,
-  };
-}
-
-async function requireActiveGitProviderRegistration(
-  organizationId: string,
-  providerHost: string,
-  repositoryOwner: string,
-): Promise<GitProviderRegistrationRow> {
-  const activeRegistration: GitProviderRegistrationRow | undefined = await findActiveGitProviderRegistration({
-    organizationId,
-    providerHost,
-    repositoryOwner,
-  });
-  if (activeRegistration !== undefined) {
-    return activeRegistration;
+  try {
+    return {
+      credential: getGitProviderAdapter(registration.providerType).readRegistrationCredential(registration),
+      registration,
+    };
+  } catch {
+    throw createGitSourceRegistrationFailedError('The selected git provider registration has invalid credentials.');
   }
-
-  if (
-    (await findPendingGitProviderRegistration(organizationId, providerHost, repositoryOwner, new Date())) !== undefined
-  ) {
-    throw createGitSourceRegistrationPendingError();
-  }
-
-  throw createGitSourceRegistrationFailedError('Connect the install-owned GitHub App before registering this source.');
 }

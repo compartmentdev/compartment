@@ -14,7 +14,7 @@ import {
 } from '@compartment/contracts';
 import { isMissingFileSystemEntryError } from '@compartment/utils';
 import { parseGitSourceYaml } from './worker-git-source-yaml.service';
-import { createNonRetryableGitSourceResolutionError } from './worker-git-source-resolution-failure.support';
+import { createNonRetryableGitSourceTaskError } from './worker-git-source-resolution-failure.support';
 
 export interface ParsedGitSourceDescriptorFiles {
   descriptor: CompartmentAuthoredDescriptor;
@@ -46,7 +46,7 @@ export function requireMatchingDescriptorProjectName(
     return;
   }
 
-  throw createNonRetryableGitSourceResolutionError(
+  throw createNonRetryableGitSourceTaskError(
     readGitSourceDescriptorProjectMismatchMessage(descriptorPath, descriptor.name, expectedProjectName),
   );
 }
@@ -91,9 +91,7 @@ async function readRequiredDescriptorFile(descriptorFilePath: string, descriptor
   } catch (error) {
     const fileError: Error | undefined = error instanceof Error ? error : undefined;
     if (fileError !== undefined && isMissingFileSystemEntryError(fileError)) {
-      throw createNonRetryableGitSourceResolutionError(
-        `Descriptor ${descriptorPath} was not found on the source branch.`,
-      );
+      throw createNonRetryableGitSourceTaskError(`Descriptor ${descriptorPath} was not found on the source branch.`);
     }
 
     throw error;
@@ -115,7 +113,7 @@ function readParsedGitSourceYamlAtPath<TOutput, TInput>(
       throw error;
     }
 
-    throw createNonRetryableGitSourceResolutionError(`${fileLabel} ${relativePath} is invalid: ${failureMessage}`);
+    throw createNonRetryableGitSourceTaskError(`${fileLabel} ${relativePath} is invalid: ${failureMessage}`);
   }
 }
 

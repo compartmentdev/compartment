@@ -26,7 +26,7 @@ describe('readExtractedRepositoryRoot', (): void => {
     ]);
 
     await expect(readExtractedRepositoryRoot(extractionDirectory)).rejects.toThrow(
-      'GitHub repository archive contained multiple repository root directories.',
+      'Git provider repository archive contained multiple repository root directories.',
     );
   });
 });

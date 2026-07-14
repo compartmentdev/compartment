@@ -1,5 +1,5 @@
 export {
-  buildCompartmentGitHubProviderRegistrationRepositoriesPathname,
+  buildCompartmentGitProviderRegistrationRepositoriesPathname,
   buildCompartmentGitSourceSyncTaskPathname,
   compartmentGitDescriptorPlanPathname,
   compartmentGitDescriptorPullRequestPathname,
@@ -8,6 +8,7 @@ export {
   compartmentGitHubProviderAccountDiscoveryResultPathname,
   compartmentGitHubProviderBootstrapPathname,
   compartmentGitSourceConnectPathname,
+  compartmentGitLabProviderRegistrationsPathname,
 } from './contracts/control-plane-protocol.contract';
 export {
   type DeploymentStatusQuery,
@@ -39,9 +40,6 @@ export {
   type GitDescriptorPullRequestResponse,
   type GitDescriptorPullRequestStatusRequest,
   type GitDescriptorPullRequestStatusResponse,
-  type GitHubInstallationRepositoryListRequest,
-  type GitHubInstallationRepositoryListResponse,
-  type GitHubInstallationRepositorySummary,
   type GitHubProviderBootstrapRequest,
   type GitHubProviderBootstrapResponse,
   type GitSourceResponse,
@@ -52,13 +50,23 @@ export {
   gitDescriptorPullRequestResponseSchema,
   gitDescriptorPullRequestStatusRequestSchema,
   gitDescriptorPullRequestStatusResponseSchema,
-  gitHubInstallationRepositoryListRequestSchema,
-  gitHubInstallationRepositoryListResponseSchema,
   gitHubProviderBootstrapRequestSchema,
   gitHubProviderBootstrapResponseSchema,
   gitSourceResponseSchema,
   readGitSourceDescriptorDirectory,
 } from './contracts/source-git.contract';
+export {
+  type CreateGitLabProviderRegistrationRequest,
+  type CreateGitProviderRegistrationResponse,
+  type GitProviderRegistrationListResponse,
+  type GitProviderRegistrationRepositoryListResponse,
+  type GitProviderRegistrationSummary,
+  type GitProviderRepositorySummary,
+  createGitLabProviderRegistrationRequestSchema,
+  createGitProviderRegistrationResponseSchema,
+  gitProviderRegistrationListResponseSchema,
+  gitProviderRegistrationRepositoryListResponseSchema,
+} from './contracts/source-git-provider.contract';
 export {
   type GitSourceSyncCandidate,
   type GitSourceSyncTask,

@@ -9,14 +9,14 @@ import {
   resolveGitSourceSyncDiscovery,
   type ResolvedGitSourceSyncDiscovery,
 } from '../src/services/worker-git-source-sync-discovery.service';
-import type {
-  downloadGitHubRepositoryArchive,
-  readGitHubBranchHeadSha,
-} from '../src/services/worker-git-source-github.service';
 
-type DownloadGitHubRepositoryArchive = typeof downloadGitHubRepositoryArchive;
-type ReadGitHubBranchHeadSha = typeof readGitHubBranchHeadSha;
 type WorkerGitHubArchiveTask = WorkerClaimedGitSourceResolutionTask | WorkerClaimedGitSourceSyncTask;
+type DownloadGitHubRepositoryArchive = (
+  task: WorkerGitHubArchiveTask,
+  commitSha: string,
+  archivePath: string,
+) => Promise<void>;
+type ReadGitHubBranchHeadSha = (task: WorkerClaimedGitSourceSyncTask) => Promise<string>;
 
 interface WorkerGitHubMocks {
   downloadGitHubRepositoryArchive: Mock<DownloadGitHubRepositoryArchive>;
@@ -30,7 +30,21 @@ const workerGitHubMocks: WorkerGitHubMocks = vi.hoisted(
   }),
 );
 
-vi.mock('../src/services/worker-git-source-github.service', (): WorkerGitHubMocks => workerGitHubMocks);
+vi.mock(
+  '../src/services/worker-git-source-github.service',
+  async (importOriginal: () => Promise<object>): Promise<object> => {
+    const original: object = await importOriginal();
+    return {
+      ...original,
+      ...workerGitHubMocks,
+      workerGitHubSourceProvider: {
+        downloadRepositoryArchive: workerGitHubMocks.downloadGitHubRepositoryArchive,
+        providerType: 'github_app',
+        readBranchHeadSha: workerGitHubMocks.readGitHubBranchHeadSha,
+      },
+    };
+  },
+);
 
 const executeFileAsync: (
   file: string,
@@ -140,8 +154,10 @@ async function createTrackedTempDirectory(prefix: string): Promise<string> {
 function createSyncTask(): WorkerClaimedGitSourceSyncTask {
   return {
     claimToken: 'claim-token',
-    installationToken: 'installation-token',
+    providerAccessToken: 'installation-token',
     providerHost: 'github.com',
+    providerType: 'github_app',
+    repositoryExternalId: 'repo_1',
     repositoryName: 'mono',
     repositoryOwner: 'acme',
     requestedBranchName: 'main',

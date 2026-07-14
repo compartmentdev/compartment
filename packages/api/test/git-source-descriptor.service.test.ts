@@ -309,6 +309,11 @@ function createActor(): Actor {
 
 function createRegistration(): GitProviderRegistrationRow {
   return {
+    accessTokenCiphertext: null,
+    accessTokenEncryptionKeyId: null,
+    accessTokenExpiresAt: null,
+    providerAccountId: null,
+    providerAccountLogin: null,
     appId: '12345',
     appName: 'Compartment',
     appSlug: 'compartment',

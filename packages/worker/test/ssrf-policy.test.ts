@@ -1,10 +1,7 @@
 import { createServer, type AddressInfo, type Server, type Socket } from 'node:net';
 import type { WorkerClaimedGitSourceResolutionTask, WorkerClaimedGitSourceSyncTask } from '@compartment/contracts';
 import { describe, expect, it } from 'vitest';
-import {
-  downloadGitHubRepositoryArchive,
-  readGitHubBranchHeadSha,
-} from '../src/services/worker-git-source-github.service';
+import { workerGitHubSourceProvider } from '../src/services/worker-git-source-github.service';
 
 interface LocalTcpServerHandle {
   close: () => Promise<void>;
@@ -23,7 +20,7 @@ describe('worker SSRF policy', (): void => {
     try {
       await withTrustedOutboundHostsEnv(server.trustedHost, async (): Promise<void> => {
         await expectRejectedErrorChainToContain(async (): Promise<void> => {
-          await readGitHubBranchHeadSha({
+          await workerGitHubSourceProvider.readBranchHeadSha({
             ...createSyncTask(),
             providerHost: server.trustedHost,
           });
@@ -42,7 +39,7 @@ describe('worker SSRF policy', (): void => {
     try {
       await withTrustedOutboundHostsEnv(server.trustedHost, async (): Promise<void> => {
         await expectRejectedErrorChainToContain(async (): Promise<void> => {
-          await downloadGitHubRepositoryArchive(
+          await workerGitHubSourceProvider.downloadRepositoryArchive(
             {
               ...createResolutionTask(),
               providerHost: server.trustedHost,
@@ -158,8 +155,10 @@ function readErrorChainMessages(error: Error): string[] {
 function createSyncTask(): WorkerClaimedGitSourceSyncTask {
   return {
     claimToken: 'claim-token',
-    installationToken: 'installation-token',
+    providerAccessToken: 'installation-token',
     providerHost: 'github.com',
+    providerType: 'github_app',
+    repositoryExternalId: 'repo_1',
     repositoryName: 'mono',
     repositoryOwner: 'acme',
     requestedBranchName: 'main',
@@ -174,9 +173,11 @@ function createResolutionTask(): WorkerClaimedGitSourceResolutionTask {
     branchName: 'main',
     commitSha: 'resolved-commit-sha',
     descriptorPath: 'compartment.yml',
-    installationToken: 'installation-token',
+    providerAccessToken: 'installation-token',
     projectName: 'web',
     providerHost: 'github.com',
+    providerType: 'github_app',
+    repositoryExternalId: 'repo_1',
     repositoryName: 'mono',
     repositoryOwner: 'acme',
     sourceBindingId: 'sbd_123',

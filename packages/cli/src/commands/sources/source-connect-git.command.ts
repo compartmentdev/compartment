@@ -1,6 +1,6 @@
 import {
   defaultCompartmentEnvironmentName,
-  type GitHubInstallationRepositorySummary,
+  type GitProviderRepositorySummary,
   type GitHubProviderBootstrapResponse,
   type GitSourceResponse,
 } from '@compartment/contracts';
@@ -19,7 +19,8 @@ import { createGitSourceConnectMessage, parseEnabledDisabledState, promptYesNoCh
 
 interface GitSourceRepositorySelection {
   providerHost: string;
-  repository: GitHubInstallationRepositorySummary;
+  registrationId: string;
+  repository: GitProviderRepositorySummary;
 }
 
 interface ConnectSelectedGitSourceInput {
@@ -28,7 +29,8 @@ interface ConnectSelectedGitSourceInput {
   defaultAutoDeployEnabled: boolean;
   defaultEnvironmentName: string;
   providerHost: string;
-  repository: GitHubInstallationRepositorySummary;
+  registrationId: string;
+  repository: GitProviderRepositorySummary;
 }
 
 interface GitSourceConnectionSettings {
@@ -73,6 +75,7 @@ async function runSourceConnectGitCommand(
   const response: GitSourceResponse = await connectSelectedGitSource(context, {
     ...settings,
     providerHost: selection.providerHost,
+    registrationId: selection.registrationId,
     repository: selection.repository,
   });
   dependencies.io.stdout(`${createGitSourceConnectMessage(response)}\n`);
@@ -102,15 +105,14 @@ async function resolveGitSourceRepositorySelection(
     repositoryOwner,
   });
   const canonicalRepositoryOwner: string = readCanonicalRepositoryOwner(bootstrap, repositoryOwner);
-  const repository: GitHubInstallationRepositorySummary = await resolveRepositorySelection(
+  const repository: GitProviderRepositorySummary = await resolveRepositorySelection(
     dependencies,
     context,
     bootstrap.registrationId,
-    bootstrap.providerHost,
     canonicalRepositoryOwner,
     plan,
   );
-  return { providerHost: bootstrap.providerHost, repository };
+  return { providerHost: bootstrap.providerHost, registrationId: bootstrap.registrationId, repository };
 }
 
 async function connectSelectedGitSource(
@@ -122,6 +124,7 @@ async function connectSelectedGitSource(
     defaultAutoDeployEnabled: input.defaultAutoDeployEnabled,
     defaultEnvironmentName: input.defaultEnvironmentName,
     providerHost: input.providerHost,
+    registrationId: input.registrationId,
     repositoryName: input.repository.name,
     repositoryOwner: input.repository.owner,
     syncBranchName: input.branchName,
@@ -136,16 +139,12 @@ async function resolveRepositorySelection(
   dependencies: CliCommandDependencies,
   context: AuthenticatedContext,
   registrationId: string,
-  providerHost: string,
   repositoryOwner: string,
   plan: LocalGitSourcePlan,
-): Promise<GitHubInstallationRepositorySummary> {
-  const repositories: GitHubInstallationRepositorySummary[] = await readGitHubInstallationRepositoriesForSelection(
-    dependencies,
+): Promise<GitProviderRepositorySummary> {
+  const repositories: GitProviderRepositorySummary[] = await readGitHubInstallationRepositoriesForSelection(
     context,
     registrationId,
-    providerHost,
-    repositoryOwner,
   );
   if (repositories.length === 0) {
     throw new Error('GitHub App installation does not include any repositories.');
@@ -160,9 +159,9 @@ async function resolveRepositorySelection(
 
 async function promptForRepositorySelection(
   dependencies: CliCommandDependencies,
-  repositories: GitHubInstallationRepositorySummary[],
+  repositories: GitProviderRepositorySummary[],
   preferredRepositoryFullName: string,
-): Promise<GitHubInstallationRepositorySummary> {
+): Promise<GitProviderRepositorySummary> {
   dependencies.io.stderr(`Available repositories:\n${repositories.map(formatRepositoryListItem).join('\n')}\n`);
   const defaultRepositoryFullName: string = readDefaultRepositorySelection(repositories, preferredRepositoryFullName);
   for (;;) {
@@ -171,8 +170,8 @@ async function promptForRepositorySelection(
       'Repository',
       defaultRepositoryFullName,
     );
-    const repository: GitHubInstallationRepositorySummary | undefined = repositories.find(
-      (candidate: GitHubInstallationRepositorySummary): boolean => candidate.fullName === repositoryFullName,
+    const repository: GitProviderRepositorySummary | undefined = repositories.find(
+      (candidate: GitProviderRepositorySummary): boolean => candidate.fullName === repositoryFullName,
     );
     if (repository !== undefined) {
       return repository;
@@ -182,16 +181,16 @@ async function promptForRepositorySelection(
   }
 }
 
-function formatRepositoryListItem(repository: GitHubInstallationRepositorySummary): string {
+function formatRepositoryListItem(repository: GitProviderRepositorySummary): string {
   return `- ${repository.fullName}\tdefault branch: ${repository.defaultBranchName}`;
 }
 
 function readDefaultRepositorySelection(
-  repositories: GitHubInstallationRepositorySummary[],
+  repositories: GitProviderRepositorySummary[],
   preferredRepositoryFullName: string,
 ): string {
-  const preferredRepository: GitHubInstallationRepositorySummary | undefined = repositories.find(
-    (repository: GitHubInstallationRepositorySummary): boolean => repository.fullName === preferredRepositoryFullName,
+  const preferredRepository: GitProviderRepositorySummary | undefined = repositories.find(
+    (repository: GitProviderRepositorySummary): boolean => repository.fullName === preferredRepositoryFullName,
   );
   return (preferredRepository ?? repositories[0]!).fullName;
 }

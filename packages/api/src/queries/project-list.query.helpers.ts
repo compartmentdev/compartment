@@ -63,9 +63,9 @@ export function buildSearchFilter(search: string | null): SQL {
     return sql`true`;
   }
 
-  return sql`position(
+  return sql`strpos(
+    lower(project_overview_index.project_name || ' ' || coalesce(project_overview_index.route_url, '')),
     ${search}
-    in lower(project_overview_index.project_name || ' ' || coalesce(project_overview_index.route_url, ''))
   ) > 0`;
 }
 

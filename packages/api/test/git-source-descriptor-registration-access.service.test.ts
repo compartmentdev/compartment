@@ -68,44 +68,22 @@ describe('git source descriptor registration access', (): void => {
     const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
       actor: createActor('prn_followup_admin'),
       organizationId: 'org_123',
-      providerHost: 'github.enterprise.example',
       registrationId: 'gpr_123',
-      repositoryOwner: 'acme',
     });
 
     expect(access.credential.privateKeyPem).toBe('private-key');
     expect(access.registration.id).toBe('gpr_123');
   });
 
-  it('rejects registrations that do not match the requested provider host or owner', async (): Promise<void> => {
-    mocks.requireGitProviderRegistration.mockResolvedValueOnce(createRegistration());
-
-    await expect(
-      requireGitProviderRegistrationAccess({
-        actor: createActor('prn_followup_admin'),
-        organizationId: 'org_123',
-        providerHost: 'github.com',
-        registrationId: 'gpr_123',
-        repositoryOwner: 'acme',
-      }),
-    ).rejects.toMatchObject({
-      code: 'git_source_request_invalid',
-    });
-  });
-
-  it('matches repository owner case-insensitively after GitHub verifies the installation account', async (): Promise<void> => {
-    mocks.requireGitProviderRegistration.mockResolvedValueOnce(createRegistration({ repositoryOwner: 'ACME' }));
-    mocks.decryptVariableValueFromStorage.mockReturnValueOnce('private-key');
-
+  it('resolves provider material from the persisted registration', async (): Promise<void> => {
+    mocks.requireGitProviderRegistration.mockResolvedValueOnce(createGitLabRegistration());
+    mocks.decryptVariableValueFromStorage.mockReturnValueOnce('gitlab-token');
     const access: GitProviderAccess = await requireGitProviderRegistrationAccess({
       actor: createActor('prn_followup_admin'),
       organizationId: 'org_123',
-      providerHost: 'github.enterprise.example',
       registrationId: 'gpr_123',
-      repositoryOwner: 'acme',
     });
-
-    expect(access.credential.privateKeyPem).toBe('private-key');
+    expect(access.credential).toEqual({ kind: 'gitlab_token', token: 'gitlab-token' });
   });
 
   it('rejects pending registrations before reading private key material', async (): Promise<void> => {
@@ -115,9 +93,7 @@ describe('git source descriptor registration access', (): void => {
       requireGitProviderRegistrationAccess({
         actor: createActor('prn_followup_admin'),
         organizationId: 'org_123',
-        providerHost: 'github.enterprise.example',
         registrationId: 'gpr_123',
-        repositoryOwner: 'acme',
       }),
     ).rejects.toMatchObject({
       code: 'git_source_registration_pending',
@@ -125,16 +101,14 @@ describe('git source descriptor registration access', (): void => {
     expect(mocks.decryptVariableValueFromStorage).not.toHaveBeenCalled();
   });
 
-  it('rejects active registrations missing installation metadata before reading private key material', async (): Promise<void> => {
-    mocks.requireGitProviderRegistration.mockResolvedValueOnce(createRegistration({ installationId: null }));
+  it('rejects active registrations missing credential material', async (): Promise<void> => {
+    mocks.requireGitProviderRegistration.mockResolvedValueOnce(createRegistration({ privateKeyPemCiphertext: null }));
 
     await expect(
       requireGitProviderRegistrationAccess({
         actor: createActor('prn_followup_admin'),
         organizationId: 'org_123',
-        providerHost: 'github.enterprise.example',
         registrationId: 'gpr_123',
-        repositoryOwner: 'acme',
       }),
     ).rejects.toMatchObject({
       code: 'git_source_registration_failed',
@@ -161,6 +135,11 @@ function createActor(principalId: string): Actor {
 
 function createRegistration(overrides: Partial<GitProviderRegistrationRow> = {}): GitProviderRegistrationRow {
   return {
+    accessTokenCiphertext: null,
+    accessTokenEncryptionKeyId: null,
+    accessTokenExpiresAt: null,
+    providerAccountId: null,
+    providerAccountLogin: null,
     appId: '12345',
     appName: 'Compartment',
     appSlug: 'compartment',
@@ -187,4 +166,21 @@ function createRegistration(overrides: Partial<GitProviderRegistrationRow> = {})
     webhookUrl: 'https://console.example/v1/sources/git/providers/github/registrations/gpr_123/webhook',
     ...overrides,
   };
+}
+
+function createGitLabRegistration(overrides: Partial<GitProviderRegistrationRow> = {}): GitProviderRegistrationRow {
+  return createRegistration({
+    accessTokenCiphertext: 'encrypted-token',
+    accessTokenEncryptionKeyId: 'token-key',
+    accessTokenExpiresAt: null,
+    providerAccountId: null,
+    providerAccountLogin: null,
+    installationId: null,
+    privateKeyPemCiphertext: null,
+    privateKeyPemEncryptionKeyId: null,
+    providerHost: 'gitlab.com',
+    providerType: 'gitlab',
+    repositoryOwner: 'token-holder',
+    ...overrides,
+  });
 }

@@ -2,23 +2,24 @@ import {
   compartmentGitDescriptorPlanPathname,
   compartmentGitDescriptorPullRequestPathname,
   compartmentGitDescriptorPullRequestStatusPathname,
-  compartmentGitHubProviderRegistrationRepositoriesPathnameTemplate,
+  compartmentGitProviderRegistrationRepositoriesPathnameTemplate,
+  compartmentGitProviderRegistrationsPathname,
   createGitDescriptorPullRequestRequestSchema,
   gitDescriptorPlanRequestSchema,
   gitDescriptorPlanResponseSchema,
   gitDescriptorPullRequestResponseSchema,
   gitDescriptorPullRequestStatusRequestSchema,
   gitDescriptorPullRequestStatusResponseSchema,
-  gitHubInstallationRepositoryListRequestSchema,
-  gitHubInstallationRepositoryListResponseSchema,
+  gitProviderRegistrationListResponseSchema,
+  gitProviderRegistrationRepositoryListResponseSchema,
   type CreateGitDescriptorPullRequestRequest,
   type GitDescriptorPlanRequest,
   type GitDescriptorPlanResponse,
   type GitDescriptorPullRequestResponse,
   type GitDescriptorPullRequestStatusRequest,
   type GitDescriptorPullRequestStatusResponse,
-  type GitHubInstallationRepositoryListRequest,
-  type GitHubInstallationRepositoryListResponse,
+  type GitProviderRegistrationListResponse,
+  type GitProviderRegistrationRepositoryListResponse,
 } from '@compartment/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
@@ -29,15 +30,13 @@ import {
   readGitDescriptorPlan,
   readGitDescriptorPullRequestStatus,
 } from '../../services/git-source/git-source-descriptor.service';
-import {
-  listGitHubInstallationRepositories,
-  type ListGitHubInstallationRepositoriesInput,
-} from '../../services/git-source/git-source-repository-list.service';
+import { listGitProviderRegistrationRepositories } from '../../services/git-source/git-source-repository-list.service';
+import { listGitProviderRegistrations } from '../../services/git-source/git-source-provider-registration.service';
 import { createCurrentOrganizationRouteResponseOptions } from '../protected/current-organization-route';
 import { buildGitSourceRouteContext } from './source-git-route-context';
 import {
-  gitHubProviderRegistrationRouteParamsSchema,
-  type GitHubProviderRegistrationRouteParams,
+  gitProviderRegistrationRouteParamsSchema,
+  type GitProviderRegistrationRouteParams,
 } from './source-git.route.types';
 
 export function registerGitSourceDescriptorRoutes(app: ApiApp): void {
@@ -47,11 +46,18 @@ export function registerGitSourceDescriptorRoutes(app: ApiApp): void {
 
 function registerGitSourceDescriptorReadRoutes(app: ApiApp): void {
   app.get(
-    compartmentGitHubProviderRegistrationRepositoriesPathnameTemplate,
-    createCurrentOrganizationRouteResponseOptions('source.manage', {
-      200: gitHubInstallationRepositoryListResponseSchema,
+    compartmentGitProviderRegistrationsPathname,
+    createCurrentOrganizationRouteResponseOptions('source.read', {
+      200: gitProviderRegistrationListResponseSchema,
     }),
-    handleGitHubProviderRegistrationRepositories,
+    handleGitProviderRegistrations,
+  );
+  app.get(
+    compartmentGitProviderRegistrationRepositoriesPathnameTemplate,
+    createCurrentOrganizationRouteResponseOptions('source.manage', {
+      200: gitProviderRegistrationRepositoryListResponseSchema,
+    }),
+    handleGitProviderRegistrationRepositories,
   );
   app.post(
     compartmentGitDescriptorPullRequestStatusPathname,
@@ -77,34 +83,30 @@ function registerGitSourceDescriptorWriteRoutes(app: ApiApp): void {
   );
 }
 
-async function handleGitHubProviderRegistrationRepositories(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<FastifyReply> {
-  const input: ListGitHubInstallationRepositoriesInput = readGitHubInstallationRepositoryListInput(request);
-  const response: GitHubInstallationRepositoryListResponse = gitHubInstallationRepositoryListResponseSchema.parse(
-    await listGitHubInstallationRepositories(input),
-  );
+async function handleGitProviderRegistrations(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  const response: GitProviderRegistrationListResponse = gitProviderRegistrationListResponseSchema.parse({
+    registrations: await listGitProviderRegistrations(request.currentOrganization.id),
+  });
   return await reply.send(response);
 }
 
-function readGitHubInstallationRepositoryListInput(request: FastifyRequest): ListGitHubInstallationRepositoriesInput {
-  const params: GitHubProviderRegistrationRouteParams = parseRequestValue(
-    gitHubProviderRegistrationRouteParamsSchema,
+async function handleGitProviderRegistrationRepositories(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const params: GitProviderRegistrationRouteParams = parseRequestValue(
+    gitProviderRegistrationRouteParamsSchema,
     request.params,
     gitSourceInvalidParamsErrorCode,
   );
-  const query: GitHubInstallationRepositoryListRequest = parseRequestValue(
-    gitHubInstallationRepositoryListRequestSchema,
-    request.query,
-    gitSourceInvalidParamsErrorCode,
-  );
-  return {
-    ...buildGitSourceRouteContext(request),
-    providerHost: query.providerHost,
-    registrationId: params.registrationId,
-    repositoryOwner: query.repositoryOwner,
-  };
+  const response: GitProviderRegistrationRepositoryListResponse =
+    gitProviderRegistrationRepositoryListResponseSchema.parse(
+      await listGitProviderRegistrationRepositories({
+        ...buildGitSourceRouteContext(request),
+        registrationId: params.registrationId,
+      }),
+    );
+  return await reply.send(response);
 }
 
 async function handleGitDescriptorPlan(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {

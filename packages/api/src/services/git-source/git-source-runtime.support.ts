@@ -28,7 +28,7 @@ export function verifyGitHubWebhookSignature(rawBody: Buffer, signature: string,
   }
 }
 
-export function readGitHubWebhookSecret(registration: GitProviderRegistrationRow): string {
+export function readGitProviderWebhookSecret(registration: GitProviderRegistrationRow): string {
   if (registration.webhookSecretCiphertext === null || registration.webhookSecretEncryptionKeyId === null) {
     throw createGitSourceBootstrapInvalidError(
       'Git provider registration is missing webhook credentials and must be reconnected.',

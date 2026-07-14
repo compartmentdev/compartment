@@ -27,7 +27,7 @@ import {
   readGitHubProviderBootstrapPage,
   renderGitHubProviderBootstrapSuccessPage,
 } from '../../services/git-source/git-source-bootstrap.service';
-import { handleGitHubSourceWebhook } from '../../services/git-source/git-source-runtime.service';
+import { handleGitHubSourceWebhook } from '../../services/git-source/github-source-webhook.service';
 import {
   gitHubBootstrapStateRouteParamsSchema,
   gitHubCallbackQuerySchema,

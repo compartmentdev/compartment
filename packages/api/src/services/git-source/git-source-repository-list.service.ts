@@ -1,54 +1,37 @@
-import {
-  type GitHubInstallationRepositoryListResponse,
-  type GitHubInstallationRepositorySummary,
-} from '@compartment/contracts';
 import { requireGitProviderRegistrationAccess } from './git-source-descriptor-registration-access.service';
 import { getGitProviderAdapter } from './git-source-provider.registry';
-import type { GitProviderAccess, GitProviderAdapter, GitRepositorySummary } from './git-source-provider.types';
+import { throwGitProviderBusinessError } from './git-source-provider-error.service';
+import type {
+  GitProviderAccess,
+  GitProviderAdapter,
+  GitProviderRepositoryListView,
+  GitProviderRepositoryView,
+  GitRepositorySummary,
+} from './git-source-provider.types';
 import type { GitSourceContextInput } from './git-source.service.types';
 
-export interface ListGitHubInstallationRepositoriesInput extends GitSourceContextInput {
-  providerHost: string;
+interface ListGitProviderRegistrationRepositoriesInput extends GitSourceContextInput {
   registrationId: string;
-  repositoryOwner: string;
 }
 
-export async function listGitHubInstallationRepositories(
-  input: ListGitHubInstallationRepositoriesInput,
-): Promise<GitHubInstallationRepositoryListResponse> {
+export async function listGitProviderRegistrationRepositories(
+  input: ListGitProviderRegistrationRepositoriesInput,
+): Promise<GitProviderRepositoryListView> {
   const access: GitProviderAccess = await requireGitProviderRegistrationAccess(input);
   const adapter: GitProviderAdapter = getGitProviderAdapter(access.registration.providerType);
   try {
-    return buildReadyRegistrationRepositoriesResponse(await adapter.listRegistrationRepositories(access));
+    const repositories: GitRepositorySummary[] = await adapter.listRegistrationRepositories(access);
+    return { repositories: repositories.map(toRepositorySummary) };
   } catch (error) {
-    return recoverRegistrationRepositories(adapter, error instanceof Error ? error : undefined);
+    throwGitProviderBusinessError(
+      adapter,
+      error instanceof Error ? error : undefined,
+      'The registered repositories could not be read.',
+    );
   }
 }
 
-function buildReadyRegistrationRepositoriesResponse(
-  repositories: GitRepositorySummary[],
-): GitHubInstallationRepositoryListResponse {
-  return {
-    repositories: repositories.map(toInstallationRepositorySummary),
-    status: 'ready',
-  };
-}
-
-function recoverRegistrationRepositories(
-  adapter: GitProviderAdapter,
-  error: Error | undefined,
-): GitHubInstallationRepositoryListResponse {
-  if (adapter.isRepositoryAccessFailure(error) || adapter.isAuthenticationFailure(error)) {
-    return {
-      repositories: [],
-      status: 'provider_bootstrap_required',
-    };
-  }
-
-  throw error ?? new Error('Git repository list failed.');
-}
-
-function toInstallationRepositorySummary(repository: GitRepositorySummary): GitHubInstallationRepositorySummary {
+function toRepositorySummary(repository: GitRepositorySummary): GitProviderRepositoryView {
   return {
     defaultBranchName: repository.defaultBranchName,
     fullName: repository.fullName,

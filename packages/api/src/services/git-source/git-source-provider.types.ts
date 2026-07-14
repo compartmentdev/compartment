@@ -1,12 +1,12 @@
-import type { GitDescriptorDraftFile } from '@compartment/contracts';
+import type { GitDescriptorDraftFile, GitProviderType } from '@compartment/contracts';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import type { SourceRow } from '../../queries/source.query.types';
 
 /**
- * Provider kinds Compartment can integrate with. GitHub is the only member today;
- * the value is persisted as `git_provider_registrations.provider_type`.
+ * Provider kinds Compartment can integrate with. The value is persisted as
+ * `git_provider_registrations.provider_type`.
  */
-export type GitProviderType = 'github_app';
+export type { GitProviderType } from '@compartment/contracts';
 
 /**
  * Decrypted secret material for a single provider registration. Discriminated so
@@ -14,11 +14,18 @@ export type GitProviderType = 'github_app';
  * path. Non-secret identifiers (GitHub app/installation ids) are read from the
  * registration row at the point of use, so the credential carries only decrypted secrets.
  */
-export type GitProviderCredential = GitHubAppProviderCredential;
+export type GitProviderCredential = GitHubAppProviderCredential | GitLabTokenProviderCredential;
 
 interface GitHubAppProviderCredential {
   kind: 'github_app';
   privateKeyPem: string;
+  token?: never;
+}
+
+interface GitLabTokenProviderCredential {
+  kind: 'gitlab_token';
+  privateKeyPem?: never;
+  token: string;
 }
 
 /**
@@ -28,6 +35,40 @@ interface GitHubAppProviderCredential {
 export interface GitProviderAccess {
   credential: GitProviderCredential;
   registration: GitProviderRegistrationRow;
+}
+
+export interface GitProviderRegistrationMetadata {
+  accountLogin: string;
+  expiresAt: Date | null;
+}
+
+export interface GitProviderRegistrationView {
+  createdAt: string;
+  expiresAt: string | null;
+  providerAccountLogin: string;
+  providerHost: string;
+  providerType: GitProviderType;
+  registrationId: string;
+}
+
+export interface GitProviderRepositoryView {
+  defaultBranchName: string;
+  fullName: string;
+  id: string;
+  name: string;
+  owner: string;
+  private: boolean;
+}
+
+export interface GitProviderRepositoryListView {
+  repositories: GitProviderRepositoryView[];
+}
+
+export type GitProviderErrorKind = 'access' | 'auth' | 'empty-repo' | 'not-found' | 'rate-limited' | 'unknown';
+
+export interface GitProviderErrorClassification {
+  kind: GitProviderErrorKind;
+  userMessage?: string | undefined;
 }
 
 /** Provider-neutral repository address. `owner` is opaque and may contain slashes. */
@@ -98,6 +139,16 @@ export interface MintRuntimeAccessTokenInput {
   source: SourceRow;
 }
 
+/** Provider-side webhook a source is (or should be) attached to. */
+export interface SourceProviderHookTarget {
+  providerWebhookId: string | null;
+  repositoryExternalId: string;
+}
+
+export interface SourceProviderHookAttachment {
+  providerWebhookId: string | null;
+}
+
 /**
  * The single seam every git provider integration implements. Domain `git-source-*`
  * services depend only on this interface plus {@link getGitProviderAdapter}; nothing
@@ -108,6 +159,8 @@ export interface GitProviderAdapter {
 
   /** Decrypt the stored credential material for a registration. */
   readRegistrationCredential(registration: GitProviderRegistrationRow): GitProviderCredential;
+
+  readRegistrationMetadata(registration: GitProviderRegistrationRow): GitProviderRegistrationMetadata;
 
   /** Resolve the installation that grants access to a repository at connect time. */
   resolveRepositoryInstallation(
@@ -162,10 +215,17 @@ export interface GitProviderAdapter {
     pullRequestNumber: number,
   ): Promise<GitPullRequestStatus>;
 
-  /** Mint the short-lived bearer token the worker uses to fetch source for a deploy. */
+  /**
+   * Mint the bearer token the worker uses to fetch source for a deploy. GitHub mints
+   * a short-lived installation token; GitLab returns the stored access token.
+   */
   mintRuntimeAccessToken(input: MintRuntimeAccessTokenInput): Promise<string>;
 
-  isRepositoryAccessFailure(error: Error | undefined): boolean;
-  isRepositoryEmptyFailure(error: Error | undefined): boolean;
-  isAuthenticationFailure(error: Error | undefined): boolean;
+  /** Attach the provider-side webhook for a repository being connected as a source. */
+  onSourceConnected(access: GitProviderAccess, target: SourceProviderHookTarget): Promise<SourceProviderHookAttachment>;
+
+  /** Remove the provider-side webhook for a source; failures are surfaced. */
+  onSourceDisconnected(access: GitProviderAccess, target: SourceProviderHookTarget): Promise<void>;
+
+  classifyError(error: Error | undefined): GitProviderErrorClassification;
 }

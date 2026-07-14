@@ -1,13 +1,9 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import {
-  type GitHubInstallationRepositoryListRequest,
-  type GitHubInstallationRepositoryListResponse,
-  type GitHubInstallationRepositorySummary,
-  type GitHubProviderBootstrapResponse,
+  type GitProviderRegistrationRepositoryListResponse,
+  type GitProviderRepositorySummary,
 } from '@compartment/contracts/browser';
-import { listBrowserGitHubInstallationRepositories, startBrowserGitHubProviderBootstrap } from './onboarding-git-api';
-import { gitOnboardingProviderHost } from './onboarding-git-constants';
-import { buildGitHubBootstrapReturnPath } from './onboarding-git-connect-actions';
+import { listBrowserGitHubInstallationRepositories } from './onboarding-git-api';
 import { readInitialGitFormInput } from './onboarding-git-repository-form-input';
 import type { GitConnectFormInput, OnboardingRepositoryOption } from './onboarding-page.types';
 
@@ -50,11 +46,6 @@ interface LoadGitRepositoryOptionsEffectInput {
   setFormInput: Dispatch<SetStateAction<GitConnectFormInput | null>>;
   setRepositoryLoadStatus: Dispatch<SetStateAction<GitRepositoryLoadStatus>>;
   setRepositoryOptions: Dispatch<SetStateAction<OnboardingRepositoryOption[]>>;
-}
-
-interface GitHubInstallationRepositoryListRequestInput {
-  repositoryOwner: string;
-  sessionId: string | undefined;
 }
 
 type LoadGitRepositoryOptionsResult =
@@ -189,34 +180,16 @@ async function loadGitRepositoryOptions(input: UseGitRepositoryOptionsInput): Pr
     return buildReadyGitRepositoryOptionsResult([]);
   }
   const registrationId: string = input.registrationId;
-  const repositoryOwner: string = input.repositoryOwner;
-  const response: GitHubInstallationRepositoryListResponse = await listBrowserGitHubInstallationRepositories(
+  const response: GitProviderRegistrationRepositoryListResponse = await listBrowserGitHubInstallationRepositories(
     input.selectedOrganizationSlug,
     registrationId,
-    buildGitHubInstallationRepositoryListRequest({
-      repositoryOwner,
-      sessionId: input.sessionId,
-    }),
   );
-  if (response.status === 'provider_bootstrap_required') {
-    await redirectToGitHubProviderBootstrap(input, repositoryOwner);
-    return { kind: 'redirecting' };
-  }
   return buildReadyGitRepositoryOptionsResult(
     response.repositories.map(
-      (repository: GitHubInstallationRepositorySummary): OnboardingRepositoryOption =>
+      (repository: GitProviderRepositorySummary): OnboardingRepositoryOption =>
         toRepositoryOption(registrationId, repository),
     ),
   );
-}
-
-function buildGitHubInstallationRepositoryListRequest(
-  input: GitHubInstallationRepositoryListRequestInput,
-): GitHubInstallationRepositoryListRequest {
-  return {
-    providerHost: gitOnboardingProviderHost,
-    repositoryOwner: input.repositoryOwner,
-  };
 }
 
 function buildReadyGitRepositoryOptionsResult(
@@ -228,38 +201,9 @@ function buildReadyGitRepositoryOptionsResult(
   };
 }
 
-async function redirectToGitHubProviderBootstrap(
-  input: UseGitRepositoryOptionsInput,
-  repositoryOwner: string,
-): Promise<void> {
-  const bootstrap: GitHubProviderBootstrapResponse = await startBrowserGitHubProviderBootstrap(
-    input.selectedOrganizationSlug,
-    {
-      providerHost: gitOnboardingProviderHost,
-      repositoryOwner,
-      returnTo: readGitHubInstallationRepositoryListReturnTo({
-        repositoryOwner,
-        sessionId: input.sessionId,
-      }),
-    },
-  );
-  if (bootstrap.browserUrl === null) {
-    throw new Error('GitHub provider bootstrap did not return a browser URL.');
-  }
-  window.location.assign(bootstrap.browserUrl);
-}
-
-function readGitHubInstallationRepositoryListReturnTo(
-  input: GitHubInstallationRepositoryListRequestInput,
-): string | undefined {
-  return input.sessionId === undefined
-    ? undefined
-    : buildGitHubBootstrapReturnPath(input.sessionId, undefined, input.repositoryOwner);
-}
-
 function toRepositoryOption(
   registrationId: string,
-  repository: GitHubInstallationRepositorySummary,
+  repository: GitProviderRepositorySummary,
 ): OnboardingRepositoryOption {
   return {
     defaultBranchName: repository.defaultBranchName,

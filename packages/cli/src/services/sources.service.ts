@@ -2,7 +2,7 @@ import type {
   ConnectGitSourceRequest,
   DisconnectGitSourceResponse,
   GitSourceExclusionMutationResponse,
-  GitHubInstallationRepositoryListResponse,
+  GitProviderRegistrationRepositoryListResponse,
   GitHubProviderBootstrapResponse,
   GitSourceListResponse,
   GitSourceResponse,
@@ -19,7 +19,7 @@ import {
   getGitSourceSettings as getGitSourceSettingsApi,
   getGitSourceSyncTask as getGitSourceSyncTaskApi,
   includeGitSourceDescriptor as includeGitSourceDescriptorApi,
-  listGitHubInstallationRepositories as listGitHubInstallationRepositoriesApi,
+  listGitProviderRegistrationRepositories as listGitProviderRegistrationRepositoriesApi,
   listGitSources as listGitSourcesApi,
   startGitSourceSync as startGitSourceSyncApi,
   startGitHubProviderBootstrap as startGitHubProviderBootstrapApi,
@@ -65,13 +65,8 @@ export async function getGitHubSourceBootstrapStatus(
 export async function listGitHubInstallationRepositoriesForSource(
   context: AuthenticatedContext,
   registrationId: string,
-  providerHost: string,
-  repositoryOwner: string,
-): Promise<GitHubInstallationRepositoryListResponse> {
-  return await listGitHubInstallationRepositoriesApi(createSourceRequester(context), registrationId, {
-    providerHost,
-    repositoryOwner,
-  });
+): Promise<GitProviderRegistrationRepositoryListResponse> {
+  return await listGitProviderRegistrationRepositoriesApi(createSourceRequester(context), registrationId);
 }
 
 export async function connectGitSource(

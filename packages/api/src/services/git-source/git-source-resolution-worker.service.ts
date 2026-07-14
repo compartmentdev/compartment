@@ -37,6 +37,7 @@ import {
   resolveSourceResolutionTaskArchivePath,
 } from './source-resolution-task-archive-storage.service';
 import {
+  buildClaimedTaskProviderFields,
   isSourceResolutionTaskStillDeployable,
   requireActiveBinding,
   requireActiveSource,
@@ -110,15 +111,12 @@ async function buildClaimedSourceResolutionTask(
   const source: SourceRow = requireActiveSource(await findSourceById(claimed.sourceId));
   const binding: SourceBindingRow = requireActiveBinding(await findSourceBindingById(claimed.sourceBindingId));
   const registration: GitProviderRegistrationRow = await readSourceGitProviderRegistration(source);
-
   return {
+    ...buildClaimedTaskProviderFields(registration, source),
     branchName: claimed.branchName,
     commitSha: claimed.commitSha,
     descriptorPath: binding.descriptorPath,
-    installationToken: await getGitProviderAdapter(registration.providerType).mintRuntimeAccessToken({
-      registration,
-      source,
-    }),
+    providerAccessToken: await mintResolutionRuntimeAccessToken(source, registration),
     projectName: binding.projectName,
     providerHost: source.providerHost,
     repositoryName: source.repositoryName,
@@ -129,6 +127,13 @@ async function buildClaimedSourceResolutionTask(
     targetEnvironmentName: claimed.targetEnvironmentName,
     taskId: claimed.id,
   };
+}
+
+async function mintResolutionRuntimeAccessToken(
+  source: SourceRow,
+  registration: GitProviderRegistrationRow,
+): Promise<string> {
+  return await getGitProviderAdapter(registration.providerType).mintRuntimeAccessToken({ registration, source });
 }
 
 async function readSourceGitProviderRegistration(source: SourceRow): Promise<GitProviderRegistrationRow> {

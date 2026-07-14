@@ -92,13 +92,13 @@ function handleGitHubBootstrapResponse(response: GitHubProviderBootstrapResponse
 }
 
 function buildGitHubDiscoveryReturnPath(sessionId: string): string {
-  return buildGitHubReturnPath(sessionId, false);
+  return buildGitHubReturnPath(sessionId, false, undefined, undefined);
 }
 
-export function buildGitHubBootstrapReturnPath(
+function buildGitHubBootstrapReturnPath(
   sessionId: string,
-  registrationId?: string,
-  repositoryOwner?: string,
+  registrationId: string | undefined,
+  repositoryOwner: string | undefined,
 ): string {
   return buildGitHubReturnPath(sessionId, true, registrationId, repositoryOwner);
 }
@@ -106,8 +106,8 @@ export function buildGitHubBootstrapReturnPath(
 function buildGitHubReturnPath(
   sessionId: string,
   gitConnected: boolean,
-  registrationId?: string,
-  repositoryOwner?: string,
+  registrationId: string | undefined,
+  repositoryOwner: string | undefined,
 ): string {
   const state: OnboardingRouteState = {
     ...createDefaultOnboardingRouteState(),

@@ -27,13 +27,14 @@ import type {
   readOrCreateGitSourceSyncTaskIdForInclude,
   readOrCreateGitSourceSyncTaskIdForStart,
 } from '../src/services/git-source/git-source-sync-task.service';
-import type { findPendingGitProviderRegistration } from '../src/queries/git-provider-registration-bootstrap.query';
+import type { findGitProviderRegistrationById } from '../src/queries/git-provider-registration.query';
 import type { listSourceExcludedDescriptorsBySourceIds } from '../src/queries/source-exclusion.query';
 import type {
   findActiveSourceByRepository,
   findConnectedSourceById,
   listActiveBindingsBySourceIds,
   listBranchMappingsByBindingIds,
+  updateSourceProviderWebhookId,
   updateSourceToActive,
 } from '../src/queries/source.query';
 import type {
@@ -51,13 +52,13 @@ type IncludeGitSourceDescriptorWithinTransaction = typeof includeGitSourceDescri
 type QueueGitSourceSyncTaskForConnect = typeof queueGitSourceSyncTaskForConnect;
 type ReadOrCreateGitSourceSyncTaskIdForInclude = typeof readOrCreateGitSourceSyncTaskIdForInclude;
 type ReadOrCreateGitSourceSyncTaskIdForStart = typeof readOrCreateGitSourceSyncTaskIdForStart;
-type FindPendingGitProviderRegistration = typeof findPendingGitProviderRegistration;
 type ListSourceExcludedDescriptorsBySourceIds = typeof listSourceExcludedDescriptorsBySourceIds;
 type FindActiveSourceByRepository = typeof findActiveSourceByRepository;
 type FindConnectedSourceById = typeof findConnectedSourceById;
 type ListActiveBindingsBySourceIds = typeof listActiveBindingsBySourceIds;
 type ListBranchMappingsByBindingIds = typeof listBranchMappingsByBindingIds;
 type UpdateSourceToActive = typeof updateSourceToActive;
+type UpdateSourceProviderWebhookId = typeof updateSourceProviderWebhookId;
 type FindLatestSourceSyncTaskBySourceIdWithExecutor = typeof findLatestSourceSyncTaskBySourceIdWithExecutor;
 type ListSourceSyncTaskCandidatesByTaskIdWithExecutor = typeof listSourceSyncTaskCandidatesByTaskIdWithExecutor;
 type GetApiConfig = typeof getApiConfig;
@@ -67,11 +68,10 @@ type TestSourceStatus = 'active' | 'disabled' | 'disconnected';
 interface SourceGitServiceMocks {
   decryptVariableValueFromStorage: Mock;
   assertGitHubRepositoryBranchExists: Mock<AssertGitHubRepositoryBranchExists>;
-  findActiveGitProviderRegistration: Mock;
+  findGitProviderRegistrationById: Mock<typeof findGitProviderRegistrationById>;
   findActiveSourceByRepository: Mock<FindActiveSourceByRepository>;
   findConnectedSourceById: Mock<FindConnectedSourceById>;
   findLatestSourceSyncTaskBySourceIdWithExecutor: Mock<FindLatestSourceSyncTaskBySourceIdWithExecutor>;
-  findPendingGitProviderRegistration: Mock<FindPendingGitProviderRegistration>;
   getApiConfig: Mock<GetApiConfig>;
   getApiDatabase: Mock<GetApiDatabase>;
   includeGitSourceDescriptorWithinTransaction: Mock<IncludeGitSourceDescriptorWithinTransaction>;
@@ -86,6 +86,7 @@ interface SourceGitServiceMocks {
   readOrCreateGitSourceSyncTaskIdForStart: Mock<ReadOrCreateGitSourceSyncTaskIdForStart>;
   resolveGitHubRepositoryInstallation: Mock<ResolveGitHubRepositoryInstallation>;
   updateSourceToActive: Mock<UpdateSourceToActive>;
+  updateSourceProviderWebhookId: Mock<UpdateSourceProviderWebhookId>;
 }
 
 interface SourceRowOverrides {
@@ -99,11 +100,10 @@ const mocks: SourceGitServiceMocks = vi.hoisted(
   (): SourceGitServiceMocks => ({
     decryptVariableValueFromStorage: vi.fn(),
     assertGitHubRepositoryBranchExists: vi.fn<AssertGitHubRepositoryBranchExists>(),
-    findActiveGitProviderRegistration: vi.fn(),
+    findGitProviderRegistrationById: vi.fn<typeof findGitProviderRegistrationById>(),
     findActiveSourceByRepository: vi.fn<FindActiveSourceByRepository>(),
     findConnectedSourceById: vi.fn<FindConnectedSourceById>(),
     findLatestSourceSyncTaskBySourceIdWithExecutor: vi.fn<FindLatestSourceSyncTaskBySourceIdWithExecutor>(),
-    findPendingGitProviderRegistration: vi.fn<FindPendingGitProviderRegistration>(),
     getApiConfig: vi.fn<GetApiConfig>(),
     getApiDatabase: vi.fn<GetApiDatabase>(),
     includeGitSourceDescriptorWithinTransaction: vi.fn<IncludeGitSourceDescriptorWithinTransaction>(),
@@ -118,6 +118,7 @@ const mocks: SourceGitServiceMocks = vi.hoisted(
     readOrCreateGitSourceSyncTaskIdForStart: vi.fn<ReadOrCreateGitSourceSyncTaskIdForStart>(),
     resolveGitHubRepositoryInstallation: vi.fn<ResolveGitHubRepositoryInstallation>(),
     updateSourceToActive: vi.fn<UpdateSourceToActive>(),
+    updateSourceProviderWebhookId: vi.fn<UpdateSourceProviderWebhookId>(),
   }),
 );
 
@@ -128,18 +129,9 @@ vi.mock('../src/lib/variables-crypto', (): { decryptVariableValueFromStorage: Mo
 vi.mock(
   '../src/queries/git-provider-registration.query',
   (): {
-    findActiveGitProviderRegistration: Mock;
+    findGitProviderRegistrationById: Mock<typeof findGitProviderRegistrationById>;
   } => ({
-    findActiveGitProviderRegistration: mocks.findActiveGitProviderRegistration,
-  }),
-);
-
-vi.mock(
-  '../src/queries/git-provider-registration-bootstrap.query',
-  (): {
-    findPendingGitProviderRegistration: Mock<FindPendingGitProviderRegistration>;
-  } => ({
-    findPendingGitProviderRegistration: mocks.findPendingGitProviderRegistration,
+    findGitProviderRegistrationById: mocks.findGitProviderRegistrationById,
   }),
 );
 
@@ -151,12 +143,14 @@ vi.mock(
     listActiveBindingsBySourceIds: Mock<ListActiveBindingsBySourceIds>;
     listBranchMappingsByBindingIds: Mock<ListBranchMappingsByBindingIds>;
     updateSourceToActive: Mock<UpdateSourceToActive>;
+    updateSourceProviderWebhookId: Mock<UpdateSourceProviderWebhookId>;
   } => ({
     findActiveSourceByRepository: mocks.findActiveSourceByRepository,
     findConnectedSourceById: mocks.findConnectedSourceById,
     listActiveBindingsBySourceIds: mocks.listActiveBindingsBySourceIds,
     listBranchMappingsByBindingIds: mocks.listBranchMappingsByBindingIds,
     updateSourceToActive: mocks.updateSourceToActive,
+    updateSourceProviderWebhookId: mocks.updateSourceProviderWebhookId,
   }),
 );
 
@@ -233,8 +227,7 @@ vi.mock(
 
 describe('git source service', (): void => {
   beforeEach((): void => {
-    mocks.findActiveGitProviderRegistration.mockResolvedValue(createActiveRegistration());
-    mocks.findPendingGitProviderRegistration.mockResolvedValue(undefined);
+    mocks.findGitProviderRegistrationById.mockResolvedValue(createActiveRegistration());
     mocks.decryptVariableValueFromStorage.mockReturnValue('private-key');
     mocks.resolveGitHubRepositoryInstallation.mockResolvedValue({ installationId: 'inst_123' });
     mocks.assertGitHubRepositoryBranchExists.mockResolvedValue(undefined);
@@ -273,6 +266,10 @@ describe('git source service', (): void => {
           repositoryOwner: input.repositoryOwner,
           updatedAt: input.updatedAt,
         }),
+    );
+    mocks.updateSourceProviderWebhookId.mockImplementation(
+      async (_executor: SourceWriteExecutor, _sourceId: string, providerWebhookId: string | null): Promise<SourceRow> =>
+        await Promise.resolve({ ...createSourceRow('active'), providerWebhookId }),
     );
   });
 
@@ -452,6 +449,7 @@ function createConnectInput(): ConnectGitSourceInput {
       defaultAutoDeployEnabled: true,
       defaultEnvironmentName: 'production',
       providerHost: 'github.com',
+      registrationId: 'gpr_123',
       repositoryName: 'mono',
       repositoryOwner: 'acme',
       syncBranchName: 'main',
@@ -506,6 +504,11 @@ function createApiConfig(): ApiConfig {
 
 function createActiveRegistration(): GitProviderRegistrationRow {
   return {
+    accessTokenCiphertext: null,
+    accessTokenEncryptionKeyId: null,
+    accessTokenExpiresAt: null,
+    providerAccountId: null,
+    providerAccountLogin: null,
     appId: 'app_123',
     appName: 'Compartment GitHub App',
     appSlug: 'compartment',
@@ -549,6 +552,7 @@ function createSourceRow(status: TestSourceStatus, overrides: SourceRowOverrides
     organizationId: 'org_123',
     providerHost: 'github.com',
     providerInstallationId: 'inst_123',
+    providerWebhookId: null,
     providerRegistrationId: 'gpr_123',
     repositoryCloneUrl: 'https://github.com/acme/mono.git',
     repositoryExternalId: 'repo_123',

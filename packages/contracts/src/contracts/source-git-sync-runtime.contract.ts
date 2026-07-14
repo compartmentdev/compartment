@@ -1,12 +1,15 @@
 import { z } from 'zod';
 import { compartmentProjectNameSchema } from './compartment-descriptor.contract';
 import type { ContractSchema } from './schema.types';
+import { gitProviderTypeSchema, type GitProviderType } from './source-git-provider.contract';
 import { gitSourceDescriptorPathSchema, gitSourceRepositoryPathSchema } from './source-git-sync-path.contract';
 
 export interface WorkerClaimedGitSourceSyncTask {
   claimToken: string;
-  installationToken: string;
+  providerAccessToken: string;
   providerHost: string;
+  providerType: GitProviderType;
+  repositoryExternalId: string;
   repositoryName: string;
   repositoryOwner: string;
   requestedBranchName: string;
@@ -37,6 +40,7 @@ export interface WorkerCompleteGitSourceSyncTaskRequest {
 export interface WorkerFailGitSourceSyncTaskRequest {
   claimToken: string;
   failureReason: string;
+  retryable: boolean;
   taskId: string;
 }
 
@@ -47,8 +51,10 @@ export const workerFailGitSourceSyncTaskPathname: string = '/internal/git-source
 const workerClaimedGitSourceSyncTaskSchema: ContractSchema<WorkerClaimedGitSourceSyncTask> = z
   .object({
     claimToken: z.string().min(1),
-    installationToken: z.string().min(1),
+    providerAccessToken: z.string().min(1),
     providerHost: z.string().min(1),
+    providerType: gitProviderTypeSchema,
+    repositoryExternalId: z.string().min(1),
     repositoryName: z.string().min(1),
     repositoryOwner: z.string().min(1),
     requestedBranchName: z.string().min(1),
@@ -87,6 +93,7 @@ export const workerFailGitSourceSyncTaskRequestSchema: ContractSchema<WorkerFail
   .object({
     claimToken: z.string().min(1),
     failureReason: z.string().min(1),
+    retryable: z.boolean(),
     taskId: z.string().min(1),
   })
   .strict();

@@ -145,13 +145,15 @@ export { startProject } from './services/project-start.service';
 export { stopProject } from './services/project-stop.service';
 export {
   connectGitSource,
+  createGitLabProviderRegistration,
   disconnectGitSource,
   excludeGitSourceDescriptor,
   getGitHubProviderBootstrapStatus,
   getGitSource,
   getGitSourceSettings,
   includeGitSourceDescriptor,
-  listGitHubInstallationRepositories,
+  listGitProviderRegistrationRepositories,
+  listGitProviderRegistrations,
   listGitSources,
   startGitHubProviderBootstrap,
   updateGitSourceSettings,

@@ -19,6 +19,7 @@ export async function connectOrAdoptGitSource(
     defaultEnvironmentName: formInput.environmentName,
     ...(descriptorPath !== undefined ? { descriptorPathToInclude: descriptorPath } : {}),
     providerHost: gitOnboardingProviderHost,
+    registrationId: formInput.repository.registrationId,
     repositoryName: formInput.repository.name,
     repositoryOwner: formInput.repository.owner,
     syncBranchName: formInput.branchName,

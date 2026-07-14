@@ -1,5 +1,5 @@
 import {
-  buildCompartmentGitHubProviderRegistrationRepositoriesPathname,
+  buildCompartmentGitProviderRegistrationRepositoriesPathname,
   buildCompartmentGitSourceSyncTaskPathname,
   compartmentDeploymentsStatusPathname,
   compartmentGitDescriptorPlanPathname,
@@ -22,8 +22,7 @@ import {
   gitHubAccountDiscoveryResultResponseSchema,
   gitHubAccountDiscoveryStartRequestSchema,
   gitHubAccountDiscoveryStartResponseSchema,
-  gitHubInstallationRepositoryListRequestSchema,
-  gitHubInstallationRepositoryListResponseSchema,
+  gitProviderRegistrationRepositoryListResponseSchema,
   gitHubProviderBootstrapRequestSchema,
   gitHubProviderBootstrapResponseSchema,
   gitSourceResponseSchema,
@@ -41,8 +40,7 @@ import {
   type GitHubAccountDiscoveryResultResponse,
   type GitHubAccountDiscoveryStartRequest,
   type GitHubAccountDiscoveryStartResponse,
-  type GitHubInstallationRepositoryListRequest,
-  type GitHubInstallationRepositoryListResponse,
+  type GitProviderRegistrationRepositoryListResponse,
   type GitHubProviderBootstrapRequest,
   type GitHubProviderBootstrapResponse,
   type GitSourceResponse,
@@ -94,14 +92,10 @@ export async function readBrowserGitHubAccountDiscoveryResult(
 export async function listBrowserGitHubInstallationRepositories(
   currentOrganization: string,
   registrationId: string,
-  query: GitHubInstallationRepositoryListRequest,
-): Promise<GitHubInstallationRepositoryListResponse> {
+): Promise<GitProviderRegistrationRepositoryListResponse> {
   return await requestBrowserApi(
-    buildCompartmentGitHubProviderRegistrationRepositoriesPathname(
-      registrationId,
-      gitHubInstallationRepositoryListRequestSchema.parse(query),
-    ),
-    gitHubInstallationRepositoryListResponseSchema,
+    buildCompartmentGitProviderRegistrationRepositoriesPathname(registrationId),
+    gitProviderRegistrationRepositoryListResponseSchema,
     { currentOrganization },
   );
 }

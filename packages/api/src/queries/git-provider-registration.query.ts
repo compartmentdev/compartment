@@ -1,8 +1,7 @@
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { gitProviderRegistrations } from '../db/schema';
 import { requirePersistedRow } from './persisted-row.query.shared';
-import { buildGitProviderRegistrationOrganizationFilter } from './git-provider-registration-scope.query.helpers';
 import type {
   ActivateGitProviderRegistrationInput,
   CreatePendingGitProviderRegistrationInput,
@@ -29,11 +28,15 @@ interface GitProviderRegistrationManifestExchangeUpdate {
 }
 
 export async function findActiveGitProviderRegistration(
-  input: Pick<FindGitProviderRegistrationByStatusInput, 'organizationId' | 'providerHost' | 'repositoryOwner'>,
+  input: Pick<
+    FindGitProviderRegistrationByStatusInput,
+    'organizationId' | 'providerHost' | 'providerType' | 'repositoryOwner'
+  >,
 ): Promise<GitProviderRegistrationRow | undefined> {
   return await findGitProviderRegistrationByStatusWithExecutor(getApiDatabase(), {
     organizationId: input.organizationId,
     providerHost: input.providerHost,
+    providerType: input.providerType,
     repositoryOwner: input.repositoryOwner,
     status: 'active',
   });
@@ -51,6 +54,18 @@ export async function findGitProviderRegistrationByWebhookTarget(
   return await findGitProviderRegistrationByIdWithExecutor(getApiDatabase(), input);
 }
 
+export async function listActiveGitProviderRegistrations(
+  organizationId: string,
+): Promise<GitProviderRegistrationRow[]> {
+  return await getApiDatabase()
+    .select()
+    .from(gitProviderRegistrations)
+    .where(
+      and(eq(gitProviderRegistrations.organizationId, organizationId), eq(gitProviderRegistrations.status, 'active')),
+    )
+    .orderBy(asc(gitProviderRegistrations.createdAt), asc(gitProviderRegistrations.id));
+}
+
 export async function findGitProviderRegistrationByIdWithExecutor(
   executor: GitProviderReadExecutor,
   input: FindGitProviderRegistrationByIdInput,
@@ -61,12 +76,12 @@ export async function findGitProviderRegistrationByIdWithExecutor(
     .where(
       and(
         eq(gitProviderRegistrations.id, input.registrationId),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.registrationId),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
       ),
     )
     .limit(1);
 
-  return mapGitProviderRegistrationRow(rows[0], input.organizationId);
+  return mapGitProviderRegistrationRow(rows[0]);
 }
 
 export async function createPendingGitProviderRegistration(
@@ -80,6 +95,7 @@ export async function createPendingGitProviderRegistration(
       callbackUrl: input.callbackUrl,
       createdByPrincipalId: input.createdByPrincipalId,
       id: input.id,
+      organizationId: input.organizationId,
       pendingExpiresAt: input.pendingExpiresAt,
       providerHost: input.providerHost,
       providerType: input.providerType,
@@ -90,10 +106,7 @@ export async function createPendingGitProviderRegistration(
     })
     .returning();
 
-  return mapRequiredGitProviderRegistrationRow(
-    requirePersistedRow(registration, 'git provider registration'),
-    input.organizationId,
-  );
+  return mapRequiredGitProviderRegistrationRow(requirePersistedRow(registration, 'git provider registration'));
 }
 
 export async function setGitProviderRegistrationBootstrapState(
@@ -111,10 +124,7 @@ export async function setGitProviderRegistrationBootstrapState(
       updatedAt: new Date(),
     })
     .where(
-      and(
-        eq(gitProviderRegistrations.id, registrationId),
-        buildGitProviderRegistrationOrganizationFilter(organizationId, registrationId),
-      ),
+      and(eq(gitProviderRegistrations.id, registrationId), eq(gitProviderRegistrations.organizationId, organizationId)),
     );
 }
 
@@ -136,13 +146,13 @@ export async function activateGitProviderRegistration(
     .where(
       and(
         eq(gitProviderRegistrations.id, input.id),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.id),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(gitProviderRegistrations.status, 'pending'),
       ),
     )
     .returning();
 
-  return mapGitProviderRegistrationRow(registration, input.organizationId);
+  return mapGitProviderRegistrationRow(registration);
 }
 
 export async function persistGitProviderRegistrationManifestExchange(
@@ -153,17 +163,11 @@ export async function persistGitProviderRegistrationManifestExchange(
     .update(gitProviderRegistrations)
     .set(buildGitProviderRegistrationManifestExchangeUpdate(input))
     .where(
-      and(
-        eq(gitProviderRegistrations.id, input.id),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.id),
-      ),
+      and(eq(gitProviderRegistrations.id, input.id), eq(gitProviderRegistrations.organizationId, input.organizationId)),
     )
     .returning();
 
-  return mapRequiredGitProviderRegistrationRow(
-    requirePersistedRow(registration, 'git provider registration'),
-    input.organizationId,
-  );
+  return mapRequiredGitProviderRegistrationRow(requirePersistedRow(registration, 'git provider registration'));
 }
 
 export async function failGitProviderRegistration(
@@ -189,7 +193,7 @@ export async function failGitProviderRegistrationWithCurrentStatus(
     .where(
       and(
         eq(gitProviderRegistrations.id, input.id),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.id),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(gitProviderRegistrations.status, currentStatus),
       ),
     );
@@ -205,9 +209,10 @@ export async function findGitProviderRegistrationByStatusWithExecutor(
     .where(
       and(
         eq(sql`lower(${gitProviderRegistrations.providerHost})`, input.providerHost.toLowerCase()),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(sql`lower(${gitProviderRegistrations.repositoryOwner})`, input.repositoryOwner.toLowerCase()),
         eq(gitProviderRegistrations.status, input.status),
+        ...(input.providerType === undefined ? [] : [eq(gitProviderRegistrations.providerType, input.providerType)]),
         ...(input.expiresAfter === undefined
           ? []
           : [gt(gitProviderRegistrations.pendingExpiresAt, input.expiresAfter)]),
@@ -215,21 +220,17 @@ export async function findGitProviderRegistrationByStatusWithExecutor(
     )
     .limit(1);
 
-  return mapGitProviderRegistrationRow(rows[0], input.organizationId);
+  return mapGitProviderRegistrationRow(rows[0]);
 }
 
 export function mapGitProviderRegistrationRow(
   row: PersistedGitProviderRegistrationRow | undefined,
-  organizationId: string,
 ): GitProviderRegistrationRow | undefined {
-  return row === undefined ? undefined : mapRequiredGitProviderRegistrationRow(row, organizationId);
+  return row === undefined ? undefined : mapRequiredGitProviderRegistrationRow(row);
 }
 
-function mapRequiredGitProviderRegistrationRow(
-  row: PersistedGitProviderRegistrationRow,
-  organizationId: string,
-): GitProviderRegistrationRow {
-  return { ...row, organizationId };
+function mapRequiredGitProviderRegistrationRow(row: PersistedGitProviderRegistrationRow): GitProviderRegistrationRow {
+  return row;
 }
 
 function buildGitProviderRegistrationManifestExchangeUpdate(

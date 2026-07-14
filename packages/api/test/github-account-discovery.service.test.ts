@@ -232,6 +232,11 @@ describe('GitHub account discovery service', (): void => {
 
 function createGitProviderRegistrationRow(repositoryOwner: string): GitProviderRegistrationRow {
   return {
+    accessTokenCiphertext: null,
+    accessTokenEncryptionKeyId: null,
+    accessTokenExpiresAt: null,
+    providerAccountId: null,
+    providerAccountLogin: null,
     appId: 'app_123',
     appName: 'Compartment',
     appSlug: 'compartment',

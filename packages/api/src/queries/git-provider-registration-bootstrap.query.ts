@@ -6,7 +6,6 @@ import {
   findGitProviderRegistrationByStatusWithExecutor,
   mapGitProviderRegistrationRow,
 } from './git-provider-registration.query';
-import { buildGitProviderRegistrationOrganizationFilter } from './git-provider-registration-scope.query.helpers';
 import type {
   FailGitProviderRegistrationInput,
   GitProviderReadExecutor,
@@ -15,21 +14,6 @@ import type {
   PersistedGitProviderRegistrationRow,
   ReopenActiveGitProviderRegistrationBootstrapInput,
 } from './git-provider-registration.query.types';
-
-export async function findPendingGitProviderRegistration(
-  organizationId: string,
-  providerHost: string,
-  repositoryOwner: string,
-  now: Date,
-): Promise<GitProviderRegistrationRow | undefined> {
-  return await findPendingGitProviderRegistrationRow(
-    getApiDatabase(),
-    organizationId,
-    providerHost,
-    repositoryOwner,
-    now,
-  );
-}
 
 export async function findAnyPendingGitProviderRegistration(
   organizationId: string,
@@ -86,11 +70,11 @@ export async function reopenActiveGitProviderRegistrationBootstrap(
     .where(
       and(
         eq(gitProviderRegistrations.id, input.id),
-        buildGitProviderRegistrationOrganizationFilter(input.organizationId, input.id),
+        eq(gitProviderRegistrations.organizationId, input.organizationId),
         eq(gitProviderRegistrations.status, 'active'),
       ),
     )
     .returning();
 
-  return mapGitProviderRegistrationRow(registration, input.organizationId);
+  return mapGitProviderRegistrationRow(registration);
 }

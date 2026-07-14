@@ -30,7 +30,7 @@ describe('worker git source resolution parse service', (): void => {
 
     await expect(readGitSourceDescriptorFiles(repositoryRoot, 'apps/billing/compartment.yml')).rejects.toMatchObject({
       message: 'Descriptor apps/billing/compartment.yml was not found on the source branch.',
-      name: 'NonRetryableGitSourceResolutionError',
+      name: 'NonRetryableGitSourceTaskError',
     });
   });
 
@@ -40,7 +40,7 @@ describe('worker git source resolution parse service', (): void => {
     });
 
     await expect(readGitSourceDescriptorFiles(repositoryRoot, 'apps/billing/compartment.yml')).rejects.toMatchObject({
-      name: 'NonRetryableGitSourceResolutionError',
+      name: 'NonRetryableGitSourceTaskError',
       retryable: false,
     });
   });
@@ -52,7 +52,7 @@ describe('worker git source resolution parse service', (): void => {
     });
 
     await expect(readGitSourceDescriptorFiles(repositoryRoot, 'apps/billing/compartment.yml')).rejects.toMatchObject({
-      name: 'NonRetryableGitSourceResolutionError',
+      name: 'NonRetryableGitSourceTaskError',
       retryable: false,
     });
   });
