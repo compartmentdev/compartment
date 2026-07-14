@@ -1,4 +1,4 @@
-import { and, eq, ne, type SQL } from 'drizzle-orm';
+import { and, desc, eq, ne, type SQL } from 'drizzle-orm';
 import { deploymentKubeReferences, deploymentRunEvents, deployments, operations } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -121,6 +121,19 @@ async function persistReady(
   if (candidate === undefined) {
     return false;
   }
+  if (candidate.isActive) {
+    await updateReference(tx, input, 'active');
+    return true;
+  }
+  await promoteReadyCandidate(tx, input, candidate);
+  return true;
+}
+
+async function promoteReadyCandidate(
+  tx: DeploymentTransaction,
+  input: PersistDeploymentReconcileObservationInput,
+  candidate: SupersedeCandidateContext,
+): Promise<void> {
   const previousActiveId: string | undefined = await findPreviousActiveId(tx, input.deploymentId, candidate);
   await supersedePreviousKubeDeployment(tx, {
     candidate,
@@ -129,10 +142,9 @@ async function persistReady(
     previousActiveId,
   });
   await activateDeployment(tx, input);
-  await switchReadyDeploymentRoute(tx, input, candidate);
+  await switchReadyDeploymentRoute(tx, input, candidate, previousActiveId);
   await publishReconcileSucceeded(tx, input, candidate.deploymentRunId);
   await updateReference(tx, input, 'active');
-  return true;
 }
 
 async function findCandidateContext(
@@ -143,6 +155,7 @@ async function findCandidateContext(
     .select({
       deploymentRunId: deployments.deploymentRunId,
       environmentId: deployments.environmentId,
+      isActive: deployments.isActive,
       serviceId: deployments.projectServiceId,
     })
     .from(deployments)
@@ -178,6 +191,7 @@ async function findPreviousActiveId(
     .select({ id: deployments.id })
     .from(deployments)
     .where(activeDeploymentFilter(deploymentId, candidate))
+    .orderBy(desc(deployments.createdAt), desc(deployments.id))
     .limit(1);
   return previousActive?.id;
 }

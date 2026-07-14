@@ -8,32 +8,16 @@ import {
   projectApplicationManifests,
   type KubeDeploymentManifest,
   type KubeManifest,
-  type KubeObservation,
   type KubeRolloutObservation,
   type KubeRolloutStatus,
   type KubeRuntime,
 } from '@compartment/kube-runtime';
 import { observeDeploymentReconcile, type CompartmentRequester } from '@compartment/sdk';
 import { executeProductJob } from './worker-product-job.service';
-import {
-  deploymentFromObjects,
-  deploymentManifest,
-  releaseIntent,
-  requiredDeploymentMetadata,
-  rolloutFailureMessage,
-} from './worker-deployment-reconcile.helpers';
-import {
-  isObservedReady,
-  readRolloutObservation,
-  rolloutTimeoutMs,
-} from './worker-deployment-rollout-observation.service';
+import { deploymentManifest, releaseIntent, rolloutFailureMessage } from './worker-deployment-reconcile.helpers';
+import { readRolloutObservation, rolloutTimeoutMs } from './worker-deployment-rollout-observation.service';
 
 const releaseTimeoutMs: number = 600_000;
-
-interface RolloutWaitHandles {
-  timer?: NodeJS.Timeout;
-  unsubscribe?: () => void;
-}
 
 export async function reconcileDeploymentTarget(
   request: CompartmentRequester,
@@ -79,7 +63,11 @@ async function reconcileActiveDeployment(
     deployment,
     target,
   );
-  if (rollout === null || calculateKubeRolloutStatus(rollout, new Date()) !== 'ready') {
+  if (rollout === null) {
+    return;
+  }
+  const status: KubeRolloutStatus = calculateKubeRolloutStatus(rollout, new Date());
+  if (status === 'progress-deadline-exceeded') {
     await persistObservation(request, target, 'pending', 'Active Kubernetes Deployment drifted or became non-Ready.');
   }
 }
@@ -159,59 +147,6 @@ async function recoverFailedRollout(runtime: KubeRuntime, target: DeploymentReco
   }
   const activeObjects: KubeManifest[] = projectApplicationManifests(target.active);
   await runtime.apply({ force: true, objects: activeObjects });
-  const activeDeployment: KubeDeploymentManifest = deploymentFromObjects(activeObjects);
-  const observation: KubeObservation = await observeDeployment(runtime, activeDeployment);
-  try {
-    await waitForReady(observation, activeDeployment, rolloutTimeoutMs(target.active));
-  } finally {
-    await observation.stop();
-  }
-}
-
-async function waitForReady(
-  observation: KubeObservation,
-  deployment: KubeDeploymentManifest,
-  timeoutMs: number,
-): Promise<void> {
-  const deadlineAt: Date = new Date(Date.now() + timeoutMs);
-  if (isObservedReady(observation, deployment, deadlineAt)) {
-    return;
-  }
-  await waitForObservedReady(observation, deployment, deadlineAt, timeoutMs);
-}
-
-async function waitForObservedReady(
-  observation: KubeObservation,
-  deployment: KubeDeploymentManifest,
-  deadlineAt: Date,
-  timeoutMs: number,
-): Promise<void> {
-  await new Promise<void>((resolve: () => void, reject: (error: Error) => void): void => {
-    const handles: RolloutWaitHandles = {};
-    const resolveWhenReady: () => void = (): void => {
-      if (!isObservedReady(observation, deployment, deadlineAt)) {
-        return;
-      }
-      clearTimeout(handles.timer);
-      handles.unsubscribe?.();
-      resolve();
-    };
-    handles.timer = setTimeout((): void => {
-      handles.unsubscribe?.();
-      reject(new Error('Saved active Kubernetes Deployment did not recover before the rollout timeout.'));
-    }, timeoutMs);
-    handles.unsubscribe = observation.onEvent(resolveWhenReady);
-    resolveWhenReady();
-  });
-}
-
-async function observeDeployment(runtime: KubeRuntime, deployment: KubeDeploymentManifest): Promise<KubeObservation> {
-  const labels: Record<string, string> = deployment.spec?.selector.matchLabels ?? {};
-  return await runtime.observe({
-    labels,
-    namespace: requiredDeploymentMetadata(deployment, 'namespace'),
-    resources: ['deployments'],
-  });
 }
 
 async function persistObservation(

@@ -1,25 +1,14 @@
 import type { DeploymentReconcileProjection, DeploymentReconcileTarget } from '@compartment/contracts';
 import {
-  calculateKubeRolloutStatus,
   type KubeDeploymentCondition,
   type KubeDeploymentManifest,
-  type KubeObservation,
   type KubeObservedManifest,
   type KubeRolloutObservation,
 } from '@compartment/kube-runtime';
-import { deploymentConditionStatus, requiredDeploymentMetadata } from './worker-deployment-reconcile.helpers';
+import { deploymentConditionStatus } from './worker-deployment-reconcile.helpers';
 import type { ObservedDeploymentCondition, ObservedDeploymentStatus } from './worker-deployment-reconcile.types';
 
 const defaultRolloutTimeoutMs: number = 50_000;
-
-export function isObservedReady(
-  observation: KubeObservation,
-  deployment: KubeDeploymentManifest,
-  deadlineAt: Date,
-): boolean {
-  const observed: KubeRolloutObservation | null = readDeploymentObservation(observation, deployment, deadlineAt);
-  return observed !== null && calculateKubeRolloutStatus(observed, new Date()) === 'ready';
-}
 
 export function readRolloutObservation(
   observed: KubeObservedManifest | null,
@@ -33,17 +22,6 @@ export function readRolloutObservation(
 
 export function rolloutTimeoutMs(projection: DeploymentReconcileProjection): number {
   return projection.readiness?.timeoutMs ?? defaultRolloutTimeoutMs;
-}
-
-function readDeploymentObservation(
-  observation: KubeObservation,
-  deployment: KubeDeploymentManifest,
-  deadlineAt: Date,
-): KubeRolloutObservation | null {
-  const namespace: string = requiredDeploymentMetadata(deployment, 'namespace');
-  const name: string = requiredDeploymentMetadata(deployment, 'name');
-  const observed: KubeObservedManifest | undefined = observation.cache.get(`deployments/${namespace}/${name}`);
-  return projectDeploymentObservation(observed ?? null, deployment, deadlineAt);
 }
 
 function projectDeploymentObservation(

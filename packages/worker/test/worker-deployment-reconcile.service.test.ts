@@ -73,8 +73,18 @@ describe('deployment reconciliation', (): void => {
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
   });
 
-  it('moves a non-ready active Deployment into recoverable pending reconciliation', async (): Promise<void> => {
-    const runtime: KubeRuntime & { apply: Mock } = activeRuntimeStub(false);
+  it('keeps an active Deployment active on a transient non-ready observation', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock; observe: Mock } = activeRuntimeStub(false);
+    const activeTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'active' };
+
+    await reconcileDeploymentTarget(requester(), runtime, activeTarget);
+
+    expect(runtime.observe).not.toHaveBeenCalled();
+    expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
+  });
+
+  it('demotes an active Deployment only after Kubernetes reports ProgressDeadlineExceeded', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock } = activeRuntimeStub(false, true);
     const activeTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'active' };
 
     await reconcileDeploymentTarget(requester(), runtime, activeTarget);
@@ -175,7 +185,10 @@ function runtimeStub(): KubeRuntime & { apply: Mock } {
   } as never;
 }
 
-function activeRuntimeStub(ready: boolean = true): KubeRuntime & { apply: Mock } {
+function activeRuntimeStub(
+  ready: boolean = true,
+  progressDeadlineExceeded: boolean = false,
+): KubeRuntime & { apply: Mock; observe: Mock } {
   const namespace: string = kubeNamespaceName('prj_1');
   const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
   return {
@@ -183,7 +196,9 @@ function activeRuntimeStub(ready: boolean = true): KubeRuntime & { apply: Mock }
     observe: vi.fn(),
     read: vi.fn(
       async (): Promise<KubeManifest> =>
-        await Promise.resolve(ready ? readyDeployment(namespace, name) : progressingDeployment(namespace, name)),
+        await Promise.resolve(
+          ready ? readyDeployment(namespace, name) : progressingDeployment(namespace, name, progressDeadlineExceeded),
+        ),
     ),
   } as never;
 }
@@ -203,12 +218,22 @@ function pendingRuntimeStub(publishAfterSubscribe: boolean): KubeRuntime & { app
   } as never;
 }
 
-function progressingDeployment(namespace: string, name: string): KubeManifest {
+function progressingDeployment(
+  namespace: string,
+  name: string,
+  progressDeadlineExceeded: boolean = false,
+): KubeManifest {
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
     metadata: { generation: 1, name, namespace },
-    status: { availableReplicas: 0, observedGeneration: 1 },
+    status: {
+      availableReplicas: 0,
+      conditions: progressDeadlineExceeded
+        ? [{ reason: 'ProgressDeadlineExceeded', status: 'False', type: 'Progressing' }]
+        : [],
+      observedGeneration: 1,
+    },
   } as never;
 }
 

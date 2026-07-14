@@ -54,6 +54,11 @@ import { productLogRecordOverheadBytes, productLogStoreMaxBytes } from '../src/q
 import { findActiveJoinedDeployment } from '../src/queries/deployment-joined.query';
 import type { DeploymentJoinedRow } from '../src/queries/deployments.query.types';
 import { requestDeploymentKubeStop } from '../src/queries/deployment-kube-membership.query';
+import {
+  claimPendingProjectProvisioning,
+  completeProjectProvisioning,
+} from '../src/queries/project-provisioning.query';
+import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'deployment_kube_reference');
@@ -106,6 +111,8 @@ describe('deployment Kubernetes transition persistence', (): void => {
   });
 
   it('stores Kubernetes resource container logs under the resource identity', async (): Promise<void> => {
+    const resourceId: string = `res_${'a'.repeat(32)}`;
+    const otherResourceId: string = `res_${'b'.repeat(32)}`;
     await db.insert(projectResources).values({
       commandJson: '[]',
       createdAt: new Date('2026-07-11T10:00:00.000Z'),
@@ -113,7 +120,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       environmentId: 'env_kube',
       expectedClaimsJson: '[]',
       hostname: 'postgres',
-      id: 'res_kube',
+      id: resourceId,
       image: 'postgres:16',
       name: 'postgres',
       outputsJson: '{}',
@@ -129,7 +136,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       containerName: 'resource',
       message: 'database system is ready',
       namespace: immutableKubeName('cpt', 'prj_kube'),
-      podName: `${immutableKubeName('resource', 'res_kube')}-abc`,
+      podName: `${immutableKubeName('resource', resourceId)}-abc`,
       podUid: '12121212-1212-4212-8212-121212121212',
       restartIdentity: '0',
       sourceFingerprint: 'c'.repeat(64),
@@ -142,10 +149,10 @@ describe('deployment Kubernetes transition persistence', (): void => {
       ingestDeploymentProductLogs([{ ...event, namespace: immutableKubeName('cpt', 'prj_other') }]),
     ).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
     await expect(
-      ingestDeploymentProductLogs([{ ...event, podName: `${immutableKubeName('resource', 'res_other')}-abc` }]),
+      ingestDeploymentProductLogs([{ ...event, podName: `${immutableKubeName('resource', otherResourceId)}-abc` }]),
     ).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
     await expect(ingestDeploymentProductLogs([event])).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
-    await expect(readStoredResourceProductLogs('res_kube', 'postgres', undefined, 50)).resolves.toEqual([
+    await expect(readStoredResourceProductLogs(resourceId, 'postgres', undefined, 50)).resolves.toEqual([
       {
         message: 'database system is ready',
         resourceName: 'postgres',
@@ -533,6 +540,48 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(claimed?.candidate).toMatchObject({ deploymentId: 'dep_kube', state: 'pending' });
   });
 
+  it('recovers an active deployment without publishing a second completion event', async (): Promise<void> => {
+    await db.insert(deploymentRunEvents).values({
+      createdAt: new Date('2026-07-11T10:00:00.000Z'),
+      deploymentId: 'dep_kube',
+      deploymentRunId: 'drn_kube',
+      id: 'drev_existing_completion',
+      level: 'info',
+      message: 'deployment completed',
+      status: 'succeeded',
+      stepKey: 'completed',
+      stream: 'compartment',
+    });
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_kube',
+      failureMessage: 'active pod missing',
+      observation: 'pending',
+      observedAt: new Date('2026-07-12T10:00:00.000Z'),
+      revision: 0,
+    });
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_kube',
+        failureMessage: null,
+        observation: 'ready',
+        observedAt: new Date('2026-07-12T10:00:01.000Z'),
+        revision: 1,
+      }),
+    ).toBe(true);
+    const events: (typeof deploymentRunEvents.$inferSelect)[] = await db
+      .select()
+      .from(deploymentRunEvents)
+      .where(eq(deploymentRunEvents.deploymentId, 'dep_kube'));
+    expect(
+      events.filter(
+        (event: typeof deploymentRunEvents.$inferSelect): boolean => event.message === 'deployment completed',
+      ),
+    ).toHaveLength(1);
+    const [reference] = await db.select().from(deploymentKubeReferences);
+    expect(reference).toMatchObject({ revision: 2, state: 'active' });
+  });
+
   it('does not reconcile the active workload while its replacement claim is leased', async (): Promise<void> => {
     await seedCandidate();
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
@@ -543,6 +592,43 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
     expect(replacement?.candidate).toMatchObject({ deploymentId: 'dep_candidate', state: 'desired' });
     expect(duringReplacementLease).toBeNull();
+  });
+
+  it('fails a waiting deployment when project provisioning reaches its attempt cap', async (): Promise<void> => {
+    await db.update(deploymentKubeReferences).set({ state: 'desired' });
+    await db.update(operations).set({ status: 'running' }).where(eq(operations.id, 'op_kube'));
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'pending' });
+
+    for (let attempt: number = 1; attempt <= 3; attempt += 1) {
+      const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
+      expect(claimed?.projectId).toBe('prj_kube');
+      await completeProjectProvisioning({
+        failureMessage: `namespace provisioning attempt ${attempt} failed`,
+        leaseId: claimed?.leaseId ?? '',
+        projectId: 'prj_kube',
+        status: 'failed',
+      });
+      await db
+        .update(projectKubeProvisioning)
+        .set({ updatedAt: new Date(0) })
+        .where(eq(projectKubeProvisioning.projectId, 'prj_kube'));
+    }
+
+    await expect(claimPendingProjectProvisioning()).resolves.toBeNull();
+    const [deployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_kube'));
+    const [operation] = await db.select().from(operations).where(eq(operations.id, 'op_kube'));
+    expect(deployment).toMatchObject({ health: 'unhealthy', status: 'failed' });
+    expect(deployment?.failureMessage).toContain('namespace provisioning attempt 3 failed');
+    expect(operation).toMatchObject({ status: 'failed' });
+    expect(operation?.summary).toContain('namespace provisioning attempt 3 failed');
+    const failedEvents: (typeof deploymentRunEvents.$inferSelect)[] = await db
+      .select()
+      .from(deploymentRunEvents)
+      .where(eq(deploymentRunEvents.deploymentId, 'dep_kube'));
+    expect(failedEvents).toEqual([
+      expect.objectContaining({ level: 'error', status: 'failed', stepKey: 'provisioning' }),
+    ]);
+    await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
   });
 
   it('claims a requested stop and accepts the worker acknowledgement', async (): Promise<void> => {
@@ -562,7 +648,31 @@ describe('deployment Kubernetes transition persistence', (): void => {
       }),
     ).toBe(true);
     const [reference] = await db.select().from(deploymentKubeReferences);
-    expect(reference).toMatchObject({ revision: 2, state: 'stopped' });
+    expect(reference).toMatchObject({ revision: 3, state: 'stopped' });
+  });
+
+  it('rejects an in-flight observation after a stop request advances the revision', async (): Promise<void> => {
+    await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    const inFlight: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
+    expect(inFlight?.candidate).toMatchObject({ deploymentId: 'dep_kube', revision: 1, state: 'active' });
+
+    await requestDeploymentKubeStop('dep_kube', new Date('2026-07-12T10:00:00.000Z'));
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_kube',
+        failureMessage: 'stale non-ready observation',
+        observation: 'pending',
+        observedAt: new Date('2026-07-12T10:00:01.000Z'),
+        revision: inFlight?.candidate.revision ?? -1,
+      }),
+    ).toBe(false);
+
+    const [reference] = await db.select().from(deploymentKubeReferences);
+    expect(reference).toMatchObject({ revision: 2, state: 'stopping' });
+    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+      candidate: { deploymentId: 'dep_kube', revision: 3, state: 'stopping' },
+    });
   });
 
   it('promotes only after Ready and projects stable Kubernetes Service DNS on port 80', async (): Promise<void> => {
@@ -633,6 +743,70 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(await findNextDeploymentReconcilePair()).toMatchObject({
       candidate: { deploymentId: 'dep_candidate', state: 'active' },
     });
+  });
+
+  it('switches only the route bound to the exact previous active deployment', async (): Promise<void> => {
+    await seedCandidate();
+    await db.delete(deploymentRoutes).where(eq(deploymentRoutes.id, 'route_kube'));
+    await db.insert(deployments).values({
+      accessMode: 'authenticated',
+      buildArtifactId: 'bar_kube',
+      deploymentRunId: 'drn_kube',
+      environmentId: 'env_kube',
+      health: 'healthy',
+      id: 'dep_decoy',
+      isActive: false,
+      nodeId: 'node_kube',
+      operationId: 'op_kube',
+      projectServiceId: 'svc_kube',
+      promotionStage: 'stopped',
+      resolvedReadinessJson: '[]',
+      resolvedRoutesJson: '[]',
+      resolvedRunJson: '{}',
+      status: 'stopped',
+    });
+    await db.insert(deploymentRoutes).values([
+      {
+        accessScopeId: 'org_kube',
+        accessScopeType: 'organization',
+        deploymentId: 'dep_decoy',
+        id: 'route_aaa_decoy',
+        subdomain: 'decoy-kube',
+      },
+      {
+        accessScopeId: 'org_kube',
+        accessScopeType: 'organization',
+        deploymentId: 'dep_kube',
+        id: 'route_zzz_active',
+        subdomain: 'active-kube',
+      },
+    ]);
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_candidate',
+      failureMessage: null,
+      observation: 'pending',
+      observedAt: new Date('2026-07-12T10:00:00.000Z'),
+      revision: 0,
+    });
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'ready',
+        observedAt: new Date('2026-07-12T10:00:01.000Z'),
+        revision: 1,
+      }),
+    ).toBe(true);
+    const routes: { deploymentId: string; id: string }[] = await db
+      .select({ deploymentId: deploymentRoutes.deploymentId, id: deploymentRoutes.id })
+      .from(deploymentRoutes);
+    expect(routes).toEqual(
+      expect.arrayContaining([
+        { deploymentId: 'dep_decoy', id: 'route_aaa_decoy' },
+        { deploymentId: 'dep_candidate', id: 'route_zzz_active' },
+      ]),
+    );
   });
 
   it('reattaches the stopped deployment route when a project start becomes Ready', async (): Promise<void> => {

@@ -3,10 +3,19 @@ import { projectKubeProvisioning } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
+import { projectProvisioningAttemptLimit, projectProvisioningTerminalFailure } from './project-provisioning-policy';
 import type { CompleteProjectProvisioningInput, ProjectProvisioningClaimRow } from './project-provisioning.query.types';
+import {
+  deadLetterExpiredProjectProvisioning,
+  failTerminalProjectProvisioning,
+} from './project-provisioning-terminal.query';
 
 const leaseDurationMs: number = 7 * 60_000;
 const failedRetryDelayMs: number = 10_000;
+interface CompletedProjectProvisioningRow {
+  attempts: number;
+  projectId: string;
+}
 
 export async function hasSucceededProjectKubeProvisioning(projectId: string): Promise<boolean> {
   const [row] = await getApiDatabase()
@@ -25,6 +34,7 @@ async function claimPendingProjectProvisioningWithTransaction(
   transaction: DeploymentTransaction,
 ): Promise<ProjectProvisioningClaimRow | null> {
   const now: Date = new Date();
+  await deadLetterExpiredProjectProvisioning(transaction, now);
   const row: typeof projectKubeProvisioning.$inferSelect | undefined = await selectClaimableRow(transaction, now);
   if (row === undefined) {
     return null;
@@ -54,9 +64,14 @@ function claimableCondition(now: Date): SQL | undefined {
     eq(projectKubeProvisioning.state, 'pending'),
     and(
       eq(projectKubeProvisioning.state, 'failed'),
+      lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
       lt(projectKubeProvisioning.updatedAt, new Date(now.getTime() - failedRetryDelayMs)),
     ),
-    and(eq(projectKubeProvisioning.state, 'running'), lt(projectKubeProvisioning.leaseExpiresAt, now)),
+    and(
+      eq(projectKubeProvisioning.state, 'running'),
+      lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
+      lt(projectKubeProvisioning.leaseExpiresAt, now),
+    ),
   );
 }
 
@@ -81,7 +96,39 @@ async function leaseProjectProvisioning(
 }
 
 export async function completeProjectProvisioning(input: CompleteProjectProvisioningInput): Promise<boolean> {
-  const rows: { projectId: string }[] = await getApiDatabase()
+  return await getApiDatabase().transaction(
+    async (transaction: DeploymentTransaction): Promise<boolean> =>
+      await completeProjectProvisioningWithTransaction(transaction, input),
+  );
+}
+
+async function completeProjectProvisioningWithTransaction(
+  transaction: DeploymentTransaction,
+  input: CompleteProjectProvisioningInput,
+): Promise<boolean> {
+  const completed: CompletedProjectProvisioningRow | undefined = await persistProjectProvisioningCompletion(
+    transaction,
+    input,
+  );
+  if (completed === undefined) {
+    return false;
+  }
+  if (input.status === 'failed' && completed.attempts >= projectProvisioningAttemptLimit) {
+    await failTerminalProjectProvisioning(
+      transaction,
+      completed.projectId,
+      projectProvisioningTerminalFailure(input.failureMessage),
+      new Date(),
+    );
+  }
+  return true;
+}
+
+async function persistProjectProvisioningCompletion(
+  transaction: DeploymentTransaction,
+  input: CompleteProjectProvisioningInput,
+): Promise<CompletedProjectProvisioningRow | undefined> {
+  const rows: CompletedProjectProvisioningRow[] = await transaction
     .update(projectKubeProvisioning)
     .set({
       failureMessage: input.failureMessage,
@@ -97,6 +144,6 @@ export async function completeProjectProvisioning(input: CompleteProjectProvisio
         eq(projectKubeProvisioning.state, 'running'),
       ),
     )
-    .returning({ projectId: projectKubeProvisioning.projectId });
-  return rows.length === 1;
+    .returning({ attempts: projectKubeProvisioning.attempts, projectId: projectKubeProvisioning.projectId });
+  return rows[0];
 }
