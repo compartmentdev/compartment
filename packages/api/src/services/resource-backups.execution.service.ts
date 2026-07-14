@@ -83,6 +83,7 @@ export async function runResourceRestore(input: RunResourceRestoreInput): Promis
   const operationContext: ResourceBackupOperationContext = await resolveRestoreOperationContext(input);
   if (input.resource.runtimeKind === 'kubernetes') {
     await runVerifiedKubernetesRestore({
+      artifactResource: input.artifactResource ?? input.resource,
       backup: input.backup,
       context: input.context,
       operationContext,

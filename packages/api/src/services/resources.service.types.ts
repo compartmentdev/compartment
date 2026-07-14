@@ -154,6 +154,7 @@ export interface RunResourceBackupInput {
 }
 
 export interface RunResourceRestoreInput {
+  artifactResource?: ProjectResourceRow | undefined;
   backup: ResourceBackupRow;
   context: ResourceEnvironmentContext;
   resource: ProjectResourceRow;
