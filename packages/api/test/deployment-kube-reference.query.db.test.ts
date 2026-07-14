@@ -13,6 +13,7 @@ import {
   buildArtifacts,
   deploymentKubeReferences,
   deploymentProductLogs,
+  deploymentRunEvents,
   deploymentRuns,
   deploymentRoutes,
   deployments,
@@ -501,6 +502,19 @@ describe('deployment Kubernetes transition persistence', (): void => {
       deploymentId: 'dep_candidate',
       upstreamHost: 'app-env-kube-svc-kube.cpt-prj-kube.svc.cluster.local',
       upstreamPort: 80,
+    });
+    const events: object[] = await db
+      .select()
+      .from(deploymentRunEvents)
+      .where(eq(deploymentRunEvents.deploymentRunId, 'drn_candidate'));
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      deploymentId: 'dep_candidate',
+      level: 'info',
+      message: 'deployment completed',
+      status: 'succeeded',
+      stepKey: 'completed',
+      stream: 'compartment',
     });
   });
 });

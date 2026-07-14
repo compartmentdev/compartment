@@ -1,11 +1,13 @@
 import { and, eq, ne, type SQL } from 'drizzle-orm';
-import { deploymentKubeReferences, deploymentRoutes, deployments, operations } from '../db/schema';
+import { deploymentKubeReferences, deploymentRoutes, deploymentRunEvents, deployments, operations } from '../db/schema';
+import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { persistActiveDeploymentDrift } from './deployment-reconcile-transition-audit.query';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type { PersistDeploymentReconcileObservationInput } from './deployment-reconcile.query.types';
 
 interface CandidateContext {
+  deploymentRunId: string;
   environmentId: string;
   serviceId: string;
 }
@@ -120,7 +122,7 @@ async function persistReady(
   await deactivatePreviousDeployments(tx, input, candidate);
   await activateDeployment(tx, input);
   await switchReconcileRoute(tx, input, previousActiveId);
-  await markReconcileOperationSucceeded(tx, input);
+  await publishReconcileSucceeded(tx, input, candidate.deploymentRunId);
   await updateReference(tx, input, 'active');
   return true;
 }
@@ -130,10 +132,33 @@ async function findCandidateContext(
   deploymentId: string,
 ): Promise<CandidateContext | undefined> {
   const [candidate] = await tx
-    .select({ environmentId: deployments.environmentId, serviceId: deployments.projectServiceId })
+    .select({
+      deploymentRunId: deployments.deploymentRunId,
+      environmentId: deployments.environmentId,
+      serviceId: deployments.projectServiceId,
+    })
     .from(deployments)
     .where(eq(deployments.id, deploymentId));
   return candidate;
+}
+
+async function publishReconcileSucceeded(
+  tx: DeploymentTransaction,
+  input: PersistDeploymentReconcileObservationInput,
+  deploymentRunId: string,
+): Promise<void> {
+  await markReconcileOperationSucceeded(tx, input);
+  await tx.insert(deploymentRunEvents).values({
+    createdAt: input.observedAt,
+    deploymentId: input.deploymentId,
+    deploymentRunId,
+    id: createId('drev'),
+    level: 'info',
+    message: 'deployment completed',
+    status: 'succeeded',
+    stepKey: 'completed',
+    stream: 'compartment',
+  });
 }
 
 async function findPreviousActiveId(
