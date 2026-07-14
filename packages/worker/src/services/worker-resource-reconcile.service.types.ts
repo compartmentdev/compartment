@@ -13,7 +13,6 @@ export interface ObservedDeploymentStatus {
   availableReplicas?: number | undefined;
   conditions?: ObservedDeploymentCondition[] | undefined;
   observedGeneration?: number | undefined;
-  readyReplicas?: number | undefined;
 }
 
 export interface ManagedResourceUpdatePlan {

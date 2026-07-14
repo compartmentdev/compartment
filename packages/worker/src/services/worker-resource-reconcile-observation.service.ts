@@ -123,8 +123,7 @@ function resourceDeploymentFreshAndReady(
   return (
     observed.spec?.replicas === desiredReplicas &&
     generationIsCurrent(observed.metadata?.generation, status.observedGeneration) &&
-    status.availableReplicas === desiredReplicas &&
-    status.readyReplicas === desiredReplicas
+    status.availableReplicas === desiredReplicas
   );
 }
 
