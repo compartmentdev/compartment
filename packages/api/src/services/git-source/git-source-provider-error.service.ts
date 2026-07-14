@@ -1,5 +1,4 @@
 import {
-  createGitSourceRegistrationFailedError,
   createGitSourceRepositoryAccessDeniedError,
   createGitSourceRepositoryEmptyError,
   createGitSourceRequestInvalidError,
@@ -21,9 +20,7 @@ export function throwGitProviderBusinessError(
 ): never {
   const classification: GitProviderErrorClassification = adapter.classifyError(error);
   if (classification.kind === 'auth') {
-    throw createGitSourceRegistrationFailedError(
-      'Git provider credentials are no longer valid. Reconnect the provider.',
-    );
+    throw adapter.createAuthFailureError();
   }
   if (classification.kind === 'empty-repo') {
     throw createGitSourceRepositoryEmptyError();

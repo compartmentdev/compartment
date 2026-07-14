@@ -1,3 +1,5 @@
+import { createGitLabTokenInvalidError } from '../../errors/api-business-error';
+import type { ApiBusinessError } from '../../errors/api-business-error.shared';
 import { decryptVariableValueFromStorage } from '../../lib/variables-crypto';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import { getApiConfig } from '../../runtime/runtime-access';
@@ -140,6 +142,10 @@ class GitLabProviderAdapter implements GitProviderAdapter {
       access.registration.webhookUrl,
       target.providerWebhookId,
     );
+  }
+
+  public createAuthFailureError(): ApiBusinessError {
+    return createGitLabTokenInvalidError('The GitLab token is no longer valid. Re-enter the token.');
   }
 
   public classifyError(error: Error | undefined): GitProviderErrorClassification {

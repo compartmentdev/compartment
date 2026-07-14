@@ -1,3 +1,5 @@
+import { createGitSourceRegistrationFailedError } from '../../errors/api-business-error';
+import type { ApiBusinessError } from '../../errors/api-business-error.shared';
 import { decryptVariableValueFromStorage } from '../../lib/variables-crypto';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import { getApiConfig } from '../../runtime/runtime-access';
@@ -199,6 +201,12 @@ class GitHubProviderAdapter implements GitProviderAdapter {
 
   public async onSourceDisconnected(): Promise<void> {
     return await Promise.resolve();
+  }
+
+  public createAuthFailureError(): ApiBusinessError {
+    return createGitSourceRegistrationFailedError(
+      'Git provider credentials are no longer valid. Reconnect the provider.',
+    );
   }
 
   public classifyError(error: Error | undefined): GitProviderErrorClassification {

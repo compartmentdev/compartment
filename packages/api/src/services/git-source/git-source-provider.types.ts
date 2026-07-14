@@ -1,4 +1,5 @@
 import type { GitDescriptorDraftFile, GitProviderType } from '@compartment/contracts';
+import type { ApiBusinessError } from '../../errors/api-business-error.shared';
 import type { GitProviderRegistrationRow } from '../../queries/git-provider-registration.query.types';
 import type { SourceRow } from '../../queries/source.query.types';
 
@@ -226,6 +227,8 @@ export interface GitProviderAdapter {
 
   /** Remove the provider-side webhook for a source; failures are surfaced. */
   onSourceDisconnected(access: GitProviderAccess, target: SourceProviderHookTarget): Promise<void>;
+
+  createAuthFailureError(): ApiBusinessError;
 
   classifyError(error: Error | undefined): GitProviderErrorClassification;
 }
