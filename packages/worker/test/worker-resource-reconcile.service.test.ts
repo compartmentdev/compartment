@@ -123,7 +123,7 @@ describe('worker resource reconcile lifecycle', (): void => {
     );
   });
 
-  it('completes from live available Deployment state without an informer update or readyReplicas', async (): Promise<void> => {
+  it('completes from server-projected live availability without an informer update', async (): Promise<void> => {
     vi.useFakeTimers();
     try {
       const observation: TestObservation = new TestObservation('uid-original', false);
@@ -365,7 +365,6 @@ function liveDeployment(ready: boolean, desired: KubeManifest): KubeObservedMani
     apiVersion: 'apps/v1',
     kind: 'Deployment',
     metadata: { name: resourceName, namespace: 'cpt-project' },
-    spec: desired.spec,
     status: {
       availableReplicas: ready ? 1 : 0,
       conditions: [{ status: ready ? 'True' : 'False', type: 'Available' }],

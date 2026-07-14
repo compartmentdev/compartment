@@ -121,9 +121,9 @@ function resourceDeploymentFreshAndReady(
   }
   const desiredReplicas: number | undefined = desired.spec?.replicas;
   return (
-    observed.spec?.replicas === desiredReplicas &&
+    desiredReplicas !== undefined &&
     generationIsCurrent(observed.metadata?.generation, status.observedGeneration) &&
-    status.availableReplicas === desiredReplicas
+    (status.availableReplicas ?? 0) >= desiredReplicas
   );
 }
 
