@@ -33,12 +33,19 @@ export function projectResourceManifests(row: ResourceProjectionRow, replicas: 0
 }
 
 function resourceSecret(row: ResourceProjectionRow): KubeManifest {
-  return projectSecretManifest({
+  const manifest: KubeManifest = projectSecretManifest({
     data: row.env,
     deploymentId: row.resourceId,
     namespaceId: row.namespaceId,
     secretId: row.secretId,
   });
+  return {
+    ...manifest,
+    metadata: {
+      ...manifest.metadata,
+      labels: { ...manifest.metadata?.labels, 'compartment.dev/resource-id': row.resourceId },
+    },
+  };
 }
 
 function resourceDeployment(
@@ -116,6 +123,26 @@ function resourceService(
       selector: labels,
     },
   };
+}
+
+export function projectResourceClaimDeleteTargets(
+  row: ResourceProjectionRow,
+  observed: readonly ObservedResourceClaim[],
+): KubeManifest[] {
+  const observedByName: Map<string, ObservedResourceClaim> = new Map<string, ObservedResourceClaim>(
+    observed.map((claim: ObservedResourceClaim): [string, ObservedResourceClaim] => [claim.claimName, claim]),
+  );
+  return projectResourceBootstrapClaims(row).map((claim: KubeManifest): KubeManifest => {
+    const name: string = claim.metadata?.name ?? '';
+    const identity: ObservedResourceClaim | undefined = observedByName.get(name);
+    if (identity?.uid === null || identity?.uid === undefined || identity.resourceVersion === null) {
+      throw new Error(`Resource reconcile refused: expected PVC ${name} identity is missing.`);
+    }
+    return {
+      ...claim,
+      metadata: { ...claim.metadata, resourceVersion: identity.resourceVersion, uid: identity.uid },
+    };
+  });
 }
 
 /** Explicit bootstrap-only PVC projection. Never add this result to projectResourceManifests. */

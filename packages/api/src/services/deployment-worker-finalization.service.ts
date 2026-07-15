@@ -80,10 +80,14 @@ async function finalizeArchivedProjectCompletion(
     {
       deploymentId: input.deploymentId,
       imageRef: input.imageRef,
-      message: buildArchivedProjectCompletionFailureMessage(deployment.deployment.id),
+      message: archivedProjectDeploymentFailureMessage(deployment.deployment.id),
     },
     new Date(),
   );
+}
+
+export function archivedProjectDeploymentFailureMessage(deploymentId: string): string {
+  return `Deployment ${deploymentId} could not be activated because the project was archived.`;
 }
 
 async function stopArchivedProjectDeployment(deployment: DeploymentJoinedRow, containerId: string): Promise<void> {
@@ -94,10 +98,6 @@ async function stopArchivedProjectDeployment(deployment: DeploymentJoinedRow, co
   } catch {
     throw createProjectArchiveRuntimeStopFailedError();
   }
-}
-
-function buildArchivedProjectCompletionFailureMessage(deploymentId: string): string {
-  return `Deployment ${deploymentId} could not be activated because the project was archived.`;
 }
 
 async function persistFailedDeployment(

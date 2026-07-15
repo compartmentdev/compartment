@@ -29,6 +29,7 @@ interface JobManifestSpec {
       automountServiceAccountToken: false;
       containers: JobContainerSpec[];
       imagePullSecrets?: { name: string }[] | undefined;
+      securityContext?: object | undefined;
       serviceAccountName?: string | undefined;
       volumes: KubePodVolume[];
     };
@@ -37,6 +38,7 @@ interface JobManifestSpec {
 
 interface JobContainerSpec {
   env: KubeSecretEnvVariable[];
+  securityContext?: object | undefined;
 }
 
 type KubePatchInvocation = [
@@ -234,6 +236,7 @@ describe('KubeRuntime Job primitive', (): void => {
   it('bounds bootstrap Job execution and mounts only an expiring projected credential', async (): Promise<void> => {
     const spec: KubeJobSpec = {
       ...jobSpec('operation'),
+      securityProfile: 'restricted',
       serviceAccountName: 'compartment-project-bootstrap',
       serviceAccountTokenExpirationSeconds: 600,
       timeoutMs: 300_000,
@@ -249,6 +252,16 @@ describe('KubeRuntime Job primitive', (): void => {
     )![0];
     const projectedSpec: JobManifestSpec = manifest.spec as JobManifestSpec;
     expect(projectedSpec.activeDeadlineSeconds).toBe(300);
+    expect(projectedSpec.template.spec.securityContext).toEqual({
+      runAsGroup: 10_001,
+      runAsNonRoot: true,
+      runAsUser: 10_001,
+      seccompProfile: { type: 'RuntimeDefault' },
+    });
+    expect(projectedSpec.template.spec.containers[0]?.securityContext).toEqual({
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ['ALL'] },
+    });
     expect(projectedSpec.template.spec.serviceAccountName).toBe('compartment-project-bootstrap');
     expect(projectedSpec.template.spec.volumes[0]?.projected?.sources[0]).toMatchObject({
       serviceAccountToken: { expirationSeconds: 600, path: 'token' },
@@ -332,6 +345,27 @@ describe('KubeRuntime Job primitive', (): void => {
 
     await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-retry')));
     expect(objectApi.deletes).toMatchObject([{ kind: 'RoleBinding' }, { kind: 'ClusterRoleBinding' }]);
+  });
+
+  it('passes manifest UID and resourceVersion as atomic Kubernetes delete preconditions', async (): Promise<void> => {
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+    const claim: KubeManifest = {
+      apiVersion: 'v1',
+      kind: 'PersistentVolumeClaim',
+      metadata: {
+        name: 'resource-data',
+        namespace: 'cpt-project',
+        resourceVersion: 'resource-version-7',
+        uid: 'uid-original',
+      },
+    };
+    objectApi.deleteError = Object.assign(new Error('UID precondition failed'), { statusCode: 409 });
+
+    await expect(runtime.delete([claim])).rejects.toThrow('UID precondition failed');
+
+    expect(objectApi.delete).toHaveBeenCalledWith(claim, undefined, undefined, undefined, undefined, undefined, {
+      preconditions: { resourceVersion: 'resource-version-7', uid: 'uid-original' },
+    });
   });
 
   it('uses installation authority to remove bootstrap access after a partial create failure', async (): Promise<void> => {
@@ -455,6 +489,7 @@ describe('KubeRuntime Job primitive', (): void => {
       undefined,
       undefined,
       'Foreground',
+      undefined,
     );
   });
 

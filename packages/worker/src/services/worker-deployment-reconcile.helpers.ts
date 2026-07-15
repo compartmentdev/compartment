@@ -43,7 +43,7 @@ export function deploymentConditionStatus(value: string | undefined): 'False' | 
   return 'Unknown';
 }
 
-export function requiredDeploymentMetadata(deployment: KubeDeploymentManifest, key: 'name' | 'namespace'): string {
+function requiredDeploymentMetadata(deployment: KubeDeploymentManifest, key: 'name' | 'namespace'): string {
   const value: string | undefined = deployment.metadata?.[key];
   if (value === undefined || value === '') {
     throw new Error(`Projected Kubernetes Deployment has no ${key}.`);

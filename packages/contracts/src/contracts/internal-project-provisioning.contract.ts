@@ -15,7 +15,7 @@ export interface WorkerCompleteProjectProvisioningRequest {
   leaseId: string;
   message?: string | undefined;
   projectId: string;
-  status: 'failed' | 'succeeded';
+  status: 'failed' | 'running' | 'succeeded';
 }
 
 export interface WorkerCompleteProjectProvisioningResponse {
@@ -43,7 +43,7 @@ export const workerCompleteProjectProvisioningRequestSchema: ContractSchema<Work
       leaseId: z.string().min(1),
       message: z.string().min(1).optional(),
       projectId: z.string().min(1),
-      status: z.enum(['failed', 'succeeded']),
+      status: z.enum(['failed', 'running', 'succeeded']),
     })
     .strict()
     .superRefine((input: WorkerCompleteProjectProvisioningRequest, context: z.RefinementCtx): void => {

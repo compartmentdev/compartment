@@ -1,8 +1,8 @@
 import { appendFile, chmod, writeFile } from 'node:fs/promises';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
+import { captureCommand } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
@@ -117,7 +117,7 @@ async function installPlatform(seedAdminEmail, seedAdminPassword) {
 }
 
 function registerCompatibilityNode() {
-  const registration = spawnSync(
+  const output = captureCommand(
     'kubectl',
     [
       '--context',
@@ -132,16 +132,10 @@ function registerCompatibilityNode() {
       '--eval',
       buildCompatibilityNodeRegistrationScript(),
     ],
-    { cwd: repositoryRoot, encoding: 'utf8', env: process.env },
+    repositoryRoot,
+    process.env,
   );
-  if (registration.status !== 0) {
-    process.stderr.write(registration.stderr);
-    throw new Error(
-      `Platform compatibility node registration failed with exit code ${registration.status?.toString() ?? 'unknown'}.`,
-    );
-  }
-
-  parseCompatibilityNodeResult(registration.stdout);
+  parseCompatibilityNodeResult(output);
 }
 
 function buildCompatibilityNodeRegistrationScript() {

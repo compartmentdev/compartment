@@ -1,6 +1,7 @@
-import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, inArray, or, type SQL } from 'drizzle-orm';
 import {
   buildArtifacts,
+  deploymentKubeReferences,
   deploymentRoutes,
   deployments,
   environments,
@@ -140,15 +141,11 @@ export async function listJoinedDeploymentsForEnvironmentRun(
   );
 }
 
-export async function listActiveJoinedDeploymentsForProject(
+export async function listRuntimeJoinedDeploymentsForProject(
   projectId: string,
   routeBaseDomain: string,
 ): Promise<DeploymentJoinedRow[]> {
-  return await readJoinedDeploymentRows(
-    requireDeploymentFilter(and(eq(projects.id, projectId), eq(deployments.isActive, true))),
-    'service-asc',
-    routeBaseDomain,
-  );
+  return await readJoinedDeploymentRows(buildProjectRuntimeDeploymentFilter(projectId), 'service-asc', routeBaseDomain);
 }
 
 export async function listJoinedDeploymentsForProjects(
@@ -233,6 +230,26 @@ function buildScopedDeploymentFilter(environmentId: string, projectServiceId: st
           eq(deployments.isActive, true),
         )
       : and(eq(deployments.environmentId, environmentId), eq(deployments.projectServiceId, projectServiceId)),
+  );
+}
+
+function buildProjectRuntimeDeploymentFilter(projectId: string): SQL {
+  const hasUnfinishedKubeRuntime: SQL = exists(
+    getApiDatabase()
+      .select({ id: deploymentKubeReferences.id })
+      .from(deploymentKubeReferences)
+      .where(
+        and(
+          eq(deploymentKubeReferences.deploymentId, deployments.id),
+          or(
+            inArray(deploymentKubeReferences.state, ['active', 'desired', 'pending', 'stopping']),
+            and(eq(deploymentKubeReferences.state, 'stopped'), eq(deployments.status, 'running')),
+          ),
+        ),
+      ),
+  );
+  return requireDeploymentFilter(
+    and(eq(projects.id, projectId), or(eq(deployments.isActive, true), hasUnfinishedKubeRuntime)),
   );
 }
 

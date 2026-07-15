@@ -49,6 +49,10 @@ function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobMani
     imagePullSecrets:
       spec.imagePullSecretId === undefined ? undefined : [{ name: kubeSecretName(spec.imagePullSecretId) }],
     restartPolicy: 'Never',
+    securityContext:
+      spec.securityProfile === 'restricted'
+        ? { runAsGroup: 10_001, runAsNonRoot: true, runAsUser: 10_001, seccompProfile: { type: 'RuntimeDefault' } }
+        : undefined,
     serviceAccountName: spec.serviceAccountName,
     volumes: kubeJobVolumes(spec),
   };
@@ -77,6 +81,10 @@ function jobContainer(spec: KubeJobSpec): KubeProjectedContainer {
     env,
     image: spec.image,
     name: 'job',
+    securityContext:
+      spec.securityProfile === 'restricted'
+        ? { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } }
+        : undefined,
     volumeMounts: kubeJobVolumeMounts(spec),
   };
 }

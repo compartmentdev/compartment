@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 
+import { captureCommand, captureCommandResult } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
@@ -77,24 +77,29 @@ export function collectPlatformK3dDiagnostics(outputDirectory) {
 }
 
 function readDeploymentReferences() {
-  const result = spawnSync(
-    'kubectl',
-    [
-      '--context',
-      context,
-      'get',
-      'deployments',
-      '--all-namespaces',
-      '-o',
-      'jsonpath={range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{"\\n"}{end}',
-    ],
-    { cwd: repositoryRoot, encoding: 'utf8' },
-  );
-  return result.status === 0 ? parseDeploymentReferences(result.stdout) : [];
+  try {
+    return parseDeploymentReferences(
+      captureCommand(
+        'kubectl',
+        [
+          '--context',
+          context,
+          'get',
+          'deployments',
+          '--all-namespaces',
+          '-o',
+          'jsonpath={range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{"\\n"}{end}',
+        ],
+        repositoryRoot,
+      ),
+    );
+  } catch {
+    return [];
+  }
 }
 
 function capture(outputDirectory, name, file, args) {
-  const result = spawnSync(file, args, { cwd: repositoryRoot, encoding: 'utf8' });
+  const result = captureCommandResult(file, args, repositoryRoot);
   const command = `+ ${[file, ...args].join(' ')}\n`;
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
   writeFileSync(`${outputDirectory}/${name}.log`, `${command}${output}`, 'utf8');

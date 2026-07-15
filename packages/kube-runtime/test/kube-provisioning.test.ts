@@ -34,8 +34,8 @@ describe('project namespace bootstrap provisioning', (): void => {
   it('projects bootstrap identity only for one Job and removes every credential-bearing object', (): void => {
     const input: ProjectProvisioningAuthorityInput = {
       jobId: 'project-provision-prj-01jz',
-      namespace: 'compartment',
-      serviceAccountName: 'compartment-project-bootstrap',
+      namespace: 'compartment-project-provisioning',
+      serviceAccountName: kubeNamespaceName('prj-01jz'),
     };
     const authority: ApplyBundle = projectProvisioningAuthorityBundle(input);
     const cleanup: ApplyBundle = projectProvisioningAuthorityCleanup(input);
@@ -75,7 +75,11 @@ describe('project namespace bootstrap provisioning', (): void => {
       metadata: { name: 'compartment-project-bootstrap', namespace: kubeNamespaceName('prj-01jz') },
       roleRef: { kind: 'ClusterRole', name: 'compartment-controller' },
       subjects: [
-        { kind: 'ServiceAccount', name: 'compartment-project-bootstrap', namespace: 'compartment' },
+        {
+          kind: 'ServiceAccount',
+          name: kubeNamespaceName('prj-01jz'),
+          namespace: 'compartment-project-provisioning',
+        },
         { kind: 'ServiceAccount', name: 'compartment-worker', namespace: 'compartment' },
       ],
     });
@@ -181,7 +185,7 @@ describe('project namespace bootstrap provisioning', (): void => {
       resources: ['clusterroles'],
       verbs: ['bind'],
     });
-    expect(ruleFor(rules, 'namespaces')).toMatchObject({ verbs: ['create'] });
+    expect(ruleFor(rules, 'namespaces')).toMatchObject({ verbs: ['get', 'create'] });
     expect(ruleFor(rules, 'rolebindings')).toMatchObject({ verbs: ['create'] });
     expect(ruleFor(rules, 'serviceaccounts')).toBeUndefined();
     expect(ruleFor(rules, 'roles')).toBeUndefined();
@@ -198,7 +202,7 @@ describe('project namespace bootstrap provisioning', (): void => {
           rule.resources.includes('rolebindings') &&
           rule.resourceNames?.includes('compartment-project-bootstrap') === true,
       ),
-    ).toMatchObject({ verbs: ['delete'] });
+    ).toMatchObject({ verbs: ['get', 'delete'] });
     expect(rules.some((rule: RbacRule): boolean => rule.verbs.includes('escalate'))).toBe(false);
   });
 
@@ -240,7 +244,10 @@ function manifests(name: string): RbacManifest[] {
 
 function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
   return {
-    bootstrapServiceAccount: { name: 'compartment-project-bootstrap', namespace: 'compartment' },
+    bootstrapServiceAccount: {
+      name: kubeNamespaceName(namespaceId),
+      namespace: 'compartment-project-provisioning',
+    },
     namespaceId,
     networkPolicy: {
       applicationPodLabels: { app: 'application' },

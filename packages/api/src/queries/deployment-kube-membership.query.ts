@@ -1,10 +1,21 @@
-import { and, eq } from 'drizzle-orm';
-import { deploymentKubeReferences } from '../db/schema';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { deploymentKubeReferences, deployments, environments } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentKubeState } from './deployment-kube-state.types';
 
 export async function hasDeploymentKubeReference(deploymentId: string): Promise<boolean> {
   return (await findDeploymentKubeState(deploymentId)) !== undefined;
+}
+
+export async function hasProjectDeploymentKubeReference(projectId: string): Promise<boolean> {
+  const [reference] = await getApiDatabase()
+    .select({ id: deploymentKubeReferences.id })
+    .from(deploymentKubeReferences)
+    .innerJoin(deployments, eq(deploymentKubeReferences.deploymentId, deployments.id))
+    .innerJoin(environments, eq(deployments.environmentId, environments.id))
+    .where(eq(environments.projectId, projectId))
+    .limit(1);
+  return reference !== undefined;
 }
 
 export async function findDeploymentKubeState(deploymentId: string): Promise<DeploymentKubeState | undefined> {
@@ -19,6 +30,16 @@ export async function findDeploymentKubeState(deploymentId: string): Promise<Dep
 export async function requestDeploymentKubeStop(deploymentId: string, updatedAt: Date): Promise<void> {
   await getApiDatabase()
     .update(deploymentKubeReferences)
-    .set({ state: 'stopping', transitionedAt: updatedAt, updatedAt })
-    .where(and(eq(deploymentKubeReferences.deploymentId, deploymentId), eq(deploymentKubeReferences.state, 'active')));
+    .set({
+      revision: sql`${deploymentKubeReferences.revision} + 1`,
+      state: 'stopping',
+      transitionedAt: updatedAt,
+      updatedAt,
+    })
+    .where(
+      and(
+        eq(deploymentKubeReferences.deploymentId, deploymentId),
+        inArray(deploymentKubeReferences.state, ['active', 'desired', 'pending']),
+      ),
+    );
 }

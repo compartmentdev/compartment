@@ -182,7 +182,11 @@ describe('internal worker routes', (): void => {
           'content-type': 'application/json',
         },
         method: 'POST',
-        payload: { leaseId: 'kpl_123', projectId: 'prj_123', status: 'succeeded' },
+        payload: {
+          leaseId: 'kpl_123',
+          projectId: 'prj_123',
+          status: 'succeeded',
+        },
         timeoutMs: 1000,
         url: workerCompleteProjectProvisioningPathname,
       });

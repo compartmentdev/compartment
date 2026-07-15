@@ -1,10 +1,11 @@
-import { setTimeout as delay } from 'node:timers/promises';
 import type { ResourceClaimIdentity } from '@compartment/contracts';
 import {
   assertResourceClaimIdentity,
   assertResourceClaimOwnership,
   kubeResourceVolumeName,
   projectResourceBootstrapClaims,
+  projectResourceManifests,
+  resourcePodsFullyTerminated,
   type KubeManifest,
   type KubeObservation,
   type KubeObservedManifest,
@@ -53,6 +54,7 @@ function readObservedClaims(observation: KubeObservation): ObservedResourceClaim
       ([, claim]: [string, KubeObservedManifest]): ObservedResourceClaim => ({
         bound: (claim.status as ObservedClaimStatus | undefined)?.phase === 'Bound',
         claimName: claim.metadata?.name ?? '',
+        resourceVersion: claim.metadata?.resourceVersion ?? null,
         uid: claim.metadata?.uid ?? null,
       }),
     );
@@ -68,6 +70,7 @@ export async function readLiveClaims(
       return {
         bound: (observed?.status as ObservedClaimStatus | undefined)?.phase === 'Bound',
         claimName: claim.metadata?.name ?? '',
+        resourceVersion: observed?.metadata?.resourceVersion ?? null,
         uid: observed?.metadata?.uid ?? null,
       };
     }),
@@ -94,17 +97,30 @@ export function assertFinalClaimState(
   );
 }
 
+export async function scaleDownAndAwaitTermination(
+  runtime: KubeRuntime,
+  observation: KubeObservation,
+  row: ResourceProjectionRow,
+): Promise<void> {
+  await runtime.apply({ objects: projectResourceManifests(row, 0) });
+  await waitUntil(observation, (): true | null =>
+    resourcePodsFullyTerminated(readResourcePods(observation)) ? true : null,
+  );
+}
+
 export function readResourcePods(observation: KubeObservation): { deletionTimestamp?: string | undefined }[] {
   return [...observation.cache.keys()]
     .filter((key: string): boolean => key.startsWith('pods/'))
     .map((): { deletionTimestamp?: string | undefined } => ({}));
 }
 
-export async function waitForFreshResourceDeployment(runtime: KubeRuntime, manifests: KubeManifest[]): Promise<void> {
+export async function waitForFreshResourceDeployment(
+  observation: KubeObservation,
+  manifests: KubeManifest[],
+): Promise<void> {
   const desired: KubeDeploymentManifest = requiredDeployment(manifests);
-  await waitUntilLive(
-    async (): Promise<true | null> =>
-      resourceDeploymentFreshAndReady(await runtime.read(desired), desired) ? true : null,
+  await waitUntil(observation, (): true | null =>
+    resourceDeploymentFreshAndReady(findObservedManifest(observation, desired), desired) ? true : null,
   );
 }
 
@@ -122,13 +138,24 @@ function resourceDeploymentFreshAndReady(
   const desiredReplicas: number | undefined = desired.spec?.replicas;
   return (
     desiredReplicas !== undefined &&
-    generationIsCurrent(observed.metadata?.generation, status.observedGeneration) &&
+    observed.metadata?.uid === desired.metadata?.uid &&
+    generationIsCurrent(observed.metadata?.generation, status.observedGeneration, desired.metadata?.generation) &&
     (status.availableReplicas ?? 0) >= desiredReplicas
   );
 }
 
-function generationIsCurrent(generation: number | undefined, observedGeneration: number | undefined): boolean {
-  return generation === undefined || observedGeneration === undefined || observedGeneration >= generation;
+function generationIsCurrent(
+  generation: number | undefined,
+  observedGeneration: number | undefined,
+  desiredGeneration: number | undefined,
+): boolean {
+  return (
+    generation !== undefined &&
+    observedGeneration !== undefined &&
+    desiredGeneration !== undefined &&
+    generation === desiredGeneration &&
+    observedGeneration === desiredGeneration
+  );
 }
 
 export async function waitUntil<T>(observation: KubeObservation, read: () => T | null): Promise<T> {
@@ -155,18 +182,6 @@ export async function waitUntil<T>(observation: KubeObservation, read: () => T |
   });
 }
 
-async function waitUntilLive<T>(read: () => Promise<T | null>): Promise<T> {
-  const deadlineAt: number = Date.now() + reconcileTimeoutMs;
-  while (Date.now() < deadlineAt) {
-    const value: T | null = await read();
-    if (value !== null) {
-      return value;
-    }
-    await delay(1_000);
-  }
-  throw new Error('Timed out waiting for live Kubernetes resource lifecycle evidence.');
-}
-
 function requiredDeployment(manifests: KubeManifest[]): KubeDeploymentManifest {
   const deployment: KubeManifest | undefined = manifests.find(
     (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
@@ -177,26 +192,32 @@ function requiredDeployment(manifests: KubeManifest[]): KubeDeploymentManifest {
   return deployment;
 }
 
-export async function readRollbackManifest(
+export function readRollbackManifest(
   previousJson: string | null,
-  runtime: KubeRuntime,
+  observation: KubeObservation,
   desired: KubeManifest[],
-): Promise<KubeManifest[] | null> {
+  hasLivePods: boolean,
+): KubeManifest[] | null {
   if (previousJson !== null) {
     return JSON.parse(previousJson) as KubeManifest[];
   }
-  const active: KubeManifest[] = await readActiveManifests(runtime, desired);
+  const active: KubeManifest[] = readActiveManifests(observation, desired);
   const deployment: KubeManifest | undefined = active.find(
     (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
   );
-  return (deployment?.spec as ObservedRollbackDeploymentSpec | undefined)?.replicas === 1 ? active : null;
+  const replicas: number | undefined = (deployment?.spec as ObservedRollbackDeploymentSpec | undefined)?.replicas;
+  if (active.length === desired.length && deployment !== undefined && replicas !== undefined) {
+    return active;
+  }
+  if (hasLivePods || deployment !== undefined) {
+    throw new Error('Managed resource update requires a complete rollback snapshot before mutating live state.');
+  }
+  return null;
 }
 
-async function readActiveManifests(runtime: KubeRuntime, desired: KubeManifest[]): Promise<KubeManifest[]> {
-  const observed: (KubeObservedManifest | null)[] = await Promise.all(
-    desired.map(async (manifest: KubeManifest): Promise<KubeObservedManifest | null> => await runtime.read(manifest)),
-  );
-  return observed
+function readActiveManifests(observation: KubeObservation, desired: KubeManifest[]): KubeManifest[] {
+  return desired
+    .map((manifest: KubeManifest): KubeObservedManifest | null => findObservedManifest(observation, manifest))
     .filter((manifest: KubeObservedManifest | null): manifest is KubeManifest => manifest !== null)
     .map(normalizeRollbackManifest)
     .sort((left: KubeManifest, right: KubeManifest): number =>
@@ -204,6 +225,15 @@ async function readActiveManifests(runtime: KubeRuntime, desired: KubeManifest[]
         `${right.kind}/${right.metadata?.namespace ?? ''}/${right.metadata?.name ?? ''}`,
       ),
     );
+}
+
+function findObservedManifest(observation: KubeObservation, desired: KubeManifest): KubeObservedManifest | null {
+  return (
+    [...observation.cache.values()].find(
+      (observed: KubeObservedManifest): boolean =>
+        observed.kind === desired.kind && observed.metadata?.name === desired.metadata?.name,
+    ) ?? null
+  );
 }
 
 function normalizeRollbackManifest(manifest: KubeManifest): KubeManifest {

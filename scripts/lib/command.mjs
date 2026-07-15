@@ -39,12 +39,7 @@ export function runCommand(file, args, cwd, env) {
 }
 
 export function captureCommand(file, args, cwd, env) {
-  const result = spawnSync(file, args, {
-    cwd,
-    env,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'inherit'],
-  });
+  const result = captureCommandResult(file, args, cwd, env);
 
   if (result.error !== undefined) {
     throw result.error;
@@ -54,5 +49,15 @@ export function captureCommand(file, args, cwd, env) {
     return result.stdout.trim();
   }
 
+  process.stderr.write(result.stderr);
   throw new Error(`Command failed: ${[file, ...args].join(' ')}`);
+}
+
+export function captureCommandResult(file, args, cwd, env) {
+  return spawnSync(file, args, {
+    cwd,
+    env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }

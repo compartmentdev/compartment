@@ -1,5 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import type { ApiConfig } from '../src/config';
@@ -27,10 +27,10 @@ import {
 import { listScheduledResourceOperationCandidates } from '../src/queries/resource-operation-scheduler.query';
 import type { ResourceBackupRow } from '../src/queries/resource-backups.query.types';
 import { findProjectResourceByName, lockProjectResourceReferenceByName } from '../src/queries/resources.query';
+import { createResourceReconcileRun } from '../src/queries/resource-reconcile-create.query';
 import {
   acknowledgeResourceReconcileRun,
   claimResourceReconcileRun,
-  createResourceReconcileRun,
 } from '../src/queries/resource-reconcile-runs.query';
 import {
   claimPendingProjectProvisioning,
@@ -340,6 +340,162 @@ describe('resource backup queries', (): void => {
     await expect(
       db.select().from(projectKubeProvisioning).where(eq(projectKubeProvisioning.projectId, project.id)),
     ).resolves.toMatchObject([{ state: 'succeeded' }]);
+    await expect(claimPendingProjectProvisioning()).resolves.toBeNull();
+  });
+
+  it('dead-letters project provisioning after three failures and fails waiting resource work', async (): Promise<void> => {
+    await db
+      .update(projectKubeProvisioning)
+      .set({ attempts: 0, failureMessage: null, state: 'pending' })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_unprovisionable_project',
+      type: 'bootstrap',
+    });
+
+    for (let attempt: number = 1; attempt <= 3; attempt += 1) {
+      const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
+      expect(claimed?.projectId).toBe('prj_internal_tools');
+      await expect(
+        completeProjectProvisioning({
+          failureMessage: `provisioning attempt ${attempt} failed`,
+          leaseId: claimed?.leaseId ?? '',
+          projectId: 'prj_internal_tools',
+          status: 'failed',
+        }),
+      ).resolves.toBe(true);
+      await db
+        .update(projectKubeProvisioning)
+        .set({ updatedAt: new Date(0) })
+        .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
+    }
+
+    await expect(claimPendingProjectProvisioning()).resolves.toBeNull();
+    const [provisioning] = await db
+      .select()
+      .from(projectKubeProvisioning)
+      .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
+    expect(provisioning).toMatchObject({ attempts: 3, state: 'failed' });
+    const [resourceRun] = await db
+      .select()
+      .from(resourceReconcileRuns)
+      .where(eq(resourceReconcileRuns.id, 'rr_unprovisionable_project'));
+    expect(resourceRun).toMatchObject({ phase: 'failed' });
+    expect(resourceRun?.failureMessage).toContain('provisioning attempt 3 failed');
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_after_terminal_provisioning',
+      type: 'reconcile',
+    });
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+    const [futureRun] = await db
+      .select()
+      .from(resourceReconcileRuns)
+      .where(eq(resourceReconcileRuns.id, 'rr_after_terminal_provisioning'));
+    expect(futureRun).toMatchObject({ phase: 'failed' });
+    expect(futureRun?.failureMessage).toContain('provisioning attempt 3 failed');
+  });
+
+  it('serializes terminal provisioning with creation of future resource work', async (): Promise<void> => {
+    const holder: PoolClient = await pool.connect();
+    let creation: Promise<void> | null = null;
+    try {
+      await holder.query('begin');
+      await holder.query(
+        `update project_kube_provisioning
+         set attempts = 3, failure_message = 'terminal namespace failure', state = 'failed'
+         where project_id = 'prj_internal_tools'`,
+      );
+      creation = createResourceReconcileRun({
+        expectedClaims: [],
+        intent: resourceIntent(),
+        operationId: 'rr_concurrent_terminal_provisioning',
+        type: 'reconcile',
+      });
+      await waitForDatabaseLock(holder, 'transactionid');
+      await holder.query('commit');
+      await creation;
+
+      const [run] = await db
+        .select()
+        .from(resourceReconcileRuns)
+        .where(eq(resourceReconcileRuns.id, 'rr_concurrent_terminal_provisioning'));
+      expect(run).toMatchObject({ phase: 'failed' });
+      expect(run?.failureMessage).toContain('terminal namespace failure');
+    } finally {
+      await holder.query('rollback');
+      await Promise.allSettled(creation === null ? [] : [creation]);
+      holder.release();
+    }
+  });
+
+  it('reclaims an expired execution lease without consuming another failed attempt', async (): Promise<void> => {
+    await db
+      .update(projectKubeProvisioning)
+      .set({
+        attempts: 3,
+        failureMessage: null,
+        leaseExpiresAt: new Date(0),
+        leaseId: 'expired-final-lease',
+        state: 'running',
+      })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_expired_final_provisioning',
+      type: 'bootstrap',
+    });
+
+    await expect(claimPendingProjectProvisioning()).resolves.toMatchObject({
+      projectId: 'prj_internal_tools',
+    });
+    const [provisioning] = await db
+      .select()
+      .from(projectKubeProvisioning)
+      .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
+    expect(provisioning).toMatchObject({ attempts: 3, state: 'running' });
+    const [resourceRun] = await db
+      .select()
+      .from(resourceReconcileRuns)
+      .where(eq(resourceReconcileRuns.id, 'rr_expired_final_provisioning'));
+    expect(resourceRun).toMatchObject({ phase: 'bootstrap-pending' });
+  });
+
+  it('renews cleanup authority only for the current unexpired provisioning lease', async (): Promise<void> => {
+    await db
+      .update(projectKubeProvisioning)
+      .set({
+        attempts: 1,
+        leaseExpiresAt: new Date(0),
+        leaseId: 'expired-cleanup-lease',
+        state: 'running',
+      })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
+
+    await expect(
+      completeProjectProvisioning({
+        failureMessage: null,
+        leaseId: 'expired-cleanup-lease',
+        projectId: 'prj_internal_tools',
+        status: 'running',
+      }),
+    ).resolves.toBe(false);
+    const reclaimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
+    expect(reclaimed?.projectId).toBe('prj_internal_tools');
+    await expect(
+      completeProjectProvisioning({
+        failureMessage: null,
+        leaseId: reclaimed?.leaseId ?? '',
+        projectId: 'prj_internal_tools',
+        status: 'running',
+      }),
+    ).resolves.toBe(true);
   });
 
   it('serializes concurrent reconcile claims for one resource', async (): Promise<void> => {
@@ -365,6 +521,64 @@ describe('resource backup queries', (): void => {
 
     const next: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
     expect(next?.operationId).not.toBe(active[0]!.operationId);
+  });
+
+  it('uses one lock order for expired reclaim and late acknowledgement', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_lock_order',
+      type: 'reconcile',
+    });
+    const original: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+    await db
+      .update(resourceReconcileRuns)
+      .set({ leaseExpiresAt: new Date(0) })
+      .where(eq(resourceReconcileRuns.id, 'rr_lock_order'));
+
+    const holder: PoolClient = await pool.connect();
+    const advisoryKey: number = 73_106_001;
+    let reclaim: Promise<ClaimedResourceReconcileRun | null> | null = null;
+    let acknowledgement: Promise<void> | null = null;
+    try {
+      await holder.query('select pg_advisory_lock($1)', [advisoryKey]);
+      await holder.query(`
+        create function test_block_resource_acknowledgement() returns trigger language plpgsql as $$
+        begin
+          if new.phase = 'succeeded' and old.phase = 'running' then
+            perform pg_advisory_xact_lock(${advisoryKey});
+          end if;
+          return new;
+        end
+        $$
+      `);
+      await holder.query(`
+        create trigger test_block_resource_acknowledgement
+        after update on resource_reconcile_runs
+        for each row execute function test_block_resource_acknowledgement()
+      `);
+
+      acknowledgement = acknowledgeResourceReconcileRun({
+        leaseId: original?.leaseId ?? '',
+        operationId: 'rr_lock_order',
+        status: 'succeeded',
+      });
+      await waitForDatabaseLock(holder, 'advisory');
+      reclaim = claimResourceReconcileRun();
+      await Promise.race([reclaim.then((): void => undefined), waitForDatabaseLock(holder, 'transactionid')]);
+      await holder.query('select pg_advisory_unlock($1)', [advisoryKey]);
+
+      await expect(Promise.all([reclaim, acknowledgement])).resolves.toEqual([null, undefined]);
+    } finally {
+      await holder.query('select pg_advisory_unlock($1)', [advisoryKey]);
+      await Promise.allSettled([
+        ...(reclaim === null ? [] : [reclaim]),
+        ...(acknowledgement === null ? [] : [acknowledgement]),
+      ]);
+      await holder.query('drop trigger if exists test_block_resource_acknowledgement on resource_reconcile_runs');
+      await holder.query('drop function if exists test_block_resource_acknowledgement()');
+      holder.release();
+    }
   });
 
   it('persists stopped state only after a zero-replica reconcile succeeds', async (): Promise<void> => {
@@ -463,4 +677,24 @@ async function seedProjectResource(): Promise<void> {
     status: 'running',
     volumesJson: '[{"name":"postgres-data","mountPath":"/var/lib/postgresql/data"}]',
   });
+}
+
+async function waitForDatabaseLock(client: PoolClient, waitEvent: string): Promise<void> {
+  for (let attempt: number = 0; attempt < 100; attempt += 1) {
+    const result: { rows: { waiting: boolean }[] } = await client.query(
+      `select exists (
+        select 1
+        from pg_stat_activity
+        where datname = current_database()
+          and pid <> pg_backend_pid()
+          and wait_event = $1
+      ) as waiting`,
+      [waitEvent],
+    );
+    if (result.rows[0]?.waiting === true) {
+      return;
+    }
+    await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for PostgreSQL ${waitEvent} lock evidence.`);
 }

@@ -14,6 +14,10 @@
 {{- printf "%s-registry-auth.%s.svc" (include "compartment.fullname" .) .Release.Namespace -}}
 {{- end }}
 
+{{- define "compartment.projectProvisioningNamespace" -}}
+{{- printf "%s-project-provisioning" (include "compartment.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
 {{- define "compartment.labels" -}}
 app.kubernetes.io/name: {{ include "compartment.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}

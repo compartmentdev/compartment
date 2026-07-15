@@ -121,21 +121,25 @@ function candidatePriority(): SQL {
 
 function candidateFilter(tx: DeploymentTransaction): SQL | undefined {
   return and(
-    eq(projectKubeProvisioning.state, 'succeeded'),
     lte(deploymentKubeReferences.updatedAt, new Date()),
     or(
-      and(eq(deploymentKubeReferences.state, 'desired'), eq(deployments.status, 'running')),
-      and(
-        eq(deploymentKubeReferences.state, 'pending'),
-        or(eq(deployments.status, 'running'), eq(deployments.status, 'succeeded')),
-      ),
-      and(
-        eq(deploymentKubeReferences.state, 'active'),
-        eq(deployments.status, 'succeeded'),
-        eq(deployments.isActive, true),
-        noRunnableReplacement(tx),
-      ),
       eq(deploymentKubeReferences.state, 'stopping'),
+      and(
+        eq(projectKubeProvisioning.state, 'succeeded'),
+        or(
+          and(eq(deploymentKubeReferences.state, 'desired'), eq(deployments.status, 'running')),
+          and(
+            eq(deploymentKubeReferences.state, 'pending'),
+            or(eq(deployments.status, 'running'), eq(deployments.status, 'succeeded')),
+          ),
+          and(
+            eq(deploymentKubeReferences.state, 'active'),
+            eq(deployments.status, 'succeeded'),
+            eq(deployments.isActive, true),
+            noRunnableReplacement(tx),
+          ),
+        ),
+      ),
     ),
   );
 }

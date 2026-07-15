@@ -62,6 +62,17 @@ const k3dKubectlCommandTimeoutMs: number = 8 * 60_000;
 const k3dApiServiceProbeAttempts: number = 30;
 const k3dApiServiceProbeIntervalMs: number = 1_000;
 const k3dApiServiceProbeTimeoutMs: number = 10_000;
+const k3dApiBoundaryProbeScript: string = `
+const [apiUrl, email] = process.argv.slice(1);
+const response = await fetch(new URL('/v1/auth/login-discovery', apiUrl), {
+  body: JSON.stringify({ autoRedirect: false, email }),
+  headers: { 'content-type': 'application/json' },
+  method: 'POST',
+});
+if (!response.ok) {
+  throw new Error(\`API boundary returned status \${String(response.status)}.\`);
+}
+`;
 const k3dAuditFileSinkPath: string = '/var/lib/compartment/audit-logs/audit.ndjson';
 
 export function isK3dPlatformMode(): boolean {
@@ -82,6 +93,211 @@ export async function expectK3dWorkerNamespaceIsolation(): Promise<void> {
     });
     expectFailedCommand(result, `verify worker RBAC denial: ${assertion.join(' ')}`);
     expect(result.stdout.trim()).toBe('no');
+  }
+  await expectK3dProjectProvisionerIsolation(seed);
+  await expectK3dProjectProvisionerAdmissionBoundary(seed);
+  await expectK3dBootstrapAdmissionBoundary(seed);
+}
+
+async function expectK3dProjectProvisionerIsolation(seed: K3dPlatformSeed): Promise<void> {
+  const identity: string = `system:serviceaccount:${seed.platformNamespace}:${k3dPlatformResourceName}-project-provisioner`;
+  const assertions: readonly (readonly string[])[] = [
+    ['get', `secret/${k3dPlatformResourceName}`, '--namespace', seed.platformNamespace],
+    ['create', 'jobs', '--namespace', seed.platformNamespace],
+    ['delete', 'clusterrolebinding/cluster-admin'],
+  ];
+  for (const assertion of assertions) {
+    const result: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: ['kubectl', '--context', seed.kubeContext, 'auth', 'can-i', ...assertion, `--as=${identity}`],
+      timeoutMs: k3dKubectlCommandTimeoutMs,
+    });
+    expectFailedCommand(result, `verify project provisioner RBAC denial: ${assertion.join(' ')}`);
+    expect(result.stdout.trim()).toBe('no');
+  }
+}
+
+async function expectK3dProjectProvisionerAdmissionBoundary(seed: K3dPlatformSeed): Promise<void> {
+  const identity: string = `system:serviceaccount:${seed.platformNamespace}:${k3dPlatformResourceName}-project-provisioner`;
+  await expectK3dProjectProvisionerClusterRoleBindingDenied(
+    seed,
+    identity,
+    'compartment-project-bootstrap',
+    'kube-system',
+    'default',
+    'deny permanent provisioner bootstrap authority in kube-system',
+  );
+  await expectK3dProjectProvisionerClusterRoleBindingDenied(
+    seed,
+    identity,
+    `cpt-rbac-provisioner-${process.pid.toString()}`,
+    `${k3dPlatformResourceName}-project-provisioning`,
+    `cpt-rbac-subject-${process.pid.toString()}`,
+    'deny permanent provisioner noncanonical bootstrap binding',
+  );
+}
+
+async function expectK3dProjectProvisionerClusterRoleBindingDenied(
+  seed: K3dPlatformSeed,
+  identity: string,
+  bindingName: string,
+  subjectNamespace: string,
+  subjectName: string,
+  assertion: string,
+): Promise<void> {
+  const denied: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'create',
+      'clusterrolebinding',
+      bindingName,
+      '--clusterrole=compartment-project-bootstrap',
+      `--serviceaccount=${subjectNamespace}:${subjectName}`,
+      '--dry-run=server',
+      `--as=${identity}`,
+    ],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+  expectFailedCommand(denied, assertion);
+  expect(denied.stderr).toContain(
+    'Project provisioner may manage only the canonical short-lived bootstrap ClusterRoleBinding.',
+  );
+}
+
+async function expectK3dBootstrapAdmissionBoundary(seed: K3dPlatformSeed): Promise<void> {
+  const targetNamespace: string = `cpt-rbac-${process.pid.toString()}`;
+  const provisioningNamespace: string = `${k3dPlatformResourceName}-project-provisioning`;
+  const identity: string = `system:serviceaccount:${provisioningNamespace}:${targetNamespace}`;
+  const existingBinding: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'get',
+      'clusterrolebinding',
+      'compartment-project-bootstrap',
+      '--ignore-not-found',
+      '--output=name',
+    ],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(existingBinding, 'verify the bootstrap authority is not already active', '');
+  expect(existingBinding.stdout.trim()).toBe('');
+  const setupCommands: readonly (readonly string[])[] = [
+    ['kubectl', '--context', seed.kubeContext, 'create', 'namespace', targetNamespace],
+    [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      '--namespace',
+      provisioningNamespace,
+      'create',
+      'serviceaccount',
+      targetNamespace,
+    ],
+    [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'create',
+      'clusterrolebinding',
+      'compartment-project-bootstrap',
+      '--clusterrole=compartment-project-bootstrap',
+      `--serviceaccount=${provisioningNamespace}:${targetNamespace}`,
+    ],
+  ];
+  try {
+    await runK3dKubectlCommands(setupCommands);
+    const namespaceDenied: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        'create',
+        'namespace',
+        `${targetNamespace}-bypass`,
+        `--as=${identity}`,
+      ],
+      timeoutMs: k3dKubectlCommandTimeoutMs,
+    });
+    expectFailedCommand(namespaceDenied, 'deny bootstrap namespace creation outside its encoded namespace');
+    expect(namespaceDenied.stderr).toContain(
+      'Project bootstrap authority is restricted to its encoded target namespace.',
+    );
+
+    const subjectDenied: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        '--namespace',
+        targetNamespace,
+        'create',
+        'rolebinding',
+        'compartment-project-bootstrap',
+        '--clusterrole=compartment-controller',
+        `--serviceaccount=${provisioningNamespace}:${targetNamespace}`,
+        '--serviceaccount=kube-system:namespace-controller',
+        `--as=${identity}`,
+      ],
+      timeoutMs: k3dKubectlCommandTimeoutMs,
+    });
+    expectFailedCommand(subjectDenied, 'deny bootstrap RoleBinding subject injection');
+    expect(subjectDenied.stderr).toContain(
+      'Project bootstrap authority may manage only canonical controller RoleBindings.',
+    );
+
+    await runK3dKubectlCommands([
+      [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        '--namespace',
+        targetNamespace,
+        'create',
+        'rolebinding',
+        'compartment-project-bootstrap',
+        '--clusterrole=compartment-controller',
+        `--serviceaccount=${provisioningNamespace}:${targetNamespace}`,
+        `--serviceaccount=${seed.platformNamespace}:${k3dPlatformResourceName}-worker`,
+        `--as=${identity}`,
+      ],
+    ]);
+  } finally {
+    await runK3dKubectlCommands([
+      [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        '--namespace',
+        targetNamespace,
+        'delete',
+        'rolebinding',
+        'compartment-project-bootstrap',
+        '--ignore-not-found',
+      ],
+      [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        'delete',
+        'clusterrolebinding',
+        'compartment-project-bootstrap',
+        '--ignore-not-found',
+      ],
+      [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        'delete',
+        'namespace',
+        targetNamespace,
+        `${targetNamespace}-bypass`,
+        '--ignore-not-found',
+        '--wait=false',
+      ],
+    ]);
   }
 }
 
@@ -320,11 +536,32 @@ async function waitForK3dApiService(seed: K3dPlatformSeed): Promise<void> {
     result = await probeK3dApiService(seed, proxyPath);
   }
   expectSuccessfulCommand(result, 'wait for the API service endpoint to answer /readyz', '');
+
+  result = await probeK3dApiBoundary(seed);
+  for (let attempt: number = 1; result.exitCode !== 0 && attempt < k3dApiServiceProbeAttempts; attempt += 1) {
+    await sleep(k3dApiServiceProbeIntervalMs);
+    result = await probeK3dApiBoundary(seed);
+  }
+  expectSuccessfulCommand(result, 'wait for the API public boundary to converge', '');
 }
 
 async function probeK3dApiService(seed: K3dPlatformSeed, proxyPath: string): Promise<SelfHostedUserSetupCommandResult> {
   return await runCommand({
     argv: ['kubectl', '--context', seed.kubeContext, 'get', '--raw', proxyPath],
+    timeoutMs: k3dApiServiceProbeTimeoutMs,
+  });
+}
+
+async function probeK3dApiBoundary(seed: K3dPlatformSeed): Promise<SelfHostedUserSetupCommandResult> {
+  return await runCommand({
+    argv: [
+      process.execPath,
+      '--input-type=module',
+      '--eval',
+      k3dApiBoundaryProbeScript,
+      seed.apiUrl,
+      seed.seedAdminEmail,
+    ],
     timeoutMs: k3dApiServiceProbeTimeoutMs,
   });
 }

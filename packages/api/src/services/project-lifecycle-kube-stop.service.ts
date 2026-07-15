@@ -10,10 +10,8 @@ export async function stopKubeProjectDeployment(
   state: DeploymentKubeState,
   updatedAt: Date,
 ): Promise<void> {
-  if (state === 'active') {
+  if (state === 'active' || state === 'desired' || state === 'pending') {
     await requestDeploymentKubeStop(deploymentId, updatedAt);
-  } else if (state !== 'stopping' && state !== 'stopped') {
-    throw createProjectLifecycleRuntimeStopFailedError();
   }
   await waitUntilStopped(deploymentId);
 }

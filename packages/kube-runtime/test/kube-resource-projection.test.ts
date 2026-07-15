@@ -34,13 +34,13 @@ describe('resource projection and fencing', (): void => {
     expect((): void =>
       assertResourceClaimIdentity(
         [{ claimName: name, uid: 'uid-1' }],
-        [{ bound: false, claimName: name, uid: 'uid-1' }],
+        [{ bound: false, claimName: name, resourceVersion: '1', uid: 'uid-1' }],
       ),
     ).toThrow('missing or unbound');
     expect((): void =>
       assertResourceClaimIdentity(
         [{ claimName: name, uid: 'uid-1' }],
-        [{ bound: true, claimName: name, uid: 'uid-2' }],
+        [{ bound: true, claimName: name, resourceVersion: '2', uid: 'uid-2' }],
       ),
     ).toThrow('UID changed');
   });
@@ -50,13 +50,13 @@ describe('resource projection and fencing', (): void => {
     expect((): void =>
       assertResourceClaimOwnership(
         [{ claimName: name, uid: 'uid-1' }],
-        [{ bound: false, claimName: name, uid: 'uid-1' }],
+        [{ bound: false, claimName: name, resourceVersion: '1', uid: 'uid-1' }],
       ),
     ).not.toThrow();
     expect((): void =>
       assertResourceClaimOwnership(
         [{ claimName: name, uid: 'uid-1' }],
-        [{ bound: false, claimName: name, uid: 'uid-2' }],
+        [{ bound: false, claimName: name, resourceVersion: '2', uid: 'uid-2' }],
       ),
     ).toThrow('UID changed');
   });
@@ -67,6 +67,7 @@ describe('resource projection and fencing', (): void => {
       'Deployment',
       'Service',
     ]);
+    expect(projectResourceManifests(row)[0]?.metadata?.labels?.['compartment.dev/resource-id']).toBe(row.resourceId);
     expect(projectResourceBootstrapClaims(row)).toHaveLength(2);
     expect(projectResourceBootstrapClaims(row)[0]?.kind).toBe('PersistentVolumeClaim');
     expect(projectResourceBootstrapClaims(row)[1]?.metadata?.name).toBe(

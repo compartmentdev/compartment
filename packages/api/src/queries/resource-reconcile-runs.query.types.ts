@@ -25,4 +25,8 @@ export interface ResourceReconcileRunState {
   phase: 'bootstrap-pending' | 'reconcile-pending' | 'running' | 'succeeded' | 'failed';
 }
 
+export interface ResourceReconcileRunLockRow {
+  projectResourceId: string;
+}
+
 export type AcknowledgeResourceReconcileRunInput = WorkerAcknowledgeResourceReconcileRequest;

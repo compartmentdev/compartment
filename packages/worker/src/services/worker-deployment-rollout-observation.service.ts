@@ -1,25 +1,14 @@
 import type { DeploymentReconcileProjection, DeploymentReconcileTarget } from '@compartment/contracts';
 import {
-  calculateKubeRolloutStatus,
   type KubeDeploymentCondition,
   type KubeDeploymentManifest,
-  type KubeObservation,
   type KubeObservedManifest,
   type KubeRolloutObservation,
 } from '@compartment/kube-runtime';
-import { deploymentConditionStatus, requiredDeploymentMetadata } from './worker-deployment-reconcile.helpers';
+import { deploymentConditionStatus } from './worker-deployment-reconcile.helpers';
 import type { ObservedDeploymentCondition, ObservedDeploymentStatus } from './worker-deployment-reconcile.types';
 
 const defaultRolloutTimeoutMs: number = 50_000;
-
-export function isObservedReady(
-  observation: KubeObservation,
-  deployment: KubeDeploymentManifest,
-  deadlineAt: Date,
-): boolean {
-  const observed: KubeRolloutObservation | null = readDeploymentObservation(observation, deployment, deadlineAt);
-  return observed !== null && calculateKubeRolloutStatus(observed, new Date()) === 'ready';
-}
 
 export function readRolloutObservation(
   observed: KubeObservedManifest | null,
@@ -35,23 +24,17 @@ export function rolloutTimeoutMs(projection: DeploymentReconcileProjection): num
   return projection.readiness?.timeoutMs ?? defaultRolloutTimeoutMs;
 }
 
-function readDeploymentObservation(
-  observation: KubeObservation,
-  deployment: KubeDeploymentManifest,
-  deadlineAt: Date,
-): KubeRolloutObservation | null {
-  const namespace: string = requiredDeploymentMetadata(deployment, 'namespace');
-  const name: string = requiredDeploymentMetadata(deployment, 'name');
-  const observed: KubeObservedManifest | undefined = observation.cache.get(`deployments/${namespace}/${name}`);
-  return projectDeploymentObservation(observed ?? null, deployment, deadlineAt);
-}
-
 function projectDeploymentObservation(
   observed: KubeObservedManifest | null,
   deployment: KubeDeploymentManifest,
   deadlineAt: Date,
 ): KubeRolloutObservation | null {
-  if (observed?.kind !== 'Deployment') {
+  const appliedUid: string | undefined = deployment.metadata?.uid;
+  const appliedGeneration: number | undefined = deployment.metadata?.generation;
+  if (appliedUid === undefined || appliedGeneration === undefined) {
+    return null;
+  }
+  if (!deploymentMatchesApply(observed, appliedUid, appliedGeneration)) {
     return null;
   }
   const status: ObservedDeploymentStatus = observed.status ?? {};
@@ -60,11 +43,24 @@ function projectDeploymentObservation(
     conditions: rolloutConditions(status),
     deadlineAt,
     desiredReplicas: deployment.spec?.replicas ?? 1,
-    generation: observed.metadata?.generation ?? 0,
-    observedGeneration: status.observedGeneration ?? null,
+    generation: appliedGeneration,
+    observedGeneration: appliedGeneration,
     replicas: status.replicas ?? 0,
     updatedReplicas: status.updatedReplicas ?? 0,
   };
+}
+
+function deploymentMatchesApply(
+  observed: KubeObservedManifest | null,
+  appliedUid: string,
+  appliedGeneration: number,
+): observed is KubeDeploymentManifest {
+  return (
+    observed?.kind === 'Deployment' &&
+    observed.metadata?.uid === appliedUid &&
+    observed.metadata.generation === appliedGeneration &&
+    (observed.status as ObservedDeploymentStatus | undefined)?.observedGeneration === appliedGeneration
+  );
 }
 
 function rolloutConditions(status: ObservedDeploymentStatus): KubeDeploymentCondition[] {

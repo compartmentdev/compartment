@@ -1,7 +1,8 @@
 import { randomInt } from 'node:crypto';
-import type { Informer, KubeConfig, KubernetesObject, KubernetesObjectApi } from '@kubernetes/client-node';
+import type { KubeConfig, KubernetesObject, KubernetesObjectApi } from '@kubernetes/client-node';
 import { calculateRestartDelay } from './kube-backoff';
 import { createRegisteredInformers, type RegisteredInformer } from './kube-informer-registration';
+import type { InformerState, KubeInformerError } from './kube-observation.types';
 import type {
   KubeObservedManifest,
   KubeObservation,
@@ -13,28 +14,15 @@ import type {
   ObserveLabels,
 } from './kube-runtime.types';
 
-interface InformerState {
-  attempt: number;
-  informer: Informer<KubernetesObject>;
-  lastConnectedAt: Date | null;
-  lastErrorAt: Date | null;
-  registration: RegisteredInformer;
-  restartTimer: NodeJS.Timeout | null;
-}
-
-interface KubeInformerError extends Error {
-  code?: number | undefined;
-  statusCode?: number | undefined;
-}
-
 class AbortWait {
   public readonly promise: Promise<never>;
   private onAbort: () => void = (): undefined => undefined;
 
   public constructor(private readonly signal: AbortSignal) {
     this.promise = new Promise<never>((_resolve: (value: never) => void, reject: (reason: Error) => void): void => {
-      this.onAbort = (): void =>
+      this.onAbort = (): void => {
         reject(signal.reason instanceof Error ? signal.reason : new Error('Kubernetes observation startup aborted.'));
+      };
       signal.addEventListener('abort', this.onAbort, { once: true });
     });
   }
@@ -76,8 +64,8 @@ class RuntimeObservation implements KubeObservation {
   }
 
   public health(): KubeObservationHealth {
-    const connections: Date[] = this.states.flatMap((state: InformerState): Date[] => dateValue(state.lastConnectedAt));
-    const errors: Date[] = this.states.flatMap((state: InformerState): Date[] => dateValue(state.lastErrorAt));
+    const connections: (Date | null)[] = this.states.map((state: InformerState): Date | null => state.lastConnectedAt);
+    const errors: (Date | null)[] = this.states.map((state: InformerState): Date | null => state.lastErrorAt);
     return {
       healthy: this.states.length > 0 && this.states.every((state: InformerState): boolean => this.isHealthy(state)),
       lastConnectedAt: latest(connections),
@@ -94,42 +82,61 @@ class RuntimeObservation implements KubeObservation {
 
   public async stop(): Promise<void> {
     this.stopping = true;
-    for (const state of this.states) {
-      cancelRestart(state);
-    }
-    for (const timer of this.deliveryTimers) {
-      clearTimeout(timer);
-    }
+    this.states.forEach(cancelRestart);
+    this.deliveryTimers.forEach((timer: NodeJS.Timeout): void => clearTimeout(timer));
     this.deliveryTimers.clear();
     await Promise.all(this.states.map(async (state: InformerState): Promise<void> => await state.informer.stop()));
   }
 
   private async startInformer(registration: RegisteredInformer): Promise<void> {
-    const state: InformerState = newInformerState(registration);
+    const recordInitialList: () => void = (): void => {
+      state.initialListSucceeded = true;
+    };
+    const state: InformerState = newInformerState(registration, recordInitialList);
     this.states.push(state);
-    await new Promise<void>((resolve: () => void): void => {
-      this.registerCallbacks(state, resolve);
-      this.attemptStart(state);
-    });
+    this.registerCallbacks(state);
+    await this.synchronize(state);
   }
 
-  private registerCallbacks(state: InformerState, onConnect: () => void = (): void => undefined): void {
+  private registerCallbacks(state: InformerState): void {
     const resource: KubeObservedResource = state.registration.definition.resource;
-    state.informer.on('connect', (): void => {
-      markConnected(state);
-      onConnect();
-    });
     state.informer.on('add', (object: KubernetesObject): void => this.acceptSafely('add', resource, object));
     state.informer.on('update', (object: KubernetesObject): void => this.acceptSafely('update', resource, object));
     state.informer.on('delete', (object: KubernetesObject): void => this.acceptSafely('delete', resource, object));
     state.informer.on('error', (error?: KubeInformerError): void => this.scheduleRestart(state, error));
   }
 
+  private async synchronize(state: InformerState): Promise<void> {
+    await new Promise<void>((resolve: () => void): void => {
+      state.onSynchronized = resolve;
+      this.attemptStart(state);
+    });
+  }
+
   private attemptStart(state: InformerState): void {
     if (this.stopping) {
       return;
     }
-    void state.informer.start().catch((error: Error): void => this.scheduleRestart(state, error));
+    void state.informer
+      .start()
+      .then((): void => {
+        if (state.initialListSucceeded) {
+          this.markSynchronized(state);
+        }
+      })
+      .catch((error: Error): void => this.scheduleRestart(state, error));
+  }
+
+  private markSynchronized(state: InformerState): void {
+    if (this.stopping) {
+      return;
+    }
+    state.attempt = 0;
+    state.lastConnectedAt = new Date();
+    cancelRestart(state);
+    const onSynchronized: (() => void) | null = state.onSynchronized;
+    state.onSynchronized = null;
+    onSynchronized?.();
   }
 
   private scheduleRestart(state: InformerState, error?: KubeInformerError): void {
@@ -155,11 +162,13 @@ class RuntimeObservation implements KubeObservation {
       await state.informer.stop();
       const resource: KubeObservedResource = state.registration.definition.resource;
       this.clearResourceCache(resource);
-      state.informer = state.registration.createInformer();
-      this.registerCallbacks(state, (): void => {
-        this.dispatchSafely({ observedAt: new Date(), resource, type: 'relist' });
+      state.initialListSucceeded = false;
+      state.informer = state.registration.createInformer((): void => {
+        state.initialListSucceeded = true;
       });
-      this.attemptStart(state);
+      this.registerCallbacks(state);
+      await this.synchronize(state);
+      this.dispatchSafely({ observedAt: new Date(), resource, type: 'relist' });
     } catch (error) {
       this.scheduleRestart(state, error as KubeInformerError);
     }
@@ -239,21 +248,17 @@ async function waitForStartup(startup: Promise<void[]>, signal?: AbortSignal): P
   }
 }
 
-function newInformerState(registration: RegisteredInformer): InformerState {
+function newInformerState(registration: RegisteredInformer, onInitialList: () => void): InformerState {
   return {
     attempt: 0,
-    informer: registration.createInformer(),
+    informer: registration.createInformer(onInitialList),
+    initialListSucceeded: false,
     lastConnectedAt: null,
     lastErrorAt: null,
+    onSynchronized: null,
     registration,
     restartTimer: null,
   };
-}
-
-function markConnected(state: InformerState): void {
-  state.attempt = 0;
-  state.lastConnectedAt = new Date();
-  cancelRestart(state);
 }
 
 function cancelRestart(state: InformerState): void {
@@ -263,14 +268,10 @@ function cancelRestart(state: InformerState): void {
   state.restartTimer = null;
 }
 
-function restartDelay(attempt: number): number {
-  return calculateRestartDelay(attempt, randomInt(500, 1_501));
-}
+const restartDelay: (attempt: number) => number = (attempt: number): number =>
+  calculateRestartDelay(attempt, randomInt(500, 1_501));
 
-function dateValue(value: Date | null): Date[] {
-  return value === null ? [] : [value];
-}
-
-function latest(values: Date[]): Date | null {
-  return values.length === 0 ? null : new Date(Math.max(...values.map((value: Date): number => value.getTime())));
+function latest(values: (Date | null)[]): Date | null {
+  const times: number[] = values.flatMap((value: Date | null): number[] => (value === null ? [] : [value.getTime()]));
+  return times.length === 0 ? null : new Date(Math.max(...times));
 }

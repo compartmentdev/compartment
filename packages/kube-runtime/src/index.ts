@@ -14,6 +14,7 @@ export {
   assertResourceClaimIdentity,
   assertResourceClaimOwnership,
   projectResourceBootstrapClaims,
+  projectResourceClaimDeleteTargets,
   projectResourceManifests,
   resourcePodsFullyTerminated,
 } from './kube-resource-projection';
@@ -26,7 +27,7 @@ export {
 } from './kube-project-provisioning-authority';
 export type { ProjectProvisioningAuthorityInput } from './kube-project-provisioning-authority.types';
 export type { ProjectNamespaceProvisioningRow } from './kube-provisioning.types';
-export { calculateKubeRolloutStatus, calculateKubeStateTransition } from './kube-state';
+export { calculateKubeRolloutStatus } from './kube-rollout';
 export type {
   ApplyBundle,
   KubeDeploymentManifest,
@@ -48,14 +49,6 @@ export type {
 export type { KubeContainerMetricUsage, KubePodMetricObservation, ObservePodMetrics } from './kube-pod-metrics.types';
 export type { ApplicationProjectionRow } from './kube-application-projection.types';
 export type { KubeDeploymentCondition, KubeRolloutObservation, KubeRolloutStatus } from './kube-rollout.types';
-export type {
-  KubeDeploymentState,
-  KubeDeploymentStateRow,
-  KubeDriftAudit,
-  KubeDriftKind,
-  KubeObservedDeployment,
-  KubeStateTransition,
-} from './kube-state.types';
 export type {
   ExpectedResourceClaim,
   ObservedResourceClaim,

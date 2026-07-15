@@ -5,12 +5,17 @@ import type {
   WorkerObserveDeploymentReconcileRequest,
   WorkerPrepareDeploymentReconcileRequest,
 } from '@compartment/contracts';
+import { createProjectArchivedError } from '../errors/api-business-error';
 import {
   findNextDeploymentReconcilePair,
   persistDeploymentReconcileObservation,
   prepareDeploymentReconcileReference,
 } from '../queries/deployment-reconcile.query';
-import type { DeploymentReconcilePair, DeploymentReconcileRow } from '../queries/deployment-reconcile.query.types';
+import type {
+  DeploymentReconcilePair,
+  DeploymentReconcileRow,
+  PrepareDeploymentReconcileResult,
+} from '../queries/deployment-reconcile.query.types';
 import { createId } from '../lib/tokens';
 import { readPublicRouteSubdomain } from '../lib/public-route-host';
 import { getApiConfig } from '../runtime/runtime-access';
@@ -19,6 +24,10 @@ import { buildDeploymentRuntimePlan, type DeploymentRuntimePlan } from './deploy
 import { parseResolvedRelease } from './deployment-release.service';
 import { parseResolvedReadiness } from './deployment-readiness.service';
 import { parseResolvedRun } from './deployment-run.service';
+import {
+  archivedProjectDeploymentFailureMessage,
+  finalizeFailedDeployment,
+} from './deployment-worker-finalization.service';
 
 const defaultContainerPort: number = 3000;
 const defaultTerminationGracePeriodSeconds: number = 45;
@@ -67,7 +76,7 @@ export async function prepareDeploymentReconcile(input: WorkerPrepareDeploymentR
   if (routeSubdomain === null) {
     throw new Error(`Expected route host ${input.routeHost} to belong to ${getApiConfig().baseDomain}.`);
   }
-  await prepareDeploymentReconcileReference({
+  const result: PrepareDeploymentReconcileResult = await prepareDeploymentReconcileReference({
     deploymentId: input.deploymentId,
     deploymentName: input.deploymentName,
     id: createId('kref'),
@@ -78,6 +87,14 @@ export async function prepareDeploymentReconcile(input: WorkerPrepareDeploymentR
     routeSubdomain,
     serviceName: input.serviceName,
   });
+  if (result === 'project-archived') {
+    await finalizeFailedDeployment({
+      deploymentId: input.deploymentId,
+      imageRef: input.imageRef,
+      message: archivedProjectDeploymentFailureMessage(input.deploymentId),
+    });
+    throw createProjectArchivedError();
+  }
 }
 
 async function projectDeployment(row: DeploymentReconcileRow): Promise<DeploymentReconcileProjection> {
