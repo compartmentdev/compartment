@@ -85,8 +85,8 @@ errors. The package therefore owns one lifecycle wrapper per informer:
 - keep one restart timer and one observed-at cache per informer.
 
 The permanent kill matrix covers: after durable `desired` and before apply;
-after apply and before `pending`; after `pending` and before Ready; and during a
-concurrent informer callback. A separate permanent scenario cuts the watch,
+after apply and before `pending`; after `pending` and before Ready; and during
+concurrent observation persistence. A separate permanent scenario cuts the watch,
 requires reconnect/relist convergence, and verifies that HTTP 410 starts from a
 new full list.
 
@@ -193,7 +193,7 @@ blocker, not an inferred fallback.
 
 The coordination core in `packages/kube-runtime` is limited to 1,500 physical
 lines (D33). The core is `kube-runtime.ts`, `kube-observation.ts`,
-`kube-job.ts`, `kube-state.ts`, `kube-informer-registration.ts`,
+`kube-job.ts`, `kube-rollout.ts`, `kube-informer-registration.ts`,
 `kube-runtime-operations.ts`, `kube-naming.ts`, `kube-runtime-factory.ts`, and
 `kube-client-node.ts`. Declarative projections (`*-projection*.ts`),
 provisioning, and `*.types.ts` are counted and reported separately and remain

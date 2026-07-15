@@ -6,7 +6,7 @@ Owns:
 - server-side apply through `@kubernetes/client-node` with field manager `compartment`;
 - label-scoped informer caches and their reconnect, relist, health, and observed-at lifecycle;
 - deterministic immutable-ID naming and pure database-row-to-manifest projections;
-- pure desired/pending/active transition decisions and drift classification.
+- pure rollout status and readiness classification from Kubernetes observations.
 
 May depend on:
 
@@ -26,5 +26,5 @@ Change checklist:
 - keep manifests and public inputs explicitly typed;
 - keep projections pure and names derived only from immutable IDs;
 - preserve one lifecycle wrapper per informer and one restart timer per wrapper;
-- protect T9 kill points, informer disconnect, and projection YAML with permanent tests;
+- protect rollout convergence, informer disconnect, and projection YAML with permanent tests;
 - report production runtime LOC separately from tests and harness code.

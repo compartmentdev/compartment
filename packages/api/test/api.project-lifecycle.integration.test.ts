@@ -871,6 +871,75 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     });
     expect(sourceArchiveResponse.statusCode).toBe(404);
   });
+  it('rejects late Kubernetes preparation after archiving an in-flight build', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    await registerLocalNode(app);
+    const deployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse((await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json()),
+    );
+    await claimNextQueuedDeployment(app);
+    const [project] = await db.select({ id: projects.id }).from(projects).where(eq(projects.name, 'smoke-web'));
+    await db
+      .update(projectKubeProvisioning)
+      .set({ state: 'succeeded' })
+      .where(eq(projectKubeProvisioning.projectId, project?.id ?? ''));
+    clearIntegrationNodeAgentRequests();
+
+    const archiveResponse: LightMyRequestResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/projects/smoke-web/archive',
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+    });
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(readIntegrationNodeAgentRequests()).toEqual([]);
+
+    const prepareResponse: LightMyRequestResponse = await app.inject({
+      headers: { authorization: 'Bearer test-runtime-control-token' },
+      method: 'POST',
+      payload: {
+        deploymentId: deployment.id,
+        deploymentName: 'app-smoke-web',
+        imageRef: 'registry.example.test/smoke-web@sha256:late',
+        namespace: 'cpt-prj-smoke-web',
+        networkPolicyNames: [],
+        routeHost: `smoke-web.${defaultApiConfig.baseDomain}`,
+        serviceName: 'app-smoke-web',
+      },
+      url: '/internal/kube-deployments/desired',
+    });
+
+    expect(prepareResponse.statusCode).toBe(409);
+    expect(errorResponseSchema.parse(prepareResponse.json()).error.code).toBe('project_archived');
+    expect(
+      await db.select().from(deploymentKubeReferences).where(eq(deploymentKubeReferences.deploymentId, deployment.id)),
+    ).toEqual([]);
+    await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
+
+    const storedDeployment: StoredDeploymentRow | undefined = await db.query.deployments.findFirst({
+      where: eq(deployments.id, deployment.id),
+    });
+    expect(storedDeployment).toMatchObject({ status: 'failed' });
+    expect(storedDeployment?.failureMessage).toContain('could not be activated because the project was archived');
+    expect(storedDeployment?.completedAt).not.toBeNull();
+    const storedOperation: StoredOperationRow | undefined = await db.query.operations.findFirst({
+      where: eq(operations.id, deployment.operation.id),
+    });
+    expect(storedOperation?.status).toBe('failed');
+    const storedArtifact: StoredBuildArtifactRow | undefined = await db.query.buildArtifacts.findFirst({
+      where: eq(buildArtifacts.id, storedDeployment?.buildArtifactId ?? ''),
+    });
+    expect(storedArtifact).toMatchObject({
+      imageRef: 'registry.example.test/smoke-web@sha256:late',
+      imageRetentionState: 'available',
+    });
+    const sourceArchiveResponse: LightMyRequestResponse = await app.inject({
+      headers: { authorization: 'Bearer test-runtime-control-token' },
+      method: 'GET',
+      url: `/internal/artifacts/${storedDeployment?.buildArtifactId ?? ''}/source-archive`,
+    });
+    expect(sourceArchiveResponse.statusCode).toBe(404);
+  });
+
   it('deletes the source archive when the worker fails a claimed deployment before any image is produced', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     await registerLocalNode(app);

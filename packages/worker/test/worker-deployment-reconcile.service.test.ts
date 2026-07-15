@@ -52,7 +52,7 @@ describe('deployment reconciliation', (): void => {
     );
   });
 
-  it('applies the candidate only after a successful release Job and then persists pending', async (): Promise<void> => {
+  it('recovers after restart from durable desired before apply', async (): Promise<void> => {
     const runtime: KubeRuntime & { apply: Mock } = runtimeStub();
 
     await reconcileDeploymentTarget(requester(), runtime, target(projection('bin/migrate')));
@@ -64,6 +64,23 @@ describe('deployment reconciliation', (): void => {
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ observation: 'pending', revision: 0 }),
+    );
+  });
+
+  it('repeats SSA after restart between apply and pending persistence', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock; read: Mock } = pendingRuntimeStub(true);
+
+    await reconcileDeploymentTarget(requester(), runtime, target(projection(null)));
+
+    expect(runtime.apply).toHaveBeenCalledOnce();
+    expect(runtime.read).not.toHaveBeenCalled();
+    expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'pending', revision: 0 }),
+    );
+    expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'ready' }),
     );
   });
 
@@ -160,7 +177,7 @@ describe('deployment reconciliation', (): void => {
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
   });
 
-  it('reads a ready pending Deployment without depending on informer startup', async (): Promise<void> => {
+  it('recovers after restart between pending persistence and Ready', async (): Promise<void> => {
     const runtime: KubeRuntime & { apply: Mock } = pendingRuntimeStub(true);
     const pendingTarget: DeploymentReconcileTarget = {
       ...target(projection(null)),
@@ -296,7 +313,7 @@ function activeRuntimeStub(
   } as never;
 }
 
-function pendingRuntimeStub(publishAfterSubscribe: boolean): KubeRuntime & { apply: Mock } {
+function pendingRuntimeStub(publishAfterSubscribe: boolean): KubeRuntime & { apply: Mock; read: Mock } {
   const namespace: string = kubeNamespaceName('prj_1');
   const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
   const applied: KubeManifest = readyDeployment(namespace, name);

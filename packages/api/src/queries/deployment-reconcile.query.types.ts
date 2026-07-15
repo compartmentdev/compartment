@@ -44,6 +44,12 @@ export interface PrepareDeploymentReconcileInput {
   serviceName: string;
 }
 
+export interface PrepareDeploymentProjectRow {
+  archivedAt: Date | null;
+}
+
+export type PrepareDeploymentReconcileResult = 'prepared' | 'project-archived';
+
 export interface PrepareDeploymentRow {
   buildArtifactId: string;
   environmentId: string;

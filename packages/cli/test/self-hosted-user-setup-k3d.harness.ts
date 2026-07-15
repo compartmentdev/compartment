@@ -95,6 +95,7 @@ export async function expectK3dWorkerNamespaceIsolation(): Promise<void> {
     expect(result.stdout.trim()).toBe('no');
   }
   await expectK3dProjectProvisionerIsolation(seed);
+  await expectK3dProjectProvisionerAdmissionBoundary(seed);
   await expectK3dBootstrapAdmissionBoundary(seed);
 }
 
@@ -113,6 +114,55 @@ async function expectK3dProjectProvisionerIsolation(seed: K3dPlatformSeed): Prom
     expectFailedCommand(result, `verify project provisioner RBAC denial: ${assertion.join(' ')}`);
     expect(result.stdout.trim()).toBe('no');
   }
+}
+
+async function expectK3dProjectProvisionerAdmissionBoundary(seed: K3dPlatformSeed): Promise<void> {
+  const identity: string = `system:serviceaccount:${seed.platformNamespace}:${k3dPlatformResourceName}-project-provisioner`;
+  await expectK3dProjectProvisionerClusterRoleBindingDenied(
+    seed,
+    identity,
+    'compartment-project-bootstrap',
+    'kube-system',
+    'default',
+    'deny permanent provisioner bootstrap authority in kube-system',
+  );
+  await expectK3dProjectProvisionerClusterRoleBindingDenied(
+    seed,
+    identity,
+    `cpt-rbac-provisioner-${process.pid.toString()}`,
+    `${k3dPlatformResourceName}-project-provisioning`,
+    `cpt-rbac-subject-${process.pid.toString()}`,
+    'deny permanent provisioner noncanonical bootstrap binding',
+  );
+}
+
+async function expectK3dProjectProvisionerClusterRoleBindingDenied(
+  seed: K3dPlatformSeed,
+  identity: string,
+  bindingName: string,
+  subjectNamespace: string,
+  subjectName: string,
+  assertion: string,
+): Promise<void> {
+  const denied: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'create',
+      'clusterrolebinding',
+      bindingName,
+      '--clusterrole=compartment-project-bootstrap',
+      `--serviceaccount=${subjectNamespace}:${subjectName}`,
+      '--dry-run=server',
+      `--as=${identity}`,
+    ],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+  expectFailedCommand(denied, assertion);
+  expect(denied.stderr).toContain(
+    'Project provisioner may manage only the canonical short-lived bootstrap ClusterRoleBinding.',
+  );
 }
 
 async function expectK3dBootstrapAdmissionBoundary(seed: K3dPlatformSeed): Promise<void> {

@@ -28,17 +28,16 @@ import {
   productLogStoreQuota,
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
-import {
-  persistDeploymentKubeTransition,
-  upsertDeploymentKubeReference,
-} from '../src/queries/deployment-kube-reference.query';
-import type { PersistDeploymentKubeTransitionInput } from '../src/queries/deployment-kube-reference.query.types';
+import { upsertDeploymentKubeReference } from '../src/queries/deployment-kube-reference.query';
 import {
   findNextDeploymentReconcilePair,
   persistDeploymentReconcileObservation,
   prepareDeploymentReconcileReference,
 } from '../src/queries/deployment-reconcile.query';
-import type { DeploymentReconcilePair } from '../src/queries/deployment-reconcile.query.types';
+import type {
+  DeploymentReconcilePair,
+  PrepareDeploymentReconcileResult,
+} from '../src/queries/deployment-reconcile.query.types';
 import { findActiveDeploymentRouteByHost } from '../src/queries/deployment-routes.query';
 import type { DeploymentRouteLookupRow } from '../src/queries/deployment-routes.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
@@ -70,10 +69,22 @@ describe('deployment Kubernetes transition persistence', (): void => {
   useApiRuntimeDatabaseTestHarness({ apiConfig, databaseUrl, db, pool, setup: seedDeployment });
 
   it('serializes concurrent drift callbacks and writes one audit event', async (): Promise<void> => {
-    const input: PersistDeploymentKubeTransitionInput = transitionInput('org_kube');
+    const observedAt: Date = new Date('2026-07-11T12:00:00.000Z');
     const applied: boolean[] = await Promise.all([
-      persistDeploymentKubeTransition(input),
-      persistDeploymentKubeTransition(input),
+      persistDeploymentReconcileObservation({
+        deploymentId: 'dep_kube',
+        failureMessage: 'owned field changed',
+        observation: 'pending',
+        observedAt,
+        revision: 0,
+      }),
+      persistDeploymentReconcileObservation({
+        deploymentId: 'dep_kube',
+        failureMessage: 'owned field changed',
+        observation: 'pending',
+        observedAt,
+        revision: 0,
+      }),
     ]);
     const references: object[] = await db.select().from(deploymentKubeReferences);
     const events: object[] = await db
@@ -81,11 +92,11 @@ describe('deployment Kubernetes transition persistence', (): void => {
       .from(auditEvents)
       .where(eq(auditEvents.eventType, 'deployment.kubernetes.drift_detected'));
     expect(references).toHaveLength(1);
-    expect(references[0]).toMatchObject({ deploymentId: 'dep_kube', observedAt: null, state: 'pending' });
+    expect(references[0]).toMatchObject({ deploymentId: 'dep_kube', observedAt, state: 'pending' });
     expect(events).toHaveLength(1);
     expect(applied.filter((value: boolean): boolean => value)).toHaveLength(1);
     expect(applied.filter((value: boolean): boolean => !value)).toHaveLength(1);
-    expect(events[0]).toMatchObject({ occurredAt: input.eventAt });
+    expect(events[0]).toMatchObject({ occurredAt: observedAt });
   });
 
   it('deduplicates reopened kubelet files by Pod UID, restart identity, and offset', async (): Promise<void> => {
@@ -366,73 +377,6 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(quotaAfterDelete!.usedBytes).toBe(0);
   });
 
-  it('rolls back the state transition when drift audit persistence fails', async (): Promise<void> => {
-    await expect(persistDeploymentKubeTransition(transitionInput('org_missing'))).rejects.toThrow();
-    const [reference] = await db.select().from(deploymentKubeReferences);
-    expect(reference).toMatchObject({ deploymentId: 'dep_kube', state: 'active' });
-  });
-
-  it('orders same-millisecond callbacks by expected revision', async (): Promise<void> => {
-    await db.update(deploymentKubeReferences).set({ state: 'pending' });
-    const drift: PersistDeploymentKubeTransitionInput = { ...transitionInput('org_kube'), audit: null };
-    const ready: PersistDeploymentKubeTransitionInput = {
-      ...drift,
-      audit: null,
-      nextState: 'active',
-      observedAt: drift.eventAt,
-    };
-    expect(await persistDeploymentKubeTransition(ready)).toBe(true);
-    expect(await persistDeploymentKubeTransition(drift)).toBe(false);
-    expect(
-      await persistDeploymentKubeTransition({
-        ...drift,
-        audit: { kind: 'non-ready', message: 'Active Kubernetes Deployment became non-Ready.' },
-        expectedRevision: 1,
-      }),
-    ).toBe(true);
-    const [reference] = await db.select().from(deploymentKubeReferences);
-    expect(reference).toMatchObject({ revision: 2, state: 'pending', transitionedAt: drift.eventAt });
-  });
-
-  it('replays a same-millisecond Ready callback that lost the revision race', async (): Promise<void> => {
-    await db.update(deploymentKubeReferences).set({ state: 'pending' });
-    const pending: PersistDeploymentKubeTransitionInput = { ...transitionInput('org_kube'), audit: null };
-    const ready: PersistDeploymentKubeTransitionInput = {
-      ...pending,
-      nextState: 'active',
-      observedAt: pending.eventAt,
-    };
-    expect(await persistDeploymentKubeTransition(pending)).toBe(true);
-    expect(await persistDeploymentKubeTransition(ready)).toBe(false);
-    expect(await persistDeploymentKubeTransition({ ...ready, expectedRevision: 1 })).toBe(true);
-    const [reference] = await db.select().from(deploymentKubeReferences);
-    expect(reference).toMatchObject({ observedAt: pending.eventAt, revision: 2, state: 'active' });
-  });
-
-  it('rejects illegal graph edges and an active drift transition without audit', async (): Promise<void> => {
-    await expect(persistDeploymentKubeTransition({ ...transitionInput('org_kube'), audit: null })).rejects.toThrow(
-      'invalid drift audit',
-    );
-    await db.update(deploymentKubeReferences).set({ state: 'desired' });
-    await expect(
-      persistDeploymentKubeTransition({ ...transitionInput('org_kube'), audit: null, nextState: 'active' }),
-    ).rejects.toThrow('Invalid Kubernetes deployment transition');
-  });
-
-  it('refreshes observedAt for a stable active observation without drift audit', async (): Promise<void> => {
-    const observedAt: Date = new Date('2026-07-11T12:00:00.000Z');
-    expect(
-      await persistDeploymentKubeTransition({
-        ...transitionInput('org_kube'),
-        audit: null,
-        nextState: 'active',
-        observedAt,
-      }),
-    ).toBe(true);
-    const [reference] = await db.select().from(deploymentKubeReferences);
-    expect(reference).toMatchObject({ observedAt, revision: 1, state: 'active' });
-  });
-
   it('keeps pending candidate inactive, ignores stale revisions, and preserves the active deployment on failure', async (): Promise<void> => {
     await seedCandidate();
     const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
@@ -683,7 +627,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
     await seedCandidate();
     await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
     const holder: PoolClient = await pool.connect();
-    let preparation: Promise<void> | null = null;
+    let preparation: Promise<PrepareDeploymentReconcileResult> | null = null;
     try {
       await holder.query('begin');
       await holder.query(
@@ -714,6 +658,46 @@ describe('deployment Kubernetes transition persistence', (): void => {
       const [deployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_candidate'));
       expect(deployment).toMatchObject({ status: 'failed' });
       expect(deployment?.failureMessage).toContain('terminal namespace failure');
+    } finally {
+      await holder.query('rollback');
+      await Promise.allSettled(preparation === null ? [] : [preparation]);
+      holder.release();
+    }
+  });
+
+  it('serializes deployment preparation with project archival', async (): Promise<void> => {
+    await seedCandidate();
+    await db.delete(deploymentKubeReferences).where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    const holder: PoolClient = await pool.connect();
+    let preparation: Promise<PrepareDeploymentReconcileResult> | null = null;
+    try {
+      await holder.query('begin');
+      await holder.query(`update projects set archived_at = now() where id = 'prj_kube'`);
+      preparation = prepareDeploymentReconcileReference({
+        deploymentId: 'dep_candidate',
+        deploymentName: 'app-env-kube-svc-kube',
+        id: 'kref_concurrent_archive',
+        imageRef: 'repo/kube@sha256:concurrent-archive',
+        namespace: 'cpt-prj-kube',
+        networkPolicyNames: [],
+        routeId: 'route_concurrent_archive',
+        routeSubdomain: 'kube',
+        serviceName: 'app-env-kube-svc-kube',
+      });
+      await Promise.race([
+        preparation.then((): never => {
+          throw new Error('Expected deployment preparation to wait for the project archive transaction.');
+        }),
+        waitForDatabaseBlocker(holder),
+      ]);
+      await holder.query('commit');
+      expect(await preparation).toBe('project-archived');
+
+      await expect(
+        db.select().from(deploymentKubeReferences).where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate')),
+      ).resolves.toEqual([]);
+      await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
     } finally {
       await holder.query('rollback');
       await Promise.allSettled(preparation === null ? [] : [preparation]);
@@ -951,21 +935,6 @@ async function waitForDatabaseBlocker(client: PoolClient): Promise<void> {
     await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));
   }
   throw new Error('Timed out waiting for deployment preparation to block on the provisioning transaction.');
-}
-
-function transitionInput(organizationId: string): PersistDeploymentKubeTransitionInput {
-  return {
-    audit: { kind: 'drifted', message: 'owned field changed' },
-    deploymentId: 'dep_kube',
-    environmentId: 'env_kube',
-    eventAt: new Date('2026-07-11T12:00:00.000Z'),
-    expectedRevision: 0,
-    nextState: 'pending',
-    observedAt: null,
-    organizationId,
-    projectId: 'prj_kube',
-    projectServiceId: 'svc_kube',
-  };
 }
 
 async function seedDeployment(): Promise<void> {
