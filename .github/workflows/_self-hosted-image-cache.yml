@@ -80,6 +80,7 @@ jobs:
       - name: Save self-hosted images to cache directory
         if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'
         run: |
+          mkdir -p ./.compartment/self-hosted-image-cache
           docker save "ghcr.io/compartmentdev/compartment-api:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/api.tar
           docker save "ghcr.io/compartmentdev/compartment-caddy:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/caddy.tar
           docker save "ghcr.io/compartmentdev/compartment-edge:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/edge.tar
