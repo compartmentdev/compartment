@@ -47,26 +47,60 @@ export async function claimResourceReconcileRun(): Promise<ClaimedResourceReconc
 async function claimResourceReconcileRunWithTransaction(
   tx: ApiDatabaseTransaction,
 ): Promise<ClaimedResourceReconcileRun | null> {
+  const resourceId: string | undefined = await lockNextClaimableResource(tx);
+  if (resourceId === undefined) {
+    return null;
+  }
+  const row: typeof resourceReconcileRuns.$inferSelect | undefined = await selectClaimableResourceReconcileRun(
+    tx,
+    resourceId,
+  );
+  if (row === undefined) {
+    return null;
+  }
+  const leaseId: string = randomUUID();
+  const [claimed] = await tx
+    .update(resourceReconcileRuns)
+    .set({ leaseExpiresAt: new Date(Date.now() + 5 * 60_000), leaseId, phase: 'running', updatedAt: new Date() })
+    .where(and(eq(resourceReconcileRuns.id, row.id), claimableResourceReconcileCondition()))
+    .returning();
+  return claimed === undefined ? null : buildClaimedResourceReconcileRun(claimed, leaseId);
+}
+
+async function lockNextClaimableResource(tx: ApiDatabaseTransaction): Promise<string | undefined> {
+  const [selected] = await tx
+    .select({ resourceId: projectResources.id })
+    .from(resourceReconcileRuns)
+    .innerJoin(projectResources, eq(projectResources.id, resourceReconcileRuns.projectResourceId))
+    .innerJoin(environments, eq(environments.id, projectResources.environmentId))
+    .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, environments.projectId))
+    .where(and(eq(projectKubeProvisioning.state, 'succeeded'), claimableResourceReconcileCondition()))
+    .orderBy(asc(resourceReconcileRuns.createdAt), asc(resourceReconcileRuns.id))
+    .limit(1)
+    .for('update', { of: projectResources, skipLocked: true });
+  return selected?.resourceId;
+}
+
+async function selectClaimableResourceReconcileRun(
+  tx: ApiDatabaseTransaction,
+  resourceId: string,
+): Promise<typeof resourceReconcileRuns.$inferSelect | undefined> {
   const [selected] = await tx
     .select({ run: resourceReconcileRuns })
     .from(resourceReconcileRuns)
     .innerJoin(projectResources, eq(projectResources.id, resourceReconcileRuns.projectResourceId))
     .innerJoin(environments, eq(environments.id, projectResources.environmentId))
     .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, environments.projectId))
-    .where(and(eq(projectKubeProvisioning.state, 'succeeded'), claimableResourceReconcileCondition()))
-    .orderBy(asc(resourceReconcileRuns.createdAt))
-    .limit(1)
-    .for('update', { of: projectResources, skipLocked: true });
-  if (selected === undefined) {
-    return null;
-  }
-  const row: typeof resourceReconcileRuns.$inferSelect = selected.run;
-  const leaseId: string = randomUUID();
-  await tx
-    .update(resourceReconcileRuns)
-    .set({ leaseExpiresAt: new Date(Date.now() + 5 * 60_000), leaseId, phase: 'running', updatedAt: new Date() })
-    .where(eq(resourceReconcileRuns.id, row.id));
-  return buildClaimedResourceReconcileRun(row, leaseId);
+    .where(
+      and(
+        eq(resourceReconcileRuns.projectResourceId, resourceId),
+        eq(projectKubeProvisioning.state, 'succeeded'),
+        claimableResourceReconcileCondition(),
+      ),
+    )
+    .orderBy(asc(resourceReconcileRuns.createdAt), asc(resourceReconcileRuns.id))
+    .limit(1);
+  return selected?.run;
 }
 
 function claimableResourceReconcileCondition(): SQL | undefined {
