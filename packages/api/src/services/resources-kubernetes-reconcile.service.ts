@@ -22,6 +22,7 @@ import { loadResourceEffectiveVariables } from './resources-effective-variables.
 import { prepareResourceEffectiveVariables, persistResourceIntent } from './resources-reconcile-persistence.service';
 import { assertAllowedVolumeChange } from './resources-reconcile.validation';
 import { resolveStoredResourceIntent } from './resources-stored-intent.service';
+import { parseResourceVolumes } from './resources.service.storage';
 import {
   resolveResourceIntent,
   type ResolvedResourceIntent,
@@ -137,6 +138,9 @@ export async function reconcileKubernetesResourceReplicas(
   resource: ProjectResourceRow,
   replicas: 0 | 1,
 ): Promise<ProjectResourceRow> {
+  if (replicas === 0 && hasUnbootstrappedVolumes(resource)) {
+    return await persistResourceReplicaStatus(resource.id, replicas);
+  }
   const variables: EffectiveVariable[] = await loadResourceEffectiveVariables(
     context.environment.id,
     context.organization.id,
@@ -151,8 +155,12 @@ export async function reconcileKubernetesResourceReplicas(
   const operationId: string = createId('resource_operation');
   await requestResourceReconcile(operationId, intent, resource);
   await waitForResourceReconcile(operationId);
+  return await persistResourceReplicaStatus(resource.id, replicas);
+}
+
+async function persistResourceReplicaStatus(resourceId: string, replicas: 0 | 1): Promise<ProjectResourceRow> {
   return await updateProjectResourceStatus({
-    projectResourceId: resource.id,
+    projectResourceId: resourceId,
     status: replicas === 0 ? 'stopped' : 'running',
     updatedAt: new Date(),
   });
@@ -163,6 +171,9 @@ export async function deleteKubernetesResource(
   resource: ProjectResourceRow,
   deleteData: boolean,
 ): Promise<void> {
+  if (hasUnbootstrappedVolumes(resource)) {
+    return;
+  }
   const variables: EffectiveVariable[] = await loadResourceEffectiveVariables(
     context.environment.id,
     context.organization.id,
@@ -176,6 +187,10 @@ export async function deleteKubernetesResource(
   const operationId: string = createId('resource_operation');
   await requestResourceReconcile(operationId, intent, resource);
   await waitForResourceReconcile(operationId);
+}
+
+function hasUnbootstrappedVolumes(resource: ProjectResourceRow): boolean {
+  return resource.expectedClaimsJson === '[]' && parseResourceVolumes(resource).length > 0;
 }
 
 function buildKubernetesResourceIntent(

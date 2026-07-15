@@ -1,15 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { ResourceClaimIdentity, ResourceReconcileIntent } from '@compartment/contracts';
+import { and, asc, eq, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { ApiDatabaseTransaction } from '../db/client.types';
-import { environments, projectKubeProvisioning, projectResources, resourceReconcileRuns } from '../db/schema';
+import { environments, projectKubeProvisioning, projectResources, projects, resourceReconcileRuns } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type {
   AcknowledgeResourceReconcileRunInput,
+  ClaimableResourceReconcileRunLockRow,
   ClaimedResourceReconcileRun,
+  ResourceReconcileProjectLockRow,
   ResourceReconcileRunLockRow,
   ResourceReconcileRunState,
 } from './resource-reconcile-runs.query.types';
+import { persistCompletedResourceState } from './resource-reconcile-completion.query';
+import { claimableResourceProjectCondition, lockResourceReconcileProject } from './resource-reconcile-project.query';
 
 export async function readResourceReconcileRunState(operationId: string): Promise<ResourceReconcileRunState | null> {
   const [row] = await getApiDatabase()
@@ -27,60 +31,40 @@ export async function claimResourceReconcileRun(): Promise<ClaimedResourceReconc
 async function claimResourceReconcileRunWithTransaction(
   tx: ApiDatabaseTransaction,
 ): Promise<ClaimedResourceReconcileRun | null> {
-  const resourceId: string | undefined = await lockNextClaimableResource(tx);
-  if (resourceId === undefined) {
-    return null;
-  }
-  const row: typeof resourceReconcileRuns.$inferSelect | undefined = await selectClaimableResourceReconcileRun(
-    tx,
-    resourceId,
-  );
-  if (row === undefined) {
+  const candidate: ClaimableResourceReconcileRunLockRow | undefined = await lockNextClaimableResourceReconcileRun(tx);
+  if (candidate === undefined) {
     return null;
   }
   const leaseId: string = randomUUID();
   const [claimed] = await tx
     .update(resourceReconcileRuns)
     .set({ leaseExpiresAt: new Date(Date.now() + 5 * 60_000), leaseId, phase: 'running', updatedAt: new Date() })
-    .where(and(eq(resourceReconcileRuns.id, row.id), claimableResourceReconcileCondition()))
+    .where(and(eq(resourceReconcileRuns.id, candidate.runId), claimableResourceReconcileCondition()))
     .returning();
   return claimed === undefined ? null : buildClaimedResourceReconcileRun(claimed, leaseId);
 }
 
-async function lockNextClaimableResource(tx: ApiDatabaseTransaction): Promise<string | undefined> {
-  const [selected] = await tx
-    .select({ resourceId: projectResources.id })
-    .from(resourceReconcileRuns)
-    .innerJoin(projectResources, eq(projectResources.id, resourceReconcileRuns.projectResourceId))
-    .innerJoin(environments, eq(environments.id, projectResources.environmentId))
-    .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, environments.projectId))
-    .where(and(eq(projectKubeProvisioning.state, 'succeeded'), claimableResourceReconcileCondition()))
-    .orderBy(asc(resourceReconcileRuns.createdAt), asc(resourceReconcileRuns.id))
-    .limit(1)
-    .for('update', { of: projectResources, skipLocked: true });
-  return selected?.resourceId;
-}
-
-async function selectClaimableResourceReconcileRun(
+async function lockNextClaimableResourceReconcileRun(
   tx: ApiDatabaseTransaction,
-  resourceId: string,
-): Promise<typeof resourceReconcileRuns.$inferSelect | undefined> {
-  const [selected] = await tx
-    .select({ run: resourceReconcileRuns })
+): Promise<ClaimableResourceReconcileRunLockRow | undefined> {
+  const [selected]: ClaimableResourceReconcileRunLockRow[] = await tx
+    .select({ runId: resourceReconcileRuns.id })
     .from(resourceReconcileRuns)
     .innerJoin(projectResources, eq(projectResources.id, resourceReconcileRuns.projectResourceId))
     .innerJoin(environments, eq(environments.id, projectResources.environmentId))
+    .innerJoin(projects, eq(projects.id, environments.projectId))
     .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, environments.projectId))
     .where(
       and(
-        eq(resourceReconcileRuns.projectResourceId, resourceId),
         eq(projectKubeProvisioning.state, 'succeeded'),
+        claimableResourceProjectCondition(),
         claimableResourceReconcileCondition(),
       ),
     )
     .orderBy(asc(resourceReconcileRuns.createdAt), asc(resourceReconcileRuns.id))
-    .limit(1);
-  return selected?.run;
+    .limit(1)
+    .for('update', { of: projectResources, skipLocked: true });
+  return selected;
 }
 
 function claimableResourceReconcileCondition(): SQL | undefined {
@@ -129,13 +113,14 @@ async function acknowledgeWithTransaction(
   if (resourceId === undefined) {
     return;
   }
+  const project: ResourceReconcileProjectLockRow = await lockResourceReconcileProject(tx, resourceId);
   await lockProjectResource(tx, resourceId);
   const run: typeof resourceReconcileRuns.$inferSelect | undefined = await lockAcknowledgedRun(tx, input);
   if (run === undefined) {
     return;
   }
   await persistResourceReconcileAcknowledgement(tx, input);
-  await persistCompletedResourceState(tx, run, input);
+  await persistCompletedResourceState(tx, run, input, project.archivedAt !== null);
 }
 
 async function lockAcknowledgedRun(
@@ -182,19 +167,6 @@ async function lockProjectResource(tx: ApiDatabaseTransaction, resourceId: strin
     .for('update');
 }
 
-async function persistCompletedResourceState(
-  tx: ApiDatabaseTransaction,
-  run: typeof resourceReconcileRuns.$inferSelect,
-  input: AcknowledgeResourceReconcileRunInput,
-): Promise<void> {
-  if (run.operationType === 'bootstrap' && input.status === 'succeeded' && input.expectedClaims !== undefined) {
-    await persistBootstrapCompletion(tx, run, input.expectedClaims);
-  }
-  if (run.operationType === 'reconcile' && input.status === 'succeeded') {
-    await persistReconcileCompletion(tx, run);
-  }
-}
-
 async function persistResourceReconcileAcknowledgement(
   tx: ApiDatabaseTransaction,
   input: AcknowledgeResourceReconcileRunInput,
@@ -210,34 +182,4 @@ async function persistResourceReconcileAcknowledgement(
       updatedAt: new Date(),
     })
     .where(eq(resourceReconcileRuns.id, input.operationId));
-}
-
-async function persistBootstrapCompletion(
-  tx: ApiDatabaseTransaction,
-  run: typeof resourceReconcileRuns.$inferSelect,
-  expectedClaims: ResourceClaimIdentity[],
-): Promise<void> {
-  await tx
-    .update(projectResources)
-    .set({ expectedClaimsJson: JSON.stringify(expectedClaims), updatedAt: new Date() })
-    .where(eq(projectResources.id, run.projectResourceId));
-  await tx.insert(resourceReconcileRuns).values({
-    expectedClaimsJson: JSON.stringify(expectedClaims),
-    id: `resource_operation_${randomUUID().replaceAll('-', '')}`,
-    intentJson: run.intentJson,
-    operationType: 'reconcile',
-    phase: 'reconcile-pending',
-    projectResourceId: run.projectResourceId,
-  });
-}
-
-async function persistReconcileCompletion(
-  tx: ApiDatabaseTransaction,
-  run: typeof resourceReconcileRuns.$inferSelect,
-): Promise<void> {
-  const intent: ResourceReconcileIntent = JSON.parse(run.intentJson) as ResourceReconcileIntent;
-  await tx
-    .update(projectResources)
-    .set({ status: intent.replicas === 0 ? 'stopped' : 'running', updatedAt: new Date() })
-    .where(eq(projectResources.id, run.projectResourceId));
 }

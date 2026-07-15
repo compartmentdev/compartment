@@ -15,13 +15,17 @@ import {
 } from '../queries/resource-reconcile-runs.query';
 import type {
   ClaimedResourceReconcileRun,
+  CreateResourceReconcileRunResult,
   ResourceReconcileRunState,
 } from '../queries/resource-reconcile-runs.query.types';
+import { createProjectArchivedError } from '../errors/api-business-error';
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import type { ClaimedResourceReconcileResult } from './resource-reconcile-run.service.types';
 
 export async function requestResourceBootstrap(operationId: string, intent: ResourceReconcileIntent): Promise<void> {
-  await createResourceReconcileRun({ expectedClaims: [], intent, operationId, type: 'bootstrap' });
+  requireCreatedResourceRun(
+    await createResourceReconcileRun({ expectedClaims: [], intent, operationId, type: 'bootstrap' }),
+  );
 }
 
 export async function requestResourceReconcileWithExecutor(
@@ -32,7 +36,9 @@ export async function requestResourceReconcileWithExecutor(
 ): Promise<void> {
   const expectedClaims: ResourceClaimIdentity[] = readExpectedResourceClaims(resource);
   assertExpectedResourceClaims(intent, expectedClaims);
-  await createResourceReconcileRunWithExecutor(tx, { expectedClaims, intent, operationId, type: 'reconcile' });
+  requireCreatedResourceRun(
+    await createResourceReconcileRunWithExecutor(tx, { expectedClaims, intent, operationId, type: 'reconcile' }),
+  );
 }
 
 export async function requestResourceReconcile(
@@ -42,7 +48,9 @@ export async function requestResourceReconcile(
 ): Promise<void> {
   const expectedClaims: ResourceClaimIdentity[] = readExpectedResourceClaims(resource);
   assertExpectedResourceClaims(intent, expectedClaims);
-  await createResourceReconcileRun({ expectedClaims, intent, operationId, type: 'reconcile' });
+  requireCreatedResourceRun(
+    await createResourceReconcileRun({ expectedClaims, intent, operationId, type: 'reconcile' }),
+  );
 }
 
 export async function waitForResourceReconcile(operationId: string): Promise<void> {
@@ -85,5 +93,11 @@ function readExpectedResourceClaims(resource: ProjectResourceRow): ResourceClaim
 function assertExpectedResourceClaims(intent: ResourceReconcileIntent, expectedClaims: ResourceClaimIdentity[]): void {
   if (intent.volumes.length > 0 && expectedClaims.length === 0) {
     throw new Error('Resource reconcile refused: expected PVC identity is missing. Bootstrap is required.');
+  }
+}
+
+function requireCreatedResourceRun(result: CreateResourceReconcileRunResult): void {
+  if (result === 'project-archived') {
+    throw createProjectArchivedError();
   }
 }

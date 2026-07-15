@@ -20,6 +20,8 @@ export interface CreateResourceReconcileRunInput {
   type: 'bootstrap' | 'reconcile';
 }
 
+export type CreateResourceReconcileRunResult = 'created' | 'project-archived';
+
 export interface ResourceReconcileRunState {
   failureMessage: string | null;
   phase: 'bootstrap-pending' | 'reconcile-pending' | 'running' | 'succeeded' | 'failed';
@@ -27,6 +29,14 @@ export interface ResourceReconcileRunState {
 
 export interface ResourceReconcileRunLockRow {
   projectResourceId: string;
+}
+
+export interface ClaimableResourceReconcileRunLockRow {
+  runId: string;
+}
+
+export interface ResourceReconcileProjectLockRow {
+  archivedAt: Date | null;
 }
 
 export type AcknowledgeResourceReconcileRunInput = WorkerAcknowledgeResourceReconcileRequest;

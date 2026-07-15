@@ -6,6 +6,8 @@ import {
   projectListResponseSchema,
   projectDeleteResponseSchema,
   projectReadResponseSchema,
+  type CompartmentAuthoredDescriptorInput,
+  type ResourceReconcileIntent,
   type DeploymentInspectResponse,
   type DeploymentStatusResponse,
   type DeploymentSummary,
@@ -36,7 +38,9 @@ import {
   principals,
   projectServices,
   projectKubeProvisioning,
+  projectResources,
   projects,
+  resourceReconcileRuns,
   gitProviderRegistrations,
   sourceBindings,
   sources,
@@ -44,6 +48,7 @@ import {
 import type { ProjectRow } from '../src/queries/projects.query.types';
 import { findNextDeploymentReconcilePair } from '../src/queries/deployment-reconcile.query';
 import type { DeploymentKubeState } from '../src/queries/deployment-kube-state.types';
+import { createResourceReconcileRun } from '../src/queries/resource-reconcile-create.query';
 
 import {
   acknowledgeKubeDeploymentStopped,
@@ -392,6 +397,55 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     const recreatedProjects: ProjectRow[] = await db.select().from(projects).where(eq(projects.name, 'smoke-web'));
     expect(recreatedProjects).toHaveLength(1);
     expect(recreatedProjects[0]?.id).not.toBe(deletedProjectId);
+  });
+  it('archives and deletes a project whose volume resource was never bootstrapped', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      { descriptor: createUnbootstrappedResourceDescriptor() },
+    );
+    expect(deployResponse.statusCode).toBe(200);
+    const deployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse(deployResponse.json()),
+    );
+    await completeQueuedDeployment(app, deployment.id);
+
+    const [resourceBeforeArchive] = await db.select().from(projectResources);
+    const [projectBeforeArchive] = await db.select().from(projects);
+    expect(resourceBeforeArchive).toMatchObject({ expectedClaimsJson: '[]', status: 'stopped' });
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: createUnbootstrappedResourceIntent(resourceBeforeArchive!, projectBeforeArchive!),
+      operationId: 'resource_operation_pending_archive',
+      type: 'bootstrap',
+    });
+    expect(await db.select().from(resourceReconcileRuns)).toMatchObject([{ phase: 'bootstrap-pending' }]);
+
+    const archiveResponsePromise: Promise<LightMyRequestResponse> = app.inject({
+      method: 'POST',
+      url: '/v1/projects/smoke-web/archive',
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+    });
+    await acknowledgeKubeDeploymentStopped(deployment.id);
+    const archiveResponse: LightMyRequestResponse = await archiveResponsePromise;
+    expect(archiveResponse.statusCode).toBe(200);
+    expect(await db.select().from(projectResources)).toMatchObject([{ expectedClaimsJson: '[]', status: 'stopped' }]);
+    expect(await db.select().from(resourceReconcileRuns)).toMatchObject([
+      {
+        failureMessage: 'Resource reconciliation was canceled because the project was archived.',
+        phase: 'failed',
+      },
+    ]);
+
+    const deleteResponse: LightMyRequestResponse = await app.inject({
+      method: 'DELETE',
+      url: '/v1/projects/smoke-web',
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+    });
+    expect(deleteResponse.statusCode).toBe(200);
+    expect(await db.select().from(projects)).toEqual([]);
   });
   it('archives a provisioned Kubernetes project without calling legacy node cleanup', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
@@ -1000,4 +1054,37 @@ async function prepareKubeLifecycleDeployment(
     });
   }
   return { deployment, installPayload, projectId };
+}
+
+function createUnbootstrappedResourceDescriptor(): CompartmentAuthoredDescriptorInput {
+  return {
+    name: 'smoke-web',
+    resources: {
+      postgres: {
+        image: 'postgres:16',
+        ports: [5432],
+        volumes: { data: '/var/lib/postgresql/data' },
+      },
+    },
+    services: { web: './services/web' },
+  };
+}
+
+function createUnbootstrappedResourceIntent(
+  resource: typeof projectResources.$inferSelect,
+  project: typeof projects.$inferSelect,
+): ResourceReconcileIntent {
+  return {
+    containerPort: 5432,
+    deleteData: false,
+    environmentId: resource.environmentId,
+    env: {},
+    image: resource.image,
+    namespaceId: project.id,
+    operation: 'reconcile',
+    replicas: 1,
+    resourceId: resource.id,
+    secretId: resource.id,
+    volumes: [{ mountPath: '/var/lib/postgresql/data', size: '1Gi', volumeHandle: 'data' }],
+  };
 }

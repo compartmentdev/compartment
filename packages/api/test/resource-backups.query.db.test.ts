@@ -37,7 +37,10 @@ import {
 } from '../src/queries/project-provisioning.query';
 import { createOrGetProject } from '../src/queries/projects.query';
 import type { ResourceReconcileIntent } from '@compartment/contracts';
-import type { ClaimedResourceReconcileRun } from '../src/queries/resource-reconcile-runs.query.types';
+import type {
+  ClaimedResourceReconcileRun,
+  CreateResourceReconcileRunResult,
+} from '../src/queries/resource-reconcile-runs.query.types';
 import type { ProjectResourceRow, ResourceTransaction } from '../src/queries/resources.query.types';
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import type { ProjectRow } from '../src/queries/projects.query.types';
@@ -308,6 +311,57 @@ describe('resource backup queries', (): void => {
     });
   });
 
+  it('does not claim pending resource work after its project is archived', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_archived_project',
+      type: 'bootstrap',
+    });
+    await db
+      .update(projects)
+      .set({ archivedAt: new Date('2026-07-15T12:00:00.000Z') })
+      .where(eq(projects.id, 'prj_internal_tools'));
+
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+    await expect(
+      createResourceReconcileRun({
+        expectedClaims: [],
+        intent: resourceIntent(),
+        operationId: 'rr_created_after_archive',
+        type: 'bootstrap',
+      }),
+    ).resolves.toBe('project-archived');
+    await expect(
+      db.select().from(resourceReconcileRuns).where(eq(resourceReconcileRuns.id, 'rr_created_after_archive')),
+    ).resolves.toEqual([]);
+  });
+
+  it('does not enqueue managed resource work when bootstrap finishes after archive', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_bootstrap_archived_during_execution',
+      type: 'bootstrap',
+    });
+    const claimed: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+    expect(claimed?.operationId).toBe('rr_bootstrap_archived_during_execution');
+    await db
+      .update(projects)
+      .set({ archivedAt: new Date('2026-07-15T12:00:00.000Z') })
+      .where(eq(projects.id, 'prj_internal_tools'));
+
+    await acknowledgeResourceReconcileRun({
+      expectedClaims: [{ claimName: 'claim-data', uid: 'uid-after-archive' }],
+      leaseId: claimed!.leaseId,
+      operationId: claimed!.operationId,
+      status: 'succeeded',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+    await expect(db.select().from(resourceReconcileRuns)).resolves.toHaveLength(1);
+  });
+
   it('creates, leases, and acknowledges the project provisioning companion row', async (): Promise<void> => {
     const project: ProjectRow = await createOrGetProject({
       id: 'prj_new_provisioning',
@@ -399,7 +453,7 @@ describe('resource backup queries', (): void => {
 
   it('serializes terminal provisioning with creation of future resource work', async (): Promise<void> => {
     const holder: PoolClient = await pool.connect();
-    let creation: Promise<void> | null = null;
+    let creation: Promise<CreateResourceReconcileRunResult> | null = null;
     try {
       await holder.query('begin');
       await holder.query(
