@@ -88,7 +88,16 @@ export async function deleteObjectIgnoringNotFound(
 ): Promise<void> {
   try {
     const uid: string | undefined = object.metadata?.uid;
-    const options: V1DeleteOptions | undefined = uid === undefined ? undefined : { preconditions: { uid } };
+    const resourceVersion: string | undefined = object.metadata?.resourceVersion;
+    const options: V1DeleteOptions | undefined =
+      uid === undefined && resourceVersion === undefined
+        ? undefined
+        : {
+            preconditions: {
+              ...(resourceVersion === undefined ? {} : { resourceVersion }),
+              ...(uid === undefined ? {} : { uid }),
+            },
+          };
     await objectApi.delete(object, undefined, undefined, undefined, undefined, propagationPolicy, options);
   } catch (error) {
     if (!(error instanceof Error && readHttpStatusCode(error) === 404)) {

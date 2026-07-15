@@ -36,12 +36,14 @@ async function stopAndDeleteManagedManifests(
   claimed: CompleteResourceReconcileClaim,
   row: ResourceProjectionRow,
 ): Promise<void> {
-  const observedClaims: ObservedResourceClaim[] = readLiveClaims(observation, row);
+  const observedClaims: ObservedResourceClaim[] = await readLiveClaims(runtime, row);
   assertResourceClaimOwnership(claimed.expectedClaims, observedClaims);
   await scaleDownAndAwaitTermination(runtime, observation, row);
-  assertResourceClaimOwnership(claimed.expectedClaims, readLiveClaims(observation, row));
+  assertResourceClaimOwnership(claimed.expectedClaims, await readLiveClaims(runtime, row));
   await runtime.delete(projectResourceManifests(row, 0));
   if (row.deleteData) {
-    await runtime.delete(projectResourceClaimDeleteTargets(row, claimed.expectedClaims));
+    const deleteClaims: ObservedResourceClaim[] = await readLiveClaims(runtime, row);
+    assertResourceClaimOwnership(claimed.expectedClaims, deleteClaims);
+    await runtime.delete(projectResourceClaimDeleteTargets(row, deleteClaims));
   }
 }

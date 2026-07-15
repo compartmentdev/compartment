@@ -54,20 +54,27 @@ function readObservedClaims(observation: KubeObservation): ObservedResourceClaim
       ([, claim]: [string, KubeObservedManifest]): ObservedResourceClaim => ({
         bound: (claim.status as ObservedClaimStatus | undefined)?.phase === 'Bound',
         claimName: claim.metadata?.name ?? '',
+        resourceVersion: claim.metadata?.resourceVersion ?? null,
         uid: claim.metadata?.uid ?? null,
       }),
     );
 }
 
-export function readLiveClaims(observation: KubeObservation, row: ResourceProjectionRow): ObservedResourceClaim[] {
-  return projectResourceBootstrapClaims(row).map((claim: KubeManifest): ObservedResourceClaim => {
-    const observed: KubeObservedManifest | null = findObservedManifest(observation, claim);
-    return {
-      bound: (observed?.status as ObservedClaimStatus | undefined)?.phase === 'Bound',
-      claimName: claim.metadata?.name ?? '',
-      uid: observed?.metadata?.uid ?? null,
-    };
-  });
+export async function readLiveClaims(
+  runtime: KubeRuntime,
+  row: ResourceProjectionRow,
+): Promise<ObservedResourceClaim[]> {
+  return await Promise.all(
+    projectResourceBootstrapClaims(row).map(async (claim: KubeManifest): Promise<ObservedResourceClaim> => {
+      const observed: KubeObservedManifest | null = await runtime.read(claim);
+      return {
+        bound: (observed?.status as ObservedClaimStatus | undefined)?.phase === 'Bound',
+        claimName: claim.metadata?.name ?? '',
+        resourceVersion: observed?.metadata?.resourceVersion ?? null,
+        uid: observed?.metadata?.uid ?? null,
+      };
+    }),
+  );
 }
 
 export function assertFinalClaimState(

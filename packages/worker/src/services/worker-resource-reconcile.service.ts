@@ -87,6 +87,7 @@ async function executeManagedUpdate(
 ): Promise<void> {
   const plan: ManagedResourceUpdatePlan = await prepareManagedUpdateOrAcknowledgeFailure(
     request,
+    runtime,
     observation,
     claimed,
     row,
@@ -114,12 +115,13 @@ async function acknowledgeManagedUpdateSuccess(
 
 async function prepareManagedUpdateOrAcknowledgeFailure(
   request: CompartmentRequester,
+  runtime: KubeRuntime,
   observation: KubeObservation,
   claimed: CompleteResourceReconcileClaim,
   row: ResourceProjectionRow,
 ): Promise<ManagedResourceUpdatePlan> {
   try {
-    return await prepareManagedUpdate(request, observation, claimed, row);
+    return await prepareManagedUpdate(request, runtime, observation, claimed, row);
   } catch (error) {
     const failure: object | null = typeof error === 'object' ? error : null;
     await acknowledgeFailure(request, claimed.leaseId, claimed.operationId, readError(failure).message);
@@ -146,11 +148,12 @@ async function recoverClaimedUpdate(
 
 async function prepareManagedUpdate(
   request: CompartmentRequester,
+  runtime: KubeRuntime,
   observation: KubeObservation,
   claimed: CompleteResourceReconcileClaim,
   row: ResourceProjectionRow,
 ): Promise<ManagedResourceUpdatePlan> {
-  assertResourceClaimOwnership(claimed.expectedClaims, readLiveClaims(observation, row));
+  assertResourceClaimOwnership(claimed.expectedClaims, await readLiveClaims(runtime, row));
   const desired: KubeManifest[] = projectResourceManifests(row, row.replicas);
   const hasLivePods: boolean = readResourcePods(observation).length > 0;
   const plan: ManagedResourceUpdatePlan = {
@@ -212,12 +215,13 @@ async function applyManagedResourceState(
   row: ResourceProjectionRow,
   manifests: KubeManifest[],
 ): Promise<void> {
-  const observedClaims: ObservedResourceClaim[] = readLiveClaims(observation, row);
+  const observedClaims: ObservedResourceClaim[] = await readLiveClaims(runtime, row);
   assertResourceClaimOwnership(expectedClaims, observedClaims);
   await scaleDownAndAwaitTermination(runtime, observation, row);
+  assertResourceClaimOwnership(expectedClaims, await readLiveClaims(runtime, row));
   const applied: KubeManifest[] = await runtime.apply({ objects: manifests });
   await waitForFreshResourceDeployment(observation, applied);
-  assertFinalClaimState(expectedClaims, readLiveClaims(observation, row), row);
+  assertFinalClaimState(expectedClaims, await readLiveClaims(runtime, row), row);
 }
 
 async function acknowledgeFailure(

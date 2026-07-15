@@ -9,7 +9,6 @@ export async function acknowledgeProjectProvisioning(
   input: WorkerCompleteProjectProvisioningRequest,
 ): Promise<boolean> {
   return await completeProjectProvisioning({
-    action: 'provision',
     failureMessage: input.message ?? null,
     leaseId: input.leaseId,
     projectId: input.projectId,

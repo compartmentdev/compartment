@@ -29,7 +29,12 @@ function projectDeploymentObservation(
   deployment: KubeDeploymentManifest,
   deadlineAt: Date,
 ): KubeRolloutObservation | null {
-  if (observed?.kind !== 'Deployment') {
+  const appliedUid: string | undefined = deployment.metadata?.uid;
+  const appliedGeneration: number | undefined = deployment.metadata?.generation;
+  if (appliedUid === undefined || appliedGeneration === undefined) {
+    return null;
+  }
+  if (!deploymentMatchesApply(observed, appliedUid, appliedGeneration)) {
     return null;
   }
   const status: ObservedDeploymentStatus = observed.status ?? {};
@@ -38,11 +43,24 @@ function projectDeploymentObservation(
     conditions: rolloutConditions(status),
     deadlineAt,
     desiredReplicas: deployment.spec?.replicas ?? 1,
-    generation: observed.metadata?.generation ?? 0,
-    observedGeneration: status.observedGeneration ?? null,
+    generation: appliedGeneration,
+    observedGeneration: appliedGeneration,
     replicas: status.replicas ?? 0,
     updatedReplicas: status.updatedReplicas ?? 0,
   };
+}
+
+function deploymentMatchesApply(
+  observed: KubeObservedManifest | null,
+  appliedUid: string,
+  appliedGeneration: number,
+): observed is KubeDeploymentManifest {
+  return (
+    observed?.kind === 'Deployment' &&
+    observed.metadata?.uid === appliedUid &&
+    observed.metadata.generation === appliedGeneration &&
+    (observed.status as ObservedDeploymentStatus | undefined)?.observedGeneration === appliedGeneration
+  );
 }
 
 function rolloutConditions(status: ObservedDeploymentStatus): KubeDeploymentCondition[] {

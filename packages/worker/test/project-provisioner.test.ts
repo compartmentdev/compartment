@@ -2,10 +2,12 @@ import type { ProjectProvisioningTarget, WorkerCompleteProjectProvisioningReques
 import {
   kubeNamespaceName,
   KubeRuntime,
+  type ApplyBundle,
   type KubeJobResult,
   type KubeJobSpec,
   type KubeManifest,
 } from '@compartment/kube-runtime';
+import type { CompartmentRequester } from '@compartment/sdk';
 import pino, { type Logger } from 'pino';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProjectProvisionerConfig } from '../src/project-provisioner.types';
@@ -13,13 +15,38 @@ import { executeProjectProvisioning } from '../src/services/project-provisioning
 import { projectProvisionerJobEnvironmentSchema } from '../src/project-provisioning-environment';
 
 describe('project provisioning execution', (): void => {
-  it('preserves a successful Job result when finalization fails', async (): Promise<void> => {
-    const finalize: Mock = vi.fn<() => Promise<void>>().mockRejectedValue(new Error('finalize failed'));
+  it('does not clean bootstrap authority after its provisioning lease is lost', async (): Promise<void> => {
+    const apply: Mock = vi.fn();
+    const runJob: Mock = vi.fn();
+
+    await expect(
+      executeProjectProvisioning(requester(false), runtimeStub(apply, runJob), config(), target, loggerStub()),
+    ).rejects.toThrow('lease');
+
+    expect(apply).not.toHaveBeenCalled();
+    expect(runJob).not.toHaveBeenCalled();
+  });
+
+  it('leaves completed authority for the next claimant when the lease expires during the Job', async (): Promise<void> => {
+    const apply: Mock = vi.fn<() => Promise<KubeManifest[]>>().mockResolvedValue([]);
+    const runJob: Mock = vi.fn(async (): Promise<KubeJobResult> => await Promise.resolve(succeededJob(vi.fn())));
+
+    await expect(
+      executeProjectProvisioning(requester(true, false), runtimeStub(apply, runJob), config(), target, loggerStub()),
+    ).rejects.toThrow('lease');
+
+    expect(runJob).toHaveBeenCalledOnce();
+    expect(apply).toHaveBeenCalledTimes(2);
+  });
+
+  it('cleans exact live authority objects under a current lease and preserves Job success', async (): Promise<void> => {
+    const finalize: Mock = vi.fn<() => Promise<void>>();
     const apply: Mock = vi.fn<() => Promise<KubeManifest[]>>().mockResolvedValue([]);
     const runJob: Mock = vi.fn(async (): Promise<KubeJobResult> => await Promise.resolve(succeededJob(finalize)));
     const logger: Logger = loggerStub();
 
     const completion: WorkerCompleteProjectProvisioningRequest = await executeProjectProvisioning(
+      requester(true, true),
       runtimeStub(apply, runJob),
       config(),
       target,
@@ -27,13 +54,18 @@ describe('project provisioning execution', (): void => {
     );
 
     expect(completion).toEqual({
-      action: 'provision',
       leaseId: 'lease_1',
       projectId: 'prj_1',
       status: 'succeeded',
     });
     expect(apply).toHaveBeenCalledTimes(3);
-    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(finalize).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+    const cleanup: ApplyBundle = apply.mock.calls[0]?.[0] as ApplyBundle;
+    expect(cleanup.deleteAfterApply).toHaveLength(4);
+    expect(cleanup.deleteAfterApply?.every((object: KubeManifest): boolean => object.metadata?.uid !== undefined)).toBe(
+      true,
+    );
     const job: KubeJobSpec = runJob.mock.calls[0]?.[0] as KubeJobSpec;
     expect(job).toMatchObject({
       namespace: 'compartment-project-provisioning',
@@ -52,11 +84,12 @@ describe('project provisioning execution', (): void => {
     const runJob: Mock = vi.fn(async (): Promise<KubeJobResult> => await Promise.resolve(succeededJob(vi.fn())));
     const runtime: KubeRuntime = runtimeStub(apply, runJob);
 
-    await expect(executeProjectProvisioning(runtime, config(), target, loggerStub())).rejects.toThrow(
-      'authority cleanup failed',
-    );
-    await expect(executeProjectProvisioning(runtime, config(), target, loggerStub())).resolves.toMatchObject({
-      action: 'provision',
+    await expect(
+      executeProjectProvisioning(requester(true, true), runtime, config(), target, loggerStub()),
+    ).rejects.toThrow('authority cleanup failed');
+    await expect(
+      executeProjectProvisioning(requester(true, true), runtime, config(), target, loggerStub()),
+    ).resolves.toMatchObject({
       status: 'succeeded',
     });
 
@@ -73,9 +106,8 @@ describe('project provisioning execution', (): void => {
     const runJob: Mock = vi.fn();
 
     await expect(
-      executeProjectProvisioning(runtimeStub(apply, runJob), config(), target, loggerStub()),
+      executeProjectProvisioning(requester(true, true), runtimeStub(apply, runJob), config(), target, loggerStub()),
     ).resolves.toEqual({
-      action: 'provision',
       leaseId: 'lease_1',
       message: 'authority apply failed',
       projectId: 'prj_1',
@@ -89,7 +121,7 @@ describe('project provisioning execution', (): void => {
     const apply: Mock = vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([]));
     const runJob: Mock = vi.fn(async (): Promise<KubeJobResult> => await Promise.resolve(succeededJob(vi.fn())));
 
-    await executeProjectProvisioning(runtimeStub(apply, runJob), config(), target, loggerStub());
+    await executeProjectProvisioning(requester(true, true), runtimeStub(apply, runJob), config(), target, loggerStub());
 
     const job: KubeJobSpec = runJob.mock.calls[0]?.[0] as KubeJobSpec;
     expect(projectProvisionerJobEnvironmentSchema.parse(job.env)).toEqual(job.env);
@@ -97,7 +129,6 @@ describe('project provisioning execution', (): void => {
 });
 
 const target: ProjectProvisioningTarget = {
-  action: 'provision',
   leaseId: 'lease_1',
   namespaceId: 'prj_1',
   projectId: 'prj_1',
@@ -130,8 +161,24 @@ function config(): ProjectProvisionerConfig {
 function runtimeStub(apply: Mock, runJob: Mock): KubeRuntime {
   const runtime: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
   vi.spyOn(runtime, 'apply').mockImplementation(apply);
+  vi.spyOn(runtime, 'read').mockImplementation(
+    async (object: KubeManifest): Promise<KubeManifest> =>
+      await Promise.resolve({
+        ...object,
+        metadata: { ...object.metadata, resourceVersion: `${object.kind}-rv`, uid: `${object.kind}-uid` },
+      }),
+  );
   vi.spyOn(runtime, 'runJob').mockImplementation(runJob);
   return runtime;
+}
+
+function requester(...applied: boolean[]): CompartmentRequester {
+  let call: number = 0;
+  return async function respond<TResult>(): Promise<TResult> {
+    const response: boolean = applied[Math.min(call, applied.length - 1)] ?? false;
+    call += 1;
+    return await Promise.resolve({ applied: response } as TResult);
+  };
 }
 
 function succeededJob(finalize: Mock): KubeJobResult {

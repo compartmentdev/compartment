@@ -14,6 +14,7 @@ helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set 
 helm template compartment "${CHART_DIR}" -f "${CHART_DIR}/values-kind.yaml" >"${OUTPUT_DIR}/kind.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token --set edge.snapshots.enabled=true >"${OUTPUT_DIR}/edge.yaml"
 node "${CHART_DIR}/test/assert-project-provisioning-rbac.mjs" "${OUTPUT_DIR}/full.yaml"
+node "${CHART_DIR}/test/assert-operator-docs.mjs"
 
 if helm template compartment "${CHART_DIR}" --kube-version 1.29.9 --set platform.startupStage=full --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >/dev/null 2>&1; then
   echo 'Chart must fail closed on Kubernetes versions without admissionregistration.k8s.io/v1 ValidatingAdmissionPolicy.' >&2

@@ -26,7 +26,7 @@ export function deploymentManifest(projection: DeploymentReconcileProjection): K
   return deploymentFromObjects(projectApplicationManifests(projection));
 }
 
-function deploymentFromObjects(objects: KubeManifest[]): KubeDeploymentManifest {
+export function deploymentFromObjects(objects: KubeManifest[]): KubeDeploymentManifest {
   const deployment: KubeDeploymentManifest | undefined = objects.find(
     (object: KubeManifest): object is KubeDeploymentManifest => object.kind === 'Deployment',
   );

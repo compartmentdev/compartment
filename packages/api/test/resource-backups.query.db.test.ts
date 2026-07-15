@@ -320,10 +320,9 @@ describe('resource backup queries', (): void => {
       updatedAt: new Date(),
     });
     const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
-    expect(target).toMatchObject({ action: 'provision', namespaceId: project.id, projectId: project.id });
+    expect(target).toMatchObject({ namespaceId: project.id, projectId: project.id });
     await expect(
       completeProjectProvisioning({
-        action: 'provision',
         failureMessage: null,
         leaseId: 'stale-lease',
         projectId: project.id,
@@ -332,7 +331,6 @@ describe('resource backup queries', (): void => {
     ).resolves.toBe(false);
     await expect(
       completeProjectProvisioning({
-        action: 'provision',
         failureMessage: null,
         leaseId: target!.leaseId,
         projectId: project.id,
@@ -362,7 +360,6 @@ describe('resource backup queries', (): void => {
       expect(claimed?.projectId).toBe('prj_internal_tools');
       await expect(
         completeProjectProvisioning({
-          action: 'provision',
           failureMessage: `provisioning attempt ${attempt} failed`,
           leaseId: claimed?.leaseId ?? '',
           projectId: 'prj_internal_tools',
@@ -456,7 +453,6 @@ describe('resource backup queries', (): void => {
     });
 
     await expect(claimPendingProjectProvisioning()).resolves.toMatchObject({
-      action: 'provision',
       projectId: 'prj_internal_tools',
     });
     const [provisioning] = await db
@@ -469,6 +465,37 @@ describe('resource backup queries', (): void => {
       .from(resourceReconcileRuns)
       .where(eq(resourceReconcileRuns.id, 'rr_expired_final_provisioning'));
     expect(resourceRun).toMatchObject({ phase: 'bootstrap-pending' });
+  });
+
+  it('renews cleanup authority only for the current unexpired provisioning lease', async (): Promise<void> => {
+    await db
+      .update(projectKubeProvisioning)
+      .set({
+        attempts: 1,
+        leaseExpiresAt: new Date(0),
+        leaseId: 'expired-cleanup-lease',
+        state: 'running',
+      })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
+
+    await expect(
+      completeProjectProvisioning({
+        failureMessage: null,
+        leaseId: 'expired-cleanup-lease',
+        projectId: 'prj_internal_tools',
+        status: 'running',
+      }),
+    ).resolves.toBe(false);
+    const reclaimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
+    expect(reclaimed?.projectId).toBe('prj_internal_tools');
+    await expect(
+      completeProjectProvisioning({
+        failureMessage: null,
+        leaseId: reclaimed?.leaseId ?? '',
+        projectId: 'prj_internal_tools',
+        status: 'running',
+      }),
+    ).resolves.toBe(true);
   });
 
   it('serializes concurrent reconcile claims for one resource', async (): Promise<void> => {

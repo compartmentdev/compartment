@@ -127,18 +127,21 @@ function resourceService(
 
 export function projectResourceClaimDeleteTargets(
   row: ResourceProjectionRow,
-  expected: readonly ExpectedResourceClaim[],
+  observed: readonly ObservedResourceClaim[],
 ): KubeManifest[] {
-  const expectedByName: Map<string, string> = new Map<string, string>(
-    expected.map((claim: ExpectedResourceClaim): [string, string] => [claim.claimName, claim.uid]),
+  const observedByName: Map<string, ObservedResourceClaim> = new Map<string, ObservedResourceClaim>(
+    observed.map((claim: ObservedResourceClaim): [string, ObservedResourceClaim] => [claim.claimName, claim]),
   );
   return projectResourceBootstrapClaims(row).map((claim: KubeManifest): KubeManifest => {
     const name: string = claim.metadata?.name ?? '';
-    const uid: string | undefined = expectedByName.get(name);
-    if (uid === undefined) {
+    const identity: ObservedResourceClaim | undefined = observedByName.get(name);
+    if (identity?.uid === null || identity?.uid === undefined || identity.resourceVersion === null) {
       throw new Error(`Resource reconcile refused: expected PVC ${name} identity is missing.`);
     }
-    return { ...claim, metadata: { ...claim.metadata, uid } };
+    return {
+      ...claim,
+      metadata: { ...claim.metadata, resourceVersion: identity.resourceVersion, uid: identity.uid },
+    };
   });
 }
 

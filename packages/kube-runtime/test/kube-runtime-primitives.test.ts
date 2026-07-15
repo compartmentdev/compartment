@@ -347,19 +347,24 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(objectApi.deletes).toMatchObject([{ kind: 'RoleBinding' }, { kind: 'ClusterRoleBinding' }]);
   });
 
-  it('passes manifest UID as an atomic Kubernetes delete precondition', async (): Promise<void> => {
+  it('passes manifest UID and resourceVersion as atomic Kubernetes delete preconditions', async (): Promise<void> => {
     const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
     const claim: KubeManifest = {
       apiVersion: 'v1',
       kind: 'PersistentVolumeClaim',
-      metadata: { name: 'resource-data', namespace: 'cpt-project', uid: 'uid-original' },
+      metadata: {
+        name: 'resource-data',
+        namespace: 'cpt-project',
+        resourceVersion: 'resource-version-7',
+        uid: 'uid-original',
+      },
     };
     objectApi.deleteError = Object.assign(new Error('UID precondition failed'), { statusCode: 409 });
 
     await expect(runtime.delete([claim])).rejects.toThrow('UID precondition failed');
 
     expect(objectApi.delete).toHaveBeenCalledWith(claim, undefined, undefined, undefined, undefined, undefined, {
-      preconditions: { uid: 'uid-original' },
+      preconditions: { resourceVersion: 'resource-version-7', uid: 'uid-original' },
     });
   });
 

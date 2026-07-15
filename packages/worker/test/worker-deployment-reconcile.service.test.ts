@@ -11,13 +11,16 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { reconcileDeploymentTarget } from '../src/services/worker-deployment-reconcile.service';
 
 interface ReconcileMocks {
+  delay: Mock;
   executeProductJob: Mock;
   observeDeploymentReconcile: Mock;
 }
 
 const mocks: ReconcileMocks = vi.hoisted(
-  (): ReconcileMocks => ({ executeProductJob: vi.fn(), observeDeploymentReconcile: vi.fn() }),
+  (): ReconcileMocks => ({ delay: vi.fn(), executeProductJob: vi.fn(), observeDeploymentReconcile: vi.fn() }),
 );
+
+vi.mock('node:timers/promises', (): object => ({ setTimeout: mocks.delay }));
 
 vi.mock('@compartment/sdk', async (importOriginal: () => Promise<object>): Promise<object> => {
   const original: object = await importOriginal();
@@ -31,6 +34,7 @@ vi.mock('../src/services/worker-product-job.service', (): object => ({
 describe('deployment reconciliation', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
+    mocks.delay.mockResolvedValue(undefined);
     mocks.executeProductJob.mockResolvedValue({ status: 'succeeded' });
     mocks.observeDeploymentReconcile.mockResolvedValue({ applied: true });
   });
@@ -74,37 +78,44 @@ describe('deployment reconciliation', (): void => {
   });
 
   it('keeps an active Deployment active on a transient non-ready observation', async (): Promise<void> => {
-    const runtime: KubeRuntime & { apply: Mock; observe: Mock } = activeRuntimeStub(false);
+    const runtime: KubeRuntime & { apply: Mock; observe: Mock; read: Mock } = activeRuntimeStub(false);
+    const namespace: string = kubeNamespaceName('prj_1');
+    const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
+    runtime.read
+      .mockResolvedValueOnce(progressingDeployment(namespace, name))
+      .mockResolvedValue(readyDeployment(namespace, name));
     const activeTarget: DeploymentReconcileTarget = {
       ...target(projection(null)),
-      rolloutStartedAt: new Date().toISOString(),
       state: 'active',
     };
 
     await reconcileDeploymentTarget(requester(), runtime, activeTarget);
 
     expect(runtime.observe).not.toHaveBeenCalled();
+    expect(runtime.read).toHaveBeenCalledTimes(2);
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
   });
 
   it('demotes an active Deployment when its rollout observation times out', async (): Promise<void> => {
-    const runtime: KubeRuntime & { apply: Mock } = activeRuntimeStub(false);
+    const runtime: KubeRuntime & { apply: Mock; read: Mock } = activeRuntimeStub(false);
     const activeTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'active' };
 
     await reconcileDeploymentTarget(requester(), runtime, activeTarget);
 
+    expect(runtime.read).toHaveBeenCalledTimes(6);
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ observation: 'pending', revision: 0 }),
     );
   });
 
-  it('demotes an active Deployment only after Kubernetes reports ProgressDeadlineExceeded', async (): Promise<void> => {
-    const runtime: KubeRuntime & { apply: Mock } = activeRuntimeStub(false, true);
+  it('demotes a persistently deadline-exceeded active Deployment only after the grace reads', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock; read: Mock } = activeRuntimeStub(false, true);
     const activeTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'active' };
 
     await reconcileDeploymentTarget(requester(), runtime, activeTarget);
 
+    expect(runtime.read).toHaveBeenCalledTimes(6);
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ observation: 'pending', revision: 0 }),
@@ -145,7 +156,7 @@ describe('deployment reconciliation', (): void => {
 
     await reconcileDeploymentTarget(requester(), runtime, pendingTarget);
 
-    expect(runtime.apply).not.toHaveBeenCalled();
+    expect(runtime.apply).toHaveBeenCalledOnce();
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
   });
 
@@ -162,6 +173,46 @@ describe('deployment reconciliation', (): void => {
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ observation: 'ready', revision: 0 }),
+    );
+  });
+
+  it('rejects ready pending Deployments that do not match the UID and generation returned by apply', async (): Promise<void> => {
+    const namespace: string = kubeNamespaceName('prj_1');
+    const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
+    const applied: KubeManifest = readyDeployment(namespace, name, 'applied-uid', 2);
+    const runtime: KubeRuntime & { apply: Mock; read: Mock } = {
+      apply: vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([applied])),
+      read: vi.fn(
+        async (): Promise<KubeManifest> => await Promise.resolve(readyDeployment(namespace, name, 'foreign-uid', 2)),
+      ),
+    } as never;
+    const pendingTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'pending' };
+
+    await reconcileDeploymentTarget(requester(), runtime, pendingTarget);
+
+    expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'ready' }),
+    );
+  });
+
+  it('rejects ready pending Deployments from a generation newer than the current apply', async (): Promise<void> => {
+    const namespace: string = kubeNamespaceName('prj_1');
+    const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
+    const applied: KubeManifest = readyDeployment(namespace, name, 'applied-uid', 2);
+    const runtime: KubeRuntime & { apply: Mock; read: Mock } = {
+      apply: vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([applied])),
+      read: vi.fn(
+        async (): Promise<KubeManifest> => await Promise.resolve(readyDeployment(namespace, name, 'applied-uid', 3)),
+      ),
+    } as never;
+    const pendingTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'pending' };
+
+    await reconcileDeploymentTarget(requester(), runtime, pendingTarget);
+
+    expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'ready' }),
     );
   });
 
@@ -228,11 +279,13 @@ function runtimeStub(): KubeRuntime & { apply: Mock } {
 function activeRuntimeStub(
   ready: boolean = true,
   progressDeadlineExceeded: boolean = false,
-): KubeRuntime & { apply: Mock; observe: Mock } {
+): KubeRuntime & { apply: Mock; observe: Mock; read: Mock } {
   const namespace: string = kubeNamespaceName('prj_1');
   const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
   return {
-    apply: vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([])),
+    apply: vi.fn(
+      async (): Promise<KubeManifest[]> => await Promise.resolve([readyDeployment(namespace, name, 'applied-uid', 1)]),
+    ),
     observe: vi.fn(),
     read: vi.fn(
       async (): Promise<KubeManifest> =>
@@ -244,11 +297,11 @@ function activeRuntimeStub(
 }
 
 function pendingRuntimeStub(publishAfterSubscribe: boolean): KubeRuntime & { apply: Mock } {
-  const runtime: KubeRuntime & { apply: Mock } = runtimeStub();
   const namespace: string = kubeNamespaceName('prj_1');
   const name: string = kubeApplicationIdentityName('env_1', 'svc_1');
+  const applied: KubeManifest = readyDeployment(namespace, name);
   return {
-    ...runtime,
+    apply: vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([applied])),
     read: vi.fn(
       async (): Promise<KubeManifest> =>
         await Promise.resolve(
@@ -277,12 +330,17 @@ function progressingDeployment(
   } as never;
 }
 
-function readyDeployment(namespace: string, name: string): KubeManifest {
+function readyDeployment(
+  namespace: string,
+  name: string,
+  uid: string = 'applied-uid',
+  generation: number = 1,
+): KubeManifest {
   return {
     apiVersion: 'apps/v1',
     kind: 'Deployment',
-    metadata: { generation: 1, name, namespace },
-    status: { availableReplicas: 1, observedGeneration: 1, replicas: 1, updatedReplicas: 1 },
+    metadata: { generation, name, namespace, uid },
+    status: { availableReplicas: 1, observedGeneration: generation, replicas: 1, updatedReplicas: 1 },
   } as never;
 }
 

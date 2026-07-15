@@ -632,7 +632,6 @@ describe('deployment Kubernetes transition persistence', (): void => {
       const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
       expect(claimed?.projectId).toBe('prj_kube');
       await completeProjectProvisioning({
-        action: 'provision',
         failureMessage: `namespace provisioning attempt ${attempt} failed`,
         leaseId: claimed?.leaseId ?? '',
         projectId: 'prj_kube',
@@ -703,7 +702,12 @@ describe('deployment Kubernetes transition persistence', (): void => {
         routeSubdomain: 'kube',
         serviceName: 'app-env-kube-svc-kube',
       });
-      await waitForDatabaseLock(holder, 'transactionid');
+      await Promise.race([
+        preparation.then((): never => {
+          throw new Error('Expected deployment preparation to wait for the terminal provisioning transaction.');
+        }),
+        waitForDatabaseBlocker(holder),
+      ]);
       await holder.query('commit');
       await preparation;
 
@@ -930,24 +934,23 @@ describe('deployment Kubernetes transition persistence', (): void => {
   });
 });
 
-async function waitForDatabaseLock(client: PoolClient, waitEvent: string): Promise<void> {
-  for (let attempt: number = 0; attempt < 100; attempt += 1) {
-    const result: { rows: { waiting: boolean }[] } = await client.query(
+async function waitForDatabaseBlocker(client: PoolClient): Promise<void> {
+  const deadline: number = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const result: { rows: { blocked: boolean }[] } = await client.query(
       `select exists (
         select 1
-        from pg_stat_activity
-        where datname = current_database()
-          and pid <> pg_backend_pid()
-          and wait_event = $1
-      ) as waiting`,
-      [waitEvent],
+        from pg_stat_activity activity
+        where activity.datname = current_database()
+          and pg_backend_pid() = any(pg_blocking_pids(activity.pid))
+      ) as blocked`,
     );
-    if (result.rows[0]?.waiting === true) {
+    if (result.rows[0]?.blocked === true) {
       return;
     }
     await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));
   }
-  throw new Error(`Timed out waiting for PostgreSQL ${waitEvent} lock evidence.`);
+  throw new Error('Timed out waiting for deployment preparation to block on the provisioning transaction.');
 }
 
 function transitionInput(organizationId: string): PersistDeploymentKubeTransitionInput {

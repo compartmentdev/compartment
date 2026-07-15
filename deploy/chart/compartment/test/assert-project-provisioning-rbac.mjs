@@ -73,9 +73,16 @@ assert.deepEqual(
 );
 
 requiredManifest('Namespace', provisioningNamespace);
-const releaseRole = requiredManifest('Role', `${fullname}-project-provisioner`);
-assert.equal(releaseRole.metadata?.namespace, 'default');
-assert.equal(rulesFor(releaseRole, 'secrets').length, 0, 'Provisioner must not read platform Secrets.');
+assert.equal(
+  manifests.some(
+    (manifest) =>
+      manifest?.kind === 'Role' &&
+      manifest.metadata?.name === `${fullname}-project-provisioner` &&
+      manifest.metadata?.namespace === 'default',
+  ),
+  false,
+  'Provisioner must not retain a Role in the platform namespace.',
+);
 
 const jobRole = requiredManifest('Role', `${fullname}-project-provisioning-job`);
 assert.equal(jobRole.metadata?.namespace, provisioningNamespace);

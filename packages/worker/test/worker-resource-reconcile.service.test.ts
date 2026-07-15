@@ -97,7 +97,7 @@ describe('worker resource reconcile lifecycle', (): void => {
     );
   });
 
-  it('fails closed when the observed PVC snapshot is incomplete', async (): Promise<void> => {
+  it('fails closed when a live PVC read is incomplete', async (): Promise<void> => {
     const observation: TestObservation = new TestObservation('uid-original', false);
     const apply: Mock = vi.fn();
     const read: Mock = vi.fn();
@@ -106,11 +106,11 @@ describe('worker resource reconcile lifecycle', (): void => {
     await expect(executeResourceReconcile(requester(), kubeRuntime, claim(null))).rejects.toThrow('is missing');
 
     expect(observation.cache.has(`persistentvolumeclaims/ns/${backupClaimName}`)).toBe(false);
-    expect(read).not.toHaveBeenCalled();
+    expect(read).toHaveBeenCalledTimes(2);
     expect(apply).not.toHaveBeenCalled();
   });
 
-  it('uses the shared observation snapshot without polling Kubernetes reads', async (): Promise<void> => {
+  it('uses direct Kubernetes reads for managed PVC ownership fences', async (): Promise<void> => {
     const observation: TestObservation = new TestObservation('uid-original', false);
     observation.addClaim(backupClaimName, 'uid-backup', false);
     const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
@@ -123,12 +123,15 @@ describe('worker resource reconcile lifecycle', (): void => {
       }
       return await Promise.resolve(applied);
     });
-    const read: Mock = vi.fn();
+    const read: Mock = vi.fn(
+      async (manifest: KubeManifest): Promise<KubeObservedManifest | null> =>
+        await readFromObservation(observation, manifest),
+    );
     const kubeRuntime: KubeRuntime = runtime(apply, observation, read);
 
     await executeResourceReconcile(requester(), kubeRuntime, claim(null));
 
-    expect(read).not.toHaveBeenCalled();
+    expect(read).toHaveBeenCalled();
     expect(mocks.acknowledge).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({ status: 'succeeded' }),
@@ -304,6 +307,10 @@ describe('worker resource reconcile lifecycle', (): void => {
       'uid-original',
       'uid-backup',
     ]);
+    expect(removed[1]?.map((object: KubeManifest): string | undefined => object.metadata?.resourceVersion)).toEqual([
+      'uid-original-rv',
+      'uid-backup-rv',
+    ]);
     expect(mocks.acknowledge).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({ status: 'succeeded' }),
@@ -330,6 +337,32 @@ describe('worker resource reconcile lifecycle', (): void => {
       expect.objectContaining({ status: 'failed' }),
     );
   });
+
+  it('rejects a live PVC replacement even while the informer still reports the expected UID', async (): Promise<void> => {
+    const observation: TestObservation = new TestObservation('uid-original', true);
+    observation.addClaim(backupClaimName, 'uid-backup', false);
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      observation.removePods();
+      return await Promise.resolve(bundle.objects);
+    });
+    const read: Mock = vi.fn(async (manifest: KubeManifest): Promise<KubeObservedManifest | null> => {
+      const observed: KubeObservedManifest | null = await readFromObservation(observation, manifest);
+      if (manifest.kind !== 'PersistentVolumeClaim' || manifest.metadata?.name !== dataClaimName || observed === null) {
+        return observed;
+      }
+      return {
+        ...observed,
+        metadata: { ...observed.metadata, resourceVersion: 'replacement-rv', uid: 'uid-replacement' },
+      };
+    });
+    const remove: Mock = vi.fn();
+
+    await expect(
+      executeResourceReconcile(requester(), runtime(apply, observation, read, remove), deleteClaim()),
+    ).rejects.toThrow('UID changed');
+
+    expect(remove).not.toHaveBeenCalled();
+  });
 });
 
 class TestObservation implements KubeObservation {
@@ -341,7 +374,7 @@ class TestObservation implements KubeObservation {
     this.cache.set(`persistentvolumeclaims/ns/${dataClaimName}`, {
       apiVersion: 'v1',
       kind: 'PersistentVolumeClaim',
-      metadata: { name: dataClaimName, uid },
+      metadata: { name: dataClaimName, resourceVersion: `${uid}-rv`, uid },
       status: { phase: bound ? 'Bound' : 'Pending' },
     });
     this.cache.set(`deployments/ns/${resourceName}`, {
@@ -445,7 +478,7 @@ class TestObservation implements KubeObservation {
     this.cache.set(`persistentvolumeclaims/ns/${name}`, {
       apiVersion: 'v1',
       kind: 'PersistentVolumeClaim',
-      metadata: { name, uid },
+      metadata: { name, resourceVersion: `${uid}-rv`, uid },
       status: { phase: bound ? 'Bound' : 'Pending' },
     });
   }

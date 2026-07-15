@@ -2,7 +2,6 @@ import { z } from 'zod';
 import type { ContractSchema } from './schema.types';
 
 export interface ProjectProvisioningTarget {
-  action: 'provision';
   leaseId: string;
   namespaceId: string;
   projectId: string;
@@ -12,22 +11,11 @@ export interface WorkerClaimProjectProvisioningResponse {
   target: ProjectProvisioningTarget | null;
 }
 
-interface WorkerCompleteProjectProvisioningRequestBase {
+export interface WorkerCompleteProjectProvisioningRequest {
   leaseId: string;
   message?: string | undefined;
   projectId: string;
-  status: 'failed' | 'succeeded';
-}
-
-interface ProjectProvisioningCompletionSchemaShape extends z.ZodRawShape {
-  leaseId: z.ZodString;
-  message: z.ZodOptional<z.ZodString>;
-  projectId: z.ZodString;
-  status: z.ZodEnum<['failed', 'succeeded']>;
-}
-
-export interface WorkerCompleteProjectProvisioningRequest extends WorkerCompleteProjectProvisioningRequestBase {
-  action: 'provision';
+  status: 'failed' | 'running' | 'succeeded';
 }
 
 export interface WorkerCompleteProjectProvisioningResponse {
@@ -39,7 +27,6 @@ export const workerCompleteProjectProvisioningPathname: string = '/internal/kube
 
 const projectProvisioningTargetSchema: ContractSchema<ProjectProvisioningTarget> = z
   .object({
-    action: z.literal('provision'),
     leaseId: z.string().min(1),
     namespaceId: z.string().min(1),
     projectId: z.string().min(1),
@@ -50,16 +37,14 @@ export const workerClaimProjectProvisioningResponseSchema: ContractSchema<Worker
   .object({ target: projectProvisioningTargetSchema.nullable() })
   .strict();
 
-const projectProvisioningCompletionBase: ProjectProvisioningCompletionSchemaShape = {
-  leaseId: z.string().min(1),
-  message: z.string().min(1).optional(),
-  projectId: z.string().min(1),
-  status: z.enum(['failed', 'succeeded']),
-};
-
 export const workerCompleteProjectProvisioningRequestSchema: ContractSchema<WorkerCompleteProjectProvisioningRequest> =
   z
-    .object({ ...projectProvisioningCompletionBase, action: z.literal('provision') })
+    .object({
+      leaseId: z.string().min(1),
+      message: z.string().min(1).optional(),
+      projectId: z.string().min(1),
+      status: z.enum(['failed', 'running', 'succeeded']),
+    })
     .strict()
     .superRefine((input: WorkerCompleteProjectProvisioningRequest, context: z.RefinementCtx): void => {
       if (input.status === 'failed' && input.message === undefined) {

@@ -79,34 +79,6 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "compartment.fullname" . }}-project-provisioner
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "compartment.labels" . | nindent 4 }}
-rules:
-  - apiGroups: ["batch"]
-    resources: ["jobs"]
-    verbs: ["get", "list", "watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: {{ include "compartment.fullname" . }}-project-provisioner
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "compartment.labels" . | nindent 4 }}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: {{ include "compartment.fullname" . }}-project-provisioner
-subjects:
-  - kind: ServiceAccount
-    name: {{ include "compartment.fullname" . }}-project-provisioner
-    namespace: {{ .Release.Namespace }}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
   name: {{ include "compartment.fullname" . }}-project-provisioning-job
   namespace: {{ include "compartment.projectProvisioningNamespace" . }}
   labels:

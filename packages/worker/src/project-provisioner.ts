@@ -52,14 +52,12 @@ async function provisionClaimedProject(
   logger: Logger,
 ): Promise<void> {
   const completion: WorkerCompleteProjectProvisioningRequest = await executeProjectProvisioning(
+    request,
     runtime,
     config,
     target,
     logger,
   );
   await completeProjectProvisioning(request, completion);
-  logger.info(
-    { action: target.action, projectId: target.projectId, status: completion.status },
-    'Project provisioning completed.',
-  );
+  logger.info({ projectId: target.projectId, status: completion.status }, 'Project provisioning completed.');
 }

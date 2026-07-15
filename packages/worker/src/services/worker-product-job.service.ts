@@ -78,6 +78,7 @@ async function readMountedClaims(runtime: KubeRuntime, intent: ProductJobIntent)
       return {
         bound: (observed?.status as { phase?: string | undefined } | undefined)?.phase === 'Bound',
         claimName: mount.claimName,
+        resourceVersion: observed?.metadata?.resourceVersion ?? null,
         uid: observed?.metadata?.uid ?? null,
       };
     }),

@@ -10,7 +10,8 @@
     "packages/cli/test/support/fake-oidc-server.ts",
     // Docs generation shells through repo-local tsx and passes this runner by string path.
     "scripts/docs/public-docs/run-typescript-export.mjs",
-    // Helm render validation invokes this assertion by string path from render.sh.
+    // Helm render validation invokes these assertions by string path from render.sh.
+    "deploy/chart/compartment/test/assert-operator-docs.mjs",
     "deploy/chart/compartment/test/assert-project-provisioning-rbac.mjs",
     "scripts/dev/run-compartment-cli.mjs",
     "packages/contracts/src/index.browser.ts",

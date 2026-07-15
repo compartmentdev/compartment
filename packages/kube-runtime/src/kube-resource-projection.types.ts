@@ -21,6 +21,7 @@ export interface ResourceVolumeProjection {
 export interface ObservedResourceClaim {
   bound: boolean;
   claimName: string;
+  resourceVersion: string | null;
   uid: string | null;
 }
 

@@ -1,4 +1,4 @@
-import { and, asc, eq, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, lt, or, sql, type SQL } from 'drizzle-orm';
 import { projectKubeProvisioning } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -90,7 +90,7 @@ async function leaseProjectExecution(
       updatedAt: now,
     })
     .where(eq(projectKubeProvisioning.projectId, row.projectId));
-  return { action: 'provision', leaseId, namespaceId: row.projectId, projectId: row.projectId };
+  return { leaseId, namespaceId: row.projectId, projectId: row.projectId };
 }
 
 export async function completeProjectProvisioning(input: CompleteProjectProvisioningInput): Promise<boolean> {
@@ -104,6 +104,9 @@ async function completeProjectProvisioningWithTransaction(
   transaction: DeploymentTransaction,
   input: CompleteProjectProvisioningInput,
 ): Promise<boolean> {
+  if (input.status === 'running') {
+    return await renewProjectProvisioningLease(transaction, input, new Date());
+  }
   const completed: CompletedProjectProvisioningRow | undefined = await persistProjectProvisioningCompletion(
     transaction,
     input,
@@ -120,6 +123,26 @@ async function completeProjectProvisioningWithTransaction(
     );
   }
   return true;
+}
+
+async function renewProjectProvisioningLease(
+  transaction: DeploymentTransaction,
+  input: CompleteProjectProvisioningInput,
+  now: Date,
+): Promise<boolean> {
+  const rows: { projectId: string }[] = await transaction
+    .update(projectKubeProvisioning)
+    .set({ leaseExpiresAt: new Date(now.getTime() + leaseDurationMs), updatedAt: now })
+    .where(
+      and(
+        eq(projectKubeProvisioning.projectId, input.projectId),
+        eq(projectKubeProvisioning.leaseId, input.leaseId),
+        eq(projectKubeProvisioning.state, 'running'),
+        gt(projectKubeProvisioning.leaseExpiresAt, now),
+      ),
+    )
+    .returning({ projectId: projectKubeProvisioning.projectId });
+  return rows.length === 1;
 }
 
 async function persistProjectProvisioningCompletion(
