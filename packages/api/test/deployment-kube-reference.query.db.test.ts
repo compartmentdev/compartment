@@ -540,6 +540,35 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(claimed?.candidate).toMatchObject({ deploymentId: 'dep_kube', state: 'pending' });
   });
 
+  it('does not orphan an active deployment when its recovery rollout exceeds the progress deadline', async (): Promise<void> => {
+    await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_kube',
+      failureMessage: 'active pod missing',
+      observation: 'pending',
+      observedAt: new Date('2026-07-12T10:00:00.000Z'),
+      revision: 0,
+    });
+    const recovery: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_kube',
+        failureMessage: 'Kubernetes rollout exceeded its progress deadline.',
+        observation: 'failed',
+        observedAt: new Date('2026-07-12T10:00:03.000Z'),
+        revision: recovery?.candidate.revision ?? -1,
+      }),
+    ).toBe(true);
+
+    const [deployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_kube'));
+    expect(deployment).toMatchObject({ isActive: true, status: 'succeeded' });
+    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+      candidate: { deploymentId: 'dep_kube', state: 'pending' },
+    });
+  });
+
   it('recovers an active deployment without publishing a second completion event', async (): Promise<void> => {
     await db.insert(deploymentRunEvents).values({
       createdAt: new Date('2026-07-11T10:00:00.000Z'),
@@ -603,6 +632,8 @@ describe('deployment Kubernetes transition persistence', (): void => {
       const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
       expect(claimed?.projectId).toBe('prj_kube');
       await completeProjectProvisioning({
+        action: 'provision',
+        cleanupRequired: false,
         failureMessage: `namespace provisioning attempt ${attempt} failed`,
         leaseId: claimed?.leaseId ?? '',
         projectId: 'prj_kube',
@@ -629,6 +660,25 @@ describe('deployment Kubernetes transition persistence', (): void => {
       expect.objectContaining({ level: 'error', status: 'failed', stepKey: 'provisioning' }),
     ]);
     await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
+
+    await seedCandidate();
+    await prepareDeploymentReconcileReference({
+      deploymentId: 'dep_candidate',
+      deploymentName: 'app-env-kube-svc-kube',
+      id: 'kref_candidate',
+      imageRef: 'repo/kube@sha256:candidate',
+      namespace: 'cpt-prj-kube',
+      networkPolicyNames: [],
+      routeId: 'route_kube',
+      routeSubdomain: 'kube',
+      serviceName: 'app-env-kube-svc-kube',
+    });
+    await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
+    const [futureDeployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_candidate'));
+    const [futureOperation] = await db.select().from(operations).where(eq(operations.id, 'op_candidate'));
+    expect(futureDeployment).toMatchObject({ health: 'unhealthy', status: 'failed' });
+    expect(futureDeployment?.failureMessage).toContain('namespace provisioning attempt 3 failed');
+    expect(futureOperation).toMatchObject({ status: 'failed' });
   });
 
   it('claims a requested stop and accepts the worker acknowledgement', async (): Promise<void> => {

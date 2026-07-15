@@ -16,7 +16,7 @@ rules:
   - apiGroups: ['rbac.authorization.k8s.io']
     resources: ['rolebindings']
     resourceNames: ['compartment-project-bootstrap']
-    verbs: ['delete']
+    verbs: ['get', 'delete']
   - apiGroups: ['rbac.authorization.k8s.io']
     resources: ['clusterroles']
     resourceNames: ['compartment-controller']

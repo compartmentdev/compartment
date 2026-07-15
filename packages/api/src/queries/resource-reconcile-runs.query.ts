@@ -4,10 +4,12 @@ import type { ResourceClaimIdentity, ResourceReconcileIntent } from '@compartmen
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import { environments, projectKubeProvisioning, projectResources, resourceReconcileRuns } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
+import { enforceTerminalProvisioningForResource } from './project-provisioning-terminal.query';
 import type {
   AcknowledgeResourceReconcileRunInput,
   ClaimedResourceReconcileRun,
   CreateResourceReconcileRunInput,
+  ResourceReconcileRunLockRow,
   ResourceReconcileRunState,
 } from './resource-reconcile-runs.query.types';
 
@@ -30,6 +32,7 @@ export async function createResourceReconcileRunWithExecutor(
   executor: ApiDatabaseTransaction,
   input: CreateResourceReconcileRunInput,
 ): Promise<void> {
+  const createdAt: Date = new Date();
   await executor.insert(resourceReconcileRuns).values({
     expectedClaimsJson: JSON.stringify(input.expectedClaims),
     id: input.operationId,
@@ -38,6 +41,7 @@ export async function createResourceReconcileRunWithExecutor(
     phase: input.type === 'bootstrap' ? 'bootstrap-pending' : 'reconcile-pending',
     projectResourceId: input.intent.resourceId,
   });
+  await enforceTerminalProvisioningForResource(executor, input.intent.resourceId, createdAt);
 }
 
 export async function claimResourceReconcileRun(): Promise<ClaimedResourceReconcileRun | null> {
@@ -145,6 +149,23 @@ async function acknowledgeWithTransaction(
   tx: ApiDatabaseTransaction,
   input: AcknowledgeResourceReconcileRunInput,
 ): Promise<void> {
+  const resourceId: string | undefined = await findAcknowledgementResourceId(tx, input);
+  if (resourceId === undefined) {
+    return;
+  }
+  await lockProjectResource(tx, resourceId);
+  const run: typeof resourceReconcileRuns.$inferSelect | undefined = await lockAcknowledgedRun(tx, input);
+  if (run === undefined) {
+    return;
+  }
+  await persistResourceReconcileAcknowledgement(tx, input);
+  await persistCompletedResourceState(tx, run, input);
+}
+
+async function lockAcknowledgedRun(
+  tx: ApiDatabaseTransaction,
+  input: AcknowledgeResourceReconcileRunInput,
+): Promise<typeof resourceReconcileRuns.$inferSelect | undefined> {
   const [run] = await tx
     .select()
     .from(resourceReconcileRuns)
@@ -156,11 +177,33 @@ async function acknowledgeWithTransaction(
       ),
     )
     .for('update');
-  if (run === undefined) {
-    return;
-  }
-  await persistResourceReconcileAcknowledgement(tx, input);
-  await persistCompletedResourceState(tx, run, input);
+  return run;
+}
+
+async function findAcknowledgementResourceId(
+  tx: ApiDatabaseTransaction,
+  input: AcknowledgeResourceReconcileRunInput,
+): Promise<string | undefined> {
+  const [row]: ResourceReconcileRunLockRow[] = await tx
+    .select({ projectResourceId: resourceReconcileRuns.projectResourceId })
+    .from(resourceReconcileRuns)
+    .where(
+      and(
+        eq(resourceReconcileRuns.id, input.operationId),
+        eq(resourceReconcileRuns.leaseId, input.leaseId),
+        eq(resourceReconcileRuns.phase, 'running'),
+      ),
+    )
+    .limit(1);
+  return row?.projectResourceId;
+}
+
+async function lockProjectResource(tx: ApiDatabaseTransaction, resourceId: string): Promise<void> {
+  await tx
+    .select({ id: projectResources.id })
+    .from(projectResources)
+    .where(eq(projectResources.id, resourceId))
+    .for('update');
 }
 
 async function persistCompletedResourceState(

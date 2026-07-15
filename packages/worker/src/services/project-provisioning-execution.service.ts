@@ -1,4 +1,9 @@
-import type { ProjectProvisioningTarget, WorkerCompleteProjectProvisioningRequest } from '@compartment/contracts';
+import type {
+  ProjectProvisioningCleanupTarget,
+  ProjectProvisioningExecutionTarget,
+  ProjectProvisioningTarget,
+  WorkerCompleteProjectProvisioningRequest,
+} from '@compartment/contracts';
 import {
   kubeNamespaceName,
   projectProvisioningAuthorityBundle,
@@ -10,6 +15,7 @@ import {
 } from '@compartment/kube-runtime';
 import type { Logger } from 'pino';
 import type { ProjectProvisionerConfig } from '../project-provisioner.types';
+import type { ProjectProvisioningResult } from './project-provisioning-execution.service.types';
 
 const bootstrapTokenExpirationSeconds: number = 600;
 const provisioningTimeoutMs: number = 5 * 60_000;
@@ -17,24 +23,48 @@ const provisioningTimeoutMs: number = 5 * 60_000;
 export async function executeProjectProvisioning(
   runtime: KubeRuntime,
   config: ProjectProvisionerConfig,
-  target: ProjectProvisioningTarget,
+  target: ProjectProvisioningExecutionTarget,
   logger: Logger,
 ): Promise<WorkerCompleteProjectProvisioningRequest> {
   const authority: ProjectProvisioningAuthorityInput = projectProvisioningAuthority(config, target);
   let result: KubeJobResult | null = null;
-  let completion: WorkerCompleteProjectProvisioningRequest;
+  let completion: ProjectProvisioningResult;
   try {
     await runtime.apply(projectProvisioningAuthorityBundle(authority));
     result = await runtime.runJob(projectProvisioningJob(config, target, authority));
-    completion = projectProvisioningCompletion(target, result);
+    completion = projectProvisioningCompletion(result);
   } catch (error) {
-    completion = failedProjectProvisioningCompletion(
-      target,
-      readErrorMessage(typeof error === 'object' ? error : null),
-    );
+    completion = failedProjectProvisioningCompletion(readErrorMessage(typeof error === 'object' ? error : null));
   }
-  await cleanupProjectProvisioning(runtime, authority, result, logger);
-  return completion;
+  const cleanupRequired: boolean = await cleanupProjectProvisioning(runtime, authority, result, logger);
+  return {
+    ...completion,
+    action: 'provision',
+    cleanupRequired,
+    leaseId: target.leaseId,
+    projectId: target.projectId,
+  };
+}
+
+export async function executeProjectProvisioningCleanup(
+  runtime: KubeRuntime,
+  config: ProjectProvisionerConfig,
+  target: ProjectProvisioningCleanupTarget,
+  logger: Logger,
+): Promise<WorkerCompleteProjectProvisioningRequest> {
+  try {
+    await runtime.apply(projectProvisioningAuthorityCleanup(projectProvisioningAuthority(config, target)));
+    return { action: 'cleanup', leaseId: target.leaseId, projectId: target.projectId, status: 'succeeded' };
+  } catch (error) {
+    logger.warn({ err: error }, 'Project provisioning authority cleanup retry failed.');
+    return {
+      action: 'cleanup',
+      leaseId: target.leaseId,
+      message: readErrorMessage(typeof error === 'object' ? error : null),
+      projectId: target.projectId,
+      status: 'failed',
+    };
+  }
 }
 
 async function cleanupProjectProvisioning(
@@ -42,23 +72,30 @@ async function cleanupProjectProvisioning(
   authority: ProjectProvisioningAuthorityInput,
   result: KubeJobResult | null,
   logger: Logger,
-): Promise<void> {
+): Promise<boolean> {
   if (result !== null) {
     const jobResult: KubeJobResult = result;
     await logCleanupFailure(logger, 'Project provisioning Job finalization failed.', async (): Promise<void> => {
       await jobResult.finalize();
     });
   }
-  await logCleanupFailure(logger, 'Project provisioning authority cleanup failed.', async (): Promise<void> => {
-    await runtime.apply(projectProvisioningAuthorityCleanup(authority));
-  });
+  const cleaned: boolean = await logCleanupFailure(
+    logger,
+    'Project provisioning authority cleanup failed.',
+    async (): Promise<void> => {
+      await runtime.apply(projectProvisioningAuthorityCleanup(authority));
+    },
+  );
+  return !cleaned;
 }
 
-async function logCleanupFailure(logger: Logger, message: string, cleanup: () => Promise<void>): Promise<void> {
+async function logCleanupFailure(logger: Logger, message: string, cleanup: () => Promise<void>): Promise<boolean> {
   try {
     await cleanup();
+    return true;
   } catch (error) {
     logger.warn({ err: error }, message);
+    return false;
   }
 }
 
@@ -66,36 +103,23 @@ function readErrorMessage(error: object | null): string {
   return error instanceof Error ? error.message : 'Project provisioning failed.';
 }
 
-function failedProjectProvisioningCompletion(
-  target: ProjectProvisioningTarget,
-  message: string,
-): WorkerCompleteProjectProvisioningRequest {
-  return {
-    leaseId: target.leaseId,
-    message,
-    projectId: target.projectId,
-    status: 'failed',
-  };
+function failedProjectProvisioningCompletion(message: string): ProjectProvisioningResult {
+  return { message, status: 'failed' };
 }
 
-function projectProvisioningCompletion(
-  target: ProjectProvisioningTarget,
-  result: KubeJobResult,
-): WorkerCompleteProjectProvisioningRequest {
+function projectProvisioningCompletion(result: KubeJobResult): ProjectProvisioningResult {
   if (result.status === 'succeeded') {
-    return { leaseId: target.leaseId, projectId: target.projectId, status: 'succeeded' };
+    return { status: 'succeeded' };
   }
   return {
-    leaseId: target.leaseId,
     message: result.logs.trim() !== '' ? result.logs.trim() : `Project provisioning Job ${result.status}.`,
-    projectId: target.projectId,
     status: 'failed',
   };
 }
 
 function projectProvisioningJob(
   config: ProjectProvisionerConfig,
-  target: ProjectProvisioningTarget,
+  target: ProjectProvisioningExecutionTarget,
   authority: ProjectProvisioningAuthorityInput,
 ): KubeJobSpec {
   return {

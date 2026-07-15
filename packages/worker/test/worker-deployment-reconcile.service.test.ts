@@ -95,6 +95,30 @@ describe('deployment reconciliation', (): void => {
     );
   });
 
+  it('restarts a deadline-exceeded active Deployment without terminally failing its recovery claim', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock; delete: Mock } = activeRuntimeStub(false, true) as never;
+    runtime.delete = vi.fn(async (): Promise<void> => await Promise.resolve());
+    const candidate: DeploymentReconcileProjection = projection(null);
+    const pendingTarget: DeploymentReconcileTarget = {
+      ...target(candidate),
+      active: candidate,
+      state: 'pending',
+    };
+
+    await reconcileDeploymentTarget(requester(), runtime, pendingTarget);
+
+    expect(runtime.delete).toHaveBeenCalledWith([expect.objectContaining({ kind: 'Deployment' })]);
+    expect(runtime.apply).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
+    expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'pending', revision: 0 }),
+    );
+    expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'failed' }),
+    );
+  });
+
   it('keeps a pending rollout alive for the configured readiness timeout', async (): Promise<void> => {
     const runtime: KubeRuntime & { apply: Mock } = pendingRuntimeStub(false);
     const pendingTarget: DeploymentReconcileTarget = {

@@ -76,15 +76,16 @@ describe('worker resource reconcile lifecycle', (): void => {
     const observation: TestObservation = new TestObservation('uid-original', false, false, false);
     observation.addClaim(backupClaimName, 'uid-backup', false);
     const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
-      const deployment: KubeManifest | undefined = bundle.objects.find(
+      const applied: KubeManifest[] = withAppliedDeploymentIdentity(bundle.objects, 2);
+      const deployment: KubeManifest | undefined = applied.find(
         (object: KubeManifest): boolean => object.kind === 'Deployment',
       );
       if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 1) {
         observation.bindClaims();
-        observation.addReadyDeployment(deployment);
+        observation.addReadyDeployment(deployment, 2);
         observation.addPod('resource-first-pod');
       }
-      return await Promise.resolve(bundle.objects);
+      return await Promise.resolve(applied);
     });
 
     await executeResourceReconcile(requester(), runtime(apply, observation), claim(null));
@@ -112,15 +113,63 @@ describe('worker resource reconcile lifecycle', (): void => {
   it('uses the shared observation snapshot without polling Kubernetes reads', async (): Promise<void> => {
     const observation: TestObservation = new TestObservation('uid-original', false);
     observation.addClaim(backupClaimName, 'uid-backup', false);
-    const apply: Mock = vi.fn(
-      async (bundle: ApplyBundle): Promise<KubeManifest[]> => await Promise.resolve(bundle.objects),
-    );
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      const applied: KubeManifest[] = withAppliedDeploymentIdentity(bundle.objects, 2);
+      const deployment: KubeManifest | undefined = applied.find(
+        (object: KubeManifest): boolean => object.kind === 'Deployment',
+      );
+      if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 1) {
+        observation.addReadyDeployment(deployment, 2);
+      }
+      return await Promise.resolve(applied);
+    });
     const read: Mock = vi.fn();
     const kubeRuntime: KubeRuntime = runtime(apply, observation, read);
 
     await executeResourceReconcile(requester(), kubeRuntime, claim(null));
 
     expect(read).not.toHaveBeenCalled();
+    expect(mocks.acknowledge).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 'succeeded' }),
+    );
+  });
+
+  it('waits for the applied Deployment generation instead of accepting stale cached readiness', async (): Promise<void> => {
+    const observation: TestObservation = new TestObservation('uid-original', true);
+    observation.addClaim(backupClaimName, 'uid-backup', false);
+    let appliedDeployment: KubeManifest | null = null;
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      const deployment: KubeManifest | undefined = bundle.objects.find(
+        (object: KubeManifest): boolean => object.kind === 'Deployment',
+      );
+      if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 0) {
+        observation.removePods();
+        return await Promise.resolve(bundle.objects);
+      }
+      const applied: KubeManifest[] = bundle.objects.map((object: KubeManifest): KubeManifest => {
+        if (object.kind !== 'Deployment') {
+          return object;
+        }
+        return { ...object, metadata: { ...object.metadata, generation: 2, uid: 'deployment-uid' } };
+      });
+      appliedDeployment = applied.find((object: KubeManifest): boolean => object.kind === 'Deployment') ?? null;
+      return await Promise.resolve(applied);
+    });
+
+    const execution: Promise<void> = executeResourceReconcile(requester(), runtime(apply, observation), claim(null));
+    await vi.waitFor((): void => {
+      expect(apply).toHaveBeenCalledTimes(2);
+    });
+    expect(mocks.acknowledge).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 'succeeded' }),
+    );
+
+    expect(appliedDeployment).not.toBeNull();
+    observation.addReadyDeployment(appliedDeployment!, 2);
+    await execution;
+
     expect(mocks.acknowledge).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({ status: 'succeeded' }),
@@ -143,8 +192,17 @@ describe('worker resource reconcile lifecycle', (): void => {
       if (apply.mock.calls.length === 2) {
         throw new Error('new image failed');
       }
-      observation.addPod('resource-rollback-pod');
-      return await Promise.resolve(bundle.objects);
+      const applied: KubeManifest[] = withAppliedDeploymentIdentity(bundle.objects, 2);
+      if (apply.mock.calls.length === 4) {
+        const rollbackDeployment: KubeManifest | undefined = applied.find(
+          (object: KubeManifest): boolean => object.kind === 'Deployment',
+        );
+        if (rollbackDeployment !== undefined) {
+          observation.addReadyDeployment(rollbackDeployment, 2);
+        }
+        observation.addPod('resource-rollback-pod');
+      }
+      return await Promise.resolve(applied);
     });
     await expect(executeResourceReconcile(requester(), runtime(apply, observation), claim(null))).rejects.toThrow(
       'new image failed',
@@ -210,10 +268,34 @@ describe('worker resource reconcile lifecycle', (): void => {
       expect.objectContaining({ status: 'succeeded' }),
     );
   });
+
+  it('refuses to delete a replacement PVC created while the workload terminates', async (): Promise<void> => {
+    const observation: TestObservation = new TestObservation('uid-original', true);
+    observation.addClaim(backupClaimName, 'uid-backup', false);
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      observation.removePods();
+      observation.addClaim(dataClaimName, 'uid-replacement', true);
+      return await Promise.resolve(bundle.objects);
+    });
+    const remove: Mock = vi.fn();
+
+    await expect(
+      executeResourceReconcile(requester(), runtime(apply, observation, undefined, remove), deleteClaim()),
+    ).rejects.toThrow('UID changed');
+
+    expect(remove).not.toHaveBeenCalled();
+    expect(mocks.acknowledge).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 'failed' }),
+    );
+  });
 });
 
 class TestObservation implements KubeObservation {
   public readonly cache: Map<string, KubeObservedManifest> = new Map<string, KubeObservedManifest>();
+  private readonly listeners: Set<(event: KubeObservationEvent) => Promise<void> | void> = new Set<
+    (event: KubeObservationEvent) => Promise<void> | void
+  >();
   public constructor(uid: string, withPod: boolean, bound: boolean = true, withDeployment: boolean = true) {
     this.cache.set(`persistentvolumeclaims/ns/${dataClaimName}`, {
       apiVersion: 'v1',
@@ -251,6 +333,7 @@ class TestObservation implements KubeObservation {
       status: {
         availableReplicas: 1,
         conditions: [{ status: 'True', type: 'Available' }],
+        observedGeneration: 1,
         readyReplicas: 1,
       },
     });
@@ -282,8 +365,10 @@ class TestObservation implements KubeObservation {
     return { healthy: true, lastConnectedAt: new Date(), lastErrorAt: null };
   }
   public onEvent(listener: (event: KubeObservationEvent) => Promise<void> | void): () => void {
-    void listener;
-    return (): void => undefined;
+    this.listeners.add(listener);
+    return (): void => {
+      this.listeners.delete(listener);
+    };
   }
   public async stop(): Promise<void> {
     await Promise.resolve();
@@ -294,20 +379,25 @@ class TestObservation implements KubeObservation {
   public addPod(name: string): void {
     this.cache.set(`pods/ns/${name}`, { metadata: { name } } as KubeObservedManifest);
   }
-  public addReadyDeployment(deployment: KubeManifest): void {
+  public addReadyDeployment(deployment: KubeManifest, observedGeneration?: number): void {
     if (deployment.kind !== 'Deployment') {
       throw new Error('Expected a Deployment manifest.');
     }
-    this.cache.set(`deployments/ns/${resourceName}`, {
+    const observed: KubeObservedManifest = {
       apiVersion: 'apps/v1',
       kind: 'Deployment',
-      metadata: { name: resourceName },
+      metadata: { ...deployment.metadata, name: resourceName },
       spec: deployment.spec,
       status: {
         availableReplicas: 1,
         conditions: [{ status: 'True', type: 'Available' }],
+        ...(observedGeneration === undefined ? {} : { observedGeneration }),
         readyReplicas: 1,
       },
+    };
+    this.cache.set(`deployments/ns/${resourceName}`, observed);
+    this.listeners.forEach((listener: (event: KubeObservationEvent) => Promise<void> | void): void => {
+      void listener({ object: observed, observedAt: new Date(), resource: 'deployments', type: 'update' });
     });
   }
   public addClaim(name: string, uid: string, bound: boolean): void {
@@ -402,4 +492,13 @@ function deleteClaim(): WorkerClaimResourceReconcileResponse {
     ...claimed,
     intent: claimed.intent === null ? null : { ...claimed.intent, deleteData: true, operation: 'delete', replicas: 0 },
   };
+}
+
+function withAppliedDeploymentIdentity(objects: KubeManifest[], generation: number): KubeManifest[] {
+  return objects.map(
+    (object: KubeManifest): KubeManifest =>
+      object.kind === 'Deployment'
+        ? { ...object, metadata: { ...object.metadata, generation, uid: 'deployment-uid' } }
+        : object,
+  );
 }

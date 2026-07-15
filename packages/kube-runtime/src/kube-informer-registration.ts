@@ -24,16 +24,16 @@ export class RegisteredInformer {
     private readonly selector: string,
   ) {}
 
-  public createInformer(): Informer<KubernetesObject> {
+  public createInformer(onInitialList: () => void = (): void => undefined): Informer<KubernetesObject> {
     return createKubeInformer(
       this.kubeConfig,
       informerPath(this.definition, this.namespace),
-      async (): Promise<KubernetesListObject<KubernetesObject>> => await this.listObjects(),
+      async (): Promise<KubernetesListObject<KubernetesObject>> => await this.listObjects(onInitialList),
       this.selector,
     );
   }
 
-  private async listObjects(): Promise<KubernetesListObject<KubernetesObject>> {
+  private async listObjects(onInitialList: () => void): Promise<KubernetesListObject<KubernetesObject>> {
     const listed: KubernetesListObject<KubernetesObject> = await this.objectApi.list(
       this.definition.apiVersion,
       this.definition.kind,
@@ -44,7 +44,7 @@ export class RegisteredInformer {
       undefined,
       this.selector,
     );
-    return {
+    const normalized: KubernetesListObject<KubernetesObject> = {
       ...listed,
       items: listed.items.map(
         (object: KubernetesObject): KubernetesObject => ({
@@ -54,6 +54,8 @@ export class RegisteredInformer {
         }),
       ),
     };
+    onInitialList();
+    return normalized;
   }
 }
 

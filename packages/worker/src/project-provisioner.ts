@@ -10,7 +10,10 @@ import {
 import pino, { type Logger } from 'pino';
 import { readProjectProvisionerConfig } from './project-provisioner-config';
 import type { ProjectProvisionerConfig } from './project-provisioner.types';
-import { executeProjectProvisioning } from './services/project-provisioning-execution.service';
+import {
+  executeProjectProvisioning,
+  executeProjectProvisioningCleanup,
+} from './services/project-provisioning-execution.service';
 
 export async function runProjectProvisioner(): Promise<void> {
   const config: ProjectProvisionerConfig = readProjectProvisionerConfig();
@@ -51,12 +54,13 @@ async function provisionClaimedProject(
   target: ProjectProvisioningTarget,
   logger: Logger,
 ): Promise<void> {
-  const completion: WorkerCompleteProjectProvisioningRequest = await executeProjectProvisioning(
-    runtime,
-    config,
-    target,
-    logger,
-  );
+  const completion: WorkerCompleteProjectProvisioningRequest =
+    target.action === 'cleanup'
+      ? await executeProjectProvisioningCleanup(runtime, config, target, logger)
+      : await executeProjectProvisioning(runtime, config, target, logger);
   await completeProjectProvisioning(request, completion);
-  logger.info({ projectId: target.projectId, status: completion.status }, 'Project provisioning completed.');
+  logger.info(
+    { action: target.action, projectId: target.projectId, status: completion.status },
+    'Project provisioning completed.',
+  );
 }

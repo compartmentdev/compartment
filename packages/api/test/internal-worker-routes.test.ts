@@ -182,7 +182,13 @@ describe('internal worker routes', (): void => {
           'content-type': 'application/json',
         },
         method: 'POST',
-        payload: { leaseId: 'kpl_123', projectId: 'prj_123', status: 'succeeded' },
+        payload: {
+          action: 'provision',
+          cleanupRequired: false,
+          leaseId: 'kpl_123',
+          projectId: 'prj_123',
+          status: 'succeeded',
+        },
         timeoutMs: 1000,
         url: workerCompleteProjectProvisioningPathname,
       });
@@ -190,6 +196,8 @@ describe('internal worker routes', (): void => {
       expect(response.statusCode).toBe(200);
       expect(workerCompleteProjectProvisioningResponseSchema.parse(response.json())).toEqual({ applied: true });
       expect(mocks.acknowledgeProjectProvisioning).toHaveBeenCalledWith({
+        action: 'provision',
+        cleanupRequired: false,
         leaseId: 'kpl_123',
         projectId: 'prj_123',
         status: 'succeeded',

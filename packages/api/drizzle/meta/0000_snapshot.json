@@ -4311,6 +4311,19 @@
           "notNull": true,
           "default": 0
         },
+        "cleanup_state": {
+          "name": "cleanup_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'succeeded'"
+        },
+        "cleanup_failure_message": {
+          "name": "cleanup_failure_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4332,6 +4345,27 @@
           "columns": [
             {
               "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lease_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "project_kube_provisioning_cleanup_state_lease_idx": {
+          "name": "project_kube_provisioning_cleanup_state_lease_idx",
+          "columns": [
+            {
+              "expression": "cleanup_state",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

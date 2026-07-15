@@ -131,13 +131,24 @@ function resourceDeploymentFreshAndReady(
   const desiredReplicas: number | undefined = desired.spec?.replicas;
   return (
     desiredReplicas !== undefined &&
-    generationIsCurrent(observed.metadata?.generation, status.observedGeneration) &&
+    observed.metadata?.uid === desired.metadata?.uid &&
+    generationIsCurrent(observed.metadata?.generation, status.observedGeneration, desired.metadata?.generation) &&
     (status.availableReplicas ?? 0) >= desiredReplicas
   );
 }
 
-function generationIsCurrent(generation: number | undefined, observedGeneration: number | undefined): boolean {
-  return generation === undefined || observedGeneration === undefined || observedGeneration >= generation;
+function generationIsCurrent(
+  generation: number | undefined,
+  observedGeneration: number | undefined,
+  desiredGeneration: number | undefined,
+): boolean {
+  return (
+    generation !== undefined &&
+    observedGeneration !== undefined &&
+    desiredGeneration !== undefined &&
+    generation >= desiredGeneration &&
+    observedGeneration >= desiredGeneration
+  );
 }
 
 export async function waitUntil<T>(observation: KubeObservation, read: () => T | null): Promise<T> {

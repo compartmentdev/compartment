@@ -522,6 +522,8 @@ CREATE TABLE "project_kube_provisioning" (
 	"lease_expires_at" timestamp with time zone,
 	"failure_message" text,
 	"attempts" integer DEFAULT 0 NOT NULL,
+	"cleanup_state" text DEFAULT 'succeeded' NOT NULL,
+	"cleanup_failure_message" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -1029,6 +1031,7 @@ CREATE INDEX "deployment_product_logs_captured_at_idx" ON "deployment_product_lo
 CREATE UNIQUE INDEX "product_job_runs_class_identity_idx" ON "product_job_runs" USING btree ("job_class","identity_id");--> statement-breakpoint
 CREATE INDEX "product_job_runs_status_created_at_idx" ON "product_job_runs" USING btree ("status","created_at");--> statement-breakpoint
 CREATE INDEX "project_kube_provisioning_state_lease_idx" ON "project_kube_provisioning" USING btree ("state","lease_expires_at");--> statement-breakpoint
+CREATE INDEX "project_kube_provisioning_cleanup_state_lease_idx" ON "project_kube_provisioning" USING btree ("cleanup_state","lease_expires_at");--> statement-breakpoint
 CREATE INDEX "resource_backups_resource_created_at_idx" ON "resource_backups" USING btree ("project_resource_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "git_provider_bootstrap_states_state_nonce_unique" ON "git_provider_bootstrap_states" USING btree ("state_nonce");--> statement-breakpoint
 CREATE UNIQUE INDEX "git_provider_registrations_active_owner_unique" ON "git_provider_registrations" USING btree ("provider_type","provider_host","repository_owner") WHERE "git_provider_registrations"."status" = 'active';--> statement-breakpoint

@@ -1,7 +1,8 @@
 import { randomInt } from 'node:crypto';
-import type { Informer, KubeConfig, KubernetesObject, KubernetesObjectApi } from '@kubernetes/client-node';
+import type { KubeConfig, KubernetesObject, KubernetesObjectApi } from '@kubernetes/client-node';
 import { calculateRestartDelay } from './kube-backoff';
 import { createRegisteredInformers, type RegisteredInformer } from './kube-informer-registration';
+import type { InformerState, KubeInformerError } from './kube-observation.types';
 import type {
   KubeObservedManifest,
   KubeObservation,
@@ -12,21 +13,6 @@ import type {
   KubeObservedResource,
   ObserveLabels,
 } from './kube-runtime.types';
-
-interface InformerState {
-  attempt: number;
-  informer: Informer<KubernetesObject>;
-  lastConnectedAt: Date | null;
-  lastErrorAt: Date | null;
-  onSynchronized: (() => void) | null;
-  registration: RegisteredInformer;
-  restartTimer: NodeJS.Timeout | null;
-}
-
-interface KubeInformerError extends Error {
-  code?: number | undefined;
-  statusCode?: number | undefined;
-}
 
 class AbortWait {
   public readonly promise: Promise<never>;
@@ -103,7 +89,10 @@ class RuntimeObservation implements KubeObservation {
   }
 
   private async startInformer(registration: RegisteredInformer): Promise<void> {
-    const state: InformerState = newInformerState(registration);
+    const recordInitialList: () => void = (): void => {
+      state.initialListSucceeded = true;
+    };
+    const state: InformerState = newInformerState(registration, recordInitialList);
     this.states.push(state);
     this.registerCallbacks(state);
     await this.synchronize(state);
@@ -130,7 +119,11 @@ class RuntimeObservation implements KubeObservation {
     }
     void state.informer
       .start()
-      .then((): void => this.markSynchronized(state))
+      .then((): void => {
+        if (state.initialListSucceeded) {
+          this.markSynchronized(state);
+        }
+      })
       .catch((error: Error): void => this.scheduleRestart(state, error));
   }
 
@@ -169,7 +162,10 @@ class RuntimeObservation implements KubeObservation {
       await state.informer.stop();
       const resource: KubeObservedResource = state.registration.definition.resource;
       this.clearResourceCache(resource);
-      state.informer = state.registration.createInformer();
+      state.initialListSucceeded = false;
+      state.informer = state.registration.createInformer((): void => {
+        state.initialListSucceeded = true;
+      });
       this.registerCallbacks(state);
       await this.synchronize(state);
       this.dispatchSafely({ observedAt: new Date(), resource, type: 'relist' });
@@ -252,10 +248,11 @@ async function waitForStartup(startup: Promise<void[]>, signal?: AbortSignal): P
   }
 }
 
-function newInformerState(registration: RegisteredInformer): InformerState {
+function newInformerState(registration: RegisteredInformer, onInitialList: () => void): InformerState {
   return {
     attempt: 0,
-    informer: registration.createInformer(),
+    informer: registration.createInformer(onInitialList),
+    initialListSucceeded: false,
     lastConnectedAt: null,
     lastErrorAt: null,
     onSynchronized: null,

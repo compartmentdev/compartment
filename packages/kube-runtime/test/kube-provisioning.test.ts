@@ -202,7 +202,7 @@ describe('project namespace bootstrap provisioning', (): void => {
           rule.resources.includes('rolebindings') &&
           rule.resourceNames?.includes('compartment-project-bootstrap') === true,
       ),
-    ).toMatchObject({ verbs: ['delete'] });
+    ).toMatchObject({ verbs: ['get', 'delete'] });
     expect(rules.some((rule: RbacRule): boolean => rule.verbs.includes('escalate'))).toBe(false);
   });
 

@@ -214,8 +214,8 @@ async function applyManagedResourceState(
   const observedClaims: ObservedResourceClaim[] = readLiveClaims(observation, row);
   assertResourceClaimOwnership(expectedClaims, observedClaims);
   await scaleDownAndAwaitTermination(runtime, observation, row);
-  await runtime.apply({ objects: manifests });
-  await waitForFreshResourceDeployment(observation, manifests);
+  const applied: KubeManifest[] = await runtime.apply({ objects: manifests });
+  await waitForFreshResourceDeployment(observation, applied);
   assertFinalClaimState(expectedClaims, readLiveClaims(observation, row), row);
 }
 

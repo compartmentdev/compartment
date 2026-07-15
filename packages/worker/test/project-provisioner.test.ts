@@ -1,4 +1,7 @@
-import type { ProjectProvisioningTarget, WorkerCompleteProjectProvisioningRequest } from '@compartment/contracts';
+import type {
+  ProjectProvisioningExecutionTarget,
+  WorkerCompleteProjectProvisioningRequest,
+} from '@compartment/contracts';
 import {
   kubeNamespaceName,
   KubeRuntime,
@@ -9,7 +12,10 @@ import {
 import pino, { type Logger } from 'pino';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProjectProvisionerConfig } from '../src/project-provisioner.types';
-import { executeProjectProvisioning } from '../src/services/project-provisioning-execution.service';
+import {
+  executeProjectProvisioning,
+  executeProjectProvisioningCleanup,
+} from '../src/services/project-provisioning-execution.service';
 
 describe('project provisioning execution', (): void => {
   it.each(['finalize', 'authority-cleanup'] as const)(
@@ -40,7 +46,13 @@ describe('project provisioning execution', (): void => {
         logger,
       );
 
-      expect(completion).toEqual({ leaseId: 'lease_1', projectId: 'prj_1', status: 'succeeded' });
+      expect(completion).toEqual({
+        action: 'provision',
+        cleanupRequired: failure === 'authority-cleanup',
+        leaseId: 'lease_1',
+        projectId: 'prj_1',
+        status: 'succeeded',
+      });
       expect(apply).toHaveBeenCalledTimes(2);
       expect(logger.warn).toHaveBeenCalledOnce();
       const job: KubeJobSpec = runJob.mock.calls[0]?.[0] as KubeJobSpec;
@@ -62,6 +74,8 @@ describe('project provisioning execution', (): void => {
     await expect(
       executeProjectProvisioning(runtimeStub(apply, runJob), config(), target, loggerStub()),
     ).resolves.toEqual({
+      action: 'provision',
+      cleanupRequired: false,
       leaseId: 'lease_1',
       message: 'authority apply failed',
       projectId: 'prj_1',
@@ -70,9 +84,30 @@ describe('project provisioning execution', (): void => {
     expect(runJob).not.toHaveBeenCalled();
     expect(apply).toHaveBeenCalledTimes(2);
   });
+
+  it('executes cleanup-only debt without rerunning the provisioning Job', async (): Promise<void> => {
+    const apply: Mock = vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([]));
+    const runJob: Mock = vi.fn();
+
+    await expect(
+      executeProjectProvisioningCleanup(
+        runtimeStub(apply, runJob),
+        config(),
+        { ...target, action: 'cleanup' },
+        loggerStub(),
+      ),
+    ).resolves.toEqual({ action: 'cleanup', leaseId: 'lease_1', projectId: 'prj_1', status: 'succeeded' });
+    expect(apply).toHaveBeenCalledOnce();
+    expect(runJob).not.toHaveBeenCalled();
+  });
 });
 
-const target: ProjectProvisioningTarget = { leaseId: 'lease_1', namespaceId: 'prj_1', projectId: 'prj_1' };
+const target: ProjectProvisioningExecutionTarget = {
+  action: 'provision',
+  leaseId: 'lease_1',
+  namespaceId: 'prj_1',
+  projectId: 'prj_1',
+};
 const podCidr: string = ['10', '42', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
 function config(): ProjectProvisionerConfig {

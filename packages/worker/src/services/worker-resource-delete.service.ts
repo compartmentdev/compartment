@@ -39,6 +39,7 @@ async function stopAndDeleteManagedManifests(
   const observedClaims: ObservedResourceClaim[] = readLiveClaims(observation, row);
   assertResourceClaimOwnership(claimed.expectedClaims, observedClaims);
   await scaleDownAndAwaitTermination(runtime, observation, row);
+  assertResourceClaimOwnership(claimed.expectedClaims, readLiveClaims(observation, row));
   await runtime.delete(projectResourceManifests(row, 0));
   if (row.deleteData) {
     await runtime.delete(projectResourceBootstrapClaims(row));

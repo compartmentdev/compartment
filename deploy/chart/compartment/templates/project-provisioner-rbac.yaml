@@ -66,7 +66,7 @@ rules:
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["rolebindings"]
     resourceNames: ["compartment-project-bootstrap"]
-    verbs: ["delete"]
+    verbs: ["get", "delete"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterroles"]
     resourceNames: ["compartment-controller"]
@@ -195,14 +195,21 @@ spec:
         operations: ["CREATE", "UPDATE", "DELETE"]
         resources: ["rolebindings"]
         scope: Namespaced
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["clusterrolebindings"]
+        scope: Cluster
   matchConditions:
-    - name: bootstrap-identity
-      expression: {{ printf "request.userInfo.username.startsWith('system:serviceaccount:%s:cpt-')" (include "compartment.projectProvisioningNamespace" .) | quote }}
+    - name: provisioning-identity
+      expression: {{ printf "request.userInfo.username.startsWith('system:serviceaccount:%s:cpt-') || request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner'" (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
   validations:
-    - expression: {{ printf "request.resource.resource == 'namespaces' ? request.userInfo.username == 'system:serviceaccount:%s:' + object.metadata.name : request.userInfo.username == 'system:serviceaccount:%s:' + request.namespace" (include "compartment.projectProvisioningNamespace" .) (include "compartment.projectProvisioningNamespace" .) | quote }}
+    - expression: {{ printf "request.resource.resource != 'namespaces' || request.userInfo.username == 'system:serviceaccount:%s:' + object.metadata.name" (include "compartment.projectProvisioningNamespace" .) | quote }}
       message: Project bootstrap authority is restricted to its encoded target namespace.
-    - expression: "request.resource.resource != 'rolebindings' || (request.operation == 'DELETE' ? request.name == 'compartment-project-bootstrap' : object.metadata.name in ['compartment-project-bootstrap', 'compartment-controller'] && object.roleRef.apiGroup == 'rbac.authorization.k8s.io' && object.roleRef.kind == 'ClusterRole' && object.roleRef.name == 'compartment-controller')"
+    - expression: {{ printf "request.resource.resource != 'rolebindings' || (request.userInfo.username.startsWith('system:serviceaccount:%s:cpt-') && request.userInfo.username == 'system:serviceaccount:%s:' + request.namespace && (request.operation == 'DELETE' ? request.name == 'compartment-project-bootstrap' : object.roleRef.apiGroup == 'rbac.authorization.k8s.io' && object.roleRef.kind == 'ClusterRole' && object.roleRef.name == 'compartment-controller' && (object.metadata.name == 'compartment-project-bootstrap' ? object.subjects.size() == 2 && object.subjects.exists(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && request.userInfo.username == 'system:serviceaccount:' + subject.namespace + ':' + subject.name) && object.subjects.exists(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && subject.name == '%s-worker') : object.metadata.name == 'compartment-controller' && object.subjects.size() == 1 && object.subjects.all(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && subject.name == '%s-worker'))))" (include "compartment.projectProvisioningNamespace" .) (include "compartment.projectProvisioningNamespace" .) (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
       message: Project bootstrap authority may manage only canonical controller RoleBindings.
+    - expression: {{ printf "request.resource.resource != 'clusterrolebindings' || (request.operation == 'DELETE' ? request.name == 'compartment-project-bootstrap' : request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner' && object.metadata.name == 'compartment-project-bootstrap' && object.roleRef.apiGroup == 'rbac.authorization.k8s.io' && object.roleRef.kind == 'ClusterRole' && object.roleRef.name == 'compartment-project-bootstrap' && object.subjects.size() == 1 && object.subjects.all(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && subject.name.startsWith('cpt-')))" .Release.Namespace (include "compartment.fullname" .) (include "compartment.projectProvisioningNamespace" .) | quote }}
+      message: Project provisioner may manage only the canonical short-lived bootstrap ClusterRoleBinding.
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

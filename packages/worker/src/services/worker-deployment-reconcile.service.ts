@@ -120,6 +120,9 @@ async function handleMissingPendingDeployment(
     await runtime.apply({ objects: projectApplicationManifests(target.candidate) });
     return;
   }
+  if (await restartActiveCandidate(request, runtime, target)) {
+    return;
+  }
   await recoverFailedRollout(runtime, target);
   await persistObservation(request, target, 'failed', 'Kubernetes rollout timed out.');
 }
@@ -137,8 +140,25 @@ async function handleRolloutStatus(
   if (status === 'progressing') {
     return;
   }
+  if (await restartActiveCandidate(request, runtime, target)) {
+    return;
+  }
   await recoverFailedRollout(runtime, target);
   await persistObservation(request, target, 'failed', rolloutFailureMessage(status));
+}
+
+async function restartActiveCandidate(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  target: DeploymentReconcileTarget,
+): Promise<boolean> {
+  if (target.active?.deploymentId !== target.candidate.deploymentId) {
+    return false;
+  }
+  await runtime.delete([deploymentManifest(target.candidate)]);
+  await runtime.apply({ force: true, objects: projectApplicationManifests(target.candidate) });
+  await persistObservation(request, target, 'pending', 'Restarting an unhealthy active Kubernetes Deployment.');
+  return true;
 }
 
 async function recoverFailedRollout(runtime: KubeRuntime, target: DeploymentReconcileTarget): Promise<void> {

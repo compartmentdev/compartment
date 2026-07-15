@@ -73,6 +73,11 @@ async function persistFailure(
   if (state === 'active') {
     return false;
   }
+  const candidate: SupersedeCandidateContext | undefined = await findCandidateContext(tx, input.deploymentId);
+  if (candidate?.isActive === true) {
+    await updateReference(tx, input, 'pending');
+    return true;
+  }
   await markDeploymentFailed(tx, input);
   await markOperationFailed(tx, input);
   await updateReference(tx, input, 'pending');

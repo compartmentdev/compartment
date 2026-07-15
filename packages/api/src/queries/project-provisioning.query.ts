@@ -4,7 +4,12 @@ import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import { projectProvisioningAttemptLimit, projectProvisioningTerminalFailure } from './project-provisioning-policy';
-import type { CompleteProjectProvisioningInput, ProjectProvisioningClaimRow } from './project-provisioning.query.types';
+import type {
+  CompleteProjectProvisioningCleanupInput,
+  CompleteProjectProvisioningExecutionInput,
+  CompleteProjectProvisioningInput,
+  ProjectProvisioningClaimRow,
+} from './project-provisioning.query.types';
 import {
   deadLetterExpiredProjectProvisioning,
   failTerminalProjectProvisioning,
@@ -39,7 +44,7 @@ async function claimPendingProjectProvisioningWithTransaction(
   if (row === undefined) {
     return null;
   }
-  return await leaseProjectProvisioning(transaction, row.projectId, now);
+  return await leaseProjectProvisioning(transaction, row, now);
 }
 
 async function selectClaimableRow(
@@ -51,7 +56,7 @@ async function selectClaimableRow(
     .from(projectKubeProvisioning)
     .where(claimableCondition(now))
     .orderBy(
-      sql`case when ${projectKubeProvisioning.state} = 'pending' then 0 else 1 end`,
+      sql`case when ${projectKubeProvisioning.cleanupState} <> 'succeeded' then 0 when ${projectKubeProvisioning.state} = 'pending' then 1 else 2 end`,
       asc(projectKubeProvisioning.createdAt),
     )
     .limit(1)
@@ -60,6 +65,24 @@ async function selectClaimableRow(
 }
 
 function claimableCondition(now: Date): SQL | undefined {
+  return or(
+    cleanupClaimableCondition(now),
+    and(eq(projectKubeProvisioning.cleanupState, 'succeeded'), provisioningClaimableCondition(now)),
+  );
+}
+
+function cleanupClaimableCondition(now: Date): SQL | undefined {
+  return or(
+    eq(projectKubeProvisioning.cleanupState, 'pending'),
+    and(
+      eq(projectKubeProvisioning.cleanupState, 'failed'),
+      lt(projectKubeProvisioning.updatedAt, new Date(now.getTime() - failedRetryDelayMs)),
+    ),
+    and(eq(projectKubeProvisioning.cleanupState, 'running'), lt(projectKubeProvisioning.leaseExpiresAt, now)),
+  );
+}
+
+function provisioningClaimableCondition(now: Date): SQL | undefined {
   return or(
     eq(projectKubeProvisioning.state, 'pending'),
     and(
@@ -77,10 +100,41 @@ function claimableCondition(now: Date): SQL | undefined {
 
 async function leaseProjectProvisioning(
   transaction: DeploymentTransaction,
-  projectId: string,
+  row: typeof projectKubeProvisioning.$inferSelect,
   now: Date,
 ): Promise<ProjectProvisioningClaimRow> {
   const leaseId: string = createId('kpl');
+  if (row.cleanupState !== 'succeeded') {
+    return await leaseProjectCleanup(transaction, row.projectId, leaseId, now);
+  }
+  return await leaseProjectExecution(transaction, row.projectId, leaseId, now);
+}
+
+async function leaseProjectCleanup(
+  transaction: DeploymentTransaction,
+  projectId: string,
+  leaseId: string,
+  now: Date,
+): Promise<ProjectProvisioningClaimRow> {
+  await transaction
+    .update(projectKubeProvisioning)
+    .set({
+      cleanupFailureMessage: null,
+      cleanupState: 'running',
+      leaseExpiresAt: new Date(now.getTime() + leaseDurationMs),
+      leaseId,
+      updatedAt: now,
+    })
+    .where(eq(projectKubeProvisioning.projectId, projectId));
+  return { action: 'cleanup', leaseId, namespaceId: projectId, projectId };
+}
+
+async function leaseProjectExecution(
+  transaction: DeploymentTransaction,
+  projectId: string,
+  leaseId: string,
+  now: Date,
+): Promise<ProjectProvisioningClaimRow> {
   await transaction
     .update(projectKubeProvisioning)
     .set({
@@ -92,7 +146,7 @@ async function leaseProjectProvisioning(
       updatedAt: now,
     })
     .where(eq(projectKubeProvisioning.projectId, projectId));
-  return { leaseId, namespaceId: projectId, projectId };
+  return { action: 'provision', leaseId, namespaceId: projectId, projectId };
 }
 
 export async function completeProjectProvisioning(input: CompleteProjectProvisioningInput): Promise<boolean> {
@@ -106,6 +160,9 @@ async function completeProjectProvisioningWithTransaction(
   transaction: DeploymentTransaction,
   input: CompleteProjectProvisioningInput,
 ): Promise<boolean> {
+  if (input.action === 'cleanup') {
+    return await persistProjectProvisioningCleanupCompletion(transaction, input);
+  }
   const completed: CompletedProjectProvisioningRow | undefined = await persistProjectProvisioningCompletion(
     transaction,
     input,
@@ -124,13 +181,39 @@ async function completeProjectProvisioningWithTransaction(
   return true;
 }
 
+async function persistProjectProvisioningCleanupCompletion(
+  transaction: DeploymentTransaction,
+  input: CompleteProjectProvisioningCleanupInput,
+): Promise<boolean> {
+  const rows: { projectId: string }[] = await transaction
+    .update(projectKubeProvisioning)
+    .set({
+      cleanupFailureMessage: input.failureMessage,
+      cleanupState: input.status,
+      leaseExpiresAt: null,
+      leaseId: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(projectKubeProvisioning.projectId, input.projectId),
+        eq(projectKubeProvisioning.leaseId, input.leaseId),
+        eq(projectKubeProvisioning.cleanupState, 'running'),
+      ),
+    )
+    .returning({ projectId: projectKubeProvisioning.projectId });
+  return rows.length === 1;
+}
+
 async function persistProjectProvisioningCompletion(
   transaction: DeploymentTransaction,
-  input: CompleteProjectProvisioningInput,
+  input: CompleteProjectProvisioningExecutionInput,
 ): Promise<CompletedProjectProvisioningRow | undefined> {
   const rows: CompletedProjectProvisioningRow[] = await transaction
     .update(projectKubeProvisioning)
     .set({
+      cleanupFailureMessage: null,
+      cleanupState: input.cleanupRequired ? 'pending' : 'succeeded',
       failureMessage: input.failureMessage,
       leaseExpiresAt: null,
       leaseId: null,

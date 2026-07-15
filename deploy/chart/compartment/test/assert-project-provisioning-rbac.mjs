@@ -44,7 +44,33 @@ assert.match(policySource, new RegExp(`system:serviceaccount:${provisioningNames
 assert.match(policySource, /request\.namespace/);
 assert.match(policySource, /compartment-controller/);
 assert.match(policySource, /compartment-project-bootstrap/);
+assert.match(
+  policySource,
+  new RegExp(`system:serviceaccount:default:${fullname}-project-provisioner`),
+  'Permanent provisioner ClusterRoleBinding creates must be admission-confined.',
+);
+assert.match(policySource, /request\.resource\.resource != 'clusterrolebindings'/);
+assert.match(policySource, /object\.subjects\.size\(\) == 1/);
+assert.match(policySource, /object\.subjects\.size\(\) == 2/);
+assert.match(policySource, new RegExp(`subject\\.name == '${fullname}-worker'`));
+assert.match(
+  policySource,
+  /request\.userInfo\.username == 'system:serviceaccount:' \+ subject\.namespace \+ ':' \+ subject\.name/,
+);
 requiredManifest('ValidatingAdmissionPolicyBinding', `${fullname}-project-bootstrap-boundary`);
+
+assert.deepEqual(
+  rulesFor(bootstrapClusterRole, 'rolebindings').find((rule) =>
+    rule.resourceNames?.includes('compartment-project-bootstrap'),
+  ),
+  {
+    apiGroups: ['rbac.authorization.k8s.io'],
+    resourceNames: ['compartment-project-bootstrap'],
+    resources: ['rolebindings'],
+    verbs: ['get', 'delete'],
+  },
+  'Bootstrap authority must read and delete only its fixed RoleBinding.',
+);
 
 requiredManifest('Namespace', provisioningNamespace);
 const releaseRole = requiredManifest('Role', `${fullname}-project-provisioner`);

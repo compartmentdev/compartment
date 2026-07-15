@@ -134,10 +134,18 @@ export const projectKubeProvisioning: KubeRuntimeSchemaTypes.ProjectKubeProvisio
     leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
     failureMessage: text('failure_message'),
     attempts: integer('attempts').default(0).notNull(),
+    cleanupState: text('cleanup_state', { enum: ['succeeded', 'pending', 'running', 'failed'] })
+      .default('succeeded')
+      .notNull(),
+    cleanupFailureMessage: text('cleanup_failure_message'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table: KubeRuntimeSchemaTypes.ProjectKubeProvisioningExtraConfigColumns): PgTableExtraConfig => ({
     stateLeaseIndex: index('project_kube_provisioning_state_lease_idx').on(table.state, table.leaseExpiresAt),
+    cleanupStateLeaseIndex: index('project_kube_provisioning_cleanup_state_lease_idx').on(
+      table.cleanupState,
+      table.leaseExpiresAt,
+    ),
   }),
 );
