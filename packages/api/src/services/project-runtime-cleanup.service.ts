@@ -4,16 +4,18 @@ import {
   createProjectArchiveRuntimeStopFailedError,
   createProjectDeleteRuntimeCleanupFailedError,
 } from '../errors/api-business-error';
-import { listActiveJoinedDeploymentsForProject } from '../queries/deployment-joined.query';
+import { listRuntimeJoinedDeploymentsForProject } from '../queries/deployment-joined.query';
 import { listProjectEnvironmentsByProjectIds } from '../queries/deployment-context.query';
 import { markDeploymentStopped } from '../queries/deployment-lifecycle.query';
-import { findDeploymentKubeState } from '../queries/deployment-kube-membership.query';
+import {
+  findDeploymentKubeState,
+  hasProjectDeploymentKubeReference,
+} from '../queries/deployment-kube-membership.query';
 import type { DeploymentKubeState } from '../queries/deployment-kube-state.types';
 import type { DeploymentJoinedRow, EnvironmentRow } from '../queries/deployments.query.types';
 import { findNodeById } from '../queries/node.query';
 import type { NodeRow } from '../queries/node.query.types';
 import type { ProjectRow } from '../queries/projects.query.types';
-import { hasSucceededProjectKubeProvisioning } from '../queries/project-provisioning.query';
 import { listProjectResourcesByEnvironmentId, updateProjectResourceRuntime } from '../queries/resources.query';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
@@ -41,7 +43,7 @@ export async function cleanupArchivedProjectRuntime(project: ProjectRow): Promis
   try {
     const plan: ProjectRuntimeCleanupPlan = await buildProjectRuntimeCleanupPlan(project);
     await cleanupProjectRuntime(plan, false, preservedCaddyNetworkMode);
-    await markProjectRuntimeStopped(project.id, plan.resources);
+    await markProjectRuntimeStopped(plan.deployments, plan.resources);
   } catch {
     throw createProjectArchiveRuntimeStopFailedError();
   }
@@ -59,11 +61,10 @@ export async function cleanupDeletedProjectRuntime(project: ProjectRow): Promise
 async function buildProjectRuntimeCleanupPlan(project: ProjectRow): Promise<ProjectRuntimeCleanupPlan> {
   const environments: EnvironmentRow[] = await listProjectEnvironmentsByProjectIds([project.id]);
   const resources: ProjectRuntimeCleanupResource[] = await listProjectRuntimeCleanupResources(environments);
-  const nodeRows: NodeRow[] = (await hasSucceededProjectKubeProvisioning(project.id))
-    ? []
-    : await resolveProjectRuntimeNodes(environments);
+  const hasKubeRuntime: boolean = await hasProjectDeploymentKubeReference(project.id);
+  const nodeRows: NodeRow[] = hasKubeRuntime ? [] : await resolveProjectRuntimeNodes(environments);
   const nodeResources: NodeProjectCleanupResource[] = buildNodeProjectCleanupResources(resources);
-  const deployments: DeploymentJoinedRow[] = await listActiveJoinedDeploymentsForProject(
+  const deployments: DeploymentJoinedRow[] = await listRuntimeJoinedDeploymentsForProject(
     project.id,
     getApiConfig().baseDomain,
   );
@@ -158,13 +159,15 @@ async function resolveProjectRuntimeNode(nodeId: string): Promise<NodeRow> {
   return node;
 }
 
-async function markProjectRuntimeStopped(projectId: string, resources: ProjectRuntimeCleanupResource[]): Promise<void> {
+async function markProjectRuntimeStopped(
+  deployments: DeploymentJoinedRow[],
+  resources: ProjectRuntimeCleanupResource[],
+): Promise<void> {
   const updatedAt: Date = new Date();
-  const deployments: DeploymentJoinedRow[] = await listActiveJoinedDeploymentsForProject(
-    projectId,
-    getApiConfig().baseDomain,
-  );
   for (const deployment of deployments) {
+    if (deployment.deployment.status === 'failed') {
+      continue;
+    }
     await markDeploymentStopped({
       deploymentId: deployment.deployment.id,
       updatedAt,

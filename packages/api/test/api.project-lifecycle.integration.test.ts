@@ -44,7 +44,12 @@ import {
   sources,
 } from '../src/db/schema';
 import type { ProjectRow } from '../src/queries/projects.query.types';
-import { persistDeploymentReconcileObservation } from '../src/queries/deployment-reconcile.query';
+import {
+  findNextDeploymentReconcilePair,
+  persistDeploymentReconcileObservation,
+} from '../src/queries/deployment-reconcile.query';
+import type { DeploymentReconcilePair } from '../src/queries/deployment-reconcile.query.types';
+import type { DeploymentKubeState } from '../src/queries/deployment-kube-state.types';
 
 import {
   buildOrganizationAuthorizationHeaders,
@@ -87,6 +92,12 @@ interface DnsPromiseMocks {
   resolve6: Mock<ResolveDnsRecord>;
   resolveCname: Mock<ResolveDnsRecord>;
   resolveTxt: Mock<ResolveTxtRecord>;
+}
+
+interface PreparedKubeLifecycleDeployment {
+  deployment: DeploymentSummary;
+  installPayload: InstallResponse;
+  projectId: string;
 }
 
 const appAccessEdgeServiceMocks: AppAccessEdgeServiceMocks = vi.hoisted(
@@ -390,46 +401,89 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     expect(archiveResponse.statusCode).toBe(200);
     expect(readIntegrationNodeAgentRequests()).toEqual([]);
   });
-  it('stops and deletes a project whose active Kubernetes deployment is pending', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
-    const deployment: DeploymentSummary = requireDeployResponseDeployment(
-      deployResponseSchema.parse((await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json()),
+  it.each(['desired', 'pending'] as const)(
+    'stops and deletes a project whose active Kubernetes deployment is %s',
+    async (state: 'desired' | 'pending'): Promise<void> => {
+      const { deployment, installPayload, projectId }: PreparedKubeLifecycleDeployment =
+        await prepareKubeLifecycleDeployment(state, state === 'pending');
+      clearIntegrationNodeAgentRequests();
+      queueIntegrationNodeAgentError('legacy node cleanup must not run');
+
+      const archiveResponsePromise: Promise<LightMyRequestResponse> = app.inject({
+        method: 'POST',
+        url: '/v1/projects/smoke-web/archive',
+        headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      });
+      await acknowledgeKubeDeploymentStopped(deployment.id);
+      expect((await archiveResponsePromise).statusCode).toBe(200);
+      expect(readIntegrationNodeAgentRequests()).toEqual([]);
+
+      const deleteResponse: LightMyRequestResponse = await app.inject({
+        method: 'DELETE',
+        url: '/v1/projects/smoke-web',
+        headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      });
+      expect(deleteResponse.statusCode).toBe(200);
+      expect(await db.select().from(projects).where(eq(projects.id, projectId))).toHaveLength(0);
+    },
+  );
+  it('stops a project whose active Kubernetes deployment is desired', async (): Promise<void> => {
+    const { deployment, installPayload }: PreparedKubeLifecycleDeployment = await prepareKubeLifecycleDeployment(
+      'desired',
+      true,
     );
-    await completeQueuedDeployment(app, deployment.id);
-    const projectId: string =
-      (await db.select({ id: projects.id }).from(projects).where(eq(projects.name, 'smoke-web')).limit(1))[0]?.id ?? '';
-    await db
-      .update(projectKubeProvisioning)
-      .set({ state: 'succeeded' })
-      .where(eq(projectKubeProvisioning.projectId, projectId));
-    await db.insert(deploymentKubeReferences).values({
-      deploymentId: deployment.id,
-      deploymentName: 'app-smoke-web',
-      id: 'kref_pending_archive',
-      namespace: 'cpt-prj-smoke-web',
-      networkPolicyNamesJson: '[]',
-      serviceName: 'app-smoke-web',
-      state: 'pending',
+
+    const stopResponsePromise: Promise<LightMyRequestResponse> = app.inject({
+      method: 'POST',
+      url: '/v1/projects/smoke-web/stop',
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+      payload: {},
     });
+    await acknowledgeKubeDeploymentStopped(deployment.id);
+
+    expect((await stopResponsePromise).statusCode).toBe(200);
+    const [storedDeployment] = await db.select().from(deployments).where(eq(deployments.id, deployment.id));
+    expect(storedDeployment).toMatchObject({ isActive: false, promotionStage: 'stopped', status: 'stopped' });
+  });
+  it('preserves a failed deployment while cleaning up its Kubernetes runtime', async (): Promise<void> => {
+    const { deployment, installPayload }: PreparedKubeLifecycleDeployment = await prepareKubeLifecycleDeployment(
+      'pending',
+      false,
+    );
+    await db
+      .update(deployments)
+      .set({ failureMessage: 'rollout failed', health: 'unhealthy', status: 'failed' })
+      .where(eq(deployments.id, deployment.id));
 
     const archiveResponsePromise: Promise<LightMyRequestResponse> = app.inject({
       method: 'POST',
       url: '/v1/projects/smoke-web/archive',
       headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
     });
-    const stoppingRevision: number = await waitForKubeStoppingRevision(deployment.id);
-    expect(
-      await persistDeploymentReconcileObservation({
-        deploymentId: deployment.id,
-        failureMessage: null,
-        observation: 'stopped',
-        observedAt: new Date(),
-        revision: stoppingRevision,
-      }),
-    ).toBe(true);
-    expect((await archiveResponsePromise).statusCode).toBe(200);
+    await acknowledgeKubeDeploymentStopped(deployment.id);
 
+    expect((await archiveResponsePromise).statusCode).toBe(200);
+    const [storedDeployment] = await db.select().from(deployments).where(eq(deployments.id, deployment.id));
+    expect(storedDeployment).toMatchObject({
+      failureMessage: 'rollout failed',
+      health: 'unhealthy',
+      status: 'failed',
+    });
+  });
+  it('finishes lifecycle persistence after Kubernetes already stopped a desired deployment', async (): Promise<void> => {
+    const { deployment, installPayload, projectId }: PreparedKubeLifecycleDeployment =
+      await prepareKubeLifecycleDeployment('desired', false);
+    await db
+      .update(deploymentKubeReferences)
+      .set({ state: 'stopped' })
+      .where(eq(deploymentKubeReferences.deploymentId, deployment.id));
+
+    const archiveResponse: LightMyRequestResponse = await app.inject({
+      method: 'POST',
+      url: '/v1/projects/smoke-web/archive',
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
+    });
+    expect(archiveResponse.statusCode).toBe(200);
     const deleteResponse: LightMyRequestResponse = await app.inject({
       method: 'DELETE',
       url: '/v1/projects/smoke-web',
@@ -942,6 +996,58 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     expect(storedDeployments[0]?.status).toBe('stopped');
   });
 });
+
+async function prepareKubeLifecycleDeployment(
+  state: Extract<DeploymentKubeState, 'desired' | 'pending'>,
+  activateDeployment: boolean,
+): Promise<PreparedKubeLifecycleDeployment> {
+  const installPayload: InstallResponse = await installCompartment(app);
+  await registerLocalNode(app);
+  const deployment: DeploymentSummary = requireDeployResponseDeployment(
+    deployResponseSchema.parse((await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json()),
+  );
+  if (activateDeployment) {
+    await completeQueuedDeployment(app, deployment.id);
+  } else {
+    await claimNextQueuedDeployment(app);
+  }
+  const projectId: string =
+    (await db.select({ id: projects.id }).from(projects).where(eq(projects.name, 'smoke-web')).limit(1))[0]?.id ?? '';
+  if (activateDeployment) {
+    await db
+      .update(projectKubeProvisioning)
+      .set({ state: 'succeeded' })
+      .where(eq(projectKubeProvisioning.projectId, projectId));
+  }
+  await db.insert(deploymentKubeReferences).values({
+    deploymentId: deployment.id,
+    deploymentName: 'app-smoke-web',
+    id: `kref_${state}_lifecycle`,
+    namespace: 'cpt-prj-smoke-web',
+    networkPolicyNamesJson: '[]',
+    serviceName: 'app-smoke-web',
+    state,
+  });
+  return { deployment, installPayload, projectId };
+}
+
+async function acknowledgeKubeDeploymentStopped(deploymentId: string): Promise<void> {
+  await waitForKubeStoppingRevision(deploymentId);
+  const claimed: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
+  expect(claimed?.candidate).toMatchObject({ deploymentId, state: 'stopping' });
+  if (claimed === null) {
+    throw new Error(`Deployment ${deploymentId} stopping state was not claimable.`);
+  }
+  expect(
+    await persistDeploymentReconcileObservation({
+      deploymentId,
+      failureMessage: null,
+      observation: 'stopped',
+      observedAt: new Date(),
+      revision: claimed.candidate.revision,
+    }),
+  ).toBe(true);
+}
 
 async function waitForKubeStoppingRevision(deploymentId: string): Promise<number> {
   const deadline: number = Date.now() + 2_000;
