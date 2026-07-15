@@ -53,7 +53,7 @@ test('package file placement convention rule', () => {
       },
       {
         code: 'export function buildRuntimeResponse() {}',
-        filename: '/repo/packages/node/src/routes/internal/runtime.presenter.ts',
+        filename: '/repo/packages/edge/src/routes/internal/runtime.presenter.ts',
       },
       {
         code: 'export interface LoginRow { id: string; }',
@@ -81,7 +81,7 @@ test('package file placement convention rule', () => {
       },
       {
         code: 'export function buildDeploymentResponse() {}',
-        filename: '/repo/packages/node/src/routes/shared/runtime.presenter.ts',
+        filename: '/repo/packages/edge/src/routes/shared/runtime.presenter.ts',
         errors: [
           {
             message:

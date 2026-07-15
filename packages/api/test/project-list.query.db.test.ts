@@ -18,7 +18,6 @@ import {
   deploymentRuns,
   deployments,
   environments,
-  nodes,
   operations,
   organizations,
   projects,
@@ -56,14 +55,11 @@ const apiConfig: ApiConfig = {
   auditFileSink: defaultAuditFileSinkConfig,
   rollbackRetentionLimit: null,
   runtimeControlToken: 'test-runtime-control-token',
-  runtimeDefaultUpstreamHost: '127.0.0.1',
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -256,13 +252,6 @@ async function createQueryTestScope(): Promise<void> {
     name: 'Project List Org',
     slug: 'project-list-org',
   });
-  await db.insert(nodes).values({
-    id: 'node_project_list',
-    name: 'node-project-list',
-    nodeUrl: '/tmp/compartment/api-test/node/project-list.sock',
-    nodeSocketPath: '/tmp/compartment/api-test/node/project-list.sock',
-    nodeVersion: '1.0.0',
-  });
 }
 
 async function insertProject(name: string, serviceNames: string[], archivedAt: Date | null = null): Promise<void> {
@@ -287,7 +276,6 @@ async function insertProject(name: string, serviceNames: string[], archivedAt: D
   await db.insert(environments).values({
     id: readEnvironmentId(name),
     name: defaultCompartmentEnvironmentName,
-    nodeId: 'node_project_list',
     projectId: readProjectId(name),
     updatedAt: new Date('2026-04-24T08:00:00.000Z'),
   });
@@ -330,7 +318,6 @@ async function insertDeployment(input: InsertDeploymentInput): Promise<void> {
     health: input.health,
     id: input.id,
     isActive: input.isActive,
-    nodeId: 'node_project_list',
     operationId: `${input.id}_operation`,
     projectServiceId: readServiceId(input.projectName, input.serviceName),
     promotionStage: input.promotionStage,

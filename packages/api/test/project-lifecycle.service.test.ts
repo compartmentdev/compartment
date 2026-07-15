@@ -1,5 +1,4 @@
 import type { OperationStatus } from '@compartment/contracts';
-import type { NodeRequester, stopNodeDeployment } from '@compartment/sdk';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { findEnvironmentByProjectAndName } from '../src/queries/deployment-context.query';
 import type {
@@ -13,8 +12,6 @@ import type {
   requestDeploymentKubeStop,
 } from '../src/queries/deployment-kube-membership.query';
 import type { DeploymentJoinedRow, DeploymentRow, EnvironmentRow } from '../src/queries/deployments.query.types';
-import type { findNodeById } from '../src/queries/node.query';
-import type { NodeRow } from '../src/queries/node.query.types';
 import type { insertOperationRecord, updateOperationRecord } from '../src/queries/operations.query';
 import type { OperationRecord } from '../src/queries/operations.query.types';
 import type { ProjectRow } from '../src/queries/projects.query.types';
@@ -22,7 +19,6 @@ import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import type { getApiConfig } from '../src/runtime/runtime-access';
 import type { requireScopedPermission } from '../src/services/access-scope.service';
 import type { queueArtifactStartDeployments } from '../src/services/artifact-deployment-queue.service';
-import type { createNodeRuntimeRequester } from '../src/services/node-runtime-requester';
 import type { resolveActiveProjectScope } from '../src/services/project-scope.service';
 import type { ResolvedProjectScope } from '../src/services/project-scope.service.types';
 import { startProjectForPrincipal, stopProjectForPrincipal } from '../src/services/project-lifecycle.service';
@@ -31,7 +27,6 @@ import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 
 type FindEnvironmentByProjectAndName = typeof findEnvironmentByProjectAndName;
 type FindJoinedDeploymentById = typeof findJoinedDeploymentById;
-type FindNodeById = typeof findNodeById;
 type FindDeploymentKubeState = typeof findDeploymentKubeState;
 type GetApiConfig = typeof getApiConfig;
 type InsertOperationRecord = typeof insertOperationRecord;
@@ -40,19 +35,15 @@ type ListActiveJoinedDeploymentsForEnvironment = typeof listActiveJoinedDeployme
 type ListJoinedDeploymentsForEnvironment = typeof listJoinedDeploymentsForEnvironment;
 type MarkDeploymentStopped = typeof markDeploymentStopped;
 type RequireScopedPermission = typeof requireScopedPermission;
-type CreateNodeRuntimeRequester = typeof createNodeRuntimeRequester;
 type QueueArtifactStartDeployments = typeof queueArtifactStartDeployments;
 type ResolveActiveProjectScope = typeof resolveActiveProjectScope;
 type RequestDeploymentKubeStop = typeof requestDeploymentKubeStop;
-type StopNodeDeployment = typeof stopNodeDeployment;
 
 interface ProjectLifecycleServiceMocks {
   findEnvironmentByProjectAndName: Mock<FindEnvironmentByProjectAndName>;
   findJoinedDeploymentById: Mock<FindJoinedDeploymentById>;
-  findNodeById: Mock<FindNodeById>;
   findDeploymentKubeState: Mock<FindDeploymentKubeState>;
   getApiConfig: Mock<GetApiConfig>;
-  createNodeRuntimeRequester: Mock<CreateNodeRuntimeRequester>;
   insertOperationRecord: Mock<InsertOperationRecord>;
   listActiveJoinedDeploymentsForEnvironment: Mock<ListActiveJoinedDeploymentsForEnvironment>;
   listJoinedDeploymentsForEnvironment: Mock<ListJoinedDeploymentsForEnvironment>;
@@ -61,7 +52,6 @@ interface ProjectLifecycleServiceMocks {
   requireScopedPermission: Mock<RequireScopedPermission>;
   resolveActiveProjectScope: Mock<ResolveActiveProjectScope>;
   requestDeploymentKubeStop: Mock<RequestDeploymentKubeStop>;
-  stopNodeDeployment: Mock<StopNodeDeployment>;
   updateOperationRecord: Mock<UpdateOperationRecord>;
 }
 
@@ -69,10 +59,8 @@ const mocks: ProjectLifecycleServiceMocks = vi.hoisted(
   (): ProjectLifecycleServiceMocks => ({
     findEnvironmentByProjectAndName: vi.fn<FindEnvironmentByProjectAndName>(),
     findJoinedDeploymentById: vi.fn<FindJoinedDeploymentById>(),
-    findNodeById: vi.fn<FindNodeById>(),
     findDeploymentKubeState: vi.fn<FindDeploymentKubeState>(),
     getApiConfig: vi.fn<GetApiConfig>(),
-    createNodeRuntimeRequester: vi.fn<CreateNodeRuntimeRequester>(),
     insertOperationRecord: vi.fn<InsertOperationRecord>(),
     listActiveJoinedDeploymentsForEnvironment: vi.fn<ListActiveJoinedDeploymentsForEnvironment>(),
     listJoinedDeploymentsForEnvironment: vi.fn<ListJoinedDeploymentsForEnvironment>(),
@@ -81,7 +69,6 @@ const mocks: ProjectLifecycleServiceMocks = vi.hoisted(
     requireScopedPermission: vi.fn<RequireScopedPermission>(),
     resolveActiveProjectScope: vi.fn<ResolveActiveProjectScope>(),
     requestDeploymentKubeStop: vi.fn<RequestDeploymentKubeStop>(),
-    stopNodeDeployment: vi.fn<StopNodeDeployment>(),
     updateOperationRecord: vi.fn<UpdateOperationRecord>(),
   }),
 );
@@ -121,10 +108,6 @@ vi.mock(
   }),
 );
 
-vi.mock('../src/queries/node.query', (): { findNodeById: Mock<FindNodeById> } => ({
-  findNodeById: mocks.findNodeById,
-}));
-
 vi.mock('../src/runtime/runtime-access', (): { getApiConfig: Mock<GetApiConfig> } => ({
   getApiConfig: mocks.getApiConfig,
 }));
@@ -132,13 +115,6 @@ vi.mock('../src/runtime/runtime-access', (): { getApiConfig: Mock<GetApiConfig> 
 vi.mock('../src/services/access-scope.service', (): { requireScopedPermission: Mock<RequireScopedPermission> } => ({
   requireScopedPermission: mocks.requireScopedPermission,
 }));
-
-vi.mock(
-  '../src/services/node-runtime-requester',
-  (): { createNodeRuntimeRequester: Mock<CreateNodeRuntimeRequester> } => ({
-    createNodeRuntimeRequester: mocks.createNodeRuntimeRequester,
-  }),
-);
 
 vi.mock(
   '../src/queries/operations.query',
@@ -165,32 +141,7 @@ vi.mock(
   }),
 );
 
-vi.mock('@compartment/sdk', (): { stopNodeDeployment: Mock<StopNodeDeployment> } => ({
-  stopNodeDeployment: mocks.stopNodeDeployment,
-}));
-
 describe('project lifecycle service', (): void => {
-  it('records a failed stop operation when runtime stop fails', async (): Promise<void> => {
-    const runningDeployment: DeploymentJoinedRow = createDeployment('web');
-    mockLifecycleContext([runningDeployment], [runningDeployment]);
-    mocks.findNodeById.mockResolvedValueOnce(createNode());
-    mocks.createNodeRuntimeRequester.mockReturnValueOnce(createNodeRequesterMock());
-    mocks.insertOperationRecord.mockResolvedValueOnce(createOperationRecord('running'));
-    mocks.stopNodeDeployment.mockRejectedValueOnce(new Error('runtime unavailable'));
-    mocks.updateOperationRecord.mockResolvedValueOnce(createOperationRecord('failed'));
-
-    await expect(stopProjectForPrincipal(createLifecycleInput())).rejects.toMatchObject({
-      code: 'project_lifecycle_runtime_stop_failed',
-    });
-    expect(mocks.markDeploymentStopped).not.toHaveBeenCalled();
-    expect(mocks.updateOperationRecord).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operationId: 'op_stop',
-        status: 'failed',
-      }),
-    );
-  });
-
   it('treats stopping an already stopped project as an idempotent no-op', async (): Promise<void> => {
     const stoppedDeployment: DeploymentJoinedRow = createDeployment('web', {
       isActive: false,
@@ -202,22 +153,20 @@ describe('project lifecycle service', (): void => {
     const result: ProjectLifecycleResult = await stopProjectForPrincipal(createLifecycleInput());
 
     expect(result.state).toBe('stopped');
-    expect(mocks.stopNodeDeployment).not.toHaveBeenCalled();
     expect(mocks.markDeploymentStopped).not.toHaveBeenCalled();
   });
 
   it('waits for the Kubernetes worker acknowledgement before marking a deployment stopped', async (): Promise<void> => {
-    const runningDeployment: DeploymentJoinedRow = createDeployment('web', { containerId: null });
+    const runningDeployment: DeploymentJoinedRow = createDeployment('web');
     mockLifecycleContext([runningDeployment], [runningDeployment]);
     mocks.findDeploymentKubeState.mockResolvedValueOnce('active').mockResolvedValueOnce('stopped');
     mocks.insertOperationRecord.mockResolvedValueOnce(createOperationRecord('running'));
     mocks.requestDeploymentKubeStop.mockResolvedValueOnce();
     mocks.markDeploymentStopped.mockResolvedValueOnce(
-      createDeployment('web', { containerId: null, isActive: false, promotionStage: 'stopped', status: 'stopped' })
-        .deployment,
+      createDeployment('web', { isActive: false, promotionStage: 'stopped', status: 'stopped' }).deployment,
     );
     mocks.findJoinedDeploymentById.mockResolvedValueOnce(
-      createDeployment('web', { containerId: null, isActive: false, promotionStage: 'stopped', status: 'stopped' }),
+      createDeployment('web', { isActive: false, promotionStage: 'stopped', status: 'stopped' }),
     );
     mocks.updateOperationRecord.mockResolvedValueOnce(createOperationRecord('succeeded'));
 
@@ -225,7 +174,6 @@ describe('project lifecycle service', (): void => {
 
     expect(result.state).toBe('stopped');
     expect(mocks.requestDeploymentKubeStop).toHaveBeenCalledWith('dep_web', expect.any(Date));
-    expect(mocks.stopNodeDeployment).not.toHaveBeenCalled();
   });
 
   it('blocks lifecycle actions while deployments are updating', async (): Promise<void> => {
@@ -322,14 +270,11 @@ function mockLifecycleContext(deployments: DeploymentJoinedRow[], activeDeployme
     auditRetentionCleanupMaxBatches: 100,
     auditFileSink: defaultAuditFileSinkConfig,
     rollbackRetentionLimit: null,
-    runtimeDefaultUpstreamHost: '127.0.0.1',
     sessionSecret: 'session-secret',
     sessionTtlMs: 86_400_000,
     sourceArchiveDirectory: '/tmp/compartment-source-archive',
-    resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
     sourceArchiveMaxBytes: 1024,
     throttle: defaultApiAuthThrottleConfig,
-    nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
     systemApiSocketPath: '/tmp/compartment/compartment-system.sock',
     systemToken: 'system-token',
     trustedOutboundHosts: [],
@@ -378,20 +323,8 @@ function createEnvironment(): EnvironmentRow {
     createdAt: new Date('2026-04-21T08:00:00.000Z'),
     id: 'env_billing',
     name: 'production',
-    nodeId: 'node_123',
     projectId: 'prj_billing',
     updatedAt: new Date('2026-04-21T09:00:00.000Z'),
-  };
-}
-
-function createNode(): NodeRow {
-  return {
-    createdAt: new Date('2026-04-21T08:00:00.000Z'),
-    id: 'node_123',
-    name: 'local',
-    nodeSocketPath: '/tmp/compartment/api-test/node/project-lifecycle.sock',
-    nodeVersion: '0.1.0',
-    updatedAt: new Date('2026-04-21T08:00:00.000Z'),
   };
 }
 
@@ -407,11 +340,6 @@ function createOperationRecord(status: OperationStatus): OperationRecord {
     targetType: 'environment',
     type: 'deployment.stop',
   };
-}
-
-function createNodeRequesterMock(): NodeRequester {
-  return async (): Promise<never> =>
-    await Promise.reject(new Error('Node requester should not be called directly in this unit test.'));
 }
 
 function createDeployment(serviceName: string, overrides?: Partial<DeploymentRow>): DeploymentJoinedRow {
@@ -439,13 +367,8 @@ function createDeployment(serviceName: string, overrides?: Partial<DeploymentRow
       accessMode: 'authenticated',
       buildArtifactId: `art_${serviceName}`,
       completedAt: createdAt,
-      containerId: `ctr_${deploymentId}`,
       createdAt,
       deploymentRunId: `drn_${deploymentId}`,
-      drainDeadlineAt: null,
-      drainingContainerId: null,
-      drainingDeploymentId: null,
-      drainingNodeId: null,
       environmentId: 'env_billing',
       failureMessage: null,
       health: 'healthy',
@@ -453,7 +376,6 @@ function createDeployment(serviceName: string, overrides?: Partial<DeploymentRow
       isActive: true,
       movementSourceDeploymentId: null,
       label: null,
-      nodeId: 'node_123',
       operationId: `op_${deploymentId}`,
       projectServiceId: `svc_${serviceName}`,
       promotionStage: 'active',
@@ -473,8 +395,6 @@ function createDeployment(serviceName: string, overrides?: Partial<DeploymentRow
       routeBaseDomain: 'localhost',
       routeHost: 'billing.apps.localhost',
       status: 'succeeded',
-      upstreamHost: '127.0.0.1',
-      upstreamPort: 32000,
       updatedAt: createdAt,
       ...overrides,
     },

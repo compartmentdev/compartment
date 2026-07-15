@@ -18,13 +18,9 @@ export const deploymentStatusLabels: Record<DeploymentRuntimeStatus, string> = {
 export const deploymentStageLabels: Record<DeploymentPromotionStage, string> = {
   active: 'Active',
   building: 'Building',
-  checking_readiness: 'Checking readiness',
-  draining_previous: 'Draining previous',
   release: 'Release',
   rolled_back: 'Rolled back',
-  starting_candidate: 'Starting candidate',
   stopped: 'Stopped',
-  switching_route: 'Switching route',
 };
 
 export const deploymentRunStepLabels: Record<DeploymentRunStepKey, string> = {
@@ -33,10 +29,6 @@ export const deploymentRunStepLabels: Record<DeploymentRunStepKey, string> = {
   building_image: 'Building image',
   publishing_image: 'Publishing image',
   release: 'Release',
-  starting_candidate: 'Starting candidate',
-  checking_readiness: 'Checking readiness',
-  switching_route: 'Switching route',
-  draining_previous: 'Draining previous',
   completed: 'Completed',
 };
 
@@ -90,11 +82,7 @@ export function readDeploymentStageTagVariant(stage: DeploymentPromotionStage): 
     case 'rolled_back':
       return 'error';
     case 'building':
-    case 'checking_readiness':
-    case 'draining_previous':
     case 'release':
-    case 'starting_candidate':
-    case 'switching_route':
     case 'stopped':
       return 'secondary';
   }
@@ -106,20 +94,12 @@ export function readDeploymentStageTagIcon(stage: DeploymentPromotionStage): Sta
       return 'active';
     case 'building':
       return 'updating';
-    case 'checking_readiness':
-      return 'checking-readiness';
-    case 'draining_previous':
-      return 'draining-previous';
     case 'release':
       return 'release';
     case 'rolled_back':
       return 'rolled-back';
-    case 'starting_candidate':
-      return 'starting-candidate';
     case 'stopped':
       return 'stopped';
-    case 'switching_route':
-      return 'switching';
   }
 }
 

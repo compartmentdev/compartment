@@ -237,8 +237,8 @@ async function prepareAndPushPlatformImages(command) {
 
 async function buildPlatformImages() {
   await buildSelfHostedImages({
-    envFilePath: `${repositoryRoot}/.env.self-hosted.example`,
     env: process.env,
+    imageRefsByServiceName: builtImageRefsByServiceName,
     repositoryRoot,
   });
 

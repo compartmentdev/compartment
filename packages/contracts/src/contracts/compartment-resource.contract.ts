@@ -1,6 +1,5 @@
 import { CronExpressionParser } from 'cron-parser';
 import { z } from 'zod';
-import { compartmentServiceRestartPolicyValues, type CompartmentServiceRestartPolicy } from './service-run.contract';
 import { variableKeyNameSchema } from './variable-key.contract';
 import type {
   CompartmentAuthoredResourceConfig,
@@ -12,7 +11,6 @@ import type {
   CompartmentResourceOperationScheduleInterval,
   CompartmentResourceOutputConfig,
   CompartmentResourceReadinessConfig,
-  CompartmentResourceRestartConfig,
 } from './compartment-descriptor.types';
 import {
   compartmentResourceGeneratedVariablesSchema,
@@ -54,7 +52,6 @@ export const compartmentResourceOperationRetentionFieldNames: readonly ['include
   'keepLast',
   'maxAgeDays',
 ];
-export const compartmentResourceRestartFieldNames: readonly ['policy'] = ['policy'];
 export const compartmentDescriptorResourceConfigFieldNames: readonly [
   'command',
   'env',
@@ -65,7 +62,6 @@ export const compartmentDescriptorResourceConfigFieldNames: readonly [
   'ports',
   'preset',
   'readiness',
-  'restart',
   'volumes',
 ] = [
   'command',
@@ -77,18 +73,12 @@ export const compartmentDescriptorResourceConfigFieldNames: readonly [
   'ports',
   'preset',
   'readiness',
-  'restart',
   'volumes',
 ];
 export const compartmentDescriptorResourceConfigRequiredFieldSets: readonly [readonly ['image'], readonly ['preset']] =
   [['image'], ['preset']];
 export const compartmentResourceOutputFieldNames: readonly ['sensitive', 'value'] = ['sensitive', 'value'];
 
-const compartmentResourceRestartConfigSchema: ContractSchema<CompartmentResourceRestartConfig> = z
-  .object({
-    policy: z.enum(compartmentServiceRestartPolicyValues).optional(),
-  })
-  .strict();
 const compartmentResourceReadinessConfigSchema: ContractSchema<CompartmentResourceReadinessConfig> = z
   .object({
     type: z.literal('tcp'),
@@ -188,7 +178,6 @@ const compartmentAuthoredResourceConfigInputSchema: ContractSchema<
     ports: z.array(z.number().int().min(1).max(65_535)).optional(),
     preset: z.enum(compartmentResourcePresetValues).optional(),
     readiness: compartmentResourceReadinessConfigSchema.optional(),
-    restart: compartmentResourceRestartConfigSchema.optional(),
     volumes: z.record(createResourceVolumeNameSchema(), compartmentResourceVolumeValueSchema).optional(),
   })
   .strict()
@@ -229,10 +218,6 @@ export const compartmentAuthoredResourceConfigSchema: ContractSchema<
   CompartmentAuthoredResourceConfig,
   CompartmentAuthoredResourceConfigInput
 >;
-
-export function readCompartmentResourceRestartPolicies(): CompartmentServiceRestartPolicy[] {
-  return [...compartmentServiceRestartPolicyValues];
-}
 
 export function readCompartmentResourceOperationScheduleIntervals(): [
   CompartmentResourceOperationScheduleInterval,

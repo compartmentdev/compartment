@@ -23,10 +23,6 @@ export type DeploymentRunStepKey =
   | 'building_image'
   | 'publishing_image'
   | 'release'
-  | 'starting_candidate'
-  | 'checking_readiness'
-  | 'switching_route'
-  | 'draining_previous'
   | 'completed';
 export type DeploymentRunStepStatus = 'running' | 'succeeded' | 'failed' | 'skipped';
 export type DeploymentRunLogLevel = 'info' | 'error';
@@ -112,10 +108,6 @@ export const deploymentRunStepKeySchema: ContractSchema<DeploymentRunStepKey> = 
   'building_image',
   'publishing_image',
   'release',
-  'starting_candidate',
-  'checking_readiness',
-  'switching_route',
-  'draining_previous',
   'completed',
 ]);
 export const deploymentRunStepStatusSchema: ContractSchema<DeploymentRunStepStatus> = z.enum([

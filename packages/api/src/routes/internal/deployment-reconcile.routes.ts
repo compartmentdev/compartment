@@ -22,6 +22,7 @@ import {
   observeDeploymentReconcile,
   prepareDeploymentReconcile,
 } from '../../services/deployment-reconcile.service';
+import type { DeploymentReconcileObservationResult } from '../../services/deployment-reconcile.service.types';
 
 export function registerDeploymentReconcileRoutes(app: ApiApp): void {
   app.post(
@@ -63,6 +64,7 @@ async function handleObservation(request: FastifyRequest, reply: FastifyReply): 
     request.body,
     'invalid_deployment_reconcile_observation',
   );
-  const response: WorkerObserveDeploymentReconcileResponse = { applied: await observeDeploymentReconcile(input) };
+  const result: DeploymentReconcileObservationResult = await observeDeploymentReconcile(input);
+  const response: WorkerObserveDeploymentReconcileResponse = result;
   return await reply.send(workerObserveDeploymentReconcileResponseSchema.parse(response));
 }

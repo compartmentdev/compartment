@@ -6,7 +6,7 @@ Updated: 2026-05-25
 ## Decision
 
 `resources` is the only public descriptor noun for persistent internal runtime resources.
-In v1, every resource is a Docker-backed stateful resource, but `stateful` is behavior, not a public namespace.
+In v1, every resource is a Kubernetes-backed stateful workload, but `stateful` is behavior, not a public namespace.
 
 ## Model
 
@@ -24,7 +24,7 @@ In v1, every resource is a Docker-backed stateful resource, but `stateful` is be
 - `image` is required.
 - Resources may use literal descriptor env values for non-secret static config.
 - Resource secrets and per-resource runtime config live in the variable store under the resource target.
-- Internal ports are container-only. Host publish and public ingress are forbidden.
+- Internal ports are Service-only. Host publish and public ingress are forbidden.
 - Volume handles are stable per-resource identities. Existing handles may not be remapped to new mount paths.
 - Readiness is optional; v1 supports `tcp` only.
 
@@ -33,7 +33,7 @@ In v1, every resource is a Docker-backed stateful resource, but `stateful` is be
 The descriptor owns:
 
 - resource identity;
-- Docker image, command, restart intent, ports, volumes, and generic readiness;
+- workload image, command, ports, volumes, and generic readiness;
 - literal env wiring for non-secret static config.
 - derived resource outputs, including generated connection strings that reference resource metadata, project and
   environment names, and resource-scoped variables.
@@ -48,12 +48,12 @@ The descriptor does not own:
 - public ingress;
 - backup records, artifact locations, manifests, retention deletion state, or restore execution state;
 - database-specific lifecycle beyond declared resource operation commands and shipped presets;
-- node placement or managed HA semantics.
+- managed HA semantics.
 
 ## Reconciliation Rules
 
 - `compartment deploy` reconciles declared resources before queuing app deployments.
-- Unchanged resources stay running.
+- Unchanged resources remain ready.
 - Runtime-definition changes that affect process shape recreate the resource with existing volumes attached.
 - Recreate is stop-before-start only; side-by-side candidate rollout is invalid for shared persistent volumes.
 - App deploys must wait for required resource reconciliation to succeed.

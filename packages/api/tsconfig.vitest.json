@@ -10,7 +10,6 @@
       "@compartment/contracts/browser": ["../contracts/src/index.browser.ts"],
       "@compartment/contracts": ["../contracts/src/index.ts"],
       "@compartment/console": ["../console/src/index.ts"],
-      "@compartment/docker": ["../docker/src/index.ts"],
       "@compartment/sdk": ["../sdk/src/index.ts"],
       "@compartment/test-support": ["../test-support/src/index.ts"],
       "@compartment/utils": ["../utils/src/index.ts"]

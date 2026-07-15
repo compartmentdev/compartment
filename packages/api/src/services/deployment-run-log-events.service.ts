@@ -88,16 +88,8 @@ function readStepSortOrder(stepKey: DeploymentRunStepKey): number {
       return 3;
     case 'release':
       return 4;
-    case 'starting_candidate':
-      return 5;
-    case 'checking_readiness':
-      return 6;
-    case 'switching_route':
-      return 7;
-    case 'draining_previous':
-      return 8;
     case 'completed':
-      return 9;
+      return 5;
   }
 }
 

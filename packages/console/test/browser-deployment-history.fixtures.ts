@@ -147,7 +147,7 @@ export function createDeploymentRunLogsResponse(): DeploymentRunLogsResponse {
         level: 'info',
         message: 'boot complete',
         serviceName: 'web',
-        stepKey: 'starting_candidate',
+        stepKey: 'release',
         stream: 'stdout',
         timestamp: '2026-04-21T09:01:30.000Z',
       },

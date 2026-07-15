@@ -1,15 +1,9 @@
-import type { SafeParseReturnType } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
   createCompartmentDescriptorSchemaResponse,
   compartmentDescriptorSchemaResponseSchema,
   type CompartmentDescriptorSchemaResponse,
 } from '../src';
-
-type CompartmentDescriptorSchemaParseResult = SafeParseReturnType<
-  CompartmentDescriptorSchemaResponse,
-  CompartmentDescriptorSchemaResponse
->;
 
 describe('compartment descriptor schema contract', (): void => {
   it('returns parseable guide defaults and representative contract anchors', (): void => {
@@ -20,11 +14,9 @@ describe('compartment descriptor schema contract', (): void => {
     expect(response.location).toBeTruthy();
     expect(response.defaults.readiness).toBeNull();
     expect(response.defaults.resourceReadiness).toBeNull();
-    expect(response.defaults.resourceRestart.policy).toBe('unless-stopped');
     expect(response.defaults.serviceBuild.strategy).toBe('auto');
     expect(response.defaults.serviceKind).toBe('web');
     expect(response.defaults.serviceRelease).toBeNull();
-    expect(response.defaults.serviceRun.restart.policy).toBe('on-failure');
     expect(response.rules.buildFields).toEqual([
       'command',
       'env',
@@ -55,12 +47,8 @@ describe('compartment descriptor schema contract', (): void => {
     );
     expect(response.rules.resourceOperationScheduleIntervals).toEqual(expect.arrayContaining(['daily', 'hourly']));
     expect(response.rules.resourceReadinessTypes).toEqual(['tcp']);
-    expect(response.rules.resourceRestartPolicies).toEqual(expect.arrayContaining(['no', 'on-failure']));
     expect(response.rules.resourceValueForms).toEqual(['resource_config']);
-    expect(response.rules.restartFields).toEqual(expect.arrayContaining(['policy', 'maxRetries']));
-    expect(response.rules.restartMaxRetriesPolicies).toEqual(['on-failure']);
-    expect(response.rules.restartPolicies).toEqual(expect.arrayContaining(['no', 'unless-stopped']));
-    expect(response.rules.runFields).toEqual(expect.arrayContaining(['command', 'restart']));
+    expect(response.rules.runFields).toEqual(['command']);
     expect(response.rules.runForbiddenKinds).toContain('static');
     expect(response.rules.serviceConfigFields).toEqual(expect.arrayContaining(['release']));
     expect(response.rules.serviceConfigFields).toContain('connections');
@@ -89,19 +77,5 @@ describe('compartment descriptor schema contract', (): void => {
     expect(response.expandedExampleYaml).toContain('preset: postgres');
     expect(response.expandedExampleYaml).toContain('POSTGRES_DB: app');
     expect(response.expandedExampleYaml).toContain('DATABASE_URL: connection-url');
-  });
-
-  it('rejects maxRetries policies outside on-failure', (): void => {
-    const response: CompartmentDescriptorSchemaResponse = createCompartmentDescriptorSchemaResponse();
-
-    const result: CompartmentDescriptorSchemaParseResult = compartmentDescriptorSchemaResponseSchema.safeParse({
-      ...response,
-      rules: {
-        ...response.rules,
-        restartMaxRetriesPolicies: ['unless-stopped'],
-      },
-    });
-
-    expect(result.success).toBe(false);
   });
 });

@@ -15,7 +15,6 @@ const turboDevArgs = [
   '--filter=@compartment/console',
   '--filter=@compartment/api',
   '--filter=@compartment/worker',
-  '--filter=@compartment/node',
   '--filter=@compartment/edge',
 ];
 

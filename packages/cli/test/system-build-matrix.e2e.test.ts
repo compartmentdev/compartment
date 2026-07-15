@@ -44,7 +44,7 @@ import {
   type SelfHostedUserSetupRuntime,
 } from './self-hosted-user-setup.e2e.harness';
 import { readAppSessionCookieWithRetry } from './self-hosted-user-setup-app-probe.harness';
-import { isK3dPlatformMode, readK3dPlatformSeed, reclaimK3dBuildStorage } from './self-hosted-user-setup-k3d.harness';
+import { readK3dPlatformSeed, reclaimK3dBuildStorage } from './self-hosted-user-setup-k3d.harness';
 import {
   selfHostedMultiServiceBuildFixtures,
   selfHostedSingleServiceBuildFixtures,
@@ -65,7 +65,7 @@ import {
 type HttpProbeErrorInput = Error | string | number | boolean | symbol | bigint | null | undefined;
 
 const selfHostedBuildMatrixTimeoutMs: number = 40 * 60_000;
-const selfHostedBuildMatrixDockerCommandTimeoutMs: number = 60_000;
+const selfHostedBuildMatrixRuntimeCommandTimeoutMs: number = 60_000;
 const selfHostedBuildMatrixHttpProbeAttempts: number = 60;
 const selfHostedBuildMatrixHttpProbeDelayMs: number = 1_000;
 const selfHostedBuildMatrixHttpProbeTimeoutMs: number = 2_000;
@@ -236,10 +236,6 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
 });
 
 async function cleanupK3dBuildFixture(admin: SelfHostedUserSetupCli, projectName: string): Promise<void> {
-  if (!isK3dPlatformMode()) {
-    return;
-  }
-
   const archivedProject: ProjectResponse = await admin.runJson(
     `project archive --project ${projectName} --yes`,
     projectResponseSchema,
@@ -604,26 +600,7 @@ async function readRuntimeContainerCommandOutput(
   deploymentId: string,
   expectation: SelfHostedRuntimeCommandExpectation,
 ): Promise<string> {
-  if (isK3dPlatformMode()) {
-    return await readK3dRuntimeCommandOutput(deploymentId, expectation);
-  }
-  const containerResult: SelfHostedUserSetupCommandResult = await runCommand({
-    argv: ['docker', 'ps', '-q', '--filter', `label=compartment.deploymentId=${deploymentId}`],
-    timeoutMs: selfHostedBuildMatrixDockerCommandTimeoutMs,
-  });
-  expectSuccessfulCommand(containerResult, `docker ps for deployment ${deploymentId}`);
-  const containerId: string = containerResult.stdout.trim();
-  if (containerId === '') {
-    throw new Error(`Expected runtime container for deployment ${deploymentId}.`);
-  }
-
-  const outputResult: SelfHostedUserSetupCommandResult = await runCommand({
-    argv: ['docker', 'exec', containerId, ...expectation.command],
-    timeoutMs: selfHostedBuildMatrixDockerCommandTimeoutMs,
-  });
-  expectSuccessfulCommand(outputResult, `docker exec ${expectation.command.join(' ')}`);
-
-  return outputResult.stdout.trim();
+  return await readK3dRuntimeCommandOutput(deploymentId, expectation);
 }
 
 async function readK3dRuntimeCommandOutput(
@@ -644,7 +621,7 @@ async function readK3dRuntimeCommandOutput(
       '--output',
       'jsonpath={.items[0].metadata.namespace}{"\\t"}{.items[0].metadata.name}',
     ],
-    timeoutMs: selfHostedBuildMatrixDockerCommandTimeoutMs,
+    timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
   });
   expectSuccessfulCommand(podResult, `kubectl get pod for deployment ${deploymentId}`);
   const [namespace, podName] = podResult.stdout.trim().split('\t');
@@ -663,7 +640,7 @@ async function readK3dRuntimeCommandOutput(
       '--',
       ...expectation.command,
     ],
-    timeoutMs: selfHostedBuildMatrixDockerCommandTimeoutMs,
+    timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
   });
   expectSuccessfulCommand(outputResult, `kubectl exec ${expectation.command.join(' ')}`);
   return outputResult.stdout.trim();

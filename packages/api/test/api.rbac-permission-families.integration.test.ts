@@ -1,5 +1,4 @@
 import type { LightMyRequestResponse } from 'fastify';
-import type * as CompartmentSdk from '@compartment/sdk';
 import {
   accessGroupListResponseSchema,
   accessGroupResponseSchema,
@@ -28,11 +27,10 @@ import {
   projectResponseSchema,
   type DeploymentRunLogsResponse,
   type DeployResponse,
-  type NodeInspectDeploymentResponse,
   type ProductLogIngestEvent,
   type InstallResponse,
 } from '@compartment/contracts';
-import { immutableKubeName } from '@compartment/utils';
+import { immutableKubeName, kubeResourceServiceDns } from '@compartment/utils';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { createApp } from '../src/app';
@@ -56,7 +54,6 @@ import {
   createDeployDescriptor,
   injectDeployRequest,
   installCompartment,
-  registerLocalNode,
 } from './api-integration.harness';
 import {
   createRbacTestHarness,
@@ -84,42 +81,6 @@ vi.mock(
     synchronizeEdgeAppAccessState: async (): Promise<void> => await Promise.resolve(),
   }),
 );
-
-vi.mock('@compartment/sdk', async (): Promise<typeof CompartmentSdk> => {
-  const actual: typeof CompartmentSdk = await vi.importActual('@compartment/sdk');
-
-  return {
-    ...actual,
-    inspectNodeDeployment: async (): Promise<NodeInspectDeploymentResponse> =>
-      await Promise.resolve({
-        deployment: {
-          containerId: 'container_123',
-          imageRef: 'sha256:image',
-          routeHost: 'billing.localhost',
-          upstreamHost: '127.0.0.1',
-          upstreamPort: 31000,
-        },
-      }),
-    tailNodeResourceLogs: async (): Promise<{
-      lines: {
-        message: string;
-        resourceName: string;
-        stream: 'stdout';
-        timestamp: string;
-      }[];
-    }> =>
-      await Promise.resolve({
-        lines: [
-          {
-            message: 'resource ok',
-            resourceName: 'postgres',
-            stream: 'stdout',
-            timestamp: '2026-05-05T00:00:00.000Z',
-          },
-        ],
-      }),
-  };
-});
 
 interface IdRow {
   id: string;
@@ -227,7 +188,6 @@ describe('rbac permission-family integration', (): void => {
 
   it('enforces env-scoped inspect and custom-domain permissions', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const deployResponse: DeployResponse = deployResponseSchema.parse(
       (
         await injectDeployRequest(app, installPayload.sessionToken, installPayload.organization.slug, {
@@ -328,17 +288,14 @@ describe('rbac permission-family integration', (): void => {
     });
     await harness.db.insert(projectResources).values({
       commandJson: '[]',
-      containerId: 'container_resource',
       envJson: '[]',
       environmentId: 'env_resource',
-      hostname: 'postgres.production.billing.resource.internal',
       id: resourceId,
       image: 'postgres:16',
       name: 'postgres',
       outputsJson: '{"connection-url":{"sensitive":true,"value":"postgres://${resource.host}/app"}}',
       portsJson: '[5432]',
       readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
-      restartPolicy: 'on-failure',
       runtimeDefinitionHash: 'hash_resource',
       status: 'running',
       updatedAt: new Date('2026-05-05T00:00:00.000Z'),
@@ -439,23 +396,12 @@ describe('rbac permission-family integration', (): void => {
       subjectType: 'principal',
     });
 
-    const allowedLogsResponse: LightMyRequestResponse = await app.inject({
-      headers: buildOrganizationAuthorizationHeaders('operator-session'),
-      method: 'GET',
-      url: '/v1/resources/postgres/logs?projectName=billing&environmentName=production',
-    });
     const revealOutputResponse: LightMyRequestResponse = await app.inject({
       headers: buildOrganizationAuthorizationHeaders('operator-session'),
       method: 'GET',
       url: '/v1/resources/postgres/outputs/connection-url?projectName=billing&environmentName=production&reveal=true',
     });
 
-    expect(allowedLogsResponse.statusCode).toBe(200);
-    expect(resourceLogsResponseSchema.parse(allowedLogsResponse.json()).lines[0]?.message).toBe('resource ok');
-    await harness.db
-      .update(projectResources)
-      .set({ runtimeKind: 'kubernetes' })
-      .where(eq(projectResources.id, resourceId));
     const resourceEvent: ProductLogIngestEvent = {
       containerName: 'resource',
       message: 'database system is ready',
@@ -483,9 +429,8 @@ describe('rbac permission-family integration', (): void => {
       'database system is ready',
     );
     expect(revealOutputResponse.statusCode).toBe(200);
-    expect(resourceOutputResponseSchema.parse(revealOutputResponse.json()).output.value).toBe(
-      'postgres://postgres.production.billing.resource.internal/app',
-    );
+    const expectedConnectionUrl: string = `postgres://${kubeResourceServiceDns(resourceId, 'prj_resource')}/app`;
+    expect(resourceOutputResponseSchema.parse(revealOutputResponse.json()).output.value).toBe(expectedConnectionUrl);
     const accessEvents: (typeof variableAccessEvents.$inferSelect)[] = await harness.db
       .select()
       .from(variableAccessEvents);
@@ -505,7 +450,7 @@ describe('rbac permission-family integration', (): void => {
     expect(Object.keys(JSON.parse(accessEvents[0]!.fingerprintsJson) as Record<string, string>)).toEqual([
       'connection-url',
     ]);
-    expect(JSON.stringify(accessEvents)).not.toContain('postgres://postgres.production.billing.resource.internal/app');
+    expect(JSON.stringify(accessEvents)).not.toContain(expectedConnectionUrl);
   });
 
   it('hides explicit deployment run logs without log-read permission', async (): Promise<void> => {
@@ -798,7 +743,6 @@ async function seedDeploymentRunLogsFixture(organizationId: string): Promise<voi
     health: 'healthy',
     id: 'dep_run_logs',
     isActive: true,
-    nodeId: 'nod_local',
     operationId: 'op_run_logs',
     projectServiceId: 'svc_run_logs',
     promotionStage: 'active',

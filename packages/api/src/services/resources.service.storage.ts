@@ -3,16 +3,15 @@ import type {
   CompartmentResourceOperationConfig,
   CompartmentResourceOperationScheduleConfig,
   CompartmentResourceOutputs,
-  NodeResourceEnvValue,
   ResourceEnvSourceSummary,
   ResourceReadinessSummary,
-  ResourceRestartPolicy,
   ResourceVolumeSummary,
 } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
 import { createInvalidDeployConfigError } from '../errors/api-business-error';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import type { EffectiveVariable } from './effective-variables.service.types';
+import type { ResourceRuntimeEnvValue } from './resources.service.helpers';
 import {
   buildResourceDefinitionSnapshot,
   parseStoredResourceDefinitionSnapshot,
@@ -107,7 +106,7 @@ export function buildResourceEnvSummary(env: StoredResourceEnvSource[]): Resourc
 export function resolveStoredResourceRuntimeEnv(
   row: ProjectResourceRow,
   variables: EffectiveVariable[],
-): NodeResourceEnvValue[] {
+): ResourceRuntimeEnvValue[] {
   return resolveResourceRuntimeEnv(parseStoredResourceEnv(row), variables);
 }
 
@@ -115,9 +114,9 @@ export function resolveResourceOperationRuntimeEnv(
   resourceEnv: StoredResourceEnvSource[],
   operation: StoredResourceOperationConfig,
   variables: EffectiveVariable[],
-): NodeResourceEnvValue[] {
+): ResourceRuntimeEnvValue[] {
   const runtimeEnv: Map<string, string> = new Map<string, string>(
-    resolveResourceRuntimeEnv(resourceEnv, variables).map((env: NodeResourceEnvValue): [string, string] => [
+    resolveResourceRuntimeEnv(resourceEnv, variables).map((env: ResourceRuntimeEnvValue): [string, string] => [
       env.keyName,
       env.value,
     ]),
@@ -128,7 +127,7 @@ export function resolveResourceOperationRuntimeEnv(
   }
 
   return [...runtimeEnv.entries()].map(
-    ([keyName, value]: [string, string]): NodeResourceEnvValue => ({
+    ([keyName, value]: [string, string]): ResourceRuntimeEnvValue => ({
       keyName,
       value,
     }),
@@ -138,7 +137,7 @@ export function resolveResourceOperationRuntimeEnv(
 export function resolveResourceRuntimeEnv(
   env: StoredResourceEnvSource[],
   variables: EffectiveVariable[],
-): NodeResourceEnvValue[] {
+): ResourceRuntimeEnvValue[] {
   const runtimeEnv: Map<string, string> = new Map<string, string>();
 
   for (const source of env) {
@@ -149,7 +148,7 @@ export function resolveResourceRuntimeEnv(
   }
 
   return [...runtimeEnv.entries()].map(
-    ([keyName, value]: [string, string]): NodeResourceEnvValue => ({
+    ([keyName, value]: [string, string]): ResourceRuntimeEnvValue => ({
       keyName,
       value,
     }),
@@ -245,14 +244,6 @@ export function parseResourceCommand(row: ProjectResourceRow): string[] {
 
 export function parseResourceReadiness(row: ProjectResourceRow): ResourceReadinessSummary | null {
   return JSON.parse(row.readinessJson) as ResourceReadinessSummary | null;
-}
-
-export function parseResourceRestartPolicy(row: ProjectResourceRow): ResourceRestartPolicy {
-  if (row.restartPolicy === 'no' || row.restartPolicy === 'on-failure' || row.restartPolicy === 'unless-stopped') {
-    return row.restartPolicy;
-  }
-
-  throw createInvalidDeployConfigError(`Resource has invalid restart policy ${row.restartPolicy}.`);
 }
 
 function resolveStoredResourceEnvValue(env: StoredResourceEnvSource): string {

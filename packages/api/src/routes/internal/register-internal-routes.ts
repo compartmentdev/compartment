@@ -8,18 +8,15 @@ import { registerGetArtifactSourceArchiveRoute } from './get-artifact-source-arc
 import { registerPostAppAccessExchangeRoute } from './post-app-access-exchange.route';
 import { registerPostAppAccessLogoutRoute } from './post-app-access-logout.route';
 import { registerPostClaimDeploymentRoute } from './post-claim-deployment.route';
+import { registerPostRecoverOrphanedBuildClaimsRoute } from './post-recover-orphaned-build-claims.route';
 import { registerPostClaimGitSourceResolutionTaskRoute } from './post-claim-git-source-resolution-task.route';
 import { registerPostClaimGitSourceSyncTaskRoute } from './post-claim-git-source-sync-task.route';
-import { registerPostCompleteDeploymentRoute } from './post-complete-deployment.route';
 import { registerPostCompleteGitSourceResolutionTaskRoute } from './post-complete-git-source-resolution-task.route';
 import { registerPostCompleteGitSourceSyncTaskRoute } from './post-complete-git-source-sync-task.route';
 import { registerPostDeploymentRuntimeEventRoute } from './post-deployment-runtime-event.route';
-import { registerPostNodeRegisterRoute } from './post-node-register.route';
-import { registerPostDeploymentRuntimeStateRoute } from './post-deployment-runtime-state.route';
 import { registerPostFailDeploymentRoute } from './post-fail-deployment.route';
 import { registerPostFailGitSourceResolutionTaskRoute } from './post-fail-git-source-resolution-task.route';
 import { registerPostFailGitSourceSyncTaskRoute } from './post-fail-git-source-sync-task.route';
-import { registerPostRecoverRunningDeploymentsRoute } from './post-recover-running-deployments.route';
 import { registerPostRunNextScheduledResourceOperationRoute } from './post-run-next-scheduled-resource-operation.route';
 import { registerPostUploadGitSourceResolutionTaskArchiveRoute } from './post-upload-git-source-resolution-task-archive.route';
 import { registerPostProductLogsRoute } from './post-product-logs.route';
@@ -32,7 +29,6 @@ import { registerPostCompleteProjectProvisioningRoute } from './post-complete-pr
 
 type RegisterInternalRoutesDone = (err?: Error) => void;
 interface InternalApiRoutesOptions extends FastifyPluginOptions {
-  nodeAgentSocketPath: string;
   sourceArchiveMaxBytes: number;
 }
 
@@ -75,22 +71,15 @@ function registerWorkerInternalRoutes(
   done: RegisterInternalRoutesDone,
 ): void {
   app.addHook('preHandler', authenticateInternalWorkerRequest);
-  registerPostNodeRegisterRoute(app, options.nodeAgentSocketPath);
   registerGetArtifactSourceArchiveRoute(app);
-  registerPostRecoverRunningDeploymentsRoute(app);
   registerPostClaimDeploymentRoute(app);
-  registerPostCompleteDeploymentRoute(app);
-  registerWorkerRuntimeRoutes(app);
+  registerPostRecoverOrphanedBuildClaimsRoute(app);
+  registerPostDeploymentRuntimeEventRoute(app);
   registerPostPodMetricsRoute(app);
   registerPostFailDeploymentRoute(app);
   registerWorkerOperationRoutes(app);
   registerGitSourceResolutionWorkerRoutes(app, options.sourceArchiveMaxBytes);
   done();
-}
-
-function registerWorkerRuntimeRoutes(app: ApiApp): void {
-  registerPostDeploymentRuntimeStateRoute(app);
-  registerPostDeploymentRuntimeEventRoute(app);
 }
 
 function registerWorkerOperationRoutes(app: ApiApp): void {

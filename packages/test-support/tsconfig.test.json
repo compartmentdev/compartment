@@ -5,7 +5,6 @@
     "rootDir": "../..",
     "outDir": "dist-test",
     "paths": {
-      "@compartment/docker": ["../docker/src/index.ts"],
       "@compartment/utils": ["../utils/src/index.ts"]
     }
   },

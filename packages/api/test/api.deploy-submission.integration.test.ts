@@ -1,15 +1,9 @@
 import {
   buildDefaultSsoOidcIdentityVerificationConfig,
   compartmentSessionCookieName,
-  nodeResourceDeletePathname,
-  nodeResourceReconcilePathname,
-  nodeResourceRestartPolicyPathname,
-  nodeResourceStopPathname,
-  nodeRuntimeResourceReadinessFailedErrorCode,
   deployResponseSchema,
   errorResponseSchema,
   installResponseSchema,
-  nodeRegistrationResponseSchema,
   createOrganizationResponseSchema,
   organizationListResponseSchema,
   resourceListResponseSchema,
@@ -24,7 +18,6 @@ import {
   type ResourceOutputListResponse,
   type SetVariableRequest,
   type SourceUploadSummary,
-  type WorkerClaimedDeployment,
   compartmentCurrentOrganizationHeaderName,
 } from '@compartment/contracts';
 import type { LightMyRequestResponse } from 'fastify';
@@ -52,7 +45,6 @@ import {
   organizationMemberships,
   principals,
   projectResources,
-  projects,
   sourceUploads,
   environmentVariableValues,
 } from '../src/db/schema';
@@ -68,21 +60,13 @@ import {
   buildOrganizationAuthorizationHeaders,
   buildMultipartRequest,
   createUploadedSourceArchive,
-  clearIntegrationNodeAgentRequests,
   createMultipartFieldPart,
   createMultipartFilePart,
   createSourceArchive,
   injectSourceUploadRequest,
   injectDeployRequest,
   injectJsonDeployRequest,
-  injectNodeRegistrationRequest,
   installCompartment,
-  queueIntegrationNodeAgentResponse,
-  registerLocalNode,
-  claimNextQueuedDeployment,
-  readIntegrationNodeAgentRequestBody,
-  readIntegrationNodeAgentRequests,
-  requireClaimedDeployment,
   requireDeployResponseDeployment,
   setVariable,
   type MultipartRequest,
@@ -115,18 +99,7 @@ interface DnsPromiseMocks {
   resolveTxt: Mock<ResolveTxtRecord>;
 }
 
-interface ResourceRequestEnvInput {
-  keyName: string;
-  value: string;
-}
-
 const postgresPresetPasswordEnvName: string = 'POSTGRES_PASSWORD';
-
-interface ResourceRequestInput {
-  definition: {
-    env: ResourceRequestEnvInput[];
-  };
-}
 
 const appAccessEdgeServiceMocks: AppAccessEdgeServiceMocks = vi.hoisted(
   (): AppAccessEdgeServiceMocks => ({
@@ -475,37 +448,6 @@ describe('Phase 0 API integration deploy submission', (): void => {
     expect(createOrganizationHttpResponse.statusCode).toBe(403);
     expect(errorResponseSchema.parse(createOrganizationHttpResponse.json()).error.code).toBe('forbidden');
   });
-  it('registers nodes through the runtime-control-authenticated register endpoint', async (): Promise<void> => {
-    const registrationResponse: LightMyRequestResponse = await injectNodeRegistrationRequest(app, {
-      nodeName: 'local-node',
-      nodeSocketPath: defaultApiConfig.nodeAgentSocketPath,
-      nodeVersion: '0.1.0',
-    });
-    expect(registrationResponse.statusCode).toBe(200);
-    expect(nodeRegistrationResponseSchema.parse(registrationResponse.json()).node.name).toBe('local-node');
-  });
-  it('rejects node registration for a socket path outside the configured node agent socket', async (): Promise<void> => {
-    const registrationResponse: LightMyRequestResponse = await injectNodeRegistrationRequest(app, {
-      nodeName: 'local-node',
-      nodeSocketPath: '/tmp/compartment/api-test/api/system-api.sock',
-      nodeVersion: '0.1.0',
-    });
-    expect(registrationResponse.statusCode).toBe(400);
-    expect(errorResponseSchema.parse(registrationResponse.json()).error.code).toBe('invalid_node_registration_request');
-  });
-  it('rejects node registration requests without the runtime control token', async (): Promise<void> => {
-    const registrationResponse: LightMyRequestResponse = await injectNodeRegistrationRequest(
-      app,
-      {
-        nodeName: 'local-node',
-        nodeSocketPath: '/tmp/compartment/api-test/node/deploy-submission.sock',
-        nodeVersion: '0.1.0',
-      },
-      null,
-    );
-    expect(registrationResponse.statusCode).toBe(401);
-    expect(errorResponseSchema.parse(registrationResponse.json()).error.code).toBe('internal_worker_unauthorized');
-  });
   it('rejects source upload creation requests that are not multipart uploads', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
 
@@ -645,7 +587,6 @@ describe('Phase 0 API integration deploy submission', (): void => {
   });
   it('creates deployments from a previously uploaded source archive', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,
@@ -677,12 +618,6 @@ describe('Phase 0 API integration deploy submission', (): void => {
   });
   it('auto-generates postgres preset passwords before resolving resource outputs', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
-    queueIntegrationNodeAgentResponse({
-      containerId: 'resource_container_db',
-      hostname: 'db.production.smoke-web.resource.internal',
-      status: 'running',
-    });
     await setVariable(app, installPayload.sessionToken, 'acme-dev', {
       fromResource: 'db.connection-url',
       keyName: 'DATABASE_URL',
@@ -701,14 +636,6 @@ describe('Phase 0 API integration deploy submission', (): void => {
     );
 
     expect(deployResponse.statusCode, deployResponse.body).toBe(200);
-    const resourceRequest: ResourceRequestInput = JSON.parse(
-      readIntegrationNodeAgentRequestBody(0),
-    ) as ResourceRequestInput;
-    const generatedPassword: string | undefined = resourceRequest.definition.env.find(
-      (env: ResourceRequestEnvInput): boolean => env.keyName === postgresPresetPasswordEnvName,
-    )?.value;
-    expect(generatedPassword).toMatch(/^[0-9a-f]{48}$/u);
-
     const variableRows: (typeof environmentVariableValues.$inferSelect)[] = await db
       .select()
       .from(environmentVariableValues);
@@ -720,12 +647,7 @@ describe('Phase 0 API integration deploy submission', (): void => {
         targetResourceName: 'db',
       }),
     ]);
-    expect(JSON.stringify(variableRows)).not.toContain(generatedPassword);
-
-    const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
-    expect(claimedDeployment.runtimeEnv.DATABASE_URL).toBe(
-      `postgres://app:${generatedPassword}@db.production.smoke-web.resource.internal:5432/app`,
-    );
+    expect(variableRows[0]?.valueCiphertext).not.toBeNull();
 
     const listResponse: LightMyRequestResponse = await app.inject({
       headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
@@ -733,7 +655,7 @@ describe('Phase 0 API integration deploy submission', (): void => {
       url: '/v1/resources?projectName=smoke-web',
     });
     expect(listResponse.statusCode).toBe(200);
-    expect(JSON.stringify(resourceListResponseSchema.parse(listResponse.json()))).not.toContain(generatedPassword);
+    expect(JSON.stringify(resourceListResponseSchema.parse(listResponse.json()))).not.toContain('valueCiphertext');
 
     const outputListResponse: LightMyRequestResponse = await app.inject({
       headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
@@ -751,16 +673,10 @@ describe('Phase 0 API integration deploy submission', (): void => {
         valueHidden: true,
       }),
     );
-    expect(JSON.stringify(outputListPayload)).not.toContain(generatedPassword);
+    expect(JSON.stringify(outputListPayload)).not.toContain('valueCiphertext');
   });
   it('preserves existing postgres preset passwords during resource reconciliation', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
-    queueIntegrationNodeAgentResponse({
-      containerId: 'resource_container_db',
-      hostname: 'db.production.smoke-web.resource.internal',
-      status: 'running',
-    });
     await setVariable(app, installPayload.sessionToken, 'acme-dev', {
       keyName: postgresPresetPasswordEnvName,
       projectName: 'smoke-web',
@@ -780,17 +696,10 @@ describe('Phase 0 API integration deploy submission', (): void => {
     );
 
     expect(deployResponse.statusCode, deployResponse.body).toBe(200);
-    expect(readIntegrationNodeAgentRequestBody(0)).toContain('custom-secret-password');
     expect(await db.select().from(environmentVariableValues)).toHaveLength(1);
   });
   it('does not auto-generate passwords for full postgres resource configs', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
-    queueIntegrationNodeAgentResponse({
-      containerId: 'resource_container_db',
-      hostname: 'db.production.smoke-web.resource.internal',
-      status: 'running',
-    });
 
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
@@ -803,17 +712,10 @@ describe('Phase 0 API integration deploy submission', (): void => {
     );
 
     expect(deployResponse.statusCode, deployResponse.body).toBe(200);
-    expect(readIntegrationNodeAgentRequestBody(0)).not.toContain(postgresPresetPasswordEnvName);
     expect(await db.select().from(environmentVariableValues)).toHaveLength(0);
   });
-  it('reconciles YAML resources before queueing deployments and exposes resource routes without secret values', async (): Promise<void> => {
+  it('persists YAML resource intent before queueing deployments and exposes resource routes without secrets', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
-    queueIntegrationNodeAgentResponse({
-      containerId: 'resource_container_123',
-      hostname: 'postgres.production.smoke-web.resource.internal',
-      status: 'running',
-    });
     await setPostgresPasswordVariable(installPayload);
 
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
@@ -830,23 +732,19 @@ describe('Phase 0 API integration deploy submission', (): void => {
     const deployPayload: DeployResponse = deployResponseSchema.parse(deployResponse.json());
     expect(deployPayload.resources).toEqual([
       expect.objectContaining({
-        containerId: 'resource_container_123',
-        hostname: 'postgres.production.smoke-web.resource.internal',
         name: 'postgres',
-        status: 'running',
+        status: 'stopped',
       }),
     ]);
     expect(JSON.stringify(deployPayload.resources)).not.toContain('super-secret-password');
     expect(await db.select().from(projectResources)).toEqual([
       expect.objectContaining({
-        containerId: 'resource_container_123',
         image: 'postgres:16',
         name: 'postgres',
-        status: 'running',
+        status: 'stopped',
       }),
     ]);
     expect(await db.select().from(deployments)).toHaveLength(1);
-    expect(readIntegrationNodeAgentRequestBody(0)).toContain('super-secret-password');
 
     const listResponse: LightMyRequestResponse = await app.inject({
       headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
@@ -889,16 +787,6 @@ describe('Phase 0 API integration deploy submission', (): void => {
     });
     expect(invalidLogsResponse.statusCode).toBe(400);
 
-    queueIntegrationNodeAgentResponse({
-      lines: [
-        {
-          message: 'ready',
-          resourceName: 'postgres',
-          stream: 'stdout',
-          timestamp: '2026-04-29T12:00:00.000Z',
-        },
-      ],
-    });
     const logsResponse: LightMyRequestResponse = await app.inject({
       headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
       method: 'GET',
@@ -914,7 +802,6 @@ describe('Phase 0 API integration deploy submission', (): void => {
     expect(readonlyLogsResponse.statusCode).toBe(403);
     expect(errorResponseSchema.parse(readonlyLogsResponse.json()).error.code).toBe('forbidden');
 
-    clearIntegrationNodeAgentRequests();
     const intentOnlyDescriptor: CompartmentAuthoredDescriptor = createResourceDeployDescriptor();
     const postgresResource: CompartmentAuthoredResourceConfig = requirePostgresResource(intentOnlyDescriptor);
     postgresResource.readiness = {
@@ -928,39 +815,6 @@ describe('Phase 0 API integration deploy submission', (): void => {
       descriptor: intentOnlyDescriptor,
       organizationSlug: installPayload.organization.slug,
     });
-    expect(readIntegrationNodeAgentRequests()).toHaveLength(0);
-    expect(await db.select().from(projectResources)).toEqual([
-      expect.objectContaining({
-        hostname: 'postgres.production.smoke-web.resource.internal',
-        readinessJson: JSON.stringify({
-          port: 5432,
-          timeoutMs: 5_000,
-          type: 'tcp',
-        }),
-        restartPolicy: 'unless-stopped',
-      }),
-    ]);
-
-    clearIntegrationNodeAgentRequests();
-    postgresResource.restart = {
-      policy: 'no',
-    };
-    await reconcileDeclaredResources({
-      actorPrincipalId: adminPrincipalId,
-      descriptor: intentOnlyDescriptor,
-      organizationSlug: installPayload.organization.slug,
-    });
-    expect(readIntegrationNodeAgentRequests()).toHaveLength(1);
-    expect(readIntegrationNodeAgentRequests()[0]?.pathname).toBe(nodeResourceRestartPolicyPathname);
-    expect(JSON.parse(readIntegrationNodeAgentRequestBody(0))).toEqual({
-      containerId: 'resource_container_123',
-      environmentName: 'production',
-      projectName: 'smoke-web',
-      resourceName: 'postgres',
-      restart: {
-        policy: 'no',
-      },
-    });
     expect(await db.select().from(projectResources)).toEqual([
       expect.objectContaining({
         readinessJson: JSON.stringify({
@@ -968,161 +822,11 @@ describe('Phase 0 API integration deploy submission', (): void => {
           timeoutMs: 5_000,
           type: 'tcp',
         }),
-        restartPolicy: 'no',
       }),
     ]);
-
-    clearIntegrationNodeAgentRequests();
-    queueIntegrationNodeAgentResponse({
-      containerId: 'resource_container_123',
-      hostname: 'postgres.production.smoke-renamed.resource.internal',
-      status: 'running',
-    });
-    await db.update(projects).set({ name: 'smoke-renamed' }).where(eq(projects.name, 'smoke-web'));
-    intentOnlyDescriptor.name = 'smoke-renamed';
-    await reconcileDeclaredResources({
-      actorPrincipalId: adminPrincipalId,
-      descriptor: intentOnlyDescriptor,
-      organizationSlug: installPayload.organization.slug,
-    });
-    expect(readIntegrationNodeAgentRequests()).toHaveLength(1);
-    expect(readIntegrationNodeAgentRequests()[0]?.pathname).toBe(nodeResourceReconcilePathname);
-    expect(await db.select().from(projectResources)).toEqual([
-      expect.objectContaining({
-        hostname: 'postgres.production.smoke-renamed.resource.internal',
-        restartPolicy: 'no',
-      }),
-    ]);
-
-    clearIntegrationNodeAgentRequests();
-    queueIntegrationNodeAgentResponse({
-      containerId: null,
-      hostname: 'postgres.production.smoke-renamed.resource.internal',
-      status: 'stopped',
-    });
-    const stopResourceResponse: LightMyRequestResponse = await app.inject({
-      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
-      method: 'POST',
-      url: '/v1/resources/postgres/stop?projectName=smoke-renamed',
-    });
-    expect(stopResourceResponse.statusCode, stopResourceResponse.body).toBe(200);
-    expect(readIntegrationNodeAgentRequests()[0]?.pathname).toBe(nodeResourceStopPathname);
-    expect(JSON.parse(readIntegrationNodeAgentRequestBody(0))).toEqual({
-      containerId: 'resource_container_123',
-      environmentName: 'production',
-      projectName: 'smoke-renamed',
-      resourceName: 'postgres',
-      volumes: [
-        {
-          mountPath: '/var/lib/postgresql/data',
-          name: 'data',
-        },
-      ],
-    });
-
-    clearIntegrationNodeAgentRequests();
-    queueIntegrationNodeAgentResponse({
-      containerId: null,
-      hostname: 'postgres.production.smoke-renamed.resource.internal',
-      status: 'stopped',
-    });
-    const deleteStoppedResourceResponse: LightMyRequestResponse = await app.inject({
-      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
-      method: 'DELETE',
-      payload: {
-        confirmation: 'delete-resource-data',
-        deleteData: true,
-      },
-      url: '/v1/resources/postgres?projectName=smoke-renamed',
-    });
-    expect(deleteStoppedResourceResponse.statusCode, deleteStoppedResourceResponse.body).toBe(200);
-    expect(readIntegrationNodeAgentRequests()[0]?.pathname).toBe(nodeResourceDeletePathname);
-    expect(JSON.parse(readIntegrationNodeAgentRequestBody(0))).toEqual({
-      containerId: null,
-      deleteData: true,
-      environmentName: 'production',
-      projectName: 'smoke-renamed',
-      resourceName: 'postgres',
-      volumes: [
-        {
-          mountPath: '/var/lib/postgresql/data',
-          name: 'data',
-        },
-      ],
-    });
-    expect(await db.select().from(projectResources)).toHaveLength(0);
   });
-  it('does not persist resource intent or queue app deployments when resource reconciliation fails', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
-    queueIntegrationNodeAgentResponse(
-      {
-        error: {
-          code: nodeRuntimeResourceReadinessFailedErrorCode,
-          message: 'Resource postgres did not become ready before 30000ms.',
-        },
-      },
-      500,
-    );
-    await setPostgresPasswordVariable(installPayload);
-
-    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
-      app,
-      installPayload.sessionToken,
-      'acme-dev',
-      {
-        descriptor: createResourceDeployDescriptor(),
-        sourceArchive: await createResourceDeploySourceArchive(),
-      },
-    );
-
-    expect(deployResponse.statusCode, deployResponse.body).toBe(500);
-    expect(errorResponseSchema.parse(deployResponse.json()).error).toEqual({
-      code: nodeRuntimeResourceReadinessFailedErrorCode,
-      message: 'Resource postgres did not become ready before 30000ms.',
-    });
-    expect(await db.select().from(projectResources)).toHaveLength(0);
-    expect(await db.select().from(deployments)).toHaveLength(0);
-    expect(await db.select().from(buildArtifacts)).toHaveLength(0);
-  });
-
-  it('keeps unexpected node resource reconciliation failures generic', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
-    queueIntegrationNodeAgentResponse(
-      {
-        error: {
-          code: 'unexpected_node_failure',
-          message: 'unexpected runtime detail',
-        },
-      },
-      500,
-    );
-    await setPostgresPasswordVariable(installPayload);
-
-    const deployResponse: LightMyRequestResponse = await injectDeployRequest(
-      app,
-      installPayload.sessionToken,
-      'acme-dev',
-      {
-        descriptor: createResourceDeployDescriptor(),
-        sourceArchive: await createResourceDeploySourceArchive(),
-      },
-    );
-
-    expect(deployResponse.statusCode, deployResponse.body).toBe(500);
-    expect(errorResponseSchema.parse(deployResponse.json()).error).toEqual({
-      code: 'internal_error',
-      message: 'An unexpected error occurred.',
-    });
-    expect(await db.select().from(projectResources)).toHaveLength(0);
-    expect(await db.select().from(deployments)).toHaveLength(0);
-    expect(await db.select().from(buildArtifacts)).toHaveLength(0);
-  });
-
   it('rejects invalid first-deploy onboarding sessions before reconciling resources', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await setPostgresPasswordVariable(installPayload);
 
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
@@ -1138,14 +842,12 @@ describe('Phase 0 API integration deploy submission', (): void => {
 
     expect(deployResponse.statusCode, deployResponse.body).toBe(404);
     expect(errorResponseSchema.parse(deployResponse.json()).error.code).toBe('onboarding_session_not_found');
-    expect(readIntegrationNodeAgentRequests()).toHaveLength(0);
     expect(await db.select().from(projectResources)).toHaveLength(0);
     expect(await db.select().from(deployments)).toHaveLength(0);
     expect(await db.select().from(buildArtifacts)).toHaveLength(0);
   });
   it('rejects source-upload deployment submission for invited human members', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,
@@ -1216,7 +918,6 @@ describe('Phase 0 API integration deploy submission', (): void => {
   });
   it('rejects deployment submission when the source upload was already consumed', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,
@@ -1247,7 +948,6 @@ describe('Phase 0 API integration deploy submission', (): void => {
   });
   it('allows only one concurrent deployment submission to consume a source upload', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,

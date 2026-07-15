@@ -1,5 +1,5 @@
 {
-  "id": "b5b0b01f-d1b6-441b-ba10-561288c6c361",
+  "id": "bebada90-69fb-4976-b2fd-b394537ffa58",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1942,12 +1942,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "node_id": {
-          "name": "node_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "name": {
           "name": "name",
           "type": "text",
@@ -1979,15 +1973,6 @@
           "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "environments_node_id_nodes_id_fk": {
-          "name": "environments_node_id_nodes_id_fk",
-          "tableFrom": "environments",
-          "tableTo": "nodes",
-          "columnsFrom": ["node_id"],
-          "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1996,69 +1981,6 @@
           "name": "environments_project_id_name_unique",
           "nullsNotDistinct": false,
           "columns": ["project_id", "name"]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.nodes": {
-      "name": "nodes",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "node_version": {
-          "name": "node_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "node_url": {
-          "name": "node_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "node_socket_path": {
-          "name": "node_socket_path",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "nodes_name_unique": {
-          "name": "nodes_name_unique",
-          "nullsNotDistinct": false,
-          "columns": ["name"]
         }
       },
       "policies": {},
@@ -3374,12 +3296,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "node_id": {
-          "name": "node_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "operation_id": {
           "name": "operation_id",
           "type": "text",
@@ -3400,24 +3316,6 @@
         },
         "label": {
           "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "upstream_host": {
-          "name": "upstream_host",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "upstream_port": {
-          "name": "upstream_port",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "container_id": {
-          "name": "container_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -3473,24 +3371,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "draining_container_id": {
-          "name": "draining_container_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "draining_deployment_id": {
-          "name": "draining_deployment_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "draining_node_id": {
-          "name": "draining_node_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "movement_source_deployment_id": {
           "name": "movement_source_deployment_id",
@@ -3549,12 +3429,6 @@
         "source_resolution_task_id": {
           "name": "source_resolution_task_id",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "drain_deadline_at": {
-          "name": "drain_deadline_at",
-          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -3678,15 +3552,6 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "deployments_node_id_nodes_id_fk": {
-          "name": "deployments_node_id_nodes_id_fk",
-          "tableFrom": "deployments",
-          "tableTo": "nodes",
-          "columnsFrom": ["node_id"],
-          "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
         "deployments_operation_id_operations_id_fk": {
           "name": "deployments_operation_id_operations_id_fk",
           "tableFrom": "deployments",
@@ -3694,24 +3559,6 @@
           "columnsFrom": ["operation_id"],
           "columnsTo": ["id"],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "deployments_draining_deployment_id_deployments_id_fk": {
-          "name": "deployments_draining_deployment_id_deployments_id_fk",
-          "tableFrom": "deployments",
-          "tableTo": "deployments",
-          "columnsFrom": ["draining_deployment_id"],
-          "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "deployments_draining_node_id_nodes_id_fk": {
-          "name": "deployments_draining_node_id_nodes_id_fk",
-          "tableFrom": "deployments",
-          "tableTo": "nodes",
-          "columnsFrom": ["draining_node_id"],
-          "columnsTo": ["id"],
-          "onDelete": "restrict",
           "onUpdate": "no action"
         },
         "deployments_movement_source_deployment_id_deployments_id_fk": {
@@ -4445,30 +4292,11 @@
           "primaryKey": false,
           "notNull": true
         },
-        "restart_policy": {
-          "name": "restart_policy",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "runtime_definition_hash": {
           "name": "runtime_definition_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "hostname": {
-          "name": "hostname",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "runtime_kind": {
-          "name": "runtime_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'node'"
         },
         "expected_claims_json": {
           "name": "expected_claims_json",
@@ -4482,12 +4310,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "container_id": {
-          "name": "container_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",

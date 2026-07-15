@@ -8,10 +8,6 @@ const docsSidebar = [
     items: [docsHomeSidebarItem, 'quickstart/install-compartment', 'quickstart/first-deploy'],
   },
   {
-    label: 'Install & Operate',
-    items: ['install-operate/install-modes', 'install-operate/install-domain', 'install-operate/system-operations'],
-  },
-  {
     label: 'Deploy Apps',
     items: [
       'deploy-apps/deploy-using-cli',
@@ -54,11 +50,6 @@ const docsLlmsCustomSets = [
     label: 'Quickstart',
     paths: ['quickstart/**'],
     description: 'introductory pages for understanding Compartment, installing the CLI, and deploying the first app',
-  },
-  {
-    label: 'Install and Operate',
-    paths: ['install-operate/**'],
-    description: 'operator guidance for install modes, install domains, and system operations',
   },
   {
     label: 'Deploy Apps',

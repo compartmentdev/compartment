@@ -23,8 +23,7 @@ describe('compartment descriptor schema command', (): void => {
 
     expectCliSuccess(result);
     expect(result.payload.fileName).toBe('compartment.yml');
-    expect(result.payload.defaults.serviceRun.restart.policy).toBe('on-failure');
-    expect(result.payload.rules.restartPolicies).toEqual(['no', 'on-failure', 'unless-stopped']);
+    expect(result.payload.defaults.serviceRun).toEqual({});
     expect(result.payload.rules.serviceKinds).toEqual(['web', 'api', 'static', 'worker', 'job', 'cron']);
     expect(result.payload.rules.buildOutputDirectoryRequiredKinds).toEqual(['static']);
     expect(result.payload.rules.projectReservedNames).toEqual(['create']);
@@ -50,10 +49,7 @@ describe('compartment descriptor schema command', (): void => {
     expect(stdout).toContain('build.strategy is not allowed for kinds: static');
     expect(stdout).toContain('release is not allowed for kinds: static');
     expect(stdout).toContain('release fields: command');
-    expect(stdout).toContain('supported restart policies: no, on-failure, unless-stopped');
-    expect(stdout).toContain(
-      'omitted run -> image default start command, restart on-failure; omitted release -> disabled',
-    );
+    expect(stdout).toContain('omitted run -> image default start command; omitted release -> disabled');
     expect(stdout).toContain('include widens a source build');
     expect(stdout).toContain('workspace files that root build expects');
     expect(stdout).toContain('compartment.routes.yml');

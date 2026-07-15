@@ -129,10 +129,7 @@ import {
   type SelfHostedUserSetupAppFixture,
 } from './self-hosted-user-setup-app-fixture';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
-import {
-  removeLocalDockerImage,
-  type SelfHostedUserSetupCommandResult,
-} from './self-hosted-user-setup-command.harness';
+import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-command.harness';
 import {
   buildSelfHostedAppHostname,
   configureSelfHostedTrustedOutboundHosts,
@@ -185,7 +182,7 @@ import { expectAuditFileExports, expectAuditFileSinkCoverage } from './self-host
 import { expectCompartmentSkillInstallOnboarding } from './self-hosted-user-setup-agent-onboarding.harness';
 import { expectCurrentOrganizationSlug } from './cli-response-test.harness';
 import { cliRemoteListResponseSchema, cliRemoteResponseSchema } from './remote-command-response.harness';
-import { expectK3dWorkerNamespaceIsolation, isK3dPlatformMode } from './self-hosted-user-setup-k3d.harness';
+import { expectK3dWorkerNamespaceIsolation } from './self-hosted-user-setup-k3d.harness';
 import {
   expectedAuditEventTypes,
   organizationUseResponseSchema,
@@ -243,9 +240,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       viewer = await setup.createFreshCli();
 
       await expectBlockedPublicControlPlanePaths(runtime.compartmentUrl);
-      if (isK3dPlatformMode()) {
-        await expectK3dWorkerNamespaceIsolation();
-      }
+      await expectK3dWorkerNamespaceIsolation();
 
       const adminBeforeLogin: SelfHostedUserSetupCommandResult = await admin.runFailure('whoami --output json');
       expect(adminBeforeLogin.stderr).toContain(noConfiguredLoginMessage);
@@ -666,13 +661,11 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
         }),
       ]);
 
-      if (isK3dPlatformMode()) {
-        const bootstrapPayload: ResourceResponse = await admin.runJson(
-          `resource bootstrap --project ${app.projectName} --resource ${app.resourceName}`,
-          resourceResponseSchema,
-        );
-        expect(bootstrapPayload.resource.name).toBe(app.resourceName);
-      }
+      const bootstrapPayload: ResourceResponse = await admin.runJson(
+        `resource bootstrap --project ${app.projectName} --resource ${app.resourceName}`,
+        resourceResponseSchema,
+      );
+      expect(bootstrapPayload.resource.name).toBe(app.resourceName);
       await waitForRunningResource(admin, app.projectName, app.resourceName);
       const statusPayload: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,
@@ -1065,10 +1058,6 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       expect(secondDeployment.id).not.toBe(activeDeployment.id);
       await expectAppEnvMessage(routeUrl, adminAppSessionCookie, rollbackMessage);
       await expectAppBuildMessage(routeUrl, adminAppSessionCookie, rollbackBuildMessage);
-
-      if (!isK3dPlatformMode()) {
-        await removeLocalDockerImage(rollbackTargetRuntimeImageRef);
-      }
 
       const rollbackPayload: DeploymentStatusResponse = await admin.runJson(
         `rollback --project ${app.projectName}`,

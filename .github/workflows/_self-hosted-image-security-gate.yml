@@ -62,23 +62,18 @@ jobs:
 
       - name: Load self-hosted images from cache
         run: |
-          for service in api caddy edge worker runtime-probe; do
+          for service in api caddy edge worker; do
             docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
           done
 
       - name: Verify cached self-hosted image refs
         run: |
           set -euo pipefail
-          set -a
-          . ./.compartment/self-hosted-image-cache/.env.self-hosted
-          set +a
-
           docker image inspect \
-            "$COMPARTMENT_API_IMAGE" \
-            "$COMPARTMENT_CADDY_IMAGE" \
-            "$COMPARTMENT_EDGE_IMAGE" \
-            "$COMPARTMENT_RUNTIME_PROBE_IMAGE" \
-            "$COMPARTMENT_WORKER_IMAGE" >/dev/null
+            "ghcr.io/compartmentdev/compartment-api:sha-${{ github.sha }}" \
+            "ghcr.io/compartmentdev/compartment-caddy:sha-${{ github.sha }}" \
+            "ghcr.io/compartmentdev/compartment-edge:sha-${{ github.sha }}" \
+            "ghcr.io/compartmentdev/compartment-worker:sha-${{ github.sha }}" >/dev/null
 
       - name: Check self-hosted image vulnerabilities
         env:
@@ -92,4 +87,4 @@ jobs:
           node ./scripts/deploy/secure-self-hosted-images.mjs \
             --scan-only \
             "${docker_scout_args[@]}" \
-            --env-file ./.compartment/self-hosted-image-cache/.env.self-hosted
+            "sha-${{ github.sha }}"

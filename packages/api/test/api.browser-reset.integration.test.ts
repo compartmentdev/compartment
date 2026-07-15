@@ -60,7 +60,6 @@ import {
   injectDeployRequest,
   installCompartment,
   readStoredRoutesByService,
-  registerLocalNode,
   requireClaimedDeployment,
   requireClaimedDeploymentByServiceName,
   requireDeploymentByServiceName,
@@ -186,7 +185,6 @@ describe('Phase 0 API integration browser reset', (): void => {
   });
   it('queues one deployment per service and supports aggregate and service-scoped status, inspect, and logs', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
@@ -332,7 +330,6 @@ describe('Phase 0 API integration browser reset', (): void => {
   });
   it('queues only the requested descriptor service when serviceName is provided', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
@@ -376,7 +373,6 @@ describe('Phase 0 API integration browser reset', (): void => {
   });
   it('completes the browser login flow for a protected app host', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const deployPayload: DeployResponse = deployResponseSchema.parse(
       (await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json(),
     );

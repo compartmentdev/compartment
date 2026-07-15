@@ -129,11 +129,12 @@ async function runDueLockedScheduledResourceBackup(
     purpose: 'scheduled',
     resource,
   });
-  const cleanedBackups: ResourceBackupRetentionCleanup[] = await applyResourceBackupRetention(
-    resource.id,
-    schedule.retention,
+  const cleanedBackups: ResourceBackupRetentionCleanup[] = await applyResourceBackupRetention({
+    context,
     now,
-  );
+    resource,
+    retention: schedule.retention,
+  });
 
   return { ...context, cleanedBackups, resource, ...result };
 }

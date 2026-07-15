@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, or, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, or, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { buildArtifacts, deployments, environments } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -14,11 +14,10 @@ import type {
   DeploymentRow,
   DeploymentTransaction,
   FindDeploymentRunDeploymentInput,
+  MarkBuildArtifactsCleanedInput,
   MarkDeploymentFailedInput,
   PersistedDeploymentRow,
-  UpdateDeploymentRuntimeStateInput,
   UpdateBuildArtifactImageInput,
-  MarkBuildArtifactsCleanedInput,
   PersistedBuildArtifactRow,
 } from './deployments.query.types';
 
@@ -49,17 +48,12 @@ export async function markBuildArtifactsCleaned(input: MarkBuildArtifactsCleaned
   if (input.artifactIds.length === 0) {
     return [];
   }
-
-  return await getApiDatabase()
+  const rows: PersistedBuildArtifactRow[] = await getApiDatabase()
     .update(buildArtifacts)
-    .set({
-      imageCleanedAt: input.cleanedAt,
-      imageRetentionState: 'cleaned',
-      updatedAt: input.updatedAt,
-    })
+    .set({ imageCleanedAt: input.cleanedAt, imageRetentionState: 'cleaned', updatedAt: input.updatedAt })
     .where(inArray(buildArtifacts.id, input.artifactIds))
-    .returning()
-    .then((artifacts: PersistedBuildArtifactRow[]): BuildArtifactRow[] => artifacts.map(toBuildArtifactRow));
+    .returning();
+  return rows.map(toBuildArtifactRow);
 }
 
 export async function listDeploymentsBySourceResolutionTaskId(
@@ -100,34 +94,6 @@ export async function createQueuedExistingArtifactDeploymentBatchWithExecutor(
   return queuedDeployments;
 }
 
-export async function updateDeploymentRuntimeState(input: UpdateDeploymentRuntimeStateInput): Promise<DeploymentRow> {
-  const deployment: DeploymentRow | undefined = await updateDeploymentRuntimeStateIfExists(input);
-
-  return requirePersistedRow(deployment, 'deployment');
-}
-
-export async function updateDeploymentRuntimeStateIfExists(
-  input: UpdateDeploymentRuntimeStateInput,
-): Promise<DeploymentRow | undefined> {
-  const [deployment] = await getApiDatabase()
-    .update(deployments)
-    .set({
-      ...(input.containerId !== undefined ? { containerId: input.containerId } : {}),
-      ...(input.drainDeadlineAt !== undefined ? { drainDeadlineAt: input.drainDeadlineAt } : {}),
-      ...(input.drainingContainerId !== undefined ? { drainingContainerId: input.drainingContainerId } : {}),
-      ...(input.drainingDeploymentId !== undefined ? { drainingDeploymentId: input.drainingDeploymentId } : {}),
-      ...(input.drainingNodeId !== undefined ? { drainingNodeId: input.drainingNodeId } : {}),
-      promotionStage: input.promotionStage,
-      ...(input.upstreamHost !== undefined ? { upstreamHost: input.upstreamHost } : {}),
-      ...(input.upstreamPort !== undefined ? { upstreamPort: input.upstreamPort } : {}),
-      updatedAt: input.updatedAt,
-    })
-    .where(eq(deployments.id, input.deploymentId))
-    .returning();
-
-  return deployment === undefined ? undefined : toDeploymentRow(deployment);
-}
-
 export async function findDeploymentRunDeployment(
   input: FindDeploymentRunDeploymentInput,
 ): Promise<DeploymentRow | undefined> {
@@ -145,10 +111,6 @@ export async function markDeploymentFailed(input: MarkDeploymentFailedInput): Pr
     .update(deployments)
     .set({
       completedAt: input.completedAt,
-      drainDeadlineAt: null,
-      drainingContainerId: null,
-      drainingDeploymentId: null,
-      drainingNodeId: null,
       failureMessage: input.failureMessage,
       health: 'unhealthy',
       isActive: false,
@@ -199,10 +161,6 @@ function buildProjectDeleteBlockerFilter(): SQL {
     eq(deployments.isActive, true),
     eq(deployments.status, 'queued'),
     eq(deployments.status, 'running'),
-    isNotNull(deployments.drainDeadlineAt),
-    isNotNull(deployments.drainingContainerId),
-    isNotNull(deployments.drainingDeploymentId),
-    isNotNull(deployments.drainingNodeId),
   );
 
   if (filter === undefined) {

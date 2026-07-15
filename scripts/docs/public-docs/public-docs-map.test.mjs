@@ -9,10 +9,7 @@ describe('public docs map', () => {
         'packages/sdk/src/services/custom-domain.service.ts',
         'packages/sdk/src/services/deployment-inspect.service.ts',
         'packages/sdk/src/services/deployment-status.service.ts',
-        'packages/sdk/src/services/node-runtime-inspect.service.ts',
-        'packages/sdk/src/services/node-runtime-logs.service.ts',
         'packages/sdk/src/services/variable-path.service.ts',
-        'packages/sdk/src/services/worker-recover-deployments.service.ts',
         'packages/sdk/test/query-paths.service.test.ts',
       ]),
     ).toEqual([]);

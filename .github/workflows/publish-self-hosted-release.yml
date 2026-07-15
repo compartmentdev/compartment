@@ -52,16 +52,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
 
-      - name: Prepare self-hosted build env
-        env:
-          PRIMARY_TAG: ${{ steps.release.outputs.value }}
-        run: |
-          mkdir -p ./.compartment/release-assets
-          node ./scripts/deploy/render-self-hosted-env.mjs \
-            --primary-tag "$PRIMARY_TAG" \
-            --repository-prefix docker.io/compartmentdev \
-            --output ./.compartment/.env.self-hosted
-
       - name: Build self-hosted images
         env:
           COMPARTMENT_CADDY_BUILDER_IMAGE: public.ecr.aws/docker/library/caddy:2.11.4-builder
@@ -70,10 +60,10 @@ jobs:
           COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
           COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
         run: |
-          node ./scripts/deploy/build-self-hosted-images.mjs --env-file ./.compartment/.env.self-hosted
-
-      - name: Check self-hosted runtime surface
-        run: node ./scripts/deploy/check-self-hosted-runtime-surface.mjs ./.compartment/.env.self-hosted
+          mkdir -p ./.compartment/release-assets
+          node ./scripts/deploy/build-self-hosted-images.mjs \
+            --tag "${{ steps.release.outputs.value }}" \
+            --repository-prefix docker.io/compartmentdev
 
       - name: Archive self-hosted images
         run: |
@@ -81,7 +71,6 @@ jobs:
             docker.io/compartmentdev/compartment-api:${{ steps.release.outputs.value }} \
             docker.io/compartmentdev/compartment-caddy:${{ steps.release.outputs.value }} \
             docker.io/compartmentdev/compartment-edge:${{ steps.release.outputs.value }} \
-            docker.io/compartmentdev/compartment-runtime-probe:${{ steps.release.outputs.value }} \
             docker.io/compartmentdev/compartment-worker:${{ steps.release.outputs.value }} \
             | gzip -1 > ./.compartment/release-assets/self-hosted-images.tar.gz
 
@@ -186,9 +175,6 @@ jobs:
             --build-arg "COMPARTMENT_CADDY_BUILDER_IMAGE=${COMPARTMENT_CADDY_BUILDER_IMAGE}"
             --build-arg "COMPARTMENT_CADDY_RUNTIME_IMAGE=${COMPARTMENT_CADDY_RUNTIME_IMAGE}"
           )
-          runtime_probe_args=(
-            --build-arg "COMPARTMENT_NODE_RUNTIME_IMAGE=${COMPARTMENT_NODE_RUNTIME_IMAGE}"
-          )
           mutable_tags_file="./.compartment/release-assets/published-self-hosted-mutable-tags.txt"
           : > "$mutable_tags_file"
 
@@ -240,7 +226,6 @@ jobs:
           push_dockerhub_image compartment-caddy packages/edge/Dockerfile.caddy.self-hosted "${caddy_args[@]}"
           push_dockerhub_image compartment-edge packages/edge/Dockerfile.self-hosted "${node_args[@]}"
           push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
-          push_dockerhub_image compartment-runtime-probe packages/node/Dockerfile.runtime-probe.self-hosted "${runtime_probe_args[@]}"
 
           mapfile -t self_hosted_services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
 

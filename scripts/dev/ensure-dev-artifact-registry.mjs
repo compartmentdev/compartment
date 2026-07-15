@@ -24,7 +24,7 @@ async function main() {
     '--label',
     'compartment.component=artifact-registry',
     '--restart',
-    'unless-stopped',
+    'always',
     '-p',
     `${host}:${port}:${registryContainerPort}`,
     '-v',

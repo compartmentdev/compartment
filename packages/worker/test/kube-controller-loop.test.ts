@@ -24,7 +24,6 @@ describe('Kubernetes controller loop', (): void => {
 
     await expect(
       runKubeControllerLoop({ pollIntervalMs: 1 } as WorkerConfig, pino({ level: 'silent' }), {
-        enabled: true,
         reconcile,
       }),
     ).rejects.toBe(stop);

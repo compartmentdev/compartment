@@ -237,22 +237,10 @@ CREATE TABLE "organization_memberships" (
 CREATE TABLE "environments" (
 	"id" text PRIMARY KEY NOT NULL,
 	"project_id" text NOT NULL,
-	"node_id" text NOT NULL,
 	"name" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "environments_project_id_name_unique" UNIQUE("project_id","name")
-);
---> statement-breakpoint
-CREATE TABLE "nodes" (
-	"id" text PRIMARY KEY NOT NULL,
-	"name" text NOT NULL,
-	"node_version" text NOT NULL,
-	"node_url" text NOT NULL,
-	"node_socket_path" text NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "nodes_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
 CREATE TABLE "operations" (
@@ -420,14 +408,10 @@ CREATE TABLE "deployments" (
 	"environment_id" text NOT NULL,
 	"build_artifact_id" text NOT NULL,
 	"project_service_id" text NOT NULL,
-	"node_id" text NOT NULL,
 	"operation_id" text NOT NULL,
 	"status" text NOT NULL,
 	"health" text NOT NULL,
 	"label" text,
-	"upstream_host" text,
-	"upstream_port" integer,
-	"container_id" text,
 	"failure_message" text,
 	"access_mode" text DEFAULT 'authenticated' NOT NULL,
 	"is_active" boolean DEFAULT false NOT NULL,
@@ -436,9 +420,6 @@ CREATE TABLE "deployments" (
 	"resolved_run_json" text NOT NULL,
 	"resolved_routes_json" text DEFAULT '[]' NOT NULL,
 	"promotion_stage" text NOT NULL,
-	"draining_container_id" text,
-	"draining_deployment_id" text,
-	"draining_node_id" text,
 	"movement_source_deployment_id" text,
 	"source_automation_principal_id" text,
 	"source_binding_id" text,
@@ -449,7 +430,6 @@ CREATE TABLE "deployments" (
 	"source_kind" text,
 	"source_repository_snapshot_json" text,
 	"source_resolution_task_id" text,
-	"drain_deadline_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"completed_at" timestamp with time zone
@@ -539,13 +519,9 @@ CREATE TABLE "project_resources" (
 	"ports_json" text NOT NULL,
 	"volumes_json" text NOT NULL,
 	"readiness_json" text NOT NULL,
-	"restart_policy" text NOT NULL,
 	"runtime_definition_hash" text NOT NULL,
-	"hostname" text NOT NULL,
-	"runtime_kind" text DEFAULT 'node' NOT NULL,
 	"expected_claims_json" text DEFAULT '[]' NOT NULL,
 	"status" text NOT NULL,
-	"container_id" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "project_resources_environment_id_name_unique" UNIQUE("environment_id","name")
@@ -913,7 +889,6 @@ ALTER TABLE "access_roles" ADD CONSTRAINT "access_roles_organization_id_organiza
 ALTER TABLE "organization_memberships" ADD CONSTRAINT "organization_memberships_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "organization_memberships" ADD CONSTRAINT "organization_memberships_principal_id_principals_id_fk" FOREIGN KEY ("principal_id") REFERENCES "public"."principals"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "environments" ADD CONSTRAINT "environments_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "environments" ADD CONSTRAINT "environments_node_id_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."nodes"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "operations" ADD CONSTRAINT "operations_actor_principal_id_principals_id_fk" FOREIGN KEY ("actor_principal_id") REFERENCES "public"."principals"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "project_services" ADD CONSTRAINT "project_services_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "projects" ADD CONSTRAINT "projects_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -938,10 +913,7 @@ ALTER TABLE "deployments" ADD CONSTRAINT "deployments_deployment_run_id_deployme
 ALTER TABLE "deployments" ADD CONSTRAINT "deployments_environment_id_environments_id_fk" FOREIGN KEY ("environment_id") REFERENCES "public"."environments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "deployments" ADD CONSTRAINT "deployments_build_artifact_id_build_artifacts_id_fk" FOREIGN KEY ("build_artifact_id") REFERENCES "public"."build_artifacts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "deployments" ADD CONSTRAINT "deployments_project_service_id_project_services_id_fk" FOREIGN KEY ("project_service_id") REFERENCES "public"."project_services"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "deployments" ADD CONSTRAINT "deployments_node_id_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."nodes"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "deployments" ADD CONSTRAINT "deployments_operation_id_operations_id_fk" FOREIGN KEY ("operation_id") REFERENCES "public"."operations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "deployments" ADD CONSTRAINT "deployments_draining_deployment_id_deployments_id_fk" FOREIGN KEY ("draining_deployment_id") REFERENCES "public"."deployments"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "deployments" ADD CONSTRAINT "deployments_draining_node_id_nodes_id_fk" FOREIGN KEY ("draining_node_id") REFERENCES "public"."nodes"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "deployments" ADD CONSTRAINT "deployments_movement_source_deployment_id_deployments_id_fk" FOREIGN KEY ("movement_source_deployment_id") REFERENCES "public"."deployments"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "deployment_kube_references" ADD CONSTRAINT "deployment_kube_references_deployment_id_deployments_id_fk" FOREIGN KEY ("deployment_id") REFERENCES "public"."deployments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "deployment_product_logs" ADD CONSTRAINT "deployment_product_logs_deployment_id_deployments_id_fk" FOREIGN KEY ("deployment_id") REFERENCES "public"."deployments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

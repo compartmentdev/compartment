@@ -1,5 +1,3 @@
-import type { NodeProjectCleanupCaddyNetworkMode, NodeProjectCleanupResource } from '@compartment/contracts';
-import { cleanupNodeProjectRuntime } from '@compartment/sdk';
 import {
   createProjectArchiveRuntimeStopFailedError,
   createProjectDeleteRuntimeCleanupFailedError,
@@ -7,44 +5,38 @@ import {
 import { listRuntimeJoinedDeploymentsForProject } from '../queries/deployment-joined.query';
 import { listProjectEnvironmentsByProjectIds } from '../queries/deployment-context.query';
 import { markDeploymentStopped } from '../queries/deployment-lifecycle.query';
-import {
-  findDeploymentKubeState,
-  hasProjectDeploymentKubeReference,
-} from '../queries/deployment-kube-membership.query';
+import { findDeploymentKubeState } from '../queries/deployment-kube-membership.query';
 import type { DeploymentKubeState } from '../queries/deployment-kube-state.types';
 import type { DeploymentJoinedRow, EnvironmentRow } from '../queries/deployments.query.types';
-import { findNodeById } from '../queries/node.query';
-import type { NodeRow } from '../queries/node.query.types';
-import { hasSucceededProjectKubeProvisioning } from '../queries/project-provisioning.query';
+import { findOrganizationById } from '../queries/organizations.query';
+import type { OrganizationRow } from '../queries/organizations.query.types';
 import type { ProjectRow } from '../queries/projects.query.types';
-import { listProjectResourcesByEnvironmentId, updateProjectResourceRuntime } from '../queries/resources.query';
+import { listProjectResourcesByEnvironmentId } from '../queries/resources.query';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
-import { createNodeRuntimeRequester } from './node-runtime-requester';
-import { parseResourceVolumes } from './resources.service.storage';
 import { stopKubeProjectDeployment } from './project-lifecycle-kube-stop.service';
+import {
+  deleteKubernetesResource,
+  reconcileKubernetesResourceReplicas,
+} from './resources-kubernetes-reconcile.service';
+import type { ResourceEnvironmentContext } from './resources.service.types';
 
 interface ProjectRuntimeCleanupResource {
-  environmentName: string;
+  context: ResourceEnvironmentContext;
   resource: ProjectResourceRow;
 }
 
 interface ProjectRuntimeCleanupPlan {
   deployments: DeploymentJoinedRow[];
-  nodeResources: NodeProjectCleanupResource[];
-  nodeRows: NodeRow[];
-  project: ProjectRow;
   resources: ProjectRuntimeCleanupResource[];
 }
-
-const preservedCaddyNetworkMode: NodeProjectCleanupCaddyNetworkMode = 'preserve-stale';
-const disconnectStaleCaddyNetworkMode: NodeProjectCleanupCaddyNetworkMode = 'disconnect-stale';
 
 export async function cleanupArchivedProjectRuntime(project: ProjectRow): Promise<void> {
   try {
     const plan: ProjectRuntimeCleanupPlan = await buildProjectRuntimeCleanupPlan(project);
-    await cleanupProjectRuntime(plan, false, preservedCaddyNetworkMode);
-    await markProjectRuntimeStopped(plan.deployments, plan.resources);
+    await stopKubeProjectDeployments(plan.deployments);
+    await stopKubeProjectResources(plan.resources);
+    await markProjectDeploymentsStopped(plan.deployments);
   } catch {
     throw createProjectArchiveRuntimeStopFailedError();
   }
@@ -53,134 +45,72 @@ export async function cleanupArchivedProjectRuntime(project: ProjectRow): Promis
 export async function cleanupDeletedProjectRuntime(project: ProjectRow): Promise<void> {
   try {
     const plan: ProjectRuntimeCleanupPlan = await buildProjectRuntimeCleanupPlan(project);
-    await cleanupProjectRuntime(plan, true, disconnectStaleCaddyNetworkMode);
+    await stopKubeProjectDeployments(plan.deployments);
+    await deleteKubeProjectResources(plan.resources);
   } catch {
     throw createProjectDeleteRuntimeCleanupFailedError();
   }
 }
 
 async function buildProjectRuntimeCleanupPlan(project: ProjectRow): Promise<ProjectRuntimeCleanupPlan> {
+  const organization: OrganizationRow | undefined = await findOrganizationById(project.organizationId);
+  if (organization === undefined) {
+    throw new Error('Project organization not found.');
+  }
   const environments: EnvironmentRow[] = await listProjectEnvironmentsByProjectIds([project.id]);
-  const resources: ProjectRuntimeCleanupResource[] = await listProjectRuntimeCleanupResources(environments);
-  const hasKubeRuntime: boolean =
-    (await hasProjectDeploymentKubeReference(project.id)) || (await hasSucceededProjectKubeProvisioning(project.id));
-  const nodeRows: NodeRow[] = hasKubeRuntime ? [] : await resolveProjectRuntimeNodes(environments);
-  const nodeResources: NodeProjectCleanupResource[] = buildNodeProjectCleanupResources(resources);
-  const deployments: DeploymentJoinedRow[] = await listRuntimeJoinedDeploymentsForProject(
-    project.id,
-    getApiConfig().baseDomain,
-  );
-
   return {
-    deployments,
-    nodeResources,
-    nodeRows,
-    project,
-    resources,
+    deployments: await listRuntimeJoinedDeploymentsForProject(project.id, getApiConfig().baseDomain),
+    resources: await listProjectRuntimeCleanupResources(project, organization, environments),
   };
 }
 
-async function cleanupProjectRuntime(
-  plan: ProjectRuntimeCleanupPlan,
-  deleteData: boolean,
-  caddyNetworkMode: NodeProjectCleanupCaddyNetworkMode,
-): Promise<void> {
-  await cleanupKubeProjectRuntime(plan.deployments);
-  for (const node of plan.nodeRows) {
-    await cleanupNodeProjectRuntime(createNodeRuntimeRequester(node.nodeSocketPath), {
-      caddyNetworkMode,
-      deleteData,
-      projectId: plan.project.id,
-      projectName: plan.project.name,
-      resources: plan.nodeResources,
-    });
-  }
-}
-
-async function cleanupKubeProjectRuntime(deployments: DeploymentJoinedRow[]): Promise<void> {
+async function stopKubeProjectDeployments(deployments: DeploymentJoinedRow[]): Promise<void> {
   const updatedAt: Date = new Date();
   for (const deployment of deployments) {
-    const deploymentId: string = deployment.deployment.id;
-    const state: DeploymentKubeState | undefined = await findDeploymentKubeState(deploymentId);
+    const state: DeploymentKubeState | undefined = await findDeploymentKubeState(deployment.deployment.id);
     if (state !== undefined) {
-      await stopKubeProjectDeployment(deploymentId, state, updatedAt);
+      await stopKubeProjectDeployment(deployment.deployment.id, state, updatedAt);
     }
   }
 }
 
-function buildNodeProjectCleanupResources(resources: ProjectRuntimeCleanupResource[]): NodeProjectCleanupResource[] {
-  return resources.map(
-    (resource: ProjectRuntimeCleanupResource): NodeProjectCleanupResource => ({
-      environmentName: resource.environmentName,
-      resourceName: resource.resource.name,
-      volumes: parseResourceVolumes(resource.resource),
-    }),
-  );
+async function stopKubeProjectResources(resources: ProjectRuntimeCleanupResource[]): Promise<void> {
+  for (const item of resources) {
+    await reconcileKubernetesResourceReplicas(item.context, item.resource, 0);
+  }
+}
+
+async function deleteKubeProjectResources(resources: ProjectRuntimeCleanupResource[]): Promise<void> {
+  for (const item of resources) {
+    await deleteKubernetesResource(item.context, item.resource, true);
+  }
 }
 
 async function listProjectRuntimeCleanupResources(
+  project: ProjectRow,
+  organization: OrganizationRow,
   environments: EnvironmentRow[],
 ): Promise<ProjectRuntimeCleanupResource[]> {
   const resources: ProjectRuntimeCleanupResource[] = [];
   for (const environment of environments) {
-    const environmentResources: ProjectResourceRow[] = await listProjectResourcesByEnvironmentId(environment.id);
-    resources.push(...buildEnvironmentCleanupResources(environment, environmentResources));
+    const rows: ProjectResourceRow[] = await listProjectResourcesByEnvironmentId(environment.id);
+    resources.push(
+      ...rows.map(
+        (resource: ProjectResourceRow): ProjectRuntimeCleanupResource => ({
+          context: { environment, organization, project },
+          resource,
+        }),
+      ),
+    );
   }
-
   return resources;
 }
 
-function buildEnvironmentCleanupResources(
-  environment: EnvironmentRow,
-  resources: ProjectResourceRow[],
-): ProjectRuntimeCleanupResource[] {
-  return resources.map(
-    (resource: ProjectResourceRow): ProjectRuntimeCleanupResource => ({
-      environmentName: environment.name,
-      resource,
-    }),
-  );
-}
-
-async function resolveProjectRuntimeNodes(environments: EnvironmentRow[]): Promise<NodeRow[]> {
-  const nodeIds: string[] = [...new Set(environments.map((environment: EnvironmentRow): string => environment.nodeId))];
-  const nodes: NodeRow[] = [];
-  for (const nodeId of nodeIds) {
-    nodes.push(await resolveProjectRuntimeNode(nodeId));
-  }
-
-  return nodes;
-}
-
-async function resolveProjectRuntimeNode(nodeId: string): Promise<NodeRow> {
-  const node: NodeRow | undefined = await findNodeById(nodeId);
-  if (node === undefined) {
-    throw new Error('Project runtime node not found.');
-  }
-
-  return node;
-}
-
-async function markProjectRuntimeStopped(
-  deployments: DeploymentJoinedRow[],
-  resources: ProjectRuntimeCleanupResource[],
-): Promise<void> {
+async function markProjectDeploymentsStopped(deployments: DeploymentJoinedRow[]): Promise<void> {
   const updatedAt: Date = new Date();
   for (const deployment of deployments) {
-    if (deployment.deployment.status === 'failed') {
-      continue;
+    if (deployment.deployment.status !== 'failed') {
+      await markDeploymentStopped({ deploymentId: deployment.deployment.id, updatedAt });
     }
-    await markDeploymentStopped({
-      deploymentId: deployment.deployment.id,
-      updatedAt,
-    });
-  }
-  for (const resource of resources) {
-    await updateProjectResourceRuntime({
-      containerId: null,
-      projectResourceId: resource.resource.id,
-      status: 'stopped',
-      updatedAt,
-    });
   }
 }

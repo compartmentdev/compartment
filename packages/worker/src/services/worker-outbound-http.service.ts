@@ -34,16 +34,10 @@ export async function fetchWorkerArtifactRegistryInternalHttp(
   path: string,
   init?: RequestInit,
 ): Promise<Response> {
-  return await fetchConfiguredInternalOutboundHttp(
-    buildConfiguredInternalUrl(artifactRegistry.internalUrl, path),
-    init,
-  );
-}
-
-async function fetchConfiguredInternalOutboundHttp(
-  resource: OutboundHttpResource,
-  init: RequestInit | undefined,
-): Promise<Response> {
+  if (!path.startsWith('/') || path.startsWith('//')) {
+    throw new Error('Configured internal outbound HTTP paths must start with a single slash.');
+  }
+  const resource: OutboundHttpResource = new URL(path, artifactRegistry.internalUrl);
   return await fetchOutboundHttp(resource, init, {
     addressPolicy: 'internal',
     allowedProtocols: ['http:', 'https:'],
@@ -52,12 +46,4 @@ async function fetchConfiguredInternalOutboundHttp(
 
 function readWorkerTrustedPublicOutboundHosts(): string[] {
   return [...builtInTrustedPublicOutboundHosts, ...readWorkerTrustedOutboundHosts()].map(normalizeOutboundTrustedHost);
-}
-
-function buildConfiguredInternalUrl(baseUrl: string, path: string): URL {
-  if (!path.startsWith('/') || path.startsWith('//')) {
-    throw new Error('Configured internal outbound HTTP paths must start with a single slash.');
-  }
-
-  return new URL(path, baseUrl);
 }

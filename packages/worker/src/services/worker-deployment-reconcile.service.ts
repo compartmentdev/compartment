@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type {
+  DeploymentArtifactCleanupTarget,
   DeploymentReconcileTarget,
   ProductJobIntent,
   WorkerObserveDeploymentReconcileRequest,
@@ -31,19 +32,19 @@ export async function reconcileDeploymentTarget(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
-): Promise<void> {
+): Promise<DeploymentArtifactCleanupTarget[]> {
   if (await reconcileStopState(request, runtime, target)) {
-    return;
+    return [];
   }
   if (target.state === 'desired') {
     await reconcileDesiredDeployment(request, runtime, target);
-    return;
+    return [];
   }
   if (target.state === 'pending') {
-    await reconcilePendingDeployment(request, runtime, target);
-    return;
+    return await reconcilePendingDeployment(request, runtime, target);
   }
   await reconcileActiveDeployment(request, runtime, target);
+  return [];
 }
 
 async function reconcileStopState(
@@ -110,7 +111,7 @@ async function reconcilePendingDeployment(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
-): Promise<void> {
+): Promise<DeploymentArtifactCleanupTarget[]> {
   const candidate: KubeDeploymentManifest = await applyApplication(runtime, target);
   const rollout: KubeRolloutObservation | null = readRolloutObservation(
     await runtime.read(candidate),
@@ -118,27 +119,27 @@ async function reconcilePendingDeployment(
     target,
   );
   if (rollout === null) {
-    await handleMissingPendingDeployment(request, runtime, target);
-    return;
+    return await handleMissingPendingDeployment(request, runtime, target);
   }
   const status: KubeRolloutStatus = calculateKubeRolloutStatus(rollout, new Date());
-  await handleRolloutStatus(request, runtime, target, status);
+  return await handleRolloutStatus(request, runtime, target, status);
 }
 
 async function handleMissingPendingDeployment(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
-): Promise<void> {
+): Promise<DeploymentArtifactCleanupTarget[]> {
   const deadline: number = new Date(target.rolloutStartedAt).getTime() + rolloutTimeoutMs(target.candidate);
   if (Date.now() < deadline) {
-    return;
+    return [];
   }
   if (await restartActiveCandidate(request, runtime, target)) {
-    return;
+    return [];
   }
   await recoverFailedRollout(runtime, target);
   await persistObservation(request, target, 'failed', 'Kubernetes rollout timed out.');
+  return [];
 }
 
 async function applyApplication(
@@ -153,19 +154,19 @@ async function handleRolloutStatus(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
   status: KubeRolloutStatus,
-): Promise<void> {
+): Promise<DeploymentArtifactCleanupTarget[]> {
   if (status === 'ready') {
-    await persistObservation(request, target, 'ready');
-    return;
+    return await persistObservation(request, target, 'ready');
   }
   if (status === 'progressing') {
-    return;
+    return [];
   }
   if (await restartActiveCandidate(request, runtime, target)) {
-    return;
+    return [];
   }
   await recoverFailedRollout(runtime, target);
   await persistObservation(request, target, 'failed', rolloutFailureMessage(status));
+  return [];
 }
 
 async function restartActiveCandidate(
@@ -195,7 +196,7 @@ async function persistObservation(
   target: DeploymentReconcileTarget,
   observation: 'pending' | 'ready' | 'failed' | 'stopped',
   message?: string,
-): Promise<void> {
+): Promise<DeploymentArtifactCleanupTarget[]> {
   const input: WorkerObserveDeploymentReconcileRequest = {
     deploymentId: target.candidate.deploymentId,
     ...(message === undefined ? {} : { message }),
@@ -203,5 +204,5 @@ async function persistObservation(
     observedAt: new Date().toISOString(),
     revision: target.revision,
   };
-  await observeDeploymentReconcile(request, input);
+  return (await observeDeploymentReconcile(request, input)).cleanupArtifacts;
 }

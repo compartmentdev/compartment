@@ -48,14 +48,11 @@ export interface CreateDeploymentInput extends CreateDeploymentSourceProvenanceI
   accessMode: AppRouteAccessMode;
   buildArtifactId: string;
   deploymentRunId: string;
-  drainDeadlineAt?: Date | null | undefined;
-  drainingContainerId?: string | null | undefined;
   environmentId: string;
   health: DeploymentRuntimeHealth;
   id: string;
   label?: string | null | undefined;
   movementSourceDeploymentId?: string | null | undefined;
-  nodeId: string;
   operationId: string;
   promotionStage: DeploymentPromotionStage;
   projectServiceId: string;
@@ -98,17 +95,4 @@ export interface MarkDeploymentFailedInput {
   deploymentId: string;
   failureMessage: string;
   updatedAt: Date;
-}
-
-export interface UpdateDeploymentRuntimeStateInput {
-  containerId?: string | null | undefined;
-  deploymentId: string;
-  drainDeadlineAt?: Date | null | undefined;
-  drainingContainerId?: string | null | undefined;
-  drainingDeploymentId?: string | null | undefined;
-  drainingNodeId?: string | null | undefined;
-  promotionStage: DeploymentPromotionStage;
-  updatedAt: Date;
-  upstreamHost?: string | null | undefined;
-  upstreamPort?: number | null | undefined;
 }

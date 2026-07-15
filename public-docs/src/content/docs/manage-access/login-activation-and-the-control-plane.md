@@ -28,12 +28,9 @@ compartment remote use <name>
 Current local-password flows include:
 
 - invited-user activation;
-- install-operator password reset;
 - current-user session inspection and logout.
 
 Activation links are issued only for newly created local-password users and are bound to the inviting organization. If a user is invited to another organization before activating, the original activation link still signs the browser into only the original organization. The link stops working if that organization no longer allows local-password access for that user, even when another organization still does.
-
-Organization managers can invite existing users into their organization, but they cannot issue password-reset links. Password reset links are an install-operator recovery action for single-organization local-password users. Use `sudo compartment system issue-password-reset --email <email>` on the install host when recovery is needed. The link is bound to the issuing organization: completion returns only that organization and creates a session that cannot be used for other memberships. Issuance is audited in that organization and is unavailable when the target user belongs to more than one organization.
 
 Human accounts can use runtime actions only after they have a real login path: a local password or an SSO identity. An invited human user without either can stay visible in the organization, but cannot run deploy or deployment-mutation flows yet.
 

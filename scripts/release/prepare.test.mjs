@@ -31,9 +31,6 @@ describe('prepare-release', () => {
     await expect(readJsonFile(join(repositoryRoot, 'packages/b/package.json'))).resolves.toMatchObject({
       version: '0.2.0',
     });
-    await expect(readFile(join(repositoryRoot, '.env.self-hosted.example'), 'utf8')).resolves.toContain(
-      'COMPARTMENT_NODE_VERSION=0.2.0',
-    );
     await expect(readJsonFile(join(repositoryRoot, '.release-please-manifest.json'))).resolves.toEqual({
       '.': '0.2.0',
     });
@@ -44,7 +41,6 @@ async function createReleaseFixture() {
   const temporaryDirectory = await mkdtemp(join(tmpdir(), 'compartment-prepare-release-'));
   temporaryDirectories.push(temporaryDirectory);
 
-  await writeFile(join(temporaryDirectory, '.env.self-hosted.example'), 'COMPARTMENT_NODE_VERSION=0.1.0\n', 'utf8');
   await writeFile(
     join(temporaryDirectory, '.release-please-manifest.json'),
     `${JSON.stringify({ '.': '0.1.0' }, null, 2)}\n`,

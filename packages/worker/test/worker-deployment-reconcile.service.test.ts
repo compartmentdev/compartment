@@ -36,7 +36,7 @@ describe('deployment reconciliation', (): void => {
     vi.clearAllMocks();
     mocks.delay.mockResolvedValue(undefined);
     mocks.executeProductJob.mockResolvedValue({ status: 'succeeded' });
-    mocks.observeDeploymentReconcile.mockResolvedValue({ applied: true });
+    mocks.observeDeploymentReconcile.mockResolvedValue({ applied: true, cleanupArtifacts: [] });
   });
 
   it('does not start rollout when the release Job fails', async (): Promise<void> => {

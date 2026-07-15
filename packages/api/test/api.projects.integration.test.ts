@@ -63,6 +63,7 @@ import {
 import { createBrowserCsrfCookie } from '../src/services/browser-csrf-cookie.service';
 import { buildRuntimePublicSettings } from '../src/services/public-hosts.service';
 import {
+  acknowledgeKubeDeploymentStopped,
   claimNextQueuedDeployment,
   createUploadedSourceArchive,
   completeClaimedDeployment,
@@ -73,7 +74,6 @@ import {
   injectDeployRequest,
   injectJsonDeployRequest,
   installCompartment,
-  registerLocalNode,
   requireClaimedDeployment,
   requireClaimedDeploymentByServiceName,
   requireDeploymentByServiceName,
@@ -194,7 +194,6 @@ describe('Phase 0 API integration projects', (): void => {
   });
   it('activates an invited member in the browser without app access and blocks protected CLI/API routes', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const deployPayload: DeployResponse = deployResponseSchema.parse(
       (await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json(),
     );
@@ -334,7 +333,6 @@ describe('Phase 0 API integration projects', (): void => {
 
   it('does not mint app access credentials from login state without app route access', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const deployPayload: DeployResponse = deployResponseSchema.parse(
       (await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json(),
     );
@@ -393,7 +391,6 @@ describe('Phase 0 API integration projects', (): void => {
 
   it('does not exchange an app access code after app route access is revoked', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const deployPayload: DeployResponse = deployResponseSchema.parse(
       (await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json(),
     );
@@ -460,7 +457,6 @@ describe('Phase 0 API integration projects', (): void => {
 
   it('does not mint app access credentials when the login path targets an inaccessible proxy route', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,
@@ -626,7 +622,6 @@ describe('Phase 0 API integration projects', (): void => {
   });
   it('reuses project context rows for concurrent deploy requests with the same canonical keys', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const [firstDeployResponse, secondDeployResponse]: [LightMyRequestResponse, LightMyRequestResponse] =
       await Promise.all([
@@ -648,7 +643,6 @@ describe('Phase 0 API integration projects', (): void => {
   });
   it('reuses and retains a shared source upload across a multi-service deployment batch', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,
@@ -708,7 +702,6 @@ describe('Phase 0 API integration projects', (): void => {
   });
   it('keeps a shared source upload for the successful deployment in a mixed-outcome batch', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,
@@ -796,7 +789,6 @@ describe('Phase 0 API integration projects', (): void => {
   });
   it('lists, renames, archives, and unarchives projects inside the current organization', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
@@ -997,7 +989,7 @@ describe('Phase 0 API integration projects', (): void => {
     const renamePayload: ProjectResponse = projectResponseSchema.parse(renameResponse.json());
     expect(renamePayload.project.name).toBe('renamed-web');
 
-    const archiveResponse: LightMyRequestResponse = await app.inject({
+    const archiveResponsePromise: Promise<LightMyRequestResponse> = app.inject({
       method: 'POST',
       url: '/v1/projects/renamed-web/archive',
       headers: {
@@ -1005,6 +997,8 @@ describe('Phase 0 API integration projects', (): void => {
         [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
       },
     });
+    await acknowledgeKubeDeploymentStopped(deployment.id);
+    const archiveResponse: LightMyRequestResponse = await archiveResponsePromise;
     expect(archiveResponse.statusCode).toBe(200);
     const archivePayload: ProjectResponse = projectResponseSchema.parse(archiveResponse.json());
     expect(archivePayload.project.archivedAt).not.toBeNull();

@@ -5,7 +5,6 @@ import {
   compartmentProjectNameSchema,
   deploymentLogsResponseSchema,
   deploymentInspectResponseSchema,
-  nodeInspectDeploymentQuerySchema,
   projectDeleteResponseSchema,
   projectListQuerySchema,
   projectListResponseSchema,
@@ -14,7 +13,6 @@ import {
   type DeploymentInspectResponse,
   type DeploymentInspectTarget,
   type DeploymentLogsResponse,
-  type NodeInspectDeploymentQuery,
   type ProjectDeleteResponse,
   type ProjectListQuery,
   type ProjectListResponse,
@@ -24,15 +22,10 @@ import {
   type UserListResponse,
   type WorkerClaimDeploymentResponse,
   type WorkerClaimedDeployment,
-  type WorkerRecoverDeploymentsQuery,
-  type WorkerRecoverDeploymentsResponse,
   userListQuerySchema,
   userListResponseSchema,
   workerClaimDeploymentResponseSchema,
-  workerRecoverDeploymentsQuerySchema,
-  workerRecoverDeploymentsResponseSchema,
 } from '../src';
-import type { RuntimePreviousDeployment } from '../src/contracts/runtime-shared.contract';
 import {
   buildDeploymentInspectResponse,
   buildDeploymentInspectTarget,
@@ -128,50 +121,23 @@ describe('contract schemas projects and users', (): void => {
   it('accepts worker claim payloads with a canonical build artifact image repository', (): void => {
     const result: WorkerClaimDeploymentResponse = workerClaimDeploymentResponseSchema.parse({
       deployment: {
-        deploymentId: 'dep_123',
-        deploymentRunId: 'drn_123',
-        environmentId: 'env_123',
-        environmentName: 'production',
-        node: {
-          id: 'node_123',
-          name: 'local-node',
-          nodeSocketPath: '/tmp/compartment/contracts/node/agent.sock',
-        },
-        previousDeployment: {
-          containerId: 'container_previous',
-          deploymentId: 'dep_previous',
-          imageRef: 'sha256:previous',
-          nodeId: 'node_previous',
-          nodeSocketPath: '/tmp/compartment/contracts/node/previous-agent.sock',
-          upstreamHost: '127.0.0.1',
-          upstreamPort: 30999,
-        },
-        projectId: 'prj_123',
-        projectName: 'smoke-web',
-        readiness: {
-          path: '/healthz',
-          timeoutMs: 30000,
-          type: 'http',
-        },
-        requiresSourceRoutesFile: false,
-        run: {
-          command: 'pnpm start',
-          restart: {
-            policy: 'on-failure',
-          },
-        },
-        release: null,
         artifact: {
           id: 'art_123',
           imageRef: null,
           sourceDigest: 'sha256:source',
         },
         buildEnv: {},
-        routeHost: 'smoke-web.localhost',
-        runtimeEnv: {},
-        runtimeNetwork: {
-          requiresResourceNetwork: false,
+        deploymentId: 'dep_123',
+        deploymentRunId: 'drn_123',
+        environmentId: 'env_123',
+        environmentName: 'production',
+        projectId: 'prj_123',
+        projectName: 'smoke-web',
+        requiresSourceRoutesFile: false,
+        run: {
+          command: 'pnpm start',
         },
+        routeHost: 'smoke-web.localhost',
         service: {
           build: {
             env: [],
@@ -191,34 +157,8 @@ describe('contract schemas projects and users', (): void => {
     });
 
     const deployment: WorkerClaimedDeployment = expectPresent(result.deployment, 'deployment');
-    const previousDeployment: RuntimePreviousDeployment = expectPresent(
-      deployment.previousDeployment,
-      'previous deployment',
-    );
 
     expect(deployment.artifact.id).toBe('art_123');
-    expect(previousDeployment.nodeSocketPath).toBe('/tmp/compartment/contracts/node/previous-agent.sock');
-  });
-
-  it('accepts worker recovery queries with an explicit mode', (): void => {
-    const result: WorkerRecoverDeploymentsQuery = workerRecoverDeploymentsQuerySchema.parse({
-      mode: 'pending-drain',
-    });
-
-    expect(result.mode).toBe('pending-drain');
-  });
-
-  it('accepts worker recovery payloads with cleanup targets', (): void => {
-    const result: WorkerRecoverDeploymentsResponse = workerRecoverDeploymentsResponseSchema.parse({
-      cleanupArtifacts: [
-        {
-          imageRef: 'registry.example/compartment/projects/prj_123/services/svc_123@sha256:abc',
-        },
-      ],
-      recoveredDeploymentCount: 1,
-    });
-
-    expect(expectPresent(result.cleanupArtifacts[0], 'cleanup artifact').imageRef).toContain('@sha256:abc');
   });
 
   it('accepts deployment inspect payloads with runtime details', (): void => {
@@ -231,21 +171,18 @@ describe('contract schemas projects and users', (): void => {
     expect(expectPresent(result.activeDeployments[0], 'active deployment').runtime).toEqual(
       expect.objectContaining({
         routeHost: 'smoke-railpack.localhost',
-        upstreamPort: 31000,
+        servicePort: 80,
       }),
     );
   });
 
-  it('accepts Kubernetes inspect runtime details without a container id', (): void => {
+  it('accepts Kubernetes inspect runtime details', (): void => {
     const activeDeployment: DeploymentInspectTarget = buildDeploymentInspectTarget({
-      containerId: null,
       runtime: {
-        containerId: null,
         imageRef: 'registry.example/app@sha256:abc',
         routeHost: 'smoke-railpack.localhost',
-        runtimeKind: 'kubernetes',
-        upstreamHost: 'app-smoke.cpt-smoke.svc',
-        upstreamPort: 80,
+        serviceHost: 'app-smoke.cpt-smoke.svc',
+        servicePort: 80,
       },
     });
 
@@ -253,13 +190,11 @@ describe('contract schemas projects and users', (): void => {
       buildDeploymentInspectResponse({ activeDeployments: [activeDeployment] }),
     );
 
-    expect(result.activeDeployments[0]?.runtime).toMatchObject({ containerId: null, runtimeKind: 'kubernetes' });
+    expect(result.activeDeployments[0]?.runtime).toMatchObject({ servicePort: 80 });
   });
 
   it('rejects deployment inspect payloads without rollback availability', (): void => {
     const activeDeployment: DeploymentInspectTarget = buildDeploymentInspectTarget({
-      containerId: 'ctr_compat_123',
-      drain: null,
       id: 'dep_compat_123',
       isActive: false,
       operation: {
@@ -296,20 +231,6 @@ describe('contract schemas projects and users', (): void => {
       );
 
     expect(result.success).toBe(false);
-  });
-
-  it('accepts node inspect queries with optional readiness fields', (): void => {
-    const result: NodeInspectDeploymentQuery = nodeInspectDeploymentQuerySchema.parse({
-      deploymentId: 'dep_123',
-      environmentName: 'production',
-      projectName: 'smoke-web',
-      readinessPath: '/healthz',
-      readinessTimeoutMs: '30000',
-      readinessType: 'http',
-      serviceName: 'web',
-    });
-
-    expect(result.readinessTimeoutMs).toBe(30000);
   });
 
   it('rejects archived state in project show payloads', (): void => {

@@ -22,7 +22,6 @@ import {
   deployResponseSchema,
   edgeInvalidateAppSessionsRequestSchema,
   healthResponseSchema,
-  nodeStopDeploymentResponseSchema,
   compartmentRoutesFileSchema,
   deploymentRunLogsQuerySchema,
   projectReadResponseSchema,
@@ -41,7 +40,6 @@ import {
   type DeploymentListResponse,
   type DeploymentReadSummary,
   type DeploymentStatusResponse,
-  type NodeStopDeploymentResponse,
   type CompartmentRoutesFile,
   type ProjectReadResponse,
   type ProjectShowResponse,
@@ -124,14 +122,14 @@ describe('contract schemas deployment and app access', (): void => {
                       scopeType: 'organization',
                     },
                   ],
-                  upstreamHost: '127.0.0.1',
-                  upstreamPort: 3001,
+                  upstreamHost: 'app-backoffice.cpt-project.svc',
+                  upstreamPort: 80,
                 },
                 to: 'backoffice',
               },
             ],
-            upstreamHost: '127.0.0.1',
-            upstreamPort: 3000,
+            upstreamHost: 'app-web.cpt-project.svc',
+            upstreamPort: 80,
             routeScopeId: 'org_123',
             routeScopeType: 'organization',
             scopeChain: [
@@ -149,7 +147,7 @@ describe('contract schemas deployment and app access', (): void => {
     const route: AppAccessRouteState = expectPresent(state.routes[0], 'app access route');
     const proxyRoute: AppAccessProxyRouteState = expectPresent(route.proxyRoutes[0], 'proxy route');
 
-    expect(proxyRoute.target?.upstreamPort).toBe(3001);
+    expect(proxyRoute.target?.upstreamPort).toBe(80);
   });
 
   it('rejects app access proxy targets with partial upstream coordinates', (): void => {
@@ -181,11 +179,13 @@ describe('contract schemas deployment and app access', (): void => {
                       },
                     ],
                     upstreamHost: null,
-                    upstreamPort: 3001,
+                    upstreamPort: 80,
                   },
                   to: 'backoffice',
                 },
               ],
+              upstreamHost: 'app-web.cpt-project.svc',
+              upstreamPort: 80,
               routeScopeId: 'org_123',
               routeScopeType: 'organization',
               scopeChain: [
@@ -194,8 +194,6 @@ describe('contract schemas deployment and app access', (): void => {
                   scopeType: 'organization',
                 },
               ],
-              upstreamHost: '127.0.0.1',
-              upstreamPort: 3000,
             },
           ],
         },
@@ -304,14 +302,14 @@ describe('contract schemas deployment and app access', (): void => {
                         scopeType: 'organization',
                       },
                     ],
-                    upstreamHost: '127.0.0.1',
-                    upstreamPort: 3001,
+                    upstreamHost: 'app-backoffice.cpt-project.svc',
+                    upstreamPort: 80,
                   },
                   to: 'backoffice',
                 },
               ],
-              upstreamHost: '127.0.0.1',
-              upstreamPort: 3000,
+              upstreamHost: 'app-web.cpt-project.svc',
+              upstreamPort: 80,
               routeScopeId: 'org_123',
               routeScopeType: 'organization',
               scopeChain: [
@@ -333,14 +331,6 @@ describe('contract schemas deployment and app access', (): void => {
         }),
       );
     }
-  });
-
-  it('accepts valid node stop deployment payloads', (): void => {
-    const result: NodeStopDeploymentResponse = nodeStopDeploymentResponseSchema.parse({
-      stoppedAt: '2026-03-24T10:00:00.000Z',
-    });
-
-    expect(result.stoppedAt).toBe('2026-03-24T10:00:00.000Z');
   });
 
   it('accepts edge session invalidation payloads', (): void => {
@@ -417,7 +407,6 @@ describe('contract schemas deployment and app access', (): void => {
             strategy: 'auto',
           },
           completedAt: null,
-          containerId: null,
           createdAt: '2026-03-24T09:00:00.000Z',
           failureMessage: null,
           health: 'pending',
@@ -440,11 +429,7 @@ describe('contract schemas deployment and app access', (): void => {
             type: 'http',
           },
           rollbackAvailable: false,
-          run: {
-            restart: {
-              policy: 'on-failure',
-            },
-          },
+          run: {},
           routeUrl: null,
           serviceName: 'web',
           status: 'running',
@@ -486,7 +471,6 @@ describe('contract schemas deployment and app access', (): void => {
             strategy: 'auto',
           },
           completedAt: '2026-03-24T10:00:00.000Z',
-          containerId: 'ctr_123',
           createdAt: '2026-03-24T09:00:00.000Z',
           failureMessage: null,
           health: 'healthy',
@@ -509,11 +493,7 @@ describe('contract schemas deployment and app access', (): void => {
             type: 'http',
           },
           reusableImageState: 'available',
-          run: {
-            restart: {
-              policy: 'on-failure',
-            },
-          },
+          run: {},
           routeUrl: 'https://smoke-web.example.com',
           serviceName: 'web',
           status: 'succeeded',

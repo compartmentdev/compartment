@@ -135,9 +135,6 @@ jobs:
       - name: Run edge lint
         run: pnpm --filter @compartment/edge lint
 
-      - name: Run node lint
-        run: pnpm --filter @compartment/node lint
-
       - name: Run worker lint
         run: pnpm --filter @compartment/worker lint
 
@@ -152,6 +149,9 @@ jobs:
 
       - name: Check commitlint wiring
         run: pnpm check:commitlint
+
+      - name: Check Kubernetes cutover boundary
+        run: pnpm check:kubernetes-cutover
 
       - name: Check fork PR runner routing
         run: pnpm check:fork-pr-runners
@@ -194,9 +194,6 @@ jobs:
 
       - name: Run fast tests
         run: pnpm test:fast:ci
-
-      - name: Run docker boundary check
-        run: pnpm --filter @compartment/node test:docker-boundary
 
   semgrep:
     name: check:ci / semgrep

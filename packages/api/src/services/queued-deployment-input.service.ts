@@ -9,7 +9,6 @@ interface BuildQueuedDeploymentBaseInput extends Partial<DeploymentSourceProvena
   environmentId: string;
   label?: string | null | undefined;
   movementSourceDeploymentId?: string | null | undefined;
-  nodeId: string;
   projectServiceId: string;
   resolvedReadinessJson: string;
   resolvedReleaseJson: string;
@@ -23,13 +22,10 @@ export function buildQueuedDeploymentBaseInput(
   return {
     accessMode: input.accessMode,
     deploymentRunId: input.deploymentRunId,
-    drainDeadlineAt: null,
-    drainingContainerId: null,
     environmentId: input.environmentId,
     health: 'pending',
     id: createId('dep'),
     ...buildQueuedDeploymentOptionalFields(input),
-    nodeId: input.nodeId,
     projectServiceId: input.projectServiceId,
     promotionStage: 'building',
     resolvedReadinessJson: input.resolvedReadinessJson,

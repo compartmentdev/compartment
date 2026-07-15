@@ -1,10 +1,9 @@
 import { hasText } from '@compartment/utils';
 import type { CliIo } from '../app.types';
-import { deriveRegisterOrganizationName } from './install-defaults';
+import { deriveRegisterOrganizationName } from './organization-name-default';
 import { readPromptLine, readSecretPromptLine } from './prompt-reader';
 import {
   assertEmail,
-  parsePort,
   validateInstallEmail,
   validateInstallOrganization,
   validateLoginEmail,
@@ -153,18 +152,6 @@ export async function promptRemoteSelection(
     }
 
     writePromptError(io, `Enter a number from 1 to ${String(options.length)}.`);
-  }
-}
-
-export async function promptPort(io: CliIo, label: string, defaultPort: number): Promise<number> {
-  for (;;) {
-    const value: string = await promptVisibleText(io, label, String(defaultPort));
-    const port: number | undefined = parsePort(value);
-    if (port !== undefined) {
-      return port;
-    }
-
-    writePromptError(io, `${label} must be an integer between 1 and 65535.`);
   }
 }
 

@@ -7,7 +7,7 @@ import {
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import { parseRequestValue } from '../../http/validation';
-import { appendDeploymentRuntimeEventForWorker } from '../../services/deployment-runtime-state.service';
+import { appendDeploymentEventForWorker } from '../../services/deployment-event.service';
 
 export function registerPostDeploymentRuntimeEventRoute(app: ApiApp): void {
   app.post(
@@ -25,7 +25,7 @@ export function registerPostDeploymentRuntimeEventRoute(app: ApiApp): void {
         request.body,
         'invalid_worker_append_deployment_event_request',
       );
-      await appendDeploymentRuntimeEventForWorker(input);
+      await appendDeploymentEventForWorker(input);
       const response: WorkerAppendDeploymentEventRequest = workerAppendDeploymentEventRequestSchema.parse(input);
 
       return await reply.send(response);

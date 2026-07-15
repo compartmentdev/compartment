@@ -17,12 +17,14 @@ import {
   type DeploymentSummary,
   type DeployResponse,
   type InstallResponse,
+  type ProductLogIngestEvent,
   type WorkerClaimDeploymentResponse,
   type WorkerAppendDeploymentEventRequest,
   type WorkerClaimedDeployment,
   compartmentCurrentOrganizationHeaderName,
   workerAppendDeploymentEventPathname,
 } from '@compartment/contracts';
+import { immutableKubeName } from '@compartment/utils';
 import type { LightMyRequestResponse } from 'fastify';
 import { rm, writeFile } from 'node:fs/promises';
 import type { Pool } from 'pg';
@@ -32,14 +34,15 @@ import type { ApiApp } from '../src/app.types';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 
 import { buildArtifacts, deployments, environments, projectServices, projects } from '../src/db/schema';
+import { ingestDeploymentProductLogs } from '../src/services/deployment-product-logs.service';
 
 import {
   buildOrganizationAuthorizationHeaders,
   claimNextQueuedDeployment,
+  completeClaimedDeployment,
   createSourceArchive,
   injectDeployRequest,
   installCompartment,
-  registerLocalNode,
   requireClaimedDeployment,
   requireDeployResponseDeployment,
   requireSingleDeployment,
@@ -154,7 +157,6 @@ describe('Phase 0 API integration deployment status', (): void => {
   });
   it('does not sync service metadata when build env validation fails for an existing target', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const initialDeployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
@@ -248,7 +250,6 @@ describe('Phase 0 API integration deployment status', (): void => {
   });
   it('returns not found when a deployment id belongs to a different organization scope', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const acmeDeployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
       installPayload.sessionToken,
@@ -293,7 +294,6 @@ describe('Phase 0 API integration deployment status', (): void => {
   });
   it('queues, claims, completes, and serves deployment status and logs for the default production environment', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
       installPayload.sessionToken,
@@ -321,22 +321,25 @@ describe('Phase 0 API integration deployment status', (): void => {
     expect(sourceArchiveResponse.statusCode).toBe(200);
     expect(sourceArchiveResponse.headers['content-type']).toContain('application/gzip');
     expect(sourceArchiveResponse.body.length).toBeGreaterThan(0);
-    const completedResponse: LightMyRequestResponse = await app.inject({
-      headers: {
-        authorization: 'Bearer test-runtime-control-token',
-      },
-      method: 'POST',
-      url: '/internal/deployments/complete',
-      payload: {
-        containerId: 'container_123',
-        deploymentId: deployment.id,
-        imageRef: 'sha256:image',
-        routeHost: claimedDeployment.routeHost,
-        upstreamHost: '127.0.0.1',
-        upstreamPort: 31000,
-      },
+    const eventTime: number = Date.now();
+    await completeClaimedDeployment(app, deployment.id, claimedDeployment.routeHost, new Date(eventTime + 3_000));
+    const productLogEvent: ProductLogIngestEvent = {
+      containerName: immutableKubeName('app', deployment.id),
+      message: 'boot complete',
+      namespace: `cpt-${deployment.id}`,
+      podName: `${immutableKubeName('app', deployment.id)}-abc`,
+      podUid: '34343434-3434-4434-8434-343434343434',
+      restartIdentity: '0',
+      sourceFingerprint: 'd'.repeat(64),
+      sourceOffset: 1,
+      stream: 'stdout',
+      timestamp: new Date(eventTime + 4_000).toISOString(),
+    };
+    await expect(ingestDeploymentProductLogs([productLogEvent])).resolves.toEqual({
+      accepted: 1,
+      duplicates: 0,
+      rejected: 0,
     });
-    expect(completedResponse.statusCode).toBe(200);
     await appendWorkerDeploymentEvent(app, {
       deploymentId: deployment.id,
       deploymentRunId: deployPayload.deploymentRunId,
@@ -344,7 +347,7 @@ describe('Phase 0 API integration deployment status', (): void => {
       message: 'build output hidden from deployment logs',
       stepKey: 'building_image',
       stream: 'stdout',
-      timestamp: '2026-03-23T11:59:58.000Z',
+      timestamp: new Date(eventTime + 1_000).toISOString(),
     });
     await appendWorkerDeploymentEvent(app, {
       deploymentId: deployment.id,
@@ -353,7 +356,7 @@ describe('Phase 0 API integration deployment status', (): void => {
       message: 'release output visible in deployment logs',
       stepKey: 'release',
       stream: 'stdout',
-      timestamp: '2026-03-23T11:59:59.000Z',
+      timestamp: new Date(eventTime + 2_000).toISOString(),
     });
     const retainedArchiveResponse: LightMyRequestResponse = await app.inject({
       headers: {
@@ -438,7 +441,7 @@ describe('Phase 0 API integration deployment status', (): void => {
     );
     expect(latestRunLogsPayload.deployment.id).toBe(deployPayload.deploymentRunId);
     expect(latestRunLogsPayload.lines).toHaveLength(1);
-    expect(latestRunLogsPayload.lines[0]?.stepKey).toBe('switching_route');
+    expect(latestRunLogsPayload.lines[0]?.stepKey).toBe('completed');
     const runLogsResponse: LightMyRequestResponse = await app.inject({
       method: 'GET',
       url: `${compartmentDeploymentRunLogsPathname}?projectName=smoke-web&selector=run&deploymentRunId=${deployPayload.deploymentRunId}&tailLines=1`,
@@ -451,9 +454,9 @@ describe('Phase 0 API integration deployment status', (): void => {
     const runLogsPayload: DeploymentRunLogsResponse = deploymentRunLogsResponseSchema.parse(runLogsResponse.json());
     expect(runLogsPayload.deployment.id).toBe(deployPayload.deploymentRunId);
     expect(runLogsPayload.lines).toHaveLength(1);
-    expect(runLogsPayload.lines[0]?.stepKey).toBe('switching_route');
+    expect(runLogsPayload.lines[0]?.stepKey).toBe('completed');
     expect(runLogsPayload.steps.map((step: DeploymentRunStepSummary): string => step.stepKey)).toEqual(
-      expect.arrayContaining(['queued', 'switching_route']),
+      expect.arrayContaining(['queued', 'completed']),
     );
     const runLogsSinceResponse: LightMyRequestResponse = await app.inject({
       method: 'GET',
@@ -468,9 +471,9 @@ describe('Phase 0 API integration deployment status', (): void => {
       runLogsSinceResponse.json(),
     );
     expect(runLogsSincePayload.lines).toHaveLength(1);
-    expect(runLogsSincePayload.lines[0]?.stepKey).toBe('switching_route');
+    expect(runLogsSincePayload.lines[0]?.stepKey).toBe('completed');
     expect(runLogsSincePayload.steps.map((step: DeploymentRunStepSummary): string => step.stepKey)).toEqual(
-      expect.arrayContaining(['queued', 'switching_route']),
+      expect.arrayContaining(['queued', 'completed']),
     );
     vi.unstubAllGlobals();
 
@@ -500,7 +503,6 @@ describe('Phase 0 API integration deployment status', (): void => {
   });
   it('does not serve per-artifact archives for non-source-resolution deployments', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceArchive: Buffer = await createSourceArchive({
       'compartment.yml': 'name: smoke-web\nservices:\n  web: .\n',
       'package.json': '{"name":"smoke-web"}\n',

@@ -80,7 +80,7 @@ Selected, non-ignored archive entries must also be symlink-free. If the descript
 selected service paths, or included source paths resolve to symlinks, `compartment deploy` fails before rollout with a
 path-specific validation error.
 
-If `compartment.yml` declares top-level `resources`, deploy reconciles those Docker-backed resources before app services.
+If `compartment.yml` declares top-level `resources`, deploy reconciles those Kubernetes resources before app services.
 Inspect them with `compartment resource list`, `inspect`, and `logs`.
 
 ## Working across installs and environments

@@ -104,11 +104,8 @@ const apiConfig: ApiConfig = {
   sessionSecret: 'test-session-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  runtimeDefaultUpstreamHost: '127.0.0.1',
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-app-access-state-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -208,7 +205,6 @@ describe('app access state service', (): void => {
             to: 'backoffice',
           },
         ]),
-        upstreamPort: 31000,
         serviceId: 'svc_web',
         serviceName: 'web',
       }),
@@ -242,7 +238,6 @@ describe('app access state service', (): void => {
             to: 'backoffice',
           },
         ]),
-        upstreamPort: 31000,
         serviceId: 'svc_web',
         serviceName: 'web',
       }),
@@ -252,7 +247,6 @@ describe('app access state service', (): void => {
         accessScopeType: 'environment',
         host: 'backoffice-billing.localhost',
         resolvedRoutesJson: '[]',
-        upstreamPort: 31042,
         serviceId: 'svc_backoffice',
         serviceName: 'backoffice',
       }),
@@ -276,7 +270,6 @@ describe('app access state service', (): void => {
             { scopeId: 'prj_123', scopeType: 'project' },
             { scopeId: 'org_123', scopeType: 'organization' },
           ],
-          upstreamPort: 31042,
         }),
         to: 'backoffice',
       },
@@ -288,7 +281,6 @@ describe('app access state service', (): void => {
       createDeploymentRouteLookupRow({
         accessMode: 'public',
         resolvedRoutesJson: '[]',
-        upstreamPort: 31000,
       }),
     ]);
 
@@ -304,14 +296,12 @@ describe('app access state service', (): void => {
       createDeploymentRouteLookupRow({
         host: 'billing.localhost',
         resolvedRoutesJson: '[]',
-        upstreamPort: 31000,
       }),
     ]);
     mocks.listActiveCustomDeploymentRoutes.mockResolvedValue([
       createDeploymentRouteLookupRow({
         host: 'app.example.com',
         resolvedRoutesJson: '[]',
-        upstreamPort: 31000,
       }),
     ]);
 
@@ -338,7 +328,6 @@ describe('app access state service', (): void => {
     mocks.listActiveDeploymentRoutes.mockResolvedValue([
       createDeploymentRouteLookupRow({
         resolvedRoutesJson: '[]',
-        upstreamPort: 31000,
       }),
     ]);
     mocks.listAllPrincipalPermissionGrantStates.mockResolvedValue([
@@ -365,7 +354,6 @@ describe('app access state service', (): void => {
         accessScopeId: 'env_123',
         accessScopeType: 'environment',
         resolvedRoutesJson: '[]',
-        upstreamPort: 31000,
       }),
     ]);
 
@@ -417,9 +405,9 @@ function createGrantRow(
 }
 
 function createDeploymentRouteLookupRow(
-  overrides: Partial<DeploymentRouteLookupRow> & Pick<DeploymentRouteLookupRow, 'resolvedRoutesJson' | 'upstreamPort'>,
+  overrides: Partial<DeploymentRouteLookupRow> & Pick<DeploymentRouteLookupRow, 'resolvedRoutesJson'>,
 ): DeploymentRouteLookupRow {
-  const { resolvedRoutesJson, upstreamPort, ...remainingOverrides } = overrides;
+  const { resolvedRoutesJson, ...remainingOverrides } = overrides;
 
   return {
     accessMode: 'authenticated',
@@ -434,10 +422,10 @@ function createDeploymentRouteLookupRow(
     projectId: 'prj_123',
     projectName: 'billing',
     resolvedRoutesJson,
-    upstreamHost: null,
-    upstreamPort,
     serviceId: 'svc_web',
     serviceName: 'web',
+    upstreamHost: '127.0.0.1',
+    upstreamPort: 31000,
     ...remainingOverrides,
   };
 }

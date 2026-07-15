@@ -22,7 +22,6 @@ describe('readSecureSelfHostedImageOptions', () => {
   it('reads unique tags and output directory', () => {
     expect(readSecureSelfHostedImageOptions(['--output-dir', './sboms', 'sha-123', 'main', 'main'])).toEqual({
       dockerScout: false,
-      envFilePath: undefined,
       outputDirectory: './sboms',
       repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: false,
@@ -34,7 +33,6 @@ describe('readSecureSelfHostedImageOptions', () => {
   it('reads scan-only mode', () => {
     expect(readSecureSelfHostedImageOptions(['--scan-only', 'sha-123'])).toEqual({
       dockerScout: false,
-      envFilePath: undefined,
       outputDirectory: './.compartment/release-assets/self-hosted-sboms',
       repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: true,
@@ -46,7 +44,6 @@ describe('readSecureSelfHostedImageOptions', () => {
   it('reads provenance attestation validation mode', () => {
     expect(readSecureSelfHostedImageOptions(['--validate-provenance-attestation'])).toEqual({
       dockerScout: false,
-      envFilePath: undefined,
       outputDirectory: './.compartment/release-assets/self-hosted-sboms',
       repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: false,
@@ -73,45 +70,13 @@ describe('readSecureSelfHostedImageOptions', () => {
     });
   });
 
-  it('reads scan-only env file mode', () => {
-    expect(readSecureSelfHostedImageOptions(['--scan-only', '--docker-scout', '--env-file', './cache.env'])).toEqual({
-      dockerScout: true,
-      envFilePath: './cache.env',
-      outputDirectory: './.compartment/release-assets/self-hosted-sboms',
-      repositoryPrefix: 'ghcr.io/compartmentdev',
-      scanOnly: true,
-      tags: [],
-      validateProvenanceAttestation: false,
-    });
-  });
-
   it('requires at least one image tag', () => {
-    expect(() => readSecureSelfHostedImageOptions([])).toThrow(
-      'Expected at least one self-hosted image tag or --env-file.',
-    );
+    expect(() => readSecureSelfHostedImageOptions([])).toThrow('Expected at least one self-hosted image tag.');
   });
 
   it('requires scan-only mode for Docker Scout', () => {
     expect(() => readSecureSelfHostedImageOptions(['--docker-scout', 'sha-123'])).toThrow(
       'Can only use --docker-scout with --scan-only.',
-    );
-  });
-
-  it('requires env file mode to be a single scan source', () => {
-    expect(() => readSecureSelfHostedImageOptions(['--env-file', './cache.env'])).toThrow(
-      'Can only use --env-file with --scan-only.',
-    );
-    expect(() =>
-      readSecureSelfHostedImageOptions([
-        '--scan-only',
-        '--env-file',
-        './cache.env',
-        '--repository-prefix',
-        'docker.io/x',
-      ]),
-    ).toThrow('Cannot combine --env-file with --repository-prefix.');
-    expect(() => readSecureSelfHostedImageOptions(['--scan-only', '--env-file', './cache.env', 'sha-123'])).toThrow(
-      'Cannot combine --env-file with image tags.',
     );
   });
 });
@@ -139,9 +104,8 @@ describe('buildSelfHostedImageSbomPath', () => {
 });
 
 describe('scanSelfHostedImages', () => {
-  it('scans self-hosted image refs from the rendered env file', async () => {
+  it('scans each platform image from an explicit repository prefix', async () => {
     const tempDirectory = await mkdtemp(join(tmpdir(), 'compartment-env-image-refs-test-'));
-    const envFilePath = join(tempDirectory, '.env.self-hosted');
     const oldPath = process.env.PATH;
     const oldDockerScoutArgsLog = process.env.DOCKER_SCOUT_ARGS_LOG;
     const oldTrivyArgsLog = process.env.TRIVY_ARGS_LOG;
@@ -149,18 +113,22 @@ describe('scanSelfHostedImages', () => {
     try {
       const scannerPaths = await installFakeImageScanners(tempDirectory);
       const expectedImageRefs = [
-        'localhost:5000/custom-api:from-env',
-        'localhost:5000/custom-caddy:from-env',
-        'localhost:5000/custom-edge:from-env',
-        'localhost:5000/custom-worker:from-env',
-        'localhost:5000/custom-runtime-probe:from-env',
+        'localhost:5000/custom/compartment-api:from-tag',
+        'localhost:5000/custom/compartment-caddy:from-tag',
+        'localhost:5000/custom/compartment-edge:from-tag',
+        'localhost:5000/custom/compartment-worker:from-tag',
       ];
-
-      await writeFile(envFilePath, renderSelfHostedImageRefsEnv(), 'utf8');
 
       const result = spawnSync(
         process.execPath,
-        [secureSelfHostedImagesScriptPath, '--scan-only', '--docker-scout', '--env-file', envFilePath],
+        [
+          secureSelfHostedImagesScriptPath,
+          '--scan-only',
+          '--docker-scout',
+          '--repository-prefix',
+          'localhost:5000/custom',
+          'from-tag',
+        ],
         {
           encoding: 'utf8',
           env: {
@@ -245,15 +213,6 @@ describe('scanSelfHostedImages', () => {
   });
 });
 
-function renderSelfHostedImageRefsEnv() {
-  return `COMPARTMENT_API_IMAGE=localhost:5000/custom-api:from-env
-COMPARTMENT_CADDY_IMAGE=localhost:5000/custom-caddy:from-env
-COMPARTMENT_EDGE_IMAGE=localhost:5000/custom-edge:from-env
-COMPARTMENT_WORKER_IMAGE=localhost:5000/custom-worker:from-env
-COMPARTMENT_RUNTIME_PROBE_IMAGE=localhost:5000/custom-runtime-probe:from-env
-`;
-}
-
 async function installFakeImageScanners(tempDirectory) {
   const dockerPath = join(tempDirectory, 'docker');
   const dockerScoutArgsLogPath = join(tempDirectory, 'docker-scout-args.log');
@@ -331,11 +290,11 @@ describe('secureSelfHostedImages', () => {
         (entry) => entry.file === 'cosign',
       );
       const mainImageDigestRef = `ghcr.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`;
-      const runtimeProbeDigestRef = `ghcr.io/compartmentdev/compartment-runtime-probe@sha256:${'e'.repeat(64)}`;
+      const workerDigestRef = `ghcr.io/compartmentdev/compartment-worker@sha256:${'d'.repeat(64)}`;
       const expectedBundleFormatFlag = selfHostedRuntimeImageSignaturePolicy.cosignBundleFormatFlag;
 
       expect(hasCosignCall(cosignCalls, ['sign', '--yes', expectedBundleFormatFlag, mainImageDigestRef])).toBe(true);
-      expect(hasCosignCall(cosignCalls, ['sign', '--yes', expectedBundleFormatFlag, runtimeProbeDigestRef])).toBe(true);
+      expect(hasCosignCall(cosignCalls, ['sign', '--yes', expectedBundleFormatFlag, workerDigestRef])).toBe(true);
       expect(hasCosignCall(cosignCalls, ['attest', '--yes', expectedBundleFormatFlag, '--type', 'spdxjson'])).toBe(
         true,
       );
@@ -346,9 +305,9 @@ describe('secureSelfHostedImages', () => {
       expect(readCosignProvenanceAttestationType(cosignCalls)).toBe('slsaprovenance1');
       expect(provenanceCall).toBeDefined();
 
-      expect(
-        cosignCalls.some((entry) => entry.args[0] === 'attest' && entry.args.includes(runtimeProbeDigestRef)),
-      ).toBe(true);
+      expect(cosignCalls.some((entry) => entry.args[0] === 'attest' && entry.args.includes(workerDigestRef))).toBe(
+        true,
+      );
       expect(
         hasCosignCall(cosignCalls, [
           'verify',
@@ -357,7 +316,7 @@ describe('secureSelfHostedImages', () => {
           selfHostedRuntimeImageSignaturePolicy.certificateOidcIssuer,
           '--certificate-identity-regexp',
           selfHostedRuntimeImageSignaturePolicy.certificateIdentityRegexp,
-          runtimeProbeDigestRef,
+          workerDigestRef,
         ]),
       ).toBe(true);
     } finally {
@@ -378,7 +337,7 @@ import { appendFileSync } from 'node:fs';
 const imageRef = process.argv.at(-1) ?? '';
 appendFileSync(process.env.TRIVY_ARGS_LOG, \`\${JSON.stringify(process.argv.slice(2))}\\n\`);
 
-if (imageRef.includes('compartment-worker')) {
+if (imageRef.startsWith('ghcr.io/') && imageRef.includes('compartment-worker')) {
   process.exit(1);
 }
 `;
@@ -391,7 +350,7 @@ import { appendFileSync } from 'node:fs';
 const imageRef = process.argv.at(-1) ?? '';
 appendFileSync(process.env.DOCKER_SCOUT_ARGS_LOG, \`\${JSON.stringify(process.argv.slice(2))}\\n\`);
 
-if (imageRef.includes('compartment-caddy')) {
+if (imageRef.startsWith('ghcr.io/') && imageRef.includes('compartment-caddy')) {
   process.exit(2);
 }
 `;
@@ -404,7 +363,7 @@ import { appendFileSync } from 'node:fs';
 appendFileSync(process.env.COMMAND_ARGS_LOG, JSON.stringify({ file: 'docker', args: process.argv.slice(2) }) + '\\n');
 const imageRef = process.argv.at(-1) ?? '';
 const service = imageRef.match(/compartment-([a-z-]+):/)?.[1] ?? 'api';
-const digestByService = { api: '${'a'.repeat(64)}', caddy: '${'b'.repeat(64)}', edge: '${'c'.repeat(64)}', worker: '${'d'.repeat(64)}', 'runtime-probe': '${'e'.repeat(64)}' };
+const digestByService = { api: '${'a'.repeat(64)}', caddy: '${'b'.repeat(64)}', edge: '${'c'.repeat(64)}', worker: '${'d'.repeat(64)}' };
 process.stdout.write('sha256:' + digestByService[service]);
 `;
 }
@@ -435,7 +394,6 @@ function renderExpectedScannedImageRefs() {
     'ghcr.io/compartmentdev/compartment-caddy:sha-test',
     'ghcr.io/compartmentdev/compartment-edge:sha-test',
     'ghcr.io/compartmentdev/compartment-worker:sha-test',
-    'ghcr.io/compartmentdev/compartment-runtime-probe:sha-test',
   ];
 }
 

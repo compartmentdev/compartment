@@ -1,42 +1,27 @@
 import {
   compartmentInternalAppAccessStatePathname,
-  compartmentInternalNodeRegistrationPathname,
-  nodeRegistrationResponseSchema,
   workerClaimDeploymentResponseSchema,
   workerClaimNextDeploymentPathname,
-  workerRecoverDeploymentsPathname,
-  type NodeRegistrationResponse,
   type WorkerClaimDeploymentResponse,
-  type WorkerRecoverDeploymentsResponse,
 } from '@compartment/contracts';
-import type { JsonValue } from '@compartment/utils';
 import Fastify, { type FastifyReply, type FastifyRequest, type LightMyRequestResponse } from 'fastify';
 import pino from 'pino';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ApiApp } from '../src/app.types';
 import { registerApiRequestLogging } from '../src/http/request-logging';
-import type {
-  claimQueuedDeploymentForWorker,
-  recoverOrphanedRunningDeploymentsForWorker,
-} from '../src/services/deployment-worker.service';
-import type { registerNode } from '../src/services/node.service';
+import type { claimQueuedDeploymentForWorker } from '../src/services/deployment-worker.service';
 import type { readAppAccessState } from '../src/services/app-access-state.service';
 import type { buildWorkerClaimDeploymentResponse } from '../src/routes/internal/worker-claim.presenter';
-import { applyApiRouteTestEnv, injectApiRoute, injectJson, withApiRouteApp } from './api-route-test.harness';
+import { applyApiRouteTestEnv, injectApiRoute, withApiRouteApp } from './api-route-test.harness';
 
 type BuildWorkerClaimDeploymentResponse = typeof buildWorkerClaimDeploymentResponse;
 type ClaimQueuedDeploymentForWorker = typeof claimQueuedDeploymentForWorker;
 type ReadAppAccessState = typeof readAppAccessState;
-type RecoverOrphanedRunningDeploymentsForWorker = typeof recoverOrphanedRunningDeploymentsForWorker;
-type RegisterNode = typeof registerNode;
-const routeTestNodeAgentSocketPath: string = '/tmp/compartment/test/node/agent.sock';
 
 interface InternalRequestLoggingMocks {
   buildWorkerClaimDeploymentResponse: Mock<BuildWorkerClaimDeploymentResponse>;
   claimQueuedDeploymentForWorker: Mock<ClaimQueuedDeploymentForWorker>;
   readAppAccessState: Mock<ReadAppAccessState>;
-  recoverOrphanedRunningDeploymentsForWorker: Mock<RecoverOrphanedRunningDeploymentsForWorker>;
-  registerNode: Mock<RegisterNode>;
 }
 
 const mocks: InternalRequestLoggingMocks = vi.hoisted(
@@ -44,28 +29,18 @@ const mocks: InternalRequestLoggingMocks = vi.hoisted(
     buildWorkerClaimDeploymentResponse: vi.fn<BuildWorkerClaimDeploymentResponse>(),
     claimQueuedDeploymentForWorker: vi.fn<ClaimQueuedDeploymentForWorker>(),
     readAppAccessState: vi.fn<ReadAppAccessState>(),
-    recoverOrphanedRunningDeploymentsForWorker: vi.fn<RecoverOrphanedRunningDeploymentsForWorker>(),
-    registerNode: vi.fn<RegisterNode>(),
   }),
 );
 
 vi.mock(
   '../src/services/deployment-worker.service',
-  (): {
-    claimQueuedDeploymentForWorker: Mock<ClaimQueuedDeploymentForWorker>;
-    recoverOrphanedRunningDeploymentsForWorker: Mock<RecoverOrphanedRunningDeploymentsForWorker>;
-  } => ({
+  (): { claimQueuedDeploymentForWorker: Mock<ClaimQueuedDeploymentForWorker> } => ({
     claimQueuedDeploymentForWorker: mocks.claimQueuedDeploymentForWorker,
-    recoverOrphanedRunningDeploymentsForWorker: mocks.recoverOrphanedRunningDeploymentsForWorker,
   }),
 );
 
 vi.mock('../src/services/app-access-state.service', (): { readAppAccessState: Mock<ReadAppAccessState> } => ({
   readAppAccessState: mocks.readAppAccessState,
-}));
-
-vi.mock('../src/services/node.service', (): { registerNode: Mock<RegisterNode> } => ({
-  registerNode: mocks.registerNode,
 }));
 
 vi.mock(
@@ -80,8 +55,6 @@ describe('internal request logging', (): void => {
     mocks.buildWorkerClaimDeploymentResponse.mockReset();
     mocks.claimQueuedDeploymentForWorker.mockReset();
     mocks.readAppAccessState.mockReset();
-    mocks.recoverOrphanedRunningDeploymentsForWorker.mockReset();
-    mocks.registerNode.mockReset();
   });
 
   it('keeps successful polling access requests out of the API logs', async (): Promise<void> => {
@@ -91,10 +64,6 @@ describe('internal request logging', (): void => {
     );
     mocks.claimQueuedDeploymentForWorker.mockResolvedValueOnce(null);
     mocks.readAppAccessState.mockResolvedValueOnce(null);
-    mocks.recoverOrphanedRunningDeploymentsForWorker.mockResolvedValueOnce({
-      cleanupArtifacts: [],
-      recoveredDeploymentCount: 0,
-    } satisfies WorkerRecoverDeploymentsResponse);
 
     const output: string = await captureStdout(async (): Promise<void> => {
       await withApiRouteApp(async (app: ApiApp): Promise<void> => {
@@ -102,11 +71,6 @@ describe('internal request logging', (): void => {
           authorization: 'Bearer test-runtime-control-token',
           method: 'POST',
           url: workerClaimNextDeploymentPathname,
-        });
-        await injectPollingRequest(app, {
-          authorization: 'Bearer test-runtime-control-token',
-          method: 'POST',
-          url: `${workerRecoverDeploymentsPathname}?mode=pending-drain`,
         });
         await injectPollingRequest(app, {
           authorization: 'Bearer test-edge-token',
@@ -117,7 +81,6 @@ describe('internal request logging', (): void => {
     });
 
     expect(output).not.toContain(workerClaimNextDeploymentPathname);
-    expect(output).not.toContain(workerRecoverDeploymentsPathname);
     expect(output).not.toContain(compartmentInternalAppAccessStatePathname);
   });
 
@@ -141,57 +104,6 @@ describe('internal request logging', (): void => {
     });
 
     expect(output).toContain(workerClaimNextDeploymentPathname);
-    expect(output).toContain('request completed');
-    expect(output).toContain('responseTime');
-  });
-
-  it('keeps non-polling internal access logs enabled', async (): Promise<void> => {
-    applyApiRouteTestEnv({ logLevel: 'info' });
-    mocks.registerNode.mockResolvedValueOnce({
-      node: {
-        createdAt: new Date('2025-01-01T00:00:00.000Z'),
-        id: 'node_123',
-        name: 'local-node',
-        nodeSocketPath: routeTestNodeAgentSocketPath,
-        nodeVersion: '0.1.0',
-        updatedAt: new Date('2025-01-01T00:00:00.000Z'),
-      },
-      registeredAt: new Date('2025-01-01T00:00:00.000Z'),
-    });
-
-    const output: string = await captureStdout(async (): Promise<void> => {
-      await withApiRouteApp(async (app: ApiApp): Promise<void> => {
-        const response: LightMyRequestResponse = await injectJson(app, {
-          headers: {
-            accept: 'application/json',
-            authorization: 'Bearer test-runtime-control-token',
-          },
-          method: 'POST',
-          payload: {
-            nodeName: 'local-node',
-            nodeSocketPath: routeTestNodeAgentSocketPath,
-            nodeVersion: '0.1.0',
-          },
-          timeoutMs: 1000,
-          url: compartmentInternalNodeRegistrationPathname,
-        });
-        const payload: JsonValue = response.json();
-
-        expect(response.statusCode).toBe(200);
-        expect(nodeRegistrationResponseSchema.parse(payload)).toEqual<NodeRegistrationResponse>({
-          node: {
-            id: 'node_123',
-            name: 'local-node',
-            nodeSocketPath: routeTestNodeAgentSocketPath,
-            nodeVersion: '0.1.0',
-          },
-          registeredAt: '2025-01-01T00:00:00.000Z',
-        });
-      });
-    });
-
-    expect(output).toContain(compartmentInternalNodeRegistrationPathname);
-    expect(output).toContain('incoming request');
     expect(output).toContain('request completed');
     expect(output).toContain('responseTime');
   });
@@ -262,26 +174,11 @@ function createClaimedDeploymentResponse(): WorkerClaimDeploymentResponse {
       deploymentRunId: 'drn_123',
       environmentId: 'env_123',
       environmentName: 'prod',
-      node: {
-        id: 'node_123',
-        name: 'local-node',
-        nodeSocketPath: '/tmp/compartment/api-test/node/worker-claim.sock',
-      },
       projectId: 'project_123',
       projectName: 'project-123',
-      readiness: null,
-      release: null,
       requiresSourceRoutesFile: false,
       routeHost: 'app.localhost',
-      run: {
-        restart: {
-          policy: 'on-failure',
-        },
-      },
-      runtimeEnv: {},
-      runtimeNetwork: {
-        requiresResourceNetwork: false,
-      },
+      run: {},
       service: {
         build: {
           env: [],

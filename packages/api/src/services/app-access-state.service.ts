@@ -21,7 +21,6 @@ import type { AllPrincipalPermissionGrantStateRow } from '../queries/rbac.query.
 import type { ApiConfig } from '../config';
 import { getApiConfig } from '../runtime/runtime-access';
 import { parseSerializedCompartmentRoutes } from './compartment-routes.service';
-import { readDeploymentUpstreamHost } from './deployment-upstream.service';
 import { buildRuntimePublicSettings } from './public-hosts.service';
 import type {
   AppAccessRouteStateContext,
@@ -153,7 +152,7 @@ function toAppAccessRouteState(input: DeploymentRouteStateInput): AppAccessRoute
     routeScopeId: input.accessScopeId,
     routeScopeType: input.accessScopeType,
     scopeChain: input.scopeChain,
-    upstreamHost: readDeploymentUpstreamHost(input.upstreamHost),
+    upstreamHost: requireRouteHost(input),
     upstreamPort: requireRoutePort(input),
   };
 }
@@ -231,7 +230,7 @@ function buildAppAccessProxyRouteTargetState(route: DeploymentRouteLookupRow): A
 
   return {
     ...authorizationState,
-    upstreamHost: readDeploymentUpstreamHost(route.upstreamHost),
+    upstreamHost: requireRouteHost(route),
     upstreamPort: route.upstreamPort,
   };
 }
@@ -242,6 +241,13 @@ function requireRoutePort(route: DeploymentRouteLookupRow): number {
   }
 
   return route.upstreamPort;
+}
+
+function requireRouteHost(route: DeploymentRouteLookupRow): string {
+  if (route.upstreamHost === null) {
+    throw new Error(`Active route ${route.host} is missing an upstream host.`);
+  }
+  return route.upstreamHost;
 }
 
 function buildRouteScopeChain(input: RouteScopeChainInput): AppAccessScopeReference[] {

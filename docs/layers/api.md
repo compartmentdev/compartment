@@ -6,7 +6,7 @@ Owns:
 - request parsing and response shaping;
 - auth/session persistence model;
 - DB schema, migrations, and query modules;
-- orchestration over runtime-node and edge HTTP surfaces;
+- orchestration over Kubernetes runtime state and edge HTTP surfaces;
 - control-plane HTML shells, redirects, and static asset serving for the built browser package.
 
 May depend on:

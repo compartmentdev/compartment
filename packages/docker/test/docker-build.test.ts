@@ -1,12 +1,11 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type * as BuildkitCommandModule from '../src/buildkit-command';
-import { buildDockerImage, hasDockerImage, inspectDockerImage, prewarmSourceBuildToolchain } from '../src/docker-build';
+import { buildDockerImage, prewarmSourceBuildToolchain } from '../src/docker-build';
 import type { DockerCommandResult } from '../src/docker-command.types';
 import type { DockerBuildImageInput, DockerProgressReporter, DockerRegistryCredentials } from '../src/docker-models';
 import type { PrepareRailpackPlanInput } from '../src/railpack-command.types';
 
-type RunDockerCommand = (args: string[]) => Promise<DockerCommandResult>;
 type RunBuildctlCommandWithOptionalProgressReporter = (
   args: string[],
   onProgressLine: DockerProgressReporter | undefined,
@@ -22,7 +21,6 @@ interface DockerBuildTestMocks {
   prepareRailpackPlan: Mock<PrepareRailpackPlan>;
   runBuildctlCommandWithOptionalProgressReporter: Mock<RunBuildctlCommandWithOptionalProgressReporter>;
   runBuildctlCommandWithRegistryRetry: Mock<RunBuildctlCommandWithRegistryRetry>;
-  runDockerCommand: Mock<RunDockerCommand>;
 }
 
 const mocks: DockerBuildTestMocks = vi.hoisted(
@@ -30,13 +28,8 @@ const mocks: DockerBuildTestMocks = vi.hoisted(
     prepareRailpackPlan: vi.fn<PrepareRailpackPlan>(),
     runBuildctlCommandWithOptionalProgressReporter: vi.fn<RunBuildctlCommandWithOptionalProgressReporter>(),
     runBuildctlCommandWithRegistryRetry: vi.fn<RunBuildctlCommandWithRegistryRetry>(),
-    runDockerCommand: vi.fn<RunDockerCommand>(),
   }),
 );
-
-vi.mock('../src/docker-command', (): { runDockerCommand: Mock<RunDockerCommand> } => ({
-  runDockerCommand: mocks.runDockerCommand,
-}));
 
 vi.mock(
   '../src/buildkit-command',
@@ -60,7 +53,6 @@ beforeEach((): void => {
   mocks.prepareRailpackPlan.mockReset();
   mocks.runBuildctlCommandWithOptionalProgressReporter.mockReset();
   mocks.runBuildctlCommandWithRegistryRetry.mockReset();
-  mocks.runDockerCommand.mockReset();
 });
 
 afterEach((): void => {
@@ -78,7 +70,6 @@ describe('buildDockerImage', (): void => {
     ).rejects.toThrow('BUILDKIT_ADDR is required for remote BuildKit source builds.');
 
     expect(mocks.runBuildctlCommandWithOptionalProgressReporter).not.toHaveBeenCalled();
-    expect(mocks.runDockerCommand).not.toHaveBeenCalled();
   });
 
   it('builds and pushes a dockerfile image through remote BuildKit', async (): Promise<void> => {
@@ -135,7 +126,6 @@ describe('buildDockerImage', (): void => {
       undefined,
       undefined,
     );
-    expect(mocks.runDockerCommand).not.toHaveBeenCalled();
   });
 
   it('resolves the default Dockerfile path against the remote BuildKit context', async (): Promise<void> => {
@@ -257,7 +247,6 @@ describe('buildDockerImage', (): void => {
         'type=image,name=registry:5000/compartment-web:art_123,push=true,oci-mediatypes=true,oci-artifact=true,registry.insecure=true',
       ]),
     );
-    expect(mocks.runDockerCommand).not.toHaveBeenCalled();
   });
 
   it('passes Railpack apt package env values as BuildKit secrets for the generated plan', async (): Promise<void> => {
@@ -421,7 +410,6 @@ describe('prewarmSourceBuildToolchain', (): void => {
     );
 
     expect(mocks.runBuildctlCommandWithRegistryRetry).not.toHaveBeenCalled();
-    expect(mocks.runDockerCommand).not.toHaveBeenCalled();
   });
 
   it('warms the remote BuildKit Railpack toolchain', async (): Promise<void> => {
@@ -452,102 +440,6 @@ describe('prewarmSourceBuildToolchain', (): void => {
       ]),
     );
     expect(mocks.runBuildctlCommandWithRegistryRetry.mock.calls[0]?.[0]).not.toContain('--output');
-  });
-});
-
-describe('inspectDockerImage', (): void => {
-  it('reports when the image exists locally', async (): Promise<void> => {
-    mocks.runDockerCommand.mockResolvedValueOnce({
-      stderr: '',
-      stdout: '{"ExposedPorts":{"3000/tcp":{}}}',
-    });
-
-    await expect(hasDockerImage({ imageRef: 'sha256:image-id' })).resolves.toBe(true);
-  });
-
-  it('reports when the image is missing locally', async (): Promise<void> => {
-    const error: Error & { stderr?: string | undefined } = new Error('docker image inspect failed');
-    error.stderr = 'Error response from daemon: No such image: sha256:image-id';
-    mocks.runDockerCommand.mockRejectedValueOnce(error);
-
-    await expect(hasDockerImage({ imageRef: 'sha256:image-id' })).resolves.toBe(false);
-  });
-
-  it('parses exposed ports from image inspect output', async (): Promise<void> => {
-    mocks.runDockerCommand.mockResolvedValueOnce({
-      stderr: '',
-      stdout: '{"ExposedPorts":{"3000/tcp":{},"3001/udp":{}}}',
-    });
-
-    await expect(inspectDockerImage({ imageRef: 'sha256:image-id' })).resolves.toEqual({
-      exposedPorts: [3000],
-      imageRef: 'sha256:image-id',
-    });
-  });
-
-  it('parses entrypoint from image inspect output', async (): Promise<void> => {
-    mocks.runDockerCommand.mockResolvedValueOnce({
-      stderr: '',
-      stdout: '{"Entrypoint":["/bin/bash","-l","-c"],"ExposedPorts":{"3000/tcp":{}}}',
-    });
-
-    await expect(inspectDockerImage({ imageRef: 'sha256:image-id' })).resolves.toEqual({
-      entrypoint: ['/bin/bash', '-l', '-c'],
-      exposedPorts: [3000],
-      imageRef: 'sha256:image-id',
-    });
-  });
-
-  it('ignores malformed entrypoint values from image inspect output', async (): Promise<void> => {
-    mocks.runDockerCommand.mockResolvedValueOnce({
-      stderr: '',
-      stdout: '{"Entrypoint":["/bin/bash",42],"ExposedPorts":{"3000/tcp":{}}}',
-    });
-
-    await expect(inspectDockerImage({ imageRef: 'sha256:image-id' })).resolves.toEqual({
-      exposedPorts: [3000],
-      imageRef: 'sha256:image-id',
-    });
-  });
-
-  it('ignores UDP-only exposed ports from image inspect output', async (): Promise<void> => {
-    mocks.runDockerCommand.mockResolvedValueOnce({
-      stderr: '',
-      stdout: '{"ExposedPorts":{"3001/udp":{}}}',
-    });
-
-    await expect(inspectDockerImage({ imageRef: 'sha256:image-id' })).resolves.toEqual({
-      exposedPorts: [],
-      imageRef: 'sha256:image-id',
-    });
-  });
-
-  it('returns an empty port list when the image config omits exposed ports', async (): Promise<void> => {
-    mocks.runDockerCommand.mockResolvedValueOnce({
-      stderr: '',
-      stdout: '{}',
-    });
-
-    await expect(inspectDockerImage({ imageRef: 'sha256:image-id' })).resolves.toEqual({
-      exposedPorts: [],
-      imageRef: 'sha256:image-id',
-    });
-  });
-
-  it('rejects when the image is missing', async (): Promise<void> => {
-    const error: Error & { stderr?: string | undefined } = new Error('docker image inspect failed');
-    error.stderr = 'Error response from daemon: No such image: sha256:image-id';
-    mocks.runDockerCommand.mockRejectedValueOnce(error);
-
-    await expect(inspectDockerImage({ imageRef: 'sha256:image-id' })).rejects.toThrow(
-      'Expected docker image "sha256:image-id" to exist.',
-    );
-  });
-
-  it('rethrows non-Error inspect failures without masking them behind a TypeError', async (): Promise<void> => {
-    mocks.runDockerCommand.mockRejectedValueOnce(null);
-
-    await expect(inspectDockerImage({ imageRef: 'sha256:image-id' })).rejects.toBeNull();
   });
 });
 

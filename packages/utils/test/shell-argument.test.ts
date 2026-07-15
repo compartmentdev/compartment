@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { quoteShellArgument, quoteShellArgumentWhenNeeded } from '../src/shell-argument';
+import { quoteShellArgumentWhenNeeded } from '../src/shell-argument';
 
 describe('shell argument formatting', (): void => {
   it('leaves shell-safe values unquoted when requested', (): void => {
@@ -8,7 +8,7 @@ describe('shell argument formatting', (): void => {
   });
 
   it('single-quotes shell-sensitive values and escapes embedded quotes', (): void => {
-    expect(quoteShellArgument("o'hara@example.com")).toBe("'o'\\''hara@example.com'");
+    expect(quoteShellArgumentWhenNeeded("o'hara@example.com")).toBe("'o'\\''hara@example.com'");
     expect(quoteShellArgumentWhenNeeded('value with spaces')).toBe("'value with spaces'");
   });
 });

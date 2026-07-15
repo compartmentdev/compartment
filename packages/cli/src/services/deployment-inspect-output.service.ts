@@ -1,9 +1,5 @@
 import type { DeploymentInspectResponse, DeploymentInspectTarget, CompartmentRouteRule } from '@compartment/contracts';
-import {
-  formatDeploymentBuildPackageList,
-  formatDeploymentReadiness,
-  formatDeploymentRestartPolicy,
-} from './deployment-output-format.service';
+import { formatDeploymentBuildPackageList, formatDeploymentReadiness } from './deployment-output-format.service';
 import { readDisplayedDeployments } from './deployment-displayed-deployments.service';
 import { formatDeploymentLabelTag } from './deployment-label-output.service';
 import { buildNoDeploymentsFoundMessage } from './deployment-empty-message.service';
@@ -76,18 +72,13 @@ function buildInspectDetails(deployment: DeploymentInspectTarget, sensitiveTopol
     `Deployment: ${deployment.id}`,
     `Label: ${deployment.label ?? 'n/a'}`,
     `Route Host: ${deployment.routeHost ?? 'n/a'}`,
-    `Upstream Host: ${formatSensitiveValue(deployment.upstreamHost, sensitiveTopologyVisible)}`,
-    `Upstream Port: ${formatSensitiveValue(deployment.upstreamPort?.toString() ?? null, sensitiveTopologyVisible)}`,
+    `Service Host: ${formatSensitiveValue(deployment.runtime?.serviceHost ?? null, sensitiveTopologyVisible)}`,
+    `Service Port: ${formatSensitiveValue(deployment.runtime?.servicePort.toString() ?? null, sensitiveTopologyVisible)}`,
     `Routes: ${formatRoutes(deployment)}`,
-    `Container: ${deployment.containerId ?? 'n/a'}`,
-    `Runtime Container: ${deployment.runtime?.containerId ?? 'n/a'}`,
-    `Runtime Kind: ${deployment.runtime?.runtimeKind ?? 'n/a'}`,
     `Runtime Image: ${deployment.runtime?.imageRef ?? 'n/a'}`,
     `Readiness: ${formatDeploymentReadiness(deployment.readiness)}`,
-    `Restart Policy: ${formatDeploymentRestartPolicy(deployment.run.restart)}`,
     `Build Packages: ${formatDeploymentBuildPackageList(deployment.build.packages.build)}`,
     `Runtime Packages: ${formatDeploymentBuildPackageList(deployment.build.packages.runtime)}`,
-    `Drain: ${formatDrain(deployment)}`,
   ];
 }
 
@@ -104,14 +95,6 @@ function formatSensitiveValue(value: string | null, sensitiveTopologyVisible: bo
 
 function renderInspectMessage(header: string, detailLines: readonly string[]): string {
   return `${header}\n${detailLines.join('\n')}`;
-}
-
-function formatDrain(deployment: DeploymentInspectTarget): string {
-  if (deployment.drain === null) {
-    return 'n/a';
-  }
-
-  return `${deployment.drain.containerId} until ${deployment.drain.deadlineAt ?? 'n/a'}`;
 }
 
 function formatRoutes(deployment: DeploymentInspectTarget): string {

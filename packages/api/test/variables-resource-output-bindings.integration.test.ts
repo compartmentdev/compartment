@@ -18,6 +18,7 @@ import {
   variableResponseSchema,
 } from '@compartment/contracts';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
+import { kubeResourceServiceDns } from '@compartment/utils';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
@@ -34,13 +35,7 @@ import {
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import {
-  createSourceArchive,
-  injectDeployRequest,
-  installCompartment,
-  registerLocalNode,
-  setVariable,
-} from './api-integration.harness';
+import { createSourceArchive, injectDeployRequest, installCompartment, setVariable } from './api-integration.harness';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
 import { expectJsonError } from './api-route-test.harness';
 
@@ -51,6 +46,7 @@ interface AppAccessEdgeServiceModule {
 
 interface ResourceBindingTarget {
   environmentId: string;
+  namespaceId: string;
 }
 
 interface VariableRequestOptions {
@@ -88,15 +84,12 @@ const apiConfig: ApiConfig = {
   publicHttpPort: 80,
   publicHttpsPort: 443,
   publicProtocol: 'http',
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   rollbackRetentionLimit: null,
   runtimeControlToken: 'test-runtime-control-token',
-  runtimeDefaultUpstreamHost: '127.0.0.1',
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-variable-resource-output-archives'),
   sourceArchiveMaxBytes: 104_857_600,
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-variable-resource-output-system-api.sock',
   systemToken: 'test-system-token',
   throttle: defaultApiAuthThrottleConfig,
@@ -121,7 +114,7 @@ describe('variable resource-output binding integration', (): void => {
   it('returns metadata, lists inventory, and rejects import over resource-output bindings', async (): Promise<void> => {
     const installPayload: InstallResponse = await installAndRegisterNode();
     await deployWebService(installPayload);
-    await insertProjectResource({
+    const resourceHost: string = await insertProjectResource({
       outputsJson: JSON.stringify({
         host: { sensitive: false, value: '${resource.host}' },
         'secret-url': { sensitive: true, value: 'postgres://${resource.host}/secret' },
@@ -171,7 +164,7 @@ describe('variable resource-output binding integration', (): void => {
         keyName: 'POSTGRES_HOST',
         sensitivity: 'plain',
         sourceResourceOutput: 'postgres.host',
-        value: 'postgres.production.billing.resource.internal',
+        value: resourceHost,
         valueHidden: false,
       }),
     );
@@ -216,7 +209,7 @@ describe('variable resource-output binding integration', (): void => {
     const resource: CompartmentAuthoredResourceConfig = createPostgresPresetResource();
     const postgresDatabase: string = readRequiredResourceEnv(resource, 'POSTGRES_DB');
     const postgresUser: string = readRequiredResourceEnv(resource, 'POSTGRES_USER');
-    await insertProjectResource({
+    const resourceHost: string = await insertProjectResource({
       envJson: JSON.stringify([
         { keyName: 'POSTGRES_DB', literalValue: postgresDatabase, sourceType: 'literal', variableName: null },
         {
@@ -262,7 +255,7 @@ describe('variable resource-output binding integration', (): void => {
         sensitivity: 'sensitive',
         sourceResourceOutput: 'postgres.connection-url',
         sourceType: 'resource_output',
-        value: 'postgres://app:resource-secret@postgres.production.billing.resource.internal:5432/app',
+        value: `postgres://app:resource-secret@${resourceHost}:5432/app`,
       }),
     ]);
     expect(auditRows).toHaveLength(1);
@@ -275,7 +268,6 @@ describe('variable resource-output binding integration', (): void => {
 
 async function installAndRegisterNode(): Promise<InstallResponse> {
   const installPayload: InstallResponse = await installCompartment(app);
-  await registerLocalNode(app);
   return installPayload;
 }
 
@@ -319,27 +311,25 @@ async function deployWebService(installPayload: InstallResponse): Promise<void> 
   expect(response.statusCode).toBe(200);
 }
 
-async function insertProjectResource(overrides: Partial<typeof projectResources.$inferInsert> = {}): Promise<void> {
+async function insertProjectResource(overrides: Partial<typeof projectResources.$inferInsert> = {}): Promise<string> {
   const target: ResourceBindingTarget = await readResourceBindingTarget();
 
   await db.insert(projectResources).values({
     commandJson: '[]',
-    containerId: 'container_postgres',
     envJson: '[]',
     environmentId: target.environmentId,
-    hostname: 'postgres.production.billing.resource.internal',
     id: 'res_postgres',
     image: 'postgres:16',
     name: 'postgres',
     outputsJson: '{}',
     portsJson: '[5432]',
     readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
-    restartPolicy: 'unless-stopped',
     runtimeDefinitionHash: 'hash_postgres',
     status: 'running',
     volumesJson: '[]',
     ...overrides,
   });
+  return kubeResourceServiceDns('res_postgres', target.namespaceId);
 }
 
 async function readResourceBindingTarget(): Promise<ResourceBindingTarget> {
@@ -354,7 +344,7 @@ async function readResourceBindingTarget(): Promise<ResourceBindingTarget> {
     'production environment',
   );
 
-  return { environmentId: environment.id };
+  return { environmentId: environment.id, namespaceId: project.id };
 }
 
 function readRequiredFixtureRow<T>(row: T | undefined, label: string): T {

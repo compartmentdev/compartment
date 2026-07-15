@@ -38,7 +38,6 @@ import {
   injectJsonDeployRequest,
   injectSourceUploadRequest,
   installCompartment,
-  registerLocalNode,
   requireClaimedDeployment,
   requireClaimedDeploymentByServiceName,
   setVariable,
@@ -548,7 +547,6 @@ describe('Phase 0 API integration source archive', (): void => {
 
   it('marks claimed deployments that require source routes file validation', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,
@@ -583,7 +581,6 @@ describe('Phase 0 API integration source archive', (): void => {
 
   it('does not serve artifact source archives from symlinked source upload storage', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,
@@ -628,7 +625,6 @@ describe('Phase 0 API integration source archive', (): void => {
 
   it('returns not found for artifact source archives missing from source upload storage', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,
@@ -665,7 +661,6 @@ describe('Phase 0 API integration source archive', (): void => {
 
   it('rejects root-descriptor archives without source-package metadata', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
@@ -692,7 +687,6 @@ describe('Phase 0 API integration source archive', (): void => {
 
   it('queues missing service-directory validation for canonical source-upload submits', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,
@@ -795,7 +789,6 @@ describe('Phase 0 API integration source archive', (): void => {
 
   it('freezes selected plain build variables in an encrypted artifact snapshot before worker claim', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const authoredBuild: AuthoredRailpackBuildConfig = {
       env: ['VITE_PUBLIC_GREETING'],
       strategy: 'railpack',
@@ -859,7 +852,6 @@ describe('Phase 0 API integration source archive', (): void => {
 
   it('ignores unrelated runtime resource-output bindings during build env validation on first deploy', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     await setVariable(app, installPayload.sessionToken, 'acme-dev', {
       keyName: 'LOG_LEVEL',
@@ -901,14 +893,10 @@ describe('Phase 0 API integration source archive', (): void => {
     const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
 
     expect(claimedDeployment.buildEnv).toEqual({ LOG_LEVEL: 'info' });
-    expect(claimedDeployment.runtimeEnv.DATABASE_URL).toBe(
-      'postgres://postgres.production.smoke-web.resource.internal/app',
-    );
   });
 
   it('rejects build env keys backed by runtime resource-output bindings', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     await setVariable(app, installPayload.sessionToken, 'acme-dev', {
       keyName: 'LOG_LEVEL',
@@ -954,7 +942,6 @@ describe('Phase 0 API integration source archive', (): void => {
 
   it('rejects build env keys that are missing from the resolved target variable set', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
@@ -990,7 +977,6 @@ describe('Phase 0 API integration source archive', (): void => {
 
   it('rejects sensitive variables in build env exposure', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     await setVariable(app, installPayload.sessionToken, 'acme-dev', {
       keyName: 'DATABASE_URL',
@@ -1071,17 +1057,14 @@ async function insertPostgresResource(projectName: string): Promise<void> {
 
   await db.insert(projectResources).values({
     commandJson: '[]',
-    containerId: 'container_postgres',
     envJson: '[]',
     environmentId: environment.id,
-    hostname: 'postgres.production.smoke-web.resource.internal',
     id: 'res_postgres',
     image: 'postgres:16',
     name: 'postgres',
     outputsJson: '{"connection-url":{"sensitive":true,"value":"postgres://${resource.host}/app"}}',
     portsJson: '[]',
     readinessJson: 'null',
-    restartPolicy: 'unless-stopped',
     runtimeDefinitionHash: 'hash_postgres',
     status: 'running',
     updatedAt: new Date('2026-05-15T00:00:00.000Z'),

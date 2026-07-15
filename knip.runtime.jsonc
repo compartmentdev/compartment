@@ -14,6 +14,10 @@
   ],
   "ignoreBinaries": ["astro", "dotenv"],
   "ignoreDependencies": ["dotenv-cli"],
+  "ignoreIssues": {
+    // Public contract types can be consumed outside this workspace.
+    "packages/contracts/src/index.misc.ts": ["types"],
+  },
   "ignoreWorkspaces": ["packages/test-support", "packages/eslint-config", "packages/eslint-plugin"],
   "workspaces": {
     "packages/api": {
@@ -46,10 +50,6 @@
       "vite": false,
       "entry": ["src/index.ts!", "src/main.tsx!", "src/auth-main.tsx!"],
       "project": ["src/**/*.ts!", "src/**/*.tsx!", "!test/**!"],
-    },
-    "packages/node": {
-      "entry": ["src/index.ts!", "src/server.ts!"],
-      "project": ["src/**/*.ts!", "!test/**!"],
     },
     "packages/edge": {
       "entry": ["src/server.ts!", "scripts/sync-caddyfile.mjs!", "scripts/sync-caddyfile.impl.ts!"],

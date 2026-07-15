@@ -1,8 +1,8 @@
 # Self-Hosted Image Publishing
 
-This document captures the internal publication rules for self-hosted runtime images.
+This document captures the internal publication rules for platform images installed by the Helm chart.
 
-GitHub Actions publishes self-hosted images to Docker Hub and GitHub Container Registry as attested OCI indexes. Generated CLI runtime refs use `ghcr.io/compartmentdev` by default; Docker Hub remains available through explicit install and update selection:
+GitHub Actions publishes platform images to Docker Hub and GitHub Container Registry as attested OCI indexes:
 
 - successful main CI runs publish immutable `sha-<commit>` images, and update
   mutable `main` only when that commit is still the current `main`;
@@ -20,9 +20,9 @@ that draft, then publishes the stable release only after the upload succeeds.
 
 Before pushing a tag, the publish job scans each self-hosted runtime image artifact with Trivy and Docker Scout and fails before publication on fixable high or critical vulnerabilities. The scan does not stop on the first failing image; it reports every failing image before exiting.
 
-The published image artifact set includes the long-running runtime services (`api`, `caddy`, `edge`, `worker`) and the one-shot `runtime-probe` image used by the node agent for readiness and network probes.
+The published image artifact set contains exactly the long-running platform services: `api`, `caddy`, `edge`, and `worker`.
 
-Pull request and main CI build or restore the self-hosted image cache once per commit, then fan out e2e jobs and a separate self-hosted image security gate from that same cache. The gate loads the cached tar images and scans the exact refs from the rendered `.env.self-hosted` with the same Trivy and Docker Scout policy before the workflow can pass. Main publish runs only after main CI succeeds for the same commit. Fork pull requests cannot receive Docker Hub credentials, so they run the Trivy gate only; internal pull requests, main CI, and publish workflows keep Docker Scout enabled.
+Pull request and main CI build or restore the platform image cache once per commit, then feed the same tar archives to k3d e2e and a separate image security gate. The gate scans the immutable `sha-<commit>` refs with the same Trivy and Docker Scout policy before the workflow can pass. Main publish runs only after main CI succeeds for the same commit. Fork pull requests cannot receive Docker Hub credentials, so they run the Trivy gate only; internal pull requests, main CI, and publish workflows keep Docker Scout enabled.
 
 The root `.trivyignore.yaml` is the only allowed suppression point for Trivy self-hosted image scans. Docker Scout has no repository suppression path in the CI or publish gates.
 
@@ -40,9 +40,7 @@ After promoting a tag, the publish job resolves the tag to a concrete image dige
 
 Mutable tags such as `main` and `latest` share the same digest signature, SBOM attestation, and provenance attestation as their immutable `sha-<commit>` or semver tag when they resolve to the same digest.
 
-The CLI resolves registry-sourced Compartment runtime image tags to digests, verifies the digest signatures before pulling, pulls the verified digests, tags them locally for Compose, and verifies pulled local digests before starting containers. Verification trusts only keyless signatures issued by GitHub Actions for `compartmentdev/compartment` on the `publish-self-hosted-main.yml` and `publish-self-hosted-release.yml` workflows. During the workflow rename transition, the verifier also accepts the previous publishing workflow identity for already-published digests so mutable tags do not fail solely because their digest was signed before the rename. The same policy applies to GHCR and Docker Hub digest refs. Local image installs skip registry signature verification.
-
-As a manual fallback only, prepare a release commit locally by updating all workspace package versions, `.env.self-hosted.example`, and `.release-please-manifest.json` together. Add a matching `CHANGELOG.md` section before pushing the tag when the release needs detailed notes; otherwise the distribution release falls back to generic manual-release notes.
+As a manual fallback only, prepare a release commit locally by updating all workspace package versions and `.release-please-manifest.json` together. Add a matching `CHANGELOG.md` section before pushing the tag when the release needs detailed notes; otherwise the distribution release falls back to generic manual-release notes.
 
 ```bash
 pnpm release:prepare 0.2.0

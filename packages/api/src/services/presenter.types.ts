@@ -10,14 +10,11 @@ import type {
   DeploymentRunStepStatus,
   DeploymentRunTriggerType,
   OperationStatus,
-  ResolvedOptionalCompartmentServiceReleaseConfig,
   ResolvedCompartmentServiceRunConfig,
-  ResolvedOptionalServiceReadinessConfig,
   ResourceRuntimeStatus,
-  RuntimeNetworkIntent,
 } from '@compartment/contracts';
 import type { BuildEnvMap } from './deployment-build.types';
-import type { RuntimeEnvMap } from './deployment-runtime.types';
+import type { DeploymentJoinedRow } from '../queries/deployments.query.types';
 
 export interface DeployResponseInput {
   deployments: DeploymentSummaryInput[];
@@ -47,20 +44,12 @@ export interface DeploymentRecordSummaryInput
 
 interface DeploymentRecordRuntimeSummaryInput {
   completedAt: Date | null;
-  containerId: string | null;
-  drainDeadlineAt: Date | null;
-  drainingContainerId: string | null;
-  drainingDeploymentId: string | null;
-  drainingNodeId: string | null;
   failureMessage: string | null;
   health: DeploymentRuntimeHealth;
   isActive: boolean;
   movementSourceDeploymentId: string | null;
-  nodeId: string;
   promotionStage: DeploymentPromotionStage;
   status: DeploymentRuntimeStatus;
-  upstreamHost: string | null;
-  upstreamPort: number | null;
 }
 
 interface DeploymentRecordRouteSummaryInput {
@@ -106,12 +95,10 @@ export interface DeploymentInspectTargetInput extends DeploymentSummaryInput {
 }
 
 export interface DeploymentInspectRuntimeInput {
-  containerId: string | null;
   imageRef: string;
   routeHost: string;
-  runtimeKind: 'kubernetes' | 'node';
-  upstreamHost: string;
-  upstreamPort: number;
+  serviceHost: string;
+  servicePort: number;
 }
 
 export interface DeploymentResourceSummaryInput
@@ -121,7 +108,6 @@ export interface DeploymentResourceSummaryInput
   expectedClaimsJson: string;
   id: string;
   name: string;
-  runtimeKind: 'node' | 'kubernetes';
   updatedAt: Date;
 }
 
@@ -133,14 +119,11 @@ interface DeploymentResourceDefinitionSummaryInput {
   operationsJson: string;
   portsJson: string;
   readinessJson: string;
-  restartPolicy: string;
   runtimeDefinitionHash: string;
   volumesJson: string;
 }
 
 interface DeploymentResourceRuntimeSummaryInput {
-  containerId: string | null;
-  hostname: string;
   status: ResourceRuntimeStatus;
 }
 
@@ -150,13 +133,6 @@ export interface EnvironmentSummaryInput {
   name: string;
   projectId: string;
   updatedAt: Date;
-}
-
-export interface NodeSummaryInput {
-  id: string;
-  name: string;
-  nodeSocketPath: string;
-  nodeVersion: string;
 }
 
 export interface OperationSummaryInput {
@@ -175,13 +151,6 @@ export interface OrganizationSummaryInput {
   slug: string;
 }
 
-export interface PreviousDeploymentContextInput {
-  deployment: DeploymentSummaryInput;
-  node: NodeSummaryInput;
-}
-
-export type PreviousDeploymentInput = PreviousDeploymentContextInput | null;
-
 export interface ProjectSummaryInput {
   archivedAt: Date | null;
   createdAt: Date;
@@ -195,15 +164,9 @@ export type WorkerClaimDeploymentResponseInput = WorkerClaimedDeploymentInput | 
 
 export interface WorkerClaimedDeploymentInput {
   buildEnv: BuildEnvMap;
-  deployment: DeploymentSummaryInput;
-  node: NodeSummaryInput;
-  previousDeployment: PreviousDeploymentInput;
-  readiness: ResolvedOptionalServiceReadinessConfig;
-  release: ResolvedOptionalCompartmentServiceReleaseConfig;
+  deployment: DeploymentJoinedRow;
   routeHost: string;
   run: ResolvedCompartmentServiceRunConfig;
-  runtimeNetwork: RuntimeNetworkIntent;
-  runtimeEnv: RuntimeEnvMap;
 }
 
 export interface DeploymentReadEnvironmentSummaryInput {

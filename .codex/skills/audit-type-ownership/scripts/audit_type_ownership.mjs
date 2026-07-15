@@ -9,7 +9,6 @@ const PACKAGE_ORDER = [
   'sdk',
   'source-archive',
   'cli',
-  'node',
   'edge',
   'worker',
   'docker',

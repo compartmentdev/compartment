@@ -6,7 +6,6 @@ import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
   environments,
-  nodes,
   operations,
   organizations,
   principals,
@@ -63,7 +62,6 @@ const apiConfig: ApiConfig = {
   publicHttpPort: 9080,
   publicHttpsPort: 443,
   publicProtocol: 'http',
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   auditRetentionDays: 90,
   auditRetentionCleanupBatchSize: 1000,
   auditRetentionCleanupCron: '0 3 * * *',
@@ -71,13 +69,11 @@ const apiConfig: ApiConfig = {
   auditFileSink: defaultAuditFileSinkConfig,
   rollbackRetentionLimit: null,
   runtimeControlToken: 'test-runtime-control-token',
-  runtimeDefaultUpstreamHost: '127.0.0.1',
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -627,13 +623,6 @@ async function seedResourceBackupScope(): Promise<void> {
     id: 'prn_resource_backups',
     type: 'user',
   });
-  await db.insert(nodes).values({
-    id: 'node_resource_backups',
-    name: 'node-resource-backups',
-    nodeUrl: '/tmp/compartment/api-test/node/resource-backups.sock',
-    nodeSocketPath: '/tmp/compartment/api-test/node/resource-backups.sock',
-    nodeVersion: '0.1.0',
-  });
   await db.insert(projects).values({
     id: 'prj_internal_tools',
     name: 'internal-tools',
@@ -643,7 +632,6 @@ async function seedResourceBackupScope(): Promise<void> {
   await db.insert(environments).values({
     id: 'env_production',
     name: 'production',
-    nodeId: 'node_resource_backups',
     projectId: 'prj_internal_tools',
   });
   await seedResourceBackupOperation();
@@ -666,13 +654,11 @@ async function seedProjectResource(): Promise<void> {
     commandJson: '[]',
     envJson: '[]',
     environmentId: 'env_production',
-    hostname: 'postgres.production.internal-tools.resource.internal',
     id: 'res_postgres',
     image: 'postgres:16',
     name: 'postgres',
     portsJson: '[5432]',
     readinessJson: 'null',
-    restartPolicy: 'unless-stopped',
     runtimeDefinitionHash: 'runtime_hash_123',
     status: 'running',
     volumesJson: '[{"name":"postgres-data","mountPath":"/var/lib/postgresql/data"}]',

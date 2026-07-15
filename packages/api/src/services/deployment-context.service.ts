@@ -32,10 +32,8 @@ import {
 import { readEmptyBuildTargetContext, readExistingBuildTargetContext } from './deployment-context.service.helpers';
 
 export {
-  requireContainerId,
   requireEnvironmentScopedDeployment,
   requireJoinedDeployment,
-  requireNode,
   requireProjectService,
   resolveDescriptorServices,
   resolveEnvironmentName,

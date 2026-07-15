@@ -5,7 +5,6 @@ import type {
   findProjectServiceByName,
 } from '../src/queries/deployment-context.query';
 import type { EnvironmentRow, ProjectServiceRow } from '../src/queries/deployments.query.types';
-import type { NodeRow } from '../src/queries/node.query.types';
 import type { OrganizationRow } from '../src/queries/organizations.query.types';
 import type { createOrGetProject, findProjectByOrganizationAndName } from '../src/queries/projects.query';
 import type { ProjectRow } from '../src/queries/projects.query.types';
@@ -14,7 +13,6 @@ import {
   resolveActiveProjectScope,
   resolveOrCreateEnvironment,
 } from '../src/services/project-scope.service';
-import type { resolveRegisteredNode } from '../src/services/node.service';
 import type { resolveOrganizationForPrincipal } from '../src/services/organizations.service';
 
 type CreateOrGetEnvironment = typeof createOrGetEnvironment;
@@ -23,7 +21,6 @@ type FindEnvironmentByProjectAndName = typeof findEnvironmentByProjectAndName;
 type FindProjectByOrganizationAndName = typeof findProjectByOrganizationAndName;
 type FindProjectServiceByName = typeof findProjectServiceByName;
 type ResolveOrganizationForPrincipal = typeof resolveOrganizationForPrincipal;
-type ResolveRegisteredNode = typeof resolveRegisteredNode;
 
 interface ProjectScopeServiceTestMocks {
   createOrGetEnvironment: Mock<CreateOrGetEnvironment>;
@@ -32,7 +29,6 @@ interface ProjectScopeServiceTestMocks {
   findProjectByOrganizationAndName: Mock<FindProjectByOrganizationAndName>;
   findProjectServiceByName: Mock<FindProjectServiceByName>;
   resolveOrganizationForPrincipal: Mock<ResolveOrganizationForPrincipal>;
-  resolveRegisteredNode: Mock<ResolveRegisteredNode>;
 }
 
 interface DeploymentContextQueryModuleMock {
@@ -50,10 +46,6 @@ interface OrganizationsServiceModuleMock {
   resolveOrganizationForPrincipal: Mock<ResolveOrganizationForPrincipal>;
 }
 
-interface NodeServiceModuleMock {
-  resolveRegisteredNode: Mock<ResolveRegisteredNode>;
-}
-
 const mocks: ProjectScopeServiceTestMocks = vi.hoisted(
   (): ProjectScopeServiceTestMocks => ({
     createOrGetEnvironment: vi.fn<CreateOrGetEnvironment>(),
@@ -62,7 +54,6 @@ const mocks: ProjectScopeServiceTestMocks = vi.hoisted(
     findProjectByOrganizationAndName: vi.fn<FindProjectByOrganizationAndName>(),
     findProjectServiceByName: vi.fn<FindProjectServiceByName>(),
     resolveOrganizationForPrincipal: vi.fn<ResolveOrganizationForPrincipal>(),
-    resolveRegisteredNode: vi.fn<ResolveRegisteredNode>(),
   }),
 );
 
@@ -90,13 +81,6 @@ vi.mock(
   }),
 );
 
-vi.mock(
-  '../src/services/node.service',
-  (): NodeServiceModuleMock => ({
-    resolveRegisteredNode: mocks.resolveRegisteredNode,
-  }),
-);
-
 const organization: OrganizationRow = {
   id: 'org_123',
   name: 'Acme Dev',
@@ -118,7 +102,6 @@ const environment: EnvironmentRow = {
   createdAt: new Date('2026-04-07T12:00:00.000Z'),
   id: 'env_123',
   name: 'production',
-  nodeId: 'node_123',
   projectId: activeProject.id,
   updatedAt: new Date('2026-04-07T12:00:00.000Z'),
 };
@@ -131,22 +114,12 @@ const projectService: ProjectServiceRow = {
   projectId: activeProject.id,
   updatedAt: new Date('2026-04-07T12:00:00.000Z'),
 };
-const registeredNode: NodeRow = {
-  createdAt: new Date('2026-04-07T12:00:00.000Z'),
-  id: 'node_123',
-  name: 'node-a',
-  nodeSocketPath: '/tmp/compartment/api-test/node/project-scope.sock',
-  nodeVersion: '1.0.0',
-  updatedAt: new Date('2026-04-07T12:00:00.000Z'),
-};
-
 describe('project scope service', (): void => {
   beforeEach((): void => {
     mocks.resolveOrganizationForPrincipal.mockResolvedValue(organization);
     mocks.findProjectByOrganizationAndName.mockResolvedValue(activeProject);
     mocks.findEnvironmentByProjectAndName.mockResolvedValue(environment);
     mocks.findProjectServiceByName.mockResolvedValue(projectService);
-    mocks.resolveRegisteredNode.mockResolvedValue(registeredNode);
   });
 
   it('treats archived projects as invalid for active scope resolution', async (): Promise<void> => {
@@ -175,7 +148,6 @@ describe('project scope service', (): void => {
     expect(mocks.createOrGetEnvironment).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'production',
-        nodeId: 'node_123',
         projectId: 'prj_123',
         updatedAt: now,
       }),

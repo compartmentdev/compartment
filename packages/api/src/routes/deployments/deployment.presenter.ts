@@ -14,9 +14,7 @@ import type {
 import type { DeploymentInspectLookupResult } from '../../services/deployments.service.types';
 import { parseResolvedBuild } from '../../services/deployment-build.service';
 import { parseResolvedReadiness } from '../../services/deployment-readiness.service';
-import { readNullableDeploymentUpstreamHost } from '../../services/deployment-upstream.service';
 import { parseResolvedRun } from '../../services/deployment-run.service';
-import { toNullableIsoString } from '../presenters/date.presenter';
 import { buildEnvironmentSummary } from '../presenters/environment-summary.presenter';
 import { buildOperationSummary } from '../presenters/operation.presenter';
 import { buildProjectSummary } from '../presenters/project-summary.presenter';
@@ -62,18 +60,8 @@ function buildDeploymentInspectTarget(
 ): DeploymentInspectTarget {
   return {
     ...buildDeploymentSummary(parts),
-    containerId: sensitiveTopologyVisible ? parts.deployment.containerId : null,
-    drain:
-      sensitiveTopologyVisible && parts.deployment.drainingContainerId !== null
-        ? {
-            containerId: parts.deployment.drainingContainerId,
-            deadlineAt: toNullableIsoString(parts.deployment.drainDeadlineAt),
-          }
-        : null,
     routes: parseSerializedCompartmentRoutes(parts.deployment.resolvedRoutesJson),
     routeHost: readVisibleDeploymentRouteHost(parts),
-    upstreamHost: buildDeploymentInspectUpstreamHost(parts, sensitiveTopologyVisible),
-    upstreamPort: sensitiveTopologyVisible ? parts.deployment.upstreamPort : null,
     runtime: buildDeploymentInspectRuntime(parts.runtime, sensitiveTopologyVisible),
   };
 }
@@ -87,31 +75,17 @@ function buildDeploymentInspectRuntime(
   }
 
   return {
-    containerId: runtime.containerId,
     imageRef: runtime.imageRef,
     routeHost: runtime.routeHost,
-    runtimeKind: runtime.runtimeKind,
-    upstreamHost: runtime.upstreamHost,
-    upstreamPort: runtime.upstreamPort,
+    serviceHost: runtime.serviceHost,
+    servicePort: runtime.servicePort,
   };
-}
-
-function buildDeploymentInspectUpstreamHost(
-  parts: DeploymentInspectTargetInput,
-  sensitiveTopologyVisible: boolean,
-): string | null {
-  if (!sensitiveTopologyVisible) {
-    return null;
-  }
-
-  return readNullableDeploymentUpstreamHost(parts.deployment.upstreamHost, parts.deployment.upstreamPort);
 }
 
 export function buildDeploymentSummary(parts: DeploymentSummaryInput): DeploymentSummary {
   return {
     ...buildDeploymentBaseSummary(parts),
     build: parseResolvedBuild(parts.artifact.resolvedBuildJson),
-    containerId: parts.deployment.containerId,
     operation: buildOperationSummary(parts.operation),
     readiness: parseResolvedReadiness(parts.deployment.resolvedReadinessJson),
     run: parseResolvedRun(parts.deployment.resolvedRunJson),

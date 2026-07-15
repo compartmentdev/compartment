@@ -10,7 +10,6 @@ import {
   environmentVariableSetBindings,
   environmentVariableValues,
   environments,
-  nodes,
   organizationVariableSetEntries,
   organizationVariableSets,
   organizations,
@@ -70,11 +69,8 @@ const apiConfig: ApiConfig = {
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  runtimeDefaultUpstreamHost: '127.0.0.1',
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-variables-db-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -395,13 +391,6 @@ async function createQueryTestScope(): Promise<QueryTestScope> {
     name: 'Variables Org',
     slug: 'variables-org',
   });
-  await db.insert(nodes).values({
-    id: 'node_1',
-    name: 'node-1',
-    nodeUrl: '/tmp/compartment/api-test/node/variables.sock',
-    nodeSocketPath: '/tmp/compartment/api-test/node/variables.sock',
-    nodeVersion: '1.0.0',
-  });
   await db.insert(projects).values({
     id: 'prj_variables',
     name: 'billing',
@@ -419,7 +408,6 @@ async function createQueryTestScope(): Promise<QueryTestScope> {
   await db.insert(environments).values({
     id: environmentId,
     name: 'production',
-    nodeId: 'node_1',
     projectId: 'prj_variables',
     updatedAt: new Date('2026-04-07T09:00:00.000Z'),
   });

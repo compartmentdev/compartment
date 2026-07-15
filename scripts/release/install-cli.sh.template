@@ -7,8 +7,6 @@ channel="latest"
 version="__COMPARTMENT_DEFAULT_RELEASE_VERSION__"
 version_argument="0"
 bin_dir=""
-init_install="0"
-init_update="0"
 init_login="0"
 login_api_url=""
 login_email=""
@@ -32,14 +30,6 @@ while [ "$#" -gt 0 ]; do
     --bin-dir)
       bin_dir="$2"
       shift 2
-      ;;
-    --init-install)
-      init_install="1"
-      shift
-      ;;
-    --init-update)
-      init_update="1"
-      shift
       ;;
     --init-login)
       init_login="1"
@@ -70,22 +60,6 @@ done
 
 if [ "$version_argument" = "1" ] && [ "$channel" != "latest" ]; then
   printf 'Choose either --version or --channel, not both.\n' >&2
-  exit 1
-fi
-
-init_mode_count=0
-if [ "$init_install" = "1" ]; then
-  init_mode_count=$((init_mode_count + 1))
-fi
-if [ "$init_update" = "1" ]; then
-  init_mode_count=$((init_mode_count + 1))
-fi
-if [ "$init_login" = "1" ]; then
-  init_mode_count=$((init_mode_count + 1))
-fi
-
-if [ "$init_mode_count" -gt 1 ]; then
-  printf 'Choose at most one of --init-install, --init-update, or --init-login.\n' >&2
   exit 1
 fi
 
@@ -206,47 +180,6 @@ read_init_login_email() {
   fi
 
   printf '%s' "$read_login_email"
-}
-
-run_init_install() {
-  init_install_path="$1"
-
-  if ! can_use_installer_terminal; then
-    printf 'Requested `--init-install`, but no terminal is available for sudo and setup prompts. Run `"%s" install` from an interactive shell.\n' "$init_install_path" >&2
-    exit 1
-  fi
-
-  printf 'Running `"%s" install` for system self-hosted setup.\n' "$init_install_path"
-  if can_write_installer_terminal; then
-    "$init_install_path" install </dev/tty >/dev/tty 2>/dev/tty
-    return 0
-  fi
-
-  "$init_install_path" install </dev/tty
-}
-
-format_init_update_command() {
-  format_update_path="$1"
-
-  printf '"%s" system update' "$format_update_path"
-}
-
-run_init_update() {
-  init_update_path="$1"
-  init_update_command="$(format_init_update_command "$init_update_path")"
-
-  if ! can_use_installer_terminal; then
-    printf 'Requested `--init-update`, but no terminal is available for sudo and update prompts. Run `%s` from an interactive shell.\n' "$init_update_command" >&2
-    exit 1
-  fi
-
-  printf 'Running `%s` for system self-hosted update.\n' "$init_update_command"
-  if can_write_installer_terminal; then
-    "$init_update_path" system update </dev/tty >/dev/tty 2>/dev/tty
-    return 0
-  fi
-
-  "$init_update_path" system update </dev/tty
 }
 
 run_init_login() {
@@ -563,19 +496,9 @@ printf 'Installed compartment to %s\n' "$install_path"
 "$install_path" --version
 ensure_bin_directory_on_path "$bin_dir"
 
-if [ "$init_install" = "1" ]; then
-  run_init_install "$install_path"
-  exit 0
-fi
-
-if [ "$init_update" = "1" ]; then
-  run_init_update "$install_path"
-  exit 0
-fi
-
 if [ "$init_login" = "1" ]; then
   run_init_login "$install_path" "$login_api_url" "$login_email" "$login_organization" "$login_onboarding_session"
   exit 0
 fi
 
-printf 'Installed CLI only. Run `"%s" install` when you are ready, run `sudo "%s" system update` for an existing runtime, or re-run this installer with `--init-install` or `--init-update`.\n' "$install_path" "$install_path"
+printf 'Installed CLI. Run `"%s" login` to connect to a Compartment platform, or re-run this installer with `--init-login`.\n' "$install_path"

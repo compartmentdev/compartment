@@ -18,6 +18,7 @@ import {
 } from '@compartment/contracts';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { deployments, organizations, projects } from '../src/db/schema';
+import { recoverOrphanedDeploymentBuildClaims } from '../src/services/deployment-worker.service';
 import { createApp } from '../src/app';
 import type { ApiApp } from '../src/app.types';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
@@ -32,7 +33,6 @@ import {
   completeClaimedDeployment,
   injectDeployRequest,
   installCompartment,
-  registerLocalNode,
   requireClaimedDeployment,
   requireDeployResponseDeployment,
 } from './api-integration.harness';
@@ -81,11 +81,8 @@ const apiConfig: ApiConfig = {
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-runtime-claim-order-source-archives'),
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  runtimeDefaultUpstreamHost: '127.0.0.1',
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-runtime-claim-order-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -108,10 +105,29 @@ describe('deployment runtime movement claim order integration', (): void => {
   });
 
   it(
+    'requeues a build claim that never reached the Kubernetes handoff',
+    async (): Promise<void> => {
+      const installPayload: InstallResponse = await installCompartment(app);
+      const deployResponse: LightMyRequestResponse = await injectDeployRequest(
+        app,
+        installPayload.sessionToken,
+        'acme-dev',
+      );
+      expect(deployResponse.statusCode).toBe(200);
+      const firstClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+
+      await expect(recoverOrphanedDeploymentBuildClaims()).resolves.toBe(1);
+
+      const recoveredClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+      expect(recoveredClaim.deploymentId).toBe(firstClaim.deploymentId);
+    },
+    deploymentRuntimeMovementTimeoutMs,
+  );
+
+  it(
     'gives another organization the next serial claim after one organization was just served',
     async (): Promise<void> => {
       const installPayload: InstallResponse = await installCompartment(app);
-      await registerLocalNode(app);
       await createOrganization(installPayload, 'Beta Dev', 'beta-dev');
 
       await deployAndClaimCurrentEnvironment(installPayload);
@@ -150,7 +166,6 @@ describe('deployment runtime movement claim order integration', (): void => {
     'uses deployment id as the tie-breaker for equally old queued promotions inside one organization',
     async (): Promise<void> => {
       const installPayload: InstallResponse = await installCompartment(app);
-      await registerLocalNode(app);
 
       await deployAndClaimCurrentEnvironment(installPayload);
       await deployAndClaimCurrentEnvironment(installPayload, { environmentName: 'staging' });
@@ -189,7 +204,6 @@ describe('deployment runtime movement claim order integration', (): void => {
     'skips locked queued promotions when concurrent worker claims race',
     async (): Promise<void> => {
       const installPayload: InstallResponse = await installCompartment(app);
-      await registerLocalNode(app);
 
       await deployAndClaimCurrentEnvironment(installPayload);
       await deployAndClaimCurrentEnvironment(installPayload, { environmentName: 'staging' });
@@ -219,7 +233,6 @@ describe('deployment runtime movement claim order integration', (): void => {
     'reserves distinct route hosts across organizations before completion without exposing them publicly',
     async (): Promise<void> => {
       const installPayload: InstallResponse = await installCompartment(app);
-      await registerLocalNode(app);
       await createOrganization(installPayload, 'Beta Dev', 'beta-dev');
 
       const acmeDeployResponse: LightMyRequestResponse = await injectDeployRequest(

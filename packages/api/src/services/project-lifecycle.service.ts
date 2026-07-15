@@ -1,4 +1,3 @@
-import { stopNodeDeployment } from '@compartment/sdk';
 import type { ProjectLifecycleAction, ProjectLifecycleState } from '@compartment/contracts';
 import {
   createProjectLifecycleBusyError,
@@ -17,13 +16,10 @@ import { markDeploymentStopped } from '../queries/deployment-lifecycle.query';
 import { findDeploymentKubeState } from '../queries/deployment-kube-membership.query';
 import type { DeploymentKubeState } from '../queries/deployment-kube-state.types';
 import type { DeploymentJoinedRow, DeploymentRow, EnvironmentRow } from '../queries/deployments.query.types';
-import { findNodeById } from '../queries/node.query';
-import type { NodeRow } from '../queries/node.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
 import { resolveActiveProjectScope } from './project-scope.service';
 import type { ResolvedProjectScope } from './project-scope.service.types';
 import { requireScopedPermission } from './access-scope.service';
-import { createNodeRuntimeRequester } from './node-runtime-requester';
 import { queueArtifactStartDeployments } from './artifact-deployment-queue.service';
 import { readLatestDeploymentsByService } from './deployment-selection.service';
 import {
@@ -199,10 +195,9 @@ async function stopActiveProjectDeployment(
 
   try {
     if (kubeState === undefined) {
-      await stopNodeProjectDeployment(deployment);
-    } else {
-      await stopKubeProjectDeployment(deployment.deployment.id, kubeState, updatedAt);
+      throw createProjectLifecycleRuntimeStopFailedError();
     }
+    await stopKubeProjectDeployment(deployment.deployment.id, kubeState, updatedAt);
   } catch {
     throw createProjectLifecycleRuntimeStopFailedError();
   }
@@ -213,22 +208,6 @@ async function stopActiveProjectDeployment(
   });
 
   return requireJoinedDeployment(await findJoinedDeploymentById(stoppedDeployment.id, routeBaseDomain));
-}
-
-async function stopNodeProjectDeployment(deployment: DeploymentJoinedRow): Promise<void> {
-  const node: NodeRow = await resolveDeploymentNode(deployment.deployment.nodeId);
-  await stopNodeDeployment(createNodeRuntimeRequester(node.nodeSocketPath), {
-    containerId: requireDeploymentContainerId(deployment),
-  });
-}
-
-async function resolveDeploymentNode(nodeId: string): Promise<NodeRow> {
-  const node: NodeRow | undefined = await findNodeById(nodeId);
-  if (node === undefined) {
-    throw createProjectLifecycleRuntimeStopFailedError();
-  }
-
-  return node;
 }
 
 function hasRejectedStopResult(results: PromiseSettledResult<DeploymentJoinedRow>[]): boolean {
@@ -265,15 +244,6 @@ function buildProjectLifecycleResult(
     project: context.projectScope.project,
     state,
   };
-}
-
-function requireDeploymentContainerId(deployment: DeploymentJoinedRow): string {
-  const containerId: string | null = deployment.deployment.containerId;
-  if (containerId === null) {
-    throw createProjectLifecycleRuntimeStopFailedError();
-  }
-
-  return containerId;
 }
 
 function requireJoinedDeployment(deployment: DeploymentJoinedRow | undefined): DeploymentJoinedRow {

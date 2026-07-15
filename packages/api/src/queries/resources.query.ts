@@ -7,17 +7,14 @@ import type {
   ProjectResourceRow,
   ResourceTransaction,
   UpdateProjectResourceIntentInput,
-  UpdateProjectResourceRuntimeInput,
+  UpdateProjectResourceStatusInput,
 } from './resources.query.types';
 
 const projectResourceLockSelection: SQL[] = [
   sql`${projectResources.commandJson} as "commandJson"`,
-  sql`${projectResources.containerId} as "containerId"`,
   sql`${projectResources.createdAt} as "createdAt"`,
   sql`${projectResources.envJson} as "envJson"`,
   sql`${projectResources.environmentId} as "environmentId"`,
-  sql`${projectResources.hostname} as "hostname"`,
-  sql`${projectResources.runtimeKind} as "runtimeKind"`,
   sql`${projectResources.expectedClaimsJson} as "expectedClaimsJson"`,
   sql`${projectResources.id} as "id"`,
   sql`${projectResources.image} as "image"`,
@@ -27,7 +24,6 @@ const projectResourceLockSelection: SQL[] = [
   sql`${projectResources.outputsJson} as "outputsJson"`,
   sql`${projectResources.portsJson} as "portsJson"`,
   sql`${projectResources.readinessJson} as "readinessJson"`,
-  sql`${projectResources.restartPolicy} as "restartPolicy"`,
   sql`${projectResources.runtimeDefinitionHash} as "runtimeDefinitionHash"`,
   sql`${projectResources.status} as "status"`,
   sql`${projectResources.updatedAt} as "updatedAt"`,
@@ -129,23 +125,22 @@ function projectResourceIntentUpdate(
   return update as Omit<UpdateProjectResourceIntentInput, 'projectResourceId'>;
 }
 
-export async function updateProjectResourceRuntime(
-  input: UpdateProjectResourceRuntimeInput,
+export async function updateProjectResourceStatus(
+  input: UpdateProjectResourceStatusInput,
 ): Promise<ProjectResourceRow> {
   return await getApiDatabase().transaction(
     async (tx: ResourceTransaction): Promise<ProjectResourceRow> =>
-      await updateProjectResourceRuntimeWithExecutor(tx, input),
+      await updateProjectResourceStatusWithExecutor(tx, input),
   );
 }
 
-export async function updateProjectResourceRuntimeWithExecutor(
+async function updateProjectResourceStatusWithExecutor(
   tx: ResourceTransaction,
-  input: UpdateProjectResourceRuntimeInput,
+  input: UpdateProjectResourceStatusInput,
 ): Promise<ProjectResourceRow> {
   const [resource] = await tx
     .update(projectResources)
     .set({
-      containerId: input.containerId,
       status: input.status,
       updatedAt: input.updatedAt,
     })

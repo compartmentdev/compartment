@@ -36,7 +36,6 @@ import {
   createMultiServiceRoutes,
   injectDeployRequest,
   installCompartment,
-  registerLocalNode,
   requireClaimedDeployment,
   requireClaimedDeploymentByServiceName,
   requireDeploymentByServiceName,
@@ -169,7 +168,6 @@ describe('Phase 0 API integration rollback', (): void => {
   });
   it('promotes an active deployment into another environment without creating a new build artifact row', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const authoredBuild: AuthoredRailpackBuildConfig = {
       command: 'pnpm build',
       strategy: 'railpack',
@@ -228,7 +226,6 @@ describe('Phase 0 API integration rollback', (): void => {
       await claimNextQueuedDeployment(app),
     );
     expect(claimedStagingDeployment.service.build).toEqual(expectedBuild);
-    expect(claimedStagingDeployment.release).toEqual({ command: 'pnpm db:migrate' });
     expect(claimedStagingDeployment.run).toEqual(expectedRun);
     const storedStagingArtifacts: StoredBuildArtifactRow[] = await db.select().from(buildArtifacts);
     expect(storedStagingArtifacts).toHaveLength(1);
@@ -261,8 +258,7 @@ describe('Phase 0 API integration rollback', (): void => {
       await claimNextQueuedDeployment(app),
     );
     expect(claimedPromotedDeployment.artifact.id).toBe(claimedStagingDeployment.artifact.id);
-    expect(claimedPromotedDeployment.artifact.imageRef).toBe('sha256:image');
-    expect(claimedPromotedDeployment.release).toBeNull();
+    expect(claimedPromotedDeployment.artifact.imageRef).toBe('registry.example/app@sha256:image');
     expect(claimedPromotedDeployment.service.build).toEqual(expectedBuild);
     expect(claimedPromotedDeployment.run).toEqual(expectedRun);
     await completeClaimedDeployment(app, promotedDeployment.id, claimedPromotedDeployment.routeHost);
@@ -290,7 +286,6 @@ describe('Phase 0 API integration rollback', (): void => {
   });
   it('rejects deployment list when the default production environment does not exist yet', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const stagingDeployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
@@ -321,7 +316,6 @@ describe('Phase 0 API integration rollback', (): void => {
   });
   it('rejects promote for a deployment without image reuse data and leaves the target environment untouched', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const stagingDeployPayload: DeployResponse = deployResponseSchema.parse(
       (
@@ -368,7 +362,6 @@ describe('Phase 0 API integration rollback', (): void => {
   });
   it('rolls back a service by queueing a new deployment for the previous successful artifact', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const authoredRun: AuthoredRunConfig = {
       command: 'pnpm start',
     };
@@ -397,7 +390,6 @@ describe('Phase 0 API integration rollback', (): void => {
     const firstClaimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
       await claimNextQueuedDeployment(app),
     );
-    expect(firstClaimedDeployment.release).toEqual({ command: 'pnpm db:migrate' });
     await completeQueuedDeployment(app, firstDeployment.id, firstClaimedDeployment.routeHost);
 
     const secondDeployPayload: DeployResponse = deployResponseSchema.parse(
@@ -435,8 +427,7 @@ describe('Phase 0 API integration rollback', (): void => {
       await claimNextQueuedDeployment(app),
     );
     expect(claimedRollbackDeployment.artifact.id).toBe(firstClaimedDeployment.artifact.id);
-    expect(claimedRollbackDeployment.artifact.imageRef).toBe('sha256:image');
-    expect(claimedRollbackDeployment.release).toBeNull();
+    expect(claimedRollbackDeployment.artifact.imageRef).toBe('registry.example/app@sha256:image');
     expect(claimedRollbackDeployment.run).toEqual(expectedRun);
     await completeQueuedDeployment(app, rollbackDeployment.id, claimedRollbackDeployment.routeHost);
 
@@ -455,7 +446,6 @@ describe('Phase 0 API integration rollback', (): void => {
   });
   it('rolls back to an explicit deployment even when its artifact is still active in another environment', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const firstDeployPayload: DeployResponse = deployResponseSchema.parse(
       (await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json(),
@@ -535,7 +525,6 @@ describe('Phase 0 API integration rollback', (): void => {
   });
   it('returns not found when explicit rollback targets belong to another organization', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const acmeFirstRun: CompletedDeployRunResult = await deployAndCompleteRun(
       installPayload.sessionToken,
       createMultiServiceDescriptor(),
@@ -609,7 +598,6 @@ describe('Phase 0 API integration rollback', (): void => {
   });
   it('requires a service when rolling back to a specific deployment in a multi-service project', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const deployPayload: DeployResponse = deployResponseSchema.parse(
       (
@@ -641,7 +629,6 @@ describe('Phase 0 API integration rollback', (): void => {
 
   it('rolls back a multi-service project to a selected deployment run', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const firstRun: CompletedDeployRunResult = await deployAndCompleteRun(
       installPayload.sessionToken,
@@ -726,7 +713,6 @@ describe('Phase 0 API integration rollback', (): void => {
 
   it('rejects rollback to a deployment run that does not cover the current active service topology', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const firstRun: CompletedDeployRunResult = await deployAndCompleteRun(
       installPayload.sessionToken,
@@ -760,7 +746,6 @@ describe('Phase 0 API integration rollback', (): void => {
 
   it('rolls back all active services in a multi-service project when no service is specified', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const firstDeployPayload: DeployResponse = deployResponseSchema.parse(
       (

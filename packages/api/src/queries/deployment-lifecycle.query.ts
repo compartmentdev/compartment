@@ -9,17 +9,10 @@ export async function markDeploymentStopped(input: MarkDeploymentStoppedInput): 
   const [deployment]: PersistedDeploymentRow[] = await getApiDatabase()
     .update(deployments)
     .set({
-      containerId: null,
-      drainDeadlineAt: null,
-      drainingContainerId: null,
-      drainingDeploymentId: null,
-      drainingNodeId: null,
       health: 'healthy',
       isActive: false,
       promotionStage: 'stopped',
       status: 'stopped',
-      upstreamHost: null,
-      upstreamPort: null,
       updatedAt: input.updatedAt,
     })
     .where(eq(deployments.id, input.deploymentId))

@@ -4,7 +4,7 @@ export {
   readCliInstallLoginApiUrl,
   type CliInstallLoginCommandInput,
 } from './cli-install-login-command';
-export { assertHttpHeaderName, assertHttpHeaderValue, readBearerToken, readHeaderValue } from './http-header';
+export { readBearerToken, readHeaderValue } from './http-header';
 export { parseHttpHostAuthority } from './http-host-authority';
 export { serializeCookie } from './http-cookie';
 export { buildGitHubApiBaseUrl } from './github';
@@ -19,7 +19,7 @@ export { normalizeOutboundTrustedHost } from './outbound-http/outbound-http-poli
 export { type OutboundHttpResource } from './outbound-http/outbound-http-client.types';
 export { parseOptionalTrustedOutboundHostList } from './trusted-outbound-host';
 export { isSafeRelativePath, sanitizeSafeRelativePath } from './safe-relative-path';
-export { quoteShellArgument, quoteShellArgumentWhenNeeded } from './shell-argument';
+export { quoteShellArgumentWhenNeeded } from './shell-argument';
 export { assertSelfHostedGeneratedSecretEnvironment } from './self-hosted-generated-secret-environment';
 export {
   buildPendingSystemDomainCertificatePaths,
@@ -33,11 +33,9 @@ export {
   type ValidatedFileSystemEntry,
   type ValidatedFileSystemWriteTarget,
 } from './file-system-boundary';
-export { isFileModeWritableByIdentity } from './file-mode';
 export { isMissingFileSystemEntryError, isPathWithinDirectory, readRequiredAbsolutePath } from './file-system-path';
 export {
   assertValidUnixSocketPath,
-  createCompartmentUnixSocketPathPolicy,
   prepareUnixSocketPath,
   restrictUnixSocketPathPermissions,
   type UnixSocketPathPolicy,

@@ -75,10 +75,6 @@ if (!response.ok) {
 `;
 const k3dAuditFileSinkPath: string = '/var/lib/compartment/audit-logs/audit.ndjson';
 
-export function isK3dPlatformMode(): boolean {
-  return process.env[e2ePlatformModeEnvName] === 'k3d';
-}
-
 export async function expectK3dWorkerNamespaceIsolation(): Promise<void> {
   const seed: K3dPlatformSeed = readK3dPlatformSeed();
   const workerIdentity: string = `system:serviceaccount:${seed.platformNamespace}:${k3dPlatformResourceName}-worker`;

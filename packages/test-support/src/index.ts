@@ -96,7 +96,6 @@ function assertDatabaseName(databaseName: string): void {
 
 export { readDatabaseTestMode } from './database-test-mode';
 export { deriveDatabaseUrl, deriveProcessScopedDatabaseUrl } from './database-url-variants';
-export { cleanupDockerTestNamespacesByPrefix, createDockerTestNamespace } from './docker-namespace';
 export { readFileModePermissions } from './file-mode';
 export { findFreePort } from './free-port';
 export { runCompartmentApiMigrations } from './api-migrations';

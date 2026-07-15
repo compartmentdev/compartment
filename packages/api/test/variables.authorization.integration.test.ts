@@ -26,7 +26,7 @@ import { type ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { expectJsonError } from './api-route-test.harness';
-import { installCompartment, registerLocalNode } from './api-integration.harness';
+import { installCompartment } from './api-integration.harness';
 
 interface AppAccessEdgeServiceModule {
   invalidateEdgeAppAccessSessions: () => Promise<void>;
@@ -69,11 +69,8 @@ const apiConfig: ApiConfig = {
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-variables-authorization-source-archives'),
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  runtimeDefaultUpstreamHost: '127.0.0.1',
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-variables-authorization-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -235,7 +232,6 @@ describe('variables integration authorization', (): void => {
 
 async function installAndRegisterNode(): Promise<InstallResponse> {
   const installPayload: InstallResponse = await installCompartment(app);
-  await registerLocalNode(app);
   return installPayload;
 }
 

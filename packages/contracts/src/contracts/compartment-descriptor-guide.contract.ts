@@ -44,8 +44,6 @@ services:
           - libnss3
     run:
       command: pnpm --filter @internal-tools/web start
-      restart:
-        policy: on-failure
     readiness:
       type: http
       path: /ready
@@ -82,11 +80,10 @@ export const compartmentDescriptorOwns: readonly string[] = [
   'service runtime variable references to resource outputs',
   'readiness hints',
   'resource generated-variable intent',
-  'resource Docker images, env, ports, volumes, readiness, restart, outputs, and backup/restore operation intent',
+  'resource images, env, ports, volumes, readiness, outputs, and backup/restore operation intent',
 ];
 export const compartmentDescriptorDoesNotOwn: readonly string[] = [
   'service runtime variable plaintext, secrets, and environment-specific runtime values',
-  'node placement',
   'hosted domains',
   'deployment history',
   'browser-facing proxy rules',

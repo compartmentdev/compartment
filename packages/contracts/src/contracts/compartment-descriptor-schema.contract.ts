@@ -19,9 +19,6 @@ import {
   resolveCompartmentServiceReleaseConfig,
 } from './service-release.contract';
 import {
-  compartmentServiceRestartFieldNames,
-  compartmentServiceRestartMaxRetriesPolicyValues,
-  compartmentServiceRestartPolicyValues,
   compartmentServiceRunFieldNames,
   resolveCompartmentServiceRunConfig,
   resolvedCompartmentServiceRunConfigSchema,
@@ -70,11 +67,6 @@ const compartmentDescriptorSchemaDefaultsSchema: ContractSchema<CompartmentDescr
       })
       .strict()
       .nullable(),
-    resourceRestart: z
-      .object({
-        policy: z.enum(compartmentServiceRestartPolicyValues),
-      })
-      .strict(),
     serviceBuild: resolvedCompartmentServiceBuildConfigSchema,
     serviceKind: z.enum(compartmentServiceKindValues),
     serviceRelease: resolvedOptionalCompartmentServiceReleaseConfigSchema,
@@ -128,12 +120,7 @@ const compartmentDescriptorSchemaRulesSchema: ContractSchema<CompartmentDescript
     resourcePresets: z.array(z.enum(compartmentResourcePresetValues)).min(1),
     resourceReadinessFields: z.array(z.string().min(1)).min(1),
     resourceReadinessTypes: z.array(z.literal('tcp')).length(1),
-    resourceRestartFields: z.array(z.string().min(1)).min(1),
-    resourceRestartPolicies: z.array(z.enum(compartmentServiceRestartPolicyValues)).min(1),
     resourceValueForms: z.array(z.literal('resource_config')).length(1),
-    restartFields: z.array(z.string().min(1)).min(1),
-    restartMaxRetriesPolicies: z.array(z.enum(compartmentServiceRestartMaxRetriesPolicyValues)).min(1),
-    restartPolicies: z.array(z.enum(compartmentServiceRestartPolicyValues)).min(1),
     runFields: z.array(z.string().min(1)).min(1),
     runForbiddenKinds: z.array(z.enum(compartmentServiceKindValues)),
     serviceConfigFields: z.array(z.string().min(1)).min(1),
@@ -185,9 +172,6 @@ function createCompartmentDescriptorSchemaDefaults(): CompartmentDescriptorSchem
   return {
     readiness: resolveServiceReadinessConfig(undefined),
     resourceReadiness: null,
-    resourceRestart: {
-      policy: 'unless-stopped',
-    },
     serviceBuild: resolveCompartmentServiceBuildConfig(undefined),
     serviceKind: resolveCompartmentServiceKind(undefined),
     serviceRelease: resolveCompartmentServiceReleaseConfig(undefined),
@@ -208,9 +192,6 @@ function createCompartmentDescriptorSchemaRules(): CompartmentDescriptorSchemaRu
     readinessFields: [...compartmentServiceReadinessFieldNames],
     readinessTypes: [...compartmentServiceReadinessTypeValues],
     releaseFields: [...compartmentServiceReleaseFieldNames],
-    restartFields: [...compartmentServiceRestartFieldNames],
-    restartMaxRetriesPolicies: [...compartmentServiceRestartMaxRetriesPolicyValues],
-    restartPolicies: [...compartmentServiceRestartPolicyValues],
     runFields: [...compartmentServiceRunFieldNames],
     serviceConfigFields: [...compartmentDescriptorServiceConfigFieldNames],
     serviceConfigRequiredFields: [...compartmentDescriptorRequiredServiceConfigFieldNames],

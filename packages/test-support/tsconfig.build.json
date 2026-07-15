@@ -5,9 +5,7 @@
     "rootDir": "src",
     "outDir": "dist",
     "baseUrl": ".",
-    "paths": {
-      "@compartment/docker": ["../docker/dist/index.d.ts"]
-    }
+    "paths": {}
   },
   "include": ["src/**/*.ts"]
 }

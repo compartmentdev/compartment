@@ -17,9 +17,8 @@ describe('check-release-version', () => {
     temporaryDirectories.length = 0;
   });
 
-  it('accepts matching package and self-hosted example versions', async () => {
+  it('accepts matching package and manifest versions', async () => {
     const repositoryRoot = await createReleaseVersionFixture({
-      envVersion: '0.2.0',
       manifestVersion: '0.2.0',
       packageVersions: ['0.2.0', '0.2.0'],
     });
@@ -32,7 +31,6 @@ describe('check-release-version', () => {
 
   it('reports every mismatched release version file', async () => {
     const repositoryRoot = await createReleaseVersionFixture({
-      envVersion: '0.1.0',
       manifestVersion: '0.4.0',
       packageVersions: ['0.2.0', '0.3.0'],
     });
@@ -40,31 +38,13 @@ describe('check-release-version', () => {
     await expect(assertReleaseVersion({ releaseVersion: '0.2.0', repositoryRoot })).rejects
       .toThrow(`Release version mismatch:
 - packages/b/package.json has version 0.3.0, expected 0.2.0
-- .env.self-hosted.example has COMPARTMENT_NODE_VERSION=0.1.0, expected 0.2.0
 - .release-please-manifest.json has "."=0.4.0, expected 0.2.0`);
-  });
-
-  it('reports an empty self-hosted example version', async () => {
-    const repositoryRoot = await createReleaseVersionFixture({
-      envVersion: '',
-      manifestVersion: '0.2.0',
-      packageVersions: ['0.2.0'],
-    });
-
-    await expect(assertReleaseVersion({ releaseVersion: '0.2.0', repositoryRoot })).rejects.toThrow(
-      'Expected .env.self-hosted.example to define a non-empty COMPARTMENT_NODE_VERSION.',
-    );
   });
 });
 
-async function createReleaseVersionFixture({ envVersion, manifestVersion, packageVersions }) {
+async function createReleaseVersionFixture({ manifestVersion, packageVersions }) {
   const temporaryDirectory = await mkdtemp(join(tmpdir(), 'compartment-release-version-'));
   temporaryDirectories.push(temporaryDirectory);
-  await writeFile(
-    join(temporaryDirectory, '.env.self-hosted.example'),
-    `COMPARTMENT_NODE_VERSION=${envVersion}\n`,
-    'utf8',
-  );
   await writeFile(
     join(temporaryDirectory, '.release-please-manifest.json'),
     `${JSON.stringify({ '.': manifestVersion }, null, 2)}\n`,

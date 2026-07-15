@@ -1,27 +1,18 @@
 import {
   buildCompartmentArtifactImageRepository,
   buildCompartmentArtifactImageTag,
-  buildNodeDrainDeploymentRequest,
-  buildNodeInspectReadinessFields,
   gitDescriptorPlanResponseSchema,
   gitDescriptorPullRequestStatusResponseSchema,
   isDeployableCompartmentServiceKind,
   isRoutableCompartmentServiceKind,
-  nodeInspectDeploymentQuerySchema,
-  nodeResourceDeleteRequestSchema,
-  nodeResourceStopRequestSchema,
   parseCompartmentSourcePackageMetadata,
   readCompartmentSourcePackageLiteralArchiveEntryPath,
   readCompartmentSourcePackageBuildContextArchivePath,
   readCompartmentSourcePackageServiceArchivePath,
-  readWorkerUpstreamTargetPresence,
   readCompartmentSourcePackageValidatedServicePath,
   normalizeCompartmentSourcePackageRelativePath,
-  readNodeInspectReadiness,
   type CompartmentSourcePackageMetadata,
-  type NodeResourceDeleteRequest,
   type ResolvedCompartmentServiceBuildExecution,
-  type NodeInspectDeploymentQuery,
   type ResolvedCompartmentServiceBuildConfig,
   type ResolvedCompartmentServiceRunConfig,
   resolveServiceReadinessConfig,
@@ -29,8 +20,6 @@ import {
   resolveCompartmentServiceBuildExecution,
   resolveCompartmentServiceRunConfig,
   resolveCompartmentServiceRunExecution,
-  workerCompleteDeploymentRequestSchema,
-  workerUpdateDeploymentRuntimeRequestSchema,
 } from '../src';
 import { describe, expect, it } from 'vitest';
 
@@ -109,18 +98,9 @@ describe('runtime invariants', (): void => {
     }).toThrow('Run command is only supported for services with an authored runtime process.');
   });
 
-  it('defaults omitted run config to on-failure restart behavior', (): void => {
-    expect(resolveCompartmentServiceRunConfig(undefined)).toEqual({
-      restart: {
-        policy: 'on-failure',
-      },
-    });
-    expect(resolveCompartmentServiceRunConfig({ command: 'pnpm start' })).toEqual({
-      command: 'pnpm start',
-      restart: {
-        policy: 'on-failure',
-      },
-    });
+  it('keeps run config limited to the authored command', (): void => {
+    expect(resolveCompartmentServiceRunConfig(undefined)).toEqual({});
+    expect(resolveCompartmentServiceRunConfig({ command: 'pnpm start' })).toEqual({ command: 'pnpm start' });
   });
 
   it('disables readiness when the service omits readiness config', (): void => {
@@ -247,109 +227,5 @@ describe('runtime invariants', (): void => {
       pullRequestUrl: 'https://github.com/acme/mono/pull/42',
       state: 'merged',
     });
-  });
-
-  it('parses nested worker drain state and clear semantics', (): void => {
-    expect(
-      workerCompleteDeploymentRequestSchema.parse({
-        containerId: 'container_123',
-        deploymentId: 'dep_123',
-        drain: {
-          drainDeadlineAt: '2026-03-24T10:00:05.000Z',
-          drainingContainerId: 'legacy_container_123',
-          drainingDeploymentId: 'dep_previous',
-          drainingNodeId: 'node_previous',
-        },
-        imageRef: 'sha256:image',
-        routeHost: 'smoke-web.localhost',
-        upstreamHost: '127.0.0.1',
-        upstreamPort: 31000,
-      }).drain?.drainingDeploymentId,
-    ).toBe('dep_previous');
-
-    expect(
-      workerUpdateDeploymentRuntimeRequestSchema.parse({
-        deploymentId: 'dep_123',
-        drain: null,
-        promotionStage: 'active',
-      }).drain,
-    ).toBeNull();
-  });
-
-  it('allows stopped resource deletes without weakening stop requests', (): void => {
-    const lifecyclePayload: Pick<
-      NodeResourceDeleteRequest,
-      'environmentName' | 'projectName' | 'resourceName' | 'volumes'
-    > = {
-      environmentName: 'production',
-      projectName: 'billing',
-      resourceName: 'postgres',
-      volumes: [],
-    };
-
-    expect(
-      nodeResourceDeleteRequestSchema.parse({
-        ...lifecyclePayload,
-        containerId: null,
-      }).containerId,
-    ).toBeNull();
-    expect(
-      nodeResourceStopRequestSchema.safeParse({
-        ...lifecyclePayload,
-        containerId: null,
-      }).success,
-    ).toBe(false);
-  });
-
-  it('maps runtime drain state to the node drain request DTO', (): void => {
-    expect(
-      buildNodeDrainDeploymentRequest({
-        drainDeadlineAt: '2026-03-24T10:00:05.000Z',
-        drainingContainerId: 'legacy_container_123',
-        drainingDeploymentId: 'dep_previous',
-        drainingNodeId: 'node_previous',
-      }),
-    ).toEqual({
-      containerId: 'legacy_container_123',
-      deploymentId: 'dep_previous',
-      drainDeadlineAt: '2026-03-24T10:00:05.000Z',
-    });
-  });
-
-  it('reuses canonical worker upstream-target presence rules', (): void => {
-    expect(readWorkerUpstreamTargetPresence({})).toBe('absent');
-    expect(readWorkerUpstreamTargetPresence({ upstreamHost: '127.0.0.1' })).toBe('missing_port');
-    expect(readWorkerUpstreamTargetPresence({ upstreamPort: 31000 })).toBe('missing_host');
-    expect(readWorkerUpstreamTargetPresence({ upstreamHost: '127.0.0.1', upstreamPort: 31000 })).toBe('complete');
-  });
-
-  it('maps inspect readiness between flat query fields and resolved readiness', (): void => {
-    const query: NodeInspectDeploymentQuery = nodeInspectDeploymentQuerySchema.parse({
-      deploymentId: 'dep_123',
-      environmentName: 'production',
-      projectName: 'smoke-web',
-      readinessPath: '/healthz',
-      readinessTimeoutMs: '30000',
-      readinessType: 'http',
-      serviceName: 'web',
-    });
-
-    expect(buildNodeInspectReadinessFields(readNodeInspectReadiness(query) ?? undefined)).toEqual({
-      readinessPath: '/healthz',
-      readinessTimeoutMs: 30000,
-      readinessType: 'http',
-    });
-  });
-
-  it('rejects partial inspect readiness query fields', (): void => {
-    expect((): void => {
-      nodeInspectDeploymentQuerySchema.parse({
-        deploymentId: 'dep_123',
-        environmentName: 'production',
-        projectName: 'smoke-web',
-        readinessPath: '/healthz',
-        serviceName: 'web',
-      });
-    }).toThrow('must be provided together');
   });
 });

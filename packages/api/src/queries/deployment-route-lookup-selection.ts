@@ -20,7 +20,7 @@ export function createDeploymentRouteLookupQuery(): DeploymentRouteLookupQuery {
     .innerJoin(projects, eq(environments.projectId, projects.id))
     .innerJoin(organizations, eq(projects.organizationId, organizations.id))
     .innerJoin(projectServices, eq(deployments.projectServiceId, projectServices.id))
-    .leftJoin(
+    .innerJoin(
       deploymentKubeReferences,
       and(eq(deploymentKubeReferences.deploymentId, deployments.id), eq(deploymentKubeReferences.state, 'active')),
     );
@@ -39,12 +39,8 @@ export function createDeploymentRouteLookupSelection(): DeploymentRouteLookupSel
     projectId: projects.id,
     projectName: projects.name,
     resolvedRoutesJson: deployments.resolvedRoutesJson,
-    upstreamHost: sql<
-      string | null
-    >`CASE WHEN ${deploymentKubeReferences.deploymentId} IS NULL THEN ${deployments.upstreamHost} ELSE ${deploymentKubeReferences.serviceName} || '.' || ${deploymentKubeReferences.namespace} || '.svc.cluster.local' END`,
-    upstreamPort: sql<
-      number | null
-    >`CASE WHEN ${deploymentKubeReferences.deploymentId} IS NULL THEN ${deployments.upstreamPort} ELSE 80 END`,
+    upstreamHost: sql<string>`${deploymentKubeReferences.serviceName} || '.' || ${deploymentKubeReferences.namespace} || '.svc'`,
+    upstreamPort: sql<number>`80`,
     serviceId: projectServices.id,
     serviceName: projectServices.name,
     subdomain: deploymentRoutes.subdomain,

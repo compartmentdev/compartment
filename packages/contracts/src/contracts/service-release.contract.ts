@@ -19,7 +19,7 @@ export const compartmentServiceReleaseConfigSchema: ContractSchema<CompartmentSe
   })
   .strict();
 
-export const resolvedCompartmentServiceReleaseConfigSchema: ContractSchema<ResolvedCompartmentServiceReleaseConfig> = z
+const resolvedCompartmentServiceReleaseConfigSchema: ContractSchema<ResolvedCompartmentServiceReleaseConfig> = z
   .object({
     command: z.string().min(1),
   })

@@ -8,7 +8,6 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   deploymentCustomDomains,
   environments,
-  nodes,
   organizations,
   principals,
   projects,
@@ -41,14 +40,11 @@ const apiConfig: ApiConfig = {
   auditFileSink: defaultAuditFileSinkConfig,
   rollbackRetentionLimit: null,
   runtimeControlToken: 'test-runtime-control-token',
-  runtimeDefaultUpstreamHost: '127.0.0.1',
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -106,13 +102,6 @@ async function createQueryTestScope(): Promise<void> {
     name: 'Custom Domains Org',
     slug: 'custom-domains-org',
   });
-  await db.insert(nodes).values({
-    id: 'node_custom_domains',
-    name: 'node-custom-domains',
-    nodeUrl: '/tmp/compartment/api-test/node/custom-domains.sock',
-    nodeSocketPath: '/tmp/compartment/api-test/node/custom-domains.sock',
-    nodeVersion: '1.0.0',
-  });
   await db.insert(projects).values({
     id: 'prj_custom_domains',
     name: 'billing',
@@ -130,7 +119,6 @@ async function createQueryTestScope(): Promise<void> {
   await db.insert(environments).values({
     id: 'env_custom_domains',
     name: 'production',
-    nodeId: 'node_custom_domains',
     projectId: 'prj_custom_domains',
     updatedAt: new Date('2026-04-23T09:00:00.000Z'),
   });

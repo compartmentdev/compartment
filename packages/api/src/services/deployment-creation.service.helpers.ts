@@ -110,7 +110,6 @@ function buildQueuedDeploymentInput(
     deploymentRunId: preparedState.deploymentRunId,
     environmentId: preparedState.context.environment.id,
     label,
-    nodeId: preparedState.context.environment.nodeId,
     projectServiceId: preparedState.context.service.id,
     resolvedReadinessJson: serializeResolvedReadiness(
       resolveDescriptorServiceReadiness(preparedState.context.descriptorService),

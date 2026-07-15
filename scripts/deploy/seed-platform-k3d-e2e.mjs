@@ -2,7 +2,6 @@ import { appendFile, chmod, writeFile } from 'node:fs/promises';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 
-import { captureCommand } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
@@ -10,7 +9,6 @@ const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const platformUrl = 'http://console.compartment.localhost:18080';
 const platformBaseDomain = 'compartment.localhost';
 const seedOrganizationSlug = 'platform-e2e';
-const compatibilityNodeName = 'platform-k3d-compatibility';
 
 export function readSeedPlatformOptions(args, env) {
   if (args.length !== 0) {
@@ -46,29 +44,6 @@ export function parseInstallResult(output, expectedEmail) {
   return result;
 }
 
-export function parseCompatibilityNodeResult(output) {
-  let result;
-  try {
-    result = JSON.parse(output);
-  } catch {
-    throw new Error('Platform compatibility node registration did not return JSON.');
-  }
-
-  if (
-    result === null ||
-    typeof result !== 'object' ||
-    result.node?.name !== compatibilityNodeName ||
-    typeof result.node?.id !== 'string' ||
-    result.node.id === '' ||
-    typeof result.registeredAt !== 'string' ||
-    result.registeredAt === ''
-  ) {
-    throw new Error('Platform compatibility node registration returned an unexpected result.');
-  }
-
-  return result;
-}
-
 export function buildSeedEnvironment(seedAdminEmail, seedAdminPassword) {
   return `COMPARTMENT_E2E_PLATFORM_MODE=k3d
 COMPARTMENT_E2E_COMPARTMENT_URL=${platformUrl}
@@ -90,7 +65,6 @@ async function main() {
 
   const installOutput = await installPlatform(seedAdminEmail, seedAdminPassword);
   parseInstallResult(installOutput, seedAdminEmail);
-  registerCompatibilityNode();
   await appendFile(options.githubEnvPath, `${buildSeedEnvironment(seedAdminEmail, seedAdminPassword)}\n`, {
     mode: 0o600,
   });
@@ -114,48 +88,6 @@ async function installPlatform(seedAdminEmail, seedAdminPassword) {
     throw new Error(`Platform seed install failed with HTTP ${response.status.toString()}: ${body}`);
   }
   return body;
-}
-
-function registerCompatibilityNode() {
-  const output = captureCommand(
-    'kubectl',
-    [
-      '--context',
-      'k3d-compartment-e2e',
-      '--namespace',
-      'compartment',
-      'exec',
-      'deployment/compartment-compartment-api',
-      '--',
-      'node',
-      '--input-type=module',
-      '--eval',
-      buildCompatibilityNodeRegistrationScript(),
-    ],
-    repositoryRoot,
-    process.env,
-  );
-  parseCompatibilityNodeResult(output);
-}
-
-function buildCompatibilityNodeRegistrationScript() {
-  return `
-const port = process.env.COMPARTMENT_API_PORT;
-const runtimeControlToken = process.env.COMPARTMENT_RUNTIME_CONTROL_TOKEN;
-const nodeSocketPath = process.env.COMPARTMENT_NODE_AGENT_SOCKET;
-if (!port || !runtimeControlToken || !nodeSocketPath) throw new Error('API compatibility node environment is incomplete.');
-const response = await fetch(\`http://127.0.0.1:\${port}/internal/nodes/register\`, {
-  body: JSON.stringify({ nodeName: '${compatibilityNodeName}', nodeSocketPath, nodeVersion: 'kubernetes-compatibility' }),
-  headers: { authorization: \`Bearer \${runtimeControlToken}\`, 'content-type': 'application/json' },
-  method: 'POST',
-});
-const body = await response.text();
-if (!response.ok) {
-  process.stderr.write(body);
-  process.exit(1);
-}
-process.stdout.write(body);
-`;
 }
 
 runMain(import.meta.url, process.argv[1], main);

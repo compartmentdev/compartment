@@ -19,7 +19,7 @@
   "scripts": {
     "dev": "dotenv -e ../../.env -- tsx --tsconfig tsconfig.json src/bin.ts",
     "watch": "dotenv -e ../../.env -- tsx --tsconfig tsconfig.json watch src/bin.ts --help",
-    "build": "tsc -p tsconfig.build.json && node ./scripts/copy-assets.mjs",
+    "build": "tsc -p tsconfig.build.json",
     "build:test": "tsc -p tsconfig.test.json",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.test.json --noEmit --rootDir ../..",
@@ -28,19 +28,16 @@
   },
   "dependencies": {
     "@compartment/contracts": "workspace:*",
-    "@compartment/node": "workspace:*",
     "@compartment/source-archive": "workspace:*",
     "@compartment/sdk": "workspace:*",
     "@compartment/utils": "workspace:*",
     "commander": "^14.0.3",
     "dotenv": "^16.6.1",
-    "semver": "^7.7.4",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@compartment/eslint-config": "workspace:*",
     "@compartment/test-support": "workspace:*",
-    "@types/semver": "^7.7.1",
     "zod": "^3.24.2"
   }
 }

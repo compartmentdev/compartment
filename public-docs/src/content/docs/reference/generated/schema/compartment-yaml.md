@@ -62,8 +62,6 @@ services:
           - libnss3
     run:
       command: pnpm --filter @internal-tools/web start
-      restart:
-        policy: on-failure
     readiness:
       type: http
       path: /ready
@@ -117,17 +115,14 @@ resources:
 - Run is not allowed for kinds: static.
 - Release is not allowed for kinds: static.
 - Readiness is not allowed for kinds: static.
-- Run fields: command, restart.
-- Restart fields: policy, maxRetries.
-- Restart policies: no, on-failure, unless-stopped.
-- Restart max-retry policies: on-failure.
+- Run fields: command.
 - Release fields: command.
 - Readiness fields: type, path, timeoutMs.
 - Readiness types: http.
 - Resources are optional.
 - Resource names must match `^[a-z0-9][a-z0-9_-]{0,62}$` and must not collide with service names.
 - Resource values may be: resource_config.
-- Resource config fields: command, env, generatedVariables, image, operations, outputs, ports, preset, readiness, restart, volumes.
+- Resource config fields: command, env, generatedVariables, image, operations, outputs, ports, preset, readiness, volumes.
 - Resource config must include one of these field sets: [image] or [preset].
 - Resource presets: postgres.
 - Resource preset override fields: postgres accepts only env.
@@ -142,8 +137,6 @@ resources:
 - Resource operation schedule intervals: daily, hourly.
 - Resource operation cron schedules use standard five-field cron syntax in UTC, for example `*/15 * * * *`, `0 2 * * 1`, or `0 2 1 * *`.
 - Resource operation retention fields: includeManual, keepLast, maxAgeDays.
-- Resource restart fields: policy.
-- Resource restart policies: no, on-failure, unless-stopped.
 - Resource readiness fields: type, port, timeoutMs.
 - Resource readiness types: tcp.
 
@@ -155,11 +148,8 @@ resources:
 - Build include defaults to an empty list.
 - Build outputDirectory defaults to unset.
 - Build packages defaults to build=an empty list and runtime=an empty list.
-- Run restart policy defaults to `on-failure`.
-- Run restart maxRetries defaults to unset.
 - Release defaults to disabled.
 - Readiness defaults to disabled.
-- Resource restart policy defaults to `unless-stopped`.
 - Resource readiness defaults to disabled.
 
 ## Owns
@@ -177,12 +167,11 @@ resources:
 - service runtime variable references to resource outputs
 - readiness hints
 - resource generated-variable intent
-- resource Docker images, env, ports, volumes, readiness, restart, outputs, and backup/restore operation intent
+- resource images, env, ports, volumes, readiness, outputs, and backup/restore operation intent
 
 ## Does Not Own
 
 - service runtime variable plaintext, secrets, and environment-specific runtime values
-- node placement
 - hosted domains
 - deployment history
 - browser-facing proxy rules

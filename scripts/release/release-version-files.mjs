@@ -1,5 +1,5 @@
 import { execFile as execFileCallback } from 'node:child_process';
-import { readdir, readFile } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -29,16 +29,30 @@ async function readTrackedWorkspacePackageJsonPaths(repositoryRoot) {
     const { stdout } = await execFile('git', ['-C', repositoryRoot, 'ls-files', '--', 'packages'], {
       env: readGitProcessEnv(),
     });
-    return stdout
+    const paths = stdout
       .split('\n')
       .filter((path) => workspacePackageJsonPathPattern.test(path))
       .sort()
       .map((path) => resolve(repositoryRoot, path));
+    const existingPaths = await Promise.all(paths.map(async (path) => ((await pathExists(path)) ? path : undefined)));
+    return existingPaths.filter((path) => path !== undefined);
   } catch (error) {
     if (isGitRepositoryError(error)) {
       return null;
     }
 
+    throw error;
+  }
+}
+
+async function pathExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return false;
+    }
     throw error;
   }
 }
@@ -78,22 +92,6 @@ export async function readPackageVersion(packageJsonPath) {
   }
 
   throw new Error(`Expected ${packageJsonPath} to define a non-empty version.`);
-}
-
-export async function readSelfHostedExampleVersion(repositoryRoot) {
-  const envExamplePath = resolve(repositoryRoot, '.env.self-hosted.example');
-  const envExampleText = await readFile(envExamplePath, 'utf8');
-  const match = /^COMPARTMENT_NODE_VERSION=(.*)$/m.exec(envExampleText);
-  if (match === null) {
-    throw new Error('Expected .env.self-hosted.example to define COMPARTMENT_NODE_VERSION.');
-  }
-
-  const selfHostedExampleVersion = match[1].trim();
-  if (selfHostedExampleVersion !== '') {
-    return selfHostedExampleVersion;
-  }
-
-  throw new Error('Expected .env.self-hosted.example to define a non-empty COMPARTMENT_NODE_VERSION.');
 }
 
 export async function readReleasePleaseManifestVersion(repositoryRoot) {

@@ -10,9 +10,6 @@ export async function prepareRestoredResourceRuntime(
   context: ResourceEnvironmentContext,
   resource: ProjectResourceRow,
 ): Promise<ProjectResourceRow> {
-  if (resource.runtimeKind === 'node') {
-    return resource;
-  }
   await bootstrapKubernetesResource(context, resource);
   const expiresAt: number = Date.now() + 120_000;
   while (Date.now() < expiresAt) {
@@ -33,8 +30,5 @@ export async function createKubernetesRestoredResourceWithLock(
   context: ResourceEnvironmentContext,
   intent: ResolvedResourceIntent,
 ): Promise<ProjectResourceRow> {
-  return await createProjectResourceWithExecutor(
-    tx,
-    createResourceInsert(context.environment.id, intent, new Date(), 'kubernetes'),
-  );
+  return await createProjectResourceWithExecutor(tx, createResourceInsert(context.environment.id, intent, new Date()));
 }

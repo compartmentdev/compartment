@@ -208,7 +208,7 @@ describe('edge public ingress routes', (): void => {
       expect(response.headers[compartmentPrincipalEmailResponseHeaderName]).toBeUndefined();
       expect(response.headers[compartmentPrincipalIdResponseHeaderName]).toBeUndefined();
       expect(response.headers[compartmentPrincipalTypeResponseHeaderName]).toBeUndefined();
-      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('127.0.0.1');
+      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('app.cpt-project.svc');
       expect(response.headers[compartmentUpstreamPortResponseHeaderName]).toBe('31042');
     } finally {
       await app.close();
@@ -280,6 +280,7 @@ describe('edge public ingress routes', (): void => {
   it('returns 403 when the session principal no longer has route access', async (): Promise<void> => {
     const { app } = createEdgeTestApp({
       snapshot: createAppAccessSnapshot({
+        upstreamPort: 31042,
         grants: [],
       }),
       sessions: [
@@ -342,7 +343,7 @@ describe('edge public ingress routes', (): void => {
       expect(response.headers[compartmentPrincipalEmailResponseHeaderName]).toBe('admin@example.com');
       expect(response.headers[compartmentPrincipalIdResponseHeaderName]).toBe('prn_123');
       expect(response.headers[compartmentPrincipalTypeResponseHeaderName]).toBe('user');
-      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('127.0.0.1');
+      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('app.cpt-project.svc');
       expect(response.headers[compartmentUpstreamPortResponseHeaderName]).toBe('31042');
     } finally {
       await app.close();
@@ -515,7 +516,7 @@ describe('edge public ingress routes', (): void => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('127.0.0.1');
+      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('app.cpt-project.svc');
       expect(response.headers[compartmentUpstreamPortResponseHeaderName]).toBe('31042');
       expect(response.headers[compartmentProxyPathResponseHeaderName]).toBe('/ready?via=browser');
     } finally {
@@ -833,7 +834,7 @@ describe('edge public ingress routes', (): void => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('127.0.0.1');
+      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('app.cpt-project.svc');
       expect(response.headers[compartmentUpstreamPortResponseHeaderName]).toBe('31042');
       expect(response.headers[compartmentProxyPathResponseHeaderName]).toBe('/internal/users?via=browser');
     } finally {
@@ -876,7 +877,7 @@ describe('edge public ingress routes', (): void => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('127.0.0.1');
+      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('app.cpt-project.svc');
       expect(response.headers[compartmentUpstreamPortResponseHeaderName]).toBe('31000');
       expect(response.headers[compartmentProxyPathResponseHeaderName]).toBeUndefined();
     } finally {
@@ -918,7 +919,7 @@ describe('edge public ingress routes', (): void => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('127.0.0.1');
+      expect(response.headers[compartmentUpstreamHostResponseHeaderName]).toBe('app.cpt-project.svc');
       expect(response.headers[compartmentUpstreamPortResponseHeaderName]).toBe('31042');
       expect(response.headers[compartmentProxyPathResponseHeaderName]).toBe('/ready?deep=1');
     } finally {

@@ -44,7 +44,6 @@ interface QueuedDeploymentBaseTestInput {
   accessMode: AppRouteAccessMode;
   deploymentRunId: string;
   environmentId: string;
-  nodeId: string;
   projectServiceId: string;
   resolvedReadinessJson: string;
   resolvedReleaseJson: string;
@@ -57,7 +56,6 @@ function createBaseInput(): QueuedDeploymentBaseTestInput {
     accessMode: 'public',
     deploymentRunId: 'drn_123',
     environmentId: 'env_123',
-    nodeId: 'nod_123',
     projectServiceId: 'svc_123',
     resolvedReadinessJson: '{"kind":"http"}',
     resolvedReleaseJson: 'null',

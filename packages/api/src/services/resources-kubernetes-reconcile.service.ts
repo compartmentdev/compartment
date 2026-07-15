@@ -1,11 +1,14 @@
 import type {
   CompartmentAuthoredResourceConfig,
-  NodeResourceEnvValue,
   ResourceReconcileIntent,
   ResourceVolumeIntent,
 } from '@compartment/contracts';
 import { createId } from '../lib/tokens';
-import { lockProjectResourceByName, lockProjectResourceReconciliation } from '../queries/resources.query';
+import {
+  lockProjectResourceByName,
+  lockProjectResourceReconciliation,
+  updateProjectResourceStatus,
+} from '../queries/resources.query';
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { EffectiveVariable } from './effective-variables.service.types';
@@ -19,13 +22,13 @@ import { loadResourceEffectiveVariables } from './resources-effective-variables.
 import { prepareResourceEffectiveVariables, persistResourceIntent } from './resources-reconcile-persistence.service';
 import { assertAllowedVolumeChange } from './resources-reconcile.validation';
 import { resolveStoredResourceIntent } from './resources-stored-intent.service';
-import { resolveResourceIntent, type ResolvedResourceIntent } from './resources.service.helpers';
+import {
+  resolveResourceIntent,
+  type ResolvedResourceIntent,
+  type ResourceRuntimeEnvValue,
+} from './resources.service.helpers';
 import type { ResourceEnvironmentContext } from './resources.service.types';
 import type { KubernetesResourceVolumeSource } from './resources-kubernetes-reconcile.service.types';
-
-export function hasKubernetesRuntime(env: NodeJS.ProcessEnv): boolean {
-  return (env.KUBERNETES_SERVICE_HOST?.trim() ?? '') !== '' || (env.KUBECONFIG?.trim() ?? '') !== '';
-}
 
 export async function reconcileKubernetesResource(
   actorPrincipalId: string,
@@ -80,14 +83,7 @@ async function persistKubernetesDesiredAndRun(
   existing: ProjectResourceRow | undefined,
   intent: ResolvedResourceIntent,
 ): Promise<ProjectResourceRow> {
-  const persisted: ProjectResourceRow = await persistResourceIntent(
-    tx,
-    context,
-    existing,
-    intent,
-    new Date(),
-    'kubernetes',
-  );
+  const persisted: ProjectResourceRow = await persistResourceIntent(tx, context, existing, intent, new Date());
   const projected: ResourceReconcileIntent = buildKubernetesResourceIntent(context, persisted, intent, 1);
   await enqueueKubernetesReconcileWhenReady(tx, projected, persisted);
   return persisted;
@@ -118,7 +114,7 @@ async function resolveKubernetesResourceIntent(
     resourceName,
     resource,
   );
-  return resolveResourceIntent(context.project.name, context.environment.name, resourceName, resource, variables);
+  return resolveResourceIntent(resourceName, resource, variables);
 }
 
 export async function bootstrapKubernetesResource(
@@ -155,7 +151,11 @@ export async function reconcileKubernetesResourceReplicas(
   const operationId: string = createId('resource_operation');
   await requestResourceReconcile(operationId, intent, resource);
   await waitForResourceReconcile(operationId);
-  return { ...resource, status: replicas === 0 ? 'stopped' : 'running', updatedAt: new Date() };
+  return await updateProjectResourceStatus({
+    projectResourceId: resource.id,
+    status: replicas === 0 ? 'stopped' : 'running',
+    updatedAt: new Date(),
+  });
 }
 
 export async function deleteKubernetesResource(
@@ -203,7 +203,7 @@ function buildKubernetesResourceIntent(
   };
 }
 
-function buildRuntimeEnvEntry(variable: NodeResourceEnvValue): [string, string] {
+function buildRuntimeEnvEntry(variable: ResourceRuntimeEnvValue): [string, string] {
   return [variable.keyName, variable.value];
 }
 

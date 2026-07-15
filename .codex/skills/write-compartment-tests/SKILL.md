@@ -56,7 +56,7 @@ Scope:
 
 Ownership:
 
-- `@compartment/test-support`: DB lifecycle, docker namespace lifecycle, env sandbox helpers, free ports.
+- `@compartment/test-support`: DB lifecycle, env sandbox helpers, and free ports.
 - package `test/`: command, route, integration, and system-test harnesses.
 - `*-test.fixtures.ts`: repeated builders and fixtures.
 - `*-test.harness.ts`: repeated execution helpers.
@@ -79,6 +79,6 @@ Validate:
 - run narrow `pnpm lint`, `pnpm typecheck`, `pnpm test`;
 - let `git commit` run the repo-wide hook checks, and keep manual validation here focused on the current test surface;
 - run `pnpm test:db` for DB-backed API integration or CLI smoke flows;
-- run `pnpm test:deploy:e2e` for deploy or runtime changes;
+- run the focused k3d e2e suite for deploy or runtime changes;
 - when browser-visible compartment coverage matters, and the current run is not already the delegated smoke pass, prefer delegating `$compartment-smoke-test` to a dedicated fast subagent that inherits the user's current session configuration once local checks are stable;
 - if subagents are not allowed or not available, run the smoke directly or state clearly that browser smoke remains unrun;

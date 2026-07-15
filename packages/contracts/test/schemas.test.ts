@@ -889,7 +889,6 @@ function buildResourceResponse(): ResourceResponse {
       updatedAt: '2026-03-21T10:00:00.000Z',
     },
     resource: {
-      containerId: 'container_123',
       createdAt: '2026-03-21T10:00:00.000Z',
       env: [
         {
@@ -898,13 +897,11 @@ function buildResourceResponse(): ResourceResponse {
           variableName: null,
         },
       ],
-      hostname: 'postgres.production.billing.resource.internal',
       id: 'res_123',
       image: 'postgres:16',
       name: 'postgres',
       ports: [5432],
       readiness: null,
-      restartPolicy: 'unless-stopped',
       status: 'running',
       updatedAt: '2026-03-21T10:00:00.000Z',
       volumes: [],

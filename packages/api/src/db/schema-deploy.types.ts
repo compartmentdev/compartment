@@ -74,14 +74,10 @@ interface DeploymentsColumnBuilders extends DeploymentSourceProvenanceColumnBuil
   environmentId: RequiredTextBuilder<'environment_id'>;
   buildArtifactId: RequiredTextBuilder<'build_artifact_id'>;
   projectServiceId: RequiredTextBuilder<'project_service_id'>;
-  nodeId: RequiredTextBuilder<'node_id'>;
   operationId: RequiredTextBuilder<'operation_id'>;
   status: RequiredTextBuilder<'status'>;
   health: RequiredTextBuilder<'health'>;
   label: OptionalTextBuilder<'label'>;
-  upstreamHost: OptionalTextBuilder<'upstream_host'>;
-  upstreamPort: OptionalIntegerBuilder<'upstream_port'>;
-  containerId: OptionalTextBuilder<'container_id'>;
   failureMessage: OptionalTextBuilder<'failure_message'>;
   accessMode: DefaultEnumTextBuilder<'access_mode', ['authenticated', 'public']>;
   isActive: DefaultBooleanBuilder<'is_active'>;
@@ -90,11 +86,7 @@ interface DeploymentsColumnBuilders extends DeploymentSourceProvenanceColumnBuil
   resolvedRunJson: RequiredTextBuilder<'resolved_run_json'>;
   resolvedRoutesJson: DefaultTextBuilder<'resolved_routes_json'>;
   promotionStage: RequiredTextBuilder<'promotion_stage'>;
-  drainingContainerId: OptionalTextBuilder<'draining_container_id'>;
-  drainingDeploymentId: OptionalTextBuilder<'draining_deployment_id'>;
-  drainingNodeId: OptionalTextBuilder<'draining_node_id'>;
   movementSourceDeploymentId: OptionalTextBuilder<'movement_source_deployment_id'>;
-  drainDeadlineAt: OptionalTimestampBuilder<'drain_deadline_at'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;
   completedAt: OptionalTimestampBuilder<'completed_at'>;
@@ -156,13 +148,9 @@ interface ProjectResourcesColumnBuilders {
   portsJson: RequiredTextBuilder<'ports_json'>;
   volumesJson: RequiredTextBuilder<'volumes_json'>;
   readinessJson: RequiredTextBuilder<'readiness_json'>;
-  restartPolicy: RequiredTextBuilder<'restart_policy'>;
   runtimeDefinitionHash: RequiredTextBuilder<'runtime_definition_hash'>;
-  hostname: RequiredTextBuilder<'hostname'>;
-  runtimeKind: DefaultEnumTextBuilder<'runtime_kind', ['node', 'kubernetes']>;
   expectedClaimsJson: DefaultTextBuilder<'expected_claims_json'>;
   status: RequiredEnumTextBuilder<'status', ['running', 'stopped']>;
-  containerId: OptionalTextBuilder<'container_id'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;
 }

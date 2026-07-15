@@ -51,8 +51,14 @@ export interface WorkerObserveDeploymentReconcileRequest {
   revision: number;
 }
 
+export interface DeploymentArtifactCleanupTarget {
+  artifactId: string;
+  imageRef: string;
+}
+
 export interface WorkerObserveDeploymentReconcileResponse {
   applied: boolean;
+  cleanupArtifacts: DeploymentArtifactCleanupTarget[];
 }
 
 export interface WorkerPrepareDeploymentReconcileRequest {
@@ -132,7 +138,12 @@ export const workerObserveDeploymentReconcileRequestSchema: ContractSchema<Worke
   }) as ContractSchema<WorkerObserveDeploymentReconcileRequest>;
 
 export const workerObserveDeploymentReconcileResponseSchema: ContractSchema<WorkerObserveDeploymentReconcileResponse> =
-  z.object({ applied: z.boolean() }).strict();
+  z
+    .object({
+      applied: z.boolean(),
+      cleanupArtifacts: z.array(z.object({ artifactId: z.string().min(1), imageRef: z.string().min(1) }).strict()),
+    })
+    .strict();
 
 export const workerPrepareDeploymentReconcileRequestSchema: ContractSchema<WorkerPrepareDeploymentReconcileRequest> = z
   .object({

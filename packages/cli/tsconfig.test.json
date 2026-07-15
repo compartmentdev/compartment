@@ -7,8 +7,6 @@
     "paths": {
       "@compartment/contracts/browser": ["../contracts/src/index.browser.ts"],
       "@compartment/contracts": ["../contracts/src/index.ts"],
-      "@compartment/docker": ["../docker/src/index.ts"],
-      "@compartment/node/agent": ["../node/src/agent.ts"],
       "@compartment/source-archive": ["../source-archive/src/index.ts"],
       "@compartment/sdk": ["../sdk/src/index.ts"],
       "@compartment/test-support": ["../test-support/src/index.ts"],

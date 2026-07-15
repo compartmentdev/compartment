@@ -3,14 +3,12 @@ import { readRequiredAbsolutePath } from '../src/file-system-path';
 
 describe('file system path helpers', (): void => {
   it('returns absolute paths', (): void => {
-    expect(readRequiredAbsolutePath('/var/lib/compartment/resource-backups', 'COMPARTMENT_RESOURCE_BACKUP_DIR')).toBe(
-      '/var/lib/compartment/resource-backups',
-    );
+    expect(readRequiredAbsolutePath('/var/lib/compartment/data', 'CONFIG_PATH')).toBe('/var/lib/compartment/data');
   });
 
   it('rejects relative paths with the owning variable name', (): void => {
     expect((): string => {
-      return readRequiredAbsolutePath('.compartment/resource-backups', 'COMPARTMENT_RESOURCE_BACKUP_DIR');
-    }).toThrow('COMPARTMENT_RESOURCE_BACKUP_DIR must be an absolute path.');
+      return readRequiredAbsolutePath('.compartment/data', 'CONFIG_PATH');
+    }).toThrow('CONFIG_PATH must be an absolute path.');
   });
 });

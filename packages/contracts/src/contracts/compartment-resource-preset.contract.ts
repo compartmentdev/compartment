@@ -11,7 +11,6 @@ import type {
   CompartmentResourceOutputs,
   CompartmentResourcePreset,
   CompartmentResourceReadinessConfig,
-  CompartmentResourceRestartConfig,
   CompartmentResourceVolumes,
 } from './compartment-descriptor.types';
 import { isSerializedNormalizedPresetResource } from './compartment-resource-preset-equality.contract';
@@ -90,7 +89,6 @@ export interface CompartmentAuthoredResourceConfigRawInput {
   ports?: number[] | undefined;
   preset?: CompartmentResourcePreset | undefined;
   readiness?: CompartmentResourceReadinessConfig | undefined;
-  restart?: CompartmentResourceRestartConfig | undefined;
   volumes?: CompartmentResourceVolumes | undefined;
 }
 
@@ -102,7 +100,6 @@ const compartmentResourcePresetUnsupportedFieldNames: readonly (keyof Compartmen
   'outputs',
   'ports',
   'readiness',
-  'restart',
   'volumes',
 ];
 
@@ -199,7 +196,6 @@ function createFullResourceConfigInput(
     outputs: resource.outputs,
     ports: resource.ports,
     readiness: resource.readiness,
-    restart: resource.restart,
     volumes: resource.volumes,
   };
 }

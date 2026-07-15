@@ -3,7 +3,6 @@ import {
   type CompartmentAuthoredDescriptorInput,
   type CompartmentResourceGeneratedVariableConfig,
   type InstallResponse,
-  type WorkerClaimedDeployment,
 } from '@compartment/contracts';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
@@ -13,15 +12,9 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import { environmentVariableValues } from '../src/db/schema';
 import {
   buildOrganizationAuthorizationHeaders,
-  claimNextQueuedDeployment,
   createSourceArchive,
   injectDeployRequest,
   installCompartment,
-  queueIntegrationNodeAgentResponse,
-  registerLocalNode,
-  readIntegrationNodeAgentRequestBody,
-  readIntegrationNodeAgentRequests,
-  requireClaimedDeployment,
   setVariable,
 } from './api-integration.harness';
 import {
@@ -36,17 +29,6 @@ import { useApiDatabaseTestHarness } from './api-db-test.harness';
 
 type InvalidateEdgeAppAccessSessions = () => Promise<void>;
 type SynchronizeEdgeAppAccessState = () => Promise<void>;
-
-interface ResourceRequestEnvInput {
-  keyName: string;
-  value: string;
-}
-
-interface ResourceRequestInput {
-  definition: {
-    env: ResourceRequestEnvInput[];
-  };
-}
 
 interface AppAccessEdgeServiceMocks {
   invalidateEdgeAppAccessSessions: Mock<InvalidateEdgeAppAccessSessions>;
@@ -113,12 +95,6 @@ describe('Phase 0 API integration postgres preset secrets', (): void => {
 
   it('uses descriptor-defined postgres preset secrets without storing generated variables', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
-    queueIntegrationNodeAgentResponse({
-      containerId: 'resource_container_db',
-      hostname: 'db.production.smoke-web.resource.internal',
-      status: 'running',
-    });
 
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
@@ -131,13 +107,11 @@ describe('Phase 0 API integration postgres preset secrets', (): void => {
     );
 
     expect(deployResponse.statusCode, deployResponse.body).toBe(200);
-    expect(readIntegrationNodeAgentRequestBody(0)).toContain('descriptor-secret-value');
     expect(await db.select().from(environmentVariableValues)).toHaveLength(0);
   });
 
   it('auto-generates declared resource variables before resolving resource outputs', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await setVariable(app, installPayload.sessionToken, 'acme-dev', {
       fromResource: 'db.connection-url',
       keyName: 'DATABASE_URL',
@@ -152,9 +126,6 @@ describe('Phase 0 API integration postgres preset secrets', (): void => {
     });
 
     expect(deployResponse.statusCode, deployResponse.body).toBe(200);
-    const generatedPassword: string = expectResourceRequestEnvValue(0, postgresPresetPasswordEnvName);
-    expect(generatedPassword).toHaveLength(43);
-    expect(generatedPassword).toMatch(/^[A-Za-z0-9_-]+$/u);
     const variableRows: (typeof environmentVariableValues.$inferSelect)[] = await db
       .select()
       .from(environmentVariableValues);
@@ -166,12 +137,7 @@ describe('Phase 0 API integration postgres preset secrets', (): void => {
         targetResourceName: 'db',
       }),
     ]);
-    expect(JSON.stringify(variableRows)).not.toContain(generatedPassword);
-
-    const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
-    expect(claimedDeployment.runtimeEnv.DATABASE_URL).toBe(
-      `postgres://app:${generatedPassword}@db.production.smoke-web.resource.internal:5432/app`,
-    );
+    expect(variableRows[0]?.valueCiphertext).not.toBeNull();
 
     const outputListResponse: LightMyRequestResponse = await app.inject({
       headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
@@ -180,13 +146,12 @@ describe('Phase 0 API integration postgres preset secrets', (): void => {
     });
     expect(outputListResponse.statusCode).toBe(200);
     expect(JSON.stringify(resourceOutputListResponseSchema.parse(outputListResponse.json()))).not.toContain(
-      generatedPassword,
+      'valueCiphertext',
     );
   });
 
   it('preserves existing generated resource variables during redeploy', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await setVariable(app, installPayload.sessionToken, 'acme-dev', {
       fromResource: 'db.connection-url',
       keyName: 'DATABASE_URL',
@@ -197,13 +162,6 @@ describe('Phase 0 API integration postgres preset secrets', (): void => {
     const firstDeployResponse: LightMyRequestResponse = await deployGeneratedResource(installPayload);
 
     expect(firstDeployResponse.statusCode, firstDeployResponse.body).toBe(200);
-    const generatedPassword: string = expectResourceRequestEnvValue(0, postgresPresetPasswordEnvName);
-    const firstClaimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
-      await claimNextQueuedDeployment(app),
-    );
-    expect(firstClaimedDeployment.runtimeEnv.DATABASE_URL).toBe(
-      `postgres://app:${generatedPassword}@db.production.smoke-web.resource.internal:5432/app`,
-    );
     const [firstVariableRow] = await db.select().from(environmentVariableValues);
     if (firstVariableRow === undefined) {
       throw new Error('Expected generated resource variable row.');
@@ -212,25 +170,17 @@ describe('Phase 0 API integration postgres preset secrets', (): void => {
     const secondDeployResponse: LightMyRequestResponse = await deployGeneratedResource(installPayload);
 
     expect(secondDeployResponse.statusCode, secondDeployResponse.body).toBe(200);
-    expect(readIntegrationNodeAgentRequests()).toHaveLength(1);
-    const secondClaimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(
-      await claimNextQueuedDeployment(app),
-    );
-    expect(secondClaimedDeployment.runtimeEnv.DATABASE_URL).toBe(
-      `postgres://app:${generatedPassword}@db.production.smoke-web.resource.internal:5432/app`,
-    );
     expect(await db.select().from(environmentVariableValues)).toEqual([
       expect.objectContaining({
         id: firstVariableRow.id,
         valueFingerprint: firstVariableRow.valueFingerprint,
       }),
     ]);
-    expect(JSON.stringify(await db.select().from(environmentVariableValues))).not.toContain(generatedPassword);
+    expect(firstVariableRow.valueCiphertext).not.toBeNull();
   });
 
   it('uses preexisting resource variables instead of generated resource variables', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await setVariable(app, installPayload.sessionToken, 'acme-dev', {
       keyName: postgresPresetPasswordEnvName,
       projectName: 'smoke-web',
@@ -248,11 +198,6 @@ describe('Phase 0 API integration postgres preset secrets', (): void => {
     const deployResponse: LightMyRequestResponse = await deployGeneratedResource(installPayload);
 
     expect(deployResponse.statusCode, deployResponse.body).toBe(200);
-    expect(readIntegrationNodeAgentRequestBody(0)).toContain('custom-secret-password');
-    const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
-    expect(claimedDeployment.runtimeEnv.DATABASE_URL).toBe(
-      'postgres://app:custom-secret-password@db.production.smoke-web.resource.internal:5432/app',
-    );
     expect(await db.select().from(environmentVariableValues)).toHaveLength(1);
   });
 });
@@ -327,17 +272,4 @@ async function createPostgresPresetDeploySourceArchive(): Promise<Buffer> {
       version: 1,
     },
   );
-}
-function expectResourceRequestEnvValue(callIndex: number, keyName: string): string {
-  const resourceRequest: ResourceRequestInput = JSON.parse(
-    readIntegrationNodeAgentRequestBody(callIndex),
-  ) as ResourceRequestInput;
-  const value: string | undefined = resourceRequest.definition.env.find(
-    (env: ResourceRequestEnvInput): boolean => env.keyName === keyName,
-  )?.value;
-  if (value === undefined) {
-    throw new Error(`Expected resource request env "${keyName}".`);
-  }
-
-  return value;
 }

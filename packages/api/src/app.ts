@@ -105,12 +105,10 @@ function createApiLogger(logLevel: string): pino.Logger<never, boolean> {
 
 function ensureRuntimeDirectories(config: ApiConfig): void {
   ensurePrivateRuntimeStorageRootDirectorySync(config.sourceArchiveDirectory);
-  ensurePrivateRuntimeStorageRootDirectorySync(config.resourceBackupDirectory);
 }
 
 async function repairRuntimeStoragePermissions(config: ApiConfig): Promise<void> {
   await repairPrivateRuntimeStoragePermissions(config.sourceArchiveDirectory);
-  await repairPrivateRuntimeStoragePermissions(config.resourceBackupDirectory);
 }
 
 function registerRuntimeStorageRepairHook(app: ApiApp, runtimeStorageRepairTask: Promise<void>): void {

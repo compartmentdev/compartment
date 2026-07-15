@@ -1,7 +1,6 @@
 import type { PermissionKey } from '@compartment/contracts';
 import {
   createEnvironmentNotFoundError,
-  createNodeUnavailableError,
   createOrganizationNotFoundError,
   createProjectArchivedError,
   createProjectNotFoundError,
@@ -14,11 +13,9 @@ import {
   findProjectServiceByName,
 } from '../queries/deployment-context.query';
 import type { EnvironmentRow, ProjectServiceRow } from '../queries/deployments.query.types';
-import type { NodeRow } from '../queries/node.query.types';
 import type { OrganizationRow } from '../queries/organizations.query.types';
 import { createOrGetProject, findProjectByOrganizationAndName } from '../queries/projects.query';
 import type { ProjectRow } from '../queries/projects.query.types';
-import { resolveRegisteredNode } from './node.service';
 import { resolveOrganizationForPrincipal } from './organizations.service';
 import { requireScopedPermission } from './access-scope.service';
 import type { ProjectScopePermissionOptions, ResolvedProjectScope } from './project-scope.service.types';
@@ -128,15 +125,9 @@ export async function resolveOrCreateEnvironment(
     return existingEnvironment;
   }
 
-  const registeredNode: NodeRow | undefined = await resolveRegisteredNode();
-  if (registeredNode === undefined) {
-    throw createNodeUnavailableError();
-  }
-
   return await createOrGetEnvironment({
     id: createId('env'),
     name: environmentName,
-    nodeId: registeredNode.id,
     projectId,
     updatedAt: now,
   });

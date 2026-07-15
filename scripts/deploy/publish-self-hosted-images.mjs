@@ -1,7 +1,3 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, resolve } from 'node:path';
-
 import { runCommand } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import {
@@ -11,22 +7,14 @@ import {
   selfHostedRuntimeImageArtifacts,
 } from './self-hosted-runtime-services.mjs';
 import { buildSelfHostedImages } from './build-self-hosted-images.mjs';
-import { writeRenderedSelfHostedEnv } from './render-self-hosted-env.mjs';
 
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
 async function main() {
   const tags = readPublishTags(process.argv.slice(2));
-  const publishEnvPath = await writePublishEnvFile(repositoryRoot, tags[0]);
-
-  try {
-    await buildSelfHostedRuntimeImages(repositoryRoot, publishEnvPath);
-    checkSelfHostedRuntimeSurface(repositoryRoot, publishEnvPath);
-    tagPublishedImages(repositoryRoot, tags[0], tags.slice(1));
-    pushPublishedImages(repositoryRoot, tags);
-  } finally {
-    await rm(dirname(publishEnvPath), { force: true, recursive: true });
-  }
+  await buildSelfHostedRuntimeImages(repositoryRoot, tags[0]);
+  tagPublishedImages(repositoryRoot, tags[0], tags.slice(1));
+  pushPublishedImages(repositoryRoot, tags);
 }
 
 function readPublishTags(args) {
@@ -40,32 +28,17 @@ function readPublishTags(args) {
   );
 }
 
-async function writePublishEnvFile(repositoryRoot, primaryTag) {
-  const publishEnvDirectory = await mkdtemp(resolve(tmpdir(), 'compartment-publish-'));
-  const publishEnvPath = resolve(publishEnvDirectory, '.env.self-hosted');
-
-  await writeRenderedSelfHostedEnv({
-    outputPath: publishEnvPath,
-    primaryTag,
-    templatePath: resolve(repositoryRoot, '.env.self-hosted.example'),
-  });
-  return publishEnvPath;
-}
-
-async function buildSelfHostedRuntimeImages(repositoryRoot, publishEnvPath) {
+async function buildSelfHostedRuntimeImages(repositoryRoot, primaryTag) {
   await buildSelfHostedImages({
     env: process.env,
-    envFilePath: publishEnvPath,
+    imageRefsByServiceName: Object.fromEntries(
+      selfHostedRuntimeImageArtifacts.map((serviceName) => [
+        serviceName,
+        buildSelfHostedImageRef(serviceName, primaryTag),
+      ]),
+    ),
     repositoryRoot,
   });
-}
-
-function checkSelfHostedRuntimeSurface(repositoryRoot, publishEnvPath) {
-  runCommand(
-    'node',
-    [resolve(repositoryRoot, 'scripts/deploy/check-self-hosted-runtime-surface.mjs'), publishEnvPath],
-    repositoryRoot,
-  );
 }
 
 function tagPublishedImages(repositoryRoot, sourceTag, targetTags) {

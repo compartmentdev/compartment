@@ -82,18 +82,9 @@ const mocks: WorkerBuildServiceTestMocks = vi.hoisted(
   }),
 );
 
-vi.mock(
-  '@compartment/docker',
-  (): {
-    buildDockerImage: Mock<BuildDockerImage>;
-    buildDockerNamespaceLabels: (namespace: string) => Record<string, string>;
-  } => ({
-    buildDockerImage: mocks.buildDockerImage,
-    buildDockerNamespaceLabels: (namespace: string): Record<string, string> => ({
-      'compartment.namespace': namespace,
-    }),
-  }),
-);
+vi.mock('@compartment/docker', (): { buildDockerImage: Mock<BuildDockerImage> } => ({
+  buildDockerImage: mocks.buildDockerImage,
+}));
 
 vi.mock('../src/services/worker-build-scheduler.service', (): { scheduleWorkerBuild: Mock<ScheduleWorkerBuild> } => ({
   scheduleWorkerBuild: mocks.scheduleWorkerBuild,
@@ -128,7 +119,6 @@ describe('buildReleaseImageFromSource', (): void => {
             sourceDigest: 'sha256:source',
           },
         }),
-        'compartment-e2e',
         createArtifactRegistryConfig(),
       ),
     ).resolves.toBe(`registry.example/web@sha256:${'a'.repeat(64)}`);
@@ -147,7 +137,7 @@ describe('buildReleaseImageFromSource', (): void => {
         stream: 'compartment',
       },
       method: 'POST',
-      path: '/internal/deployments/runtime-events',
+      path: '/internal/deployments/events',
     });
   });
 
@@ -187,7 +177,6 @@ describe('buildReleaseImageFromSource', (): void => {
             VITE_PUBLIC_GREETING: 'hello from build env',
           },
         }),
-        'compartment-e2e',
         createArtifactRegistryConfig(),
       ),
     ).resolves.toBe(`127.0.0.1:5517/compartment/projects/prj_123/services/svc_123@sha256:${'b'.repeat(64)}`);
@@ -238,7 +227,6 @@ describe('buildReleaseImageFromSource', (): void => {
             sourceDigest: 'sha256:source',
           },
         }),
-        'compartment-e2e',
         createArtifactRegistryConfig('external'),
       ),
     ).rejects.toThrow(
@@ -278,12 +266,8 @@ describe('buildReleaseImageFromSource', (): void => {
           },
           run: {
             command: 'node server.js',
-            restart: {
-              policy: 'on-failure',
-            },
           },
         }),
-        'compartment-e2e',
         createArtifactRegistryConfig(),
       ),
     ).rejects.toThrow('Run command is only supported for services with an authored runtime process.');
@@ -329,7 +313,6 @@ describe('buildReleaseImageFromSource', (): void => {
             path: '.',
           },
         }),
-        'compartment-e2e',
         createArtifactRegistryConfig(),
       ),
     ).rejects.toThrow('Static services must resolve build.outputDirectory before image build.');
@@ -367,28 +350,12 @@ function createClaimedDeployment(
     deploymentRunId: 'drn_123',
     environmentId: 'env_123',
     environmentName: 'production',
-    node: {
-      id: 'node_123',
-      name: 'local-node',
-      nodeSocketPath: '/tmp/compartment/worker-test/node/agent.sock',
-    },
-    previousDeployment: undefined,
     projectId: 'prj_123',
     projectName: 'smoke-web',
-    readiness: {
-      path: '/healthz',
-      timeoutMs: 30000,
-      type: 'http',
-    },
-    release: null,
     requiresSourceRoutesFile: false,
     run: createRun(),
     routeHost: 'smoke-web.localhost',
     buildEnv: {},
-    runtimeEnv: {},
-    runtimeNetwork: {
-      requiresResourceNetwork: false,
-    },
     service: {
       build: {
         env: [],
@@ -409,9 +376,5 @@ function createClaimedDeployment(
 }
 
 function createRun(): ResolvedCompartmentServiceRunConfig {
-  return {
-    restart: {
-      policy: 'on-failure',
-    },
-  };
+  return {};
 }

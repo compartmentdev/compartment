@@ -24,15 +24,12 @@ import {
 describe('resource command output', (): void => {
   it('renders empty and populated resource lists', (): void => {
     expect(createResourceListMessage(createResourceListResponse([]))).toBe('No resources found for smoke/production.');
-    expect(createResourceListMessage(createResourceListResponse([createResourceSummary()]))).toBe(
-      'postgres\trunning\tpostgres.production.smoke.resource.internal',
-    );
+    expect(createResourceListMessage(createResourceListResponse([createResourceSummary()]))).toBe('postgres\trunning');
   });
 
   it('renders resource detail and logs without secret values', (): void => {
     expect(createResourceResponseMessage(createResourceResponse())).toBe(
       `postgres running
-host: postgres.production.smoke.resource.internal
 image: postgres:16
 ports: 5432`,
     );
@@ -189,7 +186,6 @@ function createResourceResponse(): ResourceResponse {
 
 function createResourceSummary(): ResourceSummary {
   return {
-    containerId: 'container_123',
     createdAt: '2026-04-29T10:00:00.000Z',
     env: [
       {
@@ -198,13 +194,11 @@ function createResourceSummary(): ResourceSummary {
         variableName: null,
       },
     ],
-    hostname: 'postgres.production.smoke.resource.internal',
     id: 'res_123',
     image: 'postgres:16',
     name: 'postgres',
     ports: [5432],
     readiness: null,
-    restartPolicy: 'unless-stopped',
     status: 'running',
     updatedAt: '2026-04-29T10:00:00.000Z',
     volumes: [],

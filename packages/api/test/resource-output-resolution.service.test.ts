@@ -27,7 +27,6 @@ describe('resource output resolution service', (): void => {
   it('renders supported resource output placeholders and hides sensitive plaintext by default', (): void => {
     configureResourceOutputRuntime();
     const resource: ProjectResourceRow = createProjectResourceRow({
-      runtimeKind: 'kubernetes',
       outputsJson: JSON.stringify({
         'connection-url': {
           sensitive: true,
@@ -172,15 +171,12 @@ function createApiConfig(): ApiConfig {
     publicHttpPort: 80,
     publicHttpsPort: 443,
     publicProtocol: 'http',
-    resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
     rollbackRetentionLimit: null,
     runtimeControlToken: 'runtime-token',
-    runtimeDefaultUpstreamHost: '127.0.0.1',
     sessionSecret: 'test-session-secret',
     sessionTtlMs: 604_800_000,
     sourceArchiveDirectory: '/tmp/source-archives',
     sourceArchiveMaxBytes: 104_857_600,
-    nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
     systemApiSocketPath: '/tmp/compartment/system-api.sock',
     systemToken: 'system-token',
     throttle: defaultApiAuthThrottleConfig,
@@ -192,7 +188,6 @@ function createApiConfig(): ApiConfig {
 function createProjectResourceRow(overrides: Partial<ProjectResourceRow> = {}): ProjectResourceRow {
   return {
     commandJson: '["postgres"]',
-    containerId: 'container_123',
     createdAt: new Date('2026-04-07T10:00:00.000Z'),
     envJson: JSON.stringify([
       {
@@ -203,8 +198,6 @@ function createProjectResourceRow(overrides: Partial<ProjectResourceRow> = {}): 
       },
     ]),
     environmentId: 'env_production',
-    hostname: 'postgres.production.billing.resource.internal',
-    runtimeKind: 'node',
     expectedClaimsJson: '[]',
     id: 'res_postgres',
     image: 'postgres:16',
@@ -214,7 +207,6 @@ function createProjectResourceRow(overrides: Partial<ProjectResourceRow> = {}): 
     outputsJson: '{}',
     portsJson: '[5432]',
     readinessJson: 'null',
-    restartPolicy: 'unless-stopped',
     runtimeDefinitionHash: 'hash',
     status: 'running',
     updatedAt: new Date('2026-04-07T10:00:00.000Z'),

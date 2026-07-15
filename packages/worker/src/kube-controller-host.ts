@@ -12,6 +12,8 @@ import type {
   WorkerClaimResourceReconcileResponse,
 } from '@compartment/contracts';
 import type { WorkerConfig } from './config';
+import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
+import { cleanupWorkerArtifacts } from './services/worker-artifact-cleanup.service';
 import { executeProductJob, finalizeRecoveredProductJob } from './services/worker-product-job.service';
 import { reconcileDeploymentTarget } from './services/worker-deployment-reconcile.service';
 import { executeResourceReconcile } from './services/worker-resource-reconcile.service';
@@ -20,7 +22,6 @@ import { collectAndPublishPodMetrics } from './services/worker-pod-metrics.servi
 const controllerRequestTimeoutMs: number = 15_000;
 
 export interface KubeControllerHost {
-  enabled: boolean;
   reconcile(): Promise<boolean>;
 }
 
@@ -29,8 +30,6 @@ interface KubeReconcileArea {
 }
 
 class RegisteredKubeControllerHost implements KubeControllerHost {
-  public readonly enabled: boolean = true;
-
   public constructor(private readonly areas: KubeReconcileArea[]) {}
 
   public async reconcile(): Promise<boolean> {
@@ -67,6 +66,7 @@ class DeploymentReconcileArea implements KubeReconcileArea {
   public constructor(
     private readonly request: CompartmentRequester,
     private readonly runtime: KubeRuntime,
+    private readonly artifactRegistry: WorkerArtifactRegistryConfig,
   ) {}
 
   public async reconcile(): Promise<boolean> {
@@ -74,7 +74,10 @@ class DeploymentReconcileArea implements KubeReconcileArea {
     if (claimed.target === null) {
       return false;
     }
-    await reconcileDeploymentTarget(this.request, this.runtime, claimed.target);
+    await cleanupWorkerArtifacts(
+      await reconcileDeploymentTarget(this.request, this.runtime, claimed.target),
+      this.artifactRegistry,
+    );
     return claimed.target.state !== 'active' && claimed.target.state !== 'stopped';
   }
 }
@@ -112,17 +115,9 @@ class PodMetricsReconcileArea implements KubeReconcileArea {
   }
 }
 
-class DisabledKubeControllerHost implements KubeControllerHost {
-  public readonly enabled: boolean = false;
-
-  public async reconcile(): Promise<boolean> {
-    return await Promise.resolve(false);
-  }
-}
-
 export function createKubeControllerHost(config: WorkerConfig): KubeControllerHost {
   if (!isKubeRuntimeConfigured()) {
-    return new DisabledKubeControllerHost();
+    throw new Error('Kubernetes worker requires KUBERNETES_SERVICE_HOST or KUBECONFIG.');
   }
   const request: CompartmentRequester = createCompartmentRequester({
     apiUrl: config.apiUrl,
@@ -132,13 +127,13 @@ export function createKubeControllerHost(config: WorkerConfig): KubeControllerHo
   const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
   return new RegisteredKubeControllerHost([
     new PodMetricsReconcileArea(request, runtime),
-    new DeploymentReconcileArea(request, runtime),
+    new DeploymentReconcileArea(request, runtime, config.artifactRegistry),
     new ResourceReconcileArea(request, runtime),
     new ProductJobReconcileArea(request, runtime),
   ]);
 }
 
-export function isKubeRuntimeConfigured(): boolean {
+function isKubeRuntimeConfigured(): boolean {
   return hasKubeConfiguration(process.env);
 }
 

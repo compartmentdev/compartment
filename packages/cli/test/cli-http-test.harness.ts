@@ -88,7 +88,6 @@ function sendCliHttpRequest(
 ): ClientRequest {
   const requestOptions: HttpRequestOptions = {
     headers: requestHeaders,
-    hostname: requestUrl.hostname,
     method: method ?? 'GET',
     path: requestPath,
     port: requestUrl.port === '' ? undefined : Number.parseInt(requestUrl.port, 10),

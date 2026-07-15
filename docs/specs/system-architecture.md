@@ -7,7 +7,7 @@ This document keeps only durable architecture rules. For current components, rou
 - The platform is split into a control plane, a runtime executor, and a public ingress boundary.
 - Public ingress is intentionally narrow: control-plane traffic stays on the console host, and hosted-app traffic is mediated by the edge boundary before proxying to runtime services.
 - Runtime service networks are private and service-scoped. Private runtime-to-runtime connectivity is not a product contract.
-- The persisted model already separates node registration and environment placement from deployment submission. Single-host operation is common, but the architecture must not assume that as a permanent contract.
+- Project namespaces and namespace-local grants are provisioned before Kubernetes deployment reconciliation begins.
 
 ## Auth And Access
 

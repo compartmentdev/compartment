@@ -49,16 +49,6 @@ export const operations: CoreSchemaTypes.OperationsTable = pgTable('operations',
   completedAt: timestamp('completed_at', { withTimezone: true }),
 });
 
-export const nodes: CoreSchemaTypes.NodesTable = pgTable('nodes', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull().unique(),
-  nodeVersion: text('node_version').notNull(),
-  nodeUrl: text('node_url').notNull(),
-  nodeSocketPath: text('node_socket_path').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
-
 export const projects: PlatformSchemaTypes.ProjectsTable = pgTable(
   'projects',
   {
@@ -101,9 +91,6 @@ export const environments: PlatformSchemaTypes.EnvironmentsTable = pgTable(
     projectId: text('project_id')
       .notNull()
       .references((): typeof projects.id => projects.id, { onDelete: 'cascade' }),
-    nodeId: text('node_id')
-      .notNull()
-      .references((): typeof nodes.id => nodes.id, { onDelete: 'restrict' }),
     name: text('name').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

@@ -5,12 +5,9 @@ export type ProjectResourceRowStatus = ResourceRuntimeStatus;
 
 export interface ProjectResourceRow {
   commandJson: string;
-  containerId: string | null;
   createdAt: Date;
   envJson: string;
   environmentId: string;
-  hostname: string;
-  runtimeKind: 'node' | 'kubernetes';
   expectedClaimsJson: string;
   id: string;
   image: string;
@@ -20,7 +17,6 @@ export interface ProjectResourceRow {
   outputsJson?: string | undefined;
   portsJson: string;
   readinessJson: string;
-  restartPolicy: string;
   runtimeDefinitionHash: string;
   status: ProjectResourceRowStatus;
   updatedAt: Date;
@@ -36,8 +32,6 @@ export interface CreateProjectResourceInput {
   commandJson: string;
   envJson: string;
   environmentId: string;
-  hostname: string;
-  runtimeKind: 'node' | 'kubernetes';
   expectedClaimsJson?: string | undefined;
   id: string;
   image: string;
@@ -47,7 +41,6 @@ export interface CreateProjectResourceInput {
   outputsJson: string;
   portsJson: string;
   readinessJson: string;
-  restartPolicy: string;
   runtimeDefinitionHash: string;
   status: ResourceRuntimeStatus;
   updatedAt: Date;
@@ -57,23 +50,19 @@ export interface CreateProjectResourceInput {
 export interface UpdateProjectResourceIntentInput {
   commandJson: string;
   envJson: string;
-  hostname: string;
   image: string;
   operationConfigHash: string;
   operationsJson: string;
   outputsJson: string;
   portsJson: string;
   projectResourceId: string;
-  runtimeKind: 'node' | 'kubernetes';
   readinessJson: string;
-  restartPolicy: string;
   runtimeDefinitionHash: string;
   updatedAt: Date;
   volumesJson: string;
 }
 
-export interface UpdateProjectResourceRuntimeInput {
-  containerId: string | null;
+export interface UpdateProjectResourceStatusInput {
   projectResourceId: string;
   status: ResourceRuntimeStatus;
   updatedAt: Date;

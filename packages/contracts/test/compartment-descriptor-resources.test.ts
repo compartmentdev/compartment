@@ -9,15 +9,7 @@ import {
 type ResourcePresetRejectedOverride = Partial<
   Pick<
     CompartmentAuthoredResourceConfig,
-    | 'command'
-    | 'generatedVariables'
-    | 'image'
-    | 'operations'
-    | 'outputs'
-    | 'ports'
-    | 'readiness'
-    | 'restart'
-    | 'volumes'
+    'command' | 'generatedVariables' | 'image' | 'operations' | 'outputs' | 'ports' | 'readiness' | 'volumes'
   >
 >;
 
@@ -29,12 +21,11 @@ const resourcePresetRejectedOverrides: readonly [string, ResourcePresetRejectedO
   ['outputs', { outputs: { host: { sensitive: false, value: 'custom-host' } } }],
   ['ports', { ports: [5433] }],
   ['readiness', { readiness: { port: 5433, type: 'tcp' } }],
-  ['restart', { restart: { policy: 'unless-stopped' } }],
   ['volumes', { volumes: { data: '/data' } }],
 ];
 
 describe('compartment descriptor resource contracts', (): void => {
-  it('accepts Docker-backed resources declared at the top level', (): void => {
+  it('accepts Kubernetes-managed resources declared at the top level', (): void => {
     const descriptor: CompartmentAuthoredDescriptor = compartmentAuthoredDescriptorSchema.parse({
       name: 'backoffice',
       resources: {

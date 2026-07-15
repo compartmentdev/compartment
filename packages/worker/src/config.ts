@@ -18,7 +18,6 @@ interface WorkerConfigEnvironment {
   COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: string;
   COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD: string;
   COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME: string;
-  COMPARTMENT_DOCKER_NAMESPACE: string;
   COMPARTMENT_LOG_LEVEL: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   COMPARTMENT_WORKER_POLL_INTERVAL_MS: number;
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: string;
@@ -41,7 +40,6 @@ const workerConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: z.string().min(1),
   COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD: z.string().min(1),
   COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME: z.string().min(1),
-  COMPARTMENT_DOCKER_NAMESPACE: z.string().min(1),
   COMPARTMENT_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
   COMPARTMENT_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().positive(),
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),
@@ -52,7 +50,6 @@ export interface WorkerConfig {
   apiUrl: string;
   artifactRegistry: WorkerArtifactRegistryConfig;
   buildKitAddress: string;
-  dockerNamespace: string;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   pollIntervalMs: number;
   runtimeControlToken: string;
@@ -67,7 +64,6 @@ export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     apiUrl: buildInternalHttpUrl(parsed.COMPARTMENT_API_INTERNAL_HOST, parsed.COMPARTMENT_API_PORT),
     artifactRegistry: readWorkerArtifactRegistryConfig(parsed),
     buildKitAddress: parsed.BUILDKIT_ADDR,
-    dockerNamespace: parsed.COMPARTMENT_DOCKER_NAMESPACE,
     logLevel: parsed.COMPARTMENT_LOG_LEVEL,
     pollIntervalMs: parsed.COMPARTMENT_WORKER_POLL_INTERVAL_MS,
     runtimeControlToken: parsed.COMPARTMENT_RUNTIME_CONTROL_TOKEN,

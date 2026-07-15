@@ -90,7 +90,6 @@ export * from './contracts/auth-cli-login.contract';
 export * from './contracts/password-reset.contract';
 export * from './contracts/rbac.contract';
 export * from './contracts/control-plane-protocol.contract';
-export * from './index.runtime-node';
 export {
   type DnsRecordInstruction,
   type InstallRequest,
@@ -110,7 +109,6 @@ export {
   type CompartmentSkillInstallResult,
   type CompartmentSkillInstallTarget,
 } from './contracts/skill-install.contract';
-export * from './contracts/managed-domain.contract';
 export { compartmentRemoteNameSchema } from './contracts/remote.contract';
 export {
   type CompartmentAuthoredDescriptor,
@@ -203,47 +201,27 @@ export {
   type WorkerAppendDeploymentEventRequest,
   type WorkerClaimDeploymentResponse,
   type WorkerClaimedDeployment,
-  type WorkerCompleteDeploymentRequest,
   type WorkerFailDeploymentRequest,
-  type WorkerNodeSummary,
+  type WorkerRecoverOrphanedBuildClaimsResponse,
   type WorkerProjectServiceSummary,
   type WorkerBuildArtifactSummary,
-  type WorkerUpstreamTargetPresence,
-  type WorkerUpdateDeploymentRuntimeRequest,
-  readWorkerUpstreamTargetPresence,
   workerAppendDeploymentEventPathname,
-  workerUpstreamTargetValidationMessage,
   workerClaimNextDeploymentPathname,
-  workerCompleteDeploymentPathname,
   workerFailDeploymentPathname,
-  workerUpdateDeploymentRuntimePathname,
+  workerRecoverOrphanedBuildClaimsPathname,
   workerAppendDeploymentEventRequestSchema,
   workerClaimDeploymentResponseSchema,
-  workerCompleteDeploymentRequestSchema,
   workerFailDeploymentRequestSchema,
-  workerUpdateDeploymentRuntimeRequestSchema,
+  workerRecoverOrphanedBuildClaimsResponseSchema,
 } from './contracts/internal-worker.contract';
 export * from './contracts/internal-product-job.contract';
 export * from './contracts/internal-deployment-reconcile.contract';
 export * from './contracts/internal-observability.contract';
 export {
-  type WorkerArtifactCleanupTarget,
-  type WorkerCompleteDeploymentResponse,
-  workerCompleteDeploymentResponseSchema,
-} from './contracts/internal-worker-cleanup.contract';
-export {
   type WorkerRunNextScheduledResourceOperationResponse,
   workerRunNextScheduledResourceOperationPathname,
   workerRunNextScheduledResourceOperationResponseSchema,
 } from './contracts/internal-resource-operation-scheduler.contract';
-export {
-  type WorkerRecoverDeploymentsMode,
-  type WorkerRecoverDeploymentsQuery,
-  type WorkerRecoverDeploymentsResponse,
-  workerRecoverDeploymentsPathname,
-  workerRecoverDeploymentsQuerySchema,
-  workerRecoverDeploymentsResponseSchema,
-} from './contracts/internal-worker-recovery.contract';
 export * from './index.source';
 export * from './index.protocol';
 export * from './index.control-plane';

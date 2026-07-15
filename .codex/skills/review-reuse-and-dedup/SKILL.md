@@ -16,7 +16,7 @@ Review a change for unnecessary repetition and missed reuse. The goal is to find
 - Duplicated literals such as route paths, header names, status names, env keys, magic numbers, file paths, and error strings.
 - Repeated variable derivations or branching rules that could be named once in the owning layer.
 - New helpers that are pure, primitive, cross-package, and already shared enough to belong in `packages/utils`.
-- Package-specific helpers that should stay adjacent to the owning API, CLI, worker, edge, node, docker, kube-runtime, SDK, or contracts layer.
+- Package-specific helpers that should stay adjacent to the owning API, CLI, worker, edge, docker, kube-runtime, SDK, or contracts layer.
 
 ## Review Rules
 

@@ -20,15 +20,9 @@ export const projectResources: DeploySchemaTypes.ProjectResourcesTable = pgTable
     portsJson: text('ports_json').notNull(),
     volumesJson: text('volumes_json').notNull(),
     readinessJson: text('readiness_json').notNull(),
-    restartPolicy: text('restart_policy').notNull(),
     runtimeDefinitionHash: text('runtime_definition_hash').notNull(),
-    hostname: text('hostname').notNull(),
-    runtimeKind: text('runtime_kind', { enum: ['node', 'kubernetes'] })
-      .default('node')
-      .notNull(),
     expectedClaimsJson: text('expected_claims_json').default('[]').notNull(),
     status: text('status', { enum: ['running', 'stopped'] }).notNull(),
-    containerId: text('container_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

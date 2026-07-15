@@ -139,7 +139,7 @@ describe('readAppAccessRouteAuthorizationContext', (): void => {
         { scopeId: 'prj_456', scopeType: 'project' },
         { scopeId: 'org_123', scopeType: 'organization' },
       ],
-      upstreamHost: '127.0.0.1',
+      upstreamHost: 'app.cpt-project.svc',
       upstreamPort: 3001,
     };
 
@@ -159,7 +159,7 @@ describe('readAppAccessRouteAuthorizationContext', (): void => {
       routeScopeId: route.routeScopeId,
       routeScopeType: route.routeScopeType,
       scopeChain: route.scopeChain,
-      upstreamHost: '127.0.0.1',
+      upstreamHost: 'app.cpt-project.svc',
       upstreamPort: 3001,
     };
 
@@ -210,7 +210,7 @@ function createRoute(overrides: Partial<AppAccessRouteState> = {}): AppAccessRou
     routeScopeId: 'env_123',
     routeScopeType: 'environment',
     scopeChain: createScopeChain(),
-    upstreamHost: '127.0.0.1',
+    upstreamHost: 'app.cpt-project.svc',
     upstreamPort: 3000,
     ...overrides,
   };

@@ -29,16 +29,7 @@ export { environmentNameSchema };
 export type { EnvironmentSummary };
 
 export type DeploymentRuntimeHealth = 'pending' | 'healthy' | 'unhealthy';
-export type DeploymentPromotionStage =
-  | 'active'
-  | 'building'
-  | 'checking_readiness'
-  | 'draining_previous'
-  | 'release'
-  | 'rolled_back'
-  | 'starting_candidate'
-  | 'stopped'
-  | 'switching_route';
+export type DeploymentPromotionStage = 'active' | 'building' | 'release' | 'rolled_back' | 'stopped';
 export type DeploymentReusableImageState = 'available' | 'cleaned' | 'missing';
 export type DeploymentRuntimeStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'stopped';
 export type DeploymentLogStream = 'compartment' | 'stdout' | 'stderr';
@@ -56,7 +47,6 @@ interface DeploymentRollbackAvailabilityInput {
 export interface DeploymentSummary {
   build: ResolvedCompartmentServiceBuildConfig;
   completedAt: string | null;
-  containerId: string | null;
   createdAt: string;
   failureMessage: string | null;
   health: DeploymentRuntimeHealth;
@@ -128,13 +118,9 @@ export const deploymentRuntimeHealthSchema: ContractSchema<DeploymentRuntimeHeal
 export const deploymentPromotionStageSchema: ContractSchema<DeploymentPromotionStage> = z.enum([
   'active',
   'building',
-  'checking_readiness',
-  'draining_previous',
   'release',
   'rolled_back',
-  'starting_candidate',
   'stopped',
-  'switching_route',
 ]);
 
 export const deploymentRuntimeStatusSchema: ContractSchema<DeploymentRuntimeStatus> = z.enum([
@@ -161,7 +147,6 @@ const deployRequestLabelSchema: ContractSchema<string> = z.string().trim().pipe(
 type DeploymentSummaryObjectSchema = z.ZodObject<{
   build: typeof resolvedCompartmentServiceBuildConfigSchema;
   completedAt: z.ZodNullable<z.ZodString>;
-  containerId: z.ZodNullable<z.ZodString>;
   createdAt: z.ZodString;
   failureMessage: z.ZodNullable<z.ZodString>;
   health: typeof deploymentRuntimeHealthSchema;
@@ -187,7 +172,6 @@ export const deploymentSummarySchema: DeploymentSummaryObjectSchema = z
     status: deploymentRuntimeStatusSchema,
     health: deploymentRuntimeHealthSchema,
     routeUrl: z.string().url().nullable(),
-    containerId: z.string().min(1).nullable(),
     failureMessage: z.string().min(1).nullable(),
     isActive: z.boolean(),
     label: deploymentLabelSchema.nullable(),

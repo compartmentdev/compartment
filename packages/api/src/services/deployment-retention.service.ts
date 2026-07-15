@@ -1,12 +1,11 @@
-import type { RollbackRetentionEffectivePolicy } from '@compartment/contracts';
-import { listJoinedDeploymentsByProjectService } from '../queries/deployment-joined.query';
+import type { DeploymentArtifactCleanupTarget, RollbackRetentionEffectivePolicy } from '@compartment/contracts';
+import { findJoinedDeploymentById, listJoinedDeploymentsByProjectService } from '../queries/deployment-joined.query';
 import { markBuildArtifactsCleaned } from '../queries/deployments.query';
 import type { BuildArtifactRow, DeploymentJoinedRow } from '../queries/deployments.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
 import { hasReusableDeploymentImage } from './deployment-reusable-image-state.service';
 import { readOrganizationRollbackRetentionSettings } from './organization-settings.service';
 import { cleanupDeploymentSourceArchive } from './source-archive-cleanup.service';
-import type { DeploymentArtifactCleanupTarget } from './deployment-retention.service.types';
 
 const rollbackRetentionOperationTypes: ReadonlySet<string> = new Set([
   'deployment.create',
@@ -15,165 +14,107 @@ const rollbackRetentionOperationTypes: ReadonlySet<string> = new Set([
   'deployment.rollback',
 ]);
 
-export async function planRollbackRetentionCleanup(
-  deployment: DeploymentJoinedRow,
-): Promise<DeploymentArtifactCleanupTarget[]> {
-  if (!rollbackRetentionOperationTypes.has(deployment.operation.type)) {
+export async function planRollbackRetentionCleanup(deploymentId: string): Promise<DeploymentArtifactCleanupTarget[]> {
+  const deployment: DeploymentJoinedRow | undefined = await findJoinedDeploymentById(
+    deploymentId,
+    getApiConfig().baseDomain,
+  );
+  if (deployment === undefined || !rollbackRetentionOperationTypes.has(deployment.operation.type)) {
     return [];
   }
-  const limit: number | null = await readRollbackRetentionLimit(deployment.project.organizationId);
-  if (limit === null) {
-    return [];
-  }
-
-  const deployments: DeploymentJoinedRow[] = await listRetentionScopeDeployments(deployment.service.id);
-  return await cleanupRetainedArtifacts(deployments, limit);
-}
-
-async function readRollbackRetentionLimit(organizationId: string): Promise<number | null> {
-  const policy: RollbackRetentionEffectivePolicy = (await readOrganizationRollbackRetentionSettings(organizationId))
-    .effective;
+  const policy: RollbackRetentionEffectivePolicy = (
+    await readOrganizationRollbackRetentionSettings(deployment.project.organizationId)
+  ).effective;
   if (policy.mode === 'indefinite') {
-    return null;
+    return [];
   }
-
-  return requireRollbackRetentionLimit(policy.limit);
+  if (policy.limit === null) {
+    throw new Error('Expected rollback retention limit for keep_last policy.');
+  }
+  return await cleanExpiredArtifacts(
+    await listJoinedDeploymentsByProjectService(deployment.service.id, getApiConfig().baseDomain),
+    policy.limit,
+  );
 }
 
-async function listRetentionScopeDeployments(projectServiceId: string): Promise<DeploymentJoinedRow[]> {
-  return await listJoinedDeploymentsByProjectService(projectServiceId, getApiConfig().baseDomain);
-}
-
-async function cleanupRetainedArtifacts(
+async function cleanExpiredArtifacts(
   deployments: DeploymentJoinedRow[],
   limit: number,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  const protectedArtifactIds: Set<string> = buildProtectedArtifactIds(deployments, limit);
-  const cleanupCandidates: DeploymentArtifactCleanupTarget[] = collectCleanupCandidates(
-    deployments,
-    protectedArtifactIds,
-  );
-  if (cleanupCandidates.length === 0) {
+  const protectedArtifactIds: Set<string> = collectProtectedArtifactIds(deployments, limit);
+  const candidates: BuildArtifactRow[] = collectCleanupCandidates(deployments, protectedArtifactIds);
+  if (candidates.length === 0) {
     return [];
   }
-
   const now: Date = new Date();
-  const cleanedArtifacts: BuildArtifactRow[] = await markBuildArtifactsCleaned({
-    artifactIds: cleanupCandidates.map((candidate: DeploymentArtifactCleanupTarget): string => candidate.artifactId),
+  const cleaned: BuildArtifactRow[] = await markBuildArtifactsCleaned({
+    artifactIds: candidates.map((artifact: BuildArtifactRow): string => artifact.id),
     cleanedAt: now,
     updatedAt: now,
   });
-  await cleanupCleanedArtifactSourceArchives(cleanedArtifacts);
-
-  return cleanedArtifacts.map(toDeploymentArtifactCleanupTarget);
+  await cleanupSourceArchivesSafely(cleaned);
+  return cleaned.map(toCleanupTarget);
 }
 
-async function cleanupCleanedArtifactSourceArchives(cleanedArtifacts: BuildArtifactRow[]): Promise<void> {
-  for (const artifact of cleanedArtifacts) {
-    await cleanupDeploymentSourceArchive(artifact);
-  }
-}
-
-function buildProtectedArtifactIds(deployments: DeploymentJoinedRow[], limit: number): Set<string> {
-  const protectedArtifactIds: Set<string> = collectInFlightArtifactIds(deployments);
-  protectRetainedEnvironmentArtifacts(groupDeploymentsByEnvironment(deployments), limit, protectedArtifactIds);
-  return protectedArtifactIds;
-}
-
-function collectInFlightArtifactIds(deployments: DeploymentJoinedRow[]): Set<string> {
-  const protectedArtifactIds: Set<string> = new Set<string>();
-
+function collectProtectedArtifactIds(deployments: DeploymentJoinedRow[], limit: number): Set<string> {
+  const protectedIds: Set<string> = new Set<string>();
+  const byEnvironment: Map<string, DeploymentJoinedRow[]> = new Map<string, DeploymentJoinedRow[]>();
   for (const deployment of deployments) {
-    if (isInFlightDeployment(deployment)) {
-      protectedArtifactIds.add(deployment.artifact.id);
+    if (deployment.deployment.status === 'queued' || deployment.deployment.status === 'running') {
+      protectedIds.add(deployment.artifact.id);
+    }
+    const rows: DeploymentJoinedRow[] = byEnvironment.get(deployment.environment.id) ?? [];
+    rows.push(deployment);
+    byEnvironment.set(deployment.environment.id, rows);
+  }
+  for (const rows of byEnvironment.values()) {
+    for (const deployment of rows.filter(isRetentionCandidate).sort(byCreatedAtDescending).slice(0, limit)) {
+      protectedIds.add(deployment.artifact.id);
     }
   }
-
-  return protectedArtifactIds;
-}
-
-function groupDeploymentsByEnvironment(deployments: DeploymentJoinedRow[]): Map<string, DeploymentJoinedRow[]> {
-  const deploymentsByEnvironment: Map<string, DeploymentJoinedRow[]> = new Map<string, DeploymentJoinedRow[]>();
-
-  for (const deployment of deployments) {
-    const environmentDeployments: DeploymentJoinedRow[] = deploymentsByEnvironment.get(deployment.environment.id) ?? [];
-    environmentDeployments.push(deployment);
-    deploymentsByEnvironment.set(deployment.environment.id, environmentDeployments);
-  }
-
-  return deploymentsByEnvironment;
-}
-
-function protectRetainedEnvironmentArtifacts(
-  deploymentsByEnvironment: Map<string, DeploymentJoinedRow[]>,
-  limit: number,
-  protectedArtifactIds: Set<string>,
-): void {
-  for (const environmentDeployments of deploymentsByEnvironment.values()) {
-    const retainedDeployments: DeploymentJoinedRow[] = environmentDeployments
-      .filter(isRollbackRetentionCandidate)
-      .sort(compareDeploymentsByCreatedAtDesc)
-      .slice(0, limit);
-
-    for (const deployment of retainedDeployments) {
-      protectedArtifactIds.add(deployment.artifact.id);
-    }
-  }
+  return protectedIds;
 }
 
 function collectCleanupCandidates(
   deployments: DeploymentJoinedRow[],
   protectedArtifactIds: Set<string>,
-): DeploymentArtifactCleanupTarget[] {
-  const cleanupCandidates: Map<string, DeploymentArtifactCleanupTarget> = new Map<
-    string,
-    DeploymentArtifactCleanupTarget
-  >();
-
+): BuildArtifactRow[] {
+  const candidates: Map<string, BuildArtifactRow> = new Map<string, BuildArtifactRow>();
   for (const deployment of deployments) {
-    if (!isRollbackRetentionCandidate(deployment) || protectedArtifactIds.has(deployment.artifact.id)) {
-      continue;
+    if (isRetentionCandidate(deployment) && !protectedArtifactIds.has(deployment.artifact.id)) {
+      candidates.set(deployment.artifact.id, deployment.artifact);
     }
-
-    cleanupCandidates.set(deployment.artifact.id, toDeploymentArtifactCleanupTarget(deployment.artifact));
   }
-
-  return [...cleanupCandidates.values()];
+  return [...candidates.values()];
 }
 
-function toDeploymentArtifactCleanupTarget(
-  artifact: Pick<BuildArtifactRow, 'id' | 'imageRef'>,
-): DeploymentArtifactCleanupTarget {
-  const imageRef: string | null = artifact.imageRef;
-  if (imageRef === null) {
-    throw new Error(`Expected cleanup artifact ${artifact.id} to have an image ref.`);
-  }
-
-  return {
-    artifactId: artifact.id,
-    imageRef,
-  };
-}
-
-function isRollbackRetentionCandidate(deployment: DeploymentJoinedRow): boolean {
+function isRetentionCandidate(deployment: DeploymentJoinedRow): boolean {
   return (
     hasReusableDeploymentImage(deployment) &&
     (deployment.deployment.status === 'succeeded' || deployment.deployment.status === 'stopped')
   );
 }
 
-function isInFlightDeployment(deployment: DeploymentJoinedRow): boolean {
-  return deployment.deployment.status === 'queued' || deployment.deployment.status === 'running';
-}
-
-function compareDeploymentsByCreatedAtDesc(left: DeploymentJoinedRow, right: DeploymentJoinedRow): number {
+function byCreatedAtDescending(left: DeploymentJoinedRow, right: DeploymentJoinedRow): number {
   return right.deployment.createdAt.getTime() - left.deployment.createdAt.getTime();
 }
 
-function requireRollbackRetentionLimit(limit: number | null): number {
-  if (limit === null) {
-    throw new Error('Expected rollback retention limit for keep_last policy.');
+async function cleanupSourceArchivesSafely(artifacts: BuildArtifactRow[]): Promise<void> {
+  for (const artifact of artifacts) {
+    try {
+      await cleanupDeploymentSourceArchive(artifact);
+    } catch (error) {
+      console.warn(
+        { artifactId: artifact.id, error: error instanceof Error ? error.message : 'Unknown source cleanup failure.' },
+        'Failed to clean retained deployment source archive.',
+      );
+    }
   }
+}
 
-  return limit;
+function toCleanupTarget(artifact: BuildArtifactRow): DeploymentArtifactCleanupTarget {
+  if (artifact.imageRef === null) {
+    throw new Error(`Expected cleanup artifact ${artifact.id} to have an image ref.`);
+  }
+  return { artifactId: artifact.id, imageRef: artifact.imageRef };
 }

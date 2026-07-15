@@ -24,32 +24,14 @@ const deploymentRouteOwnerSelection: DeploymentRouteOwnerSelection = {
   subdomain: deploymentRoutes.subdomain,
 };
 
-export async function upsertDeploymentRouteWithExecutor(
-  executor: DeploymentRouteQueryExecutor,
-  input: UpsertDeploymentRouteInput,
-): Promise<void> {
-  await persistDeploymentRouteWithExecutor(executor, input, true);
-}
-
 export async function ensureDeploymentRouteWithExecutor(
   executor: DeploymentRouteQueryExecutor,
   input: UpsertDeploymentRouteInput,
-): Promise<void> {
-  await persistDeploymentRouteWithExecutor(executor, input, false);
-}
-
-async function persistDeploymentRouteWithExecutor(
-  executor: DeploymentRouteQueryExecutor,
-  input: UpsertDeploymentRouteInput,
-  moveExistingRoute: boolean,
 ): Promise<void> {
   if (await tryInsertDeploymentRouteWithExecutor(executor, input)) {
     return;
   }
   await assertMatchingDeploymentRouteOwner(executor, input);
-  if (moveExistingRoute) {
-    await moveDeploymentRoute(executor, input);
-  }
 }
 
 export async function tryInsertDeploymentRouteWithExecutor(
@@ -62,21 +44,6 @@ export async function tryInsertDeploymentRouteWithExecutor(
     .onConflictDoNothing({ target: deploymentRoutes.subdomain })
     .returning({ id: deploymentRoutes.id });
   return insertedRoutes.length > 0;
-}
-
-async function moveDeploymentRoute(
-  executor: DeploymentRouteQueryExecutor,
-  input: UpsertDeploymentRouteInput,
-): Promise<void> {
-  await executor
-    .update(deploymentRoutes)
-    .set({
-      accessScopeId: input.accessScopeId,
-      accessScopeType: input.accessScopeType,
-      deploymentId: input.deploymentId,
-      updatedAt: input.updatedAt,
-    })
-    .where(eq(deploymentRoutes.subdomain, input.subdomain));
 }
 
 async function assertMatchingDeploymentRouteOwner(

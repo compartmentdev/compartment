@@ -44,27 +44,21 @@ export async function persistResourceIntent(
   existingResource: ProjectResourceRow | undefined,
   intent: ResolvedResourceIntent,
   now: Date,
-  runtimeKind: 'node' | 'kubernetes',
 ): Promise<ProjectResourceRow> {
   return existingResource === undefined
-    ? await createProjectResourceWithExecutor(
-        tx,
-        createResourceInsert(context.environment.id, intent, now, runtimeKind),
-      )
-    : await updateResourceIntent(tx, existingResource, intent, now, runtimeKind);
+    ? await createProjectResourceWithExecutor(tx, createResourceInsert(context.environment.id, intent, now))
+    : await updateResourceIntent(tx, existingResource, intent, now);
 }
 
-export async function updateResourceIntent(
+async function updateResourceIntent(
   tx: ResourceTransaction,
   existingResource: ProjectResourceRow,
   intent: ResolvedResourceIntent,
   now: Date,
-  runtimeKind: 'node' | 'kubernetes',
 ): Promise<ProjectResourceRow> {
   return await updateProjectResourceIntentWithExecutor(tx, {
     commandJson: serializeResourceCommand(intent.command),
     envJson: serializeResourceEnv(intent.storedEnv),
-    hostname: intent.hostname,
     image: intent.image,
     operationConfigHash: intent.operationConfigHash,
     operationsJson: serializeResourceOperations(intent.operations),
@@ -72,8 +66,6 @@ export async function updateResourceIntent(
     portsJson: serializeResourcePorts(intent.ports),
     projectResourceId: existingResource.id,
     readinessJson: serializeResourceReadiness(intent.readiness),
-    restartPolicy: intent.restartPolicy,
-    runtimeKind,
     runtimeDefinitionHash: intent.runtimeHash,
     updatedAt: now,
     volumesJson: serializeResourceVolumes(intent.volumes),

@@ -5,6 +5,7 @@ import type { ProjectResourceRow } from '../src/queries/resources.query.types';
 import type { ResourceBackupOperationContext } from '../src/services/resource-backups.operation-context.service';
 import type { StoredResourceOperationConfig } from '../src/services/resources.service.storage';
 import {
+  deleteKubernetesBackupArtifact,
   runKubernetesResourceOperation,
   runVerifiedKubernetesRestore,
   summarizeKubernetesBackupArtifact,
@@ -154,6 +155,26 @@ describe('Kubernetes resource backup operations', (): void => {
       }),
     ).resolves.toEqual({ checksum, location: 'pvc://rbak_test', sizeBytes: 42 });
   });
+
+  it('deletes an expired backup through a writable UID-fenced Kubernetes Job', async (): Promise<void> => {
+    const input: TestOperationInput = operationInput('backup');
+
+    await deleteKubernetesBackupArtifact({
+      backup: backup({ artifactLocation: 'pvc://rbak_test' }),
+      context: input.context,
+      resource: input.resource,
+    });
+
+    expect(createIntent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: ['node', '-e', expect.stringContaining('rmSync'), '/backups/rbak_test'],
+        jobClass: 'resource-operation',
+        operationId: 'retention-rbak_test',
+        volumeMounts: [expect.objectContaining({ expectedClaimUid: 'uid-backup', mountPath: '/backups' })],
+      }),
+    );
+    expect(createIntent.mock.calls[0]?.[0].volumeMounts?.[0]).not.toHaveProperty('readOnly');
+  });
 });
 
 function terminalResult(logs: string): WorkerPersistProductJobResultRequest {
@@ -228,7 +249,6 @@ function operationContext(): ResourceBackupOperationContext {
     intent: {
       command: [],
       env: [],
-      hostname: 'legacy',
       image: 'postgres:16',
       name: 'postgres',
       operationConfigHash: 'operation',
@@ -236,7 +256,6 @@ function operationContext(): ResourceBackupOperationContext {
       outputs: {},
       ports: [5432],
       readiness: null,
-      restartPolicy: 'unless-stopped',
       runtimeEnv: [],
       runtimeHash: 'runtime',
       storedEnv: [],
@@ -249,12 +268,10 @@ function operationContext(): ResourceBackupOperationContext {
 function resource(): ProjectResourceRow {
   return {
     commandJson: '[]',
-    containerId: null,
     createdAt: new Date(),
     envJson: '[]',
     environmentId: 'env_prod',
     expectedClaimsJson: '[]',
-    hostname: 'legacy',
     id: 'res_postgres',
     image: 'postgres:16',
     name: 'postgres',
@@ -263,9 +280,7 @@ function resource(): ProjectResourceRow {
     outputsJson: '{}',
     portsJson: '[5432]',
     readinessJson: 'null',
-    restartPolicy: 'unless-stopped',
     runtimeDefinitionHash: 'runtime',
-    runtimeKind: 'kubernetes',
     status: 'running',
     updatedAt: new Date(),
     volumesJson: '[{"mountPath":"/data","name":"data"}]',
@@ -278,7 +293,6 @@ function context(): ResourceEnvironmentContext {
       createdAt: new Date(),
       id: 'env_prod',
       name: 'production',
-      nodeId: 'node',
       projectId: 'prj',
       updatedAt: new Date(),
     },

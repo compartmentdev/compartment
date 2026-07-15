@@ -1,150 +1,72 @@
 import { afterEach, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
 import { cleanupWorkerArtifacts } from '../src/services/worker-artifact-cleanup.service';
 import type { fetchWorkerArtifactRegistryInternalHttp } from '../src/services/worker-outbound-http.service';
+import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 
 type FetchWorkerArtifactRegistryInternalHttp = typeof fetchWorkerArtifactRegistryInternalHttp;
 
-interface WorkerOutboundHttpMocks {
-  fetchWorkerArtifactRegistryInternalHttp: Mock<FetchWorkerArtifactRegistryInternalHttp>;
-}
-
-const workerOutboundHttpMocks: WorkerOutboundHttpMocks = vi.hoisted(
-  (): WorkerOutboundHttpMocks => ({
-    fetchWorkerArtifactRegistryInternalHttp: vi.fn<FetchWorkerArtifactRegistryInternalHttp>(),
-  }),
+const fetchRegistry: Mock<FetchWorkerArtifactRegistryInternalHttp> = vi.hoisted(
+  (): Mock<FetchWorkerArtifactRegistryInternalHttp> => vi.fn<FetchWorkerArtifactRegistryInternalHttp>(),
 );
 
-vi.mock('../src/services/worker-outbound-http.service', (): WorkerOutboundHttpMocks => workerOutboundHttpMocks);
+vi.mock('../src/services/worker-outbound-http.service', (): object => ({
+  fetchWorkerArtifactRegistryInternalHttp: fetchRegistry,
+}));
 
-describe('worker artifact cleanup service', (): void => {
+describe('worker artifact cleanup', (): void => {
   afterEach((): void => {
     vi.restoreAllMocks();
-    workerOutboundHttpMocks.fetchWorkerArtifactRegistryInternalHttp.mockReset();
+    fetchRegistry.mockReset();
   });
 
-  it('uses the configured internal registry URL for manifest deletes and skips live bundled registry gc', async (): Promise<void> => {
-    const warnSpy: MockInstance<typeof console.warn> = vi
-      .spyOn(console, 'warn')
-      .mockImplementation((): void => undefined);
-    workerOutboundHttpMocks.fetchWorkerArtifactRegistryInternalHttp.mockResolvedValue(
-      new Response(null, { status: 202 }),
-    );
+  it('deletes retained manifests through the configured internal registry boundary', async (): Promise<void> => {
+    fetchRegistry.mockResolvedValue(new Response(null, { status: 202 }));
+    const registry: WorkerArtifactRegistryConfig = registryConfig();
 
     await cleanupWorkerArtifacts(
       [
         {
-          imageRef: '127.0.0.1:39461/compartment/projects/prj_123/services/svc_123@sha256:abc',
+          artifactId: 'art_old',
+          imageRef: 'registry.example/compartment/projects/prj/services/svc@sha256:abc',
         },
       ],
-      {
-        address: '127.0.0.1:39461',
-        internalUrl: 'http://registry:5000',
-        mode: 'bundled',
-        readCredentials: {
-          password: 'read-password',
-          username: 'reader',
-        },
-        writeCredentials: {
-          password: 'write-password',
-          username: 'writer',
-        },
-      },
-      'compartment-prod',
+      registry,
     );
 
-    expect(workerOutboundHttpMocks.fetchWorkerArtifactRegistryInternalHttp).toHaveBeenCalledWith(
+    expect(fetchRegistry).toHaveBeenCalledWith(
+      registry,
+      '/v2/compartment/projects/prj/services/svc/manifests/sha256:abc',
       {
-        address: '127.0.0.1:39461',
-        internalUrl: 'http://registry:5000',
-        mode: 'bundled',
-        readCredentials: {
-          password: 'read-password',
-          username: 'reader',
-        },
-        writeCredentials: {
-          password: 'write-password',
-          username: 'writer',
-        },
-      },
-      '/v2/compartment/projects/prj_123/services/svc_123/manifests/sha256:abc',
-      {
-        headers: {
-          Authorization: `Basic ${Buffer.from('writer:write-password', 'utf8').toString('base64')}`,
-        },
+        headers: { Authorization: `Basic ${Buffer.from('writer:write-password').toString('base64')}` },
         method: 'DELETE',
       },
     );
-    expect(warnSpy).toHaveBeenCalledWith(
-      {
-        dockerNamespace: 'compartment-prod',
-        reason: 'Bundled registry garbage collection requires a read-only maintenance path.',
-      },
-      'Skipped bundled registry garbage collection after deleting retained deployment manifests.',
-    );
   });
 
-  it('keeps cleanup failures best-effort and skips gc warning when manifest deletes fail', async (): Promise<void> => {
-    const warnSpy: MockInstance<typeof console.warn> = vi
-      .spyOn(console, 'warn')
-      .mockImplementation((): void => undefined);
-    workerOutboundHttpMocks.fetchWorkerArtifactRegistryInternalHttp.mockResolvedValue(
-      new Response(null, { status: 500 }),
-    );
+  it('keeps registry cleanup best-effort after the durable retention mark', async (): Promise<void> => {
+    const warn: MockInstance<typeof console.warn> = vi.spyOn(console, 'warn').mockImplementation((): void => undefined);
+    fetchRegistry.mockResolvedValue(new Response(null, { status: 500 }));
 
     await expect(
       cleanupWorkerArtifacts(
-        [
-          {
-            imageRef: 'registry.example/compartment/projects/prj_123/services/svc_123@sha256:abc',
-          },
-        ],
-        {
-          address: 'registry.example',
-          internalUrl: 'http://registry-internal.example:5000',
-          mode: 'external',
-          readCredentials: {
-            password: 'read-password',
-            username: 'reader',
-          },
-          writeCredentials: {
-            password: 'write-password',
-            username: 'writer',
-          },
-        },
-        'compartment-prod',
+        [{ artifactId: 'art_old', imageRef: 'registry.example/repo@sha256:abc' }],
+        registryConfig(),
       ),
     ).resolves.toBeUndefined();
 
-    expect(warnSpy).toHaveBeenCalled();
-    expect(warnSpy).not.toHaveBeenCalledWith(
-      {
-        dockerNamespace: 'compartment-prod',
-        reason: 'Bundled registry garbage collection requires a read-only maintenance path.',
-      },
-      'Skipped bundled registry garbage collection after deleting retained deployment manifests.',
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ artifactId: 'art_old' }),
+      'Failed to clean retained deployment artifact.',
     );
-  });
-
-  it('does not report bundled garbage collection for an external registry', async (): Promise<void> => {
-    const warnSpy: MockInstance<typeof console.warn> = vi
-      .spyOn(console, 'warn')
-      .mockImplementation((): void => undefined);
-    workerOutboundHttpMocks.fetchWorkerArtifactRegistryInternalHttp.mockResolvedValue(
-      new Response(null, { status: 202 }),
-    );
-
-    await cleanupWorkerArtifacts(
-      [{ imageRef: 'registry.example/repo@sha256:abc' }],
-      {
-        address: 'registry.example',
-        internalUrl: 'https://registry.example',
-        mode: 'external',
-        readCredentials: { password: 'read-password', username: 'reader' },
-        writeCredentials: { password: 'write-password', username: 'writer' },
-      },
-      'compartment-prod',
-    );
-
-    expect(warnSpy).not.toHaveBeenCalled();
   });
 });
+
+function registryConfig(): WorkerArtifactRegistryConfig {
+  return {
+    address: 'registry.example',
+    internalUrl: 'https://registry-internal.example',
+    mode: 'external',
+    readCredentials: { password: 'read-password', username: 'reader' },
+    writeCredentials: { password: 'write-password', username: 'writer' },
+  };
+}

@@ -244,7 +244,7 @@ for slot in $(seq 1 "$RUNNER_SLOTS"); do
     --detach \\
     --name "$dind_name" \\
     --privileged \\
-    --restart unless-stopped \\
+    --restart always \\
     --env DOCKER_TLS_CERTDIR= \\
     --volume "$socket_volume:/runner-docker" \\
     docker:dind \\
@@ -264,7 +264,7 @@ for slot in $(seq 1 "$RUNNER_SLOTS"); do
   docker run \\
     --detach \\
     --name "$runner_container_name" \\
-    --restart unless-stopped \\
+    --restart always \\
     --network "container:$dind_name" \\
     --cap-add NET_ADMIN \\
     --env "GITHUB_REPOSITORY=$GITHUB_REPOSITORY" \\

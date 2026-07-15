@@ -6,9 +6,8 @@ Standalone CLI install artifacts are published in `compartmentdev/compartment`:
 
 - public self-hosted image publishing is covered by [Self-Hosted Image Publishing](./self-hosted-image-publishing.md);
 - Node SEA binaries, `install.sh`, and `checksums.txt` are attached to stable GitHub Releases in this repository;
-- the same SEA binary can be installed as `/usr/local/bin/compartment-node-agent` by `sudo compartment install`;
 - `install.sh` is checked into the source repository and defaults to releases from `compartmentdev/compartment`;
-- stable release `install.sh` assets default to their own release version so verified installer execution installs the verified release;
+- stable release `install.sh` assets install the verified CLI release;
 - rolling `main` binaries publish after successful main CI under immutable `sha-<commit>` prereleases;
 - the installer resolves `install.sh --version main` by reading the current GitHub `main` commit and downloading the matching `sha-<commit>` release, while `install.sh --version sha-<commit>` pins an exact `main` binary.
 

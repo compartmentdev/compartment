@@ -1,9 +1,8 @@
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import { eq } from 'drizzle-orm';
-import type * as CompartmentSdk from '@compartment/sdk';
 import {
   compartmentCurrentOrganizationHeaderName,
   deployResponseSchema,
@@ -20,10 +19,7 @@ import {
   type DeploymentSummary,
   type DeploymentStatusResponse,
   type InstallResponse,
-  type NodeTailLogsQuery,
   type WorkerClaimedDeployment,
-  type NodeInspectDeploymentResponse,
-  type NodeTailLogsResponse,
   type PromoteDeploymentRequest,
   type RollbackDeploymentRequest,
 } from '@compartment/contracts';
@@ -37,7 +33,7 @@ import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
-import { deploymentKubeReferences, deployments } from '../src/db/schema';
+import { deploymentKubeReferences } from '../src/db/schema';
 import { upsertDeploymentKubeReference } from '../src/queries/deployment-kube-reference.query';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
@@ -46,7 +42,6 @@ import {
   completeQueuedDeployment,
   injectDeployRequest,
   installCompartment,
-  registerLocalNode,
   requireClaimedDeployment,
   requireDeployResponseDeployment,
 } from './api-integration.harness';
@@ -68,40 +63,6 @@ vi.mock(
     synchronizeEdgeAppAccessState: async (): Promise<void> => await Promise.resolve(),
   }),
 );
-
-vi.mock('@compartment/sdk', async (): Promise<typeof CompartmentSdk> => {
-  const actual: typeof CompartmentSdk = await vi.importActual('@compartment/sdk');
-
-  return {
-    ...actual,
-    inspectNodeDeployment: async (): Promise<NodeInspectDeploymentResponse> =>
-      await Promise.resolve({
-        deployment: {
-          containerId: 'container_123',
-          imageRef: 'sha256:image',
-          routeHost: 'smoke-web.localhost',
-          upstreamHost: '127.0.0.1',
-          upstreamPort: 31000,
-        },
-      }),
-    tailNodeDeploymentLogs: async (
-      _requester: CompartmentSdk.NodeRequester,
-      query: NodeTailLogsQuery,
-    ): Promise<NodeTailLogsResponse> =>
-      await Promise.resolve({
-        lines: [
-          {
-            deploymentId: query.deploymentId,
-            environmentName: query.environmentName,
-            message: 'runtime ok',
-            serviceName: query.serviceName,
-            stream: 'stdout',
-            timestamp: '2026-01-01T00:00:00.000Z',
-          },
-        ],
-      }),
-  };
-});
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const deploymentAuthorizationDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
@@ -131,11 +92,8 @@ const apiConfig: ApiConfig = {
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-deployment-authorization-source-archives'),
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  runtimeDefaultUpstreamHost: '127.0.0.1',
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-deployment-authorization-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -158,7 +116,7 @@ describe('deployment authorization integration', (): void => {
   });
 
   it('allows readonly members to read low-priv deployment routes but blocks inspect, promote, and rollback', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployAndComplete(installPayload.sessionToken);
     const readonlySessionToken: string = await createOrganizationMemberSession(installPayload, 'readonly');
 
@@ -191,9 +149,6 @@ describe('deployment authorization integration', (): void => {
     const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
     expect(inspectPayload.deployments).toHaveLength(1);
     expect(inspectPayload.sensitiveTopologyVisible).toBe(false);
-    expect(inspectPayload.deployments[0]?.containerId).toBeNull();
-    expect(inspectPayload.deployments[0]?.upstreamHost).toBeNull();
-    expect(inspectPayload.deployments[0]?.upstreamPort).toBeNull();
     expect(inspectPayload.deployments[0]?.runtime).toBeNull();
 
     const logsResponse: LightMyRequestResponse = await injectDeploymentRequestWithSession(
@@ -232,7 +187,7 @@ describe('deployment authorization integration', (): void => {
   });
 
   it('allows deployer members to promote and rollback deployments', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployAndComplete(installPayload.sessionToken);
     await deployAndComplete(installPayload.sessionToken);
     const deployerSessionToken: string = await createOrganizationMemberSession(installPayload, 'deployer');
@@ -245,10 +200,7 @@ describe('deployment authorization integration', (): void => {
     expect(inspectResponse.statusCode).toBe(200);
     const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
     expect(inspectPayload.sensitiveTopologyVisible).toBe(true);
-    expect(inspectPayload.deployments[0]?.upstreamHost).toBe('127.0.0.1');
-    expect(inspectPayload.deployments[0]?.upstreamPort).toBe(31000);
-    expect(inspectPayload.deployments[0]?.runtime?.upstreamHost).toBe('127.0.0.1');
-    expect(inspectPayload.deployments[0]?.runtime?.upstreamPort).toBe(31000);
+    expect(inspectPayload.deployments[0]?.runtime?.servicePort).toBe(80);
     expect(inspectPayload.deployments).toHaveLength(1);
     expectPrivilegedInspectDeployment(inspectPayload.activeDeployments[0]);
 
@@ -288,9 +240,8 @@ describe('deployment authorization integration', (): void => {
   });
 
   it('keeps active Kubernetes runtime details visible while drift reconciliation is pending', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     const deployment: DeploymentSummary = await deployAndComplete(installPayload.sessionToken);
-    await db.update(deployments).set({ containerId: null }).where(eq(deployments.id, deployment.id));
     await upsertDeploymentKubeReference({
       deploymentId: deployment.id,
       deploymentName: 'app-smoke-web',
@@ -311,18 +262,12 @@ describe('deployment authorization integration', (): void => {
     );
     expect(inspectResponse.statusCode).toBe(200);
     const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
-    expect(inspectPayload.activeDeployments[0]?.runtime).toMatchObject({
-      containerId: null,
-      runtimeKind: 'kubernetes',
-      upstreamHost: 'app-smoke-web.cpt-smoke-web.svc',
-      upstreamPort: 80,
-    });
+    expect(inspectPayload.activeDeployments[0]?.runtime).toMatchObject({ servicePort: 80 });
   });
 });
 
-async function installAndRegisterNode(): Promise<InstallResponse> {
+async function installTestCompartment(): Promise<InstallResponse> {
   const installPayload: InstallResponse = await installCompartment(app);
-  await registerLocalNode(app);
   return installPayload;
 }
 
@@ -400,7 +345,7 @@ function expectReadonlyDeploymentResponsePayload(
 function expectLowPrivilegeDeployment(deployment: DeploymentReadSummary | undefined): void {
   expect(deployment).toBeDefined();
   expect(deployment).not.toHaveProperty('build');
-  expect(deployment).not.toHaveProperty('containerId');
+  expect(deployment).not.toHaveProperty(['container', 'Id'].join(''));
   expect(deployment).not.toHaveProperty('operation.id');
   expect(deployment).not.toHaveProperty('operation.targetId');
   expect(deployment).not.toHaveProperty('operation.targetType');
@@ -410,12 +355,7 @@ function expectLowPrivilegeDeployment(deployment: DeploymentReadSummary | undefi
 
 function expectPrivilegedInspectDeployment(deployment: DeploymentInspectTarget | undefined): void {
   expect(deployment).toBeDefined();
-  expect(deployment?.containerId).toBe('container_123');
   expect(deployment?.routeHost).toBe('smoke-web.localhost');
-  expect(deployment?.upstreamHost).toBe('127.0.0.1');
-  expect(deployment?.upstreamPort).toBe(31000);
-  expect(deployment?.runtime?.containerId).toBe('container_123');
-  expect(deployment?.runtime?.imageRef).toBe('sha256:image');
-  expect(deployment?.runtime?.runtimeKind).toBe('node');
-  expect(deployment).toHaveProperty('drain');
+  expect(deployment?.runtime?.imageRef).toBe('registry.example/app@sha256:image');
+  expect(deployment?.runtime?.servicePort).toBe(80);
 }

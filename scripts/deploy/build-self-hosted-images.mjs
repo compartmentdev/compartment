@@ -1,12 +1,14 @@
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
 import { readRequiredOptionValue } from '../lib/options.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
-import { parseSelfHostedEnvFile, readRequiredSelfHostedEnvValue } from './self-hosted-env-file.mjs';
+import {
+  buildSelfHostedImageRefForRepository,
+  defaultSelfHostedImageRepositoryPrefix,
+  selfHostedRuntimeImageArtifacts,
+} from './self-hosted-runtime-services.mjs';
 
 const defaultBaseImages = Object.freeze({
   COMPARTMENT_CADDY_BUILDER_IMAGE: 'caddy:2.11.4-builder',
@@ -27,16 +29,14 @@ const dockerRegistryRateLimitPatterns = [
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
 export async function buildSelfHostedImages(input) {
-  const envText = await readFile(resolve(input.envFilePath), 'utf8');
-  const envValues = parseSelfHostedEnvFile(envText);
-  const buildPlan = buildSelfHostedImageBuildPlan(envValues, input.env ?? process.env);
+  const buildPlan = buildSelfHostedImageBuildPlan(input.imageRefsByServiceName, input.env ?? process.env);
 
   for (const build of buildPlan) {
     await runDockerBuildWithRegistryRetry(input.repositoryRoot, build);
   }
 }
 
-function buildSelfHostedImageBuildPlan(envValues, env) {
+function buildSelfHostedImageBuildPlan(imageRefsByServiceName, env) {
   const nodeArgs = [
     '--build-arg',
     `COMPARTMENT_NODE_BUILD_IMAGE=${readBaseImage(env, 'COMPARTMENT_NODE_BUILD_IMAGE')}`,
@@ -49,7 +49,7 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
       args: [
         ...nodeArgs,
         '--tag',
-        readRequiredSelfHostedEnvValue(envValues, 'COMPARTMENT_API_IMAGE', 'the self-hosted env file'),
+        readRequiredImageRef(imageRefsByServiceName, 'api'),
         '--file',
         'packages/api/Dockerfile.self-hosted',
         '.',
@@ -60,7 +60,7 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
       args: [
         ...nodeArgs,
         '--tag',
-        readRequiredSelfHostedEnvValue(envValues, 'COMPARTMENT_EDGE_IMAGE', 'the self-hosted env file'),
+        readRequiredImageRef(imageRefsByServiceName, 'edge'),
         '--file',
         'packages/edge/Dockerfile.self-hosted',
         '.',
@@ -73,7 +73,7 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
         '--build-arg',
         `COMPARTMENT_GO_BUILD_IMAGE=${readBaseImage(env, 'COMPARTMENT_GO_BUILD_IMAGE')}`,
         '--tag',
-        readRequiredSelfHostedEnvValue(envValues, 'COMPARTMENT_WORKER_IMAGE', 'the self-hosted env file'),
+        readRequiredImageRef(imageRefsByServiceName, 'worker'),
         '--file',
         'packages/worker/Dockerfile.self-hosted',
         '.',
@@ -83,23 +83,11 @@ function buildSelfHostedImageBuildPlan(envValues, env) {
     {
       args: [
         '--build-arg',
-        `COMPARTMENT_NODE_RUNTIME_IMAGE=${readBaseImage(env, 'COMPARTMENT_NODE_RUNTIME_IMAGE')}`,
-        '--tag',
-        readRequiredSelfHostedEnvValue(envValues, 'COMPARTMENT_RUNTIME_PROBE_IMAGE', 'the self-hosted env file'),
-        '--file',
-        'packages/node/Dockerfile.runtime-probe.self-hosted',
-        '.',
-      ],
-      name: 'runtime-probe',
-    },
-    {
-      args: [
-        '--build-arg',
         `COMPARTMENT_CADDY_BUILDER_IMAGE=${readBaseImage(env, 'COMPARTMENT_CADDY_BUILDER_IMAGE')}`,
         '--build-arg',
         `COMPARTMENT_CADDY_RUNTIME_IMAGE=${readBaseImage(env, 'COMPARTMENT_CADDY_RUNTIME_IMAGE')}`,
         '--tag',
-        readRequiredSelfHostedEnvValue(envValues, 'COMPARTMENT_CADDY_IMAGE', 'the self-hosted env file'),
+        readRequiredImageRef(imageRefsByServiceName, 'caddy'),
         '--file',
         'packages/edge/Dockerfile.caddy.self-hosted',
         '.',
@@ -183,28 +171,47 @@ function readBaseImage(env, variableName) {
   throw new Error(`Expected ${variableName} to be configured for self-hosted image builds.`);
 }
 
+function readRequiredImageRef(imageRefsByServiceName, serviceName) {
+  const imageRef = imageRefsByServiceName[serviceName]?.trim();
+  if (imageRef !== undefined && imageRef !== '') {
+    return imageRef;
+  }
+
+  throw new Error(`Expected an image ref for ${serviceName}.`);
+}
+
 function readBuildSelfHostedImagesOptions(args) {
   const options = {
-    envFilePath: undefined,
+    repositoryPrefix: defaultSelfHostedImageRepositoryPrefix,
+    tag: undefined,
   };
 
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
-    if (argument === '--env-file') {
-      options.envFilePath = readRequiredOptionValue(args, ++index, '--env-file');
+    if (argument === '--repository-prefix') {
+      options.repositoryPrefix = readRequiredOptionValue(args, ++index, '--repository-prefix');
+      continue;
+    }
+    if (argument === '--tag') {
+      options.tag = readRequiredOptionValue(args, ++index, '--tag');
       continue;
     }
 
     throw new Error(`Unknown build self-hosted images argument: ${argument}`);
   }
 
-  if (options.envFilePath === undefined) {
-    throw new Error('Expected --env-file.');
+  if (options.tag === undefined) {
+    throw new Error('Expected --tag.');
   }
 
   return {
-    envFilePath: options.envFilePath,
     env: process.env,
+    imageRefsByServiceName: Object.fromEntries(
+      selfHostedRuntimeImageArtifacts.map((serviceName) => [
+        serviceName,
+        buildSelfHostedImageRefForRepository(serviceName, options.tag, options.repositoryPrefix),
+      ]),
+    ),
     repositoryRoot,
   };
 }

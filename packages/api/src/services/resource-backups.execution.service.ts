@@ -1,5 +1,3 @@
-import type { NodeResourceOperationResponse } from '@compartment/contracts';
-import { runNodeResourceBackupOperation, runNodeResourceRestoreOperation } from '@compartment/sdk';
 import { createInvalidDeployConfigError } from '../errors/api-business-error';
 import { createId } from '../lib/tokens';
 import { insertOperationRecordWithExecutor, updateOperationRecordWithExecutor } from '../queries/operations.query';
@@ -12,22 +10,15 @@ import {
 import type { ResourceBackupRow } from '../queries/resource-backups.query.types';
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import { getApiDatabase } from '../runtime/runtime-access';
-import {
-  prepareResourceBackupArtifactDirectory,
-  summarizeResourceBackupArtifact,
-  type ResourceBackupArtifactSummary,
-} from './resource-backup-artifact.service';
+import type { ResourceBackupArtifactSummary } from './resource-backup-artifact.types';
 import { buildResourceBackupManifest } from './resource-backup-manifest.service';
 import {
-  buildResourceOperationRequest,
-  requireBackupArtifactId,
   resolveBackupOperationContext,
   resolveResourceOperationContext,
   resolveRestoreOperationContext,
   type ResourceBackupOperationContext,
   type ResourceOperationKind,
 } from './resource-backups.operation-context.service';
-import { createResourceNodeRequester } from './resource-node-requester.service';
 import { readOperationErrorOutput, summarizeOperationOutput } from './resource-operation-output.service';
 import {
   completeResourceBackupOperationRecord,
@@ -51,12 +42,17 @@ interface RunningResourceBackup {
   operationRecord: OperationRecord;
 }
 
+interface ResourceOperationResult {
+  stderr: string;
+  stdout: string;
+}
+
 type ResourceBackupRuntimeState = RunningResourceBackup & { backupId: string };
 
 interface CompleteResourceBackupOperationInput {
   artifact: ResourceBackupArtifactSummary;
   operationContext: ResourceBackupOperationContext;
-  response: NodeResourceOperationResponse;
+  response: ResourceOperationResult;
   runtimeState: ResourceBackupRuntimeState;
 }
 
@@ -67,10 +63,7 @@ export async function runResourceBackup(
   const runningBackup: RunningResourceBackup = await createRunningResourceBackup(input);
 
   try {
-    const runtimeState: ResourceBackupRuntimeState = await prepareRunningResourceBackupRuntimeState(
-      input.resource,
-      runningBackup,
-    );
+    const runtimeState: ResourceBackupRuntimeState = prepareRunningResourceBackupRuntimeState(runningBackup);
     return await completeResourceBackupOperation(input, operationContext, runtimeState);
   } catch (error) {
     const operationError: Error = error instanceof Error ? error : new Error('Resource backup failed.');
@@ -81,22 +74,14 @@ export async function runResourceBackup(
 
 export async function runResourceRestore(input: RunResourceRestoreInput): Promise<void> {
   const operationContext: ResourceBackupOperationContext = await resolveRestoreOperationContext(input);
-  if (input.resource.runtimeKind === 'kubernetes') {
-    await runVerifiedKubernetesRestore({
-      artifactResource: input.artifactResource ?? input.resource,
-      backup: input.backup,
-      context: input.context,
-      operationContext,
-      operationId: createId('job'),
-      resource: input.resource,
-    });
-    return;
-  }
-  const backupId: string = requireBackupArtifactId(input.backup);
-  await runNodeResourceRestoreOperation(
-    await createResourceNodeRequester(input.context),
-    buildResourceOperationRequest(input.context, input.resource, operationContext, backupId),
-  );
+  await runVerifiedKubernetesRestore({
+    artifactResource: input.artifactResource ?? input.resource,
+    backup: input.backup,
+    context: input.context,
+    operationContext,
+    operationId: createId('job'),
+    resource: input.resource,
+  });
 }
 
 export async function assertResourceDefinesOperation(
@@ -112,7 +97,7 @@ async function completeResourceBackupOperation(
   operationContext: ResourceBackupOperationContext,
   runtimeState: ResourceBackupRuntimeState,
 ): Promise<Pick<ResourceBackupResult, 'backup' | 'manifest'>> {
-  const response: NodeResourceOperationResponse = await runBackupCommand(input, operationContext, runtimeState);
+  const response: ResourceOperationResult = await runBackupCommand(input, operationContext, runtimeState);
   const artifact: ResourceBackupArtifactSummary = await summarizeCompletedBackupArtifact(input, runtimeState);
   const completedBackup: ResourceBackupRow = await persistCompletedResourceBackup(input, {
     artifact,
@@ -129,9 +114,6 @@ async function summarizeCompletedBackupArtifact(
   input: RunResourceBackupInput,
   runtimeState: ResourceBackupRuntimeState,
 ): Promise<ResourceBackupArtifactSummary> {
-  if (input.resource.runtimeKind === 'node') {
-    return await summarizeResourceBackupArtifact(runtimeState.backup.id);
-  }
   return await summarizeKubernetesBackupArtifact({
     backupId: runtimeState.backup.id,
     context: input.context,
@@ -144,20 +126,15 @@ async function runBackupCommand(
   input: RunResourceBackupInput,
   operationContext: ResourceBackupOperationContext,
   runtimeState: ResourceBackupRuntimeState,
-): Promise<NodeResourceOperationResponse> {
-  return input.resource.runtimeKind === 'kubernetes'
-    ? await runKubernetesResourceOperation({
-        backupId: runtimeState.backupId,
-        context: input.context,
-        operationContext,
-        operationId: runtimeState.operationRecord.id,
-        operationKind: 'backup',
-        resource: input.resource,
-      })
-    : await runNodeResourceBackupOperation(
-        await createResourceNodeRequester(input.context),
-        buildResourceOperationRequest(input.context, input.resource, operationContext, runtimeState.backupId),
-      );
+): Promise<ResourceOperationResult> {
+  return await runKubernetesResourceOperation({
+    backupId: runtimeState.backupId,
+    context: input.context,
+    operationContext,
+    operationId: runtimeState.operationRecord.id,
+    operationKind: 'backup',
+    resource: input.resource,
+  });
 }
 
 async function createRunningResourceBackup(input: RunResourceBackupInput): Promise<RunningResourceBackup> {
@@ -177,14 +154,7 @@ async function createRunningResourceBackup(input: RunResourceBackupInput): Promi
   });
 }
 
-async function prepareRunningResourceBackupRuntimeState(
-  resource: ProjectResourceRow,
-  runningBackup: RunningResourceBackup,
-): Promise<ResourceBackupRuntimeState> {
-  if (resource.runtimeKind === 'node') {
-    await prepareResourceBackupArtifactDirectory(runningBackup.backup.id);
-  }
-
+function prepareRunningResourceBackupRuntimeState(runningBackup: RunningResourceBackup): ResourceBackupRuntimeState {
   return { backupId: runningBackup.backup.id, ...runningBackup };
 }
 

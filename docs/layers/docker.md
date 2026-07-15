@@ -3,15 +3,11 @@
 Owns:
 
 - remote `buildctl` invocation for `Dockerfile` and Railpack-backed source image builds;
-- Docker CLI invocation for runtime image inspect/pull paths;
-- command shaping and output parsing for image build/inspect;
-- Docker Engine adapter for runtime container run/remove/inspect and log tail;
-- namespace-scoped Docker labels for runtime-owned resources;
-- typed backend-facing adapter results shared by `worker` and `node`.
+- command shaping and output parsing for image builds.
 
 May depend on:
 
-- Node built-ins and the single Docker transport client used to avoid reimplementing raw daemon protocols.
+- Node built-ins.
 
 Must not:
 
@@ -22,5 +18,5 @@ Must not:
 Change checklist:
 
 - keep the surface thin and typed;
-- hide raw `docker` argv assembly from callers;
-- shape results so callers do not depend on current CLI implementation details.
+- hide raw BuildKit and Railpack argv assembly from callers;
+- shape results so callers do not depend on current BuildKit implementation details.

@@ -1,17 +1,11 @@
-import { type InstallResponse, type WorkerClaimedDeployment } from '@compartment/contracts';
+import { type InstallResponse } from '@compartment/contracts';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ApiApp } from '../src/app.types';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
-import {
-  claimNextQueuedDeployment,
-  createSourceArchive,
-  injectDeployRequest,
-  installCompartment,
-  registerLocalNode,
-  requireClaimedDeployment,
-} from './api-integration.harness';
+import { deployments } from '../src/db/schema';
+import { createSourceArchive, injectDeployRequest, installCompartment } from './api-integration.harness';
 import {
   cleanupApiIntegrationRuntime,
   cleanupApiIntegrationTlsDirectory,
@@ -86,9 +80,8 @@ describe('Phase 0 API integration deploy release', (): void => {
     await cleanupApiIntegrationRuntime(app, systemApp, pool);
   });
 
-  it('persists descriptor release command onto fresh worker claims', async (): Promise<void> => {
+  it('persists descriptor release command for Kubernetes reconciliation', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
 
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
@@ -113,10 +106,7 @@ describe('Phase 0 API integration deploy release', (): void => {
     );
 
     expect(deployResponse.statusCode, deployResponse.body).toBe(200);
-    const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
-
-    expect(claimedDeployment.release).toEqual({
-      command: 'pnpm db:migrate',
-    });
+    const [deployment] = await db.select({ resolvedReleaseJson: deployments.resolvedReleaseJson }).from(deployments);
+    expect(JSON.parse(deployment?.resolvedReleaseJson ?? 'null')).toEqual({ command: 'pnpm db:migrate' });
   });
 });

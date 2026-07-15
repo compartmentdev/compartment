@@ -68,7 +68,6 @@ import {
   buildOrganizationAuthorizationHeaders,
   injectDeployRequest,
   installCompartment,
-  registerLocalNode,
   requireSetCookieValue,
 } from './api-integration.harness';
 import type { StoredOperationRow } from './api.integration.types';
@@ -573,7 +572,6 @@ describe('Phase 0 API integration install auth', (): void => {
   });
   it('returns deployment-scope permissions from whoami when a project environment is requested', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
       installPayload.sessionToken,

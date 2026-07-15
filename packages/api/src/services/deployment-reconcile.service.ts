@@ -24,10 +24,9 @@ import { buildDeploymentRuntimePlan, type DeploymentRuntimePlan } from './deploy
 import { parseResolvedRelease } from './deployment-release.service';
 import { parseResolvedReadiness } from './deployment-readiness.service';
 import { parseResolvedRun } from './deployment-run.service';
-import {
-  archivedProjectDeploymentFailureMessage,
-  finalizeFailedDeployment,
-} from './deployment-worker-finalization.service';
+import { archivedProjectDeploymentFailureMessage, finalizeFailedDeployment } from './deployment-failure.service';
+import { planRollbackRetentionCleanup } from './deployment-retention.service';
+import type { DeploymentReconcileObservationResult } from './deployment-reconcile.service.types';
 
 const defaultContainerPort: number = 3000;
 const defaultTerminationGracePeriodSeconds: number = 45;
@@ -57,7 +56,9 @@ export async function claimDeploymentReconcileTarget(): Promise<DeploymentReconc
   };
 }
 
-export async function observeDeploymentReconcile(input: WorkerObserveDeploymentReconcileRequest): Promise<boolean> {
+export async function observeDeploymentReconcile(
+  input: WorkerObserveDeploymentReconcileRequest,
+): Promise<DeploymentReconcileObservationResult> {
   const applied: boolean = await persistDeploymentReconcileObservation({
     deploymentId: input.deploymentId,
     failureMessage: input.message ?? null,
@@ -68,7 +69,11 @@ export async function observeDeploymentReconcile(input: WorkerObserveDeploymentR
   if (applied && input.observation === 'ready') {
     await synchronizeEdgeAppAccessState();
   }
-  return applied;
+  return {
+    applied,
+    cleanupArtifacts:
+      applied && input.observation === 'ready' ? await planRollbackRetentionCleanup(input.deploymentId) : [],
+  };
 }
 
 export async function prepareDeploymentReconcile(input: WorkerPrepareDeploymentReconcileRequest): Promise<void> {

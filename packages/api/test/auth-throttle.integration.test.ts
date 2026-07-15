@@ -76,13 +76,10 @@ const apiConfig: ApiConfig = {
   auditRetentionCleanupMaxBatches: 100,
   auditFileSink: defaultAuditFileSinkConfig,
   rollbackRetentionLimit: null,
-  runtimeDefaultUpstreamHost: '127.0.0.1',
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-auth-throttle-source-archives'),
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-auth-throttle-system-api.sock',
   systemToken: 'test-system-token',
   throttle: {

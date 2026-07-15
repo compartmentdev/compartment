@@ -245,7 +245,6 @@ export function createDeploymentSummaryFixture(overrides: Partial<DeploymentSumm
       strategy: 'auto',
     },
     completedAt: null,
-    containerId: null,
     createdAt: '2026-03-30T10:00:00.000Z',
     failureMessage: null,
     health: 'pending',
@@ -269,11 +268,7 @@ export function createDeploymentSummaryFixture(overrides: Partial<DeploymentSumm
     },
     rollbackAvailable: false,
     routeUrl: null,
-    run: {
-      restart: {
-        policy: 'on-failure',
-      },
-    },
+    run: {},
     serviceName: 'web',
     status: 'queued',
   };

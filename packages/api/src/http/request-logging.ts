@@ -1,14 +1,9 @@
-import {
-  compartmentInternalAppAccessStatePathname,
-  workerClaimNextDeploymentPathname,
-  workerRecoverDeploymentsPathname,
-} from '@compartment/contracts';
+import { compartmentInternalAppAccessStatePathname, workerClaimNextDeploymentPathname } from '@compartment/contracts';
 import type { FastifyReply, FastifyRequest, HookHandlerDoneFunction } from 'fastify';
 import type { ApiApp } from '../app.types';
 
 const internalPollingRoutes: readonly InternalPollingRoute[] = [
   { method: 'GET', path: compartmentInternalAppAccessStatePathname },
-  { method: 'POST', path: workerRecoverDeploymentsPathname },
   { method: 'POST', path: workerClaimNextDeploymentPathname },
 ];
 

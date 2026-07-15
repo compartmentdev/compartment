@@ -13,10 +13,6 @@ import type { Database } from '../src/db/client';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { clearApiRuntime, configureApiRuntime } from '../src/runtime/runtime';
 import {
-  prepareResourceBackupArtifactDirectory,
-  summarizeResourceBackupArtifact,
-} from '../src/services/resource-backup-artifact.service';
-import {
   copySourceUploadArchiveFromPath,
   readSourceUploadArchive,
   resolveSourceUploadArchivePath,
@@ -63,27 +59,6 @@ describe('runtime storage permissions', (): void => {
     );
   });
 
-  it('repairs resource backup artifact permissions before summarizing backup output', async (): Promise<void> => {
-    const runtimeRoot: string = await createTemporaryDirectory();
-    const config: ApiConfig = createRuntimeStorageApiConfig(runtimeRoot);
-    await mkdir(config.resourceBackupDirectory, { recursive: true });
-    configureApiRuntime({ config, db: createMockDatabase() });
-
-    const artifactDirectory: string = await prepareResourceBackupArtifactDirectory('rbak_mode');
-    const nestedDirectory: string = join(artifactDirectory, 'nested');
-    const backupFile: string = join(nestedDirectory, 'dump.sql');
-    await mkdir(nestedDirectory, { mode: 0o755 });
-    await writeFile(backupFile, 'backup', { mode: 0o644 });
-    await chmod(nestedDirectory, 0o755);
-    await chmod(backupFile, 0o644);
-
-    await summarizeResourceBackupArtifact('rbak_mode');
-
-    await expect(readPermissionBits(artifactDirectory)).resolves.toBe(privateDirectoryMode);
-    await expect(readPermissionBits(nestedDirectory)).resolves.toBe(privateDirectoryMode);
-    await expect(readPermissionBits(backupFile)).resolves.toBe(privateFileMode);
-  });
-
   it('does not chmod symlink targets while repairing runtime storage', async (): Promise<void> => {
     const runtimeRoot: string = await createTemporaryDirectory();
     const storageDirectory: string = join(runtimeRoot, 'source-archives');
@@ -117,19 +92,6 @@ describe('runtime storage permissions', (): void => {
     } finally {
       await chmod(nestedDirectory, privateDirectoryMode).catch((): void => undefined);
     }
-  });
-
-  it('rejects symlinked resource backup artifact directories', async (): Promise<void> => {
-    const runtimeRoot: string = await createTemporaryDirectory();
-    const config: ApiConfig = createRuntimeStorageApiConfig(runtimeRoot);
-    const outsideDirectory: string = join(runtimeRoot, 'outside-backup-target');
-    await mkdir(config.resourceBackupDirectory, { recursive: true });
-    await mkdir(outsideDirectory);
-    await symlink(outsideDirectory, join(config.resourceBackupDirectory, 'rbak_link'));
-    configureApiRuntime({ config, db: createMockDatabase() });
-
-    await expect(prepareResourceBackupArtifactDirectory('rbak_link')).rejects.toThrow('must not include symlinks');
-    await expect(summarizeResourceBackupArtifact('rbak_link')).rejects.toThrow('must not include symlinks');
   });
 
   it('rejects symlinked source upload archive reads', async (): Promise<void> => {
@@ -178,21 +140,14 @@ describe('runtime storage permissions', (): void => {
     await expect(readFile(outsideArchivePath, 'utf8')).resolves.toBe('outside archive');
   });
 
-  it('repairs existing source archive and resource backup storage on app startup', async (): Promise<void> => {
+  it('repairs existing source archive storage on app startup', async (): Promise<void> => {
     const runtimeRoot: string = await createTemporaryDirectory();
     const config: ApiConfig = createRuntimeStorageApiConfig(runtimeRoot);
     const sourceFile: string = join(config.sourceArchiveDirectory, 'loose.tgz');
-    const backupNestedDirectory: string = join(config.resourceBackupDirectory, 'rbak_existing');
-    const backupFile: string = join(backupNestedDirectory, 'dump.sql');
     await mkdir(config.sourceArchiveDirectory, { mode: 0o755, recursive: true });
-    await mkdir(backupNestedDirectory, { mode: 0o755, recursive: true });
     await writeFile(sourceFile, 'source', { mode: 0o644 });
-    await writeFile(backupFile, 'backup', { mode: 0o644 });
     await chmod(config.sourceArchiveDirectory, 0o755);
-    await chmod(config.resourceBackupDirectory, 0o755);
-    await chmod(backupNestedDirectory, 0o755);
     await chmod(sourceFile, 0o644);
-    await chmod(backupFile, 0o644);
 
     const app: ApiApp = createApp({
       closePool: false,
@@ -204,10 +159,7 @@ describe('runtime storage permissions', (): void => {
     await app.close();
 
     await expect(readPermissionBits(config.sourceArchiveDirectory)).resolves.toBe(privateDirectoryMode);
-    await expect(readPermissionBits(config.resourceBackupDirectory)).resolves.toBe(privateDirectoryMode);
-    await expect(readPermissionBits(backupNestedDirectory)).resolves.toBe(privateDirectoryMode);
     await expect(readPermissionBits(sourceFile)).resolves.toBe(privateFileMode);
-    await expect(readPermissionBits(backupFile)).resolves.toBe(privateFileMode);
   });
 });
 
@@ -256,15 +208,12 @@ function createRuntimeStorageApiConfig(runtimeRoot: string): ApiConfig {
     logLevel: 'silent',
     managedDomainBrokerToken: null,
     managedDomainBrokerUrl: null,
-    nodeAgentSocketPath: '/tmp/compartment/api-test/node/runtime-storage.sock',
     port: 9443,
     publicHttpPort: 9080,
     publicHttpsPort: 443,
     publicProtocol: 'http',
-    resourceBackupDirectory: join(runtimeRoot, 'resource-backups'),
     rollbackRetentionLimit: null,
     runtimeControlToken: 'test-runtime-control-token',
-    runtimeDefaultUpstreamHost: '127.0.0.1',
     sessionSecret: 'test-secret',
     sessionTtlMs: 604_800_000,
     sourceArchiveDirectory: join(runtimeRoot, 'source-archives'),

@@ -1,12 +1,10 @@
 import {
   buildWorkerUploadGitSourceResolutionTaskArchivePath,
   compartmentInternalAppAccessStatePathname,
-  errorResponseSchema,
   workerClaimNextDeploymentPathname,
   workerClaimProjectProvisioningPathname,
   workerCompleteProjectProvisioningPathname,
   workerCompleteProjectProvisioningResponseSchema,
-  workerRecoverDeploymentsPathname,
   workerRunNextScheduledResourceOperationPathname,
   workerRunNextScheduledResourceOperationResponseSchema,
   workerUploadGitSourceResolutionTaskArchiveResponseSchema,
@@ -16,7 +14,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ApiApp } from '../src/app.types';
 import type {
   claimQueuedDeploymentForWorker,
-  recoverOrphanedRunningDeploymentsForWorker,
+  recoverOrphanedDeploymentBuildClaims,
 } from '../src/services/deployment-worker.service';
 import type { storeSourceResolutionTaskArchive } from '../src/services/git-source/source-resolution-task-archive-storage.service';
 import type { runNextScheduledResourceOperationForWorker } from '../src/services/resource-operation-scheduler.service';
@@ -27,7 +25,7 @@ import type {
 import { applyApiRouteTestEnv, injectApiRoute, withApiRouteApp } from './api-route-test.harness';
 
 type ClaimQueuedDeploymentForWorker = typeof claimQueuedDeploymentForWorker;
-type RecoverOrphanedRunningDeploymentsForWorker = typeof recoverOrphanedRunningDeploymentsForWorker;
+type RecoverOrphanedDeploymentBuildClaims = typeof recoverOrphanedDeploymentBuildClaims;
 type RunNextScheduledResourceOperationForWorker = typeof runNextScheduledResourceOperationForWorker;
 type StoreSourceResolutionTaskArchive = typeof storeSourceResolutionTaskArchive;
 type ClaimProjectProvisioning = typeof claimProjectProvisioning;
@@ -36,19 +34,10 @@ type AcknowledgeProjectProvisioning = typeof acknowledgeProjectProvisioning;
 interface InternalWorkerRouteMocks {
   acknowledgeProjectProvisioning: Mock<AcknowledgeProjectProvisioning>;
   claimQueuedDeploymentForWorker: Mock<ClaimQueuedDeploymentForWorker>;
+  recoverOrphanedDeploymentBuildClaims: Mock<RecoverOrphanedDeploymentBuildClaims>;
   claimProjectProvisioning: Mock<ClaimProjectProvisioning>;
-  recoverOrphanedRunningDeploymentsForWorker: Mock<RecoverOrphanedRunningDeploymentsForWorker>;
   runNextScheduledResourceOperationForWorker: Mock<RunNextScheduledResourceOperationForWorker>;
   storeSourceResolutionTaskArchive: Mock<StoreSourceResolutionTaskArchive>;
-}
-
-interface TestErrorDetails {
-  code: string;
-  message: string;
-}
-
-interface TestErrorResponse {
-  error: TestErrorDetails;
 }
 
 let previousSourceArchiveMaxBytes: string | undefined;
@@ -58,8 +47,8 @@ const mocks: InternalWorkerRouteMocks = vi.hoisted(
   (): InternalWorkerRouteMocks => ({
     acknowledgeProjectProvisioning: vi.fn<AcknowledgeProjectProvisioning>(),
     claimQueuedDeploymentForWorker: vi.fn<ClaimQueuedDeploymentForWorker>(),
+    recoverOrphanedDeploymentBuildClaims: vi.fn<RecoverOrphanedDeploymentBuildClaims>(),
     claimProjectProvisioning: vi.fn<ClaimProjectProvisioning>(),
-    recoverOrphanedRunningDeploymentsForWorker: vi.fn<RecoverOrphanedRunningDeploymentsForWorker>(),
     runNextScheduledResourceOperationForWorker: vi.fn<RunNextScheduledResourceOperationForWorker>(),
     storeSourceResolutionTaskArchive: vi.fn<StoreSourceResolutionTaskArchive>(),
   }),
@@ -69,10 +58,10 @@ vi.mock(
   '../src/services/deployment-worker.service',
   (): {
     claimQueuedDeploymentForWorker: Mock<ClaimQueuedDeploymentForWorker>;
-    recoverOrphanedRunningDeploymentsForWorker: Mock<RecoverOrphanedRunningDeploymentsForWorker>;
+    recoverOrphanedDeploymentBuildClaims: Mock<RecoverOrphanedDeploymentBuildClaims>;
   } => ({
     claimQueuedDeploymentForWorker: mocks.claimQueuedDeploymentForWorker,
-    recoverOrphanedRunningDeploymentsForWorker: mocks.recoverOrphanedRunningDeploymentsForWorker,
+    recoverOrphanedDeploymentBuildClaims: mocks.recoverOrphanedDeploymentBuildClaims,
   }),
 );
 
@@ -109,8 +98,8 @@ describe('internal worker routes', (): void => {
   afterEach((): void => {
     mocks.acknowledgeProjectProvisioning.mockReset();
     mocks.claimQueuedDeploymentForWorker.mockReset();
+    mocks.recoverOrphanedDeploymentBuildClaims.mockReset();
     mocks.claimProjectProvisioning.mockReset();
-    mocks.recoverOrphanedRunningDeploymentsForWorker.mockReset();
     mocks.runNextScheduledResourceOperationForWorker.mockReset();
     mocks.storeSourceResolutionTaskArchive.mockReset();
     if (shouldRestoreSourceArchiveMaxBytes) {
@@ -244,9 +233,11 @@ describe('internal worker routes', (): void => {
   });
 
   it.each([
-    [`${workerRecoverDeploymentsPathname}?mode=invalid`],
-    [`${workerRecoverDeploymentsPathname}?mode=all&unexpected=1`],
-  ])('rejects invalid recovery query params through the worker route contract', async (url: string): Promise<void> => {
+    '/internal/nodes/register',
+    '/internal/deployments/runtime-state',
+    '/internal/deployments/runtime-events',
+    '/internal/deployments/recover-running?mode=invalid',
+  ])('does not register removed runtime route %s', async (url: string): Promise<void> => {
     applyApiRouteTestEnv();
     await withApiRouteApp(async (app: ApiApp): Promise<void> => {
       const response: LightMyRequestResponse = await injectApiRoute(app, {
@@ -259,13 +250,7 @@ describe('internal worker routes', (): void => {
         url,
       });
 
-      expect(response.statusCode).toBe(400);
-      const payload: TestErrorResponse = errorResponseSchema.parse(response.json());
-      expect(payload.error).toEqual({
-        code: 'invalid_worker_recover_deployments_query',
-        message: 'The worker recovery query is invalid.',
-      });
-      expect(mocks.recoverOrphanedRunningDeploymentsForWorker).not.toHaveBeenCalled();
+      expect(response.statusCode).toBe(404);
     });
   });
 

@@ -44,12 +44,7 @@ import type * as VariablesQueryModule from '../src/queries/variables.query';
 import { createOrganizationMemberSession as createOrganizationMemberSessionFixture } from './api-auth-session-test.fixtures';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
 import { expectJsonError } from './api-route-test.harness';
-import {
-  createSourceArchive,
-  injectDeployRequest,
-  installCompartment,
-  registerLocalNode,
-} from './api-integration.harness';
+import { createSourceArchive, injectDeployRequest, installCompartment } from './api-integration.harness';
 import { encryptVariableValueForStorageForTests, type TestEncryptedVariableValue } from './variables-test-crypto';
 
 interface AppAccessEdgeServiceModule {
@@ -90,11 +85,8 @@ const apiConfig: ApiConfig = {
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-variables-source-archives'),
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  runtimeDefaultUpstreamHost: '127.0.0.1',
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-variables-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -117,7 +109,7 @@ describe('variables integration', (): void => {
   });
 
   it('writes, lists, shows, and removes a plain environment variable', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     const setPayload: VariableResponse = await setVariable(installPayload, {
       keyName: 'LOG_LEVEL',
       projectName: 'billing',
@@ -159,7 +151,7 @@ describe('variables integration', (): void => {
   });
 
   it('uses service-scoped direct variables as effective winners over environment-scoped values', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
 
     await setVariable(installPayload, {
@@ -205,7 +197,7 @@ describe('variables integration', (): void => {
   });
 
   it('stores service resource-output bindings by service name before first deploy', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await setVariable(installPayload, {
       keyName: 'LOG_LEVEL',
       projectName: 'billing',
@@ -243,7 +235,7 @@ describe('variables integration', (): void => {
   });
 
   it('removes service resource-output bindings by service name before first deploy', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     await setVariable(installPayload, {
       fromResource: 'postgres.connection-url',
@@ -275,7 +267,7 @@ describe('variables integration', (): void => {
   });
 
   it('rejects a resource-output binding when a literal service variable already exists', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
     await setVariable(installPayload, {
       keyName: 'DATABASE_URL',
@@ -297,7 +289,7 @@ describe('variables integration', (): void => {
   });
 
   it('rejects a literal service variable when a resource-output binding already exists', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
     await setVariable(installPayload, {
       fromResource: 'postgres.connection-url',
@@ -318,7 +310,7 @@ describe('variables integration', (): void => {
   });
 
   it('replaces an existing resource-output binding for the same service key', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     await setVariable(installPayload, {
       fromResource: 'postgres.connection-url',
@@ -347,7 +339,7 @@ describe('variables integration', (): void => {
   });
 
   it('keeps resource-scoped variables isolated from environment and service targets', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
 
     await setVariable(installPayload, {
@@ -404,7 +396,7 @@ describe('variables integration', (): void => {
   });
 
   it('falls back to the environment winner after removing a service-scoped override', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
 
     await setVariable(installPayload, {
@@ -455,7 +447,7 @@ describe('variables integration', (): void => {
   });
 
   it('lists environment inventory across service-specific variants by default', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
 
     await setVariable(installPayload, {
@@ -491,7 +483,7 @@ describe('variables integration', (): void => {
   });
 
   it('keeps staging isolated from production variables', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     await setVariable(installPayload, {
       keyName: 'LOG_LEVEL',
@@ -521,8 +513,8 @@ describe('variables integration', (): void => {
     ).toBeUndefined();
   });
 
-  it('updates variables in an existing environment without requiring a live node', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+  it('updates variables in an existing environment without runtime preconditions', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installTestCompartment();
 
     await setVariable(installPayload, {
       environmentName: 'staging',
@@ -530,8 +522,6 @@ describe('variables integration', (): void => {
       projectName: 'billing',
       value: 'info',
     });
-    vi.spyOn(await import('../src/services/node.service'), 'resolveRegisteredNode').mockResolvedValueOnce(undefined);
-
     const setPayload: VariableResponse = await setVariable(installPayload, {
       environmentName: 'staging',
       keyName: 'LOG_LEVEL',
@@ -549,7 +539,7 @@ describe('variables integration', (): void => {
   });
 
   it('rejects unknown service read targets instead of falling back to environment variables', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     await setVariable(installPayload, {
       keyName: 'LOG_LEVEL',
@@ -579,7 +569,7 @@ describe('variables integration', (): void => {
   });
 
   it('does not create a project or environment when service-scoped writes target an unknown service', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     const setResponse: LightMyRequestResponse = await injectVariablesRequest(installPayload, 'POST', '/v1/variables', {
       keyName: 'LOG_LEVEL',
@@ -607,10 +597,12 @@ describe('variables integration', (): void => {
       buildVariablePath('/v1/variables', { projectName: 'fresh-project' }),
     );
     expectJsonError(listResponse, 404, 'project_not_found');
+    expect(await db.select().from(projects)).toEqual([]);
+    expect(await db.select().from(environments)).toEqual([]);
   });
 
   it('does not create a new environment when service-scoped writes target an unknown service in an existing project', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
 
     const setResponse: LightMyRequestResponse = await injectVariablesRequest(installPayload, 'POST', '/v1/variables', {
@@ -646,7 +638,7 @@ describe('variables integration', (): void => {
   });
 
   it('rejects legacy serviceDefinition payloads before they can mutate service topology', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
 
     const response: LightMyRequestResponse = await injectVariablesRequest(installPayload, 'POST', '/v1/variables', {
@@ -671,7 +663,7 @@ describe('variables integration', (): void => {
   });
 
   it('rejects compartment-reserved variable names at the API boundary', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     const response: LightMyRequestResponse = await injectVariablesRequest(installPayload, 'POST', '/v1/variables', {
       keyName: 'COMPARTMENT_PROJECT',
@@ -684,7 +676,7 @@ describe('variables integration', (): void => {
   });
 
   it('rejects compartment-reserved variable names for imports at the API boundary', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     const response: LightMyRequestResponse = await injectVariablesRequest(
       installPayload,
@@ -701,7 +693,7 @@ describe('variables integration', (): void => {
   });
 
   it('rejects invalid variable names at the API boundary', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     const response: LightMyRequestResponse = await injectVariablesRequest(installPayload, 'POST', '/v1/variables', {
       keyName: 'LOG-LEVEL',
@@ -716,7 +708,7 @@ describe('variables integration', (): void => {
   });
 
   it('rejects invalid variable names for imports at the API boundary', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     const response: LightMyRequestResponse = await injectVariablesRequest(
       installPayload,
@@ -735,7 +727,7 @@ describe('variables integration', (): void => {
   });
 
   it('rejects duplicate import keys at the API boundary', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     const response: LightMyRequestResponse = await injectVariablesRequest(
       installPayload,
@@ -755,7 +747,7 @@ describe('variables integration', (): void => {
   });
 
   it('hides sensitive values from explicit reads after write', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     const setPayload: VariableResponse = await setVariable(installPayload, {
       keyName: 'DATABASE_URL',
@@ -776,7 +768,7 @@ describe('variables integration', (): void => {
   });
 
   it('returns plaintext values only through local-run and writes a non-plaintext access audit event', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     await setVariable(installPayload, {
       keyName: 'DATABASE_URL',
@@ -818,7 +810,7 @@ describe('variables integration', (): void => {
   });
 
   it('uses service effective variables and snapshots service targets for local-run audit', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
 
     await setVariable(installPayload, {
@@ -860,7 +852,7 @@ describe('variables integration', (): void => {
   });
 
   it('resolves variable-set winners through local-run without losing source metadata', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
 
     await insertVariableSetBinding(installPayload, 'vset_shared_database', 'shared-database', null);
@@ -910,7 +902,7 @@ describe('variables integration', (): void => {
   });
 
   it('ignores cross-organization variable-set bindings during local-run', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
 
     await insertVariableSetBinding(installPayload, 'vset_owned_database', 'owned-database', null);
@@ -941,7 +933,7 @@ describe('variables integration', (): void => {
   });
 
   it('maps same-scope variable-set key collisions to a business error before audit', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     await deployWebService(installPayload);
 
     await insertVariableSetBinding(installPayload, 'vset_first_database', 'first-database', null);
@@ -967,7 +959,7 @@ describe('variables integration', (): void => {
   });
 
   it('rejects production local-run requests without ack before writing an audit event', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     const response: LightMyRequestResponse = await injectVariablesRequest(
       installPayload,
@@ -987,7 +979,7 @@ describe('variables integration', (): void => {
   });
 
   it('fails closed without plaintext when local-run access audit insert fails', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     const variablesQuery: typeof VariablesQueryModule = await import('../src/queries/variables.query');
 
     await setVariable(installPayload, {
@@ -1017,7 +1009,7 @@ describe('variables integration', (): void => {
   });
 
   it('rejects unresolved local-run targets without creating rows or audit events', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     const unknownProjectResponse: LightMyRequestResponse = await injectVariablesRequest(
       installPayload,
@@ -1073,7 +1065,7 @@ describe('variables integration', (): void => {
   });
 
   it('allows deployers and blocks readonly members from local-run disclosure', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
     const deployerSessionToken: string = await createOrganizationMemberSession(installPayload, 'deployer');
     const readonlySessionToken: string = await createOrganizationMemberSession(installPayload, 'readonly');
 
@@ -1120,7 +1112,7 @@ describe('variables integration', (): void => {
   });
 
   it('audits empty local-run variable sets with required empty metadata maps', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     await setVariable(installPayload, {
       environmentName: 'development',
@@ -1148,7 +1140,7 @@ describe('variables integration', (): void => {
   });
 
   it('imports variables atomically and requires replace for collisions', async (): Promise<void> => {
-    const installPayload: InstallResponse = await installAndRegisterNode();
+    const installPayload: InstallResponse = await installTestCompartment();
 
     await setVariable(installPayload, {
       keyName: 'LOG_LEVEL',
@@ -1221,9 +1213,8 @@ interface VariableSetBindingTarget {
   serviceId: string | null;
 }
 
-async function installAndRegisterNode(): Promise<InstallResponse> {
+async function installTestCompartment(): Promise<InstallResponse> {
   const installPayload: InstallResponse = await installCompartment(app);
-  await registerLocalNode(app);
   return installPayload;
 }
 

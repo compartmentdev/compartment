@@ -94,7 +94,7 @@ describe('deployment operation runner service', (): void => {
     vi.useFakeTimers();
     mocks.getDeploymentStatus
       .mockResolvedValueOnce(createRunningDeploymentStatusResponse())
-      .mockResolvedValueOnce(createDrainingDeploymentStatusResponse())
+      .mockResolvedValueOnce(createReleasingDeploymentStatusResponse())
       .mockResolvedValueOnce(createSucceededDeploymentStatusResponse());
 
     const completionPromise: Promise<DeploymentStatusResponse> = waitForDeploymentOperationCompletion(
@@ -187,7 +187,6 @@ function createTransportFailure(code: string): TransportFailureError {
 function createDeployResponse(): DeployResponse {
   return createDeployResponseFixture({
     deployment: {
-      containerId: 'ctr_123',
       createdAt: '2026-03-25T10:00:00.000Z',
       health: 'healthy',
       id: 'dep_123',
@@ -267,7 +266,7 @@ function createSucceededDeploymentStatusResponse(): DeploymentStatusResponse {
   });
 }
 
-function createDrainingDeploymentStatusResponse(): DeploymentStatusResponse {
+function createReleasingDeploymentStatusResponse(): DeploymentStatusResponse {
   const deployment: DeploymentReadSummary = {
     ...createDeploymentReadSummary(),
     completedAt: '2026-03-25T10:01:00.000Z',
@@ -278,7 +277,7 @@ function createDrainingDeploymentStatusResponse(): DeploymentStatusResponse {
       completedAt: '2026-03-25T10:01:00.000Z',
       status: 'succeeded',
     },
-    promotionStage: 'draining_previous',
+    promotionStage: 'release',
     routeUrl: 'https://smoke-web.preview.acme.dev',
     status: 'succeeded',
   };

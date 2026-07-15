@@ -1,16 +1,7 @@
-import {
-  boolean,
-  index,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  type PgTableExtraConfig,
-  unique,
-} from 'drizzle-orm/pg-core';
+import { boolean, index, pgTable, text, timestamp, type PgTableExtraConfig, unique } from 'drizzle-orm/pg-core';
 import { defaultAppRouteAccessMode } from '@compartment/contracts';
 import { organizations, principals } from './schema-core';
-import { environments, nodes, operations, projectServices, projects } from './schema-platform';
+import { environments, operations, projectServices, projects } from './schema-platform';
 import { sourceUploads } from './schema-source-uploads';
 import type * as DeploySchemaTypes from './schema-deploy.types';
 
@@ -103,18 +94,12 @@ export const deployments: DeploySchemaTypes.DeploymentsTable = pgTable(
     projectServiceId: text('project_service_id')
       .notNull()
       .references((): typeof projectServices.id => projectServices.id, { onDelete: 'cascade' }),
-    nodeId: text('node_id')
-      .notNull()
-      .references((): typeof nodes.id => nodes.id, { onDelete: 'restrict' }),
     operationId: text('operation_id')
       .notNull()
       .references((): typeof operations.id => operations.id, { onDelete: 'cascade' }),
     status: text('status').notNull(),
     health: text('health').notNull(),
     label: text('label'),
-    upstreamHost: text('upstream_host'),
-    upstreamPort: integer('upstream_port'),
-    containerId: text('container_id'),
     failureMessage: text('failure_message'),
     accessMode: text('access_mode', { enum: ['authenticated', 'public'] })
       .default(defaultAppRouteAccessMode)
@@ -125,11 +110,6 @@ export const deployments: DeploySchemaTypes.DeploymentsTable = pgTable(
     resolvedRunJson: text('resolved_run_json').notNull(),
     resolvedRoutesJson: text('resolved_routes_json').default('[]').notNull(),
     promotionStage: text('promotion_stage').notNull(),
-    drainingContainerId: text('draining_container_id'),
-    drainingDeploymentId: text('draining_deployment_id').references((): typeof deployments.id => deployments.id, {
-      onDelete: 'restrict',
-    }),
-    drainingNodeId: text('draining_node_id').references((): typeof nodes.id => nodes.id, { onDelete: 'restrict' }),
     movementSourceDeploymentId: text('movement_source_deployment_id').references(
       (): typeof deployments.id => deployments.id,
       {
@@ -137,7 +117,6 @@ export const deployments: DeploySchemaTypes.DeploymentsTable = pgTable(
       },
     ),
     ...buildDeploymentSourceProvenanceColumns(),
-    drainDeadlineAt: timestamp('drain_deadline_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
     completedAt: timestamp('completed_at', { withTimezone: true }),

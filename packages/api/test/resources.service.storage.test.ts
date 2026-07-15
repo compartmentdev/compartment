@@ -28,12 +28,9 @@ function createProjectResourceRow(): ProjectResourceRow {
 
   return {
     commandJson: '[]',
-    containerId: 'container_postgres',
     createdAt: now,
     envJson: '[]',
     environmentId: 'env_production',
-    hostname: 'postgres.production.internal-tools.resource.internal',
-    runtimeKind: 'node',
     expectedClaimsJson: '[]',
     id: 'res_postgres',
     image: 'postgres:16',
@@ -42,7 +39,6 @@ function createProjectResourceRow(): ProjectResourceRow {
     operationsJson: '{"backup":null,"restore":null}',
     portsJson: '[5432]',
     readinessJson: 'null',
-    restartPolicy: 'unless-stopped',
     runtimeDefinitionHash: 'runtime_hash',
     status: 'running',
     updatedAt: now,

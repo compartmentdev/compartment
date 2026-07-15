@@ -15,7 +15,6 @@ import {
   deploymentRuns,
   deployments,
   environments,
-  nodes,
   operations,
   organizationMemberships,
   organizations,
@@ -67,13 +66,10 @@ const apiConfig: ApiConfig = {
   publicHttpPort: 9080,
   publicHttpsPort: 443,
   runtimeControlToken: 'test-runtime-control-token',
-  runtimeDefaultUpstreamHost: '127.0.0.1',
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment-test-system-api.sock',
   systemToken: 'test-system-token',
   throttle: defaultApiAuthThrottleConfig,
@@ -193,13 +189,6 @@ async function createAuthSession(input: CreateAuthSessionInput): Promise<void> {
 }
 
 async function createDeployment(input: CreateDeploymentInput): Promise<void> {
-  await db.insert(nodes).values({
-    id: `node_${input.prefix}`,
-    name: `node-${input.prefix}`,
-    nodeUrl: `/tmp/compartment/api-test/node/${input.prefix}.sock`,
-    nodeSocketPath: `/tmp/compartment/api-test/node/${input.prefix}.sock`,
-    nodeVersion: '1',
-  });
   await db.insert(projects).values({
     id: `prj_${input.prefix}`,
     name: input.prefix,
@@ -215,7 +204,6 @@ async function createDeployment(input: CreateDeploymentInput): Promise<void> {
   await db.insert(environments).values({
     id: `env_${input.prefix}`,
     name: 'production',
-    nodeId: `node_${input.prefix}`,
     projectId: `prj_${input.prefix}`,
   });
   await db.insert(operations).values({
@@ -249,7 +237,6 @@ async function createDeployment(input: CreateDeploymentInput): Promise<void> {
     health: 'healthy',
     id: `dep_${input.prefix}`,
     isActive: input.isActive ?? true,
-    nodeId: `node_${input.prefix}`,
     operationId: `op_${input.prefix}`,
     projectServiceId: `svc_${input.prefix}`,
     promotionStage: 'active',

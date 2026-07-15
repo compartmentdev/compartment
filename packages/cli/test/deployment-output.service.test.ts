@@ -186,7 +186,7 @@ describe('deployment output service', (): void => {
     };
 
     expect(createDeployResultMessage(response)).toBe(
-      'Deployments for smoke-web/production: web active at http://127.0.0.1:31000; admin active at http://127.0.0.1:31001.\nResource postgres is running at postgres.production.smoke-web.resource.internal.',
+      'Deployments for smoke-web/production: web active at http://127.0.0.1:31000; admin active at http://127.0.0.1:31001.\nResource postgres is running.',
     );
   });
 
@@ -274,13 +274,13 @@ describe('deployment output service', (): void => {
     ]);
   });
 
-  it('shows the starting_candidate stage in progress output', (): void => {
+  it('shows the release stage in progress output', (): void => {
     const response: DeploymentStatusResponse = createDeploymentStatusResponse({
       completedAt: null,
       createdAt: '2026-03-23T12:00:00.000Z',
       operationCompletedAt: null,
       operationCreatedAt: '2026-03-23T12:00:00.000Z',
-      promotionStage: 'starting_candidate',
+      promotionStage: 'release',
       routeUrl: null,
       status: 'running',
     });
@@ -292,7 +292,7 @@ describe('deployment output service', (): void => {
 
     reporter(response);
 
-    expect(stderr).toEqual(['Deploy smoke-web/production web: running (starting_candidate), elapsed 3.0s.\n']);
+    expect(stderr).toEqual(['Deploy smoke-web/production web: running (release), elapsed 3.0s.\n']);
   });
 });
 
@@ -469,16 +469,13 @@ function createAggregateDeploymentStatusResponse(): DeploymentStatusView {
 
 function createResourceSummary(): ResourceSummary {
   return {
-    containerId: 'resource_container_123',
     createdAt: '2026-03-23T12:00:00.000Z',
     env: [],
-    hostname: 'postgres.production.smoke-web.resource.internal',
     id: 'res_123',
     image: 'postgres:16',
     name: 'postgres',
     ports: [5432],
     readiness: null,
-    restartPolicy: 'unless-stopped',
     status: 'running',
     updatedAt: '2026-03-23T12:00:00.000Z',
     volumes: [],
