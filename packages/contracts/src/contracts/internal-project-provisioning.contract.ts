@@ -1,21 +1,12 @@
 import { z } from 'zod';
 import type { ContractSchema } from './schema.types';
 
-interface ProjectProvisioningTargetBase {
+export interface ProjectProvisioningTarget {
+  action: 'provision';
   leaseId: string;
   namespaceId: string;
   projectId: string;
 }
-
-export interface ProjectProvisioningExecutionTarget extends ProjectProvisioningTargetBase {
-  action: 'provision';
-}
-
-export interface ProjectProvisioningCleanupTarget extends ProjectProvisioningTargetBase {
-  action: 'cleanup';
-}
-
-export type ProjectProvisioningTarget = ProjectProvisioningCleanupTarget | ProjectProvisioningExecutionTarget;
 
 export interface WorkerClaimProjectProvisioningResponse {
   target: ProjectProvisioningTarget | null;
@@ -35,18 +26,9 @@ interface ProjectProvisioningCompletionSchemaShape extends z.ZodRawShape {
   status: z.ZodEnum<['failed', 'succeeded']>;
 }
 
-export interface WorkerCompleteProjectProvisioningExecutionRequest extends WorkerCompleteProjectProvisioningRequestBase {
+export interface WorkerCompleteProjectProvisioningRequest extends WorkerCompleteProjectProvisioningRequestBase {
   action: 'provision';
-  cleanupRequired: boolean;
 }
-
-export interface WorkerCompleteProjectProvisioningCleanupRequest extends WorkerCompleteProjectProvisioningRequestBase {
-  action: 'cleanup';
-}
-
-export type WorkerCompleteProjectProvisioningRequest =
-  | WorkerCompleteProjectProvisioningCleanupRequest
-  | WorkerCompleteProjectProvisioningExecutionRequest;
 
 export interface WorkerCompleteProjectProvisioningResponse {
   applied: boolean;
@@ -57,7 +39,7 @@ export const workerCompleteProjectProvisioningPathname: string = '/internal/kube
 
 const projectProvisioningTargetSchema: ContractSchema<ProjectProvisioningTarget> = z
   .object({
-    action: z.enum(['cleanup', 'provision']),
+    action: z.literal('provision'),
     leaseId: z.string().min(1),
     namespaceId: z.string().min(1),
     projectId: z.string().min(1),
@@ -77,16 +59,8 @@ const projectProvisioningCompletionBase: ProjectProvisioningCompletionSchemaShap
 
 export const workerCompleteProjectProvisioningRequestSchema: ContractSchema<WorkerCompleteProjectProvisioningRequest> =
   z
-    .discriminatedUnion('action', [
-      z.object({ ...projectProvisioningCompletionBase, action: z.literal('cleanup') }).strict(),
-      z
-        .object({
-          ...projectProvisioningCompletionBase,
-          action: z.literal('provision'),
-          cleanupRequired: z.boolean(),
-        })
-        .strict(),
-    ])
+    .object({ ...projectProvisioningCompletionBase, action: z.literal('provision') })
+    .strict()
     .superRefine((input: WorkerCompleteProjectProvisioningRequest, context: z.RefinementCtx): void => {
       if (input.status === 'failed' && input.message === undefined) {
         context.addIssue({

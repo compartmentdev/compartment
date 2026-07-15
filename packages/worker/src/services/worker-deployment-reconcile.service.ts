@@ -67,7 +67,7 @@ async function reconcileActiveDeployment(
     return;
   }
   const status: KubeRolloutStatus = calculateKubeRolloutStatus(rollout, new Date());
-  if (status === 'progress-deadline-exceeded') {
+  if (status === 'progress-deadline-exceeded' || status === 'timed-out') {
     await persistObservation(request, target, 'pending', 'Active Kubernetes Deployment drifted or became non-Ready.');
   }
 }

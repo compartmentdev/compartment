@@ -125,6 +125,23 @@ function resourceService(
   };
 }
 
+export function projectResourceClaimDeleteTargets(
+  row: ResourceProjectionRow,
+  expected: readonly ExpectedResourceClaim[],
+): KubeManifest[] {
+  const expectedByName: Map<string, string> = new Map<string, string>(
+    expected.map((claim: ExpectedResourceClaim): [string, string] => [claim.claimName, claim.uid]),
+  );
+  return projectResourceBootstrapClaims(row).map((claim: KubeManifest): KubeManifest => {
+    const name: string = claim.metadata?.name ?? '';
+    const uid: string | undefined = expectedByName.get(name);
+    if (uid === undefined) {
+      throw new Error(`Resource reconcile refused: expected PVC ${name} identity is missing.`);
+    }
+    return { ...claim, metadata: { ...claim.metadata, uid } };
+  });
+}
+
 /** Explicit bootstrap-only PVC projection. Never add this result to projectResourceManifests. */
 export function projectResourceBootstrapClaims(row: ResourceProjectionRow): KubeManifest[] {
   return [...row.volumes, { mountPath: '/backup', size: '1Gi', volumeHandle: 'backup-artifacts' }].map(

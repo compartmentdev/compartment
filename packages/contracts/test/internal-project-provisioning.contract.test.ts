@@ -11,18 +11,23 @@ describe('project provisioning contracts', (): void => {
     expect(workerClaimProjectProvisioningResponseSchema.safeParse({ target: null }).success).toBe(true);
   });
 
-  it('models durable cleanup claims separately from provisioning work', (): void => {
+  it('keeps cleanup inside the ordinary provisioning lease', (): void => {
     const base: { leaseId: string; namespaceId: string; projectId: string } = {
       leaseId: 'kpl_1',
       namespaceId: 'prj_1',
       projectId: 'prj_1',
     };
     expect(
-      workerClaimProjectProvisioningResponseSchema.safeParse({ target: { ...base, action: 'provision' } }).success,
-    ).toBe(true);
-    expect(
       workerClaimProjectProvisioningResponseSchema.safeParse({ target: { ...base, action: 'cleanup' } }).success,
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      workerCompleteProjectProvisioningRequestSchema.safeParse({
+        action: 'cleanup',
+        leaseId: 'kpl_1',
+        projectId: 'prj_1',
+        status: 'succeeded',
+      }).success,
+    ).toBe(false);
     expect(
       workerCompleteProjectProvisioningRequestSchema.safeParse({
         action: 'provision',
@@ -31,15 +36,7 @@ describe('project provisioning contracts', (): void => {
         projectId: 'prj_1',
         status: 'succeeded',
       }).success,
-    ).toBe(true);
-    expect(
-      workerCompleteProjectProvisioningRequestSchema.safeParse({
-        action: 'cleanup',
-        leaseId: 'kpl_1',
-        projectId: 'prj_1',
-        status: 'succeeded',
-      }).success,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('requires a message only for failed completion', (): void => {
@@ -48,7 +45,6 @@ describe('project provisioning contracts', (): void => {
       workerCompleteProjectProvisioningRequestSchema.safeParse({
         ...base,
         action: 'provision',
-        cleanupRequired: false,
         status: 'failed',
       }).success,
     ).toBe(false);
@@ -56,7 +52,6 @@ describe('project provisioning contracts', (): void => {
       workerCompleteProjectProvisioningRequestSchema.safeParse({
         ...base,
         action: 'provision',
-        cleanupRequired: false,
         message: 'denied',
         status: 'failed',
       }).success,
@@ -65,7 +60,6 @@ describe('project provisioning contracts', (): void => {
       workerCompleteProjectProvisioningRequestSchema.safeParse({
         ...base,
         action: 'provision',
-        cleanupRequired: false,
         status: 'succeeded',
       }).success,
     ).toBe(true);

@@ -168,12 +168,15 @@ or create Jobs there. Its ClusterRoleBinding mutation authority is restricted
 to the fixed bootstrap binding. No production or seeded Compartment principal
 receives Kubernetes authority.
 
-Project provisioning retries use a delayed lease and stop after three
-attempts. A failed third completion, or expiry of the third lease, marks the
-project provisioning row terminal and fails waiting deployment operations and
-resource reconcile runs with the provisioning error instead of leaving them
-unclaimable forever. Existing project controller RoleBindings remain unchanged;
-new projects and explicit retries use the target-bound bootstrap identity.
+Project provisioning uses one leased state machine. Every execution first
+removes deterministic bootstrap-authority remnants, reapplies the authority,
+runs or rejoins the deterministic Job, and completes only after authority
+cleanup succeeds. An expired in-flight lease is reclaimed without consuming a
+new failed attempt; only acknowledged provisioning failures count toward the
+three-attempt terminal limit. A third failed completion fails waiting deployment
+operations and resource reconcile runs instead of leaving them unclaimable.
+Existing project controller RoleBindings remain unchanged; new projects and
+explicit retries use the target-bound bootstrap identity.
 
 ## Migration and deletion
 

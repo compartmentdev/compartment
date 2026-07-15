@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { immutableKubeName } from '@compartment/utils';
@@ -633,7 +633,6 @@ describe('deployment Kubernetes transition persistence', (): void => {
       expect(claimed?.projectId).toBe('prj_kube');
       await completeProjectProvisioning({
         action: 'provision',
-        cleanupRequired: false,
         failureMessage: `namespace provisioning attempt ${attempt} failed`,
         leaseId: claimed?.leaseId ?? '',
         projectId: 'prj_kube',
@@ -679,6 +678,43 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(futureDeployment).toMatchObject({ health: 'unhealthy', status: 'failed' });
     expect(futureDeployment?.failureMessage).toContain('namespace provisioning attempt 3 failed');
     expect(futureOperation).toMatchObject({ status: 'failed' });
+  });
+
+  it('serializes terminal provisioning with preparation of future deployment work', async (): Promise<void> => {
+    await seedCandidate();
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    const holder: PoolClient = await pool.connect();
+    let preparation: Promise<void> | null = null;
+    try {
+      await holder.query('begin');
+      await holder.query(
+        `update project_kube_provisioning
+         set attempts = 3, failure_message = 'terminal namespace failure', state = 'failed'
+         where project_id = 'prj_kube'`,
+      );
+      preparation = prepareDeploymentReconcileReference({
+        deploymentId: 'dep_candidate',
+        deploymentName: 'app-env-kube-svc-kube',
+        id: 'kref_concurrent_terminal',
+        imageRef: 'repo/kube@sha256:concurrent-terminal',
+        namespace: 'cpt-prj-kube',
+        networkPolicyNames: [],
+        routeId: 'route_kube',
+        routeSubdomain: 'kube',
+        serviceName: 'app-env-kube-svc-kube',
+      });
+      await waitForDatabaseLock(holder, 'transactionid');
+      await holder.query('commit');
+      await preparation;
+
+      const [deployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_candidate'));
+      expect(deployment).toMatchObject({ status: 'failed' });
+      expect(deployment?.failureMessage).toContain('terminal namespace failure');
+    } finally {
+      await holder.query('rollback');
+      await Promise.allSettled(preparation === null ? [] : [preparation]);
+      holder.release();
+    }
   });
 
   it('claims a requested stop and accepts the worker acknowledgement', async (): Promise<void> => {
@@ -893,6 +929,26 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(route).toEqual({ deploymentId: 'dep_candidate' });
   });
 });
+
+async function waitForDatabaseLock(client: PoolClient, waitEvent: string): Promise<void> {
+  for (let attempt: number = 0; attempt < 100; attempt += 1) {
+    const result: { rows: { waiting: boolean }[] } = await client.query(
+      `select exists (
+        select 1
+        from pg_stat_activity
+        where datname = current_database()
+          and pid <> pg_backend_pid()
+          and wait_event = $1
+      ) as waiting`,
+      [waitEvent],
+    );
+    if (result.rows[0]?.waiting === true) {
+      return;
+    }
+    await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for PostgreSQL ${waitEvent} lock evidence.`);
+}
 
 function transitionInput(organizationId: string): PersistDeploymentKubeTransitionInput {
   return {

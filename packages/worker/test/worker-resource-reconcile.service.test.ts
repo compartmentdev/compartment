@@ -40,10 +40,10 @@ describe('worker resource reconcile lifecycle', (): void => {
   });
 
   it('rejects substituted PVC UID before mutating a Deployment', async (): Promise<void> => {
-    const observation: TestObservation = new TestObservation('uid-substituted', true);
+    const observation: TestObservation = new TestObservation('uid-substituted', false, true, false);
     observation.addClaim(backupClaimName, 'uid-backup', false);
     const apply: Mock = vi.fn();
-    await expect(executeResourceReconcile(requester(), runtime(apply, observation), claim())).rejects.toThrow(
+    await expect(executeResourceReconcile(requester(), runtime(apply, observation), claim(null))).rejects.toThrow(
       'UID changed',
     );
     expect(apply).not.toHaveBeenCalled();
@@ -176,6 +176,43 @@ describe('worker resource reconcile lifecycle', (): void => {
     );
   });
 
+  it('rejects readiness from an external generation newer than the applied Deployment', async (): Promise<void> => {
+    const observation: TestObservation = new TestObservation('uid-original', true);
+    observation.addClaim(backupClaimName, 'uid-backup', false);
+    let appliedDeployment: KubeManifest | null = null;
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      const deployment: KubeManifest | undefined = bundle.objects.find(
+        (object: KubeManifest): boolean => object.kind === 'Deployment',
+      );
+      if (deployment?.kind === 'Deployment' && deployment.spec?.replicas === 0) {
+        observation.removePods();
+        return await Promise.resolve(bundle.objects);
+      }
+      const applied: KubeManifest[] = withAppliedDeploymentIdentity(bundle.objects, 2);
+      appliedDeployment = applied.find((object: KubeManifest): boolean => object.kind === 'Deployment') ?? null;
+      return await Promise.resolve(applied);
+    });
+
+    const execution: Promise<void> = executeResourceReconcile(requester(), runtime(apply, observation), claim(null));
+    await vi.waitFor((): void => {
+      expect(appliedDeployment).not.toBeNull();
+    });
+    observation.addReadyDeployment(
+      { ...appliedDeployment!, metadata: { ...appliedDeployment!.metadata, generation: 3 } },
+      2,
+    );
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 0);
+    });
+    expect(mocks.acknowledge).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 'succeeded' }),
+    );
+
+    observation.addReadyDeployment(appliedDeployment!, 2);
+    await execution;
+  });
+
   it('scales to zero before starting and rolls back saved executable manifests on apply failure', async (): Promise<void> => {
     const observation: TestObservation = new TestObservation('uid-original', true);
     observation.addClaim(backupClaimName, 'uid-backup', false);
@@ -263,6 +300,10 @@ describe('worker resource reconcile lifecycle', (): void => {
     expect(remove).toHaveBeenCalledTimes(2);
     expect(removed[0]?.map((object: KubeManifest): string => object.kind)).toEqual(['Secret', 'Deployment', 'Service']);
     expect(removed[1]).toHaveLength(2);
+    expect(removed[1]?.map((object: KubeManifest): string | undefined => object.metadata?.uid)).toEqual([
+      'uid-original',
+      'uid-backup',
+    ]);
     expect(mocks.acknowledge).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({ status: 'succeeded' }),

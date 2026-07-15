@@ -150,6 +150,7 @@ async function prepareManagedUpdate(
   claimed: CompleteResourceReconcileClaim,
   row: ResourceProjectionRow,
 ): Promise<ManagedResourceUpdatePlan> {
+  assertResourceClaimOwnership(claimed.expectedClaims, readLiveClaims(observation, row));
   const desired: KubeManifest[] = projectResourceManifests(row, row.replicas);
   const hasLivePods: boolean = readResourcePods(observation).length > 0;
   const plan: ManagedResourceUpdatePlan = {

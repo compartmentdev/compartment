@@ -5,10 +5,12 @@ import type {
   WorkerAcknowledgeResourceReconcileRequest,
 } from '@compartment/contracts';
 import {
-  acknowledgeResourceReconcileRun,
-  claimResourceReconcileRun,
   createResourceReconcileRun,
   createResourceReconcileRunWithExecutor,
+} from '../queries/resource-reconcile-create.query';
+import {
+  acknowledgeResourceReconcileRun,
+  claimResourceReconcileRun,
   readResourceReconcileRunState,
 } from '../queries/resource-reconcile-runs.query';
 import type {

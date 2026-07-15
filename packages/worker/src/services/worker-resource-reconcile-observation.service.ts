@@ -146,8 +146,8 @@ function generationIsCurrent(
     generation !== undefined &&
     observedGeneration !== undefined &&
     desiredGeneration !== undefined &&
-    generation >= desiredGeneration &&
-    observedGeneration >= desiredGeneration
+    generation === desiredGeneration &&
+    observedGeneration === desiredGeneration
   );
 }
 

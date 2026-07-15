@@ -62,6 +62,17 @@ const k3dKubectlCommandTimeoutMs: number = 8 * 60_000;
 const k3dApiServiceProbeAttempts: number = 30;
 const k3dApiServiceProbeIntervalMs: number = 1_000;
 const k3dApiServiceProbeTimeoutMs: number = 10_000;
+const k3dApiBoundaryProbeScript: string = `
+const [apiUrl, email] = process.argv.slice(1);
+const response = await fetch(new URL('/v1/auth/login-discovery', apiUrl), {
+  body: JSON.stringify({ autoRedirect: false, email }),
+  headers: { 'content-type': 'application/json' },
+  method: 'POST',
+});
+if (!response.ok) {
+  throw new Error(\`API boundary returned status \${String(response.status)}.\`);
+}
+`;
 const k3dAuditFileSinkPath: string = '/var/lib/compartment/audit-logs/audit.ndjson';
 
 export function isK3dPlatformMode(): boolean {
@@ -148,24 +159,44 @@ async function expectK3dBootstrapAdmissionBoundary(seed: K3dPlatformSeed): Promi
   ];
   try {
     await runK3dKubectlCommands(setupCommands);
-    const denied: SelfHostedUserSetupCommandResult = await runCommand({
+    const namespaceDenied: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        'create',
+        'namespace',
+        `${targetNamespace}-bypass`,
+        `--as=${identity}`,
+      ],
+      timeoutMs: k3dKubectlCommandTimeoutMs,
+    });
+    expectFailedCommand(namespaceDenied, 'deny bootstrap namespace creation outside its encoded namespace');
+    expect(namespaceDenied.stderr).toContain(
+      'Project bootstrap authority is restricted to its encoded target namespace.',
+    );
+
+    const subjectDenied: SelfHostedUserSetupCommandResult = await runCommand({
       argv: [
         'kubectl',
         '--context',
         seed.kubeContext,
         '--namespace',
-        'kube-system',
+        targetNamespace,
         'create',
         'rolebinding',
         'compartment-project-bootstrap',
         '--clusterrole=compartment-controller',
         `--serviceaccount=${provisioningNamespace}:${targetNamespace}`,
+        '--serviceaccount=kube-system:namespace-controller',
         `--as=${identity}`,
       ],
       timeoutMs: k3dKubectlCommandTimeoutMs,
     });
-    expectFailedCommand(denied, 'deny bootstrap RoleBinding creation outside its encoded namespace');
-    expect(denied.stderr).toContain('Project bootstrap authority is restricted to its encoded target namespace.');
+    expectFailedCommand(subjectDenied, 'deny bootstrap RoleBinding subject injection');
+    expect(subjectDenied.stderr).toContain(
+      'Project bootstrap authority may manage only canonical controller RoleBindings.',
+    );
 
     await runK3dKubectlCommands([
       [
@@ -179,6 +210,7 @@ async function expectK3dBootstrapAdmissionBoundary(seed: K3dPlatformSeed): Promi
         'compartment-project-bootstrap',
         '--clusterrole=compartment-controller',
         `--serviceaccount=${provisioningNamespace}:${targetNamespace}`,
+        `--serviceaccount=${seed.platformNamespace}:${k3dPlatformResourceName}-worker`,
         `--as=${identity}`,
       ],
     ]);
@@ -189,7 +221,7 @@ async function expectK3dBootstrapAdmissionBoundary(seed: K3dPlatformSeed): Promi
         '--context',
         seed.kubeContext,
         '--namespace',
-        'kube-system',
+        targetNamespace,
         'delete',
         'rolebinding',
         'compartment-project-bootstrap',
@@ -211,6 +243,7 @@ async function expectK3dBootstrapAdmissionBoundary(seed: K3dPlatformSeed): Promi
         'delete',
         'namespace',
         targetNamespace,
+        `${targetNamespace}-bypass`,
         '--ignore-not-found',
         '--wait=false',
       ],
@@ -453,11 +486,32 @@ async function waitForK3dApiService(seed: K3dPlatformSeed): Promise<void> {
     result = await probeK3dApiService(seed, proxyPath);
   }
   expectSuccessfulCommand(result, 'wait for the API service endpoint to answer /readyz', '');
+
+  result = await probeK3dApiBoundary(seed);
+  for (let attempt: number = 1; result.exitCode !== 0 && attempt < k3dApiServiceProbeAttempts; attempt += 1) {
+    await sleep(k3dApiServiceProbeIntervalMs);
+    result = await probeK3dApiBoundary(seed);
+  }
+  expectSuccessfulCommand(result, 'wait for the API public boundary to converge', '');
 }
 
 async function probeK3dApiService(seed: K3dPlatformSeed, proxyPath: string): Promise<SelfHostedUserSetupCommandResult> {
   return await runCommand({
     argv: ['kubectl', '--context', seed.kubeContext, 'get', '--raw', proxyPath],
+    timeoutMs: k3dApiServiceProbeTimeoutMs,
+  });
+}
+
+async function probeK3dApiBoundary(seed: K3dPlatformSeed): Promise<SelfHostedUserSetupCommandResult> {
+  return await runCommand({
+    argv: [
+      process.execPath,
+      '--input-type=module',
+      '--eval',
+      k3dApiBoundaryProbeScript,
+      seed.apiUrl,
+      seed.seedAdminEmail,
+    ],
     timeoutMs: k3dApiServiceProbeTimeoutMs,
   });
 }

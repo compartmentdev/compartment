@@ -347,6 +347,22 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(objectApi.deletes).toMatchObject([{ kind: 'RoleBinding' }, { kind: 'ClusterRoleBinding' }]);
   });
 
+  it('passes manifest UID as an atomic Kubernetes delete precondition', async (): Promise<void> => {
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+    const claim: KubeManifest = {
+      apiVersion: 'v1',
+      kind: 'PersistentVolumeClaim',
+      metadata: { name: 'resource-data', namespace: 'cpt-project', uid: 'uid-original' },
+    };
+    objectApi.deleteError = Object.assign(new Error('UID precondition failed'), { statusCode: 409 });
+
+    await expect(runtime.delete([claim])).rejects.toThrow('UID precondition failed');
+
+    expect(objectApi.delete).toHaveBeenCalledWith(claim, undefined, undefined, undefined, undefined, undefined, {
+      preconditions: { uid: 'uid-original' },
+    });
+  });
+
   it('uses installation authority to remove bootstrap access after a partial create failure', async (): Promise<void> => {
     objectApi.failCreateKind = 'RoleBinding';
     const runtime: KubeRuntime = new KubeRuntime(
@@ -468,6 +484,7 @@ describe('KubeRuntime Job primitive', (): void => {
       undefined,
       undefined,
       'Foreground',
+      undefined,
     );
   });
 

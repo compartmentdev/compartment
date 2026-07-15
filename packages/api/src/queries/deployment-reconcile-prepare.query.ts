@@ -3,7 +3,11 @@ import { buildArtifacts, deploymentKubeReferences, deployments } from '../db/sch
 import { getApiDatabase } from '../runtime/runtime-access';
 import { ensureDeploymentRouteWithExecutor } from './deployment-route-persistence.query';
 import type { DeploymentTransaction } from './deployments.query.types';
-import { enforceTerminalProvisioningForDeployment } from './project-provisioning-terminal.query';
+import {
+  lockTerminalProvisioningForDeployment,
+  propagateTerminalProvisioningRow,
+} from './project-provisioning-terminal.query';
+import type { TerminalProvisioningRow } from './project-provisioning-terminal.query.types';
 import {
   buildDeploymentKubeReferenceValues,
   type DeploymentKubeReferenceValues,
@@ -20,12 +24,16 @@ async function prepareWithTransaction(
   tx: DeploymentTransaction,
   input: PrepareDeploymentReconcileInput,
 ): Promise<void> {
+  const terminal: TerminalProvisioningRow | undefined = await lockTerminalProvisioningForDeployment(
+    tx,
+    input.deploymentId,
+  );
   const deployment: PrepareDeploymentRow = await lockPrepareDeployment(tx, input.deploymentId);
   const now: Date = new Date();
   await updateBuildArtifact(tx, input, deployment, now);
   await insertDesiredReference(tx, input, now);
   await upsertPreparedRoute(tx, input, deployment, now);
-  await enforceTerminalProvisioningForDeployment(tx, input.deploymentId, now);
+  await propagateTerminalProvisioningRow(tx, terminal, now);
 }
 
 async function updateBuildArtifact(

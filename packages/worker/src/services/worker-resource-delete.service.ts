@@ -1,6 +1,6 @@
 import {
   assertResourceClaimOwnership,
-  projectResourceBootstrapClaims,
+  projectResourceClaimDeleteTargets,
   projectResourceManifests,
   type KubeObservation,
   type KubeRuntime,
@@ -42,6 +42,6 @@ async function stopAndDeleteManagedManifests(
   assertResourceClaimOwnership(claimed.expectedClaims, readLiveClaims(observation, row));
   await runtime.delete(projectResourceManifests(row, 0));
   if (row.deleteData) {
-    await runtime.delete(projectResourceBootstrapClaims(row));
+    await runtime.delete(projectResourceClaimDeleteTargets(row, claimed.expectedClaims));
   }
 }

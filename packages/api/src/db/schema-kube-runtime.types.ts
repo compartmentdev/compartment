@@ -101,8 +101,6 @@ interface ProjectKubeProvisioningColumnBuilders {
   leaseExpiresAt: OptionalTimestampBuilder<'lease_expires_at'>;
   failureMessage: OptionalTextBuilder<'failure_message'>;
   attempts: DefaultIntegerBuilder<'attempts'>;
-  cleanupState: DefaultEnumTextBuilder<'cleanup_state', ['succeeded', 'pending', 'running', 'failed']>;
-  cleanupFailureMessage: OptionalTextBuilder<'cleanup_failure_message'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;
 }

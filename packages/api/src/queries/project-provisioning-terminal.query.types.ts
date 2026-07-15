@@ -3,6 +3,11 @@ export interface TerminalProvisioningRow {
   projectId: string;
 }
 
+export interface ProjectProvisioningLockRow extends TerminalProvisioningRow {
+  attempts: number;
+  state: 'pending' | 'running' | 'succeeded' | 'failed';
+}
+
 export interface WaitingDeploymentRow {
   deploymentId: string;
   deploymentRunId: string;

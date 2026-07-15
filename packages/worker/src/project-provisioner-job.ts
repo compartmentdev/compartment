@@ -6,34 +6,13 @@ import {
   type ProjectNetworkPolicyProjection,
   type ProjectNamespaceProvisioningRow,
 } from '@compartment/kube-runtime';
-import { z } from 'zod';
 import {
-  projectProvisioningEnvironmentSchema,
-  type ProjectProvisioningEnvironment,
+  projectProvisionerJobEnvironmentSchema,
+  type ProjectProvisionerJobEnvironment,
 } from './project-provisioning-environment';
 
-interface ProjectProvisionerJobEnvironment extends ProjectProvisioningEnvironment {
-  COMPARTMENT_ARTIFACT_REGISTRY_HOST: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_PORT: number;
-  COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: string;
-  COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: string;
-  COMPARTMENT_PROJECT_ID: string;
-}
-
-const environmentSchema: z.ZodType<ProjectProvisionerJobEnvironment> = projectProvisioningEnvironmentSchema.and(
-  z.object({
-    COMPARTMENT_ARTIFACT_REGISTRY_HOST: z.string().min(1),
-    COMPARTMENT_ARTIFACT_REGISTRY_PORT: z.coerce.number().int().positive(),
-    COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: z.string().min(1),
-    COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: z.string().min(1),
-    COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: z.string().min(1),
-    COMPARTMENT_PROJECT_ID: z.string().min(1),
-  }),
-);
-
 async function main(): Promise<void> {
-  const environment: ProjectProvisionerJobEnvironment = environmentSchema.parse(process.env);
+  const environment: ProjectProvisionerJobEnvironment = projectProvisionerJobEnvironmentSchema.parse(process.env);
   await createSelfCleaningKubeRuntimeFromEnvironment().apply(projectProvisioningBundle(environment));
 }
 

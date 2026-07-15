@@ -14,6 +14,7 @@ export {
   assertResourceClaimIdentity,
   assertResourceClaimOwnership,
   projectResourceBootstrapClaims,
+  projectResourceClaimDeleteTargets,
   projectResourceManifests,
   resourcePodsFullyTerminated,
 } from './kube-resource-projection';

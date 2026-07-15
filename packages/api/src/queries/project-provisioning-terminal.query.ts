@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lt, or } from 'drizzle-orm';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import {
   deploymentKubeReferences,
   deploymentRunEvents,
@@ -11,89 +11,74 @@ import {
 } from '../db/schema';
 import { createId } from '../lib/tokens';
 import type { DeploymentTransaction } from './deployments.query.types';
-import {
-  expiredProjectProvisioningLeaseMessage,
-  projectProvisioningAttemptLimit,
-  projectProvisioningTerminalFailure,
-} from './project-provisioning-policy';
-import type { TerminalProvisioningRow, WaitingDeploymentRow } from './project-provisioning-terminal.query.types';
+import { projectProvisioningAttemptLimit, projectProvisioningTerminalFailure } from './project-provisioning-policy';
+import type {
+  ProjectProvisioningLockRow,
+  TerminalProvisioningRow,
+  WaitingDeploymentRow,
+} from './project-provisioning-terminal.query.types';
 
 type DeploymentRunEventInsert = typeof deploymentRunEvents.$inferInsert;
 
-export async function deadLetterExpiredProjectProvisioning(
-  transaction: DeploymentTransaction,
-  now: Date,
-): Promise<void> {
-  const rows: TerminalProvisioningRow[] = await persistExpiredProjectProvisioning(transaction, now);
-  for (const row of rows) {
-    await failTerminalProjectProvisioning(
-      transaction,
-      row.projectId,
-      projectProvisioningTerminalFailure(row.failureMessage),
-      now,
-    );
-  }
-}
-
-export async function enforceTerminalProvisioningForDeployment(
-  transaction: DeploymentTransaction,
-  deploymentId: string,
-  failedAt: Date,
-): Promise<void> {
-  const row: TerminalProvisioningRow | undefined = await findTerminalDeploymentProvisioning(transaction, deploymentId);
-  await propagateTerminalProvisioningRow(transaction, row, failedAt);
-}
-
-export async function enforceTerminalProvisioningForResource(
-  transaction: DeploymentTransaction,
-  resourceId: string,
-  failedAt: Date,
-): Promise<void> {
-  const row: TerminalProvisioningRow | undefined = await findTerminalResourceProvisioning(transaction, resourceId);
-  await propagateTerminalProvisioningRow(transaction, row, failedAt);
-}
-
-async function findTerminalDeploymentProvisioning(
+export async function lockTerminalProvisioningForDeployment(
   transaction: DeploymentTransaction,
   deploymentId: string,
 ): Promise<TerminalProvisioningRow | undefined> {
+  return terminalProvisioningRow(await lockDeploymentProvisioning(transaction, deploymentId));
+}
+
+export async function lockTerminalProvisioningForResource(
+  transaction: DeploymentTransaction,
+  resourceId: string,
+): Promise<TerminalProvisioningRow | undefined> {
+  return terminalProvisioningRow(await lockResourceProvisioning(transaction, resourceId));
+}
+
+async function lockDeploymentProvisioning(
+  transaction: DeploymentTransaction,
+  deploymentId: string,
+): Promise<ProjectProvisioningLockRow | undefined> {
   const [row] = await transaction
-    .select({ failureMessage: projectKubeProvisioning.failureMessage, projectId: projectKubeProvisioning.projectId })
+    .select({
+      attempts: projectKubeProvisioning.attempts,
+      failureMessage: projectKubeProvisioning.failureMessage,
+      projectId: projectKubeProvisioning.projectId,
+      state: projectKubeProvisioning.state,
+    })
     .from(deployments)
     .innerJoin(environments, eq(environments.id, deployments.environmentId))
     .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, environments.projectId))
-    .where(
-      and(
-        eq(deployments.id, deploymentId),
-        eq(projectKubeProvisioning.state, 'failed'),
-        gte(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
-      ),
-    )
-    .limit(1);
+    .where(eq(deployments.id, deploymentId))
+    .limit(1)
+    .for('update', { of: projectKubeProvisioning });
   return row;
 }
 
-async function findTerminalResourceProvisioning(
+async function lockResourceProvisioning(
   transaction: DeploymentTransaction,
   resourceId: string,
-): Promise<TerminalProvisioningRow | undefined> {
+): Promise<ProjectProvisioningLockRow | undefined> {
   const [row] = await transaction
-    .select({ failureMessage: projectKubeProvisioning.failureMessage, projectId: projectKubeProvisioning.projectId })
+    .select({
+      attempts: projectKubeProvisioning.attempts,
+      failureMessage: projectKubeProvisioning.failureMessage,
+      projectId: projectKubeProvisioning.projectId,
+      state: projectKubeProvisioning.state,
+    })
     .from(projectResources)
     .innerJoin(environments, eq(environments.id, projectResources.environmentId))
     .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, environments.projectId))
-    .where(
-      and(
-        eq(projectResources.id, resourceId),
-        eq(projectKubeProvisioning.state, 'failed'),
-        gte(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
-      ),
-    )
-    .limit(1);
+    .where(eq(projectResources.id, resourceId))
+    .limit(1)
+    .for('update', { of: projectKubeProvisioning });
   return row;
 }
 
-async function propagateTerminalProvisioningRow(
+function terminalProvisioningRow(row: ProjectProvisioningLockRow | undefined): TerminalProvisioningRow | undefined {
+  return row?.state === 'failed' && row.attempts >= projectProvisioningAttemptLimit ? row : undefined;
+}
+
+export async function propagateTerminalProvisioningRow(
   transaction: DeploymentTransaction,
   row: TerminalProvisioningRow | undefined,
   failedAt: Date,
@@ -117,32 +102,6 @@ export async function failTerminalProjectProvisioning(
   const deploymentIds: string[] = await failWaitingProjectDeployments(transaction, projectId, failureMessage, failedAt);
   const resourceRunIds: string[] = await failWaitingResourceRuns(transaction, projectId, failureMessage, failedAt);
   await failWaitingOperations(transaction, [...deploymentIds, ...resourceRunIds], failureMessage, failedAt);
-}
-
-async function persistExpiredProjectProvisioning(
-  transaction: DeploymentTransaction,
-  now: Date,
-): Promise<TerminalProvisioningRow[]> {
-  return await transaction
-    .update(projectKubeProvisioning)
-    .set({
-      failureMessage: expiredProjectProvisioningLeaseMessage,
-      leaseExpiresAt: null,
-      leaseId: null,
-      state: 'failed',
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(projectKubeProvisioning.state, 'running'),
-        gte(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
-        lt(projectKubeProvisioning.leaseExpiresAt, now),
-      ),
-    )
-    .returning({
-      failureMessage: projectKubeProvisioning.failureMessage,
-      projectId: projectKubeProvisioning.projectId,
-    });
 }
 
 async function failWaitingProjectDeployments(

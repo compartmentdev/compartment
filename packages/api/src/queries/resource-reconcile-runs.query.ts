@@ -4,20 +4,12 @@ import type { ResourceClaimIdentity, ResourceReconcileIntent } from '@compartmen
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import { environments, projectKubeProvisioning, projectResources, resourceReconcileRuns } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
-import { enforceTerminalProvisioningForResource } from './project-provisioning-terminal.query';
 import type {
   AcknowledgeResourceReconcileRunInput,
   ClaimedResourceReconcileRun,
-  CreateResourceReconcileRunInput,
   ResourceReconcileRunLockRow,
   ResourceReconcileRunState,
 } from './resource-reconcile-runs.query.types';
-
-export async function createResourceReconcileRun(input: CreateResourceReconcileRunInput): Promise<void> {
-  await getApiDatabase().transaction(
-    async (tx: ApiDatabaseTransaction): Promise<void> => await createResourceReconcileRunWithExecutor(tx, input),
-  );
-}
 
 export async function readResourceReconcileRunState(operationId: string): Promise<ResourceReconcileRunState | null> {
   const [row] = await getApiDatabase()
@@ -26,22 +18,6 @@ export async function readResourceReconcileRunState(operationId: string): Promis
     .where(eq(resourceReconcileRuns.id, operationId))
     .limit(1);
   return row ?? null;
-}
-
-export async function createResourceReconcileRunWithExecutor(
-  executor: ApiDatabaseTransaction,
-  input: CreateResourceReconcileRunInput,
-): Promise<void> {
-  const createdAt: Date = new Date();
-  await executor.insert(resourceReconcileRuns).values({
-    expectedClaimsJson: JSON.stringify(input.expectedClaims),
-    id: input.operationId,
-    intentJson: JSON.stringify(input.intent),
-    operationType: input.type,
-    phase: input.type === 'bootstrap' ? 'bootstrap-pending' : 'reconcile-pending',
-    projectResourceId: input.intent.resourceId,
-  });
-  await enforceTerminalProvisioningForResource(executor, input.intent.resourceId, createdAt);
 }
 
 export async function claimResourceReconcileRun(): Promise<ClaimedResourceReconcileRun | null> {

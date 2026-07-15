@@ -1,4 +1,9 @@
-import { PatchStrategy, type KubernetesObject, type KubernetesObjectApi } from '@kubernetes/client-node';
+import {
+  PatchStrategy,
+  type KubernetesObject,
+  type KubernetesObjectApi,
+  type V1DeleteOptions,
+} from '@kubernetes/client-node';
 import type { KubeJobSpec, KubeManifest, KubeObservedManifest, ObserveLabels } from './kube-runtime.types';
 
 const fieldManager: string = 'compartment';
@@ -82,7 +87,9 @@ export async function deleteObjectIgnoringNotFound(
   propagationPolicy?: 'Foreground',
 ): Promise<void> {
   try {
-    await objectApi.delete(object, undefined, undefined, undefined, undefined, propagationPolicy);
+    const uid: string | undefined = object.metadata?.uid;
+    const options: V1DeleteOptions | undefined = uid === undefined ? undefined : { preconditions: { uid } };
+    await objectApi.delete(object, undefined, undefined, undefined, undefined, propagationPolicy, options);
   } catch (error) {
     if (!(error instanceof Error && readHttpStatusCode(error) === 404)) {
       throw error;

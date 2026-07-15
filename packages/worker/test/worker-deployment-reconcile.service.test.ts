@@ -75,12 +75,28 @@ describe('deployment reconciliation', (): void => {
 
   it('keeps an active Deployment active on a transient non-ready observation', async (): Promise<void> => {
     const runtime: KubeRuntime & { apply: Mock; observe: Mock } = activeRuntimeStub(false);
-    const activeTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'active' };
+    const activeTarget: DeploymentReconcileTarget = {
+      ...target(projection(null)),
+      rolloutStartedAt: new Date().toISOString(),
+      state: 'active',
+    };
 
     await reconcileDeploymentTarget(requester(), runtime, activeTarget);
 
     expect(runtime.observe).not.toHaveBeenCalled();
     expect(mocks.observeDeploymentReconcile).not.toHaveBeenCalled();
+  });
+
+  it('demotes an active Deployment when its rollout observation times out', async (): Promise<void> => {
+    const runtime: KubeRuntime & { apply: Mock } = activeRuntimeStub(false);
+    const activeTarget: DeploymentReconcileTarget = { ...target(projection(null)), state: 'active' };
+
+    await reconcileDeploymentTarget(requester(), runtime, activeTarget);
+
+    expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ observation: 'pending', revision: 0 }),
+    );
   });
 
   it('demotes an active Deployment only after Kubernetes reports ProgressDeadlineExceeded', async (): Promise<void> => {

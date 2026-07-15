@@ -3,6 +3,7 @@ import { readConsoleE2eBaseUrl } from './support/console-e2e-runtime';
 
 const isCi: boolean = process.env.CI === 'true';
 const consoleBaseUrl: string = readConsoleE2eBaseUrl();
+const consoleE2eProxyServer: string | undefined = process.env.COMPARTMENT_E2E_HTTP_PROXY;
 
 const chromiumProject: Project = {
   name: 'chromium',
@@ -31,6 +32,7 @@ const config: PlaywrightTestConfig = defineConfig({
     baseURL: consoleBaseUrl,
     ignoreHTTPSErrors: true,
     navigationTimeout: 30_000,
+    ...(consoleE2eProxyServer === undefined ? {} : { proxy: { server: consoleE2eProxyServer } }),
     screenshot: 'only-on-failure',
     trace: isCi ? 'on-first-retry' : 'retain-on-failure',
     video: 'off',
