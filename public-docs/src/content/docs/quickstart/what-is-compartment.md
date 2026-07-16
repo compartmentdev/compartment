@@ -14,7 +14,9 @@ Compartment has two user-facing parts:
 - the `compartment` CLI, which you use to log in, deploy, inspect, and operate projects;
 - the system itself, which exposes a browser control plane at `console.<baseDomain>` and hosts deployed apps under the install base domain.
 
-Operators install the system with its Helm chart. `compartment install --dev` only seeds the repository development environment; it is not a production installer.
+Operators run `compartment install` with an operator values file. The CLI deploys its matching bundled Helm chart,
+waits for the public control plane, and creates the first owner. `compartment install --dev` remains the repository
+development path.
 
 ## What it can run
 
@@ -36,7 +38,7 @@ Typical examples include:
 
 One of the core use cases for Compartment is working with AI coding agents.
 
-Because the deployment model is explicit, an agent can be told to make a repository Compartment-deployable, add the required descriptor files, and wire up a deploy flow that matches the current docs. Platform installation remains an operator-owned Helm task.
+Because the deployment model is explicit, an agent can be told to make a repository Compartment-deployable, add the required descriptor files, and wire up a deploy flow that matches the current docs. Platform installation remains an operator-owned task driven by the CLI and Helm values.
 
 That does not limit you to an agent-only workflow. You can still use a standard local CLI deploy flow, CI-driven automation, or a Git and GitHub deployment path.
 
