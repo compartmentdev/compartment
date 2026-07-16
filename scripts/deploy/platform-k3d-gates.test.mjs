@@ -33,14 +33,39 @@ vector_buffer_max_byte_size{component_id="product_store",buffer_type="disk"} 268
     );
   });
 
-  it('finds unavailable product deployments only', () => {
+  it('finds unavailable product deployments without treating stopped resources as degraded', () => {
     const deployments = JSON.stringify({
       items: [
-        { metadata: { namespace: 'cpt-one' }, spec: { replicas: 1 }, status: { availableReplicas: 0 } },
-        { metadata: { namespace: 'cpt-two' }, spec: { replicas: 1 }, status: { availableReplicas: 1 } },
-        { metadata: { namespace: 'compartment' }, spec: { replicas: 1 }, status: { availableReplicas: 0 } },
+        {
+          metadata: { labels: { app: 'resource' }, name: 'stopped-resource', namespace: 'cpt-one' },
+          spec: { replicas: 0 },
+          status: {},
+        },
+        {
+          metadata: { labels: { app: 'resource' }, name: 'unavailable-resource', namespace: 'cpt-one' },
+          spec: { replicas: 1 },
+          status: {},
+        },
+        {
+          metadata: { labels: { app: 'application' }, name: 'unavailable-app', namespace: 'cpt-two' },
+          spec: { replicas: 1 },
+          status: {},
+        },
+        {
+          metadata: { labels: { app: 'application' }, name: 'ready-app', namespace: 'cpt-three' },
+          spec: { replicas: 1 },
+          status: { availableReplicas: 1 },
+        },
+        {
+          metadata: { labels: { app: 'application' }, name: 'platform-api', namespace: 'compartment' },
+          spec: { replicas: 1 },
+          status: {},
+        },
       ],
     });
-    expect(findDegradedProductDeployments(deployments)).toHaveLength(1);
+    expect(findDegradedProductDeployments(deployments).map((deployment) => deployment.metadata.name)).toEqual([
+      'unavailable-resource',
+      'unavailable-app',
+    ]);
   });
 });
