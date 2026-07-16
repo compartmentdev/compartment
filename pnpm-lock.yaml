@@ -6,8 +6,6 @@ settings:
 
 overrides:
   '@esbuild-kit/core-utils>esbuild': 0.25.11
-  '@grpc/grpc-js': 1.14.4
-  protobufjs: 7.6.1
   yaml-language-server@1.20.0>yaml: 2.8.3
 
 importers:

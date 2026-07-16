@@ -46,8 +46,6 @@ import type {
   ResourceTargetInput,
 } from './resources.service.types';
 
-const resourceOperationRequestTimeoutMs: number = 15 * 60 * 1000;
-
 export async function listResources(
   context: AuthenticatedContext,
   input: ResourceScopeInput,
@@ -105,28 +103,28 @@ export async function startResource(
   context: AuthenticatedContext,
   input: ResourceTargetInput,
 ): Promise<ResourceResponse> {
-  return await startResourceApi(createResourceRequester(context), await resolveResourceTarget(input));
+  return await startResourceApi(createResourceOperationRequester(context), await resolveResourceTarget(input));
 }
 
 export async function bootstrapResource(
   context: AuthenticatedContext,
   input: ResourceTargetInput,
 ): Promise<ResourceResponse> {
-  return await bootstrapResourceApi(createResourceRequester(context), await resolveResourceTarget(input));
+  return await bootstrapResourceApi(createResourceOperationRequester(context), await resolveResourceTarget(input));
 }
 
 export async function stopResource(
   context: AuthenticatedContext,
   input: ResourceTargetInput,
 ): Promise<ResourceResponse> {
-  return await stopResourceApi(createResourceRequester(context), await resolveResourceTarget(input));
+  return await stopResourceApi(createResourceOperationRequester(context), await resolveResourceTarget(input));
 }
 
 export async function deleteResource(
   context: AuthenticatedContext,
   input: ResourceDeleteInput,
 ): Promise<ResourceDeleteResponse> {
-  return await deleteResourceApi(createResourceRequester(context), await resolveResourceTarget(input), {
+  return await deleteResourceApi(createResourceOperationRequester(context), await resolveResourceTarget(input), {
     ...(input.deleteData === true ? { confirmation: 'delete-resource-data', deleteData: true } : {}),
   });
 }
@@ -211,7 +209,7 @@ function createResourceRequester(context: AuthenticatedContext): CompartmentRequ
 function createResourceOperationRequester(context: AuthenticatedContext): CompartmentRequester {
   return createAuthenticatedRequester(requireOrganizationContext(context), {
     includeCurrentOrganization: true,
-    requestTimeoutMs: resourceOperationRequestTimeoutMs,
+    requestTimeoutMs: null,
   });
 }
 

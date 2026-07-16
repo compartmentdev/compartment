@@ -86,7 +86,6 @@ const consoleE2eTempRootDirectory: string = readSocketSafeTempRootDirectory('ouc
 const consoleE2eSetupCommandTimeoutMs: number = 10 * 60_000;
 const consoleE2ePlaywrightCommandTimeoutMs: number = 5 * 60_000;
 const consoleE2eBuildMessage: string = 'console-e2e-build-message';
-const consoleE2eDockerNamespace: string = 'compartment';
 const consoleE2eProxyPath: string = '/api/ready';
 const consoleE2eMultiServiceSourceDirectory: string = resolve(__dirname, '../../../examples/multi-service');
 const consoleE2eLoginPrincipalPermissions: string = [
@@ -427,7 +426,6 @@ function buildConsoleE2ePlaywrightEnv(
   env.COMPARTMENT_E2E_ATTACKER_APP_BASE_URL = fixture.deployment.attackerRouteUrl;
   env.COMPARTMENT_E2E_PROJECT_NAME = fixture.deployment.projectName;
   env.COMPARTMENT_E2E_CLEANUP_PROJECT_NAME = fixture.cleanupProject.projectName;
-  env.COMPARTMENT_E2E_DOCKER_NAMESPACE = consoleE2eDockerNamespace;
   env.COMPARTMENT_E2E_APP_BASE_URL = fixture.deployment.routeUrl;
   env.COMPARTMENT_E2E_SERVICE_NAME = fixture.deployment.serviceName;
   env.COMPARTMENT_E2E_DEPLOYMENT_RUN_ID = fixture.deployment.deploymentRunId;

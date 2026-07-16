@@ -37,7 +37,6 @@ describe('readCliVersion', (): void => {
       JSON.stringify({
         buildCommitSha: '1234567890abcdef1234567890abcdef12345678',
         cliVersion: readCliPackageVersion(),
-        defaultRegistryImageTag: 'sha-1234567890abcdef1234567890abcdef12345678',
         distributionChannel: 'main',
       }),
     );
@@ -50,7 +49,6 @@ describe('readCliVersion', (): void => {
       JSON.stringify({
         buildCommitSha: '1234567890abcdef1234567890abcdef12345678',
         cliVersion: readCliPackageVersion(),
-        defaultRegistryImageTag: readCliPackageVersion(),
         distributionChannel: 'release',
       }),
     );

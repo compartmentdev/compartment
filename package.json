@@ -8,17 +8,12 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "argon2",
-      "cpu-features",
       "esbuild",
       "msw",
-      "protobufjs",
-      "sharp",
-      "ssh2"
+      "sharp"
     ],
     "overrides": {
       "@esbuild-kit/core-utils>esbuild": "0.25.11",
-      "@grpc/grpc-js": "1.14.4",
-      "protobufjs": "7.6.1",
       "yaml-language-server@1.20.0>yaml": "2.8.3"
     }
   },
@@ -37,7 +32,7 @@
     "broker:deploy:prod": "node ./scripts/deploy/deploy-broker-prod.mjs",
     "release:prepare": "node ./scripts/release/prepare.mjs",
     "cli:build:sea": "node ./scripts/release/build-cli-sea.mjs",
-    "cli:build:sea:source": "node ./scripts/release/build-cli-sea.mjs --distribution-channel source --default-registry-image-tag latest",
+    "cli:build:sea:source": "node ./scripts/release/build-cli-sea.mjs --distribution-channel source",
     "cli:render:installer": "node ./scripts/release/render-cli-install-script.mjs",
     "build": "turbo run build",
     "build:test": "turbo run build:test",

@@ -315,16 +315,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Set up Cosign
-        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
-        with:
-          cosign-release: v2.6.1
-
       - name: Build rolling CLI binary
         run: |
           pnpm cli:build:sea \
             --distribution-channel main \
-            --default-registry-image-tag "sha-${PUBLISH_SHA}" \
             --build-commit-sha "${PUBLISH_SHA}" \
             --output-dir ./.compartment/cli-dist
 

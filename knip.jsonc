@@ -74,8 +74,6 @@
       "project": ["src/**/*.ts", "test/**/*.ts"],
     },
     "packages/kube-runtime": {
-      // Library-first P1 has no production consumer until the integration cutover.
-      "includeEntryExports": false,
       "entry": ["src/index.ts!"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
     },

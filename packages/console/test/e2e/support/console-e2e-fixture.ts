@@ -11,7 +11,6 @@ export interface ConsoleE2eDeploymentFixture {
 }
 
 export interface ConsoleE2eCleanupProjectFixture {
-  readonly dockerNamespace: string;
   readonly projectName: string;
 }
 
@@ -58,7 +57,6 @@ export function readConsoleE2eFixture(): ConsoleE2eFixture {
     otherOrganizationSlug: readRequiredEnvironmentValue('COMPARTMENT_E2E_OTHER_ORGANIZATION_SLUG'),
   };
   const cleanupProject: ConsoleE2eCleanupProjectFixture = {
-    dockerNamespace: readRequiredEnvironmentValue('COMPARTMENT_E2E_DOCKER_NAMESPACE'),
     projectName: readRequiredEnvironmentValue('COMPARTMENT_E2E_CLEANUP_PROJECT_NAME'),
   };
 

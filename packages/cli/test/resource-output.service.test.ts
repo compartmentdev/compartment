@@ -62,7 +62,7 @@ ports: 5432`,
         {
           name: 'host',
           sensitivity: 'plain',
-          value: 'postgres.production.smoke.resource.internal',
+          value: 'resource-res-123.cpt-prj-123.svc',
           valueFingerprint: 'b'.repeat(64),
           valueHidden: false,
         },
@@ -74,7 +74,7 @@ ports: 5432`,
     };
 
     expect(createResourceOutputListMessage(listResponse)).toBe(
-      'connection-url\tsensitive\t<hidden>\nhost\tplain\tpostgres.production.smoke.resource.internal',
+      'connection-url\tsensitive\t<hidden>\nhost\tplain\tresource-res-123.cpt-prj-123.svc',
     );
     expect(createResourceOutputShowMessage(showResponse)).toBe('connection-url\tsensitive\t<hidden>');
   });

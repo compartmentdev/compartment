@@ -337,17 +337,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Set up Cosign
-        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
-        with:
-          cosign-release: v2.6.1
-
       - name: Build stable CLI binary
         run: |
           pnpm cli:build:sea \
             --build-commit-sha "${{ github.sha }}" \
             --distribution-channel release \
-            --default-registry-image-tag "${{ needs.build-release-images.outputs.release_version }}" \
             --output-dir ./.compartment/cli-dist
 
       - name: Smoke test CLI binary

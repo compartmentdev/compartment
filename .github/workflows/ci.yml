@@ -188,7 +188,7 @@ jobs:
 
       - name: Smoke test the standalone CLI build
         run: |
-          pnpm cli:build:sea --distribution-channel source --default-registry-image-tag latest --output-dir ./.compartment/cli-dist-ci
+          pnpm cli:build:sea --distribution-channel source --output-dir ./.compartment/cli-dist-ci
           ./.compartment/cli-dist-ci/compartment --version
           ./.compartment/cli-dist-ci/compartment --help
 

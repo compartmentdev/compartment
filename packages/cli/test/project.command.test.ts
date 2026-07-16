@@ -480,7 +480,7 @@ Showing projects 1-100 of 101. Use --page 2 to view more.
           JSON.stringify(
             createErrorResponse(
               'project_delete_blocked',
-              'The project cannot be deleted while deployments are active, queued, running, or draining.',
+              'The project cannot be deleted while deployments are active, queued, or running.',
             ),
           ),
           {
@@ -498,10 +498,7 @@ Showing projects 1-100 of 101. Use --page 2 to view more.
       createCliCapture(),
     );
 
-    expectCliFailure(
-      result,
-      'The project cannot be deleted while deployments are active, queued, running, or draining.',
-    );
+    expectCliFailure(result, 'The project cannot be deleted while deployments are active, queued, or running.');
   });
 });
 

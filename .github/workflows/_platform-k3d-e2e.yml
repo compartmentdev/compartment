@@ -21,7 +21,6 @@ jobs:
     timeout-minutes: 120
     env:
       COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E: '1'
-      COMPARTMENT_SELF_HOSTED_USER_SETUP_VERSION: sha-${{ github.sha }}
       COMPARTMENT_TEST_APP_NODE_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
       COMPARTMENT_TEST_POSTGRES_IMAGE: postgres:16
       DOCKER_CONFIG: ${{ github.workspace }}/.compartment/docker-config
@@ -90,19 +89,12 @@ jobs:
           key: ${{ inputs.self_hosted_image_cache_key }}
           fail-on-cache-miss: true
 
-      - name: Install cosign for CLI artifact build
-        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
-        with:
-          cosign-release: v2.6.1
-
       - name: Build CLI artifact
         env:
           BUILD_COMMIT_SHA: ${{ github.sha }}
-          PRIMARY_TAG: sha-${{ github.sha }}
         run: |
           pnpm cli:build:sea \
             --distribution-channel source \
-            --default-registry-image-tag "$PRIMARY_TAG" \
             --build-commit-sha "$BUILD_COMMIT_SHA" \
             --output-dir ./.compartment/cli-dist
 

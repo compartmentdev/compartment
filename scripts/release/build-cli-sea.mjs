@@ -45,7 +45,6 @@ async function main() {
 function readCliSeaBuildOptions(args, repositoryRoot) {
   const options = {
     buildCommitSha: undefined,
-    defaultRegistryImageTag: undefined,
     distributionChannel: undefined,
     outputDirectory: resolve(repositoryRoot, '.compartment/cli-dist'),
   };
@@ -54,11 +53,6 @@ function readCliSeaBuildOptions(args, repositoryRoot) {
     const argument = args[index];
     if (argument === '--distribution-channel') {
       options.distributionChannel = readRequiredCliSeaOptionValue(args, ++index, '--distribution-channel');
-      continue;
-    }
-
-    if (argument === '--default-registry-image-tag') {
-      options.defaultRegistryImageTag = readRequiredCliSeaOptionValue(args, ++index, '--default-registry-image-tag');
       continue;
     }
 
@@ -81,19 +75,14 @@ function readCliSeaBuildOptions(args, repositoryRoot) {
     options.distributionChannel === 'main' ||
     options.distributionChannel === 'release'
   ) {
-    if (typeof options.defaultRegistryImageTag === 'string' && options.defaultRegistryImageTag !== '') {
-      return {
-        buildCommitSha: options.buildCommitSha,
-        defaultRegistryImageTag: options.defaultRegistryImageTag,
-        distributionChannel: options.distributionChannel,
-        outputDirectory: options.outputDirectory,
-      };
-    }
+    return {
+      buildCommitSha: options.buildCommitSha,
+      distributionChannel: options.distributionChannel,
+      outputDirectory: options.outputDirectory,
+    };
   }
 
-  throw new Error(
-    'Expected --distribution-channel (source|main|release) and --default-registry-image-tag when building the CLI SEA binary.',
-  );
+  throw new Error('Expected --distribution-channel (source|main|release) when building the CLI SEA binary.');
 }
 
 function readRequiredCliSeaOptionValue(args, index, optionName) {
@@ -132,7 +121,6 @@ async function writeBuildInfo(buildInfoPath, options) {
       {
         ...(options.buildCommitSha !== undefined ? { buildCommitSha: options.buildCommitSha } : {}),
         cliVersion: await readCliVersion(),
-        defaultRegistryImageTag: options.defaultRegistryImageTag,
         distributionChannel: options.distributionChannel,
       },
       null,

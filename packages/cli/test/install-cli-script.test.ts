@@ -731,16 +731,6 @@ printf '%s\\n' "$*" >> "\${state_dir}/compartment.log"
   --version)
     printf '${expectedInstalledVersion}\\n'
     ;;
-  install)
-    printf 'Bootstrapped self-hosted runtime.\\n'
-    ;;
-  system)
-    if [ "\${2:-}" != "update" ]; then
-      printf 'Unexpected system subcommand: %s\\n' "\${2:-}" >&2
-      exit 1
-    fi
-    printf 'Updated self-hosted runtime.\\n'
-    ;;
   login)
     api_url=""
     email=""

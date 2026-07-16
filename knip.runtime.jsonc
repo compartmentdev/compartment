@@ -14,10 +14,6 @@
   ],
   "ignoreBinaries": ["astro", "dotenv"],
   "ignoreDependencies": ["dotenv-cli"],
-  "ignoreIssues": {
-    // Public contract types can be consumed outside this workspace.
-    "packages/contracts/src/index.misc.ts": ["types"],
-  },
   "ignoreWorkspaces": ["packages/test-support", "packages/eslint-config", "packages/eslint-plugin"],
   "workspaces": {
     "packages/api": {
@@ -29,7 +25,6 @@
       "project": ["src/**/*.ts!", "!test/**!"],
     },
     "packages/kube-runtime": {
-      "includeEntryExports": false,
       "entry": ["src/index.ts!"],
       "project": ["src/**/*.ts!", "!test/**!"],
     },

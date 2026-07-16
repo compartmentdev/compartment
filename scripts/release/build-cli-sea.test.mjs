@@ -8,7 +8,6 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 const defaultPath = process.env.PATH ?? '/usr/bin:/bin';
 const distributionChannel = 'main';
 const buildCommitSha = '1234567890abcdef1234567890abcdef12345678';
-const defaultRegistryImageTag = 'sha-1234567890abcdef1234567890abcdef12345678';
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const buildCliSeaScriptPath = resolve(repositoryRoot, 'scripts/release/build-cli-sea.mjs');
 const temporaryDirectories = [];
@@ -31,8 +30,6 @@ describe('build-cli-sea', () => {
         buildCliSeaScriptPath,
         '--distribution-channel',
         distributionChannel,
-        '--default-registry-image-tag',
-        defaultRegistryImageTag,
         '--build-commit-sha',
         buildCommitSha,
         '--output-dir',
@@ -53,7 +50,7 @@ describe('build-cli-sea', () => {
     const capturedBuildInfo = await readCapturedBuildInfo(fixture.captureBuildInfoPath);
     const capturedSeaAssets = JSON.parse(await readFile(fixture.captureSeaAssetsPath, 'utf8'));
     expect(capturedBuildInfo.buildCommitSha).toBe(buildCommitSha);
-    expect(capturedBuildInfo.defaultRegistryImageTag).toBe(defaultRegistryImageTag);
+    expect(capturedBuildInfo).not.toHaveProperty(['defaultRegistry', 'ImageTag'].join(''));
     expect(capturedBuildInfo.distributionChannel).toBe(distributionChannel);
     expect(capturedSeaAssets).toEqual({ 'cli-build-info.json': expect.any(String) });
   }, 20_000);

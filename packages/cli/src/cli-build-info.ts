@@ -12,7 +12,6 @@ import type {
 const cliBuildInfoAssetName: string = 'cli-build-info.json';
 const commitShaPattern: RegExp = /^[0-9a-f]{7,40}$/i;
 const defaultDistributionChannel: CliDistributionChannel = 'source';
-const defaultRegistryImageTag: string = 'latest';
 const mainVersionCommitLength: number = 7;
 const packageJsonPath: string = resolve(__dirname, '../package.json');
 
@@ -28,7 +27,6 @@ function readCliBuildInfo(): CliBuildInfo {
 
   return {
     cliVersion: readPackageVersion(),
-    defaultRegistryImageTag,
     distributionChannel: defaultDistributionChannel,
   };
 }
@@ -71,7 +69,6 @@ function isCliBuildInfo(value: CliBuildInfo | JsonValue): value is CliBuildInfo 
   return (
     isOptionalBuildCommitSha(value.buildCommitSha) &&
     hasText(readStringCandidate(value.cliVersion)) &&
-    hasText(readStringCandidate(value.defaultRegistryImageTag)) &&
     isCliDistributionChannel(value.distributionChannel)
   );
 }
