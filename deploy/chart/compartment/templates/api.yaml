@@ -64,6 +64,9 @@ spec:
             - name: COMPARTMENT_EDGE_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: edge-token}
+            - name: COMPARTMENT_INSTALL_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: install-token}
             - name: COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: product-log-ingest-token}

@@ -118,6 +118,7 @@ productLogs:
   namespace: ''
 
 secrets:
+  installToken: ''
   postgresPassword: ''
   registryReadPassword: ''
   registryWritePassword: ''

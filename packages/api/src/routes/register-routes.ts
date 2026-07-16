@@ -23,15 +23,19 @@ import { registerSystemDomainProbeRoute } from './system-domain/register-system-
 
 type RegisterRoutesDone = (err?: Error) => void;
 
-export function registerApiRoutes(app: ApiApp, config: ApiConfig): void {
-  registerTopLevelRoutes(app);
+interface InstallRoutesPluginOptions extends FastifyPluginOptions {
+  installToken: string;
+}
+
+export function registerApiRoutes(app: ApiApp, config: ApiConfig, installToken: string): void {
+  registerTopLevelRoutes(app, installToken);
   registerNestedRoutes(app, config);
 }
 
-function registerTopLevelRoutes(app: ApiApp): void {
+function registerTopLevelRoutes(app: ApiApp, installToken: string): void {
   registerHealthRoutes(app);
   registerBrowserRoutesEntry(app);
-  registerInstallRoutes(app);
+  registerInstallRoutes(app, installToken);
   registerAuthRoutes(app);
   registerSourceRoutes(app);
   registerSystemRoutes(app);
@@ -46,17 +50,21 @@ function registerBrowserRoutesEntry(app: ApiApp): void {
   app.register(registerBrowserRoutes);
 }
 
-function registerInstallRoutes(app: ApiApp): void {
-  app.register(registerInstallRoutesWithNoStore);
+function registerInstallRoutes(app: ApiApp, installToken: string): void {
+  app.register(registerInstallRoutesWithNoStore, { installToken });
 }
 
 function registerAuthRoutes(app: ApiApp): void {
   app.register(registerAuthRoutesWithNoStore);
 }
 
-function registerInstallRoutesWithNoStore(app: ApiApp, _options: FastifyPluginOptions, done: RegisterRoutesDone): void {
+function registerInstallRoutesWithNoStore(
+  app: ApiApp,
+  options: InstallRoutesPluginOptions,
+  done: RegisterRoutesDone,
+): void {
   app.addHook('onSend', addNoStoreCacheControlHeader);
-  registerPostInstallRoute(app);
+  registerPostInstallRoute(app, options.installToken);
   done();
 }
 

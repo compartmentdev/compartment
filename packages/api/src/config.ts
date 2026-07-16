@@ -21,6 +21,7 @@ import { assertValidSystemApiSocketPath } from './system-api-socket-path';
 export type { AuditFileSinkConfig } from './audit-file-sink-config';
 export { readApiPublicIngressConfig, type ApiPublicIngressConfig } from './api-public-ingress-config';
 
+const installTokenSchema: z.ZodString = z.string().min(1);
 const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_API_BIND_HOST: z.string().min(1),
   COMPARTMENT_API_PORT: z.coerce.number().int().positive(),
@@ -34,6 +35,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_EDGE_TOKEN: z.string().min(1),
   COMPARTMENT_ENV: z.enum(['dev', 'self-hosted']).optional(),
   COMPARTMENT_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
+  COMPARTMENT_INSTALL_TOKEN: installTokenSchema,
   COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: z.string(),
   COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: z.string(),
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: z.string(),
@@ -135,6 +137,10 @@ export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     ...readApiRuntimeConfig(parsed),
     ...readApiSecretConfig(parsed),
   };
+}
+
+export function readApiInstallToken(env: NodeJS.ProcessEnv = process.env): string {
+  return installTokenSchema.parse(env.COMPARTMENT_INSTALL_TOKEN);
 }
 
 function readApiHostConfig(parsed: ApiConfigEnv): ApiHostConfig {

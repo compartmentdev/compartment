@@ -7,13 +7,19 @@ import {
   type InstallResponse,
 } from '@compartment/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { readHeaderValue } from '@compartment/utils';
 import type { ApiApp } from '../../app.types';
+import { requireExpectedBearerToken } from '../../http/headers';
 import { parseRequestValue } from '../../http/validation';
 import { install } from '../../services/install.service';
 import type { InstallResult, InstallServiceInput } from '../../services/install.service.types';
 import { buildOperationSummary } from '../presenters/operation.presenter';
 
-export function registerPostInstallRoute(app: ApiApp): void {
+const installAuthenticationErrorCode: string = 'install_unauthorized';
+const installAuthenticationErrorMessage: string = 'A valid install token is required.';
+
+export function registerPostInstallRoute(app: ApiApp, installToken: string): void {
+  // A high-entropy operator token authenticates this one-time route; a public rate limiter would not add protection.
   app.post(
     compartmentInstallPathname,
     {
@@ -23,11 +29,22 @@ export function registerPostInstallRoute(app: ApiApp): void {
         }),
       },
     },
-    handlePostInstall,
+    async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> =>
+      await handlePostInstall(request, reply, installToken),
   );
 }
 
-async function handlePostInstall(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+async function handlePostInstall(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  installToken: string,
+): Promise<FastifyReply> {
+  requireExpectedBearerToken(
+    readHeaderValue(request.headers.authorization),
+    installToken,
+    installAuthenticationErrorCode,
+    installAuthenticationErrorMessage,
+  );
   const result: InstallResult = await install(readInstallServiceInput(request));
   const response: InstallResponse = buildInstallResponse(result);
 

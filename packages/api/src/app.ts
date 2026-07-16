@@ -3,7 +3,7 @@ import pino from 'pino';
 import type { Pool } from 'pg';
 import multipart from '@fastify/multipart';
 
-import { readApiConfig, type ApiConfig } from './config';
+import { readApiConfig, readApiInstallToken, type ApiConfig } from './config';
 import type { ApiApp, CreateAppOptions } from './app.types';
 import { createDatabase, createDatabasePool, type Database } from './db/client';
 import { registerApiErrorHandler } from './http/error-handler';
@@ -21,7 +21,7 @@ import {
   repairPrivateRuntimeStoragePermissions,
 } from './services/private-runtime-storage-permissions.service';
 
-type AppRouteRegistrar = (app: ApiApp, config: ApiConfig) => void;
+type AppRouteRegistrar = (app: ApiApp, config: ApiConfig, installToken: string) => void;
 
 interface RuntimeAppInput {
   config: ApiConfig;
@@ -61,11 +61,20 @@ function createConfiguredApp(
   );
   const app: ApiApp = createRuntimeApp({ config, configureRuntime, db: configuredDatabase.db });
   registerApiErrorHandler(app);
-  app.after((): void => {
-    registerRoutes(app, config);
-  });
+  registerConfiguredRoutes(app, config, readApiInstallToken(), registerRoutes);
   registerAppCloseHook(app, closePool ? [pool, ...configuredDatabase.closePools] : []);
   return app;
+}
+
+function registerConfiguredRoutes(
+  app: ApiApp,
+  config: ApiConfig,
+  installToken: string,
+  registerRoutes: AppRouteRegistrar,
+): void {
+  app.after((): void => {
+    registerRoutes(app, config, installToken);
+  });
 }
 
 function resolveConfiguredAppDatabase(
