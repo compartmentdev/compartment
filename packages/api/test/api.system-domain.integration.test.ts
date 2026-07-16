@@ -37,7 +37,7 @@ import { operations, systemDomainSetupState } from '../src/db/schema';
 import { createEdgeStateUpdateFailedError } from '../src/errors/api-business-error';
 import { clearApiRuntime, configureApiRuntime } from '../src/runtime/runtime';
 
-import { installCompartment } from './api-integration.harness';
+import { buildInstallAuthorizationHeaders, installCompartment } from './api-integration.harness';
 import {
   alternatePublicIpv4Address,
   createEmptyPublicIngressConfig,
@@ -307,6 +307,7 @@ process.env.COMPARTMENT_DATABASE_URL = apiIntegrationDatabaseUrl;
 const testCustomTlsDirectory: string = resolve(tmpdir(), 'compartment-api-integration-system-domain-tls');
 process.env.COMPARTMENT_SESSION_SECRET = process.env.COMPARTMENT_SESSION_SECRET ?? 'test-secret';
 process.env.COMPARTMENT_ENV = 'dev';
+process.env.COMPARTMENT_INSTALL_TOKEN = 'test-install-token';
 process.env.COMPARTMENT_BASE_DOMAIN = 'localhost';
 process.env.COMPARTMENT_CADDY_TLS_MODE = 'internal';
 process.env.COMPARTMENT_CUSTOM_TLS_DIR = testCustomTlsDirectory;
@@ -417,6 +418,7 @@ describe('Phase 0 API integration system domain', (): void => {
   });
   it('creates the first organization, admin credentials, and operation record during install', async (): Promise<void> => {
     const installResponse: LightMyRequestResponse = await app.inject({
+      headers: buildInstallAuthorizationHeaders(),
       method: 'POST',
       url: '/v1/install',
       payload: {

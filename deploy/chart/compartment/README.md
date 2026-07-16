@@ -5,13 +5,35 @@
 - Kubernetes 1.30.0 or newer. The chart uses the stable `admissionregistration.k8s.io/v1`
   `ValidatingAdmissionPolicy` API to confine project-bootstrap authority.
 - Helm 4.x.
+- Installer credentials that can manage the chart's Namespaces, ClusterRoles, ClusterRoleBinding,
+  ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding, and namespaced resources.
 
 The chart declares its Kubernetes compatibility range in `Chart.yaml`; Helm rejects older clusters before rendering.
 
 ## Install
 
-Use the chart from the same source release as the image tags you deploy. Set `platform.startupStage=full`; the
-`foundation` stage exists only for workflows that must populate the bundled registry before starting the platform.
+The supported owner-bootstrap flow is `compartment install`. Release CLI binaries bundle the matching chart, install
+its `foundation` and `full` stages, wait for the public Console endpoint, create the first owner, and save the new CLI
+session. Prepare the values file described below, then run:
+
+```bash
+compartment install \
+  --api-url https://console.apps.example.com \
+  --base-domain apps.example.com \
+  --values compartment-values.yaml
+```
+
+The command prompts for the owner email, organization, and password. Source checkouts do not contain an embedded
+chart; pass `--chart ./deploy/chart/compartment` when running a source-built CLI.
+
+Retry the command with the same release coordinates when it stops before confirming owner creation. It resumes a
+deployed foundation or full release and preserves the install token. Repair or remove Helm releases in failed,
+pending, or uninstalled states before retrying. Once the owner exists, the install endpoint is closed; recover the
+local session with `compartment login` instead.
+
+For low-level operator recovery, use the chart from the same source release as the image tags you deploy. Set
+`platform.startupStage=full`; the `foundation` stage exists for the CLI's initial secret-generating install and for
+workflows that must populate the bundled registry before starting the platform.
 
 ```bash
 helm upgrade --install compartment ./deploy/chart/compartment \
@@ -26,7 +48,8 @@ helm upgrade --install compartment ./deploy/chart/compartment \
 
 At minimum, decide and persist these values:
 
-- `platform.baseDomain`, `platform.publicProtocol`, and `platform.tlsMode`;
+- `platform.baseDomain`, `platform.publicProtocol`, and `platform.tlsMode: custom-http` for the supported external
+  TLS-termination install path;
 - `service.caddy.type` and the external ingress or load-balancer configuration;
 - `storage.storageClass` and the PVC sizes under `storage`;
 - immutable tags for the platform images;

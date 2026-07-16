@@ -3,7 +3,7 @@
 ## Owns
 
 - `deploy/chart/compartment/`: installation-time platform Kubernetes resources.
-- `deploy/e2e/`: isolated k3d lifecycle, image build/import, staged Helm installation, readiness checks, and benchmark fixtures.
+- `deploy/e2e/`: isolated k3d lifecycle, image build/import, CLI-driven staged Helm installation, readiness checks, and benchmark fixtures.
 
 ## Must not
 

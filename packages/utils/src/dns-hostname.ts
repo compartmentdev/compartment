@@ -1,3 +1,6 @@
+const dnsHostnamePattern: RegExp =
+  /^(localhost|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)$/u;
+
 export function normalizeDnsHostname(value: string): string {
   const normalizedValue: string = value.trim().toLowerCase();
   let normalizedLength: number = normalizedValue.length;
@@ -7,4 +10,8 @@ export function normalizeDnsHostname(value: string): string {
   }
 
   return normalizedValue.slice(0, normalizedLength);
+}
+
+export function isValidDnsHostname(value: string): boolean {
+  return dnsHostnamePattern.test(value);
 }

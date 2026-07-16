@@ -52,7 +52,10 @@ describe('build-cli-sea', () => {
     expect(capturedBuildInfo.buildCommitSha).toBe(buildCommitSha);
     expect(capturedBuildInfo).not.toHaveProperty(['defaultRegistry', 'ImageTag'].join(''));
     expect(capturedBuildInfo.distributionChannel).toBe(distributionChannel);
-    expect(capturedSeaAssets).toEqual({ 'cli-build-info.json': expect.any(String) });
+    expect(capturedSeaAssets).toEqual({
+      'cli-build-info.json': expect.any(String),
+      'compartment-chart.tgz': expect.any(String),
+    });
   }, 20_000);
 });
 async function createTemporaryDirectory() {
@@ -81,6 +84,7 @@ async function createStubCommands(stubCommandDirectory) {
   await writeExecutableScript(join(stubCommandDirectory, 'codesign'), buildCodesignStubScript());
   await writeExecutableScript(join(stubCommandDirectory, 'node'), buildNodeStubScript());
   await writeExecutableScript(join(stubCommandDirectory, 'pnpm'), buildPnpmStubScript());
+  await writeExecutableScript(join(stubCommandDirectory, 'tar'), buildTarStubScript());
 }
 async function readCapturedBuildInfo(captureBuildInfoPath) {
   const capturedBuildInfoText = await readFile(captureBuildInfoPath, 'utf8');
@@ -153,6 +157,16 @@ fi
 
 printf 'Unexpected pnpm invocation: %s\\n' "$*" >&2
 exit 1
+`);
+}
+function buildTarStubScript() {
+  return createShellScript(`
+if [ "\${COPYFILE_DISABLE:-}" != "1" ]; then
+  printf 'Expected COPYFILE_DISABLE=1 while archiving the Helm chart.\\n' >&2
+  exit 1
+fi
+archive_path="$2"
+printf 'chart archive' > "$archive_path"
 `);
 }
 function createShellScript(body) {

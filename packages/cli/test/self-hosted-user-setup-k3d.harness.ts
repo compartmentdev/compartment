@@ -27,10 +27,9 @@ import {
   type SelfHostedUserSetupCommandResult,
 } from './self-hosted-user-setup-command.harness';
 
-// In k3d mode the platform is provisioned externally (helm via
-// scripts/deploy/platform-k3d-e2e.mjs) and seeded once with `install --dev`;
-// suites receive that seed through env and provision isolated per-suite
-// organizations instead of installing the runtime themselves.
+// The first k3d suite installs the platform through the production Helm-backed
+// CLI command and publishes its owner through env. Later suites provision
+// isolated organizations through that owner instead of reinstalling the platform.
 export interface K3dPlatformSeed {
   readonly apiUrl: string;
   readonly compartmentUrl: string;

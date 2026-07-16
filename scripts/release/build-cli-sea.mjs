@@ -9,6 +9,7 @@ const seaBlobAssetName = 'NODE_SEA_BLOB';
 // Required Node SEA sentinel fuse from the official Node/postject flow.
 const seaFuse = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
 const bundleEntryPath = 'packages/cli/dist/bin.js';
+const bundledKubernetesChartAssetName = 'compartment-chart.tgz';
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
 async function main() {
@@ -21,14 +22,16 @@ async function main() {
 
     const bundlePath = resolve(buildDirectory, 'bundle', 'index.js');
     const buildInfoPath = resolve(buildDirectory, 'cli-build-info.json');
+    const chartArchivePath = resolve(buildDirectory, bundledKubernetesChartAssetName);
     const seaBlobPath = resolve(buildDirectory, 'compartment.blob');
     const seaConfigPath = resolve(buildDirectory, 'sea-config.json');
     const outputBinaryPath = resolve(options.outputDirectory, 'compartment');
 
     await mkdir(options.outputDirectory, { recursive: true });
     bundleCliEntry(repositoryRoot, dirname(bundlePath));
+    createKubernetesChartArchive(chartArchivePath);
     await writeBuildInfo(buildInfoPath, options);
-    await writeSeaConfig(seaConfigPath, seaBlobPath, buildInfoPath, bundlePath);
+    await writeSeaConfig(seaConfigPath, seaBlobPath, buildInfoPath, bundlePath, chartArchivePath);
     generateSeaBlob(repositoryRoot, seaConfigPath);
     await copyFile(process.execPath, outputBinaryPath);
     removeMacOsSignature(outputBinaryPath);
@@ -142,10 +145,20 @@ async function readCliVersion() {
   throw new Error(`Expected ${cliPackageJsonPath} to define a non-empty version.`);
 }
 
-async function writeSeaConfig(seaConfigPath, seaBlobPath, buildInfoPath, bundlePath) {
+function createKubernetesChartArchive(chartArchivePath) {
+  runCommand(
+    'tar',
+    ['-czf', chartArchivePath, '-C', resolve(repositoryRoot, 'deploy/chart'), 'compartment'],
+    repositoryRoot,
+    { ...process.env, COPYFILE_DISABLE: '1' },
+  );
+}
+
+async function writeSeaConfig(seaConfigPath, seaBlobPath, buildInfoPath, bundlePath, chartArchivePath) {
   const seaConfig = {
     assets: {
       'cli-build-info.json': buildInfoPath,
+      [bundledKubernetesChartAssetName]: chartArchivePath,
     },
     disableExperimentalSEAWarning: true,
     main: bundlePath,

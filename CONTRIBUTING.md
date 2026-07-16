@@ -120,7 +120,9 @@ pnpm docs:build
 Use the heavier suites only when the change requires them:
 
 - `pnpm test:db` for DB-backed API integration or CLI smoke changes.
-- `pnpm platform:e2e:up` plus the focused k3d suite for deploy, build, or runtime changes.
+- `pnpm platform:e2e:up`, the production-install k3d suite, and the focused k3d suite for deploy, build, or runtime
+  changes. The first suite installs the platform and creates the owner before later suites run.
+- Outside GitHub Actions, source `.compartment/platform-k3d-e2e-owner.env` before running a later k3d suite in a separate process.
 - `pnpm check:ci` only when CI-parity validation is explicitly needed.
 
 ## Commit Messages

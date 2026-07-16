@@ -8,6 +8,14 @@ export function readSeaAssetText(assetName: string): string | undefined {
   return getAsset(assetName, 'utf8');
 }
 
+export function readSeaAssetBuffer(assetName: string): Buffer | undefined {
+  if (!isSeaRuntime()) {
+    return undefined;
+  }
+
+  return Buffer.from(getAsset(assetName));
+}
+
 function isSeaRuntime(): boolean {
   return isSea();
 }

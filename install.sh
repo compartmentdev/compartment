@@ -7,11 +7,20 @@ channel="latest"
 version=""
 version_argument="0"
 bin_dir=""
+init_install="0"
 init_login="0"
-login_api_url=""
-login_email=""
-login_organization=""
-login_onboarding_session=""
+init_api_url=""
+init_email=""
+init_organization=""
+init_organization_slug=""
+init_onboarding_session=""
+install_base_domain=""
+install_chart_path=""
+install_kube_context=""
+install_namespace=""
+install_release_name=""
+install_remote=""
+install_values_path=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -31,24 +40,60 @@ while [ "$#" -gt 0 ]; do
       bin_dir="$2"
       shift 2
       ;;
+    --init-install)
+      init_install="1"
+      shift
+      ;;
     --init-login)
       init_login="1"
       shift
       ;;
     --api-url)
-      login_api_url="$2"
+      init_api_url="$2"
       shift 2
       ;;
     --email)
-      login_email="$2"
+      init_email="$2"
       shift 2
       ;;
     --organization)
-      login_organization="$2"
+      init_organization="$2"
+      shift 2
+      ;;
+    --organization-slug)
+      init_organization_slug="$2"
       shift 2
       ;;
     --onboarding-session)
-      login_onboarding_session="$2"
+      init_onboarding_session="$2"
+      shift 2
+      ;;
+    --base-domain)
+      install_base_domain="$2"
+      shift 2
+      ;;
+    --values)
+      install_values_path="$2"
+      shift 2
+      ;;
+    --chart)
+      install_chart_path="$2"
+      shift 2
+      ;;
+    --kube-context)
+      install_kube_context="$2"
+      shift 2
+      ;;
+    --namespace)
+      install_namespace="$2"
+      shift 2
+      ;;
+    --release-name)
+      install_release_name="$2"
+      shift 2
+      ;;
+    --remote)
+      install_remote="$2"
       shift 2
       ;;
     *)
@@ -63,14 +108,40 @@ if [ "$version_argument" = "1" ] && [ "$channel" != "latest" ]; then
   exit 1
 fi
 
-if [ "$init_login" = "1" ]; then
-  if [ -z "$login_api_url" ]; then
+if [ "$init_install" = "1" ] && [ "$init_login" = "1" ]; then
+  printf 'Choose at most one of --init-install or --init-login.\n' >&2
+  exit 1
+fi
+
+if [ "$init_install" = "1" ]; then
+  if [ -z "$init_api_url" ]; then
+    printf 'Expected --api-url <url> with --init-install.\n' >&2
+    exit 1
+  fi
+  if [ -z "$install_base_domain" ]; then
+    printf 'Expected --base-domain <domain> with --init-install.\n' >&2
+    exit 1
+  fi
+  if [ -z "$install_values_path" ]; then
+    printf 'Expected --values <path> with --init-install.\n' >&2
+    exit 1
+  fi
+  if [ -n "$init_onboarding_session" ]; then
+    printf 'Use --onboarding-session only with --init-login.\n' >&2
+    exit 1
+  fi
+elif [ "$init_login" = "1" ]; then
+  if [ -z "$init_api_url" ]; then
     printf 'Expected --api-url <url> with --init-login.\n' >&2
     exit 1
   fi
+  if [ -n "$install_base_domain" ] || [ -n "$install_values_path" ] || [ -n "$init_organization_slug" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ]; then
+    printf 'Use Kubernetes install options only with --init-install.\n' >&2
+    exit 1
+  fi
 else
-  if [ -n "$login_api_url" ] || [ -n "$login_email" ] || [ -n "$login_organization" ] || [ -n "$login_onboarding_session" ]; then
-    printf 'Use --api-url, --email, --organization, and --onboarding-session only with --init-login.\n' >&2
+  if [ -n "$init_api_url" ] || [ -n "$init_email" ] || [ -n "$init_organization" ] || [ -n "$init_organization_slug" ] || [ -n "$init_onboarding_session" ] || [ -n "$install_base_domain" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ] || [ -n "$install_values_path" ]; then
+    printf 'Use install and login arguments only with --init-install or --init-login.\n' >&2
     exit 1
   fi
 fi
@@ -180,6 +251,110 @@ read_init_login_email() {
   fi
 
   printf '%s' "$read_login_email"
+}
+
+format_init_install_command() {
+  format_install_path="$1"
+  format_install_api_url="$2"
+  format_install_base_domain="$3"
+  format_install_values_path="$4"
+  format_install_email="$5"
+  format_install_organization="$6"
+  format_install_organization_slug="$7"
+  format_install_kube_context="$8"
+  format_install_namespace="$9"
+  shift 9
+  format_install_release_name="$1"
+  format_install_chart_path="$2"
+  format_install_remote="$3"
+  format_install_command="$(printf '"%s" install --api-url %s --base-domain %s --values %s' \
+    "$format_install_path" \
+    "$(quote_shell_argument "$format_install_api_url")" \
+    "$(quote_shell_argument "$format_install_base_domain")" \
+    "$(quote_shell_argument "$format_install_values_path")")"
+
+  if [ -n "$format_install_email" ]; then
+    format_install_command="${format_install_command} --email $(quote_shell_argument "$format_install_email")"
+  fi
+  if [ -n "$format_install_organization" ]; then
+    format_install_command="${format_install_command} --organization $(quote_shell_argument "$format_install_organization")"
+  fi
+  if [ -n "$format_install_organization_slug" ]; then
+    format_install_command="${format_install_command} --organization-slug $(quote_shell_argument "$format_install_organization_slug")"
+  fi
+  if [ -n "$format_install_kube_context" ]; then
+    format_install_command="${format_install_command} --kube-context $(quote_shell_argument "$format_install_kube_context")"
+  fi
+  if [ -n "$format_install_namespace" ]; then
+    format_install_command="${format_install_command} --namespace $(quote_shell_argument "$format_install_namespace")"
+  fi
+  if [ -n "$format_install_release_name" ]; then
+    format_install_command="${format_install_command} --release-name $(quote_shell_argument "$format_install_release_name")"
+  fi
+  if [ -n "$format_install_chart_path" ]; then
+    format_install_command="${format_install_command} --chart $(quote_shell_argument "$format_install_chart_path")"
+  fi
+  if [ -n "$format_install_remote" ]; then
+    format_install_command="${format_install_command} --remote $(quote_shell_argument "$format_install_remote")"
+  fi
+
+  printf '%s' "$format_install_command"
+}
+
+run_init_install() {
+  init_install_path="$1"
+  init_install_api_url="$2"
+  init_install_base_domain="$3"
+  init_install_values_path="$4"
+  init_install_email="$5"
+  init_install_organization="$6"
+  init_install_organization_slug="$7"
+  init_install_kube_context="$8"
+  init_install_namespace="$9"
+  shift 9
+  init_install_release_name="$1"
+  init_install_chart_path="$2"
+  init_install_remote="$3"
+  init_install_command="$(format_init_install_command "$init_install_path" "$init_install_api_url" "$init_install_base_domain" "$init_install_values_path" "$init_install_email" "$init_install_organization" "$init_install_organization_slug" "$init_install_kube_context" "$init_install_namespace" "$init_install_release_name" "$init_install_chart_path" "$init_install_remote")"
+
+  if ! can_use_installer_terminal; then
+    printf 'Requested `--init-install`, but no terminal is available for owner setup. Run `%s` from an interactive shell.\n' "$init_install_command" >&2
+    exit 1
+  fi
+
+  set -- install --api-url "$init_install_api_url" --base-domain "$init_install_base_domain" --values "$init_install_values_path"
+  if [ -n "$init_install_email" ]; then
+    set -- "$@" --email "$init_install_email"
+  fi
+  if [ -n "$init_install_organization" ]; then
+    set -- "$@" --organization "$init_install_organization"
+  fi
+  if [ -n "$init_install_organization_slug" ]; then
+    set -- "$@" --organization-slug "$init_install_organization_slug"
+  fi
+  if [ -n "$init_install_kube_context" ]; then
+    set -- "$@" --kube-context "$init_install_kube_context"
+  fi
+  if [ -n "$init_install_namespace" ]; then
+    set -- "$@" --namespace "$init_install_namespace"
+  fi
+  if [ -n "$init_install_release_name" ]; then
+    set -- "$@" --release-name "$init_install_release_name"
+  fi
+  if [ -n "$init_install_chart_path" ]; then
+    set -- "$@" --chart "$init_install_chart_path"
+  fi
+  if [ -n "$init_install_remote" ]; then
+    set -- "$@" --remote "$init_install_remote"
+  fi
+
+  printf 'Running `%s` for Kubernetes platform and owner setup.\n' "$init_install_command"
+  if can_write_installer_terminal; then
+    "$init_install_path" "$@" </dev/tty >/dev/tty 2>/dev/tty
+    return 0
+  fi
+
+  "$init_install_path" "$@" </dev/tty
 }
 
 run_init_login() {
@@ -496,9 +671,14 @@ printf 'Installed compartment to %s\n' "$install_path"
 "$install_path" --version
 ensure_bin_directory_on_path "$bin_dir"
 
-if [ "$init_login" = "1" ]; then
-  run_init_login "$install_path" "$login_api_url" "$login_email" "$login_organization" "$login_onboarding_session"
+if [ "$init_install" = "1" ]; then
+  run_init_install "$install_path" "$init_api_url" "$install_base_domain" "$install_values_path" "$init_email" "$init_organization" "$init_organization_slug" "$install_kube_context" "$install_namespace" "$install_release_name" "$install_chart_path" "$install_remote"
   exit 0
 fi
 
-printf 'Installed CLI. Run `"%s" login` to connect to a Compartment platform, or re-run this installer with `--init-login`.\n' "$install_path"
+if [ "$init_login" = "1" ]; then
+  run_init_login "$install_path" "$init_api_url" "$init_email" "$init_organization" "$init_onboarding_session"
+  exit 0
+fi
+
+printf 'Installed CLI. Run `"%s" install` to create a Kubernetes platform owner, run `"%s" login` to connect to a platform, or use `--init-install`/`--init-login`.\n' "$install_path" "$install_path"

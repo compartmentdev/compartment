@@ -37,6 +37,7 @@ import type { LightMyRequestResponse } from 'fastify';
 import type { PoolClient } from 'pg';
 import { expect } from 'vitest';
 import type { ApiApp } from '../src/app.types';
+import { readApiInstallToken } from '../src/config';
 import {
   findNextDeploymentReconcilePair,
   persistDeploymentReconcileObservation,
@@ -118,6 +119,7 @@ interface MultipartRequestFilePart {
 export async function installCompartment(apiApp: ApiApp): Promise<InstallResponse> {
   const installAdminCredential: string = 'supersecretpassword';
   const installResponse: LightMyRequestResponse = await apiApp.inject({
+    headers: buildInstallAuthorizationHeaders(),
     method: 'POST',
     payload: {
       adminEmail: 'admin@example.com',
@@ -130,6 +132,10 @@ export async function installCompartment(apiApp: ApiApp): Promise<InstallRespons
   });
 
   return installResponseSchema.parse(installResponse.json());
+}
+
+export function buildInstallAuthorizationHeaders(token: string = readApiInstallToken()): Record<string, string> {
+  return buildSystemAuthorizationHeaders(token);
 }
 
 export function createExpectedRunConfig(command?: string): ExpectedRunConfig {

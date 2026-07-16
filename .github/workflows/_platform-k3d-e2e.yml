@@ -20,6 +20,11 @@ jobs:
     runs-on: ${{ fromJson(inputs.runner_labels_json) }}
     timeout-minutes: 120
     env:
+      COMPARTMENT_E2E_API_URL: http://console.compartment.localhost:18080
+      COMPARTMENT_E2E_COMPARTMENT_URL: http://console.compartment.localhost:18080
+      COMPARTMENT_E2E_KUBE_CONTEXT: k3d-compartment-e2e
+      COMPARTMENT_E2E_PLATFORM_MODE: k3d
+      COMPARTMENT_E2E_PLATFORM_NAMESPACE: compartment
       COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E: '1'
       COMPARTMENT_TEST_APP_NODE_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
       COMPARTMENT_TEST_POSTGRES_IMAGE: postgres:16
@@ -109,11 +114,16 @@ jobs:
             --build-commit-sha "$BUILD_COMMIT_SHA" \
             --output-dir ./.compartment/cli-dist
 
-      - name: Start k3d platform from cached images
+      - name: Prepare clean k3d cluster from cached images
         run: node ./scripts/deploy/platform-k3d-e2e.mjs up --image-source archive --image-archive-dir ./.compartment/self-hosted-image-cache
 
-      - name: Seed platform once
-        run: node ./scripts/deploy/seed-platform-k3d-e2e.mjs
+      - name: Install platform and bootstrap the first owner
+        env:
+          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/platform-k3d-install.e2e.test.ts
+        run: pnpm --filter @compartment/cli test:e2e
+
+      - name: Configure the k3d node registry route
+        run: node ./scripts/deploy/platform-k3d-e2e.mjs configure
 
       - name: Run system user flow suite
         env:

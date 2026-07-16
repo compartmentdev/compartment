@@ -8,6 +8,12 @@
         "startupStage": { "type": "string", "enum": ["foundation", "full"] }
       }
     },
+    "secrets": {
+      "type": "object",
+      "properties": {
+        "installToken": { "type": "string" }
+      }
+    },
     "buildkit": {
       "type": "object",
       "required": [

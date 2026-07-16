@@ -2,7 +2,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
-import { readApiConfig, type ApiConfig } from '../src/config';
+import { readApiConfig, readApiInstallToken, type ApiConfig } from '../src/config';
 
 const requiredExplicitSelfHostedEnvSlots: string[] = [
   'COMPARTMENT_ROLLBACK_RETENTION_LIMIT',
@@ -50,6 +50,11 @@ describe('readApiConfig', (): void => {
     expect(config.trustedOutboundHosts).toEqual([]);
     expect(config.variablesMasterKey).toEqual(Buffer.from('11'.repeat(32), 'hex'));
     expect(config.runtimeControlToken).toBe('runtime-control-secret');
+  });
+
+  it('reads the owner bootstrap token as a required app boundary secret', (): void => {
+    expect(readApiInstallToken(createApiConfigEnv())).toBe('install-secret');
+    expect((): string => readApiInstallToken(createApiConfigEnv({ COMPARTMENT_INSTALL_TOKEN: undefined }))).toThrow();
   });
 
   it('rejects missing required runtime env values instead of silently falling back', (): void => {
@@ -334,6 +339,7 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_EDGE_TOKEN: 'edge-secret',
     COMPARTMENT_ENV: 'dev',
     COMPARTMENT_LOG_LEVEL: 'info',
+    COMPARTMENT_INSTALL_TOKEN: 'install-secret',
     COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: '',
     COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: '',
     COMPARTMENT_POSTGRES_PASSWORD: 'postgres',
@@ -391,6 +397,7 @@ function createSelfHostedApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}
   return createApiConfigEnv({
     COMPARTMENT_DATABASE_URL: `postgresql://postgres:${generated24ByteSecret}@postgres:5432/compartment`,
     COMPARTMENT_EDGE_TOKEN: generated24ByteSecret,
+    COMPARTMENT_INSTALL_TOKEN: generated24ByteSecret,
     COMPARTMENT_ENV: 'self-hosted',
     COMPARTMENT_POSTGRES_PASSWORD: generated24ByteSecret,
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: generated24ByteSecret,

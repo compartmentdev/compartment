@@ -6,7 +6,7 @@ import {
   defaultCompartmentEnvironmentName,
   type DnsRecordInstruction,
 } from '@compartment/contracts';
-import { hasText, slugifyText } from '@compartment/utils';
+import { hasText, isValidDnsHostname, slugifyText } from '@compartment/utils';
 import { createInvalidBaseDomainError } from '../errors/api-business-error';
 import { buildPublicRouteHost, readPublicRouteSubdomain } from '../lib/public-route-host';
 import type {
@@ -20,9 +20,6 @@ import type {
 } from './public-hosts.service.types';
 
 const maxDnsLabelLength: number = 63;
-const baseDomainPattern: RegExp =
-  /^(localhost|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)$/u;
-
 export function buildInstallationHostPlan(baseDomain: string, config: PublicIngressPortConfig): InstallationHostPlan {
   const normalizedBaseDomain: string = normalizeBaseDomain(baseDomain);
 
@@ -52,7 +49,7 @@ export function buildCanonicalRouteHost(input: RouteCollisionInput): string {
 
 function normalizeBaseDomain(value: string): string {
   const normalizedValue: string = value.trim().toLowerCase();
-  if (!baseDomainPattern.test(normalizedValue) || !hasText(normalizedValue)) {
+  if (!isValidDnsHostname(normalizedValue) || !hasText(normalizedValue)) {
     throw createInvalidBaseDomainError();
   }
 

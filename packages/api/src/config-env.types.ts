@@ -12,6 +12,7 @@ export interface ApiConfigEnv extends AuditFileSinkConfigEnv {
   COMPARTMENT_EDGE_TOKEN: string;
   COMPARTMENT_ENV?: 'dev' | 'self-hosted' | undefined;
   COMPARTMENT_LOG_LEVEL: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
+  COMPARTMENT_INSTALL_TOKEN: string;
   COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: string;
   COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: string;
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: string;
