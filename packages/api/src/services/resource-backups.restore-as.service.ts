@@ -1,6 +1,15 @@
-import { createInvalidDeployConfigError, createResourceNameTakenError } from '../errors/api-business-error';
+import {
+  createInvalidDeployConfigError,
+  createProjectArchivedError,
+  createResourceNotFoundError,
+  createResourceNameTakenError,
+} from '../errors/api-business-error';
 import type { ResourceBackupRow } from '../queries/resource-backups.query.types';
-import { lockProjectResourceReconciliation, lockProjectResourceReferenceByName } from '../queries/resources.query';
+import {
+  findProjectResourceById,
+  lockProjectResourceReconciliation,
+  lockProjectResourceReferenceByName,
+} from '../queries/resources.query';
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { assertResourceBackupBelongsToEnvironment } from './resource-backups.environment.service';
@@ -8,6 +17,7 @@ import { runResourceRestore } from './resource-backups.execution.service';
 import { resolveRequiredBackupResourceById, resolveRequiredResourceBackup } from './resource-backups.lookup.service';
 import { resolveResourceEnvironmentContext } from './resource-environment-context.service';
 import type { EffectiveVariable } from './effective-variables.service.types';
+import { withResourceOperationLocks } from './resource-operation-lock.service';
 import { copyRestoreResourceVariables } from './resource-backups.restore-variables.service';
 import {
   createKubernetesRestoredResourceWithLock,
@@ -34,6 +44,20 @@ interface CreateRestoredResourceInput {
   sourceResource: ProjectResourceRow;
 }
 
+interface RestoreCreatedResourceInput {
+  backup: ResourceBackupRow;
+  context: ResourceEnvironmentContext;
+  createdResource: ProjectResourceRow;
+  sourceResource: ProjectResourceRow;
+}
+
+interface RestoreBackupIntoCreatedResourceInput {
+  artifactResource: ProjectResourceRow;
+  backup: ResourceBackupRow;
+  context: ResourceEnvironmentContext;
+  resource: ProjectResourceRow;
+}
+
 export async function restoreResourceBackupAsForPrincipal(
   input: ResourceRestoreAsInput,
 ): Promise<ResourceRestoreAsResult> {
@@ -50,18 +74,37 @@ export async function restoreResourceBackupAsForPrincipal(
     snapshot: resolveRequiredResourceDefinitionSnapshot(backup),
     sourceResource,
   });
-  const resource: ProjectResourceRow = await prepareRestoredResourceRuntime(context, createdResource);
-  await restoreBackupIntoCreatedResource({ artifactResource: sourceResource, backup, context, resource });
+  const resource: ProjectResourceRow = await withResourceOperationLocks(
+    [sourceResource.id, createdResource.id],
+    async (): Promise<ProjectResourceRow> =>
+      await restoreCreatedResource({ backup, context, createdResource, sourceResource }),
+  );
 
   return { ...context, resource, restoredBackup: backup, sourceResource };
 }
 
-async function restoreBackupIntoCreatedResource(input: {
-  artifactResource: ProjectResourceRow;
-  backup: ResourceBackupRow;
-  context: ResourceEnvironmentContext;
-  resource: ProjectResourceRow;
-}): Promise<void> {
+async function restoreCreatedResource(input: RestoreCreatedResourceInput): Promise<ProjectResourceRow> {
+  const sourceResource: ProjectResourceRow = await requireResourceOperationCandidate(input.sourceResource.id);
+  const createdResource: ProjectResourceRow = await requireResourceOperationCandidate(input.createdResource.id);
+  const resource: ProjectResourceRow = await prepareRestoredResourceRuntime(input.context, createdResource);
+  await restoreBackupIntoCreatedResource({
+    artifactResource: sourceResource,
+    backup: input.backup,
+    context: input.context,
+    resource,
+  });
+  return resource;
+}
+
+async function requireResourceOperationCandidate(resourceId: string): Promise<ProjectResourceRow> {
+  const resource: ProjectResourceRow | undefined = await findProjectResourceById(resourceId);
+  if (resource === undefined || resource.status === 'deleting') {
+    throw createResourceNotFoundError();
+  }
+  return resource;
+}
+
+async function restoreBackupIntoCreatedResource(input: RestoreBackupIntoCreatedResourceInput): Promise<void> {
   try {
     await runResourceRestore(input);
   } catch (error) {
@@ -74,8 +117,7 @@ async function restoreBackupIntoCreatedResource(input: {
 async function createRestoredResourceFromBackup(input: CreateRestoredResourceInput): Promise<ProjectResourceRow> {
   return await getApiDatabase().transaction(async (tx: ResourceTransaction): Promise<ProjectResourceRow> => {
     const targetResourceName: string = input.restoreInput.body.targetResourceName;
-    await lockProjectResourceReconciliation(tx, input.context.environment.id, targetResourceName);
-    await assertTargetResourceAvailable(tx, input.context, targetResourceName);
+    await assertRestoredResourceCreationAllowed(tx, input.context, targetResourceName);
     const effectiveVariables: EffectiveVariable[] = await copyRestoreResourceVariables({
       actorPrincipalId: input.restoreInput.actorPrincipalId,
       context: input.context,
@@ -92,6 +134,18 @@ async function createRestoredResourceFromBackup(input: CreateRestoredResourceInp
     preflightRestoreOperation(input.backup, intent, effectiveVariables);
     return await createRestoredResourceWithLock(tx, input.context, intent);
   });
+}
+
+async function assertRestoredResourceCreationAllowed(
+  tx: ResourceTransaction,
+  context: ResourceEnvironmentContext,
+  resourceName: string,
+): Promise<void> {
+  const archivedAt: Date | null = await lockProjectResourceReconciliation(tx, context.environment.id, resourceName);
+  if (archivedAt !== null) {
+    throw createProjectArchivedError();
+  }
+  await assertTargetResourceAvailable(tx, context, resourceName);
 }
 
 function resolveRestoredResourceIntent(
@@ -136,6 +190,7 @@ function createSnapshotResourceRow(snapshot: StoredResourceDefinitionSnapshot): 
   return {
     ...createSnapshotResourceIdentity(now),
     commandJson: snapshot.commandJson,
+    deleteDataRequested: false,
     envJson: snapshot.envJson,
     image: snapshot.image,
     operationConfigHash: snapshot.operationConfigHash,

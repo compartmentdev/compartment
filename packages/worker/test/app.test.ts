@@ -23,6 +23,10 @@ interface WorkerAppMocks {
   request: CompartmentRequester;
 }
 
+interface KubeControllerHostModuleMock {
+  createKubeControllerHosts(): KubeControllerHost[];
+}
+
 const mocks: WorkerAppMocks = vi.hoisted(
   (): WorkerAppMocks => ({
     prewarmSourceBuildToolchain: vi.fn<PrewarmSourceBuildToolchain>(),
@@ -34,9 +38,13 @@ const mocks: WorkerAppMocks = vi.hoisted(
   }),
 );
 
-vi.mock('../src/kube-controller-host', (): { createKubeControllerHost: () => KubeControllerHost } => ({
-  createKubeControllerHost: (): KubeControllerHost => ({ reconcile: mocks.reconcileKube }),
-}));
+vi.mock(
+  '../src/kube-controller-host',
+  (): KubeControllerHostModuleMock => ({
+    createKubeControllerHosts: (): KubeControllerHost[] =>
+      Array.from({ length: 3 }, (): KubeControllerHost => ({ reconcile: mocks.reconcileKube })),
+  }),
+);
 
 vi.mock('../src/kube-controller-loop', (): { runKubeControllerLoop: Mock<() => Promise<void>> } => ({
   runKubeControllerLoop: mocks.runKubeControllerLoop,
@@ -91,6 +99,7 @@ describe('runWorker', (): void => {
       'worker-secret',
       createArtifactRegistryConfig(),
     );
+    expect(mocks.runKubeControllerLoop).toHaveBeenCalledTimes(3);
   });
 
   it('keeps polling when source build toolchain prewarm fails', async (): Promise<void> => {

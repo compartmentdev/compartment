@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { calculateRestartDelay } from '../src/kube-backoff';
 import { createRegisteredInformers, type RegisteredInformer } from '../src/kube-informer-registration';
 import { createKubeObservation } from '../src/kube-observation';
-import type { KubeObservation, KubeObservationEvent } from '../src';
+import type { KubeObservation, KubeObservationEvent } from '../src/kube-runtime.types';
 
 type ObjectCallback = (object: KubernetesObject) => void;
 type ErrorCallback = (error?: Error) => void;

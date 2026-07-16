@@ -1,6 +1,7 @@
 import type {
   ProductJobIntent,
   WorkerFinalizeProductJobRequest,
+  WorkerPersistProductJobIntentResponse,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
 import type { KubeJobResult, KubeObservedManifest, KubeRuntime } from '@compartment/kube-runtime';
@@ -12,7 +13,9 @@ interface ProductJobSdkMocks {
   finalize: Mock<
     (request: CompartmentRequester, input: WorkerFinalizeProductJobRequest) => Promise<WorkerFinalizeProductJobRequest>
   >;
-  persistIntent: Mock<(request: CompartmentRequester, intent: ProductJobIntent) => Promise<ProductJobIntent>>;
+  persistIntent: Mock<
+    (request: CompartmentRequester, intent: ProductJobIntent) => Promise<WorkerPersistProductJobIntentResponse>
+  >;
   persistResult: Mock<
     (
       request: CompartmentRequester,
@@ -41,8 +44,7 @@ describe('executeProductJob', (): void => {
       ): Promise<WorkerFinalizeProductJobRequest> => await Promise.resolve(input),
     );
     mocks.persistIntent.mockImplementation(
-      async (_request: CompartmentRequester, intent: ProductJobIntent): Promise<ProductJobIntent> =>
-        await Promise.resolve(intent),
+      async (): Promise<WorkerPersistProductJobIntentResponse> => await Promise.resolve({ result: null }),
     );
     mocks.persistResult.mockImplementation(
       async (
@@ -59,6 +61,28 @@ describe('executeProductJob', (): void => {
     await expect(executeProductJob(requester(), runtime, releaseIntent())).rejects.toThrow('database unavailable');
 
     expect(runtime.runJob.mock.calls).toHaveLength(0);
+  });
+
+  it('does not create Kubernetes work when the API has already canceled the intent', async (): Promise<void> => {
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
+    mocks.persistIntent.mockResolvedValue({
+      result: {
+        completedAt: '2026-07-12T12:00:00.000Z',
+        exitCode: null,
+        identityId: 'dep-01jz',
+        jobClass: 'release',
+        jobName: 'archived-job/dep-01jz',
+        logs: 'project archived',
+        podName: null,
+        status: 'timed-out',
+      },
+    });
+
+    await expect(executeProductJob(requester(), runtime, releaseIntent())).rejects.toThrow(
+      'Product release job dep-01jz timed out.',
+    );
+
+    expect(runtime.runJob).not.toHaveBeenCalled();
   });
 
   it('persists full terminal evidence before enabling TTL cleanup', async (): Promise<void> => {
@@ -93,21 +117,20 @@ describe('executeProductJob', (): void => {
     expect(durable).toBe(true);
   });
 
-  it('converges after kills before create and after create without duplicating terminal evidence', async (): Promise<void> => {
-    const terminal: KubeJobResult = successResult();
-    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithSequence([
-      new Error('killed before create'),
-      new Error('killed after create'),
-      terminal,
-    ]);
+  it('durably terminates a claim when Kubernetes execution fails before result capture', async (): Promise<void> => {
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithSequence([new Error('killed after create')]);
 
-    await expect(executeProductJob(requester(), runtime, releaseIntent())).rejects.toThrow('killed before create');
     await expect(executeProductJob(requester(), runtime, releaseIntent())).rejects.toThrow('killed after create');
-    await executeProductJob(requester(), runtime, releaseIntent());
 
-    expect(mocks.persistIntent.mock.calls).toHaveLength(3);
-    expect(mocks.persistResult.mock.calls).toHaveLength(1);
-    expect((terminal.finalize as Mock).mock.calls).toHaveLength(1);
+    expect(mocks.persistResult).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        identityId: 'dep-01jz',
+        logs: 'killed after create',
+        podName: null,
+        status: 'timed-out',
+      }),
+    );
   });
 
   it('does not finalize when killed after terminal capture and before persistence', async (): Promise<void> => {
@@ -169,6 +192,8 @@ describe('executeProductJob', (): void => {
       jobClass: 'resource-operation',
       namespace: 'cpt-prj-01jz',
       operationId: 'operation-1',
+      projectId: 'prj-01jz',
+      resourceIds: ['res-1'],
       timeoutMs: 30_000,
       volumeMounts: [
         {
@@ -201,6 +226,7 @@ function releaseIntent(): ProductJobIntent {
     imagePullSecretId: 'pull-01jz',
     jobClass: 'release',
     namespace: 'cpt-prj-01jz',
+    projectId: 'prj-01jz',
     timeoutMs: 30_000,
   };
 }

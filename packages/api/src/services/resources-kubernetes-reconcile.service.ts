@@ -1,10 +1,12 @@
-import type {
-  CompartmentAuthoredResourceConfig,
-  ResourceReconcileIntent,
-  ResourceVolumeIntent,
-} from '@compartment/contracts';
+import type { CompartmentAuthoredResourceConfig, ResourceReconcileIntent } from '@compartment/contracts';
+import { createProjectArchivedError } from '../errors/api-business-error';
 import { createId } from '../lib/tokens';
+import { finalizeProjectResourceDeletion } from '../queries/resource-reconcile-deletion.query';
+import type { ResourceDeletionFinalizationResult } from '../queries/resource-reconcile-deletion.query.types';
+import { updateActiveResourceBootstrapIntent } from '../queries/resource-reconcile-create.query';
 import {
+  beginProjectResourceDeletion,
+  findProjectResourceById,
   lockProjectResourceByName,
   lockProjectResourceReconciliation,
   updateProjectResourceStatus,
@@ -16,20 +18,18 @@ import {
   requestResourceBootstrap,
   requestResourceReconcile,
   requestResourceReconcileWithExecutor,
+  waitForResourceBootstrapForCleanup,
   waitForResourceReconcile,
 } from './resource-reconcile-run.service';
 import { loadResourceEffectiveVariables } from './resources-effective-variables.service';
 import { prepareResourceEffectiveVariables, persistResourceIntent } from './resources-reconcile-persistence.service';
 import { assertAllowedVolumeChange } from './resources-reconcile.validation';
 import { resolveStoredResourceIntent } from './resources-stored-intent.service';
-import { parseResourceVolumes } from './resources.service.storage';
-import {
-  resolveResourceIntent,
-  type ResolvedResourceIntent,
-  type ResourceRuntimeEnvValue,
-} from './resources.service.helpers';
+import { resolveResourceIntent, type ResolvedResourceIntent } from './resources.service.helpers';
 import type { ResourceEnvironmentContext } from './resources.service.types';
-import type { KubernetesResourceVolumeSource } from './resources-kubernetes-reconcile.service.types';
+import { requireFinalizedResourceDeletionDemand, settleResourceDeletion } from './resource-deletion-settlement.service';
+import { withResourceOperationLocks } from './resource-operation-lock.service';
+import { buildKubernetesResourceIntent } from './resources-kubernetes-intent.service';
 
 export async function reconcileKubernetesResource(
   actorPrincipalId: string,
@@ -59,7 +59,7 @@ async function persistKubernetesResourceWithTransaction(
   resourceName: string,
   resource: CompartmentAuthoredResourceConfig,
 ): Promise<ProjectResourceRow> {
-  await lockProjectResourceReconciliation(tx, context.environment.id, resourceName);
+  await assertResourceReconciliationAllowed(tx, context.environment.id, resourceName);
   const intent: ResolvedResourceIntent = await resolveKubernetesResourceIntent(
     tx,
     actorPrincipalId,
@@ -76,6 +76,17 @@ async function persistKubernetesResourceWithTransaction(
     assertAllowedVolumeChange(existing, intent);
   }
   return await persistKubernetesDesiredAndRun(tx, context, existing, intent);
+}
+
+async function assertResourceReconciliationAllowed(
+  tx: ResourceTransaction,
+  environmentId: string,
+  resourceName: string,
+): Promise<void> {
+  const archivedAt: Date | null = await lockProjectResourceReconciliation(tx, environmentId, resourceName);
+  if (archivedAt !== null) {
+    throw createProjectArchivedError();
+  }
 }
 
 async function persistKubernetesDesiredAndRun(
@@ -95,7 +106,8 @@ async function enqueueKubernetesReconcileWhenReady(
   projected: ResourceReconcileIntent,
   persisted: ProjectResourceRow,
 ): Promise<void> {
-  if (projected.volumes.length > 0 && persisted.expectedClaimsJson === '[]') {
+  if (persisted.expectedClaimsJson === '[]') {
+    await updateActiveResourceBootstrapIntent(tx, projected);
     return;
   }
   await requestResourceReconcileWithExecutor(tx, createId('resource_operation'), projected, persisted);
@@ -138,24 +150,66 @@ export async function reconcileKubernetesResourceReplicas(
   resource: ProjectResourceRow,
   replicas: 0 | 1,
 ): Promise<ProjectResourceRow> {
-  if (replicas === 0 && hasUnbootstrappedVolumes(resource)) {
-    return await persistResourceReplicaStatus(resource.id, replicas);
+  const current: ProjectResourceRow = await prepareResourceReplicaChange(resource, replicas);
+  if (replicas === 0 && hasUnbootstrappedClaims(current)) {
+    return current;
   }
   const variables: EffectiveVariable[] = await loadResourceEffectiveVariables(
     context.environment.id,
     context.organization.id,
-    resource.name,
+    current.name,
   );
   const intent: ResourceReconcileIntent = buildKubernetesResourceIntent(
     context,
-    resource,
-    resolveStoredResourceIntent(resource, variables),
+    current,
+    resolveStoredResourceIntent(current, variables),
     replicas,
   );
   const operationId: string = createId('resource_operation');
-  await requestResourceReconcile(operationId, intent, resource);
+  await requestResourceReconcile(operationId, intent, current);
   await waitForResourceReconcile(operationId);
-  return await persistResourceReplicaStatus(resource.id, replicas);
+  return await requireProjectResource(resource.id);
+}
+
+export async function deleteKubernetesResource(
+  context: ResourceEnvironmentContext,
+  resource: ProjectResourceRow,
+  deleteData: boolean,
+): Promise<boolean> {
+  let current: ProjectResourceRow = await prepareResourceDeletion(resource.id, deleteData);
+  for (;;) {
+    await settleResourceDeletion(context, current);
+    const finalization: ResourceDeletionFinalizationResult = await finalizeProjectResourceDeletion(current.id);
+    if (finalization.finalized) {
+      return requireFinalizedResourceDeletionDemand(finalization, current.id);
+    }
+    const pending: ProjectResourceRow | undefined = await findProjectResourceById(current.id);
+    if (pending === undefined) {
+      const concurrent: ResourceDeletionFinalizationResult = await finalizeProjectResourceDeletion(current.id);
+      return requireFinalizedResourceDeletionDemand(concurrent, current.id);
+    }
+    current = pending;
+  }
+}
+
+async function prepareResourceDeletion(resourceId: string, deleteData: boolean): Promise<ProjectResourceRow> {
+  const deleting: ProjectResourceRow = await withResourceOperationLocks(
+    [resourceId],
+    async (): Promise<ProjectResourceRow> => await beginProjectResourceDeletion(resourceId, deleteData),
+  );
+  return hasUnbootstrappedClaims(deleting) ? await waitForResourceBootstrapForCleanup(resourceId) : deleting;
+}
+
+async function prepareResourceReplicaChange(
+  resource: ProjectResourceRow,
+  replicas: 0 | 1,
+): Promise<ProjectResourceRow> {
+  if (replicas === 1 || !hasUnbootstrappedClaims(resource)) {
+    return resource;
+  }
+  const stopped: ProjectResourceRow = await persistResourceReplicaStatus(resource.id, 0);
+  const bootstrapped: ProjectResourceRow = await waitForResourceBootstrapForCleanup(resource.id);
+  return hasUnbootstrappedClaims(bootstrapped) ? stopped : bootstrapped;
 }
 
 async function persistResourceReplicaStatus(resourceId: string, replicas: 0 | 1): Promise<ProjectResourceRow> {
@@ -166,62 +220,14 @@ async function persistResourceReplicaStatus(resourceId: string, replicas: 0 | 1)
   });
 }
 
-export async function deleteKubernetesResource(
-  context: ResourceEnvironmentContext,
-  resource: ProjectResourceRow,
-  deleteData: boolean,
-): Promise<void> {
-  if (hasUnbootstrappedVolumes(resource)) {
-    return;
+async function requireProjectResource(resourceId: string): Promise<ProjectResourceRow> {
+  const resource: ProjectResourceRow | undefined = await findProjectResourceById(resourceId);
+  if (resource === undefined) {
+    throw new Error('Resource disappeared after Kubernetes reconciliation.');
   }
-  const variables: EffectiveVariable[] = await loadResourceEffectiveVariables(
-    context.environment.id,
-    context.organization.id,
-    resource.name,
-  );
-  const intent: ResourceReconcileIntent = {
-    ...buildKubernetesResourceIntent(context, resource, resolveStoredResourceIntent(resource, variables), 0),
-    deleteData,
-    operation: 'delete',
-  };
-  const operationId: string = createId('resource_operation');
-  await requestResourceReconcile(operationId, intent, resource);
-  await waitForResourceReconcile(operationId);
+  return resource;
 }
 
-function hasUnbootstrappedVolumes(resource: ProjectResourceRow): boolean {
-  return resource.expectedClaimsJson === '[]' && parseResourceVolumes(resource).length > 0;
-}
-
-function buildKubernetesResourceIntent(
-  context: ResourceEnvironmentContext,
-  resource: ProjectResourceRow,
-  intent: ResolvedResourceIntent,
-  replicas: 0 | 1,
-): ResourceReconcileIntent {
-  const containerPort: number | undefined = intent.ports[0];
-  if (containerPort === undefined) {
-    throw new Error(`Kubernetes resource ${resource.id} requires one service port.`);
-  }
-  return {
-    containerPort,
-    deleteData: false,
-    environmentId: context.environment.id,
-    env: Object.fromEntries(intent.runtimeEnv.map(buildRuntimeEnvEntry)),
-    image: intent.image,
-    namespaceId: context.project.id,
-    operation: 'reconcile',
-    replicas,
-    resourceId: resource.id,
-    secretId: resource.id,
-    volumes: intent.volumes.map(buildResourceVolumeIntent),
-  };
-}
-
-function buildRuntimeEnvEntry(variable: ResourceRuntimeEnvValue): [string, string] {
-  return [variable.keyName, variable.value];
-}
-
-function buildResourceVolumeIntent(volume: KubernetesResourceVolumeSource): ResourceVolumeIntent {
-  return { mountPath: volume.mountPath, size: '1Gi', volumeHandle: volume.name };
+function hasUnbootstrappedClaims(resource: ProjectResourceRow): boolean {
+  return resource.expectedClaimsJson === '[]';
 }

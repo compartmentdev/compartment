@@ -1,4 +1,8 @@
-import type { DeploymentReconcileProjection, DeploymentReconcileTarget } from '@compartment/contracts';
+import type {
+  DeploymentReconcileProjection,
+  DeploymentReconcileTarget,
+  WorkerPersistProductJobResultRequest,
+} from '@compartment/contracts';
 import {
   kubeApplicationIdentityName,
   kubeNamespaceName,
@@ -12,43 +16,45 @@ import { reconcileDeploymentTarget } from '../src/services/worker-deployment-rec
 
 interface ReconcileMocks {
   delay: Mock;
-  executeProductJob: Mock;
   observeDeploymentReconcile: Mock;
+  persistProductJobIntent: Mock;
 }
 
 const mocks: ReconcileMocks = vi.hoisted(
-  (): ReconcileMocks => ({ delay: vi.fn(), executeProductJob: vi.fn(), observeDeploymentReconcile: vi.fn() }),
+  (): ReconcileMocks => ({ delay: vi.fn(), observeDeploymentReconcile: vi.fn(), persistProductJobIntent: vi.fn() }),
 );
 
 vi.mock('node:timers/promises', (): object => ({ setTimeout: mocks.delay }));
 
 vi.mock('@compartment/sdk', async (importOriginal: () => Promise<object>): Promise<object> => {
   const original: object = await importOriginal();
-  return { ...original, observeDeploymentReconcile: mocks.observeDeploymentReconcile };
+  return {
+    ...original,
+    observeDeploymentReconcile: mocks.observeDeploymentReconcile,
+    persistProductJobIntent: mocks.persistProductJobIntent,
+  };
 });
-
-vi.mock('../src/services/worker-product-job.service', (): object => ({
-  executeProductJob: mocks.executeProductJob,
-}));
 
 describe('deployment reconciliation', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
     mocks.delay.mockResolvedValue(undefined);
-    mocks.executeProductJob.mockResolvedValue({ status: 'succeeded' });
+    mocks.persistProductJobIntent.mockResolvedValue({ result: null });
     mocks.observeDeploymentReconcile.mockResolvedValue({ applied: true, cleanupArtifacts: [] });
   });
 
   it('does not start rollout when the release Job fails', async (): Promise<void> => {
     const runtime: KubeRuntime & { apply: Mock } = runtimeStub();
-    mocks.executeProductJob.mockRejectedValue(new Error('release exited 17'));
+    mocks.persistProductJobIntent.mockResolvedValue({
+      result: productJobResult('failed', 'release exited 17'),
+    });
 
     await reconcileDeploymentTarget(requester(), runtime, target(projection('bin/migrate')));
 
     expect(runtime.apply).not.toHaveBeenCalled();
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
-      expect.objectContaining({ message: 'release exited 17', observation: 'failed', revision: 0 }),
+      expect.objectContaining({ message: 'Release Job failed: release exited 17', observation: 'failed', revision: 0 }),
     );
   });
 
@@ -57,7 +63,12 @@ describe('deployment reconciliation', (): void => {
 
     await reconcileDeploymentTarget(requester(), runtime, target(projection('bin/migrate')));
 
-    expect(mocks.executeProductJob).toHaveBeenCalledOnce();
+    expect(runtime.apply).not.toHaveBeenCalled();
+    expect(mocks.persistProductJobIntent).toHaveBeenCalledOnce();
+
+    mocks.persistProductJobIntent.mockResolvedValue({ result: productJobResult('succeeded', 'release complete') });
+    await reconcileDeploymentTarget(requester(), runtime, target(projection('bin/migrate')));
+
     expect(runtime.apply).toHaveBeenCalledOnce();
     const bundle: ApplyBundle = runtime.apply.mock.calls[0]?.[0] as ApplyBundle;
     expect(bundle.objects.some((object: KubeManifest): boolean => object.kind === 'Deployment')).toBe(true);
@@ -258,6 +269,22 @@ function target(candidate: DeploymentReconcileProjection): DeploymentReconcileTa
     revision: 0,
     rolloutStartedAt: '2026-07-12T12:00:00.000Z',
     state: 'desired',
+  };
+}
+
+function productJobResult(
+  status: 'failed' | 'succeeded' | 'timed-out',
+  logs: string,
+): WorkerPersistProductJobResultRequest {
+  return {
+    completedAt: '2026-07-12T12:00:00.000Z',
+    exitCode: status === 'succeeded' ? 0 : 17,
+    identityId: 'dep_candidate',
+    jobClass: 'release',
+    jobName: 'release-dep-candidate',
+    logs,
+    podName: 'release-dep-candidate-pod',
+    status,
   };
 }
 

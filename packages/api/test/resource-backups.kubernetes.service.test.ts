@@ -3,6 +3,7 @@ import type { ResourceOperationProductJobIntent, WorkerPersistProductJobResultRe
 import { immutableKubeName } from '@compartment/utils';
 import type { ProjectResourceRow } from '../src/queries/resources.query.types';
 import type { ResourceBackupOperationContext } from '../src/services/resource-backups.operation-context.service';
+import type { ResourceOperationResult } from '../src/services/resource-operation.types';
 import type { StoredResourceOperationConfig } from '../src/services/resources.service.storage';
 import {
   deleteKubernetesBackupArtifact,
@@ -12,6 +13,7 @@ import {
 } from '../src/services/resource-backups.kubernetes.service';
 import type { ResourceBackupRow } from '../src/queries/resource-backups.query.types';
 import type { ResourceEnvironmentContext } from '../src/services/resources.service.types';
+import type { ProductJobQueueWaitState } from '../src/queries/product-job-wait.query.types';
 
 interface TestOperationInput {
   backupId: string;
@@ -29,25 +31,49 @@ interface TestVerifierInput {
   resource: ProjectResourceRow;
 }
 
-const createIntent: Mock<(intent: ResourceOperationProductJobIntent) => Promise<void>> = vi.hoisted(
-  (): Mock<(intent: ResourceOperationProductJobIntent) => Promise<void>> => vi.fn(),
+const createIntent: Mock<
+  (intent: ResourceOperationProductJobIntent) => Promise<WorkerPersistProductJobResultRequest | null>
+> = vi.hoisted(
+  (): Mock<(intent: ResourceOperationProductJobIntent) => Promise<WorkerPersistProductJobResultRequest | null>> =>
+    vi.fn(),
 );
 const readResult: Mock<() => Promise<WorkerPersistProductJobResultRequest | null>> = vi.hoisted(
   (): Mock<() => Promise<WorkerPersistProductJobResultRequest | null>> => vi.fn(),
 );
+const readQueueState: Mock<() => Promise<ProductJobQueueWaitState | null>> = vi.hoisted(
+  (): Mock<() => Promise<ProductJobQueueWaitState | null>> => vi.fn(),
+);
+const expireWait: Mock = vi.hoisted((): Mock => vi.fn());
 const getApiConfig: Mock<() => { workerImageRef: string | null }> = vi.hoisted(
   (): Mock<() => { workerImageRef: string | null }> => vi.fn(),
 );
 
 vi.mock('../src/services/product-job.service', (): object => ({ createProductJobIntent: createIntent }));
-vi.mock('../src/queries/product-job-runs.query', (): object => ({ readProductJobResult: readResult }));
+vi.mock('../src/queries/product-job-wait.query', (): object => ({
+  expireProductJobWait: expireWait,
+  readProductJobQueueWaitState: readQueueState,
+}));
+vi.mock('../src/queries/product-job-runs.query', (): object => ({
+  readProductJobResult: readResult,
+}));
 vi.mock('../src/runtime/runtime-access', (): object => ({ getApiConfig }));
 
 describe('Kubernetes resource backup operations', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
-    createIntent.mockResolvedValue();
+    createIntent.mockResolvedValue(null);
     getApiConfig.mockReturnValue({ workerImageRef: 'compartment-worker@sha256:abc' });
+    readQueueState.mockResolvedValue({ predecessorToken: 'initial', queueBudgetMs: 30_000 });
+    expireWait.mockResolvedValue({
+      completedAt: '2026-07-12T12:00:00.000Z',
+      exitCode: null,
+      identityId: 'op_backup',
+      jobClass: 'resource-operation',
+      jobName: 'queue-timeout/op_backup',
+      logs: 'Timed out waiting for queued Kubernetes resource operation.',
+      podName: null,
+      status: 'timed-out',
+    });
     readResult.mockResolvedValue({
       completedAt: '2026-07-12T12:00:00.000Z',
       exitCode: 0,
@@ -72,6 +98,81 @@ describe('Kubernetes resource backup operations', (): void => {
     expect(intent?.volumeMounts).toEqual([
       expect.objectContaining({ expectedClaimUid: 'uid-backup', mountPath: '/backups', name: 'backup-artifacts' }),
     ]);
+  });
+
+  it('keeps queued work durable without charging wait time to its execution deadline', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      readResult.mockResolvedValue(null);
+      const running: Promise<ResourceOperationResult> = runKubernetesResourceOperation(operationInput('backup'));
+
+      await vi.advanceTimersByTimeAsync(1_500_000);
+      readResult.mockResolvedValue(terminalResult('backup complete'));
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(running).resolves.toMatchObject({ stdout: 'backup complete' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('extends queued work when an older reconcile becomes visible after the initial budget read', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      readResult.mockResolvedValue(null);
+      readQueueState
+        .mockResolvedValueOnce({ predecessorToken: 'initial', queueBudgetMs: 30_000 })
+        .mockResolvedValue({ predecessorToken: 'late-reconcile', queueBudgetMs: 2_100_000 });
+      const running: Promise<ResourceOperationResult> = runKubernetesResourceOperation(operationInput('backup'));
+
+      await vi.advanceTimersByTimeAsync(1_835_000);
+      expect(expireWait).not.toHaveBeenCalled();
+      readResult.mockResolvedValue(terminalResult('backup complete'));
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(running).resolves.toMatchObject({ stdout: 'backup complete' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('backs off result reads while a resource operation waits in the serialized queue', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      readResult.mockResolvedValue(null);
+      const running: Promise<ResourceOperationResult> = runKubernetesResourceOperation(operationInput('backup'));
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(readResult.mock.calls.length).toBeLessThan(50);
+      readResult.mockResolvedValue(terminalResult('backup complete'));
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(running).resolves.toMatchObject({ stdout: 'backup complete' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fails durably when queued product work makes no progress beyond its bounded queue budget', async (): Promise<void> => {
+    vi.useFakeTimers();
+    readResult.mockResolvedValue(null);
+    let failure: Error | undefined;
+    const running: Promise<ResourceOperationResult | null> = runKubernetesResourceOperation(operationInput('backup'))
+      .then((): null => null)
+      .catch((error: Error): null => {
+        failure = error;
+        return null;
+      });
+    try {
+      await vi.advanceTimersByTimeAsync(7_200_000);
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure?.message).toContain('Timed out waiting for queued Kubernetes resource operation');
+      expect(expireWait).toHaveBeenCalledOnce();
+    } finally {
+      readResult.mockResolvedValue(terminalResult('backup complete'));
+      await vi.advanceTimersByTimeAsync(5_000);
+      await running;
+      vi.useRealTimers();
+    }
   });
 
   it('mounts backup artifacts read-only during restore', async (): Promise<void> => {
@@ -136,6 +237,7 @@ describe('Kubernetes resource backup operations', (): void => {
     const restoreIntent: ResourceOperationProductJobIntent | undefined = createIntent.mock.calls[1]?.[0];
     expect(restoreIntent?.env.COMPARTMENT_RESOURCE_NAME).toBe('postgres-copy');
     expect(restoreIntent?.env.COMPARTMENT_RESOURCE_HOST).toContain('resource-res-postgres-copy');
+    expect(restoreIntent?.resourceIds).toEqual([targetResource.id, artifactResource.id]);
     expect(restoreIntent?.volumeMounts).toEqual([
       expect.objectContaining({ expectedClaimUid: 'uid-backup', resourceId: artifactResource.id }),
     ]);
@@ -165,15 +267,39 @@ describe('Kubernetes resource backup operations', (): void => {
       resource: input.resource,
     });
 
-    expect(createIntent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        command: ['node', '-e', expect.stringContaining('rmSync'), '/backups/rbak_test'],
-        jobClass: 'resource-operation',
-        operationId: 'retention-rbak_test',
-        volumeMounts: [expect.objectContaining({ expectedClaimUid: 'uid-backup', mountPath: '/backups' })],
+    const intent: ResourceOperationProductJobIntent | undefined = createIntent.mock.calls[0]?.[0];
+    expect(intent?.command[0]).toBe('node');
+    expect(intent?.command[1]).toBe('-e');
+    expect(intent?.command[2]).toContain('rmSync');
+    expect(intent?.command[3]).toBe('/backups/rbak_test');
+    expect(intent?.jobClass).toBe('resource-operation');
+    expect(intent?.operationId).toMatch(/^resource_retention_/u);
+    expect(intent?.volumeMounts).toEqual([
+      expect.objectContaining({ expectedClaimUid: 'uid-backup', mountPath: '/backups' }),
+    ]);
+    expect(intent?.volumeMounts?.[0]).not.toHaveProperty('readOnly');
+  });
+
+  it('uses a fresh product Job identity when retention is retried after failure', async (): Promise<void> => {
+    const input: TestOperationInput = operationInput('backup');
+    readResult.mockResolvedValueOnce({ ...terminalResult('cleanup failed'), exitCode: 1, status: 'failed' });
+
+    await expect(
+      deleteKubernetesBackupArtifact({
+        backup: backup({ artifactLocation: 'pvc://rbak_test' }),
+        context: input.context,
+        resource: input.resource,
       }),
-    );
-    expect(createIntent.mock.calls[0]?.[0].volumeMounts?.[0]).not.toHaveProperty('readOnly');
+    ).rejects.toThrow('cleanup failed');
+    readResult.mockResolvedValueOnce(terminalResult('cleanup complete'));
+
+    await deleteKubernetesBackupArtifact({
+      backup: backup({ artifactLocation: 'pvc://rbak_test' }),
+      context: input.context,
+      resource: input.resource,
+    });
+
+    expect(createIntent.mock.calls[0]?.[0].operationId).not.toBe(createIntent.mock.calls[1]?.[0].operationId);
   });
 });
 
@@ -269,6 +395,7 @@ function resource(): ProjectResourceRow {
   return {
     commandJson: '[]',
     createdAt: new Date(),
+    deleteDataRequested: false,
     envJson: '[]',
     environmentId: 'env_prod',
     expectedClaimsJson: '[]',

@@ -1,12 +1,12 @@
-import { and, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import { environments, projectResources, projects, resourceReconcileRuns } from '../db/schema';
 import type { ResourceReconcileProjectLockRow } from './resource-reconcile-runs.query.types';
 
-const archivedResourceRunFailureMessage: string =
+export const archivedResourceRunFailureMessage: string =
   'Resource reconciliation was canceled because the project was archived.';
 
-export async function cancelPendingResourceReconcileRunsForProject(
+export async function cancelResourceReconcileRunsForProjectArchive(
   transaction: ApiDatabaseTransaction,
   projectId: string,
   canceledAt: Date,
@@ -20,7 +20,7 @@ export async function cancelPendingResourceReconcileRunsForProject(
       phase: 'failed',
       updatedAt: canceledAt,
     })
-    .where(pendingProjectResourceRunCondition(projectId));
+    .where(archivedProjectResourceRunCondition(projectId));
 }
 
 export async function lockResourceReconcileProject(
@@ -33,16 +33,29 @@ export async function lockResourceReconcileProject(
     .innerJoin(environments, eq(environments.id, projectResources.environmentId))
     .innerJoin(projects, eq(projects.id, environments.projectId))
     .where(eq(projectResources.id, resourceId))
-    .for('update', { of: projects });
+    .for('no key update', { of: projects });
   if (project === undefined) {
     throw new Error(`Project for resource ${resourceId} was not found.`);
   }
-  return project;
+  const [resource] = await transaction
+    .select({ resourceStatus: projectResources.status })
+    .from(projectResources)
+    .where(eq(projectResources.id, resourceId))
+    .for('no key update');
+  if (resource === undefined) {
+    throw new Error(`Resource ${resourceId} was not found.`);
+  }
+  return { ...project, ...resource };
 }
 
 export function claimableResourceProjectCondition(): SQL | undefined {
   return or(
     isNull(projects.archivedAt),
+    and(
+      eq(resourceReconcileRuns.operationType, 'bootstrap'),
+      eq(resourceReconcileRuns.phase, 'running'),
+      or(isNull(resourceReconcileRuns.leaseExpiresAt), lt(resourceReconcileRuns.leaseExpiresAt, new Date())),
+    ),
     and(
       eq(resourceReconcileRuns.operationType, 'reconcile'),
       sql`(${resourceReconcileRuns.intentJson}::jsonb ->> 'replicas')::integer = 0`,
@@ -50,9 +63,16 @@ export function claimableResourceProjectCondition(): SQL | undefined {
   );
 }
 
-function pendingProjectResourceRunCondition(projectId: string): SQL | undefined {
+function archivedProjectResourceRunCondition(projectId: string): SQL | undefined {
   return and(
-    inArray(resourceReconcileRuns.phase, ['bootstrap-pending', 'reconcile-pending']),
+    or(
+      and(eq(resourceReconcileRuns.operationType, 'bootstrap'), eq(resourceReconcileRuns.phase, 'bootstrap-pending')),
+      and(
+        eq(resourceReconcileRuns.operationType, 'reconcile'),
+        inArray(resourceReconcileRuns.phase, ['reconcile-pending', 'running']),
+        sql`(${resourceReconcileRuns.intentJson}::jsonb ->> 'replicas')::integer <> 0`,
+      ),
+    ),
     sql`exists (
       select 1
       from ${projectResources}

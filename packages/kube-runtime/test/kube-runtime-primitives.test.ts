@@ -2,19 +2,22 @@ import { KubernetesObjectApi, type KubernetesObject, type PatchStrategy } from '
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   KubeRuntime,
-  kubeJobName,
   kubeNamespaceName,
-  kubeSecretName,
   projectNamespaceProvisioningBundle,
   type KubeJobResult,
   type KubeJobSpec,
   type KubeManifest,
   type KubeObservation,
-  type KubeObservationHealth,
-  type KubePodVolume,
   type ProjectNamespaceProvisioningRow,
 } from '../src';
-import type { KubeObservationListener, KubeObservedManifest, KubeSecretEnvVariable } from '../src/kube-runtime.types';
+import { kubeJobName, kubeSecretName } from '../src/kube-naming';
+import type {
+  KubeObservationHealth,
+  KubeObservationListener,
+  KubeObservedManifest,
+  KubeSecretEnvVariable,
+} from '../src/kube-runtime.types';
+import type { KubePodVolume } from '../src/kube-volume.types';
 
 const createObservationMock: Mock = vi.hoisted((): Mock => vi.fn());
 

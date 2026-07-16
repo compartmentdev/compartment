@@ -53,6 +53,7 @@ function createResource(): ProjectResourceRow {
   return {
     commandJson: '[]',
     createdAt: now,
+    deleteDataRequested: false,
     envJson: '[]',
     environmentId: 'env_production',
     expectedClaimsJson: '[]',

@@ -1,4 +1,14 @@
-import { index, integer, pgTable, text, timestamp, type PgTableExtraConfig, unique } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  type PgTableExtraConfig,
+  unique,
+} from 'drizzle-orm/pg-core';
 import { principals } from './schema-core';
 import { environments, operations } from './schema-platform';
 import type * as DeploySchemaTypes from './schema-deploy.types';
@@ -22,7 +32,8 @@ export const projectResources: DeploySchemaTypes.ProjectResourcesTable = pgTable
     readinessJson: text('readiness_json').notNull(),
     runtimeDefinitionHash: text('runtime_definition_hash').notNull(),
     expectedClaimsJson: text('expected_claims_json').default('[]').notNull(),
-    status: text('status', { enum: ['running', 'stopped'] }).notNull(),
+    deleteDataRequested: boolean('delete_data_requested').default(false).notNull(),
+    status: text('status', { enum: ['deleting', 'running', 'starting', 'stopped'] }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -31,24 +42,32 @@ export const projectResources: DeploySchemaTypes.ProjectResourcesTable = pgTable
   }),
 );
 
-export const resourceReconcileRuns: DeploySchemaTypes.ResourceReconcileRunsTable = pgTable('resource_reconcile_runs', {
-  id: text('id').primaryKey(),
-  projectResourceId: text('project_resource_id')
-    .notNull()
-    .references((): typeof projectResources.id => projectResources.id, { onDelete: 'cascade' }),
-  intentJson: text('intent_json').notNull(),
-  expectedClaimsJson: text('expected_claims_json').notNull(),
-  previousManifestJson: text('previous_manifest_json'),
-  operationType: text('operation_type', { enum: ['bootstrap', 'reconcile'] }).notNull(),
-  leaseId: text('lease_id'),
-  leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
-  phase: text('phase', {
-    enum: ['bootstrap-pending', 'reconcile-pending', 'running', 'succeeded', 'failed'],
-  }).notNull(),
-  failureMessage: text('failure_message'),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+export const resourceReconcileRuns: DeploySchemaTypes.ResourceReconcileRunsTable = pgTable(
+  'resource_reconcile_runs',
+  {
+    id: text('id').primaryKey(),
+    projectResourceId: text('project_resource_id')
+      .notNull()
+      .references((): typeof projectResources.id => projectResources.id, { onDelete: 'cascade' }),
+    intentJson: text('intent_json').notNull(),
+    expectedClaimsJson: text('expected_claims_json').notNull(),
+    previousManifestJson: text('previous_manifest_json'),
+    operationType: text('operation_type', { enum: ['bootstrap', 'reconcile'] }).notNull(),
+    leaseId: text('lease_id'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    phase: text('phase', {
+      enum: ['bootstrap-pending', 'reconcile-pending', 'running', 'succeeded', 'failed'],
+    }).notNull(),
+    failureMessage: text('failure_message'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table: DeploySchemaTypes.ResourceReconcileRunsExtraConfigColumns): PgTableExtraConfig => ({
+    activeOrderIndex: index('resource_reconcile_runs_active_order_idx')
+      .on(table.createdAt, table.id)
+      .where(sql`${table.phase} IN ('bootstrap-pending', 'reconcile-pending', 'running')`),
+  }),
+);
 
 export const resourceBackups: DeploySchemaTypes.ResourceBackupsTable = pgTable(
   'resource_backups',

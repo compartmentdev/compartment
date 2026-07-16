@@ -3,6 +3,7 @@ import type {
   DeploymentArtifactCleanupTarget,
   DeploymentReconcileTarget,
   ProductJobIntent,
+  WorkerPersistProductJobIntentResponse,
   WorkerObserveDeploymentReconcileRequest,
 } from '@compartment/contracts';
 import {
@@ -14,8 +15,7 @@ import {
   type KubeRolloutStatus,
   type KubeRuntime,
 } from '@compartment/kube-runtime';
-import { observeDeploymentReconcile, type CompartmentRequester } from '@compartment/sdk';
-import { executeProductJob } from './worker-product-job.service';
+import { observeDeploymentReconcile, persistProductJobIntent, type CompartmentRequester } from '@compartment/sdk';
 import {
   deploymentFromObjects,
   deploymentManifest,
@@ -95,11 +95,17 @@ async function reconcileDesiredDeployment(
 ): Promise<void> {
   const release: ProductJobIntent | null = releaseIntent(target.candidate, releaseTimeoutMs);
   if (release !== null) {
-    try {
-      await executeProductJob(request, runtime, release);
-    } catch (error) {
-      const message: string = error instanceof Error ? error.message : 'Release Job failed.';
-      await persistObservation(request, target, 'failed', message);
+    const persisted: WorkerPersistProductJobIntentResponse = await persistProductJobIntent(request, release);
+    if (persisted.result === null) {
+      return;
+    }
+    if (persisted.result.status !== 'succeeded') {
+      await persistObservation(
+        request,
+        target,
+        'failed',
+        `Release Job ${persisted.result.status}: ${persisted.result.logs}`,
+      );
       return;
     }
   }

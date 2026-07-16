@@ -1,8 +1,8 @@
-import { setTimeout as delay } from 'node:timers/promises';
-import { createProjectResourceWithExecutor, findProjectResourceByName } from '../queries/resources.query';
+import { createProjectResourceWithExecutor } from '../queries/resources.query';
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import { createResourceInsert } from './resources-resource-insert.service';
 import { bootstrapKubernetesResource } from './resources-kubernetes-reconcile.service';
+import { waitForResourceBootstrap, waitForResourceRunning } from './resource-reconcile-run.service';
 import type { ResolvedResourceIntent } from './resources.service.helpers';
 import type { ResourceEnvironmentContext } from './resources.service.types';
 
@@ -11,18 +11,8 @@ export async function prepareRestoredResourceRuntime(
   resource: ProjectResourceRow,
 ): Promise<ProjectResourceRow> {
   await bootstrapKubernetesResource(context, resource);
-  const expiresAt: number = Date.now() + 120_000;
-  while (Date.now() < expiresAt) {
-    const current: ProjectResourceRow | undefined = await findProjectResourceByName(
-      context.environment.id,
-      resource.name,
-    );
-    if (current?.status === 'running' && current.expectedClaimsJson !== '[]') {
-      return current;
-    }
-    await delay(100);
-  }
-  throw new Error(`Timed out waiting for restored Kubernetes resource ${resource.name}.`);
+  await waitForResourceBootstrap(resource.id);
+  return await waitForResourceRunning(resource.id);
 }
 
 export async function createKubernetesRestoredResourceWithLock(

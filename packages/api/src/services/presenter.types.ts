@@ -14,7 +14,6 @@ import type {
   ResourceRuntimeStatus,
 } from '@compartment/contracts';
 import type { BuildEnvMap } from './deployment-build.types';
-import type { DeploymentJoinedRow } from '../queries/deployments.query.types';
 
 export interface DeployResponseInput {
   deployments: DeploymentSummaryInput[];
@@ -124,7 +123,7 @@ interface DeploymentResourceDefinitionSummaryInput {
 }
 
 interface DeploymentResourceRuntimeSummaryInput {
-  status: ResourceRuntimeStatus;
+  status: ResourceRuntimeStatus | 'deleting' | 'starting';
 }
 
 export interface EnvironmentSummaryInput {
@@ -164,7 +163,7 @@ export type WorkerClaimDeploymentResponseInput = WorkerClaimedDeploymentInput | 
 
 export interface WorkerClaimedDeploymentInput {
   buildEnv: BuildEnvMap;
-  deployment: DeploymentJoinedRow;
+  deployment: DeploymentSummaryInput;
   routeHost: string;
   run: ResolvedCompartmentServiceRunConfig;
 }

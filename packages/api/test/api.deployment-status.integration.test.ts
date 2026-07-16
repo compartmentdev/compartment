@@ -501,6 +501,39 @@ describe('Phase 0 API integration deployment status', (): void => {
     expect(requireSingleDeployment(scopedStatusPayload.deployments).id).toBe(secondDeployment.id);
     expect(requireSingleDeployment(scopedStatusPayload.activeDeployments).id).toBe(deployment.id);
   });
+  it('does not project deleted Kubernetes runtime topology when inspecting a stopped deployment', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const firstDeployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    const firstDeployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse(firstDeployResponse.json()),
+    );
+    const firstClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+    await completeClaimedDeployment(app, firstDeployment.id, firstClaim.routeHost);
+
+    const secondDeployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    const secondDeployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse(secondDeployResponse.json()),
+    );
+    const secondClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+    await completeClaimedDeployment(app, secondDeployment.id, secondClaim.routeHost);
+    const inspectResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken, 'acme-dev'),
+      method: 'GET',
+      url: `/v1/deployments/inspect?projectName=smoke-web&deploymentId=${firstDeployment.id}`,
+    });
+
+    expect(inspectResponse.statusCode, inspectResponse.body).toBe(200);
+    const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
+    expect(requireSingleDeployment(inspectPayload.deployments).runtime).toBeNull();
+  });
   it('does not serve per-artifact archives for non-source-resolution deployments', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     const sourceArchive: Buffer = await createSourceArchive({

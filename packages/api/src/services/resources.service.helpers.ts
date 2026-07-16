@@ -10,6 +10,7 @@ import type {
   ResourceVolumeSummary,
 } from '@compartment/contracts';
 import type { EffectiveVariable } from './effective-variables.service.types';
+import type { ResourceOperationDefinition, ResourceRuntimeEnvValue } from './resource-operation.types';
 import {
   buildResourceEnvSummary,
   buildStoredResourceEnv,
@@ -21,17 +22,6 @@ import {
   type StoredResourceOperationConfig,
   type StoredResourceOperationsConfig,
 } from './resources.service.storage';
-
-export interface ResourceRuntimeEnvValue {
-  keyName: string;
-  value: string;
-}
-
-interface ResourceOperationDefinition {
-  command: string;
-  env: ResourceRuntimeEnvValue[];
-  image: string;
-}
 
 export interface ResolvedResourceIntent {
   command: string[];

@@ -5,13 +5,18 @@ import type {
   CompartmentResourceOutputs,
   ResourceEnvSourceSummary,
   ResourceReadinessSummary,
+  ResourceRuntimeStatus,
   ResourceVolumeSummary,
 } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
 import { createInvalidDeployConfigError } from '../errors/api-business-error';
-import type { ProjectResourceRow } from '../queries/resources.query.types';
+import type {
+  ProjectResourceRow,
+  ProjectResourceRowStatus,
+  StoredProjectResourceRow,
+} from '../queries/resources.query.types';
 import type { EffectiveVariable } from './effective-variables.service.types';
-import type { ResourceRuntimeEnvValue } from './resources.service.helpers';
+import type { ResourceRuntimeEnvValue } from './resource-operation.types';
 import {
   buildResourceDefinitionSnapshot,
   parseStoredResourceDefinitionSnapshot,
@@ -87,7 +92,7 @@ export function parseResourceDefinitionSnapshotJson(value: string | null): Store
   }
 }
 
-export function parseResourceEnv(row: ProjectResourceRow): ResourceEnvSourceSummary[] {
+export function parseResourceEnv(row: StoredProjectResourceRow): ResourceEnvSourceSummary[] {
   return buildResourceEnvSummary(parseStoredResourceEnv(row));
 }
 
@@ -104,7 +109,7 @@ export function buildResourceEnvSummary(env: StoredResourceEnvSource[]): Resourc
 }
 
 export function resolveStoredResourceRuntimeEnv(
-  row: ProjectResourceRow,
+  row: StoredProjectResourceRow,
   variables: EffectiveVariable[],
 ): ResourceRuntimeEnvValue[] {
   return resolveResourceRuntimeEnv(parseStoredResourceEnv(row), variables);
@@ -155,11 +160,11 @@ export function resolveResourceRuntimeEnv(
   );
 }
 
-export function parseStoredResourceEnv(row: ProjectResourceRow): StoredResourceEnvSource[] {
+export function parseStoredResourceEnv(row: StoredProjectResourceRow): StoredResourceEnvSource[] {
   return JSON.parse(row.envJson) as StoredResourceEnvSource[];
 }
 
-export function parseStoredResourceOperations(row: ProjectResourceRow): StoredResourceOperationsConfig {
+export function parseStoredResourceOperations(row: StoredProjectResourceRow): StoredResourceOperationsConfig {
   const operations: Partial<StoredResourceOperationsConfig> = JSON.parse(
     row.operationsJson,
   ) as Partial<StoredResourceOperationsConfig>;
@@ -170,7 +175,7 @@ export function parseStoredResourceOperations(row: ProjectResourceRow): StoredRe
   };
 }
 
-export function parseStoredResourceOutputs(row: ProjectResourceRow): CompartmentResourceOutputs {
+export function parseStoredResourceOutputs(row: StoredProjectResourceRow): CompartmentResourceOutputs {
   return JSON.parse(row.outputsJson ?? '{}') as CompartmentResourceOutputs;
 }
 
@@ -230,20 +235,24 @@ function buildStoredResourceEnvFromEntries(entries: [string, string][]): StoredR
   );
 }
 
-export function parseResourceVolumes(row: ProjectResourceRow): ResourceVolumeSummary[] {
+export function parseResourceVolumes(row: StoredProjectResourceRow): ResourceVolumeSummary[] {
   return JSON.parse(row.volumesJson) as ResourceVolumeSummary[];
 }
 
-export function parseResourcePorts(row: ProjectResourceRow): number[] {
+export function parseResourcePorts(row: StoredProjectResourceRow): number[] {
   return JSON.parse(row.portsJson) as number[];
 }
 
-export function parseResourceCommand(row: ProjectResourceRow): string[] {
+export function parseResourceCommand(row: StoredProjectResourceRow): string[] {
   return JSON.parse(row.commandJson) as string[];
 }
 
-export function parseResourceReadiness(row: ProjectResourceRow): ResourceReadinessSummary | null {
+export function parseResourceReadiness(row: StoredProjectResourceRow): ResourceReadinessSummary | null {
   return JSON.parse(row.readinessJson) as ResourceReadinessSummary | null;
+}
+
+export function presentResourceRuntimeStatus(status: ProjectResourceRowStatus): ResourceRuntimeStatus {
+  return status === 'running' ? 'running' : 'stopped';
 }
 
 function resolveStoredResourceEnvValue(env: StoredResourceEnvSource): string {

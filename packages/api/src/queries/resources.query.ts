@@ -1,6 +1,7 @@
 import { and, asc, eq, sql, type SQL } from 'drizzle-orm';
-import { projectResources } from '../db/schema';
+import { environments, projectKubeProvisioning, projectResources, projects } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
+import { lockResourceReconcileProject } from './resource-reconcile-project.query';
 import type {
   CreateProjectResourceInput,
   PersistedProjectResourceRow,
@@ -13,6 +14,7 @@ import type {
 const projectResourceLockSelection: SQL[] = [
   sql`${projectResources.commandJson} as "commandJson"`,
   sql`${projectResources.createdAt} as "createdAt"`,
+  sql`${projectResources.deleteDataRequested} as "deleteDataRequested"`,
   sql`${projectResources.envJson} as "envJson"`,
   sql`${projectResources.environmentId} as "environmentId"`,
   sql`${projectResources.expectedClaimsJson} as "expectedClaimsJson"`,
@@ -89,10 +91,46 @@ export async function lockProjectResourceReconciliation(
   tx: ResourceTransaction,
   environmentId: string,
   resourceName: string,
-): Promise<void> {
+): Promise<Date | null> {
   await tx.execute(sql`
     select pg_advisory_xact_lock(hashtext(${`${environmentId}:${resourceName}`}))
   `);
+  await tx
+    .select({ projectId: projectKubeProvisioning.projectId })
+    .from(environments)
+    .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, environments.projectId))
+    .where(eq(environments.id, environmentId))
+    .for('update', { of: projectKubeProvisioning });
+  const [project] = await tx
+    .select({ archivedAt: projects.archivedAt })
+    .from(environments)
+    .innerJoin(projects, eq(projects.id, environments.projectId))
+    .where(eq(environments.id, environmentId))
+    .for('update', { of: projects });
+  if (project === undefined) {
+    throw new Error(`Project for environment ${environmentId} was not found.`);
+  }
+  return project.archivedAt;
+}
+
+export async function lockProjectResourceOperation(
+  tx: ResourceTransaction,
+  environmentId: string,
+  resourceName: string,
+): Promise<Date | null> {
+  await tx.execute(sql`
+    select pg_advisory_xact_lock(hashtext(${`${environmentId}:${resourceName}`}))
+  `);
+  const [project] = await tx
+    .select({ archivedAt: projects.archivedAt })
+    .from(environments)
+    .innerJoin(projects, eq(projects.id, environments.projectId))
+    .where(eq(environments.id, environmentId))
+    .for('key share', { of: projects });
+  if (project === undefined) {
+    throw new Error(`Project for environment ${environmentId} was not found.`);
+  }
+  return project.archivedAt;
 }
 
 export async function createProjectResourceWithExecutor(
@@ -134,6 +172,25 @@ export async function updateProjectResourceStatus(
   );
 }
 
+export async function beginProjectResourceDeletion(
+  projectResourceId: string,
+  deleteData: boolean,
+): Promise<ProjectResourceRow> {
+  return await getApiDatabase().transaction(async (tx: ResourceTransaction): Promise<ProjectResourceRow> => {
+    await lockResourceReconcileProject(tx, projectResourceId);
+    const [resource] = await tx
+      .update(projectResources)
+      .set({
+        deleteDataRequested: sql`${projectResources.deleteDataRequested} OR ${deleteData}`,
+        status: 'deleting',
+        updatedAt: new Date(),
+      })
+      .where(eq(projectResources.id, projectResourceId))
+      .returning();
+    return requireProjectResourceRow(resource === undefined ? undefined : toProjectResourceRow(resource));
+  });
+}
+
 async function updateProjectResourceStatusWithExecutor(
   tx: ResourceTransaction,
   input: UpdateProjectResourceStatusInput,
@@ -148,15 +205,6 @@ async function updateProjectResourceStatusWithExecutor(
     .returning();
 
   return requireProjectResourceRow(resource !== undefined ? toProjectResourceRow(resource) : undefined);
-}
-
-export async function deleteProjectResource(projectResourceId: string): Promise<ProjectResourceRow | undefined> {
-  const [resource] = await getApiDatabase()
-    .delete(projectResources)
-    .where(eq(projectResources.id, projectResourceId))
-    .returning();
-
-  return resource !== undefined ? toProjectResourceRow(resource) : undefined;
 }
 
 function buildLockProjectResourceQuery(environmentId: string, resourceName: string): SQL<PersistedProjectResourceRow> {

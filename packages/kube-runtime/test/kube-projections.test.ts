@@ -1,13 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
-import {
-  kubeApplicationName,
-  kubeSecretName,
-  projectApplicationManifests,
-  projectSecretManifest,
-  type ApplicationProjectionRow,
-  type KubeManifest,
-} from '../src';
+import { projectApplicationManifests, type KubeManifest } from '../src';
+import type { ApplicationProjectionRow } from '../src/kube-application-projection.types';
+import { kubeApplicationName, kubeSecretName } from '../src/kube-naming';
+import { projectSecretManifest } from '../src/kube-secret-projection';
 import type { KubeSecretEnvVariable } from '../src/kube-runtime.types';
 
 interface DeploymentSpec {

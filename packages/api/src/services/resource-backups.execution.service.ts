@@ -20,6 +20,7 @@ import {
   type ResourceOperationKind,
 } from './resource-backups.operation-context.service';
 import { readOperationErrorOutput, summarizeOperationOutput } from './resource-operation-output.service';
+import type { ResourceOperationResult } from './resource-operation.types';
 import {
   completeResourceBackupOperationRecord,
   readOperationFailureSummary,
@@ -40,11 +41,6 @@ import type {
 interface RunningResourceBackup {
   backup: ResourceBackupRow;
   operationRecord: OperationRecord;
-}
-
-interface ResourceOperationResult {
-  stderr: string;
-  stdout: string;
 }
 
 type ResourceBackupRuntimeState = RunningResourceBackup & { backupId: string };

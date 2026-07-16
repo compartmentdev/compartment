@@ -3,7 +3,7 @@ import type { WorkerRecoverOrphanedBuildClaimsResponse } from '@compartment/cont
 import { createCompartmentRequester, isCompartmentRequestError, recoverOrphanedBuildClaims } from '@compartment/sdk';
 import pino from 'pino';
 import { readWorkerConfig, type WorkerConfig } from './config';
-import { createKubeControllerHost, type KubeControllerHost } from './kube-controller-host';
+import { createKubeControllerHosts, type KubeControllerHost } from './kube-controller-host';
 import { runKubeControllerLoop } from './kube-controller-loop';
 import { buildWorkerCaughtErrorLogPayload } from './logging/worker-error-log';
 import type { WorkerCaughtError } from './logging/worker-error-log.types';
@@ -23,10 +23,12 @@ interface WorkerFetchError extends Error {
 export async function runWorker(config: WorkerConfig = readWorkerConfig()): Promise<void> {
   const logger: pino.Logger<never, boolean> = createWorkerLogger(config);
   const state: WorkerState = { hasReachedApi: false, recoveredOrphanedBuildClaims: false };
-  const kubeController: KubeControllerHost = createKubeControllerHost(config);
+  const kubeControllers: KubeControllerHost[] = createKubeControllerHosts(config);
 
   void prewarmSourceBuildToolchainAtStartup(logger);
-  void runKubeControllerLoop(config, logger, kubeController);
+  for (const kubeController of kubeControllers) {
+    void runKubeControllerLoop(config, logger, kubeController);
+  }
   await runWorkerLoop(config, logger, state);
 }
 

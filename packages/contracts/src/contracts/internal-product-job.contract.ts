@@ -9,6 +9,7 @@ interface ProductJobSpec {
   env: Record<string, string>;
   image: string;
   namespace: string;
+  projectId: string;
   timeoutMs: number;
   volumeMounts?: ProductJobVolumeMount[] | undefined;
 }
@@ -32,12 +33,21 @@ export interface ReleaseProductJobIntent extends ProductJobSpec {
 export interface ResourceOperationProductJobIntent extends ProductJobSpec {
   jobClass: 'resource-operation';
   operationId: string;
+  resourceIds: string[];
 }
 
 export type ProductJobIntent = ReleaseProductJobIntent | ResourceOperationProductJobIntent;
 
 export interface WorkerClaimProductJobResponse {
   job: ProductJobIntent | null;
+  result: WorkerPersistProductJobResultRequest | null;
+}
+
+export interface WorkerClaimProductJobRequest {
+  jobClass: ProductJobClass;
+}
+
+export interface WorkerPersistProductJobIntentResponse {
   result: WorkerPersistProductJobResultRequest | null;
 }
 
@@ -62,6 +72,7 @@ interface ProductJobSpecSchemaShape {
   env: z.ZodRecord<z.ZodString, z.ZodString>;
   image: z.ZodString;
   namespace: z.ZodString;
+  projectId: z.ZodString;
   timeoutMs: z.ZodNumber;
   volumeMounts: z.ZodOptional<ContractSchema<ProductJobVolumeMount[]>>;
 }
@@ -71,11 +82,16 @@ export const workerPersistProductJobIntentPathname: string = '/internal/kube-job
 export const workerPersistProductJobResultPathname: string = '/internal/kube-jobs/result';
 export const workerFinalizeProductJobPathname: string = '/internal/kube-jobs/finalized';
 
+export function productJobRuntimeId(jobClass: ProductJobClass, identityId: string): string {
+  return `${jobClass}-${identityId}`;
+}
+
 const productJobSpecShape: ProductJobSpecSchemaShape = {
   command: z.array(z.string()),
   env: z.record(z.string(), z.string()),
   image: z.string().min(1),
   namespace: z.string().min(1),
+  projectId: z.string().min(1),
   timeoutMs: z.number().int().positive(),
   volumeMounts: z
     .array(
@@ -104,7 +120,12 @@ export const productJobIntentSchema: ContractSchema<ProductJobIntent> = z.discri
     })
     .strict(),
   z
-    .object({ ...productJobSpecShape, jobClass: z.literal('resource-operation'), operationId: z.string().min(1) })
+    .object({
+      ...productJobSpecShape,
+      jobClass: z.literal('resource-operation'),
+      operationId: z.string().min(1),
+      resourceIds: z.array(z.string().min(1)).min(1),
+    })
     .strict(),
 ]);
 
@@ -115,6 +136,10 @@ export const workerClaimProductJobResponseSchema: ContractSchema<WorkerClaimProd
       .lazy((): ContractSchema<WorkerPersistProductJobResultRequest> => workerPersistProductJobResultRequestSchema)
       .nullable(),
   })
+  .strict();
+
+export const workerClaimProductJobRequestSchema: ContractSchema<WorkerClaimProductJobRequest> = z
+  .object({ jobClass: z.enum(['release', 'resource-operation']) })
   .strict();
 
 export const workerPersistProductJobResultRequestSchema: ContractSchema<WorkerPersistProductJobResultRequest> = z
@@ -128,6 +153,10 @@ export const workerPersistProductJobResultRequestSchema: ContractSchema<WorkerPe
     podName: z.string().min(1).nullable(),
     status: z.enum(['succeeded', 'failed', 'timed-out']),
   })
+  .strict();
+
+export const workerPersistProductJobIntentResponseSchema: ContractSchema<WorkerPersistProductJobIntentResponse> = z
+  .object({ result: workerPersistProductJobResultRequestSchema.nullable() })
   .strict();
 
 export const workerFinalizeProductJobRequestSchema: ContractSchema<WorkerFinalizeProductJobRequest> = z

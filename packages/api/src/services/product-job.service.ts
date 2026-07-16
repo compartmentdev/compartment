@@ -1,23 +1,26 @@
 import type {
   ProductJobIntent,
+  ProductJobClass,
   WorkerFinalizeProductJobRequest,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
 import {
   claimProductJob,
-  persistProductJobIntent,
   persistProductJobFinalized,
   persistProductJobResult,
 } from '../queries/product-job-runs.query';
+import { persistProductJobIntent } from '../queries/product-job-intent.query';
 import type { ClaimedProductJobQueryResult } from '../queries/product-job-runs.query.types';
 import type { ClaimedProductJobResult } from './product-job.service.types';
 
-export async function createProductJobIntent(input: ProductJobIntent): Promise<void> {
-  await persistProductJobIntent({ identityId: readProductJobIdentity(input), intent: input });
+export async function createProductJobIntent(
+  input: ProductJobIntent,
+): Promise<WorkerPersistProductJobResultRequest | null> {
+  return await persistProductJobIntent({ identityId: readProductJobIdentity(input), intent: input });
 }
 
-export async function claimNextProductJob(): Promise<ClaimedProductJobResult> {
-  const claimed: ClaimedProductJobQueryResult = await claimProductJob();
+export async function claimNextProductJob(jobClass: ProductJobClass): Promise<ClaimedProductJobResult> {
+  const claimed: ClaimedProductJobQueryResult = await claimProductJob(jobClass);
   return { intent: claimed.intent, persistedResult: claimed.persistedResult };
 }
 

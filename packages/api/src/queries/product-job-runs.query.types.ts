@@ -12,6 +12,7 @@ export interface ProductJobRunRow {
   createdAt: Date;
   envJson: string;
   exitCode: number | null;
+  id: string;
   identityId: string;
   image: string;
   imagePullSecretId: string | null;
@@ -20,8 +21,11 @@ export interface ProductJobRunRow {
   logs: string | null;
   namespace: string;
   podName: string | null;
+  projectId: string;
+  resourceIdsJson: string;
   status: ProductJobStatus;
   timeoutMs: number;
+  updatedAt: Date;
   volumeMountsJson: string;
 }
 
@@ -41,6 +45,7 @@ export interface ProductJobCommonSpec {
   image: string;
   imagePullSecretId?: string | undefined;
   namespace: string;
+  projectId: string;
   timeoutMs: number;
   volumeMounts?: ProductJobVolumeMount[] | undefined;
 }

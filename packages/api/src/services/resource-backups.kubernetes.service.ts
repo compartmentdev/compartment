@@ -1,11 +1,11 @@
-import type {
-  ProductJobVolumeMount,
-  ResourceClaimIdentity,
-  ResourceOperationProductJobIntent,
-  WorkerPersistProductJobResultRequest,
+import {
+  type ProductJobVolumeMount,
+  type ResourceClaimIdentity,
+  type ResourceOperationProductJobIntent,
+  type WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
 import { immutableKubeName, kubeResourceServiceDns, type JsonValue } from '@compartment/utils';
-import { readProductJobResult } from '../queries/product-job-runs.query';
+import { createId } from '../lib/tokens';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
 import type { ResourceBackupArtifactSummary } from './resource-backup-artifact.types';
@@ -19,17 +19,16 @@ import type { ResourceOperationKind } from './resource-backups.operation-context
 import type {
   KubernetesArtifactMetadata,
   KubernetesBackupArtifactDeleteInput,
-  KubernetesOperationDefinition,
   KubernetesResourceOperationInput,
-  KubernetesResourceOperationResult,
   KubernetesVerifiedRestoreInput,
 } from './resource-backups.kubernetes.service.types';
+import type { ResourceOperationDefinition, ResourceOperationResult } from './resource-operation.types';
+import { waitForResourceOperationProductJob } from './resource-product-job-wait.service';
 import { buildResourceOperationDefinition } from './resources.service.helpers';
 import type { ResourceEnvironmentContext } from './resources.service.types';
 
 const backupArtifactVolumeHandle: string = 'backup-artifacts';
 const backupContainerRoot: string = '/backups';
-const productJobPollIntervalMs: number = 100;
 const artifactMetadataMarker: string = 'COMPARTMENT_ARTIFACT_METADATA ';
 const artifactVerifierScript: string = `const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');const root=process.argv[1];function files(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>{const p=path.join(dir,e.name);if(e.isDirectory())return files(p);if(!e.isFile())throw new Error('Artifact contains a non-file entry: '+p);return[p]})}const list=files(root).sort((a,b)=>path.relative(root,a).localeCompare(path.relative(root,b)));const hash=crypto.createHash('sha256');let sizeBytes=0;for(const file of list){const relative=path.relative(root,file),data=fs.readFileSync(file);hash.update(relative);hash.update('\\0');hash.update(data);hash.update('\\0');sizeBytes+=data.length}console.log('${artifactMetadataMarker}'+JSON.stringify({checksum:hash.digest('hex'),sizeBytes}));`;
 const artifactDeleteScript: string = `require('node:fs').rmSync(process.argv[1],{force:true,recursive:true});`;
@@ -76,12 +75,14 @@ export async function deleteKubernetesBackupArtifact(input: KubernetesBackupArti
     image: workerImageRef,
     jobClass: 'resource-operation',
     namespace: immutableKubeName('cpt', input.context.project.id),
-    operationId: `retention-${input.backup.id}`,
+    operationId: createId('resource_retention'),
+    projectId: input.context.project.id,
+    resourceIds: [input.resource.id],
     timeoutMs: 30_000,
     volumeMounts: buildVolumeMounts(input.resource, input.backup.id, 'cleanup'),
   };
   await createProductJobIntent(intent);
-  const result: WorkerPersistProductJobResultRequest = await waitForProductJob(intent.operationId, intent.timeoutMs);
+  const result: WorkerPersistProductJobResultRequest = await waitForResourceOperationProductJob(intent.operationId);
   if (result.status !== 'succeeded') {
     throw new Error(`Kubernetes backup retention ${result.status}: ${result.logs}`);
   }
@@ -89,10 +90,10 @@ export async function deleteKubernetesBackupArtifact(input: KubernetesBackupArti
 
 export async function runKubernetesResourceOperation(
   input: KubernetesResourceOperationInput,
-): Promise<KubernetesResourceOperationResult> {
+): Promise<ResourceOperationResult> {
   const intent: ResourceOperationProductJobIntent = buildProductJobIntent(input);
   await createProductJobIntent(intent);
-  const result: WorkerPersistProductJobResultRequest = await waitForProductJob(intent.operationId, intent.timeoutMs);
+  const result: WorkerPersistProductJobResultRequest = await waitForResourceOperationProductJob(intent.operationId);
   if (result.status !== 'succeeded') {
     throw new Error(`Kubernetes resource ${input.operationKind} ${result.status}: ${result.logs}`);
   }
@@ -111,7 +112,7 @@ async function verifyKubernetesBackupArtifact(input: {
   }
   const intent: ResourceOperationProductJobIntent = buildVerifierIntent(input, workerImageRef);
   await createProductJobIntent(intent);
-  const result: WorkerPersistProductJobResultRequest = await waitForProductJob(intent.operationId, intent.timeoutMs);
+  const result: WorkerPersistProductJobResultRequest = await waitForResourceOperationProductJob(intent.operationId);
   if (result.status !== 'succeeded') {
     throw new Error(`Kubernetes backup artifact verification ${result.status}: ${result.logs}`);
   }
@@ -130,6 +131,8 @@ function buildVerifierIntent(
     jobClass: 'resource-operation',
     namespace: immutableKubeName('cpt', input.context.project.id),
     operationId: `${input.operationId}-artifact-verify`,
+    projectId: input.context.project.id,
+    resourceIds: [input.resource.id],
     timeoutMs: 30_000,
     volumeMounts: buildVolumeMounts(input.resource, input.backupId, 'restore'),
   };
@@ -162,7 +165,7 @@ function readKubernetesArtifactMetadata(value: JsonValue): KubernetesArtifactMet
 }
 
 function buildProductJobIntent(input: KubernetesResourceOperationInput): ResourceOperationProductJobIntent {
-  const definition: KubernetesOperationDefinition = buildResourceOperationDefinition(
+  const definition: ResourceOperationDefinition = buildResourceOperationDefinition(
     input.operationContext.intent,
     input.operationContext.operation,
     input.operationContext.effectiveVariables,
@@ -174,9 +177,19 @@ function buildProductJobIntent(input: KubernetesResourceOperationInput): Resourc
     jobClass: 'resource-operation',
     namespace: immutableKubeName('cpt', input.context.project.id),
     operationId: input.operationId,
+    projectId: input.context.project.id,
+    resourceIds: readOperationResourceIds(input),
     timeoutMs: input.operationContext.intent.readiness?.timeoutMs ?? 30_000,
     volumeMounts: buildVolumeMounts(input.volumeResource ?? input.resource, input.backupId, input.operationKind),
   };
+}
+
+function readOperationResourceIds(input: KubernetesResourceOperationInput): string[] {
+  return [
+    ...new Set(
+      [input.resource.id, input.volumeResource?.id].filter((id: string | undefined): id is string => id !== undefined),
+    ),
+  ];
 }
 
 function buildOperationCommand(command: string, operationKind: ResourceOperationKind): string[] {
@@ -222,24 +235,4 @@ function buildVolumeMounts(
       resourceId: resource.id,
     },
   ];
-}
-
-async function waitForProductJob(
-  operationId: string,
-  timeoutMs: number,
-): Promise<WorkerPersistProductJobResultRequest> {
-  const expiresAt: number = Date.now() + timeoutMs + 5_000;
-  for (;;) {
-    const result: WorkerPersistProductJobResultRequest | null = await readProductJobResult(
-      'resource-operation',
-      operationId,
-    );
-    if (result !== null) {
-      return result;
-    }
-    if (Date.now() >= expiresAt) {
-      throw new Error(`Kubernetes resource operation ${operationId} did not persist terminal evidence.`);
-    }
-    await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, productJobPollIntervalMs));
-  }
 }

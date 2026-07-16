@@ -76,7 +76,11 @@ async function stopKubeProjectDeployments(deployments: DeploymentJoinedRow[]): P
 
 async function stopKubeProjectResources(resources: ProjectRuntimeCleanupResource[]): Promise<void> {
   for (const item of resources) {
-    await reconcileKubernetesResourceReplicas(item.context, item.resource, 0);
+    if (item.resource.status === 'deleting') {
+      await deleteKubernetesResource(item.context, item.resource, false);
+    } else {
+      await reconcileKubernetesResourceReplicas(item.context, item.resource, 0);
+    }
   }
 }
 

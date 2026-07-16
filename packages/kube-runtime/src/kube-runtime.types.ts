@@ -159,6 +159,7 @@ export interface KubeRollingUpdateStrategy {
 }
 
 export interface KubeServiceManifestSpec {
+  clusterIP?: 'None' | undefined;
   ports: KubeServicePort[];
   selector: Record<string, string>;
   type?: string;

@@ -13,6 +13,11 @@ interface ProductLogQuotaRow {
   usedBytes: string;
 }
 
+interface SchemaIndexRow {
+  definition: string;
+  name: string;
+}
+
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'kubernetes_cutover_schema');
 const pool: Pool = createDatabasePool(databaseUrl);
@@ -71,5 +76,20 @@ describe('Kubernetes cutover schema', (): void => {
     expect(quotaRows.rows).toEqual([{ id: 'global', usedBytes: '0' }]);
     expect(functionRows.rows).toEqual([{ name: 'decrement_product_log_store_usage' }]);
     expect(triggerRows.rows).toEqual([{ name: 'deployment_product_logs_quota_delete' }]);
+  });
+
+  it('indexes the globally serialized active resource reconcile order', async (): Promise<void> => {
+    const indexRows: QueryResult<SchemaIndexRow> = await pool.query<SchemaIndexRow>(
+      `select indexname as name, indexdef as definition
+       from pg_indexes
+       where schemaname = 'public' and indexname = 'resource_reconcile_runs_active_order_idx'`,
+    );
+
+    expect(indexRows.rows).toHaveLength(1);
+    expect(indexRows.rows[0]?.definition).toContain('(created_at, id)');
+    expect(indexRows.rows[0]?.definition).toContain('WHERE');
+    expect(indexRows.rows[0]?.definition).toContain('bootstrap-pending');
+    expect(indexRows.rows[0]?.definition).toContain('reconcile-pending');
+    expect(indexRows.rows[0]?.definition).toContain('running');
   });
 });

@@ -1,5 +1,4 @@
-import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, isNull, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, type SQL } from 'drizzle-orm';
 import type { SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import type {
   ProductJobClass,
@@ -7,17 +6,18 @@ import type {
   ProductJobVolumeMount,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
+import type { Database } from '../db/client';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import { productJobRuns } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type {
   ClaimedProductJobQueryResult,
-  PersistProductJobIntentInput,
   PersistProductJobResultInput,
   ProductJobCommonSpec,
   ProductJobRunRow,
   ProductJobResultRow,
 } from './product-job-runs.query.types';
+import { lockProductJobResourceFence, prepareProductJobClaim } from './product-job-claim.query';
 
 interface ProductJobRunSelection extends SelectedFields {
   commandJson: typeof productJobRuns.commandJson;
@@ -25,6 +25,7 @@ interface ProductJobRunSelection extends SelectedFields {
   createdAt: typeof productJobRuns.createdAt;
   envJson: typeof productJobRuns.envJson;
   exitCode: typeof productJobRuns.exitCode;
+  id: typeof productJobRuns.id;
   identityId: typeof productJobRuns.identityId;
   image: typeof productJobRuns.image;
   imagePullSecretId: typeof productJobRuns.imagePullSecretId;
@@ -33,39 +34,34 @@ interface ProductJobRunSelection extends SelectedFields {
   logs: typeof productJobRuns.logs;
   namespace: typeof productJobRuns.namespace;
   podName: typeof productJobRuns.podName;
+  projectId: typeof productJobRuns.projectId;
+  resourceIdsJson: typeof productJobRuns.resourceIdsJson;
   status: typeof productJobRuns.status;
   timeoutMs: typeof productJobRuns.timeoutMs;
+  updatedAt: typeof productJobRuns.updatedAt;
   volumeMountsJson: typeof productJobRuns.volumeMountsJson;
 }
 
-export async function persistProductJobIntent(input: PersistProductJobIntentInput): Promise<void> {
-  await getApiDatabase()
-    .insert(productJobRuns)
-    .values({
-      commandJson: JSON.stringify(input.intent.command),
-      envJson: JSON.stringify(input.intent.env),
-      id: `job_${randomUUID().replaceAll('-', '')}`,
-      identityId: input.identityId,
-      image: input.intent.image,
-      imagePullSecretId: input.intent.jobClass === 'release' ? input.intent.imagePullSecretId : null,
-      jobClass: input.intent.jobClass,
-      namespace: input.intent.namespace,
-      status: 'queued',
-      timeoutMs: input.intent.timeoutMs,
-      volumeMountsJson: JSON.stringify(input.intent.volumeMounts ?? []),
-    })
-    .onConflictDoNothing({ target: [productJobRuns.jobClass, productJobRuns.identityId] });
-}
-
-export async function claimProductJob(): Promise<ClaimedProductJobQueryResult> {
-  return await getApiDatabase().transaction(claimProductJobWithTransaction);
+export async function claimProductJob(jobClass: ProductJobClass): Promise<ClaimedProductJobQueryResult> {
+  return await getApiDatabase().transaction(
+    async (transaction: ApiDatabaseTransaction): Promise<ClaimedProductJobQueryResult> =>
+      await claimProductJobWithTransaction(transaction, jobClass),
+  );
 }
 
 export async function readProductJobResult(
   jobClass: ProductJobClass,
   identityId: string,
 ): Promise<WorkerPersistProductJobResultRequest | null> {
-  const [row] = await getApiDatabase()
+  return await readProductJobResultWithExecutor(getApiDatabase(), jobClass, identityId);
+}
+
+async function readProductJobResultWithExecutor(
+  executor: ApiDatabaseTransaction | Database,
+  jobClass: ProductJobClass,
+  identityId: string,
+): Promise<WorkerPersistProductJobResultRequest | null> {
+  const [row] = await executor
     .select({
       completedAt: productJobRuns.completedAt,
       exitCode: productJobRuns.exitCode,
@@ -84,16 +80,23 @@ export async function readProductJobResult(
 
 async function claimProductJobWithTransaction(
   transaction: ApiDatabaseTransaction,
+  jobClass: ProductJobClass,
 ): Promise<ClaimedProductJobQueryResult> {
-  const row: ProductJobRunRow | undefined = await readClaimableProductJobRow(transaction);
-  if (row === undefined) {
+  const row: ProductJobRunRow | undefined = await readClaimableProductJobRow(transaction, jobClass);
+  if (row === undefined || !(await lockProductJobResourceFence(transaction, row))) {
     return { intent: null, persistedResult: null };
   }
-  if (row.status === 'queued' || row.status === 'running') {
+  if (row.status === 'queued') {
     await transaction
       .update(productJobRuns)
       .set({ status: 'running', updatedAt: new Date() })
-      .where(and(eq(productJobRuns.jobClass, row.jobClass), eq(productJobRuns.identityId, row.identityId)));
+      .where(
+        and(
+          eq(productJobRuns.jobClass, row.jobClass),
+          eq(productJobRuns.identityId, row.identityId),
+          eq(productJobRuns.status, 'queued'),
+        ),
+      );
   }
   return { intent: buildProductJobIntent(row), persistedResult: buildPersistedProductJobResult(row) };
 }
@@ -104,6 +107,7 @@ const claimableProductJobSelection: ProductJobRunSelection = {
   createdAt: productJobRuns.createdAt,
   envJson: productJobRuns.envJson,
   exitCode: productJobRuns.exitCode,
+  id: productJobRuns.id,
   identityId: productJobRuns.identityId,
   image: productJobRuns.image,
   imagePullSecretId: productJobRuns.imagePullSecretId,
@@ -112,28 +116,28 @@ const claimableProductJobSelection: ProductJobRunSelection = {
   logs: productJobRuns.logs,
   namespace: productJobRuns.namespace,
   podName: productJobRuns.podName,
+  projectId: productJobRuns.projectId,
+  resourceIdsJson: productJobRuns.resourceIdsJson,
   status: productJobRuns.status,
   timeoutMs: productJobRuns.timeoutMs,
+  updatedAt: productJobRuns.updatedAt,
   volumeMountsJson: productJobRuns.volumeMountsJson,
 };
 
-async function readClaimableProductJobRow(transaction: ApiDatabaseTransaction): Promise<ProductJobRunRow | undefined> {
+async function readClaimableProductJobRow(
+  transaction: ApiDatabaseTransaction,
+  jobClass: ProductJobClass,
+): Promise<ProductJobRunRow | undefined> {
+  const claimable: SQL | undefined = await prepareProductJobClaim(transaction, jobClass);
   return (
     await transaction
       .select(claimableProductJobSelection)
       .from(productJobRuns)
-      .where(claimableProductJobPredicate())
-      .orderBy(asc(productJobRuns.createdAt))
+      .where(and(eq(productJobRuns.jobClass, jobClass), claimable))
+      .orderBy(asc(productJobRuns.createdAt), asc(productJobRuns.id))
       .limit(1)
       .for('update', { skipLocked: true })
   )[0];
-}
-
-function claimableProductJobPredicate(): SQL | undefined {
-  return or(
-    inArray(productJobRuns.status, ['queued', 'running']),
-    and(inArray(productJobRuns.status, ['succeeded', 'failed', 'timed-out']), isNull(productJobRuns.finalizedAt)),
-  );
 }
 
 function buildPersistedProductJobResult(row: ProductJobResultRow): WorkerPersistProductJobResultRequest | null {
@@ -190,7 +194,8 @@ function buildProductJobIntent(row: ProductJobRunRow): ProductJobIntent {
     image: row.image,
     ...(row.imagePullSecretId === null ? {} : { imagePullSecretId: row.imagePullSecretId }),
     namespace: row.namespace,
-    timeoutMs: Math.max(1, row.createdAt.getTime() + row.timeoutMs - Date.now()),
+    projectId: row.projectId,
+    timeoutMs: productJobTimeoutMs(row),
     volumeMounts: JSON.parse(row.volumeMountsJson) as ProductJobVolumeMount[],
   };
   return row.jobClass === 'release'
@@ -200,7 +205,16 @@ function buildProductJobIntent(row: ProductJobRunRow): ProductJobIntent {
         imagePullSecretId: requireReleaseImagePullSecretId(row),
         jobClass: 'release',
       }
-    : { ...spec, jobClass: 'resource-operation', operationId: row.identityId };
+    : {
+        ...spec,
+        jobClass: 'resource-operation',
+        operationId: row.identityId,
+        resourceIds: JSON.parse(row.resourceIdsJson) as string[],
+      };
+}
+
+function productJobTimeoutMs(row: ProductJobRunRow): number {
+  return row.status === 'queued' ? row.timeoutMs : Math.max(1, row.updatedAt.getTime() + row.timeoutMs - Date.now());
 }
 
 function requireReleaseImagePullSecretId(row: ProductJobRunRow): string {

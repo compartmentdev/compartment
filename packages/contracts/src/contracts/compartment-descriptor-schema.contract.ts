@@ -55,18 +55,12 @@ import type {
   CompartmentDescriptorSchemaRules,
 } from './compartment-descriptor.types';
 import type { ContractSchema } from './schema.types';
+import { resourceReadinessSummarySchema } from './resources.contract';
 
 const compartmentDescriptorSchemaDefaultsSchema: ContractSchema<CompartmentDescriptorSchemaDefaults> = z
   .object({
     readiness: resolvedOptionalServiceReadinessConfigSchema,
-    resourceReadiness: z
-      .object({
-        port: z.number().int().min(1).max(65_535),
-        timeoutMs: z.number().int().positive().max(300_000),
-        type: z.literal('tcp'),
-      })
-      .strict()
-      .nullable(),
+    resourceReadiness: resourceReadinessSummarySchema.nullable(),
     serviceBuild: resolvedCompartmentServiceBuildConfigSchema,
     serviceKind: z.enum(compartmentServiceKindValues),
     serviceRelease: resolvedOptionalCompartmentServiceReleaseConfigSchema,

@@ -1,26 +1,30 @@
 import type { ResourceRuntimeStatus } from '@compartment/contracts';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 
-export type ProjectResourceRowStatus = ResourceRuntimeStatus;
+export type ProjectResourceRowStatus = ResourceRuntimeStatus | 'deleting' | 'starting';
 
-export interface ProjectResourceRow {
+export interface StoredProjectResourceRow {
   commandJson: string;
-  createdAt: Date;
   envJson: string;
-  environmentId: string;
-  expectedClaimsJson: string;
-  id: string;
   image: string;
-  name: string;
   operationConfigHash: string;
   operationsJson: string;
   outputsJson?: string | undefined;
   portsJson: string;
   readinessJson: string;
   runtimeDefinitionHash: string;
+  volumesJson: string;
+}
+
+export interface ProjectResourceRow extends StoredProjectResourceRow {
+  createdAt: Date;
+  deleteDataRequested: boolean;
+  environmentId: string;
+  expectedClaimsJson: string;
+  id: string;
+  name: string;
   status: ProjectResourceRowStatus;
   updatedAt: Date;
-  volumesJson: string;
 }
 
 export type PersistedProjectResourceRow = Omit<ProjectResourceRow, 'createdAt' | 'updatedAt'> & {
@@ -30,6 +34,7 @@ export type PersistedProjectResourceRow = Omit<ProjectResourceRow, 'createdAt' |
 
 export interface CreateProjectResourceInput {
   commandJson: string;
+  deleteDataRequested?: boolean | undefined;
   envJson: string;
   environmentId: string;
   expectedClaimsJson?: string | undefined;
@@ -64,7 +69,7 @@ export interface UpdateProjectResourceIntentInput {
 
 export interface UpdateProjectResourceStatusInput {
   projectResourceId: string;
-  status: ResourceRuntimeStatus;
+  status: ProjectResourceRowStatus;
   updatedAt: Date;
 }
 

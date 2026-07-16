@@ -1,11 +1,11 @@
 import type { CompartmentResourceOperationScheduleConfig } from '@compartment/contracts';
-import { createResourceNotFoundError } from '../errors/api-business-error';
+import { createProjectArchivedError, createResourceNotFoundError } from '../errors/api-business-error';
 import { listResourceBackups } from '../queries/resource-backups.query';
 import type { ResourceBackupRow } from '../queries/resource-backups.query.types';
 import {
   findProjectResourceByName,
+  lockProjectResourceOperation,
   lockProjectResourceReferenceByName,
-  lockProjectResourceReconciliation,
 } from '../queries/resources.query';
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -19,6 +19,7 @@ import { resolveRequiredBackupResourceById, resolveRequiredResourceBackup } from
 import { assertBackupCanRestoreResource } from './resource-backup-manifest.service';
 import { applyResourceBackupRetention } from './resource-backups.retention.service';
 import { isResourceOperationScheduleDue } from './resource-operation-schedule.service';
+import { withResourceOperationLocks } from './resource-operation-lock.service';
 import { resolveResourceEnvironmentContext } from './resource-environment-context.service';
 import { parseStoredResourceOperations } from './resources.service.storage';
 import type {
@@ -32,6 +33,17 @@ import type {
   ResourceRestoreResult,
   ScheduledResourceBackupRunResult,
 } from './resources.service.types';
+
+interface CompletedResourceOperation<Result> {
+  nextCandidate: null;
+  result: Result;
+}
+
+interface RetryResourceOperation {
+  nextCandidate: ProjectResourceRow;
+}
+
+type LockedResourceOperationResult<Result> = CompletedResourceOperation<Result> | RetryResourceOperation;
 
 export async function createResourceBackupForPrincipal(input: ResourceActionInput): Promise<ResourceBackupResult> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
@@ -156,12 +168,49 @@ async function runWithResourceOperationLock<Result>(
   resourceName: string,
   runOperation: (resource: ProjectResourceRow) => Promise<Result>,
 ): Promise<Result> {
-  return await getApiDatabase().transaction(async (tx: ResourceTransaction): Promise<Result> => {
-    await lockProjectResourceReconciliation(tx, context.environment.id, resourceName);
-    const resource: ProjectResourceRow =
-      (await lockProjectResourceReferenceByName(tx, context.environment.id, resourceName)) ?? failResourceLookup();
+  let candidate: ProjectResourceRow = await readResourceOperationCandidate(context, resourceName);
+  for (;;) {
+    const attempt: LockedResourceOperationResult<Result> = await runLockedResourceOperation(
+      context,
+      resourceName,
+      candidate,
+      runOperation,
+    );
+    if (attempt.nextCandidate === null) {
+      return attempt.result;
+    }
+    candidate = attempt.nextCandidate;
+  }
+}
 
-    return await runOperation(resource);
+async function runLockedResourceOperation<Result>(
+  context: ResourceEnvironmentContext,
+  resourceName: string,
+  candidate: ProjectResourceRow,
+  runOperation: (resource: ProjectResourceRow) => Promise<Result>,
+): Promise<LockedResourceOperationResult<Result>> {
+  return await withResourceOperationLocks([candidate.id], async (): Promise<LockedResourceOperationResult<Result>> => {
+    const current: ProjectResourceRow = await readResourceOperationCandidate(context, resourceName);
+    if (current.id !== candidate.id) {
+      return { nextCandidate: current };
+    }
+    if (current.status === 'deleting') {
+      failResourceLookup();
+    }
+    return { nextCandidate: null, result: await runOperation(current) };
+  });
+}
+
+async function readResourceOperationCandidate(
+  context: ResourceEnvironmentContext,
+  resourceName: string,
+): Promise<ProjectResourceRow> {
+  return await getApiDatabase().transaction(async (tx: ResourceTransaction): Promise<ProjectResourceRow> => {
+    const archivedAt: Date | null = await lockProjectResourceOperation(tx, context.environment.id, resourceName);
+    if (archivedAt !== null) {
+      throw createProjectArchivedError();
+    }
+    return (await lockProjectResourceReferenceByName(tx, context.environment.id, resourceName)) ?? failResourceLookup();
   });
 }
 

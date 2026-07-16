@@ -1,10 +1,6 @@
 import type { ResourceVolumeSummary } from '@compartment/contracts';
 import { createResourceNotFoundError } from '../errors/api-business-error';
-import {
-  deleteProjectResource,
-  findProjectResourceByName,
-  listProjectResourcesByEnvironmentId,
-} from '../queries/resources.query';
+import { findProjectResourceByName, listProjectResourcesByEnvironmentId } from '../queries/resources.query';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import { resolveResourceEnvironmentContext } from './resource-environment-context.service';
 import type { EffectiveVariable } from './effective-variables.service.types';
@@ -110,9 +106,8 @@ export async function deleteResourceForPrincipal(input: ResourceDeleteInput): Pr
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
   const volumes: ResourceVolumeSummary[] = parseResourceVolumes(resource);
-  await deleteKubernetesResource(context, resource, input.body.deleteData === true);
-  await deleteProjectResource(resource.id);
-  return input.body.deleteData === true ? [] : volumes.map((volume: ResourceVolumeSummary): string => volume.name);
+  const deletedData: boolean = await deleteKubernetesResource(context, resource, input.body.deleteData === true);
+  return deletedData ? [] : volumes.map((volume: ResourceVolumeSummary): string => volume.name);
 }
 
 async function resolveRequiredResource(environmentId: string, resourceName: string): Promise<ProjectResourceRow> {

@@ -353,6 +353,7 @@ function createProjectResourceRow(overrides: Partial<ProjectResourceRow> = {}): 
   return {
     commandJson: '["postgres"]',
     createdAt: new Date('2026-04-07T10:00:00.000Z'),
+    deleteDataRequested: false,
     envJson: JSON.stringify([
       {
         keyName: 'POSTGRES_DB',

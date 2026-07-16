@@ -17,6 +17,7 @@ import {
   parseResourcePorts,
   parseResourceReadiness,
   parseResourceVolumes,
+  presentResourceRuntimeStatus,
   type StoredResourceOperationConfig,
 } from './resources.service.storage';
 import type { ResourceEnvironmentContext } from './resources.service.types';
@@ -120,7 +121,7 @@ function snapshotEnvironmentForManifest(environment: EnvironmentRow): Environmen
 
 function snapshotResourceForManifest(resource: ProjectResourceRow): ResourceSummary {
   const persistedRuntime: Pick<ResourceSummary, 'status'> = {
-    status: resource.status,
+    status: presentResourceRuntimeStatus(resource.status),
   };
 
   return {

@@ -3,12 +3,15 @@ import { projectKubeProvisioning } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
-import { projectProvisioningAttemptLimit, projectProvisioningTerminalFailure } from './project-provisioning-policy';
+import {
+  projectProvisioningAttemptLimit,
+  projectProvisioningLeaseDurationMs,
+  projectProvisioningRetryDelayMs,
+  projectProvisioningTerminalFailure,
+} from './project-provisioning-policy';
 import type { CompleteProjectProvisioningInput, ProjectProvisioningClaimRow } from './project-provisioning.query.types';
 import { failTerminalProjectProvisioning } from './project-provisioning-terminal.query';
 
-const leaseDurationMs: number = 7 * 60_000;
-const failedRetryDelayMs: number = 10_000;
 interface CompletedProjectProvisioningRow {
   attempts: number;
   projectId: string;
@@ -49,7 +52,7 @@ function provisioningClaimableCondition(now: Date): SQL | undefined {
     and(
       eq(projectKubeProvisioning.state, 'failed'),
       lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
-      lt(projectKubeProvisioning.updatedAt, new Date(now.getTime() - failedRetryDelayMs)),
+      lt(projectKubeProvisioning.updatedAt, new Date(now.getTime() - projectProvisioningRetryDelayMs)),
     ),
     and(eq(projectKubeProvisioning.state, 'running'), lt(projectKubeProvisioning.leaseExpiresAt, now)),
   );
@@ -75,7 +78,7 @@ async function leaseProjectExecution(
     .set({
       attempts: row.state === 'running' ? row.attempts : sql`${projectKubeProvisioning.attempts} + 1`,
       failureMessage: null,
-      leaseExpiresAt: new Date(now.getTime() + leaseDurationMs),
+      leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDurationMs),
       leaseId,
       state: 'running',
       updatedAt: now,
@@ -123,7 +126,7 @@ async function renewProjectProvisioningLease(
 ): Promise<boolean> {
   const rows: { projectId: string }[] = await transaction
     .update(projectKubeProvisioning)
-    .set({ leaseExpiresAt: new Date(now.getTime() + leaseDurationMs), updatedAt: now })
+    .set({ leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDurationMs), updatedAt: now })
     .where(
       and(
         eq(projectKubeProvisioning.projectId, input.projectId),

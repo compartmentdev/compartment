@@ -5,6 +5,7 @@ import {
   parseResourcePorts,
   parseResourceReadiness,
   parseResourceVolumes,
+  presentResourceRuntimeStatus,
 } from '../../services/resources.service.storage';
 
 export function buildResourceSummary(resource: ResourceSummaryInput): ResourceSummary {
@@ -16,7 +17,7 @@ export function buildResourceSummary(resource: ResourceSummaryInput): ResourceSu
     name: resource.name,
     ports: parseResourcePorts(resource),
     readiness: parseResourceReadiness(resource),
-    status: resource.status,
+    status: presentResourceRuntimeStatus(resource.status),
     updatedAt: resource.updatedAt.toISOString(),
     volumes: parseResourceVolumes(resource),
   };

@@ -476,8 +476,10 @@ CREATE TABLE "product_job_runs" (
 	"image_pull_secret_id" text,
 	"command_json" text NOT NULL,
 	"env_json" text NOT NULL,
+	"resource_ids_json" text DEFAULT '[]' NOT NULL,
 	"volume_mounts_json" text DEFAULT '[]' NOT NULL,
 	"namespace" text NOT NULL,
+	"project_id" text NOT NULL,
 	"timeout_ms" integer NOT NULL,
 	"status" text NOT NULL,
 	"exit_code" integer,
@@ -521,6 +523,7 @@ CREATE TABLE "project_resources" (
 	"readiness_json" text NOT NULL,
 	"runtime_definition_hash" text NOT NULL,
 	"expected_claims_json" text DEFAULT '[]' NOT NULL,
+	"delete_data_requested" boolean DEFAULT false NOT NULL,
 	"status" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -1000,8 +1003,10 @@ CREATE UNIQUE INDEX "deployment_product_logs_identity_offset_idx" ON "deployment
 CREATE INDEX "deployment_product_logs_captured_at_idx" ON "deployment_product_logs" USING btree ("captured_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "product_job_runs_class_identity_idx" ON "product_job_runs" USING btree ("job_class","identity_id");--> statement-breakpoint
 CREATE INDEX "product_job_runs_status_created_at_idx" ON "product_job_runs" USING btree ("status","created_at");--> statement-breakpoint
+CREATE INDEX "product_job_runs_project_status_idx" ON "product_job_runs" USING btree ("project_id","status");--> statement-breakpoint
 CREATE INDEX "project_kube_provisioning_state_lease_idx" ON "project_kube_provisioning" USING btree ("state","lease_expires_at");--> statement-breakpoint
 CREATE INDEX "resource_backups_resource_created_at_idx" ON "resource_backups" USING btree ("project_resource_id","created_at");--> statement-breakpoint
+CREATE INDEX "resource_reconcile_runs_active_order_idx" ON "resource_reconcile_runs" USING btree ("created_at","id") WHERE "resource_reconcile_runs"."phase" IN ('bootstrap-pending', 'reconcile-pending', 'running');--> statement-breakpoint
 CREATE UNIQUE INDEX "git_provider_bootstrap_states_state_nonce_unique" ON "git_provider_bootstrap_states" USING btree ("state_nonce");--> statement-breakpoint
 CREATE UNIQUE INDEX "git_provider_registrations_active_owner_unique" ON "git_provider_registrations" USING btree ("provider_type","provider_host","repository_owner") WHERE "git_provider_registrations"."status" = 'active';--> statement-breakpoint
 CREATE UNIQUE INDEX "git_provider_registrations_pending_owner_unique" ON "git_provider_registrations" USING btree ("provider_type","provider_host","repository_owner") WHERE "git_provider_registrations"."status" = 'pending';--> statement-breakpoint

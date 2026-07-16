@@ -56,7 +56,6 @@ export {
   type DomainCertificateMetadata,
   type DomainHostPlan,
   type DomainKind,
-  type DomainPublicScheme,
   type DomainTlsMode,
   type SystemDomainAttachCertificateRequest,
   type SystemDomainCertificate,

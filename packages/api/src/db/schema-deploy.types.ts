@@ -150,7 +150,8 @@ interface ProjectResourcesColumnBuilders {
   readinessJson: RequiredTextBuilder<'readiness_json'>;
   runtimeDefinitionHash: RequiredTextBuilder<'runtime_definition_hash'>;
   expectedClaimsJson: DefaultTextBuilder<'expected_claims_json'>;
-  status: RequiredEnumTextBuilder<'status', ['running', 'stopped']>;
+  deleteDataRequested: DefaultBooleanBuilder<'delete_data_requested'>;
+  status: RequiredEnumTextBuilder<'status', ['deleting', 'running', 'starting', 'stopped']>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;
 }
@@ -227,6 +228,10 @@ export type ProjectResourcesExtraConfigColumns = PgExtraConfigColumnsOf<
   ProjectResourcesColumnBuilders
 >;
 export type ResourceReconcileRunsTable = PgTableOf<'resource_reconcile_runs', ResourceReconcileRunsColumnBuilders>;
+export type ResourceReconcileRunsExtraConfigColumns = PgExtraConfigColumnsOf<
+  'resource_reconcile_runs',
+  ResourceReconcileRunsColumnBuilders
+>;
 export type ResourceBackupsTable = PgTableOf<'resource_backups', ResourceBackupsColumnBuilders>;
 export type ResourceBackupsExtraConfigColumns = PgExtraConfigColumnsOf<
   'resource_backups',

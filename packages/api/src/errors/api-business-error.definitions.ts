@@ -110,10 +110,6 @@ export const businessErrorDefinitions: Record<ApiBusinessErrorCode, ApiBusinessE
   invalid_variable_target: { message: 'The variable target is invalid.', statusCode: 400 },
   invalid_variable_local_run: { message: 'The local variable run request is invalid.', statusCode: 400 },
   last_organization_admin: { message: 'Each organization must keep at least one admin.', statusCode: 409 },
-  node_unavailable: {
-    message: 'No runtime node is currently registered.',
-    statusCode: 404,
-  },
   not_installed: {
     message: 'The compartment is not installed.',
     statusCode: 409,
@@ -143,7 +139,7 @@ export const businessErrorDefinitions: Record<ApiBusinessErrorCode, ApiBusinessE
     statusCode: 409,
   },
   project_delete_blocked: {
-    message: 'The project cannot be deleted while deployments are active, queued, running, or draining.',
+    message: 'The project cannot be deleted while deployments are active, queued, or running.',
     statusCode: 409,
   },
   project_delete_requires_archive: {

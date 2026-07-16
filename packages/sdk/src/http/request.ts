@@ -133,7 +133,7 @@ function createRequestInit<TBody>(
   body: TBody | undefined,
   headers: Headers,
   method: CompartmentRequestMethod,
-  requestTimeoutMs?: number,
+  requestTimeoutMs?: number | null,
 ): RequestInit {
   const requestInit: RequestInit = {
     headers,
@@ -154,7 +154,7 @@ function createRawRequestInit(
   body: Buffer | Uint8Array,
   headers: Headers,
   method: CompartmentRequestMethod,
-  requestTimeoutMs?: number,
+  requestTimeoutMs?: number | null,
 ): RequestInit {
   const requestInit: RequestInit = {
     body,

@@ -8,7 +8,6 @@ import {
   type DomainDnsRecordType,
   type DomainCertificateMetadata,
   type InstallResponse,
-  type DomainPublicScheme,
   type SystemDomainAttachCertificateRequest,
   type SystemDomainMutationResponse,
   type SystemDomainSetRequest,
@@ -138,7 +137,6 @@ function buildSystemMutationHeaders(idempotencyKey: string): Record<string, stri
 function buildCustomExternalDomainSetRequest(
   expectedSetupVersion: number,
   baseDomain: string = 'customer.example.com',
-  publicScheme: DomainPublicScheme = 'https',
 ): SystemDomainSetRequest {
   return {
     expectedSetupVersion,
@@ -146,7 +144,7 @@ function buildCustomExternalDomainSetRequest(
       baseDomain,
       caddyMode: 'custom-http',
       domainKind: 'custom',
-      publicScheme,
+      publicScheme: 'https',
       tlsMode: 'external',
     },
   };

@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
-import type { Pool, PoolClient } from 'pg';
-import { describe, expect, it } from 'vitest';
+import { Pool, type PoolClient, type QueryResult } from 'pg';
+import { afterAll, describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
@@ -12,6 +12,7 @@ import {
   projectResources,
   projectKubeProvisioning,
   projects,
+  productJobRuns,
   resourceReconcileRuns,
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
@@ -24,19 +25,41 @@ import {
   markResourceBackupRetentionDeletedWithExecutor,
 } from '../src/queries/resource-backups.query';
 import { listScheduledResourceOperationCandidates } from '../src/queries/resource-operation-scheduler.query';
+import { acquireResourceOperationLocks } from '../src/queries/resource-operation-lock.query';
+import type { ResourceOperationLock } from '../src/queries/resource-operation-lock.query.types';
 import type { ResourceBackupRow } from '../src/queries/resource-backups.query.types';
-import { findProjectResourceByName, lockProjectResourceReferenceByName } from '../src/queries/resources.query';
-import { createResourceReconcileRun } from '../src/queries/resource-reconcile-create.query';
+import {
+  beginProjectResourceDeletion,
+  findProjectResourceByName,
+  lockProjectResourceByName,
+  lockProjectResourceOperation,
+  lockProjectResourceReconciliation,
+  lockProjectResourceReferenceByName,
+} from '../src/queries/resources.query';
+import {
+  createResourceReconcileRun,
+  createResourceReconcileRunWithExecutor,
+  updateActiveResourceBootstrapIntent,
+} from '../src/queries/resource-reconcile-create.query';
 import {
   acknowledgeResourceReconcileRun,
   claimResourceReconcileRun,
 } from '../src/queries/resource-reconcile-runs.query';
+import { readResourceReconcileRunWaitState } from '../src/queries/resource-reconcile-wait.query';
+import { finalizeProjectResourceDeletion } from '../src/queries/resource-reconcile-deletion.query';
+import { cancelResourceReconcileRunsForProjectArchive } from '../src/queries/resource-reconcile-project.query';
+import {
+  claimProductJob,
+  persistProductJobFinalized,
+  persistProductJobResult,
+} from '../src/queries/product-job-runs.query';
+import { persistProductJobIntent } from '../src/queries/product-job-intent.query';
 import {
   claimPendingProjectProvisioning,
   completeProjectProvisioning,
 } from '../src/queries/project-provisioning.query';
 import { createOrGetProject } from '../src/queries/projects.query';
-import type { ResourceReconcileIntent } from '@compartment/contracts';
+import type { ProductJobIntent, ResourceClaimIdentity, ResourceReconcileIntent } from '@compartment/contracts';
 import type {
   ClaimedResourceReconcileRun,
   CreateResourceReconcileRunResult,
@@ -83,7 +106,8 @@ const apiConfig: ApiConfig = {
   variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
 };
 const pool: Pool = createDatabasePool(databaseUrl);
-const db: Database = createDatabase(pool);
+const resourceOperationPool: Pool = new Pool({ connectionString: databaseUrl, max: 2 });
+const db: Database = createDatabase(pool, resourceOperationPool);
 
 describe('resource backup queries', (): void => {
   useApiRuntimeDatabaseTestHarness({
@@ -92,6 +116,70 @@ describe('resource backup queries', (): void => {
     db,
     pool,
     setup: seedResourceBackupScope,
+  });
+
+  afterAll(async (): Promise<void> => {
+    await resourceOperationPool.end();
+  });
+
+  it('serializes session-level workflows for one resource without coupling different resources', async (): Promise<void> => {
+    const first: ResourceOperationLock = await acquireResourceOperationLocks(['res_serialized']);
+    let secondAcquired: boolean = false;
+    const secondPromise: Promise<ResourceOperationLock> = acquireResourceOperationLocks(['res_serialized']).then(
+      (lock: ResourceOperationLock): ResourceOperationLock => {
+        secondAcquired = true;
+        return lock;
+      },
+    );
+    const independent: ResourceOperationLock = await acquireResourceOperationLocks(['res_independent']);
+    await independent.release();
+    await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 50));
+
+    expect(secondAcquired).toBe(false);
+    await first.release();
+    const second: ResourceOperationLock = await secondPromise;
+    expect(secondAcquired).toBe(true);
+    await second.release();
+  });
+
+  it('does not let blocked resource-operation locks exhaust ordinary query capacity', async (): Promise<void> => {
+    const first: ResourceOperationLock = await acquireResourceOperationLocks(['res_pool_capacity']);
+    const waiterCount: number = pool.options.max - 1;
+    const waiters: Promise<void>[] = Array.from({ length: waiterCount }, async (): Promise<void> => {
+      const lock: ResourceOperationLock = await acquireResourceOperationLocks(['res_pool_capacity']);
+      await lock.release();
+    });
+    let probe: Promise<QueryResult> | undefined;
+
+    try {
+      await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 100));
+      probe = pool.query('select 1');
+      await expect(querySettlesBefore(probe, 250)).resolves.toBe(true);
+    } finally {
+      await first.release();
+      await Promise.all(waiters);
+      await probe;
+    }
+  });
+
+  it('retries a contended multi-resource set without retaining partial session locks', async (): Promise<void> => {
+    const first: ResourceOperationLock = await acquireResourceOperationLocks(['res_lock_a', 'res_lock_shared']);
+    let secondAcquired: boolean = false;
+    const secondPromise: Promise<ResourceOperationLock> = acquireResourceOperationLocks([
+      'res_lock_b',
+      'res_lock_shared',
+    ]).then((lock: ResourceOperationLock): ResourceOperationLock => {
+      secondAcquired = true;
+      return lock;
+    });
+    await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 50));
+
+    const independent: ResourceOperationLock = await acquireResourceOperationLocks(['res_lock_independent']);
+    expect(secondAcquired).toBe(false);
+    await independent.release();
+    await first.release();
+    const second: ResourceOperationLock = await secondPromise;
+    await second.release();
   });
 
   it('persists backup status transitions and manifest metadata', async (): Promise<void> => {
@@ -233,11 +321,73 @@ describe('resource backup queries', (): void => {
     });
   });
 
+  it('locks the project before the resource during descriptor reconciliation', async (): Promise<void> => {
+    const holder: PoolClient = await pool.connect();
+    let releaseReconciliation: (() => void) | undefined;
+    let reconciliation: Promise<void> | null = null;
+    try {
+      await holder.query('begin');
+      await holder.query("select id from projects where id = 'prj_internal_tools' for update");
+      reconciliation = db.transaction(async (tx: ResourceTransaction): Promise<void> => {
+        await lockProjectResourceReconciliation(tx, 'env_production', 'postgres');
+        await lockProjectResourceByName(tx, 'env_production', 'postgres');
+        await new Promise<void>((resolve: () => void): void => {
+          releaseReconciliation = resolve;
+        });
+      });
+
+      await waitForDatabaseLock(holder, 'transactionid');
+      await expect(
+        holder.query("select id from project_resources where id = 'res_postgres' for update nowait"),
+      ).resolves.toMatchObject({ rowCount: 1 });
+      await holder.query('commit');
+      await waitForCondition((): boolean => releaseReconciliation !== undefined);
+      releaseReconciliation?.();
+      await reconciliation;
+    } finally {
+      releaseReconciliation?.();
+      await holder.query('rollback');
+      await Promise.allSettled(reconciliation === null ? [] : [reconciliation]);
+      holder.release();
+    }
+  });
+
+  it('lets an existing reconcile settle while a resource operation holds its reference fence', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [{ claimName: 'claim-data', uid: 'uid-original' }],
+      intent: resourceIntent(),
+      operationId: 'rr_during_resource_operation',
+      type: 'reconcile',
+    });
+    let releaseOperation: (() => void) | undefined;
+    const operation: Promise<void> = db.transaction(async (tx: ResourceTransaction): Promise<void> => {
+      await lockProjectResourceOperation(tx, 'env_production', 'postgres');
+      await lockProjectResourceReferenceByName(tx, 'env_production', 'postgres');
+      await new Promise<void>((resolve: () => void): void => {
+        releaseOperation = resolve;
+      });
+    });
+    await waitForCondition((): boolean => releaseOperation !== undefined);
+
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({
+      operationId: 'rr_during_resource_operation',
+    });
+
+    releaseOperation?.();
+    await operation;
+  });
+
   it('leases explicit bootstrap, persists canonical UIDs, and recovers only stale work', async (): Promise<void> => {
     const intent: ResourceReconcileIntent = resourceIntent();
     await createResourceReconcileRun({ expectedClaims: [], intent, operationId: 'rr_bootstrap', type: 'bootstrap' });
     const bootstrap: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
     expect(bootstrap).toMatchObject({ operationId: 'rr_bootstrap', type: 'bootstrap' });
+    expect(bootstrap).not.toBeNull();
+    const [leasedBootstrap] = await db
+      .select({ leaseExpiresAt: resourceReconcileRuns.leaseExpiresAt })
+      .from(resourceReconcileRuns)
+      .where(eq(resourceReconcileRuns.id, 'rr_bootstrap'));
+    expect((leasedBootstrap?.leaseExpiresAt?.getTime() ?? 0) - Date.now()).toBeGreaterThan(7 * 60_000);
     expect(await claimResourceReconcileRun()).toBeNull();
     await acknowledgeResourceReconcileRun({
       expectedClaims: [{ claimName: 'claim-data', uid: 'uid-original' }],
@@ -289,6 +439,59 @@ describe('resource backup queries', (): void => {
     expect(runningResource?.status).toBe('running');
   });
 
+  it('distinguishes bootstrap startup from an explicit stop when queuing the first workload', async (): Promise<void> => {
+    await expect(
+      createResourceReconcileRun({
+        expectedClaims: [],
+        intent: resourceIntent(),
+        operationId: 'rr_bootstrap_starting',
+        type: 'bootstrap',
+      }),
+    ).resolves.toBe('created');
+    const [starting] = await db.select().from(projectResources).where(eq(projectResources.id, 'res_postgres'));
+    expect(starting?.status).toBe('starting');
+    const claimed: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+
+    await acknowledgeResourceReconcileRun({
+      expectedClaims: [{ claimName: 'resource-data', uid: 'uid-resource-data' }],
+      leaseId: claimed?.leaseId ?? '',
+      operationId: 'rr_bootstrap_starting',
+      status: 'succeeded',
+    });
+
+    const runs: (typeof resourceReconcileRuns.$inferSelect)[] = await db.select().from(resourceReconcileRuns);
+    const followUp: typeof resourceReconcileRuns.$inferSelect | undefined = runs.find(
+      (run: typeof resourceReconcileRuns.$inferSelect): boolean => run.operationType === 'reconcile',
+    );
+    expect(JSON.parse(followUp?.intentJson ?? '{}')).toMatchObject({ replicas: 1 });
+  });
+
+  it('allows only one active bootstrap run for a resource', async (): Promise<void> => {
+    await expect(
+      createResourceReconcileRun({
+        expectedClaims: [],
+        intent: resourceIntent(),
+        operationId: 'rr_bootstrap_primary',
+        type: 'bootstrap',
+      }),
+    ).resolves.toBe('created');
+    await expect(
+      createResourceReconcileRun({
+        expectedClaims: [],
+        intent: resourceIntent(),
+        operationId: 'rr_bootstrap_duplicate',
+        type: 'bootstrap',
+      }),
+    ).resolves.toBe('bootstrap-active');
+
+    const runs: (typeof resourceReconcileRuns.$inferSelect)[] = await db
+      .select()
+      .from(resourceReconcileRuns)
+      .where(eq(resourceReconcileRuns.operationType, 'bootstrap'));
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.id).toBe('rr_bootstrap_primary');
+  });
+
   it('blocks resource reconciliation until project namespace provisioning succeeds', async (): Promise<void> => {
     await db
       .update(projectKubeProvisioning)
@@ -335,6 +538,481 @@ describe('resource backup queries', (): void => {
     await expect(
       db.select().from(resourceReconcileRuns).where(eq(resourceReconcileRuns.id, 'rr_created_after_archive')),
     ).resolves.toEqual([]);
+  });
+
+  it('cancels a running reconcile when its project is archived so unarchive cannot replay it', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [{ claimName: 'claim-data', uid: 'uid-original' }],
+      intent: resourceIntent(),
+      operationId: 'rr_running_during_archive',
+      type: 'reconcile',
+    });
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_running_during_archive' });
+    const archivedAt: Date = new Date('2026-07-15T12:00:00.000Z');
+    await db.transaction(async (tx: ResourceTransaction): Promise<void> => {
+      await tx.update(projects).set({ archivedAt }).where(eq(projects.id, 'prj_internal_tools'));
+      await cancelResourceReconcileRunsForProjectArchive(tx, 'prj_internal_tools', archivedAt);
+    });
+    await db
+      .update(resourceReconcileRuns)
+      .set({ leaseExpiresAt: new Date(0) })
+      .where(eq(resourceReconcileRuns.id, 'rr_running_during_archive'));
+    await db.update(projects).set({ archivedAt: null }).where(eq(projects.id, 'prj_internal_tools'));
+
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+  });
+
+  it('preserves pending delete cleanup when its project is archived', async (): Promise<void> => {
+    const expectedClaims: ResourceClaimIdentity[] = [{ claimName: 'claim-data', uid: 'uid-original' }];
+    await beginProjectResourceDeletion('res_postgres', true);
+    await createResourceReconcileRun({
+      expectedClaims,
+      intent: { ...resourceIntent(), deleteData: true, operation: 'delete', replicas: 0 },
+      operationId: 'rr_delete_during_archive',
+      type: 'reconcile',
+    });
+    const archivedAt: Date = new Date('2026-07-15T12:00:00.000Z');
+
+    await db.transaction(async (tx: ResourceTransaction): Promise<void> => {
+      await tx.update(projects).set({ archivedAt }).where(eq(projects.id, 'prj_internal_tools'));
+      await cancelResourceReconcileRunsForProjectArchive(tx, 'prj_internal_tools', archivedAt);
+    });
+
+    await expect(
+      db
+        .select({ phase: resourceReconcileRuns.phase })
+        .from(resourceReconcileRuns)
+        .where(eq(resourceReconcileRuns.id, 'rr_delete_during_archive')),
+    ).resolves.toEqual([{ phase: 'reconcile-pending' }]);
+  });
+
+  it('recovers an expired bootstrap after archive only to capture claim identities for cleanup', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_archived_expired_bootstrap',
+      type: 'bootstrap',
+    });
+    const original: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+    expect(original?.operationId).toBe('rr_archived_expired_bootstrap');
+    await db
+      .update(resourceReconcileRuns)
+      .set({ leaseExpiresAt: new Date(0) })
+      .where(eq(resourceReconcileRuns.id, 'rr_archived_expired_bootstrap'));
+    await db
+      .update(projects)
+      .set({ archivedAt: new Date('2026-07-15T12:00:00.000Z') })
+      .where(eq(projects.id, 'prj_internal_tools'));
+
+    const recovered: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+    expect(recovered?.operationId).toBe('rr_archived_expired_bootstrap');
+    expect(recovered?.leaseId).not.toBe(original?.leaseId);
+    await acknowledgeResourceReconcileRun({
+      expectedClaims: [{ claimName: 'claim-data', uid: 'uid-original' }],
+      leaseId: recovered?.leaseId ?? '',
+      operationId: recovered?.operationId ?? '',
+      status: 'succeeded',
+    });
+
+    const [resource] = await db.select().from(projectResources).where(eq(projectResources.id, 'res_postgres'));
+    expect(resource?.expectedClaimsJson).toContain('uid-original');
+    const runs: (typeof resourceReconcileRuns.$inferSelect)[] = await db.select().from(resourceReconcileRuns);
+    expect(runs).toHaveLength(1);
+  });
+
+  it('fences bootstrap creation after resource deletion begins', async (): Promise<void> => {
+    await beginProjectResourceDeletion('res_postgres', false);
+
+    await expect(
+      createResourceReconcileRun({
+        expectedClaims: [],
+        intent: resourceIntent(),
+        operationId: 'rr_bootstrap_after_delete',
+        type: 'bootstrap',
+      }),
+    ).resolves.toBe('resource-deleting');
+    await expect(
+      db.select().from(resourceReconcileRuns).where(eq(resourceReconcileRuns.id, 'rr_bootstrap_after_delete')),
+    ).resolves.toEqual([]);
+  });
+
+  it('lets an existing bootstrap finish claim capture after resource deletion begins', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_bootstrap_before_delete',
+      type: 'bootstrap',
+    });
+    await beginProjectResourceDeletion('res_postgres', false);
+
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({
+      operationId: 'rr_bootstrap_before_delete',
+      type: 'bootstrap',
+    });
+  });
+
+  it('claims deletion ahead of older pending reconcile work after the deleting fence is set', async (): Promise<void> => {
+    const expectedClaims: ResourceClaimIdentity[] = [{ claimName: 'claim-data', uid: 'uid-original' }];
+    await createResourceReconcileRun({
+      expectedClaims,
+      intent: resourceIntent(),
+      operationId: 'rr_pending_before_delete',
+      type: 'reconcile',
+    });
+    await beginProjectResourceDeletion('res_postgres', true);
+    await createResourceReconcileRun({
+      expectedClaims,
+      intent: { ...resourceIntent(), deleteData: true, operation: 'delete', replicas: 0 },
+      operationId: 'rr_delete_after_pending',
+      type: 'reconcile',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({
+      operationId: 'rr_delete_after_pending',
+    });
+  });
+
+  it('refuses a second active deletion for the same resource', async (): Promise<void> => {
+    const expectedClaims: ResourceClaimIdentity[] = [{ claimName: 'claim-data', uid: 'uid-original' }];
+    await beginProjectResourceDeletion('res_postgres', false);
+    await expect(
+      createResourceReconcileRun({
+        expectedClaims,
+        intent: { ...resourceIntent(), operation: 'delete', replicas: 0 },
+        operationId: 'rr_delete_first',
+        type: 'reconcile',
+      }),
+    ).resolves.toBe('created');
+
+    await expect(
+      createResourceReconcileRun({
+        expectedClaims,
+        intent: { ...resourceIntent(), deleteData: true, operation: 'delete', replicas: 0 },
+        operationId: 'rr_delete_second',
+        type: 'reconcile',
+      }),
+    ).resolves.toBe('resource-deleting');
+  });
+
+  it('allows a terminal metadata-only deletion to be upgraded to PVC deletion before row removal', async (): Promise<void> => {
+    const expectedClaims: ResourceClaimIdentity[] = [{ claimName: 'claim-data', uid: 'uid-original' }];
+    await beginProjectResourceDeletion('res_postgres', false);
+    await createResourceReconcileRun({
+      expectedClaims,
+      intent: { ...resourceIntent(), operation: 'delete', replicas: 0 },
+      operationId: 'rr_delete_terminal',
+      type: 'reconcile',
+    });
+    await db
+      .update(resourceReconcileRuns)
+      .set({ phase: 'succeeded' })
+      .where(eq(resourceReconcileRuns.id, 'rr_delete_terminal'));
+
+    await expect(
+      createResourceReconcileRun({
+        expectedClaims,
+        intent: { ...resourceIntent(), deleteData: true, operation: 'delete', replicas: 0 },
+        operationId: 'rr_delete_after_terminal',
+        type: 'reconcile',
+      }),
+    ).resolves.toBe('created');
+  });
+
+  it('does not remove the resource row until the strongest concurrent delete demand succeeds', async (): Promise<void> => {
+    const expectedClaims: ResourceClaimIdentity[] = [{ claimName: 'claim-data', uid: 'uid-original' }];
+    await db
+      .update(projectResources)
+      .set({ expectedClaimsJson: JSON.stringify(expectedClaims) })
+      .where(eq(projectResources.id, 'res_postgres'));
+    await beginProjectResourceDeletion('res_postgres', false);
+    await createResourceReconcileRun({
+      expectedClaims,
+      intent: { ...resourceIntent(), operation: 'delete', replicas: 0 },
+      operationId: 'rr_delete_metadata_only',
+      type: 'reconcile',
+    });
+    await db
+      .update(resourceReconcileRuns)
+      .set({ phase: 'succeeded' })
+      .where(eq(resourceReconcileRuns.id, 'rr_delete_metadata_only'));
+    await beginProjectResourceDeletion('res_postgres', true);
+
+    await expect(finalizeProjectResourceDeletion('res_postgres')).resolves.toEqual({
+      deleteData: null,
+      finalized: false,
+    });
+    await expect(
+      db.select().from(projectResources).where(eq(projectResources.id, 'res_postgres')),
+    ).resolves.toHaveLength(1);
+
+    await createResourceReconcileRun({
+      expectedClaims,
+      intent: { ...resourceIntent(), deleteData: true, operation: 'delete', replicas: 0 },
+      operationId: 'rr_delete_data',
+      type: 'reconcile',
+    });
+    await db
+      .update(resourceReconcileRuns)
+      .set({ phase: 'succeeded' })
+      .where(eq(resourceReconcileRuns.id, 'rr_delete_data'));
+    await expect(finalizeProjectResourceDeletion('res_postgres')).resolves.toEqual({
+      deleteData: true,
+      finalized: true,
+    });
+    await expect(db.select().from(projectResources).where(eq(projectResources.id, 'res_postgres'))).resolves.toEqual(
+      [],
+    );
+    await expect(finalizeProjectResourceDeletion('res_postgres')).resolves.toEqual({
+      deleteData: true,
+      finalized: true,
+    });
+  });
+
+  it('retains a durable metadata-only deletion outcome after the resource row is removed', async (): Promise<void> => {
+    await db.update(projectResources).set({ expectedClaimsJson: '[]' }).where(eq(projectResources.id, 'res_postgres'));
+    await beginProjectResourceDeletion('res_postgres', false);
+
+    await expect(finalizeProjectResourceDeletion('res_postgres')).resolves.toEqual({
+      deleteData: false,
+      finalized: true,
+    });
+    await expect(finalizeProjectResourceDeletion('res_postgres')).resolves.toEqual({
+      deleteData: false,
+      finalized: true,
+    });
+  });
+
+  it('reports serialized predecessor work for reconcile wait budgeting', async (): Promise<void> => {
+    const expectedClaims: ResourceClaimIdentity[] = [{ claimName: 'claim-data', uid: 'uid-original' }];
+    await createResourceReconcileRun({
+      expectedClaims,
+      intent: resourceIntent(),
+      operationId: 'rr_wait_predecessor',
+      type: 'reconcile',
+    });
+    await createResourceReconcileRun({
+      expectedClaims,
+      intent: resourceIntent(),
+      operationId: 'rr_wait_requested',
+      type: 'reconcile',
+    });
+
+    await expect(readResourceReconcileRunWaitState('rr_wait_requested')).resolves.toMatchObject({
+      phase: 'reconcile-pending',
+      predecessorCount: 1,
+    });
+  });
+
+  it('does not claim a resource operation while one of its PVC owners has active reconcile work', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [{ claimName: 'claim-data', uid: 'uid-original' }],
+      intent: resourceIntent(),
+      operationId: 'rr_fences_product_job',
+      type: 'reconcile',
+    });
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_fences_product_job' });
+    await persistProductJobIntent({
+      identityId: 'job_fenced_by_reconcile',
+      intent: {
+        command: ['bin/backup'],
+        env: {},
+        image: 'postgres:17',
+        jobClass: 'resource-operation',
+        namespace: 'cpt-prj-internal-tools',
+        operationId: 'job_fenced_by_reconcile',
+        projectId: 'prj_internal_tools',
+        resourceIds: ['res_postgres'],
+        timeoutMs: 30_000,
+        volumeMounts: [
+          {
+            claimName: 'claim-data',
+            expectedClaimUid: 'uid-original',
+            mountPath: '/data',
+            name: 'data',
+            resourceId: 'res_postgres',
+          },
+        ],
+      },
+    });
+
+    await expect(claimProductJob('resource-operation')).resolves.toEqual({ intent: null, persistedResult: null });
+    await expect(db.select().from(productJobRuns)).resolves.toHaveLength(1);
+  });
+
+  it('claims an older queued resource operation before a later reconcile instead of deadlocking both', async (): Promise<void> => {
+    await persistProductJobIntent({
+      identityId: 'job_older_than_reconcile',
+      intent: resourceOperationProductJobIntent('job_older_than_reconcile'),
+    });
+    await createResourceReconcileRun({
+      expectedClaims: [{ claimName: 'claim-data', uid: 'uid-original' }],
+      intent: resourceIntent(),
+      operationId: 'rr_after_product_job',
+      type: 'reconcile',
+    });
+
+    await expect(claimProductJob('resource-operation')).resolves.toMatchObject({
+      intent: { operationId: 'job_older_than_reconcile' },
+    });
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+  });
+
+  it('claims an older queued reconcile before a later resource operation instead of deadlocking both', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [{ claimName: 'claim-data', uid: 'uid-original' }],
+      intent: resourceIntent(),
+      operationId: 'rr_before_product_job',
+      type: 'reconcile',
+    });
+    await persistProductJobIntent({
+      identityId: 'job_after_reconcile',
+      intent: resourceOperationProductJobIntent('job_after_reconcile'),
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_before_product_job' });
+    await expect(claimProductJob('resource-operation')).resolves.toEqual({ intent: null, persistedResult: null });
+  });
+
+  it('keeps a running resource operation ahead of later reconcile work', async (): Promise<void> => {
+    await persistProductJobIntent({
+      identityId: 'job_fences_reconcile',
+      intent: resourceOperationProductJobIntent('job_fences_reconcile'),
+    });
+    await expect(claimProductJob('resource-operation')).resolves.toMatchObject({
+      intent: { operationId: 'job_fences_reconcile' },
+    });
+    await createResourceReconcileRun({
+      expectedClaims: [{ claimName: 'claim-data', uid: 'uid-original' }],
+      intent: resourceIntent(),
+      operationId: 'rr_fenced_by_product_job',
+      type: 'reconcile',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+    await expect(claimProductJob('resource-operation')).resolves.toMatchObject({
+      intent: { operationId: 'job_fences_reconcile' },
+    });
+  });
+
+  it('keeps terminal resource-operation work fenced until Kubernetes cleanup is finalized', async (): Promise<void> => {
+    await persistProductJobIntent({
+      identityId: 'job_cleanup_fence',
+      intent: resourceOperationProductJobIntent('job_cleanup_fence'),
+    });
+    await expect(claimProductJob('resource-operation')).resolves.toMatchObject({
+      intent: { operationId: 'job_cleanup_fence' },
+    });
+    await persistProductJobResult({
+      completedAt: '2026-07-15T12:00:00.000Z',
+      exitCode: null,
+      identityId: 'job_cleanup_fence',
+      jobClass: 'resource-operation',
+      jobName: 'job-cleanup-fence',
+      logs: 'worker stopped before cleanup',
+      podName: null,
+      status: 'timed-out',
+    });
+    await createResourceReconcileRun({
+      expectedClaims: [{ claimName: 'claim-data', uid: 'uid-original' }],
+      intent: resourceIntent(),
+      operationId: 'rr_waits_for_job_cleanup',
+      type: 'reconcile',
+    });
+
+    await expect(claimResourceReconcileRun()).resolves.toBeNull();
+    await persistProductJobFinalized('resource-operation', 'job_cleanup_fence');
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_waits_for_job_cleanup' });
+  });
+
+  it('reports predecessor work from another resource in the globally serialized queue', async (): Promise<void> => {
+    await db.insert(projectResources).values({
+      commandJson: '[]',
+      envJson: '[]',
+      environmentId: 'env_production',
+      id: 'res_redis',
+      image: 'redis:8',
+      name: 'redis',
+      portsJson: '[6379]',
+      readinessJson: 'null',
+      runtimeDefinitionHash: 'runtime_hash_redis',
+      status: 'running',
+      volumesJson: '[]',
+    });
+    const expectedClaims: ResourceClaimIdentity[] = [{ claimName: 'claim-data', uid: 'uid-original' }];
+    await createResourceReconcileRun({
+      expectedClaims,
+      intent: { ...resourceIntent(), resourceId: 'res_redis', secretId: 'res_redis', volumes: [] },
+      operationId: 'rr_other_resource_predecessor',
+      type: 'reconcile',
+    });
+    await createResourceReconcileRun({
+      expectedClaims,
+      intent: resourceIntent(),
+      operationId: 'rr_wait_after_other_resource',
+      type: 'reconcile',
+    });
+
+    await expect(readResourceReconcileRunWaitState('rr_wait_after_other_resource')).resolves.toMatchObject({
+      phase: 'reconcile-pending',
+      predecessorCount: 1,
+    });
+  });
+
+  it('orders same-resource runs by serialized creation instead of transaction start time', async (): Promise<void> => {
+    const expectedClaims: ResourceClaimIdentity[] = [{ claimName: 'claim-data', uid: 'uid-original' }];
+    let releaseDelayedCreation: (() => void) | undefined;
+    const delayedCreation: Promise<CreateResourceReconcileRunResult> = db.transaction(
+      async (tx: ResourceTransaction): Promise<CreateResourceReconcileRunResult> => {
+        await tx.execute(sql`select now()`);
+        await new Promise<void>((resolve: () => void): void => {
+          releaseDelayedCreation = resolve;
+        });
+        return await createResourceReconcileRunWithExecutor(tx, {
+          expectedClaims,
+          intent: resourceIntent(),
+          operationId: 'rr_committed_second',
+          type: 'reconcile',
+        });
+      },
+    );
+    await waitForCondition((): boolean => releaseDelayedCreation !== undefined);
+    await createResourceReconcileRun({
+      expectedClaims,
+      intent: resourceIntent(),
+      operationId: 'rr_committed_first',
+      type: 'reconcile',
+    });
+    releaseDelayedCreation?.();
+    await expect(delayedCreation).resolves.toBe('created');
+
+    await expect(claimResourceReconcileRun()).resolves.toMatchObject({ operationId: 'rr_committed_first' });
+  });
+
+  it('serializes resource claims with concurrent project archive', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_concurrent_project_archive',
+      type: 'reconcile',
+    });
+    const holder: PoolClient = await pool.connect();
+    let claim: Promise<ClaimedResourceReconcileRun | null> | null = null;
+    try {
+      await holder.query('begin');
+      await holder.query(
+        `update projects
+         set archived_at = '2026-07-15T12:00:00.000Z'
+         where id = 'prj_internal_tools'`,
+      );
+      claim = claimResourceReconcileRun();
+      await expect(claim).resolves.toBeNull();
+      await holder.query('commit');
+      await expect(claimResourceReconcileRun()).resolves.toBeNull();
+    } finally {
+      await holder.query('rollback');
+      await Promise.allSettled(claim === null ? [] : [claim]);
+      holder.release();
+    }
   });
 
   it('does not enqueue managed resource work when bootstrap finishes after archive', async (): Promise<void> => {
@@ -573,6 +1251,57 @@ describe('resource backup queries', (): void => {
     expect(next?.operationId).not.toBe(active[0]!.operationId);
   });
 
+  it('preserves a concurrent stop when bootstrap completion creates ordinary reconcile work', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_bootstrap_then_stop',
+      type: 'bootstrap',
+    });
+    const claimed: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+    await db.update(projectResources).set({ status: 'stopped' }).where(eq(projectResources.id, 'res_postgres'));
+
+    await acknowledgeResourceReconcileRun({
+      expectedClaims: [{ claimName: 'resource-data', uid: 'uid-resource-data' }],
+      leaseId: claimed?.leaseId ?? '',
+      operationId: 'rr_bootstrap_then_stop',
+      status: 'succeeded',
+    });
+
+    const runs: (typeof resourceReconcileRuns.$inferSelect)[] = await db.select().from(resourceReconcileRuns);
+    const followUp: typeof resourceReconcileRuns.$inferSelect | undefined = runs.find(
+      (run: typeof resourceReconcileRuns.$inferSelect): boolean => run.operationType === 'reconcile',
+    );
+    expect(JSON.parse(followUp?.intentJson ?? '{}')).toMatchObject({ replicas: 0 });
+  });
+
+  it('uses the latest descriptor intent when bootstrap completion creates ordinary reconcile work', async (): Promise<void> => {
+    await createResourceReconcileRun({
+      expectedClaims: [],
+      intent: resourceIntent(),
+      operationId: 'rr_bootstrap_latest_intent',
+      type: 'bootstrap',
+    });
+    await db.transaction(
+      async (tx: ResourceTransaction): Promise<void> =>
+        await updateActiveResourceBootstrapIntent(tx, { ...resourceIntent(), image: 'postgres:18' }),
+    );
+    const claimed: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
+
+    await acknowledgeResourceReconcileRun({
+      expectedClaims: [{ claimName: 'resource-data', uid: 'uid-resource-data' }],
+      leaseId: claimed?.leaseId ?? '',
+      operationId: 'rr_bootstrap_latest_intent',
+      status: 'succeeded',
+    });
+
+    const runs: (typeof resourceReconcileRuns.$inferSelect)[] = await db.select().from(resourceReconcileRuns);
+    const followUp: typeof resourceReconcileRuns.$inferSelect | undefined = runs.find(
+      (run: typeof resourceReconcileRuns.$inferSelect): boolean => run.operationType === 'reconcile',
+    );
+    expect(JSON.parse(followUp?.intentJson ?? '{}')).toMatchObject({ image: 'postgres:18' });
+  });
+
   it('uses one lock order for expired reclaim and late acknowledgement', async (): Promise<void> => {
     await createResourceReconcileRun({
       expectedClaims: [],
@@ -654,19 +1383,44 @@ describe('resource backup queries', (): void => {
   });
 });
 
+async function querySettlesBefore(query: Promise<QueryResult>, timeoutMs: number): Promise<boolean> {
+  return await Promise.race([
+    query.then((): boolean => true),
+    new Promise<boolean>(
+      (resolve: (settled: boolean) => void): NodeJS.Timeout => setTimeout(resolve, timeoutMs, false),
+    ),
+  ]);
+}
+
 function resourceIntent(): ResourceReconcileIntent {
   return {
-    containerPort: 5432,
+    command: [],
     deleteData: false,
     environmentId: 'env_resource_backups',
     env: {},
     image: 'postgres:17',
     namespaceId: 'prj_resource_backups',
     operation: 'reconcile',
+    ports: [5432],
+    readiness: null,
     replicas: 1,
     resourceId: 'res_postgres',
     secretId: 'res_postgres',
     volumes: [{ mountPath: '/var/lib/postgresql/data', size: '1Gi', volumeHandle: 'data' }],
+  };
+}
+
+function resourceOperationProductJobIntent(operationId: string): ProductJobIntent {
+  return {
+    command: ['bin/backup'],
+    env: {},
+    image: 'postgres:17',
+    jobClass: 'resource-operation',
+    namespace: 'cpt-prj-internal-tools',
+    operationId,
+    projectId: 'prj_internal_tools',
+    resourceIds: ['res_postgres'],
+    timeoutMs: 30_000,
   };
 }
 
@@ -737,4 +1491,14 @@ async function waitForDatabaseLock(client: PoolClient, waitEvent: string): Promi
     await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));
   }
   throw new Error(`Timed out waiting for PostgreSQL ${waitEvent} lock evidence.`);
+}
+
+async function waitForCondition(condition: () => boolean): Promise<void> {
+  for (let attempt: number = 0; attempt < 100; attempt += 1) {
+    if (condition()) {
+      return;
+    }
+    await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));
+  }
+  throw new Error('Timed out waiting for database test condition.');
 }

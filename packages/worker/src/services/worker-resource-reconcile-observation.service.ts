@@ -9,15 +9,13 @@ import {
   type KubeManifest,
   type KubeObservation,
   type KubeObservedManifest,
-  type KubeDeploymentManifest,
   type KubeRuntime,
   type ObservedResourceClaim,
   type ResourceProjectionRow,
   type ResourceVolumeProjection,
 } from '@compartment/kube-runtime';
-import type { ObservedClaimStatus, ObservedDeploymentStatus } from './worker-resource-reconcile.service.types';
-
-const reconcileTimeoutMs: number = 120_000;
+import type { ObservedClaimStatus } from './worker-resource-reconcile.service.types';
+import { findObservedManifest, waitUntil } from './worker-resource-reconcile-wait.service';
 
 interface ObservedRollbackManifestData {
   data?: Record<string, string> | undefined;
@@ -114,84 +112,6 @@ export function readResourcePods(observation: KubeObservation): { deletionTimest
     .map((): { deletionTimestamp?: string | undefined } => ({}));
 }
 
-export async function waitForFreshResourceDeployment(
-  observation: KubeObservation,
-  manifests: KubeManifest[],
-): Promise<void> {
-  const desired: KubeDeploymentManifest = requiredDeployment(manifests);
-  await waitUntil(observation, (): true | null =>
-    resourceDeploymentFreshAndReady(findObservedManifest(observation, desired), desired) ? true : null,
-  );
-}
-
-function resourceDeploymentFreshAndReady(
-  observed: KubeObservedManifest | null,
-  desired: KubeDeploymentManifest,
-): boolean {
-  if (observed?.kind !== 'Deployment') {
-    return false;
-  }
-  const status: ObservedDeploymentStatus | undefined = observed.status;
-  if (status === undefined) {
-    return false;
-  }
-  const desiredReplicas: number | undefined = desired.spec?.replicas;
-  return (
-    desiredReplicas !== undefined &&
-    observed.metadata?.uid === desired.metadata?.uid &&
-    generationIsCurrent(observed.metadata?.generation, status.observedGeneration, desired.metadata?.generation) &&
-    (status.availableReplicas ?? 0) >= desiredReplicas
-  );
-}
-
-function generationIsCurrent(
-  generation: number | undefined,
-  observedGeneration: number | undefined,
-  desiredGeneration: number | undefined,
-): boolean {
-  return (
-    generation !== undefined &&
-    observedGeneration !== undefined &&
-    desiredGeneration !== undefined &&
-    generation === desiredGeneration &&
-    observedGeneration === desiredGeneration
-  );
-}
-
-export async function waitUntil<T>(observation: KubeObservation, read: () => T | null): Promise<T> {
-  const initial: T | null = read();
-  if (initial !== null) {
-    return initial;
-  }
-  return await new Promise<T>((resolve: (value: T) => void, reject: (error: Error) => void): void => {
-    let unsubscribe: () => void = (): void => undefined;
-    const resolveWhenReady: () => void = (): void => {
-      const value: T | null = read();
-      if (value !== null) {
-        clearTimeout(timer);
-        unsubscribe();
-        resolve(value);
-      }
-    };
-    const timer: NodeJS.Timeout = setTimeout((): void => {
-      unsubscribe();
-      reject(new Error('Timed out waiting for Kubernetes resource lifecycle evidence.'));
-    }, reconcileTimeoutMs);
-    unsubscribe = observation.onEvent(resolveWhenReady);
-    resolveWhenReady();
-  });
-}
-
-function requiredDeployment(manifests: KubeManifest[]): KubeDeploymentManifest {
-  const deployment: KubeManifest | undefined = manifests.find(
-    (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
-  );
-  if (deployment?.kind !== 'Deployment') {
-    throw new Error('Resource reconcile Deployment manifest is missing.');
-  }
-  return deployment;
-}
-
 export function readRollbackManifest(
   previousJson: string | null,
   observation: KubeObservation,
@@ -225,15 +145,6 @@ function readActiveManifests(observation: KubeObservation, desired: KubeManifest
         `${right.kind}/${right.metadata?.namespace ?? ''}/${right.metadata?.name ?? ''}`,
       ),
     );
-}
-
-function findObservedManifest(observation: KubeObservation, desired: KubeManifest): KubeObservedManifest | null {
-  return (
-    [...observation.cache.values()].find(
-      (observed: KubeObservedManifest): boolean =>
-        observed.kind === desired.kind && observed.metadata?.name === desired.metadata?.name,
-    ) ?? null
-  );
 }
 
 function normalizeRollbackManifest(manifest: KubeManifest): KubeManifest {

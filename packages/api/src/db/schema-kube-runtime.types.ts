@@ -48,8 +48,10 @@ interface ProductJobRunsColumnBuilders {
   imagePullSecretId: OptionalTextBuilder<'image_pull_secret_id'>;
   commandJson: RequiredTextBuilder<'command_json'>;
   envJson: RequiredTextBuilder<'env_json'>;
+  resourceIdsJson: DefaultTextBuilder<'resource_ids_json'>;
   volumeMountsJson: DefaultTextBuilder<'volume_mounts_json'>;
   namespace: RequiredTextBuilder<'namespace'>;
+  projectId: RequiredTextBuilder<'project_id'>;
   timeoutMs: RequiredIntegerBuilder<'timeout_ms'>;
   status: RequiredEnumTextBuilder<'status', ['queued', 'running', 'succeeded', 'failed', 'timed-out']>;
   exitCode: OptionalIntegerBuilder<'exit_code'>;

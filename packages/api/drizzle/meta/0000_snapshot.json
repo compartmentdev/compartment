@@ -1,5 +1,5 @@
 {
-  "id": "bebada90-69fb-4976-b2fd-b394537ffa58",
+  "id": "2905c0be-8133-4a07-9153-9d7cda0cdf6f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -3963,6 +3963,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "resource_ids_json": {
+          "name": "resource_ids_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'"
+        },
         "volume_mounts_json": {
           "name": "volume_mounts_json",
           "type": "text",
@@ -3972,6 +3979,12 @@
         },
         "namespace": {
           "name": "namespace",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -4072,6 +4085,27 @@
             },
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "product_job_runs_project_status_idx": {
+          "name": "product_job_runs_project_status_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4304,6 +4338,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'[]'"
+        },
+        "delete_data_requested": {
+          "name": "delete_data_requested",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "status": {
           "name": "status",
@@ -4601,7 +4642,30 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "resource_reconcile_runs_active_order_idx": {
+          "name": "resource_reconcile_runs_active_order_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"resource_reconcile_runs\".\"phase\" IN ('bootstrap-pending', 'reconcile-pending', 'running')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "resource_reconcile_runs_project_resource_id_project_resources_id_fk": {
           "name": "resource_reconcile_runs_project_resource_id_project_resources_id_fk",

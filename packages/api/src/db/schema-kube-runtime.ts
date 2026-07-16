@@ -49,8 +49,10 @@ export const productJobRuns: KubeRuntimeSchemaTypes.ProductJobRunsTable = pgTabl
     imagePullSecretId: text('image_pull_secret_id'),
     commandJson: text('command_json').notNull(),
     envJson: text('env_json').notNull(),
+    resourceIdsJson: text('resource_ids_json').default('[]').notNull(),
     volumeMountsJson: text('volume_mounts_json').default('[]').notNull(),
     namespace: text('namespace').notNull(),
+    projectId: text('project_id').notNull(),
     timeoutMs: integer('timeout_ms').notNull(),
     status: text('status', { enum: ['queued', 'running', 'succeeded', 'failed', 'timed-out'] }).notNull(),
     exitCode: integer('exit_code'),
@@ -65,6 +67,7 @@ export const productJobRuns: KubeRuntimeSchemaTypes.ProductJobRunsTable = pgTabl
   (table: KubeRuntimeSchemaTypes.ProductJobRunsExtraConfigColumns): PgTableExtraConfig => ({
     identityIndex: uniqueIndex('product_job_runs_class_identity_idx').on(table.jobClass, table.identityId),
     statusIndex: index('product_job_runs_status_created_at_idx').on(table.status, table.createdAt),
+    projectStatusIndex: index('product_job_runs_project_status_idx').on(table.projectId, table.status),
   }),
 );
 

@@ -18,7 +18,6 @@ import {
   type DeploymentSummary,
   type DeployResponse,
   type InstallResponse,
-  type DomainPublicScheme,
   type SystemDomainMutationResponse,
   type SystemDomainSetRequest,
   type RemoveCustomDomainResponse,
@@ -141,7 +140,6 @@ function buildSystemMutationHeaders(idempotencyKey: string): Record<string, stri
 function buildCustomExternalDomainSetRequest(
   expectedSetupVersion: number,
   baseDomain: string = 'customer.example.com',
-  publicScheme: DomainPublicScheme = 'https',
 ): SystemDomainSetRequest {
   return {
     expectedSetupVersion,
@@ -149,7 +147,7 @@ function buildCustomExternalDomainSetRequest(
       baseDomain,
       caddyMode: 'custom-http',
       domainKind: 'custom',
-      publicScheme,
+      publicScheme: 'https',
       tlsMode: 'external',
     },
   };

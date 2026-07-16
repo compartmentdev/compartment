@@ -24,6 +24,7 @@ export {
   resourceResponseSchema,
   resourceTargetQuerySchema,
 } from './contracts/resources.contract';
+export { resourceReadinessTimeoutMaxMs } from './contracts/compartment-resource.contract';
 export {
   buildCompartmentResourceBootstrapPathname,
   compartmentResourceBootstrapPathnameTemplate,

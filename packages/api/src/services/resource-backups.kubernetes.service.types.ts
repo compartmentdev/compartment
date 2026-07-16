@@ -6,17 +6,6 @@ import type {
 } from './resource-backups.operation-context.service';
 import type { ResourceEnvironmentContext } from './resources.service.types';
 
-export interface KubernetesResourceOperationResult {
-  stderr: string;
-  stdout: string;
-}
-
-export interface KubernetesOperationDefinition {
-  command: string;
-  env: { keyName: string; value: string }[];
-  image: string;
-}
-
 export interface KubernetesVerifiedRestoreInput {
   artifactResource: ProjectResourceRow;
   backup: ResourceBackupRow;

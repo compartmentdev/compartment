@@ -24,6 +24,7 @@ import {
   projectKubeProvisioning,
   projectResources,
   projects,
+  productJobRuns,
   productLogStoreQuota,
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
@@ -57,6 +58,8 @@ import {
   completeProjectProvisioning,
 } from '../src/queries/project-provisioning.query';
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
+import { claimProductJob } from '../src/queries/product-job-runs.query';
+import { persistProductJobIntent } from '../src/queries/product-job-intent.query';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'deployment_kube_reference');
@@ -66,6 +69,57 @@ const db: Database = createDatabase(pool);
 
 describe('deployment Kubernetes transition persistence', (): void => {
   useApiRuntimeDatabaseTestHarness({ apiConfig, databaseUrl, db, pool, setup: seedDeployment });
+
+  it('does not recover a queued release Job after its project is archived', async (): Promise<void> => {
+    await persistProductJobIntent({
+      identityId: 'dep_kube',
+      intent: {
+        command: ['bin/release'],
+        deploymentId: 'dep_kube',
+        env: {},
+        image: 'registry.example/release@sha256:abc',
+        imagePullSecretId: 'pull-project',
+        jobClass: 'release',
+        namespace: 'cpt-prj-kube',
+        projectId: 'prj_kube',
+        timeoutMs: 30_000,
+      },
+    });
+    await db.update(projects).set({ archivedAt: new Date() }).where(eq(projects.id, 'prj_kube'));
+
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_kube' },
+      persistedResult: { status: 'timed-out' },
+    });
+    await expect(db.select().from(productJobRuns)).resolves.toMatchObject([{ status: 'timed-out' }]);
+  });
+
+  it('does not restart a claimed release Job after its project is archived', async (): Promise<void> => {
+    await persistProductJobIntent({
+      identityId: 'dep_kube',
+      intent: {
+        command: ['bin/release'],
+        deploymentId: 'dep_kube',
+        env: {},
+        image: 'registry.example/release@sha256:abc',
+        imagePullSecretId: 'pull-project',
+        jobClass: 'release',
+        namespace: 'cpt-prj-kube',
+        projectId: 'prj_kube',
+        timeoutMs: 30_000,
+      },
+    });
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_kube' },
+    });
+    await db.update(projects).set({ archivedAt: new Date() }).where(eq(projects.id, 'prj_kube'));
+
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_kube' },
+      persistedResult: { status: 'timed-out' },
+    });
+    await expect(db.select().from(productJobRuns)).resolves.toMatchObject([{ status: 'timed-out' }]);
+  });
 
   it('serializes concurrent drift callbacks and writes one audit event', async (): Promise<void> => {
     const observedAt: Date = new Date('2026-07-11T12:00:00.000Z');

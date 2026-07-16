@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { compartmentProjectNameSchema, compartmentResourceNameSchema } from './compartment-descriptor.contract';
-import { compartmentResourceOutputNameSchema } from './compartment-resource.contract';
+import { compartmentResourceOutputNameSchema, resourceReadinessTimeoutMaxMs } from './compartment-resource.contract';
 import { environmentNameSchema, environmentSummarySchema, type EnvironmentSummary } from './environments.contract';
 import { logTailLineLimit } from './logs.contract';
 import { projectSummarySchema, type ProjectSummary } from './projects.contract';
@@ -97,10 +97,10 @@ export interface ResourceDeleteResponse {
 
 const resourceRuntimeStatusSchema: ContractSchema<ResourceRuntimeStatus> = z.enum(['running', 'stopped']);
 const resourceEnvSourceTypeSchema: ContractSchema<ResourceEnvSourceType> = z.literal('literal');
-const resourceReadinessSummarySchema: ContractSchema<ResourceReadinessSummary> = z
+export const resourceReadinessSummarySchema: ContractSchema<ResourceReadinessSummary> = z
   .object({
     port: z.number().int().min(1).max(65_535),
-    timeoutMs: z.number().int().positive().max(300_000),
+    timeoutMs: z.number().int().positive().max(resourceReadinessTimeoutMaxMs),
     type: z.literal('tcp'),
   })
   .strict();

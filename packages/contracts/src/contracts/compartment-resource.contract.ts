@@ -34,6 +34,7 @@ export const compartmentResourceReadinessFieldNames: readonly ['type', 'port', '
   'port',
   'timeoutMs',
 ];
+export const resourceReadinessTimeoutMaxMs: number = 300_000;
 export const compartmentResourceOperationFieldNames: readonly ['command', 'env', 'image', 'schedule'] = [
   'command',
   'env',
@@ -78,12 +79,13 @@ export const compartmentDescriptorResourceConfigFieldNames: readonly [
 export const compartmentDescriptorResourceConfigRequiredFieldSets: readonly [readonly ['image'], readonly ['preset']] =
   [['image'], ['preset']];
 export const compartmentResourceOutputFieldNames: readonly ['sensitive', 'value'] = ['sensitive', 'value'];
+const compartmentResourceBackupVolumeHandle: string = 'backup-artifacts';
 
 const compartmentResourceReadinessConfigSchema: ContractSchema<CompartmentResourceReadinessConfig> = z
   .object({
     type: z.literal('tcp'),
     port: z.number().int().min(1).max(65_535),
-    timeoutMs: z.number().int().positive().max(300_000).optional(),
+    timeoutMs: z.number().int().positive().max(resourceReadinessTimeoutMaxMs).optional(),
   })
   .strict();
 const compartmentResourceEnvValueSchema: ContractSchema<string> = z.string();
@@ -175,7 +177,10 @@ const compartmentAuthoredResourceConfigInputSchema: ContractSchema<
     image: z.string().min(1).optional(),
     operations: compartmentResourceOperationsConfigSchema.optional(),
     outputs: z.record(compartmentResourceOutputNameSchema, compartmentResourceOutputConfigSchema).optional(),
-    ports: z.array(z.number().int().min(1).max(65_535)).optional(),
+    ports: z
+      .array(z.number().int().min(1).max(65_535))
+      .refine((ports: number[]): boolean => new Set(ports).size === ports.length, 'Resource ports must be unique.')
+      .optional(),
     preset: z.enum(compartmentResourcePresetValues).optional(),
     readiness: compartmentResourceReadinessConfigSchema.optional(),
     volumes: z.record(createResourceVolumeNameSchema(), compartmentResourceVolumeValueSchema).optional(),
@@ -192,6 +197,13 @@ const compartmentAuthoredResourceConfigInputSchema: ContractSchema<
 
     validateCompartmentResourcePresetOverrides(resource, context);
     validateCompartmentResourceGeneratedVariables(resource, context);
+    if (resource.volumes?.[compartmentResourceBackupVolumeHandle] !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${compartmentResourceBackupVolumeHandle} is reserved for managed backups.`,
+        path: ['volumes', compartmentResourceBackupVolumeHandle],
+      });
+    }
   })
   .transform(resolveCompartmentAuthoredResourceConfigInput);
 

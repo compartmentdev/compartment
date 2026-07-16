@@ -1,17 +1,21 @@
 import {
   buildFastifyResponseSchemas,
   productJobIntentSchema,
+  workerClaimProductJobRequestSchema,
   workerClaimProductJobPathname,
   workerClaimProductJobResponseSchema,
   workerFinalizeProductJobPathname,
   workerFinalizeProductJobRequestSchema,
   workerPersistProductJobIntentPathname,
+  workerPersistProductJobIntentResponseSchema,
   workerPersistProductJobResultPathname,
   workerPersistProductJobResultRequestSchema,
   type ProductJobIntent,
+  type WorkerClaimProductJobRequest,
   type WorkerClaimProductJobResponse,
   type WorkerFinalizeProductJobRequest,
   type WorkerPersistProductJobResultRequest,
+  type WorkerPersistProductJobIntentResponse,
 } from '@compartment/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
@@ -34,7 +38,11 @@ export function registerProductJobRoutes(app: ApiApp): void {
 }
 
 function registerPersistProductJobIntentRoute(app: ApiApp): void {
-  app.post(workerPersistProductJobIntentPathname, handlePersistProductJobIntent);
+  app.post(
+    workerPersistProductJobIntentPathname,
+    { schema: { response: buildFastifyResponseSchemas({ 200: workerPersistProductJobIntentResponseSchema }) } },
+    handlePersistProductJobIntent,
+  );
 }
 
 function registerClaimProductJobRoute(app: ApiApp): void {
@@ -59,12 +67,17 @@ function registerFinalizeProductJobRoute(app: ApiApp): void {
 
 async function handlePersistProductJobIntent(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const input: ProductJobIntent = parseRequestValue(productJobIntentSchema, request.body, 'invalid_product_job_intent');
-  await createProductJobIntent(input);
-  return await reply.send(productJobIntentSchema.parse(input));
+  const response: WorkerPersistProductJobIntentResponse = { result: await createProductJobIntent(input) };
+  return await reply.send(workerPersistProductJobIntentResponseSchema.parse(response));
 }
 
-async function handleClaimProductJob(_request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
-  const claimed: ClaimedProductJobResult = await claimNextProductJob();
+async function handleClaimProductJob(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  const input: WorkerClaimProductJobRequest = parseRequestValue(
+    workerClaimProductJobRequestSchema,
+    request.body,
+    'invalid_product_job_claim',
+  );
+  const claimed: ClaimedProductJobResult = await claimNextProductJob(input.jobClass);
   const response: WorkerClaimProductJobResponse = { job: claimed.intent, result: claimed.persistedResult };
   return await reply.send(workerClaimProductJobResponseSchema.parse(response));
 }

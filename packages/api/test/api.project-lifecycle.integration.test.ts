@@ -1075,13 +1075,15 @@ function createUnbootstrappedResourceIntent(
   project: typeof projects.$inferSelect,
 ): ResourceReconcileIntent {
   return {
-    containerPort: 5432,
+    command: [],
     deleteData: false,
     environmentId: resource.environmentId,
     env: {},
     image: resource.image,
     namespaceId: project.id,
     operation: 'reconcile',
+    ports: [5432],
+    readiness: null,
     replicas: 1,
     resourceId: resource.id,
     secretId: resource.id,
