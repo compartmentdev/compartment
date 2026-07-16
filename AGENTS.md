@@ -51,12 +51,10 @@ Keep changes small, explicit, and package-owned.
 
 ## Validation
 
-- Before finishing, run the narrowest relevant checks in the owning package: `pnpm lint`, `pnpm typecheck`, and `pnpm test`.
-- When editing root `scripts/`, run `pnpm lint:scripts`, `pnpm typecheck:scripts`, and `pnpm test:scripts`.
+- Do not manually run owning-package or root-script lint, typecheck, build, test, or duplicate checks during feature work; `git commit` already runs `pnpm lint-staged`, `pnpm check`, and `pnpm check:duplicates`.
 - Run `pnpm test:db` only for DB-backed API integration or CLI smoke changes.
 - Run `pnpm test:deploy:e2e` only for Docker-backed deploy, build, or runtime changes.
 - Run `pnpm check:ci` only when the user explicitly asks for CI-parity validation or the task explicitly requires it.
-- `git commit` already runs `pnpm lint-staged`, `pnpm check`, and `pnpm check:duplicates`. Do not run broad repo checks by default.
 
 ## Repo Notes
 
