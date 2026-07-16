@@ -80,6 +80,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "compartment.fullname" . }}
+          env:
+            - name: COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.installStateSecretName" . }}, key: managed-domain-broker-token}
           ports:
             - {name: http, containerPort: {{ .Values.ports.http }}}
             - {name: https, containerPort: {{ .Values.ports.https }}}

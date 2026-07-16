@@ -52,8 +52,8 @@ describe('edge Caddyfile', (): void => {
   it('keeps internal mode on internal certs and only documented public host families', (): void => {
     const renderedCaddyfile: string = renderCaddyfile('internal');
 
-    expect(renderedCaddyfile).toContain('http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTP_PORT} {');
-    expect(renderedCaddyfile).toContain('https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTPS_PORT} {');
+    expect(renderedCaddyfile).toContain('http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTP_PORT} {');
+    expect(renderedCaddyfile).toContain('https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTPS_PORT} {');
     expect(renderedCaddyfile).not.toContain('*.apps.');
     expect(renderedCaddyfile).toContain('tls internal');
     expect(renderedCaddyfile).not.toContain('on_demand_tls');
@@ -184,10 +184,10 @@ describe('edge Caddyfile', (): void => {
   it('uses broker DNS-01 for a single managed wildcard TLS ingress and redirects HTTP', (): void => {
     const renderedCaddyfile: string = renderCaddyfile('managed');
 
-    expect(renderedCaddyfile).toContain('http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTP_PORT} {');
+    expect(renderedCaddyfile).toContain('http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTP_PORT} {');
     expect(renderedCaddyfile).toContain('redir https://{host}:{$COMPARTMENT_PUBLIC_HTTPS_PORT}{uri} permanent');
-    expect(renderedCaddyfile).toContain('https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTPS_PORT} {');
-    expect(renderedCaddyfile).toContain('issuer acme {$COMPARTMENT_ACME_CA_URL} {');
+    expect(renderedCaddyfile).toContain('https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTPS_PORT} {');
+    expect(renderedCaddyfile).toContain('issuer {$COMPARTMENT_ACME_ISSUER} {$COMPARTMENT_ACME_CA_URL} {');
     expect(renderedCaddyfile).toContain('email {$COMPARTMENT_ACME_EMAIL}');
     expect(renderedCaddyfile).toContain('dns compartment_broker {');
     expect(renderedCaddyfile).toContain('broker_url {$COMPARTMENT_MANAGED_DOMAIN_BROKER_URL}');
@@ -199,9 +199,9 @@ describe('edge Caddyfile', (): void => {
     expect(renderedCaddyfile).toContain(
       'ask http://{$COMPARTMENT_EDGE_INTERNAL_HOST}:{$COMPARTMENT_EDGE_PORT}/internal/tls/ask',
     );
-    expect(renderedCaddyfile).toContain('http://:{$COMPARTMENT_PUBLIC_HTTP_PORT} {');
-    expect(renderedCaddyfile).toContain('https://:{$COMPARTMENT_PUBLIC_HTTPS_PORT} {');
-    expect(renderedCaddyfile).toContain('issuer acme {$COMPARTMENT_ACME_CA_URL} {');
+    expect(renderedCaddyfile).toContain('http://:{$COMPARTMENT_CADDY_HTTP_PORT} {');
+    expect(renderedCaddyfile).toContain('https://:{$COMPARTMENT_CADDY_HTTPS_PORT} {');
+    expect(renderedCaddyfile).toContain('issuer {$COMPARTMENT_ACME_ISSUER} {$COMPARTMENT_ACME_CA_URL} {');
     expect(renderedCaddyfile).toContain('on_demand');
     expect(renderedCaddyfile).not.toContain('tls internal');
     expect(renderedCaddyfile).not.toContain('*.apps.');
@@ -211,11 +211,11 @@ describe('edge Caddyfile', (): void => {
   it('uses plain HTTP origin ingress for custom domains with external TLS', (): void => {
     const renderedCaddyfile: string = renderCaddyfile('custom-http');
 
-    expect(renderedCaddyfile).toContain('http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTP_PORT} {');
+    expect(renderedCaddyfile).toContain('http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTP_PORT} {');
     expect(renderedCaddyfile).toContain('@compartment_host host console.{$COMPARTMENT_BASE_DOMAIN}');
     expect(renderedCaddyfile).toContain('reverse_proxy {$COMPARTMENT_API_INTERNAL_HOST}:{$COMPARTMENT_API_PORT}');
     expect(renderedCaddyfile).not.toContain('tls internal');
-    expect(renderedCaddyfile).not.toContain('issuer acme');
+    expect(renderedCaddyfile).not.toContain('issuer {$COMPARTMENT_ACME_ISSUER}');
     expect(renderedCaddyfile).not.toContain('on_demand_tls');
     expect(renderedCaddyfile).not.toContain('redir https://');
     expect(renderedCaddyfile).not.toContain('http://console.{$COMPARTMENT_BASE_DOMAIN}');
@@ -225,14 +225,14 @@ describe('edge Caddyfile', (): void => {
   it('uses provided certificate files for custom certificate ingress', (): void => {
     const renderedCaddyfile: string = renderCaddyfile('custom-cert');
 
-    expect(renderedCaddyfile).toContain('http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTP_PORT} {');
-    expect(renderedCaddyfile).toContain('https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTPS_PORT} {');
+    expect(renderedCaddyfile).toContain('http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTP_PORT} {');
+    expect(renderedCaddyfile).toContain('https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTPS_PORT} {');
     expect(renderedCaddyfile).toContain('@compartment_host host console.{$COMPARTMENT_BASE_DOMAIN}');
     expect(renderedCaddyfile).toContain('tls {$COMPARTMENT_CUSTOM_TLS_CERT_FILE} {$COMPARTMENT_CUSTOM_TLS_KEY_FILE}');
     expect(renderedCaddyfile).toContain('on_demand_tls {');
-    expect(renderedCaddyfile).toContain('http://:{$COMPARTMENT_PUBLIC_HTTP_PORT} {');
-    expect(renderedCaddyfile).toContain('https://:{$COMPARTMENT_PUBLIC_HTTPS_PORT} {');
-    expect(renderedCaddyfile).toContain('issuer acme {$COMPARTMENT_ACME_CA_URL} {');
+    expect(renderedCaddyfile).toContain('http://:{$COMPARTMENT_CADDY_HTTP_PORT} {');
+    expect(renderedCaddyfile).toContain('https://:{$COMPARTMENT_CADDY_HTTPS_PORT} {');
+    expect(renderedCaddyfile).toContain('issuer {$COMPARTMENT_ACME_ISSUER} {$COMPARTMENT_ACME_CA_URL} {');
     expect(renderedCaddyfile).toContain('email {$COMPARTMENT_ACME_EMAIL}');
     expect(renderedCaddyfile).toContain('on_demand');
     expect(renderedCaddyfile).toContain('redir https://{host}:{$COMPARTMENT_PUBLIC_HTTPS_PORT}{uri} permanent');

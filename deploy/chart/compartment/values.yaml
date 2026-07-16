@@ -49,9 +49,11 @@ ports:
 
 service:
   caddy:
-    type: NodePort
-    httpNodePort: 30080
-    httpsNodePort: 30443
+    type: LoadBalancer
+    httpPort: 80
+    httpsPort: 443
+    httpNodePort: null
+    httpsNodePort: null
 
 storage:
   storageClass: ''
@@ -64,9 +66,17 @@ storage:
 
 platform:
   startupStage: foundation
+  installationId: ''
+  domainMode: custom
   baseDomain: localhost
   publicProtocol: http
   tlsMode: custom-http
+  publicIngressIpv4: ''
+  publicIngressIpv6: ''
+  acmeIssuer: acme
+  acmeCaUrl: https://acme.zerossl.com/v2/DV90
+  acmeEmail: ''
+  managedDomainBrokerUrl: https://broker.compartment.run
   logLevel: info
   trustedOutboundHosts: ''
   workerPollIntervalMs: 1000
@@ -128,6 +138,12 @@ secrets:
   sessionSecret: ''
   systemToken: ''
   variablesMasterKey: ''
+  managedDomainBrokerToken: ''
+
+customTls:
+  existingSecret: ''
+  certificate: ''
+  privateKey: ''
 
 podSecurityContext:
   seccompProfile:
