@@ -32,8 +32,8 @@ const resourceReconcileSettlementSelection: ResourceReconcileSettlementSelection
   provisioningState: projectKubeProvisioning.state,
   resource: projectResources,
   state: {
-    failureMessage: resourceReconcileRuns.failureMessage,
     operationId: resourceReconcileRuns.id,
+    failureMessage: resourceReconcileRuns.failureMessage,
     phase: resourceReconcileRuns.phase,
   },
 };
