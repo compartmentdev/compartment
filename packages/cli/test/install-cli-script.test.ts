@@ -129,9 +129,7 @@ describe('render-cli-install-script', (): void => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain(
-      'Use --api-url, --email, --organization, and --onboarding-session only with --init-login.',
-    );
+    expect(result.stderr).toContain('Use install and login arguments only with --init-install or --init-login.');
     expect(result.urlLog).toEqual([]);
   });
 
@@ -377,22 +375,95 @@ describe('render-cli-install-script', (): void => {
     },
   );
 
-  it.each(['--init-install', '--init-update'])(
-    'rejects removed host-runtime installer option %s',
-    async (removedOption: string): Promise<void> => {
-      const temporaryDirectory: string = await createTemporaryDirectory();
+  it('fails init install clearly when no installer terminal is available', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const missingInstallerTerminalPath: string = join(temporaryDirectory, 'missing-installer-tty');
 
-      const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-        allowFailure: true,
-        args: ['--version', 'main', removedOption],
-      });
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      allowFailure: true,
+      args: [
+        '--version',
+        'main',
+        '--init-install',
+        '--api-url',
+        'https://console.apps.example.com',
+        '--base-domain',
+        'apps.example.com',
+        '--values',
+        'compartment-values.yaml',
+      ],
+      installerTerminalPath: missingInstallerTerminalPath,
+      pathEntries: [binDirectory],
+    });
 
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain(`Unknown installer argument: ${removedOption}`);
-      expect(result.sudoInvocations).toEqual([]);
-      expect(result.compartmentInvocations).toEqual([]);
-    },
-  );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      `Requested \`--init-install\`, but no terminal is available for owner setup. Run \`"${join(binDirectory, 'compartment')}" install --api-url https://console.apps.example.com --base-domain apps.example.com --values compartment-values.yaml\` from an interactive shell.`,
+    );
+    expect(result.sudoInvocations).toEqual([]);
+    expect(result.compartmentInvocations).toEqual(['--version']);
+  });
+
+  it('runs the Kubernetes install command through init install without sudo or host-runtime setup', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const installerTerminalPath: string = join(temporaryDirectory, 'installer-tty');
+    await writeFile(installerTerminalPath, '', 'utf8');
+
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: [
+        '--version',
+        'main',
+        '--init-install',
+        '--api-url',
+        'https://console.apps.example.com',
+        '--base-domain',
+        'apps.example.com',
+        '--values',
+        'compartment-values.yaml',
+        '--email',
+        'admin@example.com',
+        '--organization',
+        'Acme Dev',
+        '--organization-slug',
+        'acme-dev',
+        '--kube-context',
+        'prod-eu',
+        '--namespace',
+        'compartment-prod',
+        '--release-name',
+        'compartment-prod',
+        '--chart',
+        './compartment-chart',
+        '--remote',
+        'prod-eu',
+      ],
+      installerTerminalPath,
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.compartmentInvocations).toEqual([
+      '--version',
+      'install --api-url https://console.apps.example.com --base-domain apps.example.com --values compartment-values.yaml --email admin@example.com --organization Acme Dev --organization-slug acme-dev --kube-context prod-eu --namespace compartment-prod --release-name compartment-prod --chart ./compartment-chart --remote prod-eu',
+    ]);
+    expect(result.sudoInvocations).toEqual([]);
+  });
+
+  it('keeps the removed host-runtime update option rejected', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      allowFailure: true,
+      args: ['--version', 'main', '--init-update'],
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Unknown installer argument: --init-update');
+    expect(result.sudoInvocations).toEqual([]);
+    expect(result.compartmentInvocations).toEqual([]);
+  });
 
   it('fails init login clearly when no installer terminal is available', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
@@ -495,7 +566,7 @@ describe('render-cli-install-script', (): void => {
 });
 
 function createCliOnlyInstallMessage(installPath: string): string {
-  return `Installed CLI. Run \`"${installPath}" login\` to connect to a Compartment platform, or re-run this installer with \`--init-login\`.`;
+  return `Installed CLI. Run \`"${installPath}" install\` to create a Kubernetes platform owner, run \`"${installPath}" login\` to connect to a platform, or use \`--init-install\`/\`--init-login\`.`;
 }
 
 async function createTemporaryDirectory(): Promise<string> {
@@ -730,6 +801,9 @@ printf '%s\\n' "$*" >> "\${state_dir}/compartment.log"
   case "\${1:-}" in
   --version)
     printf '${expectedInstalledVersion}\\n'
+    ;;
+  install)
+    printf 'Installed Compartment.\\n'
     ;;
   login)
     api_url=""

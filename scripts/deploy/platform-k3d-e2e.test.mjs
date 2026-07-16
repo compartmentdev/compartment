@@ -6,6 +6,7 @@ import {
   parseLoadedImageRefs,
   readPlatformK3dCommand,
   renderK3dRegistryConfig,
+  renderPlatformK3dValues,
 } from './platform-k3d-e2e.mjs';
 
 describe('platform k3d e2e command boundary', () => {
@@ -29,12 +30,14 @@ describe('platform k3d e2e command boundary', () => {
 
   it('accepts the down action without options', () => {
     expect(readPlatformK3dCommand(['down'])).toEqual({ action: 'down' });
+    expect(readPlatformK3dCommand(['configure'])).toEqual({ action: 'configure' });
   });
 
   it('rejects unknown actions and malformed options', () => {
     expect(() => readPlatformK3dCommand([])).toThrow('Usage:');
     expect(() => readPlatformK3dCommand(['restart'])).toThrow('Usage:');
     expect(() => readPlatformK3dCommand(['down', 'extra'])).toThrow('Usage:');
+    expect(() => readPlatformK3dCommand(['configure', 'extra'])).toThrow('Usage:');
     expect(() => readPlatformK3dCommand(['up', '--image-source'])).toThrow('Usage:');
     expect(() => readPlatformK3dCommand(['up', '--image-source', 'registry'])).toThrow('Usage:');
     expect(() => readPlatformK3dCommand(['up', '--image-source', 'archive'])).toThrow('Usage:');
@@ -76,6 +79,15 @@ describe('platform k3d e2e command boundary', () => {
       - "http://10.43.12.34:5000"
 `);
     expect(config).not.toContain('cluster.local');
+  });
+
+  it('writes the operator values consumed by the production install command', () => {
+    const values = renderPlatformK3dValues();
+
+    expect(values).toContain('baseDomain: compartment.localhost');
+    expect(values).toContain('publicProtocol: http');
+    expect(values).toContain('repository: k3d-compartment-e2e-registry:15500/compartment-api');
+    expect(values).not.toContain('startupStage:');
   });
 
   it('rejects an unusable bundled registry Service address', () => {

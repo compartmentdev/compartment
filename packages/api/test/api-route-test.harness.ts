@@ -59,6 +59,7 @@ export function applyApiRouteTestEnv({
 }: ApiRouteTestEnvInput = {}): void {
   process.env.COMPARTMENT_EDGE_TOKEN = edgeToken;
   process.env.COMPARTMENT_ENV = 'dev';
+  process.env.COMPARTMENT_INSTALL_TOKEN = 'test-install-token';
   process.env.COMPARTMENT_LOG_LEVEL = logLevel;
   process.env.COMPARTMENT_CADDY_TLS_MODE = 'internal';
   process.env.COMPARTMENT_PUBLIC_HTTP_PORT = String(publicHttpPort);

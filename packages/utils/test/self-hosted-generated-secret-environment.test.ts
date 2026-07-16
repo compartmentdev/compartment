@@ -7,6 +7,7 @@ interface SelfHostedGeneratedSecretEnvironmentFixture {
   readonly COMPARTMENT_DATABASE_URL?: string | undefined;
   readonly COMPARTMENT_EDGE_TOKEN?: string | undefined;
   readonly COMPARTMENT_ENV?: string | undefined;
+  readonly COMPARTMENT_INSTALL_TOKEN?: string | undefined;
   readonly COMPARTMENT_POSTGRES_PASSWORD?: string | undefined;
   readonly COMPARTMENT_RUNTIME_CONTROL_TOKEN?: string | undefined;
   readonly COMPARTMENT_SESSION_SECRET?: string | undefined;
@@ -108,6 +109,7 @@ function createSelfHostedEnvironment(
     COMPARTMENT_DATABASE_URL: `postgresql://postgres:${generated24ByteSecret}@postgres:5432/compartment`,
     COMPARTMENT_EDGE_TOKEN: generated24ByteSecret,
     COMPARTMENT_ENV: 'self-hosted',
+    COMPARTMENT_INSTALL_TOKEN: generated32ByteSecret,
     COMPARTMENT_POSTGRES_PASSWORD: generated24ByteSecret,
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: generated24ByteSecret,
     COMPARTMENT_SESSION_SECRET: generated32ByteSecret,

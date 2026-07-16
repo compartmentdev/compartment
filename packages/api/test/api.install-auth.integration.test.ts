@@ -64,6 +64,7 @@ import { createBrowserCsrfCookie } from '../src/services/browser-csrf-cookie.ser
 import { buildRuntimePublicSettings } from '../src/services/public-hosts.service';
 import {
   buildSystemAuthorizationHeaders,
+  buildInstallAuthorizationHeaders,
   buildOrganizationAuthorizationHeaders,
   injectDeployRequest,
   installCompartment,
@@ -268,6 +269,32 @@ describe('Phase 0 API integration install auth', (): void => {
     hasInitializedApiIntegrationRuntime = false;
     await cleanupApiIntegrationRuntime(app, systemApp, pool);
   });
+  it('rejects an unauthenticated attempt to claim the first owner', async (): Promise<void> => {
+    const payload: Record<string, string> = {
+      adminPassword: 'supersecretpassword',
+      organizationName: 'Attacker',
+      organizationSlug: 'attacker',
+      adminEmail: 'attacker@example.com',
+      baseDomain: 'localhost',
+    };
+    const responses: LightMyRequestResponse[] = await Promise.all([
+      app.inject({ method: 'POST', url: '/v1/install', payload }),
+      app.inject({
+        headers: buildInstallAuthorizationHeaders('wrong-install-token'),
+        method: 'POST',
+        url: '/v1/install',
+        payload,
+      }),
+    ]);
+
+    expect(responses.map((response: LightMyRequestResponse): number => response.statusCode)).toEqual([401, 401]);
+    expect(
+      responses.map(
+        (response: LightMyRequestResponse): string => errorResponseSchema.parse(response.json()).error.code,
+      ),
+    ).toEqual(['install_unauthorized', 'install_unauthorized']);
+    await expect(db.select({ value: count() }).from(organizations)).resolves.toEqual([{ value: 0 }]);
+  });
   it('keeps DNS verification pending on direct ingress mismatch', async (): Promise<void> => {
     await installCompartment(app);
     configureApiRuntimeWithPublicIngress(defaultApiConfig, db, createManagedPublicIngressConfig());
@@ -451,6 +478,7 @@ describe('Phase 0 API integration install auth', (): void => {
   });
   it('rejects invalid base domains during install with a client error', async (): Promise<void> => {
     const installResponse: LightMyRequestResponse = await app.inject({
+      headers: buildInstallAuthorizationHeaders(),
       method: 'POST',
       url: '/v1/install',
       payload: {
@@ -467,6 +495,7 @@ describe('Phase 0 API integration install auth', (): void => {
   });
   it('rejects install requests whose organization name cannot produce a slug', async (): Promise<void> => {
     const installResponse: LightMyRequestResponse = await app.inject({
+      headers: buildInstallAuthorizationHeaders(),
       method: 'POST',
       url: '/v1/install',
       payload: {
@@ -482,6 +511,7 @@ describe('Phase 0 API integration install auth', (): void => {
   });
   it('rejects install requests with an invalid explicit organization slug at the request boundary', async (): Promise<void> => {
     const installResponse: LightMyRequestResponse = await app.inject({
+      headers: buildInstallAuthorizationHeaders(),
       method: 'POST',
       url: '/v1/install',
       payload: {
@@ -500,6 +530,7 @@ describe('Phase 0 API integration install auth', (): void => {
     const [firstInstallResponse, secondInstallResponse]: [LightMyRequestResponse, LightMyRequestResponse] =
       await Promise.all([
         app.inject({
+          headers: buildInstallAuthorizationHeaders(),
           method: 'POST',
           url: '/v1/install',
           payload: {
@@ -511,6 +542,7 @@ describe('Phase 0 API integration install auth', (): void => {
           },
         }),
         app.inject({
+          headers: buildInstallAuthorizationHeaders(),
           method: 'POST',
           url: '/v1/install',
           payload: {
@@ -535,6 +567,7 @@ describe('Phase 0 API integration install auth', (): void => {
   });
   it('establishes a session and returns current organization from whoami', async (): Promise<void> => {
     const installResponse: LightMyRequestResponse = await app.inject({
+      headers: buildInstallAuthorizationHeaders(),
       method: 'POST',
       url: '/v1/install',
       payload: {

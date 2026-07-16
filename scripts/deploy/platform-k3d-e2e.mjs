@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { get } from 'node:http';
 import { isIP } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { buildSelfHostedImages } from './build-self-hosted-images.mjs';
@@ -11,7 +11,6 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
-const chartPath = 'deploy/chart/compartment';
 const clusterName = 'compartment-e2e';
 const contextName = `k3d-${clusterName}`;
 const httpPort = 18_080;
@@ -26,6 +25,8 @@ const platformBaseDomain = 'compartment.localhost';
 const consoleHost = `console.${platformBaseDomain}`;
 const serverNodeName = `k3d-${clusterName}-server-0`;
 const platformImageTag = 'e2e';
+const platformValuesPath = join(repositoryRoot, '.compartment', 'platform-k3d-e2e-values.yaml');
+const platformOwnerEnvironmentPath = join(repositoryRoot, '.compartment', 'platform-k3d-e2e-owner.env');
 const kubernetesReadinessTimeoutSeconds = 240;
 const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
 const platformServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
@@ -41,7 +42,7 @@ const builtImageRefsByServiceName = Object.freeze(
 export function readPlatformK3dCommand(args) {
   const [action, ...optionArgs] = args;
 
-  if (action === 'down') {
+  if (action === 'configure' || action === 'down') {
     assertNoExtraArguments(optionArgs);
     return { action };
   }
@@ -89,7 +90,7 @@ function readPlatformK3dUpOptions(optionArgs) {
 }
 
 function usageText() {
-  return 'Usage: node ./scripts/deploy/platform-k3d-e2e.mjs <up [--image-source build|archive] [--image-archive-dir <dir>]|down>';
+  return 'Usage: node ./scripts/deploy/platform-k3d-e2e.mjs <up [--image-source build|archive] [--image-archive-dir <dir>]|configure|down>';
 }
 
 function assertNoExtraArguments(optionArgs) {
@@ -129,6 +130,17 @@ export function renderK3dRegistryConfig(registryHost, serviceClusterIp) {
   return `mirrors:\n  "${registryHost}":\n    endpoint:\n      - "http://${serviceClusterIp}:${bundledRegistryPort}"\n`;
 }
 
+export function renderPlatformK3dValues() {
+  const imageValues = platformServiceNames
+    .map(
+      (serviceName) =>
+        `  ${serviceName}:\n    repository: ${registryClusterHost}/compartment-${serviceName}\n    tag: ${platformImageTag}`,
+    )
+    .join('\n');
+
+  return `images:\n${imageValues}\nports:\n  http: ${httpPort}\n  https: ${httpsPort}\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: custom-http\nedge:\n  snapshots:\n    enabled: true\n`;
+}
+
 async function upPlatform(command) {
   assertRequiredTools();
   if (clusterExists()) {
@@ -139,59 +151,8 @@ async function upPlatform(command) {
 
   try {
     await Promise.all([createCluster(), prepareAndPushPlatformImages(command)]);
-
-    runCommand('kubectl', ['--context', contextName, 'create', 'namespace', 'compartment'], repositoryRoot);
-
-    installHelmStage('foundation');
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        contextName,
-        '--namespace',
-        'compartment',
-        'wait',
-        'deployment/compartment-compartment-postgres',
-        'deployment/compartment-compartment-registry',
-        '--for=condition=Available',
-        `--timeout=${kubernetesReadinessTimeout}`,
-      ],
-      repositoryRoot,
-    );
-    installHelmStage('full');
-    await configureK3dRegistryMirror();
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        contextName,
-        '--namespace',
-        'compartment',
-        'wait',
-        'deployment',
-        '--all',
-        '--for=condition=Available',
-        `--timeout=${kubernetesReadinessTimeout}`,
-      ],
-      repositoryRoot,
-    );
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        contextName,
-        '--namespace',
-        'compartment-build',
-        'wait',
-        'deployment',
-        '--all',
-        '--for=condition=Available',
-        `--timeout=${kubernetesReadinessTimeout}`,
-      ],
-      repositoryRoot,
-    );
-    runCommand('kubectl', ['--context', contextName, '--request-timeout=5s', 'get', '--raw=/readyz'], repositoryRoot);
-    await waitForConsole();
+    mkdirSync(resolve(repositoryRoot, '.compartment'), { recursive: true });
+    writeFileSync(platformValuesPath, renderPlatformK3dValues(), { mode: 0o600 });
   } catch (error) {
     deleteCluster();
     deleteRegistry();
@@ -199,7 +160,7 @@ async function upPlatform(command) {
     throw error;
   }
 
-  process.stdout.write(`context: ${contextName}\nconsole: http://${consoleHost}:${httpPort}\nSTATUS=ok\n`);
+  process.stdout.write(`context: ${contextName}\nvalues: ${platformValuesPath}\nSTATUS=ok\n`);
 }
 
 async function createCluster() {
@@ -271,46 +232,42 @@ function downPlatform() {
     deleteCluster();
   }
   deleteRegistry();
+  rmSync(platformValuesPath, { force: true });
+  rmSync(platformOwnerEnvironmentPath, { force: true });
   process.stdout.write(`Removed ${clusterName}.\n`);
 }
 
-function installHelmStage(stage) {
-  const args = [
-    'upgrade',
-    '--install',
-    'compartment',
-    chartPath,
-    '--kube-context',
-    contextName,
-    '--namespace',
-    'compartment',
-    '--set',
-    `ports.http=${httpPort}`,
-    '--set',
-    `ports.https=${httpsPort}`,
-    '--set',
-    `platform.startupStage=${stage}`,
-    '--set',
-    `platform.baseDomain=${platformBaseDomain}`,
-    '--set',
-    'edge.snapshots.enabled=true',
-    '--rollback-on-failure',
-    '--wait',
-    '--timeout',
-    '8m',
-  ];
-  for (const serviceName of platformServiceNames) {
-    args.push(
-      '--set',
-      `images.${serviceName}.repository=${registryClusterHost}/compartment-${serviceName}`,
-      '--set',
-      `images.${serviceName}.tag=${platformImageTag}`,
+async function configureInstalledPlatform() {
+  assertRequiredTools();
+  if (!clusterExists()) {
+    throw new Error(`k3d cluster ${clusterName} does not exist; run pnpm platform:e2e:up first.`);
+  }
+
+  await configureK3dRegistryMirror();
+  waitForPlatformDeployments();
+  runCommand('kubectl', ['--context', contextName, '--request-timeout=5s', 'get', '--raw=/readyz'], repositoryRoot);
+  await waitForConsole();
+  process.stdout.write(`console: http://${consoleHost}:${httpPort}\nSTATUS=ok\n`);
+}
+
+function waitForPlatformDeployments() {
+  for (const namespace of ['compartment', 'compartment-build']) {
+    runCommand(
+      'kubectl',
+      [
+        '--context',
+        contextName,
+        '--namespace',
+        namespace,
+        'wait',
+        'deployment',
+        '--all',
+        '--for=condition=Available',
+        `--timeout=${kubernetesReadinessTimeout}`,
+      ],
+      repositoryRoot,
     );
   }
-  if (stage === 'full') {
-    args.push('--wait-for-jobs');
-  }
-  runCommand('helm', args, repositoryRoot);
 }
 
 async function configureK3dRegistryMirror() {
@@ -449,6 +406,10 @@ async function main() {
   const command = readPlatformK3dCommand(process.argv.slice(2));
   if (command.action === 'up') {
     await upPlatform(command);
+    return;
+  }
+  if (command.action === 'configure') {
+    await configureInstalledPlatform();
     return;
   }
   downPlatform();

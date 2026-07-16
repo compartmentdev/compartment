@@ -6,9 +6,9 @@ import {
   removeTemporaryCompartmentRepository,
   type TemporaryCompartmentRepository,
 } from './compartment-repository-test.harness';
-import { readCompartmentDevApiUrl } from '../src/repo-root';
+import { readCompartmentDevInstallContext } from '../src/repo-root';
 
-describe('readCompartmentDevApiUrl', (): void => {
+describe('readCompartmentDevInstallContext', (): void => {
   const temporaryRepositories: TemporaryCompartmentRepository[] = [];
 
   afterEach(async (): Promise<void> => {
@@ -29,14 +29,31 @@ describe('readCompartmentDevApiUrl', (): void => {
       'utf8',
     );
 
-    await expect(readCompartmentDevApiUrl(repository.root)).resolves.toBe('http://127.0.0.1:9443');
+    await expect(
+      readCompartmentDevInstallContext(repository.root, {
+        COMPARTMENT_INSTALL_TOKEN: 'test-install-token',
+      }),
+    ).resolves.toEqual({
+      apiUrl: 'http://127.0.0.1:9443',
+      installToken: 'test-install-token',
+    });
+  });
+
+  it('requires the install token in the process environment', async (): Promise<void> => {
+    const repository: TemporaryCompartmentRepository = await createTemporaryCompartmentRepository();
+    temporaryRepositories.push(repository);
+    await writeFile(repositoryRootEnvPath(repository.root), 'COMPARTMENT_API_URL=http://127.0.0.1:9443\n', 'utf8');
+
+    await expect(readCompartmentDevInstallContext(repository.root, {})).rejects.toThrow(
+      'The environment is missing COMPARTMENT_INSTALL_TOKEN.',
+    );
   });
 
   it('rejects nested package directories and requires running from the repo root', async (): Promise<void> => {
     const repository: TemporaryCompartmentRepository = await createTemporaryCompartmentRepository();
     temporaryRepositories.push(repository);
 
-    await expect(readCompartmentDevApiUrl(resolve(repository.root, 'packages', 'cli'))).rejects.toThrow(
+    await expect(readCompartmentDevInstallContext(resolve(repository.root, 'packages', 'cli'))).rejects.toThrow(
       'Expected to run from the compartment repository root.',
     );
   });

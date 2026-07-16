@@ -59,6 +59,7 @@ import { reconcileDeclaredResources } from '../src/services/resources-reconcile.
 import {
   buildOrganizationAuthorizationHeaders,
   buildMultipartRequest,
+  buildInstallAuthorizationHeaders,
   createUploadedSourceArchive,
   createMultipartFieldPart,
   createMultipartFilePart,
@@ -307,6 +308,7 @@ describe('Phase 0 API integration deploy submission', (): void => {
 
   it('lists organizations for the authenticated principal', async (): Promise<void> => {
     const installResponse: LightMyRequestResponse = await app.inject({
+      headers: buildInstallAuthorizationHeaders(),
       method: 'POST',
       url: '/v1/install',
       payload: {

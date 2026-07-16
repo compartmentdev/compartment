@@ -57,6 +57,7 @@ export function createApiIntegrationTestContext(databaseName: string, runtimeSlu
   process.env.COMPARTMENT_DATABASE_URL = databaseUrl;
   process.env.COMPARTMENT_SESSION_SECRET = process.env.COMPARTMENT_SESSION_SECRET ?? 'test-secret';
   process.env.COMPARTMENT_ENV = 'dev';
+  process.env.COMPARTMENT_INSTALL_TOKEN = 'test-install-token';
   process.env.COMPARTMENT_BASE_DOMAIN = 'localhost';
   process.env.COMPARTMENT_CADDY_TLS_MODE = 'internal';
   process.env.COMPARTMENT_CUSTOM_TLS_DIR = testCustomTlsDirectory;
