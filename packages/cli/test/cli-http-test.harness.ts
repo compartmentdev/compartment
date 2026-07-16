@@ -66,8 +66,27 @@ function buildCliHttpRequestUrl(targetUrl: URL): URL {
 
   const requestUrl: URL = new URL(targetUrl.toString());
   requestUrl.hostname = '127.0.0.1';
+  requestUrl.port = readLocalIngressConnectPort(targetUrl) ?? requestUrl.port;
 
   return requestUrl;
+}
+
+function readLocalIngressConnectPort(targetUrl: URL): string | undefined {
+  if (targetUrl.port !== '') {
+    return undefined;
+  }
+
+  const compartmentUrlValue: string | undefined = process.env.COMPARTMENT_E2E_COMPARTMENT_URL;
+  if (compartmentUrlValue === undefined || compartmentUrlValue.trim() === '') {
+    return undefined;
+  }
+
+  const compartmentUrl: URL = new URL(compartmentUrlValue);
+  const compartmentHostnameSuffix: string = compartmentUrl.hostname.replace(/^console\./u, '');
+  const targetsCompartmentIngress: boolean =
+    targetUrl.hostname === compartmentHostnameSuffix || targetUrl.hostname.endsWith(`.${compartmentHostnameSuffix}`);
+
+  return targetsCompartmentIngress && compartmentUrl.port !== '' ? compartmentUrl.port : undefined;
 }
 
 function buildCliHttpRequestHeaders(

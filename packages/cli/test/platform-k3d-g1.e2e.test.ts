@@ -16,6 +16,7 @@ import { expect, it } from 'vitest';
 import type { SelfHostedUserSetupAppFixture } from './self-hosted-user-setup-app-fixture';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import {
+  buildSelfHostedAdvertisedCompartmentUrl,
   describeSelfHostedUserSetupE2e,
   selfHostedUserSetupTimeoutMs,
   useSelfHostedUserSetupHarness,
@@ -112,6 +113,8 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
         assignmentStatePath,
         cliEnvironment,
         commandDirectory,
+        compartmentUrl: buildSelfHostedAdvertisedCompartmentUrl(runtime.compartmentUrl),
+        ingressConnectPort: new URL(runtime.compartmentUrl).port,
         projectName: app.projectName,
         roleId: role.role.id,
         routeUrl,
@@ -152,6 +155,8 @@ interface GateCommandInput {
   readonly assignmentStatePath: string;
   readonly cliEnvironment: string;
   readonly commandDirectory: string;
+  readonly compartmentUrl: string;
+  readonly ingressConnectPort: string;
   readonly projectName: string;
   readonly roleId: string;
   readonly routeUrl: string;
@@ -172,6 +177,7 @@ async function writeGateCommands(input: GateCommandInput): Promise<GateCommands>
   const routeTarget: URL = new URL(input.routeUrl);
   const routeConnectUrl: URL = new URL(input.routeUrl);
   routeConnectUrl.hostname = '127.0.0.1';
+  routeConnectUrl.port = input.ingressConnectPort;
   const routeHostHeader: string = `Host: ${routeTarget.host}`;
   const authorized: string = await writeCommand(
     input.commandDirectory,
@@ -186,7 +192,7 @@ async function writeGateCommands(input: GateCommandInput): Promise<GateCommands>
   const relogin: string = await writeCommand(
     input.commandDirectory,
     'relogin.sh',
-    `headers="$(mktemp)"\ntrap 'rm -f "$headers"' EXIT\ncurl --fail --retry 30 --retry-all-errors --retry-delay 1 --silent --show-error --header ${shellQuote(routeHostHeader)} --dump-header "$headers" --output /dev/null ${shellQuote(new URL('/probe/whoami', routeConnectUrl).toString())}\ngrep --quiet '^HTTP/.* 302' "$headers"\ngrep --ignore-case --quiet '^location: http://console\\.compartment\\.localhost:18080/login' "$headers"`,
+    `headers="$(mktemp)"\ntrap 'rm -f "$headers"' EXIT\ncurl --fail --retry 30 --retry-all-errors --retry-delay 1 --silent --show-error --header ${shellQuote(routeHostHeader)} --dump-header "$headers" --output /dev/null ${shellQuote(new URL('/probe/whoami', routeConnectUrl).toString())}\ngrep --quiet '^HTTP/.* 302' "$headers"\nlocation_header="$(tr -d '\\r' < "$headers" | grep --ignore-case --max-count=1 '^location: ')"\nlocation="\${location_header#*: }"\nexpected=${shellQuote(`${input.compartmentUrl}/login`)}\n[[ "$location" == "$expected" || "$location" == "$expected"\\?* ]]`,
   );
   const grant: string = await writeCommand(
     input.commandDirectory,
@@ -212,6 +218,7 @@ function buildPostRestoreScript(input: GateCommandInput): string {
   return `import { writeFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 const routeUrl = ${JSON.stringify(input.routeUrl)};
+const ingressConnectPort = ${JSON.stringify(input.ingressConnectPort)};
 const first = await waitForLoginRedirect(routeUrl);
 const loginUrl = new URL(first.headers.get('location'));
 const state = loginUrl.searchParams.get('state');
@@ -245,6 +252,7 @@ async function request(url, options) {
   const headers = new Headers(options?.headers);
   if (target.hostname.endsWith('.localhost')) {
     connect.hostname = '127.0.0.1';
+    connect.port = ingressConnectPort;
     headers.set('host', target.host);
   }
   return await new Promise((resolve, reject) => {

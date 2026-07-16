@@ -138,7 +138,7 @@ export function renderPlatformK3dValues() {
     )
     .join('\n');
 
-  return `images:\n${imageValues}\nports:\n  http: ${httpPort}\n  https: ${httpsPort}\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: custom-http\nedge:\n  snapshots:\n    enabled: true\n`;
+  return `images:\n${imageValues}\nservice:\n  caddy:\n    type: NodePort\n    httpPort: 80\n    httpsPort: 443\n    httpNodePort: 30080\n    httpsNodePort: 30443\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: custom-http\nedge:\n  snapshots:\n    enabled: true\n`;
 }
 
 async function upPlatform(command) {

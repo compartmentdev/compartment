@@ -5,6 +5,9 @@ service:
     httpNodePort: 30080
     httpsNodePort: 30443
 
+platform:
+  installationId: kind-validation
+
 # rootlesskit requires an unconfined seccomp profile. PSA restricted rejects it.
 buildkit:
   enabled: false

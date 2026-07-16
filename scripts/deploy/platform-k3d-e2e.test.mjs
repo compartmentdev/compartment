@@ -86,7 +86,13 @@ describe('platform k3d e2e command boundary', () => {
 
     expect(values).toContain('baseDomain: compartment.localhost');
     expect(values).toContain('publicProtocol: http');
+    expect(values).toContain('type: NodePort');
+    expect(values).toContain('httpPort: 80');
+    expect(values).toContain('httpsPort: 443');
+    expect(values).toContain('httpNodePort: 30080');
+    expect(values).toContain('httpsNodePort: 30443');
     expect(values).toContain('repository: k3d-compartment-e2e-registry:15500/compartment-api');
+    expect(values).not.toContain('ports:\n  http: 18080');
     expect(values).not.toContain('startupStage:');
   });
 

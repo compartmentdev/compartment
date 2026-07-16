@@ -35,6 +35,7 @@ import {
 } from './self-hosted-user-setup-cli-response.harness';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import {
+  buildSelfHostedAdvertisedCompartmentUrl,
   buildSelfHostedAppHostname,
   describeSelfHostedUserSetupE2e,
   expectSelfHostedUserSetupStepCompleted,
@@ -76,12 +77,14 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
 
   let runtime: SelfHostedUserSetupRuntime;
   let admin: SelfHostedUserSetupCli;
+  let advertisedCompartmentUrl: string;
   let completedStepCount: number = 0;
 
   it(
     'installs the system and logs in with the CLI',
     async (): Promise<void> => {
       runtime = await setup.install();
+      advertisedCompartmentUrl = buildSelfHostedAdvertisedCompartmentUrl(runtime.compartmentUrl);
       admin = await setup.createFreshCli();
 
       await admin.runBrowserLogin(
@@ -119,7 +122,7 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
 
             expect(deployPayload.project.name).toBe(fixture.name);
             expect(deployment.status).toBe('succeeded');
-            await expectProtectedRouteRedirect(runtime.compartmentUrl, routeUrl);
+            await expectProtectedRouteRedirect(advertisedCompartmentUrl, routeUrl);
 
             if (fixture.expectedAuthorizedBodyText !== undefined) {
               expect(await readAuthorizedRouteBody(routeUrl, runtime)).toContain(fixture.expectedAuthorizedBodyText);
@@ -167,7 +170,7 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
           for (const service of fixture.services) {
             const routeUrl: string = requireServiceRouteUrl(deployPayload, service.name);
             expect(new URL(routeUrl).hostname).toBe(buildSelfHostedAppHostname(runtime, fixture.name, service.name));
-            await expectProtectedRouteRedirect(runtime.compartmentUrl, routeUrl);
+            await expectProtectedRouteRedirect(advertisedCompartmentUrl, routeUrl);
           }
 
           const statusPayload: DeploymentStatusResponse = await admin.runJson(

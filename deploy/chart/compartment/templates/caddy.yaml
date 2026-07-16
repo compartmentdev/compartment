@@ -1,28 +1,30 @@
-{{- if eq .Values.platform.startupStage "full" }}
+{{- include "compartment.applyRetainedInstallState" . -}}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "compartment.fullname" . }}-caddy
   labels:
     {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy
 spec:
   type: {{ .Values.service.caddy.type }}
   selector:
     {{- include "compartment.componentLabels" (dict "root" . "component" "caddy") | nindent 4 }}
   ports:
     - name: http
-      port: {{ .Values.ports.http }}
+      port: {{ .Values.service.caddy.httpPort }}
       targetPort: http
       {{- if and (or (eq $.Values.service.caddy.type "NodePort") (eq $.Values.service.caddy.type "LoadBalancer")) .Values.service.caddy.httpNodePort }}
       nodePort: {{ .Values.service.caddy.httpNodePort }}
       {{- end }}
     - name: https
-      port: {{ .Values.ports.https }}
+      port: {{ .Values.service.caddy.httpsPort }}
       targetPort: https
       {{- if and (or (eq $.Values.service.caddy.type "NodePort") (eq $.Values.service.caddy.type "LoadBalancer")) .Values.service.caddy.httpsNodePort }}
       nodePort: {{ .Values.service.caddy.httpsNodePort }}
       {{- end }}
 ---
+{{- if eq .Values.platform.startupStage "full" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

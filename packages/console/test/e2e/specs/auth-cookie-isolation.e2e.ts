@@ -27,7 +27,11 @@ import {
   readConsoleE2eAdminAccount,
   type ConsoleE2eAccount,
 } from '../support/console-e2e-account';
-import { readConsoleE2eBaseUrl } from '../support/console-e2e-runtime';
+import {
+  readConsoleE2eBaseUrl,
+  readConsoleE2eProxySettings,
+  type ConsoleE2eProxySettings,
+} from '../support/console-e2e-runtime';
 
 const legacyCompartmentAppSessionCookieName: string = 'compartment_app_session';
 const legacyCompartmentSessionCookieName: string = 'compartment_session';
@@ -136,7 +140,7 @@ test.describe('console auth cookie isolation', (): void => {
 });
 
 async function createBrowserSessionToken(baseUrl: URL, account: ConsoleE2eAccount): Promise<string> {
-  const api: APIRequestContext = await playwrightRequest.newContext({ baseURL: baseUrl.origin });
+  const api: APIRequestContext = await createConsoleE2eApiRequestContext(baseUrl.origin);
   try {
     const csrfResponse: APIResponse = await api.get(compartmentBrowserLoginPathname);
     expect(csrfResponse.status()).toBe(200);
@@ -186,7 +190,7 @@ async function attemptLegacySessionCookieTossFromTenantApp(
 }
 
 async function createAppSessionToken(baseUrl: URL, routeUrl: string, account: ConsoleE2eAccount): Promise<string> {
-  const api: APIRequestContext = await playwrightRequest.newContext();
+  const api: APIRequestContext = await createConsoleE2eApiRequestContext();
   try {
     const loginRedirectResponse: APIResponse = await api.get(new URL('/probe/whoami', routeUrl).toString(), {
       maxRedirects: 0,
@@ -229,6 +233,14 @@ async function createAppSessionToken(baseUrl: URL, routeUrl: string, account: Co
   } finally {
     await api.dispose();
   }
+}
+
+async function createConsoleE2eApiRequestContext(baseUrl?: string): Promise<APIRequestContext> {
+  const proxy: ConsoleE2eProxySettings | undefined = readConsoleE2eProxySettings();
+  return await playwrightRequest.newContext({
+    ...(baseUrl === undefined ? {} : { baseURL: baseUrl }),
+    ...(proxy === undefined ? {} : { proxy }),
+  });
 }
 
 async function attemptLegacyAppSessionCookieTossFromTenantApp(

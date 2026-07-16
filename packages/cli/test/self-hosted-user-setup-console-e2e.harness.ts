@@ -1,6 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import {
+  createServer,
+  request as httpRequest,
+  type ClientRequest,
+  type IncomingHttpHeaders,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
+import { connect as connectTcp, type AddressInfo, type Socket } from 'node:net';
 import { join, resolve } from 'node:path';
+import type { Duplex } from 'node:stream';
 import {
   accessAssignmentResponseSchema,
   accessRoleResponseSchema,
@@ -31,7 +42,10 @@ import {
   requireSingleActiveDeployment,
   type SelfHostedDeployCommandResponse,
 } from './self-hosted-user-setup-cli-response.harness';
-import type { SelfHostedUserSetupRuntime } from './self-hosted-user-setup.e2e.harness';
+import {
+  buildSelfHostedAdvertisedCompartmentUrl,
+  type SelfHostedUserSetupRuntime,
+} from './self-hosted-user-setup.e2e.harness';
 import { organizationUseResponseSchema, type OrganizationUseResponse } from './system-user-flow-response.harness';
 import {
   expectSuccessfulCommand,
@@ -82,6 +96,22 @@ interface ConsoleE2ePreparedFixture {
   readonly resourceOwnership: ConsoleE2eResourceOwnershipFixture;
 }
 
+class ConsoleE2eIngressProxy {
+  readonly url: string;
+
+  constructor(
+    private readonly server: Server,
+    private readonly tunnelSockets: Set<Duplex>,
+    address: AddressInfo,
+  ) {
+    this.url = `http://127.0.0.1:${address.port.toString()}`;
+  }
+
+  async close(): Promise<void> {
+    await closeServer(this.server, this.tunnelSockets);
+  }
+}
+
 const consoleE2eTempRootDirectory: string = readSocketSafeTempRootDirectory('ouce-', 'system-api.sock');
 const consoleE2eSetupCommandTimeoutMs: number = 10 * 60_000;
 const consoleE2ePlaywrightCommandTimeoutMs: number = 5 * 60_000;
@@ -110,23 +140,27 @@ export const consoleE2eCommandTimeoutMs: number = 18 * 60_000;
 
 export async function expectConsoleE2e(runtime: SelfHostedUserSetupRuntime): Promise<void> {
   const tempDirectories: string[] = [];
+  let ingressProxy: ConsoleE2eIngressProxy | undefined;
   try {
     const fixture: ConsoleE2ePreparedFixture = await runTimedStep(
       'console e2e setup',
       async (): Promise<ConsoleE2ePreparedFixture> => await prepareConsoleE2eFixture(runtime, tempDirectories),
     );
+    const startedIngressProxy: ConsoleE2eIngressProxy = await startConsoleE2eIngressProxy(runtime.compartmentUrl);
+    ingressProxy = startedIngressProxy;
     const result: SelfHostedUserSetupCommandResult = await runTimedStep(
       'console e2e',
       async (): Promise<SelfHostedUserSetupCommandResult> =>
         await runCommand({
           argv: ['pnpm', '--filter', '@compartment/console', 'test:e2e'],
-          env: buildConsoleE2ePlaywrightEnv(runtime, fixture),
+          env: buildConsoleE2ePlaywrightEnv(runtime, fixture, startedIngressProxy.url),
           timeoutMs: consoleE2ePlaywrightCommandTimeoutMs,
         }),
     );
 
     expectSuccessfulCommand(result, 'console e2e');
   } finally {
+    await ingressProxy?.close();
     await cleanupConsoleE2eTempDirectories(tempDirectories);
   }
 }
@@ -414,9 +448,11 @@ function createConsoleE2eLoginPrincipalSeed(): ConsoleE2eLoginPrincipalSeed {
 function buildConsoleE2ePlaywrightEnv(
   runtime: SelfHostedUserSetupRuntime,
   fixture: ConsoleE2ePreparedFixture,
+  ingressProxyUrl: string,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  env.COMPARTMENT_E2E_BASE_URL = runtime.compartmentUrl;
+  env.COMPARTMENT_E2E_BASE_URL = buildSelfHostedAdvertisedCompartmentUrl(runtime.compartmentUrl);
+  env.COMPARTMENT_E2E_HTTP_PROXY = ingressProxyUrl;
   env.COMPARTMENT_E2E_ADMIN_EMAIL = runtime.adminEmail;
   env.COMPARTMENT_E2E_ADMIN_PASSWORD = runtime.adminPassword;
   env.COMPARTMENT_E2E_EMAIL = fixture.account.email;
@@ -435,6 +471,174 @@ function buildConsoleE2ePlaywrightEnv(
   env.COMPARTMENT_E2E_OTHER_ORGANIZATION_SLUG = fixture.resourceOwnership.otherOrganizationSlug;
 
   return env;
+}
+
+async function startConsoleE2eIngressProxy(compartmentConnectUrl: string): Promise<ConsoleE2eIngressProxy> {
+  const connectUrl: URL = new URL(compartmentConnectUrl);
+  if (connectUrl.protocol !== 'http:' || connectUrl.port === '') {
+    throw new Error(`Expected the console e2e ingress connect URL to use HTTP with an explicit port: ${connectUrl}`);
+  }
+
+  const ingressHostnameSuffix: string = connectUrl.hostname.replace(/^console\./u, '');
+  const tunnelSockets: Set<Duplex> = new Set<Duplex>();
+  const server: Server = createServer((request: IncomingMessage, response: ServerResponse): void => {
+    forwardConsoleE2eIngressRequest(request, response, ingressHostnameSuffix, connectUrl.port);
+  });
+  server.on('connect', (request: IncomingMessage, clientSocket: Duplex, head: Buffer): void => {
+    tunnelConsoleE2eIngressRequest(request, clientSocket, head, ingressHostnameSuffix, connectUrl.port, tunnelSockets);
+  });
+  await listenOnLoopback(server);
+
+  const address: AddressInfo | string | null = server.address();
+  if (address === null || typeof address === 'string') {
+    await closeServer(server, tunnelSockets);
+    throw new Error('Console e2e ingress proxy did not expose a TCP address.');
+  }
+
+  return new ConsoleE2eIngressProxy(server, tunnelSockets, address);
+}
+
+function forwardConsoleE2eIngressRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  ingressHostnameSuffix: string,
+  ingressConnectPort: string,
+): void {
+  const targetUrl: URL | undefined = parseConsoleE2eProxyTarget(request.url);
+  if (targetUrl?.protocol !== 'http:' || !targetsIngress(targetUrl, ingressHostnameSuffix)) {
+    response.writeHead(502).end('Console e2e proxy only forwards HTTP requests to the test ingress.');
+    return;
+  }
+
+  const headers: IncomingHttpHeaders = { ...request.headers, host: targetUrl.host };
+  delete headers['proxy-connection'];
+  const upstreamRequest: ClientRequest = httpRequest(
+    {
+      headers,
+      hostname: '127.0.0.1',
+      method: request.method,
+      path: `${targetUrl.pathname}${targetUrl.search}`,
+      port: Number.parseInt(ingressConnectPort, 10),
+    },
+    (upstreamResponse: IncomingMessage): void => {
+      response.writeHead(upstreamResponse.statusCode ?? 502, upstreamResponse.headers);
+      upstreamResponse.pipe(response);
+    },
+  );
+  upstreamRequest.on('error', (error: Error): void => {
+    if (!response.headersSent) {
+      response.writeHead(502);
+    }
+    response.end(`Console e2e ingress proxy failed: ${error.message}`);
+  });
+  request.pipe(upstreamRequest);
+}
+
+function tunnelConsoleE2eIngressRequest(
+  request: IncomingMessage,
+  clientSocket: Duplex,
+  head: Buffer,
+  ingressHostnameSuffix: string,
+  ingressConnectPort: string,
+  tunnelSockets: Set<Duplex>,
+): void {
+  tunnelSockets.add(clientSocket);
+  clientSocket.once('close', (): void => {
+    tunnelSockets.delete(clientSocket);
+  });
+  const targetUrl: URL | undefined = parseConsoleE2eProxyConnectTarget(request.url);
+  if (targetUrl === undefined || !targetsIngress(targetUrl, ingressHostnameSuffix)) {
+    clientSocket.end('HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n');
+    return;
+  }
+
+  let tunnelEstablished: boolean = false;
+  const upstreamSocket: Socket = connectTcp(
+    { host: '127.0.0.1', port: Number.parseInt(ingressConnectPort, 10) },
+    (): void => {
+      tunnelEstablished = true;
+      clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+      upstreamSocket.write(head);
+      upstreamSocket.pipe(clientSocket);
+      clientSocket.pipe(upstreamSocket);
+    },
+  );
+  tunnelSockets.add(upstreamSocket);
+  upstreamSocket.once('close', (): void => {
+    tunnelSockets.delete(upstreamSocket);
+  });
+  upstreamSocket.on('error', (): void => {
+    if (tunnelEstablished) {
+      clientSocket.destroy();
+      return;
+    }
+    clientSocket.end('HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n');
+  });
+  clientSocket.on('error', (): void => {
+    upstreamSocket.destroy();
+  });
+}
+
+function parseConsoleE2eProxyTarget(requestUrl: string | undefined): URL | undefined {
+  if (requestUrl === undefined) {
+    return undefined;
+  }
+
+  try {
+    return new URL(requestUrl);
+  } catch {
+    return undefined;
+  }
+}
+
+function parseConsoleE2eProxyConnectTarget(requestUrl: string | undefined): URL | undefined {
+  if (requestUrl === undefined) {
+    return undefined;
+  }
+
+  try {
+    const targetUrl: URL = new URL(`http://${requestUrl}`);
+    const targetsHttpPort: boolean = targetUrl.port === '' || targetUrl.port === '80';
+    const hasOnlyAuthority: boolean =
+      targetUrl.pathname === '/' &&
+      targetUrl.search === '' &&
+      targetUrl.hash === '' &&
+      targetUrl.username === '' &&
+      targetUrl.password === '';
+    return targetsHttpPort && hasOnlyAuthority ? targetUrl : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function targetsIngress(targetUrl: URL, ingressHostnameSuffix: string): boolean {
+  return targetUrl.hostname === ingressHostnameSuffix || targetUrl.hostname.endsWith(`.${ingressHostnameSuffix}`);
+}
+
+async function listenOnLoopback(server: Server): Promise<void> {
+  await new Promise<void>((resolveListen: () => void, rejectListen: (reason?: Error) => void): void => {
+    server.once('error', rejectListen);
+    server.listen(0, '127.0.0.1', (): void => {
+      server.off('error', rejectListen);
+      resolveListen();
+    });
+  });
+}
+
+async function closeServer(server: Server, tunnelSockets: Set<Duplex>): Promise<void> {
+  await new Promise<void>((resolveClose: () => void, rejectClose: (reason?: Error) => void): void => {
+    server.close((error?: Error): void => {
+      if (error === undefined) {
+        resolveClose();
+        return;
+      }
+      rejectClose(error);
+    });
+    server.closeAllConnections();
+    for (const socket of tunnelSockets) {
+      socket.destroy();
+    }
+  });
 }
 
 async function cleanupConsoleE2eTempDirectories(tempDirectories: string[]): Promise<void> {

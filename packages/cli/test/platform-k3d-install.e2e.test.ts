@@ -15,7 +15,8 @@ import { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import { publishPlatformK3dOwnerEnvironment } from './platform-k3d-owner-environment.harness';
 
 const platformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
-const platformUrl: string = 'http://console.compartment.localhost:18080';
+const platformApiUrl: string = 'http://console.compartment.localhost:18080';
+const platformCompartmentUrl: string = 'http://console.compartment.localhost';
 const platformBaseDomain: string = 'compartment.localhost';
 const platformOrganizationName: string = 'Platform E2E';
 const platformOrganizationSlug: string = 'platform-e2e';
@@ -51,13 +52,13 @@ describe.sequential('production Kubernetes install', (): void => {
       const ownerPassword: string = `PlatformE2e-${randomBytes(24).toString('base64url')}!`;
       const installerCli: SelfHostedUserSetupCli = await createFreshCli();
       const result: InstallResponse = await installerCli.runJson(
-        `install --api-url ${platformUrl} --base-domain ${platformBaseDomain} --values ${platformValuesPath} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment --email ${ownerEmail} --organization "${platformOrganizationName}" --organization-slug ${platformOrganizationSlug}`,
+        `install --api-url ${platformApiUrl} --base-domain ${platformBaseDomain} --values ${platformValuesPath} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment --email ${ownerEmail} --organization "${platformOrganizationName}" --organization-slug ${platformOrganizationSlug}`,
         installResponseSchema,
         { input: `${ownerPassword}\n${ownerPassword}\n` },
       );
 
       expect(result.adminEmail).toBe(ownerEmail);
-      expect(result.compartmentUrl).toBe(platformUrl);
+      expect(result.compartmentUrl).toBe(platformCompartmentUrl);
       expect(result.organization.slug).toBe(platformOrganizationSlug);
       await publishPlatformK3dOwnerEnvironment(ownerEmail, ownerPassword);
 
@@ -70,9 +71,9 @@ describe.sequential('production Kubernetes install', (): void => {
 
       const freshCli: SelfHostedUserSetupCli = await createFreshCli();
       await freshCli.runBrowserLogin(
-        `login --api-url ${platformUrl} --email ${ownerEmail} --output json`,
+        `login --api-url ${platformApiUrl} --email ${ownerEmail} --output json`,
         { email: ownerEmail, password: ownerPassword },
-        { requestOrigin: platformUrl },
+        { requestOrigin: platformApiUrl },
       );
       const freshIdentity: WhoAmICommandResponse = await freshCli.runJson('whoami', whoamiCommandResponseSchema);
       expect(freshIdentity.principal.email).toBe(ownerEmail);
