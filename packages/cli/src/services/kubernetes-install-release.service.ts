@@ -5,6 +5,9 @@ import type {
   ExistingKubernetesInstall,
   HelmReleaseSummary,
   KubernetesInstallDeploymentInput,
+  KubernetesInstallDomainMode,
+  KubernetesInstallTlsMode,
+  KubernetesPublicProtocol,
 } from './kubernetes-install.service.types';
 
 type HelmJsonObject = Record<string, JsonValue>;
@@ -106,18 +109,30 @@ function parseExistingKubernetesInstall(output: string): ExistingKubernetesInsta
   const platform: JsonValue | undefined = value.platform;
   const secrets: JsonValue | undefined = value.secrets;
   return {
-    baseDomain: readExistingBaseDomain(platform),
+    acmeEmail: readOptionalPlatformText(platform, 'acmeEmail'),
+    baseDomain: readOptionalPlatformText(platform, 'baseDomain').toLowerCase(),
+    brokerUrl: readOptionalPlatformText(platform, 'managedDomainBrokerUrl'),
+    domainMode: readExistingDomainMode(platform),
     installToken: readExistingInstallToken(secrets),
+    installationId: readOptionalPlatformText(platform, 'installationId'),
+    managedDomainBrokerToken: readOptionalSecretText(secrets, 'managedDomainBrokerToken'),
+    publicIngressIpv4: readOptionalPlatformText(platform, 'publicIngressIpv4'),
+    publicIngressIpv6: readOptionalPlatformText(platform, 'publicIngressIpv6'),
+    publicProtocol: readExistingPublicProtocol(platform),
     stage: readExistingInstallStage(platform),
+    tlsMode: readExistingTlsMode(platform),
   };
 }
 
-function readExistingBaseDomain(platform: JsonValue | undefined): string {
-  const baseDomain: JsonValue | undefined = isHelmJsonObject(platform) ? platform.baseDomain : undefined;
-  if (typeof baseDomain === 'string' && baseDomain.trim() !== '') {
-    return baseDomain.trim().toLowerCase();
+function readExistingDomainMode(platform: JsonValue | undefined): KubernetesInstallDomainMode {
+  const domainMode: JsonValue | undefined = isHelmJsonObject(platform) ? platform.domainMode : undefined;
+  if (domainMode === 'custom' || domainMode === 'managed') {
+    return domainMode;
   }
-  throw new Error('The existing Helm release has no recognized platform.baseDomain.');
+  if (domainMode === undefined) {
+    return 'custom';
+  }
+  throw new Error('The existing Helm release has no recognized platform.domainMode.');
 }
 
 function readExistingInstallStage(platform: JsonValue | undefined): 'foundation' | 'full' {
@@ -128,9 +143,35 @@ function readExistingInstallStage(platform: JsonValue | undefined): 'foundation'
   throw new Error('The existing Helm release has no recognized platform.startupStage.');
 }
 
+function readExistingPublicProtocol(platform: JsonValue | undefined): KubernetesPublicProtocol {
+  const protocol: JsonValue | undefined = isHelmJsonObject(platform) ? platform.publicProtocol : undefined;
+  if (protocol === 'http' || protocol === 'https') {
+    return protocol;
+  }
+  throw new Error('The existing Helm release has no recognized platform.publicProtocol.');
+}
+
+function readExistingTlsMode(platform: JsonValue | undefined): KubernetesInstallTlsMode {
+  const tlsMode: JsonValue | undefined = isHelmJsonObject(platform) ? platform.tlsMode : undefined;
+  if (tlsMode === 'custom-cert' || tlsMode === 'custom-http' || tlsMode === 'internal' || tlsMode === 'managed') {
+    return tlsMode;
+  }
+  throw new Error('The existing Helm release has no recognized platform.tlsMode.');
+}
+
 function readExistingInstallToken(secrets: JsonValue | undefined): string | null {
   const installToken: JsonValue | undefined = isHelmJsonObject(secrets) ? secrets.installToken : undefined;
   return typeof installToken === 'string' && installToken.trim() !== '' ? installToken : null;
+}
+
+function readOptionalPlatformText(platform: JsonValue | undefined, fieldName: string): string {
+  const value: JsonValue | undefined = isHelmJsonObject(platform) ? platform[fieldName] : undefined;
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function readOptionalSecretText(secrets: JsonValue | undefined, fieldName: string): string {
+  const value: JsonValue | undefined = isHelmJsonObject(secrets) ? secrets[fieldName] : undefined;
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function isHelmJsonObject(value: JsonValue | undefined): value is HelmJsonObject {

@@ -95,6 +95,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate Helm chart renders
+        run: bash ./deploy/chart/compartment/test/render.sh
+
       - name: Register local control-plane host
         run: echo '127.0.0.1 console.compartment.localhost' | sudo tee -a /etc/hosts >/dev/null
 
@@ -116,6 +119,43 @@ jobs:
 
       - name: Prepare clean k3d cluster from cached images
         run: node ./scripts/deploy/platform-k3d-e2e.mjs up --image-source archive --image-archive-dir ./.compartment/self-hosted-image-cache
+
+      - name: Verify retained install-state lifecycle
+        run: |
+          set -euo pipefail
+          release=restore2-state
+          namespace=restore2-state
+          secret_name="${release}-install-state"
+          cleanup() {
+            helm uninstall "${release}" --namespace "${namespace}" >/dev/null 2>&1 || true
+            kubectl delete namespace "${namespace}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          helm upgrade --install "${release}" ./deploy/chart/compartment \
+            --namespace "${namespace}" \
+            --create-namespace \
+            --set platform.startupStage=foundation \
+            --set platform.installationId=retained-installation \
+            --set platform.domainMode=managed \
+            --set platform.baseDomain=retained.example.test \
+            --set platform.publicProtocol=https \
+            --set platform.tlsMode=managed \
+            --set platform.managedDomainBrokerUrl=https://broker.example.test \
+            --set secrets.managedDomainBrokerToken=retained-token
+          helm uninstall "${release}" --namespace "${namespace}"
+          kubectl --namespace "${namespace}" get secret "${secret_name}"
+
+          helm upgrade --install "${release}" ./deploy/chart/compartment \
+            --namespace "${namespace}" \
+            --set platform.startupStage=foundation \
+            --set platform.installationId=replacement-attempt
+          installation_id="$(kubectl --namespace "${namespace}" get secret "${secret_name}" --output jsonpath='{.data.installation-id}' | base64 --decode)"
+          broker_url="$(kubectl --namespace "${namespace}" get secret "${secret_name}" --output jsonpath='{.data.managed-domain-broker-url}' | base64 --decode)"
+          runtime_broker_url="$(kubectl --namespace "${namespace}" get configmap "${release}-compartment" --output jsonpath='{.data.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL}')"
+          test "${installation_id}" = retained-installation
+          test "${broker_url}" = https://broker.example.test
+          test "${runtime_broker_url}" = https://broker.example.test
 
       - name: Install platform and bootstrap the first owner
         env:

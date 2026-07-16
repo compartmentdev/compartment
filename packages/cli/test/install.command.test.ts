@@ -3,13 +3,13 @@ import { runCli } from '../src/app';
 import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
 describe('install command boundary', (): void => {
-  it('requires an explicit public control-plane URL for production Kubernetes install', async (): Promise<void> => {
+  it('requires operator values for production Kubernetes install', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 
     const exitCode: number = await runCli(['install', '--output', 'json'], capture.io);
 
     expect(exitCode).toBe(1);
-    expect(readCliStderr(capture)).toContain('--base-domain is required for a Kubernetes install.');
+    expect(readCliStderr(capture)).toContain('--values is required for a Kubernetes install.');
   });
 
   it('keeps Kubernetes deployment options out of the dev install path', async (): Promise<void> => {

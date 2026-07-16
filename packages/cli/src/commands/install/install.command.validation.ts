@@ -1,5 +1,10 @@
+import { isOrganizationSlug } from '@compartment/contracts';
 import { hasText, isValidDnsHostname, normalizeDnsHostname } from '@compartment/utils';
+import { isReservedKubernetesInstallLocalhostDomain } from '../../kubernetes-install-domain';
+import { readInstallManagedDomainBrokerUrl, resolveInstallDomainMode } from './install.command.options';
 import type { InstallCommandOptions, ResolvedKubernetesInstallCommandOptions } from './install.command.types';
+import { parseInstallHttpOrigin } from './install.command.url';
+import type { KubernetesInstallDomainMode } from '../../services/kubernetes-install.service.types';
 
 const defaultKubernetesNamespace: string = 'compartment';
 const defaultKubernetesReleaseName: string = 'compartment';
@@ -8,8 +13,10 @@ export function assertDevInstallOptions(options: InstallCommandOptions): void {
   const productionOptions: readonly (keyof InstallCommandOptions)[] = [
     'apiUrl',
     'baseDomain',
+    'brokerUrl',
     'chart',
     'kubeContext',
+    'managedDomain',
     'namespace',
     'releaseName',
     'values',
@@ -25,18 +32,37 @@ export function assertDevInstallOptions(options: InstallCommandOptions): void {
 export function resolveKubernetesInstallCommandOptions(
   options: InstallCommandOptions,
 ): ResolvedKubernetesInstallCommandOptions {
-  const baseDomain: string = normalizeBaseDomain(readRequiredOption(options.baseDomain, '--base-domain'));
-  const apiUrl: string = normalizeControlPlaneUrl(readRequiredOption(options.apiUrl, '--api-url'), baseDomain);
+  const baseDomain: string | undefined =
+    options.baseDomain === undefined ? undefined : normalizeBaseDomain(options.baseDomain);
+  assertInstallOrganizationSlug(options.organizationSlug);
+  const domainMode: KubernetesInstallDomainMode = resolveInstallDomainMode(options);
+  const brokerUrl: string | undefined = readInstallManagedDomainBrokerUrl(options);
+  const apiUrl: string | undefined =
+    options.apiUrl === undefined ? undefined : normalizeControlPlaneUrl(options.apiUrl);
+  if (apiUrl !== undefined && baseDomain !== undefined) {
+    assertControlPlaneUrlHostname(apiUrl, baseDomain);
+  }
 
   return {
-    apiUrl,
-    baseDomain,
+    ...(apiUrl === undefined ? {} : { apiUrl }),
+    ...(baseDomain === undefined ? {} : { baseDomain }),
+    ...(brokerUrl === undefined ? {} : { brokerUrl }),
     ...(options.chart === undefined ? {} : { chartPath: options.chart }),
+    domainMode,
     ...(options.kubeContext === undefined ? {} : { kubeContext: options.kubeContext }),
     namespace: options.namespace ?? defaultKubernetesNamespace,
     releaseName: options.releaseName ?? defaultKubernetesReleaseName,
     valuesPath: readRequiredOption(options.values, '--values'),
   };
+}
+
+function assertInstallOrganizationSlug(organizationSlug: string | undefined): void {
+  if (organizationSlug === undefined) {
+    return;
+  }
+  if (!isOrganizationSlug(organizationSlug)) {
+    throw new Error('Organization slug must use lowercase letters, digits, and single hyphens.');
+  }
 }
 
 function readRequiredOption(value: string | undefined, optionName: string): string {
@@ -54,30 +80,22 @@ function normalizeBaseDomain(value: string): string {
   return normalizedValue;
 }
 
-function normalizeControlPlaneUrl(value: string, baseDomain: string): string {
-  const parsedUrl: URL = new URL(value);
-  if (
-    (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') ||
-    parsedUrl.username !== '' ||
-    parsedUrl.password !== '' ||
-    (parsedUrl.pathname !== '' && parsedUrl.pathname !== '/') ||
-    parsedUrl.search !== '' ||
-    parsedUrl.hash !== ''
-  ) {
-    throw new Error('--api-url must be an HTTP(S) origin without credentials, a path, query, or fragment.');
-  }
-  if (parsedUrl.protocol === 'http:' && !isReservedLocalhostDomain(baseDomain)) {
+function normalizeControlPlaneUrl(value: string): string {
+  const parsedUrl: URL = parseInstallHttpOrigin(
+    value,
+    '--api-url must be an HTTP(S) origin without credentials, a path, query, or fragment.',
+  );
+  if (parsedUrl.protocol === 'http:' && !isReservedKubernetesInstallLocalhostDomain(parsedUrl.hostname)) {
     throw new Error('--api-url must use HTTPS outside the reserved .localhost development domain.');
-  }
-  const expectedHostname: string = `console.${baseDomain}`;
-  if (parsedUrl.hostname !== expectedHostname) {
-    throw new Error(`--api-url must use the control-plane host ${expectedHostname}.`);
   }
   return parsedUrl.origin;
 }
 
-function isReservedLocalhostDomain(baseDomain: string): boolean {
-  return baseDomain === 'localhost' || baseDomain.endsWith('.localhost');
+function assertControlPlaneUrlHostname(apiUrl: string, baseDomain: string): void {
+  const expectedHostname: string = `console.${baseDomain}`;
+  if (new URL(apiUrl).hostname !== expectedHostname) {
+    throw new Error(`--api-url must use the control-plane host ${expectedHostname}.`);
+  }
 }
 
 function toKebabCase(value: string): string {
