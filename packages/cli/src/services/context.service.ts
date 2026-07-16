@@ -20,6 +20,14 @@ export function createApiRequester(
   });
 }
 
+export function createInstallRequester(apiUrl: string, installToken: string): CompartmentRequester {
+  return createCompartmentRequester({
+    apiUrl,
+    internalToken: installToken,
+    requestTimeoutMs: cliRequestTimeoutMs,
+  });
+}
+
 export function createAuthenticatedRequester(
   context: AuthenticatedContext,
   { includeCurrentOrganization, requestTimeoutMs = cliRequestTimeoutMs }: CreateAuthenticatedClientOptions,

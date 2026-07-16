@@ -3,22 +3,30 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { hasText } from '@compartment/utils';
 import { parse } from 'dotenv';
+import type { CompartmentDevInstallContext } from './repo-root.types';
 
 interface PackageJsonNameCandidate {
   name?: string;
 }
 
-export async function readCompartmentDevApiUrl(cwd: string = process.cwd()): Promise<string> {
+export async function readCompartmentDevInstallContext(
+  cwd: string = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<CompartmentDevInstallContext> {
   const repositoryRoot: string = resolveCompartmentRepoRoot(cwd);
   const values: Record<string, string> = await readEnvironmentFile(resolve(repositoryRoot, '.env'));
   const apiUrl: string | undefined = values.COMPARTMENT_API_URL;
-  if (hasText(apiUrl)) {
-    return apiUrl;
+  if (!hasText(apiUrl)) {
+    throw new Error(
+      `The compartment repo root .env is missing COMPARTMENT_API_URL at ${resolve(repositoryRoot, '.env')}.`,
+    );
+  }
+  const installToken: string | undefined = env.COMPARTMENT_INSTALL_TOKEN;
+  if (!hasText(installToken)) {
+    throw new Error('The environment is missing COMPARTMENT_INSTALL_TOKEN.');
   }
 
-  throw new Error(
-    `The compartment repo root .env is missing COMPARTMENT_API_URL at ${resolve(repositoryRoot, '.env')}.`,
-  );
+  return { apiUrl, installToken };
 }
 
 function resolveCompartmentRepoRoot(cwd: string = process.cwd()): string {

@@ -1,21 +1,36 @@
-import type { InstallResponse } from '@compartment/contracts';
 import type { Command } from 'commander';
-import type { DevInstallResult } from '../../install.types';
-import { installDev } from '../../install';
+import type { CliInstallResult } from '../../install.types';
+import { installDev, installKubernetesOwner } from '../../install';
 import { renderOutput } from '../../output/render';
+import { deployAndWaitForKubernetesInstall } from '../../services/kubernetes-install.service';
+import type { InstallInput } from '../../services/install.service.types';
+import type { KubernetesInstallDeploymentResult } from '../../services/kubernetes-install.service.types';
 import type { CliCommandDependencies } from '../command.types';
 import { resolveInstallIdentityPrompts } from './install.command.identity';
-import { persistDevInstallSession } from './install.command.session';
-import type { InstallCommandOptions, ResolvedInstallIdentityPrompts } from './install.command.types';
+import { createInstallResultMessage, toInstallResponse } from './install.command.result';
+import { persistDevInstallSession, persistInstallSession } from './install.command.session';
+import type {
+  InstallCommandOptions,
+  ResolvedInstallIdentityPrompts,
+  ResolvedKubernetesInstallCommandOptions,
+} from './install.command.types';
+import { assertDevInstallOptions, resolveKubernetesInstallCommandOptions } from './install.command.validation';
 
 export function registerInstallCommand(program: Command, dependencies: CliCommandDependencies): void {
   program
     .command('install')
-    .requiredOption('--dev', 'Install against the local repo dev API')
+    .option('--dev', 'Install against the local repo dev API')
+    .option('--api-url <url>', 'Public Console URL for the Kubernetes installation')
+    .option('--base-domain <domain>', 'Base domain configured for the Kubernetes installation')
+    .option('--values <path>', 'Operator values file for the Compartment Helm chart')
+    .option('--chart <path>', 'Compartment Helm chart path for a source CLI build')
+    .option('--kube-context <name>', 'Kubernetes context for Helm')
+    .option('--namespace <name>', 'Kubernetes namespace; defaults to compartment')
+    .option('--release-name <name>', 'Helm release name; defaults to compartment')
     .option('--email <email>', 'First admin email')
     .option('--organization <name>', 'First organization name')
     .option('--organization-slug <slug>')
-    .option('--remote <name>', 'Remote name for the local development session')
+    .option('--remote <name>', 'Remote name for the saved CLI session')
     .option('--output <format>', 'text or json', 'text')
     .action(
       async (options: InstallCommandOptions): Promise<void> => await executeInstallCommand(dependencies, options),
@@ -26,30 +41,66 @@ async function executeInstallCommand(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
 ): Promise<void> {
+  if (options.dev === true) {
+    await executeDevInstallCommand(dependencies, options);
+    return;
+  }
+
+  await executeKubernetesInstallCommand(dependencies, options);
+}
+
+async function executeDevInstallCommand(
+  dependencies: CliCommandDependencies,
+  options: InstallCommandOptions,
+): Promise<void> {
+  assertDevInstallOptions(options);
   const prompts: ResolvedInstallIdentityPrompts = await resolveInstallIdentityPrompts(dependencies, options);
-  const result: DevInstallResult = await installDev({
+  const result: CliInstallResult = await installDev(buildOwnerInstallInput(prompts, options));
+
+  await persistDevInstallSession(result, options.remote);
+  renderInstallResult(dependencies, options, result, true);
+}
+
+async function executeKubernetesInstallCommand(
+  dependencies: CliCommandDependencies,
+  options: InstallCommandOptions,
+): Promise<void> {
+  const installOptions: ResolvedKubernetesInstallCommandOptions = resolveKubernetesInstallCommandOptions(options);
+  const prompts: ResolvedInstallIdentityPrompts = await resolveInstallIdentityPrompts(dependencies, options);
+  dependencies.io.stderr('Installing the Compartment platform with Helm...\n');
+  const deployment: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(installOptions);
+
+  const result: CliInstallResult = await installKubernetesOwner(installOptions.apiUrl, deployment.installToken, {
+    ...buildOwnerInstallInput(prompts, options),
+    baseDomain: installOptions.baseDomain,
+  });
+
+  await persistInstallSession(result, options.remote);
+  renderInstallResult(dependencies, options, result, false);
+}
+
+function buildOwnerInstallInput(
+  prompts: ResolvedInstallIdentityPrompts,
+  options: InstallCommandOptions,
+): Omit<InstallInput, 'baseDomain'> {
+  return {
     adminEmail: prompts.adminEmail,
     adminPassword: prompts.adminPassword,
     organizationName: prompts.organizationName,
-    ...(options.organizationSlug !== undefined ? { organizationSlug: options.organizationSlug } : {}),
-  });
-
-  await persistDevInstallSession(result, options.remote);
-  renderOutput(dependencies.io, options.output, toInstallResponse(result), createInstallResultMessage(result));
-}
-
-function toInstallResponse(result: DevInstallResult): InstallResponse {
-  return {
-    adminEmail: result.adminEmail,
-    baseDomain: result.baseDomain,
-    compartmentUrl: result.compartmentUrl,
-    dnsRecords: result.dnsRecords,
-    operation: result.operation,
-    organization: result.organization,
-    sessionToken: result.sessionToken,
+    ...(options.organizationSlug === undefined ? {} : { organizationSlug: options.organizationSlug }),
   };
 }
 
-function createInstallResultMessage(result: DevInstallResult): string {
-  return `Installed local development compartment at ${result.compartmentUrl}. Logged in as ${result.adminEmail}.`;
+function renderInstallResult(
+  dependencies: CliCommandDependencies,
+  options: InstallCommandOptions,
+  result: CliInstallResult,
+  development: boolean,
+): void {
+  renderOutput(
+    dependencies.io,
+    options.output,
+    toInstallResponse(result),
+    createInstallResultMessage(result, development),
+  );
 }

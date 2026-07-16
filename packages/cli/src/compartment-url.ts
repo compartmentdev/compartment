@@ -22,15 +22,6 @@ export function buildCompartmentBrowserEntryUrl(
     : url.toString();
 }
 
-export function buildControlPlaneUrl(publicScheme: 'http' | 'https', host: string, port: number): string {
-  const defaultPort: number = publicScheme === 'http' ? 80 : 443;
-  if (port === defaultPort) {
-    return `${publicScheme}://${host}`;
-  }
-
-  return `${publicScheme}://${host}:${port.toString()}`;
-}
-
 function appendFlagSearchParam(url: URL, name: string): string {
   const prefix: string = url.search === '' ? '?' : '&';
 
