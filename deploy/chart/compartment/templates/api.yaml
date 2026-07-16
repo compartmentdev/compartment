@@ -102,7 +102,9 @@ spec:
           volumeMounts:
             - {name: data, mountPath: /var/lib/compartment}
             - {name: runtime, mountPath: /var/run/compartment}
+            {{- if eq .Values.platform.tlsMode "custom-cert" }}
             - {name: tls, mountPath: /etc/compartment/tls, readOnly: true}
+            {{- end }}
             - {name: tmp, mountPath: /tmp}
       volumes:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
@@ -110,6 +112,14 @@ spec:
           persistentVolumeClaim:
             claimName: {{ include "compartment.fullname" . }}-api
         - {name: runtime, emptyDir: {}}
-        - {name: tls, emptyDir: {}}
+        {{- if eq .Values.platform.tlsMode "custom-cert" }}
+        - name: tls
+          secret:
+            secretName: {{ include "compartment.customTlsSecretName" . }}
+            defaultMode: 0440
+            items:
+              - {key: tls.crt, path: fullchain.pem}
+              - {key: tls.key, path: privkey.pem}
+        {{- end }}
         - {name: tmp, emptyDir: {}}
 {{- end }}

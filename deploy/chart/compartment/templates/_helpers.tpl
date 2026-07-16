@@ -169,6 +169,8 @@ runAsNonRoot: true
 {{- define "compartment.rolloutAnnotations" -}}
 checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
 checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+checksum/install-state: {{ include (print $.Template.BasePath "/install-state-secret.yaml") . | sha256sum }}
+checksum/custom-tls: {{ include (print $.Template.BasePath "/custom-tls-secret.yaml") . | sha256sum }}
 compartment.dev/rollout-marker: {{ .Values.platform.rolloutMarker | quote }}
 {{- end }}
 

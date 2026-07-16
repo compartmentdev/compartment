@@ -96,7 +96,9 @@ spec:
             - {name: executable, mountPath: /work, readOnly: true}
             - {name: data, mountPath: /data}
             - {name: config, mountPath: /config}
+            {{- if eq .Values.platform.tlsMode "custom-cert" }}
             - {name: tls, mountPath: /etc/compartment/tls, readOnly: true}
+            {{- end }}
             - {name: tmp, mountPath: /tmp}
       volumes:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
@@ -105,7 +107,14 @@ spec:
           persistentVolumeClaim:
             claimName: {{ include "compartment.fullname" . }}-caddy
         - {name: config, emptyDir: {}}
-        - {name: tls, emptyDir: {}}
+        {{- if eq .Values.platform.tlsMode "custom-cert" }}
+        - name: tls
+          secret:
+            secretName: {{ include "compartment.customTlsSecretName" . }}
+            defaultMode: 0440
+            items:
+              - {key: tls.crt, path: fullchain.pem}
+              - {key: tls.key, path: privkey.pem}
+        {{- end }}
         - {name: tmp, emptyDir: {}}
 {{- end }}
-
