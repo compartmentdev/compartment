@@ -30,7 +30,6 @@ function buildHelmReleaseListCommand(input: KubernetesInstallDeploymentInput): s
   return [
     'helm',
     'list',
-    '--all',
     '--namespace',
     input.namespace,
     '--filter',

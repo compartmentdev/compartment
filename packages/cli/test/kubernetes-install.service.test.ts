@@ -124,7 +124,7 @@ describe('Kubernetes install deployment', (): void => {
       installToken: 'existing-install-token',
     });
     expect(mocks.runCommand.mock.calls.map((call: RunCommandCall): readonly string[] => call[0])).toEqual([
-      ['helm', 'list', '--all', '--namespace', 'compartment', '--filter', '^compartment$', '--output', 'json'],
+      ['helm', 'list', '--namespace', 'compartment', '--filter', '^compartment$', '--output', 'json'],
       ['helm', 'get', 'values', 'compartment', '--namespace', 'compartment', '--all', '--output', 'json'],
     ]);
   });
