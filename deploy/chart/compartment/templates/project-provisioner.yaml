@@ -26,6 +26,8 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
         {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
+        {{- include "compartment.waitForApiRolloutInit" . | nindent 8 }}
+        {{- include "compartment.waitForApiInit" . | nindent 8 }}
       containers:
         - name: project-provisioner
           image: {{ include "compartment.image" .Values.images.worker }}
