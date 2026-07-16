@@ -2,14 +2,14 @@
 	admin {$COMPARTMENT_CADDY_ADMIN_ADDR:localhost:2019}
 	auto_https disable_redirects
 	skip_install_trust
-	http_port {$COMPARTMENT_PUBLIC_HTTP_PORT}
-	https_port {$COMPARTMENT_PUBLIC_HTTPS_PORT}
+	http_port {$COMPARTMENT_CADDY_HTTP_PORT}
+	https_port {$COMPARTMENT_CADDY_HTTPS_PORT}
 	on_demand_tls {
 		ask http://{$COMPARTMENT_EDGE_INTERNAL_HOST}:{$COMPARTMENT_EDGE_PORT}/internal/tls/ask
 	}
 }
 
-http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTP_PORT} {
+http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTP_PORT} {
 	@compartment_host host console.{$COMPARTMENT_BASE_DOMAIN}
 	handle @compartment_host {
 		route {
@@ -30,9 +30,9 @@ http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTP_PORT} {
 	}
 }
 
-https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTPS_PORT} {
+https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTPS_PORT} {
 	tls {
-		issuer acme {$COMPARTMENT_ACME_CA_URL} {
+		issuer {$COMPARTMENT_ACME_ISSUER} {$COMPARTMENT_ACME_CA_URL} {
 			email {$COMPARTMENT_ACME_EMAIL}
 			dns compartment_broker {
 				broker_url {$COMPARTMENT_MANAGED_DOMAIN_BROKER_URL}
@@ -100,13 +100,13 @@ https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTPS_PORT} {
 	}
 }
 
-http://:{$COMPARTMENT_PUBLIC_HTTP_PORT} {
+http://:{$COMPARTMENT_CADDY_HTTP_PORT} {
 	redir https://{host}:{$COMPARTMENT_PUBLIC_HTTPS_PORT}{uri} permanent
 }
 
-https://:{$COMPARTMENT_PUBLIC_HTTPS_PORT} {
+https://:{$COMPARTMENT_CADDY_HTTPS_PORT} {
 	tls {
-		issuer acme {$COMPARTMENT_ACME_CA_URL} {
+		issuer {$COMPARTMENT_ACME_ISSUER} {$COMPARTMENT_ACME_CA_URL} {
 			email {$COMPARTMENT_ACME_EMAIL}
 		}
 		on_demand

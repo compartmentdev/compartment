@@ -4,14 +4,71 @@
   "properties": {
     "platform": {
       "type": "object",
+      "required": [
+        "startupStage",
+        "installationId",
+        "domainMode",
+        "baseDomain",
+        "publicProtocol",
+        "tlsMode",
+        "publicIngressIpv4",
+        "publicIngressIpv6",
+        "acmeIssuer",
+        "acmeCaUrl",
+        "acmeEmail",
+        "managedDomainBrokerUrl"
+      ],
       "properties": {
-        "startupStage": { "type": "string", "enum": ["foundation", "full"] }
+        "startupStage": { "type": "string", "enum": ["foundation", "full"] },
+        "installationId": { "type": "string" },
+        "domainMode": { "type": "string", "enum": ["custom", "managed"] },
+        "baseDomain": { "type": "string" },
+        "publicProtocol": { "type": "string", "enum": ["http", "https"] },
+        "tlsMode": { "type": "string", "enum": ["custom-cert", "custom-http", "internal", "managed"] },
+        "publicIngressIpv4": {
+          "oneOf": [{ "const": "" }, { "type": "string", "format": "ipv4" }]
+        },
+        "publicIngressIpv6": {
+          "oneOf": [{ "const": "" }, { "type": "string", "format": "ipv6" }]
+        },
+        "acmeIssuer": { "type": "string", "enum": ["acme"] },
+        "acmeCaUrl": { "type": "string", "pattern": "^https://[^/?#@]+(/[^?#]*)?$" },
+        "acmeEmail": { "type": "string" },
+        "managedDomainBrokerUrl": {
+          "oneOf": [{ "const": "" }, { "type": "string", "pattern": "^https?://[^/?#@]+/?$" }]
+        }
       }
     },
     "secrets": {
       "type": "object",
       "properties": {
-        "installToken": { "type": "string" }
+        "installToken": { "type": "string" },
+        "managedDomainBrokerToken": { "type": "string" }
+      }
+    },
+    "customTls": {
+      "type": "object",
+      "required": ["existingSecret", "certificate", "privateKey"],
+      "properties": {
+        "existingSecret": { "type": "string" },
+        "certificate": { "type": "string" },
+        "privateKey": { "type": "string" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "caddy": {
+          "type": "object",
+          "required": ["type", "httpPort", "httpsPort"],
+          "properties": {
+            "type": { "type": "string", "enum": ["ClusterIP", "LoadBalancer", "NodePort"] },
+            "httpPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "httpsPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "httpNodePort": { "type": ["integer", "null"], "minimum": 1, "maximum": 65535 },
+            "httpsNodePort": { "type": ["integer", "null"], "minimum": 1, "maximum": 65535 }
+          }
+        }
       }
     },
     "buildkit": {

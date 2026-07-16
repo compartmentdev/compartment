@@ -68,7 +68,7 @@ function renderManagedCaddyfile(): string {
   return trimLeadingNewline(`
 ${renderGlobalOptions(true)}
 
-http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTP_PORT} {
+http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTP_PORT} {
 	@compartment_host host ${renderCompartmentHostMatcher()}
 	handle @compartment_host {
 ${indentBlock(renderCompartmentRouteBlock('redirect'), '\t')}
@@ -79,9 +79,9 @@ ${indentBlock(renderCompartmentRouteBlock('redirect'), '\t')}
 	}
 }
 
-https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTPS_PORT} {
+https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTPS_PORT} {
 	tls {
-		issuer acme {$COMPARTMENT_ACME_CA_URL} {
+		issuer {$COMPARTMENT_ACME_ISSUER} {$COMPARTMENT_ACME_CA_URL} {
 			email {$COMPARTMENT_ACME_EMAIL}
 			dns compartment_broker {
 				broker_url {$COMPARTMENT_MANAGED_DOMAIN_BROKER_URL}
@@ -110,7 +110,7 @@ function renderCustomCertCaddyfile(): string {
   return trimLeadingNewline(`
 ${renderGlobalOptions(true)}
 
-http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTP_PORT} {
+http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTP_PORT} {
 	@compartment_host host ${renderCompartmentHostMatcher()}
 	handle @compartment_host {
 		redir https://{host}:{$COMPARTMENT_PUBLIC_HTTPS_PORT}{uri} permanent
@@ -121,7 +121,7 @@ http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTP_PORT} {
 	}
 }
 
-https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTPS_PORT} {
+https://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTPS_PORT} {
 ${renderCustomCertificateTlsLine()}
 	@compartment_host host ${renderCompartmentHostMatcher()}
 	handle @compartment_host {
@@ -141,7 +141,7 @@ function renderCustomHttpCaddyfile(): string {
   return trimLeadingNewline(`
 ${renderGlobalOptions(false)}
 
-http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_PUBLIC_HTTP_PORT} {
+http://*.{$COMPARTMENT_BASE_DOMAIN}:{$COMPARTMENT_CADDY_HTTP_PORT} {
 	@compartment_host host ${renderCompartmentHostMatcher()}
 	handle @compartment_host {
 ${indentBlock(renderCompartmentRouteBlock('proxy'), '\t')}
@@ -164,8 +164,8 @@ function renderGlobalOptions(includeOnDemandTls: boolean): string {
 	admin {$COMPARTMENT_CADDY_ADMIN_ADDR:localhost:2019}
 	auto_https disable_redirects
 	skip_install_trust
-	http_port {$COMPARTMENT_PUBLIC_HTTP_PORT}
-	https_port {$COMPARTMENT_PUBLIC_HTTPS_PORT}
+	http_port {$COMPARTMENT_CADDY_HTTP_PORT}
+	https_port {$COMPARTMENT_CADDY_HTTPS_PORT}
 ${renderOnDemandTlsGlobalOption(includeOnDemandTls)}
 }
 `);
@@ -190,7 +190,7 @@ ${renderTlsLine(includeTls)}${renderCompartmentRouteBlock('proxy')}
 }
 
 function renderCompartmentSiteAddress(protocol: 'http' | 'https'): string {
-  return `${protocol}://${renderCompartmentHostMatcher()}:${readPublicPortVariable(protocol)}`;
+  return `${protocol}://${renderCompartmentHostMatcher()}:${readCaddyPortVariable(protocol)}`;
 }
 
 function renderCompartmentHostMatcher(): string {
@@ -207,11 +207,11 @@ ${renderTlsLine(includeTls)}${renderHostedAppRouteBlock()}
 
 function renderOnDemandTlsAppSiteBlock(): string {
   return trimTemplateBlock(`
-http://:{$COMPARTMENT_PUBLIC_HTTP_PORT} {
+http://:{$COMPARTMENT_CADDY_HTTP_PORT} {
 \tredir https://{host}:{$COMPARTMENT_PUBLIC_HTTPS_PORT}{uri} permanent
 }
 
-https://:{$COMPARTMENT_PUBLIC_HTTPS_PORT} {
+https://:{$COMPARTMENT_CADDY_HTTPS_PORT} {
 ${renderOnDemandTlsBlock()}
 
 ${renderHostedAppRouteBlock()}
@@ -222,7 +222,7 @@ ${renderHostedAppRouteBlock()}
 function renderOnDemandTlsBlock(): string {
   return trimTemplateBlock(`
 \ttls {
-\t\tissuer acme {$COMPARTMENT_ACME_CA_URL} {
+\t\tissuer {$COMPARTMENT_ACME_ISSUER} {$COMPARTMENT_ACME_CA_URL} {
 \t\t\temail {$COMPARTMENT_ACME_EMAIL}
 \t\t}
 \t\ton_demand
@@ -289,9 +289,9 @@ ${indentBlock(renderPlatformAppCookieStripDirectives(), '\t\t\t')}
 }
 
 function renderHostedAppSiteAddresses(protocol: 'http' | 'https'): string {
-  const publicPortVariable: string = readPublicPortVariable(protocol);
+  const caddyPortVariable: string = readCaddyPortVariable(protocol);
 
-  return `${protocol}://*.{$COMPARTMENT_BASE_DOMAIN}:${publicPortVariable}`;
+  return `${protocol}://*.{$COMPARTMENT_BASE_DOMAIN}:${caddyPortVariable}`;
 }
 
 function renderPlatformAppCookieStripDirectives(): string {
@@ -306,8 +306,8 @@ function renderCompartmentPublicPathMatchers(): string {
   ].join(' ');
 }
 
-function readPublicPortVariable(protocol: 'http' | 'https'): string {
-  return protocol === 'http' ? '{$COMPARTMENT_PUBLIC_HTTP_PORT}' : '{$COMPARTMENT_PUBLIC_HTTPS_PORT}';
+function readCaddyPortVariable(protocol: 'http' | 'https'): string {
+  return protocol === 'http' ? '{$COMPARTMENT_CADDY_HTTP_PORT}' : '{$COMPARTMENT_CADDY_HTTPS_PORT}';
 }
 
 function renderTlsLine(includeTls: boolean): string {

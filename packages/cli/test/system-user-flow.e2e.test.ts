@@ -132,6 +132,7 @@ import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harnes
 import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-command.harness';
 import {
   buildSelfHostedAppHostname,
+  buildSelfHostedAdvertisedCompartmentUrl,
   configureSelfHostedTrustedOutboundHosts,
   describeSelfHostedUserSetupE2e,
   expectSelfHostedUserSetupStepCompleted,
@@ -220,6 +221,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
   const setup: SelfHostedUserSetupHarness = useSelfHostedUserSetupHarness();
 
   let runtime: SelfHostedUserSetupRuntime;
+  let advertisedCompartmentUrl: string;
   let app: SelfHostedUserSetupAppFixture;
   let admin: SelfHostedUserSetupCli;
   let viewer: SelfHostedUserSetupCli;
@@ -235,11 +237,12 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
     'case 1/8: installs the single-server system and logs in from a fresh CLI',
     async (): Promise<void> => {
       runtime = await setup.install();
+      advertisedCompartmentUrl = buildSelfHostedAdvertisedCompartmentUrl(runtime.compartmentUrl);
       app = await setup.createAppFixture();
       admin = await setup.createFreshCli();
       viewer = await setup.createFreshCli();
 
-      await expectBlockedPublicControlPlanePaths(runtime.compartmentUrl);
+      await expectBlockedPublicControlPlanePaths(advertisedCompartmentUrl);
       await expectK3dWorkerNamespaceIsolation();
 
       const adminBeforeLogin: SelfHostedUserSetupCommandResult = await admin.runFailure('whoami --output json');
@@ -682,13 +685,13 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       await expectAppDirectFlag(routeUrl, adminAppSessionCookie, directFlagValue);
       await expectAppBuildMessage(routeUrl, adminAppSessionCookie, appBuildMessage);
       await expectTrustedAppIngress(routeUrl, adminAppSessionCookie, runtime.adminEmail, runtime.organizationSlug);
-      await expectAppLogoutRevokesAppOnly(runtime.compartmentUrl, routeUrl, adminBrowserSessions, runtime.adminEmail);
+      await expectAppLogoutRevokesAppOnly(advertisedCompartmentUrl, routeUrl, adminBrowserSessions, runtime.adminEmail);
 
       adminBrowserSessions = await readAppBrowserSessionsWithRetry(routeUrl, {
         email: runtime.adminEmail,
         password: runtime.adminPassword,
       });
-      await expectControlPlaneLogoutRevokesApp(runtime.compartmentUrl, routeUrl, adminBrowserSessions);
+      await expectControlPlaneLogoutRevokesApp(advertisedCompartmentUrl, routeUrl, adminBrowserSessions);
 
       adminAppSessionCookie = await readAppSessionCookieWithRetry(routeUrl, {
         email: runtime.adminEmail,
@@ -1318,7 +1321,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       );
       expect(deniedViewerStatusAfterBlock.stderr).toContain(validSessionRequiredMessage);
       await expectAppSessionRedirectedToLogin(
-        runtime.compartmentUrl,
+        advertisedCompartmentUrl,
         routeUrl,
         viewerAppSessionCookie,
         '/probe/whoami',
@@ -1410,7 +1413,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       const viewerAfterRemove: SelfHostedUserSetupCommandResult = await viewer.runFailure('whoami --output json');
       expect(viewerAfterRemove.stderr).not.toBe('');
       await expectAppSessionRedirectedToLogin(
-        runtime.compartmentUrl,
+        advertisedCompartmentUrl,
         routeUrl,
         viewerAppSessionCookie,
         '/probe/whoami',

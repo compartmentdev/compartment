@@ -1,12 +1,15 @@
 import type { OutputFormat } from '../../output/output.types';
+import type { KubernetesInstallDomainMode } from '../../services/kubernetes-install.service.types';
 
 export interface InstallCommandOptions {
   apiUrl?: string | undefined;
   baseDomain?: string | undefined;
+  brokerUrl?: string | undefined;
   chart?: string | undefined;
   dev?: boolean | undefined;
   email?: string | undefined;
   kubeContext?: string | undefined;
+  managedDomain?: boolean | undefined;
   namespace?: string | undefined;
   organization?: string | undefined;
   organizationSlug?: string | undefined;
@@ -23,9 +26,11 @@ export interface ResolvedInstallIdentityPrompts {
 }
 
 export interface ResolvedKubernetesInstallCommandOptions {
-  apiUrl: string;
-  baseDomain: string;
+  apiUrl?: string | undefined;
+  baseDomain?: string | undefined;
+  brokerUrl?: string | undefined;
   chartPath?: string | undefined;
+  domainMode: KubernetesInstallDomainMode;
   kubeContext?: string | undefined;
   namespace: string;
   releaseName: string;

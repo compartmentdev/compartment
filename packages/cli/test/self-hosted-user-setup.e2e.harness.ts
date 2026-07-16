@@ -63,6 +63,13 @@ export function buildSelfHostedAppHostname(
   return `${appPrefix}.${controlPlaneHostname.slice('console.'.length)}`;
 }
 
+export function buildSelfHostedAdvertisedCompartmentUrl(compartmentConnectUrl: string): string {
+  const advertisedCompartmentUrl: URL = new URL(compartmentConnectUrl);
+  advertisedCompartmentUrl.port = '';
+
+  return advertisedCompartmentUrl.origin;
+}
+
 export function expectSelfHostedUserSetupStepCompleted(completedStepCount: number, requiredStepCount: number): void {
   expect(completedStepCount, `Expected e2e step ${requiredStepCount.toString()} to complete.`).toBeGreaterThanOrEqual(
     requiredStepCount,

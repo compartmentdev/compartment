@@ -4,9 +4,13 @@ import { installDev, installKubernetesOwner } from '../../install';
 import { renderOutput } from '../../output/render';
 import { deployAndWaitForKubernetesInstall } from '../../services/kubernetes-install.service';
 import type { InstallInput } from '../../services/install.service.types';
-import type { KubernetesInstallDeploymentResult } from '../../services/kubernetes-install.service.types';
+import type {
+  KubernetesInstallDeploymentInput,
+  KubernetesInstallDeploymentResult,
+} from '../../services/kubernetes-install.service.types';
 import type { CliCommandDependencies } from '../command.types';
 import { resolveInstallIdentityPrompts } from './install.command.identity';
+import { readManagedDomainRequestedLabelSource } from './install.command.managed-domain';
 import { createInstallResultMessage, toInstallResponse } from './install.command.result';
 import { persistDevInstallSession, persistInstallSession } from './install.command.session';
 import type {
@@ -22,6 +26,8 @@ export function registerInstallCommand(program: Command, dependencies: CliComman
     .option('--dev', 'Install against the local repo dev API')
     .option('--api-url <url>', 'Public Console URL for the Kubernetes installation')
     .option('--base-domain <domain>', 'Base domain configured for the Kubernetes installation')
+    .option('--managed-domain', 'Allocate a managed installation domain (default when --base-domain is omitted)')
+    .option('--broker-url <url>', 'Managed-domain broker URL')
     .option('--values <path>', 'Operator values file for the Compartment Helm chart')
     .option('--chart <path>', 'Compartment Helm chart path for a source CLI build')
     .option('--kube-context <name>', 'Kubernetes context for Helm')
@@ -68,15 +74,39 @@ async function executeKubernetesInstallCommand(
   const installOptions: ResolvedKubernetesInstallCommandOptions = resolveKubernetesInstallCommandOptions(options);
   const prompts: ResolvedInstallIdentityPrompts = await resolveInstallIdentityPrompts(dependencies, options);
   dependencies.io.stderr('Installing the Compartment platform with Helm...\n');
-  const deployment: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(installOptions);
+  const deploymentInput: KubernetesInstallDeploymentInput = buildKubernetesInstallDeploymentInput(
+    installOptions,
+    prompts,
+    options.organizationSlug,
+  );
+  const deployment: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(deploymentInput);
 
-  const result: CliInstallResult = await installKubernetesOwner(installOptions.apiUrl, deployment.installToken, {
+  const result: CliInstallResult = await installKubernetesOwner(deployment.apiUrl, deployment.installToken, {
     ...buildOwnerInstallInput(prompts, options),
-    baseDomain: installOptions.baseDomain,
+    baseDomain: deployment.baseDomain,
   });
 
   await persistInstallSession(result, options.remote);
   renderInstallResult(dependencies, options, result, false);
+}
+
+function buildKubernetesInstallDeploymentInput(
+  installOptions: ResolvedKubernetesInstallCommandOptions,
+  prompts: ResolvedInstallIdentityPrompts,
+  organizationSlug: string | undefined,
+): KubernetesInstallDeploymentInput {
+  return {
+    ...installOptions,
+    acmeEmail: prompts.adminEmail,
+    ...(installOptions.domainMode === 'managed'
+      ? {
+          managedDomainRequestedLabelSource: readManagedDomainRequestedLabelSource(
+            prompts.organizationName,
+            organizationSlug,
+          ),
+        }
+      : {}),
+  };
 }
 
 function buildOwnerInstallInput(

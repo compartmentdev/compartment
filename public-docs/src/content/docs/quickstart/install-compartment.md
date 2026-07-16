@@ -47,24 +47,13 @@ selected `ReadWriteOnce` storage class, and nodes that can pull application imag
 selected Kubernetes context must be allowed to manage the chart's Namespaces, ClusterRoles, ClusterRoleBinding,
 ValidatingAdmissionPolicy, and ValidatingAdmissionPolicyBinding as well as namespaced resources.
 
-Before running the installer, reserve a stable public load-balancer address, point `console.apps.example.com` and
-`*.apps.example.com` at it, and configure that load balancer to terminate TLS and forward HTTP to the Caddy NodePort
-on the cluster nodes. The installer waits for this public HTTPS origin, so DNS and forwarding must already work.
+The default install uses a Kubernetes LoadBalancer Service on public ports 80 and 443. Its internal Caddy ports remain
+8080 and 8443. Make sure your cluster can allocate a stable public LoadBalancer address before starting.
 
-Create an operator values file for that topology:
+Create an operator values file with your storage and image decisions. The CLI supplies the managed-domain, ingress,
+ACME email, and one-time install values; the chart supplies the ACME issuer and CA defaults:
 
 ```yaml
-platform:
-  startupStage: full
-  baseDomain: apps.example.com
-  publicProtocol: https
-  tlsMode: custom-http
-
-service:
-  caddy:
-    type: NodePort
-    httpNodePort: 30080
-
 storage:
   storageClass: fast-rwo
 ```
@@ -75,32 +64,69 @@ matching chart, waits for the public Console endpoint, creates the first owner, 
 
 ```bash
 compartment install \
-  --api-url https://console.apps.example.com \
-  --base-domain apps.example.com \
   --values compartment-values.yaml
 ```
 
-The command prompts for the first owner's email, organization, and password. Use `--kube-context`, `--namespace`, or
-`--release-name` when the defaults are not appropriate. A CLI built directly from a source checkout has no embedded
-chart; pass `--chart ./deploy/chart/compartment` in that case.
+The command prompts for the first owner's email, organization, and password. It creates the foundation release,
+detects the Caddy LoadBalancer public IP, allocates a domain through `https://broker.compartment.run`, persists the
+installation ID, domain allocation, and ingress addresses in a retained Kubernetes Secret, then completes the chart
+with managed DNS-01 TLS. At runtime the broker credential is read from that Secret only by API and Caddy, never from a
+ConfigMap. Helm also records supplied secret values in its Kubernetes release revision Secrets, so restrict access to
+Helm and platform Secrets.
+
+Use `--kube-context`, `--namespace`, or `--release-name` when the defaults are not appropriate. Pass
+`--broker-url <url>` only for a managed-domain broker override. A CLI built directly from a source checkout has no
+embedded chart; pass `--chart ./deploy/chart/compartment` in that case.
 
 You can install the CLI and immediately start the same interactive platform install:
 
 ```bash
 curl -fsSL https://compartment.dev/install.sh | sh -s -- \
   --init-install \
-  --api-url https://console.apps.example.com \
-  --base-domain apps.example.com \
   --values compartment-values.yaml
 ```
 
-If the command stops before confirming owner creation, rerun it with the same release name, namespace, base domain,
-and values. A deployed foundation or full release resumes without replaying foundation. If Helm reports a failed,
-pending, or uninstalled release, repair or remove that release before retrying. After the owner was created, use
-`compartment login --api-url <console-url>` instead of rerunning the one-time install endpoint.
+If the command stops before confirming owner creation, rerun it with the same release name, namespace, domain mode,
+and values. For managed domains, omit `--base-domain` again. A deployed release resumes its saved allocation; a
+reinstall with the same release coordinates reuses the retained install-state Secret. If Helm reports a failed or
+pending release, repair or remove that release before retrying. After the owner was created, use `compartment login
+--api-url <console-url>` instead of rerunning the one-time install endpoint.
 
-This install path currently supports external TLS termination with `platform.tlsMode: custom-http` as shown above.
-Managed-domain and chart-provided certificate onboarding are not available through this command.
+For your own base domain, point `console.<baseDomain>` and `*.<baseDomain>` to the Caddy LoadBalancer, then pass
+`--base-domain <baseDomain>`. The installer derives the Console URL; `--api-url` remains available when you need to
+state it explicitly. If the Caddy Service is not a LoadBalancer, set `platform.publicIngressIpv4` or
+`platform.publicIngressIpv6` in the operator values file.
+
+To terminate TLS in Caddy with your certificate, create a TLS Secret in the release namespace and select it:
+
+```bash
+kubectl --namespace compartment create secret tls compartment-public-tls \
+  --cert fullchain.pem \
+  --key privkey.pem
+```
+
+```yaml
+platform:
+  tlsMode: custom-cert
+  # The CLI replaces this with the first owner's email.
+  acmeEmail: admin@example.com
+
+customTls:
+  existingSecret: compartment-public-tls
+```
+
+The chart mounts that one Secret read-only in both API and Caddy at the canonical certificate and key paths. The ACME
+email is used for on-demand tenant certificates outside the platform certificate. For an external TLS terminator, use
+`platform.tlsMode: custom-http`, set the explicit public ingress address, and configure the Caddy Service topology
+required by that load balancer. Select the TLS mode and create any referenced Secret before running `compartment
+install`. If certificate and key material are supplied inline instead, Helm retains them in its release revision
+Secrets; `customTls.existingSecret` is preferred. When rotating an existing Secret in place, change
+`platform.rolloutMarker` so API and Caddy restart and Caddy reloads the certificate.
+
+The install-state Secret has Helm's `keep` policy so upgrades, resets, and an uninstall followed by reinstall retain
+the installation ID, domain allocation, and ingress addresses. To intentionally abandon that identity, uninstall the
+release and delete the Secret selected by both `app.kubernetes.io/instance=<release>` and
+`app.kubernetes.io/component=install-state` before reinstalling. The next managed install requests a new allocation.
 
 The bundled registry is addressed inside the cluster as `<release-fullname>-registry-auth.<namespace>.svc:5000`.
 Kubelets do not use cluster DNS for image pulls, so configure the container runtime on every node with an equivalent

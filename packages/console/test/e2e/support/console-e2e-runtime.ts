@@ -1,5 +1,9 @@
 const defaultConsoleE2eBaseUrl: string = 'http://console.localhost:9080';
 
+export interface ConsoleE2eProxySettings {
+  readonly server: string;
+}
+
 export function readConsoleE2eBaseUrl(): string {
   const baseUrl: string =
     readEnvironmentValue('PLAYWRIGHT_BASE_URL') ??
@@ -22,6 +26,11 @@ export function readRequiredEnvironmentValue(name: string): string {
   }
 
   return value;
+}
+
+export function readConsoleE2eProxySettings(): ConsoleE2eProxySettings | undefined {
+  const server: string | undefined = readEnvironmentValue('COMPARTMENT_E2E_HTTP_PROXY');
+  return server === undefined ? undefined : { server };
 }
 
 function parseConsoleE2eBaseUrl(baseUrl: string): URL {

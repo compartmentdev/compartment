@@ -19,6 +19,9 @@ Options:
   --api-url <url>             Public Console URL for the Kubernetes installation
   --base-domain <domain>      Base domain configured for the Kubernetes
                               installation
+  --managed-domain            Allocate a managed installation domain (default
+                              when --base-domain is omitted)
+  --broker-url <url>          Managed-domain broker URL
   --values <path>             Operator values file for the Compartment Helm
                               chart
   --chart <path>              Compartment Helm chart path for a source CLI build

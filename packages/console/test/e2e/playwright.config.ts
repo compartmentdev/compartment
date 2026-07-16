@@ -1,9 +1,13 @@
 import { defineConfig, devices, type PlaywrightTestConfig, type Project } from '@playwright/test';
-import { readConsoleE2eBaseUrl } from './support/console-e2e-runtime';
+import {
+  readConsoleE2eBaseUrl,
+  readConsoleE2eProxySettings,
+  type ConsoleE2eProxySettings,
+} from './support/console-e2e-runtime';
 
 const isCi: boolean = process.env.CI === 'true';
 const consoleBaseUrl: string = readConsoleE2eBaseUrl();
-const consoleE2eProxyServer: string | undefined = process.env.COMPARTMENT_E2E_HTTP_PROXY;
+const consoleE2eProxySettings: ConsoleE2eProxySettings | undefined = readConsoleE2eProxySettings();
 
 const chromiumProject: Project = {
   name: 'chromium',
@@ -32,7 +36,7 @@ const config: PlaywrightTestConfig = defineConfig({
     baseURL: consoleBaseUrl,
     ignoreHTTPSErrors: true,
     navigationTimeout: 30_000,
-    ...(consoleE2eProxyServer === undefined ? {} : { proxy: { server: consoleE2eProxyServer } }),
+    ...(consoleE2eProxySettings === undefined ? {} : { proxy: consoleE2eProxySettings }),
     screenshot: 'only-on-failure',
     trace: isCi ? 'on-first-retry' : 'retain-on-failure',
     video: 'off',

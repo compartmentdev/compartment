@@ -1,28 +1,30 @@
-{{- if eq .Values.platform.startupStage "full" }}
+{{- include "compartment.applyRetainedInstallState" . -}}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "compartment.fullname" . }}-caddy
   labels:
     {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy
 spec:
   type: {{ .Values.service.caddy.type }}
   selector:
     {{- include "compartment.componentLabels" (dict "root" . "component" "caddy") | nindent 4 }}
   ports:
     - name: http
-      port: {{ .Values.ports.http }}
+      port: {{ .Values.service.caddy.httpPort }}
       targetPort: http
       {{- if and (or (eq $.Values.service.caddy.type "NodePort") (eq $.Values.service.caddy.type "LoadBalancer")) .Values.service.caddy.httpNodePort }}
       nodePort: {{ .Values.service.caddy.httpNodePort }}
       {{- end }}
     - name: https
-      port: {{ .Values.ports.https }}
+      port: {{ .Values.service.caddy.httpsPort }}
       targetPort: https
       {{- if and (or (eq $.Values.service.caddy.type "NodePort") (eq $.Values.service.caddy.type "LoadBalancer")) .Values.service.caddy.httpsNodePort }}
       nodePort: {{ .Values.service.caddy.httpsNodePort }}
       {{- end }}
 ---
+{{- if eq .Values.platform.startupStage "full" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -80,6 +82,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "compartment.fullname" . }}
+          env:
+            - name: COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.installStateSecretName" . }}, key: managed-domain-broker-token}
           ports:
             - {name: http, containerPort: {{ .Values.ports.http }}}
             - {name: https, containerPort: {{ .Values.ports.https }}}
@@ -90,7 +96,9 @@ spec:
             - {name: executable, mountPath: /work, readOnly: true}
             - {name: data, mountPath: /data}
             - {name: config, mountPath: /config}
+            {{- if eq .Values.platform.tlsMode "custom-cert" }}
             - {name: tls, mountPath: /etc/compartment/tls, readOnly: true}
+            {{- end }}
             - {name: tmp, mountPath: /tmp}
       volumes:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
@@ -99,7 +107,14 @@ spec:
           persistentVolumeClaim:
             claimName: {{ include "compartment.fullname" . }}-caddy
         - {name: config, emptyDir: {}}
-        - {name: tls, emptyDir: {}}
+        {{- if eq .Values.platform.tlsMode "custom-cert" }}
+        - name: tls
+          secret:
+            secretName: {{ include "compartment.customTlsSecretName" . }}
+            defaultMode: 0440
+            items:
+              - {key: tls.crt, path: fullchain.pem}
+              - {key: tls.key, path: privkey.pem}
+        {{- end }}
         - {name: tmp, emptyDir: {}}
 {{- end }}
-
