@@ -1,12 +1,9 @@
 import { buildControlPlaneHost } from '@compartment/contracts';
 import {
-  assertValidUnixSocketPath,
   assertSelfHostedGeneratedSecretEnvironment,
   buildInternalHttpUrl,
-  createCompartmentUnixSocketPathPolicy,
   parseOptionalTrustedOutboundHostList,
   readRequiredAbsolutePath,
-  type UnixSocketPathPolicy,
 } from '@compartment/utils';
 import { z } from 'zod';
 import {
@@ -40,19 +37,16 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN: z.string(),
   COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: z.string(),
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: z.string(),
-  COMPARTMENT_NODE_AGENT_SOCKET: z.string().min(1),
   COMPARTMENT_PUBLIC_PROTOCOL: z.enum(['http', 'https']),
   COMPARTMENT_PUBLIC_HTTP_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_PUBLIC_HTTPS_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_POSTGRES_PASSWORD: z.string().optional(),
   COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN: z.string().min(1).optional(),
-  COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST: z.string().min(1),
   COMPARTMENT_AUDIT_RETENTION_DAYS: z.coerce.number().int().positive(),
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE: z.coerce.number().int().positive(),
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_CRON: z.string().min(1),
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES: z.coerce.number().int().positive(),
   COMPARTMENT_ROLLBACK_RETENTION_LIMIT: z.string(),
-  COMPARTMENT_RESOURCE_BACKUP_DIR: z.string().min(1),
   COMPARTMENT_SOURCE_ARCHIVE_DIR: z.string().min(1),
   COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES: z.coerce.number().int().positive(),
   COMPARTMENT_SESSION_SECRET: z.string().min(1),
@@ -62,13 +56,6 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_VARIABLES_MASTER_KEY: z.string().min(1),
   COMPARTMENT_WORKER_IMAGE: z.string().min(1).optional(),
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),
-});
-
-const nodeAgentSocketPolicy: UnixSocketPathPolicy = createCompartmentUnixSocketPathPolicy({
-  directoryLabel: 'Node agent socket directory',
-  socketFileName: 'agent.sock',
-  socketSubdirectory: 'node',
-  variableName: 'COMPARTMENT_NODE_AGENT_SOCKET',
 });
 
 export interface ApiConfig {
@@ -85,7 +72,6 @@ export interface ApiConfig {
   managedDomainBrokerToken?: string | null;
   managedDomainBrokerUrl?: string | null;
   trustedOutboundHosts: string[];
-  nodeAgentSocketPath: string;
   sessionSecret: string;
   sessionTtlMs: number;
   port: number;
@@ -98,8 +84,6 @@ export interface ApiConfig {
   auditRetentionCleanupCron: string;
   auditRetentionCleanupMaxBatches: number;
   rollbackRetentionLimit: number | null;
-  runtimeDefaultUpstreamHost: string;
-  resourceBackupDirectory: string;
   sourceArchiveDirectory: string;
   sourceArchiveMaxBytes: number;
   throttle: ApiAuthThrottleConfig;
@@ -129,20 +113,13 @@ type ApiRuntimeConfig = Pick<
   | 'auditRetentionCleanupCron'
   | 'auditRetentionCleanupMaxBatches'
   | 'rollbackRetentionLimit'
-  | 'resourceBackupDirectory'
-  | 'runtimeDefaultUpstreamHost'
   | 'sourceArchiveDirectory'
   | 'sourceArchiveMaxBytes'
   | 'workerImageRef'
 >;
 type ApiSecretConfig = Pick<
   ApiConfig,
-  | 'nodeAgentSocketPath'
-  | 'productLogIngestToken'
-  | 'systemApiSocketPath'
-  | 'systemToken'
-  | 'variablesMasterKey'
-  | 'runtimeControlToken'
+  'productLogIngestToken' | 'systemApiSocketPath' | 'systemToken' | 'variablesMasterKey' | 'runtimeControlToken'
 >;
 
 export function readApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -239,11 +216,6 @@ function readApiRuntimeConfig(parsed: ApiConfigEnv): ApiRuntimeConfig {
       parsed.COMPARTMENT_ROLLBACK_RETENTION_LIMIT,
       'COMPARTMENT_ROLLBACK_RETENTION_LIMIT',
     ),
-    resourceBackupDirectory: readRequiredAbsolutePath(
-      parsed.COMPARTMENT_RESOURCE_BACKUP_DIR,
-      'COMPARTMENT_RESOURCE_BACKUP_DIR',
-    ),
-    runtimeDefaultUpstreamHost: parsed.COMPARTMENT_RUNTIME_DEFAULT_UPSTREAM_HOST,
     sourceArchiveDirectory: parsed.COMPARTMENT_SOURCE_ARCHIVE_DIR,
     sourceArchiveMaxBytes: parsed.COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES,
     workerImageRef: readOptionalConfigText(parsed.COMPARTMENT_WORKER_IMAGE),
@@ -251,11 +223,9 @@ function readApiRuntimeConfig(parsed: ApiConfigEnv): ApiRuntimeConfig {
 }
 
 function readApiSecretConfig(parsed: ApiConfigEnv): ApiSecretConfig {
-  assertValidUnixSocketPath(parsed.COMPARTMENT_NODE_AGENT_SOCKET, nodeAgentSocketPolicy);
   assertValidSystemApiSocketPath(parsed.COMPARTMENT_SYSTEM_API_SOCKET);
 
   return {
-    nodeAgentSocketPath: parsed.COMPARTMENT_NODE_AGENT_SOCKET,
     productLogIngestToken: readOptionalConfigText(parsed.COMPARTMENT_PRODUCT_LOG_INGEST_TOKEN),
     systemApiSocketPath: parsed.COMPARTMENT_SYSTEM_API_SOCKET,
     systemToken: parsed.COMPARTMENT_SYSTEM_TOKEN,

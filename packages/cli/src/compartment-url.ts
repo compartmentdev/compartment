@@ -1,7 +1,7 @@
 import {
   compartmentBrowserLoginPathname,
   compartmentBrowserStartOnboardingSearchParamName,
-} from '@compartment/contracts';
+} from '@compartment/contracts/browser';
 
 interface CompartmentBrowserEntryUrlOptions {
   startOnboarding?: boolean | undefined;

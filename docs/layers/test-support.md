@@ -5,12 +5,10 @@ Owns:
 - DB test helpers;
 - database reset/bootstrap utilities;
 - test-only environment resolution;
-- docker test namespace lifecycle;
 - free-port helpers.
 
 May depend on:
 
-- `docker`, for the current-context Docker Engine client used by docker namespace lifecycle helpers;
 - `utils`;
 - test-only third-party runtime helpers such as `pg`.
 

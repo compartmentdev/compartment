@@ -15,6 +15,10 @@ export function assertAllowedVolumeChange(existingResource: ProjectResourceRow, 
     intent.volumes.map((volume: ResourceVolumeSummary): [string, ResourceVolumeSummary] => [volume.name, volume]),
   );
 
+  if (nextVolumes.size > existingVolumes.size) {
+    throw createInvalidDeployConfigError('Resource volumes cannot be added during deploy.');
+  }
+
   for (const [name, existingVolume] of existingVolumes) {
     const nextVolume: ResourceVolumeSummary | undefined = nextVolumes.get(name);
     if (nextVolume === undefined) {

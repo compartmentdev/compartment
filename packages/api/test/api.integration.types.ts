@@ -12,7 +12,6 @@ export interface StoredOperationRow {
 
 export interface StoredDeploymentRow {
   completedAt: Date | null;
-  containerId: string | null;
   createdAt: Date;
   buildArtifactId: string;
   environmentId: string;
@@ -21,13 +20,11 @@ export interface StoredDeploymentRow {
   id: string;
   isActive: boolean;
   movementSourceDeploymentId: string | null;
-  nodeId: string;
   operationId: string;
   promotionStage: string;
   projectServiceId: string;
   resolvedRunJson: string;
   resolvedRoutesJson: string;
-  upstreamPort: number | null;
   status: string;
   updatedAt: Date;
 }

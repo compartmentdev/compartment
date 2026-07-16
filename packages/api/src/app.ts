@@ -29,6 +29,11 @@ interface RuntimeAppInput {
   db: Database;
 }
 
+interface ConfiguredAppDatabase {
+  closePools: Pool[];
+  db: Database;
+}
+
 export function createApp(options: CreateAppOptions = {}): ApiApp {
   return createConfiguredApp(options, registerApiRoutes);
 }
@@ -44,16 +49,39 @@ function createConfiguredApp(
     configureRuntime = true,
     db,
     pool = createDatabasePool(config.databaseUrl),
+    resourceOperationPool,
   }: CreateAppOptions,
   registerRoutes: AppRouteRegistrar,
 ): ApiApp {
-  const app: ApiApp = createRuntimeApp({ config, configureRuntime, db: db ?? createDatabase(pool) });
+  const configuredDatabase: ConfiguredAppDatabase = resolveConfiguredAppDatabase(
+    config,
+    pool,
+    db,
+    resourceOperationPool,
+  );
+  const app: ApiApp = createRuntimeApp({ config, configureRuntime, db: configuredDatabase.db });
   registerApiErrorHandler(app);
   app.after((): void => {
     registerRoutes(app, config);
   });
-  registerAppCloseHook(app, pool, closePool);
+  registerAppCloseHook(app, closePool ? [pool, ...configuredDatabase.closePools] : []);
   return app;
+}
+
+function resolveConfiguredAppDatabase(
+  config: ApiConfig,
+  pool: Pool,
+  database: Database | undefined,
+  resourceOperationPool: Pool | undefined,
+): ConfiguredAppDatabase {
+  if (database !== undefined) {
+    return { closePools: [], db: database };
+  }
+  const operationPool: Pool = resourceOperationPool ?? createDatabasePool(config.databaseUrl);
+  return {
+    closePools: [operationPool],
+    db: createDatabase(pool, operationPool),
+  };
 }
 
 function createRuntimeApp(input: RuntimeAppInput): ApiApp {
@@ -105,12 +133,10 @@ function createApiLogger(logLevel: string): pino.Logger<never, boolean> {
 
 function ensureRuntimeDirectories(config: ApiConfig): void {
   ensurePrivateRuntimeStorageRootDirectorySync(config.sourceArchiveDirectory);
-  ensurePrivateRuntimeStorageRootDirectorySync(config.resourceBackupDirectory);
 }
 
 async function repairRuntimeStoragePermissions(config: ApiConfig): Promise<void> {
   await repairPrivateRuntimeStoragePermissions(config.sourceArchiveDirectory);
-  await repairPrivateRuntimeStoragePermissions(config.resourceBackupDirectory);
 }
 
 function registerRuntimeStorageRepairHook(app: ApiApp, runtimeStorageRepairTask: Promise<void>): void {
@@ -119,12 +145,12 @@ function registerRuntimeStorageRepairHook(app: ApiApp, runtimeStorageRepairTask:
   });
 }
 
-function registerAppCloseHook(app: ApiApp, pool: Pool, closePool: boolean): void {
+function registerAppCloseHook(app: ApiApp, pools: Pool[]): void {
   app.addHook('onClose', async (): Promise<void> => {
     await closeAuditEventFileSink();
-    if (closePool) {
+    if (pools.length > 0) {
       clearApiRuntime();
-      await pool.end();
+      await Promise.all(pools.map(async (pool: Pool): Promise<void> => await pool.end()));
     }
   });
 }

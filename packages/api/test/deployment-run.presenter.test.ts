@@ -91,13 +91,8 @@ function createDeploymentJoinedRow(
       accessMode: 'public',
       buildArtifactId: `art_${serviceName}`,
       completedAt: completedAt === null ? null : new Date(completedAt),
-      containerId: null,
       createdAt: now,
       deploymentRunId: 'drn_123',
-      drainDeadlineAt: null,
-      drainingContainerId: null,
-      drainingDeploymentId: null,
-      drainingNodeId: null,
       environmentId: 'env_123',
       failureMessage,
       health: readDeploymentHealth(status, failureMessage),
@@ -105,7 +100,6 @@ function createDeploymentJoinedRow(
       isActive: status === 'succeeded',
       label: null,
       movementSourceDeploymentId: null,
-      nodeId: 'node_123',
       operationId: `op_${serviceName}`,
       projectServiceId: `svc_${serviceName}`,
       promotionStage: readDeploymentPromotionStage(status),
@@ -126,14 +120,11 @@ function createDeploymentJoinedRow(
       sourceResolutionTaskId: null,
       status,
       updatedAt: now,
-      upstreamHost: null,
-      upstreamPort: null,
     },
     environment: {
       createdAt: now,
       id: 'env_123',
       name: 'production',
-      nodeId: 'node_123',
       projectId: 'prj_123',
       updatedAt: now,
     },
@@ -179,10 +170,10 @@ function readDeploymentHealth(
   return status === 'running' ? 'pending' : 'healthy';
 }
 
-function readDeploymentPromotionStage(status: DeploymentRuntimeStatus): 'active' | 'starting_candidate' | 'stopped' {
+function readDeploymentPromotionStage(status: DeploymentRuntimeStatus): 'active' | 'release' | 'stopped' {
   switch (status) {
     case 'running':
-      return 'starting_candidate';
+      return 'release';
     case 'stopped':
       return 'stopped';
     case 'failed':

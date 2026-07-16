@@ -152,7 +152,7 @@ function createProxyRouteTarget(): AppAccessProxyRouteTargetState {
     routeScopeId: 'org_123',
     routeScopeType: 'organization',
     scopeChain: [{ scopeId: 'org_123', scopeType: 'organization' }],
-    upstreamHost: '127.0.0.1',
+    upstreamHost: 'app.cpt-project.svc',
     upstreamPort: 31042,
   };
 }

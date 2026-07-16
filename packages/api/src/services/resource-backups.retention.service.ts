@@ -4,29 +4,34 @@ import {
   markResourceBackupRetentionDeletedWithExecutor,
 } from '../queries/resource-backups.query';
 import type { ResourceBackupRow } from '../queries/resource-backups.query.types';
-import type { ResourceTransaction } from '../queries/resources.query.types';
+import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import { getApiDatabase } from '../runtime/runtime-access';
-import { deleteResourceBackupArtifactDirectory } from './resource-backup-artifact.service';
-import type { ResourceBackupRetentionCleanup } from './resources.service.types';
+import { deleteKubernetesBackupArtifact } from './resource-backups.kubernetes.service';
+import type { ResourceBackupRetentionCleanup, ResourceEnvironmentContext } from './resources.service.types';
+
+interface ResourceBackupRetentionInput {
+  context: ResourceEnvironmentContext;
+  now: Date;
+  resource: ProjectResourceRow;
+  retention: CompartmentResourceOperationRetentionConfig | null | undefined;
+}
 
 export async function applyResourceBackupRetention(
-  projectResourceId: string,
-  retention: CompartmentResourceOperationRetentionConfig | null | undefined,
-  now: Date,
+  input: ResourceBackupRetentionInput,
 ): Promise<ResourceBackupRetentionCleanup[]> {
-  if (retention === null || retention === undefined) {
+  if (input.retention === null || input.retention === undefined) {
     return [];
   }
 
   const backups: ResourceBackupRow[] = await listRetentionEligibleResourceBackups(
-    projectResourceId,
-    retention.includeManual === true,
+    input.resource.id,
+    input.retention.includeManual === true,
   );
-  const expiredBackups: ResourceBackupRetentionCleanup[] = selectExpiredBackups(backups, retention, now);
+  const expiredBackups: ResourceBackupRetentionCleanup[] = selectExpiredBackups(backups, input.retention, input.now);
   const cleanedBackups: ResourceBackupRetentionCleanup[] = [];
 
   for (const expiredBackup of expiredBackups) {
-    cleanedBackups.push(await deleteBackupArtifactAndMarkRecord(expiredBackup, now));
+    cleanedBackups.push(await deleteBackupArtifactAndMarkRecord(expiredBackup, input));
   }
 
   return cleanedBackups;
@@ -84,17 +89,17 @@ function addMaxAgeExpirations(
 
 async function deleteBackupArtifactAndMarkRecord(
   cleanup: ResourceBackupRetentionCleanup,
-  now: Date,
+  input: ResourceBackupRetentionInput,
 ): Promise<ResourceBackupRetentionCleanup> {
   if (cleanup.backup.artifactLocation !== null) {
-    await deleteResourceBackupArtifactDirectory(cleanup.backup.artifactLocation);
+    await deleteKubernetesBackupArtifact({ backup: cleanup.backup, context: input.context, resource: input.resource });
   }
 
   const backup: ResourceBackupRow = await getApiDatabase().transaction(
     async (tx: ResourceTransaction): Promise<ResourceBackupRow> =>
       await markResourceBackupRetentionDeletedWithExecutor(tx, {
         backupId: cleanup.backup.id,
-        retentionDeletedAt: now,
+        retentionDeletedAt: input.now,
         retentionReason: cleanup.reason,
       }),
   );

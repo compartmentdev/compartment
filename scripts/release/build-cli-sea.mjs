@@ -1,7 +1,6 @@
-import { constants as fsConstants } from 'node:fs';
-import { access, chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 import { runCommand } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
@@ -10,13 +9,6 @@ const seaBlobAssetName = 'NODE_SEA_BLOB';
 // Required Node SEA sentinel fuse from the official Node/postject flow.
 const seaFuse = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
 const bundleEntryPath = 'packages/cli/dist/bin.js';
-const bundledCosignAssetName = 'cosign';
-const bundledCosignPathEnvName = 'COMPARTMENT_CLI_BUNDLED_COSIGN_PATH';
-const bundledAssetPaths = [
-  '.env.self-hosted.example',
-  'docker-compose.self-hosted.local.yml',
-  'docker-compose.self-hosted.yml',
-];
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
 async function main() {
@@ -32,12 +24,11 @@ async function main() {
     const seaBlobPath = resolve(buildDirectory, 'compartment.blob');
     const seaConfigPath = resolve(buildDirectory, 'sea-config.json');
     const outputBinaryPath = resolve(options.outputDirectory, 'compartment');
-    const bundledCosignPath = await readBundledCosignPath();
 
     await mkdir(options.outputDirectory, { recursive: true });
     bundleCliEntry(repositoryRoot, dirname(bundlePath));
     await writeBuildInfo(buildInfoPath, options);
-    await writeSeaConfig(seaConfigPath, seaBlobPath, buildInfoPath, bundlePath, repositoryRoot, bundledCosignPath);
+    await writeSeaConfig(seaConfigPath, seaBlobPath, buildInfoPath, bundlePath);
     generateSeaBlob(repositoryRoot, seaConfigPath);
     await copyFile(process.execPath, outputBinaryPath);
     removeMacOsSignature(outputBinaryPath);
@@ -54,7 +45,6 @@ async function main() {
 function readCliSeaBuildOptions(args, repositoryRoot) {
   const options = {
     buildCommitSha: undefined,
-    defaultRegistryImageTag: undefined,
     distributionChannel: undefined,
     outputDirectory: resolve(repositoryRoot, '.compartment/cli-dist'),
   };
@@ -63,11 +53,6 @@ function readCliSeaBuildOptions(args, repositoryRoot) {
     const argument = args[index];
     if (argument === '--distribution-channel') {
       options.distributionChannel = readRequiredCliSeaOptionValue(args, ++index, '--distribution-channel');
-      continue;
-    }
-
-    if (argument === '--default-registry-image-tag') {
-      options.defaultRegistryImageTag = readRequiredCliSeaOptionValue(args, ++index, '--default-registry-image-tag');
       continue;
     }
 
@@ -90,19 +75,14 @@ function readCliSeaBuildOptions(args, repositoryRoot) {
     options.distributionChannel === 'main' ||
     options.distributionChannel === 'release'
   ) {
-    if (typeof options.defaultRegistryImageTag === 'string' && options.defaultRegistryImageTag !== '') {
-      return {
-        buildCommitSha: options.buildCommitSha,
-        defaultRegistryImageTag: options.defaultRegistryImageTag,
-        distributionChannel: options.distributionChannel,
-        outputDirectory: options.outputDirectory,
-      };
-    }
+    return {
+      buildCommitSha: options.buildCommitSha,
+      distributionChannel: options.distributionChannel,
+      outputDirectory: options.outputDirectory,
+    };
   }
 
-  throw new Error(
-    'Expected --distribution-channel (source|main|release) and --default-registry-image-tag when building the CLI SEA binary.',
-  );
+  throw new Error('Expected --distribution-channel (source|main|release) when building the CLI SEA binary.');
 }
 
 function readRequiredCliSeaOptionValue(args, index, optionName) {
@@ -141,7 +121,6 @@ async function writeBuildInfo(buildInfoPath, options) {
       {
         ...(options.buildCommitSha !== undefined ? { buildCommitSha: options.buildCommitSha } : {}),
         cliVersion: await readCliVersion(),
-        defaultRegistryImageTag: options.defaultRegistryImageTag,
         distributionChannel: options.distributionChannel,
       },
       null,
@@ -163,16 +142,11 @@ async function readCliVersion() {
   throw new Error(`Expected ${cliPackageJsonPath} to define a non-empty version.`);
 }
 
-async function writeSeaConfig(
-  seaConfigPath,
-  seaBlobPath,
-  buildInfoPath,
-  bundlePath,
-  repositoryRoot,
-  bundledCosignPath,
-) {
+async function writeSeaConfig(seaConfigPath, seaBlobPath, buildInfoPath, bundlePath) {
   const seaConfig = {
-    assets: buildSeaAssets(buildInfoPath, repositoryRoot, bundledCosignPath),
+    assets: {
+      'cli-build-info.json': buildInfoPath,
+    },
     disableExperimentalSEAWarning: true,
     main: bundlePath,
     output: seaBlobPath,
@@ -181,71 +155,6 @@ async function writeSeaConfig(
   };
 
   await writeFile(seaConfigPath, `${JSON.stringify(seaConfig, null, 2)}\n`, 'utf8');
-}
-
-function buildSeaAssets(buildInfoPath, repositoryRoot, bundledCosignPath) {
-  return bundledAssetPaths.reduce(
-    (assets, assetPath) => ({
-      ...assets,
-      [assetPath]: resolve(repositoryRoot, assetPath),
-    }),
-    {
-      'cli-build-info.json': buildInfoPath,
-      [bundledCosignAssetName]: bundledCosignPath,
-    },
-  );
-}
-
-async function readBundledCosignPath() {
-  const configuredPath = process.env[bundledCosignPathEnvName]?.trim();
-  if (configuredPath !== undefined && configuredPath !== '') {
-    return await readConfiguredBundledCosignPath(configuredPath);
-  }
-
-  return await findExecutablePath('cosign');
-}
-
-async function readConfiguredBundledCosignPath(configuredPath) {
-  const resolvedPath = resolve(repositoryRoot, configuredPath);
-  await assertExecutablePath(
-    resolvedPath,
-    `Configured ${bundledCosignPathEnvName} path is not executable: ${resolvedPath}`,
-  );
-  return resolvedPath;
-}
-
-async function findExecutablePath(commandName) {
-  for (const directory of (process.env.PATH ?? '').split(delimiter)) {
-    if (directory === '') {
-      continue;
-    }
-
-    const candidatePath = resolve(directory, commandName);
-    if (await canAccessExecutablePath(candidatePath)) {
-      return candidatePath;
-    }
-  }
-
-  throw new Error(
-    `Expected ${commandName} on PATH when building the CLI SEA binary. Install cosign before running pnpm cli:build:sea.`,
-  );
-}
-
-async function assertExecutablePath(path, message) {
-  if (await canAccessExecutablePath(path)) {
-    return;
-  }
-
-  throw new Error(message);
-}
-
-async function canAccessExecutablePath(path) {
-  try {
-    await access(path, fsConstants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function generateSeaBlob(repositoryRoot, seaConfigPath) {

@@ -22,7 +22,7 @@ export function createResourceListMessage(response: ResourceListResponse): strin
   }
 
   return response.resources
-    .map((resource: ResourceSummary): string => `${resource.name}\t${resource.status}\t${resource.hostname}`)
+    .map((resource: ResourceSummary): string => `${resource.name}\t${resource.status}`)
     .join('\n');
 }
 
@@ -31,7 +31,6 @@ export function createResourceResponseMessage(response: ResourceResponse): strin
   const portsText: string = resource.ports.length > 0 ? resource.ports.join(', ') : 'none';
 
   return `${resource.name} ${resource.status}
-host: ${resource.hostname}
 image: ${resource.image}
 ports: ${portsText}`;
 }

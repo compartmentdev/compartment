@@ -4,7 +4,6 @@ import {
   errorResponseSchema,
   type CompartmentAuthoredDescriptorInput,
   type InstallResponse,
-  type WorkerClaimedDeployment,
 } from '@compartment/contracts';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ApiApp } from '../src/app.types';
@@ -23,10 +22,6 @@ import {
   createSourceArchive,
   injectDeployRequest,
   installCompartment,
-  queueIntegrationNodeAgentResponse,
-  registerLocalNode,
-  readIntegrationNodeAgentRequestBody,
-  readIntegrationNodeAgentRequests,
   requireClaimedDeployment,
   setVariable,
 } from './api-integration.harness';
@@ -48,18 +43,7 @@ interface AppAccessEdgeServiceMocks {
   synchronizeEdgeAppAccessState: Mock<SynchronizeEdgeAppAccessState>;
 }
 
-interface ResourceRequestEnvInput {
-  keyName: string;
-  value: string;
-}
-
-interface ResourceRequestInput {
-  definition: {
-    env: ResourceRequestEnvInput[];
-  };
-}
-
-interface InstalledLocalNodeDeployContext {
+interface InstalledDeployContext {
   installPayload: InstallResponse;
 }
 
@@ -132,14 +116,12 @@ describe('API deploy descriptor service connections integration', (): void => {
   });
 
   it('injects descriptor resource connections without manual resource-output variables', async (): Promise<void> => {
-    const context: InstalledLocalNodeDeployContext = await installAndRegisterLocalNode();
+    const context: InstalledDeployContext = await installDeployContext();
     const deployResponse: LightMyRequestResponse = await deployConnectionDescriptor(context.installPayload);
 
     expect(deployResponse.statusCode, deployResponse.body).toBe(200);
-    const generatedPassword: string = expectResourceRequestEnvValue(0, postgresPresetPasswordEnvName);
     await expectDescriptorConnectionBinding();
-    await expectGeneratedPasswordStoredWithoutPlaintext(generatedPassword);
-    await expectClaimedDatabaseUrl(generatedPassword);
+    await expectGeneratedPasswordStoredEncrypted();
   });
 
   it('rejects descriptor resource connections selected for build env', async (): Promise<void> => {
@@ -154,7 +136,7 @@ describe('API deploy descriptor service connections integration', (): void => {
   });
 
   it('rejects descriptor resource connections that conflict with direct service variables', async (): Promise<void> => {
-    const context: InstalledLocalNodeDeployContext = await installAndRegisterLocalNode();
+    const context: InstalledDeployContext = await installDeployContext();
     expectSuccessfulDeploy(await deployPresetDescriptor(context.installPayload));
     await setServiceDatabaseUrlLiteral(context.installPayload);
 
@@ -171,13 +153,12 @@ describe('API deploy descriptor service connections integration', (): void => {
   });
 
   it('rejects descriptor resource connections that drift from existing resource-output bindings', async (): Promise<void> => {
-    const context: InstalledLocalNodeDeployContext = await installAndRegisterLocalNode();
+    const context: InstalledDeployContext = await installDeployContext();
     await setServiceDatabaseUrlFromHostOutput(context.installPayload);
 
     const response: LightMyRequestResponse = await deployConnectionDescriptor(context.installPayload);
 
     expectInvalidDeployConfig(response, 'conflicts with existing resource output binding "db.host"');
-    expect(readIntegrationNodeAgentRequests()).toEqual([]);
     expect(await db.select().from(deployments)).toHaveLength(0);
     expect(await db.select().from(projectResources)).toHaveLength(0);
     expect(await db.select().from(environmentVariableValues)).toEqual([]);
@@ -185,7 +166,7 @@ describe('API deploy descriptor service connections integration', (): void => {
   });
 
   it('removes descriptor-owned bindings when connections are removed from the descriptor', async (): Promise<void> => {
-    const context: InstalledLocalNodeDeployContext = await installAndRegisterLocalNode();
+    const context: InstalledDeployContext = await installDeployContext();
 
     expectSuccessfulDeploy(await deployConnectionDescriptor(context.installPayload));
     await expectDescriptorConnectionBinding();
@@ -193,13 +174,10 @@ describe('API deploy descriptor service connections integration', (): void => {
     expectSuccessfulDeploy(await deployPresetDescriptor(context.installPayload));
 
     expect(await db.select().from(environmentResourceOutputVariableBindings)).toEqual([]);
-    expect(requireClaimedDeployment(await claimNextQueuedDeployment(app)).runtimeEnv).not.toHaveProperty(
-      'DATABASE_URL',
-    );
   });
 
   it('allows removed descriptor-owned bindings to move to build env in the same deploy', async (): Promise<void> => {
-    const context: InstalledLocalNodeDeployContext = await installAndRegisterLocalNode();
+    const context: InstalledDeployContext = await installDeployContext();
 
     expectSuccessfulDeploy(await deployConnectionDescriptor(context.installPayload));
     await expectDescriptorConnectionBinding();
@@ -215,14 +193,8 @@ describe('API deploy descriptor service connections integration', (): void => {
   });
 });
 
-async function installAndRegisterLocalNode(): Promise<InstalledLocalNodeDeployContext> {
+async function installDeployContext(): Promise<InstalledDeployContext> {
   const installPayload: InstallResponse = await installCompartment(app);
-  await registerLocalNode(app);
-  queueIntegrationNodeAgentResponse({
-    containerId: 'resource_container_db',
-    hostname: 'db.production.smoke-web.resource.internal',
-    status: 'running',
-  });
 
   return { installPayload };
 }
@@ -263,20 +235,6 @@ function expectInvalidDeployConfig(response: LightMyRequestResponse, message: st
   expect(payload.error.message).toContain(message);
 }
 
-function expectResourceRequestEnvValue(callIndex: number, keyName: string): string {
-  const resourceRequest: ResourceRequestInput = JSON.parse(
-    readIntegrationNodeAgentRequestBody(callIndex),
-  ) as ResourceRequestInput;
-  const value: string | undefined = resourceRequest.definition.env.find(
-    (env: ResourceRequestEnvInput): boolean => env.keyName === keyName,
-  )?.value;
-  if (value === undefined) {
-    throw new Error(`Expected resource request env "${keyName}".`);
-  }
-
-  return value;
-}
-
 async function expectDescriptorConnectionBinding(): Promise<void> {
   expect(await db.select().from(environmentResourceOutputVariableBindings)).toEqual([
     expect.objectContaining({
@@ -289,7 +247,7 @@ async function expectDescriptorConnectionBinding(): Promise<void> {
   ]);
 }
 
-async function expectGeneratedPasswordStoredWithoutPlaintext(generatedPassword: string): Promise<void> {
+async function expectGeneratedPasswordStoredEncrypted(): Promise<void> {
   const variableRows: (typeof environmentVariableValues.$inferSelect)[] = await db
     .select()
     .from(environmentVariableValues);
@@ -301,15 +259,8 @@ async function expectGeneratedPasswordStoredWithoutPlaintext(generatedPassword: 
       targetResourceName: 'db',
     }),
   ]);
-  expect(JSON.stringify(variableRows)).not.toContain(generatedPassword);
-  expect(JSON.stringify(await db.select().from(variableChangeEvents))).not.toContain(generatedPassword);
-}
-
-async function expectClaimedDatabaseUrl(generatedPassword: string): Promise<void> {
-  const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
-  expect(claimedDeployment.runtimeEnv.DATABASE_URL).toBe(
-    `postgres://app:${generatedPassword}@db.production.smoke-web.resource.internal:5432/app`,
-  );
+  expect(variableRows[0]?.valueCiphertext).not.toBeNull();
+  expect(JSON.stringify(await db.select().from(variableChangeEvents))).not.toContain('valueCiphertext');
 }
 
 async function setServiceDatabaseUrlLiteral(installPayload: InstallResponse): Promise<void> {

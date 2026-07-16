@@ -79,21 +79,8 @@ class StartedSelfHostedUserSetupCommand implements SelfHostedUserSetupRunningCom
 
 const selfHostedUserSetupOutputLimit: number = 96_000;
 const selfHostedUserSetupForceKillDelayMs: number = 5_000;
-const selfHostedUserSetupDiagnosticsTimeoutMs: number = 15_000;
-const selfHostedUserSetupDockerCommandTimeoutMs: number = 60_000;
-const selfHostedUserSetupEnabledEnvName: string = 'COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E';
-export const selfHostedUserSetupNodeAgentLogPathEnvName: string =
-  'COMPARTMENT_SELF_HOSTED_USER_SETUP_NODE_AGENT_LOG_PATH';
 const selfHostedUserSetupRepoRoot: string = resolve(__dirname, '../../..');
 const selfHostedUserSetupCliBinPath: string = join(selfHostedUserSetupRepoRoot, '.compartment/cli-dist/compartment');
-export const selfHostedComposeFilesScript: string = `
-compose_files="-f /etc/compartment/docker-compose.self-hosted.yml"
-if [ -f /etc/compartment/docker-compose.self-hosted.local.yml ]; then
-  compose_files="$compose_files -f /etc/compartment/docker-compose.self-hosted.local.yml"
-fi
-`;
-export const selfHostedDockerComposeCommand: string =
-  'docker compose --project-directory /etc/compartment --env-file /etc/compartment/.env.self-hosted $compose_files';
 
 export async function assertBuiltCliAvailable(): Promise<void> {
   await access(selfHostedUserSetupCliBinPath).catch((): never => {
@@ -101,7 +88,7 @@ export async function assertBuiltCliAvailable(): Promise<void> {
   });
 }
 
-export function buildSelfHostedUserSetupCliArgv(args: readonly string[]): readonly string[] {
+function buildSelfHostedUserSetupCliArgv(args: readonly string[]): readonly string[] {
   return [selfHostedUserSetupCliBinPath, ...args];
 }
 
@@ -143,8 +130,7 @@ export async function runBuiltCliJsonCommandLine<TPayload>(
   input: SelfHostedUserSetupCliJsonCommandLineInput<TPayload>,
 ): Promise<TPayload> {
   const result: SelfHostedUserSetupCommandResult = await runBuiltCliCommandLine(input);
-  const diagnostics: string = result.exitCode === 0 ? '' : await readSelfHostedDiagnostics();
-  expectSuccessfulCommand(result, input.command, diagnostics);
+  expectSuccessfulCommand(result, input.command);
 
   return input.parser.parse(JSON.parse(result.stdout) as JsonValue);
 }
@@ -255,86 +241,14 @@ export function expectFailedCommand(result: SelfHostedUserSetupCommandResult, co
   ).not.toBe(0);
 }
 
-export async function removeLocalDockerImage(imageRef: string): Promise<void> {
-  const result: SelfHostedUserSetupCommandResult = await runCommand({
-    argv: ['docker', 'image', 'rm', '-f', imageRef],
-    timeoutMs: selfHostedUserSetupDockerCommandTimeoutMs,
-  });
-
-  expectSuccessfulCommand(result, `docker image rm ${imageRef}`);
-}
-
 export function formatCommandOutput(output: string): string {
   const trimmedOutput: string = output.trim();
 
   return trimmedOutput === '' ? '<empty>' : trimmedOutput;
 }
 
-export async function readSelfHostedDiagnostics(): Promise<string> {
-  if (process.env[selfHostedUserSetupEnabledEnvName] !== '1') {
-    return '';
-  }
-
-  const result: SelfHostedUserSetupCommandResult = await runCommand({
-    argv: ['sudo', '-n', 'sh', '-c', buildSelfHostedDiagnosticsScript()],
-    timeoutMs: selfHostedUserSetupDiagnosticsTimeoutMs,
-  });
-
-  return `diagnostics exit code: ${result.exitCode.toString()}
-diagnostics stderr:
-${formatCommandOutput(result.stderr)}
-diagnostics stdout:
-${formatCommandOutput(result.stdout)}`;
-}
-
 function formatDiagnostics(diagnostics: string): string {
   return diagnostics === '' ? '' : `\n\nself-hosted diagnostics:\n${diagnostics}`;
-}
-
-function buildSelfHostedDiagnosticsScript(): string {
-  return `
-set -eu
-if [ ! -f /etc/compartment/.env.self-hosted ] || [ ! -f /etc/compartment/docker-compose.self-hosted.yml ]; then
-  echo "install files missing"
-  exit 0
-fi
-${selfHostedComposeFilesScript}
-compose="${selfHostedDockerComposeCommand}"
-echo "## compose ps"
-$compose ps
-builder_container_id="$($compose ps -q builder || true)"
-if [ -n "$builder_container_id" ]; then
-  echo "## builder inspect"
-  docker inspect --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} error={{.State.Error}}' "$builder_container_id" || true
-fi
-for service in builder registry postgres api worker edge caddy; do
-  echo "## $service logs"
-  $compose logs --no-color --tail=120 "$service" || true
-done
-${renderNodeAgentLogDiagnosticsScript()}
-`;
-}
-
-function renderNodeAgentLogDiagnosticsScript(): string {
-  const logPath: string | undefined = process.env[selfHostedUserSetupNodeAgentLogPathEnvName];
-  if (logPath === undefined || logPath.trim() === '') {
-    return '';
-  }
-
-  return `echo "## node-agent logs"
-if [ -f ${quoteShellSingle(logPath)} ]; then
-  tail -n 120 ${quoteShellSingle(logPath)} || true
-else
-  echo "node-agent log missing at ${logPath}"
-fi
-if docker ps -a --format '{{.Names}}' | grep -qx 'compartment-node-agent-socket-proxy-e2e'; then
-  echo "## node-agent dind proxy logs"
-  docker logs --tail=120 compartment-node-agent-socket-proxy-e2e || true
-fi`;
-}
-
-function quoteShellSingle(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 function appendCappedOutput(output: string, chunk: string): string {

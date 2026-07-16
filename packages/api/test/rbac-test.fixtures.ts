@@ -21,7 +21,6 @@ import {
   authSessions,
   environments,
   localCredentials,
-  nodes,
   organizationMemberships,
   organizations,
   principals,
@@ -159,29 +158,13 @@ export async function seedProject(
   });
 }
 
-async function seedNode(harness: RbacTestHarness, nodeId: string = 'nod_local'): Promise<void> {
-  await harness.db
-    .insert(nodes)
-    .values({
-      id: nodeId,
-      name: nodeId,
-      nodeUrl: `/tmp/compartment/api-test/node/${nodeId}.sock`,
-      nodeSocketPath: `/tmp/compartment/api-test/node/${nodeId}.sock`,
-      nodeVersion: 'test',
-      updatedAt: new Date('2026-05-05T00:00:00.000Z'),
-    })
-    .onConflictDoNothing();
-}
-
 export async function seedEnvironment(
   harness: RbacTestHarness,
-  input: { id: string; name: string; nodeId?: string; projectId: string },
+  input: { id: string; name: string; projectId: string },
 ): Promise<void> {
-  await seedNode(harness, input.nodeId);
   await harness.db.insert(environments).values({
     id: input.id,
     name: input.name,
-    nodeId: input.nodeId ?? 'nod_local',
     projectId: input.projectId,
     updatedAt: new Date('2026-05-05T00:00:00.000Z'),
   });
@@ -304,14 +287,11 @@ function createRbacApiConfig(databaseUrl: string, scope: string): ApiConfig {
     auditRetentionCleanupMaxBatches: 100,
     auditFileSink: defaultAuditFileSinkConfig,
     rollbackRetentionLimit: null,
-    resourceBackupDirectory: join(tmpdir(), `compartment-${scope}-resource-backups`),
     runtimeControlToken: 'test-runtime-control-token',
-    runtimeDefaultUpstreamHost: '127.0.0.1',
     sessionSecret: 'test-secret',
     sessionTtlMs: 604_800_000,
     sourceArchiveDirectory: join(tmpdir(), `compartment-${scope}-source-archives`),
     sourceArchiveMaxBytes: 104_857_600,
-    nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
     systemApiSocketPath: `/tmp/compartment/${scope}-system-api.sock`,
     systemToken: 'test-system-token',
     throttle: defaultApiAuthThrottleConfig,

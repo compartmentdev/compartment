@@ -17,16 +17,6 @@ export interface UnixSocketPathOwner {
   readonly uid: number;
 }
 
-interface CompartmentUnixSocketPathPolicyInput {
-  readonly directoryLabel: string;
-  readonly directoryMode?: number;
-  readonly owner?: UnixSocketPathOwner;
-  readonly socketMode?: number;
-  readonly socketFileName: string;
-  readonly socketSubdirectory: string;
-  readonly variableName: string;
-}
-
 const fixedTmpRootPath: string = resolve('/', 'tmp');
 const fixedVarRunRootPath: string = resolve('/', 'var', 'run');
 const fixedVarTmpRootPath: string = resolve('/', 'var', 'tmp');
@@ -49,31 +39,6 @@ const sharedUnixSocketRootPaths: ReadonlySet<string> = new Set<string>(
     resolve(runtimeTmpRootPath, 'compartment'),
   ].map((path: string): string => resolve(path)),
 );
-
-export function createCompartmentUnixSocketPathPolicy(
-  input: CompartmentUnixSocketPathPolicyInput,
-): UnixSocketPathPolicy {
-  const temporaryExamplePath: string = buildCompartmentSocketExamplePath(fixedTmpRootPath, input, 'dev');
-  const runtimeExamplePath: string = buildCompartmentSocketExamplePath(fixedVarRunRootPath, input);
-
-  return {
-    directoryLabel: input.directoryLabel,
-    directoryMode: input.directoryMode ?? 0o700,
-    ...(input.owner === undefined ? {} : { owner: input.owner }),
-    privatePathExample: `${temporaryExamplePath} or ${runtimeExamplePath}`,
-    socketMode: input.socketMode ?? 0o600,
-    variableName: input.variableName,
-  };
-}
-
-function buildCompartmentSocketExamplePath(
-  rootPath: string,
-  input: CompartmentUnixSocketPathPolicyInput,
-  scope?: string,
-): string {
-  const scopedPathParts: string[] = scope === undefined ? [] : [scope];
-  return resolve(rootPath, 'compartment', ...scopedPathParts, input.socketSubdirectory, input.socketFileName);
-}
 
 export function prepareUnixSocketPath(socketPath: string, policy: UnixSocketPathPolicy): void {
   assertValidUnixSocketPath(socketPath, policy);

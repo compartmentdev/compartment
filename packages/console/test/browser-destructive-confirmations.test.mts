@@ -56,7 +56,6 @@ interface ProjectLifecycleDeploymentFixture {
     strategy: 'auto';
   };
   completedAt: null;
-  containerId: null;
   createdAt: string;
   failureMessage: null;
   health: 'pending';
@@ -79,11 +78,7 @@ interface ProjectLifecycleDeploymentFixture {
     type: 'http';
   };
   rollbackAvailable: false;
-  run: {
-    restart: {
-      policy: 'on-failure';
-    };
-  };
+  run: Record<string, never>;
   routeUrl: null;
   serviceName: string;
   status: 'stopped';
@@ -865,7 +860,6 @@ function createDeployResponse(deploymentRunId: string): DeployResponse {
           strategy: 'auto',
         },
         completedAt: null,
-        containerId: null,
         createdAt: '2026-04-21T09:00:00.000Z',
         failureMessage: null,
         health: 'pending',
@@ -888,11 +882,7 @@ function createDeployResponse(deploymentRunId: string): DeployResponse {
           type: 'http',
         },
         rollbackAvailable: false,
-        run: {
-          restart: {
-            policy: 'on-failure',
-          },
-        },
+        run: {},
         routeUrl: null,
         serviceName: 'web',
         status: 'running',
@@ -932,7 +922,6 @@ function createProjectLifecycleResponse(action: 'start' | 'stop'): ProjectLifecy
           strategy: 'auto',
         },
         completedAt: null,
-        containerId: null,
         createdAt: '2026-04-21T09:00:00.000Z',
         failureMessage: null,
         health: 'pending',
@@ -955,11 +944,7 @@ function createProjectLifecycleResponse(action: 'start' | 'stop'): ProjectLifecy
           type: 'http',
         },
         rollbackAvailable: false,
-        run: {
-          restart: {
-            policy: 'on-failure',
-          },
-        },
+        run: {},
         routeUrl: null,
         serviceName: 'web',
         status: 'stopped',

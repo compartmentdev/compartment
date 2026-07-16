@@ -10,12 +10,10 @@ export {
   type ResourceOutputQuery,
   type ResourceReadinessSummary,
   type ResourceResponse,
-  type ResourceRestartPolicy,
   type ResourceRuntimeStatus,
   type ResourceSummary,
   type ResourceTargetQuery,
   type ResourceVolumeSummary,
-  buildCompartmentResourceHostname,
   resourceDeleteRequestSchema,
   resourceDeleteResponseSchema,
   resourceListQuerySchema,
@@ -26,6 +24,7 @@ export {
   resourceResponseSchema,
   resourceTargetQuerySchema,
 } from './contracts/resources.contract';
+export { resourceReadinessTimeoutMaxMs } from './contracts/compartment-resource.contract';
 export {
   buildCompartmentResourceBootstrapPathname,
   compartmentResourceBootstrapPathnameTemplate,

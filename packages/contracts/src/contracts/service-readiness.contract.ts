@@ -45,7 +45,7 @@ const resolvedHttpReadinessConfigSchema: ContractSchema<ResolvedHttpReadinessCon
 export const compartmentServiceReadinessConfigSchema: ContractSchema<CompartmentServiceReadinessConfig> =
   compartmentHttpReadinessConfigSchema;
 
-export const resolvedServiceReadinessConfigSchema: ContractSchema<ResolvedServiceReadinessConfig> =
+const resolvedServiceReadinessConfigSchema: ContractSchema<ResolvedServiceReadinessConfig> =
   resolvedHttpReadinessConfigSchema;
 export const resolvedOptionalServiceReadinessConfigSchema: ContractSchema<ResolvedOptionalServiceReadinessConfig> =
   resolvedHttpReadinessConfigSchema.nullable();

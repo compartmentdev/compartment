@@ -61,7 +61,7 @@ Without `--service`, capture reads only the environment-scoped target. It does n
 service-specific bindings into the new group. With `--resource`, capture reads the resource target. Use `--effective`
 when you want the current winner map instead of direct rows only.
 
-Docker-backed resources declared in `compartment.yml` receive literal `env` values from the descriptor plus variables
+Kubernetes resources declared in `compartment.yml` receive literal `env` values from the descriptor plus variables
 set or bound directly to that resource target. You can create resource-scoped variables before the first deploy as long
 as the resource is declared under `resources.<name>` in local `compartment.yml`. The same local descriptor check applies
 when binding a group, importing variables, capturing variables, or running a local command for a resource target:

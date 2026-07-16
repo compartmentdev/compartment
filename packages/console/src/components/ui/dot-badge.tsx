@@ -6,14 +6,11 @@ export type DotBadgeIconName =
   | 'archived-queued'
   | 'attention'
   | 'blocked'
-  | 'checking-readiness'
-  | 'draining-previous'
   | 'failed'
   | 'invited'
   | 'not-deployed'
   | 'release'
   | 'rolled-back'
-  | 'starting-candidate'
   | 'stopped'
   | 'succeeded'
   | 'switching'
@@ -33,14 +30,11 @@ const statusIconUrls: Record<DotBadgeIconName, string> = {
   'archived-queued': new URL('../../assets/statuses/archived-queued.svg', import.meta.url).href,
   attention: new URL('../../assets/statuses/attention.svg', import.meta.url).href,
   blocked: new URL('../../assets/statuses/blocked.svg', import.meta.url).href,
-  'checking-readiness': new URL('../../assets/statuses/checking-readiness.svg', import.meta.url).href,
-  'draining-previous': new URL('../../assets/statuses/draining-previous.svg', import.meta.url).href,
   failed: new URL('../../assets/statuses/failed.svg', import.meta.url).href,
   invited: new URL('../../assets/statuses/invited.svg', import.meta.url).href,
   'not-deployed': new URL('../../assets/statuses/not-deployed.svg', import.meta.url).href,
   release: new URL('../../assets/statuses/release.svg', import.meta.url).href,
   'rolled-back': new URL('../../assets/statuses/rolled-back.svg', import.meta.url).href,
-  'starting-candidate': new URL('../../assets/statuses/starting-candidate.svg', import.meta.url).href,
   stopped: new URL('../../assets/statuses/stopped.svg', import.meta.url).href,
   succeeded: new URL('../../assets/statuses/succeeded.svg', import.meta.url).href,
   switching: new URL('../../assets/statuses/switching.svg', import.meta.url).href,

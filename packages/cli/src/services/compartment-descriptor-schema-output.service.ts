@@ -1,5 +1,5 @@
 import type { CompartmentDescriptorRelatedFile, CompartmentDescriptorSchemaResponse } from '@compartment/contracts';
-import { formatDeploymentReadiness, formatDeploymentRestartPolicy } from './deployment-output-format.service';
+import { formatDeploymentReadiness } from './deployment-output-format.service';
 
 export function createCompartmentDescriptorSchemaMessage(response: CompartmentDescriptorSchemaResponse): string {
   return joinSchemaSections(
@@ -40,13 +40,10 @@ function createSchemaRuleSection(response: CompartmentDescriptorSchemaResponse):
     `- supported kinds: ${response.rules.serviceKinds.join(', ')}`,
     ...formatKindSpecificRules(response),
     `- run fields: ${response.rules.runFields.join(', ')}`,
-    `- restart fields: ${response.rules.restartFields.join(', ')}`,
-    `- supported restart policies: ${response.rules.restartPolicies.join(', ')}`,
-    `- restart maxRetries is only valid with: ${response.rules.restartMaxRetriesPolicies.join(', ')}`,
     `- release fields: ${response.rules.releaseFields.join(', ')}`,
     `- readiness fields: ${response.rules.readinessFields.join(', ')}`,
     `- supported readiness types: ${response.rules.readinessTypes.join(', ')}`,
-    `- defaults: omitted build -> ${formatBuildDefaults(response)}; omitted kind -> ${response.defaults.serviceKind}; omitted run -> ${formatRunDefaults(response)}; omitted release -> ${formatReleaseDefaults(response)}; omitted readiness -> ${formatReadinessDefaults(response)}`,
+    `- defaults: omitted build -> ${formatBuildDefaults(response)}; omitted kind -> ${response.defaults.serviceKind}; omitted run -> ${formatRunDefaults()}; omitted release -> ${formatReleaseDefaults(response)}; omitted readiness -> ${formatReadinessDefaults(response)}`,
     '',
   ]);
 }
@@ -85,16 +82,12 @@ function formatBuildDefaults(response: CompartmentDescriptorSchemaResponse): str
   return defaults.join(', ');
 }
 
-function formatRunDefaults(response: CompartmentDescriptorSchemaResponse): string {
-  return [`image default start command`, `restart ${formatRestartDefault(response)}`].join(', ');
+function formatRunDefaults(): string {
+  return 'image default start command';
 }
 
 function formatReleaseDefaults(response: CompartmentDescriptorSchemaResponse): string {
   return response.defaults.serviceRelease === null ? 'disabled' : response.defaults.serviceRelease.command;
-}
-
-function formatRestartDefault(response: CompartmentDescriptorSchemaResponse): string {
-  return formatDeploymentRestartPolicy(response.defaults.serviceRun.restart);
 }
 
 function formatKindSpecificRules(response: CompartmentDescriptorSchemaResponse): string[] {

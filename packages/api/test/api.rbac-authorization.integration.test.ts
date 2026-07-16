@@ -14,7 +14,6 @@ import {
   createDeployDescriptor,
   injectDeployRequest,
   installCompartment,
-  registerLocalNode,
 } from './api-integration.harness';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RbacTransaction } from '../src/queries/rbac.query.types';
@@ -242,7 +241,6 @@ describe('rbac authorization integration', (): void => {
 
   it('enforces env-scoped readonly access, deploy transitions, variable readback requirements, and block revocation', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await seedProject(harness, {
       id: 'prj_123',
       name: 'billing',

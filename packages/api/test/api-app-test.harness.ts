@@ -8,7 +8,6 @@ import type { ApiApp } from '../src/app.types';
 import { readApiConfig, type ApiConfig, type ApiPublicIngressConfig } from '../src/config';
 import type { Database } from '../src/db/client';
 import { clearApiRuntime, configureApiRuntime } from '../src/runtime/runtime';
-import { assertNoIntegrationNodeAgentHarnessErrors } from './api-node-agent.integration-harness';
 
 interface ApiAppPair {
   app: ApiApp;
@@ -68,7 +67,6 @@ export function createApiIntegrationTestContext(databaseName: string, runtimeSlu
   process.env.COMPARTMENT_PUBLIC_INGRESS_IPV6 = '';
   process.env.COMPARTMENT_POSTGRES_PASSWORD = 'postgres';
   process.env.COMPARTMENT_EDGE_TOKEN = 'test-edge-token';
-  process.env.COMPARTMENT_NODE_AGENT_SOCKET = '/tmp/compartment/api-test/node/integration.sock';
   process.env.COMPARTMENT_SYSTEM_API_SOCKET = `/tmp/compartment/${runtimeSlug}/system-api.sock`;
   process.env.COMPARTMENT_SYSTEM_TOKEN = 'test-system-token';
   process.env.COMPARTMENT_THROTTLE_AUTH_LOGIN_ROUTE_MAX_REQUESTS = '30';
@@ -150,11 +148,7 @@ function buildIpv6Address(segments: readonly [string, string, string, string, st
 }
 
 export async function cleanupApiIntegrationRuntime(app: ApiApp, systemApp: ApiApp, pool: Pool): Promise<void> {
-  try {
-    assertNoIntegrationNodeAgentHarnessErrors();
-  } finally {
-    clearApiRuntime();
-    await Promise.allSettled([app.close(), systemApp.close()]);
-    await pool.end();
-  }
+  clearApiRuntime();
+  await Promise.allSettled([app.close(), systemApp.close()]);
+  await pool.end();
 }

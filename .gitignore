@@ -39,7 +39,6 @@ public-docs/.astro/
 .env.*
 !.env.example
 !.env.broker.example
-!.env.self-hosted.example
 .envrc
 
 research/repos/

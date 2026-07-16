@@ -1,114 +1,108 @@
 ---
 title: Install Compartment
-description: Install the CLI, bring up the self-hosted system, and log into it from other machines.
+description: Install the Kubernetes platform or CLI, connect to a control plane, or seed a repository development environment.
 ---
 
-Use this flow when you are creating a new Compartment runtime.
+## Install the CLI
 
-Compartment has two install steps:
-
-- install the CLI on the machine you are using;
-- install the Compartment system on the target server.
-
-## 1. Install the CLI
+Install the CLI with the public bootstrapper:
 
 ```bash
 curl -fsSL https://compartment.dev/install.sh | sh
 ```
 
-The public bootstrapper installs the CLI only by default.
-
-For an optional verified install from an immutable stable release, use GitHub CLI 2.81.0 or newer before running the installer:
+For a verified install from an immutable stable release, use GitHub CLI 2.81.0 or newer:
 
 ```bash
 gh release verify --repo compartmentdev/compartment
 gh release download --repo compartmentdev/compartment --pattern install.sh --clobber
 gh release verify-asset --repo compartmentdev/compartment ./install.sh
-sh ./install.sh --init-install
+sh ./install.sh
 ```
 
-This verifies the latest immutable GitHub Release and the downloaded `install.sh` asset. The verified release installer is pinned to its own stable release.
+## Connect to a control plane
 
-If you are already on the target server and want the installer to continue directly into system setup, use:
-
-```bash
-curl -fsSL https://compartment.dev/install.sh | sh -s -- --init-install
-```
-
-## 2. Install the system on the target server
-
-The current shipped system install command is:
-
-```bash
-compartment install
-```
-
-That command requires the CLI to already exist on the server. When you run the bootstrapper with `--init-install`, it installs the CLI first and then starts this same command.
-
-Default registry installs verify runtime image signatures with the bundled CLI verifier before they activate runtime files or start containers. If verification fails, rerun the install after upgrading to a matching CLI or fixing the published image signatures; the install directory stays retryable.
-
-The install creates a host service named `compartment-node-agent.service`. This service is used for deployments, logs,
-resource lifecycle operations, and runtime network cleanup. Install and update it with the packaged Compartment CLI for
-the runtime version you are running.
-
-Self-hosted installs reserve the host group `compartment-runtime` at GID `10001` and run API and worker containers as
-UID/GID `10001:10001`. Supporting services keep their service-specific runtime users. Resolve any existing host group
-name or GID conflicts before install; Compartment stops instead of reusing a different group identity.
-
-## 3. Complete the install prompts
-
-The install flow asks for:
-
-- the first admin email;
-- the first organization name;
-- the first admin password;
-- public HTTP and HTTPS ports.
-
-By default, `compartment install` uses the production managed-domain broker. Use `--base-domain`, `--local-runtime`, or `--dev` when you need an explicit non-managed-domain mode.
-
-If you use `compartment install --dev` on a machine that already talks to other Compartment installs, pass `--remote <name>` to keep the local dev session under its own remote profile:
-
-```bash
-compartment install --dev --remote local-dev
-```
-
-## 4. Check runtime status
-
-```bash
-sudo compartment system status
-```
-
-After install, the command prints the active Console URL and a `Login your CLI on this server` block.
-
-## 5. Log in from another machine
-
-On another machine, install the CLI and then use `compartment login` against the existing control-plane URL when that URL uses a certificate trusted by the machine:
+Log in with the Console URL supplied by your Compartment operator:
 
 ```bash
 compartment login --api-url https://console.example.com --organization acme-dev
 ```
 
-Pass `--email <email>` only when you want the browser login form prefilled for a specific user.
-
-If the same machine talks to more than one install, name the remote profile during login:
+Pass `--email <email>` to prefill the browser login form. Name the remote when one machine connects to multiple control planes:
 
 ```bash
 compartment login --remote prod-eu --api-url https://console.example.com
 ```
 
-If you want the public bootstrapper to install the CLI and immediately start the login flow, use:
+The public bootstrapper can install the CLI and immediately start the login flow:
 
 ```bash
 curl -fsSL https://compartment.dev/install.sh | sh -s -- --init-login --api-url https://console.example.com
 ```
 
-The installer prompts for the email address. For non-interactive automation, pass `--email <email>`.
+## Install the platform on Kubernetes
 
-Automation note: treat the install and system surfaces as contract-bound. Use the documented CLI flags and published responses, and do not depend on internal probe or control-plane routes that are not part of the public install workflow.
+The production platform is a Helm release. It requires Kubernetes 1.30 or newer, Helm 4.x, a default or explicitly
+selected `ReadWriteOnce` storage class, and nodes that can pull application images from the bundled registry.
+
+Create an operator values file. This example expects an external load balancer to terminate TLS and forward HTTP to
+the Caddy Service:
+
+```yaml
+platform:
+  startupStage: full
+  baseDomain: apps.example.com
+  publicProtocol: https
+  tlsMode: custom-http
+
+service:
+  caddy:
+    type: LoadBalancer
+
+storage:
+  storageClass: fast-rwo
+```
+
+Pin the `images.*.tag` values to one release or immutable `sha-*` tag. Supply the values under `secrets` through your
+normal secret-management workflow instead of committing them. Install from the matching source release:
+
+```bash
+helm upgrade --install compartment ./deploy/chart/compartment \
+  --namespace compartment \
+  --create-namespace \
+  --values compartment-values.yaml \
+  --rollback-on-failure \
+  --wait \
+  --wait-for-jobs \
+  --timeout 15m
+```
+
+Point `console.apps.example.com` and `*.apps.example.com` at the public load balancer. If your load balancer does not
+terminate TLS, choose a supported Caddy TLS mode and provide its required certificate or managed-domain configuration.
+
+The bundled registry is addressed inside the cluster as `<release-fullname>-registry-auth.<namespace>.svc:5000`.
+Kubelets do not use cluster DNS for image pulls, so configure the container runtime on every node with an equivalent
+registry mirror or route before deploying applications. The chart cannot mutate node-level container-runtime config.
+
+Verify the migration Job and platform workloads before inviting users:
+
+```bash
+kubectl --namespace compartment get jobs,pods,services
+```
+
+The chart does not publish `/internal/*`; only the documented control-plane and application paths pass through Caddy.
+
+## Repository development
+
+`install --dev` is the only CLI-owned platform setup mode. It seeds the local development API started from this repository and creates the first admin session:
+
+```bash
+compartment install --dev --remote local-dev
+```
+
+The CLI does not install or manage the production platform.
 
 Next steps:
 
-- Read [Install Modes](/install-operate/install-modes/).
-- Read [Install Domain](/install-operate/install-domain/).
 - Read [Login, Activation, and the Control Plane](/manage-access/login-activation-and-the-control-plane/).
 - Continue to [First Deploy](/quickstart/first-deploy/).

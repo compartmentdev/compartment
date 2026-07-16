@@ -1,12 +1,12 @@
 # Kubernetes Runtime
 
-Status: migration decision
+Status: implemented (F1 cutover)
 Updated: 2026-07-14
 
 ## Ownership
 
 `@compartment/kube-runtime` is the only package allowed to write workload
-objects to Kubernetes. It replaces `packages/node`; Kubernetes is the only
+objects to Kubernetes. Kubernetes is the only
 runtime target and there is no generic multi-orchestrator abstraction (D9).
 
 The database owns desired state, configuration, versions, history, and audit.
@@ -16,13 +16,19 @@ transport, observation, projections, and reconciliation decisions.
 
 ## Runtime boundary
 
-The package has exactly four side-effecting primitives:
+The package exposes seven Kubernetes transport primitives. Only `apply`,
+`delete`, and `runJob` write Kubernetes state:
 
 - `apply(bundle)` uses server-side apply with field manager `compartment`; a
   bootstrap-configured bundle may first create its allowed provisioning
   objects; a separate installation identity finishes by deleting explicitly
   named temporary authority, including after partial failure;
 - `observe(labels)` reads label-scoped informer caches;
+- `read(object)` performs a direct API-server read for ownership and freshness
+  fences;
+- `delete(objects)` deletes exact projected objects, with UID and resource
+  version preconditions where data ownership requires them;
+- `observePodMetrics(labels)` reads resource usage for label-selected pods;
 - `logs(ref)` reads workload or Job logs;
 - `runJob(spec)` applies a deterministic Job and reads its terminal result.
 
@@ -180,11 +186,9 @@ explicit retries use the target-bound bootstrap identity.
 
 ## Migration and deletion
 
-Replacement code has no compatibility fallback. Obsolete Docker/runtime-node
-coordination is deleted vertically in the integration branch, and cutover to
-`main` is one atomic merge (D31). P1 adds Kubernetes persistence fields and
-tables only; `nodes`, `nodeId`, `containerId`, `drainingContainerId`,
-`drainingNodeId`, and `upstream*` remain until cutover.
+Replacement code has no compatibility fallback. Obsolete host-runtime
+coordination is deleted vertically, and cutover to `main` is one atomic merge
+(D31). The squashed baseline contains Kubernetes persistence only.
 
 Every migration PR includes a delete list. Missing context is a stated PR
 blocker, not an inferred fallback.
@@ -206,5 +210,3 @@ the change until the PR contains a written justification.
 - a portable scheduler or a second orchestrator;
 - mirroring Kubernetes live state into PostgreSQL;
 - raw watches, client-side diff/apply, or `kubectl` runtime calls;
-- Docker-path removal before the integration cutover;
-- P10 end-to-end coverage.

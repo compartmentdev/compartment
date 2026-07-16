@@ -15,7 +15,6 @@ export interface StoredResourceDefinitionSnapshot {
   operationsJson: string;
   portsJson: string;
   readinessJson: string;
-  restartPolicy: string;
   runtimeDefinitionHash: string;
   version: StoredResourceDefinitionSnapshotVersion;
   volumesJson: string;
@@ -29,7 +28,6 @@ const storedResourceDefinitionSnapshotSchema: ZodType<StoredResourceDefinitionSn
   operationsJson: z.string(),
   portsJson: z.string(),
   readinessJson: z.string(),
-  restartPolicy: z.string(),
   runtimeDefinitionHash: z.string(),
   version: z.literal(storedResourceDefinitionSnapshotVersion),
   volumesJson: z.string(),
@@ -44,7 +42,6 @@ export function buildResourceDefinitionSnapshot(resource: ProjectResourceRow): S
     operationsJson: resource.operationsJson,
     portsJson: resource.portsJson,
     readinessJson: resource.readinessJson,
-    restartPolicy: resource.restartPolicy,
     runtimeDefinitionHash: resource.runtimeDefinitionHash,
     version: storedResourceDefinitionSnapshotVersion,
     volumesJson: resource.volumesJson,

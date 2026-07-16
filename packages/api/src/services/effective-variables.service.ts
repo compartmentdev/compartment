@@ -157,7 +157,7 @@ async function resolveResourceOutputVariable(
   binding: EnvironmentResourceOutputVariableBindingRow,
 ): Promise<StoredEffectiveVariable> {
   const resource: ProjectResourceRow = await resolveResourceOutputBindingResource(input, binding);
-  const namespaceId: string = await resolveResourceOutputNamespaceId(resource, input.environmentId);
+  const namespaceId: string = await resolveResourceOutputNamespaceId(input.environmentId);
   const resourceVariables: EffectiveVariable[] = resolveStoredEffectiveVariables(
     buildResourceOutputVariableLoadInput(input, binding),
     rows,

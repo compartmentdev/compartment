@@ -155,9 +155,7 @@ function resolveKnownResourceOutputPlaceholder(key: string, context: ResourceOut
     return context.projectName;
   }
   if (key === 'resource.host') {
-    return context.resource.runtimeKind === 'kubernetes'
-      ? kubeResourceServiceDns(context.resource.id, context.namespaceId)
-      : context.resource.hostname;
+    return kubeResourceServiceDns(context.resource.id, context.namespaceId);
   }
   if (key === 'resource.name') {
     return context.resource.name;

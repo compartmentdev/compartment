@@ -4,18 +4,21 @@ import type {
   ResourceProjectionRow,
   ResourceVolumeProjection,
 } from './kube-resource-projection.types';
+import type { KubeContainerPort, KubeReadinessProbe } from './kube-application-projection.types';
 import type {
   KubeDeploymentManifest,
   KubeManifest,
   KubePodTemplate,
   KubePodVolume,
   KubeProjectedContainer,
+  KubeServicePort,
   KubeVolumeMount,
 } from './kube-runtime.types';
 import { kubeNamespaceName, kubeResourceName, kubeResourceVolumeName, kubeSecretName } from './kube-naming';
 import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
+const resourceBackupVolumeHandle: string = 'backup-artifacts';
 
 /** Ordinary reconcile bundle. PVC creation is deliberately not representable here. */
 export function projectResourceManifests(row: ResourceProjectionRow, replicas: 0 | 1 = 1): KubeManifest[] {
@@ -60,7 +63,7 @@ function resourceDeployment(
     kind: 'Deployment',
     metadata: { labels, name, namespace },
     spec: {
-      progressDeadlineSeconds: 90,
+      progressDeadlineSeconds: resourceProgressDeadlineSeconds(row),
       replicas,
       selector: { matchLabels: labels },
       strategy: { type: 'Recreate' },
@@ -88,17 +91,12 @@ function resourcePodTemplate(row: ResourceProjectionRow, labels: Record<string, 
 
 function resourceContainer(row: ResourceProjectionRow): KubeProjectedContainer {
   return {
+    ...(row.command.length === 0 ? {} : { args: row.command }),
     env: secretEnvironment(row.env, kubeSecretName(row.secretId)),
     image: row.image,
     name: 'resource',
-    ports: [{ containerPort: row.containerPort, name: 'resource', protocol: 'TCP' }],
-    readinessProbe: {
-      failureThreshold: 3,
-      periodSeconds: 2,
-      successThreshold: 1,
-      tcpSocket: { port: 'resource' },
-      timeoutSeconds: 1,
-    },
+    ...(row.ports.length === 0 ? {} : { ports: row.ports.map(resourceContainerPort) }),
+    ...(row.readiness === null ? {} : { readinessProbe: resourceReadinessProbe(row.readiness.port) }),
     volumeMounts: row.volumes.map(
       (volume: ResourceVolumeProjection): KubeVolumeMount => ({
         mountPath: volume.mountPath,
@@ -106,6 +104,24 @@ function resourceContainer(row: ResourceProjectionRow): KubeProjectedContainer {
       }),
     ),
   };
+}
+
+function resourceReadinessProbe(port: number): KubeReadinessProbe {
+  return {
+    failureThreshold: 3,
+    periodSeconds: 2,
+    successThreshold: 1,
+    tcpSocket: { port },
+    timeoutSeconds: 1,
+  };
+}
+
+function resourceContainerPort(port: number): KubeContainerPort {
+  return { containerPort: port, name: resourcePortName(port), protocol: 'TCP' };
+}
+
+function resourceProgressDeadlineSeconds(row: ResourceProjectionRow): number {
+  return row.readiness === null ? 90 : Math.ceil(row.readiness.timeoutMs / 1_000);
 }
 
 function resourceService(
@@ -119,24 +135,38 @@ function resourceService(
     kind: 'Service',
     metadata: { labels, name, namespace },
     spec: {
-      ports: [{ name: 'resource', port: row.containerPort, protocol: 'TCP', targetPort: row.containerPort }],
+      clusterIP: 'None',
+      ports: row.ports.map(
+        (port: number): KubeServicePort => ({
+          name: resourcePortName(port),
+          port,
+          protocol: 'TCP',
+          targetPort: port,
+        }),
+      ),
       selector: labels,
     },
   };
+}
+
+function resourcePortName(port: number): string {
+  return `tcp-${port}`;
 }
 
 export function projectResourceClaimDeleteTargets(
   row: ResourceProjectionRow,
   observed: readonly ObservedResourceClaim[],
 ): KubeManifest[] {
-  const observedByName: Map<string, ObservedResourceClaim> = new Map<string, ObservedResourceClaim>(
-    observed.map((claim: ObservedResourceClaim): [string, ObservedResourceClaim] => [claim.claimName, claim]),
+  const claimsByName: Map<string, KubeManifest> = new Map<string, KubeManifest>(
+    projectResourceBootstrapClaims(row).map((claim: KubeManifest): [string, KubeManifest] => [
+      claim.metadata?.name ?? '',
+      claim,
+    ]),
   );
-  return projectResourceBootstrapClaims(row).map((claim: KubeManifest): KubeManifest => {
-    const name: string = claim.metadata?.name ?? '';
-    const identity: ObservedResourceClaim | undefined = observedByName.get(name);
-    if (identity?.uid === null || identity?.uid === undefined || identity.resourceVersion === null) {
-      throw new Error(`Resource reconcile refused: expected PVC ${name} identity is missing.`);
+  return observed.map((identity: ObservedResourceClaim): KubeManifest => {
+    const claim: KubeManifest | undefined = claimsByName.get(identity.claimName);
+    if (claim === undefined || identity.uid === null || identity.resourceVersion === null) {
+      throw new Error(`Resource reconcile refused: expected PVC ${identity.claimName} identity is missing.`);
     }
     return {
       ...claim,
@@ -147,7 +177,7 @@ export function projectResourceClaimDeleteTargets(
 
 /** Explicit bootstrap-only PVC projection. Never add this result to projectResourceManifests. */
 export function projectResourceBootstrapClaims(row: ResourceProjectionRow): KubeManifest[] {
-  return [...row.volumes, { mountPath: '/backup', size: '1Gi', volumeHandle: 'backup-artifacts' }].map(
+  return [...row.volumes, { mountPath: '/backup', size: '1Gi', volumeHandle: resourceBackupVolumeHandle }].map(
     (volume: ResourceVolumeProjection): KubeManifest => ({
       apiVersion: 'v1',
       kind: 'PersistentVolumeClaim',

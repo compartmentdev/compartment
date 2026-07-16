@@ -7,7 +7,6 @@ import {
   readPackageVersion,
   readReleasePleaseManifestVersion,
   readReleaseVersion,
-  readSelfHostedExampleVersion,
   readWorkspacePackageJsonPaths,
 } from './release-version-files.mjs';
 
@@ -25,13 +24,6 @@ export async function assertReleaseVersion({ releaseVersion, repositoryRoot }) {
         `${relative(repositoryRoot, packageJsonPath)} has version ${packageVersion}, expected ${normalizedReleaseVersion}`,
       );
     }
-  }
-
-  const selfHostedExampleVersion = await readSelfHostedExampleVersion(repositoryRoot);
-  if (selfHostedExampleVersion !== normalizedReleaseVersion) {
-    mismatches.push(
-      `.env.self-hosted.example has COMPARTMENT_NODE_VERSION=${selfHostedExampleVersion}, expected ${normalizedReleaseVersion}`,
-    );
   }
 
   const manifestVersion = await readReleasePleaseManifestVersion(repositoryRoot);
@@ -81,7 +73,7 @@ async function main(args) {
   });
 
   process.stdout.write(
-    `Release version ${result.releaseVersion} matches ${result.packageCount.toString()} package manifests, .env.self-hosted.example, and .release-please-manifest.json.\n`,
+    `Release version ${result.releaseVersion} matches ${result.packageCount.toString()} package manifests and .release-please-manifest.json.\n`,
   );
 }
 

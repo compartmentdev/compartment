@@ -16,6 +16,8 @@ import {
   setProjectArchivedAtWithExecutor,
 } from '../queries/projects.query';
 import { isUniqueConstraintError } from '../queries/query-error';
+import { cancelProjectProductJobsForArchive } from '../queries/product-job-claim.query';
+import { cancelResourceReconcileRunsForProjectArchive } from '../queries/resource-reconcile-project.query';
 import type { DeleteProjectResult, ProjectRow, ProjectsMutationTransaction } from '../queries/projects.query.types';
 import {
   clearDisconnectedBindingProjectReferences,
@@ -64,7 +66,10 @@ export async function archiveProjectForPrincipal(input: ProjectScopeInput): Prom
     async (transaction: ProjectsMutationTransaction): Promise<ProjectRow> => {
       const project: ProjectRow = await requireArchivableProject(transaction, projectScope.id);
       await excludeGitSourceProjectBindingWithinTransaction(transaction, project.id, input.principalId, new Date());
-      return await ensureArchivedProject(transaction, project);
+      const persistedArchivedProject: ProjectRow = await ensureArchivedProject(transaction, project);
+      await cancelProjectProductJobsForArchive(transaction, project.id, new Date());
+      await cancelResourceReconcileRunsForProjectArchive(transaction, project.id, new Date());
+      return persistedArchivedProject;
     },
   );
   await cleanupArchivedProjectRuntime(archivedProject);

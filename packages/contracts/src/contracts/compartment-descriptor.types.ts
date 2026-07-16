@@ -15,20 +15,7 @@ import type {
   CompartmentServiceReleaseConfig,
   ResolvedOptionalCompartmentServiceReleaseConfig,
 } from './service-release.contract';
-import type {
-  CompartmentServiceRestartMaxRetriesPolicy,
-  CompartmentServiceRestartPolicy,
-  CompartmentServiceRunConfig,
-  ResolvedCompartmentServiceRunConfig,
-} from './service-run.contract';
-
-export interface CompartmentResourceRestartConfig {
-  policy?: CompartmentServiceRestartPolicy | undefined;
-}
-
-export interface ResolvedCompartmentResourceRestartConfig {
-  policy: CompartmentServiceRestartPolicy;
-}
+import type { CompartmentServiceRunConfig, ResolvedCompartmentServiceRunConfig } from './service-run.contract';
 
 export type CompartmentResourceEnv = Record<string, string>;
 
@@ -107,7 +94,6 @@ export interface CompartmentAuthoredResourceConfig {
   ports?: number[] | undefined;
   preset?: CompartmentResourcePreset | undefined;
   readiness?: CompartmentResourceReadinessConfig | undefined;
-  restart?: CompartmentResourceRestartConfig | undefined;
   volumes?: CompartmentResourceVolumes | undefined;
 }
 
@@ -177,7 +163,6 @@ export interface CompartmentDescriptorSchemaDefaults {
   readiness: ResolvedOptionalServiceReadinessConfig;
   serviceRelease: ResolvedOptionalCompartmentServiceReleaseConfig;
   resourceReadiness: ResolvedOptionalCompartmentResourceReadinessConfig;
-  resourceRestart: ResolvedCompartmentResourceRestartConfig;
   serviceBuild: ResolvedCompartmentServiceBuildConfig;
   serviceKind: CompartmentServiceKind;
   serviceRun: ResolvedCompartmentServiceRunConfig;
@@ -213,12 +198,7 @@ export interface CompartmentDescriptorSchemaRules {
   resourcePresets: CompartmentResourcePreset[];
   resourceReadinessFields: string[];
   resourceReadinessTypes: 'tcp'[];
-  resourceRestartFields: string[];
-  resourceRestartPolicies: CompartmentServiceRestartPolicy[];
   resourceValueForms: 'resource_config'[];
-  restartFields: string[];
-  restartMaxRetriesPolicies: CompartmentServiceRestartMaxRetriesPolicy[];
-  restartPolicies: CompartmentServiceRestartPolicy[];
   runFields: string[];
   runForbiddenKinds: CompartmentServiceKind[];
   serviceConfigFields: string[];

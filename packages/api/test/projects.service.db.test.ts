@@ -10,6 +10,7 @@ import {
   organizationMemberships,
   organizations,
   principals,
+  productJobRuns,
   projects,
   sourceBindings,
   sourceExcludedDescriptors,
@@ -18,6 +19,7 @@ import {
   sources,
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
+import { claimProductJob } from '../src/queries/product-job-runs.query';
 import type { RbacTransaction } from '../src/queries/rbac.query.types';
 import type { resolveActiveProjectScope, resolveRequiredProjectScope } from '../src/services/project-scope.service';
 import {
@@ -82,14 +84,11 @@ const apiConfig: ApiConfig = {
   auditFileSink: defaultAuditFileSinkConfig,
   rollbackRetentionLimit: null,
   runtimeControlToken: 'test-runtime-control-token',
-  runtimeDefaultUpstreamHost: '127.0.0.1',
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -255,6 +254,40 @@ describe('projects service', (): void => {
         status: 'canceled',
       },
     ]);
+  });
+
+  it('durably cancels queued release Jobs in the archive transaction', async (): Promise<void> => {
+    mocks.resolveRequiredProjectScope.mockResolvedValue(
+      createResolvedProjectScope({ archivedAt: null, projectId: 'prj_plain', projectName: 'plain' }),
+    );
+    await db.insert(productJobRuns).values({
+      commandJson: '["bin/release"]',
+      envJson: '{}',
+      id: 'job_archived_release',
+      identityId: 'dep_archived_release',
+      image: 'registry.example/release@sha256:abc',
+      imagePullSecretId: 'pull-project',
+      jobClass: 'release',
+      namespace: 'cpt-prj-plain',
+      projectId: 'prj_plain',
+      status: 'queued',
+      timeoutMs: 30_000,
+    });
+
+    await archiveProjectForPrincipal({
+      organizationSlug: 'acme-dev',
+      principalId: 'prn_git_sources',
+      projectName: 'plain',
+    });
+
+    await expect(db.select().from(productJobRuns)).resolves.toMatchObject([
+      { finalizedAt: null, projectId: 'prj_plain', status: 'timed-out' },
+    ]);
+    await db.delete(projects).where(eq(projects.id, 'prj_plain'));
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_archived_release' },
+      persistedResult: { status: 'timed-out' },
+    });
   });
 
   it.each([

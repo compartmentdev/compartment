@@ -18,9 +18,8 @@ import {
   readResourcePods,
   readRollbackManifest,
   scaleDownAndAwaitTermination,
-  waitUntil,
-  waitForFreshResourceDeployment,
 } from './worker-resource-reconcile-observation.service';
+import { waitForFreshResourceDeployment, waitUntil } from './worker-resource-reconcile-wait.service';
 import { executeManagedDelete } from './worker-resource-delete.service';
 import type {
   CompleteResourceReconcileClaim,

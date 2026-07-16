@@ -1,6 +1,5 @@
 import { CronExpressionParser } from 'cron-parser';
 import { z } from 'zod';
-import { compartmentServiceRestartPolicyValues, type CompartmentServiceRestartPolicy } from './service-run.contract';
 import { variableKeyNameSchema } from './variable-key.contract';
 import type {
   CompartmentAuthoredResourceConfig,
@@ -12,7 +11,6 @@ import type {
   CompartmentResourceOperationScheduleInterval,
   CompartmentResourceOutputConfig,
   CompartmentResourceReadinessConfig,
-  CompartmentResourceRestartConfig,
 } from './compartment-descriptor.types';
 import {
   compartmentResourceGeneratedVariablesSchema,
@@ -36,6 +34,7 @@ export const compartmentResourceReadinessFieldNames: readonly ['type', 'port', '
   'port',
   'timeoutMs',
 ];
+export const resourceReadinessTimeoutMaxMs: number = 300_000;
 export const compartmentResourceOperationFieldNames: readonly ['command', 'env', 'image', 'schedule'] = [
   'command',
   'env',
@@ -54,7 +53,6 @@ export const compartmentResourceOperationRetentionFieldNames: readonly ['include
   'keepLast',
   'maxAgeDays',
 ];
-export const compartmentResourceRestartFieldNames: readonly ['policy'] = ['policy'];
 export const compartmentDescriptorResourceConfigFieldNames: readonly [
   'command',
   'env',
@@ -65,7 +63,6 @@ export const compartmentDescriptorResourceConfigFieldNames: readonly [
   'ports',
   'preset',
   'readiness',
-  'restart',
   'volumes',
 ] = [
   'command',
@@ -77,23 +74,18 @@ export const compartmentDescriptorResourceConfigFieldNames: readonly [
   'ports',
   'preset',
   'readiness',
-  'restart',
   'volumes',
 ];
 export const compartmentDescriptorResourceConfigRequiredFieldSets: readonly [readonly ['image'], readonly ['preset']] =
   [['image'], ['preset']];
 export const compartmentResourceOutputFieldNames: readonly ['sensitive', 'value'] = ['sensitive', 'value'];
+const compartmentResourceBackupVolumeHandle: string = 'backup-artifacts';
 
-const compartmentResourceRestartConfigSchema: ContractSchema<CompartmentResourceRestartConfig> = z
-  .object({
-    policy: z.enum(compartmentServiceRestartPolicyValues).optional(),
-  })
-  .strict();
 const compartmentResourceReadinessConfigSchema: ContractSchema<CompartmentResourceReadinessConfig> = z
   .object({
     type: z.literal('tcp'),
     port: z.number().int().min(1).max(65_535),
-    timeoutMs: z.number().int().positive().max(300_000).optional(),
+    timeoutMs: z.number().int().positive().max(resourceReadinessTimeoutMaxMs).optional(),
   })
   .strict();
 const compartmentResourceEnvValueSchema: ContractSchema<string> = z.string();
@@ -185,10 +177,12 @@ const compartmentAuthoredResourceConfigInputSchema: ContractSchema<
     image: z.string().min(1).optional(),
     operations: compartmentResourceOperationsConfigSchema.optional(),
     outputs: z.record(compartmentResourceOutputNameSchema, compartmentResourceOutputConfigSchema).optional(),
-    ports: z.array(z.number().int().min(1).max(65_535)).optional(),
+    ports: z
+      .array(z.number().int().min(1).max(65_535))
+      .refine((ports: number[]): boolean => new Set(ports).size === ports.length, 'Resource ports must be unique.')
+      .optional(),
     preset: z.enum(compartmentResourcePresetValues).optional(),
     readiness: compartmentResourceReadinessConfigSchema.optional(),
-    restart: compartmentResourceRestartConfigSchema.optional(),
     volumes: z.record(createResourceVolumeNameSchema(), compartmentResourceVolumeValueSchema).optional(),
   })
   .strict()
@@ -203,6 +197,13 @@ const compartmentAuthoredResourceConfigInputSchema: ContractSchema<
 
     validateCompartmentResourcePresetOverrides(resource, context);
     validateCompartmentResourceGeneratedVariables(resource, context);
+    if (resource.volumes?.[compartmentResourceBackupVolumeHandle] !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${compartmentResourceBackupVolumeHandle} is reserved for managed backups.`,
+        path: ['volumes', compartmentResourceBackupVolumeHandle],
+      });
+    }
   })
   .transform(resolveCompartmentAuthoredResourceConfigInput);
 
@@ -229,10 +230,6 @@ export const compartmentAuthoredResourceConfigSchema: ContractSchema<
   CompartmentAuthoredResourceConfig,
   CompartmentAuthoredResourceConfigInput
 >;
-
-export function readCompartmentResourceRestartPolicies(): CompartmentServiceRestartPolicy[] {
-  return [...compartmentServiceRestartPolicyValues];
-}
 
 export function readCompartmentResourceOperationScheduleIntervals(): [
   CompartmentResourceOperationScheduleInterval,

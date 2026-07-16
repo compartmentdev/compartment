@@ -7,7 +7,7 @@ This guide is about deploying application code into an existing Compartment inst
 
 The Compartment platform is installed separately. Here, you are deploying the apps that run on top of it.
 
-Use it when your app can build into a container image and run inside Docker. That includes internal tools, admin panels, back offices, APIs, and apps produced by AI coding agents such as Codex as well as hand-written applications.
+Use it when your app can build into a container image and run on Kubernetes. That includes internal tools, admin panels, back offices, APIs, and apps produced by AI coding agents such as Codex as well as hand-written applications.
 
 ## Local checkout deploy flow
 
@@ -80,7 +80,7 @@ Selected, non-ignored archive entries must also be symlink-free. If the descript
 selected service paths, or included source paths resolve to symlinks, `compartment deploy` fails before rollout with a
 path-specific validation error.
 
-If `compartment.yml` declares top-level `resources`, deploy reconciles those Docker-backed resources before app services.
+If `compartment.yml` declares top-level `resources`, deploy reconciles those Kubernetes resources before app services.
 Inspect them with `compartment resource list`, `inspect`, and `logs`.
 
 ## Working across installs and environments

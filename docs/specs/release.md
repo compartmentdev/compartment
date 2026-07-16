@@ -1,7 +1,7 @@
 # Application Release Spec
 
 Status: shipped
-Updated: 2026-05-20
+Updated: 2026-07-15
 
 This document captures the intended release-step contract for services in `compartment.yml`. The release step is a service-local deploy stage that runs after build and before candidate start.
 
@@ -23,7 +23,7 @@ The canonical public noun is `release`.
 ## Execution Invariants
 
 - Release runs from the already built image.
-- Release executes on the target node, not on the build worker.
+- Release executes as a Kubernetes Job in the target project namespace, not in the image-build environment.
 - The release container receives the same effective runtime variables as the target service.
 - Release runs once per deploy attempt, before candidate start and before route switching.
 - Promote, rollback, and start reuse an existing image and do not rerun release.
@@ -32,8 +32,8 @@ The canonical public noun is `release`.
 
 ## Ownership And Boundaries
 
-- Worker owns image build orchestration and handoff.
-- Node owns release execution and later candidate runtime start.
+- Worker owns image build orchestration, release-Job execution, and deployment reconciliation.
+- `kube-runtime` owns the Job and application workload writes.
 - Release is runtime-targeted by design because common use cases need runtime connectivity such as `DATABASE_URL`.
 - Build-host hooks, project-wide release hooks, repo-authored timeout tuning, and long-running release sidecars are out of scope for v1.
 

@@ -7,7 +7,8 @@ describe('deployment inspect output service', (): void => {
     const message: string = createInspectResultMessage(createInspectResponse(), true);
 
     expect(message).toContain('Route Host: n/a');
-    expect(message).toContain('Upstream Host: n/a');
+    expect(message).toContain('Service Host: n/a');
+    expect(message).toContain('Service Port: n/a');
     expect(message).not.toContain('Route Host: smoke-web.localhost');
   });
 
@@ -24,24 +25,21 @@ describe('deployment inspect output service', (): void => {
     expect(message).toContain('Label: release 42');
     expect(message).toContain('Build Packages: build-essential');
     expect(message).toContain('Runtime Packages: libnss3, libxss1');
-    expect(message).toContain('Restart Policy: on-failure');
   });
 
-  it('shows Kubernetes runtime kind when no container id exists', (): void => {
+  it('shows Kubernetes service topology', (): void => {
     const response: DeploymentInspectResponse = createInspectResponse();
     response.deployments[0]!.runtime = {
-      containerId: null,
       imageRef: 'registry.example/app@sha256:abc',
       routeHost: 'smoke-web.localhost',
-      runtimeKind: 'kubernetes',
-      upstreamHost: 'app-smoke.cpt-smoke.svc',
-      upstreamPort: 80,
+      serviceHost: 'app-smoke.cpt-smoke.svc',
+      servicePort: 80,
     };
 
     const message: string = createInspectResultMessage(response, true);
 
-    expect(message).toContain('Runtime Container: n/a');
-    expect(message).toContain('Runtime Kind: kubernetes');
+    expect(message).toContain('Service Host: app-smoke.cpt-smoke.svc');
+    expect(message).toContain('Service Port: 80');
   });
 
   it('shows redacted topology when inspect hides sensitive runtime details', (): void => {
@@ -50,15 +48,13 @@ describe('deployment inspect output service', (): void => {
         label: 'release 42',
         routeHost: 'smoke-web.localhost',
         sensitiveTopologyVisible: false,
-        upstreamHost: '127.0.0.1',
-        upstreamPort: 31000,
       }),
       true,
     );
 
     expect(message).toContain('Route Host: smoke-web.localhost');
-    expect(message).toContain('Upstream Host: redacted');
-    expect(message).toContain('Upstream Port: redacted');
+    expect(message).toContain('Service Host: redacted');
+    expect(message).toContain('Service Port: redacted');
     expect(message).toContain('Label: release 42');
   });
 
@@ -94,8 +90,6 @@ interface CreateInspectResponseInput {
   routeHost?: string | null | undefined;
   runtimePackages?: string[] | undefined;
   sensitiveTopologyVisible?: boolean | undefined;
-  upstreamHost?: string | null | undefined;
-  upstreamPort?: number | null | undefined;
 }
 
 function createInspectResponse(input: CreateInspectResponseInput = {}): DeploymentInspectResponse {
@@ -110,9 +104,7 @@ function createInspectResponse(input: CreateInspectResponseInput = {}): Deployme
       strategy: 'auto',
     },
     completedAt: '2026-03-24T10:00:00.000Z',
-    containerId: 'container_123',
     createdAt: '2026-03-24T09:00:00.000Z',
-    drain: null,
     failureMessage: null,
     health: 'healthy',
     id: 'dep_123',
@@ -134,15 +126,9 @@ function createInspectResponse(input: CreateInspectResponseInput = {}): Deployme
       type: 'http',
     },
     rollbackAvailable: false,
-    run: {
-      restart: {
-        policy: 'on-failure',
-      },
-    },
+    run: {},
     routes: [],
     routeHost: input.routeHost ?? null,
-    upstreamHost: input.upstreamHost ?? null,
-    upstreamPort: input.upstreamPort ?? null,
     routeUrl: null,
     runtime: null,
     serviceName: 'web',

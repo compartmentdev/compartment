@@ -50,23 +50,23 @@ Exports are generated synchronously for the request and are not stored as separa
 
 Each export is capped at 10,000 events. If the selected filters match more events, the command fails with `audit_export_too_large`; narrow the time range or add filters such as `--event`, `--actor`, or `--target-type`.
 
-## Local File Sink
+## File Sink
 
-Self-hosted installs can mirror audit events to local NDJSON files. The database remains the source of truth; the file sink is an operator-controlled export stream for local collectors.
+Kubernetes installs can mirror audit events to NDJSON files on the API persistent volume. The database remains the source of truth; the file sink is an operator-controlled export stream for collectors that can read that volume.
 
 The sink is disabled by default:
 
-```bash
-COMPARTMENT_AUDIT_FILE_SINK_ENABLED=false
-COMPARTMENT_AUDIT_FILE_SINK_DIR=/var/lib/compartment/audit-logs
-COMPARTMENT_AUDIT_FILE_SINK_ROTATE_INTERVAL=1d
-COMPARTMENT_AUDIT_FILE_SINK_ROTATE_SIZE=64M
-COMPARTMENT_AUDIT_FILE_SINK_RETENTION_FILES=30
+```yaml
+platform:
+  auditFileSinkEnabled: false
+  auditFileSinkRotateInterval: 1d
+  auditFileSinkRotateSize: 64M
+  auditFileSinkRetentionFiles: 30
 ```
 
 When enabled, Compartment writes sanitized audit events to `audit.ndjson`, rotates by time or size, compresses rotated files with gzip, and keeps the configured number of rotated files.
 
-Packaged Docker installs bind-mount `COMPARTMENT_AUDIT_FILE_SINK_DIR` for the API container. The CLI creates and repairs that host directory during install, update, and restart; it stays empty until `COMPARTMENT_AUDIT_FILE_SINK_ENABLED=true`. When the sink starts, Compartment creates audit files with owner-only permissions.
+The chart stores the files under `/var/lib/compartment/audit-logs` on the API PVC. Size `storage.api` for source archives and audit files together. The directory stays empty until `auditFileSinkEnabled` is true. When the sink starts, Compartment creates audit files with owner-only permissions.
 
 ## Retention Policy
 

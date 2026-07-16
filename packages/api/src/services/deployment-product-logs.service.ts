@@ -32,7 +32,7 @@ export async function ingestDeploymentProductLogs(events: ProductLogIngestEvent[
         const resourceId: string | undefined = resolveResourceIdentity(event, resourceIdentities);
         return resourceId === undefined ? [] : [{ ...event, resourceId }];
       }
-      const deploymentId: string | undefined = resolveDeploymentIdentity(event, identities, deploymentByContainer);
+      const deploymentId: string | undefined = resolveDeploymentIdentity(event, deploymentByContainer);
       return deploymentId === undefined ? [] : [{ ...event, deploymentId }];
     },
   );
@@ -78,20 +78,9 @@ function resourceIdsFromEvents(events: ProductLogIngestEvent[]): string[] {
 
 function resolveDeploymentIdentity(
   event: ProductLogIngestEvent,
-  rows: DeploymentLogIdentityRow[],
   deploymentByContainer: ReadonlyMap<string, string>,
 ): string | undefined {
-  const direct: string | undefined = deploymentByContainer.get(identityKey(event.namespace, event.containerName));
-  if (direct !== undefined || event.containerName !== 'app') {
-    return direct;
-  }
-  const occurredAt: number = Date.parse(event.timestamp);
-  return rows.findLast(
-    (row: DeploymentLogIdentityRow): boolean =>
-      row.createdAt.getTime() <= occurredAt &&
-      row.namespace === event.namespace &&
-      event.podName.startsWith(`${row.deploymentName}-`),
-  )?.deploymentId;
+  return deploymentByContainer.get(identityKey(event.namespace, event.containerName));
 }
 
 export async function readStoredDeploymentProductLogs(

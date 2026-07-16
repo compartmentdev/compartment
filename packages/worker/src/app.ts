@@ -1,23 +1,17 @@
-import pino from 'pino';
-import type { WorkerRecoverDeploymentsMode, WorkerRecoverDeploymentsResponse } from '@compartment/contracts';
 import { prewarmSourceBuildToolchain } from '@compartment/docker';
-import {
-  createCompartmentRequester,
-  isCompartmentRequestError,
-  recoverRunningDeployments,
-  type CompartmentRequester,
-} from '@compartment/sdk';
+import type { WorkerRecoverOrphanedBuildClaimsResponse } from '@compartment/contracts';
+import { createCompartmentRequester, isCompartmentRequestError, recoverOrphanedBuildClaims } from '@compartment/sdk';
+import pino from 'pino';
 import { readWorkerConfig, type WorkerConfig } from './config';
+import { createKubeControllerHosts, type KubeControllerHost } from './kube-controller-host';
+import { runKubeControllerLoop } from './kube-controller-loop';
 import { buildWorkerCaughtErrorLogPayload } from './logging/worker-error-log';
 import type { WorkerCaughtError } from './logging/worker-error-log.types';
-import { cleanupWorkerArtifacts } from './services/worker-artifact-cleanup.service';
 import { runWorkerIteration } from './services/worker.service';
-import { createKubeControllerHost, type KubeControllerHost } from './kube-controller-host';
-import { runKubeControllerLoop } from './kube-controller-loop';
 
-interface WorkerRuntimeState {
+interface WorkerState {
   hasReachedApi: boolean;
-  recoveredOrphanedDeployments: boolean;
+  recoveredOrphanedBuildClaims: boolean;
 }
 
 interface WorkerFetchError extends Error {
@@ -28,11 +22,11 @@ interface WorkerFetchError extends Error {
 
 export async function runWorker(config: WorkerConfig = readWorkerConfig()): Promise<void> {
   const logger: pino.Logger<never, boolean> = createWorkerLogger(config);
-  const state: WorkerRuntimeState = createWorkerRuntimeState();
-  const kubeController: KubeControllerHost = createKubeControllerHost(config);
+  const state: WorkerState = { hasReachedApi: false, recoveredOrphanedBuildClaims: false };
+  const kubeControllers: KubeControllerHost[] = createKubeControllerHosts(config);
 
   void prewarmSourceBuildToolchainAtStartup(logger);
-  if (kubeController.enabled) {
+  for (const kubeController of kubeControllers) {
     void runKubeControllerLoop(config, logger, kubeController);
   }
   await runWorkerLoop(config, logger, state);
@@ -40,18 +34,11 @@ export async function runWorker(config: WorkerConfig = readWorkerConfig()): Prom
 
 function createWorkerLogger(config: WorkerConfig): pino.Logger<never, boolean> {
   return pino({
-    level: config.logLevel,
     base: {
       service: 'worker',
     },
+    level: config.logLevel,
   });
-}
-
-function createWorkerRuntimeState(): WorkerRuntimeState {
-  return {
-    hasReachedApi: false,
-    recoveredOrphanedDeployments: false,
-  };
 }
 
 async function prewarmSourceBuildToolchainAtStartup(logger: pino.Logger<never, boolean>): Promise<void> {
@@ -63,7 +50,7 @@ async function prewarmSourceBuildToolchainAtStartup(logger: pino.Logger<never, b
   } catch (error) {
     logger.warn(
       buildWorkerCaughtErrorLogPayload(error as WorkerCaughtError),
-      'Source build toolchain prewarm failed. First source deploy on this node may be slower.',
+      'Source build toolchain prewarm failed. First source deploy may be slower.',
     );
   }
 }
@@ -71,7 +58,7 @@ async function prewarmSourceBuildToolchainAtStartup(logger: pino.Logger<never, b
 async function runWorkerLoop(
   config: WorkerConfig,
   logger: pino.Logger<never, boolean>,
-  state: WorkerRuntimeState,
+  state: WorkerState,
 ): Promise<void> {
   for (;;) {
     await runWorkerCycle(config, logger, state);
@@ -81,95 +68,52 @@ async function runWorkerLoop(
 async function runWorkerCycle(
   config: WorkerConfig,
   logger: pino.Logger<never, boolean>,
-  state: WorkerRuntimeState,
+  state: WorkerState,
 ): Promise<void> {
   try {
-    const didRunStartupRecovery: boolean = await recoverWorkerStartupStateIfNeeded(config, logger, state);
-    if (!didRunStartupRecovery) {
-      await recoverPendingDrainStateIfNeeded(config, logger, state);
+    if (await recoverWorkerBuildClaimsIfNeeded(config, logger, state)) {
+      return;
     }
-    await pollWorkerDeployments(config, state);
+    const claimedWork: boolean = await runWorkerIteration(
+      config.apiUrl,
+      config.runtimeControlToken,
+      config.artifactRegistry,
+    );
+    state.hasReachedApi = true;
+    if (!claimedWork) {
+      await waitForNextPoll(config.pollIntervalMs);
+    }
   } catch (error) {
     await handleWorkerIterationError(config, logger, state, error as WorkerCaughtError);
   }
 }
 
-async function recoverWorkerStartupStateIfNeeded(
+async function recoverWorkerBuildClaimsIfNeeded(
   config: WorkerConfig,
   logger: pino.Logger<never, boolean>,
-  state: WorkerRuntimeState,
+  state: WorkerState,
 ): Promise<boolean> {
-  if (state.recoveredOrphanedDeployments) {
+  if (state.recoveredOrphanedBuildClaims) {
     return false;
   }
-
-  const recoveredDeploymentCount: number = await recoverRunningDeploymentsForMode(config, 'all');
-  state.hasReachedApi = true;
-  state.recoveredOrphanedDeployments = true;
-  if (recoveredDeploymentCount > 0) {
-    logger.warn({ recoveredDeploymentCount }, 'Finalized orphaned running deployments before worker polling.');
-  }
-
-  return true;
-}
-
-async function recoverPendingDrainStateIfNeeded(
-  config: WorkerConfig,
-  logger: pino.Logger<never, boolean>,
-  state: WorkerRuntimeState,
-): Promise<void> {
-  if (!state.recoveredOrphanedDeployments) {
-    return;
-  }
-
-  try {
-    const recoveredDeploymentCount: number = await recoverRunningDeploymentsForMode(config, 'pending-drain');
-    state.hasReachedApi = true;
-    if (recoveredDeploymentCount > 0) {
-      logger.warn({ recoveredDeploymentCount }, 'Recovered pending deployment drains before worker polling.');
-    }
-  } catch (error) {
-    logger.warn(
-      buildWorkerCaughtErrorLogPayload(error as WorkerCaughtError),
-      'Pending deployment drain recovery failed. Worker polling will continue.',
-    );
-  }
-}
-
-async function recoverRunningDeploymentsForMode(
-  config: WorkerConfig,
-  mode: WorkerRecoverDeploymentsMode,
-): Promise<number> {
-  const request: CompartmentRequester = createCompartmentRequester({
-    apiUrl: config.apiUrl,
-    internalToken: config.runtimeControlToken,
-  });
-  const response: WorkerRecoverDeploymentsResponse = await recoverRunningDeployments(request, { mode });
-  await cleanupWorkerArtifacts(response.cleanupArtifacts, config.artifactRegistry, config.dockerNamespace);
-
-  return response.recoveredDeploymentCount;
-}
-
-async function pollWorkerDeployments(config: WorkerConfig, state: WorkerRuntimeState): Promise<void> {
-  const claimedWork: boolean = await runWorkerIteration(
-    config.apiUrl,
-    config.runtimeControlToken,
-    config.dockerNamespace,
-    config.artifactRegistry,
+  const recovery: WorkerRecoverOrphanedBuildClaimsResponse = await recoverOrphanedBuildClaims(
+    createCompartmentRequester({ apiUrl: config.apiUrl, internalToken: config.runtimeControlToken }),
   );
   state.hasReachedApi = true;
-  if (!claimedWork) {
-    await waitForNextPoll(config.pollIntervalMs);
+  state.recoveredOrphanedBuildClaims = true;
+  if (recovery.requeuedDeploymentCount > 0) {
+    logger.warn(recovery, 'Requeued orphaned deployment build claims before polling.');
   }
+  return true;
 }
 
 async function handleWorkerIterationError(
   config: WorkerConfig,
   logger: pino.Logger<never, boolean>,
-  state: WorkerRuntimeState,
+  state: WorkerState,
   error: WorkerCaughtError,
 ): Promise<void> {
-  state.hasReachedApi = state.hasReachedApi || didReachApi(error);
+  state.hasReachedApi = state.hasReachedApi || (error instanceof Error && isCompartmentRequestError(error));
   if (shouldWarnOnWorkerStartupRetry(error, state.hasReachedApi)) {
     logger.warn(buildWorkerCaughtErrorLogPayload(error), 'Worker startup dependency is not ready yet. Retrying.');
   } else {
@@ -179,28 +123,15 @@ async function handleWorkerIterationError(
 }
 
 function shouldWarnOnWorkerStartupRetry(error: WorkerCaughtError, hasReachedApi: boolean): boolean {
-  if (isCompartmentNotInstalledError(error)) {
+  if (error instanceof Error && isCompartmentRequestError(error) && error.code === 'not_installed') {
     return true;
   }
 
-  return !hasReachedApi && isApiConnectionRefusedError(error);
-}
-
-function isCompartmentNotInstalledError(error: WorkerCaughtError): boolean {
-  return error instanceof Error && isCompartmentRequestError(error) && error.code === 'not_installed';
-}
-
-function didReachApi(error: WorkerCaughtError): boolean {
-  return error instanceof Error && isCompartmentRequestError(error);
-}
-
-function isApiConnectionRefusedError(error: WorkerCaughtError): boolean {
-  return error instanceof Error && readWorkerErrorCauseCode(error) === 'ECONNREFUSED';
+  return !hasReachedApi && error instanceof Error && readWorkerErrorCauseCode(error) === 'ECONNREFUSED';
 }
 
 function readWorkerErrorCauseCode(error: Error): string | null {
   const fetchError: WorkerFetchError = error as WorkerFetchError;
-
   return typeof fetchError.cause?.code === 'string' ? fetchError.cause.code : null;
 }
 

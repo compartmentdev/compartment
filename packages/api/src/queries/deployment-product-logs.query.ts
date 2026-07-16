@@ -60,7 +60,7 @@ export async function listResourceLogIdentities(resourceIds: string[]): Promise<
     })
     .from(projectResources)
     .innerJoin(environments, eq(environments.id, projectResources.environmentId))
-    .where(and(eq(projectResources.runtimeKind, 'kubernetes'), inArray(projectResources.id, resourceIds)))
+    .where(inArray(projectResources.id, resourceIds))
     .orderBy(asc(projectResources.id));
 }
 

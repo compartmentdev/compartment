@@ -28,8 +28,8 @@ const environmentName: string = 'production';
 const resourceName: string = 'postgres';
 const serviceName: string = 'web';
 const variableGroupName: string = 'self-hosted-e2e-runtime';
-const importedVariableFileName: string = '.env.self-hosted-e2e-import';
-const importedGroupFileName: string = '.env.self-hosted-e2e-group-import';
+const importedVariableFileName: string = '.env.k3d-e2e-import';
+const importedGroupFileName: string = '.env.k3d-e2e-group-import';
 const probeNodeImageRef: string = process.env.COMPARTMENT_TEST_APP_NODE_IMAGE ?? 'node:24.15.0-bookworm';
 const probePostgresImageRef: string = process.env.COMPARTMENT_TEST_POSTGRES_IMAGE ?? 'postgres:16-alpine';
 const probePostgresReadinessTimeoutMs: number = 180_000;
@@ -191,7 +191,6 @@ const server = createServer(async (request, response) => {
           principalId: readHeader(request.headers['x-compartment-principal-id']),
           principalType: readHeader(request.headers['x-compartment-principal-type']),
           role: readHeader(request.headers['x-compartment-role']),
-          upstreamPort: readHeader(request.headers['x-compartment-upstream-port']),
         },
       });
       return;

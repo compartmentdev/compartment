@@ -65,15 +65,6 @@ jobs:
             [registry."docker.io"]
               mirrors = ["mirror.gcr.io"]
 
-      - name: Prepare self-hosted image env
-        if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'
-        env:
-          PRIMARY_TAG: sha-${{ github.sha }}
-        run: |
-          node ./scripts/deploy/render-self-hosted-env.mjs \
-            --primary-tag "$PRIMARY_TAG" \
-            --output ./.compartment/self-hosted-image-cache/.env.self-hosted
-
       - name: Build self-hosted images
         if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'
         env:
@@ -84,30 +75,23 @@ jobs:
           COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
           DOCKER_CONFIG: ${{ runner.temp }}/docker-config
         run: |
-          node ./scripts/deploy/build-self-hosted-images.mjs --env-file ./.compartment/self-hosted-image-cache/.env.self-hosted
+          node ./scripts/deploy/build-self-hosted-images.mjs --tag "sha-${{ github.sha }}"
 
       - name: Save self-hosted images to cache directory
         if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'
         run: |
-          set -a
-          . ./.compartment/self-hosted-image-cache/.env.self-hosted
-          set +a
-
-          docker save "$COMPARTMENT_API_IMAGE" --output ./.compartment/self-hosted-image-cache/api.tar
-          docker save "$COMPARTMENT_CADDY_IMAGE" --output ./.compartment/self-hosted-image-cache/caddy.tar
-          docker save "$COMPARTMENT_EDGE_IMAGE" --output ./.compartment/self-hosted-image-cache/edge.tar
-          docker save "$COMPARTMENT_RUNTIME_PROBE_IMAGE" --output ./.compartment/self-hosted-image-cache/runtime-probe.tar
-          docker save "$COMPARTMENT_WORKER_IMAGE" --output ./.compartment/self-hosted-image-cache/worker.tar
+          mkdir -p ./.compartment/self-hosted-image-cache
+          docker save "ghcr.io/compartmentdev/compartment-api:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/api.tar
+          docker save "ghcr.io/compartmentdev/compartment-caddy:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/caddy.tar
+          docker save "ghcr.io/compartmentdev/compartment-edge:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/edge.tar
+          docker save "ghcr.io/compartmentdev/compartment-worker:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/worker.tar
 
       - name: Load cached self-hosted images
         if: steps.self-hosted-image-cache.outputs.cache-hit == 'true'
         run: |
-          for service in api caddy edge worker runtime-probe; do
+          for service in api caddy edge worker; do
             docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
           done
-
-      - name: Check self-hosted runtime surface
-        run: node ./scripts/deploy/check-self-hosted-runtime-surface.mjs ./.compartment/self-hosted-image-cache/.env.self-hosted
 
       - name: Save self-hosted image build cache
         if: steps.self-hosted-image-cache.outputs.cache-hit != 'true'

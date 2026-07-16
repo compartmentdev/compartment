@@ -39,7 +39,6 @@ import {
 } from '../src';
 
 interface BuildDeploymentInspectTargetInput extends Partial<DeploymentInspectTarget> {
-  drain?: DeploymentInspectTargetDrain | null;
   operation?: OperationSummary;
   readiness?: ResolvedOptionalServiceReadinessConfig;
   run?: ResolvedCompartmentServiceRunConfig;
@@ -98,11 +97,6 @@ interface BuildSsoOidcProviderResponseInput {
 interface BuildCreateCustomDomainResponseInput {
   dnsRecords?: CustomDomainDnsRecord[];
   domain?: Partial<CustomDomainSummary>;
-}
-
-interface DeploymentInspectTargetDrain {
-  containerId: string;
-  deadlineAt: string | null;
 }
 
 function buildOrganizationSummary(overrides: Partial<OrganizationSummary> = {}): OrganizationSummary {
@@ -236,12 +230,7 @@ export function buildDeploymentInspectTarget(
       strategy: 'auto',
     },
     completedAt: '2026-03-24T10:00:00.000Z',
-    containerId: 'ctr_123',
     createdAt: '2026-03-24T09:00:00.000Z',
-    drain: {
-      containerId: 'ctr_old',
-      deadlineAt: '2026-03-24T10:00:05.000Z',
-    },
     failureMessage: null,
     health: 'healthy',
     id: 'dep_123',
@@ -266,30 +255,21 @@ export function buildDeploymentInspectTarget(
     routeHost: 'smoke-railpack.localhost',
     routes: [],
     routeUrl: 'http://smoke-railpack.localhost:9080',
-    run: {
-      restart: {
-        policy: 'unless-stopped',
-      },
-    },
+    run: {},
     runtime: {
-      containerId: 'ctr_123',
       imageRef: 'sha256:image',
       routeHost: 'smoke-railpack.localhost',
-      runtimeKind: 'node',
-      upstreamHost: '127.0.0.1',
-      upstreamPort: 31000,
+      serviceHost: 'web.cpt-smoke.svc',
+      servicePort: 80,
     },
     serviceName: 'web',
     status: 'succeeded',
-    upstreamHost: '127.0.0.1',
-    upstreamPort: 31000,
   };
 
   return {
     ...defaultTarget,
     ...overrides,
     build: overrides.build ?? defaultTarget.build,
-    drain: 'drain' in overrides ? (overrides.drain ?? null) : defaultTarget.drain,
     operation: overrides.operation ?? defaultTarget.operation,
     readiness: overrides.readiness ?? defaultTarget.readiness,
     routes: overrides.routes ?? defaultTarget.routes,

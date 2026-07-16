@@ -270,9 +270,7 @@ function appendResourceSummary(baseMessage: string, response: DeploymentStatusRe
   }
 
   return `${baseMessage}\n${resources
-    .map(
-      (resource: ResourceSummary): string => `Resource ${resource.name} is ${resource.status} at ${resource.hostname}.`,
-    )
+    .map((resource: ResourceSummary): string => `Resource ${resource.name} is ${resource.status}.`)
     .join('\n')}`;
 }
 

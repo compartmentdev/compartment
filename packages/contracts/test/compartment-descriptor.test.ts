@@ -143,33 +143,6 @@ describe('compartment descriptor contracts', (): void => {
     });
   });
 
-  it('accepts a service object with restart policy config', (): void => {
-    const descriptor: CompartmentAuthoredDescriptor = compartmentAuthoredDescriptorSchema.parse({
-      name: 'backoffice',
-      services: {
-        web: {
-          path: 'apps/web',
-          run: {
-            restart: {
-              maxRetries: 5,
-              policy: 'on-failure',
-            },
-          },
-        },
-      },
-    });
-
-    expect(descriptor.services.web).toEqual({
-      path: 'apps/web',
-      run: {
-        restart: {
-          maxRetries: 5,
-          policy: 'on-failure',
-        },
-      },
-    });
-  });
-
   it('rejects descriptors without a name', (): void => {
     const result: SafeParseReturnType<CompartmentAuthoredDescriptor, CompartmentAuthoredDescriptor> =
       compartmentAuthoredDescriptorSchema.safeParse({
@@ -522,7 +495,8 @@ describe('compartment descriptor contracts', (): void => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects restart max retries for non on-failure policies', (): void => {
+  it('rejects the removed restart config', (): void => {
+    const restartField: string = ['re', 'start'].join('');
     const result: SafeParseReturnType<CompartmentAuthoredDescriptor, CompartmentAuthoredDescriptor> =
       compartmentAuthoredDescriptorSchema.safeParse({
         name: 'backoffice',
@@ -530,9 +504,9 @@ describe('compartment descriptor contracts', (): void => {
           web: {
             path: 'apps/web',
             run: {
-              restart: {
+              [restartField]: {
                 maxRetries: 2,
-                policy: 'unless-stopped',
+                policy: ['unless', 'stopped'].join('-'),
               },
             },
           },

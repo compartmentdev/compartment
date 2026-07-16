@@ -2,6 +2,6 @@ export interface ClientOptions {
   apiUrl: string;
   currentOrganization?: string;
   internalToken?: string;
-  requestTimeoutMs?: number;
+  requestTimeoutMs?: number | null;
   sessionToken?: string;
 }

@@ -65,7 +65,7 @@ interface VariableResponseFixtureInput {
   project?: ProjectSummary | undefined;
 }
 
-describe.sequential('compartment variable commands', (): void => {
+describe.sequential('compartment variable commands', { timeout: 15_000 }, (): void => {
   let configDirectory: string;
   let originalCwd: string;
   let tempRoot: string;

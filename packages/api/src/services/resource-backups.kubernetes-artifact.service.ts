@@ -1,6 +1,6 @@
 import { createInvalidDeployConfigError } from '../errors/api-business-error';
 import type { ResourceBackupRow } from '../queries/resource-backups.query.types';
-import type { KubernetesArtifactMetadata } from './resource-backups.kubernetes.service';
+import type { KubernetesArtifactMetadata } from './resource-backups.kubernetes.service.types';
 
 export function assertKubernetesArtifactLocation(backup: ResourceBackupRow): void {
   if (backup.artifactLocation !== kubeBackupArtifactLocation(backup.id)) {

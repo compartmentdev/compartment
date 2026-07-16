@@ -18,6 +18,7 @@ export function releaseIntent(projection: DeploymentReconcileProjection, timeout
     imagePullSecretId: projection.imagePullSecretId,
     jobClass: 'release',
     namespace: requiredDeploymentMetadata(deploymentManifest(projection), 'namespace'),
+    projectId: projection.projectId,
     timeoutMs,
   };
 }
@@ -34,13 +35,6 @@ export function deploymentFromObjects(objects: KubeManifest[]): KubeDeploymentMa
     throw new Error('Application projection did not contain a Kubernetes Deployment.');
   }
   return deployment;
-}
-
-export function deploymentConditionStatus(value: string | undefined): 'False' | 'True' | 'Unknown' {
-  if (value === 'False' || value === 'True') {
-    return value;
-  }
-  return 'Unknown';
 }
 
 function requiredDeploymentMetadata(deployment: KubeDeploymentManifest, key: 'name' | 'namespace'): string {

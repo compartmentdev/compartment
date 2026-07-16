@@ -2,24 +2,16 @@ import type { InstallResponse } from '@compartment/contracts';
 import { buildLoggedInConfig } from '../../store/config.mutations';
 import { readCliConfig, writeCliConfig } from '../../store/config.store';
 import type { CliConfig, CliOrganizationConfig } from '../../store/config.types';
-import type { SelfHostedInstallResult } from '../../install.types';
+import type { DevInstallResult } from '../../install.types';
 
 const defaultDevInstallRemoteName: string = 'local-dev';
-const defaultInstallRemoteName: string = 'default';
 
-export async function persistDevInstallSession(result: SelfHostedInstallResult, remoteName?: string): Promise<void> {
-  await persistInstallSession(result, remoteName ?? defaultDevInstallRemoteName);
-}
-
-export async function persistInstallSession(
-  result: SelfHostedInstallResult,
-  remoteName: string = defaultInstallRemoteName,
-): Promise<void> {
+export async function persistDevInstallSession(result: DevInstallResult, remoteName?: string): Promise<void> {
   const currentConfig: CliConfig = await readCliConfig();
   await writeCliConfig(
     buildLoggedInConfig(
       currentConfig,
-      remoteName,
+      remoteName ?? defaultDevInstallRemoteName,
       result.apiUrl,
       result.adminEmail,
       result.sessionToken,

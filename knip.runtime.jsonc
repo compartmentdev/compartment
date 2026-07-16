@@ -25,7 +25,6 @@
       "project": ["src/**/*.ts!", "!test/**!"],
     },
     "packages/kube-runtime": {
-      "includeEntryExports": false,
       "entry": ["src/index.ts!"],
       "project": ["src/**/*.ts!", "!test/**!"],
     },
@@ -46,10 +45,6 @@
       "vite": false,
       "entry": ["src/index.ts!", "src/main.tsx!", "src/auth-main.tsx!"],
       "project": ["src/**/*.ts!", "src/**/*.tsx!", "!test/**!"],
-    },
-    "packages/node": {
-      "entry": ["src/index.ts!", "src/server.ts!"],
-      "project": ["src/**/*.ts!", "!test/**!"],
     },
     "packages/edge": {
       "entry": ["src/server.ts!", "scripts/sync-caddyfile.mjs!", "scripts/sync-caddyfile.impl.ts!"],

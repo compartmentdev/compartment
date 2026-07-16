@@ -23,7 +23,7 @@ If GitHub App access is missing, the command opens a browser setup URL and waits
 
 Each connected Git source also gets a system-managed automation account. Compartment uses that account for source sync and push-driven deploy work. It does not appear on the browser Users page, but CLI and API user lists can still return it as an automation entry. It is not a human login account.
 
-When a connected descriptor declares top-level `resources`, push-driven deploys reconcile those internal Docker-backed
+When a connected descriptor declares top-level `resources`, push-driven deploys reconcile those internal Kubernetes
 resources from the same `compartment.yml` before deploying app services.
 
 ## Connect the repository

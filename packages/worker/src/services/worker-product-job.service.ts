@@ -1,9 +1,11 @@
-import type {
-  ProductJobIntent,
-  ProductJobClass,
-  ProductJobVolumeMount,
-  ResourceClaimIdentity,
-  WorkerPersistProductJobResultRequest,
+import {
+  productJobRuntimeId,
+  type ProductJobIntent,
+  type ProductJobClass,
+  type ProductJobVolumeMount,
+  type ResourceClaimIdentity,
+  type WorkerPersistProductJobResultRequest,
+  type WorkerPersistProductJobIntentResponse,
 } from '@compartment/contracts';
 import {
   assertResourceClaimOwnership,
@@ -37,18 +39,52 @@ export async function executeProductJob(
   runtime: KubeRuntime,
   intent: ProductJobIntent,
 ): Promise<WorkerPersistProductJobResultRequest> {
-  await persistProductJobIntent(request, intent);
+  const persisted: WorkerPersistProductJobIntentResponse = await persistProductJobIntent(request, intent);
   const identityId: string = readProductJobIdentity(intent);
-  await assertProductJobClaims(runtime, intent);
-  const jobResult: KubeJobResult = await runtime.runJob(buildKubeJobSpec(intent, identityId));
+  if (persisted.result !== null) {
+    throwProductJobFailure(persisted.result);
+  }
+  const jobResult: KubeJobResult = await runProductJobWithDurableFailure(request, runtime, intent, identityId);
   const result: WorkerPersistProductJobResultRequest = buildProductJobResult(intent, identityId, jobResult);
   await persistProductJobResult(request, result);
   await jobResult.finalize();
   await finalizeProductJob(request, { identityId, jobClass: intent.jobClass });
   if (result.status !== 'succeeded') {
-    throw new ProductJobFailedError(intent.jobClass, identityId, result.status);
+    throwProductJobFailure(result);
   }
   return result;
+}
+
+function throwProductJobFailure(result: WorkerPersistProductJobResultRequest): never {
+  if (result.status === 'succeeded') {
+    throw new Error(`Product ${result.jobClass} job ${result.identityId} was already completed.`);
+  }
+  throw new ProductJobFailedError(result.jobClass, result.identityId, result.status);
+}
+
+async function runProductJobWithDurableFailure(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  intent: ProductJobIntent,
+  identityId: string,
+): Promise<KubeJobResult> {
+  try {
+    await assertProductJobClaims(runtime, intent);
+    return await runtime.runJob(buildKubeJobSpec(intent, identityId));
+  } catch (error) {
+    const failure: Error = error instanceof Error ? error : new Error('Product Job execution failed.');
+    await persistProductJobResult(request, {
+      completedAt: new Date().toISOString(),
+      exitCode: null,
+      identityId,
+      jobClass: intent.jobClass,
+      jobName: `failed-before-result/${identityId}`,
+      logs: failure.message,
+      podName: null,
+      status: 'timed-out',
+    });
+    throw failure;
+  }
 }
 
 async function assertProductJobClaims(runtime: KubeRuntime, intent: ProductJobIntent): Promise<void> {
@@ -124,7 +160,7 @@ function buildKubeJobSpec(intent: ProductJobIntent, identityId: string): KubeJob
   return {
     command: intent.command,
     env: intent.env,
-    id: `${intent.jobClass}-${identityId}`,
+    id: productJobRuntimeId(intent.jobClass, identityId),
     image: intent.image,
     imagePullSecretId: intent.jobClass === 'release' ? intent.imagePullSecretId : undefined,
     jobClass: intent.jobClass === 'release' ? 'release' : 'operation',

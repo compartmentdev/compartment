@@ -115,6 +115,7 @@ export async function listJoinedDeploymentsByProjectService(
     routeBaseDomain,
   );
 }
+
 export async function listJoinedDeploymentsForEnvironment(
   environmentId: string,
   routeBaseDomain: string,

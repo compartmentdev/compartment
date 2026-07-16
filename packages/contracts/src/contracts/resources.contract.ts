@@ -1,16 +1,14 @@
 import { z } from 'zod';
 import { compartmentProjectNameSchema, compartmentResourceNameSchema } from './compartment-descriptor.contract';
-import { compartmentResourceOutputNameSchema } from './compartment-resource.contract';
+import { compartmentResourceOutputNameSchema, resourceReadinessTimeoutMaxMs } from './compartment-resource.contract';
 import { environmentNameSchema, environmentSummarySchema, type EnvironmentSummary } from './environments.contract';
 import { logTailLineLimit } from './logs.contract';
 import { projectSummarySchema, type ProjectSummary } from './projects.contract';
 import type { ContractSchema } from './schema.types';
-import { compartmentServiceRestartPolicyValues, type CompartmentServiceRestartPolicy } from './service-run.contract';
 
 export type ResourceRuntimeStatus = 'running' | 'stopped';
 export type ResourceEnvSourceType = 'literal';
 export type ResourceDeleteConfirmation = 'delete-resource-data';
-export type ResourceRestartPolicy = CompartmentServiceRestartPolicy;
 
 export interface ResourceEnvSourceSummary {
   keyName: string;
@@ -30,16 +28,13 @@ export interface ResourceReadinessSummary {
 }
 
 export interface ResourceSummary {
-  containerId: string | null;
   createdAt: string;
   env: ResourceEnvSourceSummary[];
-  hostname: string;
   id: string;
   image: string;
   name: string;
   ports: number[];
   readiness: ResourceReadinessSummary | null;
-  restartPolicy: ResourceRestartPolicy;
   status: ResourceRuntimeStatus;
   updatedAt: string;
   volumes: ResourceVolumeSummary[];
@@ -100,15 +95,12 @@ export interface ResourceDeleteResponse {
   success: true;
 }
 
-export const resourceRuntimeStatusSchema: ContractSchema<ResourceRuntimeStatus> = z.enum(['running', 'stopped']);
+const resourceRuntimeStatusSchema: ContractSchema<ResourceRuntimeStatus> = z.enum(['running', 'stopped']);
 const resourceEnvSourceTypeSchema: ContractSchema<ResourceEnvSourceType> = z.literal('literal');
-const resourceRestartPolicySchema: ContractSchema<ResourceRestartPolicy> = z.enum(
-  compartmentServiceRestartPolicyValues,
-);
-const resourceReadinessSummarySchema: ContractSchema<ResourceReadinessSummary> = z
+export const resourceReadinessSummarySchema: ContractSchema<ResourceReadinessSummary> = z
   .object({
     port: z.number().int().min(1).max(65_535),
-    timeoutMs: z.number().int().positive().max(300_000),
+    timeoutMs: z.number().int().positive().max(resourceReadinessTimeoutMaxMs),
     type: z.literal('tcp'),
   })
   .strict();
@@ -128,16 +120,13 @@ export const resourceVolumeSummarySchema: ContractSchema<ResourceVolumeSummary> 
 
 export const resourceSummarySchema: ContractSchema<ResourceSummary> = z
   .object({
-    containerId: z.string().min(1).nullable(),
     createdAt: z.string().datetime(),
     env: z.array(resourceEnvSourceSummarySchema),
-    hostname: z.string().min(1),
     id: z.string().min(1),
     image: z.string().min(1),
     name: compartmentResourceNameSchema,
     ports: z.array(z.number().int().min(1).max(65_535)),
     readiness: resourceReadinessSummarySchema.nullable(),
-    restartPolicy: resourceRestartPolicySchema,
     status: resourceRuntimeStatusSchema,
     updatedAt: z.string().datetime(),
     volumes: z.array(resourceVolumeSummarySchema),
@@ -246,5 +235,3 @@ export const resourceDeleteResponseSchema: ContractSchema<ResourceDeleteResponse
     success: z.literal(true),
   })
   .strict();
-
-export { buildCompartmentResourceHostname } from './resource-hostname.contract';

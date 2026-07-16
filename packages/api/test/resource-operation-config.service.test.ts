@@ -5,7 +5,7 @@ import {
 } from '@compartment/contracts';
 import { describe, expect, it } from 'vitest';
 import {
-  buildNodeResourceOperationDefinition,
+  buildResourceOperationDefinition,
   type ResolvedResourceIntent,
   resolveResourceIntent,
 } from '../src/services/resources.service.helpers';
@@ -19,8 +19,6 @@ import type { EffectiveVariable } from '../src/services/effective-variables.serv
 describe('resource operation config resolution', (): void => {
   it('defaults operation image to resource image and overlays operation env', (): void => {
     const intent: ResolvedResourceIntent = resolveResourceIntent(
-      'internal-tools',
-      'production',
       'postgres',
       {
         env: {
@@ -49,7 +47,7 @@ describe('resource operation config resolution', (): void => {
     );
 
     expect(
-      buildNodeResourceOperationDefinition(intent, intent.operations.backup!, [
+      buildResourceOperationDefinition(intent, intent.operations.backup!, [
         createEffectiveVariable('DATABASE_URL', 'operation-url'),
         createEffectiveVariable('PGPASSWORD', 'resource-secret'),
       ]),
@@ -71,7 +69,7 @@ describe('resource operation config resolution', (): void => {
       ],
       image: 'postgres:16',
     });
-    expect(buildNodeResourceOperationDefinition(intent, intent.operations.restore!, [])).toMatchObject({
+    expect(buildResourceOperationDefinition(intent, intent.operations.restore!, [])).toMatchObject({
       image: 'postgres:17',
     });
   });
@@ -92,7 +90,7 @@ describe('resource operation config resolution', (): void => {
       throw new Error('Expected db resource.');
     }
 
-    const intent: ResolvedResourceIntent = resolveResourceIntent('internal-tools', 'production', 'db', resource, []);
+    const intent: ResolvedResourceIntent = resolveResourceIntent('db', resource, []);
 
     expect(intent.operations.backup?.schedule).toEqual({
       interval: 'daily',

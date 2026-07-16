@@ -15,8 +15,6 @@ export interface WorkerRequesterInput {
 export interface AttemptClaimedDeploymentCompletionInput {
   artifactRegistry: WorkerArtifactRegistryConfig;
   deployment: WorkerClaimedDeployment;
-  dockerNamespace: string;
   releaseArchiveRequest: CompartmentBinaryRequester;
   request: CompartmentRequester;
-  runtimeControlToken: string;
 }

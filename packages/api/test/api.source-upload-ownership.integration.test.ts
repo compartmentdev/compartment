@@ -26,7 +26,6 @@ import {
   injectJsonDeployRequest,
   injectSourceUploadRequest,
   installCompartment,
-  registerLocalNode,
 } from './api-integration.harness';
 import {
   cleanupApiIntegrationRuntime,
@@ -299,7 +298,6 @@ describe('API source upload ownership integration', (): void => {
 
   it('rejects an existing source upload from other organization members during deployment submission', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,
@@ -320,7 +318,6 @@ describe('API source upload ownership integration', (): void => {
 
   it('hides an existing source upload from the same principal in another organization', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
       app,
       installPayload.sessionToken,

@@ -126,7 +126,7 @@ User surfaces can show `membership-only` or `Membership only` when a member is i
 
 Grant a built-in organization role, a custom direct assignment, or a group assignment depending on the access the user actually needs.
 
-Read-only deployment access is redacted by design. Users without deploy-capable access can inspect current deployment state, but Compartment hides sensitive runtime topology such as upstream hosts, ports, container ids, and image refs.
+Read-only deployment access is redacted by design. Users without deploy-capable access can inspect current deployment state, but Compartment hides sensitive runtime topology such as service hosts, ports, and image refs.
 
 Use `compartment user block` when an account should stay in the organization but must not be allowed to sign in. Use `compartment user unblock` to restore access later.
 

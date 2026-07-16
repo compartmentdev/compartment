@@ -6,26 +6,16 @@ import { environmentNameSchema, environmentSummarySchema, type EnvironmentSummar
 import { projectSummarySchema, type ProjectSummary } from './projects.contract';
 import type { ContractSchema } from './schema.types';
 
-interface DeploymentDrainState {
-  containerId: string;
-  deadlineAt: string | null;
-}
-
 export interface DeploymentInspectRuntimeSummary {
-  containerId: string | null;
   imageRef: string;
   routeHost: string;
-  runtimeKind: 'kubernetes' | 'node';
-  upstreamHost: string | null;
-  upstreamPort: number | null;
+  serviceHost: string;
+  servicePort: number;
 }
 
 export interface DeploymentInspectTarget extends DeploymentSummary {
-  drain: DeploymentDrainState | null;
   routes: CompartmentRouteRule[];
   routeHost: string | null;
-  upstreamHost: string | null;
-  upstreamPort: number | null;
   runtime: DeploymentInspectRuntimeSummary | null;
 }
 
@@ -44,31 +34,19 @@ export interface DeploymentInspectResponse {
   sensitiveTopologyVisible: boolean;
 }
 
-const deploymentDrainStateSchema: ContractSchema<DeploymentDrainState> = z
-  .object({
-    containerId: z.string().min(1),
-    deadlineAt: z.string().datetime().nullable(),
-  })
-  .strict();
-
 const deploymentInspectRuntimeSummarySchema: ContractSchema<DeploymentInspectRuntimeSummary> = z
   .object({
-    containerId: z.string().min(1).nullable(),
     imageRef: z.string().min(1),
     routeHost: z.string().min(1),
-    runtimeKind: z.enum(['kubernetes', 'node']),
-    upstreamHost: z.string().min(1).nullable(),
-    upstreamPort: z.number().int().positive().nullable(),
+    serviceHost: z.string().min(1),
+    servicePort: z.number().int().positive(),
   })
   .strict();
 
 const deploymentInspectTargetSchema: ContractSchema<DeploymentInspectTarget> = deploymentSummarySchema
   .extend({
-    drain: deploymentDrainStateSchema.nullable(),
     routes: z.array(compartmentRouteRuleSchema),
     routeHost: z.string().min(1).nullable(),
-    upstreamHost: z.string().min(1).nullable(),
-    upstreamPort: z.number().int().positive().nullable(),
     runtime: deploymentInspectRuntimeSummarySchema.nullable(),
   })
   .strict();

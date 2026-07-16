@@ -29,7 +29,7 @@ pnpm install
 cp .env.example .env
 ```
 
-Local runtime work also needs PostgreSQL reachable through `COMPARTMENT_DATABASE_URL`, Docker for local runtime support, and these tools on `PATH`:
+Local API development also needs PostgreSQL reachable through `COMPARTMENT_DATABASE_URL` and these tools on `PATH`:
 
 ```bash
 brew install caddy
@@ -41,6 +41,9 @@ Start the local stack:
 ```bash
 pnpm dev
 ```
+
+A Docker-compatible daemon and CLI are required for the loopback artifact registry used by `pnpm dev` and for the
+k3d platform suites. Docker is build and test infrastructure only; Compartment does not run a separate host runtime.
 
 Read [docs/specs/local-development.md](./docs/specs/local-development.md) for the current local runtime contract.
 
@@ -117,7 +120,7 @@ pnpm docs:build
 Use the heavier suites only when the change requires them:
 
 - `pnpm test:db` for DB-backed API integration or CLI smoke changes.
-- `pnpm test:deploy:e2e` for Docker-backed deploy, build, or runtime changes.
+- `pnpm platform:e2e:up` plus the focused k3d suite for deploy, build, or runtime changes.
 - `pnpm check:ci` only when CI-parity validation is explicitly needed.
 
 ## Commit Messages
@@ -130,7 +133,7 @@ type(scope): subject
 
 Allowed types are `feat`, `fix`, `perf`, `release`, `refactor`, `style`, `test`, `build`, `ci`, `docs`, and `chore`.
 
-Allowed scopes are package-owned scopes (`api`, `cli`, `console`, `contracts`, `docker`, `edge`, `eslint-config`, `eslint-plugin`, `node`, `sdk`, `source-archive`, `test-support`, `utils`, `worker`, and `public-docs`) plus root-owned scopes (`scripts`, `root-config`, `docs`, `examples`, and `release`).
+Allowed scopes are package-owned scopes (`api`, `cli`, `console`, `contracts`, `docker`, `edge`, `eslint-config`, `eslint-plugin`, `kube-runtime`, `sdk`, `source-archive`, `test-support`, `utils`, `worker`, and `public-docs`) plus root-owned scopes (`scripts`, `root-config`, `docs`, `examples`, and `release`).
 
 Examples:
 

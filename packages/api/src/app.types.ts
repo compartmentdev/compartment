@@ -12,6 +12,7 @@ export interface CreateAppOptions {
   config?: ApiConfig;
   configureRuntime?: boolean | undefined;
   db?: Database;
+  resourceOperationPool?: Pool;
   pool?: Pool;
 }
 

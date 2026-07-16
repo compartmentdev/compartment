@@ -120,8 +120,8 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
       });
 
       const result: GateExecFileResult = await execFileAsync(
-        join(repositoryRoot, 'packages/edge/test/k3d-lkg-verification.sh'),
-        [],
+        process.execPath,
+        [join(repositoryRoot, 'packages/edge/test/k3d-lkg-verification.mjs')],
         {
           cwd: repositoryRoot,
           env: {

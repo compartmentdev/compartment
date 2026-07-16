@@ -10,7 +10,6 @@ import {
   type DomainDnsRecordPurpose,
   type DomainDnsRecordType,
   type InstallResponse,
-  type DomainPublicScheme,
   type SystemDomainMutationResponse,
   type SystemDomainSetRequest,
   type SystemDomainStatusResponse,
@@ -68,7 +67,6 @@ import {
   buildOrganizationAuthorizationHeaders,
   injectDeployRequest,
   installCompartment,
-  registerLocalNode,
   requireSetCookieValue,
 } from './api-integration.harness';
 import type { StoredOperationRow } from './api.integration.types';
@@ -194,7 +192,6 @@ function buildSystemMutationHeaders(idempotencyKey: string): Record<string, stri
 function buildCustomExternalDomainSetRequest(
   expectedSetupVersion: number,
   baseDomain: string = 'customer.example.com',
-  publicScheme: DomainPublicScheme = 'https',
 ): SystemDomainSetRequest {
   return {
     expectedSetupVersion,
@@ -202,7 +199,7 @@ function buildCustomExternalDomainSetRequest(
       baseDomain,
       caddyMode: 'custom-http',
       domainKind: 'custom',
-      publicScheme,
+      publicScheme: 'https',
       tlsMode: 'external',
     },
   };
@@ -573,7 +570,6 @@ describe('Phase 0 API integration install auth', (): void => {
   });
   it('returns deployment-scope permissions from whoami when a project environment is requested', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const deployResponse: LightMyRequestResponse = await injectDeployRequest(
       app,
       installPayload.sessionToken,

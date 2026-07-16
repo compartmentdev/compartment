@@ -52,12 +52,10 @@ function createResource(): ProjectResourceRow {
   const now: Date = new Date('2026-05-08T10:00:00.000Z');
   return {
     commandJson: '[]',
-    containerId: null,
     createdAt: now,
+    deleteDataRequested: false,
     envJson: '[]',
     environmentId: 'env_production',
-    hostname: 'postgres.production.internal-tools.resource.internal',
-    runtimeKind: 'node',
     expectedClaimsJson: '[]',
     id: 'res_postgres',
     image: 'postgres:16',
@@ -67,7 +65,6 @@ function createResource(): ProjectResourceRow {
       '{"backup":{"command":"pg_dump","env":[],"image":null,"schedule":{"interval":"daily"}},"restore":null}',
     portsJson: '[5432]',
     readinessJson: 'null',
-    restartPolicy: 'unless-stopped',
     runtimeDefinitionHash: 'runtime_hash',
     status: 'running',
     updatedAt: now,
@@ -81,7 +78,6 @@ function createEnvironment(): EnvironmentRow {
     createdAt: now,
     id: 'env_production',
     name: 'production',
-    nodeId: 'node_1',
     projectId: 'prj_internal_tools',
     updatedAt: now,
   };

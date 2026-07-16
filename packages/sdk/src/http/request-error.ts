@@ -3,7 +3,7 @@ import type { CompartmentRequestMethod } from './request.types';
 export interface RequestTransportOptions {
   method: CompartmentRequestMethod;
   path: string;
-  requestTimeoutMs?: number | undefined;
+  requestTimeoutMs?: number | null | undefined;
 }
 
 interface RequestTransportFailureShape {
@@ -27,8 +27,10 @@ export function createTransportRequestError(options: RequestTransportOptions, ca
   return error;
 }
 
-export function createRequestSignal(requestTimeoutMs?: number): AbortSignal | undefined {
-  return requestTimeoutMs === undefined ? undefined : AbortSignal.timeout(requestTimeoutMs);
+export function createRequestSignal(requestTimeoutMs?: number | null): AbortSignal | undefined {
+  return requestTimeoutMs === undefined || requestTimeoutMs === null
+    ? undefined
+    : AbortSignal.timeout(requestTimeoutMs);
 }
 
 export function isRetryableTransportRequestError(error: RequestTransportFailure): boolean {

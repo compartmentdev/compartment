@@ -1,30 +1,30 @@
 import type { ResourceRuntimeStatus } from '@compartment/contracts';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 
-export type ProjectResourceRowStatus = ResourceRuntimeStatus;
+export type ProjectResourceRowStatus = ResourceRuntimeStatus | 'deleting' | 'starting';
 
-export interface ProjectResourceRow {
+export interface StoredProjectResourceRow {
   commandJson: string;
-  containerId: string | null;
-  createdAt: Date;
   envJson: string;
-  environmentId: string;
-  hostname: string;
-  runtimeKind: 'node' | 'kubernetes';
-  expectedClaimsJson: string;
-  id: string;
   image: string;
-  name: string;
   operationConfigHash: string;
   operationsJson: string;
   outputsJson?: string | undefined;
   portsJson: string;
   readinessJson: string;
-  restartPolicy: string;
   runtimeDefinitionHash: string;
+  volumesJson: string;
+}
+
+export interface ProjectResourceRow extends StoredProjectResourceRow {
+  createdAt: Date;
+  deleteDataRequested: boolean;
+  environmentId: string;
+  expectedClaimsJson: string;
+  id: string;
+  name: string;
   status: ProjectResourceRowStatus;
   updatedAt: Date;
-  volumesJson: string;
 }
 
 export type PersistedProjectResourceRow = Omit<ProjectResourceRow, 'createdAt' | 'updatedAt'> & {
@@ -34,10 +34,9 @@ export type PersistedProjectResourceRow = Omit<ProjectResourceRow, 'createdAt' |
 
 export interface CreateProjectResourceInput {
   commandJson: string;
+  deleteDataRequested?: boolean | undefined;
   envJson: string;
   environmentId: string;
-  hostname: string;
-  runtimeKind: 'node' | 'kubernetes';
   expectedClaimsJson?: string | undefined;
   id: string;
   image: string;
@@ -47,7 +46,6 @@ export interface CreateProjectResourceInput {
   outputsJson: string;
   portsJson: string;
   readinessJson: string;
-  restartPolicy: string;
   runtimeDefinitionHash: string;
   status: ResourceRuntimeStatus;
   updatedAt: Date;
@@ -57,25 +55,21 @@ export interface CreateProjectResourceInput {
 export interface UpdateProjectResourceIntentInput {
   commandJson: string;
   envJson: string;
-  hostname: string;
   image: string;
   operationConfigHash: string;
   operationsJson: string;
   outputsJson: string;
   portsJson: string;
   projectResourceId: string;
-  runtimeKind: 'node' | 'kubernetes';
   readinessJson: string;
-  restartPolicy: string;
   runtimeDefinitionHash: string;
   updatedAt: Date;
   volumesJson: string;
 }
 
-export interface UpdateProjectResourceRuntimeInput {
-  containerId: string | null;
+export interface UpdateProjectResourceStatusInput {
   projectResourceId: string;
-  status: ResourceRuntimeStatus;
+  status: ProjectResourceRowStatus;
   updatedAt: Date;
 }
 

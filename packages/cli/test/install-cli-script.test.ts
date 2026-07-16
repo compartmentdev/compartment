@@ -377,119 +377,22 @@ describe('render-cli-install-script', (): void => {
     },
   );
 
-  it('fails init install clearly when no installer terminal is available', async (): Promise<void> => {
-    const temporaryDirectory: string = await createTemporaryDirectory();
-    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
-    const missingInstallerTerminalPath: string = join(temporaryDirectory, 'missing-installer-tty');
+  it.each(['--init-install', '--init-update'])(
+    'rejects removed host-runtime installer option %s',
+    async (removedOption: string): Promise<void> => {
+      const temporaryDirectory: string = await createTemporaryDirectory();
 
-    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      allowFailure: true,
-      args: ['--version', 'main', '--init-install'],
-      installerTerminalPath: missingInstallerTerminalPath,
-      pathEntries: [binDirectory],
-    });
+      const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+        allowFailure: true,
+        args: ['--version', 'main', removedOption],
+      });
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain(
-      `Requested \`--init-install\`, but no terminal is available for sudo and setup prompts. Run \`"${join(binDirectory, 'compartment')}" install\` from an interactive shell.`,
-    );
-    expect(result.sudoInvocations).toEqual([]);
-    expect(result.compartmentInvocations).toEqual(['--version']);
-  });
-
-  it('runs init install when stdio is piped but installer terminal is available', async (): Promise<void> => {
-    const temporaryDirectory: string = await createTemporaryDirectory();
-    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
-    const installerTerminalPath: string = join(temporaryDirectory, 'installer-tty');
-    await writeFile(installerTerminalPath, '', 'utf8');
-
-    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--version', 'main', '--init-install'],
-      installerTerminalPath,
-      pathEntries: [binDirectory],
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`Running \`"${join(binDirectory, 'compartment')}" install\``);
-    expect(result.sudoInvocations).toEqual([]);
-    expect(result.compartmentInvocations).toEqual(['--version', 'install']);
-  });
-
-  it('runs init install when terminal input is readable but terminal output is not writable', async (): Promise<void> => {
-    const temporaryDirectory: string = await createTemporaryDirectory();
-    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
-    const readOnlyInstallerTerminalPath: string = join(temporaryDirectory, 'read-only-installer-tty');
-    await mkdir(readOnlyInstallerTerminalPath);
-
-    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--version', 'main', '--init-install'],
-      installerTerminalPath: readOnlyInstallerTerminalPath,
-      pathEntries: [binDirectory],
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`Running \`"${join(binDirectory, 'compartment')}" install\``);
-    expect(result.stdout).toContain('Bootstrapped self-hosted runtime.');
-    expect(result.sudoInvocations).toEqual([]);
-    expect(result.compartmentInvocations).toEqual(['--version', 'install']);
-  });
-
-  it('fails init update clearly when no installer terminal is available', async (): Promise<void> => {
-    const temporaryDirectory: string = await createTemporaryDirectory();
-    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
-    const missingInstallerTerminalPath: string = join(temporaryDirectory, 'missing-installer-tty');
-    const expectedUpdateCommand: string = `"${join(binDirectory, 'compartment')}" system update`;
-
-    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      allowFailure: true,
-      args: ['--version', 'main', '--init-update'],
-      installerTerminalPath: missingInstallerTerminalPath,
-      pathEntries: [binDirectory],
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain(
-      `Requested \`--init-update\`, but no terminal is available for sudo and update prompts. Run \`${expectedUpdateCommand}\` from an interactive shell.`,
-    );
-    expect(result.sudoInvocations).toEqual([]);
-    expect(result.compartmentInvocations).toEqual(['--version']);
-  });
-
-  it('runs init update when stdio is piped but installer terminal is available', async (): Promise<void> => {
-    const temporaryDirectory: string = await createTemporaryDirectory();
-    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
-    const installerTerminalPath: string = join(temporaryDirectory, 'installer-tty');
-    await writeFile(installerTerminalPath, '', 'utf8');
-
-    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--version', 'main', '--init-update'],
-      installerTerminalPath,
-      pathEntries: [binDirectory],
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`Running \`"${join(binDirectory, 'compartment')}" system update\``);
-    expect(result.sudoInvocations).toEqual([]);
-    expect(result.compartmentInvocations).toEqual(['--version', 'system update']);
-  });
-
-  it('runs init update when terminal input is readable but terminal output is not writable', async (): Promise<void> => {
-    const temporaryDirectory: string = await createTemporaryDirectory();
-    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
-    const readOnlyInstallerTerminalPath: string = join(temporaryDirectory, 'read-only-installer-tty');
-    await mkdir(readOnlyInstallerTerminalPath);
-
-    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--version', 'main', '--init-update'],
-      installerTerminalPath: readOnlyInstallerTerminalPath,
-      pathEntries: [binDirectory],
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`Running \`"${join(binDirectory, 'compartment')}" system update\``);
-    expect(result.stdout).toContain('Updated self-hosted runtime.');
-    expect(result.compartmentInvocations).toEqual(['--version', 'system update']);
-  });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(`Unknown installer argument: ${removedOption}`);
+      expect(result.sudoInvocations).toEqual([]);
+      expect(result.compartmentInvocations).toEqual([]);
+    },
+  );
 
   it('fails init login clearly when no installer terminal is available', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
@@ -592,7 +495,7 @@ describe('render-cli-install-script', (): void => {
 });
 
 function createCliOnlyInstallMessage(installPath: string): string {
-  return `Installed CLI only. Run \`"${installPath}" install\` when you are ready, run \`sudo "${installPath}" system update\` for an existing runtime, or re-run this installer with \`--init-install\` or \`--init-update\`.`;
+  return `Installed CLI. Run \`"${installPath}" login\` to connect to a Compartment platform, or re-run this installer with \`--init-login\`.`;
 }
 
 async function createTemporaryDirectory(): Promise<string> {
@@ -827,16 +730,6 @@ printf '%s\\n' "$*" >> "\${state_dir}/compartment.log"
   case "\${1:-}" in
   --version)
     printf '${expectedInstalledVersion}\\n'
-    ;;
-  install)
-    printf 'Bootstrapped self-hosted runtime.\\n'
-    ;;
-  system)
-    if [ "\${2:-}" != "update" ]; then
-      printf 'Unexpected system subcommand: %s\\n' "\${2:-}" >&2
-      exit 1
-    fi
-    printf 'Updated self-hosted runtime.\\n'
     ;;
   login)
     api_url=""

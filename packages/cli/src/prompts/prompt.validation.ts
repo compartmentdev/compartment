@@ -49,19 +49,6 @@ export function validatePassword(password: string): string | undefined {
   return password.length < 8 ? 'Password must be at least 8 characters.' : undefined;
 }
 
-export function parsePort(value: string): number | undefined {
-  if (!/^\d+$/u.test(value)) {
-    return undefined;
-  }
-
-  const port: number = Number(value);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    return undefined;
-  }
-
-  return port;
-}
-
 function validateEmail(email: string): string | undefined {
   return isValidEmailAddress(email) ? undefined : 'Email must be a valid address.';
 }

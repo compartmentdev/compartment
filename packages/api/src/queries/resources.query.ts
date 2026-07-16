@@ -1,23 +1,22 @@
 import { and, asc, eq, sql, type SQL } from 'drizzle-orm';
-import { projectResources } from '../db/schema';
+import { environments, projectKubeProvisioning, projectResources, projects } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
+import { lockResourceReconcileProject } from './resource-reconcile-project.query';
 import type {
   CreateProjectResourceInput,
   PersistedProjectResourceRow,
   ProjectResourceRow,
   ResourceTransaction,
   UpdateProjectResourceIntentInput,
-  UpdateProjectResourceRuntimeInput,
+  UpdateProjectResourceStatusInput,
 } from './resources.query.types';
 
 const projectResourceLockSelection: SQL[] = [
   sql`${projectResources.commandJson} as "commandJson"`,
-  sql`${projectResources.containerId} as "containerId"`,
   sql`${projectResources.createdAt} as "createdAt"`,
+  sql`${projectResources.deleteDataRequested} as "deleteDataRequested"`,
   sql`${projectResources.envJson} as "envJson"`,
   sql`${projectResources.environmentId} as "environmentId"`,
-  sql`${projectResources.hostname} as "hostname"`,
-  sql`${projectResources.runtimeKind} as "runtimeKind"`,
   sql`${projectResources.expectedClaimsJson} as "expectedClaimsJson"`,
   sql`${projectResources.id} as "id"`,
   sql`${projectResources.image} as "image"`,
@@ -27,7 +26,6 @@ const projectResourceLockSelection: SQL[] = [
   sql`${projectResources.outputsJson} as "outputsJson"`,
   sql`${projectResources.portsJson} as "portsJson"`,
   sql`${projectResources.readinessJson} as "readinessJson"`,
-  sql`${projectResources.restartPolicy} as "restartPolicy"`,
   sql`${projectResources.runtimeDefinitionHash} as "runtimeDefinitionHash"`,
   sql`${projectResources.status} as "status"`,
   sql`${projectResources.updatedAt} as "updatedAt"`,
@@ -93,10 +91,46 @@ export async function lockProjectResourceReconciliation(
   tx: ResourceTransaction,
   environmentId: string,
   resourceName: string,
-): Promise<void> {
+): Promise<Date | null> {
   await tx.execute(sql`
     select pg_advisory_xact_lock(hashtext(${`${environmentId}:${resourceName}`}))
   `);
+  await tx
+    .select({ projectId: projectKubeProvisioning.projectId })
+    .from(environments)
+    .innerJoin(projectKubeProvisioning, eq(projectKubeProvisioning.projectId, environments.projectId))
+    .where(eq(environments.id, environmentId))
+    .for('update', { of: projectKubeProvisioning });
+  const [project] = await tx
+    .select({ archivedAt: projects.archivedAt })
+    .from(environments)
+    .innerJoin(projects, eq(projects.id, environments.projectId))
+    .where(eq(environments.id, environmentId))
+    .for('update', { of: projects });
+  if (project === undefined) {
+    throw new Error(`Project for environment ${environmentId} was not found.`);
+  }
+  return project.archivedAt;
+}
+
+export async function lockProjectResourceOperation(
+  tx: ResourceTransaction,
+  environmentId: string,
+  resourceName: string,
+): Promise<Date | null> {
+  await tx.execute(sql`
+    select pg_advisory_xact_lock(hashtext(${`${environmentId}:${resourceName}`}))
+  `);
+  const [project] = await tx
+    .select({ archivedAt: projects.archivedAt })
+    .from(environments)
+    .innerJoin(projects, eq(projects.id, environments.projectId))
+    .where(eq(environments.id, environmentId))
+    .for('key share', { of: projects });
+  if (project === undefined) {
+    throw new Error(`Project for environment ${environmentId} was not found.`);
+  }
+  return project.archivedAt;
 }
 
 export async function createProjectResourceWithExecutor(
@@ -129,23 +163,41 @@ function projectResourceIntentUpdate(
   return update as Omit<UpdateProjectResourceIntentInput, 'projectResourceId'>;
 }
 
-export async function updateProjectResourceRuntime(
-  input: UpdateProjectResourceRuntimeInput,
+export async function updateProjectResourceStatus(
+  input: UpdateProjectResourceStatusInput,
 ): Promise<ProjectResourceRow> {
   return await getApiDatabase().transaction(
     async (tx: ResourceTransaction): Promise<ProjectResourceRow> =>
-      await updateProjectResourceRuntimeWithExecutor(tx, input),
+      await updateProjectResourceStatusWithExecutor(tx, input),
   );
 }
 
-export async function updateProjectResourceRuntimeWithExecutor(
+export async function beginProjectResourceDeletion(
+  projectResourceId: string,
+  deleteData: boolean,
+): Promise<ProjectResourceRow> {
+  return await getApiDatabase().transaction(async (tx: ResourceTransaction): Promise<ProjectResourceRow> => {
+    await lockResourceReconcileProject(tx, projectResourceId);
+    const [resource] = await tx
+      .update(projectResources)
+      .set({
+        deleteDataRequested: sql`${projectResources.deleteDataRequested} OR ${deleteData}`,
+        status: 'deleting',
+        updatedAt: new Date(),
+      })
+      .where(eq(projectResources.id, projectResourceId))
+      .returning();
+    return requireProjectResourceRow(resource === undefined ? undefined : toProjectResourceRow(resource));
+  });
+}
+
+async function updateProjectResourceStatusWithExecutor(
   tx: ResourceTransaction,
-  input: UpdateProjectResourceRuntimeInput,
+  input: UpdateProjectResourceStatusInput,
 ): Promise<ProjectResourceRow> {
   const [resource] = await tx
     .update(projectResources)
     .set({
-      containerId: input.containerId,
       status: input.status,
       updatedAt: input.updatedAt,
     })
@@ -153,15 +205,6 @@ export async function updateProjectResourceRuntimeWithExecutor(
     .returning();
 
   return requireProjectResourceRow(resource !== undefined ? toProjectResourceRow(resource) : undefined);
-}
-
-export async function deleteProjectResource(projectResourceId: string): Promise<ProjectResourceRow | undefined> {
-  const [resource] = await getApiDatabase()
-    .delete(projectResources)
-    .where(eq(projectResources.id, projectResourceId))
-    .returning();
-
-  return resource !== undefined ? toProjectResourceRow(resource) : undefined;
 }
 
 function buildLockProjectResourceQuery(environmentId: string, resourceName: string): SQL<PersistedProjectResourceRow> {

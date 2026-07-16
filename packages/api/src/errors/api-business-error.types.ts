@@ -49,7 +49,6 @@ export type ApiBusinessErrorCode =
   | 'invalid_variable_local_run'
   | 'last_organization_admin'
   | 'login_method_required'
-  | 'node_unavailable'
   | 'not_installed'
   | 'onboarding_session_not_found'
   | 'organization_not_found'

@@ -18,13 +18,13 @@ import {
   deploymentRoutes,
   deployments,
   environments,
-  nodes,
   operations,
   organizations,
   projectServices,
   projectKubeProvisioning,
   projectResources,
   projects,
+  productJobRuns,
   productLogStoreQuota,
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
@@ -58,6 +58,8 @@ import {
   completeProjectProvisioning,
 } from '../src/queries/project-provisioning.query';
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
+import { claimProductJob } from '../src/queries/product-job-runs.query';
+import { persistProductJobIntent } from '../src/queries/product-job-intent.query';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'deployment_kube_reference');
@@ -67,6 +69,57 @@ const db: Database = createDatabase(pool);
 
 describe('deployment Kubernetes transition persistence', (): void => {
   useApiRuntimeDatabaseTestHarness({ apiConfig, databaseUrl, db, pool, setup: seedDeployment });
+
+  it('does not recover a queued release Job after its project is archived', async (): Promise<void> => {
+    await persistProductJobIntent({
+      identityId: 'dep_kube',
+      intent: {
+        command: ['bin/release'],
+        deploymentId: 'dep_kube',
+        env: {},
+        image: 'registry.example/release@sha256:abc',
+        imagePullSecretId: 'pull-project',
+        jobClass: 'release',
+        namespace: 'cpt-prj-kube',
+        projectId: 'prj_kube',
+        timeoutMs: 30_000,
+      },
+    });
+    await db.update(projects).set({ archivedAt: new Date() }).where(eq(projects.id, 'prj_kube'));
+
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_kube' },
+      persistedResult: { status: 'timed-out' },
+    });
+    await expect(db.select().from(productJobRuns)).resolves.toMatchObject([{ status: 'timed-out' }]);
+  });
+
+  it('does not restart a claimed release Job after its project is archived', async (): Promise<void> => {
+    await persistProductJobIntent({
+      identityId: 'dep_kube',
+      intent: {
+        command: ['bin/release'],
+        deploymentId: 'dep_kube',
+        env: {},
+        image: 'registry.example/release@sha256:abc',
+        imagePullSecretId: 'pull-project',
+        jobClass: 'release',
+        namespace: 'cpt-prj-kube',
+        projectId: 'prj_kube',
+        timeoutMs: 30_000,
+      },
+    });
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_kube' },
+    });
+    await db.update(projects).set({ archivedAt: new Date() }).where(eq(projects.id, 'prj_kube'));
+
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_kube' },
+      persistedResult: { status: 'timed-out' },
+    });
+    await expect(db.select().from(productJobRuns)).resolves.toMatchObject([{ status: 'timed-out' }]);
+  });
 
   it('serializes concurrent drift callbacks and writes one audit event', async (): Promise<void> => {
     const observedAt: Date = new Date('2026-07-11T12:00:00.000Z');
@@ -130,16 +183,13 @@ describe('deployment Kubernetes transition persistence', (): void => {
       envJson: '[]',
       environmentId: 'env_kube',
       expectedClaimsJson: '[]',
-      hostname: 'postgres',
       id: resourceId,
       image: 'postgres:16',
       name: 'postgres',
       outputsJson: '{}',
       portsJson: '[5432]',
       readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
-      restartPolicy: 'on-failure',
       runtimeDefinitionHash: 'resource-hash',
-      runtimeKind: 'kubernetes',
       status: 'running',
       volumesJson: '[]',
     });
@@ -257,7 +307,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
     await expect(listDeploymentProductLogLines({ deploymentIds: ['dep_kube'], limit: 500 })).resolves.toHaveLength(100);
   });
 
-  it('rejects non-product container identities instead of guessing a deployment', async (): Promise<void> => {
+  it('rejects non-product Kubernetes workload identities instead of guessing a deployment', async (): Promise<void> => {
     await expect(
       ingestDeploymentProductLogs([
         {
@@ -276,7 +326,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
     ).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
   });
 
-  it('captures the legacy app container during the P7 cutover rollout', async (): Promise<void> => {
+  it('rejects the removed unqualified app workload identity', async (): Promise<void> => {
     const [event]: ProductLogIngestEvent[] = buildProductLogSequence(
       '44444444-4444-4444-8444-444444444444',
       'legacy',
@@ -286,7 +336,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(event).toBeDefined();
     await expect(
       ingestDeploymentProductLogs([{ ...event!, containerName: 'app', podName: 'app-dep-kube-oldpod' }]),
-    ).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
+    ).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
   });
 
   it('stores source offsets beyond the PostgreSQL integer range', async (): Promise<void> => {
@@ -788,8 +838,6 @@ describe('deployment Kubernetes transition persistence', (): void => {
       accessScopeId: 'env_kube',
       accessScopeType: 'environment',
       deploymentId: 'dep_candidate',
-      upstreamHost: 'app-env-kube-svc-kube.cpt-prj-kube.svc.cluster.local',
-      upstreamPort: 80,
     });
     const events: object[] = await db
       .select()
@@ -830,7 +878,6 @@ describe('deployment Kubernetes transition persistence', (): void => {
       health: 'healthy',
       id: 'dep_decoy',
       isActive: false,
-      nodeId: 'node_kube',
       operationId: 'op_kube',
       projectServiceId: 'svc_kube',
       promotionStage: 'stopped',
@@ -939,13 +986,6 @@ async function waitForDatabaseBlocker(client: PoolClient): Promise<void> {
 
 async function seedDeployment(): Promise<void> {
   await db.insert(organizations).values({ id: 'org_kube', name: 'Kube', slug: 'kube' });
-  await db.insert(nodes).values({
-    id: 'node_kube',
-    name: 'node-kube',
-    nodeSocketPath: '/tmp/node-kube.sock',
-    nodeUrl: '/tmp/node-kube.sock',
-    nodeVersion: '1',
-  });
   await db.insert(projects).values({ id: 'prj_kube', name: 'Kube', organizationId: 'org_kube' });
   await db.insert(projectServices).values({
     id: 'svc_kube',
@@ -954,9 +994,7 @@ async function seedDeployment(): Promise<void> {
     path: '.',
     projectId: 'prj_kube',
   });
-  await db
-    .insert(environments)
-    .values({ id: 'env_kube', name: 'production', nodeId: 'node_kube', projectId: 'prj_kube' });
+  await db.insert(environments).values({ id: 'env_kube', name: 'production', projectId: 'prj_kube' });
   await seedDeploymentRuntimeRows();
   await upsertDeploymentKubeReference({
     deploymentId: 'dep_kube',
@@ -1000,7 +1038,6 @@ async function seedDeploymentRuntimeRows(): Promise<void> {
     health: 'healthy',
     id: 'dep_kube',
     isActive: true,
-    nodeId: 'node_kube',
     operationId: 'op_kube',
     projectServiceId: 'svc_kube',
     promotionStage: 'active',
@@ -1040,10 +1077,9 @@ async function seedCandidate(): Promise<void> {
     health: 'pending',
     id: 'dep_candidate',
     isActive: false,
-    nodeId: 'node_kube',
     operationId: 'op_candidate',
     projectServiceId: 'svc_kube',
-    promotionStage: 'starting_candidate',
+    promotionStage: 'release',
     resolvedReadinessJson: '[]',
     resolvedRoutesJson: '[]',
     resolvedRunJson: '{}',
@@ -1107,15 +1143,12 @@ function buildApiConfig(url: string): ApiConfig {
     edgeToken: 'edge',
     edgeUrl: 'http://127.0.0.1:9081',
     logLevel: 'silent',
-    nodeAgentSocketPath: '/tmp/node.sock',
     port: 9443,
     publicHttpPort: 9080,
     publicHttpsPort: 443,
     publicProtocol: 'http',
-    resourceBackupDirectory: '/tmp/backups',
     rollbackRetentionLimit: null,
     runtimeControlToken: 'runtime',
-    runtimeDefaultUpstreamHost: '127.0.0.1',
     sessionSecret: 'secret',
     sessionTtlMs: 604_800_000,
     sourceArchiveDirectory: '/tmp/sources',

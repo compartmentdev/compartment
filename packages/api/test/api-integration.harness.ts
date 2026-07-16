@@ -8,7 +8,6 @@ import { gzipSync } from 'node:zlib';
 import {
   compartmentCurrentOrganizationHeaderName,
   compartmentDeploymentsPathname,
-  compartmentInternalNodeRegistrationPathname,
   compartmentSourcePackageMetadataArchivePath,
   compartmentSourceUploadsPathname,
   installResponseSchema,
@@ -18,8 +17,6 @@ import {
   variableResponseSchema,
   workerClaimDeploymentResponseSchema,
   workerClaimNextDeploymentPathname,
-  workerRecoverDeploymentsPathname,
-  workerRecoverDeploymentsResponseSchema,
   type CompartmentAuthoredDescriptor,
   type CompartmentAuthoredDescriptorInput,
   type CompartmentRouteRule,
@@ -30,33 +27,24 @@ import {
   type DeploymentLogLine,
   type DeploymentSummary,
   type InstallResponse,
-  type NodeRegistrationRequest,
   type SetVariableRequest,
   type SourceUploadSummary,
   type VariableResponse,
   type WorkerClaimDeploymentResponse,
   type WorkerClaimedDeployment,
-  type WorkerRecoverDeploymentsResponse,
 } from '@compartment/contracts';
 import type { LightMyRequestResponse } from 'fastify';
 import type { PoolClient } from 'pg';
 import { expect } from 'vitest';
 import type { ApiApp } from '../src/app.types';
-import type { SourceArchiveTarEntryKind } from '../src/services/deployment-source-build-validation-archive.types';
 import {
-  ensureIntegrationNodeAgent,
-  integrationNodeSocketPath,
-  resetIntegrationNodeAgentState,
-} from './api-node-agent.integration-harness';
+  findNextDeploymentReconcilePair,
+  persistDeploymentReconcileObservation,
+} from '../src/queries/deployment-reconcile.query';
+import type { DeploymentReconcilePair } from '../src/queries/deployment-reconcile.query.types';
+import { prepareDeploymentReconcile } from '../src/services/deployment-reconcile.service';
+import type { SourceArchiveTarEntryKind } from '../src/services/deployment-source-build-validation-archive.types';
 import type { StoredDeploymentRow } from './api.integration.types';
-
-export {
-  clearIntegrationNodeAgentRequests,
-  queueIntegrationNodeAgentError,
-  queueIntegrationNodeAgentResponse,
-  readIntegrationNodeAgentRequestBody,
-  readIntegrationNodeAgentRequests,
-} from './api-node-agent.integration-harness';
 
 const executeFileAsync: (file: string, args: readonly string[]) => Promise<{ stderr: string; stdout: string }> =
   promisify(execFile);
@@ -95,9 +83,6 @@ interface InjectSourceUploadRequestOptions {
 
 export interface ExpectedRunConfig {
   command?: string | undefined;
-  restart: {
-    policy: 'on-failure';
-  };
 }
 
 interface InjectJsonDeployRequestOptions {
@@ -150,9 +135,6 @@ export async function installCompartment(apiApp: ApiApp): Promise<InstallRespons
 export function createExpectedRunConfig(command?: string): ExpectedRunConfig {
   return {
     ...(command !== undefined ? { command } : {}),
-    restart: {
-      policy: 'on-failure',
-    },
   };
 }
 
@@ -634,26 +616,61 @@ export async function completeQueuedDeployment(
 }
 
 export async function completeClaimedDeployment(
-  apiApp: ApiApp,
+  _apiApp: ApiApp,
   deploymentId: string,
   routeHost: string = 'smoke-web.localhost',
+  observedAt: Date = new Date(),
 ): Promise<void> {
-  const completedResponse: LightMyRequestResponse = await apiApp.inject({
-    headers: {
-      authorization: 'Bearer test-runtime-control-token',
-    },
-    method: 'POST',
-    payload: {
-      containerId: 'container_123',
-      deploymentId,
-      imageRef: 'sha256:image',
-      routeHost,
-      upstreamHost: '127.0.0.1',
-      upstreamPort: 31000,
-    },
-    url: '/internal/deployments/complete',
+  await prepareDeploymentReconcile({
+    deploymentId,
+    deploymentName: `app-${deploymentId}`,
+    imageRef: 'registry.example/app@sha256:image',
+    namespace: `cpt-${deploymentId}`,
+    networkPolicyNames: [],
+    routeHost,
+    serviceName: 'app',
   });
-  expect(completedResponse.statusCode).toBe(200);
+  expect(
+    await persistDeploymentReconcileObservation({
+      deploymentId,
+      failureMessage: null,
+      observation: 'pending',
+      observedAt,
+      revision: 0,
+    }),
+  ).toBe(true);
+  expect(
+    await persistDeploymentReconcileObservation({
+      deploymentId,
+      failureMessage: null,
+      observation: 'ready',
+      observedAt,
+      revision: 1,
+    }),
+  ).toBe(true);
+}
+
+export async function acknowledgeKubeDeploymentStopped(deploymentId: string): Promise<void> {
+  const deadline: number = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const claimed: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
+    if (claimed?.candidate.deploymentId === deploymentId && claimed.candidate.state === 'stopping') {
+      expect(
+        await persistDeploymentReconcileObservation({
+          deploymentId,
+          failureMessage: null,
+          observation: 'stopped',
+          observedAt: new Date(),
+          revision: claimed.candidate.revision,
+        }),
+      ).toBe(true);
+      return;
+    }
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 20);
+    });
+  }
+  throw new Error(`Deployment ${deploymentId} did not become claimable for Kubernetes stop.`);
 }
 
 export function requireClaimedDeployment(response: WorkerClaimDeploymentResponse): WorkerClaimedDeployment {
@@ -787,22 +804,6 @@ export async function claimNextQueuedDeployment(apiApp: ApiApp): Promise<WorkerC
   return workerClaimDeploymentResponseSchema.parse(claimedResponse.json());
 }
 
-export async function recoverRunningDeployments(
-  apiApp: ApiApp,
-  mode?: 'all' | 'pending-drain',
-): Promise<WorkerRecoverDeploymentsResponse> {
-  const recoveredResponse: LightMyRequestResponse = await apiApp.inject({
-    headers: {
-      authorization: 'Bearer test-runtime-control-token',
-    },
-    method: 'POST',
-    url: mode === undefined ? workerRecoverDeploymentsPathname : `${workerRecoverDeploymentsPathname}?mode=${mode}`,
-  });
-  expect(recoveredResponse.statusCode).toBe(200);
-
-  return workerRecoverDeploymentsResponseSchema.parse(recoveredResponse.json());
-}
-
 export async function rollbackOpenTransaction(client: PoolClient): Promise<void> {
   try {
     await client.query('ROLLBACK');
@@ -814,34 +815,6 @@ export async function rollbackOpenTransaction(client: PoolClient): Promise<void>
 export async function waitForConcurrentDatabaseWork(): Promise<void> {
   await new Promise((resolve: (value: void | PromiseLike<void>) => void): void => {
     setTimeout(resolve, concurrentDatabaseWorkWaitMs);
-  });
-}
-
-export async function registerLocalNode(apiApp: ApiApp): Promise<void> {
-  process.env.COMPARTMENT_NODE_AGENT_SOCKET = integrationNodeSocketPath;
-  await ensureIntegrationNodeAgent();
-  resetIntegrationNodeAgentState();
-
-  const registrationResponse: LightMyRequestResponse = await injectNodeRegistrationRequest(apiApp, {
-    nodeName: 'local-node',
-    nodeSocketPath: integrationNodeSocketPath,
-    nodeVersion: '0.1.0',
-  });
-  expect(registrationResponse.statusCode).toBe(200);
-}
-
-export async function injectNodeRegistrationRequest(
-  apiApp: ApiApp,
-  payload: NodeRegistrationRequest,
-  authorization: string | null = 'Bearer test-runtime-control-token',
-): Promise<LightMyRequestResponse> {
-  const headers: Record<string, string> | undefined = authorization === null ? undefined : { authorization };
-
-  return await apiApp.inject({
-    ...(headers === undefined ? {} : { headers }),
-    method: 'POST',
-    payload,
-    url: compartmentInternalNodeRegistrationPathname,
   });
 }
 

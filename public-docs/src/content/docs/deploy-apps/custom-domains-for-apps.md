@@ -36,6 +36,6 @@ Automation note: custom-domain create, verify, list, and delete flows return onl
 
 Next steps:
 
-- Read [Install Domain](/install-operate/install-domain/).
+- Review the ingress and TLS choices in [Install Compartment](/quickstart/install-compartment/#install-the-platform-on-kubernetes).
 - Read [Projects and App URLs](/deploy-apps/projects-and-app-urls/).
 - Browse the [generated custom-domain command reference](/reference/generated/cli/domain/).

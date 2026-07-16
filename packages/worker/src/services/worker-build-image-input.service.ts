@@ -1,6 +1,5 @@
 import { type WorkerClaimedDeployment } from '@compartment/contracts';
 import {
-  buildDockerNamespaceLabels,
   type DockerBuildImageInput,
   type DockerProgressLine,
   type DockerRegistryCredentials,
@@ -8,8 +7,8 @@ import {
 import type { CompartmentRequester } from '@compartment/sdk';
 import { readWorkerArtifactRegistryInternalHost } from '../worker-artifact-registry';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
-import { appendRuntimeLogLineSafely, buildDeploymentEventContext } from './worker-deployment-tracking.service';
-import type { WorkerDeploymentEventContext } from './worker-deployment-tracking.types';
+import { appendDeploymentLogLineSafely, buildDeploymentEventContext } from './worker-deployment-event.service';
+import type { WorkerDeploymentEventContext } from './worker-deployment-event.types';
 import type { PreparedWorkerSource } from './worker-source.service.types';
 
 class WorkerDockerBuildImageInput implements DockerBuildImageInput {
@@ -37,7 +36,6 @@ class WorkerDockerBuildImageInput implements DockerBuildImageInput {
 interface BuildDockerImageInputRequest {
   artifactRegistry: WorkerArtifactRegistryConfig;
   deployment: WorkerClaimedDeployment;
-  dockerNamespace: string;
   imageTag: string;
   preparedSource: PreparedWorkerSource;
   pushImageTag: string;
@@ -59,7 +57,7 @@ export function buildDockerImageInput(input: BuildDockerImageInputRequest): Dock
       ? { dockerfilePath: input.preparedSource.dockerfilePath }
       : {}),
     imageTag: input.imageTag,
-    labels: buildReleaseImageLabels(input.deployment, input.dockerNamespace),
+    labels: buildReleaseImageLabels(input.deployment),
     onProgressLine: createBuildProgressReporter(buildDeploymentEventContext(input.request, input.deployment)),
     packer: input.preparedSource.packer,
     pushImageInsecureRegistry: input.artifactRegistry.mode === 'bundled',
@@ -99,13 +97,12 @@ function buildSourceBuildEnv(deployment: WorkerClaimedDeployment): Record<string
 
 function createBuildProgressReporter(context: WorkerDeploymentEventContext): (line: DockerProgressLine) => void {
   return (line: DockerProgressLine): void => {
-    void appendRuntimeLogLineSafely(context, 'building_image', line.stream, line.message, 'info');
+    void appendDeploymentLogLineSafely(context, 'building_image', line.stream, line.message, 'info');
   };
 }
 
-function buildReleaseImageLabels(deployment: WorkerClaimedDeployment, dockerNamespace: string): Record<string, string> {
+function buildReleaseImageLabels(deployment: WorkerClaimedDeployment): Record<string, string> {
   return {
-    ...buildDockerNamespaceLabels(dockerNamespace),
     'compartment.artifactId': deployment.artifact.id,
     'compartment.environment': deployment.environmentName,
     'compartment.project': deployment.projectName,

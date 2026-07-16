@@ -117,7 +117,7 @@ export function createAppAccessSnapshot(
         organizationId: 'org_123',
         organizationSlug: 'acme-dev',
         proxyRoutes: input.proxyRoutes ?? [],
-        upstreamHost: input.upstreamHost ?? '127.0.0.1',
+        upstreamHost: input.upstreamHost ?? 'app.cpt-project.svc',
         upstreamPort: input.upstreamPort ?? 31000,
         routeScopeId,
         routeScopeType,
@@ -172,7 +172,7 @@ export function createAppAccessProxyRouteTargetState(
 
   return {
     ...authorizationState,
-    upstreamHost: input.upstreamHost ?? '127.0.0.1',
+    upstreamHost: input.upstreamHost ?? 'app.cpt-project.svc',
     upstreamPort: input.upstreamPort ?? 31042,
   };
 }

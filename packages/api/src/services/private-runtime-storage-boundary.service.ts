@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { mkdir, open, type FileHandle } from 'node:fs/promises';
+import { open, type FileHandle } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import {
   isMissingFileSystemEntryError,
@@ -8,10 +8,6 @@ import {
   type FileSystemEntryKind,
   type ValidatedFileSystemWriteTarget,
 } from '@compartment/utils';
-import {
-  chmodPrivateRuntimeStorageDirectory,
-  privateRuntimeDirectoryMode,
-} from './private-runtime-storage-permissions.service';
 
 interface PrivateRuntimeStoragePathInput {
   label: string;
@@ -32,35 +28,6 @@ export function isPrivateRuntimeStorageEntryNotFoundError(
   error: Error,
 ): error is PrivateRuntimeStorageEntryNotFoundError {
   return error instanceof PrivateRuntimeStorageEntryNotFoundError;
-}
-
-export async function createPrivateRuntimeStorageChildDirectory(input: PrivateRuntimeStoragePathInput): Promise<void> {
-  const writeTarget: ValidatedFileSystemWriteTarget = await validatePrivateRuntimeStorageWriteTarget(
-    input,
-    'directory',
-  );
-  if (writeTarget.exists) {
-    throw new Error(`${input.label} already exists.`);
-  }
-
-  try {
-    await mkdir(input.path, { mode: privateRuntimeDirectoryMode });
-  } catch (error) {
-    if (!(error instanceof Error) || !isExistingFileSystemEntryError(error)) {
-      throw error;
-    }
-
-    await assertPrivateRuntimeStorageChildDirectory(input);
-    throw new Error(`${input.label} already exists.`);
-  }
-
-  await assertPrivateRuntimeStorageChildDirectory(input);
-  await chmodPrivateRuntimeStorageDirectory(input.path);
-  await assertPrivateRuntimeStorageChildDirectory(input);
-}
-
-export async function assertPrivateRuntimeStorageChildDirectory(input: PrivateRuntimeStoragePathInput): Promise<void> {
-  await validatePrivateRuntimeStorageEntry(input, 'directory');
 }
 
 export async function readPrivateRuntimeStorageFile(input: PrivateRuntimeStoragePathInput): Promise<Buffer> {
@@ -169,8 +136,4 @@ function readPrivateRuntimeStorageAuthoredPath(input: PrivateRuntimeStoragePathI
 
 function readPrivateRuntimeStorageEntryMissingMessage(label: string): string {
   return `${label} does not exist.`;
-}
-
-function isExistingFileSystemEntryError(error: Error): error is NodeJS.ErrnoException {
-  return 'code' in error && error.code === 'EEXIST';
 }

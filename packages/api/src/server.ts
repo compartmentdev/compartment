@@ -14,6 +14,7 @@ interface SharedServerRuntime {
   app: ApiApp;
   db: Database;
   pool: Pool;
+  resourceOperationPool: Pool;
   systemApp: ApiApp;
 }
 
@@ -31,7 +32,8 @@ let isShuttingDown: boolean = false;
 async function main(): Promise<void> {
   const config: ApiConfig = readApiConfig();
   const pool: Pool = createDatabasePool(config.databaseUrl);
-  const runtime: SharedServerRuntime = createSharedServerRuntime(config, pool);
+  const resourceOperationPool: Pool = createDatabasePool(config.databaseUrl);
+  const runtime: SharedServerRuntime = createSharedServerRuntime(config, pool, resourceOperationPool);
   let jobs: ApiJobsRuntime | null = null;
 
   try {
@@ -44,8 +46,8 @@ async function main(): Promise<void> {
   registerShutdownHandlers({ ...runtime, jobs });
 }
 
-function createSharedServerRuntime(config: ApiConfig, pool: Pool): SharedServerRuntime {
-  const db: Database = createDatabase(pool);
+function createSharedServerRuntime(config: ApiConfig, pool: Pool, resourceOperationPool: Pool): SharedServerRuntime {
+  const db: Database = createDatabase(pool, resourceOperationPool);
   const app: ApiApp = createApp({
     closePool: false,
     config,
@@ -59,7 +61,7 @@ function createSharedServerRuntime(config: ApiConfig, pool: Pool): SharedServerR
     db,
     pool,
   });
-  return { app, db, pool, systemApp };
+  return { app, db, pool, resourceOperationPool, systemApp };
 }
 
 async function startSharedServerRuntime(config: ApiConfig, runtime: SharedServerRuntime): Promise<ApiJobsRuntime> {
@@ -101,6 +103,7 @@ async function closeRunningSharedServerRuntime({
   app,
   jobs,
   pool,
+  resourceOperationPool,
   systemApp,
 }: RunningSharedServerRuntime): Promise<void> {
   if (isShuttingDown) {
@@ -114,22 +117,29 @@ async function closeRunningSharedServerRuntime({
     systemApp.close(),
   ]);
   const closeFailure: PromiseRejectedResult | null = findRejectedResult(closeResults);
-  const cleanupFailure: Error | null = await closeSharedRuntimeState(pool);
+  const cleanupFailure: Error | null = await closeSharedRuntimeState([pool, resourceOperationPool]);
+  reportRuntimeCloseFailures(app, closeFailure, cleanupFailure);
+  process.exit(closeFailure === null && cleanupFailure === null ? 0 : 1);
+}
 
+function reportRuntimeCloseFailures(
+  app: ApiApp,
+  closeFailure: PromiseRejectedResult | null,
+  cleanupFailure: Error | null,
+): void {
   if (closeFailure !== null) {
     app.log.error({ err: closeFailure.reason }, 'Failed to close API server listeners cleanly');
   }
   if (cleanupFailure !== null) {
     app.log.error({ err: cleanupFailure }, 'Failed to close shared API runtime cleanly');
   }
-
-  process.exit(closeFailure === null && cleanupFailure === null ? 0 : 1);
 }
 
 async function closeStartupSharedServerRuntime({
   app,
   jobs,
   pool,
+  resourceOperationPool,
   systemApp,
 }: StartupSharedServerRuntime): Promise<void> {
   const closeTasks: Promise<void>[] = [app.close(), systemApp.close()];
@@ -138,7 +148,7 @@ async function closeStartupSharedServerRuntime({
   }
 
   await Promise.allSettled(closeTasks);
-  await closeSharedRuntimeState(pool);
+  await closeSharedRuntimeState([pool, resourceOperationPool]);
 }
 
 function findRejectedResult(results: PromiseSettledResult<void>[]): PromiseRejectedResult | null {
@@ -151,10 +161,10 @@ function findRejectedResult(results: PromiseSettledResult<void>[]): PromiseRejec
   return null;
 }
 
-async function closeSharedRuntimeState(pool: Pool): Promise<Error | null> {
+async function closeSharedRuntimeState(pools: Pool[]): Promise<Error | null> {
   try {
     clearApiRuntime();
-    await pool.end();
+    await Promise.all(pools.map(async (pool: Pool): Promise<void> => await pool.end()));
     return null;
   } catch (error) {
     return error instanceof Error ? error : new Error(String(error));

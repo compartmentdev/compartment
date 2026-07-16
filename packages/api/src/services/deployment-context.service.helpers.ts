@@ -14,16 +14,13 @@ import {
   type CompartmentServiceKind,
 } from '@compartment/contracts';
 import {
-  createActiveDeploymentNotFoundError,
   createDeploymentNotFoundError,
   createDescriptorServiceNotFoundError,
-  createNodeUnavailableError,
   createServiceNotFoundError,
   createUnsupportedServiceKindError,
 } from '../errors/api-business-error';
 import { findEnvironmentByProjectAndName, findProjectServiceByName } from '../queries/deployment-context.query';
 import type { DeploymentJoinedRow, EnvironmentRow, ProjectServiceRow } from '../queries/deployments.query.types';
-import type { NodeRow } from '../queries/node.query.types';
 import type {
   ResolvedDescriptorService,
   ResolvedEnvironmentContext,
@@ -76,28 +73,12 @@ export function requireJoinedDeployment(deployment: DeploymentJoinedRow | undefi
   return deployment;
 }
 
-export function requireNode(node: NodeRow | undefined): NodeRow {
-  if (node === undefined) {
-    throw createNodeUnavailableError();
-  }
-
-  return node;
-}
-
 export function requireProjectService(service: ProjectServiceRow | undefined): ProjectServiceRow {
   if (service === undefined) {
     throw createServiceNotFoundError();
   }
 
   return service;
-}
-
-export function requireContainerId(deployment: DeploymentJoinedRow): string {
-  if (deployment.deployment.containerId === null) {
-    throw createActiveDeploymentNotFoundError();
-  }
-
-  return deployment.deployment.containerId;
 }
 
 export async function readExistingBuildTargetContext(

@@ -36,8 +36,6 @@ import type {
   ResolvedProjectTarget,
 } from './projects.service.types';
 
-const projectRuntimeCleanupRequestTimeoutMs: number = 15 * 60 * 1000;
-
 export async function listProjects(
   context: AuthenticatedContext,
   input: ProjectListInput,
@@ -99,7 +97,7 @@ export async function archiveProject(
   context: AuthenticatedContext,
   input: ProjectScopeInput,
 ): Promise<ProjectResponse> {
-  const request: CompartmentRequester = createProjectRuntimeCleanupRequester(context);
+  const request: CompartmentRequester = createProjectLifecycleRequester(context);
   const target: ResolvedProjectTarget = await resolveProjectTarget(input.cwd, input.projectName);
   return await archiveProjectApi(request, target.projectName);
 }
@@ -117,7 +115,7 @@ export async function startProject(
   context: AuthenticatedContext,
   input: ProjectLifecycleInput,
 ): Promise<ProjectLifecycleResponse> {
-  const request: CompartmentRequester = createProjectRequester(context);
+  const request: CompartmentRequester = createProjectLifecycleRequester(context);
   const target: ResolvedProjectTarget = await resolveProjectTarget(input.cwd, input.projectName);
   return await startProjectApi(request, target.projectName, {
     environmentName: input.environmentName,
@@ -128,7 +126,7 @@ export async function stopProject(
   context: AuthenticatedContext,
   input: ProjectLifecycleInput,
 ): Promise<ProjectLifecycleResponse> {
-  const request: CompartmentRequester = createProjectRequester(context);
+  const request: CompartmentRequester = createProjectLifecycleRequester(context);
   const target: ResolvedProjectTarget = await resolveProjectTarget(input.cwd, input.projectName);
   return await stopProjectApi(request, target.projectName, {
     environmentName: input.environmentName,
@@ -139,7 +137,7 @@ export async function deleteProject(
   context: AuthenticatedContext,
   projectName: string,
 ): Promise<ProjectDeleteResponse> {
-  const request: CompartmentRequester = createProjectRuntimeCleanupRequester(context);
+  const request: CompartmentRequester = createProjectLifecycleRequester(context);
   return await deleteProjectApi(request, projectName);
 }
 
@@ -180,10 +178,10 @@ function createProjectRequester(context: AuthenticatedContext): CompartmentReque
   });
 }
 
-function createProjectRuntimeCleanupRequester(context: AuthenticatedContext): CompartmentRequester {
+function createProjectLifecycleRequester(context: AuthenticatedContext): CompartmentRequester {
   return createAuthenticatedRequester(requireOrganizationContext(context), {
     includeCurrentOrganization: true,
-    requestTimeoutMs: projectRuntimeCleanupRequestTimeoutMs,
+    requestTimeoutMs: null,
   });
 }
 

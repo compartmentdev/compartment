@@ -19,7 +19,6 @@ import type {
   DeploymentInspectTargetInput,
   DeploymentSummaryInput,
   EnvironmentSummaryInput,
-  PreviousDeploymentContextInput,
   ProjectSummaryInput,
   WorkerClaimedDeploymentInput,
 } from './presenter.types';
@@ -157,7 +156,5 @@ export interface DeploymentLogsLookupResult {
   lines: DeploymentLogLine[];
   project: ProjectSummaryInput;
 }
-
-export type ClaimedPreviousDeploymentContext = PreviousDeploymentContextInput;
 
 export type ClaimedDeploymentContext = WorkerClaimedDeploymentInput;

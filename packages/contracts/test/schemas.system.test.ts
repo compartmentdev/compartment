@@ -6,8 +6,6 @@ import {
   createOrganizationResponseSchema,
   installRequestSchema,
   installResponseSchema,
-  managedDomainAllocationPathname,
-  managedDomainAllocationResponseSchema,
   projectLifecycleRequestSchema,
   projectLifecycleResponseSchema,
   type CreateOrganizationRequest,
@@ -15,7 +13,6 @@ import {
   type DeploymentSummary,
   type InstallRequest,
   type InstallResponse,
-  type ManagedDomainAllocationResponse,
   type ProjectLifecycleRequest,
   type ProjectLifecycleResponse,
   type SystemDomainAttachCertificateRequest,
@@ -23,17 +20,11 @@ import {
   type SystemDomainSetRequest,
   type SystemDomainStatusResponse,
   type SystemDomainVersionedRequest,
-  type SystemRestartResponse,
-  type SystemStatusResponse,
-  type UpdateResponse,
   systemDomainAttachCertificateRequestSchema,
   systemDomainMutationResponseSchema,
   systemDomainSetRequestSchema,
   systemDomainStatusResponseSchema,
   systemDomainVersionedRequestSchema,
-  systemRestartResponseSchema,
-  systemStatusResponseSchema,
-  updateResponseSchema,
 } from '../src';
 
 describe('contract schemas system and domain', (): void => {
@@ -67,27 +58,6 @@ describe('contract schemas system and domain', (): void => {
     });
 
     expect(result.sessionToken).toBe('session_123');
-  });
-
-  it('exposes the managed domain allocation pathname', (): void => {
-    expect(managedDomainAllocationPathname).toBe('/v1/managed-domains');
-  });
-
-  it('accepts a valid managed domain allocation response', (): void => {
-    const result: ManagedDomainAllocationResponse = managedDomainAllocationResponseSchema.parse({
-      acmeDnsToken: 'acme-token',
-      baseDomain: '4h8z9k2m1p7q.app.compartment.run',
-      dnsRecords: [
-        {
-          host: '*.4h8z9k2m1p7q.app.compartment.run',
-          purpose: 'Compartment control plane and hosted application entrypoints',
-          type: 'A/AAAA-or-CNAME',
-        },
-      ],
-    });
-
-    expect(result.baseDomain).toBe('4h8z9k2m1p7q.app.compartment.run');
-    expect(result.acmeDnsToken).toBe('acme-token');
   });
 
   it('accepts a valid create organization request', (): void => {
@@ -128,94 +98,6 @@ describe('contract schemas system and domain', (): void => {
     expect(request.environmentName).toBe('production');
     expect(defaultRequest.environmentName).toBeUndefined();
     expect(response.deployments[0]!.status).toBe('stopped');
-  });
-
-  it('accepts a valid update response', (): void => {
-    const result: UpdateResponse = updateResponseSchema.parse({
-      backupDir: '/var/lib/compartment/self-hosted/backups/2026-04-07T12-00-00.000Z',
-      configDir: '/etc/compartment',
-      currentVersion: '0.1.0',
-      dataDir: '/var/lib/compartment',
-      imageRegistry: 'github',
-      imageSource: 'registry',
-      skipReason: null,
-      status: 'updated',
-      targetVersion: '0.2.0',
-    });
-
-    expect(result.imageSource).toBe('registry');
-  });
-
-  it('accepts a skipped update response', (): void => {
-    const result: UpdateResponse = updateResponseSchema.parse({
-      backupDir: null,
-      configDir: '/etc/compartment',
-      currentVersion: '0.2.0',
-      dataDir: '/var/lib/compartment',
-      imageRegistry: 'docker-hub',
-      imageSource: 'registry',
-      skipReason: 'downgrade-not-supported',
-      status: 'skipped',
-      targetVersion: '0.1.0',
-    });
-
-    expect(result.skipReason).toBe('downgrade-not-supported');
-  });
-
-  it('accepts a valid system status response', (): void => {
-    const result: SystemStatusResponse = systemStatusResponseSchema.parse({
-      checkedAt: '2026-04-09T12:00:00.000Z',
-      configDir: '/etc/compartment',
-      dataDir: '/var/lib/compartment',
-      domain: {
-        cliApiUrl: 'http://127.0.0.1:39444',
-        controlPlaneUrl: 'https://console.customer.example.com',
-      },
-      dockerNamespace: 'compartment-prod',
-      imageRegistry: 'github',
-      imageSource: 'registry',
-      overallStatus: 'running',
-      rollbackRetention: {
-        limit: null,
-        mode: 'indefinite',
-      },
-      services: [
-        {
-          containerId: 'container_api',
-          health: 'healthy',
-          imageRef: 'ghcr.io/compartmentdev/compartment-api:0.2.0',
-          name: 'api',
-          publishedPorts: [{ containerPort: 39444, hostIp: '127.0.0.1', hostPort: 39444 }],
-          startedAt: '2026-04-09T11:00:00.000Z',
-          status: 'running',
-          uptimeSeconds: 3600,
-        },
-        {
-          containerId: 'container_registry',
-          health: null,
-          imageRef: 'registry:2',
-          name: 'registry',
-          publishedPorts: [{ containerPort: 5000, hostIp: '127.0.0.1', hostPort: 5517 }],
-          startedAt: '2026-04-09T11:00:00.000Z',
-          status: 'running',
-          uptimeSeconds: 3600,
-        },
-      ],
-    });
-
-    expect(result.services[1]?.name).toBe('registry');
-    expect(result.domain.controlPlaneUrl).toBe('https://console.customer.example.com');
-  });
-
-  it('accepts a valid system restart response', (): void => {
-    const result: SystemRestartResponse = systemRestartResponseSchema.parse({
-      configDir: '/etc/compartment',
-      dataDir: '/var/lib/compartment',
-      restartedAt: '2026-04-09T12:00:00.000Z',
-      services: ['api', 'registry', 'edge', 'node', 'builder', 'worker', 'caddy', 'postgres'],
-    });
-
-    expect(result.services).toContain('registry');
   });
 
   it('accepts a valid system domain status response', (): void => {
@@ -428,7 +310,6 @@ function createDeploymentSummary(overrides?: Partial<DeploymentSummary>): Deploy
       strategy: 'auto',
     },
     completedAt: '2026-03-21T10:00:00.000Z',
-    containerId: 'ctr_123',
     createdAt: '2026-03-21T09:00:00.000Z',
     failureMessage: null,
     health: 'healthy',
@@ -452,11 +333,7 @@ function createDeploymentSummary(overrides?: Partial<DeploymentSummary>): Deploy
     },
     rollbackAvailable: false,
     routeUrl: 'https://billing.apps.localhost',
-    run: {
-      restart: {
-        policy: 'unless-stopped',
-      },
-    },
+    run: {},
     serviceName: 'web',
     status: 'succeeded',
     ...overrides,

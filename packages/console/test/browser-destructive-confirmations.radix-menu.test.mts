@@ -280,7 +280,6 @@ function createDeployResponse(deploymentRunId: string): DeployResponse {
           strategy: 'auto',
         },
         completedAt: null,
-        containerId: null,
         createdAt: '2026-04-21T09:00:00.000Z',
         failureMessage: null,
         health: 'pending',
@@ -303,11 +302,7 @@ function createDeployResponse(deploymentRunId: string): DeployResponse {
           type: 'http',
         },
         rollbackAvailable: false,
-        run: {
-          restart: {
-            policy: 'on-failure',
-          },
-        },
+        run: {},
         routeUrl: null,
         serviceName: 'web',
         status: 'running',

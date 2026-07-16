@@ -28,7 +28,7 @@ metadata:
   name: resource-res-01jz-b8dd0a32e1fbe363
   namespace: cpt-prj-01jz-243118a73be1a00d
 spec:
-  progressDeadlineSeconds: 90
+  progressDeadlineSeconds: 30
   replicas: 1
   selector:
     matchLabels: *a1
@@ -42,7 +42,11 @@ spec:
     spec:
       automountServiceAccountToken: false
       containers:
-        - env:
+        - args:
+            - postgres
+            - -c
+            - shared_buffers=256MB
+          env:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -52,14 +56,17 @@ spec:
           name: resource
           ports:
             - containerPort: 5432
-              name: resource
+              name: tcp-5432
+              protocol: TCP
+            - containerPort: 9187
+              name: tcp-9187
               protocol: TCP
           readinessProbe:
             failureThreshold: 3
             periodSeconds: 2
             successThreshold: 1
             tcpSocket:
-              port: resource
+              port: 5432
             timeoutSeconds: 1
           volumeMounts:
             - mountPath: /var/lib/postgresql/data
@@ -81,11 +88,16 @@ metadata:
   name: resource-res-01jz-b8dd0a32e1fbe363
   namespace: cpt-prj-01jz-243118a73be1a00d
 spec:
+  clusterIP: None
   ports:
-    - name: resource
+    - name: tcp-5432
       port: 5432
       protocol: TCP
       targetPort: 5432
+    - name: tcp-9187
+      port: 9187
+      protocol: TCP
+      targetPort: 9187
   selector: *a1
 ---
 apiVersion: v1

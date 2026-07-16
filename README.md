@@ -49,10 +49,11 @@ Teams use Compartment when software that started as a script, internal app, work
 
 ## Quickstart
 
-On the target server, install the CLI and initialize the Compartment system:
+Install the CLI, then connect it to a Compartment control plane installed by your operator:
 
 ```bash
-curl -fsSL https://compartment.dev/install.sh | sh -s -- --init-install
+curl -fsSL https://compartment.dev/install.sh | sh
+compartment login --api-url https://console.example.com --organization acme-dev
 ```
 
 Prepare an application repository:
@@ -90,7 +91,6 @@ For branch-driven deploys, connect the repository through the Console or with `c
 | `packages/api`       | Control-plane API, auth, persistence, migrations, and server-owned web serving. |
 | `packages/console`   | Vite and React browser control plane.                                           |
 | `packages/worker`    | Deployment execution and background work.                                       |
-| `packages/node`      | Runtime-node control surface for deployed services.                             |
 | `packages/edge`      | Hosted-app ingress and access enforcement boundary.                             |
 | `public-docs`        | Public Starlight documentation site.                                            |
 | `docs`               | Internal architecture, package ownership, and operating specs.                  |
@@ -106,10 +106,12 @@ pnpm install
 cp .env.example .env
 ```
 
-Local development expects PostgreSQL from `COMPARTMENT_DATABASE_URL`, plus `caddy` and `railpack` on `PATH`:
+Local development expects PostgreSQL from `COMPARTMENT_DATABASE_URL`, plus `caddy`, `buildctl`, `docker`, and
+`railpack` on `PATH`. The Docker-compatible CLI and daemon run the loopback artifact registry; they are not an
+application runtime target. `BUILDKIT_ADDR` must point at a reachable BuildKit daemon.
 
 ```bash
-brew install caddy
+brew install caddy buildkit
 curl -sSL https://railpack.com/install.sh | sh
 pnpm dev
 ```

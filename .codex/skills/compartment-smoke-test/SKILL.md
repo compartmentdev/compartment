@@ -14,7 +14,7 @@ Use this skill for a real local smoke test of the compartment as a user, not jus
 - `packages/cli/test/cli.smoke.test.ts`
 - `packages/cli/test/system-user-flow.e2e.test.ts`
 - `packages/cli/test/self-hosted-user-setup.e2e.harness.ts`
-- `packages/node/test/public-routes.test.ts`
+- `packages/cli/test/self-hosted-user-setup-k3d.harness.ts`
 - `packages/api/test/api.integration.test.ts`
 - `examples/dockerfile/`
 - `examples/railpack/`
@@ -41,9 +41,9 @@ Use this skill for a real local smoke test of the compartment as a user, not jus
 
 - Prefer credentials explicitly provided by the user for the current run.
 - Default shared smoke creds used by the repo smoke/e2e fixtures: `admin@example.com` / `supersecretpassword`.
-- If the current stack was created by your `compartment install`, use the credentials you set there.
-- If install exists, use `compartment login`.
-- If not, run `compartment install` first.
+- Use the credentials for the current platform seed or installation.
+- If a platform is available, use `compartment login`.
+- For the local k3d fixture, run `compartment install --dev` only when the task authorizes creating the seed.
 
 ## CLI invocation
 
@@ -62,7 +62,7 @@ Use this skill for a real local smoke test of the compartment as a user, not jus
 2. Establish CLI auth and context.
 
 - Try `compartment whoami` first.
-- If needed, run `compartment login` or `compartment install`.
+- If needed, run `compartment login`.
 - Verify `compartment whoami`, `compartment org list`, and `compartment org use <slug>`.
 - Run `compartment logout`, confirm the session is gone, then log back in.
 

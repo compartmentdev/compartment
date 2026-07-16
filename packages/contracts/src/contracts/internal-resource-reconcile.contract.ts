@@ -1,5 +1,8 @@
 import { z } from 'zod';
+import { resourceReadinessSummarySchema, type ResourceReadinessSummary } from './resources.contract';
 import type { ContractSchema } from './schema.types';
+
+export const resourceReconcileLifecycleTimeoutMs: number = 120_000;
 
 export interface ResourceClaimIdentity {
   claimName: string;
@@ -13,13 +16,15 @@ export interface ResourceVolumeIntent {
 }
 
 export interface ResourceReconcileIntent {
-  containerPort: number;
+  command: string[];
   deleteData: boolean;
   environmentId: string;
   env: Record<string, string>;
   image: string;
   namespaceId: string;
   operation: 'delete' | 'reconcile';
+  ports: number[];
+  readiness: ResourceReadinessSummary | null;
   replicas: 0 | 1;
   resourceId: string;
   secretId: string;
@@ -55,13 +60,15 @@ const resourceVolumeIntentSchema: ContractSchema<ResourceVolumeIntent> = z
   .strict();
 const resourceReconcileIntentSchema: ContractSchema<ResourceReconcileIntent> = z
   .object({
-    containerPort: z.number().int().positive(),
+    command: z.array(z.string().min(1)),
     deleteData: z.boolean(),
     environmentId: z.string().min(1),
     env: z.record(z.string(), z.string()),
     image: z.string().min(1),
     namespaceId: z.string().min(1),
     operation: z.enum(['delete', 'reconcile']),
+    ports: z.array(z.number().int().min(1).max(65_535)),
+    readiness: resourceReadinessSummarySchema.nullable(),
     replicas: z.union([z.literal(0), z.literal(1)]),
     resourceId: z.string().min(1),
     secretId: z.string().min(1),

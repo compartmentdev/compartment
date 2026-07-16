@@ -12,7 +12,6 @@ import {
   deploymentRuns,
   deployments,
   environments,
-  nodes,
   operations,
   organizations,
   principals,
@@ -53,14 +52,11 @@ const apiConfig: ApiConfig = {
   auditFileSink: defaultAuditFileSinkConfig,
   rollbackRetentionLimit: null,
   runtimeControlToken: 'test-runtime-control-token',
-  runtimeDefaultUpstreamHost: '127.0.0.1',
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -175,13 +171,6 @@ async function createQueryTestScope(): Promise<void> {
     name: 'Custom Routes Org',
     slug: 'custom-routes-org',
   });
-  await db.insert(nodes).values({
-    id: 'node_custom_routes',
-    name: 'node-custom-routes',
-    nodeUrl: '/tmp/compartment/api-test/node/custom-routes.sock',
-    nodeSocketPath: '/tmp/compartment/api-test/node/custom-routes.sock',
-    nodeVersion: '1.0.0',
-  });
   await insertProjectScope({
     environmentId: 'env_custom_routes',
     projectId: 'prj_custom_routes',
@@ -215,7 +204,6 @@ async function insertProjectScope(input: {
   await db.insert(environments).values({
     id: input.environmentId,
     name: 'production',
-    nodeId: 'node_custom_routes',
     projectId: input.projectId,
     updatedAt: new Date('2026-04-24T09:00:00.000Z'),
   });
@@ -278,7 +266,6 @@ async function insertActiveDeploymentRoute(input?: {
     health: 'healthy',
     id: deploymentId,
     isActive: true,
-    nodeId: 'node_custom_routes',
     operationId: `op_${deploymentId}`,
     projectServiceId: serviceId,
     promotionStage: 'active',
@@ -286,8 +273,6 @@ async function insertActiveDeploymentRoute(input?: {
     resolvedRoutesJson: '[]',
     resolvedRunJson: '{}',
     status: 'ready',
-    upstreamHost: '127.0.0.1',
-    upstreamPort: 31000,
     updatedAt: new Date('2026-04-24T09:05:00.000Z'),
   });
   await db.insert(deploymentRoutes).values({

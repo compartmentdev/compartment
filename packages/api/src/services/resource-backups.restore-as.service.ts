@@ -1,12 +1,14 @@
-import type { NodeResourceRequest, NodeResourceResponse } from '@compartment/contracts';
-import { reconcileNodeResource } from '@compartment/sdk';
-import { createInvalidDeployConfigError, createResourceNameTakenError } from '../errors/api-business-error';
+import {
+  createInvalidDeployConfigError,
+  createProjectArchivedError,
+  createResourceNotFoundError,
+  createResourceNameTakenError,
+} from '../errors/api-business-error';
 import type { ResourceBackupRow } from '../queries/resource-backups.query.types';
 import {
-  createProjectResourceWithExecutor,
+  findProjectResourceById,
   lockProjectResourceReconciliation,
   lockProjectResourceReferenceByName,
-  updateProjectResourceRuntimeWithExecutor,
 } from '../queries/resources.query';
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -14,21 +16,15 @@ import { assertResourceBackupBelongsToEnvironment } from './resource-backups.env
 import { runResourceRestore } from './resource-backups.execution.service';
 import { resolveRequiredBackupResourceById, resolveRequiredResourceBackup } from './resource-backups.lookup.service';
 import { resolveResourceEnvironmentContext } from './resource-environment-context.service';
-import { createResourceNodeRequester } from './resource-node-requester.service';
 import type { EffectiveVariable } from './effective-variables.service.types';
+import { withResourceOperationLocks } from './resource-operation-lock.service';
 import { copyRestoreResourceVariables } from './resource-backups.restore-variables.service';
-import { createResourceInsert } from './resources-resource-insert.service';
-import { hasKubernetesRuntime } from './resources-kubernetes-reconcile.service';
 import {
   createKubernetesRestoredResourceWithLock,
   prepareRestoredResourceRuntime,
 } from './resource-backups.restore-as-kubernetes.service';
 import { resolveStoredResourceIntent } from './resources-stored-intent.service';
-import {
-  buildNodeResourceOperationDefinition,
-  buildNodeResourceRequest,
-  type ResolvedResourceIntent,
-} from './resources.service.helpers';
+import { buildResourceOperationDefinition, type ResolvedResourceIntent } from './resources.service.helpers';
 import {
   parseResourceDefinitionSnapshotJson,
   type StoredResourceDefinitionSnapshot,
@@ -48,6 +44,20 @@ interface CreateRestoredResourceInput {
   sourceResource: ProjectResourceRow;
 }
 
+interface RestoreCreatedResourceInput {
+  backup: ResourceBackupRow;
+  context: ResourceEnvironmentContext;
+  createdResource: ProjectResourceRow;
+  sourceResource: ProjectResourceRow;
+}
+
+interface RestoreBackupIntoCreatedResourceInput {
+  artifactResource: ProjectResourceRow;
+  backup: ResourceBackupRow;
+  context: ResourceEnvironmentContext;
+  resource: ProjectResourceRow;
+}
+
 export async function restoreResourceBackupAsForPrincipal(
   input: ResourceRestoreAsInput,
 ): Promise<ResourceRestoreAsResult> {
@@ -64,18 +74,37 @@ export async function restoreResourceBackupAsForPrincipal(
     snapshot: resolveRequiredResourceDefinitionSnapshot(backup),
     sourceResource,
   });
-  const resource: ProjectResourceRow = await prepareRestoredResourceRuntime(context, createdResource);
-  await restoreBackupIntoCreatedResource({ artifactResource: sourceResource, backup, context, resource });
+  const resource: ProjectResourceRow = await withResourceOperationLocks(
+    [sourceResource.id, createdResource.id],
+    async (): Promise<ProjectResourceRow> =>
+      await restoreCreatedResource({ backup, context, createdResource, sourceResource }),
+  );
 
   return { ...context, resource, restoredBackup: backup, sourceResource };
 }
 
-async function restoreBackupIntoCreatedResource(input: {
-  artifactResource: ProjectResourceRow;
-  backup: ResourceBackupRow;
-  context: ResourceEnvironmentContext;
-  resource: ProjectResourceRow;
-}): Promise<void> {
+async function restoreCreatedResource(input: RestoreCreatedResourceInput): Promise<ProjectResourceRow> {
+  const sourceResource: ProjectResourceRow = await requireResourceOperationCandidate(input.sourceResource.id);
+  const createdResource: ProjectResourceRow = await requireResourceOperationCandidate(input.createdResource.id);
+  const resource: ProjectResourceRow = await prepareRestoredResourceRuntime(input.context, createdResource);
+  await restoreBackupIntoCreatedResource({
+    artifactResource: sourceResource,
+    backup: input.backup,
+    context: input.context,
+    resource,
+  });
+  return resource;
+}
+
+async function requireResourceOperationCandidate(resourceId: string): Promise<ProjectResourceRow> {
+  const resource: ProjectResourceRow | undefined = await findProjectResourceById(resourceId);
+  if (resource === undefined || resource.status === 'deleting') {
+    throw createResourceNotFoundError();
+  }
+  return resource;
+}
+
+async function restoreBackupIntoCreatedResource(input: RestoreBackupIntoCreatedResourceInput): Promise<void> {
   try {
     await runResourceRestore(input);
   } catch (error) {
@@ -88,8 +117,7 @@ async function restoreBackupIntoCreatedResource(input: {
 async function createRestoredResourceFromBackup(input: CreateRestoredResourceInput): Promise<ProjectResourceRow> {
   return await getApiDatabase().transaction(async (tx: ResourceTransaction): Promise<ProjectResourceRow> => {
     const targetResourceName: string = input.restoreInput.body.targetResourceName;
-    await lockProjectResourceReconciliation(tx, input.context.environment.id, targetResourceName);
-    await assertTargetResourceAvailable(tx, input.context, targetResourceName);
+    await assertRestoredResourceCreationAllowed(tx, input.context, targetResourceName);
     const effectiveVariables: EffectiveVariable[] = await copyRestoreResourceVariables({
       actorPrincipalId: input.restoreInput.actorPrincipalId,
       context: input.context,
@@ -106,6 +134,18 @@ async function createRestoredResourceFromBackup(input: CreateRestoredResourceInp
     preflightRestoreOperation(input.backup, intent, effectiveVariables);
     return await createRestoredResourceWithLock(tx, input.context, intent);
   });
+}
+
+async function assertRestoredResourceCreationAllowed(
+  tx: ResourceTransaction,
+  context: ResourceEnvironmentContext,
+  resourceName: string,
+): Promise<void> {
+  const archivedAt: Date | null = await lockProjectResourceReconciliation(tx, context.environment.id, resourceName);
+  if (archivedAt !== null) {
+    throw createProjectArchivedError();
+  }
+  await assertTargetResourceAvailable(tx, context, resourceName);
 }
 
 function resolveRestoredResourceIntent(
@@ -126,24 +166,7 @@ async function createRestoredResourceWithLock(
   context: ResourceEnvironmentContext,
   intent: ResolvedResourceIntent,
 ): Promise<ProjectResourceRow> {
-  if (hasKubernetesRuntime(process.env)) {
-    return await createKubernetesRestoredResourceWithLock(tx, context, intent);
-  }
-  const response: NodeResourceResponse = await reconcileNodeResource(
-    await createResourceNodeRequester(context),
-    createRestoredResourceNodeRequest(context, intent),
-  );
-  const resource: ProjectResourceRow = await createProjectResourceWithExecutor(
-    tx,
-    createResourceInsert(context.environment.id, intent, new Date(), 'node'),
-  );
-
-  return await updateProjectResourceRuntimeWithExecutor(tx, {
-    containerId: response.containerId,
-    projectResourceId: resource.id,
-    status: response.status,
-    updatedAt: new Date(),
-  });
+  return await createKubernetesRestoredResourceWithLock(tx, context, intent);
 }
 
 async function assertTargetResourceAvailable(
@@ -161,25 +184,13 @@ async function assertTargetResourceAvailable(
   }
 }
 
-function createRestoredResourceNodeRequest(
-  context: ResourceEnvironmentContext,
-  intent: ResolvedResourceIntent,
-): NodeResourceRequest {
-  return buildNodeResourceRequest(
-    context.project.id,
-    context.project.name,
-    context.environment.id,
-    context.environment.name,
-    intent,
-  );
-}
-
 function createSnapshotResourceRow(snapshot: StoredResourceDefinitionSnapshot): ProjectResourceRow {
   const now: Date = new Date(0);
 
   return {
     ...createSnapshotResourceIdentity(now),
     commandJson: snapshot.commandJson,
+    deleteDataRequested: false,
     envJson: snapshot.envJson,
     image: snapshot.image,
     operationConfigHash: snapshot.operationConfigHash,
@@ -187,8 +198,6 @@ function createSnapshotResourceRow(snapshot: StoredResourceDefinitionSnapshot): 
     portsJson: snapshot.portsJson,
     readinessJson: snapshot.readinessJson,
     expectedClaimsJson: '[]',
-    runtimeKind: 'node',
-    restartPolicy: snapshot.restartPolicy,
     runtimeDefinitionHash: snapshot.runtimeDefinitionHash,
     volumesJson: snapshot.volumesJson,
   };
@@ -196,28 +205,16 @@ function createSnapshotResourceRow(snapshot: StoredResourceDefinitionSnapshot): 
 
 type SnapshotResourceIdentity = Pick<
   ProjectResourceRow,
-  | 'containerId'
-  | 'createdAt'
-  | 'environmentId'
-  | 'expectedClaimsJson'
-  | 'hostname'
-  | 'id'
-  | 'name'
-  | 'runtimeKind'
-  | 'status'
-  | 'updatedAt'
+  'createdAt' | 'environmentId' | 'expectedClaimsJson' | 'id' | 'name' | 'status' | 'updatedAt'
 >;
 
 function createSnapshotResourceIdentity(now: Date): SnapshotResourceIdentity {
   return {
-    containerId: null,
     createdAt: now,
     environmentId: '',
     expectedClaimsJson: '[]',
-    hostname: '',
     id: '',
     name: '',
-    runtimeKind: 'node',
     status: 'stopped',
     updatedAt: now,
   };
@@ -238,7 +235,7 @@ function preflightRestoreOperation(
 ): void {
   const operation: StoredResourceOperationConfig = resolveConfiguredRestoreOperation(backup, intent);
 
-  buildNodeResourceOperationDefinition(intent, operation, effectiveVariables);
+  buildResourceOperationDefinition(intent, operation, effectiveVariables);
 }
 
 function resolveConfiguredRestoreOperation(

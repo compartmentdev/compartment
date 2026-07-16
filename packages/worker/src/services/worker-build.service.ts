@@ -9,8 +9,8 @@ import {
 } from '@compartment/contracts';
 import { buildDockerImage, type DockerBuildImageResult } from '@compartment/docker';
 import { type CompartmentBinaryRequester, type CompartmentRequester, getArtifactSourceArchive } from '@compartment/sdk';
-import { appendRuntimeStepEventSafely, buildDeploymentEventContext } from './worker-deployment-tracking.service';
-import type { WorkerDeploymentEventContext } from './worker-deployment-tracking.types';
+import { appendDeploymentStepEventSafely, buildDeploymentEventContext } from './worker-deployment-event.service';
+import type { WorkerDeploymentEventContext } from './worker-deployment-event.types';
 import { readWorkerArtifactRegistryInternalHost } from '../worker-artifact-registry';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
 import { buildDockerImageInput } from './worker-build-image-input.service';
@@ -23,7 +23,6 @@ interface BuildReleaseFromPreparedSourceInput {
   archiveRequest: CompartmentBinaryRequester;
   artifactRegistry: WorkerArtifactRegistryConfig;
   deployment: WorkerClaimedDeployment;
-  dockerNamespace: string;
   eventContext: WorkerDeploymentEventContext;
   imageTag: string;
   pushImageTag: string;
@@ -35,7 +34,6 @@ interface FreshReleaseImageFromSourceInput {
   archiveRequest: CompartmentBinaryRequester;
   artifactRegistry: WorkerArtifactRegistryConfig;
   deployment: WorkerClaimedDeployment;
-  dockerNamespace: string;
   eventContext: WorkerDeploymentEventContext;
   imageTag: string;
   pushImageTag: string;
@@ -45,7 +43,6 @@ interface FreshReleaseImageFromSourceInput {
 interface BuildPreparedSourceImageInput {
   artifactRegistry: WorkerArtifactRegistryConfig;
   deployment: WorkerClaimedDeployment;
-  dockerNamespace: string;
   eventContext: WorkerDeploymentEventContext;
   imageTag: string;
   preparedSource: PreparedWorkerSource;
@@ -57,7 +54,6 @@ export async function buildReleaseImageFromSource(
   request: CompartmentRequester,
   archiveRequest: CompartmentBinaryRequester,
   deployment: WorkerClaimedDeployment,
-  dockerNamespace: string,
   artifactRegistry: WorkerArtifactRegistryConfig,
 ): Promise<string> {
   const eventContext: WorkerDeploymentEventContext = buildDeploymentEventContext(request, deployment);
@@ -72,7 +68,6 @@ export async function buildReleaseImageFromSource(
     request,
     archiveRequest,
     deployment,
-    dockerNamespace,
     imageTag: buildReleaseImageTag(deployment, artifactRegistry.address),
     pushImageTag: buildReleaseImageTag(deployment, readWorkerArtifactRegistryInternalHost(artifactRegistry)),
     eventContext,
@@ -88,7 +83,6 @@ async function buildFreshReleaseImageFromSource(input: FreshReleaseImageFromSour
       archiveRequest: input.archiveRequest,
       artifactRegistry: input.artifactRegistry,
       deployment: input.deployment,
-      dockerNamespace: input.dockerNamespace,
       eventContext: input.eventContext,
       imageTag: input.imageTag,
       pushImageTag: input.pushImageTag,
@@ -112,7 +106,6 @@ async function buildReleaseFromPreparedSource(input: BuildReleaseFromPreparedSou
     input.request,
     preparedSource,
     input.deployment,
-    input.dockerNamespace,
     input.artifactRegistry,
     input.imageTag,
     input.pushImageTag,
@@ -140,7 +133,6 @@ async function buildAndPublishPreparedSourceImage(
   request: CompartmentRequester,
   preparedSource: PreparedWorkerSource,
   deployment: WorkerClaimedDeployment,
-  dockerNamespace: string,
   artifactRegistry: WorkerArtifactRegistryConfig,
   imageTag: string,
   pushImageTag: string,
@@ -148,7 +140,6 @@ async function buildAndPublishPreparedSourceImage(
   const buildResult: DockerBuildImageResult = await buildPreparedSourceImage({
     artifactRegistry,
     deployment,
-    dockerNamespace,
     eventContext,
     imageTag,
     preparedSource,
@@ -176,7 +167,7 @@ async function prepareDeploymentSource(
 }
 
 async function appendClaimedDeploymentEvent(eventContext: WorkerDeploymentEventContext): Promise<void> {
-  await appendRuntimeStepEventSafely(eventContext, 'queued', 'succeeded', 'worker claimed deployment');
+  await appendDeploymentStepEventSafely(eventContext, 'queued', 'succeeded', 'worker claimed deployment');
 }
 
 async function buildPreparedSourceImage(input: BuildPreparedSourceImageInput): Promise<DockerBuildImageResult> {
@@ -190,7 +181,6 @@ async function buildPreparedSourceImage(input: BuildPreparedSourceImageInput): P
             buildDockerImageInput({
               artifactRegistry: input.artifactRegistry,
               deployment: input.deployment,
-              dockerNamespace: input.dockerNamespace,
               imageTag: input.imageTag,
               preparedSource: input.preparedSource,
               pushImageTag: input.pushImageTag,

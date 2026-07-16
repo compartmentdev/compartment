@@ -13,5 +13,5 @@ export interface AuthenticatedContext extends ApiContext {
 
 export interface CreateAuthenticatedClientOptions {
   includeCurrentOrganization: boolean;
-  requestTimeoutMs?: number | undefined;
+  requestTimeoutMs?: number | null | undefined;
 }

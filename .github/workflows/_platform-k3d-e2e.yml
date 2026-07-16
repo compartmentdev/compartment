@@ -21,7 +21,6 @@ jobs:
     timeout-minutes: 120
     env:
       COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E: '1'
-      COMPARTMENT_SELF_HOSTED_USER_SETUP_VERSION: sha-${{ github.sha }}
       COMPARTMENT_TEST_APP_NODE_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
       COMPARTMENT_TEST_POSTGRES_IMAGE: postgres:16
       DOCKER_CONFIG: ${{ github.workspace }}/.compartment/docker-config
@@ -56,19 +55,30 @@ jobs:
           KUBECTL_VERSION: v1.33.2
         run: |
           curl --fail --location --show-error \
+            --retry 5 \
+            --retry-delay 3 \
+            --retry-all-errors \
             "https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d-linux-amd64" \
             --output /tmp/k3d
           echo "${K3D_SHA256}  /tmp/k3d" | sha256sum --check
           sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
 
           curl --fail --location --show-error \
+            --retry 5 \
+            --retry-delay 3 \
+            --retry-all-errors \
             "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
             --output /tmp/kubectl
           echo "${KUBECTL_SHA256}  /tmp/kubectl" | sha256sum --check
           sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
 
           helm_archive="helm-${HELM_VERSION}-linux-amd64.tar.gz"
-          curl --fail --location --show-error "https://get.helm.sh/${helm_archive}" --output "/tmp/${helm_archive}"
+          curl --fail --location --show-error \
+            --retry 5 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            "https://get.helm.sh/${helm_archive}" \
+            --output "/tmp/${helm_archive}"
           echo "${HELM_SHA256}  /tmp/${helm_archive}" | sha256sum --check
           tar -xzf "/tmp/${helm_archive}" -C /tmp
           sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
@@ -90,19 +100,12 @@ jobs:
           key: ${{ inputs.self_hosted_image_cache_key }}
           fail-on-cache-miss: true
 
-      - name: Install cosign for CLI artifact build
-        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
-        with:
-          cosign-release: v2.6.1
-
       - name: Build CLI artifact
         env:
           BUILD_COMMIT_SHA: ${{ github.sha }}
-          PRIMARY_TAG: sha-${{ github.sha }}
         run: |
           pnpm cli:build:sea \
             --distribution-channel source \
-            --default-registry-image-tag "$PRIMARY_TAG" \
             --build-commit-sha "$BUILD_COMMIT_SHA" \
             --output-dir ./.compartment/cli-dist
 

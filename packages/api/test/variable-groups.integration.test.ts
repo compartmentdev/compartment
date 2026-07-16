@@ -36,12 +36,7 @@ import { decryptVariableValueFromStorage, parseVariablesMasterKey } from '../src
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
-import {
-  createSourceArchive,
-  injectDeployRequest,
-  installCompartment,
-  registerLocalNode,
-} from './api-integration.harness';
+import { createSourceArchive, injectDeployRequest, installCompartment } from './api-integration.harness';
 import { expectJsonError } from './api-route-test.harness';
 
 interface AppAccessEdgeServiceModule {
@@ -79,15 +74,12 @@ const apiConfig: ApiConfig = {
   rollbackRetentionLimit: null,
   publicHttpPort: 80,
   publicHttpsPort: 443,
-  resourceBackupDirectory: join(tmpdir(), 'compartment-api-variable-groups-resource-backups'),
   sessionSecret: 'test-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: join(tmpdir(), 'compartment-api-variable-groups-source-archives'),
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
   runtimeControlToken: 'test-runtime-control-token',
-  runtimeDefaultUpstreamHost: '127.0.0.1',
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-variable-groups-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -476,7 +468,6 @@ describe('variable groups integration', (): void => {
 
 async function installAndRegisterNode(): Promise<InstallResponse> {
   const installPayload: InstallResponse = await installCompartment(app);
-  await registerLocalNode(app);
   return installPayload;
 }
 

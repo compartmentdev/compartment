@@ -263,10 +263,8 @@ function createResourceRestoreResponse(): ResourceRestoreResponse {
 
 function createResourceSummary(): ResourceSummary {
   return {
-    containerId: 'container_123',
     createdAt: '2026-05-06T12:00:00.000Z',
     env: [],
-    hostname: 'postgres.internal-tools.staging.internal',
     id: 'res_123',
     image: 'postgres:16',
     name: 'postgres',
@@ -276,7 +274,6 @@ function createResourceSummary(): ResourceSummary {
       timeoutMs: 30000,
       type: 'tcp',
     },
-    restartPolicy: 'unless-stopped',
     status: 'running',
     updatedAt: '2026-05-06T12:00:00.000Z',
     volumes: [{ mountPath: '/var/lib/postgresql/data', name: 'postgres-data' }],

@@ -10,8 +10,11 @@ import type {
   WorkerClaimDeploymentReconcileResponse,
   WorkerClaimProductJobResponse,
   WorkerClaimResourceReconcileResponse,
+  ProductJobClass,
 } from '@compartment/contracts';
 import type { WorkerConfig } from './config';
+import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
+import { cleanupWorkerArtifacts } from './services/worker-artifact-cleanup.service';
 import { executeProductJob, finalizeRecoveredProductJob } from './services/worker-product-job.service';
 import { reconcileDeploymentTarget } from './services/worker-deployment-reconcile.service';
 import { executeResourceReconcile } from './services/worker-resource-reconcile.service';
@@ -20,66 +23,53 @@ import { collectAndPublishPodMetrics } from './services/worker-pod-metrics.servi
 const controllerRequestTimeoutMs: number = 15_000;
 
 export interface KubeControllerHost {
-  enabled: boolean;
   reconcile(): Promise<boolean>;
 }
 
-interface KubeReconcileArea {
-  reconcile(): Promise<boolean | undefined>;
-}
-
-class RegisteredKubeControllerHost implements KubeControllerHost {
-  public readonly enabled: boolean = true;
-
-  public constructor(private readonly areas: KubeReconcileArea[]) {}
-
-  public async reconcile(): Promise<boolean> {
-    for (const area of this.areas) {
-      if ((await area.reconcile()) === true) {
-        return true;
-      }
-    }
-    return false;
-  }
-}
-
-class ProductJobReconcileArea implements KubeReconcileArea {
+class DeploymentReconcileArea implements KubeControllerHost {
   public constructor(
     private readonly request: CompartmentRequester,
     private readonly runtime: KubeRuntime,
+    private readonly artifactRegistry: WorkerArtifactRegistryConfig,
   ) {}
 
   public async reconcile(): Promise<boolean> {
-    const claimed: WorkerClaimProductJobResponse = await claimProductJob(this.request);
-    if (claimed.job === null) {
-      return false;
+    let reconciled: boolean = false;
+    let deploymentError: Error | null = null;
+    try {
+      reconciled = await this.reconcileDeployment();
+    } catch (error) {
+      deploymentError = readControllerError(typeof error === 'object' ? error : null, 'Deployment reconcile failed.');
     }
-    if (claimed.result === null) {
-      await executeProductJob(this.request, this.runtime, claimed.job);
-    } else {
-      await finalizeRecoveredProductJob(this.request, this.runtime, claimed.job, claimed.result);
+    let recoveredRelease: boolean;
+    try {
+      recoveredRelease = await reconcileProductJob(this.request, this.runtime, 'release');
+    } catch (releaseError) {
+      throwCombinedControllerErrors(
+        deploymentError,
+        readControllerError(typeof releaseError === 'object' ? releaseError : null, 'Release recovery failed.'),
+      );
     }
-    return true;
+    if (deploymentError !== null) {
+      throw deploymentError;
+    }
+    return recoveredRelease || reconciled;
   }
-}
 
-class DeploymentReconcileArea implements KubeReconcileArea {
-  public constructor(
-    private readonly request: CompartmentRequester,
-    private readonly runtime: KubeRuntime,
-  ) {}
-
-  public async reconcile(): Promise<boolean> {
+  private async reconcileDeployment(): Promise<boolean> {
     const claimed: WorkerClaimDeploymentReconcileResponse = await claimDeploymentReconcile(this.request);
     if (claimed.target === null) {
       return false;
     }
-    await reconcileDeploymentTarget(this.request, this.runtime, claimed.target);
+    await cleanupWorkerArtifacts(
+      await reconcileDeploymentTarget(this.request, this.runtime, claimed.target),
+      this.artifactRegistry,
+    );
     return claimed.target.state !== 'active' && claimed.target.state !== 'stopped';
   }
 }
 
-class ResourceReconcileArea implements KubeReconcileArea {
+class ResourceReconcileArea implements KubeControllerHost {
   public constructor(
     private readonly request: CompartmentRequester,
     private readonly runtime: KubeRuntime,
@@ -87,15 +77,16 @@ class ResourceReconcileArea implements KubeReconcileArea {
 
   public async reconcile(): Promise<boolean> {
     const claimed: WorkerClaimResourceReconcileResponse = await claimResourceReconcile(this.request);
-    if (claimed.intent === null) {
-      return false;
+    let reconciled: boolean = false;
+    if (claimed.intent !== null) {
+      await executeResourceReconcile(this.request, this.runtime, claimed);
+      reconciled = true;
     }
-    await executeResourceReconcile(this.request, this.runtime, claimed);
-    return true;
+    return (await reconcileProductJob(this.request, this.runtime, 'resource-operation')) || reconciled;
   }
 }
 
-class PodMetricsReconcileArea implements KubeReconcileArea {
+class PodMetricsReconcileArea implements KubeControllerHost {
   private nextCollectionAt: number = 0;
 
   public constructor(
@@ -103,26 +94,19 @@ class PodMetricsReconcileArea implements KubeReconcileArea {
     private readonly runtime: KubeRuntime,
   ) {}
 
-  public async reconcile(): Promise<undefined> {
+  public async reconcile(): Promise<boolean> {
     if (Date.now() < this.nextCollectionAt) {
-      return;
+      return false;
     }
     this.nextCollectionAt = Date.now() + 10_000;
     await collectAndPublishPodMetrics(this.request, this.runtime);
+    return true;
   }
 }
 
-class DisabledKubeControllerHost implements KubeControllerHost {
-  public readonly enabled: boolean = false;
-
-  public async reconcile(): Promise<boolean> {
-    return await Promise.resolve(false);
-  }
-}
-
-export function createKubeControllerHost(config: WorkerConfig): KubeControllerHost {
+export function createKubeControllerHosts(config: WorkerConfig): KubeControllerHost[] {
   if (!isKubeRuntimeConfigured()) {
-    return new DisabledKubeControllerHost();
+    throw new Error('Kubernetes worker requires KUBERNETES_SERVICE_HOST or KUBECONFIG.');
   }
   const request: CompartmentRequester = createCompartmentRequester({
     apiUrl: config.apiUrl,
@@ -130,15 +114,42 @@ export function createKubeControllerHost(config: WorkerConfig): KubeControllerHo
     requestTimeoutMs: controllerRequestTimeoutMs,
   });
   const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
-  return new RegisteredKubeControllerHost([
+  return [
     new PodMetricsReconcileArea(request, runtime),
-    new DeploymentReconcileArea(request, runtime),
+    new DeploymentReconcileArea(request, runtime, config.artifactRegistry),
     new ResourceReconcileArea(request, runtime),
-    new ProductJobReconcileArea(request, runtime),
-  ]);
+  ];
 }
 
-export function isKubeRuntimeConfigured(): boolean {
+async function reconcileProductJob(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  jobClass: ProductJobClass,
+): Promise<boolean> {
+  const claimed: WorkerClaimProductJobResponse = await claimProductJob(request, { jobClass });
+  if (claimed.job === null) {
+    return false;
+  }
+  if (claimed.result === null) {
+    await executeProductJob(request, runtime, claimed.job);
+  } else {
+    await finalizeRecoveredProductJob(request, runtime, claimed.job, claimed.result);
+  }
+  return true;
+}
+
+function throwCombinedControllerErrors(deploymentError: Error | null, releaseError: Error): never {
+  if (deploymentError === null) {
+    throw releaseError;
+  }
+  throw new AggregateError([deploymentError, releaseError], 'Deployment reconcile and release recovery both failed.');
+}
+
+function readControllerError(error: object | null, fallbackMessage: string): Error {
+  return error instanceof Error ? error : new Error(fallbackMessage);
+}
+
+function isKubeRuntimeConfigured(): boolean {
   return hasKubeConfiguration(process.env);
 }
 

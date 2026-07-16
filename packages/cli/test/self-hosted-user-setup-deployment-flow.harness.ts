@@ -1,8 +1,8 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
-  compartmentInternalNodeRegistrationPathname,
   workerClaimProjectProvisioningPathname,
   workerCompleteProjectProvisioningPathname,
+  workerAppendDeploymentEventPathname,
   projectDeleteResponseSchema,
   projectLifecycleResponseSchema,
   projectResponseSchema,
@@ -41,7 +41,7 @@ const blockedPublicControlPlaneRequests: readonly BlockedPublicControlPlaneReque
     body: '{}',
     headers: { 'content-type': 'application/json' },
     method: 'POST',
-    pathname: compartmentInternalNodeRegistrationPathname,
+    pathname: '/internal/nodes/register',
   },
   {
     body: '{}',
@@ -61,7 +61,19 @@ const blockedPublicControlPlaneRequests: readonly BlockedPublicControlPlaneReque
     body: '{}',
     headers: { 'content-type': 'application/json' },
     method: 'POST',
-    pathname: '/v1/nodes/register',
+    pathname: '/internal/deployments/runtime-state',
+  },
+  {
+    body: '{}',
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+    pathname: workerAppendDeploymentEventPathname,
+  },
+  {
+    body: '{}',
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+    pathname: '/internal/deployments/recover-running?mode=invalid',
   },
 ];
 

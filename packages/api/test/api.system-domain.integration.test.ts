@@ -8,7 +8,6 @@ import {
   type DomainDnsRecordType,
   type DomainCertificateMetadata,
   type InstallResponse,
-  type DomainPublicScheme,
   type SystemDomainAttachCertificateRequest,
   type SystemDomainMutationResponse,
   type SystemDomainSetRequest,
@@ -138,7 +137,6 @@ function buildSystemMutationHeaders(idempotencyKey: string): Record<string, stri
 function buildCustomExternalDomainSetRequest(
   expectedSetupVersion: number,
   baseDomain: string = 'customer.example.com',
-  publicScheme: DomainPublicScheme = 'https',
 ): SystemDomainSetRequest {
   return {
     expectedSetupVersion,
@@ -146,7 +144,7 @@ function buildCustomExternalDomainSetRequest(
       baseDomain,
       caddyMode: 'custom-http',
       domainKind: 'custom',
-      publicScheme,
+      publicScheme: 'https',
       tlsMode: 'external',
     },
   };
@@ -319,7 +317,6 @@ process.env.COMPARTMENT_PUBLIC_INGRESS_IPV4 = '';
 process.env.COMPARTMENT_PUBLIC_INGRESS_IPV6 = '';
 process.env.COMPARTMENT_POSTGRES_PASSWORD = 'postgres';
 process.env.COMPARTMENT_EDGE_TOKEN = 'test-edge-token';
-process.env.COMPARTMENT_NODE_AGENT_SOCKET = '/tmp/compartment/api-test/node/integration.sock';
 process.env.COMPARTMENT_SYSTEM_API_SOCKET = '/tmp/compartment/api-integration-system-domain/system-api.sock';
 process.env.COMPARTMENT_SYSTEM_TOKEN = 'test-system-token';
 process.env.COMPARTMENT_THROTTLE_AUTH_LOGIN_ROUTE_MAX_REQUESTS = '30';

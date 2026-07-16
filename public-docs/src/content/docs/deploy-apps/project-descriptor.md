@@ -141,7 +141,7 @@ Use this file when you need to answer questions such as:
 
 - what is the project called in Compartment;
 - which directories become services;
-- which internal Docker-backed resources should be reconciled before deploy;
+- which internal Kubernetes resources should be reconciled before deploy;
 - how should a service build;
 - which directory a static build should publish;
 - how should a service start;
@@ -149,7 +149,7 @@ Use this file when you need to answer questions such as:
 - how should resource backup and restore commands run or be scheduled;
 - how should Compartment decide the app is ready.
 
-The top-level `resources` map declares Docker-backed resources for the project environment. Resources are internal-only
+The top-level `resources` map declares Kubernetes resources for the project environment. Resources are internal-only
 and are not deployable app services. They do not create public routes. Use `preset: postgres` for the built-in PostgreSQL
 resource defaults, or declare a generic resource with `image`, `ports`, `volumes`, readiness, outputs, and operations.
 Preset resources only accept `env` overrides; use the generic resource form for structural changes.

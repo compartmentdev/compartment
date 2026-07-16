@@ -1,9 +1,9 @@
 ---
 title: Resources
-description: Declare and operate internal Docker-backed resources such as databases and caches.
+description: Declare and operate internal Kubernetes resources such as databases and caches.
 ---
 
-Resources are internal Docker-backed runtime objects declared in `compartment.yml`.
+Resources are internal Kubernetes workloads declared in `compartment.yml`.
 
 Use them when an app needs a stateful dependency such as PostgreSQL, MySQL, Redis, Valkey, or another containerized
 service that should run next to the deployed app.
@@ -27,7 +27,7 @@ resources:
     preset: postgres
 ```
 
-`preset: postgres` expands before deploy into the same Docker-backed resource config that the rest of the runtime uses.
+`preset: postgres` expands before deploy into the same resource config that the Kubernetes runtime uses.
 It is a small shortcut: only `env` can be supplied with the preset to override non-secret PostgreSQL config such as
 `POSTGRES_DB` or `POSTGRES_USER`. Declare the expanded resource form instead if you need to change the image, ports,
 readiness, outputs, volumes, or operations.
@@ -93,7 +93,6 @@ Resource fields:
 - `outputs`: optional derived values such as hostnames or connection strings.
 - `volumes`: optional named volume handles mapped to absolute container mount paths.
 - `readiness`: optional TCP readiness check.
-- `restart`: optional restart policy.
 - `operations`: optional `backup` and `restore` commands, backup schedule, and backup retention.
 
 Use the generated schema reference for the exact current contract.
@@ -226,18 +225,17 @@ Run deploy from the repository root:
 compartment deploy
 ```
 
-During deploy, Compartment reconciles declared resources before app services. Node-backed installs create or update the
-resource container, attach declared volumes, and wait for readiness as before.
+During deploy, Compartment reconciles declared resources before app services.
 
-On a Kubernetes-backed install, the first deploy records a resource with volumes but does not create missing storage.
-Bootstrap that storage explicitly, then deploy again:
+The first deploy records the Kubernetes resource but does not create its persistent claims. Every resource has a backup
+artifact claim, including resources without a user-declared data volume. Bootstrap the resource once, then deploy again:
 
 ```bash
 compartment resource bootstrap --resource db
 compartment deploy
 ```
 
-Bootstrap fails when the resource is not Kubernetes-backed or its storage was already bootstrapped. Later deploys fail
+Bootstrap fails when its storage was already bootstrapped. Later deploys fail
 closed if a claim is missing, unbound, or has a different identity; Compartment does not replace it with an empty volume.
 For an update, Compartment stops the existing resource, waits until its pod is absent, verifies the storage identities,
 and only then starts the replacement. If start or readiness fails, it restores the previous executable manifest with the
@@ -245,25 +243,7 @@ same storage; rollback does not downgrade data written in a newer format.
 
 ## Connect from an app
 
-Node-backed resources keep the legacy internal hostname:
-
-```text
-<resource>.<environment>.<project>.resource.internal
-```
-
-For the example above in `production`:
-
-```text
-db.production.internal-tools.resource.internal
-```
-
-An API service can use that host with the declared internal port:
-
-```text
-postgres://app:<password>@db.production.internal-tools.resource.internal:5432/app
-```
-
-Kubernetes-backed resources derive `${resource.host}` from an immutable internal Service name in the project namespace.
+Resources derive `${resource.host}` from an immutable internal Kubernetes Service name in the project namespace.
 Use the declared output or injected connection variable instead of constructing that DNS name from mutable project,
 environment, or resource names.
 
@@ -301,22 +281,11 @@ also requires `operations.restore.command`, because it creates a pre-restore bac
 Restore-to-new-resource with `--as` uses the operation configuration saved with the selected backup. `resource backup
 list` and `resource backup show` read existing backup records and do not require operation commands.
 
-Node-backed resources run each command in a disposable container on the resource network and mount the host-backed
-artifact workspace at `/backup`. Set `COMPARTMENT_RESOURCE_BACKUP_DIR` to the same persistent absolute host directory
-for the API and node processes.
-
-Kubernetes-backed resources run durable Jobs and store artifacts on a per-resource artifact volume created by the
+Resources run durable Kubernetes Jobs and store artifacts on a per-resource artifact volume created by the
 explicit bootstrap command. Compartment records and checks that volume's identity before every Job. It verifies the
 artifact checksum and size after backup and again before restore; missing or changed metadata stops restore before the
 restore command starts. Backup commands receive a writable artifact directory, while restore commands receive it
 read-only, so use another writable path such as `/tmp` for restore scratch files.
-
-On self-hosted installs, node-backed backup and restore operation containers run as
-`10001:10001`, so custom operation images must work without root privileges.
-
-Relative backup directories are rejected. When upgrading from a relative backup directory, resolve the old directory
-against the previous API working directory, move the artifact directories under the chosen absolute backup directory,
-and reconcile stored backup artifact locations before relying on restore.
 
 The operation image defaults to the resource image. Add `image` under the operation to use a different image. Operation
 environment starts with the final resource runtime env, then overlays operation-specific literal `env`; Compartment does
@@ -324,7 +293,7 @@ not inject every project or environment variable automatically.
 
 Compartment injects these variables into backup and restore commands:
 
-- `COMPARTMENT_BACKUP_DIR` — `/backup` for node-backed resources; an isolated artifact directory for Kubernetes resources
+- `COMPARTMENT_BACKUP_DIR` — an isolated artifact directory mounted for the Kubernetes Job
 - `COMPARTMENT_RESOURCE_HOST`
 - `COMPARTMENT_RESOURCE_NAME`
 - `COMPARTMENT_PROJECT_NAME`

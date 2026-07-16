@@ -11,7 +11,6 @@ import type {
   CompartmentResourceOutputs,
   CompartmentResourcePreset,
   CompartmentResourceReadinessConfig,
-  CompartmentResourceRestartConfig,
   CompartmentResourceVolumes,
   CompartmentResourceVolumeValue,
 } from './compartment-descriptor.types';
@@ -37,7 +36,6 @@ export function isSerializedNormalizedPresetResource(
     areResourceOutputsEqual(resource.outputs, preset.outputs) &&
     areOptionalNumberArraysEqual(resource.ports, preset.ports) &&
     areResourceReadinessConfigsEqual(resource.readiness, preset.readiness) &&
-    areResourceRestartConfigsEqual(resource.restart, preset.restart) &&
     areResourceVolumesEqual(resource.volumes, preset.volumes)
   );
 }
@@ -147,17 +145,6 @@ function areResourceReadinessConfigsEqual(
   }
 
   return left.port === right.port && left.timeoutMs === right.timeoutMs;
-}
-
-function areResourceRestartConfigsEqual(
-  left: CompartmentResourceRestartConfig | undefined,
-  right: CompartmentResourceRestartConfig | undefined,
-): boolean {
-  if (left === undefined || right === undefined) {
-    return left === right;
-  }
-
-  return left.policy === right.policy;
 }
 
 function areResourceVolumesEqual(

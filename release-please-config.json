@@ -58,11 +58,6 @@
         },
         {
           "type": "json",
-          "path": "packages/node/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
           "path": "packages/sdk/package.json",
           "jsonpath": "$.version"
         },
@@ -85,10 +80,6 @@
           "type": "json",
           "path": "packages/worker/package.json",
           "jsonpath": "$.version"
-        },
-        {
-          "type": "generic",
-          "path": ".env.self-hosted.example"
         }
       ]
     }

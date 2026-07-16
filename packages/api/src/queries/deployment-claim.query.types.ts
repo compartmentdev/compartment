@@ -7,3 +7,7 @@ export interface QueuedDeploymentClaimCandidateRow {
   serviceId: string;
   serviceName: string;
 }
+
+export interface UpdatedDeploymentIdRow {
+  id: string;
+}

@@ -5,17 +5,6 @@ export interface ObservedClaimStatus {
   phase?: string | undefined;
 }
 
-export interface ObservedDeploymentCondition {
-  status?: string | undefined;
-  type?: string | undefined;
-}
-
-export interface ObservedDeploymentStatus {
-  availableReplicas?: number | undefined;
-  conditions?: ObservedDeploymentCondition[] | undefined;
-  observedGeneration?: number | undefined;
-}
-
 export interface ManagedResourceUpdatePlan {
   desired: KubeManifest[];
   leaseId: string;

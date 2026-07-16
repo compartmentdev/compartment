@@ -14,7 +14,6 @@ export async function prepareRelease({ releaseVersion, repositoryRoot = defaultR
   await Promise.all(
     packageJsonPaths.map((packageJsonPath) => updatePackageVersion(packageJsonPath, normalizedReleaseVersion)),
   );
-  await updateSelfHostedExampleVersion(repositoryRoot, normalizedReleaseVersion);
   await updateReleasePleaseManifestVersion(repositoryRoot, normalizedReleaseVersion);
 
   return {
@@ -27,7 +26,7 @@ async function main(args) {
   const result = await prepareRelease({ releaseVersion: args[0] });
 
   process.stdout.write(
-    `Prepared release ${result.releaseVersion} in ${result.packageCount} workspace package manifests, .env.self-hosted.example, and .release-please-manifest.json.\n`,
+    `Prepared release ${result.releaseVersion} in ${result.packageCount} workspace package manifests and .release-please-manifest.json.\n`,
   );
 }
 
@@ -36,20 +35,6 @@ async function updatePackageVersion(packageJsonPath, releaseVersion) {
   const packageJson = JSON.parse(packageJsonText);
   packageJson.version = releaseVersion;
   await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
-}
-
-async function updateSelfHostedExampleVersion(repositoryRoot, releaseVersion) {
-  const envExamplePath = resolve(repositoryRoot, '.env.self-hosted.example');
-  const envExampleText = await readFile(envExamplePath, 'utf8');
-  if (!envExampleText.includes('COMPARTMENT_NODE_VERSION=')) {
-    throw new Error('Expected .env.self-hosted.example to define COMPARTMENT_NODE_VERSION.');
-  }
-  const updatedEnvExampleText = envExampleText.replace(
-    /^COMPARTMENT_NODE_VERSION=.*$/m,
-    `COMPARTMENT_NODE_VERSION=${releaseVersion}`,
-  );
-
-  await writeFile(envExamplePath, updatedEnvExampleText, 'utf8');
 }
 
 async function updateReleasePleaseManifestVersion(repositoryRoot, releaseVersion) {

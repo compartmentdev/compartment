@@ -37,14 +37,6 @@ export {
   parseResourceOutputReference,
   setVariableRequestSchema,
 } from './contracts/variable-set.contract';
-export {
-  compartmentInternalNodeRegistrationPathname,
-  type NodeRegistrationRequest,
-  type NodeRegistrationResponse,
-  type NodeSummary,
-  nodeRegistrationRequestSchema,
-  nodeRegistrationResponseSchema,
-} from './contracts/node.contract';
 export { type DeployResponse, deployResponseSchema } from './contracts/deployments.contract';
 export {
   type RollbackDeploymentRequest,
@@ -60,7 +52,6 @@ export {
   createOrganizationResponseSchema,
   isOrganizationSlug,
   organizationListResponseSchema,
-  organizationSlugSchema,
 } from './contracts/organizations.contract';
 export * from './contracts/users.contract';
 export * from './contracts/rbac.contract';

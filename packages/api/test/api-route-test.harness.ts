@@ -79,7 +79,6 @@ export function applyApiRouteTestEnv({
   process.env.COMPARTMENT_AUDIT_FILE_SINK_RETENTION_FILES = '30';
   process.env.COMPARTMENT_AUDIT_FILE_SINK_ROTATE_INTERVAL = '1d';
   process.env.COMPARTMENT_AUDIT_FILE_SINK_ROTATE_SIZE = '64M';
-  process.env.COMPARTMENT_NODE_AGENT_SOCKET = '/tmp/compartment/test/node/agent.sock';
   process.env.COMPARTMENT_RUNTIME_CONTROL_TOKEN = runtimeControlToken;
   process.env.COMPARTMENT_SYSTEM_API_SOCKET = '/tmp/compartment/test/system-api.sock';
   process.env.COMPARTMENT_SYSTEM_TOKEN = systemToken;

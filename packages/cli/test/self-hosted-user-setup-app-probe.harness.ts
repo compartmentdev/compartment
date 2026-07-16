@@ -3,7 +3,6 @@ import {
   compartmentAppLogoutPathname,
   compartmentAppSessionCookieName,
   compartmentAuthLogoutPathname,
-  compartmentBrowserLoginPathname,
   compartmentCsrfHeaderName,
   compartmentSessionCookieName,
   logoutResponseSchema,
@@ -11,6 +10,7 @@ import {
   type LogoutResponse,
   type WhoAmIResponse,
 } from '@compartment/contracts';
+import { compartmentBrowserLoginPathname } from '@compartment/contracts/browser';
 import { expect } from 'vitest';
 import { z } from 'zod';
 import { sendCliHttpTextRequest } from './cli-http-test.harness';
@@ -65,7 +65,6 @@ interface SelfHostedAppIngressProbeHeaders {
   principalId: string | null;
   principalType: string | null;
   role: string | null;
-  upstreamPort: string | null;
 }
 
 interface SelfHostedAppLoginErrorResponse {
@@ -128,7 +127,6 @@ const appIngressProbeHeaderSchema: z.ZodType<SelfHostedAppIngressProbeHeaders> =
     principalId: z.string().nullable(),
     principalType: z.string().nullable(),
     role: z.string().nullable(),
-    upstreamPort: z.string().nullable(),
   })
   .strict();
 const appIngressProbeSchema: z.ZodType<SelfHostedAppIngressProbe> = z
@@ -312,7 +310,6 @@ export async function expectTrustedAppIngress(
         'x-compartment-access-mode': 'spoofed-access-mode',
         'x-compartment-principal-id': 'spoofed-principal-id',
         'x-compartment-role': 'spoofed-role',
-        'x-compartment-upstream-port': '9999',
       },
     },
   );
@@ -330,7 +327,6 @@ export async function expectTrustedAppIngress(
   expect(payload.compartmentHeaders.principalId).not.toBe('spoofed-principal-id');
   expect(payload.compartmentHeaders.principalType).toBe('user');
   expect(payload.compartmentHeaders.role).toBeNull();
-  expect(payload.compartmentHeaders.upstreamPort).toBeNull();
 }
 
 export async function expectAppLogoutRevokesAppOnly(

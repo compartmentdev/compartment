@@ -1,11 +1,9 @@
-import type { RuntimeNetworkIntent } from '@compartment/contracts';
 import { loadEffectiveVariables } from './effective-variables.service';
 import type { EffectiveVariable } from './effective-variables.service.types';
 import type { RuntimeEnvMap } from './deployment-runtime.types';
 
 export interface DeploymentRuntimePlan {
   runtimeEnv: RuntimeEnvMap;
-  runtimeNetwork: RuntimeNetworkIntent;
 }
 
 export async function buildDeploymentRuntimePlan(
@@ -27,7 +25,6 @@ export async function buildDeploymentRuntimePlan(
 
   return {
     runtimeEnv: buildRuntimeEnv(effectiveVariables, environmentName, projectName, serviceName),
-    runtimeNetwork: buildRuntimeNetworkIntent(effectiveVariables),
   };
 }
 
@@ -63,14 +60,6 @@ async function loadServiceEffectiveVariables(
     targetServiceName: serviceName,
     targetType: 'service',
   });
-}
-
-function buildRuntimeNetworkIntent(effectiveVariables: readonly EffectiveVariable[]): RuntimeNetworkIntent {
-  return {
-    requiresResourceNetwork: effectiveVariables.some(
-      (variable: EffectiveVariable): boolean => variable.sourceType === 'resource_output',
-    ),
-  };
 }
 
 function buildCompartmentRuntimeMetadata(

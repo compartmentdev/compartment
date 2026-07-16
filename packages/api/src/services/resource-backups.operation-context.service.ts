@@ -1,18 +1,15 @@
-import type { NodeResourceOperationRequest } from '@compartment/contracts';
 import { createInvalidDeployConfigError } from '../errors/api-business-error';
-import type { ResourceBackupRow } from '../queries/resource-backups.query.types';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import type { EffectiveVariable } from './effective-variables.service.types';
 import { loadResourceEffectiveVariables } from './resources-effective-variables.service';
 import { resolveStoredResourceIntent } from './resources-stored-intent.service';
-import { buildNodeResourceOperationDefinition, type ResolvedResourceIntent } from './resources.service.helpers';
+import type { ResolvedResourceIntent } from './resources.service.helpers';
 import type {
   ResourceEnvironmentContext,
   RunResourceBackupInput,
   RunResourceRestoreInput,
 } from './resources.service.types';
 import type { StoredResourceOperationConfig } from './resources.service.storage';
-import { resolveResourceBackupArtifactPath } from './resource-backup-artifact.service';
 
 export type ResourceOperationKind = 'backup' | 'restore';
 
@@ -45,49 +42,11 @@ export async function resolveResourceOperationContext(
     resource.name,
   );
   const intent: ResolvedResourceIntent = resolveStoredResourceIntent(resource, effectiveVariables);
-
   return {
     effectiveVariables,
     intent,
     operation: requireResourceOperation(intent, operationKind),
   };
-}
-
-export function buildResourceOperationRequest(
-  context: ResourceEnvironmentContext,
-  resource: ProjectResourceRow,
-  operationContext: ResourceBackupOperationContext,
-  backupId: string,
-): NodeResourceOperationRequest {
-  return {
-    backupId,
-    definition: buildNodeResourceOperationDefinition(
-      operationContext.intent,
-      operationContext.operation,
-      operationContext.effectiveVariables,
-    ),
-    environmentId: context.environment.id,
-    environmentName: context.environment.name,
-    projectId: context.project.id,
-    projectName: context.project.name,
-    readiness: operationContext.intent.readiness,
-    resourceHostname: resource.hostname,
-    resourceName: resource.name,
-  };
-}
-
-export function requireBackupArtifactId(backup: ResourceBackupRow): string {
-  if (backup.artifactLocation === null) {
-    throw createInvalidDeployConfigError(`Backup ${backup.id} does not have an artifact location.`);
-  }
-
-  if (backup.artifactLocation === resolveResourceBackupArtifactPath(backup.id)) {
-    return backup.id;
-  }
-
-  throw createInvalidDeployConfigError(
-    `Backup ${backup.id} artifact location does not match the configured resource backup directory.`,
-  );
 }
 
 function requireResourceOperation(
@@ -98,6 +57,5 @@ function requireResourceOperation(
   if (operation === null) {
     throw createInvalidDeployConfigError(`Resource ${intent.name} does not define an ${operationKind} command.`);
   }
-
   return operation;
 }

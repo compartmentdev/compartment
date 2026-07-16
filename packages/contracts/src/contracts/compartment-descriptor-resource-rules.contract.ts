@@ -11,9 +11,7 @@ import {
   compartmentResourceOutputFieldNames,
   compartmentResourceOutputNamePatternText,
   compartmentResourceReadinessFieldNames,
-  compartmentResourceRestartFieldNames,
   readCompartmentResourceOperationScheduleIntervals,
-  readCompartmentResourceRestartPolicies,
 } from './compartment-resource.contract';
 import {
   compartmentResourceGeneratedVariableFieldNames,
@@ -42,8 +40,6 @@ export type CompartmentDescriptorResourceRules = Pick<
   | 'resourcePresets'
   | 'resourceReadinessFields'
   | 'resourceReadinessTypes'
-  | 'resourceRestartFields'
-  | 'resourceRestartPolicies'
   | 'resourceValueForms'
 >;
 
@@ -75,8 +71,6 @@ export function createCompartmentDescriptorResourceRules(): CompartmentDescripto
     resourcePresets: [...compartmentResourcePresetValues],
     resourceReadinessFields: [...compartmentResourceReadinessFieldNames],
     resourceReadinessTypes: ['tcp'],
-    resourceRestartFields: [...compartmentResourceRestartFieldNames],
-    resourceRestartPolicies: readCompartmentResourceRestartPolicies(),
     resourceValueForms: ['resource_config'],
   };
 }

@@ -2,9 +2,8 @@ import { chmodSync, constants, lstatSync, mkdirSync, type Stats } from 'node:fs'
 import { chmod, lstat, open, readdir, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 
-export const privateRuntimeDirectoryMode: number = 0o700;
+const privateRuntimeDirectoryMode: number = 0o700;
 export const privateRuntimeFileMode: number = 0o600;
-const noFollowDirectoryFlags: number = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_DIRECTORY;
 const noFollowReadFlags: number = constants.O_RDONLY | constants.O_NOFOLLOW;
 
 export function ensurePrivateRuntimeStorageRootDirectorySync(directory: string): void {
@@ -31,17 +30,6 @@ async function repairPrivateRuntimeStoragePath(path: string): Promise<void> {
   }
   if (stats.isFile()) {
     await chmodPrivateRuntimeStorageFilePath(path);
-  }
-}
-
-export async function chmodPrivateRuntimeStorageDirectory(directoryPath: string): Promise<void> {
-  const directory: FileHandle = await open(directoryPath, noFollowDirectoryFlags);
-  try {
-    if ((await directory.stat()).isDirectory()) {
-      await directory.chmod(privateRuntimeDirectoryMode);
-    }
-  } finally {
-    await directory.close();
   }
 }
 

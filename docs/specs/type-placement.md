@@ -20,7 +20,7 @@ Use this document as the durable ownership policy for types. It defines who owns
 - Console owns browser-only view models and UI state, not server DTOs or session persistence contracts.
 - SDK owns transport concerns only. It must not introduce a second DTO layer.
 - `source-archive` owns archive-builder inputs and results plus ignore-aware path selection support types for source capture.
-- Runtime packages such as `node`, `worker`, and `docker` own their runtime and adapter-local types, not shared business contracts.
+- Runtime packages such as `kube-runtime`, `worker`, and `docker` own their runtime and adapter-local types, not shared business contracts.
 - `utils` and `test-support` are for tiny package-owned helpers, not overflow storage.
 
 ## Placement Guidance

@@ -223,8 +223,6 @@ async function activateDeployment(
       isActive: true,
       promotionStage: 'active',
       status: 'succeeded',
-      upstreamHost: null,
-      upstreamPort: null,
       updatedAt: input.observedAt,
     })
     .where(eq(deployments.id, input.deploymentId));

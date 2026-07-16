@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolve } from 'node:path';
-import { compartmentInternalNodeRegistrationPathname } from '@compartment/contracts';
 
 const healthCheckIntervalMs: number = 100;
 const processStartupGraceMs: number = 250;
@@ -8,7 +7,7 @@ const processStartupTimeoutMs: number = 15_000;
 const processStopTimeoutMs: number = 5_000;
 const runtimeProcessOutputLimit: number = 4_000;
 
-type RuntimePackageName = 'api' | 'edge' | 'node' | 'worker';
+type RuntimePackageName = 'api' | 'edge' | 'worker';
 
 interface RuntimeProcessExitResult {
   code: number | null;
@@ -125,27 +124,6 @@ export async function refreshEdgeAccessState(apiUrl: string, edgeUrl: string, ed
   });
   const refreshPayload: string = await refreshResponse.text();
   ensureSuccessfulResponse(refreshResponse, 'Failed to refresh edge access state.', refreshPayload);
-}
-
-export async function registerLocalNodeByUrl(
-  apiUrl: string,
-  runtimeControlToken: string,
-  nodeSocketPath: string,
-): Promise<void> {
-  const response: Response = await fetch(`${apiUrl}${compartmentInternalNodeRegistrationPathname}`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${runtimeControlToken}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      nodeName: 'local-node',
-      nodeSocketPath,
-      nodeVersion: '0.1.0',
-    }),
-  });
-  const payload: string = await response.text();
-  ensureSuccessfulResponse(response, 'Failed to register the local node in API.', payload);
 }
 
 function appendRuntimeProcessOutput(currentOutput: string, nextChunk: string): string {

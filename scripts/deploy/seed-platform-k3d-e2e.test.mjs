@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  buildSeedEnvironment,
-  parseCompatibilityNodeResult,
-  parseInstallResult,
-  readSeedPlatformOptions,
-} from './seed-platform-k3d-e2e.mjs';
+import { buildSeedEnvironment, parseInstallResult, readSeedPlatformOptions } from './seed-platform-k3d-e2e.mjs';
 
 describe('platform k3d seed boundary', () => {
   it('requires the GitHub environment output path', () => {
@@ -20,16 +15,6 @@ describe('platform k3d seed boundary', () => {
   it('rejects malformed or mismatched install output', () => {
     expect(() => parseInstallResult('not-json', 'admin@compartment.test')).toThrow('did not return JSON');
     expect(() => parseInstallResult('{}', 'admin@compartment.test')).toThrow('unexpected result');
-  });
-
-  it('validates the compatibility node registration boundary', () => {
-    expect(() => parseCompatibilityNodeResult('not-json')).toThrow('did not return JSON');
-    expect(() => parseCompatibilityNodeResult('{}')).toThrow('unexpected result');
-    const result = {
-      node: { id: 'node_123', name: 'platform-k3d-compatibility' },
-      registeredAt: '2026-07-13T15:00:00.000Z',
-    };
-    expect(parseCompatibilityNodeResult(JSON.stringify(result))).toEqual(result);
   });
 
   it('accepts the expected install result and emits the suite contract', () => {

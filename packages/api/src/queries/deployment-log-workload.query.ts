@@ -3,17 +3,6 @@ import { deploymentKubeReferences } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentLogWorkloadRow, DeploymentLogWorkloadScopeRow } from './deployment-log-workload.query.types';
 
-export async function listKubeDeploymentIds(deploymentIds: string[]): Promise<string[]> {
-  if (deploymentIds.length === 0) {
-    return [];
-  }
-  const rows: { deploymentId: string }[] = await getApiDatabase()
-    .select({ deploymentId: deploymentKubeReferences.deploymentId })
-    .from(deploymentKubeReferences)
-    .where(inArray(deploymentKubeReferences.deploymentId, deploymentIds));
-  return rows.map((row: { deploymentId: string }): string => row.deploymentId);
-}
-
 export async function listDeploymentLogWorkloadScopes(
   currentDeploymentIds: string[],
 ): Promise<DeploymentLogWorkloadScopeRow[]> {

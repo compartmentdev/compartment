@@ -10,14 +10,14 @@ import type { EnvironmentRow } from '../queries/deployments.query.types';
 import type { ProjectRow } from '../queries/projects.query.types';
 import type { ResourceBackupRow } from '../queries/resource-backups.query.types';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
-import type { ResourceBackupArtifactSummary } from './resource-backup-artifact.service';
+import type { ResourceBackupArtifactSummary } from './resource-backup-artifact.types';
 import type { ResolvedResourceIntent } from './resources.service.helpers';
 import {
   parseResourceEnv,
   parseResourcePorts,
   parseResourceReadiness,
-  parseResourceRestartPolicy,
   parseResourceVolumes,
+  presentResourceRuntimeStatus,
   type StoredResourceOperationConfig,
 } from './resources.service.storage';
 import type { ResourceEnvironmentContext } from './resources.service.types';
@@ -120,16 +120,14 @@ function snapshotEnvironmentForManifest(environment: EnvironmentRow): Environmen
 }
 
 function snapshotResourceForManifest(resource: ProjectResourceRow): ResourceSummary {
-  const persistedRuntime: Pick<ResourceSummary, 'containerId' | 'status'> = {
-    containerId: resource.containerId,
-    status: resource.status,
+  const persistedRuntime: Pick<ResourceSummary, 'status'> = {
+    status: presentResourceRuntimeStatus(resource.status),
   };
 
   return {
     ...persistedRuntime,
     id: resource.id,
     name: resource.name,
-    hostname: resource.hostname,
     image: resource.image,
     updatedAt: resource.updatedAt.toISOString(),
     createdAt: resource.createdAt.toISOString(),
@@ -137,7 +135,6 @@ function snapshotResourceForManifest(resource: ProjectResourceRow): ResourceSumm
     ports: parseResourcePorts(resource),
     env: parseResourceEnv(resource),
     readiness: parseResourceReadiness(resource),
-    restartPolicy: parseResourceRestartPolicy(resource),
   };
 }
 

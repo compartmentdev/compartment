@@ -1,7 +1,5 @@
-import type { DeploymentLogLine, NodeTailLogsQuery, NodeTailLogsResponse } from '@compartment/contracts';
-import { tailNodeDeploymentLogs } from '@compartment/sdk';
+import type { DeploymentLogLine } from '@compartment/contracts';
 import { createActiveDeploymentNotFoundError } from '../errors/api-business-error';
-import { findNodeById } from '../queries/node.query';
 import { listDeploymentRuntimeEvents } from '../queries/deployment-runtime-events.query';
 import type { DeploymentRuntimeEventRow } from '../queries/deployment-runtime-events.query.types';
 import {
@@ -10,11 +8,8 @@ import {
 } from '../queries/deployment-joined.query';
 import { findProjectServiceByName } from '../queries/deployment-context.query';
 import type { DeploymentJoinedRow, ProjectServiceRow } from '../queries/deployments.query.types';
-import type { NodeRow } from '../queries/node.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
 import {
-  requireContainerId,
-  requireNode,
   requireProjectService,
   resolveEnvironmentName,
   resolveExistingEnvironmentContext,
@@ -27,8 +22,6 @@ import type {
 } from './deployments.service.types';
 import { parseLogsSince } from './deployment-log-query.service';
 import { readStoredDeploymentProductLogs } from './deployment-product-logs.service';
-import { listKubeDeploymentIds } from '../queries/deployment-log-workload.query';
-import { createNodeRuntimeRequester } from './node-runtime-requester';
 import { collectReleaseJobLogLines } from './release-job-logs.service';
 
 export async function getDeploymentLogsForEnvironment(
@@ -39,7 +32,6 @@ export async function getDeploymentLogsForEnvironment(
   const lines: DeploymentLogLine[] = await collectDeploymentLogs(
     context.deployments,
     context.environment.name,
-    input.since,
     sinceDate,
     input.tailLines,
   );
@@ -55,74 +47,16 @@ export async function getDeploymentLogsForEnvironment(
 async function collectDeploymentLogs(
   activeDeployments: DeploymentJoinedRow[],
   environmentName: string,
-  since: string | undefined,
   sinceDate: Date | undefined,
   tailLines: number | undefined,
 ): Promise<DeploymentLogLine[]> {
   const logLineGroups: DeploymentLogLine[][] = await Promise.all([
-    collectNodeDeploymentLogLines(activeDeployments, environmentName, since, tailLines),
     collectReleaseJobLogLines(activeDeployments, environmentName, sinceDate),
     resolveCompartmentEventLines(activeDeployments, environmentName, sinceDate),
     readStoredDeploymentProductLogs(activeDeployments, environmentName, sinceDate, tailLines),
   ]);
 
   return trimMergedDeploymentLines(logLineGroups.flat().sort(compareDeploymentLogLinesByTimestamp), tailLines);
-}
-
-async function collectNodeDeploymentLogLines(
-  deployments: DeploymentJoinedRow[],
-  environmentName: string,
-  since: string | undefined,
-  tailLines: number | undefined,
-): Promise<DeploymentLogLine[]> {
-  return await collectNodeLogLines(await selectNodeDeployments(deployments), environmentName, since, tailLines);
-}
-
-async function selectNodeDeployments(deployments: DeploymentJoinedRow[]): Promise<DeploymentJoinedRow[]> {
-  const ids: string[] = deployments.map((deployment: DeploymentJoinedRow): string => deployment.deployment.id);
-  const kubeDeploymentIds: Set<string> = new Set<string>(await listKubeDeploymentIds(ids));
-  return deployments.filter(
-    (deployment: DeploymentJoinedRow): boolean => !kubeDeploymentIds.has(deployment.deployment.id),
-  );
-}
-
-async function collectNodeLogLines(
-  deployments: DeploymentJoinedRow[],
-  environmentName: string,
-  since: string | undefined,
-  tailLines: number | undefined,
-): Promise<DeploymentLogLine[]> {
-  const groups: DeploymentLogLine[][] = await Promise.all(
-    deployments.map(
-      async (deployment: DeploymentJoinedRow): Promise<DeploymentLogLine[]> =>
-        await resolveNodeLogLines(deployment, environmentName, since, tailLines),
-    ),
-  );
-  return groups.flat();
-}
-
-async function resolveNodeLogLines(
-  deployment: DeploymentJoinedRow,
-  environmentName: string,
-  since: string | undefined,
-  tailLines: number | undefined,
-): Promise<DeploymentLogLine[]> {
-  const node: NodeRow = requireNode(await findNodeById(deployment.deployment.nodeId));
-  const containerId: string = requireContainerId(deployment);
-  const query: NodeTailLogsQuery = {
-    containerId,
-    deploymentId: deployment.deployment.id,
-    environmentName,
-    serviceName: deployment.service.name,
-    since,
-    tailLines,
-  };
-  const response: NodeTailLogsResponse = await tailNodeDeploymentLogs(
-    createNodeRuntimeRequester(node.nodeSocketPath),
-    query,
-  );
-
-  return response.lines;
 }
 
 async function resolveCompartmentEventLines(

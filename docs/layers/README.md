@@ -10,7 +10,6 @@ These files are the short source of truth for package boundaries:
 - [docker.md](./docker.md)
 - [edge.md](./edge.md)
 - [kube-runtime.md](./kube-runtime.md)
-- [node.md](./node.md)
 - [sdk.md](./sdk.md)
 - [source-archive.md](./source-archive.md)
 - [test-support.md](./test-support.md)

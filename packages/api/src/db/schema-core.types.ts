@@ -195,16 +195,6 @@ interface OperationsColumnBuilders {
   completedAt: OptionalTimestampBuilder<'completed_at'>;
 }
 
-interface NodesColumnBuilders {
-  id: PrimaryTextBuilder<'id'>;
-  name: RequiredTextBuilder<'name'>;
-  nodeVersion: RequiredTextBuilder<'node_version'>;
-  nodeUrl: RequiredTextBuilder<'node_url'>;
-  nodeSocketPath: RequiredTextBuilder<'node_socket_path'>;
-  createdAt: DefaultTimestampBuilder<'created_at'>;
-  updatedAt: DefaultTimestampBuilder<'updated_at'>;
-}
-
 export interface ProjectsColumnBuilders {
   id: PrimaryTextBuilder<'id'>;
   organizationId: RequiredTextBuilder<'organization_id'>;
@@ -227,7 +217,6 @@ export interface ProjectServicesColumnBuilders {
 export interface EnvironmentsColumnBuilders {
   id: PrimaryTextBuilder<'id'>;
   projectId: RequiredTextBuilder<'project_id'>;
-  nodeId: RequiredTextBuilder<'node_id'>;
   name: RequiredTextBuilder<'name'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;
@@ -254,4 +243,3 @@ export type SystemDomainIdempotencyKeysTable = PgTableOf<
   SystemDomainIdempotencyKeysColumnBuilders
 >;
 export type OperationsTable = PgTableOf<'operations', OperationsColumnBuilders>;
-export type NodesTable = PgTableOf<'nodes', NodesColumnBuilders>;

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { resourceReconcileLifecycleTimeoutMs } from '../src/contracts/internal-resource-reconcile.contract';
 import {
   workerAcknowledgeResourceReconcileRequestSchema,
   workerClaimResourceReconcileResponseSchema,
@@ -6,13 +7,15 @@ import {
 } from '../src';
 
 const intent: ResourceReconcileIntent = {
-  containerPort: 5432,
+  command: ['postgres', '-c', 'shared_buffers=256MB'],
   deleteData: false,
   environmentId: 'env_1',
   env: {},
   image: 'postgres:17',
   namespaceId: 'project_1',
   operation: 'reconcile',
+  ports: [5432, 9187],
+  readiness: { port: 5432, timeoutMs: 30_000, type: 'tcp' },
   replicas: 1,
   resourceId: 'resource_1',
   secretId: 'secret_1',
@@ -29,6 +32,10 @@ interface TestResourceReconcileClaim {
 }
 
 describe('internal resource reconcile contracts', (): void => {
+  it('owns the shared worker lifecycle observation budget at the internal boundary', (): void => {
+    expect(resourceReconcileLifecycleTimeoutMs).toBe(120_000);
+  });
+
   it('accepts only explicit running or stopped replica intent', (): void => {
     expect(workerClaimResourceReconcileResponseSchema.safeParse(claim({ ...intent, replicas: 0 })).success).toBe(true);
     expect(
@@ -37,6 +44,17 @@ describe('internal resource reconcile contracts', (): void => {
         intent: { ...intent, replicas: 2 },
       }).success,
     ).toBe(false);
+  });
+
+  it('preserves the complete resource process and network intent', (): void => {
+    expect(workerClaimResourceReconcileResponseSchema.safeParse(claim(intent))).toMatchObject({
+      success: true,
+    });
+    expect(
+      workerClaimResourceReconcileResponseSchema.safeParse(
+        claim({ ...intent, command: [], ports: [], readiness: null }),
+      ).success,
+    ).toBe(true);
   });
 
   it('rejects an ordinary claim without operation identity', (): void => {

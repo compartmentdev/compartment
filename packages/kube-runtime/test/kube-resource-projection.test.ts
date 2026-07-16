@@ -13,13 +13,15 @@ import {
 } from '../src';
 
 const row: ResourceProjectionRow = {
-  containerPort: 5432,
+  command: ['postgres', '-c', 'shared_buffers=256MB'],
   deleteData: false,
   environmentId: 'env-01jz',
   env: { POSTGRES_PASSWORD: 'generated' },
   image: 'postgres@sha256:abc',
   namespaceId: 'prj-01jz',
   operation: 'reconcile',
+  ports: [5432, 9187],
+  readiness: { port: 5432, timeoutMs: 30_000, type: 'tcp' },
   replicas: 1,
   resourceId: 'res-01jz',
   secretId: 'sec-resource',
@@ -89,6 +91,53 @@ describe('resource projection and fencing', (): void => {
     expect(yaml).toMatchSnapshot();
     expect(yaml).toContain('type: Recreate');
     expect(yaml).toContain('replicas: 1');
+  });
+
+  it('projects the complete command, port, and readiness intent', (): void => {
+    const manifests: KubeManifest[] = projectResourceManifests(row);
+    const deployment: KubeManifest = manifests.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+    )!;
+    const service: KubeManifest = manifests.find((manifest: KubeManifest): boolean => manifest.kind === 'Service')!;
+
+    expect(deployment.spec).toMatchObject({
+      progressDeadlineSeconds: 30,
+      template: {
+        spec: {
+          containers: [
+            {
+              args: row.command,
+              ports: [
+                { containerPort: 5432, name: 'tcp-5432', protocol: 'TCP' },
+                { containerPort: 9187, name: 'tcp-9187', protocol: 'TCP' },
+              ],
+              readinessProbe: { tcpSocket: { port: 5432 } },
+            },
+          ],
+        },
+      },
+    });
+    expect(service.spec).toMatchObject({
+      clusterIP: 'None',
+      ports: [
+        { name: 'tcp-5432', port: 5432, protocol: 'TCP', targetPort: 5432 },
+        { name: 'tcp-9187', port: 9187, protocol: 'TCP', targetPort: 9187 },
+      ],
+    });
+  });
+
+  it('keeps stable DNS without inventing ports or a readiness probe for a background resource', (): void => {
+    const manifests: KubeManifest[] = projectResourceManifests({ ...row, command: [], ports: [], readiness: null });
+    const deployment: KubeManifest = manifests.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+    )!;
+
+    const service: KubeManifest = manifests.find((manifest: KubeManifest): boolean => manifest.kind === 'Service')!;
+    expect(service.spec).toMatchObject({ clusterIP: 'None', ports: [] });
+    expect(deployment.spec).toMatchObject({
+      template: { spec: { containers: [{ image: row.image, name: 'resource' }] } },
+    });
+    expect(deployment.spec).not.toHaveProperty('template.spec.containers.0.readinessProbe');
   });
 
   it('matches the provisioned resource NetworkPolicy selector', (): void => {

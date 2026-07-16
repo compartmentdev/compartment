@@ -1,4 +1,3 @@
-import { buildCompartmentResourceHostname } from '@compartment/contracts';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import type { EffectiveVariable } from './effective-variables.service.types';
 import {
@@ -11,7 +10,6 @@ import {
   parseResourceEnv,
   parseResourcePorts,
   parseResourceReadiness,
-  parseResourceRestartPolicy,
   parseResourceVolumes,
   parseStoredResourceEnv,
   parseStoredResourceOperations,
@@ -33,14 +31,12 @@ export function resolveStoredResourceIntent(
   const parts: ResourceIntentParts = {
     command: parseResourceCommand(resource),
     env: parseResourceEnv(resource),
-    hostname: resolveStoredResourceHostname(resource, target),
     image: resource.image,
     name: target?.resourceName ?? resource.name,
     operations: parseStoredResourceOperations(resource),
     outputs: parseStoredResourceOutputs(resource),
     ports: parseResourcePorts(resource),
     readiness: parseResourceReadiness(resource),
-    restartPolicy: parseResourceRestartPolicy(resource),
     runtimeEnv: resolveStoredResourceRuntimeEnv(resource, effectiveVariables),
     storedEnv: parseStoredResourceEnv(resource),
     volumes: parseResourceVolumes(resource),
@@ -55,13 +51,4 @@ function restoreStoredResourceHashes(resource: ProjectResourceRow, parts: Resour
     operationConfigHash: resource.operationConfigHash,
     runtimeHash: resource.runtimeDefinitionHash,
   };
-}
-
-function resolveStoredResourceHostname(
-  resource: ProjectResourceRow,
-  target: StoredResourceIntentTarget | undefined,
-): string {
-  return target === undefined
-    ? resource.hostname
-    : buildCompartmentResourceHostname(target.projectName, target.environmentName, target.resourceName);
 }

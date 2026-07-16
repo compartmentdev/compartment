@@ -63,12 +63,7 @@ import {
   readCliTestSessionTtlDuration,
   readCliTestVariablesMasterKeyHex,
 } from './runtime-test-env';
-import {
-  refreshEdgeAccessState,
-  registerLocalNodeByUrl,
-  startRuntimeProcess,
-  type RuntimeProcessHandle,
-} from './runtime-process.harness';
+import { refreshEdgeAccessState, startRuntimeProcess, type RuntimeProcessHandle } from './runtime-process.harness';
 import { findFreePortExcluding } from './public-port-test-support';
 
 const orgUseResponseSchema: z.ZodType<CliOrgUsePayload> = z.object({
@@ -367,11 +362,6 @@ describe.sequential('Phase 0 CLI smoke flow', (): void => {
 
   it('runs direct variable set/list/show/remove/import through the live CLI flow', async (): Promise<void> => {
     await runInstallDev(apiUrl);
-    await registerLocalNodeByUrl(
-      apiUrl,
-      cliTestRuntimeControlToken,
-      buildCliSmokeNodeAgentSocketPath(smokeTempDirectory),
-    );
     await withSmokeProjectDirectory(async (): Promise<void> => {
       const setCapture: CliTestCapture = createCliCapture();
       const setExitCode: number = await runCli(
@@ -466,11 +456,6 @@ describe.sequential('Phase 0 CLI smoke flow', (): void => {
 
   it('runs variable group bind and unbind through the live CLI flow', async (): Promise<void> => {
     await runInstallDev(apiUrl);
-    await registerLocalNodeByUrl(
-      apiUrl,
-      cliTestRuntimeControlToken,
-      buildCliSmokeNodeAgentSocketPath(smokeTempDirectory),
-    );
     await withSmokeProjectDirectory(async (): Promise<void> => {
       const createCapture: CliTestCapture = createCliCapture();
       const createExitCode: number = await runCli(
@@ -547,11 +532,6 @@ describe.sequential('Phase 0 CLI smoke flow', (): void => {
 
   it('injects sensitive variables into one local child process without writing an env file', async (): Promise<void> => {
     await runInstallDev(apiUrl);
-    await registerLocalNodeByUrl(
-      apiUrl,
-      cliTestRuntimeControlToken,
-      buildCliSmokeNodeAgentSocketPath(smokeTempDirectory),
-    );
     await withSmokeProjectDirectory(async (): Promise<void> => {
       const setCapture: CliTestCapture = createCliCapture();
       setCapture.stdin.end('postgres://smoke-local\n');
@@ -713,7 +693,6 @@ function buildApiEnvironment(
     COMPARTMENT_PUBLIC_HTTPS_PORT: '443',
     COMPARTMENT_SESSION_SECRET: cliTestSessionSecret,
     COMPARTMENT_SESSION_TTL: readCliTestSessionTtlDuration(),
-    COMPARTMENT_NODE_AGENT_SOCKET: buildCliSmokeNodeAgentSocketPath(tempDirectory),
     COMPARTMENT_SOURCE_ARCHIVE_DIR: join(tempDirectory, 'sa'),
     COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES: '104857600',
     COMPARTMENT_SYSTEM_API_SOCKET: join(tempDirectory, 's', `sys-${apiPort.toString()}.sock`),
@@ -722,10 +701,6 @@ function buildApiEnvironment(
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: cliTestRuntimeControlToken,
     TMPDIR: tempDirectory,
   };
-}
-
-function buildCliSmokeNodeAgentSocketPath(tempDirectory: string): string {
-  return join(tempDirectory, 'n', 'agent.sock');
 }
 
 function buildEdgeEnvironment(apiPort: number, edgePort: number, tempDirectory: string): NodeJS.ProcessEnv {

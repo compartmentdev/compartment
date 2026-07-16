@@ -85,7 +85,6 @@ function registerSystemRoutes(app: ApiApp): void {
 
 function registerNestedRoutes(app: ApiApp, config: ApiConfig): void {
   app.register(registerInternalApiRoutes, {
-    nodeAgentSocketPath: config.nodeAgentSocketPath,
     sourceArchiveMaxBytes: config.sourceArchiveMaxBytes,
   });
   app.register(registerProtectedApiRoutes);

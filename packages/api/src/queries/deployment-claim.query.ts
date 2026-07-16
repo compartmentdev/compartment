@@ -1,15 +1,17 @@
-import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { and, eq, notExists, sql, type SQL } from 'drizzle-orm';
 import {
   deployments,
+  deploymentKubeReferences,
   deploymentMovementOrganizationState,
   environments,
   projectServices,
   projects,
 } from '../db/schema';
+import { getApiDatabase } from '../runtime/runtime-access';
 import { requirePersistedRow } from './persisted-row.query.shared';
 import { toDeploymentRow } from './deployment-row.mapper';
 import type { DeploymentRow, DeploymentTransaction, PersistedDeploymentRow } from './deployments.query.types';
-import type { QueuedDeploymentClaimCandidateRow } from './deployment-claim.query.types';
+import type { QueuedDeploymentClaimCandidateRow, UpdatedDeploymentIdRow } from './deployment-claim.query.types';
 
 // Persist the last claim turn per organization so fairness survives serial single-worker claims.
 const fairQueuedDeploymentClaimQuery: SQL<QueuedDeploymentClaimCandidateRow> = sql<QueuedDeploymentClaimCandidateRow>`
@@ -99,4 +101,23 @@ export async function markQueuedDeploymentRunningWithExecutor(
     .returning();
 
   return rows[0] === undefined ? undefined : toDeploymentRow(requirePersistedRow(rows[0], 'deployment'));
+}
+
+export async function requeueOrphanedDeploymentBuildClaims(): Promise<number> {
+  const rows: UpdatedDeploymentIdRow[] = await getApiDatabase()
+    .update(deployments)
+    .set({ status: 'queued', updatedAt: new Date() })
+    .where(
+      and(
+        eq(deployments.status, 'running'),
+        notExists(
+          getApiDatabase()
+            .select({ deploymentId: deploymentKubeReferences.deploymentId })
+            .from(deploymentKubeReferences)
+            .where(eq(deploymentKubeReferences.deploymentId, deployments.id)),
+        ),
+      ),
+    )
+    .returning({ id: deployments.id });
+  return rows.length;
 }

@@ -1,7 +1,7 @@
 import type { DeploymentRunStepKey } from '@compartment/contracts';
-import { appendRuntimeStepEventSafely } from './worker-deployment-tracking.service';
+import { appendDeploymentStepEventSafely } from './worker-deployment-event.service';
 import { readWorkerFailureMessage } from './worker-failure-message.service';
-import type { WorkerDeploymentEventContext } from './worker-deployment-tracking.types';
+import type { WorkerDeploymentEventContext } from './worker-deployment-event.types';
 
 type FailureStepKeyResolver = (error: Error | undefined) => DeploymentRunStepKey;
 
@@ -29,7 +29,7 @@ export async function runTrackedDeploymentStep<Result>(input: TrackedDeploymentS
 }
 
 async function appendTrackedStepStarted<Result>(input: TrackedDeploymentStepInput<Result>): Promise<void> {
-  await appendRuntimeStepEventSafely(input.eventContext, input.stepKey, 'running', input.startMessage);
+  await appendDeploymentStepEventSafely(input.eventContext, input.stepKey, 'running', input.startMessage);
 }
 
 async function appendTrackedStepSucceeded<Result>(input: TrackedDeploymentStepInput<Result>): Promise<void> {
@@ -37,14 +37,14 @@ async function appendTrackedStepSucceeded<Result>(input: TrackedDeploymentStepIn
     return;
   }
 
-  await appendRuntimeStepEventSafely(input.eventContext, input.stepKey, 'succeeded', input.successMessage);
+  await appendDeploymentStepEventSafely(input.eventContext, input.stepKey, 'succeeded', input.successMessage);
 }
 
 async function appendTrackedStepFailed<Result>(
   input: TrackedDeploymentStepInput<Result>,
   error: Error | undefined,
 ): Promise<void> {
-  await appendRuntimeStepEventSafely(
+  await appendDeploymentStepEventSafely(
     input.eventContext,
     resolveFailureStepKey(input.failureStepKey, input.stepKey, error),
     'failed',

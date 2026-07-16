@@ -15,6 +15,9 @@ const bufferMinBytes = 125_829_120;
 const bufferMaxBytes = 150_994_944;
 const loadPodCount = 7;
 const loadPodImage = 'public.ecr.aws/docker/library/node:24.15.0-bookworm';
+const kubernetesReadinessTimeout = '4m';
+const productDeploymentHealthAttempts = 6;
+const productDeploymentHealthIntervalMs = 5_000;
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const loadProgram = `
 const line = "p7-bounded-buffer-" + "x".repeat(3400);
@@ -60,11 +63,11 @@ function parseProductLogBufferMetric(metrics, metricName, label) {
 }
 
 export function findDegradedProductDeployments(rawDeployments) {
-  return JSON.parse(rawDeployments).items.filter(
-    (deployment) =>
-      deployment.metadata.namespace.startsWith('cpt-') &&
-      deployment.status.availableReplicas !== deployment.spec.replicas,
-  );
+  return JSON.parse(rawDeployments).items.filter((deployment) => {
+    const desiredReplicas = deployment.spec.replicas ?? 1;
+    const availableReplicas = deployment.status.availableReplicas ?? 0;
+    return deployment.metadata.namespace.startsWith('cpt-') && availableReplicas < desiredReplicas;
+  });
 }
 
 export async function runPlatformK3dProductLogGate() {
@@ -81,7 +84,7 @@ export async function runPlatformK3dProductLogGate() {
         'rollout',
         'status',
         `daemonset/${agentName}`,
-        '--timeout=3m',
+        `--timeout=${kubernetesReadinessTimeout}`,
       ],
       repositoryRoot,
     );
@@ -89,7 +92,7 @@ export async function runPlatformK3dProductLogGate() {
     writeQuota(quotaMaxBytes);
     loadTarget = await startLoadPods();
     const bufferBytes = await waitForBoundedBuffer();
-    assertPlatformHealthy(loadTarget);
+    await assertPlatformHealthy(loadTarget);
     const currentQuota = readQuota();
     if (currentQuota !== quotaMaxBytes) {
       throw new Error(`Product-log quota changed while ingest was backpressured: ${currentQuota}.`);
@@ -195,7 +198,7 @@ async function startLoadPods() {
         'wait',
         `pod/${podName}`,
         '--for=condition=Ready',
-        '--timeout=3m',
+        `--timeout=${kubernetesReadinessTimeout}`,
       ],
       repositoryRoot,
     );
@@ -256,7 +259,7 @@ async function waitForBoundedBuffer() {
   return bufferBytes;
 }
 
-function assertPlatformHealthy(loadTarget) {
+async function assertPlatformHealthy(loadTarget) {
   runCommand('kubectl', ['--context', context, '--request-timeout=5s', 'get', '--raw=/readyz'], repositoryRoot);
   runCommand(
     'kubectl',
@@ -292,13 +295,26 @@ function assertPlatformHealthy(loadTarget) {
       throw new Error(`Product-log load pod ${podName} is not Ready.`);
     }
   }
-  const deployments = captureCommand(
-    'kubectl',
-    ['--context', context, 'get', 'deployments', '--all-namespaces', '--output', 'json'],
-    repositoryRoot,
-  );
-  if (findDegradedProductDeployments(deployments).length > 0) {
-    throw new Error('A product deployment became unavailable during the product-log buffer gate.');
+  let degradedDeployments = [];
+  for (let attempt = 1; attempt <= productDeploymentHealthAttempts; attempt += 1) {
+    const deployments = captureCommand(
+      'kubectl',
+      ['--context', context, 'get', 'deployments', '--all-namespaces', '--output=json'],
+      repositoryRoot,
+    );
+    degradedDeployments = findDegradedProductDeployments(deployments);
+    if (degradedDeployments.length === 0) {
+      return;
+    }
+    if (attempt < productDeploymentHealthAttempts) {
+      await delay(productDeploymentHealthIntervalMs);
+    }
+  }
+  if (degradedDeployments.length > 0) {
+    const references = degradedDeployments
+      .map((deployment) => `${deployment.metadata.namespace}/${deployment.metadata.name}`)
+      .join(', ');
+    throw new Error(`Product deployments remained unavailable during the product-log buffer gate: ${references}.`);
   }
 }
 

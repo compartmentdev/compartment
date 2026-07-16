@@ -32,7 +32,6 @@ export type {
   MarkBuildArtifactsCleanedInput,
   MarkDeploymentFailedInput,
   UpdateBuildArtifactImageInput,
-  UpdateDeploymentRuntimeStateInput,
 } from './deployments.query.write.types';
 
 export type DeploymentTransaction = ApiDatabaseTransaction;
@@ -83,7 +82,6 @@ export interface EnvironmentRow {
   createdAt: Date;
   id: string;
   name: string;
-  nodeId: string;
   projectId: string;
   updatedAt: Date;
 }
@@ -109,13 +107,8 @@ export interface BuildArtifactRow {
 export interface DeploymentRow {
   accessMode: AppRouteAccessMode;
   completedAt: Date | null;
-  containerId: string | null;
   createdAt: Date;
   deploymentRunId: string;
-  drainDeadlineAt: Date | null;
-  drainingContainerId: string | null;
-  drainingDeploymentId: string | null;
-  drainingNodeId: string | null;
   environmentId: string;
   failureMessage: string | null;
   health: DeploymentRuntimeHealth;
@@ -123,7 +116,6 @@ export interface DeploymentRow {
   isActive: boolean;
   movementSourceDeploymentId: string | null;
   label: string | null;
-  nodeId: string;
   operationId: string;
   projectServiceId: string;
   promotionStage: DeploymentPromotionStage;
@@ -143,8 +135,6 @@ export interface DeploymentRow {
   sourceResolutionTaskId: string | null;
   routeBaseDomain: string | null;
   routeHost: string | null;
-  upstreamHost: string | null;
-  upstreamPort: number | null;
   status: DeploymentRuntimeStatus;
   updatedAt: Date;
 }
@@ -182,7 +172,6 @@ export interface UpdateProjectServiceInput {
 export interface CreateEnvironmentInput {
   id: string;
   name: string;
-  nodeId: string;
   projectId: string;
   updatedAt: Date;
 }

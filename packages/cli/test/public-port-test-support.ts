@@ -1,6 +1,6 @@
 import { findFreePort } from '@compartment/test-support';
 
-export type DistinctFreePorts = readonly [number, number];
+type DistinctFreePorts = readonly [number, number];
 
 export async function findDistinctFreePorts(): Promise<DistinctFreePorts> {
   const publicHttpPort: number = await findFreePort();

@@ -18,7 +18,6 @@ import {
   type DeploymentSummary,
   type DeployResponse,
   type InstallResponse,
-  type DomainPublicScheme,
   type SystemDomainMutationResponse,
   type SystemDomainSetRequest,
   type RemoveCustomDomainResponse,
@@ -55,7 +54,6 @@ import {
   completeClaimedDeployment,
   injectDeployRequest,
   installCompartment,
-  registerLocalNode,
   requireClaimedDeployment,
   requireDeployResponseDeployment,
 } from './api-integration.harness';
@@ -142,7 +140,6 @@ function buildSystemMutationHeaders(idempotencyKey: string): Record<string, stri
 function buildCustomExternalDomainSetRequest(
   expectedSetupVersion: number,
   baseDomain: string = 'customer.example.com',
-  publicScheme: DomainPublicScheme = 'https',
 ): SystemDomainSetRequest {
   return {
     expectedSetupVersion,
@@ -150,7 +147,7 @@ function buildCustomExternalDomainSetRequest(
       baseDomain,
       caddyMode: 'custom-http',
       domainKind: 'custom',
-      publicScheme,
+      publicScheme: 'https',
       tlsMode: 'external',
     },
   };
@@ -214,7 +211,6 @@ process.env.COMPARTMENT_PUBLIC_INGRESS_IPV4 = '';
 process.env.COMPARTMENT_PUBLIC_INGRESS_IPV6 = '';
 process.env.COMPARTMENT_POSTGRES_PASSWORD = 'postgres';
 process.env.COMPARTMENT_EDGE_TOKEN = 'test-edge-token';
-process.env.COMPARTMENT_NODE_AGENT_SOCKET = '/tmp/compartment/api-test/node/integration.sock';
 process.env.COMPARTMENT_SYSTEM_API_SOCKET = '/tmp/compartment/api-integration-custom-domains/system-api.sock';
 process.env.COMPARTMENT_SYSTEM_TOKEN = 'test-system-token';
 process.env.COMPARTMENT_THROTTLE_AUTH_LOGIN_ROUTE_MAX_REQUESTS = '30';
@@ -356,7 +352,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('persists, verifies, lists, and removes custom app domains through the protected API', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     const canonicalLocalRouteHost: string = await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
     const publicIngressConfig: ApiPublicIngressConfig = createManagedPublicIngressConfig();
@@ -404,7 +399,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('hides a custom-domain host that is already assigned to another organization', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     await createOrganization(installPayload.sessionToken, 'Beta Dev', 'beta-dev');
     await deployAndCompleteSmokeWeb(installPayload.sessionToken, 'beta-dev');
@@ -429,7 +423,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('persists and verifies managed dual-stack custom app domains through the protected API', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
     const publicIngressConfig: ApiPublicIngressConfig = createManagedDualStackPublicIngressConfig();
@@ -469,7 +462,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('persists and verifies custom-cert subdomain custom app domains through the protected API', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const customCertApiConfig: ApiConfig = createCustomCertificateApiConfig();
     configureApiRuntime({ config: customCertApiConfig, db });
@@ -506,7 +498,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('persists and verifies custom-cert apex custom app domains through the protected API', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const customCertApiConfig: ApiConfig = createCustomCertificateApiConfig();
     configureApiRuntime({ config: customCertApiConfig, db });
@@ -541,7 +532,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('keeps custom domain reads and lists available without an active deployment', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
     const publicIngressConfig: ApiPublicIngressConfig = createManagedPublicIngressConfig();
@@ -581,7 +571,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('allows readonly members to list and show custom domains but blocks custom-domain mutations', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
     const publicIngressConfig: ApiPublicIngressConfig = createManagedPublicIngressConfig();
@@ -657,7 +646,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('blocks viewer members from all custom-domain routes, including readonly GET access', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
     const publicIngressConfig: ApiPublicIngressConfig = createManagedPublicIngressConfig();
@@ -712,7 +700,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('allows deployer members to add, verify, and remove custom domains', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
     const publicIngressConfig: ApiPublicIngressConfig = createManagedPublicIngressConfig();
@@ -767,7 +754,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('keeps verified custom app domain removal retryable when edge sync fails', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
     const publicIngressConfig: ApiPublicIngressConfig = createManagedPublicIngressConfig();
@@ -805,7 +791,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('persists failed custom app domain verification without syncing edge state', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     configureApiRuntimeWithPublicIngress(createManagedApiConfig(), createManagedPublicIngressConfig());
     appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockClear();
@@ -841,7 +826,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('syncs edge state when a ready custom app domain becomes invalid', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
     const publicIngressConfig: ApiPublicIngressConfig = createManagedPublicIngressConfig();
@@ -876,7 +860,6 @@ describe('Phase 0 API integration custom domains', (): void => {
 
   it('retries edge sync when invalidating an ever-verified custom app domain', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
-    await registerLocalNode(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
     const publicIngressConfig: ApiPublicIngressConfig = createManagedPublicIngressConfig();

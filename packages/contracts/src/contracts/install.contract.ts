@@ -31,7 +31,7 @@ export interface InstallResponse {
 
 const dnsRecordTypeSchema: ContractSchema<DnsRecordType> = z.enum(['A/AAAA-or-CNAME']);
 
-export const dnsRecordInstructionSchema: ContractSchema<DnsRecordInstruction> = z
+const dnsRecordInstructionSchema: ContractSchema<DnsRecordInstruction> = z
   .object({
     host: z.string().min(1),
     purpose: z.string().min(1),

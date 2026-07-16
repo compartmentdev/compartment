@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { productJobIntentSchema, workerPersistProductJobResultRequestSchema } from '../src';
+import {
+  productJobIntentSchema,
+  productJobRuntimeId,
+  workerClaimProductJobRequestSchema,
+  workerPersistProductJobIntentResponseSchema,
+  workerPersistProductJobResultRequestSchema,
+} from '../src';
 
 const timedOutResult: object = {
   completedAt: '2026-07-12T12:00:00.000Z',
@@ -13,6 +19,12 @@ const timedOutResult: object = {
 };
 
 describe('internal product Job result contract', (): void => {
+  it('requires an explicit claim lane', (): void => {
+    expect(workerClaimProductJobRequestSchema.safeParse({ jobClass: 'release' }).success).toBe(true);
+    expect(workerClaimProductJobRequestSchema.safeParse({ jobClass: 'resource-operation' }).success).toBe(true);
+    expect(workerClaimProductJobRequestSchema.safeParse({}).success).toBe(false);
+  });
+
   it('represents a timeout before Pod creation without an invented Pod identity', (): void => {
     expect(workerPersistProductJobResultRequestSchema.safeParse(timedOutResult).success).toBe(true);
     expect(
@@ -22,6 +34,12 @@ describe('internal product Job result contract', (): void => {
     expect(workerPersistProductJobResultRequestSchema.safeParse({ ...timedOutResult, podName: '' }).success).toBe(
       false,
     );
+  });
+
+  it('returns current durable evidence when intent persistence is terminal', (): void => {
+    expect(workerPersistProductJobIntentResponseSchema.safeParse({ result: null }).success).toBe(true);
+    expect(workerPersistProductJobIntentResponseSchema.safeParse({ result: timedOutResult }).success).toBe(true);
+    expect(workerPersistProductJobIntentResponseSchema.safeParse({}).success).toBe(false);
   });
 });
 
@@ -34,6 +52,8 @@ describe('internal product Job mounts', (): void => {
       jobClass: 'resource-operation',
       namespace: 'cpt-prj',
       operationId: 'operation-1',
+      projectId: 'prj-1',
+      resourceIds: ['res-1'],
       timeoutMs: 30_000,
       volumeMounts: [
         {
@@ -48,5 +68,9 @@ describe('internal product Job mounts', (): void => {
     };
     expect(productJobIntentSchema.safeParse(input).success).toBe(true);
     expect(productJobIntentSchema.safeParse({ ...input, volumeMounts: [{ hostPath: '/tmp' }] }).success).toBe(false);
+  });
+
+  it('derives one canonical runtime identity for execution and cleanup', (): void => {
+    expect(productJobRuntimeId('release', 'dep-1')).toBe('release-dep-1');
   });
 });

@@ -174,10 +174,6 @@ export function createInvalidCustomDomainError(message?: string): ApiBusinessErr
   return new ApiBusinessError('invalid_custom_domain', message);
 }
 
-export function createNodeUnavailableError(): ApiBusinessError {
-  return new ApiBusinessError('node_unavailable');
-}
-
 export function createInvalidSsoLoginError(): ApiBusinessError {
   return new ApiBusinessError('invalid_sso_login');
 }

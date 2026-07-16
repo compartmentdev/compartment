@@ -1,22 +1,31 @@
 import type { DeploymentReconcilePair } from '../src/queries/deployment-reconcile.query.types';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { claimDeploymentReconcileTarget } from '../src/services/deployment-reconcile.service';
+import {
+  claimDeploymentReconcileTarget,
+  observeDeploymentReconcile,
+} from '../src/services/deployment-reconcile.service';
 
 interface ReconcileMocks {
   buildPlan: Mock;
   findPair: Mock;
+  persistObservation: Mock;
+  planRetention: Mock;
+  synchronizeEdge: Mock;
 }
 
 const mocks: ReconcileMocks = vi.hoisted(
   (): ReconcileMocks => ({
     buildPlan: vi.fn(),
     findPair: vi.fn(),
+    persistObservation: vi.fn(),
+    planRetention: vi.fn(),
+    synchronizeEdge: vi.fn(),
   }),
 );
 
 vi.mock('../src/queries/deployment-reconcile.query', (): object => ({
   findNextDeploymentReconcilePair: mocks.findPair,
-  persistDeploymentReconcileObservation: vi.fn(),
+  persistDeploymentReconcileObservation: mocks.persistObservation,
   prepareDeploymentReconcileReference: vi.fn(),
 }));
 
@@ -24,9 +33,39 @@ vi.mock('../src/services/deployment-runtime-plan.service', (): object => ({
   buildDeploymentRuntimePlan: mocks.buildPlan,
 }));
 
+vi.mock('../src/services/deployment-retention.service', (): object => ({
+  planRollbackRetentionCleanup: mocks.planRetention,
+}));
+
+vi.mock('../src/services/app-access-edge.service', (): object => ({
+  synchronizeEdgeAppAccessState: mocks.synchronizeEdge,
+}));
+
 describe('deployment reconcile projection', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
+    mocks.persistObservation.mockResolvedValue(true);
+    mocks.planRetention.mockResolvedValue([]);
+    mocks.synchronizeEdge.mockResolvedValue(undefined);
+  });
+
+  it('returns rollback cleanup work from the Kubernetes-ready transition', async (): Promise<void> => {
+    mocks.planRetention.mockResolvedValue([
+      { artifactId: 'art-old', imageRef: `registry/app@sha256:${'a'.repeat(64)}` },
+    ]);
+
+    await expect(
+      observeDeploymentReconcile({
+        deploymentId: 'dep-1',
+        observation: 'ready',
+        observedAt: '2026-07-15T12:00:00.000Z',
+        revision: 1,
+      }),
+    ).resolves.toEqual({
+      applied: true,
+      cleanupArtifacts: [{ artifactId: 'art-old', imageRef: `registry/app@sha256:${'a'.repeat(64)}` }],
+    });
+    expect(mocks.planRetention).toHaveBeenCalledWith('dep-1');
   });
 
   it('carries resolved descriptor runtime behavior to the worker projection', async (): Promise<void> => {
@@ -59,7 +98,7 @@ function pair(): DeploymentReconcilePair {
       projectName: 'app',
       resolvedReadinessJson: '{"path":"/healthz","timeoutMs":60000,"type":"http"}',
       resolvedReleaseJson: 'null',
-      resolvedRunJson: '{"command":"npm run start:override","restart":{"policy":"unless-stopped"}}',
+      resolvedRunJson: '{"command":"npm run start:override"}',
       revision: 1,
       serviceId: 'svc-1',
       serviceName: 'web',

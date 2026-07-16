@@ -8,7 +8,6 @@ const packageScopes = [
   'eslint-config',
   'eslint-plugin',
   'kube-runtime',
-  'node',
   'sdk',
   'source-archive',
   'test-support',

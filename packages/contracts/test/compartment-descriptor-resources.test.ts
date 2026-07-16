@@ -1,5 +1,6 @@
 import type { SafeParseReturnType } from 'zod';
 import { describe, expect, it } from 'vitest';
+import { resourceReadinessTimeoutMaxMs } from '../src/contracts/compartment-resource.contract';
 import {
   compartmentAuthoredDescriptorSchema,
   type CompartmentAuthoredDescriptor,
@@ -9,15 +10,7 @@ import {
 type ResourcePresetRejectedOverride = Partial<
   Pick<
     CompartmentAuthoredResourceConfig,
-    | 'command'
-    | 'generatedVariables'
-    | 'image'
-    | 'operations'
-    | 'outputs'
-    | 'ports'
-    | 'readiness'
-    | 'restart'
-    | 'volumes'
+    'command' | 'generatedVariables' | 'image' | 'operations' | 'outputs' | 'ports' | 'readiness' | 'volumes'
   >
 >;
 
@@ -29,12 +22,20 @@ const resourcePresetRejectedOverrides: readonly [string, ResourcePresetRejectedO
   ['outputs', { outputs: { host: { sensitive: false, value: 'custom-host' } } }],
   ['ports', { ports: [5433] }],
   ['readiness', { readiness: { port: 5433, type: 'tcp' } }],
-  ['restart', { restart: { policy: 'unless-stopped' } }],
   ['volumes', { volumes: { data: '/data' } }],
 ];
 
 describe('compartment descriptor resource contracts', (): void => {
-  it('accepts Docker-backed resources declared at the top level', (): void => {
+  it('owns the resource readiness limit at the authored descriptor boundary', (): void => {
+    expect(
+      compartmentAuthoredDescriptorSchema.safeParse(readinessDescriptor(resourceReadinessTimeoutMaxMs)).success,
+    ).toBe(true);
+    expect(
+      compartmentAuthoredDescriptorSchema.safeParse(readinessDescriptor(resourceReadinessTimeoutMaxMs + 1)).success,
+    ).toBe(false);
+  });
+
+  it('accepts Kubernetes-managed resources declared at the top level', (): void => {
     const descriptor: CompartmentAuthoredDescriptor = compartmentAuthoredDescriptorSchema.parse({
       name: 'backoffice',
       resources: {
@@ -72,6 +73,32 @@ describe('compartment descriptor resource contracts', (): void => {
       encoding: 'hex',
       generator: 'token',
     });
+  });
+
+  it('reserves the managed backup claim handle from authored resource volumes', (): void => {
+    const result: SafeParseReturnType<CompartmentAuthoredDescriptor, CompartmentAuthoredDescriptor> =
+      compartmentAuthoredDescriptorSchema.safeParse({
+        name: 'backoffice',
+        resources: {
+          postgres: {
+            image: 'postgres:16',
+            volumes: { 'backup-artifacts': '/var/lib/postgresql/data' },
+          },
+        },
+        services: { web: '.' },
+      });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: 'backup-artifacts is reserved for managed backups.',
+            path: ['resources', 'postgres', 'volumes', 'backup-artifacts'],
+          }),
+        ]),
+      );
+    }
   });
 
   it('expands postgres resource presets before returning descriptor resources', (): void => {
@@ -479,6 +506,24 @@ describe('compartment descriptor resource contracts', (): void => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects duplicate resource ports before Kubernetes projection', (): void => {
+    const result: SafeParseReturnType<CompartmentAuthoredDescriptor, CompartmentAuthoredDescriptor> =
+      compartmentAuthoredDescriptorSchema.safeParse({
+        name: 'backoffice',
+        resources: {
+          postgres: {
+            image: 'postgres:16',
+            ports: [5432, 5432],
+          },
+        },
+        services: {
+          web: '.',
+        },
+      });
+
+    expect(result.success).toBe(false);
+  });
+
   it('rejects resource volume handles that would require lossy Docker name sanitization', (): void => {
     const result: SafeParseReturnType<CompartmentAuthoredDescriptor, CompartmentAuthoredDescriptor> =
       compartmentAuthoredDescriptorSchema.safeParse({
@@ -499,3 +544,13 @@ describe('compartment descriptor resource contracts', (): void => {
     expect(result.success).toBe(false);
   });
 });
+
+function readinessDescriptor(timeoutMs: number): object {
+  return {
+    name: 'backoffice',
+    resources: {
+      postgres: { image: 'postgres:16', ports: [5432], readiness: { port: 5432, timeoutMs, type: 'tcp' } },
+    },
+    services: { web: '.' },
+  };
+}

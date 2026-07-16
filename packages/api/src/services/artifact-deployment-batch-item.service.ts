@@ -43,7 +43,6 @@ function buildArtifactDeploymentInput(
       environmentId: targetEnvironment.id,
       label: sourceDeployment.deployment.label,
       movementSourceDeploymentId: operationType === 'deployment.start' ? null : sourceDeployment.deployment.id,
-      nodeId: targetEnvironment.nodeId,
       projectServiceId: sourceDeployment.service.id,
       resolvedReadinessJson: sourceDeployment.deployment.resolvedReadinessJson,
       resolvedReleaseJson: serializeResolvedRelease(null),

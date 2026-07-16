@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { kubeResourceServiceDns } from '@compartment/utils';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
@@ -12,7 +13,10 @@ import type {
   listOrganizationVariableSetEntriesForSetIds,
 } from '../src/queries/variables.query';
 import type { listEnvironmentResourceOutputVariableBindings } from '../src/queries/variables-resource-output.query';
-import { buildDeploymentRuntimePlan } from '../src/services/deployment-runtime-plan.service';
+import {
+  buildDeploymentRuntimePlan,
+  type DeploymentRuntimePlan,
+} from '../src/services/deployment-runtime-plan.service';
 import type {
   EnvironmentResourceOutputVariableBindingRow,
   EnvironmentVariableSetBindingRow,
@@ -20,6 +24,7 @@ import type {
   OrganizationVariableSetEntryRow,
 } from '../src/queries/variables.query.types';
 import type { findProjectResourceByName } from '../src/queries/resources.query';
+import type { findEnvironmentById } from '../src/queries/access-scope.query';
 import type { ProjectResourceRow } from '../src/queries/resources.query.types';
 import { encryptVariableValueForStorageForTests, type TestEncryptedVariableValue } from './variables-test-crypto';
 
@@ -29,8 +34,10 @@ type ListEnvironmentVariableSetBindings = typeof listEnvironmentVariableSetBindi
 type ListOrganizationVariableSetNamesByIds = typeof listOrganizationVariableSetNamesByIds;
 type ListOrganizationVariableSetEntriesForSetIds = typeof listOrganizationVariableSetEntriesForSetIds;
 type FindProjectResourceByName = typeof findProjectResourceByName;
+type FindEnvironmentById = typeof findEnvironmentById;
 
 interface DeploymentRuntimePlanServiceMocks {
+  findEnvironmentById: Mock<FindEnvironmentById>;
   findProjectResourceByName: Mock<FindProjectResourceByName>;
   listEnvironmentResourceOutputVariableBindings: Mock<ListEnvironmentResourceOutputVariableBindings>;
   listEnvironmentVariableSetBindings: Mock<ListEnvironmentVariableSetBindings>;
@@ -52,6 +59,10 @@ interface VariablesResourceOutputQueryModuleMock {
 
 interface ResourcesQueryModuleMock {
   findProjectResourceByName: Mock<FindProjectResourceByName>;
+}
+
+interface AccessScopeQueryModuleMock {
+  findEnvironmentById: Mock<FindEnvironmentById>;
 }
 
 const variablesMasterKey: Buffer = parseVariablesMasterKey('11'.repeat(32));
@@ -79,11 +90,8 @@ const apiConfig: ApiConfig = {
   sessionSecret: 'session-secret',
   sessionTtlMs: 604_800_000,
   sourceArchiveDirectory: '/tmp/compartment-test-source-archives',
-  resourceBackupDirectory: '/tmp/compartment-test-resource-backups',
   sourceArchiveMaxBytes: 104_857_600,
   throttle: defaultApiAuthThrottleConfig,
-  runtimeDefaultUpstreamHost: '127.0.0.1',
-  nodeAgentSocketPath: '/tmp/compartment/api-test/node/integration.sock',
   systemApiSocketPath: '/tmp/compartment/compartment-runtime-plan-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
@@ -93,12 +101,20 @@ const apiConfig: ApiConfig = {
 
 const mocks: DeploymentRuntimePlanServiceMocks = vi.hoisted(
   (): DeploymentRuntimePlanServiceMocks => ({
+    findEnvironmentById: vi.fn<FindEnvironmentById>(),
     findProjectResourceByName: vi.fn<FindProjectResourceByName>(),
     listEnvironmentResourceOutputVariableBindings: vi.fn<ListEnvironmentResourceOutputVariableBindings>(),
     listEnvironmentVariableSetBindings: vi.fn<ListEnvironmentVariableSetBindings>(),
     listEnvironmentVariableValues: vi.fn<ListEnvironmentVariableValues>(),
     listOrganizationVariableSetNamesByIds: vi.fn<ListOrganizationVariableSetNamesByIds>(),
     listOrganizationVariableSetEntriesForSetIds: vi.fn<ListOrganizationVariableSetEntriesForSetIds>(),
+  }),
+);
+
+vi.mock(
+  '../src/queries/access-scope.query',
+  (): AccessScopeQueryModuleMock => ({
+    findEnvironmentById: mocks.findEnvironmentById,
   }),
 );
 
@@ -131,6 +147,13 @@ describe('deployment runtime plan service', (): void => {
     configureApiRuntime({
       config: apiConfig,
       db: {} as Database,
+    });
+    mocks.findEnvironmentById.mockResolvedValue({
+      id: 'env_production',
+      name: 'production',
+      organizationId: 'org_123',
+      projectId: 'prj_billing',
+      projectName: 'billing',
     });
     mocks.findProjectResourceByName.mockResolvedValue(undefined);
     mocks.listEnvironmentResourceOutputVariableBindings.mockResolvedValue([]);
@@ -213,22 +236,26 @@ describe('deployment runtime plan service', (): void => {
       await buildDeploymentRuntimePlan('env_production', 'org_123', 'svc_api', 'production', 'billing', 'api')
     ).runtimeEnv;
 
-    expect(runtimeEnv.DATABASE_URL).toBe('postgres://app:secret@postgres.production.billing.resource.internal/app');
+    expect(runtimeEnv.DATABASE_URL).toBe(
+      `postgres://app:secret@${kubeResourceServiceDns('res_postgres', 'prj_billing')}/app`,
+    );
   });
 
-  it('marks the runtime resource network intent only for resource output variables', async (): Promise<void> => {
+  it('does not emit the removed host-runtime network plan', async (): Promise<void> => {
     mocks.findProjectResourceByName.mockResolvedValue(createProjectResourceRow());
     mocks.listEnvironmentVariableValues.mockResolvedValue([
       createEnvironmentVariableValue('API_ONLY', 'service-value', 'svc_api'),
     ]);
 
-    await expect(
-      buildDeploymentRuntimePlan('env_production', 'org_123', 'svc_api', 'production', 'billing', 'api'),
-    ).resolves.toMatchObject({
-      runtimeNetwork: {
-        requiresResourceNetwork: false,
-      },
-    });
+    const directPlan: DeploymentRuntimePlan = await buildDeploymentRuntimePlan(
+      'env_production',
+      'org_123',
+      'svc_api',
+      'production',
+      'billing',
+      'api',
+    );
+    expect(directPlan).not.toHaveProperty('runtimeNetwork');
 
     mocks.findProjectResourceByName.mockResolvedValue(
       createProjectResourceRow({
@@ -244,16 +271,16 @@ describe('deployment runtime plan service', (): void => {
       createEnvironmentResourceOutputVariableBinding('POSTGRES_HOST', 'api', 'postgres', 'host'),
     ]);
 
-    await expect(
-      buildDeploymentRuntimePlan('env_production', 'org_123', 'svc_api', 'production', 'billing', 'api'),
-    ).resolves.toMatchObject({
-      runtimeEnv: {
-        POSTGRES_HOST: 'postgres.production.billing.resource.internal',
-      },
-      runtimeNetwork: {
-        requiresResourceNetwork: true,
-      },
-    });
+    const outputPlan: DeploymentRuntimePlan = await buildDeploymentRuntimePlan(
+      'env_production',
+      'org_123',
+      'svc_api',
+      'production',
+      'billing',
+      'api',
+    );
+    expect(outputPlan.runtimeEnv.POSTGRES_HOST).toBe(kubeResourceServiceDns('res_postgres', 'prj_billing'));
+    expect(outputPlan).not.toHaveProperty('runtimeNetwork');
   });
 
   it('rejects conflicting variable keys coming from multiple sets at the same scope', async (): Promise<void> => {
@@ -325,8 +352,8 @@ function createEnvironmentResourceOutputVariableBinding(
 function createProjectResourceRow(overrides: Partial<ProjectResourceRow> = {}): ProjectResourceRow {
   return {
     commandJson: '["postgres"]',
-    containerId: 'container_123',
     createdAt: new Date('2026-04-07T10:00:00.000Z'),
+    deleteDataRequested: false,
     envJson: JSON.stringify([
       {
         keyName: 'POSTGRES_DB',
@@ -342,8 +369,6 @@ function createProjectResourceRow(overrides: Partial<ProjectResourceRow> = {}): 
       },
     ]),
     environmentId: 'env_production',
-    hostname: 'postgres.production.billing.resource.internal',
-    runtimeKind: 'node',
     expectedClaimsJson: '[]',
     id: 'res_postgres',
     image: 'postgres:16',
@@ -353,7 +378,6 @@ function createProjectResourceRow(overrides: Partial<ProjectResourceRow> = {}): 
     outputsJson: '{}',
     portsJson: '[5432]',
     readinessJson: 'null',
-    restartPolicy: 'unless-stopped',
     runtimeDefinitionHash: 'hash',
     status: 'running',
     updatedAt: new Date('2026-04-07T10:00:00.000Z'),

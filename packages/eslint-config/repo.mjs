@@ -115,22 +115,6 @@ const legacyApiServiceContractDtoImports = [
     names: ['AuditEventListResponse', 'AuditEventSummary'],
   },
   {
-    file: 'packages/api/src/services/deployment-inspect.service.ts',
-    names: ['NodeInspectDeploymentResponse'],
-  },
-  {
-    file: 'packages/api/src/services/deployment-logs.service.ts',
-    names: ['NodeTailLogsResponse'],
-  },
-  {
-    file: 'packages/api/src/services/deployment-worker-recovery.service.ts',
-    names: ['WorkerRecoverDeploymentsResponse'],
-  },
-  {
-    file: 'packages/api/src/services/deployment-worker.service.ts',
-    names: ['NodeInspectDeploymentResponse', 'WorkerCompleteDeploymentResponse', 'WorkerRecoverDeploymentsResponse'],
-  },
-  {
     file: 'packages/api/src/services/git-source/git-source-descriptor-pr-token.service.ts',
     names: ['GitDescriptorPullRequestResponse'],
   },
@@ -183,18 +167,6 @@ const legacyApiServiceContractDtoImports = [
     names: ['EnvironmentSummary', 'ProjectSummary', 'ResourceSummary', 'ResourceVolumeSummary'],
   },
   {
-    file: 'packages/api/src/services/resource-backups.execution.service.ts',
-    names: ['NodeResourceOperationResponse'],
-  },
-  {
-    file: 'packages/api/src/services/resource-backups.restore-as.service.ts',
-    names: ['NodeResourceResponse'],
-  },
-  {
-    file: 'packages/api/src/services/resources-reconcile.service.ts',
-    names: ['NodeResourceResponse'],
-  },
-  {
     file: 'packages/api/src/services/resources-reconcile.validation.ts',
     names: ['ResourceVolumeSummary'],
   },
@@ -208,7 +180,7 @@ const legacyApiServiceContractDtoImports = [
   },
   {
     file: 'packages/api/src/services/resources.service.ts',
-    names: ['NodeResourceLogsResponse', 'NodeResourceResponse', 'ResourceVolumeSummary'],
+    names: ['ResourceVolumeSummary'],
   },
   {
     file: 'packages/api/src/services/system-domain-status.mapper.ts',
@@ -500,36 +472,6 @@ export const repoConfig = [
       {
         group: ['@fastify/*'],
         message: 'Edge services must not depend on Fastify boundary modules.',
-      },
-    ],
-  }),
-  createLayerRestrictedImportsOverride('node', ['packages/node/src/routes/**/*.ts'], {
-    paths: [
-      {
-        name: '@compartment/docker',
-        message: 'Node routes must stay thin and call node services instead of Docker adapters directly.',
-      },
-      {
-        name: '@compartment/sdk',
-        message: 'Node routes must call node services instead of SDK clients directly.',
-      },
-    ],
-  }),
-  createLayerRestrictedImportsOverride('node', ['packages/node/src/services/**/*.ts'], {
-    paths: [
-      {
-        name: 'fastify',
-        message: 'Node services must not depend on Fastify boundary types or runtime.',
-      },
-    ],
-    patterns: [
-      {
-        group: ['**/routes/**'],
-        message: 'Node services must not depend on route-layer modules.',
-      },
-      {
-        group: ['@fastify/*'],
-        message: 'Node services must not depend on Fastify boundary modules.',
       },
     ],
   }),

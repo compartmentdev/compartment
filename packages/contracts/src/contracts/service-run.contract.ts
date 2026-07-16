@@ -2,115 +2,32 @@ import { z } from 'zod';
 import type { ResolvedCompartmentServiceBuildPacker } from './service-build.contract';
 import type { ContractSchema } from './schema.types';
 
-export type CompartmentServiceRestartPolicy = 'no' | 'on-failure' | 'unless-stopped';
-export type CompartmentServiceRestartMaxRetriesPolicy = 'on-failure';
-export const compartmentServiceRestartPolicyValues: readonly [
-  CompartmentServiceRestartPolicy,
-  CompartmentServiceRestartPolicy,
-  CompartmentServiceRestartPolicy,
-] = ['no', 'on-failure', 'unless-stopped'];
-export const compartmentServiceRestartMaxRetriesPolicyValues: readonly [CompartmentServiceRestartMaxRetriesPolicy] = [
-  'on-failure',
-];
-export const compartmentServiceRunFieldNames: readonly ['command', 'restart'] = ['command', 'restart'];
-export const compartmentServiceRestartFieldNames: readonly ['policy', 'maxRetries'] = ['policy', 'maxRetries'];
-
-export interface CompartmentServiceRestartConfig {
-  maxRetries?: number | undefined;
-  policy: CompartmentServiceRestartPolicy;
-}
-
-export interface ResolvedCompartmentServiceRestartConfig {
-  maxRetries?: number | undefined;
-  policy: CompartmentServiceRestartPolicy;
-}
+export const compartmentServiceRunFieldNames: readonly ['command'] = ['command'];
 
 export interface CompartmentServiceRunConfig {
-  command?: string | undefined;
-  restart?: CompartmentServiceRestartConfig | undefined;
+  command: string;
 }
 
 export interface ResolvedCompartmentServiceRunConfig {
   command?: string | undefined;
-  restart: ResolvedCompartmentServiceRestartConfig;
 }
-
-const defaultCompartmentServiceRestartPolicy: ResolvedCompartmentServiceRestartConfig = {
-  policy: 'on-failure',
-};
-
-const compartmentServiceRestartPolicySchema: ContractSchema<CompartmentServiceRestartPolicy> = z.enum(
-  compartmentServiceRestartPolicyValues,
-);
-
-const compartmentServiceRestartConfigSchema: ContractSchema<CompartmentServiceRestartConfig> = z
-  .object({
-    maxRetries: z.number().int().positive().optional(),
-    policy: compartmentServiceRestartPolicySchema,
-  })
-  .strict()
-  .superRefine((restart: CompartmentServiceRestartConfig, context: z.RefinementCtx): void => {
-    if (restart.maxRetries === undefined || restart.policy === 'on-failure') {
-      return;
-    }
-
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'restart.maxRetries is only supported with the on-failure policy.',
-      path: ['maxRetries'],
-    });
-  });
-
-const resolvedCompartmentServiceRestartConfigSchema: ContractSchema<ResolvedCompartmentServiceRestartConfig> = z
-  .object({
-    maxRetries: z.number().int().positive().optional(),
-    policy: compartmentServiceRestartPolicySchema,
-  })
-  .strict()
-  .superRefine((restart: ResolvedCompartmentServiceRestartConfig, context: z.RefinementCtx): void => {
-    if (restart.maxRetries === undefined || restart.policy === 'on-failure') {
-      return;
-    }
-
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'restart.maxRetries is only supported with the on-failure policy.',
-      path: ['maxRetries'],
-    });
-  });
 
 export const compartmentServiceRunConfigSchema: ContractSchema<CompartmentServiceRunConfig> = z
   .object({
-    command: z.string().min(1).optional(),
-    restart: compartmentServiceRestartConfigSchema.optional(),
+    command: z.string().min(1),
   })
-  .strict()
-  .superRefine((run: CompartmentServiceRunConfig, context: z.RefinementCtx): void => {
-    if (run.command !== undefined || run.restart !== undefined) {
-      return;
-    }
-
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'run must include at least one of command or restart.',
-      path: ['command'],
-    });
-  });
+  .strict();
 
 export const resolvedCompartmentServiceRunConfigSchema: ContractSchema<ResolvedCompartmentServiceRunConfig> = z
   .object({
     command: z.string().min(1).optional(),
-    restart: resolvedCompartmentServiceRestartConfigSchema,
   })
   .strict();
 
 export function resolveCompartmentServiceRunConfig(
   run: CompartmentServiceRunConfig | undefined,
 ): ResolvedCompartmentServiceRunConfig {
-  return resolvedCompartmentServiceRunConfigSchema.parse({
-    ...(run?.command !== undefined ? { command: run.command } : {}),
-    restart: run?.restart ?? defaultCompartmentServiceRestartPolicy,
-  });
+  return run === undefined ? {} : { command: run.command };
 }
 
 export function resolveCompartmentServiceRunExecution(

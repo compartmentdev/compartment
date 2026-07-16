@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import { parseAllDocuments, stringify, type Document } from 'yaml';
 import {
   kubeNamespaceName,
-  kubeSecretName,
   projectProvisioningAuthorityBundle,
   projectProvisioningAuthorityCleanup,
   projectNamespaceProvisioningBundle,
@@ -13,6 +12,7 @@ import {
   type ProjectNamespaceProvisioningRow,
   type ProjectProvisioningAuthorityInput,
 } from '../src';
+import { kubeSecretName } from '../src/kube-naming';
 
 interface RbacRule {
   apiGroups: string[];
