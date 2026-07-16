@@ -13,6 +13,7 @@ const kubeContext = process.env.COMPARTMENT_P10_KUBE_CONTEXT ?? 'k3d-compartment
 const snapshotPath = process.env.COMPARTMENT_P10_SNAPSHOT_PATH ?? '/var/lib/compartment/snapshots/access-state.json';
 const snapshotHost = requiredValue('COMPARTMENT_P10_SNAPSHOT_HOST');
 const revocationSamples = readPositiveInteger('COMPARTMENT_P10_REVOCATION_SAMPLES', 100);
+const rolloutTimeout = '240s';
 const kubectlContextArgs = ['--context', kubeContext];
 const apiReplicas = kubectl([
   '-n',
@@ -59,14 +60,30 @@ try {
   scaleDeployment(apiDeployment, '0');
   kubectl(['-n', edgeDeployment.namespace, 'rollout', 'restart', 'deployment', edgeDeployment.name], 'inherit');
   kubectl(
-    ['-n', edgeDeployment.namespace, 'rollout', 'status', 'deployment', edgeDeployment.name, '--timeout=120s'],
+    [
+      '-n',
+      edgeDeployment.namespace,
+      'rollout',
+      'status',
+      'deployment',
+      edgeDeployment.name,
+      `--timeout=${rolloutTimeout}`,
+    ],
     'inherit',
   );
   runCommand(reloginProbeCommand);
 
   scaleDeployment(apiDeployment, apiReplicas);
   kubectl(
-    ['-n', apiDeployment.namespace, 'rollout', 'status', 'deployment', apiDeployment.name, '--timeout=120s'],
+    [
+      '-n',
+      apiDeployment.namespace,
+      'rollout',
+      'status',
+      'deployment',
+      apiDeployment.name,
+      `--timeout=${rolloutTimeout}`,
+    ],
     'inherit',
   );
   runCommand(postRestoreCommand);

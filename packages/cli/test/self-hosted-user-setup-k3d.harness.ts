@@ -59,6 +59,7 @@ const k3dPlatformResourceName: string = 'compartment-compartment';
 const k3dBuildkitNamespace: string = 'compartment-build';
 const k3dBuildkitAddress: string = 'tcp://127.0.0.1:1234';
 const k3dKubectlCommandTimeoutMs: number = 8 * 60_000;
+const k3dRolloutTimeout: string = '4m';
 const k3dApiServiceProbeAttempts: number = 30;
 const k3dApiServiceProbeIntervalMs: number = 1_000;
 const k3dApiServiceProbeTimeoutMs: number = 10_000;
@@ -460,13 +461,25 @@ export async function configureK3dTrustedOutboundHosts(trustedHostList: string):
   const apiCommands: readonly (readonly string[])[] = [
     [...kubectlBaseArgv, 'patch', 'configmap', k3dPlatformResourceName, '--type', 'merge', '--patch', patchPayload],
     [...kubectlBaseArgv, 'rollout', 'restart', `deployment/${k3dPlatformResourceName}-api`],
-    [...kubectlBaseArgv, 'rollout', 'status', `deployment/${k3dPlatformResourceName}-api`, '--timeout=2m'],
+    [
+      ...kubectlBaseArgv,
+      'rollout',
+      'status',
+      `deployment/${k3dPlatformResourceName}-api`,
+      `--timeout=${k3dRolloutTimeout}`,
+    ],
   ];
   await runK3dKubectlCommands(apiCommands);
   await waitForK3dApiService(seed);
   await runK3dKubectlCommands([
     [...kubectlBaseArgv, 'rollout', 'restart', `deployment/${k3dPlatformResourceName}-worker`],
-    [...kubectlBaseArgv, 'rollout', 'status', `deployment/${k3dPlatformResourceName}-worker`, '--timeout=2m'],
+    [
+      ...kubectlBaseArgv,
+      'rollout',
+      'status',
+      `deployment/${k3dPlatformResourceName}-worker`,
+      `--timeout=${k3dRolloutTimeout}`,
+    ],
   ]);
 }
 
@@ -486,7 +499,13 @@ export async function enableK3dAuditFileSink(): Promise<string> {
     ],
     [...kubectlBaseArgv, 'patch', 'configmap', k3dPlatformResourceName, '--type', 'merge', '--patch', patchPayload],
     [...kubectlBaseArgv, 'rollout', 'restart', `deployment/${k3dPlatformResourceName}-api`],
-    [...kubectlBaseArgv, 'rollout', 'status', `deployment/${k3dPlatformResourceName}-api`, '--timeout=2m'],
+    [
+      ...kubectlBaseArgv,
+      'rollout',
+      'status',
+      `deployment/${k3dPlatformResourceName}-api`,
+      `--timeout=${k3dRolloutTimeout}`,
+    ],
   ]);
   await waitForK3dApiService(seed);
   return k3dAuditFileSinkPath;

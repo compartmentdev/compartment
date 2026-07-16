@@ -15,6 +15,7 @@ const bufferMinBytes = 125_829_120;
 const bufferMaxBytes = 150_994_944;
 const loadPodCount = 7;
 const loadPodImage = 'public.ecr.aws/docker/library/node:24.15.0-bookworm';
+const kubernetesReadinessTimeout = '4m';
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const loadProgram = `
 const line = "p7-bounded-buffer-" + "x".repeat(3400);
@@ -81,7 +82,7 @@ export async function runPlatformK3dProductLogGate() {
         'rollout',
         'status',
         `daemonset/${agentName}`,
-        '--timeout=3m',
+        `--timeout=${kubernetesReadinessTimeout}`,
       ],
       repositoryRoot,
     );
@@ -195,7 +196,7 @@ async function startLoadPods() {
         'wait',
         `pod/${podName}`,
         '--for=condition=Ready',
-        '--timeout=3m',
+        `--timeout=${kubernetesReadinessTimeout}`,
       ],
       repositoryRoot,
     );

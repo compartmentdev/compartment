@@ -55,19 +55,30 @@ jobs:
           KUBECTL_VERSION: v1.33.2
         run: |
           curl --fail --location --show-error \
+            --retry 5 \
+            --retry-delay 3 \
+            --retry-all-errors \
             "https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d-linux-amd64" \
             --output /tmp/k3d
           echo "${K3D_SHA256}  /tmp/k3d" | sha256sum --check
           sudo install -m 0755 /tmp/k3d /usr/local/bin/k3d
 
           curl --fail --location --show-error \
+            --retry 5 \
+            --retry-delay 3 \
+            --retry-all-errors \
             "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
             --output /tmp/kubectl
           echo "${KUBECTL_SHA256}  /tmp/kubectl" | sha256sum --check
           sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
 
           helm_archive="helm-${HELM_VERSION}-linux-amd64.tar.gz"
-          curl --fail --location --show-error "https://get.helm.sh/${helm_archive}" --output "/tmp/${helm_archive}"
+          curl --fail --location --show-error \
+            --retry 5 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            "https://get.helm.sh/${helm_archive}" \
+            --output "/tmp/${helm_archive}"
           echo "${HELM_SHA256}  /tmp/${helm_archive}" | sha256sum --check
           tar -xzf "/tmp/${helm_archive}" -C /tmp
           sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm

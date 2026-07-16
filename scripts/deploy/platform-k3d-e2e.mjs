@@ -26,6 +26,8 @@ const platformBaseDomain = 'compartment.localhost';
 const consoleHost = `console.${platformBaseDomain}`;
 const serverNodeName = `k3d-${clusterName}-server-0`;
 const platformImageTag = 'e2e';
+const kubernetesReadinessTimeoutSeconds = 240;
+const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
 const platformServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
 const builtImageRefsByServiceName = Object.freeze(
   Object.fromEntries(
@@ -152,7 +154,7 @@ async function upPlatform(command) {
         'deployment/compartment-compartment-postgres',
         'deployment/compartment-compartment-registry',
         '--for=condition=Available',
-        '--timeout=2m',
+        `--timeout=${kubernetesReadinessTimeout}`,
       ],
       repositoryRoot,
     );
@@ -169,7 +171,7 @@ async function upPlatform(command) {
         'deployment',
         '--all',
         '--for=condition=Available',
-        '--timeout=2m',
+        `--timeout=${kubernetesReadinessTimeout}`,
       ],
       repositoryRoot,
     );
@@ -184,7 +186,7 @@ async function upPlatform(command) {
         'deployment',
         '--all',
         '--for=condition=Available',
-        '--timeout=2m',
+        `--timeout=${kubernetesReadinessTimeout}`,
       ],
       repositoryRoot,
     );
@@ -341,13 +343,20 @@ async function configureK3dRegistryMirror() {
   await waitForK3dApiAfterRestart();
   runCommand(
     'kubectl',
-    ['--context', contextName, 'wait', `node/${serverNodeName}`, '--for=condition=Ready', '--timeout=2m'],
+    [
+      '--context',
+      contextName,
+      'wait',
+      `node/${serverNodeName}`,
+      '--for=condition=Ready',
+      `--timeout=${kubernetesReadinessTimeout}`,
+    ],
     repositoryRoot,
   );
 }
 
 async function waitForK3dApiAfterRestart() {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < kubernetesReadinessTimeoutSeconds; attempt += 1) {
     try {
       captureCommand(
         'kubectl',
