@@ -20,7 +20,7 @@ Releases created before repository release immutability was enabled are not retr
 ## Local Smoke
 
 ```bash
-pnpm cli:build:sea --distribution-channel source --default-registry-image-tag latest --output-dir ./.compartment/cli-dist
+pnpm cli:build:sea --distribution-channel source --output-dir ./.compartment/cli-dist
 ./.compartment/cli-dist/compartment --version
 pnpm cli:render:installer --repository compartmentdev/compartment --output ./.compartment/install.sh
 ```

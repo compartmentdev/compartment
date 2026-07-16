@@ -13,16 +13,15 @@ Managed platform domains cover install-level public domain ownership for the who
 - Managed-domain mode changes only how that `baseDomain` is allocated; it does not change browser traffic termination, which stays on the customer host.
 - In the managed-domain path, the broker allocates the install domain and owns DNS writes for that broker-owned zone.
 - Certificate private keys stay on the customer host. The broker stores only the scoped ACME DNS credential material needed to authorize TXT updates.
-- The broker stores allocation metadata for managed-domain installs: installation id, public ingress IP, generated base domain,
-  selected runtime version, CLI version, and OS platform details.
+- The broker stores allocation metadata for managed-domain installs: installation id, public ingress address, and generated base domain.
 
 ## Ownership and boundaries
 
 - The broker is the source of truth for managed-domain allocation state; provider DNS is derived state.
 - The broker owns allocation, DNS record mutation inside its zone, token scoping, and recovery from provider drift by replaying its own state.
-- The install owns local runtime configuration, local certificate issuance and renewal, and whole-install domain activation against the active runtime.
-- Pending whole-install custom-domain setup state belongs to the API and represents staged verification/activation data only. The active domain remains runtime-owned.
-- CLI commands orchestrate local runtime and protected API flows but do not write setup state directly.
+- The Helm release owns the active base domain, public ingress mode, and certificate configuration.
+- Pending whole-install custom-domain setup state belongs to the API and represents staged verification/activation data only. The active domain remains chart-owned.
+- Public CLI commands do not mutate installation-level ingress or certificate state.
 
 ## Invariants
 

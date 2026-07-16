@@ -39,7 +39,6 @@ Start with the generated pages for:
 - [assignment](/reference/generated/cli/assignment/)
 - [sso](/reference/generated/cli/sso/)
 - [status](/reference/generated/cli/status/)
-- [system](/reference/generated/cli/system/)
 - [user](/reference/generated/cli/user/)
 - [variable](/reference/generated/cli/variable/)
 - [whoami](/reference/generated/cli/whoami/)

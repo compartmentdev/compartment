@@ -225,18 +225,17 @@ Run deploy from the repository root:
 compartment deploy
 ```
 
-During deploy, Compartment reconciles declared resources before app services. Node-backed installs create or update the
-resource container, attach declared volumes, and wait for readiness as before.
+During deploy, Compartment reconciles declared resources before app services.
 
-On a Kubernetes-backed install, the first deploy records a resource with volumes but does not create missing storage.
-Bootstrap that storage explicitly, then deploy again:
+The first deploy records the Kubernetes resource but does not create its persistent claims. Every resource has a backup
+artifact claim, including resources without a user-declared data volume. Bootstrap the resource once, then deploy again:
 
 ```bash
 compartment resource bootstrap --resource db
 compartment deploy
 ```
 
-Bootstrap fails when the resource is not Kubernetes-backed or its storage was already bootstrapped. Later deploys fail
+Bootstrap fails when its storage was already bootstrapped. Later deploys fail
 closed if a claim is missing, unbound, or has a different identity; Compartment does not replace it with an empty volume.
 For an update, Compartment stops the existing resource, waits until its pod is absent, verifies the storage identities,
 and only then starts the replacement. If start or readiness fails, it restores the previous executable manifest with the
@@ -244,25 +243,7 @@ same storage; rollback does not downgrade data written in a newer format.
 
 ## Connect from an app
 
-Node-backed resources keep the legacy internal hostname:
-
-```text
-<resource>.<environment>.<project>.resource.internal
-```
-
-For the example above in `production`:
-
-```text
-db.production.internal-tools.resource.internal
-```
-
-An API service can use that host with the declared internal port:
-
-```text
-postgres://app:<password>@db.production.internal-tools.resource.internal:5432/app
-```
-
-Kubernetes-backed resources derive `${resource.host}` from an immutable internal Service name in the project namespace.
+Resources derive `${resource.host}` from an immutable internal Kubernetes Service name in the project namespace.
 Use the declared output or injected connection variable instead of constructing that DNS name from mutable project,
 environment, or resource names.
 

@@ -34,7 +34,7 @@ After promoting a tag, the publish job resolves the tag to a concrete image dige
 - writes an SPDX JSON SBOM and uploads it as a workflow artifact;
 - writes a SLSA v1 provenance predicate and uploads it as a workflow artifact;
 - signs each runtime digest with keyless cosign through GitHub OIDC using the new Sigstore bundle format;
-- verifies each signed digest with `cosign verify --new-bundle-format` and the GitHub Actions issuer/identity used by the runtime verifier before attaching SBOM and provenance attestations;
+- verifies each signed digest inside the publishing workflow with `cosign verify --new-bundle-format` and the expected GitHub Actions issuer/identity before attaching SBOM and provenance attestations;
 - attaches the SPDX JSON SBOM as a cosign attestation using the new Sigstore bundle format;
 - attaches the SLSA v1 provenance predicate as a cosign `slsaprovenance1` attestation using the new Sigstore bundle format.
 

@@ -42,7 +42,8 @@ Start the local stack:
 pnpm dev
 ```
 
-Docker is required for the k3d platform suites, not for a separate host runtime.
+A Docker-compatible daemon and CLI are required for the loopback artifact registry used by `pnpm dev` and for the
+k3d platform suites. Docker is build and test infrastructure only; Compartment does not run a separate host runtime.
 
 Read [docs/specs/local-development.md](./docs/specs/local-development.md) for the current local runtime contract.
 

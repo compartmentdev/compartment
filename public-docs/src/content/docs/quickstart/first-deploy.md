@@ -7,7 +7,7 @@ Use this flow after the install already exists and you can log into it.
 
 Compartment is deploying your app here, not the Compartment platform itself.
 
-If your app can build into a container image and run inside Docker, it usually fits this flow. That is true whether the code was written by a product team directly or produced with an AI coding agent and then prepared for deployment.
+If your app can build into a container image and run on Kubernetes, it usually fits this flow. That is true whether the code was written by a product team directly or produced with an AI coding agent and then prepared for deployment.
 
 The Console first-deploy flow can guide either the CLI flow or a GitHub repository connection.
 

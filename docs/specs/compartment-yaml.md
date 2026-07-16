@@ -7,7 +7,7 @@
 - The repo-to-project slug link.
 - The set of deployable services.
 - Service-local build, run, access, kind, and readiness hints.
-- Internal resource declarations such as image, command, restart behavior, ports, volumes, env wiring, readiness,
+- Internal resource declarations such as image, command, ports, volumes, env wiring, readiness,
   resource outputs, and resource backup/restore operation intent.
 
 ## What It Does Not Own
@@ -23,7 +23,7 @@
 - Authored paths are repo-local and must stay within the repository or worktree boundary.
 - Service access mode is a hosted-app hint, not an application auth system.
 - Build hints describe how the platform should build; they do not relax platform validation.
-- Runtime-start and restart behavior are part of deployment intent and must be explicit enough to reproduce later deployment actions.
+- Runtime-start behavior is deployment intent and must be explicit enough to reproduce later deployment actions.
 - Resource declarations are internal-only infrastructure attached to the project, not deployable public app services.
 - Resource operation commands and schedules are descriptor-owned intent. Backup records, artifact retention state, and
   restore execution state remain platform-owned runtime data.

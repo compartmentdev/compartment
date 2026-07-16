@@ -16,13 +16,19 @@ transport, observation, projections, and reconciliation decisions.
 
 ## Runtime boundary
 
-The package has exactly four side-effecting primitives:
+The package exposes seven Kubernetes transport primitives. Only `apply`,
+`delete`, and `runJob` write Kubernetes state:
 
 - `apply(bundle)` uses server-side apply with field manager `compartment`; a
   bootstrap-configured bundle may first create its allowed provisioning
   objects; a separate installation identity finishes by deleting explicitly
   named temporary authority, including after partial failure;
 - `observe(labels)` reads label-scoped informer caches;
+- `read(object)` performs a direct API-server read for ownership and freshness
+  fences;
+- `delete(objects)` deletes exact projected objects, with UID and resource
+  version preconditions where data ownership requires them;
+- `observePodMetrics(labels)` reads resource usage for label-selected pods;
 - `logs(ref)` reads workload or Job logs;
 - `runJob(spec)` applies a deterministic Job and reads its terminal result.
 

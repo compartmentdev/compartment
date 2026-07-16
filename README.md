@@ -106,10 +106,12 @@ pnpm install
 cp .env.example .env
 ```
 
-Local development expects PostgreSQL from `COMPARTMENT_DATABASE_URL`, plus `caddy` and `railpack` on `PATH`:
+Local development expects PostgreSQL from `COMPARTMENT_DATABASE_URL`, plus `caddy`, `buildctl`, `docker`, and
+`railpack` on `PATH`. The Docker-compatible CLI and daemon run the loopback artifact registry; they are not an
+application runtime target. `BUILDKIT_ADDR` must point at a reachable BuildKit daemon.
 
 ```bash
-brew install caddy
+brew install caddy buildkit
 curl -sSL https://railpack.com/install.sh | sh
 pnpm dev
 ```
