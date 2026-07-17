@@ -44,6 +44,7 @@
 {{- end -}}
 {{- end -}}
 {{- $retainedGeneration := int (default "0" (dig "domain-generation" "" $existing.data | b64dec)) -}}
+{{- $useRetainedDomain := le (int .Values.platform.domainGeneration) $retainedGeneration -}}
 {{- if and (not (get . "compartmentSharedChecksum")) (le (int .Values.platform.domainGeneration) $retainedGeneration) -}}
 {{- $domainFields := list
   (dict "secretKey" "domain-mode" "valueKey" "domainMode")
@@ -58,6 +59,14 @@
 {{- end -}}
 {{- end -}}
 {{- $_ := set .Values.platform "domainGeneration" $retainedGeneration -}}
+{{- end -}}
+{{- if and (not (get . "compartmentSharedChecksum")) $useRetainedDomain -}}
+{{- if hasKey $existing.data "active-custom-tls-secret" -}}
+{{- $_ := set .Values.customTls "existingSecret" (get $existing.data "active-custom-tls-secret" | b64dec) -}}
+{{- end -}}
+{{- if hasKey $existing.data "operator-custom-tls-secret" -}}
+{{- $_ := set .Values.customTls "operatorSecretName" (get $existing.data "operator-custom-tls-secret" | b64dec) -}}
+{{- end -}}
 {{- end -}}
 {{- $encodedBrokerToken := get $existing.data "managed-domain-broker-token" -}}
 {{- if not (empty $encodedBrokerToken) -}}

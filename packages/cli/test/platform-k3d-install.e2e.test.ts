@@ -114,6 +114,7 @@ describe.sequential('production Kubernetes install', (): void => {
       expect(reset.resetToken).not.toBe('');
 
       await expectRetainedDomainGenerationProtection();
+      await expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade();
     },
     installTimeoutMs,
   );
@@ -226,6 +227,77 @@ async function expectSuccessfulHelmDomainUpgrade(
     timeoutMs: installTimeoutMs,
   });
   expectSuccessfulCommand(result, `apply Helm domain generation ${generation.toString()}`);
+}
+
+async function expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade(): Promise<void> {
+  const secretName: string = 'restore3-retained-tls';
+  const createSecret: SelfHostedUserSetupCommandResult = await runKubectl([
+    'create',
+    'secret',
+    'generic',
+    secretName,
+    '--from-literal=tls.crt=test-certificate',
+    '--from-literal=tls.key=test-private-key',
+  ]);
+  expectSuccessfulCommand(createSecret, 'create retained operator TLS fixture');
+  try {
+    const retainIdentity: SelfHostedUserSetupCommandResult = await runKubectl([
+      'patch',
+      'secret/compartment-install-state',
+      '--type=merge',
+      '--patch',
+      JSON.stringify({
+        stringData: {
+          'active-custom-tls-secret': secretName,
+          'operator-custom-tls-secret': secretName,
+          'tls-mode': 'custom-cert',
+        },
+      }),
+    ]);
+    expectSuccessfulCommand(retainIdentity, 'retain operator TLS identity');
+
+    const upgrade: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: [
+        'helm',
+        'upgrade',
+        'compartment',
+        'deploy/chart/compartment',
+        '--namespace',
+        platformNamespace,
+        '--kube-context',
+        platformKubeContext,
+        '--values',
+        platformValuesPath,
+        '--dry-run=server',
+      ],
+      timeoutMs: kubernetesCommandTimeoutMs,
+    });
+    expectSuccessfulCommand(upgrade, 'render an ordinary upgrade from retained operator TLS state');
+    expect(upgrade.stdout).toContain(`secretName: ${secretName}`);
+    expect(upgrade.stdout).toContain(`name: ${secretName}`);
+  } finally {
+    const clearIdentity: SelfHostedUserSetupCommandResult = await runKubectl([
+      'patch',
+      'secret/compartment-install-state',
+      '--type=merge',
+      '--patch',
+      JSON.stringify({
+        stringData: {
+          'active-custom-tls-secret': '',
+          'operator-custom-tls-secret': '',
+          'tls-mode': 'custom-http',
+        },
+      }),
+    ]);
+    expectSuccessfulCommand(clearIdentity, 'clear retained operator TLS fixture identity');
+    const deleteSecret: SelfHostedUserSetupCommandResult = await runKubectl([
+      'delete',
+      'secret',
+      secretName,
+      '--ignore-not-found',
+    ]);
+    expectSuccessfulCommand(deleteSecret, 'delete retained operator TLS fixture');
+  }
 }
 
 async function expectCleanPodStartup(podName: string, workload: StartupWorkload): Promise<void> {

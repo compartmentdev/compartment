@@ -90,6 +90,12 @@ channel and applies the matching Helm release update:
 ```bash
 compartment system domain status
 compartment system domain set --base-domain apps.example.com --tls external
+```
+
+Publish every DNS record printed by `set`, including its operation-specific ownership TXT record, and wait for DNS
+propagation before continuing:
+
+```bash
 compartment system domain verify
 compartment system domain activate --values compartment-values.yaml
 ```
@@ -108,6 +114,10 @@ Use `compartment system issue-password-reset --email <email>` to recover an elig
 the owner. The CLI reaches the private
 operator channel through `kubectl exec`; the chart does not add a public recovery route. The command prints a
 one-time token, so protect terminal output and shell logs.
+
+All system-domain commands and password recovery require access to get the API Deployment, list its Pods, and create
+the `pods/exec` subresource. Only `attach-cert`, `activate`, and `reset-managed` also require Helm upgrade permissions
+for the chart resources.
 
 ## Node registry prerequisite
 

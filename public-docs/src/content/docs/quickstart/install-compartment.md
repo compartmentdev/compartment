@@ -158,7 +158,12 @@ compartment system domain set \
   --tls external \
   --namespace compartment \
   --release-name compartment
+```
 
+Publish every DNS record printed by `set`, including the operation-specific ownership TXT record, and wait for DNS
+propagation. Then verify the pending domain:
+
+```bash
 compartment system domain verify \
   --namespace compartment \
   --release-name compartment
@@ -176,8 +181,9 @@ compartment system domain attach-cert \
 ```
 
 The chart stores the certificate and key in an operation-specific Kubernetes TLS Secret; it never places them in a
-ConfigMap. Helm also retains those supplied values in its Kubernetes release revision Secrets. Activate the verified
-domain with the same operator values and matching chart:
+ConfigMap. Helm also retains those supplied values in its Kubernetes release revision Secrets. Publish the DNS records
+printed by `set` and wait for propagation before verification. Activate the verified domain with the same operator
+values and matching chart:
 
 ```bash
 compartment system domain activate \
@@ -202,9 +208,10 @@ compartment system domain reset-managed \
 
 Pass `--chart ./deploy/chart/compartment` to domain commands that change Kubernetes resources when you use a CLI built
 from source. `--kube-context`, `--namespace`, and `--release-name` select another release. The system commands use the
-operator's Kubernetes access and do not publish a recovery endpoint through Caddy. Status and password recovery need
-permission to get the API Deployment, list its Pods, and create the `pods/exec` subresource. Domain mutations also
-need the normal Helm upgrade permissions for the chart's resources.
+operator's Kubernetes access and do not publish a recovery endpoint through Caddy. Every system-domain command and
+password recovery needs permission to get the API Deployment, list its Pods, and create the `pods/exec` subresource.
+Only `attach-cert`, `activate`, and `reset-managed` additionally need the normal Helm upgrade permissions for the
+chart's resources.
 
 ## Repository development
 

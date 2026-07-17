@@ -1,10 +1,19 @@
 import type { DomainHostPlan, SystemDomainMutationResponse, SystemDomainStatusResponse } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { activateKubernetesSystemDomain } from '../src/services/kubernetes-system-domain.service';
+import {
+  activateKubernetesSystemDomain,
+  attachKubernetesSystemDomainCertificate,
+  resetManagedKubernetesSystemDomain,
+  setKubernetesSystemDomain,
+  verifyKubernetesSystemDomain,
+} from '../src/services/kubernetes-system-domain.service';
+import type { RetainedManagedDomainState } from '../src/services/kubernetes-install.service.types';
 import type {
   KubernetesOperatorTarget,
+  KubernetesDomainReleaseUpdate,
   KubernetesSystemApiRequest,
+  StagedKubernetesDomainCertificate,
 } from '../src/services/kubernetes-operator.service.types';
 
 type ApplyDomainRelease = (
@@ -13,6 +22,14 @@ type ApplyDomainRelease = (
   domainGeneration: number,
   operationId?: string,
 ) => Promise<void>;
+type ApplyDomainReleaseUpdate = (
+  target: KubernetesOperatorTarget,
+  update: KubernetesDomainReleaseUpdate,
+) => Promise<void>;
+type StageDomainCertificate = (
+  target: KubernetesOperatorTarget,
+  operationId: string,
+) => Promise<StagedKubernetesDomainCertificate>;
 type RequestSystemApi = <TResponse>(
   target: KubernetesOperatorTarget,
   request: KubernetesSystemApiRequest,
@@ -21,15 +38,21 @@ type RequestSystemApi = <TResponse>(
 
 interface DomainServiceMocks {
   applyRuntimeRelease: Mock<ApplyDomainRelease>;
+  applyRelease: Mock<ApplyDomainReleaseUpdate>;
   commitActiveRelease: Mock<ApplyDomainRelease>;
   requestSystemApi: Mock<RequestSystemApi>;
+  readRetainedManagedState: Mock<() => Promise<RetainedManagedDomainState>>;
+  stageCertificate: Mock<StageDomainCertificate>;
 }
 
 const mocks: DomainServiceMocks = vi.hoisted(
   (): DomainServiceMocks => ({
     applyRuntimeRelease: vi.fn<ApplyDomainRelease>(),
+    applyRelease: vi.fn<ApplyDomainReleaseUpdate>(),
     commitActiveRelease: vi.fn<ApplyDomainRelease>(),
     requestSystemApi: vi.fn<RequestSystemApi>(),
+    readRetainedManagedState: vi.fn<() => Promise<RetainedManagedDomainState>>(),
+    stageCertificate: vi.fn<StageDomainCertificate>(),
   }),
 );
 
@@ -39,9 +62,12 @@ vi.mock('../src/services/kubernetes-system-api.service', (): object => ({
 vi.mock('../src/services/kubernetes-system-domain-release.service', (): object => ({
   applyRuntimeKubernetesDomainRelease: mocks.applyRuntimeRelease,
   commitActiveKubernetesDomainRelease: mocks.commitActiveRelease,
-  applyKubernetesDomainRelease: vi.fn(),
+  applyKubernetesDomainRelease: mocks.applyRelease,
   readRetainedManagedDomainState: vi.fn(),
-  stageKubernetesDomainCertificate: vi.fn(),
+  stageKubernetesDomainCertificate: mocks.stageCertificate,
+}));
+vi.mock('../src/services/kubernetes-install-retained-state.service', (): object => ({
+  readRetainedManagedKubernetesDomainState: mocks.readRetainedManagedState,
 }));
 
 const target: KubernetesOperatorTarget = {
@@ -61,8 +87,11 @@ const customHostPlan: DomainHostPlan = {
 describe('Kubernetes system-domain activation', (): void => {
   afterEach((): void => {
     mocks.applyRuntimeRelease.mockReset();
+    mocks.applyRelease.mockReset();
     mocks.commitActiveRelease.mockReset();
     mocks.requestSystemApi.mockReset();
+    mocks.readRetainedManagedState.mockReset();
+    mocks.stageCertificate.mockReset();
   });
 
   it('rolls out the verified domain before finalizing activation in the database', async (): Promise<void> => {
@@ -122,6 +151,136 @@ describe('Kubernetes system-domain activation', (): void => {
 
     expect(mocks.applyRuntimeRelease).toHaveBeenCalledWith(target, customHostPlan, 3, 'domop_123');
     expect(mocks.commitActiveRelease).not.toHaveBeenCalled();
+  });
+
+  it('maps set and verify to versioned private mutations', async (): Promise<void> => {
+    mocks.requestSystemApi.mockImplementation(createSystemApiHandler([]));
+
+    await setKubernetesSystemDomain({ ...target, baseDomain: 'apps.example.com', tlsMode: 'external' });
+    await verifyKubernetesSystemDomain({ ...target, expectedSetupVersion: 2 });
+
+    expect(mocks.requestSystemApi).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining(target),
+      expect.objectContaining({
+        body: { expectedSetupVersion: 2, hostPlan: customHostPlan },
+        method: 'POST',
+        path: '/internal/system/domain/set',
+      }),
+      expect.any(Function),
+    );
+    expect(mocks.requestSystemApi).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining(target),
+      expect.objectContaining({
+        body: { expectedSetupVersion: 2 },
+        method: 'POST',
+        path: '/internal/system/domain/verify',
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it('stages and mounts certificate material before attaching it through the private API', async (): Promise<void> => {
+    const certificateHostPlan: DomainHostPlan = { ...customHostPlan, caddyMode: 'custom-cert', tlsMode: 'custom-cert' };
+    const status: SystemDomainStatusResponse = {
+      ...pendingStatus(),
+      pending: { ...pendingStatus().pending!, hostPlan: certificateHostPlan },
+    };
+    mocks.stageCertificate.mockResolvedValue({
+      certificate: 'certificate',
+      fingerprint: 'fingerprint',
+      privateKey: 'private-key',
+      secretName: 'domain-tls-domop-123',
+    });
+    mocks.requestSystemApi.mockImplementation(
+      async <TResponse>(
+        _requestTarget: KubernetesOperatorTarget,
+        request: KubernetesSystemApiRequest,
+        parse: (value: JsonValue | null) => TResponse,
+      ): Promise<TResponse> =>
+        await Promise.resolve(
+          request.path.endsWith('/status')
+            ? parse(toJsonValue(status))
+            : parse(toJsonValue(mutationResponse(3, status))),
+        ),
+    );
+
+    await attachKubernetesSystemDomainCertificate({
+      ...target,
+      certificateFile: '/tmp/fullchain.pem',
+      privateKeyFile: '/tmp/privkey.pem',
+    });
+
+    expect(mocks.applyRelease).toHaveBeenCalledWith(
+      expect.objectContaining(target),
+      expect.objectContaining({
+        pendingOperationId: 'domop_123',
+        pendingTlsSecretName: 'domain-tls-domop-123',
+      }),
+    );
+    expect(mocks.requestSystemApi).toHaveBeenLastCalledWith(
+      expect.objectContaining(target),
+      expect.objectContaining({
+        body: { expectedSetupVersion: 2 },
+        method: 'POST',
+        path: '/internal/system/domain/attach-cert',
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it('rolls back to retained managed state before committing the API reset', async (): Promise<void> => {
+    const events: string[] = [];
+    const managedHostPlan: DomainHostPlan = {
+      baseDomain: 'managed.compartment.run',
+      caddyMode: 'managed',
+      domainKind: 'managed',
+      publicScheme: 'https',
+      tlsMode: 'broker-dns01',
+    };
+    mocks.readRetainedManagedState.mockResolvedValue({
+      acmeEmail: 'admin@example.com',
+      baseDomain: managedHostPlan.baseDomain,
+      brokerToken: 'token',
+      brokerUrl: 'https://broker.compartment.run',
+      publicProtocol: 'https',
+      tlsMode: 'managed',
+    });
+    mocks.requestSystemApi.mockImplementation(
+      async <TResponse>(
+        _requestTarget: KubernetesOperatorTarget,
+        request: KubernetesSystemApiRequest,
+        parse: (value: JsonValue | null) => TResponse,
+      ): Promise<TResponse> => {
+        events.push(`api:${request.path}`);
+        if (request.path.endsWith('/status')) {
+          return await Promise.resolve(parse(toJsonValue(pendingStatus())));
+        }
+        return await Promise.resolve(
+          parse(toJsonValue(mutationResponse(3, { ...activeStatus(), active: managedHostPlan, pending: null }))),
+        );
+      },
+    );
+    mocks.applyRuntimeRelease.mockImplementation(async (): Promise<void> => {
+      events.push('helm:domain-rollout');
+      await Promise.resolve();
+    });
+    mocks.commitActiveRelease.mockImplementation(async (): Promise<void> => {
+      events.push('helm:domain-commit');
+      await Promise.resolve();
+    });
+
+    await resetManagedKubernetesSystemDomain(target);
+
+    expect(events).toEqual([
+      'api:/internal/system/domain/status',
+      'helm:domain-rollout',
+      'api:/internal/system/domain/reset-managed',
+      'helm:domain-commit',
+    ]);
+    expect(mocks.applyRuntimeRelease).toHaveBeenCalledWith(target, managedHostPlan, 3);
+    expect(mocks.commitActiveRelease).toHaveBeenCalledWith(target, managedHostPlan, 3);
   });
 });
 

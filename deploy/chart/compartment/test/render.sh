@@ -172,6 +172,13 @@ for workload in caddy edge worker project-provisioner; do
     exit 1
   fi
 done
+for workload in worker project-provisioner; do
+  awk -v workload="compartment-compartment-${workload}" 'BEGIN { RS="---" } /kind: Deployment/ && $0 ~ "name: " workload "($|\\n)" { print }' "${OUTPUT_DIR}/rotation-active-custom-cert.yaml" >"${OUTPUT_DIR}/active-${workload}.yaml"
+  awk -v workload="compartment-compartment-${workload}" 'BEGIN { RS="---" } /kind: Deployment/ && $0 ~ "name: " workload "($|\\n)" { print }' "${OUTPUT_DIR}/rotating-custom-cert.yaml" >"${OUTPUT_DIR}/rotating-${workload}.yaml"
+  diff \
+    <(grep -E 'checksum/(config|domain-config|install-state|custom-tls|pending-tls)|compartment.dev/(rollout-marker|domain-generation|pending-domain-operation)' "${OUTPUT_DIR}/active-${workload}.yaml") \
+    <(grep -E 'checksum/(config|domain-config|install-state|custom-tls|pending-tls)|compartment.dev/(rollout-marker|domain-generation|pending-domain-operation)' "${OUTPUT_DIR}/rotating-${workload}.yaml")
+done
 awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-api/ { print }' "${OUTPUT_DIR}/custom-cert.yaml" >"${OUTPUT_DIR}/custom-cert-api.yaml"
 awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-caddy/ { print }' "${OUTPUT_DIR}/custom-cert.yaml" >"${OUTPUT_DIR}/custom-cert-caddy.yaml"
 for workload in custom-cert-api custom-cert-caddy; do
