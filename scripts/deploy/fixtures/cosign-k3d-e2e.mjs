@@ -8,4 +8,13 @@ if (process.argv[2] !== 'verify' || digest === undefined || !/^sha256:[a-f0-9]{6
   process.exit(1);
 }
 
-process.stdout.write(`${JSON.stringify([{ critical: { image: { 'docker-manifest-digest': digest } } }])}\n`);
+process.stdout.write(
+  `${JSON.stringify([
+    {
+      critical: {
+        image: { 'docker-manifest-digest': digest },
+        type: 'https://sigstore.dev/cosign/sign/v1',
+      },
+    },
+  ])}\n`,
+);

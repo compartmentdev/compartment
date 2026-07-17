@@ -39,7 +39,7 @@ describe('bundled cosign', (): void => {
 
       expect(executablePath).toBeDefined();
       expect(secondCommand).toEqual(firstCommand);
-      expect(mocks.readSeaAssetBuffer).toHaveBeenCalledTimes(2);
+      expect(mocks.readSeaAssetBuffer).toHaveBeenCalledOnce();
       expect(await readFile(executablePath!)).toEqual(asset);
       expect((await stat(executablePath!)).mode & 0o777).toBe(0o700);
     } finally {

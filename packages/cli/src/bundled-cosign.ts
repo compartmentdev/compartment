@@ -15,13 +15,17 @@ export async function readCosignCommand(): Promise<readonly string[]> {
     return ['cosign'];
   }
 
+  bundledCosignPathPromise ??= extractBundledCosignAsset();
+  const bundledCosignPath: string = await bundledCosignPathPromise;
+  return [bundledCosignPath];
+}
+
+async function extractBundledCosignAsset(): Promise<string> {
   const asset: Buffer | undefined = readSeaAssetBuffer(bundledCosignAssetName);
   if (asset === undefined) {
     throw new Error(`Missing embedded CLI asset ${bundledCosignAssetName}.`);
   }
-  bundledCosignPathPromise ??= extractBundledCosign(asset);
-  const bundledCosignPath: string = await bundledCosignPathPromise;
-  return [bundledCosignPath];
+  return await extractBundledCosign(asset);
 }
 
 async function extractBundledCosign(asset: Buffer): Promise<string> {
