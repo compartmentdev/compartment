@@ -105,6 +105,8 @@ state it explicitly. If the Caddy Service is not a LoadBalancer, set `platform.p
 To terminate TLS in Caddy with your certificate, create a TLS Secret in the release namespace and select it:
 
 ```bash
+kubectl create namespace compartment --dry-run=client --output yaml \
+  | kubectl apply --filename -
 kubectl --namespace compartment create secret tls compartment-public-tls \
   --cert fullchain.pem \
   --key privkey.pem

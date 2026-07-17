@@ -11,6 +11,7 @@ The repo keeps three internal doc families:
 ## Operational Specs
 
 - [specs/local-development.md](./specs/local-development.md): local prerequisites and `pnpm dev` behavior.
+- [specs/self-hosted-install.md](./specs/self-hosted-install.md): production Kubernetes install, domain, TLS, and operator contract.
 - [specs/k8s-runtime.md](./specs/k8s-runtime.md): Kubernetes runtime and provisioning architecture.
 - [specs/self-hosted-image-publishing.md](./specs/self-hosted-image-publishing.md): self-hosted image tag and release rules.
 - [specs/cli-distribution.md](./specs/cli-distribution.md): private-source to public-installer distribution flow.
@@ -19,6 +20,7 @@ The repo keeps three internal doc families:
 
 - [layers/README.md](./layers/README.md): index for package boundary docs.
 - [specs/local-development.md](./specs/local-development.md): local prerequisites and repo runtime boot notes.
+- [specs/self-hosted-install.md](./specs/self-hosted-install.md): production Kubernetes install and operator contract.
 - [specs/k8s-runtime.md](./specs/k8s-runtime.md): Kubernetes runtime and provisioning contract.
 - [specs/self-hosted-image-publishing.md](./specs/self-hosted-image-publishing.md): self-hosted image publication rules.
 - [specs/cli-distribution.md](./specs/cli-distribution.md): CLI distribution pipeline and constraints.
