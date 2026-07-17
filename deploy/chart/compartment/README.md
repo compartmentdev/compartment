@@ -32,9 +32,10 @@ deployed foundation or full release and preserves the install token. Repair or r
 pending, or uninstalled states before retrying. Once the owner exists, the install endpoint is closed; recover the
 local session with `compartment login` instead.
 
-For low-level operator recovery, use the chart from the same source release as the image tags you deploy. Set
-`platform.startupStage=full`; the `foundation` stage exists for the CLI's initial secret-generating install and for
-workflows that must populate the bundled registry before starting the platform.
+For low-level operator recovery, use the chart from the same source release and set verified
+`images.{api,worker,edge,caddy}.digest` values. Direct Helm use bypasses the CLI's signature and signing-identity gate,
+so do not supply unverified tags. Set `platform.startupStage=full`; the `foundation` stage exists for the CLI's initial
+secret-generating install and for workflows that must populate the bundled registry before starting the platform.
 
 ```bash
 helm upgrade --install compartment ./deploy/chart/compartment \
@@ -52,7 +53,7 @@ At minimum, decide and persist these values:
 - `service.caddy.type` and the external ingress or load-balancer configuration; the default is a LoadBalancer on
   external ports 80 and 443 with Caddy listening internally on 8080 and 8443;
 - `storage.storageClass` and the PVC sizes under `storage`;
-- immutable tags for the platform images;
+- verified digests for the four platform images;
 - the values under `secrets`, supplied through the installation's secret-management workflow.
 
 Managed TLS uses typed `platform.acmeIssuer`, `platform.acmeCaUrl`, `platform.acmeEmail`, and

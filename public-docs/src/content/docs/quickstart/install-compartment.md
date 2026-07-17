@@ -46,6 +46,8 @@ The production platform is a Helm release. It requires Kubernetes 1.30 or newer,
 selected `ReadWriteOnce` storage class, and nodes that can pull application images from the bundled registry. The
 selected Kubernetes context must be allowed to manage the chart's Namespaces, ClusterRoles, ClusterRoleBinding,
 ValidatingAdmissionPolicy, and ValidatingAdmissionPolicyBinding as well as namespaced resources.
+The machine running the CLI must also reach every configured platform-image registry and the Sigstore trust services
+used by cosign.
 
 The default install uses a Kubernetes LoadBalancer Service on public ports 80 and 443. Its internal Caddy ports remain
 8080 and 8443. Make sure your cluster can allocate a stable public LoadBalancer address before starting.
@@ -58,9 +60,12 @@ storage:
   storageClass: fast-rwo
 ```
 
-Pin the `images.*.tag` values to one release or immutable `sha-*` tag. Supply the values under `secrets` through your
-normal secret-management workflow instead of committing them. Install with the release CLI, which uses its bundled
-matching chart, waits for the public Console endpoint, creates the first owner, and saves the owner session:
+Select one release with the `images.*.tag` values. Before Helm changes the release, the CLI verifies all four platform
+images against Compartment's GitHub Actions signing identity, resolves each tag to its immutable digest, and deploys
+only those digests. An unsigned image or an image signed by another identity stops the install before activation.
+Supply the values under `secrets` through your normal secret-management workflow instead of committing them. Install
+with the release CLI, which uses its bundled matching chart, waits for the public Console endpoint, creates the first
+owner, and saves the owner session:
 
 ```bash
 compartment install \
@@ -195,6 +200,9 @@ compartment system domain activate \
 Activation rolls API, Edge, and Caddy, waits for them, records the activation, and only then commits the retained
 domain generation. Worker and project-provisioner pods keep running. If the command stops, rerun it. The generation
 check prevents older domain values from replacing the retained active state.
+
+Before `attach-cert`, `activate`, or `reset-managed` changes the Helm release, the CLI re-verifies the effective API,
+Worker, Edge, and Caddy images and stops the rollout if any image fails the signing policy.
 
 An installation that started with a managed domain retains that allocation when you activate a custom domain. Restore
 it with:

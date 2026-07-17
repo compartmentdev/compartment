@@ -5,18 +5,22 @@ images:
   api:
     repository: ghcr.io/compartmentdev/compartment-api
     tag: latest
+    digest: ''
     pullPolicy: IfNotPresent
   worker:
     repository: ghcr.io/compartmentdev/compartment-worker
     tag: latest
+    digest: ''
     pullPolicy: IfNotPresent
   edge:
     repository: ghcr.io/compartmentdev/compartment-edge
     tag: latest
+    digest: ''
     pullPolicy: IfNotPresent
   caddy:
     repository: ghcr.io/compartmentdev/compartment-caddy
     tag: latest
+    digest: ''
     pullPolicy: IfNotPresent
   postgres:
     repository: postgres

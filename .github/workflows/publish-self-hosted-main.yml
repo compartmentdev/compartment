@@ -315,6 +315,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install cosign for CLI image verification
+        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
+        with:
+          cosign-release: v2.6.1
+
       - name: Build rolling CLI binary
         run: |
           pnpm cli:build:sea \

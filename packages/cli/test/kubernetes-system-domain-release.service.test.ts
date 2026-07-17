@@ -22,6 +22,11 @@ interface DomainReleaseMocks {
   readPendingSecret: Mock<() => Promise<string | undefined>>;
   runCommand: Mock<RunCommand>;
   runCommandWithInput: Mock<RunCommandWithInput>;
+  writeVerifiedImages: Mock<(input: ImageTrustWriteInput) => Promise<void>>;
+}
+
+interface ImageTrustWriteInput {
+  outputPath: string;
 }
 
 const mocks: DomainReleaseMocks = vi.hoisted(
@@ -29,6 +34,9 @@ const mocks: DomainReleaseMocks = vi.hoisted(
     readPendingSecret: vi.fn<() => Promise<string | undefined>>(),
     runCommand: vi.fn<RunCommand>(),
     runCommandWithInput: vi.fn<RunCommandWithInput>(),
+    writeVerifiedImages: vi.fn(async (input: ImageTrustWriteInput): Promise<void> => {
+      await writeFile(input.outputPath, JSON.stringify({ images: {} }), { mode: 0o600 });
+    }),
   }),
 );
 
@@ -39,12 +47,16 @@ vi.mock('../src/command-runner', (): object => ({
 vi.mock('../src/services/kubernetes-system-domain-release-values.service', (): object => ({
   readPendingKubernetesDomainTlsSecretName: mocks.readPendingSecret,
 }));
+vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
+  writeVerifiedKubernetesReleaseImageValues: mocks.writeVerifiedImages,
+}));
 
 describe('Kubernetes system-domain release material', (): void => {
   afterEach((): void => {
     mocks.runCommand.mockReset();
     mocks.runCommandWithInput.mockReset();
     mocks.readPendingSecret.mockReset();
+    mocks.writeVerifiedImages.mockClear();
   });
 
   it('isolates pending certificate bytes in an operation-specific Secret', async (): Promise<void> => {
@@ -172,6 +184,31 @@ describe('Kubernetes system-domain release material', (): void => {
       await rm(directory, { force: true, recursive: true });
     }
   });
+
+  it('does not roll the release when platform image verification fails', async (): Promise<void> => {
+    const directory: string = await mkdtemp(resolve(tmpdir(), 'compartment-domain-test-'));
+    try {
+      const target: KubernetesOperatorTarget = await createReleaseTarget(directory);
+      mocks.writeVerifiedImages.mockRejectedValueOnce(new Error('certificate identity mismatch'));
+
+      await expect(
+        applyRuntimeKubernetesDomainRelease(
+          target,
+          {
+            baseDomain: 'apps.example.com',
+            caddyMode: 'custom-http',
+            domainKind: 'custom',
+            publicScheme: 'https',
+            tlsMode: 'external',
+          },
+          9,
+        ),
+      ).rejects.toThrow('certificate identity mismatch');
+      expect(mocks.runCommand).not.toHaveBeenCalled();
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
 });
 
 async function createCertificateInput(directory: string): Promise<KubernetesDomainCertificateInput> {
@@ -211,8 +248,9 @@ async function readHelmValues(command: readonly string[]): Promise<KubernetesDom
   const valuesFlags: number[] = command.flatMap((value: string, index: number): number[] =>
     value === '--values' ? [index] : [],
   );
-  const lastValuesFlag: number | undefined = valuesFlags.at(-1);
-  const domainValuesPath: string | undefined = lastValuesFlag === undefined ? undefined : command[lastValuesFlag + 1];
+  const domainValuesFlag: number | undefined = valuesFlags.at(-2);
+  const domainValuesPath: string | undefined =
+    domainValuesFlag === undefined ? undefined : command[domainValuesFlag + 1];
   if (domainValuesPath === undefined) {
     throw new Error('Expected Helm domain values.');
   }

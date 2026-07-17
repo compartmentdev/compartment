@@ -55,8 +55,34 @@ describe('build-cli-sea', () => {
     expect(capturedSeaAssets).toEqual({
       'cli-build-info.json': expect.any(String),
       'compartment-chart.tgz': expect.any(String),
+      cosign: expect.stringContaining('/cosign'),
     });
   }, 20_000);
+
+  it('fails when a configured cosign asset is not executable', async () => {
+    const temporaryDirectory = await createTemporaryDirectory();
+    const fixture = await createBuildCliSeaFixture(temporaryDirectory);
+    const missingCosignPath = join(temporaryDirectory, 'missing-cosign');
+
+    await expect(
+      execFile(
+        process.execPath,
+        [buildCliSeaScriptPath, '--distribution-channel', distributionChannel, '--output-dir', fixture.outputDirectory],
+        {
+          cwd: repositoryRoot,
+          env: {
+            ...process.env,
+            COMPARTMENT_CLI_BUNDLED_COSIGN_PATH: missingCosignPath,
+            PATH: `${fixture.stubCommandDirectory}:${defaultPath}`,
+          },
+        },
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining(
+        `Configured COMPARTMENT_CLI_BUNDLED_COSIGN_PATH path is not executable: ${missingCosignPath}`,
+      ),
+    });
+  });
 });
 async function createTemporaryDirectory() {
   const temporaryDirectory = await mkdtemp(join(tmpdir(), 'compartment-build-cli-sea-'));
@@ -82,9 +108,15 @@ async function createBuildCliSeaFixture(temporaryDirectory) {
 async function createStubCommands(stubCommandDirectory) {
   await mkdir(stubCommandDirectory, { recursive: true });
   await writeExecutableScript(join(stubCommandDirectory, 'codesign'), buildCodesignStubScript());
+  await writeExecutableScript(join(stubCommandDirectory, 'cosign'), buildCosignStubScript());
   await writeExecutableScript(join(stubCommandDirectory, 'node'), buildNodeStubScript());
   await writeExecutableScript(join(stubCommandDirectory, 'pnpm'), buildPnpmStubScript());
   await writeExecutableScript(join(stubCommandDirectory, 'tar'), buildTarStubScript());
+}
+function buildCosignStubScript() {
+  return createShellScript(`
+printf 'stub cosign\n'
+`);
 }
 async function readCapturedBuildInfo(captureBuildInfoPath) {
   const capturedBuildInfoText = await readFile(captureBuildInfoPath, 'utf8');

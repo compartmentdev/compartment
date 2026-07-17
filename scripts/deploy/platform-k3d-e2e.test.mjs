@@ -82,7 +82,12 @@ describe('platform k3d e2e command boundary', () => {
   });
 
   it('writes the operator values consumed by the production install command', () => {
-    const values = renderPlatformK3dValues();
+    const values = renderPlatformK3dValues({
+      api: `sha256:${'a'.repeat(64)}`,
+      caddy: `sha256:${'d'.repeat(64)}`,
+      edge: `sha256:${'c'.repeat(64)}`,
+      worker: `sha256:${'b'.repeat(64)}`,
+    });
 
     expect(values).toContain('baseDomain: compartment.localhost');
     expect(values).toContain('publicProtocol: http');
@@ -92,6 +97,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain('httpNodePort: 30080');
     expect(values).toContain('httpsNodePort: 30443');
     expect(values).toContain('repository: k3d-compartment-e2e-registry:15500/compartment-api');
+    expect(values).toContain(`digest: sha256:${'a'.repeat(64)}`);
     expect(values).not.toContain('ports:\n  http: 18080');
     expect(values).not.toContain('startupStage:');
   });

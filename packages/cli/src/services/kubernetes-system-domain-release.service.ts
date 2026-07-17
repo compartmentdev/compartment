@@ -6,10 +6,12 @@ import { immutableKubeName } from '@compartment/utils';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import {
+  buildKubernetesHelmValuesArgs,
   createKubernetesInstallMaterializedDirectory,
   resolveKubernetesChartPath,
   writeKubernetesInstallValues,
 } from './kubernetes-install-helm.service';
+import { writeVerifiedKubernetesReleaseImageValues } from './kubernetes-image-trust.service';
 import type {
   KubernetesDomainCertificateInput,
   KubernetesDomainHelmPlatformValues,
@@ -161,9 +163,17 @@ async function applyMaterializedDomainRelease(
 ): Promise<void> {
   const chartPath: string = await resolveKubernetesChartPath(target, materializedDirectory);
   const domainValuesPath: string = resolve(materializedDirectory, 'domain-values.json');
+  const imageTrustValuesPath: string = resolve(materializedDirectory, 'image-trust-values.json');
+  await writeVerifiedKubernetesReleaseImageValues({
+    ...(target.kubeContext === undefined ? {} : { kubeContext: target.kubeContext }),
+    namespace: target.namespace,
+    operatorValuesPath: valuesPath,
+    outputPath: imageTrustValuesPath,
+    releaseName: target.releaseName,
+  });
   await writeKubernetesInstallValues(domainValuesPath, buildDomainHelmValues(values));
   const result: CommandResult = await runCommand(
-    buildDomainHelmCommand(target, chartPath, valuesPath, domainValuesPath),
+    buildDomainHelmCommand(target, chartPath, valuesPath, domainValuesPath, imageTrustValuesPath),
   );
   if (result.exitCode !== 0) {
     throw new Error(`Helm domain rollout failed: ${readCommandFailure(result)}`);
@@ -213,6 +223,7 @@ function buildDomainHelmCommand(
   chartPath: string,
   operatorValuesPath: string,
   domainValuesPath: string,
+  imageTrustValuesPath: string,
 ): string[] {
   return [
     'helm',
@@ -222,10 +233,7 @@ function buildDomainHelmCommand(
     '--namespace',
     target.namespace,
     '--reuse-values',
-    '--values',
-    resolve(operatorValuesPath),
-    '--values',
-    domainValuesPath,
+    ...buildKubernetesHelmValuesArgs([operatorValuesPath, domainValuesPath, imageTrustValuesPath]),
     '--rollback-on-failure',
     '--wait',
     '--timeout',

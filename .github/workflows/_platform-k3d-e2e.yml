@@ -111,6 +111,7 @@ jobs:
       - name: Build CLI artifact
         env:
           BUILD_COMMIT_SHA: ${{ github.sha }}
+          COMPARTMENT_CLI_BUNDLED_COSIGN_PATH: scripts/deploy/fixtures/cosign-k3d-e2e.mjs
         run: |
           pnpm cli:build:sea \
             --distribution-channel source \
