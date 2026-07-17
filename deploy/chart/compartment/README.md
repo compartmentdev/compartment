@@ -103,12 +103,15 @@ compartment system domain activate --values compartment-values.yaml
 For `custom-cert`, run `attach-cert --cert-file <path> --key-file <path> --values <path>` before verification. The CLI
 stores the PEM files in a Kubernetes TLS Secret and mounts the pending operation path in API. Activation mounts the
 active certificate in API and Caddy, finalizes the private API operation, and then commits the retained generation.
-That two-phase update keeps Helm rollback on the previous domain until API activation succeeds. Domain generation in
-the retained install-state Secret prevents an older Helm render from replacing the active domain. The chart keeps the first managed allocation in the same Secret so
+The first Helm update switches runtime resources while retained install state remains on the previous generation. If
+API activation then fails, fix the reported condition and rerun `activate`; the idempotent retry repairs the Helm
+release and retained state. Domain generation prevents an older Helm render from replacing the active domain. The
+chart keeps the first managed allocation in the same Secret so
 `system domain reset-managed --values <path>` can restore it.
 
-Domain changes roll API, Edge, and Caddy. The chart excludes worker and project-provisioner pods from the domain
-rollout. If Helm or readiness fails, rerun the command after fixing the cluster condition.
+`set` and `verify` do not roll workloads. `attach-cert` rolls API to mount pending certificate material; `activate` and
+`reset-managed` roll API, Edge, and Caddy. Worker and project-provisioner pods remain running. If Helm or readiness
+fails, rerun the command after fixing the cluster condition.
 
 Use `compartment system issue-password-reset --email <email>` to recover an eligible local-password account, including
 the owner. The CLI reaches the private
