@@ -19,7 +19,7 @@ export async function requestKubernetesSystemApi<TResponse>(
 ): Promise<TResponse> {
   const deploymentName: string = await readApiDeploymentName(target);
   const result: CommandResult = await runCommandWithInput(
-    buildKubectlCommand(target, ['exec', `deployment/${deploymentName}`, '--', 'node', '-e', systemApiNodeProgram]),
+    buildSystemApiExecCommand(target, deploymentName),
     JSON.stringify(request),
   );
   if (result.exitCode !== 0) {
@@ -31,6 +31,20 @@ export async function requestKubernetesSystemApi<TResponse>(
     throw new Error(readSystemApiError(value));
   }
   return parse(value);
+}
+
+function buildSystemApiExecCommand(target: KubernetesOperatorTarget, deploymentName: string): string[] {
+  return buildKubectlCommand(target, [
+    'exec',
+    '--stdin',
+    '--container',
+    'api',
+    `deployment/${deploymentName}`,
+    '--',
+    'node',
+    '-e',
+    systemApiNodeProgram,
+  ]);
 }
 
 async function readApiDeploymentName(target: KubernetesOperatorTarget): Promise<string> {

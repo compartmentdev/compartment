@@ -46,7 +46,13 @@ describe('Kubernetes private system API transport', (): void => {
     expect(mocks.runCommandWithInput).toHaveBeenCalledTimes(1);
     const [command, input]: [readonly string[], string] = readExecCall();
     expect(command.slice(0, 6)).toEqual(['kubectl', '--context', 'production', '--namespace', 'compartment', 'exec']);
-    expect(command).toContain('deployment/compartment-compartment-api');
+    expect(command.slice(6, 11)).toEqual([
+      '--stdin',
+      '--container',
+      'api',
+      'deployment/compartment-compartment-api',
+      '--',
+    ]);
     expect(command.join(' ')).not.toContain('one-time-reset-token');
     expect(input).toContain('/internal/system/auth/password-reset/issue');
     expect(input).toContain('owner@example.com');
