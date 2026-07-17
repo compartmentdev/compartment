@@ -1,0 +1,109 @@
+import { randomBytes, randomUUID } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import {
+  installResponseSchema,
+  whoamiCommandResponseSchema,
+  type InstallResponse,
+  type WhoAmICommandResponse,
+} from '@compartment/contracts';
+import { readSocketSafeTempRootDirectory } from '@compartment/test-support';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { assertBuiltCliAvailable } from './self-hosted-user-setup-command.harness';
+import { buildSelfHostedUserSetupClientEnv } from './self-hosted-user-setup-client-env.harness';
+import { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
+import {
+  cleanupManagedInstallFixture,
+  managedInstallApiUrl,
+  managedInstallBaseDomain,
+  managedInstallBrokerUrl,
+  managedInstallKubeContext,
+  managedInstallNamespace,
+  managedInstallPublicIpv4,
+  managedInstallReleaseName,
+  managedInstallValuesPath,
+  prepareManagedInstallFixture,
+  readManagedInstallCertificateSubjectAltName,
+  waitForManagedDomainBrokerObservation,
+  type ManagedDomainBrokerObservation,
+} from './platform-k3d-managed-install.harness';
+
+const platformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
+const organizationName: string = 'Managed Platform E2E';
+const organizationSlug: string = 'managed-platform-e2e';
+const installTimeoutMs: number = 50 * 60_000;
+const tempRootDirectory: string = readSocketSafeTempRootDirectory('pk3m-', 'system-api.sock');
+const createdDirectories: string[] = [];
+
+describe.sequential('production managed-domain Kubernetes install', (): void => {
+  if (process.env[platformModeEnvName] !== 'k3d') {
+    it(`requires ${platformModeEnvName}=k3d`, (): void => {
+      expect(process.env[platformModeEnvName]).toBe('k3d');
+    });
+    return;
+  }
+
+  beforeAll(async (): Promise<void> => {
+    await assertBuiltCliAvailable();
+    await prepareManagedInstallFixture();
+  });
+  afterAll(async (): Promise<void> => {
+    await cleanupManagedInstallFixture();
+    await Promise.all(
+      createdDirectories
+        .splice(0)
+        .map(async (directory: string): Promise<void> => await rm(directory, { force: true, recursive: true })),
+    );
+  });
+
+  it(
+    'allocates a domain, completes DNS-01 HTTPS, bootstraps the owner, and accepts a fresh login',
+    async (): Promise<void> => {
+      const suffix: string = randomUUID().replaceAll('-', '').slice(0, 12);
+      const ownerEmail: string = `managed-e2e-${suffix}@compartment.test`;
+      const ownerPassword: string = `ManagedE2e-${randomBytes(24).toString('base64url')}!`;
+      const installerCli: SelfHostedUserSetupCli = await createFreshCli();
+      const result: InstallResponse = await installerCli.runJson(
+        `install --api-url ${managedInstallApiUrl} --broker-url ${managedInstallBrokerUrl} --values ${managedInstallValuesPath} --kube-context ${managedInstallKubeContext} --namespace ${managedInstallNamespace} --release-name ${managedInstallReleaseName} --email ${ownerEmail} --organization "${organizationName}" --organization-slug ${organizationSlug}`,
+        installResponseSchema,
+        { input: `${ownerPassword}\n${ownerPassword}\n` },
+      );
+
+      expect(result.adminEmail).toBe(ownerEmail);
+      expect(result.compartmentUrl).toBe(`https://console.${managedInstallBaseDomain}`);
+      expect(result.organization.slug).toBe(organizationSlug);
+
+      const installedIdentity: WhoAmICommandResponse = await installerCli.runJson(
+        'whoami',
+        whoamiCommandResponseSchema,
+      );
+      expect(installedIdentity.principal.email).toBe(ownerEmail);
+
+      const freshCli: SelfHostedUserSetupCli = await createFreshCli();
+      await freshCli.runBrowserLogin(
+        `login --api-url ${managedInstallApiUrl} --email ${ownerEmail}`,
+        { email: ownerEmail, password: ownerPassword },
+        { requestOrigin: managedInstallApiUrl },
+      );
+      const freshIdentity: WhoAmICommandResponse = await freshCli.runJson('whoami', whoamiCommandResponseSchema);
+      expect(freshIdentity.principal.email).toBe(ownerEmail);
+      expect(freshIdentity.currentOrganization?.slug).toBe(organizationSlug);
+
+      const broker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerObservation();
+      expect(broker.allocations[0]).toMatchObject({
+        publicIp: managedInstallPublicIpv4,
+        requestedLabelSource: organizationName,
+      });
+      expect(broker.txtWrites[0]?.name).toBe(`_acme-challenge.${managedInstallBaseDomain}.`);
+      expect(broker.txtDeletes).toContainEqual(broker.txtWrites[0]);
+      expect(await readManagedInstallCertificateSubjectAltName()).toContain(`DNS:*.${managedInstallBaseDomain}`);
+    },
+    installTimeoutMs,
+  );
+});
+
+async function createFreshCli(): Promise<SelfHostedUserSetupCli> {
+  const homeDirectory: string = await mkdtemp(join(tempRootDirectory, 'client-'));
+  createdDirectories.push(homeDirectory);
+  return new SelfHostedUserSetupCli(buildSelfHostedUserSetupClientEnv(homeDirectory), installTimeoutMs);
+}

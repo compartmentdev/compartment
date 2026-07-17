@@ -6,6 +6,7 @@ import {
   parseLoadedImageRefs,
   readPlatformK3dCommand,
   renderK3dRegistryConfig,
+  renderManagedPlatformK3dValues,
   renderPlatformK3dValues,
 } from './platform-k3d-e2e.mjs';
 
@@ -100,6 +101,25 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain(`digest: sha256:${'a'.repeat(64)}`);
     expect(values).not.toContain('ports:\n  http: 18080');
     expect(values).not.toContain('startupStage:');
+  });
+
+  it('writes isolated managed-install values with the ACME fixture and verified digests', () => {
+    const values = renderManagedPlatformK3dValues(
+      {
+        api: `sha256:${'a'.repeat(64)}`,
+        caddy: `sha256:${'d'.repeat(64)}`,
+        edge: `sha256:${'c'.repeat(64)}`,
+        worker: `sha256:${'b'.repeat(64)}`,
+      },
+      `sha256:${'e'.repeat(64)}`,
+    );
+
+    expect(values).toContain('acmeCaUrl: https://pebble:14000/dir');
+    expect(values).toContain('publicIngressIpv4: 8.8.4.4');
+    expect(values).toContain('namespace: compartment-managed-e2e-build');
+    expect(values).toContain(`digest: sha256:${'e'.repeat(64)}`);
+    expect(values).not.toContain('compartment.localhost');
+    expect(values).not.toContain('custom-http');
   });
 
   it('rejects an unusable bundled registry Service address', () => {

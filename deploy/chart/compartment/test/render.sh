@@ -25,7 +25,7 @@ helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set 
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-digests --set platform.baseDomain=compartment.localhost --set platform.publicProtocol=http --set platform.tlsMode=custom-http --set images.api.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --set images.worker.digest=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --set images.edge.digest=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc --set images.caddy.digest=sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/digests.yaml"
 helm template compartment "${CHART_DIR}" -f "${CHART_DIR}/values-kind.yaml" >"${OUTPUT_DIR}/kind.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-install --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.publicIngressIpv4=8.8.8.8 --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token --set edge.snapshots.enabled=true >"${OUTPUT_DIR}/edge.yaml"
-helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-managed --set platform.domainMode=managed --set platform.baseDomain=managed.compartment.run --set platform.publicProtocol=https --set platform.tlsMode=managed --set platform.publicIngressIpv4=8.8.4.4 --set platform.acmeEmail=admin@example.com --set secrets.managedDomainBrokerToken=broker-token --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/managed.yaml"
+helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-managed --set platform.domainMode=managed --set platform.baseDomain=managed.compartment.run --set platform.publicProtocol=https --set platform.tlsMode=managed --set platform.publicIngressIpv4=8.8.4.4 --set platform.acmeEmail=admin@example.com --set images.api.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --set images.worker.digest=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --set images.edge.digest=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc --set images.caddy.digest=sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd --set secrets.managedDomainBrokerToken=broker-token --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/managed.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-custom --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.tlsMode=custom-cert --set platform.publicIngressIpv4=8.8.8.8 --set platform.acmeEmail=admin@example.com --set customTls.existingSecret=operator-tls --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/custom-cert.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-pending --set platform.domainMode=managed --set platform.baseDomain=managed.compartment.run --set platform.publicProtocol=https --set platform.tlsMode=managed --set platform.publicIngressIpv4=8.8.4.4 --set platform.acmeEmail=admin@example.com --set secrets.managedDomainBrokerToken=broker-token --set customTls.pendingSecretName=operator-tls --set-string customTls.pendingCertificate=test-certificate --set-string customTls.pendingPrivateKey=test-private-key --set customTls.pendingOperationId=domop_123 --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/pending-custom-cert.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-managed --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.tlsMode=custom-cert --set platform.publicIngressIpv4=8.8.4.4 --set platform.acmeEmail=admin@example.com --set secrets.managedDomainBrokerToken=broker-token --set customTls.existingSecret=active-operator-tls --set customTls.operatorSecretName=active-operator-tls --set-string customTls.operatorCertificate=active-certificate --set-string customTls.operatorPrivateKey=active-private-key --set customTls.pendingSecretName=pending-operator-tls --set-string customTls.pendingCertificate=pending-certificate --set-string customTls.pendingPrivateKey=pending-private-key --set customTls.pendingOperationId=domop_456 --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/rotating-custom-cert.yaml"
@@ -43,6 +43,11 @@ fi
 
 if helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-managed --set platform.domainMode=managed --set platform.baseDomain=managed.compartment.run --set platform.publicProtocol=https --set platform.tlsMode=managed --set platform.publicIngressIpv4=8.8.4.4 --set platform.acmeEmail=admin@example.com --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >/dev/null 2>&1; then
   echo 'Managed TLS must require the broker token.' >&2
+  exit 1
+fi
+
+if helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-managed --set platform.domainMode=custom --set platform.baseDomain=managed.compartment.run --set platform.publicProtocol=https --set platform.tlsMode=managed --set platform.publicIngressIpv4=8.8.4.4 --set platform.acmeEmail=admin@example.com --set secrets.managedDomainBrokerToken=broker-token --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >/dev/null 2>&1; then
+  echo 'Managed TLS must require managed domain mode.' >&2
   exit 1
 fi
 
@@ -111,6 +116,16 @@ if helm template compartment "${CHART_DIR}" --set platform.startupStage=full --s
   exit 1
 fi
 
+if helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-custom --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.tlsMode=custom-cert --set platform.publicIngressIpv4=8.8.8.8 --set platform.acmeEmail=admin@example.com --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >/dev/null 2>&1; then
+  echo 'Custom-certificate TLS must require certificate material.' >&2
+  exit 1
+fi
+
+if helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-invalid-digest --set platform.baseDomain=compartment.localhost --set platform.publicProtocol=http --set platform.tlsMode=custom-http --set images.api.digest=sha256:not-a-digest --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >/dev/null 2>&1; then
+  echo 'Platform image digests must use an immutable sha256 reference.' >&2
+  exit 1
+fi
+
 grep -q 'kind: CronJob' "${OUTPUT_DIR}/full.yaml"
 grep -q 'kind: NetworkPolicy' "${OUTPUT_DIR}/full.yaml"
 grep -q 'pod-security.kubernetes.io/enforce: privileged' "${OUTPUT_DIR}/full.yaml"
@@ -135,6 +150,8 @@ grep -q 'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: "https://broker.compartment.run"
 grep -q 'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: "https://broker.example.test"' "${OUTPUT_DIR}/custom-broker.yaml"
 grep -q 'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: ""' "${OUTPUT_DIR}/local-full.yaml"
 grep -q 'key: managed-domain-broker-token' "${OUTPUT_DIR}/managed.yaml"
+grep -q 'ghcr.io/compartmentdev/compartment-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "${OUTPUT_DIR}/managed.yaml"
+grep -q 'ghcr.io/compartmentdev/compartment-caddy@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' "${OUTPUT_DIR}/managed.yaml"
 awk 'BEGIN { RS="---" } /kind: Secret/ && /name: compartment-install-state/ { print }' "${OUTPUT_DIR}/managed.yaml" >"${OUTPUT_DIR}/install-state-secret.yaml"
 awk 'BEGIN { RS="---" } /kind: Secret/ && /name: compartment-compartment$/ { print }' "${OUTPUT_DIR}/managed.yaml" >"${OUTPUT_DIR}/platform-secret.yaml"
 awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-api/ { print }' "${OUTPUT_DIR}/managed.yaml" >"${OUTPUT_DIR}/api-deployment.yaml"

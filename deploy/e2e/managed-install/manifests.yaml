@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: challtestsrv
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: challtestsrv
+  template:
+    metadata:
+      labels:
+        app: challtestsrv
+    spec:
+      containers:
+        - name: challtestsrv
+          image: ghcr.io/letsencrypt/pebble-challtestsrv@sha256:12ce21884def456bcf9786542113949e1f19dc7738d2c70e156c2d0c38a1405b
+          args: ['-defaultIPv6', '', '-http01', '', '-https01', '', '-tlsalpn01', '']
+          ports:
+            - { name: dns-tcp, containerPort: 8053, protocol: TCP }
+            - { name: dns-udp, containerPort: 8053, protocol: UDP }
+            - { name: management, containerPort: 8055 }
+          readinessProbe:
+            tcpSocket: { port: management }
+            periodSeconds: 2
+            failureThreshold: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: challtestsrv
+spec:
+  selector:
+    app: challtestsrv
+  ports:
+    - { name: dns-tcp, port: 8053, targetPort: dns-tcp, protocol: TCP }
+    - { name: dns-udp, port: 8053, targetPort: dns-udp, protocol: UDP }
+    - { name: management, port: 8055, targetPort: management }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: challtestsrv-public-resolvers
+spec:
+  externalIPs: [1.1.1.1, 8.8.8.8]
+  selector:
+    app: challtestsrv
+  ports:
+    - { name: dns-tcp, port: 53, targetPort: dns-tcp, protocol: TCP }
+    - { name: dns-udp, port: 53, targetPort: dns-udp, protocol: UDP }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pebble
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pebble
+  template:
+    metadata:
+      labels:
+        app: pebble
+    spec:
+      containers:
+        - name: pebble
+          image: ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199
+          args: ['-config', 'test/config/pebble-config.json', '-strict', '-dnsserver', 'challtestsrv:8053']
+          env:
+            - { name: PEBBLE_VA_NOSLEEP, value: '1' }
+          ports:
+            - { name: acme, containerPort: 14000 }
+          readinessProbe:
+            httpGet: { path: /dir, port: acme, scheme: HTTPS }
+            periodSeconds: 2
+            failureThreshold: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pebble
+spec:
+  selector:
+    app: pebble
+  ports:
+    - { name: acme, port: 14000, targetPort: acme }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: managed-domain-broker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: managed-domain-broker
+  template:
+    metadata:
+      labels:
+        app: managed-domain-broker
+    spec:
+      containers:
+        - name: broker
+          image: public.ecr.aws/docker/library/node@sha256:f22d6a1f082c02f292e86929b5b0442ac2e5eaf438a5dea9b1566601c3e05940
+          command: ['node', '/fixture/broker.mjs']
+          env:
+            - { name: MANAGED_DOMAIN_BASE_DOMAIN, value: managed.compartment.test }
+            - { name: MANAGED_DOMAIN_BROKER_TOKEN, value: managed-e2e-broker-token }
+            - { name: MANAGED_DOMAIN_CHALLENGE_SERVER_URL, value: 'http://challtestsrv:8055' }
+          ports:
+            - { name: http, containerPort: 3000 }
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          volumeMounts:
+            - { name: fixture, mountPath: /fixture, readOnly: true }
+      volumes:
+        - name: fixture
+          configMap:
+            name: managed-domain-broker-fixture
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: managed-domain-broker
+spec:
+  type: NodePort
+  selector:
+    app: managed-domain-broker
+  ports:
+    - { name: http, port: 19000, targetPort: http, nodePort: 30900 }

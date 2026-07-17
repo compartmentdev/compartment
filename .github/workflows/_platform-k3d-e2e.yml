@@ -99,7 +99,9 @@ jobs:
         run: bash ./deploy/chart/compartment/test/render.sh
 
       - name: Register local control-plane host
-        run: echo '127.0.0.1 console.compartment.localhost' | sudo tee -a /etc/hosts >/dev/null
+        run: |
+          echo '127.0.0.1 console.compartment.localhost' | sudo tee -a /etc/hosts >/dev/null
+          echo '127.0.0.1 console.managed.compartment.test managed-domain-broker' | sudo tee -a /etc/hosts >/dev/null
 
       - name: Restore self-hosted image cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
@@ -120,6 +122,12 @@ jobs:
 
       - name: Prepare clean k3d cluster from cached images
         run: node ./scripts/deploy/platform-k3d-e2e.mjs up --image-source archive --image-archive-dir ./.compartment/self-hosted-image-cache
+
+      - name: Verify production managed-domain install
+        env:
+          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/platform-k3d-managed-install.e2e.test.ts
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/.compartment/pebble.minica.pem
+        run: pnpm --filter @compartment/cli test:e2e
 
       - name: Verify retained install-state lifecycle
         run: |
