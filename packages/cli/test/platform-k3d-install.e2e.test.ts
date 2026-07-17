@@ -231,13 +231,39 @@ async function expectSuccessfulHelmDomainUpgrade(
 
 async function expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade(): Promise<void> {
   const secretName: string = 'restore3-retained-tls';
+  const tlsDirectory: string = await mkdtemp(join(tempRootDirectory, 'retained-tls-'));
+  createdDirectories.push(tlsDirectory);
+  const certificatePath: string = join(tlsDirectory, 'tls.crt');
+  const privateKeyPath: string = join(tlsDirectory, 'tls.key');
+  const generateCertificate: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'openssl',
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-keyout',
+      privateKeyPath,
+      '-out',
+      certificatePath,
+      '-days',
+      '1',
+      '-subj',
+      '/CN=compartment.localhost',
+      '-addext',
+      'subjectAltName=DNS:compartment.localhost,DNS:*.compartment.localhost',
+    ],
+    timeoutMs: kubernetesCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(generateCertificate, 'generate retained operator TLS fixture');
   const createSecret: SelfHostedUserSetupCommandResult = await runKubectl([
     'create',
     'secret',
-    'generic',
+    'tls',
     secretName,
-    '--from-literal=tls.crt=test-certificate',
-    '--from-literal=tls.key=test-private-key',
+    `--cert=${certificatePath}`,
+    `--key=${privateKeyPath}`,
   ]);
   expectSuccessfulCommand(createSecret, 'create retained operator TLS fixture');
   const labelSecret: SelfHostedUserSetupCommandResult = await runKubectl([
@@ -265,19 +291,28 @@ async function expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade(): Promise<voi
         stringData: {
           'active-custom-tls-secret': secretName,
           'operator-custom-tls-secret': secretName,
+          'public-protocol': 'https',
+          'tls-mode': 'custom-cert',
         },
       }),
     ]);
     expectSuccessfulCommand(retainIdentity, 'retain operator TLS identity');
 
     await expectSuccessfulOrdinaryHelmUpgrade('apply retained operator TLS state');
-    const retainedSecret: SelfHostedUserSetupCommandResult = await runKubectl([
+    const apiTlsSecret: SelfHostedUserSetupCommandResult = await runKubectl([
       'get',
-      `secret/${secretName}`,
-      '--output=jsonpath={.data.tls\\.crt}',
+      'deployment/compartment-compartment-api',
+      '--output=jsonpath={.spec.template.spec.volumes[?(@.name=="active-tls")].secret.secretName}',
     ]);
-    expectSuccessfulCommand(retainedSecret, 'read retained operator TLS Secret after an ordinary upgrade');
-    expect(Buffer.from(retainedSecret.stdout, 'base64').toString('utf8')).toBe('test-certificate');
+    expectSuccessfulCommand(apiTlsSecret, 'read retained API TLS mount after an ordinary upgrade');
+    expect(apiTlsSecret.stdout).toBe(secretName);
+    const caddyTlsSecret: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      'deployment/compartment-compartment-caddy',
+      '--output=jsonpath={.spec.template.spec.volumes[?(@.name=="tls")].secret.secretName}',
+    ]);
+    expectSuccessfulCommand(caddyTlsSecret, 'read retained Caddy TLS mount after an ordinary upgrade');
+    expect(caddyTlsSecret.stdout).toBe(secretName);
   } finally {
     const clearIdentity: SelfHostedUserSetupCommandResult = await runKubectl([
       'patch',
@@ -288,6 +323,8 @@ async function expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade(): Promise<voi
         stringData: {
           'active-custom-tls-secret': '',
           'operator-custom-tls-secret': '',
+          'public-protocol': 'http',
+          'tls-mode': 'custom-http',
         },
       }),
     ]);
