@@ -36,6 +36,24 @@ export function collectPlatformK3dDiagnostics(outputDirectory) {
     '-o',
     'wide',
   ]);
+  capture(outputDirectory, 'services', 'kubectl', [
+    '--context',
+    context,
+    'get',
+    'services',
+    '--all-namespaces',
+    '-o',
+    'wide',
+  ]);
+  capture(outputDirectory, 'endpoint-slices', 'kubectl', [
+    '--context',
+    context,
+    'get',
+    'endpointslices',
+    '--all-namespaces',
+    '-o',
+    'wide',
+  ]);
   capture(outputDirectory, 'helm-status', 'helm', [
     'status',
     'compartment',
