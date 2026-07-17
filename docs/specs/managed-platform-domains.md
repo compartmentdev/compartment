@@ -21,7 +21,8 @@ Managed platform domains cover install-level public domain ownership for the who
 - The broker owns allocation, DNS record mutation inside its zone, token scoping, and recovery from provider drift by replaying its own state.
 - The Helm release owns the active base domain, public ingress mode, and certificate configuration.
 - Pending whole-install custom-domain setup state belongs to the API and represents staged verification/activation data only. The active domain remains chart-owned.
-- Public CLI commands do not mutate installation-level ingress or certificate state.
+- Ordinary public API domain commands do not mutate installation-level ingress or certificate state. Privileged
+  `compartment system domain` commands may update the Helm-owned state through the API pod's private operator channel.
 
 ## Invariants
 

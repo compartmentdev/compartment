@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { get } from 'node:http';
 import { isIP } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -17,6 +17,8 @@ const httpPort = 18_080;
 const httpsPort = 18_443;
 const registryName = 'compartment-e2e-registry';
 const registryHostPort = 15_500;
+const managedBrokerPort = 19_000;
+const managedAcmeManagementPort = 19_500;
 const registryClusterHost = `k3d-${registryName}:${registryHostPort}`;
 const registryPushHost = `localhost:${registryHostPort}`;
 const bundledRegistryPort = 5000;
@@ -27,10 +29,15 @@ const serverNodeName = `k3d-${clusterName}-server-0`;
 const platformImageTag = 'e2e';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const platformValuesPath = join(repositoryRoot, '.compartment', 'platform-k3d-e2e-values.yaml');
+const managedPlatformValuesPath = join(repositoryRoot, '.compartment', 'platform-k3d-managed-e2e-values.yaml');
+const pebbleCaPath = join(repositoryRoot, '.compartment', 'pebble.minica.pem');
+const pebbleRootPath = join(repositoryRoot, '.compartment', 'pebble.root.pem');
 const platformOwnerEnvironmentPath = join(repositoryRoot, '.compartment', 'platform-k3d-e2e-owner.env');
 const kubernetesReadinessTimeoutSeconds = 240;
 const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
 const platformServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
+const pebbleImageRef =
+  'ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199';
 const builtImageRefsByServiceName = Object.freeze(
   Object.fromEntries(
     platformServiceNames.map((serviceName) => [
@@ -132,14 +139,25 @@ export function renderK3dRegistryConfig(registryHost, serviceClusterIp) {
 }
 
 export function renderPlatformK3dValues(imageDigestsByServiceName) {
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderK3dServiceValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: custom-http\nedge:\n  snapshots:\n    enabled: true\n`;
+}
+
+export function renderManagedPlatformK3dValues(imageDigestsByServiceName, managedCaddyDigest) {
+  return `${renderPlatformImageValues({ ...imageDigestsByServiceName, caddy: managedCaddyDigest })}${renderK3dServiceValues()}platform:\n  acmeCaUrl: https://pebble:14000/dir\n  publicIngressIpv4: 8.8.4.4\nbuildkit:\n  namespace: compartment-managed-e2e-build\n`;
+}
+
+function renderPlatformImageValues(imageDigestsByServiceName) {
   const imageValues = platformServiceNames
     .map(
       (serviceName) =>
         `  ${serviceName}:\n    repository: ${registryClusterHost}/compartment-${serviceName}\n    tag: ${platformImageTag}\n    digest: ${readRequiredPlatformImageDigest(imageDigestsByServiceName, serviceName)}`,
     )
     .join('\n');
+  return `images:\n${imageValues}\n`;
+}
 
-  return `images:\n${imageValues}\nservice:\n  caddy:\n    type: NodePort\n    httpPort: 80\n    httpsPort: 443\n    httpNodePort: 30080\n    httpsNodePort: 30443\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: custom-http\nedge:\n  snapshots:\n    enabled: true\n`;
+function renderK3dServiceValues() {
+  return 'service:\n  caddy:\n    type: NodePort\n    httpPort: 80\n    httpsPort: 443\n    httpNodePort: 30080\n    httpsNodePort: 30443\n';
 }
 
 async function upPlatform(command) {
@@ -149,11 +167,18 @@ async function upPlatform(command) {
   }
 
   recreateRegistry();
+  mkdirSync(resolve(repositoryRoot, '.compartment'), { recursive: true });
 
   try {
-    const [, imageDigestsByServiceName] = await Promise.all([createCluster(), prepareAndPushPlatformImages(command)]);
-    mkdirSync(resolve(repositoryRoot, '.compartment'), { recursive: true });
-    writeFileSync(platformValuesPath, renderPlatformK3dValues(imageDigestsByServiceName), { mode: 0o600 });
+    const [, preparedImages] = await Promise.all([createCluster(), prepareAndPushPlatformImages(command)]);
+    writeFileSync(platformValuesPath, renderPlatformK3dValues(preparedImages.imageDigestsByServiceName), {
+      mode: 0o600,
+    });
+    writeFileSync(
+      managedPlatformValuesPath,
+      renderManagedPlatformK3dValues(preparedImages.imageDigestsByServiceName, preparedImages.managedCaddyDigest),
+      { mode: 0o600 },
+    );
   } catch (error) {
     deleteCluster();
     deleteRegistry();
@@ -177,6 +202,10 @@ async function createCluster() {
       `127.0.0.1:${httpPort}:30080@server:0`,
       '--port',
       `127.0.0.1:${httpsPort}:30443@server:0`,
+      '--port',
+      `127.0.0.1:${managedBrokerPort}:30900@server:0`,
+      '--port',
+      `127.0.0.1:${managedAcmeManagementPort}:31500@server:0`,
       '--registry-use',
       registryClusterHost,
       '--wait',
@@ -199,7 +228,42 @@ async function prepareAndPushPlatformImages(command) {
     runCommand('docker', ['push', '--quiet', registryImageRef], repositoryRoot);
     imageDigestsByServiceName[serviceName] = readPushedImageDigest(registryImageRef);
   }
-  return imageDigestsByServiceName;
+  return {
+    imageDigestsByServiceName,
+    managedCaddyDigest: buildManagedE2eCaddyImage(imageRefsByServiceName.caddy),
+  };
+}
+
+function buildManagedE2eCaddyImage(sourceImageRef) {
+  if (typeof sourceImageRef !== 'string' || sourceImageRef.trim() === '') {
+    throw new Error('Expected a source Caddy image for the managed install e2e.');
+  }
+  const buildDirectory = mkdtempSync(join(tmpdir(), 'compartment-managed-caddy-'));
+  const extractedCaPath = join(buildDirectory, 'pebble.minica.pem');
+  const dockerfilePath = join(buildDirectory, 'Dockerfile');
+  const managedImageRef = `${registryPushHost}/compartment-caddy:managed-e2e`;
+  let pebbleContainerId;
+  try {
+    pebbleContainerId = captureCommand('docker', ['create', pebbleImageRef], repositoryRoot).trim();
+    runCommand('docker', ['cp', `${pebbleContainerId}:/test/certs/pebble.minica.pem`, extractedCaPath], repositoryRoot);
+    copyFileSync(extractedCaPath, pebbleCaPath);
+    writeFileSync(
+      dockerfilePath,
+      'ARG CADDY_IMAGE\nFROM ${CADDY_IMAGE}\nCOPY pebble.minica.pem /usr/local/share/ca-certificates/pebble.crt\nRUN update-ca-certificates\n',
+    );
+    runCommand(
+      'docker',
+      ['build', '--build-arg', `CADDY_IMAGE=${sourceImageRef}`, '--tag', managedImageRef, buildDirectory],
+      repositoryRoot,
+    );
+    runCommand('docker', ['push', '--quiet', managedImageRef], repositoryRoot);
+    return readPushedImageDigest(managedImageRef);
+  } finally {
+    if (pebbleContainerId !== undefined && pebbleContainerId !== '') {
+      runCommand('docker', ['rm', '--force', pebbleContainerId], repositoryRoot);
+    }
+    rmSync(buildDirectory, { force: true, recursive: true });
+  }
 }
 
 function readPushedImageDigest(imageRef) {
@@ -257,6 +321,9 @@ function downPlatform() {
   }
   deleteRegistry();
   rmSync(platformValuesPath, { force: true });
+  rmSync(managedPlatformValuesPath, { force: true });
+  rmSync(pebbleCaPath, { force: true });
+  rmSync(pebbleRootPath, { force: true });
   rmSync(platformOwnerEnvironmentPath, { force: true });
   process.stdout.write(`Removed ${clusterName}.\n`);
 }
