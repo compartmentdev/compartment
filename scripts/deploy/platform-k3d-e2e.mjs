@@ -25,6 +25,7 @@ const platformBaseDomain = 'compartment.localhost';
 const consoleHost = `console.${platformBaseDomain}`;
 const serverNodeName = `k3d-${clusterName}-server-0`;
 const platformImageTag = 'e2e';
+const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const platformValuesPath = join(repositoryRoot, '.compartment', 'platform-k3d-e2e-values.yaml');
 const platformOwnerEnvironmentPath = join(repositoryRoot, '.compartment', 'platform-k3d-e2e-owner.env');
 const kubernetesReadinessTimeoutSeconds = 240;
@@ -130,11 +131,11 @@ export function renderK3dRegistryConfig(registryHost, serviceClusterIp) {
   return `mirrors:\n  "${registryHost}":\n    endpoint:\n      - "http://${serviceClusterIp}:${bundledRegistryPort}"\n`;
 }
 
-export function renderPlatformK3dValues() {
+export function renderPlatformK3dValues(imageDigestsByServiceName) {
   const imageValues = platformServiceNames
     .map(
       (serviceName) =>
-        `  ${serviceName}:\n    repository: ${registryClusterHost}/compartment-${serviceName}\n    tag: ${platformImageTag}`,
+        `  ${serviceName}:\n    repository: ${registryClusterHost}/compartment-${serviceName}\n    tag: ${platformImageTag}\n    digest: ${readRequiredPlatformImageDigest(imageDigestsByServiceName, serviceName)}`,
     )
     .join('\n');
 
@@ -150,9 +151,9 @@ async function upPlatform(command) {
   recreateRegistry();
 
   try {
-    await Promise.all([createCluster(), prepareAndPushPlatformImages(command)]);
+    const [, imageDigestsByServiceName] = await Promise.all([createCluster(), prepareAndPushPlatformImages(command)]);
     mkdirSync(resolve(repositoryRoot, '.compartment'), { recursive: true });
-    writeFileSync(platformValuesPath, renderPlatformK3dValues(), { mode: 0o600 });
+    writeFileSync(platformValuesPath, renderPlatformK3dValues(imageDigestsByServiceName), { mode: 0o600 });
   } catch (error) {
     deleteCluster();
     deleteRegistry();
@@ -190,12 +191,35 @@ async function prepareAndPushPlatformImages(command) {
       ? loadPlatformImageArchives(command.imageArchiveDir)
       : await buildPlatformImages();
 
+  const imageDigestsByServiceName = {};
   for (const serviceName of platformServiceNames) {
     const sourceImageRef = imageRefsByServiceName[serviceName];
     const registryImageRef = `${registryPushHost}/compartment-${serviceName}:${platformImageTag}`;
     runCommand('docker', ['tag', sourceImageRef, registryImageRef], repositoryRoot);
     runCommand('docker', ['push', '--quiet', registryImageRef], repositoryRoot);
+    imageDigestsByServiceName[serviceName] = readPushedImageDigest(registryImageRef);
   }
+  return imageDigestsByServiceName;
+}
+
+function readPushedImageDigest(imageRef) {
+  const digest = captureCommand(
+    'docker',
+    ['buildx', 'imagetools', 'inspect', '--format', '{{ printf "%s" .Manifest.Digest }}', imageRef],
+    repositoryRoot,
+  ).trim();
+  if (!imageDigestPattern.test(digest)) {
+    throw new Error(`Expected a pushed platform image digest for ${imageRef}, received: ${digest}`);
+  }
+  return digest;
+}
+
+function readRequiredPlatformImageDigest(imageDigestsByServiceName, serviceName) {
+  const digest = imageDigestsByServiceName?.[serviceName];
+  if (typeof digest !== 'string' || !imageDigestPattern.test(digest)) {
+    throw new Error(`Expected a platform image digest for ${serviceName}.`);
+  }
+  return digest;
 }
 
 async function buildPlatformImages() {

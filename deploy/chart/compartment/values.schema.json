@@ -2,6 +2,15 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
+    "images": {
+      "type": "object",
+      "properties": {
+        "api": { "$ref": "#/definitions/platformImage" },
+        "worker": { "$ref": "#/definitions/platformImage" },
+        "edge": { "$ref": "#/definitions/platformImage" },
+        "caddy": { "$ref": "#/definitions/platformImage" }
+      }
+    },
     "platform": {
       "type": "object",
       "required": [
@@ -135,6 +144,17 @@
     "storage": {
       "type": "object",
       "properties": { "edgeSnapshots": { "type": "string", "minLength": 1 } }
+    }
+  },
+  "definitions": {
+    "platformImage": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^$|^sha256:[a-f0-9]{64}$" },
+        "pullPolicy": { "type": "string" }
+      }
     }
   }
 }

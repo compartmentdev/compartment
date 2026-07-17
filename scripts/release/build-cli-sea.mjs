@@ -1,6 +1,7 @@
-import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { access, chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { delimiter, dirname, resolve } from 'node:path';
 
 import { runCommand } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
@@ -10,6 +11,8 @@ const seaBlobAssetName = 'NODE_SEA_BLOB';
 const seaFuse = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
 const bundleEntryPath = 'packages/cli/dist/bin.js';
 const bundledKubernetesChartAssetName = 'compartment-chart.tgz';
+const bundledCosignAssetName = 'cosign';
+const bundledCosignPathEnvName = 'COMPARTMENT_CLI_BUNDLED_COSIGN_PATH';
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
 async function main() {
@@ -26,12 +29,13 @@ async function main() {
     const seaBlobPath = resolve(buildDirectory, 'compartment.blob');
     const seaConfigPath = resolve(buildDirectory, 'sea-config.json');
     const outputBinaryPath = resolve(options.outputDirectory, 'compartment');
+    const bundledCosignPath = await readBundledCosignPath();
 
     await mkdir(options.outputDirectory, { recursive: true });
     bundleCliEntry(repositoryRoot, dirname(bundlePath));
     createKubernetesChartArchive(chartArchivePath);
     await writeBuildInfo(buildInfoPath, options);
-    await writeSeaConfig(seaConfigPath, seaBlobPath, buildInfoPath, bundlePath, chartArchivePath);
+    await writeSeaConfig(seaConfigPath, seaBlobPath, buildInfoPath, bundlePath, chartArchivePath, bundledCosignPath);
     generateSeaBlob(repositoryRoot, seaConfigPath);
     await copyFile(process.execPath, outputBinaryPath);
     removeMacOsSignature(outputBinaryPath);
@@ -154,11 +158,19 @@ function createKubernetesChartArchive(chartArchivePath) {
   );
 }
 
-async function writeSeaConfig(seaConfigPath, seaBlobPath, buildInfoPath, bundlePath, chartArchivePath) {
+async function writeSeaConfig(
+  seaConfigPath,
+  seaBlobPath,
+  buildInfoPath,
+  bundlePath,
+  chartArchivePath,
+  bundledCosignPath,
+) {
   const seaConfig = {
     assets: {
       'cli-build-info.json': buildInfoPath,
       [bundledKubernetesChartAssetName]: chartArchivePath,
+      [bundledCosignAssetName]: bundledCosignPath,
     },
     disableExperimentalSEAWarning: true,
     main: bundlePath,
@@ -168,6 +180,45 @@ async function writeSeaConfig(seaConfigPath, seaBlobPath, buildInfoPath, bundleP
   };
 
   await writeFile(seaConfigPath, `${JSON.stringify(seaConfig, null, 2)}\n`, 'utf8');
+}
+
+async function readBundledCosignPath() {
+  const configuredPath = process.env[bundledCosignPathEnvName]?.trim();
+  if (configuredPath !== undefined && configuredPath !== '') {
+    const resolvedPath = resolve(repositoryRoot, configuredPath);
+    await assertExecutablePath(
+      resolvedPath,
+      `Configured ${bundledCosignPathEnvName} path is not executable: ${resolvedPath}`,
+    );
+    return resolvedPath;
+  }
+
+  for (const directory of (process.env.PATH ?? '').split(delimiter)) {
+    if (directory === '') {
+      continue;
+    }
+    const candidatePath = resolve(directory, bundledCosignAssetName);
+    if (await canAccessExecutablePath(candidatePath)) {
+      return candidatePath;
+    }
+  }
+
+  throw new Error('Expected cosign on PATH when building the CLI SEA binary.');
+}
+
+async function assertExecutablePath(path, message) {
+  if (!(await canAccessExecutablePath(path))) {
+    throw new Error(message);
+  }
+}
+
+async function canAccessExecutablePath(path) {
+  try {
+    await access(path, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function generateSeaBlob(repositoryRoot, seaConfigPath) {

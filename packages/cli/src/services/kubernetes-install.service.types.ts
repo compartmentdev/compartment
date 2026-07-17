@@ -18,6 +18,12 @@ export interface KubernetesInstallDeploymentResult {
   installToken: string;
 }
 
+export interface KubernetesInstallHelmMaterial {
+  chartPath: string;
+  imageTrustValuesPath: string;
+  installValuesPath: string;
+}
+
 export interface ExistingKubernetesInstall {
   acmeEmail: string;
   baseDomain: string;

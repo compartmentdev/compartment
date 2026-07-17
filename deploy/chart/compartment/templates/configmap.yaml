@@ -40,7 +40,7 @@ data:
   COMPARTMENT_ACME_ISSUER: {{ .Values.platform.acmeIssuer | quote }}
   COMPARTMENT_ACME_CA_URL: {{ .Values.platform.acmeCaUrl | quote }}
   COMPARTMENT_ACME_EMAIL: {{ .Values.platform.acmeEmail | quote }}
-  COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: {{ ternary .Values.platform.managedDomainBrokerUrl "" (eq .Values.platform.tlsMode "managed") | quote }}
+  COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: {{ ternary .Values.platform.managedDomainBrokerUrl "" (not (empty .Values.secrets.managedDomainBrokerToken)) | quote }}
   COMPARTMENT_PUBLIC_INGRESS_IPV4: {{ .Values.platform.publicIngressIpv4 | quote }}
   COMPARTMENT_PUBLIC_INGRESS_IPV6: {{ .Values.platform.publicIngressIpv6 | quote }}
   COMPARTMENT_SOURCE_ARCHIVE_DIR: /var/lib/compartment/source-archives

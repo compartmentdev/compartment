@@ -1,17 +1,23 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import {
   assertMatchingKubernetesInstallDomain,
   resolveKubernetesInstallControlPlaneUrl,
 } from '../kubernetes-install-domain';
 import {
   createKubernetesInstallMaterializedDirectory,
-  resolveKubernetesChartPath,
   runKubernetesHelmInstallStage,
   writeKubernetesInstallValues,
 } from './kubernetes-install-helm.service';
-import { waitForPublicControlPlane } from './kubernetes-install-public.service';
+import { prepareKubernetesInstallHelmMaterial } from './kubernetes-install-material.service';
+import {
+  createInstallToken,
+  finishKubernetesInstall,
+  readInstallationId,
+  requireExistingBaseDomain,
+  requireExistingInstallToken,
+  requireFoundationInstall,
+} from './kubernetes-install-runtime.support';
 import { readExistingKubernetesInstall } from './kubernetes-install-release.service';
 import {
   mergeRetainedKubernetesInstallState,
@@ -27,11 +33,10 @@ import type {
   ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
   KubernetesInstallDeploymentResult,
+  KubernetesInstallHelmMaterial,
   KubernetesInstallState,
   RetainedKubernetesInstallState,
 } from './kubernetes-install.service.types';
-
-const installTokenByteLength: number = 32;
 
 export async function deployAndWaitForKubernetesInstall(
   input: KubernetesInstallDeploymentInput,
@@ -85,21 +90,15 @@ async function deployMaterializedKubernetesInstall(
   installationId: string,
   materializedDirectory: string,
 ): Promise<KubernetesInstallDeploymentResult> {
-  const chartPath: string = await resolveKubernetesChartPath(input, materializedDirectory);
-  const installValuesPath: string = resolve(materializedDirectory, 'install-values.json');
-  await ensureKubernetesFoundation(
+  const material: KubernetesInstallHelmMaterial = await prepareKubernetesInstallHelmMaterial(
     input,
-    existingRelease,
-    retainedState,
-    chartPath,
-    installValuesPath,
-    installToken,
-    installationId,
+    materializedDirectory,
   );
+  await ensureKubernetesFoundation(input, existingRelease, retainedState, material, installToken, installationId);
   const foundationInstall: ExistingKubernetesInstall = await readFoundationInstall(input, retainedState);
   const state: KubernetesInstallState = await resolveKubernetesInstallState(input, foundationInstall);
-  await persistResolvedInstallState(input, chartPath, installValuesPath, installToken, state);
-  const apiUrl: string = await deployFullKubernetesInstall(input, chartPath, installValuesPath, state);
+  await persistResolvedInstallState(input, material, installToken, state);
+  const apiUrl: string = await deployFullKubernetesInstall(input, material, state);
   return await finishKubernetesInstall(apiUrl, installToken, state.baseDomain);
 }
 
@@ -115,65 +114,87 @@ async function ensureKubernetesFoundation(
   input: KubernetesInstallDeploymentInput,
   existingRelease: ExistingKubernetesInstall | null,
   retainedState: RetainedKubernetesInstallState | null,
-  chartPath: string,
-  installValuesPath: string,
+  material: KubernetesInstallHelmMaterial,
   installToken: string,
   installationId: string,
 ): Promise<void> {
   if (existingRelease === null && retainedState === null) {
-    await deployInitialFoundation(input, chartPath, installValuesPath, installToken, installationId);
+    await deployInitialFoundation(input, material, installToken, installationId);
     return;
   }
   const existingState: KubernetesInstallState | null = retainedState ?? existingRelease;
   if (existingState === null) {
     throw new Error('Expected an existing foundation release or retained install state.');
   }
-  await deployResumableFoundation(input, chartPath, installValuesPath, installToken, installationId, existingState);
+  await deployResumableFoundation(input, material, installToken, installationId, existingState);
 }
 
 async function deployResumableFoundation(
   input: KubernetesInstallDeploymentInput,
-  chartPath: string,
-  installValuesPath: string,
+  material: KubernetesInstallHelmMaterial,
   installToken: string,
   installationId: string,
   existingState: KubernetesInstallState,
 ): Promise<void> {
   const state: KubernetesInstallState = { ...existingState, installationId };
-  await writeKubernetesInstallValues(installValuesPath, buildResumableFoundationValues(state, installToken));
-  await runKubernetesHelmInstallStage(input, chartPath, installValuesPath, 'foundation');
+  await writeKubernetesInstallValues(material.installValuesPath, buildResumableFoundationValues(state, installToken));
+  await runKubernetesHelmInstallStage(
+    input,
+    material.chartPath,
+    material.installValuesPath,
+    material.imageTrustValuesPath,
+    'foundation',
+  );
 }
 
 async function deployInitialFoundation(
   input: KubernetesInstallDeploymentInput,
-  chartPath: string,
-  installValuesPath: string,
+  material: KubernetesInstallHelmMaterial,
   installToken: string,
   installationId: string,
 ): Promise<void> {
-  await writeKubernetesInstallValues(installValuesPath, buildInitialInstallValues(input, installToken, installationId));
-  await runKubernetesHelmInstallStage(input, chartPath, installValuesPath, 'foundation');
+  await writeKubernetesInstallValues(
+    material.installValuesPath,
+    buildInitialInstallValues(input, installToken, installationId),
+  );
+  await runKubernetesHelmInstallStage(
+    input,
+    material.chartPath,
+    material.installValuesPath,
+    material.imageTrustValuesPath,
+    'foundation',
+  );
 }
 
 async function persistResolvedInstallState(
   input: KubernetesInstallDeploymentInput,
-  chartPath: string,
-  installValuesPath: string,
+  material: KubernetesInstallHelmMaterial,
   installToken: string,
   state: KubernetesInstallState,
 ): Promise<void> {
-  await writeKubernetesInstallValues(installValuesPath, buildResolvedInstallValues(state, installToken));
-  await runKubernetesHelmInstallStage(input, chartPath, installValuesPath, 'foundation');
+  await writeKubernetesInstallValues(material.installValuesPath, buildResolvedInstallValues(state, installToken));
+  await runKubernetesHelmInstallStage(
+    input,
+    material.chartPath,
+    material.installValuesPath,
+    material.imageTrustValuesPath,
+    'foundation',
+  );
 }
 
 async function deployFullKubernetesInstall(
   input: KubernetesInstallDeploymentInput,
-  chartPath: string,
-  installValuesPath: string,
+  material: KubernetesInstallHelmMaterial,
   state: KubernetesInstallState,
 ): Promise<string> {
   const apiUrl: string = resolveKubernetesInstallControlPlaneUrl(input.apiUrl, state.baseDomain, state.publicProtocol);
-  await runKubernetesHelmInstallStage(input, chartPath, installValuesPath, 'full');
+  await runKubernetesHelmInstallStage(
+    input,
+    material.chartPath,
+    material.installValuesPath,
+    material.imageTrustValuesPath,
+    'full',
+  );
   return apiUrl;
 }
 
@@ -211,51 +232,19 @@ async function materializeAdoptedKubernetesInstall(
 ): Promise<void> {
   const materializedDirectory: string = await createKubernetesInstallMaterializedDirectory();
   try {
-    const chartPath: string = await resolveKubernetesChartPath(input, materializedDirectory);
-    const installValuesPath: string = resolve(materializedDirectory, 'install-values.json');
-    await writeKubernetesInstallValues(installValuesPath, buildResolvedInstallValues(state, installToken));
-    await runKubernetesHelmInstallStage(input, chartPath, installValuesPath, 'full');
+    const material: KubernetesInstallHelmMaterial = await prepareKubernetesInstallHelmMaterial(
+      input,
+      materializedDirectory,
+    );
+    await writeKubernetesInstallValues(material.installValuesPath, buildResolvedInstallValues(state, installToken));
+    await runKubernetesHelmInstallStage(
+      input,
+      material.chartPath,
+      material.installValuesPath,
+      material.imageTrustValuesPath,
+      'full',
+    );
   } finally {
     await rm(materializedDirectory, { force: true, recursive: true });
   }
-}
-
-async function finishKubernetesInstall(
-  apiUrl: string,
-  installToken: string,
-  baseDomain: string,
-): Promise<KubernetesInstallDeploymentResult> {
-  await waitForPublicControlPlane(apiUrl);
-  return { apiUrl, baseDomain, installToken };
-}
-
-function requireFoundationInstall(existingInstall: ExistingKubernetesInstall | null): ExistingKubernetesInstall {
-  if (existingInstall?.stage === 'foundation') {
-    return existingInstall;
-  }
-  throw new Error('The Helm foundation stage did not persist a resumable installation state.');
-}
-
-function requireExistingInstallToken(existingInstall: ExistingKubernetesInstall): string {
-  if (existingInstall.installToken !== null) {
-    return existingInstall.installToken;
-  }
-  throw new Error(
-    'The existing full Helm release has no resumable install token. Use login if it is initialized, or set secrets.installToken through the operator workflow.',
-  );
-}
-
-function requireExistingBaseDomain(existingInstall: ExistingKubernetesInstall): string {
-  if (existingInstall.baseDomain !== '') {
-    return existingInstall.baseDomain;
-  }
-  throw new Error('The existing full Helm release has no resolved base domain.');
-}
-
-function readInstallationId(existingInstall: ExistingKubernetesInstall | null): string | null {
-  return existingInstall !== null && existingInstall.installationId !== '' ? existingInstall.installationId : null;
-}
-
-function createInstallToken(): string {
-  return randomBytes(installTokenByteLength).toString('hex');
 }

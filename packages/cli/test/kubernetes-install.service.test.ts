@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import type { LookupAddress } from 'node:dns';
 import type { ManagedDomainAllocationRequest } from '@compartment/contracts';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -21,6 +21,11 @@ type LookupHostname = (hostname: string, options: { all: true; verbatim: true })
 interface KubernetesInstallServiceMocks {
   lookup: Mock<LookupHostname>;
   runCommand: Mock<RunCommand>;
+  writeVerifiedImages: Mock<(input: ImageTrustWriteInput) => Promise<void>>;
+}
+
+interface ImageTrustWriteInput {
+  outputPath: string;
 }
 
 interface InstallHarnessState {
@@ -33,12 +38,21 @@ interface InstallHarnessState {
 }
 
 const mocks: KubernetesInstallServiceMocks = vi.hoisted(
-  (): KubernetesInstallServiceMocks => ({ lookup: vi.fn<LookupHostname>(), runCommand: vi.fn<RunCommand>() }),
+  (): KubernetesInstallServiceMocks => ({
+    lookup: vi.fn<LookupHostname>(),
+    runCommand: vi.fn<RunCommand>(),
+    writeVerifiedImages: vi.fn(async (input: ImageTrustWriteInput): Promise<void> => {
+      await writeFile(input.outputPath, JSON.stringify({ images: {} }), { mode: 0o600 });
+    }),
+  }),
 );
 const detectedPublicIpv4: string = [8, 8, 8, 8].join('.');
 const configuredPublicIpv4: string = [8, 8, 4, 4].join('.');
 
 vi.mock('../src/command-runner', (): object => ({ runCommand: mocks.runCommand }));
+vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
+  writeVerifiedKubernetesInstallImageValues: mocks.writeVerifiedImages,
+}));
 vi.mock('node:dns/promises', (): object => ({ lookup: mocks.lookup }));
 
 const managedDeploymentInput: KubernetesInstallDeploymentInput = {
@@ -56,6 +70,7 @@ describe('Kubernetes install deployment', (): void => {
   afterEach((): void => {
     mocks.runCommand.mockReset();
     mocks.lookup.mockReset();
+    mocks.writeVerifiedImages.mockClear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -514,7 +529,7 @@ async function handleHelmUpgrade(
   failFull: boolean,
   failResolvedFoundation: boolean,
 ): Promise<CommandResult> {
-  const installValuesPath: string = readLastOptionValue(command, '--values');
+  const installValuesPath: string = readOptionValueFromEnd(command, '--values', 2);
   const values: KubernetesInstallSecretValues = JSON.parse(
     await readFile(installValuesPath, 'utf8'),
   ) as KubernetesInstallSecretValues;
@@ -615,6 +630,18 @@ function readLastOptionValue(command: readonly string[], option: string): string
   const value: string | undefined = command[optionIndex + 1];
   if (optionIndex < 0 || value === undefined) {
     throw new Error(`Missing ${option} in command.`);
+  }
+  return value;
+}
+
+function readOptionValueFromEnd(command: readonly string[], option: string, occurrenceFromEnd: number): string {
+  const optionIndexes: number[] = command.flatMap((value: string, index: number): number[] =>
+    value === option ? [index] : [],
+  );
+  const optionIndex: number | undefined = optionIndexes.at(-occurrenceFromEnd);
+  const value: string | undefined = optionIndex === undefined ? undefined : command[optionIndex + 1];
+  if (value === undefined) {
+    throw new Error(`Missing ${option} occurrence ${occurrenceFromEnd.toString()} from end in command.`);
   }
   return value;
 }

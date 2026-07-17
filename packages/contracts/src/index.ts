@@ -54,6 +54,10 @@ export * from './contracts/deployment-run.contract';
 export * from './contracts/custom-domain.contract';
 export * from './contracts/github-account-discovery.contract';
 export * from './contracts/onboarding-first-deploy.contract';
+export {
+  selfHostedRuntimeImageSignaturePolicy,
+  type SelfHostedRuntimeImageSignaturePolicy,
+} from './contracts/self-hosted-runtime-image-signature-policy.contract';
 export * from './index.deployments';
 export { logTailLineLimit } from './contracts/logs.contract';
 export * from './index.resources';

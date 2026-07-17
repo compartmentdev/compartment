@@ -16,6 +16,6 @@ export function readSeaAssetBuffer(assetName: string): Buffer | undefined {
   return Buffer.from(getAsset(assetName));
 }
 
-function isSeaRuntime(): boolean {
+export function isSeaRuntime(): boolean {
   return isSea();
 }

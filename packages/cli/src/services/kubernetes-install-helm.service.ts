@@ -37,9 +37,10 @@ export async function runKubernetesHelmInstallStage(
   input: KubernetesInstallDeploymentInput,
   chartPath: string,
   installValuesPath: string,
+  imageTrustValuesPath: string,
   stage: KubernetesInstallStage,
 ): Promise<void> {
-  const command: string[] = buildHelmInstallCommand(input, chartPath, installValuesPath, stage);
+  const command: string[] = buildHelmInstallCommand(input, chartPath, installValuesPath, imageTrustValuesPath, stage);
   const result: CommandResult = await runCommand(command);
   if (result.exitCode !== 0) {
     throwHelmInstallError(stage, result);
@@ -50,9 +51,10 @@ function buildHelmInstallCommand(
   input: KubernetesInstallDeploymentInput,
   chartPath: string,
   installValuesPath: string,
+  imageTrustValuesPath: string,
   stage: KubernetesInstallStage,
 ): string[] {
-  const args: string[] = buildHelmBaseCommand(input, chartPath, installValuesPath);
+  const args: string[] = buildHelmBaseCommand(input, chartPath, installValuesPath, imageTrustValuesPath);
   args.push('--set', `platform.startupStage=${stage}`);
   if (input.kubeContext !== undefined) {
     args.push('--kube-context', input.kubeContext);
@@ -67,6 +69,7 @@ function buildHelmBaseCommand(
   input: KubernetesInstallDeploymentInput,
   chartPath: string,
   installValuesPath: string,
+  imageTrustValuesPath: string,
 ): string[] {
   return [
     'helm',
@@ -77,15 +80,16 @@ function buildHelmBaseCommand(
     '--namespace',
     input.namespace,
     '--create-namespace',
-    '--values',
-    resolve(input.valuesPath),
-    '--values',
-    installValuesPath,
+    ...buildKubernetesHelmValuesArgs([input.valuesPath, installValuesPath, imageTrustValuesPath]),
     '--rollback-on-failure',
     '--wait',
     '--timeout',
     helmInstallTimeout,
   ];
+}
+
+export function buildKubernetesHelmValuesArgs(valuesPaths: readonly string[]): string[] {
+  return valuesPaths.flatMap((valuesPath: string): string[] => ['--values', resolve(valuesPath)]);
 }
 
 function throwHelmInstallError(stage: KubernetesInstallStage, result: CommandResult): never {

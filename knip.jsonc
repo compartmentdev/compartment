@@ -6,6 +6,8 @@
     "public-docs/src/styles/site.css",
     // Release workflows run this helper by string path from shell steps.
     "scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs",
+    // k3d e2e embeds this test-only cosign fixture through a workflow environment path.
+    "scripts/deploy/fixtures/cosign-k3d-e2e.mjs",
     // CLI smoke starts this helper through a string path passed to Node spawn.
     "packages/cli/test/support/fake-oidc-server.ts",
     // Docs generation shells through repo-local tsx and passes this runner by string path.

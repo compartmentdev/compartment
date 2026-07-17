@@ -58,9 +58,12 @@ storage:
   storageClass: fast-rwo
 ```
 
-Pin the `images.*.tag` values to one release or immutable `sha-*` tag. Supply the values under `secrets` through your
-normal secret-management workflow instead of committing them. Install with the release CLI, which uses its bundled
-matching chart, waits for the public Console endpoint, creates the first owner, and saves the owner session:
+Select one release with the `images.*.tag` values. Before Helm changes the release, the CLI verifies all four platform
+images against Compartment's GitHub Actions signing identity, resolves each tag to its immutable digest, and deploys
+only those digests. An unsigned image or an image signed by another identity stops the install before activation.
+Supply the values under `secrets` through your normal secret-management workflow instead of committing them. Install
+with the release CLI, which uses its bundled matching chart, waits for the public Console endpoint, creates the first
+owner, and saves the owner session:
 
 ```bash
 compartment install \

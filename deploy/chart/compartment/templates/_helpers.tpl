@@ -191,7 +191,11 @@ app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
 {{- define "compartment.image" -}}
+{{- if .digest -}}
+{{- printf "%s@%s" .repository .digest -}}
+{{- else -}}
 {{- printf "%s:%s" .repository .tag -}}
+{{- end -}}
 {{- end }}
 
 {{- define "compartment.storageClass" -}}

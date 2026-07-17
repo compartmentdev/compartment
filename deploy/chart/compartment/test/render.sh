@@ -21,6 +21,8 @@ helm lint "${CHART_DIR}" -f "${CHART_DIR}/values-kind.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=foundation >"${OUTPUT_DIR}/foundation.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-install --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.publicIngressIpv4=8.8.8.8 --set-string platform.managedDomainBrokerUrl= --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/full.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-local --set platform.baseDomain=compartment.localhost --set platform.publicProtocol=http --set platform.tlsMode=custom-http --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/local-full.yaml"
+helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-custom-broker --set platform.baseDomain=compartment.localhost --set platform.publicProtocol=http --set platform.tlsMode=custom-http --set platform.managedDomainBrokerUrl=https://broker.example.test --set secrets.managedDomainBrokerToken=retained-token --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/custom-broker.yaml"
+helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-digests --set platform.baseDomain=compartment.localhost --set platform.publicProtocol=http --set platform.tlsMode=custom-http --set images.api.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --set images.worker.digest=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb --set images.edge.digest=sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc --set images.caddy.digest=sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/digests.yaml"
 helm template compartment "${CHART_DIR}" -f "${CHART_DIR}/values-kind.yaml" >"${OUTPUT_DIR}/kind.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-install --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.publicIngressIpv4=8.8.8.8 --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token --set edge.snapshots.enabled=true >"${OUTPUT_DIR}/edge.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-managed --set platform.domainMode=managed --set platform.baseDomain=managed.compartment.run --set platform.publicProtocol=https --set platform.tlsMode=managed --set platform.publicIngressIpv4=8.8.4.4 --set platform.acmeEmail=admin@example.com --set secrets.managedDomainBrokerToken=broker-token --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/managed.yaml"
@@ -125,6 +127,8 @@ grep -q 'COMPARTMENT_CADDY_HTTP_PORT: "8080"' "${OUTPUT_DIR}/full.yaml"
 grep -q 'COMPARTMENT_CADDY_HTTPS_PORT: "8443"' "${OUTPUT_DIR}/full.yaml"
 grep -q 'COMPARTMENT_ACME_ISSUER: "acme"' "${OUTPUT_DIR}/managed.yaml"
 grep -q 'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: "https://broker.compartment.run"' "${OUTPUT_DIR}/managed.yaml"
+grep -q 'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: "https://broker.example.test"' "${OUTPUT_DIR}/custom-broker.yaml"
+grep -q 'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: ""' "${OUTPUT_DIR}/local-full.yaml"
 grep -q 'key: managed-domain-broker-token' "${OUTPUT_DIR}/managed.yaml"
 awk 'BEGIN { RS="---" } /kind: Secret/ && /name: compartment-install-state/ { print }' "${OUTPUT_DIR}/managed.yaml" >"${OUTPUT_DIR}/install-state-secret.yaml"
 awk 'BEGIN { RS="---" } /kind: Secret/ && /name: compartment-compartment$/ { print }' "${OUTPUT_DIR}/managed.yaml" >"${OUTPUT_DIR}/platform-secret.yaml"
@@ -228,6 +232,14 @@ if grep -q 'name: renamed-compartment-install-state' "${OUTPUT_DIR}/renamed-foun
   exit 1
 fi
 grep -q 'value: "ghcr.io/compartmentdev/compartment-worker:latest"' "${OUTPUT_DIR}/full.yaml"
+grep -q 'ghcr.io/compartmentdev/compartment-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "${OUTPUT_DIR}/digests.yaml"
+grep -q 'ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "${OUTPUT_DIR}/digests.yaml"
+grep -q 'ghcr.io/compartmentdev/compartment-edge@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' "${OUTPUT_DIR}/digests.yaml"
+grep -q 'ghcr.io/compartmentdev/compartment-caddy@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' "${OUTPUT_DIR}/digests.yaml"
+if grep -Eq 'ghcr.io/compartmentdev/compartment-(api|worker|edge|caddy):latest' "${OUTPUT_DIR}/digests.yaml"; then
+  echo 'Verified platform image digests must take precedence over tags.' >&2
+  exit 1
+fi
 grep -q '\\"compartment-compartment-registry-auth.default.svc:5000\\"' "${OUTPUT_DIR}/full.yaml"
 grep -q 'name: compartment-compartment-project-provisioner' "${OUTPUT_DIR}/full.yaml"
 grep -q 'command:.*project-provisioner-server.js' "${OUTPUT_DIR}/full.yaml"
