@@ -13,7 +13,7 @@ Usage: compartment system issue-password-reset [options]
 Issue a private one-time password reset
 
 Options:
-  --email <email>        Owner email
+  --email <email>        Local-password account email
   --kube-context <name>  Kubernetes context
   --namespace <name>     Kubernetes namespace; defaults to compartment
   --release-name <name>  Helm release name; defaults to compartment

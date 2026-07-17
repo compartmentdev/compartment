@@ -12,7 +12,7 @@ export function registerIssuePasswordResetSystemCommand(program: Command, depend
     program
       .command('issue-password-reset')
       .description('Issue a private one-time password reset')
-      .requiredOption('--email <email>', 'Owner email'),
+      .requiredOption('--email <email>', 'Local-password account email'),
   ).action(async (options: IssuePasswordResetCommandOptions): Promise<void> => {
     const result: IssuePasswordResetResponse = await issueKubernetesPasswordReset(
       resolveKubernetesOperatorTarget(options),
