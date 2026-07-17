@@ -29,12 +29,14 @@ import {
 } from './platform-k3d-managed-install.harness';
 
 const platformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
+const ciEnvironmentName: string = 'CI';
 const organizationName: string = 'Managed Platform E2E';
 const organizationSlug: string = 'managed-platform-e2e';
 const installTimeoutMs: number = 50 * 60_000;
 const fixtureTimeoutMs: number = 10 * 60_000;
 const tempRootDirectory: string = readSocketSafeTempRootDirectory('pk3m-', 'system-api.sock');
 const createdDirectories: string[] = [];
+let managedInstallCompleted: boolean = false;
 
 describe.sequential('production managed-domain Kubernetes install', (): void => {
   if (process.env[platformModeEnvName] !== 'k3d') {
@@ -49,7 +51,9 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
     await prepareManagedInstallFixture();
   }, fixtureTimeoutMs);
   afterAll(async (): Promise<void> => {
-    await cleanupManagedInstallFixture();
+    if (managedInstallCompleted || process.env[ciEnvironmentName] !== 'true') {
+      await cleanupManagedInstallFixture();
+    }
     await Promise.all(
       createdDirectories
         .splice(0)
@@ -98,6 +102,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       expect(broker.txtWrites[0]?.name).toBe(`_acme-challenge.${managedInstallBaseDomain}.`);
       expect(broker.txtDeletes).toContainEqual(broker.txtWrites[0]);
       expect(await readManagedInstallCertificateSubjectAltName()).toContain(`DNS:*.${managedInstallBaseDomain}`);
+      managedInstallCompleted = true;
     },
     installTimeoutMs,
   );
