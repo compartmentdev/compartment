@@ -40,14 +40,61 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: challtestsrv-public-resolvers
+  name: managed-dns-public-resolvers
 spec:
   externalIPs: [1.1.1.1, 8.8.8.8]
   selector:
-    app: challtestsrv
+    app: managed-dns
   ports:
-    - { name: dns-tcp, port: 53, targetPort: dns-tcp, protocol: TCP }
+    - { name: dns-tcp, port: 53, targetPort: dns, protocol: TCP }
     - { name: dns-udp, port: 53, targetPort: dns-udp, protocol: UDP }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: managed-dns-config
+data:
+  Corefile: |
+    .:53 {
+      errors
+      template IN SOA {
+        match ^(?:.*\.)?managed\.compartment\.test\.$
+        answer "managed.compartment.test. 60 IN SOA ns.managed.compartment.test. hostmaster.managed.compartment.test. 1 7200 3600 1209600 60"
+      }
+      forward . challtestsrv:8053
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: managed-dns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: managed-dns
+  template:
+    metadata:
+      labels:
+        app: managed-dns
+    spec:
+      containers:
+        - name: coredns
+          image: rancher/mirrored-coredns-coredns@sha256:82979ddf442c593027a57239ad90616deb874e90c365d1a96ad508c2104bdea5
+          args: ['-conf', '/etc/coredns/Corefile']
+          ports:
+            - { name: dns, containerPort: 53, protocol: TCP }
+            - { name: dns-udp, containerPort: 53, protocol: UDP }
+          readinessProbe:
+            tcpSocket: { port: dns }
+            periodSeconds: 2
+            failureThreshold: 30
+          volumeMounts:
+            - { name: config, mountPath: /etc/coredns, readOnly: true }
+      volumes:
+        - name: config
+          configMap:
+            name: managed-dns-config
 ---
 apiVersion: apps/v1
 kind: Deployment
