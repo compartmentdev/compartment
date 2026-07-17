@@ -6,15 +6,28 @@ readonly CHART_DIR
 OUTPUT_DIR="$(mktemp -d)"
 readonly OUTPUT_DIR
 trap 'rm -rf "${OUTPUT_DIR}"' EXIT
+ROLLOUT_ANNOTATION_PATTERN='checksum/(config|domain-config|install-state|custom-tls|pending-tls)|compartment.dev/(rollout-marker|domain-generation|pending-domain-operation)'
+readonly ROLLOUT_ANNOTATION_PATTERN
+
+while IFS= read -r template; do
+  if ! grep -q 'include "compartment.applyRetainedInstallState"' "${template}"; then
+    echo "Startup-stage template must apply retained install state: ${template}" >&2
+    exit 1
+  fi
+done < <(grep -rl '\.Values\.platform\.startupStage' "${CHART_DIR}/templates" --include='*.yaml')
 
 helm lint "${CHART_DIR}"
 helm lint "${CHART_DIR}" -f "${CHART_DIR}/values-kind.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=foundation >"${OUTPUT_DIR}/foundation.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-install --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.publicIngressIpv4=8.8.8.8 --set-string platform.managedDomainBrokerUrl= --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/full.yaml"
+helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-local --set platform.baseDomain=compartment.localhost --set platform.publicProtocol=http --set platform.tlsMode=custom-http --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/local-full.yaml"
 helm template compartment "${CHART_DIR}" -f "${CHART_DIR}/values-kind.yaml" >"${OUTPUT_DIR}/kind.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-install --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.publicIngressIpv4=8.8.8.8 --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token --set edge.snapshots.enabled=true >"${OUTPUT_DIR}/edge.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-managed --set platform.domainMode=managed --set platform.baseDomain=managed.compartment.run --set platform.publicProtocol=https --set platform.tlsMode=managed --set platform.publicIngressIpv4=8.8.4.4 --set platform.acmeEmail=admin@example.com --set secrets.managedDomainBrokerToken=broker-token --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/managed.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-custom --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.tlsMode=custom-cert --set platform.publicIngressIpv4=8.8.8.8 --set platform.acmeEmail=admin@example.com --set customTls.existingSecret=operator-tls --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/custom-cert.yaml"
+helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-pending --set platform.domainMode=managed --set platform.baseDomain=managed.compartment.run --set platform.publicProtocol=https --set platform.tlsMode=managed --set platform.publicIngressIpv4=8.8.4.4 --set platform.acmeEmail=admin@example.com --set secrets.managedDomainBrokerToken=broker-token --set customTls.pendingSecretName=operator-tls --set-string customTls.pendingCertificate=test-certificate --set-string customTls.pendingPrivateKey=test-private-key --set customTls.pendingOperationId=domop_123 --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/pending-custom-cert.yaml"
+helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-managed --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.tlsMode=custom-cert --set platform.publicIngressIpv4=8.8.4.4 --set platform.acmeEmail=admin@example.com --set secrets.managedDomainBrokerToken=broker-token --set customTls.existingSecret=active-operator-tls --set customTls.operatorSecretName=active-operator-tls --set-string customTls.operatorCertificate=active-certificate --set-string customTls.operatorPrivateKey=active-private-key --set customTls.pendingSecretName=pending-operator-tls --set-string customTls.pendingCertificate=pending-certificate --set-string customTls.pendingPrivateKey=pending-private-key --set customTls.pendingOperationId=domop_456 --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/rotating-custom-cert.yaml"
+helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-managed --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.tlsMode=custom-cert --set platform.publicIngressIpv4=8.8.4.4 --set platform.acmeEmail=admin@example.com --set secrets.managedDomainBrokerToken=broker-token --set customTls.existingSecret=active-operator-tls --set customTls.operatorSecretName=active-operator-tls --set-string customTls.operatorCertificate=active-certificate --set-string customTls.operatorPrivateKey=active-private-key --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/rotation-active-custom-cert.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-inline-custom --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.tlsMode=custom-cert --set platform.publicIngressIpv4=8.8.8.8 --set platform.acmeEmail=admin@example.com --set-string customTls.certificate=test-certificate --set-string customTls.privateKey=test-private-key --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/custom-cert-inline.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-inline-custom --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.tlsMode=custom-cert --set platform.publicIngressIpv4=8.8.8.8 --set platform.acmeEmail=admin@example.com --set-string customTls.certificate=rotated-certificate --set-string customTls.privateKey=test-private-key --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >"${OUTPUT_DIR}/custom-cert-inline-rotated.yaml"
 helm template compartment "${CHART_DIR}" --set fullnameOverride=renamed-compartment >"${OUTPUT_DIR}/renamed-foundation.yaml"
@@ -119,6 +132,9 @@ awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-api
 awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-caddy/ { print }' "${OUTPUT_DIR}/managed.yaml" >"${OUTPUT_DIR}/caddy-deployment.yaml"
 grep -q 'helm.sh/resource-policy: keep' "${OUTPUT_DIR}/install-state-secret.yaml"
 grep -q 'managed-domain-broker-token: "broker-token"' "${OUTPUT_DIR}/install-state-secret.yaml"
+grep -q 'managed-base-domain: "managed.compartment.run"' "${OUTPUT_DIR}/install-state-secret.yaml"
+grep -q 'startup-stage: "full"' "${OUTPUT_DIR}/install-state-secret.yaml"
+grep -q 'domain-generation: "0"' "${OUTPUT_DIR}/install-state-secret.yaml"
 if grep -q 'managed-domain-broker-token' "${OUTPUT_DIR}/platform-secret.yaml"; then
   echo 'Managed-domain broker token must be owned only by the retained install-state Secret.' >&2
   exit 1
@@ -136,14 +152,67 @@ if sed -n '/^kind: ConfigMap$/,/^---$/p' "${OUTPUT_DIR}/managed.yaml" | grep -q 
   exit 1
 fi
 test "$(grep -c 'secretName: operator-tls' "${OUTPUT_DIR}/custom-cert.yaml")" -eq 2
+awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-api/ { print }' "${OUTPUT_DIR}/pending-custom-cert.yaml" >"${OUTPUT_DIR}/pending-custom-cert-api.yaml"
+awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-caddy/ { print }' "${OUTPUT_DIR}/pending-custom-cert.yaml" >"${OUTPUT_DIR}/pending-custom-cert-caddy.yaml"
+grep -q 'secretName: operator-tls' "${OUTPUT_DIR}/pending-custom-cert-api.yaml"
+grep -q 'mountPath: "/etc/compartment/tls/domop_123"' "${OUTPUT_DIR}/pending-custom-cert-api.yaml"
+grep -q '{key: tls.crt, path: fullchain.pem}' "${OUTPUT_DIR}/pending-custom-cert-api.yaml"
+grep -q '{key: tls.key, path: privkey.pem}' "${OUTPUT_DIR}/pending-custom-cert-api.yaml"
+if grep -q 'secretName: operator-tls' "${OUTPUT_DIR}/pending-custom-cert-caddy.yaml"; then
+  echo 'Pending certificate material must be mounted only by the API deployment.' >&2
+  exit 1
+fi
+awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-api/ { print }' "${OUTPUT_DIR}/rotating-custom-cert.yaml" >"${OUTPUT_DIR}/rotating-custom-cert-api.yaml"
+awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-caddy/ { print }' "${OUTPUT_DIR}/rotating-custom-cert.yaml" >"${OUTPUT_DIR}/rotating-custom-cert-caddy.yaml"
+awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-api/ { print }' "${OUTPUT_DIR}/rotation-active-custom-cert.yaml" >"${OUTPUT_DIR}/rotation-active-custom-cert-api.yaml"
+awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-caddy/ { print }' "${OUTPUT_DIR}/rotation-active-custom-cert.yaml" >"${OUTPUT_DIR}/rotation-active-custom-cert-caddy.yaml"
+grep -q 'secretName: active-operator-tls' "${OUTPUT_DIR}/rotating-custom-cert-api.yaml"
+grep -q 'secretName: pending-operator-tls' "${OUTPUT_DIR}/rotating-custom-cert-api.yaml"
+grep -q 'secretName: active-operator-tls' "${OUTPUT_DIR}/rotating-custom-cert-caddy.yaml"
+if grep -q 'secretName: pending-operator-tls' "${OUTPUT_DIR}/rotating-custom-cert-caddy.yaml"; then
+  echo 'Caddy must keep the active certificate while a replacement is pending.' >&2
+  exit 1
+fi
+test "$(grep -m1 'checksum/custom-tls:' "${OUTPUT_DIR}/rotation-active-custom-cert-caddy.yaml")" = "$(grep -m1 'checksum/custom-tls:' "${OUTPUT_DIR}/rotating-custom-cert-caddy.yaml")"
+test "$(grep -m1 'checksum/pending-tls:' "${OUTPUT_DIR}/rotation-active-custom-cert-api.yaml")" != "$(grep -m1 'checksum/pending-tls:' "${OUTPUT_DIR}/rotating-custom-cert-api.yaml")"
+grep -q 'compartment.dev/pending-domain-operation: "domop_123"' "${OUTPUT_DIR}/pending-custom-cert-api.yaml"
+for workload in caddy edge worker project-provisioner; do
+  awk -v workload="compartment-compartment-${workload}" 'BEGIN { RS="---" } /kind: Deployment/ && $0 ~ "name: " workload "($|\\n)" { print }' "${OUTPUT_DIR}/pending-custom-cert.yaml" >"${OUTPUT_DIR}/pending-${workload}.yaml"
+  if grep -q 'compartment.dev/pending-domain-operation' "${OUTPUT_DIR}/pending-${workload}.yaml"; then
+    echo "Pending domain rollout must not restart ${workload}." >&2
+    exit 1
+  fi
+done
+for workload in caddy edge worker project-provisioner; do
+  awk -v workload="compartment-compartment-${workload}" 'BEGIN { RS="---" } /kind: Deployment/ && $0 ~ "name: " workload "($|\\n)" { print }' "${OUTPUT_DIR}/rotation-active-custom-cert.yaml" >"${OUTPUT_DIR}/active-${workload}.yaml"
+  awk -v workload="compartment-compartment-${workload}" 'BEGIN { RS="---" } /kind: Deployment/ && $0 ~ "name: " workload "($|\\n)" { print }' "${OUTPUT_DIR}/rotating-custom-cert.yaml" >"${OUTPUT_DIR}/rotating-${workload}.yaml"
+  diff \
+    <(grep -E "${ROLLOUT_ANNOTATION_PATTERN}" "${OUTPUT_DIR}/active-${workload}.yaml") \
+    <(grep -E "${ROLLOUT_ANNOTATION_PATTERN}" "${OUTPUT_DIR}/rotating-${workload}.yaml")
+done
+for workload in api caddy edge worker project-provisioner; do
+  awk -v workload="compartment-compartment-${workload}" 'BEGIN { RS="---" } /kind: Deployment/ && $0 ~ "name: " workload "($|\\n)" { print }' "${OUTPUT_DIR}/managed.yaml" >"${OUTPUT_DIR}/managed-${workload}.yaml"
+  awk -v workload="compartment-compartment-${workload}" 'BEGIN { RS="---" } /kind: Deployment/ && $0 ~ "name: " workload "($|\\n)" { print }' "${OUTPUT_DIR}/rotation-active-custom-cert.yaml" >"${OUTPUT_DIR}/active-${workload}.yaml"
+  if [[ "${workload}" == 'worker' || "${workload}" == 'project-provisioner' ]]; then
+    diff \
+      <(grep -E "${ROLLOUT_ANNOTATION_PATTERN}" "${OUTPUT_DIR}/managed-${workload}.yaml") \
+      <(grep -E "${ROLLOUT_ANNOTATION_PATTERN}" "${OUTPUT_DIR}/active-${workload}.yaml")
+  elif diff -q \
+    <(grep -E "${ROLLOUT_ANNOTATION_PATTERN}" "${OUTPUT_DIR}/managed-${workload}.yaml") \
+    <(grep -E "${ROLLOUT_ANNOTATION_PATTERN}" "${OUTPUT_DIR}/active-${workload}.yaml") >/dev/null; then
+    echo "An active domain change must roll ${workload}." >&2
+    exit 1
+  fi
+done
 awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-api/ { print }' "${OUTPUT_DIR}/custom-cert.yaml" >"${OUTPUT_DIR}/custom-cert-api.yaml"
 awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-caddy/ { print }' "${OUTPUT_DIR}/custom-cert.yaml" >"${OUTPUT_DIR}/custom-cert-caddy.yaml"
 for workload in custom-cert-api custom-cert-caddy; do
   grep -q 'secretName: operator-tls' "${OUTPUT_DIR}/${workload}.yaml"
-  grep -q '{name: tls, mountPath: /etc/compartment/tls, readOnly: true}' "${OUTPUT_DIR}/${workload}.yaml"
   grep -q '{key: tls.crt, path: fullchain.pem}' "${OUTPUT_DIR}/${workload}.yaml"
   grep -q '{key: tls.key, path: privkey.pem}' "${OUTPUT_DIR}/${workload}.yaml"
 done
+grep -q '{name: active-tls, mountPath: /etc/compartment/tls, readOnly: true}' "${OUTPUT_DIR}/custom-cert-api.yaml"
+grep -q '{name: tls, mountPath: /etc/compartment/tls, readOnly: true}' "${OUTPUT_DIR}/custom-cert-caddy.yaml"
 grep -q '{key: tls.crt, path: fullchain.pem}' "${OUTPUT_DIR}/custom-cert.yaml"
 grep -q '{key: tls.key, path: privkey.pem}' "${OUTPUT_DIR}/custom-cert.yaml"
 grep -q 'COMPARTMENT_CUSTOM_TLS_CERT_FILE: /etc/compartment/tls/fullchain.pem' "${OUTPUT_DIR}/custom-cert.yaml"

@@ -3,8 +3,12 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   installResponseSchema,
+  issuePasswordResetResponseSchema,
+  systemDomainStatusResponseSchema,
   whoamiCommandResponseSchema,
   type InstallResponse,
+  type IssuePasswordResetResponse,
+  type SystemDomainStatusResponse,
   type WhoAmICommandResponse,
 } from '@compartment/contracts';
 import { readSocketSafeTempRootDirectory } from '@compartment/test-support';
@@ -95,6 +99,22 @@ describe.sequential('production Kubernetes install', (): void => {
       const freshIdentity: WhoAmICommandResponse = await freshCli.runJson('whoami', whoamiCommandResponseSchema);
       expect(freshIdentity.principal.email).toBe(ownerEmail);
       expect(freshIdentity.currentOrganization?.slug).toBe(platformOrganizationSlug);
+
+      const domainStatus: SystemDomainStatusResponse = await installerCli.runJson(
+        `system domain status --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,
+        systemDomainStatusResponseSchema,
+      );
+      expect(domainStatus.active.baseDomain).toBe(platformBaseDomain);
+
+      const reset: IssuePasswordResetResponse = await installerCli.runJson(
+        `system issue-password-reset --email ${ownerEmail} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,
+        issuePasswordResetResponseSchema,
+      );
+      expect(reset.email).toBe(ownerEmail);
+      expect(reset.resetToken).not.toBe('');
+
+      await expectRetainedDomainGenerationProtection();
+      await expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade();
     },
     installTimeoutMs,
   );
@@ -135,6 +155,226 @@ async function expectCleanControllerStartup(): Promise<void> {
       await expectCleanPodStartup(podName, workload);
     }
   }
+}
+
+async function expectRetainedDomainGenerationProtection(): Promise<void> {
+  const generationResult: SelfHostedUserSetupCommandResult = await runKubectl([
+    'get',
+    'secret/compartment-install-state',
+    '--output=jsonpath={.data.domain-generation}',
+  ]);
+  const baseDomainResult: SelfHostedUserSetupCommandResult = await runKubectl([
+    'get',
+    'secret/compartment-install-state',
+    '--output=jsonpath={.data.base-domain}',
+  ]);
+  expectSuccessfulCommand(generationResult, 'read the retained domain generation');
+  expectSuccessfulCommand(baseDomainResult, 'read the retained base domain');
+  const generation: number = Number(Buffer.from(generationResult.stdout, 'base64').toString('utf8'));
+  const baseDomain: string = Buffer.from(baseDomainResult.stdout, 'base64').toString('utf8');
+  const pendingDomain: string = 'pending-restore3.localhost';
+  try {
+    await expectSuccessfulHelmDomainUpgrade(generation + 1, pendingDomain, false);
+    const retainedAfterRuntimeApply: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      'secret/compartment-install-state',
+      '--output=jsonpath={.data.base-domain}',
+    ]);
+    expectSuccessfulCommand(retainedAfterRuntimeApply, 'read retained domain after runtime apply');
+    expect(Buffer.from(retainedAfterRuntimeApply.stdout, 'base64').toString('utf8')).toBe(baseDomain);
+
+    await expectSuccessfulHelmDomainUpgrade(generation, 'stale-restore3.localhost', true);
+    const renderedDomain: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      'configmap/compartment-compartment',
+      '--output=jsonpath={.data.COMPARTMENT_BASE_DOMAIN}',
+    ]);
+    expectSuccessfulCommand(renderedDomain, 'read runtime domain after stale apply');
+    expect(renderedDomain.stdout).toBe(baseDomain);
+  } finally {
+    await expectSuccessfulHelmDomainUpgrade(generation, baseDomain, true);
+  }
+}
+
+async function expectSuccessfulHelmDomainUpgrade(
+  generation: number,
+  baseDomain: string,
+  domainCommit: boolean,
+): Promise<void> {
+  const result: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'helm',
+      'upgrade',
+      'compartment',
+      'deploy/chart/compartment',
+      '--namespace',
+      platformNamespace,
+      '--kube-context',
+      platformKubeContext,
+      '--reuse-values',
+      '--values',
+      platformValuesPath,
+      '--set',
+      `platform.baseDomain=${baseDomain}`,
+      '--set',
+      `platform.domainGeneration=${generation.toString()}`,
+      '--set',
+      `platform.domainCommit=${domainCommit.toString()}`,
+      '--wait',
+      '--timeout',
+      '10m',
+    ],
+    timeoutMs: installTimeoutMs,
+  });
+  expectSuccessfulCommand(result, `apply Helm domain generation ${generation.toString()}`);
+}
+
+async function expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade(): Promise<void> {
+  const secretName: string = 'restore3-retained-tls';
+  const tlsDirectory: string = await mkdtemp(join(tempRootDirectory, 'retained-tls-'));
+  createdDirectories.push(tlsDirectory);
+  const certificatePath: string = join(tlsDirectory, 'tls.crt');
+  const privateKeyPath: string = join(tlsDirectory, 'tls.key');
+  const generateCertificate: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'openssl',
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-keyout',
+      privateKeyPath,
+      '-out',
+      certificatePath,
+      '-days',
+      '1',
+      '-subj',
+      '/CN=compartment.localhost',
+      '-addext',
+      'subjectAltName=DNS:compartment.localhost,DNS:*.compartment.localhost',
+    ],
+    timeoutMs: kubernetesCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(generateCertificate, 'generate retained operator TLS fixture');
+  const createSecret: SelfHostedUserSetupCommandResult = await runKubectl([
+    'create',
+    'secret',
+    'tls',
+    secretName,
+    `--cert=${certificatePath}`,
+    `--key=${privateKeyPath}`,
+  ]);
+  expectSuccessfulCommand(createSecret, 'create retained operator TLS fixture');
+  const labelSecret: SelfHostedUserSetupCommandResult = await runKubectl([
+    'label',
+    'secret',
+    secretName,
+    'app.kubernetes.io/managed-by=Helm',
+  ]);
+  expectSuccessfulCommand(labelSecret, 'label retained operator TLS fixture');
+  const annotateSecret: SelfHostedUserSetupCommandResult = await runKubectl([
+    'annotate',
+    'secret',
+    secretName,
+    'meta.helm.sh/release-name=compartment',
+    `meta.helm.sh/release-namespace=${platformNamespace}`,
+  ]);
+  expectSuccessfulCommand(annotateSecret, 'annotate retained operator TLS fixture');
+  try {
+    const retainIdentity: SelfHostedUserSetupCommandResult = await runKubectl([
+      'patch',
+      'secret/compartment-install-state',
+      '--type=merge',
+      '--patch',
+      JSON.stringify({
+        stringData: {
+          'active-custom-tls-secret': secretName,
+          'operator-custom-tls-secret': secretName,
+          'public-protocol': 'https',
+          'tls-mode': 'custom-cert',
+        },
+      }),
+    ]);
+    expectSuccessfulCommand(retainIdentity, 'retain operator TLS identity');
+
+    await expectSuccessfulOrdinaryHelmUpgrade('apply retained operator TLS state');
+    const apiTlsSecret: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      'deployment/compartment-compartment-api',
+      '--output=jsonpath={.spec.template.spec.volumes[?(@.name=="active-tls")].secret.secretName}',
+    ]);
+    expectSuccessfulCommand(apiTlsSecret, 'read retained API TLS mount after an ordinary upgrade');
+    expect(apiTlsSecret.stdout).toBe(secretName);
+    const caddyTlsSecret: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      'deployment/compartment-compartment-caddy',
+      '--output=jsonpath={.spec.template.spec.volumes[?(@.name=="tls")].secret.secretName}',
+    ]);
+    expectSuccessfulCommand(caddyTlsSecret, 'read retained Caddy TLS mount after an ordinary upgrade');
+    expect(caddyTlsSecret.stdout).toBe(secretName);
+  } finally {
+    const clearIdentity: SelfHostedUserSetupCommandResult = await runKubectl([
+      'patch',
+      'secret/compartment-install-state',
+      '--type=merge',
+      '--patch',
+      JSON.stringify({
+        stringData: {
+          'active-custom-tls-secret': '',
+          'operator-custom-tls-secret': '',
+          'public-protocol': 'http',
+          'tls-mode': 'custom-http',
+        },
+      }),
+    ]);
+    expectSuccessfulCommand(clearIdentity, 'clear retained operator TLS fixture identity');
+    await expectSuccessfulOrdinaryHelmUpgrade('remove retained operator TLS fixture');
+    const removedSecret: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      `secret/${secretName}`,
+      '--ignore-not-found',
+      '--output=name',
+    ]);
+    expectSuccessfulCommand(removedSecret, 'verify removal of the retained operator TLS Secret');
+    expect(removedSecret.stdout).toBe('');
+    const removedApiMount: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      'deployment/compartment-compartment-api',
+      '--output=jsonpath={.spec.template.spec.volumes[?(@.name=="active-tls")].secret.secretName}',
+    ]);
+    expectSuccessfulCommand(removedApiMount, 'verify removal of the API TLS mount');
+    expect(removedApiMount.stdout).toBe('');
+    const removedCaddyMount: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      'deployment/compartment-compartment-caddy',
+      '--output=jsonpath={.spec.template.spec.volumes[?(@.name=="tls")].secret.secretName}',
+    ]);
+    expectSuccessfulCommand(removedCaddyMount, 'verify removal of the Caddy TLS mount');
+    expect(removedCaddyMount.stdout).toBe('');
+  }
+}
+
+async function expectSuccessfulOrdinaryHelmUpgrade(description: string): Promise<void> {
+  const upgrade: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'helm',
+      'upgrade',
+      'compartment',
+      'deploy/chart/compartment',
+      '--namespace',
+      platformNamespace,
+      '--kube-context',
+      platformKubeContext,
+      '--values',
+      platformValuesPath,
+      '--wait',
+      '--timeout',
+      '10m',
+    ],
+    timeoutMs: installTimeoutMs,
+  });
+  expectSuccessfulCommand(upgrade, description);
 }
 
 async function expectCleanPodStartup(podName: string, workload: StartupWorkload): Promise<void> {

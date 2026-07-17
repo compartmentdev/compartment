@@ -17,6 +17,9 @@ import type {
   KubernetesPublicIngress,
 } from './kubernetes-install.service.types';
 
+const initialDomainGeneration: number = 0;
+const resolvedDomainGeneration: number = 1;
+
 export async function resolveKubernetesInstallState(
   input: KubernetesInstallDeploymentInput,
   foundationInstall: ExistingKubernetesInstall,
@@ -36,6 +39,7 @@ export function buildInitialInstallValues(
   const platformValues: KubernetesInstallPlatformValues = {
     acmeEmail: input.acmeEmail,
     baseDomain: input.baseDomain ?? '',
+    domainGeneration: initialDomainGeneration,
     domainMode: input.domainMode,
     installationId,
     managedDomainBrokerUrl: input.brokerUrl ?? '',
@@ -52,6 +56,7 @@ export function buildResolvedInstallValues(
     {
       acmeEmail: state.acmeEmail,
       baseDomain: state.baseDomain,
+      domainGeneration: resolvedDomainGeneration,
       domainMode: state.domainMode,
       installationId: state.installationId,
       managedDomainBrokerUrl: state.brokerUrl,
@@ -73,6 +78,7 @@ export function buildResumableFoundationValues(
     {
       acmeEmail: state.acmeEmail,
       baseDomain: state.baseDomain,
+      domainGeneration: initialDomainGeneration,
       domainMode: state.domainMode,
       installationId: state.installationId,
       managedDomainBrokerUrl: state.brokerUrl,

@@ -1,4 +1,9 @@
-import { execFile, type ExecFileException, type ExecFileOptionsWithStringEncoding } from 'node:child_process';
+import {
+  execFile,
+  type ChildProcess,
+  type ExecFileException,
+  type ExecFileOptionsWithStringEncoding,
+} from 'node:child_process';
 import { promisify } from 'node:util';
 import { isMissingFileSystemEntryError } from '@compartment/utils';
 import type { CommandResult } from './command-runner.types';
@@ -29,6 +34,29 @@ export async function runCommand(command: readonly string[], env?: NodeJS.Proces
   } catch (error) {
     return readFailedCommandResult(error as ExecFileException);
   }
+}
+
+export async function runCommandWithInput(command: readonly string[], input: string): Promise<CommandResult> {
+  const [file, ...args] = command;
+  if (file === undefined) {
+    throw new Error('Expected a command to execute.');
+  }
+
+  return await new Promise<CommandResult>((resolveResult: (result: CommandResult) => void): void => {
+    const child: ChildProcess = execFile(
+      file,
+      args,
+      { encoding: 'utf8' },
+      (error: ExecFileException | null, stdout: string, stderr: string): void => {
+        if (error === null) {
+          resolveResult({ exitCode: 0, stderr, stdout });
+          return;
+        }
+        resolveResult(readFailedCommandResult(Object.assign(error, { stderr, stdout })));
+      },
+    );
+    child.stdin?.end(input);
+  });
 }
 
 function readFailedCommandResult(error: ExecFileException): CommandResult {

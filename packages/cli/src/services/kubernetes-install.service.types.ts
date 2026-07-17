@@ -48,6 +48,15 @@ export interface KubernetesInstallState {
   tlsMode: KubernetesInstallTlsMode;
 }
 
+export interface RetainedManagedDomainState {
+  acmeEmail: string;
+  baseDomain: string;
+  brokerUrl: string;
+  brokerToken: string;
+  publicProtocol: 'https';
+  tlsMode: 'managed';
+}
+
 export interface KubernetesInstallSecretValues {
   platform: KubernetesInstallPlatformValues;
   secrets: KubernetesInstallSecretValueFields;
@@ -56,6 +65,7 @@ export interface KubernetesInstallSecretValues {
 export interface KubernetesInstallPlatformValues {
   acmeEmail: string;
   baseDomain: string;
+  domainGeneration: number;
   domainMode: KubernetesInstallDomainMode;
   installationId: string;
   managedDomainBrokerUrl: string;

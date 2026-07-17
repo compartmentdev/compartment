@@ -1,3 +1,4 @@
+{{- include "compartment.applyRetainedInstallState" . -}}
 {{- if eq .Values.platform.startupStage "full" }}
 apiVersion: v1
 kind: Service
@@ -30,7 +31,7 @@ spec:
       labels:
         {{- include "compartment.componentLabels" (dict "root" . "component" "edge") | nindent 8 }}
       annotations:
-        {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
+        {{- include "compartment.domainRolloutAnnotations" . | nindent 8 }}
     spec:
       {{- include "compartment.waiterPodSpec" . | nindent 6 }}
       securityContext:

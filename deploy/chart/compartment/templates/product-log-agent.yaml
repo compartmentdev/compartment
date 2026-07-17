@@ -1,3 +1,4 @@
+{{- include "compartment.applyRetainedInstallState" . -}}
 {{- if and (eq .Values.platform.startupStage "full") .Values.productLogs.enabled }}
 {{- $name := printf "%s-log-agent" (include "compartment.fullname" .) -}}
 {{- $namespace := default (printf "%s-observability" (include "compartment.fullname" .)) .Values.productLogs.namespace -}}

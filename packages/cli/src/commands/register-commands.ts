@@ -27,6 +27,7 @@ import { registerStatusCommand } from './status/status.command';
 import { registerSkillCommands } from './skills/register-skill.commands';
 import { registerSsoCommands } from './sso/register-sso.commands';
 import { registerSourceCommands } from './sources/register-source.commands';
+import { registerSystemCommands } from './system/register-system.commands';
 import { registerUserCommands } from './users/register-user.commands';
 import { registerVariableCommands } from './variables/register-variable.commands';
 import type { CliCommandDependencies } from './command.types';
@@ -36,6 +37,7 @@ export function registerCliCommands(program: Command, dependencies: CliCommandDe
   registerCoreProjectCommands(program, dependencies);
   registerProjectSupportCommands(program, dependencies);
   registerOrganizationContextCommands(program, dependencies);
+  registerSystemCommands(program, dependencies);
 }
 
 function registerAuthenticationCommands(program: Command, dependencies: CliCommandDependencies): void {

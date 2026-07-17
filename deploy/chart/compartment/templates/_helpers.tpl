@@ -30,21 +30,46 @@
 {{- define "compartment.applyRetainedInstallState" -}}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace (include "compartment.installStateSecretName" .) -}}
 {{- if and $existing $existing.data -}}
-{{- $platformFields := list
+{{- $retainedStartupStage := dig "startup-stage" "" $existing.data | b64dec -}}
+{{- if eq $retainedStartupStage "full" -}}
+{{- $_ := set .Values.platform "startupStage" "full" -}}
+{{- end -}}
+{{- $stablePlatformFields := list
   (dict "secretKey" "installation-id" "valueKey" "installationId")
-  (dict "secretKey" "domain-mode" "valueKey" "domainMode")
-  (dict "secretKey" "base-domain" "valueKey" "baseDomain")
   (dict "secretKey" "public-ingress-ipv4" "valueKey" "publicIngressIpv4")
   (dict "secretKey" "public-ingress-ipv6" "valueKey" "publicIngressIpv6")
   (dict "secretKey" "acme-email" "valueKey" "acmeEmail")
   (dict "secretKey" "managed-domain-broker-url" "valueKey" "managedDomainBrokerUrl")
-  (dict "secretKey" "public-protocol" "valueKey" "publicProtocol")
-  (dict "secretKey" "tls-mode" "valueKey" "tlsMode")
 -}}
-{{- range $field := $platformFields -}}
+{{- range $field := $stablePlatformFields -}}
 {{- $encodedValue := get $existing.data $field.secretKey -}}
 {{- if not (empty $encodedValue) -}}
 {{- $_ := set $.Values.platform $field.valueKey ($encodedValue | b64dec) -}}
+{{- end -}}
+{{- end -}}
+{{- $retainedGeneration := int (default "0" (dig "domain-generation" "" $existing.data | b64dec)) -}}
+{{- $useRetainedDomain := le (int .Values.platform.domainGeneration) $retainedGeneration -}}
+{{- if and (not (get . "compartmentSharedChecksum")) (le (int .Values.platform.domainGeneration) $retainedGeneration) -}}
+{{- $domainFields := list
+  (dict "secretKey" "domain-mode" "valueKey" "domainMode")
+  (dict "secretKey" "base-domain" "valueKey" "baseDomain")
+  (dict "secretKey" "public-protocol" "valueKey" "publicProtocol")
+  (dict "secretKey" "tls-mode" "valueKey" "tlsMode")
+-}}
+{{- range $field := $domainFields -}}
+{{- $encodedValue := get $existing.data $field.secretKey -}}
+{{- if not (empty $encodedValue) -}}
+{{- $_ := set $.Values.platform $field.valueKey ($encodedValue | b64dec) -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set .Values.platform "domainGeneration" $retainedGeneration -}}
+{{- end -}}
+{{- if and (not (get . "compartmentSharedChecksum")) $useRetainedDomain -}}
+{{- if hasKey $existing.data "active-custom-tls-secret" -}}
+{{- $_ := set .Values.customTls "existingSecret" (get $existing.data "active-custom-tls-secret" | b64dec) -}}
+{{- end -}}
+{{- if hasKey $existing.data "operator-custom-tls-secret" -}}
+{{- $_ := set .Values.customTls "operatorSecretName" (get $existing.data "operator-custom-tls-secret" | b64dec) -}}
 {{- end -}}
 {{- end -}}
 {{- $encodedBrokerToken := get $existing.data "managed-domain-broker-token" -}}
@@ -123,6 +148,24 @@
 {{- fail "customTls.privateKey or customTls.existingSecret is required for custom-cert TLS" -}}
 {{- end -}}
 {{- end -}}
+{{- if not (empty .Values.customTls.operatorSecretName) -}}
+{{- $operatorSecret := lookup "v1" "Secret" .Release.Namespace .Values.customTls.operatorSecretName -}}
+{{- $operatorCertificate := dig "data" "tls.crt" "" $operatorSecret -}}
+{{- $operatorPrivateKey := dig "data" "tls.key" "" $operatorSecret -}}
+{{- if and (empty .Values.customTls.operatorCertificate) (empty $operatorCertificate) -}}
+{{- fail "customTls.operatorCertificate or an existing operator Secret is required with customTls.operatorSecretName" -}}
+{{- end -}}
+{{- if and (empty .Values.customTls.operatorPrivateKey) (empty $operatorPrivateKey) -}}
+{{- fail "customTls.operatorPrivateKey or an existing operator Secret is required with customTls.operatorSecretName" -}}
+{{- end -}}
+{{- end -}}
+{{- if not (empty .Values.customTls.pendingSecretName) -}}
+{{- $_ := required "customTls.pendingCertificate is required with customTls.pendingSecretName" .Values.customTls.pendingCertificate -}}
+{{- $_ = required "customTls.pendingPrivateKey is required with customTls.pendingSecretName" .Values.customTls.pendingPrivateKey -}}
+{{- end -}}
+{{- if and (not (empty .Values.customTls.pendingOperationId)) (empty .Values.customTls.pendingSecretName) -}}
+{{- fail "customTls.pendingSecretName is required for a pending domain operation" -}}
+{{- end -}}
 {{- end -}}
 {{- end }}
 
@@ -167,11 +210,39 @@ runAsNonRoot: true
 {{- end }}
 
 {{- define "compartment.rolloutAnnotations" -}}
-checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+{{- $sharedContext := deepCopy . -}}
+{{- $_ := set $sharedContext "compartmentSharedChecksum" true -}}
+{{- $sharedValues := get $sharedContext "Values" -}}
+{{- $sharedPlatform := get $sharedValues "platform" -}}
+{{- $_ := set $sharedPlatform "baseDomain" "rollout.localhost" -}}
+{{- $_ = set $sharedPlatform "domainGeneration" 0 -}}
+{{- $_ = set $sharedPlatform "domainMode" "custom" -}}
+{{- $_ = set $sharedPlatform "publicProtocol" "https" -}}
+{{- $_ = set $sharedPlatform "tlsMode" "custom-http" -}}
+{{- $_ = set $sharedValues "customTls" (dict "certificate" "" "existingSecret" "" "operatorCertificate" "" "operatorPrivateKey" "" "operatorSecretName" "" "pendingCertificate" "" "pendingOperationId" "" "pendingPrivateKey" "" "pendingSecretName" "" "privateKey" "") -}}
+checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $sharedContext | sha256sum }}
 checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
-checksum/install-state: {{ include (print $.Template.BasePath "/install-state-secret.yaml") . | sha256sum }}
-checksum/custom-tls: {{ include (print $.Template.BasePath "/custom-tls-secret.yaml") . | sha256sum }}
 compartment.dev/rollout-marker: {{ .Values.platform.rolloutMarker | quote }}
+{{- end }}
+
+{{- define "compartment.domainRolloutAnnotations" -}}
+{{- include "compartment.rolloutAnnotations" . }}
+{{ $activeTlsContext := deepCopy . -}}
+{{- $activeTlsValues := get (get $activeTlsContext "Values") "customTls" -}}
+{{- $_ := set $activeTlsValues "pendingCertificate" "" -}}
+{{- $_ = set $activeTlsValues "pendingOperationId" "" -}}
+{{- $_ = set $activeTlsValues "pendingPrivateKey" "" -}}
+{{- $_ = set $activeTlsValues "pendingSecretName" "" -}}
+checksum/domain-config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+checksum/install-state: {{ include (print $.Template.BasePath "/install-state-secret.yaml") . | sha256sum }}
+checksum/custom-tls: {{ include (print $.Template.BasePath "/custom-tls-secret.yaml") $activeTlsContext | sha256sum }}
+compartment.dev/domain-generation: {{ .Values.platform.domainGeneration | quote }}
+{{- end }}
+
+{{- define "compartment.apiDomainRolloutAnnotations" -}}
+{{- include "compartment.domainRolloutAnnotations" . }}
+checksum/pending-tls: {{ include (print $.Template.BasePath "/custom-tls-secret.yaml") . | sha256sum }}
+compartment.dev/pending-domain-operation: {{ .Values.customTls.pendingOperationId | quote }}
 {{- end }}
 
 {{- define "compartment.waiterPodSpec" -}}

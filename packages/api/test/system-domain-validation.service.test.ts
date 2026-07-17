@@ -42,7 +42,7 @@ describe('system domain validation service', (): void => {
     expect(hostPlan.publicScheme).toBe('https');
   });
 
-  it('keeps legacy runtime HTTP host plans readable for migration', (): void => {
+  it('keeps runtime HTTP host plans readable', (): void => {
     const localHostPlan: DomainHostPlan = normalizeAndValidateRuntimeDomainHostPlan({
       baseDomain: '127.0.0.1.sslip.io',
       caddyMode: 'internal',
@@ -57,9 +57,17 @@ describe('system domain validation service', (): void => {
       publicScheme: 'http',
       tlsMode: 'external',
     });
+    const localCustomHttpHostPlan: DomainHostPlan = normalizeAndValidateRuntimeDomainHostPlan({
+      baseDomain: 'console.compartment.localhost',
+      caddyMode: 'custom-http',
+      domainKind: 'local',
+      publicScheme: 'http',
+      tlsMode: 'external',
+    });
 
     expect(localHostPlan.publicScheme).toBe('http');
     expect(customHttpHostPlan.publicScheme).toBe('http');
+    expect(localCustomHttpHostPlan.publicScheme).toBe('http');
   });
 
   it('rejects unsupported domain and TLS combinations', (): void => {

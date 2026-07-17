@@ -37,7 +37,7 @@ function assertSupportedRuntimeDomainMatrix(hostPlan: DomainHostPlan): void {
   }
 
   if (
-    hostPlan.domainKind === 'custom' &&
+    (hostPlan.domainKind === 'custom' || hostPlan.domainKind === 'local') &&
     hostPlan.tlsMode === 'external' &&
     hostPlan.publicScheme === 'http' &&
     hostPlan.caddyMode === 'custom-http'
