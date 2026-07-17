@@ -17,6 +17,7 @@ import {
   managedInstallApiUrl,
   managedInstallBaseDomain,
   managedInstallBrokerUrl,
+  managedInstallCertificateAuthorityPath,
   managedInstallKubeContext,
   managedInstallNamespace,
   managedInstallPublicIpv4,
@@ -111,5 +112,11 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
 async function createFreshCli(): Promise<SelfHostedUserSetupCli> {
   const homeDirectory: string = await mkdtemp(join(tempRootDirectory, 'client-'));
   createdDirectories.push(homeDirectory);
-  return new SelfHostedUserSetupCli(buildSelfHostedUserSetupClientEnv(homeDirectory), installTimeoutMs);
+  return new SelfHostedUserSetupCli(
+    {
+      ...buildSelfHostedUserSetupClientEnv(homeDirectory),
+      NODE_EXTRA_CA_CERTS: managedInstallCertificateAuthorityPath,
+    },
+    installTimeoutMs,
+  );
 }

@@ -123,23 +123,17 @@ jobs:
       - name: Prepare clean k3d cluster from cached images
         run: node ./scripts/deploy/platform-k3d-e2e.mjs up --image-source archive --image-archive-dir ./.compartment/self-hosted-image-cache
 
-      - name: Trust local ACME root
-        run: |
-          sudo install --mode 0644 ./.compartment/pebble.minica.pem /usr/local/share/ca-certificates/compartment-pebble.crt
-          sudo update-ca-certificates
-
       - name: Verify production managed-domain install
         env:
           COMPARTMENT_DEPLOY_E2E_INCLUDE: test/platform-k3d-managed-install.e2e.test.ts
-          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/.compartment/pebble.minica.pem
-          NODE_USE_SYSTEM_CA: '1'
           NO_PROXY: console.managed.compartment.test,managed-domain-broker,127.0.0.1,localhost
         run: |
           probe_managed_https() {
             for _ in $(seq 1 600); do
-              if kubectl --namespace compartment-managed-e2e get service managed-e2e-compartment-caddy >/dev/null 2>&1 \
+              if test -f ./.compartment/pebble.root.pem \
+                && kubectl --namespace compartment-managed-e2e get service managed-e2e-compartment-caddy >/dev/null 2>&1 \
                 && curl --silent --show-error --fail --output /dev/null --max-time 5 \
-                  --cacert ./.compartment/pebble.minica.pem \
+                  --cacert ./.compartment/pebble.root.pem \
                   --resolve console.managed.compartment.test:18443:127.0.0.1 \
                   https://console.managed.compartment.test:18443/; then
                 echo 'Managed HTTPS probe passed.'

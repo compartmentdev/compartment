@@ -1,5 +1,7 @@
-import { type X509Certificate } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { X509Certificate } from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
+import type { ClientRequest, IncomingMessage } from 'node:http';
+import { get } from 'node:https';
 import { resolve } from 'node:path';
 import { connect, type TLSSocket } from 'node:tls';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -14,10 +16,12 @@ const fixtureDirectory: string = resolve(repositoryRoot, 'deploy/e2e/managed-ins
 const managedBuildNamespace: string = 'compartment-managed-e2e-build';
 const kubernetesTimeoutMs: number = 6 * 60_000;
 const brokerStateTimeoutMs: number = 60_000;
+const managedAcmeManagementPort: number = 19_500;
 
 export const managedInstallApiUrl: string = 'https://console.managed.compartment.test:18443';
 export const managedInstallBaseDomain: string = 'managed.compartment.test';
 export const managedInstallBrokerUrl: string = 'http://managed-domain-broker:19000';
+export const managedInstallCertificateAuthorityPath: string = resolve(repositoryRoot, '.compartment/pebble.root.pem');
 export const managedInstallKubeContext: string = 'k3d-compartment-e2e';
 export const managedInstallNamespace: string = 'compartment-managed-e2e';
 export const managedInstallPublicIpv4: string = ['8', '8', '4', '4'].join('.');
@@ -71,6 +75,7 @@ export async function prepareManagedInstallFixture(): Promise<void> {
     ],
     'wait for managed install fixtures',
   );
+  await writeManagedInstallCertificateAuthority();
 }
 
 export async function cleanupManagedInstallFixture(): Promise<void> {
@@ -100,7 +105,7 @@ export async function cleanupManagedInstallFixture(): Promise<void> {
 }
 
 export async function readManagedInstallCertificateSubjectAltName(): Promise<string> {
-  const ca: Buffer = await readFile(resolve(repositoryRoot, '.compartment/pebble.minica.pem'));
+  const ca: Buffer = await readFile(managedInstallCertificateAuthorityPath);
   return await new Promise<string>(
     (resolveSubjectAltName: (subjectAltName: string) => void, rejectSubjectAltName: (error: Error) => void): void => {
       const socket: TLSSocket = connect(
@@ -129,6 +134,43 @@ export async function readManagedInstallCertificateSubjectAltName(): Promise<str
       socket.once('error', rejectSubjectAltName);
     },
   );
+}
+
+async function writeManagedInstallCertificateAuthority(): Promise<void> {
+  const managementCa: Buffer = await readFile(resolve(repositoryRoot, '.compartment/pebble.minica.pem'));
+  const rootCertificate: Buffer = await new Promise<Buffer>(
+    (resolveCertificate: (certificate: Buffer) => void, rejectCertificate: (error: Error) => void): void => {
+      const request: ClientRequest = get(
+        {
+          ca: managementCa,
+          host: '127.0.0.1',
+          path: '/roots/0',
+          port: managedAcmeManagementPort,
+          rejectUnauthorized: true,
+          servername: 'localhost',
+        },
+        (response: IncomingMessage): void => {
+          const chunks: Buffer[] = [];
+          response.on('data', (chunk: Buffer): void => {
+            chunks.push(chunk);
+          });
+          response.once('end', (): void => {
+            if (response.statusCode !== 200) {
+              rejectCertificate(new Error(`Pebble root endpoint returned HTTP ${response.statusCode ?? 'unknown'}.`));
+              return;
+            }
+            resolveCertificate(Buffer.concat(chunks));
+          });
+        },
+      );
+      request.once('error', rejectCertificate);
+    },
+  );
+  const certificate: X509Certificate = new X509Certificate(rootCertificate);
+  if (certificate.ca !== true || certificate.checkIssued(certificate) !== true) {
+    throw new Error('Pebble root endpoint did not return a self-issued CA certificate.');
+  }
+  await writeFile(managedInstallCertificateAuthorityPath, rootCertificate, { mode: 0o600 });
 }
 
 export async function waitForManagedDomainBrokerObservation(): Promise<ManagedDomainBrokerObservation> {

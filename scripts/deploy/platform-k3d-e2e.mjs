@@ -18,6 +18,7 @@ const httpsPort = 18_443;
 const registryName = 'compartment-e2e-registry';
 const registryHostPort = 15_500;
 const managedBrokerPort = 19_000;
+const managedAcmeManagementPort = 19_500;
 const registryClusterHost = `k3d-${registryName}:${registryHostPort}`;
 const registryPushHost = `localhost:${registryHostPort}`;
 const bundledRegistryPort = 5000;
@@ -30,6 +31,7 @@ const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const platformValuesPath = join(repositoryRoot, '.compartment', 'platform-k3d-e2e-values.yaml');
 const managedPlatformValuesPath = join(repositoryRoot, '.compartment', 'platform-k3d-managed-e2e-values.yaml');
 const pebbleCaPath = join(repositoryRoot, '.compartment', 'pebble.minica.pem');
+const pebbleRootPath = join(repositoryRoot, '.compartment', 'pebble.root.pem');
 const platformOwnerEnvironmentPath = join(repositoryRoot, '.compartment', 'platform-k3d-e2e-owner.env');
 const kubernetesReadinessTimeoutSeconds = 240;
 const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
@@ -202,6 +204,8 @@ async function createCluster() {
       `127.0.0.1:${httpsPort}:30443@server:0`,
       '--port',
       `127.0.0.1:${managedBrokerPort}:30900@server:0`,
+      '--port',
+      `127.0.0.1:${managedAcmeManagementPort}:31500@server:0`,
       '--registry-use',
       registryClusterHost,
       '--wait',
@@ -319,6 +323,7 @@ function downPlatform() {
   rmSync(platformValuesPath, { force: true });
   rmSync(managedPlatformValuesPath, { force: true });
   rmSync(pebbleCaPath, { force: true });
+  rmSync(pebbleRootPath, { force: true });
   rmSync(platformOwnerEnvironmentPath, { force: true });
   process.stdout.write(`Removed ${clusterName}.\n`);
 }

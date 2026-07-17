@@ -102,6 +102,7 @@ spec:
             - { name: PEBBLE_VA_NOSLEEP, value: '1' }
           ports:
             - { name: acme, containerPort: 14000 }
+            - { name: management, containerPort: 15000 }
           readinessProbe:
             httpGet: { path: /dir, port: acme, scheme: HTTPS }
             periodSeconds: 2
@@ -112,10 +113,12 @@ kind: Service
 metadata:
   name: pebble
 spec:
+  type: NodePort
   selector:
     app: pebble
   ports:
     - { name: acme, port: 14000, targetPort: acme }
+    - { name: management, port: 15000, targetPort: management, nodePort: 31500 }
 ---
 apiVersion: apps/v1
 kind: Deployment
