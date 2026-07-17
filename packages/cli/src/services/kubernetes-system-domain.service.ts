@@ -18,11 +18,11 @@ import {
   type SystemDomainVersionedRequest,
 } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
+import { readRetainedManagedKubernetesDomainState } from './kubernetes-install-retained-state.service';
 import {
   applyKubernetesDomainRelease,
   applyRuntimeKubernetesDomainRelease,
   commitActiveKubernetesDomainRelease,
-  readRetainedManagedDomainState,
   stageKubernetesDomainCertificate,
 } from './kubernetes-system-domain-release.service';
 import type {
@@ -64,10 +64,10 @@ export async function attachKubernetesSystemDomainCertificate(
   const pending: SystemDomainPendingOperation = requirePendingCustomCertificate(status);
   const staged: StagedKubernetesDomainCertificate = await stageKubernetesDomainCertificate(input, pending.operationId);
   await applyKubernetesDomainRelease(input, {
-    operatorCertificate: staged.certificate,
-    operatorPrivateKey: staged.privateKey,
-    operatorTlsSecretName: staged.secretName,
+    pendingCertificate: staged.certificate,
     pendingOperationId: pending.operationId,
+    pendingPrivateKey: staged.privateKey,
+    pendingTlsSecretName: staged.secretName,
   });
   const body: SystemDomainAttachCertificateRequest = { expectedSetupVersion: expectedVersion };
   return await postDomainMutation(
@@ -136,7 +136,7 @@ export async function resetManagedKubernetesSystemDomain(
 ): Promise<SystemDomainMutationResponse> {
   const status: SystemDomainStatusResponse = await readSystemDomainStatus(input);
   const expectedVersion: number = resolveExpectedVersion(input.expectedSetupVersion, status.setupVersion);
-  const managed: RetainedManagedDomainState = await readRetainedManagedDomainState(input);
+  const managed: RetainedManagedDomainState = await readRetainedManagedKubernetesDomainState(input);
   const hostPlan: DomainHostPlan = {
     baseDomain: managed.baseDomain,
     caddyMode: 'managed',
@@ -144,7 +144,7 @@ export async function resetManagedKubernetesSystemDomain(
     publicScheme: managed.publicProtocol,
     tlsMode: 'broker-dns01',
   };
-  await applyRuntimeKubernetesDomainRelease(input, hostPlan, expectedVersion);
+  await applyRuntimeKubernetesDomainRelease(input, hostPlan, expectedVersion + 1);
   const reset: SystemDomainMutationResponse = await postDomainMutation(
     input,
     compartmentSystemDomainResetManagedPathname,

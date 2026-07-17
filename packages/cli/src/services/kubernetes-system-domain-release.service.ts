@@ -18,8 +18,7 @@ import type {
   KubernetesOperatorTarget,
   StagedKubernetesDomainCertificate,
 } from './kubernetes-operator.service.types';
-import { readRetainedManagedKubernetesDomainState } from './kubernetes-install-retained-state.service';
-import type { RetainedManagedDomainState } from './kubernetes-install.service.types';
+import { readPendingKubernetesDomainTlsSecretName } from './kubernetes-system-domain-release-values.service';
 
 const helmDomainTimeout: string = '10m';
 
@@ -46,7 +45,7 @@ export async function applyRuntimeKubernetesDomainRelease(
 ): Promise<void> {
   const customTlsSecretName: string | undefined = resolveActiveTlsSecretName(target.releaseName, hostPlan, operationId);
   await applyKubernetesDomainRelease(target, {
-    ...buildOperatorTlsReleaseUpdate(hostPlan, customTlsSecretName),
+    ...buildRuntimeTlsReleaseUpdate(hostPlan, customTlsSecretName),
     domainCommit: false,
     domainGeneration,
     hostPlan,
@@ -60,9 +59,9 @@ export async function commitActiveKubernetesDomainRelease(
   domainGeneration: number,
   operationId?: string,
 ): Promise<void> {
-  const customTlsSecretName: string | undefined = resolveActiveTlsSecretName(target.releaseName, hostPlan, operationId);
+  const customTlsSecretName: string | undefined = await resolveCommitTlsSecretName(target, hostPlan, operationId);
   await applyKubernetesDomainRelease(target, {
-    ...buildOperatorTlsReleaseUpdate(hostPlan, customTlsSecretName),
+    ...buildCommittedTlsReleaseUpdate(hostPlan, customTlsSecretName),
     domainCommit: true,
     domainGeneration,
     hostPlan,
@@ -70,17 +69,64 @@ export async function commitActiveKubernetesDomainRelease(
   });
 }
 
-function buildOperatorTlsReleaseUpdate(
+function buildRuntimeTlsReleaseUpdate(
   hostPlan: DomainHostPlan,
   customTlsSecretName: string | undefined,
 ): KubernetesDomainReleaseUpdate {
   if (hostPlan.tlsMode !== 'custom-cert') {
-    return { customTlsSecretName: '', operatorCertificate: '', operatorPrivateKey: '', operatorTlsSecretName: '' };
+    return clearedOperatorTlsReleaseUpdate();
   }
   if (customTlsSecretName === undefined) {
     return {};
   }
-  return { customTlsSecretName, operatorTlsSecretName: customTlsSecretName };
+  return { customTlsSecretName };
+}
+
+function buildCommittedTlsReleaseUpdate(
+  hostPlan: DomainHostPlan,
+  customTlsSecretName: string | undefined,
+): KubernetesDomainReleaseUpdate {
+  if (hostPlan.tlsMode !== 'custom-cert') {
+    return clearedOperatorTlsReleaseUpdate();
+  }
+  if (customTlsSecretName === undefined) {
+    return { pendingCertificate: '', pendingOperationId: '', pendingPrivateKey: '', pendingTlsSecretName: '' };
+  }
+  return {
+    customTlsSecretName,
+    operatorCertificate: '',
+    operatorPrivateKey: '',
+    operatorTlsSecretName: customTlsSecretName,
+    pendingCertificate: '',
+    pendingOperationId: '',
+    pendingPrivateKey: '',
+    pendingTlsSecretName: '',
+  };
+}
+
+function clearedOperatorTlsReleaseUpdate(): KubernetesDomainReleaseUpdate {
+  return {
+    customTlsSecretName: '',
+    operatorCertificate: '',
+    operatorPrivateKey: '',
+    operatorTlsSecretName: '',
+    pendingCertificate: '',
+    pendingOperationId: '',
+    pendingPrivateKey: '',
+    pendingTlsSecretName: '',
+  };
+}
+
+async function resolveCommitTlsSecretName(
+  target: KubernetesOperatorTarget,
+  hostPlan: DomainHostPlan,
+  operationId: string | undefined,
+): Promise<string | undefined> {
+  const operationSecretName: string | undefined = resolveActiveTlsSecretName(target.releaseName, hostPlan, operationId);
+  if (operationSecretName !== undefined || hostPlan.tlsMode !== 'custom-cert') {
+    return operationSecretName;
+  }
+  return await readPendingKubernetesDomainTlsSecretName(target);
 }
 
 function resolveActiveTlsSecretName(
@@ -105,12 +151,6 @@ export async function applyKubernetesDomainRelease(
   } finally {
     await rm(materializedDirectory, { force: true, recursive: true });
   }
-}
-
-export async function readRetainedManagedDomainState(
-  target: KubernetesOperatorTarget,
-): Promise<RetainedManagedDomainState> {
-  return await readRetainedManagedKubernetesDomainState(target);
 }
 
 async function applyMaterializedDomainRelease(
@@ -142,7 +182,10 @@ function buildDomainHelmValues(values: KubernetesDomainReleaseUpdate): Kubernete
       ...(values.operatorCertificate === undefined ? {} : { operatorCertificate: values.operatorCertificate }),
       ...(values.operatorPrivateKey === undefined ? {} : { operatorPrivateKey: values.operatorPrivateKey }),
       ...(values.operatorTlsSecretName === undefined ? {} : { operatorSecretName: values.operatorTlsSecretName }),
+      ...(values.pendingCertificate === undefined ? {} : { pendingCertificate: values.pendingCertificate }),
       ...(values.pendingOperationId === undefined ? {} : { pendingOperationId: values.pendingOperationId }),
+      ...(values.pendingPrivateKey === undefined ? {} : { pendingPrivateKey: values.pendingPrivateKey }),
+      ...(values.pendingTlsSecretName === undefined ? {} : { pendingSecretName: values.pendingTlsSecretName }),
     },
   };
 }

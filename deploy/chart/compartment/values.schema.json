@@ -59,7 +59,10 @@
         "privateKey",
         "operatorSecretName",
         "operatorCertificate",
-        "operatorPrivateKey"
+        "operatorPrivateKey",
+        "pendingSecretName",
+        "pendingCertificate",
+        "pendingPrivateKey"
       ],
       "properties": {
         "existingSecret": { "type": "string" },
@@ -68,7 +71,10 @@
         "privateKey": { "type": "string" },
         "operatorSecretName": { "type": "string", "pattern": "^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$|^$" },
         "operatorCertificate": { "type": "string" },
-        "operatorPrivateKey": { "type": "string" }
+        "operatorPrivateKey": { "type": "string" },
+        "pendingSecretName": { "type": "string", "pattern": "^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$|^$" },
+        "pendingCertificate": { "type": "string" },
+        "pendingPrivateKey": { "type": "string" }
       }
     },
     "service": {

@@ -54,7 +54,10 @@ export interface KubernetesDomainReleaseUpdate {
   operatorCertificate?: string | undefined;
   operatorPrivateKey?: string | undefined;
   operatorTlsSecretName?: string | undefined;
+  pendingCertificate?: string | undefined;
   pendingOperationId?: string | undefined;
+  pendingPrivateKey?: string | undefined;
+  pendingTlsSecretName?: string | undefined;
 }
 
 export interface KubernetesDomainHelmValues {
@@ -67,7 +70,10 @@ export interface KubernetesDomainHelmTlsValues {
   operatorCertificate?: string | undefined;
   operatorPrivateKey?: string | undefined;
   operatorSecretName?: string | undefined;
+  pendingCertificate?: string | undefined;
   pendingOperationId?: string | undefined;
+  pendingPrivateKey?: string | undefined;
+  pendingSecretName?: string | undefined;
 }
 
 export interface KubernetesDomainHelmPlatformValues {

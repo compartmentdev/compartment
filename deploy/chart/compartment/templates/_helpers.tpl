@@ -136,11 +136,22 @@
 {{- end -}}
 {{- end -}}
 {{- if not (empty .Values.customTls.operatorSecretName) -}}
-{{- $_ := required "customTls.operatorCertificate is required with customTls.operatorSecretName" .Values.customTls.operatorCertificate -}}
-{{- $_ = required "customTls.operatorPrivateKey is required with customTls.operatorSecretName" .Values.customTls.operatorPrivateKey -}}
+{{- $operatorSecret := lookup "v1" "Secret" .Release.Namespace .Values.customTls.operatorSecretName -}}
+{{- $operatorCertificate := dig "data" "tls.crt" "" $operatorSecret -}}
+{{- $operatorPrivateKey := dig "data" "tls.key" "" $operatorSecret -}}
+{{- if and (empty .Values.customTls.operatorCertificate) (empty $operatorCertificate) -}}
+{{- fail "customTls.operatorCertificate or an existing operator Secret is required with customTls.operatorSecretName" -}}
 {{- end -}}
-{{- if and (not (empty .Values.customTls.pendingOperationId)) (empty .Values.customTls.operatorSecretName) -}}
-{{- fail "customTls.operatorSecretName is required for a pending domain operation" -}}
+{{- if and (empty .Values.customTls.operatorPrivateKey) (empty $operatorPrivateKey) -}}
+{{- fail "customTls.operatorPrivateKey or an existing operator Secret is required with customTls.operatorSecretName" -}}
+{{- end -}}
+{{- end -}}
+{{- if not (empty .Values.customTls.pendingSecretName) -}}
+{{- $_ := required "customTls.pendingCertificate is required with customTls.pendingSecretName" .Values.customTls.pendingCertificate -}}
+{{- $_ = required "customTls.pendingPrivateKey is required with customTls.pendingSecretName" .Values.customTls.pendingPrivateKey -}}
+{{- end -}}
+{{- if and (not (empty .Values.customTls.pendingOperationId)) (empty .Values.customTls.pendingSecretName) -}}
+{{- fail "customTls.pendingSecretName is required for a pending domain operation" -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
@@ -194,7 +205,7 @@ runAsNonRoot: true
 {{- $_ = set $sharedPlatform "domainMode" "custom" -}}
 {{- $_ = set $sharedPlatform "publicProtocol" "https" -}}
 {{- $_ = set $sharedPlatform "tlsMode" "custom-http" -}}
-{{- $_ = set $sharedValues "customTls" (dict "certificate" "" "existingSecret" "" "operatorCertificate" "" "operatorPrivateKey" "" "operatorSecretName" "" "pendingOperationId" "" "privateKey" "") -}}
+{{- $_ = set $sharedValues "customTls" (dict "certificate" "" "existingSecret" "" "operatorCertificate" "" "operatorPrivateKey" "" "operatorSecretName" "" "pendingCertificate" "" "pendingOperationId" "" "pendingPrivateKey" "" "pendingSecretName" "" "privateKey" "") -}}
 checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $sharedContext | sha256sum }}
 checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
 compartment.dev/rollout-marker: {{ .Values.platform.rolloutMarker | quote }}

@@ -150,6 +150,9 @@ customTls:
   operatorSecretName: ''
   operatorCertificate: ''
   operatorPrivateKey: ''
+  pendingSecretName: ''
+  pendingCertificate: ''
+  pendingPrivateKey: ''
 
 podSecurityContext:
   seccompProfile:

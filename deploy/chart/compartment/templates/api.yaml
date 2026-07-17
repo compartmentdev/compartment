@@ -127,7 +127,7 @@ spec:
         {{- if not (empty .Values.customTls.pendingOperationId) }}
         - name: pending-tls
           secret:
-            secretName: {{ .Values.customTls.operatorSecretName }}
+            secretName: {{ .Values.customTls.pendingSecretName }}
             defaultMode: 0440
             items:
               - {key: tls.crt, path: fullchain.pem}
