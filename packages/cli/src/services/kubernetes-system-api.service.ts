@@ -1,0 +1,113 @@
+import { errorResponseSchema, type ErrorResponse } from '@compartment/contracts';
+import type { JsonValue } from '@compartment/utils';
+import { runCommand, runCommandWithInput } from '../command-runner';
+import type { CommandResult } from '../command-runner.types';
+import type {
+  KubernetesOperatorTarget,
+  KubernetesResourceList,
+  KubernetesResourceListItem,
+  KubernetesSystemApiRequest,
+  KubernetesSystemApiResponseEnvelope,
+} from './kubernetes-operator.service.types';
+
+const systemApiNodeProgram: string = `const http=require('node:http');let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{const r=JSON.parse(input);const body=r.body===undefined?undefined:JSON.stringify(r.body);const headers={Accept:'application/json',Authorization:'Bearer '+process.env.COMPARTMENT_SYSTEM_TOKEN,...(body===undefined?{}:{'Content-Length':Buffer.byteLength(body),'Content-Type':'application/json'}),...(r.idempotencyKey===undefined?{}:{'Idempotency-Key':r.idempotencyKey})};const q=http.request({headers,method:r.method,path:r.path,socketPath:process.env.COMPARTMENT_SYSTEM_API_SOCKET},res=>{const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>process.stdout.write(JSON.stringify({body:Buffer.concat(chunks).toString('utf8'),statusCode:res.statusCode})));});q.on('error',e=>{process.stderr.write(e.message);process.exitCode=1;});if(body!==undefined)q.write(body);q.end();});`;
+
+export async function requestKubernetesSystemApi<TResponse>(
+  target: KubernetesOperatorTarget,
+  request: KubernetesSystemApiRequest,
+  parse: (value: JsonValue | null) => TResponse,
+): Promise<TResponse> {
+  const deploymentName: string = await readApiDeploymentName(target);
+  const result: CommandResult = await runCommandWithInput(
+    buildKubectlCommand(target, ['exec', `deployment/${deploymentName}`, '--', 'node', '-e', systemApiNodeProgram]),
+    JSON.stringify(request),
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(`Private system API request failed: ${readCommandFailure(result)}`);
+  }
+  const envelope: KubernetesSystemApiResponseEnvelope = parseResponseEnvelope(result.stdout);
+  const value: JsonValue | null = envelope.body === '' ? null : parseJson(envelope.body, 'system API response');
+  if (envelope.statusCode >= 400) {
+    throw new Error(readSystemApiError(value));
+  }
+  return parse(value);
+}
+
+async function readApiDeploymentName(target: KubernetesOperatorTarget): Promise<string> {
+  const result: CommandResult = await runCommand(
+    buildKubectlCommand(target, [
+      'get',
+      'deployments',
+      '--selector',
+      `app.kubernetes.io/instance=${target.releaseName},app.kubernetes.io/component=api`,
+      '--output',
+      'json',
+    ]),
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(`Failed to find the API deployment: ${readCommandFailure(result)}`);
+  }
+  const list: KubernetesResourceList = parseResourceList(result.stdout);
+  const name: string | undefined = list.items[0]?.metadata?.name;
+  if (list.items.length !== 1 || name === undefined || name === '') {
+    throw new Error('Expected exactly one API deployment for the Helm release.');
+  }
+  return name;
+}
+
+function buildKubectlCommand(target: KubernetesOperatorTarget, args: readonly string[]): string[] {
+  return [
+    'kubectl',
+    ...(target.kubeContext === undefined ? [] : ['--context', target.kubeContext]),
+    '--namespace',
+    target.namespace,
+    ...args,
+  ];
+}
+
+function parseResponseEnvelope(output: string): KubernetesSystemApiResponseEnvelope {
+  const value: JsonValue = parseJson(output, 'kubectl exec response');
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Array.isArray(value) ||
+    typeof value.body !== 'string' ||
+    typeof value.statusCode !== 'number'
+  ) {
+    throw new Error('kubectl exec returned an invalid private system API response.');
+  }
+  return { body: value.body, statusCode: value.statusCode };
+}
+
+function parseResourceList(output: string): KubernetesResourceList {
+  const value: JsonValue = parseJson(output, 'API deployment lookup');
+  if (typeof value !== 'object' || value === null || Array.isArray(value) || !Array.isArray(value.items)) {
+    throw new Error('kubectl returned an invalid API deployment list.');
+  }
+  return { items: value.items.filter(isResourceListItem) };
+}
+
+function isResourceListItem(value: JsonValue): value is KubernetesResourceListItem & JsonValue {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readSystemApiError(value: JsonValue | null): string {
+  try {
+    const result: ErrorResponse = errorResponseSchema.parse(value);
+    return result.error.message;
+  } catch {
+    return 'Private system API request failed.';
+  }
+}
+
+function parseJson(output: string, operation: string): JsonValue {
+  try {
+    return JSON.parse(output) as JsonValue;
+  } catch {
+    throw new Error(`Invalid JSON returned by ${operation}.`);
+  }
+}
+
+function readCommandFailure(result: CommandResult): string {
+  return [result.stderr.trim(), result.stdout.trim()].filter((value: string): boolean => value !== '').join('\n');
+}

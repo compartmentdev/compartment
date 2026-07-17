@@ -66,6 +66,8 @@ storage:
 
 platform:
   startupStage: foundation
+  domainGeneration: 0
+  domainCommit: true
   installationId: ''
   domainMode: custom
   baseDomain: localhost
@@ -142,8 +144,12 @@ secrets:
 
 customTls:
   existingSecret: ''
+  pendingOperationId: ''
   certificate: ''
   privateKey: ''
+  operatorSecretName: ''
+  operatorCertificate: ''
+  operatorPrivateKey: ''
 
 podSecurityContext:
   seccompProfile:

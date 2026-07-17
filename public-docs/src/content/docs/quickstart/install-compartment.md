@@ -140,6 +140,72 @@ kubectl --namespace compartment get jobs,pods,services
 
 The chart does not publish `/internal/*`; only the documented control-plane and application paths pass through Caddy.
 
+## Change the system domain
+
+Use `compartment system domain` with the Helm release coordinates. Start by checking the active and pending state:
+
+```bash
+compartment system domain status \
+  --namespace compartment \
+  --release-name compartment
+```
+
+Stage a custom domain after you point `console.<baseDomain>` and `*.<baseDomain>` at the public load balancer:
+
+```bash
+compartment system domain set \
+  --base-domain apps.example.com \
+  --tls external \
+  --namespace compartment \
+  --release-name compartment
+
+compartment system domain verify \
+  --namespace compartment \
+  --release-name compartment
+```
+
+Use `--tls custom-cert` when Caddy terminates TLS. Attach the certificate before verification:
+
+```bash
+compartment system domain attach-cert \
+  --cert-file fullchain.pem \
+  --key-file privkey.pem \
+  --values compartment-values.yaml \
+  --namespace compartment \
+  --release-name compartment
+```
+
+The chart stores the certificate and key in an operation-specific Kubernetes TLS Secret; it never places them in a
+ConfigMap. Helm also retains those supplied values in its Kubernetes release revision Secrets. Activate the verified
+domain with the same operator values and matching chart:
+
+```bash
+compartment system domain activate \
+  --values compartment-values.yaml \
+  --namespace compartment \
+  --release-name compartment
+```
+
+Activation rolls API, Edge, and Caddy, waits for them, records the activation, and only then commits the retained
+domain generation. Worker and project-provisioner pods keep running. If the command stops, rerun it. The generation
+check prevents older domain values from replacing the retained active state.
+
+An installation that started with a managed domain retains that allocation when you activate a custom domain. Restore
+it with:
+
+```bash
+compartment system domain reset-managed \
+  --values compartment-values.yaml \
+  --namespace compartment \
+  --release-name compartment
+```
+
+Pass `--chart ./deploy/chart/compartment` to domain commands that change Kubernetes resources when you use a CLI built
+from source. `--kube-context`, `--namespace`, and `--release-name` select another release. The system commands use the
+operator's Kubernetes access and do not publish a recovery endpoint through Caddy. Status and password recovery need
+permission to get the API Deployment, list its Pods, and create the `pods/exec` subresource. Domain mutations also
+need the normal Helm upgrade permissions for the chart's resources.
+
 ## Repository development
 
 `install --dev` seeds the local development API started from this repository and creates the first admin session:

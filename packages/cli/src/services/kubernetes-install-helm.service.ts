@@ -4,11 +4,7 @@ import { resolve } from 'node:path';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { readSeaAssetBuffer } from '../sea';
-import type {
-  KubernetesInstallDeploymentInput,
-  KubernetesInstallSecretValues,
-  KubernetesInstallStage,
-} from './kubernetes-install.service.types';
+import type { KubernetesInstallDeploymentInput, KubernetesInstallStage } from './kubernetes-install.service.types';
 
 const bundledKubernetesChartAssetName: string = 'compartment-chart.tgz';
 const helmInstallTimeout: string = '15m';
@@ -17,12 +13,12 @@ export async function createKubernetesInstallMaterializedDirectory(): Promise<st
   return await mkdtemp(resolve(tmpdir(), 'compartment-install-'));
 }
 
-export async function writeKubernetesInstallValues(path: string, values: KubernetesInstallSecretValues): Promise<void> {
+export async function writeKubernetesInstallValues(path: string, values: object): Promise<void> {
   await writeFile(path, JSON.stringify(values), { mode: 0o600 });
 }
 
 export async function resolveKubernetesChartPath(
-  input: KubernetesInstallDeploymentInput,
+  input: Pick<KubernetesInstallDeploymentInput, 'chartPath'>,
   materializedDirectory: string,
 ): Promise<string> {
   if (input.chartPath !== undefined) {

@@ -6,6 +6,8 @@
       "type": "object",
       "required": [
         "startupStage",
+        "domainGeneration",
+        "domainCommit",
         "installationId",
         "domainMode",
         "baseDomain",
@@ -20,6 +22,8 @@
       ],
       "properties": {
         "startupStage": { "type": "string", "enum": ["foundation", "full"] },
+        "domainGeneration": { "type": "integer", "minimum": 0 },
+        "domainCommit": { "type": "boolean" },
         "installationId": { "type": "string" },
         "domainMode": { "type": "string", "enum": ["custom", "managed"] },
         "baseDomain": { "type": "string" },
@@ -48,11 +52,23 @@
     },
     "customTls": {
       "type": "object",
-      "required": ["existingSecret", "certificate", "privateKey"],
+      "required": [
+        "existingSecret",
+        "pendingOperationId",
+        "certificate",
+        "privateKey",
+        "operatorSecretName",
+        "operatorCertificate",
+        "operatorPrivateKey"
+      ],
       "properties": {
         "existingSecret": { "type": "string" },
+        "pendingOperationId": { "type": "string", "pattern": "^[a-zA-Z0-9_-]*$" },
         "certificate": { "type": "string" },
-        "privateKey": { "type": "string" }
+        "privateKey": { "type": "string" },
+        "operatorSecretName": { "type": "string", "pattern": "^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$|^$" },
+        "operatorCertificate": { "type": "string" },
+        "operatorPrivateKey": { "type": "string" }
       }
     },
     "service": {

@@ -9,6 +9,7 @@ import type {
   KubernetesSecretList,
   KubernetesSecretListItem,
   RetainedKubernetesInstallState,
+  RetainedManagedDomainState,
   ExistingKubernetesInstall,
 } from './kubernetes-install.service.types';
 
@@ -25,6 +26,31 @@ export async function readRetainedKubernetesInstallState(
     throw new Error(`Failed to inspect retained Kubernetes install state: ${readCommandFailure(result)}`);
   }
   return parseRetainedStateSecretList(result.stdout);
+}
+
+export async function readRetainedManagedKubernetesDomainState(
+  input: Pick<KubernetesInstallDeploymentInput, 'kubeContext' | 'namespace' | 'releaseName'>,
+): Promise<RetainedManagedDomainState> {
+  const result: CommandResult = await runCommand(buildRetainedStateSecretCommand(input));
+  if (result.exitCode !== 0) {
+    throw new Error(`Failed to inspect retained Kubernetes install state: ${readCommandFailure(result)}`);
+  }
+  const data: Record<string, string> | null = parseRetainedStateSecretData(result.stdout);
+  if (data === null) {
+    throw new Error('Expected exactly one retained install-state Secret for the Helm release.');
+  }
+  const state: RetainedManagedDomainState = {
+    acmeEmail: readSecretText(data, 'acme-email'),
+    baseDomain: readSecretText(data, 'managed-base-domain').toLowerCase(),
+    brokerToken: readSecretText(data, 'managed-domain-broker-token'),
+    brokerUrl: readSecretText(data, 'managed-domain-broker-url'),
+    publicProtocol: 'https',
+    tlsMode: 'managed',
+  };
+  if (state.baseDomain === '' || state.brokerUrl === '' || state.brokerToken === '' || state.acmeEmail === '') {
+    throw new Error('This installation has no retained managed domain to restore.');
+  }
+  return state;
 }
 
 export function mergeRetainedKubernetesInstallState(
@@ -59,7 +85,9 @@ function isMissingNamespaceFailure(result: CommandResult, namespace: string): bo
   return failure.includes('(NotFound)') && failure.includes(`namespaces "${namespace}" not found`);
 }
 
-function buildRetainedStateSecretCommand(input: KubernetesInstallDeploymentInput): string[] {
+function buildRetainedStateSecretCommand(
+  input: Pick<KubernetesInstallDeploymentInput, 'kubeContext' | 'namespace' | 'releaseName'>,
+): string[] {
   const command: string[] = ['kubectl'];
   if (input.kubeContext !== undefined) {
     command.push('--context', input.kubeContext);
@@ -78,6 +106,11 @@ function buildRetainedStateSecretCommand(input: KubernetesInstallDeploymentInput
 }
 
 function parseRetainedStateSecretList(output: string): RetainedKubernetesInstallState | null {
+  const data: Record<string, string> | null = parseRetainedStateSecretData(output);
+  return data === null ? null : parseRetainedStateSecret(data);
+}
+
+function parseRetainedStateSecretData(output: string): Record<string, string> | null {
   const value: JsonValue = parseJson(output);
   if (!isSecretList(value)) {
     throw new Error('kubectl returned an invalid retained install-state Secret response.');
@@ -89,7 +122,7 @@ function parseRetainedStateSecretList(output: string): RetainedKubernetesInstall
   if (value.items.length !== 1 || secret?.data === undefined) {
     throw new Error('Expected exactly one retained install-state Secret for the Helm release.');
   }
-  return parseRetainedStateSecret(secret.data);
+  return secret.data;
 }
 
 function parseRetainedStateSecret(data: Record<string, string>): RetainedKubernetesInstallState {

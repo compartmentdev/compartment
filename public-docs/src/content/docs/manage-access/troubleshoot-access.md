@@ -63,6 +63,26 @@ Restore access with:
 compartment user unblock alex@example.com
 ```
 
+## A Local-Password User Is Locked Out
+
+A Kubernetes operator can issue a reset for an eligible existing single-organization local-password account without
+a signed-in Compartment session. This includes recovery when the owner password is lost:
+
+```bash
+compartment system issue-password-reset \
+  --email owner@example.com \
+  --namespace compartment \
+  --release-name compartment
+```
+
+The command prints a reset URL, the one-time token, and its expiry. Treat the output as a secret. Complete the reset
+before the expiry; using the token consumes it. Issuing another reset replaces the previous token. Compartment records
+`organization.user.password_reset_issued` in the audit log.
+
+This command requires permission to get the API Deployment, list its Pods, and create the `pods/exec` subresource in
+the release namespace. It uses the private operator channel inside that pod; Caddy does not expose the recovery
+endpoint. Use `--kube-context` when the release is not in your current context.
+
 ## Automation Accounts Do Not Appear on the Browser Users Page
 
 Compartment can create system-managed automation accounts after you connect a Git source.

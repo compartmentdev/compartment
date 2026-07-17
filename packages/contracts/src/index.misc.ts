@@ -61,6 +61,7 @@ export {
   type SystemDomainCertificate,
   type SystemDomainHealthStatus,
   type SystemDomainMutationResponse,
+  type SystemDomainPendingOperation,
   type SystemDomainPendingStatus,
   type SystemDomainSetRequest,
   type SystemDomainStatusResponse,

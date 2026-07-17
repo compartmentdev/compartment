@@ -33,7 +33,7 @@ spec:
       labels:
         {{- include "compartment.componentLabels" (dict "root" . "component" "api") | nindent 8 }}
       annotations:
-        {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
+        {{- include "compartment.apiDomainRolloutAnnotations" . | nindent 8 }}
     spec:
       {{- include "compartment.waiterPodSpec" . | nindent 6 }}
       securityContext:
@@ -103,7 +103,10 @@ spec:
             - {name: data, mountPath: /var/lib/compartment}
             - {name: runtime, mountPath: /var/run/compartment}
             {{- if eq .Values.platform.tlsMode "custom-cert" }}
-            - {name: tls, mountPath: /etc/compartment/tls, readOnly: true}
+            - {name: active-tls, mountPath: /etc/compartment/tls, readOnly: true}
+            {{- end }}
+            {{- if not (empty .Values.customTls.pendingOperationId) }}
+            - {name: pending-tls, mountPath: {{ printf "/etc/compartment/tls/%s" .Values.customTls.pendingOperationId | quote }}, readOnly: true}
             {{- end }}
             - {name: tmp, mountPath: /tmp}
       volumes:
@@ -113,9 +116,18 @@ spec:
             claimName: {{ include "compartment.fullname" . }}-api
         - {name: runtime, emptyDir: {}}
         {{- if eq .Values.platform.tlsMode "custom-cert" }}
-        - name: tls
+        - name: active-tls
           secret:
             secretName: {{ include "compartment.customTlsSecretName" . }}
+            defaultMode: 0440
+            items:
+              - {key: tls.crt, path: fullchain.pem}
+              - {key: tls.key, path: privkey.pem}
+        {{- end }}
+        {{- if not (empty .Values.customTls.pendingOperationId) }}
+        - name: pending-tls
+          secret:
+            secretName: {{ .Values.customTls.operatorSecretName }}
             defaultMode: 0440
             items:
               - {key: tls.crt, path: fullchain.pem}

@@ -82,6 +82,33 @@ Secret selected by both `app.kubernetes.io/instance=<release>` and
 The chart's Caddy Service is the only public entrypoint. It never routes `/internal/*`. Point both
 `console.<baseDomain>` and `*.<baseDomain>` at that entrypoint.
 
+## System-domain operations
+
+Use the matching CLI for system-domain changes. The CLI stages state through the API deployment's private operator
+channel and applies the matching Helm release update:
+
+```bash
+compartment system domain status
+compartment system domain set --base-domain apps.example.com --tls external
+compartment system domain verify
+compartment system domain activate --values compartment-values.yaml
+```
+
+For `custom-cert`, run `attach-cert --cert-file <path> --key-file <path> --values <path>` before verification. The CLI
+stores the PEM files in a Kubernetes TLS Secret and mounts the pending operation path in API. Activation mounts the
+active certificate in API and Caddy, finalizes the private API operation, and then commits the retained generation.
+That two-phase update keeps Helm rollback on the previous domain until API activation succeeds. Domain generation in
+the retained install-state Secret prevents an older Helm render from replacing the active domain. The chart keeps the first managed allocation in the same Secret so
+`system domain reset-managed --values <path>` can restore it.
+
+Domain changes roll API, Edge, and Caddy. The chart excludes worker and project-provisioner pods from the domain
+rollout. If Helm or readiness fails, rerun the command after fixing the cluster condition.
+
+Use `compartment system issue-password-reset --email <email>` to recover an eligible local-password account, including
+the owner. The CLI reaches the private
+operator channel through `kubectl exec`; the chart does not add a public recovery route. The command prints a
+one-time token, so protect terminal output and shell logs.
+
 ## Node registry prerequisite
 
 Application image references use the bundled registry host
