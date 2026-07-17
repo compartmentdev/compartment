@@ -210,7 +210,7 @@ runAsNonRoot: true
 {{- $_ := set $sharedContext "compartmentSharedChecksum" true -}}
 {{- $sharedValues := get $sharedContext "Values" -}}
 {{- $sharedPlatform := get $sharedValues "platform" -}}
-{{- $_ := set $sharedPlatform "baseDomain" "rollout.invalid" -}}
+{{- $_ := set $sharedPlatform "baseDomain" "rollout.localhost" -}}
 {{- $_ = set $sharedPlatform "domainGeneration" 0 -}}
 {{- $_ = set $sharedPlatform "domainMode" "custom" -}}
 {{- $_ = set $sharedPlatform "publicProtocol" "https" -}}
