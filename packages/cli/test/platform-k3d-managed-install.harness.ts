@@ -17,6 +17,7 @@ const managedBuildNamespace: string = 'compartment-managed-e2e-build';
 const kubernetesTimeoutMs: number = 6 * 60_000;
 const brokerStateTimeoutMs: number = 60_000;
 const managedAcmeManagementPort: number = 19_500;
+const managedAcmeManagementTimeoutMs: number = 30_000;
 
 export const managedInstallApiUrl: string = 'https://console.managed.compartment.test:18443';
 export const managedInstallBaseDomain: string = 'managed.compartment.test';
@@ -138,7 +139,30 @@ export async function readManagedInstallCertificateSubjectAltName(): Promise<str
 
 async function writeManagedInstallCertificateAuthority(): Promise<void> {
   const managementCa: Buffer = await readFile(resolve(repositoryRoot, '.compartment/pebble.minica.pem'));
-  const rootCertificate: Buffer = await new Promise<Buffer>(
+  const rootCertificate: Buffer = await readManagedInstallCertificateAuthorityWithRetry(managementCa);
+  const certificate: X509Certificate = new X509Certificate(rootCertificate);
+  if (certificate.ca !== true || certificate.checkIssued(certificate) !== true) {
+    throw new Error('Pebble root endpoint did not return a self-issued CA certificate.');
+  }
+  await writeFile(managedInstallCertificateAuthorityPath, rootCertificate, { mode: 0o600 });
+}
+
+async function readManagedInstallCertificateAuthorityWithRetry(managementCa: Buffer): Promise<Buffer> {
+  const deadline: number = Date.now() + managedAcmeManagementTimeoutMs;
+  for (;;) {
+    try {
+      return await readManagedInstallCertificateAuthority(managementCa);
+    } catch (error) {
+      if (Date.now() >= deadline) {
+        throw error;
+      }
+      await delay(500);
+    }
+  }
+}
+
+async function readManagedInstallCertificateAuthority(managementCa: Buffer): Promise<Buffer> {
+  return await new Promise<Buffer>(
     (resolveCertificate: (certificate: Buffer) => void, rejectCertificate: (error: Error) => void): void => {
       const request: ClientRequest = get(
         {
@@ -166,11 +190,6 @@ async function writeManagedInstallCertificateAuthority(): Promise<void> {
       request.once('error', rejectCertificate);
     },
   );
-  const certificate: X509Certificate = new X509Certificate(rootCertificate);
-  if (certificate.ca !== true || certificate.checkIssued(certificate) !== true) {
-    throw new Error('Pebble root endpoint did not return a self-issued CA certificate.');
-  }
-  await writeFile(managedInstallCertificateAuthorityPath, rootCertificate, { mode: 0o600 });
 }
 
 export async function waitForManagedDomainBrokerObservation(): Promise<ManagedDomainBrokerObservation> {
