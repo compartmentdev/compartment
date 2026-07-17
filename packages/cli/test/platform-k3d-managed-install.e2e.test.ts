@@ -32,6 +32,7 @@ const platformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
 const organizationName: string = 'Managed Platform E2E';
 const organizationSlug: string = 'managed-platform-e2e';
 const installTimeoutMs: number = 50 * 60_000;
+const fixtureTimeoutMs: number = 10 * 60_000;
 const tempRootDirectory: string = readSocketSafeTempRootDirectory('pk3m-', 'system-api.sock');
 const createdDirectories: string[] = [];
 
@@ -46,7 +47,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
   beforeAll(async (): Promise<void> => {
     await assertBuiltCliAvailable();
     await prepareManagedInstallFixture();
-  });
+  }, fixtureTimeoutMs);
   afterAll(async (): Promise<void> => {
     await cleanupManagedInstallFixture();
     await Promise.all(
@@ -54,7 +55,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
         .splice(0)
         .map(async (directory: string): Promise<void> => await rm(directory, { force: true, recursive: true })),
     );
-  });
+  }, fixtureTimeoutMs);
 
   it(
     'allocates a domain, completes DNS-01 HTTPS, bootstraps the owner, and accepts a fresh login',
