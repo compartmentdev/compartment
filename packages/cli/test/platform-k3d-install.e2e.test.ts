@@ -101,13 +101,13 @@ describe.sequential('production Kubernetes install', (): void => {
       expect(freshIdentity.currentOrganization?.slug).toBe(platformOrganizationSlug);
 
       const domainStatus: SystemDomainStatusResponse = await installerCli.runJson(
-        `system domain status --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment --output json`,
+        `system domain status --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,
         systemDomainStatusResponseSchema,
       );
       expect(domainStatus.active.baseDomain).toBe(platformBaseDomain);
 
       const reset: IssuePasswordResetResponse = await installerCli.runJson(
-        `system issue-password-reset --email ${ownerEmail} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment --output json`,
+        `system issue-password-reset --email ${ownerEmail} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,
         issuePasswordResetResponseSchema,
       );
       expect(reset.email).toBe(ownerEmail);
