@@ -162,6 +162,21 @@ grep -q 'value: "ghcr.io/compartmentdev/compartment-worker:latest"' "${OUTPUT_DI
 grep -q '\\"compartment-compartment-registry-auth.default.svc:5000\\"' "${OUTPUT_DIR}/full.yaml"
 grep -q 'name: compartment-compartment-project-provisioner' "${OUTPUT_DIR}/full.yaml"
 grep -q 'command:.*project-provisioner-server.js' "${OUTPUT_DIR}/full.yaml"
+for workload in worker project-provisioner; do
+  awk -v workload="compartment-compartment-${workload}" 'BEGIN { RS="---" } /kind: Deployment/ && $0 ~ "name: " workload "($|\\n)" { print }' "${OUTPUT_DIR}/full.yaml" >"${OUTPUT_DIR}/${workload}-deployment.yaml"
+  migration_wait_line="$(grep -n 'name: wait-for-api-migrate' "${OUTPUT_DIR}/${workload}-deployment.yaml" | cut -d: -f1)"
+  api_rollout_wait_line="$(grep -n 'name: wait-for-api-rollout' "${OUTPUT_DIR}/${workload}-deployment.yaml" | cut -d: -f1)"
+  api_wait_line="$(grep -n 'name: wait-for-api$' "${OUTPUT_DIR}/${workload}-deployment.yaml" | cut -d: -f1)"
+  test -n "${migration_wait_line}"
+  test -n "${api_rollout_wait_line}"
+  test -n "${api_wait_line}"
+  test "${migration_wait_line}" -lt "${api_rollout_wait_line}"
+  test "${api_rollout_wait_line}" -lt "${api_wait_line}"
+  grep -q -- '- rollout' "${OUTPUT_DIR}/${workload}-deployment.yaml"
+  grep -q -- '- status' "${OUTPUT_DIR}/${workload}-deployment.yaml"
+  grep -q 'deployment/compartment-compartment-api' "${OUTPUT_DIR}/${workload}-deployment.yaml"
+  grep -q 'COMPARTMENT_API_INTERNAL_HOST.*COMPARTMENT_API_PORT.*readyz' "${OUTPUT_DIR}/${workload}-deployment.yaml"
+done
 grep -q 'resources: \["services", "secrets", "persistentvolumeclaims"\]' "${OUTPUT_DIR}/full.yaml"
 if grep -q 'cluster-admin' "${OUTPUT_DIR}/full.yaml"; then
   echo 'Chart must not grant cluster-admin.' >&2

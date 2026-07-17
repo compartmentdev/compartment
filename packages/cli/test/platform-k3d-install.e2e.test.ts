@@ -8,8 +8,14 @@ import {
   type WhoAmICommandResponse,
 } from '@compartment/contracts';
 import { readSocketSafeTempRootDirectory } from '@compartment/test-support';
+import type { JsonValue } from '@compartment/utils';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { assertBuiltCliAvailable } from './self-hosted-user-setup-command.harness';
+import {
+  assertBuiltCliAvailable,
+  expectSuccessfulCommand,
+  runCommand,
+  type SelfHostedUserSetupCommandResult,
+} from './self-hosted-user-setup-command.harness';
 import { buildSelfHostedUserSetupClientEnv } from './self-hosted-user-setup-client-env.harness';
 import { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import { publishPlatformK3dOwnerEnvironment } from './platform-k3d-owner-environment.harness';
@@ -24,8 +30,18 @@ const platformValuesPath: string = '.compartment/platform-k3d-e2e-values.yaml';
 const platformKubeContext: string = 'k3d-compartment-e2e';
 const platformNamespace: string = 'compartment';
 const installTimeoutMs: number = 50 * 60_000;
+const kubernetesCommandTimeoutMs: number = 6 * 60_000;
 const tempRootDirectory: string = readSocketSafeTempRootDirectory('pk3i-', 'system-api.sock');
 const createdDirectories: string[] = [];
+const startupWorkloads: readonly StartupWorkload[] = [
+  { component: 'worker', containerName: 'worker' },
+  { component: 'project-provisioner', containerName: 'project-provisioner' },
+];
+
+interface StartupWorkload {
+  readonly component: string;
+  readonly containerName: string;
+}
 
 describe.sequential('production Kubernetes install', (): void => {
   if (process.env[platformModeEnvName] !== 'k3d') {
@@ -57,6 +73,7 @@ describe.sequential('production Kubernetes install', (): void => {
         { input: `${ownerPassword}\n${ownerPassword}\n` },
       );
 
+      await expectCleanControllerStartup();
       expect(result.adminEmail).toBe(ownerEmail);
       expect(result.compartmentUrl).toBe(platformCompartmentUrl);
       expect(result.organization.slug).toBe(platformOrganizationSlug);
@@ -87,4 +104,78 @@ async function createFreshCli(): Promise<SelfHostedUserSetupCli> {
   const homeDirectory: string = await mkdtemp(join(tempRootDirectory, 'client-'));
   createdDirectories.push(homeDirectory);
   return new SelfHostedUserSetupCli(buildSelfHostedUserSetupClientEnv(homeDirectory), installTimeoutMs);
+}
+
+async function expectCleanControllerStartup(): Promise<void> {
+  for (const workload of startupWorkloads) {
+    const deploymentName: string = `compartment-compartment-${workload.component}`;
+    const rollout: SelfHostedUserSetupCommandResult = await runKubectl([
+      'rollout',
+      'status',
+      `deployment/${deploymentName}`,
+      '--timeout=6m',
+    ]);
+    expectSuccessfulCommand(rollout, `wait for ${deploymentName}`);
+
+    const pods: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      'pods',
+      '--selector',
+      `app.kubernetes.io/instance=compartment,app.kubernetes.io/component=${workload.component}`,
+      '--output=name',
+    ]);
+    expectSuccessfulCommand(pods, `list ${workload.component} pods`);
+    const podNames: readonly string[] = pods.stdout
+      .split('\n')
+      .map((line: string): string => line.trim())
+      .filter(Boolean);
+    expect(podNames, `Expected at least one current ${workload.component} pod.`).not.toHaveLength(0);
+
+    for (const podName of podNames) {
+      await expectCleanPodStartup(podName, workload);
+    }
+  }
+}
+
+async function expectCleanPodStartup(podName: string, workload: StartupWorkload): Promise<void> {
+  const restartCount: SelfHostedUserSetupCommandResult = await runKubectl([
+    'get',
+    podName,
+    '--output',
+    `jsonpath={.status.containerStatuses[?(@.name=="${workload.containerName}")].restartCount}`,
+  ]);
+  expectSuccessfulCommand(restartCount, `read ${podName} restart count`);
+  expect(restartCount.stdout.trim(), `${podName} application container restarted during startup.`).toBe('0');
+
+  const logs: SelfHostedUserSetupCommandResult = await runKubectl([
+    'logs',
+    podName,
+    '--container',
+    workload.containerName,
+  ]);
+  expectSuccessfulCommand(logs, `read ${podName} startup logs`);
+  const startupErrors: readonly string[] = logs.stdout
+    .split('\n')
+    .filter((line: string): boolean => isLevelError(line) || line.includes('ECONNREFUSED'));
+  expect(startupErrors, `${podName} emitted startup errors:\n${logs.stdout}`).toEqual([]);
+}
+
+async function runKubectl(args: readonly string[]): Promise<SelfHostedUserSetupCommandResult> {
+  return await runCommand({
+    argv: ['kubectl', '--context', platformKubeContext, '--namespace', platformNamespace, ...args],
+    timeoutMs: kubernetesCommandTimeoutMs,
+  });
+}
+
+function isLevelError(line: string): boolean {
+  try {
+    const record: JsonValue = JSON.parse(line) as JsonValue;
+    if (typeof record !== 'object' || record === null || Array.isArray(record) || !('level' in record)) {
+      return false;
+    }
+    const level: JsonValue | undefined = record.level;
+    return typeof level === 'number' && level >= 50;
+  } catch {
+    return false;
+  }
 }

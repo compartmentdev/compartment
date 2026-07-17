@@ -203,6 +203,67 @@ automountServiceAccountToken: false
     - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
 {{- end }}
 
+{{- define "compartment.waitForApiRolloutInit" -}}
+- name: wait-for-api-rollout
+  image: {{ include "compartment.image" .Values.images.kubectl }}
+  imagePullPolicy: {{ .Values.images.kubectl.pullPolicy }}
+  command: ["kubectl"]
+  args:
+    - rollout
+    - status
+    - deployment/{{ include "compartment.fullname" . }}-api
+    - --timeout=6m
+  securityContext:
+    {{- include "compartment.containerSecurityContext" . | nindent 4 }}
+    runAsUser: 1000
+    runAsGroup: 1000
+  resources:
+    {{- toYaml .Values.resources.wait | nindent 4 }}
+  env:
+    - name: HOME
+      value: /tmp
+  volumeMounts:
+    - {name: tmp, mountPath: /tmp}
+    - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+{{- end }}
+
+{{- define "compartment.waitForApiInit" -}}
+- name: wait-for-api
+  image: {{ include "compartment.image" .Values.images.worker }}
+  imagePullPolicy: {{ .Values.images.worker.pullPolicy }}
+  command: ["node", "-e"]
+  args:
+    - |
+      const url = `http://${process.env.COMPARTMENT_API_INTERNAL_HOST}:${process.env.COMPARTMENT_API_PORT}/readyz`;
+      const deadline = Date.now() + 360000;
+      const wait = async () => {
+        try {
+          const response = await fetch(url, {signal: AbortSignal.timeout(2000)});
+          if (response.ok) process.exit(0);
+        } catch {}
+        if (Date.now() >= deadline) {
+          console.error(`Timed out waiting for ${url}`);
+          process.exit(1);
+        }
+        setTimeout(wait, 1000);
+      };
+      void wait();
+  securityContext:
+    {{- include "compartment.containerSecurityContext" . | nindent 4 }}
+    runAsUser: 10001
+    runAsGroup: 10001
+  resources:
+    {{- toYaml .Values.resources.wait | nindent 4 }}
+  envFrom:
+    - configMapRef:
+        name: {{ include "compartment.fullname" . }}
+  env:
+    - name: HOME
+      value: /tmp
+  volumeMounts:
+    - {name: tmp, mountPath: /tmp}
+{{- end }}
+
 {{- define "compartment.waitForFoundationInit" -}}
 - name: wait-for-foundation
   image: {{ include "compartment.image" .Values.images.kubectl }}
