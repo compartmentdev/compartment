@@ -145,6 +145,8 @@ kubectl --namespace compartment get jobs,pods,services
 
 The chart does not publish `/internal/*`; only the documented control-plane and application paths pass through Caddy.
 
+See the generated [`compartment install` reference](/reference/generated/cli/install/) for the complete option list.
+
 ## Change the system domain
 
 Use `compartment system domain` with the Helm release coordinates. Start by checking the active and pending state:
@@ -220,6 +222,10 @@ operator's Kubernetes access and do not publish a recovery endpoint through Cadd
 password recovery needs permission to get the API Deployment, list its Pods, and create the `pods/exec` subresource.
 Only `attach-cert`, `activate`, and `reset-managed` additionally need the normal Helm upgrade permissions for the
 chart's resources.
+
+See the generated [`compartment system domain` reference](/reference/generated/cli/system/domain/) for command options.
+If the owner is locked out, follow [Troubleshoot Access](/manage-access/troubleshoot-access/#a-local-password-user-is-locked-out)
+for the private operator password-reset flow.
 
 ## Repository development
 

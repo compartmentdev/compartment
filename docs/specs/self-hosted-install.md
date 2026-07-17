@@ -1,0 +1,82 @@
+# Self-Hosted Kubernetes Install
+
+This document defines the supported production install and operator contract for a self-hosted Compartment release.
+Kubernetes is the only production runtime. The release CLI owns install orchestration and image verification; the Helm
+chart owns installation-time Kubernetes resources.
+
+## Install modes
+
+`compartment install --values <path>` is the normal production entrypoint. A release CLI uses its bundled matching
+chart, verifies the effective API, Worker, Edge, and Caddy images against the published signing policy, resolves them
+to immutable digests, and applies two Helm stages:
+
+1. `foundation` creates the public Caddy Service, generated install secrets, storage, and the retained install-state
+   Secret without starting the platform workloads.
+2. The CLI resolves the public ingress and install domain, persists that state, and applies `full`. It then waits for
+   HTTPS, calls the one-time `/v1/install` boundary, creates the first owner, and saves the owner session.
+
+The default mode is a managed domain. When `--base-domain` is omitted, the CLI waits for a public LoadBalancer address,
+requests an allocation from `https://broker.compartment.run`, and configures managed DNS-01 TLS. The broker credential
+is scoped to that allocation. API and Caddy read it from the retained Secret; it is never stored in a ConfigMap.
+
+An operator-owned base domain is selected with `--base-domain`. The operator must point `console.<baseDomain>` and
+`*.<baseDomain>` at the public entrypoint and choose one TLS topology in the values file:
+
+- `custom-cert`: Caddy terminates TLS with an existing Kubernetes TLS Secret. The Secret is mounted read-only in API
+  and Caddy. `platform.acmeEmail` remains required for on-demand tenant-domain certificates.
+- `custom-http`: an external load balancer terminates public HTTPS and reaches the Caddy HTTP origin. The operator owns
+  that load-balancer topology and must provide the explicit public ingress address.
+
+The reserved `*.localhost` HTTP path exists only for repository and k3d development. It is not a production install
+mode. `install --dev` initializes an already-running repository development API and does not install the Helm release.
+
+Direct `helm upgrade --install` is a low-level recovery path, not the normal install. It bypasses CLI image signature
+verification, so an operator using it must supply already verified `images.*.digest` values.
+
+## Install identity and retries
+
+The `<release>-install-state` Secret retains the installation ID, install token, domain allocation, ingress addresses,
+domain generation, and TLS identity. Helm keeps it across upgrades and uninstall/reinstall with the same namespace and
+release name. A retry with the same release coordinates and domain selection resumes the saved foundation or full
+release and does not allocate a second managed domain.
+
+The `/v1/install` endpoint is available only before the first owner is created. After bootstrap, use
+`compartment login --api-url <console-url>` to recover a local CLI session. To intentionally abandon an install
+identity, uninstall the release and explicitly delete the retained Secret before reinstalling.
+
+## Install domain operations
+
+`compartment system domain` changes the whole-install domain through the API pod's private operator channel. It does
+not expose a system endpoint through Caddy.
+
+The operator flow is:
+
+1. `system domain set` stages an operator-owned domain and prints the required address and ownership TXT records.
+2. `system domain verify` proves DNS ownership and that traffic resolves directly to the release ingress.
+3. For `custom-cert`, `system domain attach-cert` creates the operation-specific Kubernetes TLS Secret and mounts it
+   only in API while the change is pending.
+4. `system domain activate` applies the runtime domain, waits for API, Edge, and Caddy, finalizes the API operation, and
+   commits the retained domain generation. Worker and project-provisioner do not roll for a domain change.
+
+The operations are retryable. The retained generation prevents an older Helm render from replacing active domain
+state. A release that started with a managed allocation keeps it while an operator domain is active;
+`system domain reset-managed` restores that original allocation without requesting a new one.
+
+See [Managed Platform Domains](./managed-platform-domains.md) for the durable domain ownership and broker invariants.
+
+## Operator recovery and trust
+
+`compartment system issue-password-reset --email <email>` issues a private one-time reset for an eligible existing
+single-organization local-password account, including the owner. It uses `kubectl exec` into the API pod and prints a
+secret token and expiry. It does not activate invited users or create credentials for SSO-only accounts.
+
+All system-domain commands and password recovery require permission to get the API Deployment, list its Pods, and
+create `pods/exec` in the release namespace. `attach-cert`, `activate`, and `reset-managed` also require the Helm
+permissions needed to update the release.
+
+Every CLI-owned Helm activation verifies the effective platform images again and passes only immutable digests to the
+chart. The publication, signature identity, SBOM, and provenance contract is defined in
+[Self-Hosted Image Publishing](./self-hosted-image-publishing.md).
+
+The chart never exposes `/internal/*`, the private operator channel, install tokens, registry services, BuildKit, or
+control-plane health routes through public ingress.
