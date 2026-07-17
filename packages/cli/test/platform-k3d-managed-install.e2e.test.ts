@@ -82,7 +82,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
 
       const freshCli: SelfHostedUserSetupCli = await createFreshCli();
       await freshCli.runBrowserLogin(
-        `login --api-url ${managedInstallApiUrl} --email ${ownerEmail}`,
+        `login --output json --api-url ${managedInstallApiUrl} --email ${ownerEmail}`,
         { email: ownerEmail, password: ownerPassword },
         { requestOrigin: managedInstallApiUrl },
       );
@@ -93,7 +93,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       const broker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerObservation();
       expect(broker.allocations[0]).toMatchObject({
         publicIp: managedInstallPublicIpv4,
-        requestedLabelSource: organizationName,
+        requestedLabelSource: organizationSlug,
       });
       expect(broker.txtWrites[0]?.name).toBe(`_acme-challenge.${managedInstallBaseDomain}.`);
       expect(broker.txtDeletes).toContainEqual(broker.txtWrites[0]);

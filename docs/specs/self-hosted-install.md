@@ -11,7 +11,8 @@ chart, verifies the effective API, Worker, Edge, and Caddy images against the pu
 to immutable digests, and applies two Helm stages:
 
 1. `foundation` creates the public Caddy Service, generated install secrets, storage, and the retained install-state
-   Secret without starting the platform workloads.
+   Secret. PostgreSQL and the registry start here; API, Worker, Edge, Caddy, and the remaining platform workloads wait
+   for `full`.
 2. The CLI resolves the public ingress and install domain, persists that state, and applies `full`. It then waits for
    HTTPS, calls the one-time `/v1/install` boundary, creates the first owner, and saves the owner session.
 
