@@ -1,3 +1,4 @@
+{{- include "compartment.applyRetainedInstallState" . -}}
 {{- $root := . -}}
 {{- $claims := dict "postgres" .Values.storage.postgres "registry" .Values.storage.registry -}}
 {{- if eq .Values.platform.startupStage "full" -}}

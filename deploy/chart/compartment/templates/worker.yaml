@@ -1,3 +1,4 @@
+{{- include "compartment.applyRetainedInstallState" . -}}
 {{- if eq .Values.platform.startupStage "full" }}
 apiVersion: apps/v1
 kind: Deployment

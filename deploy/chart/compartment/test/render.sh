@@ -9,6 +9,13 @@ trap 'rm -rf "${OUTPUT_DIR}"' EXIT
 ROLLOUT_ANNOTATION_PATTERN='checksum/(config|domain-config|install-state|custom-tls|pending-tls)|compartment.dev/(rollout-marker|domain-generation|pending-domain-operation)'
 readonly ROLLOUT_ANNOTATION_PATTERN
 
+while IFS= read -r template; do
+  if ! grep -q 'include "compartment.applyRetainedInstallState"' "${template}"; then
+    echo "Startup-stage template must apply retained install state: ${template}" >&2
+    exit 1
+  fi
+done < <(grep -rl '\.Values\.platform\.startupStage' "${CHART_DIR}/templates" --include='*.yaml')
+
 helm lint "${CHART_DIR}"
 helm lint "${CHART_DIR}" -f "${CHART_DIR}/values-kind.yaml"
 helm template compartment "${CHART_DIR}" --set platform.startupStage=foundation >"${OUTPUT_DIR}/foundation.yaml"

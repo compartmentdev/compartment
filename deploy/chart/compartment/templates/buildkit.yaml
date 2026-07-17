@@ -1,3 +1,4 @@
+{{- include "compartment.applyRetainedInstallState" . -}}
 {{- if and .Values.buildkit.enabled (eq .Values.platform.startupStage "full") }}
 apiVersion: v1
 kind: Namespace
