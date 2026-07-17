@@ -330,13 +330,28 @@ async function expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade(): Promise<voi
     ]);
     expectSuccessfulCommand(clearIdentity, 'clear retained operator TLS fixture identity');
     await expectSuccessfulOrdinaryHelmUpgrade('remove retained operator TLS fixture');
-    const deleteSecret: SelfHostedUserSetupCommandResult = await runKubectl([
-      'delete',
-      'secret',
-      secretName,
+    const removedSecret: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      `secret/${secretName}`,
       '--ignore-not-found',
+      '--output=name',
     ]);
-    expectSuccessfulCommand(deleteSecret, 'delete retained operator TLS fixture');
+    expectSuccessfulCommand(removedSecret, 'verify removal of the retained operator TLS Secret');
+    expect(removedSecret.stdout).toBe('');
+    const removedApiMount: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      'deployment/compartment-compartment-api',
+      '--output=jsonpath={.spec.template.spec.volumes[?(@.name=="active-tls")].secret.secretName}',
+    ]);
+    expectSuccessfulCommand(removedApiMount, 'verify removal of the API TLS mount');
+    expect(removedApiMount.stdout).toBe('');
+    const removedCaddyMount: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      'deployment/compartment-compartment-caddy',
+      '--output=jsonpath={.spec.template.spec.volumes[?(@.name=="tls")].secret.secretName}',
+    ]);
+    expectSuccessfulCommand(removedCaddyMount, 'verify removal of the Caddy TLS mount');
+    expect(removedCaddyMount.stdout).toBe('');
   }
 }
 
