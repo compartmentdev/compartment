@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   installResponseSchema,
@@ -86,10 +86,11 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       expect(installedIdentity.principal.email).toBe(ownerEmail);
 
       const freshCli: SelfHostedUserSetupCli = await createFreshCli();
+      const certificateAuthority: Buffer = await readFile(managedInstallCertificateAuthorityPath);
       await freshCli.runBrowserLogin(
         `login --output json --api-url ${managedInstallApiUrl} --email ${ownerEmail}`,
         { email: ownerEmail, password: ownerPassword },
-        { requestOrigin: managedInstallApiUrl },
+        { certificateAuthority, requestOrigin: managedInstallApiUrl },
       );
       const freshIdentity: WhoAmICommandResponse = await freshCli.runJson('whoami', whoamiCommandResponseSchema);
       expect(freshIdentity.principal.email).toBe(ownerEmail);

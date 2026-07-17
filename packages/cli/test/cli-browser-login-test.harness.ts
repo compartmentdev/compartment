@@ -15,6 +15,7 @@ interface BootstrappedCliBrowserLogin {
 }
 
 interface CliBrowserLoginBootstrapInput {
+  readonly request?: CliBrowserLoginRequest | undefined;
   readonly requestOrigin?: string | undefined;
   readonly verificationUrlPromise: Promise<string>;
 }
@@ -26,11 +27,20 @@ interface CliBrowserPasswordLoginInput extends CliBrowserLoginBootstrapInput {
 
 type CliBrowserLoginHeaders = Record<string, string>;
 
+export interface CliBrowserLoginRequestInit {
+  readonly body?: string | undefined;
+  readonly headers?: CliBrowserLoginHeaders | undefined;
+  readonly method?: 'POST' | undefined;
+}
+
+type CliBrowserLoginRequest = (url: URL, init?: CliBrowserLoginRequestInit) => Promise<Response>;
+
 export async function completeCliBrowserPasswordLogin(input: CliBrowserPasswordLoginInput): Promise<void> {
+  const request: CliBrowserLoginRequest = input.request ?? requestCliBrowserLogin;
   const bootstrapped: BootstrappedCliBrowserLogin = await bootstrapCliBrowserLogin(input);
   const loginUrl: URL = resolveCliBrowserLoginUrl(bootstrapped, bootstrapped.loginUrl);
   const organizationSlug: string | null = loginUrl.searchParams.get('organizationSlug');
-  const loginPageResponse: Response = await fetch(loginUrl, {
+  const loginPageResponse: Response = await request(loginUrl, {
     headers: buildCliBrowserLoginHeaders(bootstrapped, {
       cookie: bootstrapped.cliAttemptCookie,
     }),
@@ -44,7 +54,7 @@ export async function completeCliBrowserPasswordLogin(input: CliBrowserPasswordL
     compartmentCsrfCookieName,
   );
   const csrfToken: string = requireCookieValue(csrfCookie, compartmentCsrfCookieName);
-  const loginResponse: Response = await fetch(resolveCliBrowserLoginUrl(bootstrapped, '/v1/auth/login'), {
+  const loginResponse: Response = await request(resolveCliBrowserLoginUrl(bootstrapped, '/v1/auth/login'), {
     method: 'POST',
     headers: buildCliBrowserLoginHeaders(bootstrapped, {
       'content-type': 'application/json',
@@ -65,6 +75,14 @@ export async function completeCliBrowserPasswordLogin(input: CliBrowserPasswordL
   }
 }
 
+async function requestCliBrowserLogin(url: URL, init?: CliBrowserLoginRequestInit): Promise<Response> {
+  return await fetch(url, {
+    ...(init?.body === undefined ? {} : { body: init.body }),
+    ...(init?.headers === undefined ? {} : { headers: init.headers }),
+    ...(init?.method === undefined ? {} : { method: init.method }),
+  });
+}
+
 async function bootstrapCliBrowserLogin(input: CliBrowserLoginBootstrapInput): Promise<BootstrappedCliBrowserLogin> {
   const verificationUrl: URL = new URL(await input.verificationUrlPromise);
   const requestOrigin: string = input.requestOrigin ?? verificationUrl.origin;
@@ -74,7 +92,7 @@ async function bootstrapCliBrowserLogin(input: CliBrowserLoginBootstrapInput): P
     throw new Error(`Expected verification URL with attempt and code: ${verificationUrl.toString()}`);
   }
 
-  const bootstrapResponse: Response = await fetch(
+  const bootstrapResponse: Response = await (input.request ?? requestCliBrowserLogin)(
     new URL(`${verificationUrl.pathname}${verificationUrl.search}`, requestOrigin),
     {
       method: 'POST',

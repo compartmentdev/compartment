@@ -187,6 +187,9 @@ async function readManagedInstallCertificateAuthority(managementCa: Buffer): Pro
           });
         },
       );
+      request.setTimeout(5_000, (): void => {
+        request.destroy(new Error('Timed out reading the Pebble root certificate.'));
+      });
       request.once('error', rejectCertificate);
     },
   );

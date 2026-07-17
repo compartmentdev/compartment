@@ -150,12 +150,14 @@ jobs:
           set +e
           pnpm --filter @compartment/cli test:e2e
           test_status=$?
+          if [ "${test_status}" -ne 0 ]; then
+            kill "${probe_pid}" 2>/dev/null || true
+            wait "${probe_pid}" 2>/dev/null || true
+            exit "${test_status}"
+          fi
           wait "${probe_pid}"
           probe_status=$?
           set -e
-          if [ "${test_status}" -ne 0 ]; then
-            exit "${test_status}"
-          fi
           exit "${probe_status}"
 
       - name: Verify retained install-state lifecycle

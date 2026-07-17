@@ -1,5 +1,6 @@
 import { loginResponseSchema, type LoginResponse } from '@compartment/contracts';
-import { completeCliBrowserPasswordLogin } from './cli-browser-login-test.harness';
+import { Agent, fetch as undiciFetch, type Dispatcher } from 'undici';
+import { completeCliBrowserPasswordLogin, type CliBrowserLoginRequestInit } from './cli-browser-login-test.harness';
 import { waitForCliVerificationUrl } from './self-hosted-user-setup-browser-login.harness';
 import {
   expectFailedCommand,
@@ -18,6 +19,7 @@ interface SelfHostedUserSetupLoginCredentials {
 }
 
 interface SelfHostedUserSetupBrowserLoginOptions {
+  readonly certificateAuthority?: Buffer | undefined;
   readonly requestOrigin?: string | undefined;
 }
 
@@ -46,18 +48,36 @@ export class SelfHostedUserSetupCli {
     credentials: SelfHostedUserSetupLoginCredentials,
     options: SelfHostedUserSetupBrowserLoginOptions = {},
   ): Promise<LoginResponse> {
+    const dispatcher: Dispatcher | undefined =
+      options.certificateAuthority === undefined
+        ? undefined
+        : new Agent({ connect: { ca: options.certificateAuthority.toString('utf8') } });
     const loginCommand: SelfHostedUserSetupRunningCommand = startBuiltCliCommandLine({
       command,
       env: this.#env,
       timeoutMs: this.#timeoutMs,
     });
 
-    await completeCliBrowserPasswordLogin({
-      email: credentials.email,
-      password: credentials.password,
-      requestOrigin: options.requestOrigin,
-      verificationUrlPromise: waitForCliVerificationUrl(loginCommand),
-    });
+    try {
+      await completeCliBrowserPasswordLogin({
+        email: credentials.email,
+        password: credentials.password,
+        request:
+          dispatcher === undefined
+            ? undefined
+            : async (url: URL, init?: CliBrowserLoginRequestInit): Promise<Response> =>
+                await undiciFetch(url, {
+                  dispatcher,
+                  ...(init?.body === undefined ? {} : { body: init.body }),
+                  ...(init?.headers === undefined ? {} : { headers: init.headers }),
+                  ...(init?.method === undefined ? {} : { method: init.method }),
+                }),
+        requestOrigin: options.requestOrigin,
+        verificationUrlPromise: waitForCliVerificationUrl(loginCommand),
+      });
+    } finally {
+      await dispatcher?.close();
+    }
 
     const loginResult: SelfHostedUserSetupCommandResult = await loginCommand.result;
     expectSuccessfulCommand(loginResult, command);
