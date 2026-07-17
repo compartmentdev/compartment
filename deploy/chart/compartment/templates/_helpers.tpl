@@ -30,6 +30,10 @@
 {{- define "compartment.applyRetainedInstallState" -}}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace (include "compartment.installStateSecretName" .) -}}
 {{- if and $existing $existing.data -}}
+{{- $retainedStartupStage := dig "startup-stage" "" $existing.data | b64dec -}}
+{{- if eq $retainedStartupStage "full" -}}
+{{- $_ := set .Values.platform "startupStage" "full" -}}
+{{- end -}}
 {{- $stablePlatformFields := list
   (dict "secretKey" "installation-id" "valueKey" "installationId")
   (dict "secretKey" "public-ingress-ipv4" "valueKey" "publicIngressIpv4")

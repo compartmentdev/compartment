@@ -126,6 +126,7 @@ awk 'BEGIN { RS="---" } /kind: Deployment/ && /name: compartment-compartment-cad
 grep -q 'helm.sh/resource-policy: keep' "${OUTPUT_DIR}/install-state-secret.yaml"
 grep -q 'managed-domain-broker-token: "broker-token"' "${OUTPUT_DIR}/install-state-secret.yaml"
 grep -q 'managed-base-domain: "managed.compartment.run"' "${OUTPUT_DIR}/install-state-secret.yaml"
+grep -q 'startup-stage: "full"' "${OUTPUT_DIR}/install-state-secret.yaml"
 grep -q 'domain-generation: "0"' "${OUTPUT_DIR}/install-state-secret.yaml"
 if grep -q 'managed-domain-broker-token' "${OUTPUT_DIR}/platform-secret.yaml"; then
   echo 'Managed-domain broker token must be owned only by the retained install-state Secret.' >&2
