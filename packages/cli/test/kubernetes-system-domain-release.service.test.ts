@@ -102,6 +102,40 @@ describe('Kubernetes system-domain release material', (): void => {
     }
   });
 
+  it('does not require pending TLS material for an external TLS activation', async (): Promise<void> => {
+    const directory: string = await mkdtemp(resolve(tmpdir(), 'compartment-domain-test-'));
+    try {
+      const target: KubernetesOperatorTarget = await createReleaseTarget(directory);
+      let helmValues: KubernetesDomainHelmValues | null = null;
+      mocks.runCommand.mockImplementation(async (command: readonly string[]): Promise<CommandResult> => {
+        helmValues = await readHelmValues(command);
+        return successfulCommand();
+      });
+
+      await applyRuntimeKubernetesDomainRelease(
+        target,
+        {
+          baseDomain: 'apps.example.com',
+          caddyMode: 'custom-http',
+          domainKind: 'custom',
+          publicScheme: 'https',
+          tlsMode: 'external',
+        },
+        7,
+        'domop_external',
+      );
+
+      expect(requireHelmValues(helmValues)).toMatchObject({
+        customTls: { existingSecret: '' },
+        platform: { domainCommit: false, tlsMode: 'custom-http' },
+      });
+      expect(requireHelmValues(helmValues).customTls.pendingOperationId).toBeUndefined();
+      expect(requireHelmValues(helmValues).customTls.operatorSecretName).toBeUndefined();
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it('promotes the retained pending Secret when activation commit is retried after the API finalized', async (): Promise<void> => {
     const directory: string = await mkdtemp(resolve(tmpdir(), 'compartment-domain-test-'));
     try {

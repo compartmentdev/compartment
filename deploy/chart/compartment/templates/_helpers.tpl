@@ -44,7 +44,7 @@
 {{- end -}}
 {{- end -}}
 {{- $retainedGeneration := int (default "0" (dig "domain-generation" "" $existing.data | b64dec)) -}}
-{{- if le (int .Values.platform.domainGeneration) $retainedGeneration -}}
+{{- if and (not (get . "compartmentSharedChecksum")) (le (int .Values.platform.domainGeneration) $retainedGeneration) -}}
 {{- $domainFields := list
   (dict "secretKey" "domain-mode" "valueKey" "domainMode")
   (dict "secretKey" "base-domain" "valueKey" "baseDomain")
@@ -198,6 +198,7 @@ runAsNonRoot: true
 
 {{- define "compartment.rolloutAnnotations" -}}
 {{- $sharedContext := deepCopy . -}}
+{{- $_ := set $sharedContext "compartmentSharedChecksum" true -}}
 {{- $sharedValues := get $sharedContext "Values" -}}
 {{- $sharedPlatform := get $sharedValues "platform" -}}
 {{- $_ := set $sharedPlatform "baseDomain" "rollout.invalid" -}}
@@ -213,14 +214,21 @@ compartment.dev/rollout-marker: {{ .Values.platform.rolloutMarker | quote }}
 
 {{- define "compartment.domainRolloutAnnotations" -}}
 {{- include "compartment.rolloutAnnotations" . }}
+{{ $activeTlsContext := deepCopy . -}}
+{{- $activeTlsValues := get (get $activeTlsContext "Values") "customTls" -}}
+{{- $_ := set $activeTlsValues "pendingCertificate" "" -}}
+{{- $_ = set $activeTlsValues "pendingOperationId" "" -}}
+{{- $_ = set $activeTlsValues "pendingPrivateKey" "" -}}
+{{- $_ = set $activeTlsValues "pendingSecretName" "" -}}
 checksum/domain-config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
 checksum/install-state: {{ include (print $.Template.BasePath "/install-state-secret.yaml") . | sha256sum }}
-checksum/custom-tls: {{ include (print $.Template.BasePath "/custom-tls-secret.yaml") . | sha256sum }}
+checksum/custom-tls: {{ include (print $.Template.BasePath "/custom-tls-secret.yaml") $activeTlsContext | sha256sum }}
 compartment.dev/domain-generation: {{ .Values.platform.domainGeneration | quote }}
 {{- end }}
 
 {{- define "compartment.apiDomainRolloutAnnotations" -}}
 {{- include "compartment.domainRolloutAnnotations" . }}
+checksum/pending-tls: {{ include (print $.Template.BasePath "/custom-tls-secret.yaml") . | sha256sum }}
 compartment.dev/pending-domain-operation: {{ .Values.customTls.pendingOperationId | quote }}
 {{- end }}
 

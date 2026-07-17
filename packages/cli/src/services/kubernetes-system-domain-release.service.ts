@@ -49,7 +49,7 @@ export async function applyRuntimeKubernetesDomainRelease(
     domainCommit: false,
     domainGeneration,
     hostPlan,
-    ...(operationId === undefined ? {} : { pendingOperationId: operationId }),
+    ...(operationId === undefined || hostPlan.tlsMode !== 'custom-cert' ? {} : { pendingOperationId: operationId }),
   });
 }
 
@@ -74,7 +74,7 @@ function buildRuntimeTlsReleaseUpdate(
   customTlsSecretName: string | undefined,
 ): KubernetesDomainReleaseUpdate {
   if (hostPlan.tlsMode !== 'custom-cert') {
-    return clearedOperatorTlsReleaseUpdate();
+    return { customTlsSecretName: '' };
   }
   if (customTlsSecretName === undefined) {
     return {};
