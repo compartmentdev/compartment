@@ -35,7 +35,6 @@ export interface KubernetesInstallImageTrustInput {
 export interface ResolvedKubernetesPlatformImage {
   expectedDigest?: string | undefined;
   imageRef: string;
-  repository: string;
 }
 
 export type KubernetesImageTrustJsonObject = Record<string, JsonValue>;

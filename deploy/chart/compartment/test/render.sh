@@ -51,6 +51,11 @@ if helm template compartment "${CHART_DIR}" --set platform.startupStage=full --s
   exit 1
 fi
 
+if helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-custom-broker --set platform.baseDomain=compartment.localhost --set platform.publicProtocol=http --set platform.tlsMode=custom-http --set-string platform.managedDomainBrokerUrl= --set secrets.managedDomainBrokerToken=retained-token --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >/dev/null 2>&1; then
+  echo 'A configured broker token must require the canonical broker URL.' >&2
+  exit 1
+fi
+
 if helm template compartment "${CHART_DIR}" --set platform.startupStage=full --set platform.installationId=test-private-ingress --set platform.baseDomain=apps.example.com --set platform.publicProtocol=https --set platform.publicIngressIpv4=10.0.0.1 --set secrets.registryWritePassword=test-write-password --set secrets.productLogIngestToken=test-product-log-token >/dev/null 2>&1; then
   echo 'Public installations must reject private ingress addresses.' >&2
   exit 1

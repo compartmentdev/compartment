@@ -124,6 +124,11 @@ describe('Kubernetes platform image trust', (): void => {
     ['empty', '[]', 'no verified signatures'],
     ['malformed', '{', 'invalid JSON'],
     [
+      'attestation-only',
+      JSON.stringify([cosignAttestation(`sha256:${'a'.repeat(64)}`)]),
+      'no verified image signatures',
+    ],
+    [
       'mixed',
       JSON.stringify([cosignSignature(`sha256:${'a'.repeat(64)}`), cosignSignature(`sha256:${'b'.repeat(64)}`)]),
       'mixed manifest digests',
@@ -311,7 +316,21 @@ function releaseImageValues(): object {
 }
 
 function cosignSignature(digest: string): object {
-  return { critical: { image: { 'docker-manifest-digest': digest } } };
+  return {
+    critical: {
+      image: { 'docker-manifest-digest': digest },
+      type: 'https://sigstore.dev/cosign/sign/v1',
+    },
+  };
+}
+
+function cosignAttestation(digest: string): object {
+  return {
+    critical: {
+      image: { 'docker-manifest-digest': digest },
+      type: 'https://cosign.sigstore.dev/attestation/v1',
+    },
+  };
 }
 
 function successfulResult(stdout: string): CommandResult {

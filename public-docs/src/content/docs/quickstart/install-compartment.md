@@ -46,6 +46,8 @@ The production platform is a Helm release. It requires Kubernetes 1.30 or newer,
 selected `ReadWriteOnce` storage class, and nodes that can pull application images from the bundled registry. The
 selected Kubernetes context must be allowed to manage the chart's Namespaces, ClusterRoles, ClusterRoleBinding,
 ValidatingAdmissionPolicy, and ValidatingAdmissionPolicyBinding as well as namespaced resources.
+The machine running the CLI must also reach every configured platform-image registry and the Sigstore trust services
+used by cosign.
 
 The default install uses a Kubernetes LoadBalancer Service on public ports 80 and 443. Its internal Caddy ports remain
 8080 and 8443. Make sure your cluster can allocate a stable public LoadBalancer address before starting.
@@ -198,6 +200,9 @@ compartment system domain activate \
 Activation rolls API, Edge, and Caddy, waits for them, records the activation, and only then commits the retained
 domain generation. Worker and project-provisioner pods keep running. If the command stops, rerun it. The generation
 check prevents older domain values from replacing the retained active state.
+
+Before `attach-cert`, `activate`, or `reset-managed` changes the Helm release, the CLI re-verifies the effective API,
+Worker, Edge, and Caddy images and stops the rollout if any image fails the signing policy.
 
 An installation that started with a managed domain retains that allocation when you activate a custom domain. Restore
 it with:

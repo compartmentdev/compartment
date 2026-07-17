@@ -21,11 +21,14 @@ import type {
   KubernetesVerifiedPlatformImageValues,
   ResolvedKubernetesPlatformImage,
 } from './kubernetes-image-trust.service.types';
+import {
+  createImageTrustCommandError,
+  readImageTrustJson,
+  readImageTrustObject,
+} from './kubernetes-image-trust.support';
 
 const imageDigestPattern: RegExp = /^sha256:[a-f0-9]{64}$/u;
 const platformImageNames: readonly KubernetesPlatformImageName[] = ['api', 'worker', 'edge', 'caddy'];
-const trustedPlatformImageSignaturePolicy: SelfHostedRuntimeImageSignaturePolicy =
-  selfHostedRuntimeImageSignaturePolicy;
 
 export async function writeVerifiedKubernetesInstallImageValues(
   input: KubernetesInstallImageTrustInput,
@@ -46,7 +49,7 @@ export async function writeVerifiedKubernetesReleaseImageValues(
 async function readChartValues(chartPath: string): Promise<JsonValue> {
   const result: CommandResult = await runCommand(['helm', 'show', 'values', chartPath]);
   if (result.exitCode !== 0) {
-    throw createCommandError('Failed to read Helm chart values before platform image verification.', result);
+    throw createImageTrustCommandError('Failed to read Helm chart values before platform image verification.', result);
   }
   return parse(result.stdout) as JsonValue;
 }
@@ -65,12 +68,12 @@ async function readReleaseValues(input: KubernetesReleaseImageTrustInput): Promi
     ...(input.kubeContext === undefined ? [] : ['--kube-context', input.kubeContext]),
   ]);
   if (result.exitCode !== 0) {
-    throw createCommandError(
+    throw createImageTrustCommandError(
       'Failed to read effective Helm release values before platform image verification.',
       result,
     );
   }
-  return readJson(result.stdout, 'Helm returned invalid release values before platform image verification.');
+  return readImageTrustJson(result.stdout, 'Helm returned invalid release values before platform image verification.');
 }
 
 async function readYamlFile(path: string): Promise<JsonValue> {
@@ -129,17 +132,17 @@ function readImageValueFields(
   values: JsonValue,
   imageName: KubernetesPlatformImageName,
 ): KubernetesPlatformImageValueFields {
-  const root: KubernetesImageTrustJsonObject = readObject(values, 'Helm values');
+  const root: KubernetesImageTrustJsonObject = readImageTrustObject(values, 'Helm values');
   const imagesValue: JsonValue | undefined = root.images;
   if (imagesValue === undefined) {
     return {};
   }
-  const images: KubernetesImageTrustJsonObject = readObject(imagesValue, 'Helm images values');
+  const images: KubernetesImageTrustJsonObject = readImageTrustObject(imagesValue, 'Helm images values');
   const imageValue: JsonValue | undefined = images[imageName];
   if (imageValue === undefined) {
     return {};
   }
-  const image: KubernetesImageTrustJsonObject = readObject(imageValue, `Helm images.${imageName} values`);
+  const image: KubernetesImageTrustJsonObject = readImageTrustObject(imageValue, `Helm images.${imageName} values`);
   return {
     ...readOptionalStringField(image, 'digest'),
     ...readOptionalStringField(image, 'repository'),
@@ -171,10 +174,10 @@ function resolvePlatformImage(
     if (!imageDigestPattern.test(digest)) {
       throw new Error(`Expected images.${imageName}.digest to be an empty string or a sha256 digest.`);
     }
-    return { expectedDigest: digest, imageRef: `${repository}@${digest}`, repository };
+    return { expectedDigest: digest, imageRef: `${repository}@${digest}` };
   }
   const tag: string = requireNonEmptyImageField(image.tag, imageName, 'tag');
-  return { imageRef: `${repository}:${tag}`, repository };
+  return { imageRef: `${repository}:${tag}` };
 }
 
 function requireNonEmptyImageField(
@@ -195,7 +198,7 @@ async function verifyPlatformImage(image: ResolvedKubernetesPlatformImage): Prom
     readNonCompartmentEnvironment(process.env),
   );
   if (result.exitCode !== 0) {
-    throw createCommandError(`Failed to verify platform image signature for ${image.imageRef}.`, result);
+    throw createImageTrustCommandError(`Failed to verify platform image signature for ${image.imageRef}.`, result);
   }
   const digest: string = readVerifiedDigest(result.stdout, image.imageRef);
   if (image.expectedDigest !== undefined && image.expectedDigest !== digest) {
@@ -205,14 +208,15 @@ async function verifyPlatformImage(image: ResolvedKubernetesPlatformImage): Prom
 }
 
 function buildCosignVerifyCommand(cosignCommand: readonly string[], imageRef: string): string[] {
+  const policy: SelfHostedRuntimeImageSignaturePolicy = selfHostedRuntimeImageSignaturePolicy;
   return [
     ...cosignCommand,
     'verify',
-    trustedPlatformImageSignaturePolicy.cosignBundleFormatFlag,
+    policy.cosignBundleFormatFlag,
     '--certificate-oidc-issuer',
-    trustedPlatformImageSignaturePolicy.certificateOidcIssuer,
+    policy.certificateOidcIssuer,
     '--certificate-identity-regexp',
-    trustedPlatformImageSignaturePolicy.certificateIdentityRegexp,
+    policy.certificateIdentityRegexp,
     '--output',
     'json',
     imageRef,
@@ -220,52 +224,32 @@ function buildCosignVerifyCommand(cosignCommand: readonly string[], imageRef: st
 }
 
 function readVerifiedDigest(output: string, imageRef: string): string {
-  const parsed: JsonValue = readJson(output, `Cosign returned invalid JSON while verifying ${imageRef}.`);
+  const parsed: JsonValue = readImageTrustJson(output, `Cosign returned invalid JSON while verifying ${imageRef}.`);
   if (!Array.isArray(parsed) || parsed.length === 0) {
     throw new Error(`Cosign returned no verified signatures for ${imageRef}.`);
   }
   const digests: Set<string> = new Set<string>(
-    parsed.map((entry: JsonValue): string => readSignatureDigest(entry, imageRef)),
+    parsed.flatMap((entry: JsonValue): string[] => readSignatureDigest(entry, imageRef)),
   );
+  if (digests.size === 0) {
+    throw new Error(`Cosign returned no verified image signatures for ${imageRef}.`);
+  }
   if (digests.size !== 1) {
     throw new Error(`Cosign returned mixed manifest digests while verifying ${imageRef}.`);
   }
-  const digest: string | undefined = digests.values().next().value;
-  if (digest === undefined) {
-    throw new Error(`Cosign returned no manifest digest while verifying ${imageRef}.`);
-  }
-  return digest;
+  return digests.values().next().value!;
 }
 
-function readSignatureDigest(entry: JsonValue, imageRef: string): string {
-  const signature: KubernetesImageTrustJsonObject = readObject(entry, 'Cosign signature');
-  const critical: KubernetesImageTrustJsonObject = readObject(signature.critical, 'Cosign critical');
-  const image: KubernetesImageTrustJsonObject = readObject(critical.image, 'Cosign critical image');
+function readSignatureDigest(entry: JsonValue, imageRef: string): string[] {
+  const signature: KubernetesImageTrustJsonObject = readImageTrustObject(entry, 'Cosign signature');
+  const critical: KubernetesImageTrustJsonObject = readImageTrustObject(signature.critical, 'Cosign critical');
+  if (critical.type !== 'https://sigstore.dev/cosign/sign/v1') {
+    return [];
+  }
+  const image: KubernetesImageTrustJsonObject = readImageTrustObject(critical.image, 'Cosign critical image');
   const digest: JsonValue | undefined = image['docker-manifest-digest'];
   if (typeof digest !== 'string' || !imageDigestPattern.test(digest)) {
     throw new Error(`Cosign returned an invalid manifest digest while verifying ${imageRef}.`);
   }
-  return digest;
-}
-
-function readJson(value: string, message: string): JsonValue {
-  try {
-    return JSON.parse(value) as JsonValue;
-  } catch {
-    throw new Error(message);
-  }
-}
-
-function readObject(value: JsonValue | undefined, label: string): KubernetesImageTrustJsonObject {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`Expected ${label} to be an object.`);
-  }
-  return value;
-}
-
-function createCommandError(prefix: string, result: CommandResult): Error {
-  const output: string = [result.stderr.trim(), result.stdout.trim()]
-    .filter((value: string): boolean => value !== '')
-    .join('\n');
-  return new Error(output === '' ? prefix : `${prefix}\n${output}`);
+  return [digest];
 }

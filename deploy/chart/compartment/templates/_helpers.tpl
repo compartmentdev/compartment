@@ -83,6 +83,9 @@
 {{- if eq .Values.platform.startupStage "full" -}}
 {{- $_ := required "platform.installationId is required for a full installation" .Values.platform.installationId -}}
 {{- $_ = required "platform.baseDomain is required for a full installation" .Values.platform.baseDomain -}}
+{{- if and (not (empty .Values.secrets.managedDomainBrokerToken)) (empty .Values.platform.managedDomainBrokerUrl) -}}
+{{- fail "platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured" -}}
+{{- end -}}
 {{- if not (or (eq .Values.platform.baseDomain "localhost") (hasSuffix ".localhost" .Values.platform.baseDomain)) -}}
 {{- if and (empty .Values.platform.publicIngressIpv4) (empty .Values.platform.publicIngressIpv6) -}}
 {{- fail "platform.publicIngressIpv4 or platform.publicIngressIpv6 is required for a public installation" -}}
