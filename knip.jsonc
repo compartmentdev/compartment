@@ -32,7 +32,7 @@
     "shadcn",
     "tailwindcss",
     "tw-animate-css",
-    // Used by the Helm render assertion, which Knip cannot trace through render.sh.
+    // Used by the Helm operator-docs assertion, which Knip cannot trace through its CI shell invocation.
     "yaml",
   ],
   "ignoreIssues": {

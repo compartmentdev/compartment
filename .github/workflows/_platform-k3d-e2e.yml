@@ -108,6 +108,10 @@ jobs:
           helm lint ./deploy/chart/compartment
           helm lint ./deploy/chart/compartment -f ./deploy/chart/compartment/values-kind.yaml
           helm unittest --strict ./deploy/chart/compartment
+          if helm template compartment ./deploy/chart/compartment --kube-version 1.29.9 >/dev/null 2>&1; then
+            echo 'Chart must reject Kubernetes versions without stable ValidatingAdmissionPolicy support.' >&2
+            exit 1
+          fi
           node ./deploy/chart/compartment/test/assert-operator-docs.mjs
 
       - name: Register local control-plane host
