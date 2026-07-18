@@ -2,18 +2,19 @@
 
 ## Gate result
 
-ПАРИТЕТ: НЕТ — 4 потерянных фич
+ПАРИТЕТ: НЕТ — 5 потерянных фич
 
 This audit compares `origin/docker-legacy` at `dbf3ab6d` with `origin/kubernetes` at `dcb41449`. The comparison contains
 1,225 changed files, 47,516 inserted lines, and 63,681 deleted lines. The audit classifies product behavior rather than
 matching implementations by name.
 
-The four class C findings are:
+The five class C findings are:
 
 1. The public installer cannot hand off a managed-domain install through `--init-install`.
 2. Kubernetes has no Compartment-owned status, restart, or verified update workflow for an installed platform.
 3. The chart drops the install-wide rollback-retention setting and forces indefinite retention.
 4. The chart keeps auth-throttle defaults but drops the operator tuning surface.
+5. Kubernetes drops authored service and resource restart policies from `compartment.yml`.
 
 This PR records findings only. It does not restore any behavior.
 
@@ -108,6 +109,23 @@ Production trace:
 
 Helm values -> no throttle fields -> ConfigMap constants -> API enforcement uses fixed defaults.
 
+### C5. Authored service and resource restart policy
+
+The Docker descriptor contract let users set service `run.restart.policy` to `no`, `on-failure`, or a policy that
+restarted the workload except after an explicit stop, with `maxRetries` for `on-failure`. Resources exposed the same
+policy family through `restart`. The resolvers applied `on-failure` to services and the explicit-stop-sensitive policy
+to resources by default, so this behavior affected descriptors that did not declare the field. Resource summaries also
+returned the persisted policy.
+
+The Kubernetes contract removes both restart fields. Workload Deployments use the controller's fixed Pod recovery;
+the production projection has no descriptor value to map and no retry limit equivalent. Existing authored restart
+settings therefore fail strict descriptor validation, and the old default changes without a compatibility path.
+
+Production trace:
+
+`compartment.yml` strict schema -> no service or resource restart field -> no persisted deployment intent -> Kubernetes
+projection cannot apply the authored policy or `maxRetries`.
+
 ## Class A: ported behavior
 
 | ID  | Legacy behavior                                                                                                                                   | Kubernetes production path                                                                                                                                                                                                                                                                        |
@@ -124,7 +142,7 @@ Helm values -> no throttle fields -> ConfigMap constants -> API enforcement uses
 | A10 | Custom certificate material                                                                                                                       | `attach-cert` validates local PEM material, creates an operation-scoped Kubernetes TLS Secret, and mounts it in API. Activation promotes the material through `custom-tls-secret.yaml` and mounts it read-only in API and Caddy.                                                                  |
 | A11 | Operator password recovery                                                                                                                        | `system/issue-password-reset.command.ts` -> `kubernetes-password-recovery.service.ts` -> `kubectl exec` into API -> the private system API. Caddy exposes no recovery route.                                                                                                                      |
 | A12 | Platform image trust                                                                                                                              | `kubernetes-install-material.service.ts` calls `kubernetes-image-trust.service.ts` before Helm. The service verifies API, Worker, Edge, and Caddy images with cosign, resolves immutable digests, and writes the trust values passed to Helm. Domain-triggered Helm activation repeats the check. |
-| A13 | GitHub account discovery for managed installs                                                                                                     | Public source routes register `source-git-account-discovery.route.ts`; the service calls the configured broker adapter. The chart passes the managed broker URL and retained token to API.                                                                                                        |
+| A13 | GitHub account discovery for managed installs                                                                                                     | The protected source route tree registers `source-git-account-discovery.route.ts`; the service calls the configured broker adapter. The chart passes the managed broker URL and retained token to API.                                                                                            |
 | A14 | Build source archives into reusable images                                                                                                        | Worker claims the deployment, reads the source archive, builds through the cluster BuildKit Service, pushes through registry auth, and requires a digest-pinned result before hand-off.                                                                                                           |
 | A15 | Build isolation and cleanup                                                                                                                       | `buildkit.yaml`, `buildkit-network-policy.yaml`, registry network policy, rootless BuildKit storage, and the prune CronJob replace the Compose builder and its network.                                                                                                                           |
 | A16 | Release commands before app activation                                                                                                            | Deployment reconcile creates a durable product Job from the release intent, waits for its result, then applies the application manifests.                                                                                                                                                         |
@@ -158,7 +176,7 @@ These rows confirm production invocation, not code presence alone.
 | Install and owner bootstrap       | CLI staged Helm install -> public readiness -> authenticated `/v1/install` -> persisted CLI session | Confirmed for direct CLI; C1 is a residual installer-wrapper gap |
 | Managed-domain broker allocation  | Foundation Service observation -> SDK broker request -> retained Secret -> full Helm stage          | Confirmed                                                        |
 | Managed ACME DNS-01               | Caddy managed config -> broker DNS module -> token from retained Secret                             | Confirmed                                                        |
-| GitHub account discovery          | Registered source routes -> API discovery service -> broker adapter using chart config              | Confirmed                                                        |
+| GitHub account discovery          | Protected source route -> API discovery service -> broker adapter using chart config                | Confirmed                                                        |
 | Public ingress 80/443             | Public Caddy Service renders 80/443 and targets internal Caddy ports                                | Confirmed                                                        |
 | System-domain lifecycle           | CLI system domain commands -> private pod exec -> API operation -> Helm activation/reset            | Confirmed                                                        |
 | Custom certificate material       | CLI PEM read -> operation Secret -> API validation mount -> active Caddy/API Secret                 | Confirmed                                                        |
@@ -176,14 +194,13 @@ These rows confirm production invocation, not code presence alone.
 | B4  | Host application port range and upstream host/port allocation                                                                 | Kubernetes Services select Pods without host port allocation. Public routes point at stable Services.                                                                                                     |
 | B5  | Compose files, `.env.self-hosted`, install directories, ownership repair, sudo rerun, systemd unit, and host backup paths     | Helm, Secrets, ConfigMaps, PVCs, service accounts, and Pod security contexts own this state. Product backup semantics moved to Jobs and PVCs under A29.                                                   |
 | B6  | Docker namespace, runtime UID/GID group, Docker work directory, runtime probe image, and connectivity mode                    | These values described the deleted host/container topology. Chart security and Kubernetes networking set their replacements.                                                                              |
-| B7  | Raw container identifiers, resource hostname, node placement, and Docker restart policy in public summaries                   | Kubernetes uses persisted immutable workload references. Resource connectivity remains available through outputs; raw runtime identity no longer forms a supported contract.                              |
-| B8  | User-authored `run.restart` and resource `restart` policies                                                                   | Kubernetes Deployment controllers own process recovery and cannot represent the three Docker policies or per-service max retries. Durable product jobs own Job retry policy.                              |
-| B9  | Docker candidate/start/readiness/route-switch/drain step names                                                                | Kubernetes performs rollout and route activation through one Deployment reconcile. The product keeps release progress, readiness failure, and rollback outcomes without exposing Docker container phases. |
-| B10 | Local Docker image source, Docker Hub/GHCR selector, packaged node-agent version coupling, and `--local-runtime`              | Kubernetes installation selects repositories/tags in values, verifies images, and passes digests. Repository development uses k3d or `install --dev`; no host Docker production mode remains.             |
-| B11 | Public port occupancy probes and CLI port flags                                                                               | The Kubernetes Service and cluster load balancer allocate ingress. Operators select Service ports and NodePorts in values.                                                                                |
-| B12 | Docker resource volume names and filesystem artifact IDs                                                                      | PVC identity and per-resource artifact claims replace Docker volume names and host artifact paths while preserving the product operations in A26 and A29.                                                 |
-| B13 | Docker-specific system API contracts and SDK clients for node deploy, drain, release, network reconcile, and resource control | Worker controllers call Kubernetes reconcile, product-job, and provisioning contracts. No public client used the node-internal endpoints.                                                                 |
-| B14 | Legacy plain-HTTP and Docker external-TLS runtime details                                                                     | Production browser flows remain HTTPS. `custom-http` represents external TLS termination; reserved localhost HTTP remains a development-only chart path.                                                  |
+| B7  | Raw container identifiers, resource hostname, and node placement                                                              | Kubernetes uses persisted immutable workload references. Resource connectivity remains available through outputs; raw runtime identity no longer forms a supported contract.                              |
+| B8  | Docker candidate/start/readiness/route-switch/drain step names                                                                | Kubernetes performs rollout and route activation through one Deployment reconcile. The product keeps release progress, readiness failure, and rollback outcomes without exposing Docker container phases. |
+| B9  | Local Docker image source, Docker Hub/GHCR selector, packaged node-agent version coupling, and `--local-runtime`              | Kubernetes installation selects repositories/tags in values, verifies images, and passes digests. Repository development uses k3d or `install --dev`; no host Docker production mode remains.             |
+| B10 | Public port occupancy probes and CLI port flags                                                                               | The Kubernetes Service and cluster load balancer allocate ingress. Operators select Service ports and NodePorts in values.                                                                                |
+| B11 | Docker resource volume names and filesystem artifact IDs                                                                      | PVC identity and per-resource artifact claims replace Docker volume names and host artifact paths while preserving the product operations in A26 and A29.                                                 |
+| B12 | Docker-specific system API contracts and SDK clients for node deploy, drain, release, network reconcile, and resource control | Worker controllers call Kubernetes reconcile, product-job, and provisioning contracts. No public client used the node-internal endpoints.                                                                 |
+| B13 | Legacy plain-HTTP and Docker external-TLS runtime details                                                                     | Production browser flows remain HTTPS. `custom-http` represents external TLS termination; reserved localhost HTTP remains a development-only chart path.                                                  |
 
 ## Structural cleanup candidates
 
@@ -213,6 +230,53 @@ of them.
 8. **Gate harness concentration:** `platform-k3d-e2e.mjs`, `secure-self-hosted-images.mjs`, and the chart render test are
    the largest files in their areas. Extract pure plans and keep command execution in a thin harness.
 
+## Changed-file coverage ledger
+
+This ledger makes the complete file inventory traceable to the behavioral rows above. Counts come from
+`git diff --name-only origin/docker-legacy...origin/kubernetes`; every changed path belongs to exactly one row. A path
+can support more than one feature classification, so the disposition column references all relevant rows.
+
+| Changed path family              |     Files | Behavioral disposition                                                                                                    |
+| -------------------------------- | --------: | ------------------------------------------------------------------------------------------------------------------------- |
+| `packages/api/`                  |       333 | A1, A3-A5, A9-A13, A19-A23, A25-A34; C3-C4; deleted node-internal endpoints B12                                           |
+| `packages/cli/`                  |       257 | A1-A5, A8-A12, A19-A21, A27, A29-A30, A35; C1-C2; deleted host/runtime selectors B7, B9-B10                               |
+| `packages/console/`              |        23 | A1, A19-A23, A27-A30; presentation changes follow the same SDK contracts                                                  |
+| `packages/contracts/`            |        70 | A1, A4-A5, A14, A17-A30, A34; C5; removed runtime identity and internal node contracts B7-B8, B12-B13                     |
+| `packages/sdk/`                  |        38 | A1, A3-A5, A9-A14, A18-A30, A34; removed node-internal clients B12                                                        |
+| `packages/edge/`                 |        31 | A20, A24; Docker network attachment removed under B3                                                                      |
+| `packages/worker/`               |        67 | A14-A19, A22-A31, A34; node scheduling and container control removed under B1-B4, B9, B12                                 |
+| `packages/kube-runtime/`         |        51 | A14-A19, A21-A31, A34; Kubernetes replacement paths for B1-B4, B7-B9, B12-B13                                             |
+| `packages/node/`                 |       114 | Deleted Docker/node-agent implementation B1-B4, B6, B9, B12-B13; its observable lifecycle effects map to A17-A23, A25-A30 |
+| `packages/docker/`               |        40 | Cluster build helpers A14-A15; deleted Engine/container/volume mechanics B1, B6, B12                                      |
+| `packages/utils/`                |        14 | Shared archive, URL, and retry helpers used by A14, A20, A29, A35                                                         |
+| `packages/test-support/`         |         9 | Package-owned protection for A1, A17-A30, A34-A36                                                                         |
+| `packages/eslint-config/`        |         1 | Tooling-only configuration; no runtime behavior                                                                           |
+| `packages/eslint-plugin/`        |         1 | Tooling-only configuration; no runtime behavior                                                                           |
+| `deploy/chart/`                  |        31 | A2-A8, A12-A15, A22-A25, A29, A31-A33, A35-A36; C3-C4; Compose/host replacement B3-B6, B10-B11                            |
+| `deploy/e2e/`                    |         8 | Runtime fixtures and assertions for A14-A19, A25-A31, A36                                                                 |
+| `scripts/`                       |        48 | A12, A14-A15, A31, A35-A36; C1; deleted Compose/host orchestration B5, B9-B11                                             |
+| `docs/`                          |        23 | Engineering ownership/spec changes for A2, A14-A35, C2, C5, and B1-B13                                                    |
+| `public-docs/`                   |        35 | Public workflow/reference changes A1-A3, A8-A12, A19-A21, A25-A30, A35-A36; stale C1 and removed C2 surfaces              |
+| `.github/workflows/`             |         8 | A12, A31, A35-A36; Docker publication/runtime jobs removed under B5 and B10                                               |
+| Root manifests, installer, agent |        23 | A2, A31, A35-A36; C1, C3-C4; Docker install/runtime surface B5-B6, B10-B11                                                |
+| **Total**                        | **1,225** | Complete changed-path inventory                                                                                           |
+
+The broad control-plane row A1 was checked as these independently registered production families:
+
+| Family                             | Production entrypoint and effect                                                                                |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Authentication and sessions        | Public/protected auth routes -> auth services and queries -> durable session or credential state                |
+| Organizations and membership       | Protected organization, user, invite, and membership routes -> organization services -> database mutations      |
+| Groups, roles, and assignments     | Protected access routes -> authorization services -> policy state consumed by request and Edge access checks    |
+| SSO                                | Public callback plus protected setup routes -> SSO services -> provider and organization configuration          |
+| Variables and audit                | Protected variable/audit routes -> resolution and audit services -> deployment env or durable audit records     |
+| Sources and Git accounts           | Protected source routes plus public callbacks/webhooks -> source services -> broker/provider calls and DB state |
+| Projects, deployments, and domains | Protected project/deployment/domain routes -> lifecycle services -> API state and Worker/Edge effects A14-A31   |
+
+The A33 operator-setting comparison covered session TTL, trusted outbound hosts, source-archive byte limit, API log
+level, Worker poll interval, audit retention, and audit file-sink controls. Each has a chart value, schema entry, and
+ConfigMap or workload mapping. The only legacy production settings without such a path are C3 and C4.
+
 ## Final verdict
 
-ПАРИТЕТ: НЕТ — 4 потерянных фич
+ПАРИТЕТ: НЕТ — 5 потерянных фич
