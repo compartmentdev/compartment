@@ -1364,6 +1364,62 @@ tests:
           path: spec.template.metadata.annotations["checksum/config"]
           value: *stableConfigChecksum
         template: project-provisioner.yaml
+      - equal:
+          path: spec.template.metadata.annotations["checksum/install-state"]
+          value: &activeInstallStateChecksum a784661c62476787910e1cd3c93d53abe909e86525b408aaf277c6b167c84a80
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/install-state"]
+          value: *activeInstallStateChecksum
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/domain-generation"]
+          value: &activeDomainGeneration '0'
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/domain-generation"]
+          value: *activeDomainGeneration
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/secret"]
+          value: &stableSecretChecksum 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/secret"]
+          value: *stableSecretChecksum
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/secret"]
+          value: *stableSecretChecksum
+        template: worker.yaml
+      - equal:
+          path: spec.template.metadata.annotations["checksum/secret"]
+          value: *stableSecretChecksum
+        template: project-provisioner.yaml
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
+          value: &stableRolloutMarker ''
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
+          value: *stableRolloutMarker
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
+          value: *stableRolloutMarker
+        template: worker.yaml
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
+          value: *stableRolloutMarker
+        template: project-provisioner.yaml
       - notExists:
           path: spec.template.metadata.annotations["checksum/pending-tls"]
         template: caddy.yaml
@@ -1435,6 +1491,16 @@ tests:
         template: caddy.yaml
         documentIndex: 1
       - equal:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: *activeTlsChecksum
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: *activeTlsChecksum
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
           value: *activeDomainChecksum
         template: api.yaml
@@ -1456,6 +1522,62 @@ tests:
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
           value: *stableConfigChecksum
+        template: project-provisioner.yaml
+      - equal:
+          path: spec.template.metadata.annotations["checksum/install-state"]
+          value: *activeInstallStateChecksum
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/install-state"]
+          value: *activeInstallStateChecksum
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/domain-generation"]
+          value: *activeDomainGeneration
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/domain-generation"]
+          value: *activeDomainGeneration
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/secret"]
+          value: *stableSecretChecksum
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/secret"]
+          value: *stableSecretChecksum
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/secret"]
+          value: *stableSecretChecksum
+        template: worker.yaml
+      - equal:
+          path: spec.template.metadata.annotations["checksum/secret"]
+          value: *stableSecretChecksum
+        template: project-provisioner.yaml
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
+          value: *stableRolloutMarker
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
+          value: *stableRolloutMarker
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
+          value: *stableRolloutMarker
+        template: worker.yaml
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
+          value: *stableRolloutMarker
         template: project-provisioner.yaml
       - equal:
           path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
@@ -1529,6 +1651,11 @@ tests:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
           value: &inlineCustomTlsChecksum 93a40ad1a15ccd918acf6fa268ab3d823407d9e4a9019d0023955252676aef0a
         template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: *inlineCustomTlsChecksum
+        template: api.yaml
         documentIndex: 1
 
   - it: rolls the inline custom certificate checksum with rotated material
