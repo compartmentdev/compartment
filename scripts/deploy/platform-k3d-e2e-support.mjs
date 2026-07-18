@@ -4,6 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 import { captureCommandResult, runCommand } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
+import { selfHostedRuntimeImageArtifacts } from './self-hosted-runtime-services.mjs';
 
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const processLockRetryMilliseconds = 100;
@@ -11,8 +12,9 @@ const processLockTimeoutMilliseconds = 30 * 60 * 1_000;
 const sourceCacheRetentionMilliseconds = 24 * 60 * 60 * 1_000;
 const imageCacheLockName = 'compartment-platform-image-cache-lock';
 const imageCacheLockLabel = 'compartment.image-cache-lock';
-const imageCacheLockTimeoutMilliseconds = 2 * 60 * 60 * 1_000;
-export const platformK3dServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
+const imageCacheLockOwnerLabel = 'compartment.image-cache-lock-owner';
+const imageCacheLockTimeoutMilliseconds = 30 * 60 * 1_000;
+export const platformK3dServiceNames = selfHostedRuntimeImageArtifacts;
 const platformSourceCacheImagePattern = new RegExp(
   `^ghcr\\.io/compartmentdev/compartment-(?:${platformK3dServiceNames.join('|')}):sha-[0-9a-f]{40}$`,
   'u',
@@ -56,7 +58,8 @@ export function isRunOwnedImageRef(imageRef, environment) {
 }
 
 export async function withPlatformImageCacheDockerLock(operation) {
-  const releaseLock = await acquirePlatformImageCacheDockerLock();
+  const ownerToken = `e2e-${process.pid}-${Date.now()}`;
+  const releaseLock = await acquirePlatformImageCacheDockerLock(ownerToken);
   try {
     return await operation();
   } finally {
@@ -64,16 +67,27 @@ export async function withPlatformImageCacheDockerLock(operation) {
   }
 }
 
-export async function acquirePlatformImageCacheDockerLock() {
+export async function acquirePlatformImageCacheDockerLock(ownerToken) {
+  if (typeof ownerToken !== 'string' || ownerToken.trim() === '') {
+    throw new Error('Platform image cache lock owner token is required.');
+  }
   const attempts = Math.ceil(processLockTimeoutMilliseconds / 1_000);
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const createResult = captureCommandResult(
       'docker',
-      ['network', 'create', '--label', `${imageCacheLockLabel}=true`, imageCacheLockName],
+      [
+        'network',
+        'create',
+        '--label',
+        `${imageCacheLockLabel}=true`,
+        '--label',
+        `${imageCacheLockOwnerLabel}=${ownerToken}`,
+        imageCacheLockName,
+      ],
       repositoryRoot,
     );
     if (createResult.status === 0) {
-      return releasePlatformImageCacheDockerLock;
+      return () => releasePlatformImageCacheDockerLock(ownerToken);
     }
     const lock = readPlatformImageCacheDockerLock();
     if (lock === undefined) {
@@ -95,13 +109,16 @@ export async function acquirePlatformImageCacheDockerLock() {
   throw new Error(`Timed out waiting for Docker network ${imageCacheLockName}.`);
 }
 
-export function releasePlatformImageCacheDockerLock() {
+export function releasePlatformImageCacheDockerLock(ownerToken) {
   const lock = readPlatformImageCacheDockerLock();
   if (lock === undefined) {
     return;
   }
   if (lock.Labels?.[imageCacheLockLabel] !== 'true') {
     throw new Error(`Refusing to remove unowned Docker network ${imageCacheLockName}.`);
+  }
+  if (lock.Labels?.[imageCacheLockOwnerLabel] !== ownerToken) {
+    throw new Error(`Refusing to release Docker network ${imageCacheLockName} for another owner.`);
   }
   runCommand('docker', ['network', 'rm', imageCacheLockName], repositoryRoot);
 }

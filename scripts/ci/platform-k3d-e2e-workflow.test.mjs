@@ -52,7 +52,7 @@ describe('platform k3d e2e workflow', () => {
     expect(acquireIndex).toBeGreaterThan(-1);
     expect(scanIndex).toBeGreaterThan(acquireIndex);
     expect(releaseIndex).toBeGreaterThan(scanIndex);
-    expect(steps[releaseIndex].if).toBe('${{ always() }}');
+    expect(steps[releaseIndex].if).toContain("steps.acquire-image-cache-lock.outcome == 'success'");
     expect(steps[acquireIndex].run).toContain('manage-platform-image-cache-lock.mjs acquire');
     expect(steps[releaseIndex].run).toContain('manage-platform-image-cache-lock.mjs release');
   });

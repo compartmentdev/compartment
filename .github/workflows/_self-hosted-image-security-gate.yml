@@ -61,7 +61,10 @@ jobs:
           fail-on-cache-miss: true
 
       - name: Acquire shared image cache lock
-        run: node ./scripts/deploy/manage-platform-image-cache-lock.mjs acquire
+        id: acquire-image-cache-lock
+        run: >-
+          node ./scripts/deploy/manage-platform-image-cache-lock.mjs acquire
+          "security-${{ github.run_id }}-${{ github.run_attempt }}"
 
       - name: Load self-hosted images from cache
         run: |
@@ -93,5 +96,7 @@ jobs:
             "sha-${{ github.sha }}"
 
       - name: Release shared image cache lock
-        if: ${{ always() }}
-        run: node ./scripts/deploy/manage-platform-image-cache-lock.mjs release
+        if: ${{ always() && steps.acquire-image-cache-lock.outcome == 'success' }}
+        run: >-
+          node ./scripts/deploy/manage-platform-image-cache-lock.mjs release
+          "security-${{ github.run_id }}-${{ github.run_attempt }}"
