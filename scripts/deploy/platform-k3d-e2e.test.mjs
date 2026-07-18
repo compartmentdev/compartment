@@ -6,8 +6,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isConsoleReadyStatus,
-  isRunOwnedDockerResourceName,
-  isRunOwnedImageRef,
   parseK3dClusterNames,
   parseLoadedImageRefs,
   readPlatformK3dCommand,
@@ -15,14 +13,16 @@ import {
   renderK3dRegistryConfig,
   renderManagedPlatformK3dValues,
   renderPlatformK3dValues,
-  shouldCleanLegacyPlatformResources,
 } from './platform-k3d-e2e.mjs';
 import {
   isPlatformSourceCacheImageRef,
+  isRunOwnedDockerResourceName,
+  isRunOwnedImageRef,
   readPlatformK3dCleanupStageNames,
   runPlatformK3dCleanupSequence,
   settlePlatformK3dStartup,
   shouldCleanPlatformSourceCacheImage,
+  shouldCleanLegacyPlatformResources,
   withPlatformK3dProcessLock,
 } from './platform-k3d-e2e-support.mjs';
 

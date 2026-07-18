@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 const processLockRetryMilliseconds = 100;
 const processLockTimeoutMilliseconds = 30 * 60 * 1_000;
 const sourceCacheRetentionMilliseconds = 24 * 60 * 60 * 1_000;
+const platformServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
 const platformSourceCacheImagePattern =
   /^ghcr\.io\/compartmentdev\/compartment-(?:api|worker|edge|caddy):sha-[0-9a-f]{40}$/u;
 const platformCleanupStageNames = Object.freeze([
@@ -22,6 +23,31 @@ export function readPlatformK3dCleanupStageNames() {
 
 export function isPlatformSourceCacheImageRef(imageRef) {
   return platformSourceCacheImagePattern.test(imageRef);
+}
+
+export function isRunOwnedDockerResourceName(name, environment) {
+  const environmentBuilderName = `${environment.clusterName}-builder`;
+  return [
+    `k3d-${environment.clusterName}`,
+    `k3d-${environment.clusterName}-images`,
+    `k3d-${environment.clusterName}-server-0`,
+    `k3d-${environment.clusterName}-serverlb`,
+    `k3d-${environment.registryName}`,
+    `buildx_buildkit_${environmentBuilderName}0_state`,
+  ].includes(name);
+}
+
+export function isRunOwnedImageRef(imageRef, environment) {
+  if (imageRef.startsWith(`localhost:${environment.registryHostPort}/compartment-`)) {
+    return true;
+  }
+  return platformServiceNames.some(
+    (serviceName) => imageRef === `ghcr.io/compartmentdev/compartment-${serviceName}:e2e-${environment.clusterName}`,
+  );
+}
+
+export function shouldCleanLegacyPlatformResources(environment) {
+  return environment.clusterName !== 'compartment-e2e';
 }
 
 export function shouldCleanPlatformSourceCacheImage(imageRef, createdAt, now = Date.now()) {

@@ -11,11 +11,14 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 import {
   isPlatformSourceCacheImageRef,
+  isRunOwnedDockerResourceName,
+  isRunOwnedImageRef,
   readPlatformK3dCleanupStageNames,
   runPlatformK3dCleanupSequence,
   runPlatformK3dCleanupStep,
   settlePlatformK3dStartup,
   shouldCleanPlatformSourceCacheImage,
+  shouldCleanLegacyPlatformResources,
   withPlatformK3dProcessLock,
 } from './platform-k3d-e2e-support.mjs';
 
@@ -57,6 +60,8 @@ const pebbleImageRef =
   'ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199';
 const archiveLoadLockDirectory = join(tmpdir(), 'compartment-platform-k3d-image-load.lock');
 const legacyCleanupLockDirectory = join(tmpdir(), 'compartment-platform-k3d-legacy-cleanup.lock');
+const imageSecurityLeasePrefix = 'compartment-image-security-lease-';
+const imageSecurityLeaseTimeoutMilliseconds = 2 * 60 * 60 * 1_000;
 const builtImageRefsByServiceName = Object.freeze(
   Object.fromEntries(
     platformServiceNames.map((serviceName) => [
@@ -97,27 +102,6 @@ export function readPlatformK3dEnvironment(env) {
     registryHostPort: readPortEnv(env, 'COMPARTMENT_E2E_REGISTRY_PORT', 15_500),
     registryName: configuredRegistryName,
   };
-}
-
-export function isRunOwnedDockerResourceName(name, environment = platformEnvironment) {
-  const environmentBuilderName = `${environment.clusterName}-builder`;
-  return [
-    `k3d-${environment.clusterName}`,
-    `k3d-${environment.clusterName}-images`,
-    `k3d-${environment.clusterName}-server-0`,
-    `k3d-${environment.clusterName}-serverlb`,
-    `k3d-${environment.registryName}`,
-    `buildx_buildkit_${environmentBuilderName}0_state`,
-  ].includes(name);
-}
-
-export function isRunOwnedImageRef(imageRef, environment = platformEnvironment) {
-  if (imageRef.startsWith(`localhost:${environment.registryHostPort}/compartment-`)) {
-    return true;
-  }
-  return platformServiceNames.some(
-    (serviceName) => imageRef === `ghcr.io/compartmentdev/compartment-${serviceName}:e2e-${environment.clusterName}`,
-  );
 }
 
 function readNameEnv(env, name, defaultValue) {
@@ -273,12 +257,8 @@ function renderK3dServiceValues() {
   return 'service:\n  caddy:\n    type: NodePort\n    httpPort: 80\n    httpsPort: 443\n    httpNodePort: 30080\n    httpsNodePort: 30443\n';
 }
 
-export function shouldCleanLegacyPlatformResources(environment = platformEnvironment) {
-  return environment.clusterName !== 'compartment-e2e';
-}
-
 async function cleanLegacyPlatformResources() {
-  if (!shouldCleanLegacyPlatformResources()) {
+  if (!shouldCleanLegacyPlatformResources(platformEnvironment)) {
     return;
   }
   await withPlatformK3dProcessLock(legacyCleanupLockDirectory, cleanLegacyPlatformResourcesUnlocked);
@@ -573,6 +553,9 @@ async function loadPlatformImageArchives(imageArchiveDir) {
 }
 
 function cleanHistoricalPlatformSourceImages() {
+  if (hasActiveImageSecurityLease()) {
+    return;
+  }
   const currentCommitSha = captureCommand('git', ['rev-parse', 'HEAD'], repositoryRoot).trim();
   const imageRefs = captureCommand('docker', ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'], repositoryRoot)
     .split('\n')
@@ -588,6 +571,31 @@ function cleanHistoricalPlatformSourceImages() {
       return shouldCleanPlatformSourceCacheImage(imageRef, createdAt);
     });
   removeImageRefs(imageRefs);
+}
+
+function hasActiveImageSecurityLease() {
+  let hasActiveLease = false;
+  const leaseNames = captureCommand('docker', ['volume', 'ls', '--format', '{{.Name}}'], repositoryRoot)
+    .split('\n')
+    .map((name) => name.trim())
+    .filter((name) => name.startsWith(imageSecurityLeasePrefix));
+  for (const leaseName of leaseNames) {
+    const createdAt = captureCommand(
+      'docker',
+      ['volume', 'inspect', '--format', '{{.CreatedAt}}', leaseName],
+      repositoryRoot,
+    );
+    const createdAtMilliseconds = Date.parse(createdAt);
+    if (
+      Number.isFinite(createdAtMilliseconds) &&
+      createdAtMilliseconds <= Date.now() - imageSecurityLeaseTimeoutMilliseconds
+    ) {
+      runCommand('docker', ['volume', 'rm', '--force', leaseName], repositoryRoot);
+    } else {
+      hasActiveLease = true;
+    }
+  }
+  return hasActiveLease;
 }
 
 function downPlatform() {
@@ -677,7 +685,7 @@ function cleanResidualDockerResources(cleanupErrors) {
     volumeNames = captureCommand('docker', ['volume', 'ls', '--format', '{{.Name}}'], repositoryRoot)
       .split('\n')
       .map((name) => name.trim())
-      .filter((name) => name !== '' && isRunOwnedDockerResourceName(name));
+      .filter((name) => name !== '' && isRunOwnedDockerResourceName(name, platformEnvironment));
   });
   for (const volumeName of volumeNames) {
     runCleanupStep(cleanupErrors, `volume ${volumeName}`, () => {
@@ -692,7 +700,7 @@ function cleanRunOwnedImages(cleanupErrors) {
     imageRefs = captureCommand('docker', ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'], repositoryRoot)
       .split('\n')
       .map((imageRef) => imageRef.trim())
-      .filter((imageRef) => imageRef !== '' && isRunOwnedImageRef(imageRef));
+      .filter((imageRef) => imageRef !== '' && isRunOwnedImageRef(imageRef, platformEnvironment));
   });
   if (imageRefs.length > 0) {
     runCleanupStep(cleanupErrors, 'images', () => {

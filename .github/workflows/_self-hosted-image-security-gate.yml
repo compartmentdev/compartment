@@ -60,6 +60,12 @@ jobs:
           key: ${{ inputs.self_hosted_image_cache_key }}
           fail-on-cache-miss: true
 
+      - name: Acquire shared image security lease
+        run: >-
+          docker volume create
+          --label compartment.image-security-lease=true
+          "compartment-image-security-lease-${{ github.run_id }}-${{ github.run_attempt }}"
+
       - name: Load self-hosted images from cache
         run: |
           for service in api caddy edge worker; do
@@ -88,3 +94,9 @@ jobs:
             --scan-only \
             "${docker_scout_args[@]}" \
             "sha-${{ github.sha }}"
+
+      - name: Release shared image security lease
+        if: ${{ always() }}
+        run: >-
+          docker volume rm --force
+          "compartment-image-security-lease-${{ github.run_id }}-${{ github.run_attempt }}"

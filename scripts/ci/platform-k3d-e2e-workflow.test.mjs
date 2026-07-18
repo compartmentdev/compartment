@@ -4,6 +4,10 @@ import { parse } from 'yaml';
 
 const workflowPath = new URL('../../.github/workflows/_platform-k3d-e2e.yml', import.meta.url);
 const ciWorkflowPath = new URL('../../.github/workflows/ci.yml', import.meta.url);
+const imageSecurityWorkflowPath = new URL(
+  '../../.github/workflows/_self-hosted-image-security-gate.yml',
+  import.meta.url,
+);
 
 describe('platform k3d e2e workflow', () => {
   it('runs every isolated shard in a non-fail-fast matrix with shard diagnostics', async () => {
@@ -36,5 +40,18 @@ describe('platform k3d e2e workflow', () => {
 
     expect(aggregateJob.needs).toContain('platform-k3d-e2e');
     expect(aggregateJob.steps[0].run).toContain('needs.platform-k3d-e2e.result');
+  });
+
+  it('protects shared cache tags while the image security gate scans them', async () => {
+    const workflow = parse(await readFile(imageSecurityWorkflowPath, 'utf8'));
+    const steps = workflow.jobs['scan-images'].steps;
+    const acquireIndex = steps.findIndex((step) => step.name === 'Acquire shared image security lease');
+    const scanIndex = steps.findIndex((step) => step.name === 'Check self-hosted image vulnerabilities');
+    const releaseIndex = steps.findIndex((step) => step.name === 'Release shared image security lease');
+
+    expect(acquireIndex).toBeGreaterThan(-1);
+    expect(scanIndex).toBeGreaterThan(acquireIndex);
+    expect(releaseIndex).toBeGreaterThan(scanIndex);
+    expect(steps[releaseIndex].if).toBe('${{ always() }}');
   });
 });
