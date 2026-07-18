@@ -234,6 +234,10 @@ class DeployCommandInputValue implements DeployCommandInput {
   reportProgress(message: string): void {
     this.#progress.report(message);
   }
+
+  reportWarning(message: string): void {
+    this.#progress.report(message, { renderMode: 'line' });
+  }
 }
 
 async function clearAcceptedFirstDeployOnboardingSession(

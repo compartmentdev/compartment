@@ -15,7 +15,7 @@ const terminalWrapSafetyColumns: number = 1;
 
 export function createCommandProgress(input: CommandProgressInput): CommandProgress {
   if (!shouldRenderCommandProgress(input)) {
-    return new NoopCommandProgress();
+    return new NoopCommandProgress(input);
   }
 
   if (input.io.stderrIsTTY !== true) {
@@ -27,9 +27,16 @@ export function createCommandProgress(input: CommandProgressInput): CommandProgr
 
 class NoopCommandProgress implements CommandProgress {
   readonly mode: CommandProgressMode = 'hidden';
+  readonly #input: CommandProgressInput;
 
-  report(): void {
-    return;
+  constructor(input: CommandProgressInput) {
+    this.#input = input;
+  }
+
+  report(message: string, options?: CommandProgressReportOptions): void {
+    if (options?.renderMode === 'line') {
+      this.#input.io.stderr(readLineProgressMessage(message));
+    }
   }
 
   stop(): void {

@@ -569,13 +569,13 @@ describe('compartment descriptor contracts', (): void => {
     expect(readCompartmentDescriptorCompatibilityWarnings(descriptor)).toEqual([
       {
         message:
-          'Warning: deprecated services.web.run.restart={"maxRetries":2,"policy":"on-failure"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment stop scales replicas to zero.',
+          'Warning: deprecated services.web.run.restart={"maxRetries":2,"policy":"on-failure"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment project stop scales service Deployments to zero.',
         path: 'services.web.run.restart',
         value: '{"maxRetries":2,"policy":"on-failure"}',
       },
       {
         message:
-          'Warning: deprecated resources.db.restart={"policy":"unless-stopped"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment stop scales replicas to zero.',
+          'Warning: deprecated resources.db.restart={"policy":"unless-stopped"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment resource stop --resource db scales this resource Deployment to zero.',
         path: 'resources.db.restart',
         value: '{"policy":"unless-stopped"}',
       },

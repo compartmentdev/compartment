@@ -120,6 +120,20 @@ async function queueDeploymentsFromValidatedSourceUpload(
     triggerType: resolveSourceUploadDeploymentRunTriggerType(input.sourceProvenance),
     updatedAt: new Date(),
   });
+  return await withDeploymentRunCleanupOnError(
+    deploymentRunId,
+    async (): Promise<DeploymentJoinedRow[]> =>
+      await queueValidatedDeploymentRun(deploymentRunId, input, contexts, sourceUpload),
+  );
+}
+
+async function queueValidatedDeploymentRun(
+  deploymentRunId: string,
+  input: DeployInputContext,
+  contexts: readonly ResolvedProjectContext[],
+  sourceUpload: SourceUploadRow,
+): Promise<DeploymentJoinedRow[]> {
+  await appendDeployCompatibilityWarnings(deploymentRunId, input.descriptor);
   const queuedDeployments: DeploymentRow[] = await createQueuedDeploymentsForSourceUploadRun(
     deploymentRunId,
     input,
@@ -128,7 +142,6 @@ async function queueDeploymentsFromValidatedSourceUpload(
   );
 
   await appendQueuedDeploymentRunEvents(queuedDeployments);
-  await appendDeployCompatibilityWarnings(deploymentRunId, input.descriptor);
   return await findQueuedJoinedDeployments(queuedDeployments);
 }
 
@@ -148,21 +161,19 @@ async function createQueuedDeploymentsForSourceUploadRun(
   contexts: readonly ResolvedProjectContext[],
   sourceUpload: SourceUploadRow,
 ): Promise<DeploymentRow[]> {
-  return await withDeploymentRunCleanupOnError(deploymentRunId, async (): Promise<DeploymentRow[]> => {
-    const preparedStates: PreparedQueuedDeploymentState[] = await prepareQueuedDeploymentStates(
-      deploymentRunId,
-      input.sourceProvenance,
-      contexts,
-      input.routes,
-      sourceUpload,
-    );
+  const preparedStates: PreparedQueuedDeploymentState[] = await prepareQueuedDeploymentStates(
+    deploymentRunId,
+    input.sourceProvenance,
+    contexts,
+    input.routes,
+    sourceUpload,
+  );
 
-    return await queuePreparedDeployments(
-      preparedStates,
-      buildSourceUploadConsumptionScope(input, contexts, sourceUpload),
-      input.label,
-    );
-  });
+  return await queuePreparedDeployments(
+    preparedStates,
+    buildSourceUploadConsumptionScope(input, contexts, sourceUpload),
+    input.label,
+  );
 }
 
 async function prepareQueuedDeploymentStates(

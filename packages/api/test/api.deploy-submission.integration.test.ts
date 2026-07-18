@@ -663,11 +663,18 @@ describe('Phase 0 API integration deploy submission', (): void => {
           deploymentId: null,
           level: 'info',
           message:
-            'Warning: deprecated services.web.run.restart={"maxRetries":3,"policy":"on-failure"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment stop scales replicas to zero.',
+            'Warning: deprecated services.web.run.restart={"maxRetries":3,"policy":"on-failure"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment project stop scales service Deployments to zero.',
           stepKey: 'queued',
         }),
       ]),
     );
+    const compatibilityWarning: typeof deploymentRunEvents.$inferSelect | undefined = storedEvents.find(
+      (event: typeof deploymentRunEvents.$inferSelect): boolean => event.deploymentId === null,
+    );
+    const queuedEvent: typeof deploymentRunEvents.$inferSelect | undefined = storedEvents.find(
+      (event: typeof deploymentRunEvents.$inferSelect): boolean => event.message === 'deployment queued',
+    );
+    expect(compatibilityWarning?.createdAt.getTime()).toBeLessThanOrEqual(queuedEvent?.createdAt.getTime() ?? -1);
   });
   it('auto-generates postgres preset passwords before resolving resource outputs', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);

@@ -104,8 +104,9 @@ Descriptors created for the former Docker runtime may include `services.<name>.r
 `resources.<name>.restart`. Kubernetes deployments accept these fields during migration, but the fields are deprecated
 and are not applied. Deploy prints a warning for every authored restart setting.
 
-Kubernetes Deployment Pods always use `restartPolicy: Always` while the Deployment has running replicas. Running
-`compartment stop` scales the workload to zero, which prevents further restarts. This behavior also applies when the
+Kubernetes Deployment Pods always use `restartPolicy: Always` while the Deployment has running replicas.
+`compartment project stop` scales service Deployments to zero, and `compartment resource stop --resource <name>` does
+the same for a resource Deployment. A stopped Deployment has no Pods to restart. This behavior also applies when the
 descriptor has no restart field.
 
 The compatibility parser accepts the former service policies `no`, `on-failure`, and `unless-stopped`.

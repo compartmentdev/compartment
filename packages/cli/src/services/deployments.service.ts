@@ -217,7 +217,7 @@ function createMissingDeployDescriptorError(): Error {
 
 function reportDescriptorCompatibilityWarnings(input: DeployCommandInput, descriptor: StoredProjectDescriptor): void {
   for (const warning of readCompartmentDescriptorCompatibilityWarnings(descriptor.descriptor)) {
-    reportDeployProgress(input, warning.message);
+    input.reportWarning?.(warning.message);
   }
 }
 

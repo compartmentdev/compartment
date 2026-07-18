@@ -156,7 +156,7 @@ describe('deployment progress services', (): void => {
   });
 
   it('reports deprecated restart settings with actual Kubernetes behavior before deploy', async (): Promise<void> => {
-    const progressMessages: string[] = [];
+    const warningMessages: string[] = [];
     mocks.resolveProjectTarget.mockResolvedValueOnce({
       ...createResolvedProjectTarget(),
       descriptor: {
@@ -180,13 +180,13 @@ describe('deployment progress services', (): void => {
 
     await deployProject(createAuthenticatedContext(), {
       cwd: '/tmp/smoke-web',
-      reportProgress: (message: string): void => {
-        progressMessages.push(message);
+      reportWarning: (message: string): void => {
+        warningMessages.push(message);
       },
     });
 
-    expect(progressMessages).toContain(
-      'Warning: deprecated services.web.run.restart={"maxRetries":3,"policy":"on-failure"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment stop scales replicas to zero.',
+    expect(warningMessages).toContain(
+      'Warning: deprecated services.web.run.restart={"maxRetries":3,"policy":"on-failure"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment project stop scales service Deployments to zero.',
     );
   });
 

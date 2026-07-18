@@ -15,8 +15,8 @@ export interface CompartmentDescriptorCompatibilityWarning {
   value: string;
 }
 
-const kubernetesRestartBehavior: string =
-  'Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment stop scales replicas to zero.';
+const kubernetesRestartBehaviorPrefix: string =
+  'Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running;';
 
 export function readCompartmentDescriptorCompatibilityWarnings(
   descriptor: CompartmentAuthoredDescriptor,
@@ -47,7 +47,13 @@ function readServiceRestartWarning(
     return [];
   }
 
-  return [createRestartWarning(`services.${serviceName}.run.restart`, restart)];
+  return [
+    createRestartWarning(
+      `services.${serviceName}.run.restart`,
+      restart,
+      'compartment project stop scales service Deployments to zero.',
+    ),
+  ];
 }
 
 function readResourceRestartWarnings(
@@ -63,7 +69,13 @@ function readResourceRestartWarnings(
       }
 
       const policy: CompartmentDeprecatedRestartPolicy = resource.restart.policy ?? 'unless-stopped';
-      return [createRestartWarning(`resources.${resourceName}.restart`, { policy })];
+      return [
+        createRestartWarning(
+          `resources.${resourceName}.restart`,
+          { policy },
+          `compartment resource stop --resource ${resourceName} scales this resource Deployment to zero.`,
+        ),
+      ];
     },
   );
 }
@@ -71,10 +83,11 @@ function readResourceRestartWarnings(
 function createRestartWarning(
   path: string,
   restart: CompartmentDeprecatedServiceRestartConfig,
+  stopBehavior: string,
 ): CompartmentDescriptorCompatibilityWarning {
   const value: string = JSON.stringify(restart);
   return {
-    message: `Warning: deprecated ${path}=${value} is accepted for Docker-line compatibility but is not applied on Kubernetes. ${kubernetesRestartBehavior}`,
+    message: `Warning: deprecated ${path}=${value} is accepted for Docker-line compatibility but is not applied on Kubernetes. ${kubernetesRestartBehaviorPrefix} ${stopBehavior}`,
     path,
     value,
   };
