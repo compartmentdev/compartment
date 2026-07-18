@@ -9,7 +9,7 @@ import {
   readPlatformK3dShard,
   readPlatformK3dShardSuites,
   runWithPlatformK3dCleanup,
-} from './run-platform-k3d-e2e-shard.mjs';
+} from './platform-k3d-e2e-shard-support.mjs';
 
 describe('platform k3d e2e shard runner', () => {
   it('defines isolated names, ports, namespaces, and state for every shard', () => {
@@ -130,7 +130,7 @@ describe('platform k3d e2e shard runner', () => {
     const directory = await mkdtemp(join(tmpdir(), 'platform-k3d-signal-'));
     const markerPath = join(directory, 'cleaned');
     const leakedChildMarkerPath = join(directory, 'leaked-child');
-    const moduleUrl = new URL('./run-platform-k3d-e2e-shard.mjs', import.meta.url).href;
+    const moduleUrl = new URL('./platform-k3d-e2e-shard-support.mjs', import.meta.url).href;
     const grandchildProgram = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(leakedChildMarkerPath)}, 'leaked'), 400);`;
     const activeCommandProgram = `require('node:child_process').spawn(process.execPath, ['--eval', ${JSON.stringify(grandchildProgram)}], { stdio: 'ignore' }); process.stdout.write('ready'); setInterval(() => undefined, 60000);`;
     const program = `

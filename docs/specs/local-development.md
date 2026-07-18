@@ -39,8 +39,9 @@ pnpm platform:e2e:run build-gates
 ```
 
 The runner builds the CLI and test images, creates shard-specific k3d and registry resources, and removes its cluster,
-registry, builder cache, images, volumes, network, and temporary state on success or failure. Failure diagnostics remain
-under `.compartment/platform-k3d-diagnostics-<shard>`.
+registry, builder cache, run-scoped images, volumes, network, and temporary state on success or failure. Shared `sha-*`
+cache tags are retained for 24 hours so concurrent security scans keep stable inputs, then pruned on a later startup.
+Failure diagnostics remain under `.compartment/platform-k3d-diagnostics-<shard>`.
 
 To retain a failed stand for investigation, set `COMPARTMENT_E2E_KEEP_ON_FAILURE=1`. Successful runs always clean up.
 CI uses the same opt-in through the `COMPARTMENT_E2E_KEEP_ON_FAILURE` Actions variable; leave it unset for the clean

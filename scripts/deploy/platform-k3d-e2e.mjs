@@ -1,13 +1,4 @@
-import {
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmdirSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { get } from 'node:http';
 import { isIP } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -18,6 +9,15 @@ import { buildSelfHostedImages } from './build-self-hosted-images.mjs';
 import { captureCommand, captureCommandResult, runCommand, runCommandAsync } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
+import {
+  isPlatformSourceCacheImageRef,
+  readPlatformK3dCleanupStageNames,
+  runPlatformK3dCleanupSequence,
+  runPlatformK3dCleanupStep,
+  settlePlatformK3dStartup,
+  shouldCleanPlatformSourceCacheImage,
+  withPlatformK3dProcessLock,
+} from './platform-k3d-e2e-support.mjs';
 
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const dockerResourceNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
@@ -57,16 +57,6 @@ const pebbleImageRef =
   'ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199';
 const archiveLoadLockDirectory = join(tmpdir(), 'compartment-platform-k3d-image-load.lock');
 const legacyCleanupLockDirectory = join(tmpdir(), 'compartment-platform-k3d-legacy-cleanup.lock');
-const processLockRetryMilliseconds = 100;
-const processLockTimeoutMilliseconds = 30 * 60 * 1_000;
-const platformCleanupStageNames = Object.freeze([
-  'cluster',
-  'registry',
-  'builder',
-  'residual Docker resources',
-  'run-owned images',
-  'state files and directories',
-]);
 const builtImageRefsByServiceName = Object.freeze(
   Object.fromEntries(
     platformServiceNames.map((serviceName) => [
@@ -128,23 +118,6 @@ export function isRunOwnedImageRef(imageRef, environment = platformEnvironment) 
   return platformServiceNames.some(
     (serviceName) => imageRef === `ghcr.io/compartmentdev/compartment-${serviceName}:e2e-${environment.clusterName}`,
   );
-}
-
-export function isPlatformSourceCacheImageRef(imageRef) {
-  return platformServiceNames.some((serviceName) =>
-    imageRef.startsWith(`ghcr.io/compartmentdev/compartment-${serviceName}:sha-`),
-  );
-}
-
-export function readPlatformK3dCleanupStageNames() {
-  return platformCleanupStageNames;
-}
-
-export function runPlatformK3dCleanupSequence(steps, cleanupErrors = []) {
-  for (const step of steps) {
-    runCleanupStep(cleanupErrors, step.label, step.cleanup);
-  }
-  return cleanupErrors;
 }
 
 function readNameEnv(env, name, defaultValue) {
@@ -302,17 +275,6 @@ function renderK3dServiceValues() {
 
 export function shouldCleanLegacyPlatformResources(environment = platformEnvironment) {
   return environment.clusterName !== 'compartment-e2e';
-}
-
-export async function settlePlatformK3dStartup(clusterPromise, imagePromise) {
-  const [clusterResult, imageResult] = await Promise.allSettled([clusterPromise, imagePromise]);
-  if (clusterResult.status === 'rejected') {
-    throw clusterResult.reason;
-  }
-  if (imageResult.status === 'rejected') {
-    throw imageResult.reason;
-  }
-  return imageResult.value;
 }
 
 async function cleanLegacyPlatformResources() {
@@ -587,7 +549,6 @@ async function loadPlatformImageArchives(imageArchiveDir) {
   return await withPlatformK3dProcessLock(archiveLoadLockDirectory, async () => {
     cleanHistoricalPlatformSourceImages();
     const imageRefsByServiceName = {};
-    const loadedImageRefs = [];
     try {
       for (const serviceName of platformServiceNames) {
         const archivePath = `${imageArchiveDir}/${serviceName}.tar`;
@@ -601,76 +562,31 @@ async function loadPlatformImageArchives(imageArchiveDir) {
         const isolatedImageRef = builtImageRefsByServiceName[serviceName];
         runCommand('docker', ['tag', imageRef, isolatedImageRef], repositoryRoot);
         imageRefsByServiceName[serviceName] = isolatedImageRef;
-        loadedImageRefs.push(imageRef);
       }
     } catch (error) {
       removeImageRefs(Object.values(imageRefsByServiceName));
       throw error;
-    } finally {
-      removeImageRefs(loadedImageRefs);
     }
 
     return imageRefsByServiceName;
   });
 }
 
-export async function withPlatformK3dProcessLock(lockDirectory, operation) {
-  const releaseLock = await acquirePlatformK3dProcessLock(lockDirectory);
-  try {
-    return await operation();
-  } finally {
-    releaseLock();
-  }
-}
-
-async function acquirePlatformK3dProcessLock(lockDirectory) {
-  const attempts = Math.ceil(processLockTimeoutMilliseconds / processLockRetryMilliseconds);
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      mkdirSync(lockDirectory);
-      writeFileSync(join(lockDirectory, 'pid'), process.pid.toString(), { mode: 0o600 });
-      return () => rmSync(lockDirectory, { force: true, recursive: true });
-    } catch (error) {
-      if (error?.code !== 'EEXIST') {
-        throw error;
-      }
-      if (!processLockOwnerIsRunning(lockDirectory)) {
-        rmSync(lockDirectory, { force: true, recursive: true });
-        continue;
-      }
-      await delay(processLockRetryMilliseconds);
-    }
-  }
-  throw new Error(`Timed out waiting for the platform k3d process lock at ${lockDirectory}.`);
-}
-
-function processLockOwnerIsRunning(lockDirectory) {
-  let ownerPid;
-  try {
-    ownerPid = Number(readFileSync(join(lockDirectory, 'pid'), 'utf8'));
-  } catch {
-    try {
-      return Date.now() - statSync(lockDirectory).mtimeMs < 5_000;
-    } catch {
-      return false;
-    }
-  }
-  if (!Number.isSafeInteger(ownerPid) || ownerPid <= 0) {
-    return false;
-  }
-  try {
-    process.kill(ownerPid, 0);
-    return true;
-  } catch (error) {
-    return error?.code === 'EPERM';
-  }
-}
-
 function cleanHistoricalPlatformSourceImages() {
+  const currentCommitSha = captureCommand('git', ['rev-parse', 'HEAD'], repositoryRoot).trim();
   const imageRefs = captureCommand('docker', ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'], repositoryRoot)
     .split('\n')
     .map((imageRef) => imageRef.trim())
-    .filter((imageRef) => imageRef !== '' && isPlatformSourceCacheImageRef(imageRef));
+    .filter((imageRef) => imageRef !== '' && isPlatformSourceCacheImageRef(imageRef))
+    .filter((imageRef) => !imageRef.endsWith(`:sha-${currentCommitSha}`))
+    .filter((imageRef) => {
+      const createdAt = captureCommand(
+        'docker',
+        ['image', 'inspect', '--format', '{{.Created}}', imageRef],
+        repositoryRoot,
+      );
+      return shouldCleanPlatformSourceCacheImage(imageRef, createdAt);
+    });
   removeImageRefs(imageRefs);
 }
 
@@ -697,6 +613,7 @@ function cleanPlatformResources() {
   };
   runPlatformK3dCleanupSequence(
     readPlatformK3dCleanupStageNames().map((label) => ({ cleanup: cleanupByStageName[label], label })),
+    clusterName,
     cleanupErrors,
   );
   if (cleanupErrors.length > 0) {
@@ -733,12 +650,7 @@ function cleanPlatformState(cleanupErrors) {
 }
 
 function runCleanupStep(cleanupErrors, label, cleanup) {
-  try {
-    cleanup();
-  } catch (error) {
-    cleanupErrors.push(error);
-    process.stderr.write(`Failed to clean ${label} for ${clusterName}: ${String(error)}\n`);
-  }
+  runPlatformK3dCleanupStep(cleanupErrors, label, cleanup, clusterName);
 }
 
 function cleanResidualDockerResources(cleanupErrors) {

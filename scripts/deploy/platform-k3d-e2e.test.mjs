@@ -6,22 +6,25 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isConsoleReadyStatus,
-  isPlatformSourceCacheImageRef,
   isRunOwnedDockerResourceName,
   isRunOwnedImageRef,
   parseK3dClusterNames,
   parseLoadedImageRefs,
   readPlatformK3dCommand,
-  readPlatformK3dCleanupStageNames,
   readPlatformK3dEnvironment,
   renderK3dRegistryConfig,
   renderManagedPlatformK3dValues,
   renderPlatformK3dValues,
-  settlePlatformK3dStartup,
   shouldCleanLegacyPlatformResources,
-  runPlatformK3dCleanupSequence,
-  withPlatformK3dProcessLock,
 } from './platform-k3d-e2e.mjs';
+import {
+  isPlatformSourceCacheImageRef,
+  readPlatformK3dCleanupStageNames,
+  runPlatformK3dCleanupSequence,
+  settlePlatformK3dStartup,
+  shouldCleanPlatformSourceCacheImage,
+  withPlatformK3dProcessLock,
+} from './platform-k3d-e2e-support.mjs';
 
 describe('platform k3d e2e command boundary', () => {
   it('accepts the up action with built images by default', () => {
@@ -110,8 +113,16 @@ describe('platform k3d e2e command boundary', () => {
     ).toBe(true);
     expect(isRunOwnedImageRef('localhost:15600/compartment-api:e2e', environment)).toBe(false);
     expect(isRunOwnedImageRef('postgres:16', environment)).toBe(false);
-    expect(isPlatformSourceCacheImageRef('ghcr.io/compartmentdev/compartment-api:sha-abc123')).toBe(true);
+    const cacheImageRef = `ghcr.io/compartmentdev/compartment-api:sha-${'a'.repeat(40)}`;
+    expect(isPlatformSourceCacheImageRef(cacheImageRef)).toBe(true);
+    expect(isPlatformSourceCacheImageRef('ghcr.io/compartmentdev/compartment-api:sha-local')).toBe(false);
     expect(isPlatformSourceCacheImageRef('postgres:16')).toBe(false);
+    expect(shouldCleanPlatformSourceCacheImage(cacheImageRef, '2026-07-16T00:00:00.000Z', Date.UTC(2026, 6, 18))).toBe(
+      true,
+    );
+    expect(shouldCleanPlatformSourceCacheImage(cacheImageRef, '2026-07-18T00:00:00.000Z', Date.UTC(2026, 6, 18))).toBe(
+      false,
+    );
     expect(shouldCleanLegacyPlatformResources(environment)).toBe(true);
     expect(shouldCleanLegacyPlatformResources(readPlatformK3dEnvironment({}))).toBe(false);
   });
@@ -136,6 +147,7 @@ describe('platform k3d e2e command boundary', () => {
         },
         label,
       })),
+      'compartment-e2e-test',
     );
     expect(attempted).toEqual(readPlatformK3dCleanupStageNames());
     expect(errors).toHaveLength(1);
