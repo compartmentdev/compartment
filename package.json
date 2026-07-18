@@ -29,6 +29,7 @@
     "self-hosted:publish": "node ./scripts/deploy/publish-self-hosted-images.mjs",
     "platform:e2e:up": "node ./scripts/deploy/platform-k3d-e2e.mjs up",
     "platform:e2e:down": "node ./scripts/deploy/platform-k3d-e2e.mjs down",
+    "platform:e2e:run": "node ./scripts/deploy/run-platform-k3d-e2e-shard.mjs",
     "broker:deploy:prod": "node ./scripts/deploy/deploy-broker-prod.mjs",
     "release:prepare": "node ./scripts/release/prepare.mjs",
     "cli:build:sea": "node ./scripts/release/build-cli-sea.mjs",

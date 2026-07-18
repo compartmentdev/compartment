@@ -18,6 +18,7 @@ import {
   readSystemDomainTlsMode,
   resolveKubernetesOperatorTarget,
   resolveSystemDomainVersionedCommand,
+  systemDomainExpectedVersionDescription,
 } from './system.command.options';
 import { createSystemDomainMutationMessage, createSystemDomainStatusMessage } from './system.command.output';
 import type {
@@ -105,7 +106,7 @@ function registerDomainAttachCertificateCommand(program: Command, dependencies: 
       .description('Stage a TLS Secret and validate it against the pending domain')
       .requiredOption('--cert-file <path>', 'Full-chain PEM certificate file')
       .requiredOption('--key-file <path>', 'Private-key PEM file')
-      .option('--expected-version <version>', 'Domain setup version'),
+      .option('--expected-version <version>', systemDomainExpectedVersionDescription),
   ).action(async (options: SystemDomainAttachCertificateCommandOptions): Promise<void> => {
     const resolved: ResolvedSystemDomainVersionedCommand = resolveSystemDomainVersionedCommand(options);
     const result: SystemDomainMutationResponse = await attachKubernetesSystemDomainCertificate({
@@ -127,7 +128,10 @@ function registerDomainMutationCommand(
   addOptions: AddOperatorOptions,
 ): void {
   addOptions(
-    program.command(name).description(description).option('--expected-version <version>', 'Domain setup version'),
+    program
+      .command(name)
+      .description(description)
+      .option('--expected-version <version>', systemDomainExpectedVersionDescription),
   ).action(async (options: SystemDomainVersionedCommandOptions): Promise<void> => {
     const resolved: ResolvedSystemDomainVersionedCommand = resolveSystemDomainVersionedCommand(options);
     const result: SystemDomainMutationResponse = await mutate({

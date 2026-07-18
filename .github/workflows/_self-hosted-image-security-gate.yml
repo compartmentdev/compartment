@@ -25,7 +25,7 @@ jobs:
   scan-images:
     name: scan images
     runs-on: ${{ fromJson(inputs.runner_labels_json) }}
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -60,13 +60,21 @@ jobs:
           key: ${{ inputs.self_hosted_image_cache_key }}
           fail-on-cache-miss: true
 
+      - name: Acquire shared image cache lock
+        id: acquire-image-cache-lock
+        run: >-
+          node ./scripts/deploy/manage-platform-image-cache-lock.mjs acquire
+          "security-${{ github.run_id }}-${{ github.run_attempt }}"
+
       - name: Load self-hosted images from cache
+        timeout-minutes: 5
         run: |
           for service in api caddy edge worker; do
             docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
           done
 
       - name: Verify cached self-hosted image refs
+        timeout-minutes: 2
         run: |
           set -euo pipefail
           docker image inspect \
@@ -76,6 +84,7 @@ jobs:
             "ghcr.io/compartmentdev/compartment-worker:sha-${{ github.sha }}" >/dev/null
 
       - name: Check self-hosted image vulnerabilities
+        timeout-minutes: 20
         env:
           DOCKER_SCOUT_ENABLED: ${{ inputs.docker_scout_enabled }}
         run: |
@@ -88,3 +97,9 @@ jobs:
             --scan-only \
             "${docker_scout_args[@]}" \
             "sha-${{ github.sha }}"
+
+      - name: Release shared image cache lock
+        if: ${{ always() && steps.acquire-image-cache-lock.outcome == 'success' }}
+        run: >-
+          node ./scripts/deploy/manage-platform-image-cache-lock.mjs release
+          "security-${{ github.run_id }}-${{ github.run_attempt }}"

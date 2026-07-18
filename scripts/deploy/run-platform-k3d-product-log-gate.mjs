@@ -4,8 +4,8 @@ import { captureCommand, runCommand } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
-const context = 'k3d-compartment-e2e';
-const platformNamespace = 'compartment';
+const context = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e';
+const platformNamespace = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
 const platformName = 'compartment-compartment';
 const observabilityNamespace = `${platformName}-observability`;
 const agentName = `${platformName}-log-agent`;
@@ -70,7 +70,7 @@ export function findDegradedProductDeployments(rawDeployments) {
   });
 }
 
-export async function runPlatformK3dProductLogGate() {
+async function runPlatformK3dProductLogGate() {
   let originalQuota;
   let loadTarget;
   try {

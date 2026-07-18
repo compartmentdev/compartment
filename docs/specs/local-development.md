@@ -24,3 +24,25 @@ pnpm dev
 - Source builds call the local `railpack` CLI.
 - The dev path also ensures a local bundled artifact registry container is running on loopback so deploy builds can push durable image refs for rollback and promote flows.
 - The artifact registry container is development infrastructure, not an application runtime target.
+
+## Local k3d E2E
+
+Install `k3d`, `kubectl`, and Helm alongside the prerequisites above. For the managed-install shard, map
+`console.managed.compartment.test` and `managed-domain-broker` to `127.0.0.1` in `/etc/hosts`.
+
+Run one isolated shard at a time:
+
+```bash
+pnpm platform:e2e:run managed-install
+pnpm platform:e2e:run user-flow
+pnpm platform:e2e:run build-gates
+```
+
+The runner builds the CLI and test images, creates shard-specific k3d and registry resources, and removes its cluster,
+registry, builder cache, run-scoped images, volumes, network, and temporary state on success or failure. Shared `sha-*`
+cache tags are retained for 24 hours so concurrent security scans keep stable inputs, then pruned on a later startup.
+Failure diagnostics remain under `.compartment/platform-k3d-diagnostics-<shard>`.
+
+To retain a failed stand for investigation, set `COMPARTMENT_E2E_KEEP_ON_FAILURE=1`. Successful runs always clean up.
+CI uses the same opt-in through the `COMPARTMENT_E2E_KEEP_ON_FAILURE` Actions variable; leave it unset for the clean
+default.

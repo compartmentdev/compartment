@@ -13,7 +13,7 @@ Usage: compartment system domain reset-managed [options]
 Restore the managed domain retained by the installation
 
 Options:
-  --expected-version <version>  Domain setup version
+  --expected-version <version>  Domain setup version from 0 to 2147483647
   --kube-context <name>         Kubernetes context
   --namespace <name>            Kubernetes namespace; defaults to compartment
   --release-name <name>         Helm release name; defaults to compartment

@@ -13,7 +13,7 @@ Usage: compartment system domain verify [options]
 Verify the pending domain
 
 Options:
-  --expected-version <version>  Domain setup version
+  --expected-version <version>  Domain setup version from 0 to 2147483647
   --kube-context <name>         Kubernetes context
   --namespace <name>            Kubernetes namespace; defaults to compartment
   --release-name <name>         Helm release name; defaults to compartment

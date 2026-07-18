@@ -29,14 +29,18 @@ const dockerRegistryRateLimitPatterns = [
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
 export async function buildSelfHostedImages(input) {
-  const buildPlan = buildSelfHostedImageBuildPlan(input.imageRefsByServiceName, input.env ?? process.env);
+  const buildPlan = buildSelfHostedImageBuildPlan(
+    input.imageRefsByServiceName,
+    input.env ?? process.env,
+    input.builderName,
+  );
 
   for (const build of buildPlan) {
     await runDockerBuildWithRegistryRetry(input.repositoryRoot, build);
   }
 }
 
-function buildSelfHostedImageBuildPlan(imageRefsByServiceName, env) {
+function buildSelfHostedImageBuildPlan(imageRefsByServiceName, env, builderName) {
   const nodeArgs = [
     '--build-arg',
     `COMPARTMENT_NODE_BUILD_IMAGE=${readBaseImage(env, 'COMPARTMENT_NODE_BUILD_IMAGE')}`,
@@ -95,7 +99,13 @@ function buildSelfHostedImageBuildPlan(imageRefsByServiceName, env) {
       name: 'caddy',
     },
   ].map((build) => ({
-    args: ['buildx', 'build', '--load', ...build.args],
+    args: [
+      'buildx',
+      'build',
+      ...(builderName === undefined ? [] : ['--builder', builderName]),
+      '--load',
+      ...build.args,
+    ],
     name: build.name,
   }));
 }

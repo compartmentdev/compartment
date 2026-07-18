@@ -25,14 +25,15 @@ import { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import { publishPlatformK3dOwnerEnvironment } from './platform-k3d-owner-environment.harness';
 
 const platformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
-const platformApiUrl: string = 'http://console.compartment.localhost:18080';
+const platformApiUrl: string = process.env.COMPARTMENT_E2E_API_URL ?? 'http://console.compartment.localhost:18080';
 const platformCompartmentUrl: string = 'http://console.compartment.localhost';
 const platformBaseDomain: string = 'compartment.localhost';
 const platformOrganizationName: string = 'Platform E2E';
 const platformOrganizationSlug: string = 'platform-e2e';
-const platformValuesPath: string = '.compartment/platform-k3d-e2e-values.yaml';
-const platformKubeContext: string = 'k3d-compartment-e2e';
-const platformNamespace: string = 'compartment';
+const platformValuesPath: string =
+  process.env.COMPARTMENT_E2E_PLATFORM_VALUES_PATH ?? '.compartment/platform-k3d-e2e-values.yaml';
+const platformKubeContext: string = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e';
+const platformNamespace: string = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
 const installTimeoutMs: number = 50 * 60_000;
 const kubernetesCommandTimeoutMs: number = 6 * 60_000;
 const tempRootDirectory: string = readSocketSafeTempRootDirectory('pk3i-', 'system-api.sock');

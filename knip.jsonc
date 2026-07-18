@@ -6,6 +6,8 @@
     "public-docs/src/styles/site.css",
     // Release workflows run this helper by string path from shell steps.
     "scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs",
+    // The k3d shard runner starts this gate by a validated repo-local string path.
+    "scripts/deploy/run-platform-k3d-retained-state-gate.mjs",
     // k3d e2e embeds this test-only cosign fixture through a workflow environment path.
     "scripts/deploy/fixtures/cosign-k3d-e2e.mjs",
     // The managed-install e2e mounts this broker fixture through a ConfigMap file path.
@@ -46,6 +48,11 @@
     "eslint.config.mjs!",
     "eslint.duplicates.config.mjs!",
     "scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs!",
+    "scripts/deploy/manage-platform-image-cache-lock.mjs!",
+    // The shard runner starts these executable gates by validated repo-local paths.
+    "scripts/deploy/collect-platform-k3d-e2e-diagnostics.mjs!",
+    "scripts/deploy/run-platform-k3d-product-log-gate.mjs!",
+    "scripts/deploy/run-platform-k3d-retained-state-gate.mjs!",
     "scripts/dev/run-compartment-cli.mjs!",
     "scripts/docs/public-docs/generate-public-docs.mjs!",
     "scripts/docs/public-docs/run-typescript-export.mjs!",

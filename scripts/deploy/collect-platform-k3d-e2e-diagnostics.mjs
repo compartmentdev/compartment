@@ -4,7 +4,8 @@ import { captureCommand, captureCommandResult } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
-const context = 'k3d-compartment-e2e';
+const context = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e';
+const platformNamespace = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
 export function parseDeploymentReferences(output) {
@@ -21,7 +22,7 @@ export function parseDeploymentReferences(output) {
     });
 }
 
-export function collectPlatformK3dDiagnostics(outputDirectory) {
+function collectPlatformK3dDiagnostics(outputDirectory) {
   if (outputDirectory === undefined || outputDirectory.trim() === '') {
     throw new Error('Usage: node ./scripts/deploy/collect-platform-k3d-e2e-diagnostics.mjs <output-dir>');
   }
@@ -60,7 +61,7 @@ export function collectPlatformK3dDiagnostics(outputDirectory) {
     '--kube-context',
     context,
     '--namespace',
-    'compartment',
+    platformNamespace,
   ]);
   capture(outputDirectory, 'events', 'kubectl', [
     '--context',

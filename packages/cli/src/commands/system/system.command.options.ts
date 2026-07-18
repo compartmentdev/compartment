@@ -9,6 +9,9 @@ import type {
 
 const defaultKubernetesNamespace: string = 'compartment';
 const defaultKubernetesReleaseName: string = 'compartment';
+const maximumSetupVersion: number = 2_147_483_647;
+export const systemDomainExpectedVersionDescription: string = `Domain setup version from 0 to ${maximumSetupVersion.toString()}`;
+const systemDomainExpectedVersionError: string = `Expected --expected-version to be an integer from 0 to ${maximumSetupVersion.toString()}.`;
 const kubernetesNamePattern: RegExp = /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/u;
 
 export function addKubernetesOperatorReleaseOptions(command: Command): Command {
@@ -74,9 +77,12 @@ function readExpectedSetupVersion(value: string | undefined): number | undefined
     return undefined;
   }
   if (/^\d+$/u.test(value)) {
-    return Number(value);
+    const setupVersion: number = Number(value);
+    if (Number.isSafeInteger(setupVersion) && setupVersion <= maximumSetupVersion) {
+      return setupVersion;
+    }
   }
-  throw new Error('Expected --expected-version to be a non-negative integer.');
+  throw new Error(systemDomainExpectedVersionError);
 }
 
 function normalizeKubernetesName(value: string, optionName: string, maximumLength: number): string {
