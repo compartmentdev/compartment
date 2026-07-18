@@ -23,7 +23,7 @@ import {
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   createOrganizationMemberSession,
   createStoredAppAccessSession as createStoredAppAccessSessionFixture,
@@ -41,6 +41,7 @@ import {
   authSessions,
   buildArtifacts,
   deploymentRunEvents,
+  deploymentRuns,
   deployments,
   operations,
   organizationMemberships,
@@ -668,13 +669,38 @@ describe('Phase 0 API integration deploy submission', (): void => {
         }),
       ]),
     );
-    const compatibilityWarning: typeof deploymentRunEvents.$inferSelect | undefined = storedEvents.find(
-      (event: typeof deploymentRunEvents.$inferSelect): boolean => event.deploymentId === null,
+  });
+  it('does not queue a deployment when its compatibility warning cannot be recorded', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
     );
-    const queuedEvent: typeof deploymentRunEvents.$inferSelect | undefined = storedEvents.find(
-      (event: typeof deploymentRunEvents.$inferSelect): boolean => event.message === 'deployment queued',
+
+    const deployResponse: LightMyRequestResponse = await withRejectedCompatibilityWarningEvents(
+      async (): Promise<LightMyRequestResponse> =>
+        await injectJsonDeployRequest(app, installPayload.sessionToken, 'acme-dev', {
+          descriptor: {
+            name: 'smoke-web',
+            services: {
+              web: {
+                path: '.',
+                run: {
+                  restart: {
+                    policy: 'no',
+                  },
+                },
+              },
+            },
+          },
+          sourceUploadId: sourceUpload.id,
+        }),
     );
-    expect(compatibilityWarning?.createdAt.getTime()).toBeLessThanOrEqual(queuedEvent?.createdAt.getTime() ?? -1);
+
+    expect(deployResponse.statusCode).toBe(500);
+    expect(await db.select().from(deploymentRuns)).toEqual([]);
+    expect(await db.select().from(deployments)).toEqual([]);
   });
   it('auto-generates postgres preset passwords before resolving resource outputs', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
@@ -1236,6 +1262,22 @@ async function createResourceDeploySourceArchive(): Promise<Buffer> {
       version: 1,
     },
   );
+}
+
+async function withRejectedCompatibilityWarningEvents<T>(action: () => Promise<T>): Promise<T> {
+  await db.execute(sql`
+    ALTER TABLE deployment_run_events
+    ADD CONSTRAINT deployment_run_events_reject_compatibility_warning
+    CHECK (deployment_id IS NOT NULL OR message NOT LIKE 'Warning: deprecated %')
+  `);
+  try {
+    return await action();
+  } finally {
+    await db.execute(sql`
+      ALTER TABLE deployment_run_events
+      DROP CONSTRAINT deployment_run_events_reject_compatibility_warning
+    `);
+  }
 }
 
 async function createStoredSsoOidcProvider(providerId: string, organizationId: string): Promise<void> {
