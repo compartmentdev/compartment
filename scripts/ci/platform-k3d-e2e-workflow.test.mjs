@@ -49,11 +49,14 @@ describe('platform k3d e2e workflow', () => {
     const acquireIndex = steps.findIndex((step) => step.name === 'Acquire shared image cache lock');
     const scanIndex = steps.findIndex((step) => step.name === 'Check self-hosted image vulnerabilities');
     const releaseIndex = steps.findIndex((step) => step.name === 'Release shared image cache lock');
+    const protectedSteps = steps.slice(acquireIndex + 1, releaseIndex);
 
     expect(acquireIndex).toBeGreaterThan(-1);
     expect(scanIndex).toBeGreaterThan(acquireIndex);
     expect(releaseIndex).toBeGreaterThan(scanIndex);
     expect(job['timeout-minutes']).toBe(75);
+    expect(protectedSteps.reduce((total, step) => total + step['timeout-minutes'], 0)).toBeLessThan(30);
+    expect(protectedSteps.every((step) => Number.isInteger(step['timeout-minutes']))).toBe(true);
     expect(steps[releaseIndex].if).toContain("steps.acquire-image-cache-lock.outcome == 'success'");
     expect(steps[acquireIndex].run).toContain('manage-platform-image-cache-lock.mjs acquire');
     expect(steps[releaseIndex].run).toContain('manage-platform-image-cache-lock.mjs release');

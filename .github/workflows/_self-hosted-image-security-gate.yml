@@ -67,12 +67,14 @@ jobs:
           "security-${{ github.run_id }}-${{ github.run_attempt }}"
 
       - name: Load self-hosted images from cache
+        timeout-minutes: 5
         run: |
           for service in api caddy edge worker; do
             docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
           done
 
       - name: Verify cached self-hosted image refs
+        timeout-minutes: 2
         run: |
           set -euo pipefail
           docker image inspect \
@@ -82,6 +84,7 @@ jobs:
             "ghcr.io/compartmentdev/compartment-worker:sha-${{ github.sha }}" >/dev/null
 
       - name: Check self-hosted image vulnerabilities
+        timeout-minutes: 20
         env:
           DOCKER_SCOUT_ENABLED: ${{ inputs.docker_scout_enabled }}
         run: |
