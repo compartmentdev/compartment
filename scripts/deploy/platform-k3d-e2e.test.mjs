@@ -16,6 +16,7 @@ import {
   renderPlatformK3dValues,
 } from './platform-k3d-e2e.mjs';
 import {
+  buildDockerContainerRemovalArgs,
   isPlatformSourceCacheImageRef,
   isRunOwnedDockerResourceName,
   isRunOwnedImageRef,
@@ -28,6 +29,16 @@ import {
 } from './platform-k3d-e2e-support.mjs';
 
 describe('platform k3d e2e command boundary', () => {
+  it('removes container-owned anonymous volumes during cleanup', () => {
+    expect(buildDockerContainerRemovalArgs('managed-caddy-build')).toEqual([
+      'container',
+      'rm',
+      '--force',
+      '--volumes',
+      'managed-caddy-build',
+    ]);
+  });
+
   it('preserves validated source image runtime commands for managed Caddy commits', () => {
     expect(parseDockerImageCommand('["/usr/bin/entrypoint"]', 'entrypoint')).toEqual(['/usr/bin/entrypoint']);
     expect(parseDockerImageCommand('["caddy","run"]', 'command')).toEqual(['caddy', 'run']);

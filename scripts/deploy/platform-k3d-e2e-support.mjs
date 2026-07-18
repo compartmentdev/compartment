@@ -24,6 +24,10 @@ export function readPlatformK3dCleanupStageNames() {
   return platformCleanupStageNames;
 }
 
+export function buildDockerContainerRemovalArgs(containerReference) {
+  return ['container', 'rm', '--force', '--volumes', containerReference];
+}
+
 export function isPlatformSourceCacheImageRef(imageRef) {
   return platformSourceCacheImagePattern.test(imageRef);
 }

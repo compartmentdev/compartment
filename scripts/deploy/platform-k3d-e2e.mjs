@@ -10,6 +10,7 @@ import { captureCommand, captureCommandResult, runCommand, runCommandAsync } fro
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 import {
+  buildDockerContainerRemovalArgs,
   isPlatformSourceCacheImageRef,
   isRunOwnedDockerResourceName,
   isRunOwnedImageRef,
@@ -512,7 +513,7 @@ function buildManagedE2eCaddyImage(sourceImageRef) {
       continue;
     }
     try {
-      runCommand('docker', ['rm', '--force', containerReference], repositoryRoot);
+      runCommand('docker', buildDockerContainerRemovalArgs(containerReference), repositoryRoot);
     } catch (error) {
       cleanupError ??= error;
     }
@@ -712,7 +713,7 @@ function cleanResidualDockerResources(cleanupErrors) {
   ]) {
     if (dockerResourceExists('container', containerName)) {
       runCleanupStep(cleanupErrors, `container ${containerName}`, () => {
-        runCommand('docker', ['container', 'rm', '--force', containerName], repositoryRoot);
+        runCommand('docker', buildDockerContainerRemovalArgs(containerName), repositoryRoot);
       });
     }
   }
