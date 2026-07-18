@@ -19,6 +19,10 @@ export function buildKubectlCommand(target: KubernetesCommandTarget, args: reado
   ];
 }
 
+export function buildKubernetesReleaseSelector(releaseName: string): string {
+  return `app.kubernetes.io/instance=${releaseName}`;
+}
+
 export function readCommandOutput(result: CommandResult): string {
   return [result.stderr.trim(), result.stdout.trim()].filter((value: string): boolean => value !== '').join('\n');
 }

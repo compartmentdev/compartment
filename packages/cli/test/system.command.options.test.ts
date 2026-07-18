@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { resolveSystemDomainVersionedCommand } from '../src/commands/system/system.command.options';
+import {
+  resolveKubernetesSystemUpdateVersion,
+  resolveSystemDomainVersionedCommand,
+} from '../src/commands/system/system.command.options';
 
 describe('system command options', (): void => {
   it('accepts setup versions supported by the persisted integer contract', (): void => {
@@ -17,4 +20,14 @@ describe('system command options', (): void => {
       }).toThrow('Expected --expected-version to be an integer from 0 to 2147483647.');
     },
   );
+
+  it('requires an explicit image tag for source-build updates', (): void => {
+    expect(resolveKubernetesSystemUpdateVersion('sha-release')).toBe('sha-release');
+    expect((): string => resolveKubernetesSystemUpdateVersion(undefined)).toThrow(
+      '--version is required when system update runs from a source CLI build.',
+    );
+    expect((): string => resolveKubernetesSystemUpdateVersion('invalid/tag')).toThrow(
+      '--version must be a valid platform image tag.',
+    );
+  });
 });

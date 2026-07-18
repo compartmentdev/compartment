@@ -457,18 +457,47 @@ describe('render-cli-install-script', (): void => {
     expect(result.sudoInvocations).toEqual([]);
   });
 
-  it('keeps the removed host-runtime update option rejected', async (): Promise<void> => {
+  it('runs the verified Kubernetes update through init update', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
 
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: [
+        '--version',
+        'main',
+        '--init-update',
+        '--values',
+        'compartment-values.yaml',
+        '--kube-context',
+        'prod-eu',
+        '--namespace',
+        'compartment-prod',
+        '--release-name',
+        'compartment-prod',
+        '--chart',
+        './compartment-chart',
+      ],
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.sudoInvocations).toEqual([]);
+    expect(result.compartmentInvocations).toEqual([
+      '--version',
+      'system update --values compartment-values.yaml --kube-context prod-eu --namespace compartment-prod --release-name compartment-prod --chart ./compartment-chart',
+    ]);
+  });
+
+  it('requires operator values for init update before downloading the CLI', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
       args: ['--version', 'main', '--init-update'],
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Unknown installer argument: --init-update');
-    expect(result.sudoInvocations).toEqual([]);
-    expect(result.compartmentInvocations).toEqual([]);
+    expect(result.stderr).toContain('Expected --values <path> with --init-update.');
+    expect(result.urlLog).toEqual([]);
   });
 
   it('fails init login clearly when no installer terminal is available', async (): Promise<void> => {
@@ -572,7 +601,7 @@ describe('render-cli-install-script', (): void => {
 });
 
 function createCliOnlyInstallMessage(installPath: string): string {
-  return `Installed CLI. Run \`"${installPath}" install\` to create a Kubernetes platform owner, run \`"${installPath}" login\` to connect to a platform, or use \`--init-install\`/\`--init-login\`.`;
+  return `Installed CLI. Run \`"${installPath}" install\` to create a Kubernetes platform owner, run \`"${installPath}" login\` to connect to a platform, or use \`--init-install\`/\`--init-update\`/\`--init-login\`.`;
 }
 
 async function createTemporaryDirectory(): Promise<string> {
@@ -842,6 +871,13 @@ printf '%s\\n' "$*" >> "\${state_dir}/compartment.log"
       esac
     done
     printf 'Logged in to %s as %s.\\n' "$api_url" "$email"
+    ;;
+  system)
+    if [ "\${2:-}" != "update" ]; then
+      printf 'Unexpected system command: %s\\n' "$*" >&2
+      exit 1
+    fi
+    printf 'Updated Compartment platform.\\n'
     ;;
   *)
     printf 'Unexpected installed compartment args: %s\\n' "$*" >&2

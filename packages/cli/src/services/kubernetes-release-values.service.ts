@@ -1,0 +1,37 @@
+import type { JsonValue } from '@compartment/utils';
+import { runCommand } from '../command-runner';
+import type { CommandResult } from '../command-runner.types';
+import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
+import type { KubernetesReleaseValuesInput } from './kubernetes-image-trust.service.types';
+
+export async function readKubernetesReleaseValues(input: KubernetesReleaseValuesInput): Promise<JsonValue> {
+  const result: CommandResult = await runCommand(buildHelmGetReleaseValuesCommand(input));
+  if (result.exitCode !== 0) {
+    const output: string = readCommandOutput(result);
+    throw new Error(
+      `Failed to read effective Helm release values before platform image verification.${
+        output === '' ? '' : `\n${output}`
+      }`,
+    );
+  }
+  try {
+    return JSON.parse(result.stdout) as JsonValue;
+  } catch {
+    throw new Error('Helm returned invalid release values before platform image verification.');
+  }
+}
+
+function buildHelmGetReleaseValuesCommand(input: KubernetesReleaseValuesInput): string[] {
+  return [
+    'helm',
+    'get',
+    'values',
+    input.releaseName,
+    '--namespace',
+    input.namespace,
+    '--all',
+    '--output',
+    'json',
+    ...buildHelmKubeContextArgs(input),
+  ];
+}

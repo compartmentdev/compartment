@@ -8,6 +8,7 @@ version=""
 version_argument="0"
 bin_dir=""
 init_install="0"
+init_update="0"
 init_login="0"
 init_api_url=""
 init_email=""
@@ -42,6 +43,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --init-install)
       init_install="1"
+      shift
+      ;;
+    --init-update)
+      init_update="1"
       shift
       ;;
     --init-login)
@@ -108,8 +113,18 @@ if [ "$version_argument" = "1" ] && [ "$channel" != "latest" ]; then
   exit 1
 fi
 
-if [ "$init_install" = "1" ] && [ "$init_login" = "1" ]; then
-  printf 'Choose at most one of --init-install or --init-login.\n' >&2
+init_mode_count=0
+if [ "$init_install" = "1" ]; then
+  init_mode_count=$((init_mode_count + 1))
+fi
+if [ "$init_update" = "1" ]; then
+  init_mode_count=$((init_mode_count + 1))
+fi
+if [ "$init_login" = "1" ]; then
+  init_mode_count=$((init_mode_count + 1))
+fi
+if [ "$init_mode_count" -gt 1 ]; then
+  printf 'Choose at most one of --init-install, --init-update, or --init-login.\n' >&2
   exit 1
 fi
 
@@ -120,6 +135,15 @@ if [ "$init_install" = "1" ]; then
   fi
   if [ -n "$init_onboarding_session" ]; then
     printf 'Use --onboarding-session only with --init-login.\n' >&2
+    exit 1
+  fi
+elif [ "$init_update" = "1" ]; then
+  if [ -z "$install_values_path" ]; then
+    printf 'Expected --values <path> with --init-update.\n' >&2
+    exit 1
+  fi
+  if [ -n "$init_api_url" ] || [ -n "$init_email" ] || [ -n "$init_organization" ] || [ -n "$init_organization_slug" ] || [ -n "$init_onboarding_session" ] || [ -n "$install_base_domain" ] || [ -n "$install_remote" ]; then
+    printf 'Use owner, domain, remote, and login arguments only with --init-install or --init-login.\n' >&2
     exit 1
   fi
 elif [ "$init_login" = "1" ]; then
@@ -357,6 +381,30 @@ run_init_install() {
   fi
 
   "$init_install_path" "$@" </dev/tty
+}
+
+run_init_update() {
+  init_update_path="$1"
+  init_update_values_path="$2"
+  init_update_kube_context="$3"
+  init_update_namespace="$4"
+  init_update_release_name="$5"
+  init_update_chart_path="$6"
+  set -- system update --values "$init_update_values_path"
+  if [ -n "$init_update_kube_context" ]; then
+    set -- "$@" --kube-context "$init_update_kube_context"
+  fi
+  if [ -n "$init_update_namespace" ]; then
+    set -- "$@" --namespace "$init_update_namespace"
+  fi
+  if [ -n "$init_update_release_name" ]; then
+    set -- "$@" --release-name "$init_update_release_name"
+  fi
+  if [ -n "$init_update_chart_path" ]; then
+    set -- "$@" --chart "$init_update_chart_path"
+  fi
+  printf 'Running Compartment Kubernetes platform update.\n'
+  "$init_update_path" "$@"
 }
 
 run_init_login() {
@@ -678,9 +726,14 @@ if [ "$init_install" = "1" ]; then
   exit 0
 fi
 
+if [ "$init_update" = "1" ]; then
+  run_init_update "$install_path" "$install_values_path" "$install_kube_context" "$install_namespace" "$install_release_name" "$install_chart_path"
+  exit 0
+fi
+
 if [ "$init_login" = "1" ]; then
   run_init_login "$install_path" "$init_api_url" "$init_email" "$init_organization" "$init_onboarding_session"
   exit 0
 fi
 
-printf 'Installed CLI. Run `"%s" install` to create a Kubernetes platform owner, run `"%s" login` to connect to a platform, or use `--init-install`/`--init-login`.\n' "$install_path" "$install_path"
+printf 'Installed CLI. Run `"%s" install` to create a Kubernetes platform owner, run `"%s" login` to connect to a platform, or use `--init-install`/`--init-update`/`--init-login`.\n' "$install_path" "$install_path"

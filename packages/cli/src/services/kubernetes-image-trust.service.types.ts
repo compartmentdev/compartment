@@ -21,8 +21,14 @@ export interface KubernetesVerifiedPlatformImageValues {
 export interface KubernetesReleaseImageTrustInput {
   kubeContext?: string | undefined;
   namespace: string;
-  operatorValuesPath: string;
+  operatorValuesPaths: readonly string[];
   outputPath: string;
+  releaseName: string;
+}
+
+export interface KubernetesReleaseValuesInput {
+  kubeContext?: string | undefined;
+  namespace: string;
   releaseName: string;
 }
 

@@ -4,10 +4,14 @@ import { join } from 'node:path';
 import {
   installResponseSchema,
   issuePasswordResetResponseSchema,
+  kubernetesSystemRestartResponseSchema,
+  kubernetesSystemStatusResponseSchema,
   systemDomainStatusResponseSchema,
   whoamiCommandResponseSchema,
   type InstallResponse,
   type IssuePasswordResetResponse,
+  type KubernetesSystemRestartResponse,
+  type KubernetesSystemStatusResponse,
   type SystemDomainStatusResponse,
   type WhoAmICommandResponse,
 } from '@compartment/contracts';
@@ -106,6 +110,19 @@ describe.sequential('production Kubernetes install', (): void => {
         systemDomainStatusResponseSchema,
       );
       expect(domainStatus.active.baseDomain).toBe(platformBaseDomain);
+
+      const platformStatus: KubernetesSystemStatusResponse = await installerCli.runJson(
+        `system status --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,
+        kubernetesSystemStatusResponseSchema,
+      );
+      expect(platformStatus.ready).toBe(true);
+      expect(platformStatus.workloads.length).toBeGreaterThan(0);
+
+      const platformRestart: KubernetesSystemRestartResponse = await installerCli.runJson(
+        `system restart --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,
+        kubernetesSystemRestartResponseSchema,
+      );
+      expect(platformRestart.restarted).toBe(true);
 
       const reset: IssuePasswordResetResponse = await installerCli.runJson(
         `system issue-password-reset --email ${ownerEmail} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment`,

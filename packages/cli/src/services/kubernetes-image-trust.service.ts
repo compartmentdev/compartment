@@ -9,7 +9,7 @@ import { readCosignCommand } from '../bundled-cosign';
 import { readNonCompartmentEnvironment } from '../command-environment';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
+import { readCommandOutput } from './kubernetes-command.support';
 import { writeKubernetesInstallValues } from './kubernetes-install-helm.service';
 import type {
   KubernetesInstallImageTrustInput,
@@ -22,6 +22,7 @@ import type {
   KubernetesVerifiedPlatformImageValues,
   ResolvedKubernetesPlatformImage,
 } from './kubernetes-image-trust.service.types';
+import { readKubernetesReleaseValues } from './kubernetes-release-values.service';
 
 const imageDigestPattern: RegExp = /^sha256:[a-f0-9]{64}$/u;
 const platformImageNames: readonly KubernetesPlatformImageName[] = ['api', 'worker', 'edge', 'caddy'];
@@ -31,15 +32,15 @@ export async function writeVerifiedKubernetesInstallImageValues(
 ): Promise<void> {
   const chartValues: JsonValue = await readChartValues(input.chartPath);
   const operatorValues: JsonValue = await readYamlFile(input.operatorValuesPath);
-  await writeVerifiedPlatformImageValues(input.outputPath, chartValues, operatorValues);
+  await writeVerifiedPlatformImageValues(input.outputPath, chartValues, [operatorValues]);
 }
 
 export async function writeVerifiedKubernetesReleaseImageValues(
   input: KubernetesReleaseImageTrustInput,
 ): Promise<void> {
-  const releaseValues: JsonValue = await readReleaseValues(input);
-  const operatorValues: JsonValue = await readYamlFile(input.operatorValuesPath);
-  await writeVerifiedPlatformImageValues(input.outputPath, releaseValues, operatorValues);
+  const releaseValues: JsonValue = await readKubernetesReleaseValues(input);
+  const overrideValues: JsonValue[] = await Promise.all(input.operatorValuesPaths.map(readYamlFile));
+  await writeVerifiedPlatformImageValues(input.outputPath, releaseValues, overrideValues);
 }
 
 async function readChartValues(chartPath: string): Promise<JsonValue> {
@@ -50,28 +51,6 @@ async function readChartValues(chartPath: string): Promise<JsonValue> {
   return parse(result.stdout) as JsonValue;
 }
 
-async function readReleaseValues(input: KubernetesReleaseImageTrustInput): Promise<JsonValue> {
-  const result: CommandResult = await runCommand([
-    'helm',
-    'get',
-    'values',
-    input.releaseName,
-    '--namespace',
-    input.namespace,
-    '--all',
-    '--output',
-    'json',
-    ...buildHelmKubeContextArgs(input),
-  ]);
-  if (result.exitCode !== 0) {
-    throw createImageTrustCommandError(
-      'Failed to read effective Helm release values before platform image verification.',
-      result,
-    );
-  }
-  return readImageTrustJson(result.stdout, 'Helm returned invalid release values before platform image verification.');
-}
-
 async function readYamlFile(path: string): Promise<JsonValue> {
   return parse(await readFile(path, 'utf8')) as JsonValue;
 }
@@ -79,7 +58,7 @@ async function readYamlFile(path: string): Promise<JsonValue> {
 async function writeVerifiedPlatformImageValues(
   outputPath: string,
   baseValues: JsonValue,
-  overrideValues: JsonValue,
+  overrideValues: readonly JsonValue[],
 ): Promise<void> {
   const effectiveImages: KubernetesPlatformImageValues = readEffectivePlatformImages(baseValues, overrideValues);
   const verifiedDigests: Map<string, string> = new Map<string, string>();
@@ -104,7 +83,10 @@ async function writeVerifiedPlatformImageValues(
   await writeKubernetesInstallValues(outputPath, values);
 }
 
-function readEffectivePlatformImages(baseValues: JsonValue, overrideValues: JsonValue): KubernetesPlatformImageValues {
+function readEffectivePlatformImages(
+  baseValues: JsonValue,
+  overrideValues: readonly JsonValue[],
+): KubernetesPlatformImageValues {
   return {
     api: readEffectiveImage(baseValues, overrideValues, 'api'),
     caddy: readEffectiveImage(baseValues, overrideValues, 'caddy'),
@@ -115,13 +97,16 @@ function readEffectivePlatformImages(baseValues: JsonValue, overrideValues: Json
 
 function readEffectiveImage(
   baseValues: JsonValue,
-  overrideValues: JsonValue,
+  overrideValues: readonly JsonValue[],
   imageName: KubernetesPlatformImageName,
 ): KubernetesPlatformImageValueFields {
-  return {
-    ...readImageValueFields(baseValues, imageName),
-    ...readImageValueFields(overrideValues, imageName),
-  };
+  return overrideValues.reduce(
+    (image: KubernetesPlatformImageValueFields, values: JsonValue): KubernetesPlatformImageValueFields => ({
+      ...image,
+      ...readImageValueFields(values, imageName),
+    }),
+    readImageValueFields(baseValues, imageName),
+  );
 }
 
 function readImageValueFields(

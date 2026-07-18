@@ -1,5 +1,7 @@
 import { hasText, isValidDnsHostname, normalizeDnsHostname } from '@compartment/utils';
 import type { Command } from 'commander';
+import { readCliBuildInfo } from '../../cli-build-info';
+import type { CliBuildInfo } from '../../cli-build-info.types';
 import type { KubernetesOperatorTarget } from '../../services/kubernetes-operator.service.types';
 import type {
   KubernetesOperatorCommandOptions,
@@ -13,6 +15,7 @@ const maximumSetupVersion: number = 2_147_483_647;
 export const systemDomainExpectedVersionDescription: string = `Domain setup version from 0 to ${maximumSetupVersion.toString()}`;
 const systemDomainExpectedVersionError: string = `Expected --expected-version to be an integer from 0 to ${maximumSetupVersion.toString()}.`;
 const kubernetesNamePattern: RegExp = /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/u;
+const imageTagPattern: RegExp = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/u;
 
 export function addKubernetesOperatorReleaseOptions(command: Command): Command {
   return addKubernetesOperatorTargetOptions(command)
@@ -70,6 +73,28 @@ export function readSystemDomainTlsMode(value: string | undefined): 'custom-cert
     return value;
   }
   throw new Error('Expected --tls to be external or custom-cert.');
+}
+
+export function resolveKubernetesSystemUpdateVersion(value: string | undefined): string {
+  if (value !== undefined) {
+    return readImageTag(value);
+  }
+  const buildInfo: CliBuildInfo = readCliBuildInfo();
+  if (buildInfo.distributionChannel === 'main' && buildInfo.buildCommitSha !== undefined) {
+    return `sha-${buildInfo.buildCommitSha}`;
+  }
+  if (buildInfo.distributionChannel === 'release') {
+    return readImageTag(buildInfo.cliVersion);
+  }
+  throw new Error('--version is required when system update runs from a source CLI build.');
+}
+
+function readImageTag(value: string): string {
+  const normalized: string = value.trim();
+  if (!imageTagPattern.test(normalized)) {
+    throw new Error('--version must be a valid platform image tag.');
+  }
+  return normalized;
 }
 
 function readExpectedSetupVersion(value: string | undefined): number | undefined {
