@@ -29,7 +29,6 @@ jobs:
       COMPARTMENT_TEST_APP_NODE_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
       COMPARTMENT_TEST_POSTGRES_IMAGE: postgres:16
       DOCKER_CONFIG: ${{ github.workspace }}/.compartment/docker-config
-      HELM_DATA_HOME: ${{ runner.temp }}/helm-data
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -53,6 +52,7 @@ jobs:
 
       - name: Install pinned k3d, kubectl, Helm, and helm-unittest
         env:
+          HELM_DATA_HOME: ${{ runner.temp }}/helm-data
           HELM_SHA256: e9b88b4ee95b18c706839c28d3a0220e5bc470e9cd9262410c90793c45ff8b7c
           HELM_VERSION: v4.2.3
           HELM_UNITTEST_VERSION: 1.1.1
@@ -102,6 +102,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validate Helm chart renders
+        env:
+          HELM_DATA_HOME: ${{ runner.temp }}/helm-data
         run: |
           helm lint ./deploy/chart/compartment
           helm lint ./deploy/chart/compartment -f ./deploy/chart/compartment/values-kind.yaml
