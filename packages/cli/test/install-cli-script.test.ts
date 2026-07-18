@@ -129,7 +129,9 @@ describe('render-cli-install-script', (): void => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Use install and login arguments only with --init-install or --init-login.');
+    expect(result.stderr).toContain(
+      'Use install, update, and login arguments only with --init-install, --init-update, or --init-login.',
+    );
     expect(result.urlLog).toEqual([]);
   });
 

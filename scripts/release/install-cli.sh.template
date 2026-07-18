@@ -143,7 +143,7 @@ elif [ "$init_update" = "1" ]; then
     exit 1
   fi
   if [ -n "$init_api_url" ] || [ -n "$init_email" ] || [ -n "$init_organization" ] || [ -n "$init_organization_slug" ] || [ -n "$init_onboarding_session" ] || [ -n "$install_base_domain" ] || [ -n "$install_remote" ]; then
-    printf 'Use owner, domain, remote, and login arguments only with --init-install or --init-login.\n' >&2
+    printf 'The provided owner, domain, remote, or login arguments are only valid with --init-install or --init-login.\n' >&2
     exit 1
   fi
 elif [ "$init_login" = "1" ]; then
@@ -152,12 +152,12 @@ elif [ "$init_login" = "1" ]; then
     exit 1
   fi
   if [ -n "$install_base_domain" ] || [ -n "$install_values_path" ] || [ -n "$init_organization_slug" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ]; then
-    printf 'Use Kubernetes install options only with --init-install.\n' >&2
+    printf 'Use Kubernetes lifecycle options only with --init-install or --init-update.\n' >&2
     exit 1
   fi
 else
   if [ -n "$init_api_url" ] || [ -n "$init_email" ] || [ -n "$init_organization" ] || [ -n "$init_organization_slug" ] || [ -n "$init_onboarding_session" ] || [ -n "$install_base_domain" ] || [ -n "$install_chart_path" ] || [ -n "$install_kube_context" ] || [ -n "$install_namespace" ] || [ -n "$install_release_name" ] || [ -n "$install_remote" ] || [ -n "$install_values_path" ]; then
-    printf 'Use install and login arguments only with --init-install or --init-login.\n' >&2
+    printf 'Use install, update, and login arguments only with --init-install, --init-update, or --init-login.\n' >&2
     exit 1
   fi
 fi

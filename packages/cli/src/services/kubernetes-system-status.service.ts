@@ -8,12 +8,12 @@ import {
   buildKubernetesReleaseSelector,
   readCommandOutput,
 } from './kubernetes-command.support';
+import type { KubernetesOperatorTarget } from './kubernetes-operator.service.types';
 import type {
   KubernetesHelmStatusJsonObject,
   KubernetesWorkloadList,
   KubernetesWorkloadListItem,
-} from './kubernetes-system-lifecycle.service.types';
-import type { KubernetesOperatorTarget } from './kubernetes-operator.service.types';
+} from './kubernetes-system-status.service.types';
 
 export async function readKubernetesHelmReleaseStatus(target: KubernetesOperatorTarget): Promise<string> {
   const result: CommandResult = await runCommand([

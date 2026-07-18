@@ -1,10 +1,28 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import type { CliBuildInfo } from '../src/cli-build-info.types';
 import {
   resolveKubernetesSystemUpdateVersion,
   resolveSystemDomainVersionedCommand,
 } from '../src/commands/system/system.command.options';
 
+type ReadCliBuildInfo = () => CliBuildInfo;
+
+interface SystemCommandOptionsMocks {
+  readCliBuildInfo: Mock<ReadCliBuildInfo>;
+}
+
+const mocks: SystemCommandOptionsMocks = vi.hoisted(
+  (): SystemCommandOptionsMocks => ({ readCliBuildInfo: vi.fn<ReadCliBuildInfo>() }),
+);
+
+vi.mock('../src/cli-build-info', (): object => ({ readCliBuildInfo: mocks.readCliBuildInfo }));
+
 describe('system command options', (): void => {
+  beforeEach((): void => {
+    mocks.readCliBuildInfo.mockReset();
+    mocks.readCliBuildInfo.mockReturnValue({ cliVersion: '0.9.2', distributionChannel: 'source' });
+  });
+
   it('accepts setup versions supported by the persisted integer contract', (): void => {
     expect(resolveSystemDomainVersionedCommand({ expectedVersion: '0', output: 'text' }).expectedSetupVersion).toBe(0);
     expect(
@@ -29,5 +47,21 @@ describe('system command options', (): void => {
     expect((): string => resolveKubernetesSystemUpdateVersion('invalid/tag')).toThrow(
       '--version must be a valid platform image tag.',
     );
+  });
+
+  it('selects the immutable main build tag for packaged main updates', (): void => {
+    mocks.readCliBuildInfo.mockReturnValue({
+      buildCommitSha: '1234567890abcdef1234567890abcdef12345678',
+      cliVersion: '0.9.2',
+      distributionChannel: 'main',
+    });
+
+    expect(resolveKubernetesSystemUpdateVersion(undefined)).toBe('sha-1234567890abcdef1234567890abcdef12345678');
+  });
+
+  it('selects the CLI version for packaged release updates', (): void => {
+    mocks.readCliBuildInfo.mockReturnValue({ cliVersion: '0.9.2', distributionChannel: 'release' });
+
+    expect(resolveKubernetesSystemUpdateVersion(undefined)).toBe('0.9.2');
   });
 });
