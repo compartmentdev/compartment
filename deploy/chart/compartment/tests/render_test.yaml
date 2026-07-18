@@ -4,6 +4,7 @@ templates:
   - templates/*.yaml
 release:
   name: compartment
+  namespace: default
 tests:
   - it: renders only foundation resources during the foundation stage
     set:
@@ -93,7 +94,25 @@ tests:
         template: api-migrate.yaml
       - hasDocuments:
           count: 0
+        template: api-migrate-rbac.yaml
+      - hasDocuments:
+          count: 0
+        template: buildkit-network-policy.yaml
+      - hasDocuments:
+          count: 0
         template: project-provisioner.yaml
+      - hasDocuments:
+          count: 0
+        template: project-provisioner-rbac.yaml
+      - hasDocuments:
+          count: 0
+        template: registry-auth.yaml
+      - hasDocuments:
+          count: 0
+        template: registry-client-secret.yaml
+      - hasDocuments:
+          count: 0
+        template: registry-network-policy.yaml
       - hasDocuments:
           count: 0
         template: product-log-agent.yaml
@@ -134,6 +153,154 @@ tests:
           name: compartment-compartment-caddy
           any: true
         template: caddy.yaml
+      - hasDocuments:
+          count: 5
+        template: buildkit.yaml
+      - isKind:
+          of: Namespace
+        template: buildkit.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.labels["pod-security.kubernetes.io/enforce"]
+          value: privileged
+        template: buildkit.yaml
+        documentIndex: 0
+      - isKind:
+          of: Deployment
+        template: buildkit.yaml
+        documentIndex: 3
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --oci-worker-no-process-sandbox
+        template: buildkit.yaml
+        documentIndex: 3
+      - isKind:
+          of: CronJob
+        template: buildkit.yaml
+        documentIndex: 4
+      - hasDocuments:
+          count: 3
+        template: buildkit-network-policy.yaml
+      - hasDocuments:
+          count: 10
+        template: project-provisioner-rbac.yaml
+      - isKind:
+          of: ValidatingAdmissionPolicy
+        template: project-provisioner-rbac.yaml
+        documentIndex: 8
+      - equal:
+          path: spec.failurePolicy
+          value: Fail
+        template: project-provisioner-rbac.yaml
+        documentIndex: 8
+      - contains:
+          path: spec.validationActions
+          content: Deny
+        template: project-provisioner-rbac.yaml
+        documentIndex: 9
+      - equal:
+          path: roleRef.name
+          value: compartment-compartment-project-provisioner
+        template: project-provisioner-rbac.yaml
+        documentIndex: 7
+      - equal:
+          path: subjects[0].name
+          value: compartment-compartment-project-provisioner
+        template: project-provisioner-rbac.yaml
+        documentIndex: 7
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ''
+            resources:
+              - services
+              - secrets
+              - persistentvolumeclaims
+            verbs:
+              - get
+              - list
+              - watch
+              - create
+              - update
+              - patch
+              - delete
+        template: project-provisioner-rbac.yaml
+        documentIndex: 2
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - rbac.authorization.k8s.io
+            resources:
+              - clusterroles
+            resourceNames:
+              - compartment-project-bootstrap
+            verbs:
+              - bind
+        template: project-provisioner-rbac.yaml
+        documentIndex: 6
+      - equal:
+          path: spec.template.spec.containers[0].command
+          value:
+            - node
+            - dist/project-provisioner-server.js
+        template: project-provisioner.yaml
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: wait-for-api-migrate
+        template: worker.yaml
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: wait-for-api-rollout
+        template: worker.yaml
+      - equal:
+          path: spec.template.spec.initContainers[2].name
+          value: wait-for-api
+        template: worker.yaml
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: wait-for-api-migrate
+        template: project-provisioner.yaml
+      - equal:
+          path: spec.template.spec.initContainers[1].name
+          value: wait-for-api-rollout
+        template: project-provisioner.yaml
+      - equal:
+          path: spec.template.spec.initContainers[2].name
+          value: wait-for-api
+        template: project-provisioner.yaml
+      - contains:
+          path: spec.template.spec.volumes[?(@.name == "kube-api-access")].projected.sources
+          content:
+            serviceAccountToken:
+              path: token
+              expirationSeconds: 3600
+        template: worker.yaml
+      - contains:
+          path: spec.template.spec.volumes[?(@.name == "kube-api-access")].projected.sources
+          content:
+            configMap:
+              name: kube-root-ca.crt
+              items:
+                - key: ca.crt
+                  path: ca.crt
+        template: worker.yaml
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: 5000
+        template: registry-network-policy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.ingress[0].from[0].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: worker
+        template: registry-network-policy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.ingress[0].from[1].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: buildkit
+        template: registry-network-policy.yaml
+        documentIndex: 1
       - contains:
           path: spec.ports
           content:
@@ -153,11 +320,11 @@ tests:
         template: caddy.yaml
         documentIndex: 0
       - notExists:
-          path: spec.ports[0].nodePort
+          path: spec.ports[?(@.name == "http")].nodePort
         template: caddy.yaml
         documentIndex: 0
       - notExists:
-          path: spec.ports[1].nodePort
+          path: spec.ports[?(@.name == "https")].nodePort
         template: caddy.yaml
         documentIndex: 0
       - contains:
@@ -192,6 +359,33 @@ tests:
           path: data.COMPARTMENT_BASE_DOMAIN
           value: apps.example.com
         template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_ARTIFACT_REGISTRY_HOST
+          value: compartment-compartment-registry-auth.default.svc
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL
+          value: http://compartment-compartment-registry-auth.default.svc:5000
+        template: configmap.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_INSTALL_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: compartment-compartment
+                key: install-token
+          any: true
+        template: api.yaml
+        documentIndex: 1
+      - hasDocuments:
+          count: 4
+        template: pvc.yaml
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "snapshots")].emptyDir
+          value: {}
+        template: edge.yaml
+        documentIndex: 1
 
   - it: renders a local HTTP installation for a localhost domain
     set:
@@ -284,6 +478,10 @@ tests:
           value: ghcr.io/compartmentdev/compartment-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         template: api.yaml
         documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/compartmentdev/compartment-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        template: api-migrate.yaml
       - contains:
           path: spec.template.spec.containers[0].env
           content:
@@ -298,11 +496,30 @@ tests:
         template: worker.yaml
       - equal:
           path: spec.template.spec.containers[0].image
+          value: ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        template: project-provisioner.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        template: registry-auth.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/compartmentdev/compartment-edge@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[0].image
           value: ghcr.io/compartmentdev/compartment-edge@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         template: edge.yaml
         documentIndex: 1
       - equal:
           path: spec.template.spec.containers[0].image
+          value: ghcr.io/compartmentdev/compartment-caddy@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[1].image
           value: ghcr.io/compartmentdev/compartment-caddy@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
         template: caddy.yaml
         documentIndex: 1
@@ -563,6 +780,11 @@ tests:
           value: test-certificate
         template: custom-tls-secret.yaml
         documentIndex: 0
+      - equal:
+          path: stringData["tls.key"]
+          value: test-private-key
+        template: custom-tls-secret.yaml
+        documentIndex: 0
       - contains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
@@ -575,6 +797,20 @@ tests:
       - equal:
           path: spec.template.spec.volumes[?(@.name == "pending-tls")].secret.secretName
           value: operator-tls
+        template: api.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.volumes[?(@.name == "pending-tls")].secret.items
+          content:
+            key: tls.crt
+            path: fullchain.pem
+        template: api.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.volumes[?(@.name == "pending-tls")].secret.items
+          content:
+            key: tls.key
+            path: privkey.pem
         template: api.yaml
         documentIndex: 1
       - equal:
@@ -590,6 +826,16 @@ tests:
           path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
         template: caddy.yaml
         documentIndex: 1
+      - notExists:
+          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
+        template: edge.yaml
+        documentIndex: 1
+      - notExists:
+          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
+        template: worker.yaml
+      - notExists:
+          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
+        template: project-provisioner.yaml
 
   - it: keeps Caddy on the active certificate while API stages a rotation
     set:
@@ -597,7 +843,7 @@ tests:
         <<: *customCertPlatform
         installationId: test-managed
         publicIngressIpv4: 8.8.4.4
-      customTls: &rotatingCustomTls
+      customTls:
         existingSecret: active-operator-tls
         operatorSecretName: active-operator-tls
         operatorCertificate: active-certificate
@@ -643,15 +889,32 @@ tests:
           path: spec.template.spec.volumes[?(@.secret.secretName == "pending-operator-tls")]
         template: caddy.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/pending-tls"]
+          value: 4bd7f96b97960fe5268ca3c465e1d527f0da70b681809b0501ca7d8340d4f3c7
         template: api.yaml
         documentIndex: 1
-      - matchRegex:
+      - equal:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
-          pattern: ^[a-f0-9]{64}$
+          value: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
         template: caddy.yaml
         documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
+        template: edge.yaml
+        documentIndex: 1
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+        template: worker.yaml
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+        template: project-provisioner.yaml
 
   - it: renders the active certificate without pending rotation state
     set:
@@ -698,8 +961,14 @@ tests:
           any: true
         template: api.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
+          path: spec.template.metadata.annotations["checksum/pending-tls"]
+          value: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
+        template: api.yaml
+        documentIndex: 1
+      - equal:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
         template: caddy.yaml
         documentIndex: 1
 
@@ -737,9 +1006,9 @@ tests:
           value: compartment-compartment-custom-tls
         template: api.yaml
         documentIndex: 1
-      - matchRegex:
+      - equal:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
-          pattern: ^[a-f0-9]{64}$
+          value: 93a40ad1a15ccd918acf6fa268ab3d823407d9e4a9019d0023955252676aef0a
         template: caddy.yaml
         documentIndex: 1
 
@@ -762,13 +1031,14 @@ tests:
           path: stringData["tls.key"]
           value: test-private-key
         template: custom-tls-secret.yaml
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: 288f3b22359f08203dec498e138ef7a169bb9fc224a4b5bef85ad13fe1b9401c
         template: api.yaml
         documentIndex: 1
-      - matchRegex:
+      - equal:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
-          pattern: ^[a-f0-9]{64}$
+          value: 288f3b22359f08203dec498e138ef7a169bb9fc224a4b5bef85ad13fe1b9401c
         template: caddy.yaml
         documentIndex: 1
 
@@ -795,7 +1065,43 @@ tests:
           value: renamed-compartment-caddy
         template: caddy.yaml
         documentIndex: 0
-      - matchRegex:
-          path: metadata.name
-          pattern: ^renamed-compartment-(postgres|registry)$
+      - containsDocument:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          name: renamed-compartment-postgres
+          any: true
         template: pvc.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          name: renamed-compartment-registry
+          any: true
+        template: pvc.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: Service
+          name: renamed-compartment-postgres
+          any: true
+        template: postgres.yaml
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: renamed-compartment-postgres
+          any: true
+        template: postgres.yaml
+      - containsDocument:
+          apiVersion: v1
+          kind: Service
+          name: renamed-compartment-registry
+          any: true
+        template: registry.yaml
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: renamed-compartment-registry
+          any: true
+        template: registry.yaml
+      - matchRegex:
+          path: stringData.database-url
+          pattern: '@renamed-compartment-postgres:5432/'
+        template: secret.yaml
