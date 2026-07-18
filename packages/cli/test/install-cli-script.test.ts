@@ -382,27 +382,33 @@ describe('render-cli-install-script', (): void => {
 
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
-      args: [
-        '--version',
-        'main',
-        '--init-install',
-        '--api-url',
-        'https://console.apps.example.com',
-        '--base-domain',
-        'apps.example.com',
-        '--values',
-        'compartment-values.yaml',
-      ],
+      args: ['--version', 'main', '--init-install', '--values', 'compartment-values.yaml'],
       installerTerminalPath: missingInstallerTerminalPath,
       pathEntries: [binDirectory],
     });
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain(
-      `Requested \`--init-install\`, but no terminal is available for owner setup. Run \`"${join(binDirectory, 'compartment')}" install --api-url https://console.apps.example.com --base-domain apps.example.com --values compartment-values.yaml\` from an interactive shell.`,
+      `Requested \`--init-install\`, but no terminal is available for owner setup. Run \`"${join(binDirectory, 'compartment')}" install --values compartment-values.yaml\` from an interactive shell.`,
     );
     expect(result.sudoInvocations).toEqual([]);
     expect(result.compartmentInvocations).toEqual(['--version']);
+  });
+
+  it('hands init install without a base domain to managed-domain installation', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const installerTerminalPath: string = join(temporaryDirectory, 'installer-tty');
+    await writeFile(installerTerminalPath, '', 'utf8');
+
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: ['--version', 'main', '--init-install', '--values', 'compartment-values.yaml'],
+      installerTerminalPath,
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.compartmentInvocations).toEqual(['--version', 'install --values compartment-values.yaml']);
   });
 
   it('runs the Kubernetes install command through init install without sudo or host-runtime setup', async (): Promise<void> => {
@@ -446,7 +452,7 @@ describe('render-cli-install-script', (): void => {
     expect(result.exitCode).toBe(0);
     expect(result.compartmentInvocations).toEqual([
       '--version',
-      'install --api-url https://console.apps.example.com --base-domain apps.example.com --values compartment-values.yaml --email admin@example.com --organization Acme Dev --organization-slug acme-dev --kube-context prod-eu --namespace compartment-prod --release-name compartment-prod --chart ./compartment-chart --remote prod-eu',
+      'install --values compartment-values.yaml --api-url https://console.apps.example.com --base-domain apps.example.com --email admin@example.com --organization Acme Dev --organization-slug acme-dev --kube-context prod-eu --namespace compartment-prod --release-name compartment-prod --chart ./compartment-chart --remote prod-eu',
     ]);
     expect(result.sudoInvocations).toEqual([]);
   });

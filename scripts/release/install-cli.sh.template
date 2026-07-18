@@ -114,14 +114,6 @@ if [ "$init_install" = "1" ] && [ "$init_login" = "1" ]; then
 fi
 
 if [ "$init_install" = "1" ]; then
-  if [ -z "$init_api_url" ]; then
-    printf 'Expected --api-url <url> with --init-install.\n' >&2
-    exit 1
-  fi
-  if [ -z "$install_base_domain" ]; then
-    printf 'Expected --base-domain <domain> with --init-install.\n' >&2
-    exit 1
-  fi
   if [ -z "$install_values_path" ]; then
     printf 'Expected --values <path> with --init-install.\n' >&2
     exit 1
@@ -267,12 +259,16 @@ format_init_install_command() {
   format_install_release_name="$1"
   format_install_chart_path="$2"
   format_install_remote="$3"
-  format_install_command="$(printf '"%s" install --api-url %s --base-domain %s --values %s' \
+  format_install_command="$(printf '"%s" install --values %s' \
     "$format_install_path" \
-    "$(quote_shell_argument "$format_install_api_url")" \
-    "$(quote_shell_argument "$format_install_base_domain")" \
     "$(quote_shell_argument "$format_install_values_path")")"
 
+  if [ -n "$format_install_api_url" ]; then
+    format_install_command="${format_install_command} --api-url $(quote_shell_argument "$format_install_api_url")"
+  fi
+  if [ -n "$format_install_base_domain" ]; then
+    format_install_command="${format_install_command} --base-domain $(quote_shell_argument "$format_install_base_domain")"
+  fi
   if [ -n "$format_install_email" ]; then
     format_install_command="${format_install_command} --email $(quote_shell_argument "$format_install_email")"
   fi
@@ -322,7 +318,13 @@ run_init_install() {
     exit 1
   fi
 
-  set -- install --api-url "$init_install_api_url" --base-domain "$init_install_base_domain" --values "$init_install_values_path"
+  set -- install --values "$init_install_values_path"
+  if [ -n "$init_install_api_url" ]; then
+    set -- "$@" --api-url "$init_install_api_url"
+  fi
+  if [ -n "$init_install_base_domain" ]; then
+    set -- "$@" --base-domain "$init_install_base_domain"
+  fi
   if [ -n "$init_install_email" ]; then
     set -- "$@" --email "$init_install_email"
   fi
