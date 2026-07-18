@@ -1377,16 +1377,6 @@ tests:
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
           value: *stableConfigChecksum
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: *stableConfigChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: *stableConfigChecksum
         template: worker.yaml
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
@@ -1551,6 +1541,16 @@ tests:
           path: spec.template.metadata.annotations["checksum/config"]
           value: *stableConfigChecksum
         template: project-provisioner.yaml
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: *stableConfigChecksum
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: *stableConfigChecksum
+        template: edge.yaml
+        documentIndex: 1
       - equal:
           path: spec.template.metadata.annotations["checksum/install-state"]
           value: *activeInstallStateChecksum
