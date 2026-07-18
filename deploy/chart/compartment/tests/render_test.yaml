@@ -154,6 +154,38 @@ tests:
           any: true
         template: caddy.yaml
       - hasDocuments:
+          count: 4
+        template: api-migrate-rbac.yaml
+      - isKind:
+          of: ServiceAccount
+        template: api-migrate-rbac.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-waiter
+        template: api-migrate-rbac.yaml
+        documentIndex: 0
+      - isKind:
+          of: RoleBinding
+        template: api-migrate-rbac.yaml
+        documentIndex: 3
+      - hasDocuments:
+          count: 5
+        template: product-log-agent.yaml
+      - isKind:
+          of: Namespace
+        template: product-log-agent.yaml
+        documentIndex: 0
+      - isKind:
+          of: DaemonSet
+        template: product-log-agent.yaml
+        documentIndex: 4
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-log-agent
+        template: product-log-agent.yaml
+        documentIndex: 4
+      - hasDocuments:
           count: 5
         template: buildkit.yaml
       - isKind:
