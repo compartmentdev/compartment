@@ -5,6 +5,7 @@ import type { DomainHostPlan } from '@compartment/contracts';
 import { immutableKubeName } from '@compartment/utils';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
+import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
 import {
   buildKubernetesHelmValuesArgs,
   createKubernetesInstallMaterializedDirectory,
@@ -176,7 +177,7 @@ async function applyMaterializedDomainRelease(
     buildDomainHelmCommand(target, chartPath, valuesPath, domainValuesPath, imageTrustValuesPath),
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Helm domain rollout failed: ${readCommandFailure(result)}`);
+    throw new Error(`Helm domain rollout failed: ${readCommandOutput(result)}`);
   }
 }
 
@@ -238,7 +239,7 @@ function buildDomainHelmCommand(
     '--wait',
     '--timeout',
     helmDomainTimeout,
-    ...(target.kubeContext === undefined ? [] : ['--kube-context', target.kubeContext]),
+    ...buildHelmKubeContextArgs(target),
   ];
 }
 
@@ -259,8 +260,4 @@ function requireOperatorValuesPath(value: string | undefined): string {
     throw new Error('--values is required for a system-domain command that changes Kubernetes resources.');
   }
   return value;
-}
-
-function readCommandFailure(result: CommandResult): string {
-  return [result.stderr.trim(), result.stdout.trim()].filter((value: string): boolean => value !== '').join('\n');
 }

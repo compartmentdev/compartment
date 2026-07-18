@@ -5,6 +5,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { isUnsafePublicIpAddress } from '@compartment/utils';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
+import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
 import type {
   KubernetesPublicIngress,
   KubernetesPublicIngressResolutionInput,
@@ -51,23 +52,17 @@ async function waitForLoadBalancerPublicIngress(
 }
 
 async function readCaddyService(input: KubernetesPublicIngressResolutionInput): Promise<KubernetesServiceListItem> {
-  const command: string[] = ['kubectl'];
-  if (input.kubeContext !== undefined) {
-    command.push('--context', input.kubeContext);
-  }
-  command.push(
-    '--namespace',
-    input.namespace,
+  const command: string[] = buildKubectlCommand(input, [
     'get',
     'service',
     '--selector',
     `app.kubernetes.io/instance=${input.releaseName},app.kubernetes.io/component=caddy`,
     '--output',
     'json',
-  );
+  ]);
   const result: CommandResult = await runCommand(command);
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to inspect the Caddy Service: ${readCommandFailure(result)}`);
+    throw new Error(`Failed to inspect the Caddy Service: ${readCommandOutput(result)}`);
   }
   const list: KubernetesServiceList = parseServiceList(result.stdout);
   if (list.items.length !== 1 || list.items[0] === undefined) {
@@ -139,8 +134,4 @@ function assertPublicIngressAddress(value: string, version: 4 | 6, fieldName: st
   if (isIP(value) !== version || isUnsafePublicIpAddress(value)) {
     throw new Error(`${fieldName} must be empty or a public IPv${version} address.`);
   }
-}
-
-function readCommandFailure(result: CommandResult): string {
-  return [result.stderr.trim(), result.stdout.trim()].filter((value: string): boolean => value !== '').join('\n');
 }

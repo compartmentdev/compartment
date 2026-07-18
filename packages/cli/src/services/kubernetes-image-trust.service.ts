@@ -9,6 +9,7 @@ import { readCosignCommand } from '../bundled-cosign';
 import { readNonCompartmentEnvironment } from '../command-environment';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
+import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
 import { writeKubernetesInstallValues } from './kubernetes-install-helm.service';
 import type {
   KubernetesInstallImageTrustInput,
@@ -21,11 +22,6 @@ import type {
   KubernetesVerifiedPlatformImageValues,
   ResolvedKubernetesPlatformImage,
 } from './kubernetes-image-trust.service.types';
-import {
-  createImageTrustCommandError,
-  readImageTrustJson,
-  readImageTrustObject,
-} from './kubernetes-image-trust.support';
 
 const imageDigestPattern: RegExp = /^sha256:[a-f0-9]{64}$/u;
 const platformImageNames: readonly KubernetesPlatformImageName[] = ['api', 'worker', 'edge', 'caddy'];
@@ -65,7 +61,7 @@ async function readReleaseValues(input: KubernetesReleaseImageTrustInput): Promi
     '--all',
     '--output',
     'json',
-    ...(input.kubeContext === undefined ? [] : ['--kube-context', input.kubeContext]),
+    ...buildHelmKubeContextArgs(input),
   ]);
   if (result.exitCode !== 0) {
     throw createImageTrustCommandError(
@@ -252,4 +248,24 @@ function readSignatureDigest(entry: JsonValue, imageRef: string): string[] {
     throw new Error(`Cosign returned an invalid manifest digest while verifying ${imageRef}.`);
   }
   return [digest];
+}
+
+function readImageTrustJson(value: string, message: string): JsonValue {
+  try {
+    return JSON.parse(value) as JsonValue;
+  } catch {
+    throw new Error(message);
+  }
+}
+
+function readImageTrustObject(value: JsonValue | undefined, label: string): KubernetesImageTrustJsonObject {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`Expected ${label} to be an object.`);
+  }
+  return value;
+}
+
+function createImageTrustCommandError(prefix: string, result: CommandResult): Error {
+  const output: string = readCommandOutput(result);
+  return new Error(output === '' ? prefix : `${prefix}\n${output}`);
 }

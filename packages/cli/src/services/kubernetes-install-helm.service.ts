@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { readSeaAssetBuffer } from '../sea';
+import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
 import type { KubernetesInstallDeploymentInput, KubernetesInstallStage } from './kubernetes-install.service.types';
 
 const bundledKubernetesChartAssetName: string = 'compartment-chart.tgz';
@@ -56,9 +57,7 @@ function buildHelmInstallCommand(
 ): string[] {
   const args: string[] = buildHelmBaseCommand(input, chartPath, installValuesPath, imageTrustValuesPath);
   args.push('--set', `platform.startupStage=${stage}`);
-  if (input.kubeContext !== undefined) {
-    args.push('--kube-context', input.kubeContext);
-  }
+  args.push(...buildHelmKubeContextArgs(input));
   if (stage === 'full') {
     args.push('--wait-for-jobs');
   }
@@ -93,9 +92,7 @@ export function buildKubernetesHelmValuesArgs(valuesPaths: readonly string[]): s
 }
 
 function throwHelmInstallError(stage: KubernetesInstallStage, result: CommandResult): never {
-  const output: string = [result.stderr.trim(), result.stdout.trim()]
-    .filter((value: string): boolean => value !== '')
-    .join('\n');
+  const output: string = readCommandOutput(result);
   throw new Error(
     `Helm ${stage} install failed with exit code ${result.exitCode.toString()}.${output === '' ? '' : `\n${output}`}`,
   );
