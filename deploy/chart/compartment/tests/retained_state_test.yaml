@@ -1,0 +1,97 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: retained install state resolution
+templates:
+  - templates/*.yaml
+release:
+  name: compartment
+  namespace: default
+  upgrade: true
+kubernetesProvider:
+  scheme:
+    v1/Secret:
+      gvr:
+        version: v1
+        resource: secrets
+      namespaced: true
+  objects:
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: compartment-install-state
+        namespace: default
+      data:
+        startup-stage: ZnVsbA==
+        installation-id: cmV0YWluZWQtaW5zdGFsbA==
+        public-ingress-ipv4: OC44LjguOA==
+        public-ingress-ipv6: MjAwMTo0ODYwOjQ4NjA6Ojg4ODg=
+        acme-email: cmV0YWluZWRAZXhhbXBsZS5jb20=
+        managed-domain-broker-url: aHR0cHM6Ly9yZXRhaW5lZC1icm9rZXIuZXhhbXBsZQ==
+        managed-domain-broker-token: YnJva2VyLXRva2Vu
+        domain-generation: Nw==
+        domain-mode: bWFuYWdlZA==
+        base-domain: cmV0YWluZWQuZXhhbXBsZS5jb20=
+        managed-base-domain: bWFuYWdlZC5leGFtcGxlLmNvbQ==
+        public-protocol: aHR0cHM=
+        tls-mode: bWFuYWdlZA==
+        active-custom-tls-secret: cmV0YWluZWQtdGxz
+        operator-custom-tls-secret: b3BlcmF0b3ItdGxz
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: operator-tls
+        namespace: default
+      data:
+        tls.crt: dGVzdC1jZXJ0aWZpY2F0ZQ==
+        tls.key: dGVzdC1wcml2YXRlLWtleQ==
+tests:
+  - it: resolves every consumer from the retained Secret without mutating Values
+    set:
+      platform:
+        startupStage: foundation
+        installationId: incoming-install
+        domainGeneration: 0
+        domainMode: custom
+        baseDomain: incoming.localhost
+        publicProtocol: http
+        tlsMode: custom-http
+        publicIngressIpv4: 1.1.1.1
+        acmeEmail: incoming@example.com
+      secrets:
+        managedDomainBrokerToken: incoming-token
+        registryWritePassword: test-registry-write-password
+        productLogIngestToken: test-product-log-token
+    asserts:
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: compartment-compartment-api
+          any: true
+        template: api.yaml
+      - equal:
+          path: data.COMPARTMENT_BASE_DOMAIN
+          value: retained.example.com
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL
+          value: https://retained-broker.example
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_PUBLIC_INGRESS_IPV4
+          value: 8.8.8.8
+        template: configmap.yaml
+      - equal:
+          path: stringData.installation-id
+          value: retained-install
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.domain-generation
+          value: '7'
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.active-custom-tls-secret
+          value: retained-tls
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.managed-domain-broker-token
+          value: broker-token
+        template: install-state-secret.yaml

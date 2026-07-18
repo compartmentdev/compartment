@@ -50,10 +50,11 @@ jobs:
           version: 10.6.3
           cache: true
 
-      - name: Install pinned k3d, kubectl, and Helm
+      - name: Install pinned k3d, kubectl, Helm, and helm-unittest
         env:
           HELM_SHA256: e9b88b4ee95b18c706839c28d3a0220e5bc470e9cd9262410c90793c45ff8b7c
           HELM_VERSION: v4.2.3
+          HELM_UNITTEST_VERSION: 1.1.1
           K3D_SHA256: dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e
           K3D_VERSION: v5.8.3
           KUBECTL_SHA256: 33d0cdec6967817468f0a4a90f537dfef394dcf815d91966ca651cc118393eea
@@ -88,6 +89,10 @@ jobs:
           tar -xzf "/tmp/${helm_archive}" -C /tmp
           sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
 
+          helm plugin install https://github.com/helm-unittest/helm-unittest.git \
+            --version "${HELM_UNITTEST_VERSION}" \
+            --verify=false
+
           k3d version
           kubectl version --client
           helm version
@@ -96,7 +101,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validate Helm chart renders
-        run: bash ./deploy/chart/compartment/test/render.sh
+        run: |
+          helm lint ./deploy/chart/compartment
+          helm lint ./deploy/chart/compartment -f ./deploy/chart/compartment/values-kind.yaml
+          helm unittest --strict ./deploy/chart/compartment
+          node ./deploy/chart/compartment/test/assert-operator-docs.mjs
 
       - name: Register local control-plane host
         run: |

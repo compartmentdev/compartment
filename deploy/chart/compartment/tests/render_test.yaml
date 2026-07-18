@@ -1,0 +1,223 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: chart render scenarios
+templates:
+  - templates/*.yaml
+release:
+  name: compartment
+tests:
+  - it: renders the foundation stage
+    set:
+      platform:
+        startupStage: foundation
+      secrets: &stableSecrets
+        installToken: test-install-token
+        postgresPassword: test-postgres-password
+        registryReadPassword: test-registry-read-password
+        registryWritePassword: test-registry-write-password
+        edgeToken: test-edge-token
+        productLogIngestToken: test-product-log-token
+        runtimeControlToken: test-runtime-control-token
+        sessionSecret: test-session-secret
+        systemToken: test-system-token
+        variablesMasterKey: test-variables-master-key
+        managedDomainBrokerToken: ''
+    asserts: &snapshotAsserts
+      - notFailedTemplate: {}
+      - matchSnapshot: {}
+
+  - it: renders a full public installation
+    set:
+      platform:
+        startupStage: full
+        installationId: test-install
+        baseDomain: apps.example.com
+        publicProtocol: https
+        publicIngressIpv4: 8.8.8.8
+        managedDomainBrokerUrl: ''
+      secrets: *stableSecrets
+    asserts: *snapshotAsserts
+
+  - it: renders a local full installation
+    set:
+      platform:
+        startupStage: full
+        installationId: test-local
+        baseDomain: compartment.localhost
+        publicProtocol: http
+        tlsMode: custom-http
+      secrets: *stableSecrets
+    asserts: *snapshotAsserts
+
+  - it: renders a custom broker configuration
+    set:
+      platform:
+        startupStage: full
+        installationId: test-custom-broker
+        baseDomain: compartment.localhost
+        publicProtocol: http
+        tlsMode: custom-http
+        managedDomainBrokerUrl: https://broker.example.test
+      secrets:
+        <<: *stableSecrets
+        managedDomainBrokerToken: retained-token
+    asserts: *snapshotAsserts
+
+  - it: renders immutable platform image digests
+    set:
+      platform:
+        startupStage: full
+        installationId: test-digests
+        baseDomain: compartment.localhost
+        publicProtocol: http
+        tlsMode: custom-http
+      images:
+        api:
+          digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        worker:
+          digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        edge:
+          digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+        caddy:
+          digest: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+      secrets: *stableSecrets
+    asserts: *snapshotAsserts
+
+  - it: renders the restricted kind profile
+    values:
+      - ../values-kind.yaml
+    set:
+      secrets: *stableSecrets
+    asserts: *snapshotAsserts
+
+  - it: renders edge snapshot storage
+    set:
+      platform:
+        startupStage: full
+        installationId: test-install
+        baseDomain: apps.example.com
+        publicProtocol: https
+        publicIngressIpv4: 8.8.8.8
+      edge:
+        snapshots:
+          enabled: true
+      secrets: *stableSecrets
+    asserts: *snapshotAsserts
+
+  - it: renders managed TLS
+    set:
+      platform: &managedPlatform
+        startupStage: full
+        installationId: test-managed
+        domainMode: managed
+        baseDomain: managed.compartment.run
+        publicProtocol: https
+        tlsMode: managed
+        publicIngressIpv4: 8.8.4.4
+        acmeEmail: admin@example.com
+      images:
+        api:
+          digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        worker:
+          digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        edge:
+          digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+        caddy:
+          digest: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+      secrets:
+        <<: *stableSecrets
+        managedDomainBrokerToken: broker-token
+    asserts: *snapshotAsserts
+
+  - it: renders an existing custom certificate
+    set:
+      platform: &customCertPlatform
+        startupStage: full
+        installationId: test-custom
+        baseDomain: apps.example.com
+        publicProtocol: https
+        tlsMode: custom-cert
+        publicIngressIpv4: 8.8.8.8
+        acmeEmail: admin@example.com
+      customTls:
+        existingSecret: operator-tls
+      secrets: *stableSecrets
+    asserts: *snapshotAsserts
+
+  - it: renders pending custom certificate material
+    set:
+      platform:
+        <<: *managedPlatform
+        installationId: test-pending
+      customTls:
+        pendingSecretName: operator-tls
+        pendingCertificate: test-certificate
+        pendingPrivateKey: test-private-key
+        pendingOperationId: domop_123
+      secrets:
+        <<: *stableSecrets
+        managedDomainBrokerToken: broker-token
+    asserts: *snapshotAsserts
+
+  - it: renders a rotating custom certificate
+    set:
+      platform:
+        <<: *customCertPlatform
+        installationId: test-managed
+        publicIngressIpv4: 8.8.4.4
+      customTls: &rotatingCustomTls
+        existingSecret: active-operator-tls
+        operatorSecretName: active-operator-tls
+        operatorCertificate: active-certificate
+        operatorPrivateKey: active-private-key
+        pendingSecretName: pending-operator-tls
+        pendingCertificate: pending-certificate
+        pendingPrivateKey: pending-private-key
+        pendingOperationId: domop_456
+      secrets:
+        <<: *stableSecrets
+        managedDomainBrokerToken: broker-token
+    asserts: *snapshotAsserts
+
+  - it: renders the active certificate without pending rotation
+    set:
+      platform:
+        <<: *customCertPlatform
+        installationId: test-managed
+        publicIngressIpv4: 8.8.4.4
+      customTls:
+        existingSecret: active-operator-tls
+        operatorSecretName: active-operator-tls
+        operatorCertificate: active-certificate
+        operatorPrivateKey: active-private-key
+      secrets:
+        <<: *stableSecrets
+        managedDomainBrokerToken: broker-token
+    asserts: *snapshotAsserts
+
+  - it: renders inline custom certificate material
+    set:
+      platform:
+        <<: *customCertPlatform
+        installationId: test-inline-custom
+      customTls:
+        certificate: test-certificate
+        privateKey: test-private-key
+      secrets: *stableSecrets
+    asserts: *snapshotAsserts
+
+  - it: renders rotated inline custom certificate material
+    set:
+      platform:
+        <<: *customCertPlatform
+        installationId: test-inline-custom
+      customTls:
+        certificate: rotated-certificate
+        privateKey: test-private-key
+      secrets: *stableSecrets
+    asserts: *snapshotAsserts
+
+  - it: keeps the retained Secret name independent of fullname override
+    set:
+      fullnameOverride: renamed-compartment
+      secrets: *stableSecrets
+    asserts: *snapshotAsserts
