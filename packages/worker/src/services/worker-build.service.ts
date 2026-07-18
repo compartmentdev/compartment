@@ -19,16 +19,6 @@ import { prepareServiceDirectory } from './worker-source.service';
 import type { PreparedWorkerSource, WorkerSourceServiceInput } from './worker-source.service.types';
 import { runTrackedDeploymentStep } from './worker-step-runner.service';
 
-interface BuildPreparedSourceImageInput {
-  artifactRegistry: WorkerArtifactRegistryConfig;
-  deployment: WorkerClaimedDeployment;
-  eventContext: WorkerDeploymentEventContext;
-  imageTag: string;
-  preparedSource: PreparedWorkerSource;
-  pushImageTag: string;
-  request: CompartmentRequester;
-}
-
 interface FreshReleaseImageInput {
   archiveRequest: CompartmentBinaryRequester;
   artifactRegistry: WorkerArtifactRegistryConfig;
@@ -37,8 +27,9 @@ interface FreshReleaseImageInput {
   request: CompartmentRequester;
 }
 
-interface ReleaseImageTags {
+interface PreparedBuildInput {
   imageTag: string;
+  preparedSource: PreparedWorkerSource;
   pushImageTag: string;
 }
 
@@ -60,7 +51,11 @@ export async function buildReleaseImageFromSource(
 }
 
 async function buildFreshReleaseImage(input: FreshReleaseImageInput): Promise<string> {
-  const tags: ReleaseImageTags = buildReleaseImageTags(input.deployment, input.artifactRegistry);
+  const imageTag: string = buildReleaseImageTag(input.deployment, input.artifactRegistry.address);
+  const pushImageTag: string = buildReleaseImageTag(
+    input.deployment,
+    readWorkerArtifactRegistryInternalHost(input.artifactRegistry),
+  );
   const tempDirectory: string = await mkdtemp(join(tmpdir(), 'compartment-worker-'));
 
   try {
@@ -71,15 +66,7 @@ async function buildFreshReleaseImage(input: FreshReleaseImageInput): Promise<st
       tempDirectory,
     );
     resolveCompartmentServiceRunExecution(input.deployment.run, preparedSource.packer, input.deployment.service.path);
-    return await buildPreparedSourceImage({
-      artifactRegistry: input.artifactRegistry,
-      deployment: input.deployment,
-      eventContext: input.eventContext,
-      imageTag: tags.imageTag,
-      preparedSource,
-      pushImageTag: tags.pushImageTag,
-      request: input.request,
-    });
+    return await buildPreparedSourceImage(input, { imageTag, preparedSource, pushImageTag });
   } finally {
     await rm(tempDirectory, { force: true, recursive: true });
   }
@@ -106,7 +93,7 @@ async function appendClaimedDeploymentEvent(eventContext: WorkerDeploymentEventC
   await appendDeploymentStepEventSafely(eventContext, 'queued', 'succeeded', 'worker claimed deployment');
 }
 
-async function buildPreparedSourceImage(input: BuildPreparedSourceImageInput): Promise<string> {
+async function buildPreparedSourceImage(input: FreshReleaseImageInput, build: PreparedBuildInput): Promise<string> {
   const buildResult: DockerBuildImageResult = await runTrackedDeploymentStep({
     eventContext: input.eventContext,
     failureSummary: 'image build failed',
@@ -117,9 +104,9 @@ async function buildPreparedSourceImage(input: BuildPreparedSourceImageInput): P
             buildDockerImageInput({
               artifactRegistry: input.artifactRegistry,
               deployment: input.deployment,
-              imageTag: input.imageTag,
-              preparedSource: input.preparedSource,
-              pushImageTag: input.pushImageTag,
+              imageTag: build.imageTag,
+              preparedSource: build.preparedSource,
+              pushImageTag: build.pushImageTag,
               request: input.request,
             }),
           ),
@@ -128,7 +115,7 @@ async function buildPreparedSourceImage(input: BuildPreparedSourceImageInput): P
     stepKey: 'building_image',
     successMessage: 'image build completed',
   });
-  return readPushedPreparedSourceImageRef(buildResult, input.imageTag);
+  return readPushedPreparedSourceImageRef(buildResult, build.imageTag);
 }
 
 function readPushedPreparedSourceImageRef(buildResult: DockerBuildImageResult, imageTag: string): string {
@@ -137,16 +124,6 @@ function readPushedPreparedSourceImageRef(buildResult: DockerBuildImageResult, i
   }
 
   throw new Error(`Expected source image build for "${imageTag}" to return a digest-pinned BuildKit push result.`);
-}
-
-function buildReleaseImageTags(
-  deployment: WorkerClaimedDeployment,
-  artifactRegistry: WorkerArtifactRegistryConfig,
-): ReleaseImageTags {
-  return {
-    imageTag: buildReleaseImageTag(deployment, artifactRegistry.address),
-    pushImageTag: buildReleaseImageTag(deployment, readWorkerArtifactRegistryInternalHost(artifactRegistry)),
-  };
 }
 
 function buildReleaseImageTag(deployment: WorkerClaimedDeployment, artifactRegistryAddress: string): string {
