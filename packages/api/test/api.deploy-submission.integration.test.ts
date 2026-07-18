@@ -670,6 +670,21 @@ describe('Phase 0 API integration deploy submission', (): void => {
       ]),
     );
   });
+  it('records the compatibility warning before inserting its deployment', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+
+    const deployResponse: LightMyRequestResponse = await withRequiredCompatibilityWarningBeforeDeployment(
+      async (): Promise<LightMyRequestResponse> =>
+        await injectNoRestartPolicyDeploy(installPayload.sessionToken, sourceUpload.id),
+    );
+
+    expect(deployResponse.statusCode, deployResponse.body).toBe(200);
+  });
   it('does not queue a deployment when its compatibility warning cannot be recorded', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
@@ -680,22 +695,7 @@ describe('Phase 0 API integration deploy submission', (): void => {
 
     const deployResponse: LightMyRequestResponse = await withRejectedCompatibilityWarningEvents(
       async (): Promise<LightMyRequestResponse> =>
-        await injectJsonDeployRequest(app, installPayload.sessionToken, 'acme-dev', {
-          descriptor: {
-            name: 'smoke-web',
-            services: {
-              web: {
-                path: '.',
-                run: {
-                  restart: {
-                    policy: 'no',
-                  },
-                },
-              },
-            },
-          },
-          sourceUploadId: sourceUpload.id,
-        }),
+        await injectNoRestartPolicyDeploy(installPayload.sessionToken, sourceUpload.id),
     );
 
     expect(deployResponse.statusCode).toBe(500);
@@ -1262,6 +1262,58 @@ async function createResourceDeploySourceArchive(): Promise<Buffer> {
       version: 1,
     },
   );
+}
+
+async function injectNoRestartPolicyDeploy(
+  sessionToken: string,
+  sourceUploadId: string,
+): Promise<LightMyRequestResponse> {
+  return await injectJsonDeployRequest(app, sessionToken, 'acme-dev', {
+    descriptor: {
+      name: 'smoke-web',
+      services: {
+        web: {
+          path: '.',
+          run: {
+            restart: {
+              policy: 'no',
+            },
+          },
+        },
+      },
+    },
+    sourceUploadId,
+  });
+}
+
+async function withRequiredCompatibilityWarningBeforeDeployment<T>(action: () => Promise<T>): Promise<T> {
+  await db.execute(sql`
+    CREATE FUNCTION require_compatibility_warning_before_deployment() RETURNS trigger AS $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM deployment_run_events
+        WHERE deployment_run_id = NEW.deployment_run_id
+          AND deployment_id IS NULL
+          AND message LIKE 'Warning: deprecated %'
+      ) THEN
+        RAISE EXCEPTION 'compatibility warning must exist before deployment insertion';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+  await db.execute(sql`
+    CREATE TRIGGER require_compatibility_warning_before_deployment
+    BEFORE INSERT ON deployments
+    FOR EACH ROW EXECUTE FUNCTION require_compatibility_warning_before_deployment()
+  `);
+  try {
+    return await action();
+  } finally {
+    await db.execute(sql`DROP TRIGGER require_compatibility_warning_before_deployment ON deployments`);
+    await db.execute(sql`DROP FUNCTION require_compatibility_warning_before_deployment()`);
+  }
 }
 
 async function withRejectedCompatibilityWarningEvents<T>(action: () => Promise<T>): Promise<T> {
