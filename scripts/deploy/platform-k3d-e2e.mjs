@@ -228,14 +228,21 @@ export function parseLoadedImageRefs(output) {
     .filter((imageRef) => imageRef !== '');
 }
 
-export function parseDockerImageCommand(value, fieldName) {
+export function parseDockerImageCommand(value, fieldName, allowEmpty = false) {
   let command;
   try {
     command = JSON.parse(value);
   } catch {
     throw new Error(`Expected ${fieldName} to be a JSON command array.`);
   }
-  if (!Array.isArray(command) || command.length === 0 || command.some((argument) => typeof argument !== 'string')) {
+  if (command === null && allowEmpty) {
+    return [];
+  }
+  if (
+    !Array.isArray(command) ||
+    (!allowEmpty && command.length === 0) ||
+    command.some((argument) => typeof argument !== 'string')
+  ) {
     throw new Error(`Expected ${fieldName} to be a non-empty JSON command array.`);
   }
   return command;
@@ -443,6 +450,7 @@ function buildManagedE2eCaddyImage(sourceImageRef) {
   const sourceCommand = parseDockerImageCommand(
     captureCommand('docker', ['image', 'inspect', '--format', '{{json .Config.Cmd}}', sourceImageRef], repositoryRoot),
     'source Caddy command',
+    true,
   );
   const sourceEntrypoint = parseDockerImageCommand(
     captureCommand(

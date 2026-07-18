@@ -42,6 +42,7 @@ describe('platform k3d e2e command boundary', () => {
   it('preserves validated source image runtime commands for managed Caddy commits', () => {
     expect(parseDockerImageCommand('["/usr/bin/entrypoint"]', 'entrypoint')).toEqual(['/usr/bin/entrypoint']);
     expect(parseDockerImageCommand('["caddy","run"]', 'command')).toEqual(['caddy', 'run']);
+    expect(parseDockerImageCommand('null', 'command', true)).toEqual([]);
     expect(() => parseDockerImageCommand('null', 'entrypoint')).toThrow(
       'Expected entrypoint to be a non-empty JSON command array.',
     );
