@@ -1,0 +1,150 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: install value validation
+templates:
+  - templates/configmap.yaml
+release:
+  name: compartment
+tests:
+  - it: requires a managed broker token
+    set:
+      platform: &managedPlatform
+        startupStage: full
+        installationId: test-managed
+        domainMode: managed
+        baseDomain: managed.compartment.run
+        publicProtocol: https
+        tlsMode: managed
+        publicIngressIpv4: 8.8.4.4
+        acmeEmail: admin@example.com
+    asserts:
+      - failedTemplate:
+          errorMessage: secrets.managedDomainBrokerToken is required for managed TLS
+
+  - it: requires managed domain mode for managed TLS
+    set:
+      platform:
+        <<: *managedPlatform
+        domainMode: custom
+      secrets:
+        managedDomainBrokerToken: broker-token
+    asserts:
+      - failedTemplate:
+          errorMessage: platform.domainMode must be managed when platform.tlsMode is managed
+
+  - it: requires a managed broker URL
+    set:
+      platform:
+        <<: *managedPlatform
+        managedDomainBrokerUrl: ''
+      secrets:
+        managedDomainBrokerToken: broker-token
+    asserts:
+      - failedTemplate:
+          errorMessage: platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured
+
+  - it: requires the canonical broker URL when a broker token is configured
+    set:
+      platform:
+        startupStage: full
+        installationId: test-custom-broker
+        baseDomain: compartment.localhost
+        publicProtocol: http
+        tlsMode: custom-http
+        managedDomainBrokerUrl: ''
+      secrets:
+        managedDomainBrokerToken: retained-token
+    asserts:
+      - failedTemplate:
+          errorMessage: platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured
+
+  - it: requires an ingress address for a public installation
+    set:
+      platform:
+        startupStage: full
+        installationId: test-public
+        baseDomain: apps.example.com
+        publicProtocol: https
+        publicIngressIpv4: ''
+        publicIngressIpv6: ''
+    asserts:
+      - failedTemplate:
+          errorMessage: platform.publicIngressIpv4 or platform.publicIngressIpv6 is required for a public installation
+
+  - it: rejects malformed IPv4 syntax through the values schema
+    set:
+      platform:
+        publicIngressIpv4: not-an-ip
+    asserts:
+      - failedTemplate:
+          errorPattern: publicIngressIpv4.*ipv4
+
+  - it: rejects a non-HTTPS ACME URL through the values schema
+    set:
+      platform:
+        acmeCaUrl: http://acme.example.com/directory
+    asserts:
+      - failedTemplate:
+          errorPattern: acmeCaUrl.*pattern
+
+  - it: rejects an ACME URL without a host through the values schema
+    set:
+      platform:
+        acmeCaUrl: https://?
+    asserts:
+      - failedTemplate:
+          errorPattern: acmeCaUrl.*pattern
+
+  - it: rejects a malformed broker URL through the values schema
+    set:
+      platform:
+        managedDomainBrokerUrl: not-a-url
+    asserts:
+      - failedTemplate:
+          errorPattern: managedDomainBrokerUrl.*oneOf
+
+  - it: rejects a malformed ACME email through the values schema
+    set:
+      platform:
+        acmeEmail: not-an-email
+    asserts:
+      - failedTemplate:
+          errorPattern: acmeEmail.*oneOf
+
+  - it: requires an ACME email for custom certificate TLS
+    set:
+      platform:
+        startupStage: full
+        installationId: test-custom
+        baseDomain: apps.example.com
+        publicProtocol: https
+        tlsMode: custom-cert
+        publicIngressIpv4: 8.8.8.8
+        acmeEmail: ''
+      customTls:
+        existingSecret: operator-tls
+    asserts:
+      - failedTemplate:
+          errorMessage: platform.acmeEmail is required for public TLS
+
+  - it: requires custom certificate material
+    set:
+      platform:
+        startupStage: full
+        installationId: test-custom
+        baseDomain: apps.example.com
+        publicProtocol: https
+        tlsMode: custom-cert
+        publicIngressIpv4: 8.8.8.8
+        acmeEmail: admin@example.com
+    asserts:
+      - failedTemplate:
+          errorMessage: customTls.certificate or customTls.existingSecret is required for custom-cert TLS
+
+  - it: rejects a mutable platform image digest through the values schema
+    set:
+      images:
+        api:
+          digest: sha256:not-a-digest
+    asserts:
+      - failedTemplate:
+          errorPattern: images.api.digest.*pattern

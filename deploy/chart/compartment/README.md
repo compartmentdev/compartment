@@ -60,9 +60,10 @@ Managed TLS uses typed `platform.acmeIssuer`, `platform.acmeCaUrl`, `platform.ac
 `platform.managedDomainBrokerUrl` values. The chart owns the ACME issuer and CA defaults; the CLI supplies the owner
 email and broker credential. At runtime the token is held by the retained install-state Secret and projected into API
 and Caddy with individual Secret references, never a ConfigMap. Helm also stores supplied secret values in its
-Kubernetes release revision Secrets, so restrict access to both resource classes. A full public render fails when its
-base domain, installation ID, public ingress IP, HTTPS protocol, ACME settings, or external 80/443 ports are invalid or
-missing.
+Kubernetes release revision Secrets, so restrict access to both resource classes. A full public render requires its
+base domain, installation ID, ingress address, HTTPS protocol, ACME settings, and external 80/443 ports; the values
+schema rejects malformed IP, URL, and email syntax. The CLI also rejects private or reserved ingress addresses. Direct
+Helm recovery bypasses that routability check, so the operator must verify that supplied ingress addresses are public.
 
 For an operator-owned base domain, pass `--base-domain`. Set `platform.publicIngressIpv4` or
 `platform.publicIngressIpv6` when the Service is not a LoadBalancer. For Caddy-managed custom certificates, create a

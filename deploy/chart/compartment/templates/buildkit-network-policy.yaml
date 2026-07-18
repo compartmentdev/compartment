@@ -1,5 +1,5 @@
-{{- include "compartment.applyRetainedInstallState" . -}}
-{{- if and .Values.buildkit.enabled (eq .Values.platform.startupStage "full") }}
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if and .Values.buildkit.enabled (eq $installState.effective.platform.startupStage "full") }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

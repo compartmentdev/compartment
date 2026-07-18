@@ -1,5 +1,5 @@
-{{- include "compartment.applyRetainedInstallState" . -}}
-{{- if eq .Values.platform.startupStage "full" }}
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if eq $installState.effective.platform.startupStage "full" }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -102,7 +102,7 @@ spec:
           volumeMounts:
             - {name: data, mountPath: /var/lib/compartment}
             - {name: runtime, mountPath: /var/run/compartment}
-            {{- if eq .Values.platform.tlsMode "custom-cert" }}
+            {{- if eq $installState.effective.platform.tlsMode "custom-cert" }}
             - {name: active-tls, mountPath: /etc/compartment/tls, readOnly: true}
             {{- end }}
             {{- if not (empty .Values.customTls.pendingOperationId) }}
@@ -115,7 +115,7 @@ spec:
           persistentVolumeClaim:
             claimName: {{ include "compartment.fullname" . }}-api
         - {name: runtime, emptyDir: {}}
-        {{- if eq .Values.platform.tlsMode "custom-cert" }}
+        {{- if eq $installState.effective.platform.tlsMode "custom-cert" }}
         - name: active-tls
           secret:
             secretName: {{ include "compartment.customTlsSecretName" . }}
