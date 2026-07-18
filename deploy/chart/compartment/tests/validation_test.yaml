@@ -129,6 +129,28 @@ tests:
       - failedTemplate:
           errorPattern: authThrottle.login.route.limit.*minimum
 
+  - it: rejects an empty auth throttle duration through the values schema
+    set:
+      platform:
+        authThrottle:
+          login:
+            source:
+              cooldown: ''
+    asserts:
+      - failedTemplate:
+          errorPattern: authThrottle.login.source.cooldown.*minLength
+
+  - it: rejects an unknown auth throttle field through the values schema
+    set:
+      platform:
+        authThrottle:
+          login:
+            route:
+              maxRequests: 30
+    asserts:
+      - failedTemplate:
+          errorPattern: authThrottle/login/route.*additional properties
+
   - it: requires an ACME email for custom certificate TLS
     set:
       platform:
