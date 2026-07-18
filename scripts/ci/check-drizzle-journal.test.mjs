@@ -29,6 +29,29 @@ describe('findDrizzleJournalDiffValidationErrors', () => {
   });
 
   it.each([
+    ['another package journal', 'packages/audit/drizzle/meta/_journal.json', () => {}, () => {}],
+    [
+      'another base timestamp',
+      'packages/api/drizzle/meta/_journal.json',
+      (journal) => (journal.entries[0].when = 1779700755037),
+      () => {},
+    ],
+    [
+      'another head timestamp',
+      'packages/api/drizzle/meta/_journal.json',
+      () => {},
+      (journal) => (journal.entries[0].when = 1783948017383),
+    ],
+  ])('rejects the D16 exemption for %s', (_name, journalPath, mutateBaseJournal, mutateHeadJournal) => {
+    const baseJournal = buildD16BaseJournal();
+    const headJournal = buildD16HeadJournal();
+    mutateBaseJournal(baseJournal);
+    mutateHeadJournal(headJournal);
+
+    expect(findDrizzleJournalDiffValidationErrors(journalPath, baseJournal, headJournal)).not.toEqual([]);
+  });
+
+  it.each([
     ['changed tag', (journal) => (journal.entries[0].tag = '0000_rewritten')],
     ['changed idx', (journal) => (journal.entries[0].idx = 1)],
     ['removed entry', (journal) => (journal.entries = [])],
@@ -37,21 +60,12 @@ describe('findDrizzleJournalDiffValidationErrors', () => {
       (journal) =>
         journal.entries.push({ breakpoints: true, idx: 1, tag: '0001_extra', version: '7', when: 1783948017383 }),
     ],
-    [
-      'reordered entries',
-      (journal) => {
-        journal.entries.unshift({
-          breakpoints: true,
-          idx: 1,
-          tag: '0001_extra',
-          version: '7',
-          when: 1783948017383,
-        });
-      },
-    ],
+    ['changed dialect', (journal) => (journal.dialect = 'sqlite')],
     ['changed entry version', (journal) => (journal.entries[0].version = '8')],
     ['changed breakpoints', (journal) => (journal.entries[0].breakpoints = false)],
     ['changed journal version', (journal) => (journal.version = '8')],
+    ['added journal field', (journal) => (journal.extra = true)],
+    ['added entry field', (journal) => (journal.entries[0].extra = true)],
   ])('rejects the D16 exemption with a %s', (_name, mutateHeadJournal) => {
     const headJournal = buildD16HeadJournal();
     mutateHeadJournal(headJournal);
@@ -62,6 +76,17 @@ describe('findDrizzleJournalDiffValidationErrors', () => {
         buildD16BaseJournal(),
         headJournal,
       ),
+    ).not.toEqual([]);
+  });
+
+  it('rejects reordering existing same-length journal history', () => {
+    const firstEntry = { breakpoints: true, idx: 0, tag: '0000_initial', version: '7', when: 1 };
+    const secondEntry = { breakpoints: true, idx: 1, tag: '0001_next', version: '7', when: 2 };
+    const baseJournal = { dialect: 'postgresql', entries: [firstEntry, secondEntry], version: '7' };
+    const headJournal = { dialect: 'postgresql', entries: [secondEntry, firstEntry], version: '7' };
+
+    expect(
+      findDrizzleJournalDiffValidationErrors('packages/api/drizzle/meta/_journal.json', baseJournal, headJournal),
     ).not.toEqual([]);
   });
 
