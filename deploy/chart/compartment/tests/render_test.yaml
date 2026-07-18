@@ -214,6 +214,21 @@ tests:
         documentIndex: 1
       - equal:
           path: metadata.name
+          value: compartment-controller
+        template: project-provisioner-rbac.yaml
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: compartment-project-bootstrap
+        template: project-provisioner-rbac.yaml
+        documentIndex: 3
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-project-provisioner
+        template: project-provisioner-rbac.yaml
+        documentIndex: 6
+      - equal:
+          path: metadata.name
           value: compartment-compartment-project-provisioner
         template: project-provisioner-rbac.yaml
         documentIndex: 1
@@ -588,6 +603,10 @@ tests:
           path: data.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL
           value: http://compartment-compartment-registry-auth.default.svc:5000
         template: configmap.yaml
+      - matchRegex:
+          path: stringData[".dockerconfigjson"]
+          pattern: '"compartment-compartment-registry-auth\.default\.svc:5000"'
+        template: registry-client-secret.yaml
       - contains:
           path: spec.template.spec.containers[0].env
           content:
