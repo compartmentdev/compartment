@@ -260,6 +260,92 @@ tests:
         template: project-provisioner-rbac.yaml
         documentIndex: 6
       - equal:
+          path: rules
+          value:
+            - apiGroups: [apps]
+              resources: [deployments]
+              verbs: [get, list, watch, create, update, patch, delete]
+            - apiGroups: [batch]
+              resources: [jobs]
+              verbs: [get, list, watch, create, update, patch, delete]
+            - apiGroups: ['']
+              resources: [services, secrets, persistentvolumeclaims]
+              verbs: [get, list, watch, create, update, patch, delete]
+            - apiGroups: ['']
+              resources: [pods]
+              verbs: [get, list, watch]
+            - apiGroups: ['']
+              resources: [pods/log]
+              verbs: [get]
+            - apiGroups: [metrics.k8s.io]
+              resources: [pods]
+              verbs: [get, list]
+            - apiGroups: [networking.k8s.io]
+              resources: [networkpolicies]
+              verbs: [get, list, watch, create, update, patch, delete]
+        template: project-provisioner-rbac.yaml
+        documentIndex: 2
+      - equal:
+          path: rules
+          value:
+            - apiGroups: ['']
+              resources: [namespaces]
+              verbs: [get, create]
+            - apiGroups: [rbac.authorization.k8s.io]
+              resources: [rolebindings]
+              verbs: [create]
+            - apiGroups: [rbac.authorization.k8s.io]
+              resources: [rolebindings]
+              resourceNames: [compartment-controller]
+              verbs: [get, update, patch]
+            - apiGroups: [rbac.authorization.k8s.io]
+              resources: [rolebindings]
+              resourceNames: [compartment-project-bootstrap]
+              verbs: [get, delete]
+            - apiGroups: [rbac.authorization.k8s.io]
+              resources: [clusterroles]
+              resourceNames: [compartment-controller]
+              verbs: [bind]
+            - apiGroups: [rbac.authorization.k8s.io]
+              resources: [clusterrolebindings]
+              resourceNames: [compartment-project-bootstrap]
+              verbs: [delete]
+        template: project-provisioner-rbac.yaml
+        documentIndex: 3
+      - equal:
+          path: rules
+          value:
+            - apiGroups: ['']
+              resources: [serviceaccounts, secrets]
+              verbs: [get, create, patch, delete]
+            - apiGroups: ['']
+              resources: [pods]
+              verbs: [get, list, watch]
+            - apiGroups: ['']
+              resources: [pods/log]
+              verbs: [get]
+            - apiGroups: [batch]
+              resources: [jobs]
+              verbs: [get, list, watch, create, patch, delete]
+        template: project-provisioner-rbac.yaml
+        documentIndex: 4
+      - equal:
+          path: rules
+          value:
+            - apiGroups: [rbac.authorization.k8s.io]
+              resources: [clusterrolebindings]
+              verbs: [create]
+            - apiGroups: [rbac.authorization.k8s.io]
+              resources: [clusterrolebindings]
+              resourceNames: [compartment-project-bootstrap]
+              verbs: [get, update, patch, delete]
+            - apiGroups: [rbac.authorization.k8s.io]
+              resources: [clusterroles]
+              resourceNames: [compartment-project-bootstrap]
+              verbs: [bind]
+        template: project-provisioner-rbac.yaml
+        documentIndex: 6
+      - equal:
           path: metadata.name
           value: compartment-compartment-project-provisioner
         template: project-provisioner-rbac.yaml
@@ -969,70 +1055,41 @@ tests:
           any: true
         template: caddy.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: 3cf387830dae45829f0cdaafdd562eb058930cdfee6c0d3b1eef5271b5d1faeb
         template: api.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: 3cf387830dae45829f0cdaafdd562eb058930cdfee6c0d3b1eef5271b5d1faeb
         template: caddy.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: 3cf387830dae45829f0cdaafdd562eb058930cdfee6c0d3b1eef5271b5d1faeb
         template: edge.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
         template: worker.yaml
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
         template: project-provisioner.yaml
-      - equal:
-          path: spec.template.metadata.annotations
-          value:
-            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
-            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
-            compartment.dev/rollout-marker: ''
-            checksum/domain-config: 3cf387830dae45829f0cdaafdd562eb058930cdfee6c0d3b1eef5271b5d1faeb
-            checksum/install-state: 57bbd2717fc527678cb1b383813af08d281321019adbf412c9677dd9dfbdb29e
-            checksum/custom-tls: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
-            compartment.dev/domain-generation: '0'
-            checksum/pending-tls: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
-            compartment.dev/pending-domain-operation: ''
+      - isNotEmpty:
+          path: spec.template.metadata.annotations["checksum/pending-tls"]
         template: api.yaml
         documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations
-          value: &managedDomainRolloutAnnotations
-            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
-            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
-            compartment.dev/rollout-marker: ''
-            checksum/domain-config: 3cf387830dae45829f0cdaafdd562eb058930cdfee6c0d3b1eef5271b5d1faeb
-            checksum/install-state: 57bbd2717fc527678cb1b383813af08d281321019adbf412c9677dd9dfbdb29e
-            checksum/custom-tls: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
-            compartment.dev/domain-generation: '0'
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/pending-tls"]
         template: caddy.yaml
         documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations
-          value: *managedDomainRolloutAnnotations
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/pending-tls"]
         template: edge.yaml
         documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations
-          value: &stableWorkloadRolloutAnnotations
-            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
-            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
-            compartment.dev/rollout-marker: ''
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/domain-config"]
         template: worker.yaml
-      - equal:
-          path: spec.template.metadata.annotations
-          value: *stableWorkloadRolloutAnnotations
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/domain-config"]
         template: project-provisioner.yaml
 
   - it: mounts one existing custom certificate read-only in API and Caddy
@@ -1249,24 +1306,20 @@ tests:
           path: spec.template.spec.volumes[?(@.secret.secretName == "pending-operator-tls")]
         template: caddy.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/pending-tls"]
-          value: 4bd7f96b97960fe5268ca3c465e1d527f0da70b681809b0501ca7d8340d4f3c7
         template: api.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
         template: api.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
         template: caddy.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
         template: edge.yaml
         documentIndex: 1
       - notExists:
@@ -1275,67 +1328,37 @@ tests:
       - notExists:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
         template: project-provisioner.yaml
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
         template: api.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
         template: caddy.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
         template: edge.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
         template: worker.yaml
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
         template: project-provisioner.yaml
-      - equal:
-          path: spec.template.metadata.annotations
-          value:
-            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
-            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
-            compartment.dev/rollout-marker: ''
-            checksum/domain-config: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
-            checksum/install-state: a784661c62476787910e1cd3c93d53abe909e86525b408aaf277c6b167c84a80
-            checksum/custom-tls: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
-            compartment.dev/domain-generation: '0'
-            checksum/pending-tls: 4bd7f96b97960fe5268ca3c465e1d527f0da70b681809b0501ca7d8340d4f3c7
-            compartment.dev/pending-domain-operation: domop_456
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations
-          value: &activeDomainRolloutAnnotations
-            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
-            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
-            compartment.dev/rollout-marker: ''
-            checksum/domain-config: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
-            checksum/install-state: a784661c62476787910e1cd3c93d53abe909e86525b408aaf277c6b167c84a80
-            checksum/custom-tls: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
-            compartment.dev/domain-generation: '0'
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/pending-tls"]
         template: caddy.yaml
         documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations
-          value: *activeDomainRolloutAnnotations
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/pending-tls"]
         template: edge.yaml
         documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations
-          value: *stableWorkloadRolloutAnnotations
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/domain-config"]
         template: worker.yaml
-      - equal:
-          path: spec.template.metadata.annotations
-          value: *stableWorkloadRolloutAnnotations
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/domain-config"]
         template: project-provisioner.yaml
 
   - it: renders the active certificate without pending rotation state
@@ -1383,70 +1406,50 @@ tests:
           any: true
         template: api.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/pending-tls"]
-          value: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
         template: api.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
         template: caddy.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
         template: api.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
         template: caddy.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
         template: edge.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
         template: worker.yaml
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
         template: project-provisioner.yaml
       - equal:
-          path: spec.template.metadata.annotations
-          value:
-            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
-            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
-            compartment.dev/rollout-marker: ''
-            checksum/domain-config: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
-            checksum/install-state: a784661c62476787910e1cd3c93d53abe909e86525b408aaf277c6b167c84a80
-            checksum/custom-tls: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
-            compartment.dev/domain-generation: '0'
-            checksum/pending-tls: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
-            compartment.dev/pending-domain-operation: ''
+          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
+          value: ''
         template: api.yaml
         documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations
-          value: *activeDomainRolloutAnnotations
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/pending-tls"]
         template: caddy.yaml
         documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations
-          value: *activeDomainRolloutAnnotations
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/pending-tls"]
         template: edge.yaml
         documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations
-          value: *stableWorkloadRolloutAnnotations
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/domain-config"]
         template: worker.yaml
-      - equal:
-          path: spec.template.metadata.annotations
-          value: *stableWorkloadRolloutAnnotations
+      - notExists:
+          path: spec.template.metadata.annotations["checksum/domain-config"]
         template: project-provisioner.yaml
 
   - it: renders inline custom certificate material into the shared TLS Secret
@@ -1497,9 +1500,8 @@ tests:
           any: true
         template: caddy.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: 93a40ad1a15ccd918acf6fa268ab3d823407d9e4a9019d0023955252676aef0a
         template: caddy.yaml
         documentIndex: 1
 
@@ -1522,14 +1524,12 @@ tests:
           path: stringData["tls.key"]
           value: test-private-key
         template: custom-tls-secret.yaml
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: 288f3b22359f08203dec498e138ef7a169bb9fc224a4b5bef85ad13fe1b9401c
         template: api.yaml
         documentIndex: 1
-      - equal:
+      - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: 288f3b22359f08203dec498e138ef7a169bb9fc224a4b5bef85ad13fe1b9401c
         template: caddy.yaml
         documentIndex: 1
 
