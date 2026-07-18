@@ -168,7 +168,7 @@ async function applyMaterializedDomainRelease(
   await writeVerifiedKubernetesReleaseImageValues({
     ...(target.kubeContext === undefined ? {} : { kubeContext: target.kubeContext }),
     namespace: target.namespace,
-    operatorValuesPath: valuesPath,
+    operatorValuesPaths: [valuesPath],
     outputPath: imageTrustValuesPath,
     releaseName: target.releaseName,
   });

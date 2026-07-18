@@ -91,6 +91,10 @@ curl -fsSL https://compartment.dev/install.sh | sh -s -- \
   --values compartment-values.yaml
 ```
 
+This path omits `--base-domain`, so it requests a managed domain. To use your own domain through the bootstrapper,
+add `--base-domain <baseDomain>`; add `--api-url <console-url>` only when you need to state the derived Console URL
+explicitly.
+
 If the command stops before confirming owner creation, rerun it with the same release name, namespace, domain mode,
 and values. For managed domains, omit `--base-domain` again. A deployed release resumes its saved allocation; a
 reinstall with the same release coordinates reuses the retained install-state Secret. If Helm reports a failed or
@@ -139,15 +143,59 @@ The bundled registry is addressed inside the cluster as `<release-fullname>-regi
 Kubelets do not use cluster DNS for image pulls, so configure the container runtime on every node with an equivalent
 registry mirror or route before deploying applications. The chart cannot mutate node-level container-runtime config.
 
-Verify the migration Job and platform workloads before inviting more users:
+Verify the Helm release and platform workload readiness before inviting more users:
 
 ```bash
-kubectl --namespace compartment get jobs,pods,services
+compartment system status \
+  --namespace compartment \
+  --release-name compartment
 ```
 
 The chart does not publish `/internal/*`; only the documented control-plane and application paths pass through Caddy.
 
 See the generated [`compartment install` reference](/reference/generated/cli/install/) for the complete option list.
+
+## Maintain the Kubernetes platform
+
+Check the Helm release state and the readiness of its Deployments and DaemonSets:
+
+```bash
+compartment system status --namespace compartment --release-name compartment
+```
+
+Restart the release workloads and wait for both Deployment and DaemonSet rollouts:
+
+```bash
+compartment system restart --namespace compartment --release-name compartment
+```
+
+Update with a release CLI and its matching bundled chart. Supply the same operator values file used for installation:
+
+```bash
+compartment system update \
+  --values compartment-values.yaml \
+  --namespace compartment \
+  --release-name compartment
+```
+
+The release CLI selects its packaged platform version. Before Helm activates it, the CLI verifies the new API, Worker,
+Edge, and Caddy image signatures against Compartment's signing identity and resolves their immutable digests. An
+unsigned image or a different signing identity stops the update before Helm changes the release. A source CLI build
+requires both `--version <image-tag>` and `--chart ./deploy/chart/compartment`.
+
+The public bootstrapper can download the selected release CLI and immediately run the same verified update:
+
+```bash
+curl -fsSL https://compartment.dev/install.sh | sh -s -- \
+  --init-update \
+  --values compartment-values.yaml
+```
+
+Use `--version <release>` or `--channel main` on the bootstrapper to select a specific platform release. The operator
+needs normal Helm update permissions plus permission to list the release's Deployments and DaemonSets and to restart
+and watch their rollouts.
+
+See the generated [`compartment system` reference](/reference/generated/cli/system/) for all lifecycle command options.
 
 ## Change the system domain
 

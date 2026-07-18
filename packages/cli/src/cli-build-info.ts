@@ -19,7 +19,7 @@ export function readCliVersion(): string {
   return formatCliVersion(readCliBuildInfo());
 }
 
-function readCliBuildInfo(): CliBuildInfo {
+export function readCliBuildInfo(): CliBuildInfo {
   const seaBuildInfoText: string | undefined = readSeaAssetText(cliBuildInfoAssetName);
   if (seaBuildInfoText !== undefined) {
     return parseCliBuildInfo(seaBuildInfoText);

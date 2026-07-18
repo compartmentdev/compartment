@@ -1,6 +1,15 @@
 export { createErrorResponse } from './error-response';
 export { errorResponseSchema, type ErrorResponse } from './contracts/error.contract';
 export { type HealthResponse, healthResponseSchema } from './contracts/health.contract';
+export {
+  kubernetesSystemRestartResponseSchema,
+  kubernetesSystemStatusResponseSchema,
+  kubernetesSystemUpdateResponseSchema,
+  type KubernetesPlatformWorkloadStatus,
+  type KubernetesSystemRestartResponse,
+  type KubernetesSystemStatusResponse,
+  type KubernetesSystemUpdateResponse,
+} from './contracts/kubernetes-system.contract';
 export { type OperationStatus, type OperationSummary } from './contracts/operations.contract';
 export { compartmentDescriptorFileName } from './contracts/compartment-descriptor-guide.contract';
 export {
