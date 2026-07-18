@@ -34,7 +34,7 @@ function cleanup() {
   }
 }
 
-function runRetainedInstallStateGate() {
+async function runRetainedInstallStateGate() {
   cleanup();
   try {
     helm([
