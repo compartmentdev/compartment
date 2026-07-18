@@ -1,4 +1,8 @@
-import { type CompartmentRoutesFile } from '@compartment/contracts';
+import {
+  readCompartmentDescriptorCompatibilityWarnings,
+  type CompartmentAuthoredDescriptor,
+  type CompartmentRoutesFile,
+} from '@compartment/contracts';
 import { findJoinedDeploymentById } from '../queries/deployment-joined.query';
 import type { DeploymentJoinedRow, DeploymentRow } from '../queries/deployments.query.types';
 import type { SourceUploadRow } from '../queries/source-uploads.query.types';
@@ -32,6 +36,7 @@ import {
 } from './deployment-service-connections.reconcile';
 import { validateDescriptorRoutes } from './compartment-routes.service';
 import {
+  appendDescriptorCompatibilityWarningEvents,
   appendQueuedDeploymentRunEvents,
   createDeploymentRunId,
   withDeploymentRunCleanupOnError,
@@ -123,7 +128,18 @@ async function queueDeploymentsFromValidatedSourceUpload(
   );
 
   await appendQueuedDeploymentRunEvents(queuedDeployments);
+  await appendDeployCompatibilityWarnings(deploymentRunId, input.descriptor);
   return await findQueuedJoinedDeployments(queuedDeployments);
+}
+
+async function appendDeployCompatibilityWarnings(
+  deploymentRunId: string,
+  descriptor: CompartmentAuthoredDescriptor,
+): Promise<void> {
+  await appendDescriptorCompatibilityWarningEvents(
+    deploymentRunId,
+    readCompartmentDescriptorCompatibilityWarnings(descriptor),
+  );
 }
 
 async function createQueuedDeploymentsForSourceUploadRun(

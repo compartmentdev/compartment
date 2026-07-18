@@ -40,6 +40,7 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   authSessions,
   buildArtifacts,
+  deploymentRunEvents,
   deployments,
   operations,
   organizationMemberships,
@@ -617,6 +618,56 @@ describe('Phase 0 API integration deploy submission', (): void => {
     expect(storedBuildArtifact).toHaveLength(1);
     expect(storedBuildArtifact[0]?.sourceUploadId).toBe(sourceUpload.id);
     expect(storedSourceUploads[0]?.consumedAt).not.toBeNull();
+  });
+  it('accepts a deprecated restart policy and records the Kubernetes compatibility warning', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+
+    const deployResponse: LightMyRequestResponse = await injectJsonDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      {
+        descriptor: {
+          name: 'smoke-web',
+          services: {
+            web: {
+              path: '.',
+              run: {
+                restart: {
+                  maxRetries: 3,
+                  policy: 'on-failure',
+                },
+              },
+            },
+          },
+        },
+        sourceUploadId: sourceUpload.id,
+      },
+    );
+
+    expect(deployResponse.statusCode, deployResponse.body).toBe(200);
+    const deployPayload: DeployResponse = deployResponseSchema.parse(deployResponse.json());
+    const storedEvents: (typeof deploymentRunEvents.$inferSelect)[] = await db
+      .select()
+      .from(deploymentRunEvents)
+      .where(eq(deploymentRunEvents.deploymentRunId, deployPayload.deploymentRunId));
+
+    expect(storedEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          deploymentId: null,
+          level: 'info',
+          message:
+            'Warning: deprecated services.web.run.restart={"maxRetries":3,"policy":"on-failure"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment stop scales replicas to zero.',
+          stepKey: 'queued',
+        }),
+      ]),
+    );
   });
   it('auto-generates postgres preset passwords before resolving resource outputs', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
