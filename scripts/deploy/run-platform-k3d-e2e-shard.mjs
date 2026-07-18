@@ -35,46 +35,80 @@ export function readPlatformK3dShardSuites(shardName) {
   return definition.suites;
 }
 
+export function isPlatformK3dSuite(suite) {
+  return [
+    'managed-install',
+    'retained-state',
+    'install',
+    'system-user',
+    'console',
+    'build-matrix',
+    'g1',
+    'product-log',
+  ].includes(suite);
+}
+
 export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.env) {
   const definition = shardDefinitions[shardName];
   if (definition === undefined) {
     throw new Error(`Unknown platform k3d e2e shard: ${shardName}`);
   }
   const portOffset = definition.index * 100;
+  const clusterName = baseEnv.COMPARTMENT_E2E_CLUSTER_NAME ?? `compartment-e2e-${shardName}`;
+  const httpPort = baseEnv.COMPARTMENT_E2E_HTTP_PORT ?? (18_080 + portOffset).toString();
   const stateDirectory = `.compartment/platform-k3d-${shardName}`;
   const environment = {
     ...baseEnv,
-    COMPARTMENT_E2E_API_URL:
-      baseEnv.COMPARTMENT_E2E_API_URL ?? `http://console.compartment.localhost:${(18_080 + portOffset).toString()}`,
-    COMPARTMENT_E2E_CLUSTER_NAME: baseEnv.COMPARTMENT_E2E_CLUSTER_NAME ?? `compartment-e2e-${shardName}`,
-    COMPARTMENT_E2E_COMPARTMENT_URL:
-      baseEnv.COMPARTMENT_E2E_COMPARTMENT_URL ??
-      `http://console.compartment.localhost:${(18_080 + portOffset).toString()}`,
-    COMPARTMENT_E2E_DIAGNOSTICS_PATH:
-      baseEnv.COMPARTMENT_E2E_DIAGNOSTICS_PATH ?? `.compartment/platform-k3d-diagnostics-${shardName}`,
-    COMPARTMENT_E2E_HTTP_PORT: baseEnv.COMPARTMENT_E2E_HTTP_PORT ?? (18_080 + portOffset).toString(),
+    COMPARTMENT_E2E_API_URL: `http://console.compartment.localhost:${httpPort}`,
+    COMPARTMENT_E2E_CLUSTER_NAME: clusterName,
+    COMPARTMENT_E2E_COMPARTMENT_URL: `http://console.compartment.localhost:${httpPort}`,
+    COMPARTMENT_E2E_DIAGNOSTICS_PATH: `.compartment/platform-k3d-diagnostics-${shardName}`,
+    COMPARTMENT_E2E_HTTP_PORT: httpPort,
     COMPARTMENT_E2E_HTTPS_PORT: baseEnv.COMPARTMENT_E2E_HTTPS_PORT ?? (18_443 + portOffset).toString(),
-    COMPARTMENT_E2E_KUBE_CONTEXT: baseEnv.COMPARTMENT_E2E_KUBE_CONTEXT ?? `k3d-compartment-e2e-${shardName}`,
+    COMPARTMENT_E2E_KUBE_CONTEXT: `k3d-${clusterName}`,
     COMPARTMENT_E2E_MANAGED_ACME_PORT: baseEnv.COMPARTMENT_E2E_MANAGED_ACME_PORT ?? (19_500 + portOffset).toString(),
-    COMPARTMENT_E2E_MANAGED_BROKER_PORT:
-      baseEnv.COMPARTMENT_E2E_MANAGED_BROKER_PORT ?? (19_000 + portOffset).toString(),
+    COMPARTMENT_E2E_MANAGED_BROKER_PORT: (19_000 + portOffset).toString(),
     COMPARTMENT_E2E_MANAGED_NAMESPACE: baseEnv.COMPARTMENT_E2E_MANAGED_NAMESPACE ?? `compartment-managed-${shardName}`,
-    COMPARTMENT_E2E_MANAGED_VALUES_PATH:
-      baseEnv.COMPARTMENT_E2E_MANAGED_VALUES_PATH ?? `${stateDirectory}/managed-values.yaml`,
-    COMPARTMENT_E2E_OWNER_ENV_PATH: baseEnv.COMPARTMENT_E2E_OWNER_ENV_PATH ?? `${stateDirectory}/owner.env`,
-    COMPARTMENT_E2E_PEBBLE_CA_PATH: baseEnv.COMPARTMENT_E2E_PEBBLE_CA_PATH ?? `${stateDirectory}/pebble.minica.pem`,
-    COMPARTMENT_E2E_PEBBLE_ROOT_PATH: baseEnv.COMPARTMENT_E2E_PEBBLE_ROOT_PATH ?? `${stateDirectory}/pebble.root.pem`,
+    COMPARTMENT_E2E_MANAGED_VALUES_PATH: `${stateDirectory}/managed-values.yaml`,
+    COMPARTMENT_E2E_OWNER_ENV_PATH: `${stateDirectory}/owner.env`,
+    COMPARTMENT_E2E_PEBBLE_CA_PATH: `${stateDirectory}/pebble.minica.pem`,
+    COMPARTMENT_E2E_PEBBLE_ROOT_PATH: `${stateDirectory}/pebble.root.pem`,
     COMPARTMENT_E2E_PLATFORM_MODE: 'k3d',
     COMPARTMENT_E2E_PLATFORM_NAMESPACE: baseEnv.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? `compartment-${shardName}`,
-    COMPARTMENT_E2E_PLATFORM_VALUES_PATH:
-      baseEnv.COMPARTMENT_E2E_PLATFORM_VALUES_PATH ?? `${stateDirectory}/platform-values.yaml`,
-    COMPARTMENT_E2E_REGISTRY_NAME: baseEnv.COMPARTMENT_E2E_REGISTRY_NAME ?? `compartment-e2e-${shardName}-registry`,
+    COMPARTMENT_E2E_PLATFORM_VALUES_PATH: `${stateDirectory}/platform-values.yaml`,
+    COMPARTMENT_E2E_REGISTRY_NAME: baseEnv.COMPARTMENT_E2E_REGISTRY_NAME ?? `${clusterName}-registry`,
     COMPARTMENT_E2E_REGISTRY_PORT: baseEnv.COMPARTMENT_E2E_REGISTRY_PORT ?? (15_500 + portOffset).toString(),
     COMPARTMENT_E2E_SHARD: shardName,
     COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E: '1',
   };
   readPlatformK3dEnvironment(environment);
   return environment;
+}
+
+export function registerPlatformK3dSignalCleanup(cleanup, keepOnFailure) {
+  let cleanupPromise;
+  const handlers = new Map();
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    const handler = () => {
+      cleanupPromise ??= keepOnFailure ? Promise.resolve() : cleanup();
+      cleanupPromise
+        .catch((error) => process.stderr.write(`Signal cleanup failed: ${String(error)}\n`))
+        .finally(() => {
+          unregister();
+          process.kill(process.pid, signal);
+        });
+    };
+    handlers.set(signal, handler);
+    process.once(signal, handler);
+  }
+
+  function unregister() {
+    for (const [signal, handler] of handlers) {
+      process.off(signal, handler);
+    }
+  }
+
+  return unregister;
 }
 
 export async function runWithPlatformK3dCleanup({ cleanup, execute, keepOnFailure, reportFailure }) {
@@ -117,16 +151,31 @@ async function runShard(shardName) {
   const definition = shardDefinitions[shardName];
   const diagnosticsPath = join(repositoryRoot, env.COMPARTMENT_E2E_DIAGNOSTICS_PATH);
   rmSync(diagnosticsPath, { force: true, recursive: true });
-  await runWithPlatformK3dCleanup({
-    cleanup: async () => await runCommandAsync(process.execPath, [lifecycleScript, 'down'], repositoryRoot, env),
-    execute: async () => {
-      buildCliArtifact(env);
-      await startPlatform(env);
-      await runShardSuites(definition.suites, env, platformEnvironment.platformOwnerEnvironmentPath);
-    },
-    keepOnFailure: platformEnvironment.keepOnFailure,
-    reportFailure: async () => await collectFailureDiagnostics(env, diagnosticsPath),
-  });
+  let cleanupPromise;
+  const cleanup = async () => {
+    cleanupPromise ??= runCommandAsync(process.execPath, [lifecycleScript, 'down'], repositoryRoot, env);
+    await cleanupPromise;
+  };
+  const unregisterSignals = registerPlatformK3dSignalCleanup(cleanup, platformEnvironment.keepOnFailure);
+  try {
+    await runWithPlatformK3dCleanup({
+      cleanup,
+      execute: async () => {
+        buildCliArtifact(env);
+        await startPlatform(env);
+        await runShardSuites(definition.suites, env, platformEnvironment.platformOwnerEnvironmentPath);
+      },
+      keepOnFailure: platformEnvironment.keepOnFailure,
+      reportFailure: async () => await collectFailureDiagnostics(env, diagnosticsPath),
+    });
+  } finally {
+    unregisterSignals();
+  }
+}
+
+async function cleanShard(shardName) {
+  const env = buildPlatformK3dShardEnvironment(shardName);
+  await runCommandAsync(process.execPath, [lifecycleScript, 'down'], repositoryRoot, env);
 }
 
 function buildCliArtifact(env) {
@@ -154,6 +203,9 @@ async function collectFailureDiagnostics(env, diagnosticsPath) {
 
 async function runShardSuites(suites, env, ownerEnvironmentPath) {
   for (const suite of suites) {
+    if (!isPlatformK3dSuite(suite)) {
+      throw new Error(`Unknown platform k3d e2e suite: ${suite}`);
+    }
     if (suite === 'managed-install') {
       runCliE2eSuite(env, 'test/platform-k3d-managed-install.e2e.test.ts');
     } else if (suite === 'retained-state') {
@@ -173,6 +225,8 @@ async function runShardSuites(suites, env, ownerEnvironmentPath) {
       runCliE2eSuite(env, 'test/platform-k3d-g1.e2e.test.ts');
     } else if (suite === 'product-log') {
       runCommand(process.execPath, [productLogGateScript], repositoryRoot, env);
+    } else {
+      throw new Error(`Unknown platform k3d e2e suite: ${suite}`);
     }
   }
 }
@@ -199,5 +253,10 @@ function readOwnerEnvironment(path) {
 }
 
 runMain(import.meta.url, process.argv[1], async () => {
-  await runShard(readPlatformK3dShard(process.argv.slice(2)));
+  const shardName = readPlatformK3dShard(process.argv.slice(2));
+  if (process.env.COMPARTMENT_E2E_CLEANUP_ONLY === '1') {
+    await cleanShard(shardName);
+  } else {
+    await runShard(shardName);
+  }
 });

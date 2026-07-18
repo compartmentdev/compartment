@@ -17,13 +17,14 @@ const kubernetesTimeoutMs: number = 6 * 60_000;
 const brokerStateTimeoutMs: number = 60_000;
 const managedAcmeManagementPort: number = Number(process.env.COMPARTMENT_E2E_MANAGED_ACME_PORT ?? '19500');
 const managedAcmeManagementTimeoutMs: number = 30_000;
+const managedBrokerServicePort: number = 19_000;
 
 const managedHttpsPort: string = process.env.COMPARTMENT_E2E_HTTPS_PORT ?? '18443';
-const managedBrokerPort: string = process.env.COMPARTMENT_E2E_MANAGED_BROKER_PORT ?? '19000';
+const managedBrokerHostPort: number = Number(process.env.COMPARTMENT_E2E_MANAGED_BROKER_PORT ?? '19000');
 
 export const managedInstallApiUrl: string = `https://console.managed.compartment.test:${managedHttpsPort}`;
 export const managedInstallBaseDomain: string = 'managed.compartment.test';
-export const managedInstallBrokerUrl: string = `http://managed-domain-broker:${managedBrokerPort}`;
+export const managedInstallBrokerUrl: string = `http://managed-domain-broker:${managedBrokerServicePort.toString()}`;
 export const managedInstallCertificateAuthorityPath: string = resolve(
   repositoryRoot,
   process.env.COMPARTMENT_E2E_PEBBLE_ROOT_PATH ?? '.compartment/pebble.root.pem',
@@ -55,6 +56,9 @@ interface ManagedDomainTxtObservation {
 }
 
 export async function prepareManagedInstallFixture(): Promise<void> {
+  if (managedBrokerHostPort !== managedBrokerServicePort) {
+    throw new Error('Managed install e2e requires its broker host port to match Service port 19000.');
+  }
   await cleanupManagedInstallFixture();
   await expectSuccessfulKubectl(['create', 'namespace', managedInstallNamespace], 'create managed e2e namespace');
   await expectSuccessfulKubectl(
@@ -151,6 +155,7 @@ export async function probeManagedInstallConsole(): Promise<void> {
     const request: ClientRequest = get(
       {
         ca,
+        headers: { host: `console.${managedInstallBaseDomain}:${managedHttpsPort}` },
         host: '127.0.0.1',
         path: '/',
         port: Number(managedHttpsPort),
@@ -236,7 +241,7 @@ async function readManagedInstallCertificateAuthority(managementCa: Buffer): Pro
 export async function waitForManagedDomainBrokerObservation(): Promise<ManagedDomainBrokerObservation> {
   const deadline: number = Date.now() + brokerStateTimeoutMs;
   for (;;) {
-    const response: Response = await fetch(`${managedInstallBrokerUrl}/__test/state`);
+    const response: Response = await fetch(`http://127.0.0.1:${managedBrokerHostPort.toString()}/__test/state`);
     if (response.ok) {
       const observation: ManagedDomainBrokerObservation = (await response.json()) as ManagedDomainBrokerObservation;
       if (

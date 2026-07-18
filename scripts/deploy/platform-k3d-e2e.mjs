@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { get } from 'node:http';
 import { isIP } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -38,6 +38,7 @@ const bundledRegistryHost = `compartment-compartment-registry-auth.${platformNam
 const platformBaseDomain = 'compartment.localhost';
 const consoleHost = `console.${platformBaseDomain}`;
 const serverNodeName = `k3d-${clusterName}-server-0`;
+const builderName = `${clusterName}-builder`;
 const platformImageTag = 'e2e';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const kubernetesReadinessTimeoutSeconds = 240;
@@ -49,7 +50,7 @@ const builtImageRefsByServiceName = Object.freeze(
   Object.fromEntries(
     platformServiceNames.map((serviceName) => [
       serviceName,
-      `ghcr.io/compartmentdev/compartment-${serviceName}:latest`,
+      `ghcr.io/compartmentdev/compartment-${serviceName}:e2e-${clusterName}`,
     ]),
   ),
 );
@@ -88,16 +89,26 @@ export function readPlatformK3dEnvironment(env) {
 }
 
 export function isRunOwnedDockerResourceName(name, environment = platformEnvironment) {
+  const environmentBuilderName = `${environment.clusterName}-builder`;
   return [
     `k3d-${environment.clusterName}`,
     `k3d-${environment.clusterName}-images`,
     `k3d-${environment.clusterName}-server-0`,
+    `k3d-${environment.clusterName}-serverlb`,
     `k3d-${environment.registryName}`,
+    `buildx_buildkit_${environmentBuilderName}0_state`,
   ].includes(name);
 }
 
 export function isRunOwnedImageRef(imageRef, environment = platformEnvironment) {
-  return imageRef.startsWith(`localhost:${environment.registryHostPort}/compartment-`);
+  if (imageRef.startsWith(`localhost:${environment.registryHostPort}/compartment-`)) {
+    return true;
+  }
+  return platformServiceNames.some(
+    (serviceName) =>
+      imageRef.startsWith(`ghcr.io/compartmentdev/compartment-${serviceName}:sha-`) ||
+      imageRef === `ghcr.io/compartmentdev/compartment-${serviceName}:e2e-${environment.clusterName}`,
+  );
 }
 
 function readNameEnv(env, name, defaultValue) {
@@ -253,15 +264,85 @@ function renderK3dServiceValues() {
   return 'service:\n  caddy:\n    type: NodePort\n    httpPort: 80\n    httpsPort: 443\n    httpNodePort: 30080\n    httpsNodePort: 30443\n';
 }
 
+export function shouldCleanLegacyPlatformResources(env, environment = platformEnvironment) {
+  return env.COMPARTMENT_E2E_SHARD === 'managed-install' && environment.clusterName !== 'compartment-e2e';
+}
+
+function cleanLegacyPlatformResources() {
+  if (!shouldCleanLegacyPlatformResources(process.env)) {
+    return;
+  }
+  const cleanupErrors = [];
+  const legacyClusterName = 'compartment-e2e';
+  const legacyRegistryName = 'compartment-e2e-registry';
+  runCleanupStep(cleanupErrors, 'legacy cluster', () => {
+    const clusterNames = parseK3dClusterNames(
+      captureCommand('k3d', ['cluster', 'list', '--no-headers'], repositoryRoot),
+    );
+    if (clusterNames.includes(legacyClusterName)) {
+      runCommand('k3d', ['cluster', 'delete', legacyClusterName], repositoryRoot);
+    }
+  });
+  runCleanupStep(cleanupErrors, 'legacy registry', () => {
+    const registryNames = parseK3dClusterNames(
+      captureCommand('k3d', ['registry', 'list', '--no-headers'], repositoryRoot),
+    );
+    if (registryNames.includes(`k3d-${legacyRegistryName}`)) {
+      runCommand('k3d', ['registry', 'delete', `k3d-${legacyRegistryName}`], repositoryRoot);
+    }
+  });
+  for (const containerName of [
+    `k3d-${legacyClusterName}-server-0`,
+    `k3d-${legacyClusterName}-serverlb`,
+    `k3d-${legacyRegistryName}`,
+  ]) {
+    if (dockerResourceExists('container', containerName)) {
+      runCleanupStep(cleanupErrors, `legacy container ${containerName}`, () => {
+        runCommand('docker', ['container', 'rm', '--force', containerName], repositoryRoot);
+      });
+    }
+  }
+  if (dockerResourceExists('network', `k3d-${legacyClusterName}`)) {
+    runCleanupStep(cleanupErrors, 'legacy network', () => {
+      runCommand('docker', ['network', 'rm', `k3d-${legacyClusterName}`], repositoryRoot);
+    });
+  }
+  let legacyVolumeNames = [];
+  runCleanupStep(cleanupErrors, 'legacy volume inventory', () => {
+    legacyVolumeNames = captureCommand('docker', ['volume', 'ls', '--format', '{{.Name}}'], repositoryRoot)
+      .split('\n')
+      .map((name) => name.trim())
+      .filter((name) => [`k3d-${legacyClusterName}`, `k3d-${legacyClusterName}-images`].includes(name));
+  });
+  for (const volumeName of legacyVolumeNames) {
+    runCleanupStep(cleanupErrors, `legacy volume ${volumeName}`, () => {
+      runCommand('docker', ['volume', 'rm', '--force', volumeName], repositoryRoot);
+    });
+  }
+  for (const legacyStatePath of [
+    '.compartment/platform-k3d-e2e-values.yaml',
+    '.compartment/platform-k3d-managed-e2e-values.yaml',
+    '.compartment/platform-k3d-e2e-owner.env',
+    '.compartment/pebble.minica.pem',
+    '.compartment/pebble.root.pem',
+  ]) {
+    rmSync(resolve(repositoryRoot, legacyStatePath), { force: true });
+  }
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, 'Unable to fully clean legacy platform k3d resources.');
+  }
+}
+
 async function upPlatform(command) {
   assertRequiredTools();
-  cleanPlatformResources();
-  recreateRegistry();
-  for (const statePath of [platformValuesPath, managedPlatformValuesPath, pebbleCaPath, pebbleRootPath]) {
-    mkdirSync(dirname(statePath), { recursive: true });
-  }
-
   try {
+    cleanLegacyPlatformResources();
+    cleanPlatformResources();
+    recreateRegistry();
+    recreateBuilder();
+    for (const statePath of [platformValuesPath, managedPlatformValuesPath, pebbleCaPath, pebbleRootPath]) {
+      mkdirSync(dirname(statePath), { recursive: true });
+    }
     const [, preparedImages] = await Promise.all([createCluster(), prepareAndPushPlatformImages(command)]);
     writeFileSync(platformValuesPath, renderPlatformK3dValues(preparedImages.imageDigestsByServiceName), {
       mode: 0o600,
@@ -317,18 +398,22 @@ async function prepareAndPushPlatformImages(command) {
       ? loadPlatformImageArchives(command.imageArchiveDir)
       : await buildPlatformImages();
 
-  const imageDigestsByServiceName = {};
-  for (const serviceName of platformServiceNames) {
-    const sourceImageRef = imageRefsByServiceName[serviceName];
-    const registryImageRef = `${registryPushHost}/compartment-${serviceName}:${platformImageTag}`;
-    runCommand('docker', ['tag', sourceImageRef, registryImageRef], repositoryRoot);
-    runCommand('docker', ['push', '--quiet', registryImageRef], repositoryRoot);
-    imageDigestsByServiceName[serviceName] = readPushedImageDigest(registryImageRef);
+  try {
+    const imageDigestsByServiceName = {};
+    for (const serviceName of platformServiceNames) {
+      const sourceImageRef = imageRefsByServiceName[serviceName];
+      const registryImageRef = `${registryPushHost}/compartment-${serviceName}:${platformImageTag}`;
+      runCommand('docker', ['tag', sourceImageRef, registryImageRef], repositoryRoot);
+      runCommand('docker', ['push', '--quiet', registryImageRef], repositoryRoot);
+      imageDigestsByServiceName[serviceName] = readPushedImageDigest(registryImageRef);
+    }
+    return {
+      imageDigestsByServiceName,
+      managedCaddyDigest: buildManagedE2eCaddyImage(imageRefsByServiceName.caddy),
+    };
+  } finally {
+    removeImageRefs(Object.values(imageRefsByServiceName));
   }
-  return {
-    imageDigestsByServiceName,
-    managedCaddyDigest: buildManagedE2eCaddyImage(imageRefsByServiceName.caddy),
-  };
 }
 
 function buildManagedE2eCaddyImage(sourceImageRef) {
@@ -340,6 +425,8 @@ function buildManagedE2eCaddyImage(sourceImageRef) {
   const dockerfilePath = join(buildDirectory, 'Dockerfile');
   const managedImageRef = `${registryPushHost}/compartment-caddy:managed-e2e`;
   let pebbleContainerId;
+  let managedCaddyDigest;
+  let buildError;
   try {
     pebbleContainerId = captureCommand('docker', ['create', pebbleImageRef], repositoryRoot).trim();
     runCommand('docker', ['cp', `${pebbleContainerId}:/test/certs/pebble.minica.pem`, extractedCaPath], repositoryRoot);
@@ -350,16 +437,61 @@ function buildManagedE2eCaddyImage(sourceImageRef) {
     );
     runCommand(
       'docker',
-      ['build', '--build-arg', `CADDY_IMAGE=${sourceImageRef}`, '--tag', managedImageRef, buildDirectory],
+      [
+        'buildx',
+        'build',
+        '--builder',
+        builderName,
+        '--load',
+        '--build-arg',
+        `CADDY_IMAGE=${sourceImageRef}`,
+        '--tag',
+        managedImageRef,
+        buildDirectory,
+      ],
       repositoryRoot,
     );
     runCommand('docker', ['push', '--quiet', managedImageRef], repositoryRoot);
-    return readPushedImageDigest(managedImageRef);
-  } finally {
-    if (pebbleContainerId !== undefined && pebbleContainerId !== '') {
+    managedCaddyDigest = readPushedImageDigest(managedImageRef);
+  } catch (error) {
+    buildError = error;
+  }
+
+  let cleanupError;
+  if (pebbleContainerId !== undefined && pebbleContainerId !== '') {
+    try {
       runCommand('docker', ['rm', '--force', pebbleContainerId], repositoryRoot);
+    } catch (error) {
+      cleanupError = error;
     }
+  }
+  try {
     rmSync(buildDirectory, { force: true, recursive: true });
+  } catch (error) {
+    cleanupError ??= error;
+  }
+
+  if (buildError !== undefined) {
+    if (cleanupError !== undefined) {
+      process.stderr.write(`Managed Caddy cleanup also failed: ${String(cleanupError)}\n`);
+    }
+    throw buildError;
+  }
+  if (cleanupError !== undefined) {
+    throw cleanupError;
+  }
+  return managedCaddyDigest;
+}
+
+function removeImageRefs(imageRefs) {
+  const existingImageRefs = imageRefs.filter(
+    (imageRef) =>
+      typeof imageRef === 'string' &&
+      imageRef !== '' &&
+      captureCommandResult('docker', ['image', 'inspect', imageRef], repositoryRoot).status === 0,
+  );
+  if (existingImageRefs.length > 0) {
+    runCommand('docker', ['image', 'rm', '--force', ...existingImageRefs], repositoryRoot);
   }
 }
 
@@ -384,28 +516,38 @@ function readRequiredPlatformImageDigest(imageDigestsByServiceName, serviceName)
 }
 
 async function buildPlatformImages() {
-  await buildSelfHostedImages({
-    env: process.env,
-    imageRefsByServiceName: builtImageRefsByServiceName,
-    repositoryRoot,
-  });
+  try {
+    await buildSelfHostedImages({
+      builderName,
+      env: process.env,
+      imageRefsByServiceName: builtImageRefsByServiceName,
+      repositoryRoot,
+    });
+  } catch (error) {
+    removeImageRefs(Object.values(builtImageRefsByServiceName));
+    throw error;
+  }
 
   return builtImageRefsByServiceName;
 }
 
 function loadPlatformImageArchives(imageArchiveDir) {
   const imageRefsByServiceName = {};
+  try {
+    for (const serviceName of platformServiceNames) {
+      const archivePath = `${imageArchiveDir}/${serviceName}.tar`;
+      const loadOutput = captureCommand('docker', ['load', '--input', archivePath], repositoryRoot);
+      const [imageRef, ...extraImageRefs] = parseLoadedImageRefs(loadOutput);
 
-  for (const serviceName of platformServiceNames) {
-    const archivePath = `${imageArchiveDir}/${serviceName}.tar`;
-    const loadOutput = captureCommand('docker', ['load', '--input', archivePath], repositoryRoot);
-    const [imageRef, ...extraImageRefs] = parseLoadedImageRefs(loadOutput);
+      if (imageRef === undefined || extraImageRefs.length > 0) {
+        throw new Error(`Expected exactly one loaded image ref in ${archivePath}, received: ${loadOutput}`);
+      }
 
-    if (imageRef === undefined || extraImageRefs.length > 0) {
-      throw new Error(`Expected exactly one loaded image ref in ${archivePath}, received: ${loadOutput}`);
+      imageRefsByServiceName[serviceName] = imageRef;
     }
-
-    imageRefsByServiceName[serviceName] = imageRef;
+  } catch (error) {
+    removeImageRefs(Object.values(imageRefsByServiceName));
+    throw error;
   }
 
   return imageRefsByServiceName;
@@ -426,6 +568,7 @@ function cleanPlatformResources() {
     }
   });
   runCleanupStep(cleanupErrors, 'registry', deleteRegistry);
+  runCleanupStep(cleanupErrors, 'builder', deleteBuilder);
   cleanResidualDockerResources(cleanupErrors);
   cleanRunOwnedImages(cleanupErrors);
   rmSync(platformValuesPath, { force: true });
@@ -435,7 +578,13 @@ function cleanPlatformResources() {
   rmSync(platformOwnerEnvironmentPath, { force: true });
   const stateDirectory = dirname(platformValuesPath);
   if (stateDirectory !== resolve(repositoryRoot, '.compartment')) {
-    rmSync(stateDirectory, { force: true, recursive: true });
+    try {
+      rmdirSync(stateDirectory);
+    } catch (error) {
+      if (error?.code !== 'ENOENT' && error?.code !== 'ENOTEMPTY') {
+        cleanupErrors.push(error);
+      }
+    }
   }
   if (cleanupErrors.length > 0) {
     throw new AggregateError(cleanupErrors, `Unable to fully clean k3d resources for ${clusterName}.`);
@@ -452,7 +601,12 @@ function runCleanupStep(cleanupErrors, label, cleanup) {
 }
 
 function cleanResidualDockerResources(cleanupErrors) {
-  for (const containerName of [`k3d-${clusterName}-server-0`, `k3d-${registryName}`]) {
+  for (const containerName of [
+    `k3d-${clusterName}-server-0`,
+    `k3d-${clusterName}-serverlb`,
+    `k3d-${registryName}`,
+    `buildx_buildkit_${builderName}0`,
+  ]) {
     if (dockerResourceExists('container', containerName)) {
       runCleanupStep(cleanupErrors, `container ${containerName}`, () => {
         runCommand('docker', ['container', 'rm', '--force', containerName], repositoryRoot);
@@ -496,6 +650,17 @@ function cleanRunOwnedImages(cleanupErrors) {
 
 function dockerResourceExists(resourceType, name) {
   return captureCommandResult('docker', [resourceType, 'inspect', name], repositoryRoot).status === 0;
+}
+
+function recreateBuilder() {
+  deleteBuilder();
+  runCommand('docker', ['buildx', 'create', '--name', builderName, '--driver', 'docker-container'], repositoryRoot);
+}
+
+function deleteBuilder() {
+  if (captureCommandResult('docker', ['buildx', 'inspect', builderName], repositoryRoot).status === 0) {
+    runCommand('docker', ['buildx', 'rm', '--force', builderName], repositoryRoot);
+  }
 }
 
 async function configureInstalledPlatform() {

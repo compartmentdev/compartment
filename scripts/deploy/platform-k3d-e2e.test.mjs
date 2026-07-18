@@ -11,6 +11,7 @@ import {
   renderK3dRegistryConfig,
   renderManagedPlatformK3dValues,
   renderPlatformK3dValues,
+  shouldCleanLegacyPlatformResources,
 } from './platform-k3d-e2e.mjs';
 
 describe('platform k3d e2e command boundary', () => {
@@ -91,10 +92,17 @@ describe('platform k3d e2e command boundary', () => {
     });
 
     expect(isRunOwnedDockerResourceName('k3d-compartment-e2e-build-gates', environment)).toBe(true);
+    expect(isRunOwnedDockerResourceName('k3d-compartment-e2e-build-gates-serverlb', environment)).toBe(true);
     expect(isRunOwnedDockerResourceName('k3d-compartment-e2e-user-flow', environment)).toBe(false);
     expect(isRunOwnedImageRef('localhost:15700/compartment-api:e2e', environment)).toBe(true);
+    expect(isRunOwnedImageRef('ghcr.io/compartmentdev/compartment-api:sha-abc123', environment)).toBe(true);
+    expect(
+      isRunOwnedImageRef('ghcr.io/compartmentdev/compartment-api:e2e-compartment-e2e-build-gates', environment),
+    ).toBe(true);
     expect(isRunOwnedImageRef('localhost:15600/compartment-api:e2e', environment)).toBe(false);
     expect(isRunOwnedImageRef('postgres:16', environment)).toBe(false);
+    expect(shouldCleanLegacyPlatformResources({ COMPARTMENT_E2E_SHARD: 'managed-install' }, environment)).toBe(true);
+    expect(shouldCleanLegacyPlatformResources({ COMPARTMENT_E2E_SHARD: 'user-flow' }, environment)).toBe(false);
   });
 
   it('reads loaded image refs from docker load output', () => {

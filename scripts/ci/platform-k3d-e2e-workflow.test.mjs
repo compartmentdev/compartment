@@ -17,6 +17,9 @@ describe('platform k3d e2e workflow', () => {
     expect(job.name).toContain('${{ matrix.shard }}');
     const runStep = job.steps.find((step) => step.name === 'Run isolated k3d e2e shard');
     expect(runStep.run).toContain('run-platform-k3d-e2e-shard.mjs "${{ matrix.shard }}"');
+    const cleanupStep = job.steps.find((step) => step.name === 'Ensure shard cleanup');
+    expect(cleanupStep.if).toBe('${{ always() }}');
+    expect(cleanupStep.env.COMPARTMENT_E2E_CLEANUP_ONLY).toBe('1');
     const diagnosticsStep = job.steps.find((step) => step.name === 'Upload shard diagnostics');
     expect(diagnosticsStep.with.name).toContain('${{ matrix.shard }}');
     expect(diagnosticsStep.with.path).toContain('platform-k3d-diagnostics-${{ matrix.shard }}');

@@ -145,6 +145,12 @@ jobs:
           NO_PROXY: console.managed.compartment.test,managed-domain-broker,127.0.0.1,localhost
         run: node ./scripts/deploy/run-platform-k3d-e2e-shard.mjs "${{ matrix.shard }}"
 
+      - name: Ensure shard cleanup
+        if: ${{ always() }}
+        env:
+          COMPARTMENT_E2E_CLEANUP_ONLY: '1'
+        run: node ./scripts/deploy/run-platform-k3d-e2e-shard.mjs "${{ matrix.shard }}"
+
       - name: Upload shard diagnostics
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
