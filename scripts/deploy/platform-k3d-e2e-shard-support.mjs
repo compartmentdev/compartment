@@ -1,13 +1,5 @@
 import { readPlatformK3dEnvironment } from './platform-k3d-e2e.mjs';
-
-const shardDefinitions = Object.freeze({
-  'build-matrix-a': Object.freeze({ index: 0, suites: Object.freeze(['install', 'build-matrix-a']) }),
-  'build-matrix-b': Object.freeze({ index: 1, suites: Object.freeze(['install', 'build-matrix-b']) }),
-  'user-flow': Object.freeze({ index: 2, suites: Object.freeze(['install', 'system-user']) }),
-  console: Object.freeze({ index: 3, suites: Object.freeze(['install', 'console', 'g1', 'product-log']) }),
-  'managed-install': Object.freeze({ index: 4, suites: Object.freeze(['managed-install', 'retained-state']) }),
-});
-export const platformK3dShardNames = Object.freeze(Object.keys(shardDefinitions));
+import { platformK3dShardDefinitions, platformK3dShardNames } from './platform-k3d-e2e-shards.mjs';
 
 export function readPlatformK3dShard(args) {
   const [shardName, ...extraArgs] = args;
@@ -63,7 +55,7 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
 }
 
 function readShardDefinition(shardName) {
-  return Object.hasOwn(shardDefinitions, shardName) ? shardDefinitions[shardName] : undefined;
+  return Object.hasOwn(platformK3dShardDefinitions, shardName) ? platformK3dShardDefinitions[shardName] : undefined;
 }
 
 export function registerPlatformK3dSignalCleanup(cancelExecution, waitForExecution) {

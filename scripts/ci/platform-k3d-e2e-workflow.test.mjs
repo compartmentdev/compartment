@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
-import { platformK3dShardNames } from '../deploy/platform-k3d-e2e-shard-support.mjs';
+import { platformK3dShardNames } from '../deploy/platform-k3d-e2e-shards.mjs';
 
 const workflowPath = new URL('../../.github/workflows/_platform-k3d-e2e.yml', import.meta.url);
 const ciWorkflowPath = new URL('../../.github/workflows/ci.yml', import.meta.url);

@@ -6,17 +6,19 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildPlatformK3dShardEnvironment,
-  platformK3dShardNames,
   readPlatformK3dShard,
   readPlatformK3dShardSuites,
   runWithPlatformK3dCleanup,
 } from './platform-k3d-e2e-shard-support.mjs';
+import { platformK3dShardNames } from './platform-k3d-e2e-shards.mjs';
 
 describe('platform k3d e2e shard runner', () => {
   it('defines isolated names, ports, namespaces, and state for every shard', () => {
     const environments = platformK3dShardNames.map((shard) => buildPlatformK3dShardEnvironment(shard, {}));
 
-    expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_CLUSTER_NAME))).toHaveLength(5);
+    expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_CLUSTER_NAME))).toHaveLength(
+      platformK3dShardNames.length,
+    );
     for (const name of [
       'COMPARTMENT_E2E_REGISTRY_NAME',
       'COMPARTMENT_E2E_REGISTRY_PORT',
@@ -33,7 +35,7 @@ describe('platform k3d e2e shard runner', () => {
       'COMPARTMENT_E2E_PEBBLE_CA_PATH',
       'COMPARTMENT_E2E_PEBBLE_ROOT_PATH',
     ]) {
-      expect(new Set(environments.map((env) => env[name])), name).toHaveLength(5);
+      expect(new Set(environments.map((env) => env[name])), name).toHaveLength(platformK3dShardNames.length);
     }
   });
 
