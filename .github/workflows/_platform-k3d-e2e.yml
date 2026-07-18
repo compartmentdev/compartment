@@ -29,6 +29,7 @@ jobs:
       COMPARTMENT_TEST_APP_NODE_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
       COMPARTMENT_TEST_POSTGRES_IMAGE: postgres:16
       DOCKER_CONFIG: ${{ github.workspace }}/.compartment/docker-config
+      HELM_DATA_HOME: ${{ runner.temp }}/helm-data
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd

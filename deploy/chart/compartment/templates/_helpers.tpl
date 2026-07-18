@@ -33,6 +33,14 @@
   valuesSection: platform
   valueKey: installationId
   policy: stable
+- secretKey: domain-mode
+  valuesSection: platform
+  valueKey: domainMode
+  policy: domain
+- secretKey: base-domain
+  valuesSection: platform
+  valueKey: baseDomain
+  policy: domain
 - secretKey: public-ingress-ipv4
   valuesSection: platform
   valueKey: publicIngressIpv4
@@ -53,14 +61,6 @@
   valuesSection: secrets
   valueKey: managedDomainBrokerToken
   policy: stable
-- secretKey: domain-mode
-  valuesSection: platform
-  valueKey: domainMode
-  policy: domain
-- secretKey: base-domain
-  valuesSection: platform
-  valueKey: baseDomain
-  policy: domain
 - secretKey: public-protocol
   valuesSection: platform
   valueKey: publicProtocol
@@ -73,10 +73,12 @@
   valuesSection: customTls
   valueKey: existingSecret
   policy: domain
+  allowEmpty: true
 - secretKey: operator-custom-tls-secret
   valuesSection: customTls
   valueKey: operatorSecretName
   policy: domain
+  allowEmpty: true
 {{- end }}
 
 {{- define "compartment.resolvedInstallState" -}}
@@ -93,16 +95,18 @@
 {{- $useIncomingPersistedDomain := or (empty $data) (and .Values.platform.domainCommit (gt $incomingGeneration $retainedGeneration)) -}}
 {{- range $field := include "compartment.installStateFields" . | fromYamlArray -}}
 {{- $incomingValue := get (get $.Values $field.valuesSection) $field.valueKey -}}
-{{- $retainedValue := get $data $field.secretKey -}}
-{{- if not (empty $retainedValue) -}}
-{{- $retainedValue = $retainedValue | b64dec -}}
+{{- $encodedRetainedValue := get $data $field.secretKey -}}
+{{- $hasRetainedValue := and (hasKey $data $field.secretKey) (or $field.allowEmpty (not (empty $encodedRetainedValue))) -}}
+{{- $hasPersistedRetainedValue := and (hasKey $data $field.secretKey) (or (not (empty $encodedRetainedValue)) (and $field.allowEmpty $useRetainedDomain)) -}}
+{{- $retainedValue := $encodedRetainedValue | b64dec -}}
+{{- if $hasRetainedValue -}}
 {{- if or (eq $field.policy "stable") $useRetainedDomain -}}
 {{- $_ := set (get $effective $field.valuesSection) $field.valueKey $retainedValue -}}
 {{- end -}}
 {{- end -}}
 {{- if and (eq $field.policy "domain") (not $useIncomingPersistedDomain) -}}
-{{- $_ := set (get $persisted $field.valuesSection) $field.valueKey (default $incomingValue $retainedValue) -}}
-{{- else if and (eq $field.policy "stable") (not (empty $retainedValue)) -}}
+{{- $_ := set (get $persisted $field.valuesSection) $field.valueKey (ternary $retainedValue $incomingValue $hasPersistedRetainedValue) -}}
+{{- else if and (eq $field.policy "stable") $hasRetainedValue -}}
 {{- $_ := set (get $persisted $field.valuesSection) $field.valueKey $retainedValue -}}
 {{- end -}}
 {{- end -}}

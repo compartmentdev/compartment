@@ -43,6 +43,20 @@ kubernetesProvider:
       data:
         tls.crt: dGVzdC1jZXJ0aWZpY2F0ZQ==
         tls.key: dGVzdC1wcml2YXRlLWtleQ==
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: empty-install-state
+        namespace: default
+      data:
+        startup-stage: ZnVsbA==
+        domain-generation: Nw==
+        domain-mode: Y3VzdG9t
+        base-domain: cmV0YWluZWQubG9jYWxob3N0
+        public-protocol: aHR0cA==
+        tls-mode: Y3VzdG9tLWh0dHA=
+        active-custom-tls-secret: ''
+        operator-custom-tls-secret: ''
 tests:
   - it: resolves every consumer from the retained Secret without mutating Values
     set:
@@ -94,4 +108,59 @@ tests:
       - equal:
           path: stringData.managed-domain-broker-token
           value: broker-token
+        template: install-state-secret.yaml
+
+  - it: preserves explicitly empty retained custom TLS names
+    release:
+      name: empty
+      namespace: default
+      upgrade: true
+    set:
+      platform: &emptyRetainedPlatform
+        startupStage: foundation
+        installationId: test-empty-retained
+        domainGeneration: 0
+        domainMode: custom
+        baseDomain: incoming.localhost
+        publicProtocol: http
+        tlsMode: custom-http
+      customTls: &incomingCustomTls
+        existingSecret: incoming-active-tls
+        operatorSecretName: incoming-operator-tls
+        operatorCertificate: incoming-certificate
+        operatorPrivateKey: incoming-private-key
+      secrets: &requiredFullSecrets
+        registryWritePassword: test-registry-write-password
+        productLogIngestToken: test-product-log-token
+    asserts:
+      - equal:
+          path: stringData.active-custom-tls-secret
+          value: ''
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.operator-custom-tls-secret
+          value: ''
+        template: install-state-secret.yaml
+
+  - it: persists newer uncommitted custom TLS names over empty retained values
+    release:
+      name: empty
+      namespace: default
+      upgrade: true
+    set:
+      platform:
+        <<: *emptyRetainedPlatform
+        installationId: test-newer-uncommitted
+        domainGeneration: 8
+        domainCommit: false
+      customTls: *incomingCustomTls
+      secrets: *requiredFullSecrets
+    asserts:
+      - equal:
+          path: stringData.active-custom-tls-secret
+          value: incoming-active-tls
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.operator-custom-tls-secret
+          value: incoming-operator-tls
         template: install-state-secret.yaml
