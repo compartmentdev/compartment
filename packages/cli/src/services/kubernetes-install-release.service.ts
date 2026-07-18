@@ -1,6 +1,7 @@
 import type { JsonValue } from '@compartment/utils';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
+import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
 import type {
   ExistingKubernetesInstall,
   HelmReleaseSummary,
@@ -39,7 +40,7 @@ function buildHelmReleaseListCommand(input: KubernetesInstallDeploymentInput): s
     `^${escapeRegularExpression(input.releaseName)}$`,
     '--output',
     'json',
-    ...buildKubeContextArgs(input),
+    ...buildHelmKubeContextArgs(input),
   ];
 }
 
@@ -54,12 +55,8 @@ function buildHelmReleaseValuesCommand(input: KubernetesInstallDeploymentInput):
     '--all',
     '--output',
     'json',
-    ...buildKubeContextArgs(input),
+    ...buildHelmKubeContextArgs(input),
   ];
-}
-
-function buildKubeContextArgs(input: KubernetesInstallDeploymentInput): string[] {
-  return input.kubeContext === undefined ? [] : ['--kube-context', input.kubeContext];
 }
 
 async function runHelmInspection(command: readonly string[], operation: string): Promise<CommandResult> {
@@ -67,7 +64,7 @@ async function runHelmInspection(command: readonly string[], operation: string):
   if (result.exitCode === 0) {
     return result;
   }
-  const output: string = [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join('\n');
+  const output: string = readCommandOutput(result);
   throw new Error(
     `Helm ${operation} failed with exit code ${result.exitCode.toString()}.${output === '' ? '' : `\n${output}`}`,
   );

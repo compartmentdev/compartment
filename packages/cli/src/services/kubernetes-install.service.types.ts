@@ -24,19 +24,9 @@ export interface KubernetesInstallHelmMaterial {
   installValuesPath: string;
 }
 
-export interface ExistingKubernetesInstall {
-  acmeEmail: string;
-  baseDomain: string;
-  brokerUrl: string;
-  domainMode: KubernetesInstallDomainMode;
+export interface ExistingKubernetesInstall extends KubernetesInstallState {
   installToken: string | null;
-  installationId: string;
-  managedDomainBrokerToken: string;
-  publicIngressIpv4: string;
-  publicIngressIpv6: string;
-  publicProtocol: KubernetesPublicProtocol;
   stage: KubernetesInstallStage;
-  tlsMode: KubernetesInstallTlsMode;
 }
 
 export type RetainedKubernetesInstallState = KubernetesInstallState;

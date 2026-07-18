@@ -2,6 +2,7 @@ import { errorResponseSchema, type ErrorResponse } from '@compartment/contracts'
 import type { JsonValue } from '@compartment/utils';
 import { runCommand, runCommandWithInput } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
+import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
 import type {
   KubernetesOperatorTarget,
   KubernetesResourceList,
@@ -23,7 +24,7 @@ export async function requestKubernetesSystemApi<TResponse>(
     JSON.stringify(request),
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Private system API request failed: ${readCommandFailure(result)}`);
+    throw new Error(`Private system API request failed: ${readCommandOutput(result)}`);
   }
   const envelope: KubernetesSystemApiResponseEnvelope = parseResponseEnvelope(result.stdout);
   const value: JsonValue | null = envelope.body === '' ? null : parseJson(envelope.body, 'system API response');
@@ -59,7 +60,7 @@ async function readApiDeploymentName(target: KubernetesOperatorTarget): Promise<
     ]),
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to find the API deployment: ${readCommandFailure(result)}`);
+    throw new Error(`Failed to find the API deployment: ${readCommandOutput(result)}`);
   }
   const list: KubernetesResourceList = parseResourceList(result.stdout);
   const name: string | undefined = list.items[0]?.metadata?.name;
@@ -67,16 +68,6 @@ async function readApiDeploymentName(target: KubernetesOperatorTarget): Promise<
     throw new Error('Expected exactly one API deployment for the Helm release.');
   }
   return name;
-}
-
-function buildKubectlCommand(target: KubernetesOperatorTarget, args: readonly string[]): string[] {
-  return [
-    'kubectl',
-    ...(target.kubeContext === undefined ? [] : ['--context', target.kubeContext]),
-    '--namespace',
-    target.namespace,
-    ...args,
-  ];
 }
 
 function parseResponseEnvelope(output: string): KubernetesSystemApiResponseEnvelope {
@@ -120,8 +111,4 @@ function parseJson(output: string, operation: string): JsonValue {
   } catch {
     throw new Error(`Invalid JSON returned by ${operation}.`);
   }
-}
-
-function readCommandFailure(result: CommandResult): string {
-  return [result.stderr.trim(), result.stdout.trim()].filter((value: string): boolean => value !== '').join('\n');
 }

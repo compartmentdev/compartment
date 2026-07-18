@@ -1,6 +1,7 @@
 import type { JsonValue } from '@compartment/utils';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
+import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
 import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallDomainMode,
@@ -23,7 +24,7 @@ export async function readRetainedKubernetesInstallState(
     if (isMissingNamespaceFailure(result, input.namespace)) {
       return null;
     }
-    throw new Error(`Failed to inspect retained Kubernetes install state: ${readCommandFailure(result)}`);
+    throw new Error(`Failed to inspect retained Kubernetes install state: ${readCommandOutput(result)}`);
   }
   return parseRetainedStateSecretList(result.stdout);
 }
@@ -33,7 +34,7 @@ export async function readRetainedManagedKubernetesDomainState(
 ): Promise<RetainedManagedDomainState> {
   const result: CommandResult = await runCommand(buildRetainedStateSecretCommand(input));
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to inspect retained Kubernetes install state: ${readCommandFailure(result)}`);
+    throw new Error(`Failed to inspect retained Kubernetes install state: ${readCommandOutput(result)}`);
   }
   const data: Record<string, string> | null = parseRetainedStateSecretData(result.stdout);
   if (data === null) {
@@ -81,28 +82,21 @@ function preferRetainedText(retainedValue: string, currentValue: string): string
 }
 
 function isMissingNamespaceFailure(result: CommandResult, namespace: string): boolean {
-  const failure: string = readCommandFailure(result);
+  const failure: string = readCommandOutput(result);
   return failure.includes('(NotFound)') && failure.includes(`namespaces "${namespace}" not found`);
 }
 
 function buildRetainedStateSecretCommand(
   input: Pick<KubernetesInstallDeploymentInput, 'kubeContext' | 'namespace' | 'releaseName'>,
 ): string[] {
-  const command: string[] = ['kubectl'];
-  if (input.kubeContext !== undefined) {
-    command.push('--context', input.kubeContext);
-  }
-  command.push(
-    '--namespace',
-    input.namespace,
+  return buildKubectlCommand(input, [
     'get',
     'secret',
     '--selector',
     `app.kubernetes.io/instance=${input.releaseName},app.kubernetes.io/component=${installStateComponentLabel}`,
     '--output',
     'json',
-  );
-  return command;
+  ]);
 }
 
 function parseRetainedStateSecretList(output: string): RetainedKubernetesInstallState | null {
@@ -187,8 +181,4 @@ function parseJson(output: string): JsonValue {
 
 function isSecretList(value: JsonValue): value is KubernetesSecretList & JsonValue {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && Array.isArray(value.items);
-}
-
-function readCommandFailure(result: CommandResult): string {
-  return [result.stderr.trim(), result.stdout.trim()].filter((value: string): boolean => value !== '').join('\n');
 }
