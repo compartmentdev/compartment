@@ -21,8 +21,8 @@ import {
   shouldCleanPlatformSourceCacheImage,
   shouldCleanLegacyPlatformResources,
   withPlatformK3dProcessLock,
-  withPlatformImageCacheDockerLock,
 } from './platform-k3d-e2e-support.mjs';
+import { withPlatformImageCacheDockerLock } from './platform-image-cache-lock.mjs';
 
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const dockerResourceNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;

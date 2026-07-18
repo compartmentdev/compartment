@@ -2,7 +2,7 @@ import { runMain } from '../lib/run-main.mjs';
 import {
   acquirePlatformImageCacheDockerLock,
   releasePlatformImageCacheDockerLock,
-} from './platform-k3d-e2e-support.mjs';
+} from './platform-image-cache-lock.mjs';
 
 function readCommand(args) {
   const [action, ownerToken, ...extraArgs] = args;

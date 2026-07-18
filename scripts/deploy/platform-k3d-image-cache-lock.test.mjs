@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 const temporaryDirectories = [];
 const repositoryRoot = new URL('../..', import.meta.url).pathname;
 const managerPath = join(repositoryRoot, 'scripts/deploy/manage-platform-image-cache-lock.mjs');
-const supportUrl = new URL('./platform-k3d-e2e-support.mjs', import.meta.url).href;
+const supportUrl = new URL('./platform-image-cache-lock.mjs', import.meta.url).href;
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));
@@ -37,6 +37,7 @@ describe('platform image cache Docker lock', () => {
       fixture.statePath,
       JSON.stringify({
         Created: new Date(Date.now() - 31 * 60 * 1_000).toISOString(),
+        Id: 'stale-lock',
         Labels: {
           'compartment.image-cache-lock': 'true',
           'compartment.image-cache-lock-owner': 'stale-owner',
@@ -49,7 +50,10 @@ describe('platform image cache Docker lock', () => {
     );
     await runManager(fixture.env, 'release', 'new-owner');
 
-    await writeFile(fixture.statePath, JSON.stringify({ Created: new Date(0).toISOString(), Labels: {} }));
+    await writeFile(
+      fixture.statePath,
+      JSON.stringify({ Created: new Date(0).toISOString(), Id: 'unowned-network', Labels: {} }),
+    );
     await expect(runManager(fixture.env, 'release', 'new-owner')).rejects.toThrow('Command failed');
     await expect(readFile(fixture.statePath, 'utf8')).resolves.toContain('Labels');
   });
@@ -64,6 +68,15 @@ await withPlatformImageCacheDockerLock(async () => { throw new Error('operation 
       execFileAsync(process.execPath, ['--input-type=module', '--eval', program], { env: fixture.env }),
     ).rejects.toThrow('Command failed');
     await expect(readFile(fixture.statePath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('does not remove a replacement lock created after inspection', async () => {
+    const fixture = await createDockerFixture();
+    await runManager(fixture.env, 'acquire', 'owner-a');
+    await runManager({ ...fixture.env, PLATFORM_IMAGE_LOCK_REPLACE_BEFORE_RM: '1' }, 'release', 'owner-a');
+    const replacement = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+    expect(replacement).toMatchObject({ Id: 'replacement-lock' });
+    expect(replacement.Labels['compartment.image-cache-lock-owner']).toBe('owner-b');
   });
 });
 
@@ -94,12 +107,25 @@ if (action === 'create') {
       index += 1;
     }
   }
-  await writeFile(statePath, JSON.stringify({ Created: new Date().toISOString(), Labels: labels }));
+  await writeFile(statePath, JSON.stringify({ Created: new Date().toISOString(), Id: 'owned-lock', Labels: labels }));
   process.stdout.write('lock-id');
 } else if (action === 'inspect') {
   try { process.stdout.write(await readFile(statePath, 'utf8')); } catch (error) { if (error.code === 'ENOENT') process.exit(1); throw error; }
 } else if (action === 'rm') {
-  await rm(statePath, { force: true });
+  const current = JSON.parse(await readFile(statePath, 'utf8'));
+  if (process.env.PLATFORM_IMAGE_LOCK_REPLACE_BEFORE_RM === '1') {
+    await writeFile(statePath, JSON.stringify({
+      Created: new Date().toISOString(),
+      Id: 'replacement-lock',
+      Labels: {
+        'compartment.image-cache-lock': 'true',
+        'compartment.image-cache-lock-owner': 'owner-b',
+      },
+    }));
+    process.exit(1);
+  }
+  if (args[0] !== current.Id) process.exit(1);
+  await rm(statePath);
 } else {
   process.exit(2);
 }
