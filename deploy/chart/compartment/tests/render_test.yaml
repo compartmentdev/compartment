@@ -1078,6 +1078,14 @@ tests:
           path: spec.template.metadata.annotations["checksum/config"]
           value: *stableConfigChecksum
         template: project-provisioner.yaml
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
+          value: &stableRolloutMarker ''
+        template: worker.yaml
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
+          value: *stableRolloutMarker
+        template: project-provisioner.yaml
       - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/pending-tls"]
         template: api.yaml
@@ -1359,6 +1367,26 @@ tests:
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
           value: *stableConfigChecksum
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: *stableConfigChecksum
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: *stableConfigChecksum
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: *stableConfigChecksum
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/config"]
+          value: *stableConfigChecksum
         template: worker.yaml
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
@@ -1404,7 +1432,7 @@ tests:
         template: project-provisioner.yaml
       - equal:
           path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
-          value: &stableRolloutMarker ''
+          value: *stableRolloutMarker
         template: caddy.yaml
         documentIndex: 1
       - equal:
