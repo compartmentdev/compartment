@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, mkdtempSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { get } from 'node:http';
 import { isIP } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -22,7 +22,10 @@ import {
   shouldCleanLegacyPlatformResources,
   withPlatformK3dProcessLock,
 } from './platform-k3d-e2e-support.mjs';
-import { withPlatformImageCacheDockerLock } from './platform-image-cache-lock.mjs';
+import {
+  releasePlatformImageCacheDockerLockIfOwned,
+  withPlatformImageCacheDockerLock,
+} from './platform-image-cache-lock.mjs';
 
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const dockerResourceNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
@@ -53,6 +56,10 @@ const platformBaseDomain = 'compartment.localhost';
 const consoleHost = `console.${platformBaseDomain}`;
 const serverNodeName = `k3d-${clusterName}-server-0`;
 const builderName = `${clusterName}-builder`;
+const imageCacheLockOwnerToken = `e2e-${clusterName}`;
+const managedCaddyBuildDirectory = join(dirname(managedPlatformValuesPath), 'managed-caddy-build');
+const managedCaddyPebbleContainerName = `${clusterName}-pebble-ca`;
+const registryConfigDirectory = join(dirname(platformValuesPath), 'registry-config');
 const platformImageTag = 'e2e';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const kubernetesReadinessTimeoutSeconds = 240;
@@ -413,7 +420,9 @@ function buildManagedE2eCaddyImage(sourceImageRef) {
   if (typeof sourceImageRef !== 'string' || sourceImageRef.trim() === '') {
     throw new Error('Expected a source Caddy image for the managed install e2e.');
   }
-  const buildDirectory = mkdtempSync(join(tmpdir(), 'compartment-managed-caddy-'));
+  rmSync(managedCaddyBuildDirectory, { force: true, recursive: true });
+  mkdirSync(managedCaddyBuildDirectory, { recursive: true });
+  const buildDirectory = managedCaddyBuildDirectory;
   const extractedCaPath = join(buildDirectory, 'pebble.minica.pem');
   const dockerfilePath = join(buildDirectory, 'Dockerfile');
   const managedImageRef = `${registryPushHost}/compartment-caddy:managed-e2e`;
@@ -421,7 +430,11 @@ function buildManagedE2eCaddyImage(sourceImageRef) {
   let managedCaddyDigest;
   let buildError;
   try {
-    pebbleContainerId = captureCommand('docker', ['create', pebbleImageRef], repositoryRoot).trim();
+    pebbleContainerId = captureCommand(
+      'docker',
+      ['create', '--name', managedCaddyPebbleContainerName, pebbleImageRef],
+      repositoryRoot,
+    ).trim();
     runCommand('docker', ['cp', `${pebbleContainerId}:/test/certs/pebble.minica.pem`, extractedCaPath], repositoryRoot);
     copyFileSync(extractedCaPath, pebbleCaPath);
     writeFileSync(
@@ -552,7 +565,7 @@ async function loadPlatformImageArchives(imageArchiveDir) {
 }
 
 async function cleanHistoricalPlatformSourceImages() {
-  await withPlatformImageCacheDockerLock(async () => {
+  await withPlatformImageCacheDockerLock(imageCacheLockOwnerToken, async () => {
     const currentCommitSha = captureCommand('git', ['rev-parse', 'HEAD'], repositoryRoot).trim();
     const imageRefs = captureCommand('docker', ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'], repositoryRoot)
       .split('\n')
@@ -603,6 +616,11 @@ function cleanPlatformResources() {
 }
 
 function cleanPlatformState(cleanupErrors) {
+  for (const temporaryStateDirectory of [managedCaddyBuildDirectory, registryConfigDirectory]) {
+    runCleanupStep(cleanupErrors, `state directory ${temporaryStateDirectory}`, () => {
+      rmSync(temporaryStateDirectory, { force: true, recursive: true });
+    });
+  }
   const statePaths = [
     platformValuesPath,
     managedPlatformValuesPath,
@@ -635,11 +653,15 @@ function runCleanupStep(cleanupErrors, label, cleanup) {
 }
 
 function cleanResidualDockerResources(cleanupErrors) {
+  runCleanupStep(cleanupErrors, 'shared image cache lock', () => {
+    releasePlatformImageCacheDockerLockIfOwned(imageCacheLockOwnerToken);
+  });
   for (const containerName of [
     `k3d-${clusterName}-server-0`,
     `k3d-${clusterName}-serverlb`,
     `k3d-${registryName}`,
     `buildx_buildkit_${builderName}0`,
+    managedCaddyPebbleContainerName,
   ]) {
     if (dockerResourceExists('container', containerName)) {
       runCleanupStep(cleanupErrors, `container ${containerName}`, () => {
@@ -745,7 +767,9 @@ async function configureK3dRegistryMirror() {
     ],
     repositoryRoot,
   ).trim();
-  const configDirectory = mkdtempSync(join(tmpdir(), 'compartment-k3d-registry-'));
+  rmSync(registryConfigDirectory, { force: true, recursive: true });
+  mkdirSync(registryConfigDirectory, { recursive: true });
+  const configDirectory = registryConfigDirectory;
   const configPath = join(configDirectory, 'registries.yaml');
 
   try {

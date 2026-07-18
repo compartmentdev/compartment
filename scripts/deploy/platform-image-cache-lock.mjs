@@ -10,8 +10,7 @@ const lockOwnerLabel = 'compartment.image-cache-lock-owner';
 const lockStaleMilliseconds = 30 * 60 * 1_000;
 const lockWaitMilliseconds = 35 * 60 * 1_000;
 
-export async function withPlatformImageCacheDockerLock(operation) {
-  const ownerToken = `e2e-${process.pid}-${Date.now()}`;
+export async function withPlatformImageCacheDockerLock(ownerToken, operation) {
   const releaseLock = await acquirePlatformImageCacheDockerLock(ownerToken);
   try {
     return await operation();
@@ -62,6 +61,16 @@ export function releasePlatformImageCacheDockerLock(ownerToken) {
     throw new Error(`Refusing to release Docker network ${lockName} for another owner.`);
   }
   removeLockById(lock.Id);
+}
+
+export function releasePlatformImageCacheDockerLockIfOwned(ownerToken) {
+  assertOwnerToken(ownerToken);
+  const lock = readLock();
+  if (lock?.Labels?.[lockLabel] !== 'true' || lock.Labels?.[lockOwnerLabel] !== ownerToken) {
+    return false;
+  }
+  removeLockById(lock.Id);
+  return true;
 }
 
 function assertOwnerToken(ownerToken) {

@@ -62,7 +62,7 @@ describe('platform image cache Docker lock', () => {
     const fixture = await createDockerFixture();
     const program = `
 import { withPlatformImageCacheDockerLock } from ${JSON.stringify(supportUrl)};
-await withPlatformImageCacheDockerLock(async () => { throw new Error('operation failed'); });
+await withPlatformImageCacheDockerLock('operation-owner', async () => { throw new Error('operation failed'); });
 `;
     await expect(
       execFileAsync(process.execPath, ['--input-type=module', '--eval', program], { env: fixture.env }),
@@ -77,6 +77,22 @@ await withPlatformImageCacheDockerLock(async () => { throw new Error('operation 
     const replacement = JSON.parse(await readFile(fixture.statePath, 'utf8'));
     expect(replacement).toMatchObject({ Id: 'replacement-lock' });
     expect(replacement.Labels['compartment.image-cache-lock-owner']).toBe('owner-b');
+  });
+
+  it('leaves another owner lock in place during fallback cleanup', async () => {
+    const fixture = await createDockerFixture();
+    await runManager(fixture.env, 'acquire', 'owner-a');
+    const program = `
+import { releasePlatformImageCacheDockerLockIfOwned } from ${JSON.stringify(supportUrl)};
+process.stdout.write(String(releasePlatformImageCacheDockerLockIfOwned('owner-b')));
+`;
+    await expect(
+      execFileAsync(process.execPath, ['--input-type=module', '--eval', program], { env: fixture.env }),
+    ).resolves.toMatchObject({ stdout: 'false' });
+    expect(JSON.parse(await readFile(fixture.statePath, 'utf8')).Labels['compartment.image-cache-lock-owner']).toBe(
+      'owner-a',
+    );
+    await runManager(fixture.env, 'release', 'owner-a');
   });
 });
 
