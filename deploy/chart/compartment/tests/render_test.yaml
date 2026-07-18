@@ -1055,23 +1055,28 @@ tests:
           any: true
         template: caddy.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
+          value: &managedDomainChecksum 3cf387830dae45829f0cdaafdd562eb058930cdfee6c0d3b1eef5271b5d1faeb
         template: api.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
+          value: *managedDomainChecksum
         template: caddy.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
+          value: *managedDomainChecksum
         template: edge.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/config"]
+          value: &stableConfigChecksum ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
         template: worker.yaml
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/config"]
+          value: *stableConfigChecksum
         template: project-provisioner.yaml
       - isNotEmpty:
           path: spec.template.metadata.annotations["checksum/pending-tls"]
@@ -1310,16 +1315,24 @@ tests:
           path: spec.template.metadata.annotations["checksum/pending-tls"]
         template: api.yaml
         documentIndex: 1
-      - isNotEmpty:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
+      - notEqual:
+          path: spec.template.metadata.annotations["checksum/pending-tls"]
+          value: &activeTlsChecksum 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
         template: api.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: *activeTlsChecksum
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: *activeTlsChecksum
         template: caddy.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: *activeTlsChecksum
         template: edge.yaml
         documentIndex: 1
       - notExists:
@@ -1328,23 +1341,28 @@ tests:
       - notExists:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
         template: project-provisioner.yaml
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
+          value: &activeDomainChecksum 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
         template: api.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
+          value: *activeDomainChecksum
         template: caddy.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
+          value: *activeDomainChecksum
         template: edge.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/config"]
+          value: *stableConfigChecksum
         template: worker.yaml
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/config"]
+          value: *stableConfigChecksum
         template: project-provisioner.yaml
       - notExists:
           path: spec.template.metadata.annotations["checksum/pending-tls"]
@@ -1406,31 +1424,38 @@ tests:
           any: true
         template: api.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/pending-tls"]
+          value: *activeTlsChecksum
         template: api.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: *activeTlsChecksum
         template: caddy.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
+          value: *activeDomainChecksum
         template: api.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
+          value: *activeDomainChecksum
         template: caddy.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
+          value: *activeDomainChecksum
         template: edge.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/config"]
+          value: *stableConfigChecksum
         template: worker.yaml
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/config"]
+          value: *stableConfigChecksum
         template: project-provisioner.yaml
       - equal:
           path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
@@ -1500,8 +1525,9 @@ tests:
           any: true
         template: caddy.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: &inlineCustomTlsChecksum 93a40ad1a15ccd918acf6fa268ab3d823407d9e4a9019d0023955252676aef0a
         template: caddy.yaml
         documentIndex: 1
 
@@ -1524,12 +1550,19 @@ tests:
           path: stringData["tls.key"]
           value: test-private-key
         template: custom-tls-secret.yaml
-      - isNotEmpty:
+      - equal:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: &rotatedInlineCustomTlsChecksum 288f3b22359f08203dec498e138ef7a169bb9fc224a4b5bef85ad13fe1b9401c
         template: api.yaml
         documentIndex: 1
-      - isNotEmpty:
+      - notEqual:
           path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: *inlineCustomTlsChecksum
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+          value: *rotatedInlineCustomTlsChecksum
         template: caddy.yaml
         documentIndex: 1
 
