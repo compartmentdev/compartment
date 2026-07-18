@@ -23,6 +23,7 @@ import {
   managedInstallPublicIpv4,
   managedInstallReleaseName,
   managedInstallValuesPath,
+  probeManagedInstallConsole,
   prepareManagedInstallFixture,
   readManagedInstallCertificateSubjectAltName,
   waitForManagedDomainBrokerObservation,
@@ -104,6 +105,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       expect(broker.txtWrites[0]?.name).toBe(`_acme-challenge.${managedInstallBaseDomain}.`);
       expect(broker.txtDeletes).toContainEqual(broker.txtWrites[0]);
       expect(await readManagedInstallCertificateSubjectAltName()).toContain(`DNS:*.${managedInstallBaseDomain}`);
+      await probeManagedInstallConsole();
       managedInstallCompleted = true;
     },
     installTimeoutMs,

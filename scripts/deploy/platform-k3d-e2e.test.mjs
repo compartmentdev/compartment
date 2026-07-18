@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isConsoleReadyStatus,
+  isRunOwnedDockerResourceName,
+  isRunOwnedImageRef,
   parseK3dClusterNames,
   parseLoadedImageRefs,
   readPlatformK3dCommand,
+  readPlatformK3dEnvironment,
   renderK3dRegistryConfig,
   renderManagedPlatformK3dValues,
   renderPlatformK3dValues,
@@ -53,6 +56,47 @@ describe('platform k3d e2e command boundary', () => {
     ]);
   });
 
+  it('validates an isolated shard environment', () => {
+    const environment = readPlatformK3dEnvironment({
+      COMPARTMENT_E2E_CLUSTER_NAME: 'compartment-e2e-user-flow',
+      COMPARTMENT_E2E_HTTP_PORT: '18180',
+      COMPARTMENT_E2E_PLATFORM_NAMESPACE: 'compartment-user-flow',
+      COMPARTMENT_E2E_REGISTRY_NAME: 'compartment-e2e-user-flow-registry',
+      COMPARTMENT_E2E_REGISTRY_PORT: '15600',
+    });
+
+    expect(environment).toMatchObject({
+      clusterName: 'compartment-e2e-user-flow',
+      httpPort: 18_180,
+      platformNamespace: 'compartment-user-flow',
+      registryHostPort: 15_600,
+      registryName: 'compartment-e2e-user-flow-registry',
+    });
+    expect(() => readPlatformK3dEnvironment({ COMPARTMENT_E2E_HTTP_PORT: '0' })).toThrow(
+      'COMPARTMENT_E2E_HTTP_PORT must be an integer between 1024 and 65535.',
+    );
+    expect(() => readPlatformK3dEnvironment({ COMPARTMENT_E2E_KEEP_ON_FAILURE: 'yes' })).toThrow(
+      'COMPARTMENT_E2E_KEEP_ON_FAILURE must be 0 or 1.',
+    );
+    expect(() =>
+      readPlatformK3dEnvironment({ COMPARTMENT_E2E_PLATFORM_VALUES_PATH: '../outside-values.yaml' }),
+    ).toThrow('must resolve inside');
+  });
+
+  it('targets only resources owned by the selected shard', () => {
+    const environment = readPlatformK3dEnvironment({
+      COMPARTMENT_E2E_CLUSTER_NAME: 'compartment-e2e-build-gates',
+      COMPARTMENT_E2E_REGISTRY_NAME: 'compartment-e2e-build-gates-registry',
+      COMPARTMENT_E2E_REGISTRY_PORT: '15700',
+    });
+
+    expect(isRunOwnedDockerResourceName('k3d-compartment-e2e-build-gates', environment)).toBe(true);
+    expect(isRunOwnedDockerResourceName('k3d-compartment-e2e-user-flow', environment)).toBe(false);
+    expect(isRunOwnedImageRef('localhost:15700/compartment-api:e2e', environment)).toBe(true);
+    expect(isRunOwnedImageRef('localhost:15600/compartment-api:e2e', environment)).toBe(false);
+    expect(isRunOwnedImageRef('postgres:16', environment)).toBe(false);
+  });
+
   it('reads loaded image refs from docker load output', () => {
     expect(
       parseLoadedImageRefs(
@@ -97,6 +141,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain('httpsPort: 443');
     expect(values).toContain('httpNodePort: 30080');
     expect(values).toContain('httpsNodePort: 30443');
+    expect(values).toContain('namespace: compartment-build');
     expect(values).toContain('repository: k3d-compartment-e2e-registry:15500/compartment-api');
     expect(values).toContain(`digest: sha256:${'a'.repeat(64)}`);
     expect(values).not.toContain('ports:\n  http: 18080');

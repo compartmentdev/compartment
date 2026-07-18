@@ -6,7 +6,7 @@ const ownerSecretEnvName: string = 'COMPARTMENT_E2E_SEED_ADMIN_PASSWORD';
 export const platformK3dOwnerEnvironmentPath: string = resolve(
   __dirname,
   '../../..',
-  '.compartment/platform-k3d-e2e-owner.env',
+  process.env.COMPARTMENT_E2E_OWNER_ENV_PATH ?? '.compartment/platform-k3d-e2e-owner.env',
 );
 
 export async function publishPlatformK3dOwnerEnvironment(

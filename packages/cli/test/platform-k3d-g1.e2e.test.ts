@@ -50,6 +50,8 @@ const execFileAsync: (
   options: GateExecFileOptions,
 ) => Promise<GateExecFileResult> = promisify(execFile);
 const repositoryRoot: string = resolve(process.cwd(), '../..');
+const platformKubeContext: string = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e';
+const platformNamespace: string = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
 
 describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
   const setup: SelfHostedUserSetupHarness = useSelfHostedUserSetupHarness();
@@ -129,11 +131,11 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
           cwd: repositoryRoot,
           env: {
             ...process.env,
-            COMPARTMENT_P10_API_DEPLOYMENT: 'compartment/compartment-compartment-api',
+            COMPARTMENT_P10_API_DEPLOYMENT: `${platformNamespace}/compartment-compartment-api`,
             COMPARTMENT_P10_AUTHORIZED_PROBE_COMMAND: commands.authorized,
-            COMPARTMENT_P10_EDGE_DEPLOYMENT: 'compartment/compartment-compartment-edge',
+            COMPARTMENT_P10_EDGE_DEPLOYMENT: `${platformNamespace}/compartment-compartment-edge`,
             COMPARTMENT_P10_GRANT_COMMAND: commands.grant,
-            COMPARTMENT_P10_KUBE_CONTEXT: 'k3d-compartment-e2e',
+            COMPARTMENT_P10_KUBE_CONTEXT: platformKubeContext,
             COMPARTMENT_P10_POST_RESTORE_COMMAND: commands.postRestore,
             COMPARTMENT_P10_RELOGIN_PROBE_COMMAND: commands.relogin,
             COMPARTMENT_P10_REVOKE_COMMAND: commands.revoke,

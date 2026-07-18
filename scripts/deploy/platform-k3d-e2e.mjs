@@ -2,37 +2,44 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'nod
 import { get } from 'node:http';
 import { isIP } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { buildSelfHostedImages } from './build-self-hosted-images.mjs';
-import { captureCommand, runCommand, runCommandAsync } from '../lib/command.mjs';
+import { captureCommand, captureCommandResult, runCommand, runCommandAsync } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
-const clusterName = 'compartment-e2e';
+const dockerResourceNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
+const kubernetesNamePattern = /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/u;
+const platformEnvironment = readPlatformK3dEnvironment(process.env);
+const {
+  clusterName,
+  httpPort,
+  httpsPort,
+  managedAcmeManagementPort,
+  managedBrokerPort,
+  managedNamespace,
+  managedPlatformValuesPath,
+  pebbleCaPath,
+  pebbleRootPath,
+  platformNamespace,
+  platformOwnerEnvironmentPath,
+  platformValuesPath,
+  registryHostPort,
+  registryName,
+} = platformEnvironment;
 const contextName = `k3d-${clusterName}`;
-const httpPort = 18_080;
-const httpsPort = 18_443;
-const registryName = 'compartment-e2e-registry';
-const registryHostPort = 15_500;
-const managedBrokerPort = 19_000;
-const managedAcmeManagementPort = 19_500;
 const registryClusterHost = `k3d-${registryName}:${registryHostPort}`;
 const registryPushHost = `localhost:${registryHostPort}`;
 const bundledRegistryPort = 5000;
-const bundledRegistryHost = `compartment-compartment-registry-auth.compartment.svc:${bundledRegistryPort}`;
+const bundledRegistryHost = `compartment-compartment-registry-auth.${platformNamespace}.svc:${bundledRegistryPort}`;
 const platformBaseDomain = 'compartment.localhost';
 const consoleHost = `console.${platformBaseDomain}`;
 const serverNodeName = `k3d-${clusterName}-server-0`;
 const platformImageTag = 'e2e';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
-const platformValuesPath = join(repositoryRoot, '.compartment', 'platform-k3d-e2e-values.yaml');
-const managedPlatformValuesPath = join(repositoryRoot, '.compartment', 'platform-k3d-managed-e2e-values.yaml');
-const pebbleCaPath = join(repositoryRoot, '.compartment', 'pebble.minica.pem');
-const pebbleRootPath = join(repositoryRoot, '.compartment', 'pebble.root.pem');
-const platformOwnerEnvironmentPath = join(repositoryRoot, '.compartment', 'platform-k3d-e2e-owner.env');
 const kubernetesReadinessTimeoutSeconds = 240;
 const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
 const platformServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
@@ -46,6 +53,92 @@ const builtImageRefsByServiceName = Object.freeze(
     ]),
   ),
 );
+export function readPlatformK3dEnvironment(env) {
+  const configuredClusterName = readNameEnv(env, 'COMPARTMENT_E2E_CLUSTER_NAME', 'compartment-e2e');
+  const configuredRegistryName = readNameEnv(env, 'COMPARTMENT_E2E_REGISTRY_NAME', `${configuredClusterName}-registry`);
+  return {
+    clusterName: configuredClusterName,
+    httpPort: readPortEnv(env, 'COMPARTMENT_E2E_HTTP_PORT', 18_080),
+    httpsPort: readPortEnv(env, 'COMPARTMENT_E2E_HTTPS_PORT', 18_443),
+    keepOnFailure: readBooleanEnv(env, 'COMPARTMENT_E2E_KEEP_ON_FAILURE'),
+    managedAcmeManagementPort: readPortEnv(env, 'COMPARTMENT_E2E_MANAGED_ACME_PORT', 19_500),
+    managedBrokerPort: readPortEnv(env, 'COMPARTMENT_E2E_MANAGED_BROKER_PORT', 19_000),
+    managedNamespace: readNameEnv(env, 'COMPARTMENT_E2E_MANAGED_NAMESPACE', 'compartment-managed-e2e'),
+    managedPlatformValuesPath: readStatePathEnv(
+      env,
+      'COMPARTMENT_E2E_MANAGED_VALUES_PATH',
+      '.compartment/platform-k3d-managed-e2e-values.yaml',
+    ),
+    pebbleCaPath: readStatePathEnv(env, 'COMPARTMENT_E2E_PEBBLE_CA_PATH', '.compartment/pebble.minica.pem'),
+    pebbleRootPath: readStatePathEnv(env, 'COMPARTMENT_E2E_PEBBLE_ROOT_PATH', '.compartment/pebble.root.pem'),
+    platformNamespace: readNameEnv(env, 'COMPARTMENT_E2E_PLATFORM_NAMESPACE', 'compartment'),
+    platformOwnerEnvironmentPath: readStatePathEnv(
+      env,
+      'COMPARTMENT_E2E_OWNER_ENV_PATH',
+      '.compartment/platform-k3d-e2e-owner.env',
+    ),
+    platformValuesPath: readStatePathEnv(
+      env,
+      'COMPARTMENT_E2E_PLATFORM_VALUES_PATH',
+      '.compartment/platform-k3d-e2e-values.yaml',
+    ),
+    registryHostPort: readPortEnv(env, 'COMPARTMENT_E2E_REGISTRY_PORT', 15_500),
+    registryName: configuredRegistryName,
+  };
+}
+
+export function isRunOwnedDockerResourceName(name, environment = platformEnvironment) {
+  return [
+    `k3d-${environment.clusterName}`,
+    `k3d-${environment.clusterName}-images`,
+    `k3d-${environment.clusterName}-server-0`,
+    `k3d-${environment.registryName}`,
+  ].includes(name);
+}
+
+export function isRunOwnedImageRef(imageRef, environment = platformEnvironment) {
+  return imageRef.startsWith(`localhost:${environment.registryHostPort}/compartment-`);
+}
+
+function readNameEnv(env, name, defaultValue) {
+  const value = env[name] ?? defaultValue;
+  if (!dockerResourceNamePattern.test(value) || !kubernetesNamePattern.test(value) || value.length > 63) {
+    throw new Error(`${name} must be a valid lowercase DNS label.`);
+  }
+  return value;
+}
+
+function readPortEnv(env, name, defaultValue) {
+  const rawValue = env[name];
+  if (rawValue === undefined) {
+    return defaultValue;
+  }
+  const value = Number(rawValue);
+  if (!/^\d+$/u.test(rawValue) || !Number.isSafeInteger(value) || value < 1_024 || value > 65_535) {
+    throw new Error(`${name} must be an integer between 1024 and 65535.`);
+  }
+  return value;
+}
+
+function readBooleanEnv(env, name) {
+  const value = env[name];
+  if (value === undefined || value === '0') {
+    return false;
+  }
+  if (value === '1') {
+    return true;
+  }
+  throw new Error(`${name} must be 0 or 1.`);
+}
+
+function readStatePathEnv(env, name, defaultValue) {
+  const path = resolve(repositoryRoot, env[name] ?? defaultValue);
+  const stateRoot = resolve(repositoryRoot, '.compartment');
+  if (path !== stateRoot && !path.startsWith(`${stateRoot}/`)) {
+    throw new Error(`${name} must resolve inside ${stateRoot}.`);
+  }
+  return path;
+}
 
 export function readPlatformK3dCommand(args) {
   const [action, ...optionArgs] = args;
@@ -139,11 +232,11 @@ export function renderK3dRegistryConfig(registryHost, serviceClusterIp) {
 }
 
 export function renderPlatformK3dValues(imageDigestsByServiceName) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderK3dServiceValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: custom-http\nedge:\n  snapshots:\n    enabled: true\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderK3dServiceValues()}platform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: custom-http\nbuildkit:\n  namespace: ${platformNamespace}-build\nedge:\n  snapshots:\n    enabled: true\n`;
 }
 
 export function renderManagedPlatformK3dValues(imageDigestsByServiceName, managedCaddyDigest) {
-  return `${renderPlatformImageValues({ ...imageDigestsByServiceName, caddy: managedCaddyDigest })}${renderK3dServiceValues()}platform:\n  acmeCaUrl: https://pebble:14000/dir\n  publicIngressIpv4: 8.8.4.4\nbuildkit:\n  namespace: compartment-managed-e2e-build\n`;
+  return `${renderPlatformImageValues({ ...imageDigestsByServiceName, caddy: managedCaddyDigest })}${renderK3dServiceValues()}platform:\n  acmeCaUrl: https://pebble:14000/dir\n  publicIngressIpv4: 8.8.4.4\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
 }
 
 function renderPlatformImageValues(imageDigestsByServiceName) {
@@ -162,12 +255,11 @@ function renderK3dServiceValues() {
 
 async function upPlatform(command) {
   assertRequiredTools();
-  if (clusterExists()) {
-    throw new Error(`k3d cluster ${clusterName} already exists; run pnpm platform:e2e:down first.`);
-  }
-
+  cleanPlatformResources();
   recreateRegistry();
-  mkdirSync(resolve(repositoryRoot, '.compartment'), { recursive: true });
+  for (const statePath of [platformValuesPath, managedPlatformValuesPath, pebbleCaPath, pebbleRootPath]) {
+    mkdirSync(dirname(statePath), { recursive: true });
+  }
 
   try {
     const [, preparedImages] = await Promise.all([createCluster(), prepareAndPushPlatformImages(command)]);
@@ -180,8 +272,13 @@ async function upPlatform(command) {
       { mode: 0o600 },
     );
   } catch (error) {
-    deleteCluster();
-    deleteRegistry();
+    if (!platformEnvironment.keepOnFailure) {
+      try {
+        cleanPlatformResources();
+      } catch (cleanupError) {
+        process.stderr.write(`Cleanup also failed: ${String(cleanupError)}\n`);
+      }
+    }
     process.stderr.write('STATUS=failed\n');
     throw error;
   }
@@ -315,17 +412,90 @@ function loadPlatformImageArchives(imageArchiveDir) {
 }
 
 function downPlatform() {
+  assertTool('docker');
   assertTool('k3d');
-  if (clusterExists()) {
-    deleteCluster();
-  }
-  deleteRegistry();
+  cleanPlatformResources();
+  process.stdout.write(`Removed ${clusterName}.\n`);
+}
+
+function cleanPlatformResources() {
+  const cleanupErrors = [];
+  runCleanupStep(cleanupErrors, 'cluster', () => {
+    if (clusterExists()) {
+      deleteCluster();
+    }
+  });
+  runCleanupStep(cleanupErrors, 'registry', deleteRegistry);
+  cleanResidualDockerResources(cleanupErrors);
+  cleanRunOwnedImages(cleanupErrors);
   rmSync(platformValuesPath, { force: true });
   rmSync(managedPlatformValuesPath, { force: true });
   rmSync(pebbleCaPath, { force: true });
   rmSync(pebbleRootPath, { force: true });
   rmSync(platformOwnerEnvironmentPath, { force: true });
-  process.stdout.write(`Removed ${clusterName}.\n`);
+  const stateDirectory = dirname(platformValuesPath);
+  if (stateDirectory !== resolve(repositoryRoot, '.compartment')) {
+    rmSync(stateDirectory, { force: true, recursive: true });
+  }
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, `Unable to fully clean k3d resources for ${clusterName}.`);
+  }
+}
+
+function runCleanupStep(cleanupErrors, label, cleanup) {
+  try {
+    cleanup();
+  } catch (error) {
+    cleanupErrors.push(error);
+    process.stderr.write(`Failed to clean ${label} for ${clusterName}: ${String(error)}\n`);
+  }
+}
+
+function cleanResidualDockerResources(cleanupErrors) {
+  for (const containerName of [`k3d-${clusterName}-server-0`, `k3d-${registryName}`]) {
+    if (dockerResourceExists('container', containerName)) {
+      runCleanupStep(cleanupErrors, `container ${containerName}`, () => {
+        runCommand('docker', ['container', 'rm', '--force', containerName], repositoryRoot);
+      });
+    }
+  }
+  const networkName = `k3d-${clusterName}`;
+  if (dockerResourceExists('network', networkName)) {
+    runCleanupStep(cleanupErrors, `network ${networkName}`, () => {
+      runCommand('docker', ['network', 'rm', networkName], repositoryRoot);
+    });
+  }
+  let volumeNames = [];
+  runCleanupStep(cleanupErrors, 'volume inventory', () => {
+    volumeNames = captureCommand('docker', ['volume', 'ls', '--format', '{{.Name}}'], repositoryRoot)
+      .split('\n')
+      .map((name) => name.trim())
+      .filter((name) => name !== '' && isRunOwnedDockerResourceName(name));
+  });
+  for (const volumeName of volumeNames) {
+    runCleanupStep(cleanupErrors, `volume ${volumeName}`, () => {
+      runCommand('docker', ['volume', 'rm', '--force', volumeName], repositoryRoot);
+    });
+  }
+}
+
+function cleanRunOwnedImages(cleanupErrors) {
+  let imageRefs = [];
+  runCleanupStep(cleanupErrors, 'image inventory', () => {
+    imageRefs = captureCommand('docker', ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'], repositoryRoot)
+      .split('\n')
+      .map((imageRef) => imageRef.trim())
+      .filter((imageRef) => imageRef !== '' && isRunOwnedImageRef(imageRef));
+  });
+  if (imageRefs.length > 0) {
+    runCleanupStep(cleanupErrors, 'images', () => {
+      runCommand('docker', ['image', 'rm', '--force', ...imageRefs], repositoryRoot);
+    });
+  }
+}
+
+function dockerResourceExists(resourceType, name) {
+  return captureCommandResult('docker', [resourceType, 'inspect', name], repositoryRoot).status === 0;
 }
 
 async function configureInstalledPlatform() {
@@ -342,7 +512,7 @@ async function configureInstalledPlatform() {
 }
 
 function waitForPlatformDeployments() {
-  for (const namespace of ['compartment', 'compartment-build']) {
+  for (const namespace of [platformNamespace, `${platformNamespace}-build`]) {
     runCommand(
       'kubectl',
       [
@@ -368,7 +538,7 @@ async function configureK3dRegistryMirror() {
       '--context',
       contextName,
       '--namespace',
-      'compartment',
+      platformNamespace,
       'get',
       'service/compartment-compartment-registry-auth',
       '--output',

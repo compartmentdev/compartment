@@ -13,21 +13,29 @@ import {
 
 const repositoryRoot: string = resolve(__dirname, '../../..');
 const fixtureDirectory: string = resolve(repositoryRoot, 'deploy/e2e/managed-install');
-const managedBuildNamespace: string = 'compartment-managed-e2e-build';
 const kubernetesTimeoutMs: number = 6 * 60_000;
 const brokerStateTimeoutMs: number = 60_000;
-const managedAcmeManagementPort: number = 19_500;
+const managedAcmeManagementPort: number = Number(process.env.COMPARTMENT_E2E_MANAGED_ACME_PORT ?? '19500');
 const managedAcmeManagementTimeoutMs: number = 30_000;
 
-export const managedInstallApiUrl: string = 'https://console.managed.compartment.test:18443';
+const managedHttpsPort: string = process.env.COMPARTMENT_E2E_HTTPS_PORT ?? '18443';
+const managedBrokerPort: string = process.env.COMPARTMENT_E2E_MANAGED_BROKER_PORT ?? '19000';
+
+export const managedInstallApiUrl: string = `https://console.managed.compartment.test:${managedHttpsPort}`;
 export const managedInstallBaseDomain: string = 'managed.compartment.test';
-export const managedInstallBrokerUrl: string = 'http://managed-domain-broker:19000';
-export const managedInstallCertificateAuthorityPath: string = resolve(repositoryRoot, '.compartment/pebble.root.pem');
-export const managedInstallKubeContext: string = 'k3d-compartment-e2e';
-export const managedInstallNamespace: string = 'compartment-managed-e2e';
+export const managedInstallBrokerUrl: string = `http://managed-domain-broker:${managedBrokerPort}`;
+export const managedInstallCertificateAuthorityPath: string = resolve(
+  repositoryRoot,
+  process.env.COMPARTMENT_E2E_PEBBLE_ROOT_PATH ?? '.compartment/pebble.root.pem',
+);
+export const managedInstallKubeContext: string = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e';
+export const managedInstallNamespace: string =
+  process.env.COMPARTMENT_E2E_MANAGED_NAMESPACE ?? 'compartment-managed-e2e';
+const managedBuildNamespace: string = `${managedInstallNamespace}-build`;
 export const managedInstallPublicIpv4: string = ['8', '8', '4', '4'].join('.');
 export const managedInstallReleaseName: string = 'managed-e2e';
-export const managedInstallValuesPath: string = '.compartment/platform-k3d-managed-e2e-values.yaml';
+export const managedInstallValuesPath: string =
+  process.env.COMPARTMENT_E2E_MANAGED_VALUES_PATH ?? '.compartment/platform-k3d-managed-e2e-values.yaml';
 
 interface ManagedDomainAllocationObservation {
   readonly installationId: string;
@@ -113,7 +121,7 @@ export async function readManagedInstallCertificateSubjectAltName(): Promise<str
         {
           ca,
           host: '127.0.0.1',
-          port: 18_443,
+          port: Number(managedHttpsPort),
           rejectUnauthorized: true,
           servername: `console.${managedInstallBaseDomain}`,
         },
@@ -137,8 +145,38 @@ export async function readManagedInstallCertificateSubjectAltName(): Promise<str
   );
 }
 
+export async function probeManagedInstallConsole(): Promise<void> {
+  const ca: Buffer = await readFile(managedInstallCertificateAuthorityPath);
+  await new Promise<void>((resolveProbe: () => void, rejectProbe: (error: Error) => void): void => {
+    const request: ClientRequest = get(
+      {
+        ca,
+        host: '127.0.0.1',
+        path: '/',
+        port: Number(managedHttpsPort),
+        rejectUnauthorized: true,
+        servername: `console.${managedInstallBaseDomain}`,
+      },
+      (response: IncomingMessage): void => {
+        response.resume();
+        if ((response.statusCode ?? 500) >= 400) {
+          rejectProbe(new Error(`Managed console probe returned HTTP ${response.statusCode ?? 'unknown'}.`));
+          return;
+        }
+        resolveProbe();
+      },
+    );
+    request.setTimeout(5_000, (): void => {
+      request.destroy(new Error('Managed console probe timed out.'));
+    });
+    request.once('error', rejectProbe);
+  });
+}
+
 async function writeManagedInstallCertificateAuthority(): Promise<void> {
-  const managementCa: Buffer = await readFile(resolve(repositoryRoot, '.compartment/pebble.minica.pem'));
+  const managementCa: Buffer = await readFile(
+    resolve(repositoryRoot, process.env.COMPARTMENT_E2E_PEBBLE_CA_PATH ?? '.compartment/pebble.minica.pem'),
+  );
   const rootCertificate: Buffer = await readManagedInstallCertificateAuthorityWithRetry(managementCa);
   const certificate: X509Certificate = new X509Certificate(rootCertificate);
   if (certificate.ca !== true || certificate.checkIssued(certificate) !== true) {
