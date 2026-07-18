@@ -45,13 +45,15 @@ describe('platform k3d e2e workflow', () => {
   it('protects shared cache tags while the image security gate scans them', async () => {
     const workflow = parse(await readFile(imageSecurityWorkflowPath, 'utf8'));
     const steps = workflow.jobs['scan-images'].steps;
-    const acquireIndex = steps.findIndex((step) => step.name === 'Acquire shared image security lease');
+    const acquireIndex = steps.findIndex((step) => step.name === 'Acquire shared image cache lock');
     const scanIndex = steps.findIndex((step) => step.name === 'Check self-hosted image vulnerabilities');
-    const releaseIndex = steps.findIndex((step) => step.name === 'Release shared image security lease');
+    const releaseIndex = steps.findIndex((step) => step.name === 'Release shared image cache lock');
 
     expect(acquireIndex).toBeGreaterThan(-1);
     expect(scanIndex).toBeGreaterThan(acquireIndex);
     expect(releaseIndex).toBeGreaterThan(scanIndex);
     expect(steps[releaseIndex].if).toBe('${{ always() }}');
+    expect(steps[acquireIndex].run).toContain('manage-platform-image-cache-lock.mjs acquire');
+    expect(steps[releaseIndex].run).toContain('manage-platform-image-cache-lock.mjs release');
   });
 });

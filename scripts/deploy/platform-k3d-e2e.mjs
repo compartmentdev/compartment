@@ -13,6 +13,7 @@ import {
   isPlatformSourceCacheImageRef,
   isRunOwnedDockerResourceName,
   isRunOwnedImageRef,
+  platformK3dServiceNames,
   readPlatformK3dCleanupStageNames,
   runPlatformK3dCleanupSequence,
   runPlatformK3dCleanupStep,
@@ -20,6 +21,7 @@ import {
   shouldCleanPlatformSourceCacheImage,
   shouldCleanLegacyPlatformResources,
   withPlatformK3dProcessLock,
+  withPlatformImageCacheDockerLock,
 } from './platform-k3d-e2e-support.mjs';
 
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
@@ -55,16 +57,13 @@ const platformImageTag = 'e2e';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const kubernetesReadinessTimeoutSeconds = 240;
 const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
-const platformServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
 const pebbleImageRef =
   'ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199';
 const archiveLoadLockDirectory = join(tmpdir(), 'compartment-platform-k3d-image-load.lock');
 const legacyCleanupLockDirectory = join(tmpdir(), 'compartment-platform-k3d-legacy-cleanup.lock');
-const imageSecurityLeasePrefix = 'compartment-image-security-lease-';
-const imageSecurityLeaseTimeoutMilliseconds = 2 * 60 * 60 * 1_000;
 const builtImageRefsByServiceName = Object.freeze(
   Object.fromEntries(
-    platformServiceNames.map((serviceName) => [
+    platformK3dServiceNames.map((serviceName) => [
       serviceName,
       `ghcr.io/compartmentdev/compartment-${serviceName}:e2e-${clusterName}`,
     ]),
@@ -244,7 +243,7 @@ export function renderManagedPlatformK3dValues(imageDigestsByServiceName, manage
 }
 
 function renderPlatformImageValues(imageDigestsByServiceName) {
-  const imageValues = platformServiceNames
+  const imageValues = platformK3dServiceNames
     .map(
       (serviceName) =>
         `  ${serviceName}:\n    repository: ${registryClusterHost}/compartment-${serviceName}\n    tag: ${platformImageTag}\n    digest: ${readRequiredPlatformImageDigest(imageDigestsByServiceName, serviceName)}`,
@@ -394,7 +393,7 @@ async function prepareAndPushPlatformImages(command) {
 
   try {
     const imageDigestsByServiceName = {};
-    for (const serviceName of platformServiceNames) {
+    for (const serviceName of platformK3dServiceNames) {
       const sourceImageRef = imageRefsByServiceName[serviceName];
       const registryImageRef = `${registryPushHost}/compartment-${serviceName}:${platformImageTag}`;
       runCommand('docker', ['tag', sourceImageRef, registryImageRef], repositoryRoot);
@@ -527,10 +526,10 @@ async function buildPlatformImages() {
 
 async function loadPlatformImageArchives(imageArchiveDir) {
   return await withPlatformK3dProcessLock(archiveLoadLockDirectory, async () => {
-    cleanHistoricalPlatformSourceImages();
+    await cleanHistoricalPlatformSourceImages();
     const imageRefsByServiceName = {};
     try {
-      for (const serviceName of platformServiceNames) {
+      for (const serviceName of platformK3dServiceNames) {
         const archivePath = `${imageArchiveDir}/${serviceName}.tar`;
         const loadOutput = captureCommand('docker', ['load', '--input', archivePath], repositoryRoot);
         const [imageRef, ...extraImageRefs] = parseLoadedImageRefs(loadOutput);
@@ -552,50 +551,24 @@ async function loadPlatformImageArchives(imageArchiveDir) {
   });
 }
 
-function cleanHistoricalPlatformSourceImages() {
-  if (hasActiveImageSecurityLease()) {
-    return;
-  }
-  const currentCommitSha = captureCommand('git', ['rev-parse', 'HEAD'], repositoryRoot).trim();
-  const imageRefs = captureCommand('docker', ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'], repositoryRoot)
-    .split('\n')
-    .map((imageRef) => imageRef.trim())
-    .filter((imageRef) => imageRef !== '' && isPlatformSourceCacheImageRef(imageRef))
-    .filter((imageRef) => !imageRef.endsWith(`:sha-${currentCommitSha}`))
-    .filter((imageRef) => {
-      const createdAt = captureCommand(
-        'docker',
-        ['image', 'inspect', '--format', '{{.Created}}', imageRef],
-        repositoryRoot,
-      );
-      return shouldCleanPlatformSourceCacheImage(imageRef, createdAt);
-    });
-  removeImageRefs(imageRefs);
-}
-
-function hasActiveImageSecurityLease() {
-  let hasActiveLease = false;
-  const leaseNames = captureCommand('docker', ['volume', 'ls', '--format', '{{.Name}}'], repositoryRoot)
-    .split('\n')
-    .map((name) => name.trim())
-    .filter((name) => name.startsWith(imageSecurityLeasePrefix));
-  for (const leaseName of leaseNames) {
-    const createdAt = captureCommand(
-      'docker',
-      ['volume', 'inspect', '--format', '{{.CreatedAt}}', leaseName],
-      repositoryRoot,
-    );
-    const createdAtMilliseconds = Date.parse(createdAt);
-    if (
-      Number.isFinite(createdAtMilliseconds) &&
-      createdAtMilliseconds <= Date.now() - imageSecurityLeaseTimeoutMilliseconds
-    ) {
-      runCommand('docker', ['volume', 'rm', '--force', leaseName], repositoryRoot);
-    } else {
-      hasActiveLease = true;
-    }
-  }
-  return hasActiveLease;
+async function cleanHistoricalPlatformSourceImages() {
+  await withPlatformImageCacheDockerLock(async () => {
+    const currentCommitSha = captureCommand('git', ['rev-parse', 'HEAD'], repositoryRoot).trim();
+    const imageRefs = captureCommand('docker', ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'], repositoryRoot)
+      .split('\n')
+      .map((imageRef) => imageRef.trim())
+      .filter((imageRef) => imageRef !== '' && isPlatformSourceCacheImageRef(imageRef))
+      .filter((imageRef) => !imageRef.endsWith(`:sha-${currentCommitSha}`))
+      .filter((imageRef) => {
+        const createdAt = captureCommand(
+          'docker',
+          ['image', 'inspect', '--format', '{{.Created}}', imageRef],
+          repositoryRoot,
+        );
+        return shouldCleanPlatformSourceCacheImage(imageRef, createdAt);
+      });
+    removeImageRefs(imageRefs);
+  });
 }
 
 function downPlatform() {

@@ -48,6 +48,7 @@
     "eslint.config.mjs!",
     "eslint.duplicates.config.mjs!",
     "scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs!",
+    "scripts/deploy/manage-platform-image-cache-lock.mjs!",
     // The shard runner starts these executable gates by validated repo-local paths.
     "scripts/deploy/collect-platform-k3d-e2e-diagnostics.mjs!",
     "scripts/deploy/run-platform-k3d-product-log-gate.mjs!",

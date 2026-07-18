@@ -2,12 +2,21 @@ import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:f
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
+import { captureCommandResult, runCommand } from '../lib/command.mjs';
+import { readRepositoryRoot } from '../lib/repository-root.mjs';
+
+const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const processLockRetryMilliseconds = 100;
 const processLockTimeoutMilliseconds = 30 * 60 * 1_000;
 const sourceCacheRetentionMilliseconds = 24 * 60 * 60 * 1_000;
-const platformServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
-const platformSourceCacheImagePattern =
-  /^ghcr\.io\/compartmentdev\/compartment-(?:api|worker|edge|caddy):sha-[0-9a-f]{40}$/u;
+const imageCacheLockName = 'compartment-platform-image-cache-lock';
+const imageCacheLockLabel = 'compartment.image-cache-lock';
+const imageCacheLockTimeoutMilliseconds = 2 * 60 * 60 * 1_000;
+export const platformK3dServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
+const platformSourceCacheImagePattern = new RegExp(
+  `^ghcr\\.io/compartmentdev/compartment-(?:${platformK3dServiceNames.join('|')}):sha-[0-9a-f]{40}$`,
+  'u',
+);
 const platformCleanupStageNames = Object.freeze([
   'cluster',
   'registry',
@@ -41,9 +50,72 @@ export function isRunOwnedImageRef(imageRef, environment) {
   if (imageRef.startsWith(`localhost:${environment.registryHostPort}/compartment-`)) {
     return true;
   }
-  return platformServiceNames.some(
+  return platformK3dServiceNames.some(
     (serviceName) => imageRef === `ghcr.io/compartmentdev/compartment-${serviceName}:e2e-${environment.clusterName}`,
   );
+}
+
+export async function withPlatformImageCacheDockerLock(operation) {
+  const releaseLock = await acquirePlatformImageCacheDockerLock();
+  try {
+    return await operation();
+  } finally {
+    releaseLock();
+  }
+}
+
+export async function acquirePlatformImageCacheDockerLock() {
+  const attempts = Math.ceil(processLockTimeoutMilliseconds / 1_000);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const createResult = captureCommandResult(
+      'docker',
+      ['network', 'create', '--label', `${imageCacheLockLabel}=true`, imageCacheLockName],
+      repositoryRoot,
+    );
+    if (createResult.status === 0) {
+      return releasePlatformImageCacheDockerLock;
+    }
+    const lock = readPlatformImageCacheDockerLock();
+    if (lock === undefined) {
+      throw new Error(`Unable to create the platform image cache lock: ${createResult.stderr}`);
+    }
+    if (lock.Labels?.[imageCacheLockLabel] !== 'true') {
+      throw new Error(`Refusing to replace unowned Docker network ${imageCacheLockName}.`);
+    }
+    const createdAtMilliseconds = Date.parse(lock.Created);
+    if (
+      Number.isFinite(createdAtMilliseconds) &&
+      createdAtMilliseconds <= Date.now() - imageCacheLockTimeoutMilliseconds
+    ) {
+      runCommand('docker', ['network', 'rm', imageCacheLockName], repositoryRoot);
+      continue;
+    }
+    await delay(1_000);
+  }
+  throw new Error(`Timed out waiting for Docker network ${imageCacheLockName}.`);
+}
+
+export function releasePlatformImageCacheDockerLock() {
+  const lock = readPlatformImageCacheDockerLock();
+  if (lock === undefined) {
+    return;
+  }
+  if (lock.Labels?.[imageCacheLockLabel] !== 'true') {
+    throw new Error(`Refusing to remove unowned Docker network ${imageCacheLockName}.`);
+  }
+  runCommand('docker', ['network', 'rm', imageCacheLockName], repositoryRoot);
+}
+
+function readPlatformImageCacheDockerLock() {
+  const result = captureCommandResult(
+    'docker',
+    ['network', 'inspect', '--format', '{{json .}}', imageCacheLockName],
+    repositoryRoot,
+  );
+  if (result.status !== 0) {
+    return undefined;
+  }
+  return JSON.parse(result.stdout);
 }
 
 export function shouldCleanLegacyPlatformResources(environment) {
