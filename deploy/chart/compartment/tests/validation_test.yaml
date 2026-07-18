@@ -110,6 +110,47 @@ tests:
       - failedTemplate:
           errorPattern: acmeEmail.*oneOf
 
+  - it: rejects a non-positive rollback retention limit through the values schema
+    set:
+      platform:
+        rollbackRetentionLimit: 0
+    asserts:
+      - failedTemplate:
+          errorPattern: rollbackRetentionLimit.*oneOf
+
+  - it: rejects a non-positive auth throttle limit through the values schema
+    set:
+      platform:
+        authThrottle:
+          login:
+            route:
+              limit: 0
+    asserts:
+      - failedTemplate:
+          errorPattern: authThrottle.login.route.limit.*minimum
+
+  - it: rejects an empty auth throttle duration through the values schema
+    set:
+      platform:
+        authThrottle:
+          login:
+            source:
+              cooldown: ''
+    asserts:
+      - failedTemplate:
+          errorPattern: authThrottle.login.source.cooldown.*minLength
+
+  - it: rejects an unknown auth throttle field through the values schema
+    set:
+      platform:
+        authThrottle:
+          login:
+            route:
+              maxRequests: 30
+    asserts:
+      - failedTemplate:
+          errorPattern: authThrottle/login/route.*additional properties
+
   - it: requires an ACME email for custom certificate TLS
     set:
       platform:

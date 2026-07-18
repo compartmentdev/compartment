@@ -56,6 +56,13 @@ At minimum, decide and persist these values:
 - verified digests for the four platform images;
 - the values under `secrets`, supplied through the installation's secret-management workflow.
 
+Use `platform.rollbackRetentionLimit` to set the install-wide number of rollback images retained for organizations that
+do not set their own policy. Leave it empty, as it is by default, to retain rollback images indefinitely. Authentication
+throttles live under `platform.authThrottle.{login,activation,passwordReset}`. Each flow has a `route` window and limit;
+login also has `source`, `account`, and `sourceAccount` scopes, while activation and password reset have `source`,
+`subject`, and `sourceSubject` scopes. Those scoped controls add a `cooldown`. The values in `values.yaml` preserve the
+default protection policy; change them only when your traffic and incident-response requirements justify it.
+
 Managed TLS uses typed `platform.acmeIssuer`, `platform.acmeCaUrl`, `platform.acmeEmail`, and
 `platform.managedDomainBrokerUrl` values. The chart owns the ACME issuer and CA defaults; the CLI supplies the owner
 email and broker credential. At runtime the token is held by the retained install-state Secret and projected into API

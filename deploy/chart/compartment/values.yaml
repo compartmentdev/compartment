@@ -94,8 +94,25 @@ platform:
   auditFileSinkRotateInterval: 1d
   auditFileSinkRotateSize: 64M
   auditFileSinkRetentionFiles: 30
+  rollbackRetentionLimit: ''
   sourceArchiveMaxBytes: 104857600
   sessionTtl: 7d
+  authThrottle:
+    login:
+      route: { window: 1m, limit: 30 }
+      source: { window: 5m, limit: 20, cooldown: 15m }
+      account: { window: 10m, limit: 10, cooldown: 30m }
+      sourceAccount: { window: 1m, limit: 5, cooldown: 10m }
+    activation:
+      route: { window: 1m, limit: 10 }
+      source: { window: 10m, limit: 15, cooldown: 30m }
+      subject: { window: 30m, limit: 5, cooldown: 60m }
+      sourceSubject: { window: 10m, limit: 3, cooldown: 30m }
+    passwordReset:
+      route: { window: 1m, limit: 10 }
+      source: { window: 10m, limit: 15, cooldown: 30m }
+      subject: { window: 30m, limit: 5, cooldown: 60m }
+      sourceSubject: { window: 10m, limit: 3, cooldown: 30m }
   rolloutMarker: ''
 
 postgres:

@@ -753,6 +753,303 @@ tests:
         template: edge.yaml
         documentIndex: 1
 
+  - it: preserves the default retention and auth throttle policy
+    asserts:
+      - equal:
+          path: data.COMPARTMENT_ROLLBACK_RETENTION_LIMIT
+          value: ''
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_ROUTE_MAX_REQUESTS
+          value: '30'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_ROUTE_WINDOW
+          value: 1m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_MAX_FAILURES
+          value: '20'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_WINDOW
+          value: 5m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_BLOCK
+          value: 15m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_ACCOUNT_MAX_FAILURES
+          value: '10'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_ACCOUNT_WINDOW
+          value: 10m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_ACCOUNT_BLOCK
+          value: 30m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_ACCOUNT_MAX_FAILURES
+          value: '5'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_ACCOUNT_WINDOW
+          value: 1m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_ACCOUNT_BLOCK
+          value: 10m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_ROUTE_MAX_REQUESTS
+          value: '10'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_ROUTE_WINDOW
+          value: 1m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_MAX_FAILURES
+          value: '15'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_WINDOW
+          value: 10m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_BLOCK
+          value: 30m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SUBJECT_MAX_FAILURES
+          value: '5'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SUBJECT_WINDOW
+          value: 30m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SUBJECT_BLOCK
+          value: 60m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_SUBJECT_MAX_FAILURES
+          value: '3'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_SUBJECT_WINDOW
+          value: 10m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_SUBJECT_BLOCK
+          value: 30m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_ROUTE_MAX_REQUESTS
+          value: '10'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_ROUTE_WINDOW
+          value: 1m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_MAX_FAILURES
+          value: '15'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_WINDOW
+          value: 10m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_BLOCK
+          value: 30m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SUBJECT_MAX_FAILURES
+          value: '5'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SUBJECT_WINDOW
+          value: 30m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SUBJECT_BLOCK
+          value: 60m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_MAX_FAILURES
+          value: '3'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_WINDOW
+          value: 10m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_BLOCK
+          value: 30m
+        template: configmap.yaml
+
+  - it: maps operator retention and auth throttle overrides
+    set:
+      platform:
+        rollbackRetentionLimit: 17
+        authThrottle:
+          login:
+            route: { window: 2m, limit: 31 }
+            source: { window: 6m, limit: 21, cooldown: 16m }
+            account: { window: 11m, limit: 11, cooldown: 31m }
+            sourceAccount: { window: 3m, limit: 6, cooldown: 12m }
+          activation:
+            route: { window: 4m, limit: 12 }
+            source: { window: 13m, limit: 16, cooldown: 32m }
+            subject: { window: 33m, limit: 7, cooldown: 61m }
+            sourceSubject: { window: 14m, limit: 4, cooldown: 34m }
+          passwordReset:
+            route: { window: 5m, limit: 13 }
+            source: { window: 15m, limit: 17, cooldown: 35m }
+            subject: { window: 36m, limit: 8, cooldown: 62m }
+            sourceSubject: { window: 16m, limit: 9, cooldown: 37m }
+    asserts:
+      - equal:
+          path: data.COMPARTMENT_ROLLBACK_RETENTION_LIMIT
+          value: '17'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_ROUTE_MAX_REQUESTS
+          value: '31'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_ROUTE_WINDOW
+          value: 2m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_MAX_FAILURES
+          value: '21'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_WINDOW
+          value: 6m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_BLOCK
+          value: 16m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_ACCOUNT_MAX_FAILURES
+          value: '11'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_ACCOUNT_WINDOW
+          value: 11m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_ACCOUNT_BLOCK
+          value: 31m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_ACCOUNT_MAX_FAILURES
+          value: '6'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_ACCOUNT_WINDOW
+          value: 3m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_LOGIN_SOURCE_ACCOUNT_BLOCK
+          value: 12m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_ROUTE_MAX_REQUESTS
+          value: '12'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_ROUTE_WINDOW
+          value: 4m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_MAX_FAILURES
+          value: '16'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_WINDOW
+          value: 13m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_BLOCK
+          value: 32m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SUBJECT_MAX_FAILURES
+          value: '7'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SUBJECT_WINDOW
+          value: 33m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SUBJECT_BLOCK
+          value: 61m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_SUBJECT_MAX_FAILURES
+          value: '4'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_SUBJECT_WINDOW
+          value: 14m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_ACTIVATE_SOURCE_SUBJECT_BLOCK
+          value: 34m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_ROUTE_MAX_REQUESTS
+          value: '13'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_ROUTE_WINDOW
+          value: 5m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_MAX_FAILURES
+          value: '17'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_WINDOW
+          value: 15m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_BLOCK
+          value: 35m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SUBJECT_MAX_FAILURES
+          value: '8'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SUBJECT_WINDOW
+          value: 36m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SUBJECT_BLOCK
+          value: 62m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_MAX_FAILURES
+          value: '9'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_WINDOW
+          value: 16m
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_BLOCK
+          value: 37m
+        template: configmap.yaml
+
   - it: renders a local HTTP installation for a localhost domain
     set:
       platform:
@@ -1057,7 +1354,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: &managedDomainChecksum 3cf387830dae45829f0cdaafdd562eb058930cdfee6c0d3b1eef5271b5d1faeb
+          value: &managedDomainChecksum 8dc546e5c913911eead60709fcb1f9d6521384b71ea7afa1cb6fb927f42d8220
         template: api.yaml
         documentIndex: 1
       - equal:
@@ -1072,7 +1369,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: &stableConfigChecksum ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
+          value: &stableConfigChecksum 5577ae5f1b0da20845dac495d0d5674ba977102713d2ea443d44de9027f3ced0
         template: worker.yaml
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
@@ -1351,7 +1648,7 @@ tests:
         template: project-provisioner.yaml
       - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: &activeDomainChecksum 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
+          value: &activeDomainChecksum 9665b34c0821a1ad73a2a563a795b154e2a9306358487e3d7e0cea679fed8f52
         template: api.yaml
         documentIndex: 1
       - equal:

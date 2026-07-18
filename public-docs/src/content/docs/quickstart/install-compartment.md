@@ -60,6 +60,12 @@ storage:
   storageClass: fast-rwo
 ```
 
+Optionally set `platform.rollbackRetentionLimit` to a positive integer for the install-wide rollback-image limit
+inherited by organizations without an override. Its empty default retains rollback images indefinitely. Tune login,
+account activation, and password-reset throttles under `platform.authThrottle.{login,activation,passwordReset}`. Each
+flow exposes a route `window` and `limit`; source and account or subject scopes also expose a `cooldown`. Keep the chart
+defaults unless your traffic and incident-response requirements call for different protection.
+
 Select one release with the `images.*.tag` values. Before Helm changes the release, the CLI verifies all four platform
 images against Compartment's GitHub Actions signing identity, resolves each tag to its immutable digest, and deploys
 only those digests. An unsigned image or an image signed by another identity stops the install before activation.

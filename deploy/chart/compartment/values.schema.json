@@ -52,6 +52,30 @@
         },
         "managedDomainBrokerUrl": {
           "oneOf": [{ "const": "" }, { "type": "string", "pattern": "^https?://[^/?#@]+/?$" }]
+        },
+        "rollbackRetentionLimit": {
+          "description": "Maximum retained rollback images inherited by organizations. Leave empty for indefinite retention.",
+          "oneOf": [{ "const": "" }, { "type": "integer", "minimum": 1 }]
+        },
+        "authThrottle": {
+          "description": "Authentication throttle windows, limits, and cooldowns.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["login", "activation", "passwordReset"],
+          "properties": {
+            "login": {
+              "description": "Login throttles by route, source, account, and source-account pair.",
+              "$ref": "#/definitions/loginAuthThrottle"
+            },
+            "activation": {
+              "description": "Account activation throttles by route, source, subject, and source-subject pair.",
+              "$ref": "#/definitions/subjectAuthThrottle"
+            },
+            "passwordReset": {
+              "description": "Password-reset throttles by route, source, subject, and source-subject pair.",
+              "$ref": "#/definitions/subjectAuthThrottle"
+            }
+          }
         }
       }
     },
@@ -157,6 +181,47 @@
         "tag": { "type": "string", "minLength": 1 },
         "digest": { "type": "string", "pattern": "^$|^sha256:[a-f0-9]{64}$" },
         "pullPolicy": { "type": "string" }
+      }
+    },
+    "throttleRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["window", "limit"],
+      "properties": {
+        "window": { "description": "Measurement window duration.", "type": "string", "minLength": 1 },
+        "limit": { "description": "Maximum requests in the window.", "type": "integer", "minimum": 1 }
+      }
+    },
+    "throttleCooldownScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["window", "limit", "cooldown"],
+      "properties": {
+        "window": { "description": "Failure measurement window duration.", "type": "string", "minLength": 1 },
+        "limit": { "description": "Maximum failures in the window.", "type": "integer", "minimum": 1 },
+        "cooldown": { "description": "Block duration after the limit is reached.", "type": "string", "minLength": 1 }
+      }
+    },
+    "loginAuthThrottle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route", "source", "account", "sourceAccount"],
+      "properties": {
+        "route": { "$ref": "#/definitions/throttleRoute" },
+        "source": { "$ref": "#/definitions/throttleCooldownScope" },
+        "account": { "$ref": "#/definitions/throttleCooldownScope" },
+        "sourceAccount": { "$ref": "#/definitions/throttleCooldownScope" }
+      }
+    },
+    "subjectAuthThrottle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route", "source", "subject", "sourceSubject"],
+      "properties": {
+        "route": { "$ref": "#/definitions/throttleRoute" },
+        "source": { "$ref": "#/definitions/throttleCooldownScope" },
+        "subject": { "$ref": "#/definitions/throttleCooldownScope" },
+        "sourceSubject": { "$ref": "#/definitions/throttleCooldownScope" }
       }
     }
   }
