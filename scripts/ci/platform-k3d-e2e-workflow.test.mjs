@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
+import { platformK3dShardNames } from '../deploy/platform-k3d-e2e-shards.mjs';
+
 const workflowPath = new URL('../../.github/workflows/_platform-k3d-e2e.yml', import.meta.url);
 const ciWorkflowPath = new URL('../../.github/workflows/ci.yml', import.meta.url);
 const imageSecurityWorkflowPath = new URL(
@@ -16,7 +18,7 @@ describe('platform k3d e2e workflow', () => {
 
     expect(job.strategy).toEqual({
       'fail-fast': false,
-      matrix: { shard: ['managed-install', 'user-flow', 'build-gates'] },
+      matrix: { shard: platformK3dShardNames },
     });
     expect(job.name).toContain('${{ matrix.shard }}');
     const runStep = job.steps.find((step) => step.name === 'Run isolated k3d e2e shard');

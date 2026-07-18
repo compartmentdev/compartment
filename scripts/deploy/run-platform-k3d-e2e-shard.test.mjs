@@ -10,14 +10,15 @@ import {
   readPlatformK3dShardSuites,
   runWithPlatformK3dCleanup,
 } from './platform-k3d-e2e-shard-support.mjs';
+import { platformK3dShardNames } from './platform-k3d-e2e-shards.mjs';
 
 describe('platform k3d e2e shard runner', () => {
   it('defines isolated names, ports, namespaces, and state for every shard', () => {
-    const environments = ['managed-install', 'user-flow', 'build-gates'].map((shard) =>
-      buildPlatformK3dShardEnvironment(shard, {}),
-    );
+    const environments = platformK3dShardNames.map((shard) => buildPlatformK3dShardEnvironment(shard, {}));
 
-    expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_CLUSTER_NAME))).toHaveLength(3);
+    expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_CLUSTER_NAME))).toHaveLength(
+      platformK3dShardNames.length,
+    );
     for (const name of [
       'COMPARTMENT_E2E_REGISTRY_NAME',
       'COMPARTMENT_E2E_REGISTRY_PORT',
@@ -34,7 +35,7 @@ describe('platform k3d e2e shard runner', () => {
       'COMPARTMENT_E2E_PEBBLE_CA_PATH',
       'COMPARTMENT_E2E_PEBBLE_ROOT_PATH',
     ]) {
-      expect(new Set(environments.map((env) => env[name])), name).toHaveLength(3);
+      expect(new Set(environments.map((env) => env[name])), name).toHaveLength(platformK3dShardNames.length);
     }
   });
 
@@ -57,17 +58,28 @@ describe('platform k3d e2e shard runner', () => {
     });
   });
 
+  it('keeps managed-install host ports aligned with its fixed service ports', () => {
+    const environment = buildPlatformK3dShardEnvironment('managed-install', {});
+
+    expect(environment.COMPARTMENT_E2E_MANAGED_ACME_PORT).toBe('19500');
+    expect(environment.COMPARTMENT_E2E_MANAGED_BROKER_PORT).toBe('19000');
+  });
+
   it('rejects unknown or extra shard arguments', () => {
     expect(readPlatformK3dShard(['user-flow'])).toBe('user-flow');
     expect(() => readPlatformK3dShard([])).toThrow('Usage:');
     expect(() => readPlatformK3dShard(['unknown'])).toThrow('Usage:');
+    expect(() => readPlatformK3dShard(['toString'])).toThrow('Usage:');
     expect(() => readPlatformK3dShard(['user-flow', 'extra'])).toThrow('Usage:');
+    expect(() => readPlatformK3dShardSuites('constructor')).toThrow('Unknown platform k3d e2e shard: constructor');
   });
 
   it('assigns every existing e2e suite and gate to one explicit shard', () => {
+    expect(readPlatformK3dShardSuites('build-matrix-a')).toEqual(['install', 'build-matrix-a']);
+    expect(readPlatformK3dShardSuites('build-matrix-b')).toEqual(['install', 'build-matrix-b']);
+    expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user']);
+    expect(readPlatformK3dShardSuites('console')).toEqual(['install', 'console', 'g1', 'product-log']);
     expect(readPlatformK3dShardSuites('managed-install')).toEqual(['managed-install', 'retained-state']);
-    expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user', 'console']);
-    expect(readPlatformK3dShardSuites('build-gates')).toEqual(['install', 'build-matrix', 'g1', 'product-log']);
   });
 
   it('cleans successful and failed runs by default while preserving the original failure', async () => {

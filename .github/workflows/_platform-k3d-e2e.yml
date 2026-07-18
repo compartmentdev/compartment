@@ -23,9 +23,11 @@ jobs:
       fail-fast: false
       matrix:
         shard:
-          - managed-install
+          - build-matrix-a
+          - build-matrix-b
           - user-flow
-          - build-gates
+          - console
+          - managed-install
     env:
       COMPARTMENT_E2E_IMAGE_ARCHIVE_DIR: ./.compartment/self-hosted-image-cache
       COMPARTMENT_E2E_KEEP_ON_FAILURE: ${{ vars.COMPARTMENT_E2E_KEEP_ON_FAILURE || '0' }}

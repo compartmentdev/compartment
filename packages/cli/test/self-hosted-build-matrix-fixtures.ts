@@ -43,6 +43,8 @@ export interface SelfHostedRuntimeCommandExpectation {
   readonly expectedText: string;
 }
 
+export const selfHostedStaticPoisonBuildFixtureName: string = 'static-poison';
+
 export const selfHostedSingleServiceBuildFixtures: readonly SelfHostedSingleServiceBuildFixture[] = [
   {
     directory: resolve(__dirname, '../../../examples/dockerfile'),
@@ -201,7 +203,7 @@ export async function createSelfHostedStaticPoisonDockerfileFixture(
       command: ['jq', '--version'],
       expectedText: 'jq-',
     },
-    name: 'static-poison',
+    name: selfHostedStaticPoisonBuildFixtureName,
     unexpectedLogTexts: ['temporary static fixture must not build through service-local Dockerfile autodetect'],
   };
 }

@@ -100,8 +100,10 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
     } else if (suite === 'console') {
       await runInterruptibleCommand('pnpm', ['--filter', '@compartment/console', 'test:e2e:install'], env, signal);
       await runCliE2eSuite(env, 'test/console.e2e.test.ts', signal);
-    } else if (suite === 'build-matrix') {
-      await runCliE2eSuite(env, 'test/system-build-matrix.e2e.test.ts', signal);
+    } else if (suite === 'build-matrix-a') {
+      await runBuildMatrixPartition(env, 'a', signal);
+    } else if (suite === 'build-matrix-b') {
+      await runBuildMatrixPartition(env, 'b', signal);
     } else if (suite === 'g1') {
       await runCliE2eSuite(env, 'test/platform-k3d-g1.e2e.test.ts', signal);
     } else if (suite === 'product-log') {
@@ -110,6 +112,17 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
       throw new Error(`Unknown platform k3d e2e suite: ${suite}`);
     }
   }
+}
+
+async function runBuildMatrixPartition(env, partition, signal) {
+  await runCliE2eSuite(
+    {
+      ...env,
+      COMPARTMENT_E2E_BUILD_MATRIX_PARTITION: partition,
+    },
+    'test/system-build-matrix.e2e.test.ts',
+    signal,
+  );
 }
 
 async function runCliE2eSuite(env, include, signal) {
