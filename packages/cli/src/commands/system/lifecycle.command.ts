@@ -14,8 +14,8 @@ import {
 import type { KubernetesOperatorTarget } from '../../services/kubernetes-operator.service.types';
 import type { CliCommandDependencies } from '../command.types';
 import {
-  addKubernetesOperatorReleaseOptions,
   addKubernetesOperatorTargetOptions,
+  addKubernetesSystemUpdateOptions,
   resolveKubernetesOperatorTarget,
   resolveKubernetesSystemUpdateVersion,
 } from './system.command.options';
@@ -53,7 +53,7 @@ function registerRestartCommand(program: Command, dependencies: CliCommandDepend
 }
 
 function registerUpdateCommand(program: Command, dependencies: CliCommandDependencies): void {
-  addKubernetesOperatorReleaseOptions(
+  addKubernetesSystemUpdateOptions(
     program
       .command('update')
       .description('Verify and update the Kubernetes platform images')
@@ -62,6 +62,7 @@ function registerUpdateCommand(program: Command, dependencies: CliCommandDepende
     const target: KubernetesOperatorTarget = resolveKubernetesOperatorTarget(options);
     const result: KubernetesSystemUpdateResponse = await updateKubernetesSystem({
       ...target,
+      valuesPath: options.values,
       version: resolveKubernetesSystemUpdateVersion(options.version),
     });
     renderOutput(dependencies.io, options.output, result, createUpdateMessage(result));

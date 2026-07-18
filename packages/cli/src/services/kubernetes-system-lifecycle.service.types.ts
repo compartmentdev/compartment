@@ -2,6 +2,7 @@ import type { JsonValue } from '@compartment/utils';
 import type { KubernetesOperatorTarget } from './kubernetes-operator.service.types';
 
 export interface KubernetesSystemUpdateInput extends KubernetesOperatorTarget {
+  valuesPath: string;
   version: string;
 }
 

@@ -2,7 +2,7 @@ import type { JsonValue } from '@compartment/utils';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
-import type { KubernetesReleaseValuesInput } from './kubernetes-image-trust.service.types';
+import type { KubernetesReleaseValuesInput } from './kubernetes-release-values.service.types';
 
 export async function readKubernetesReleaseValues(input: KubernetesReleaseValuesInput): Promise<JsonValue> {
   const result: CommandResult = await runCommand(buildHelmGetReleaseValuesCommand(input));

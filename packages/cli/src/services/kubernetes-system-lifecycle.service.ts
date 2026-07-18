@@ -61,10 +61,9 @@ export async function restartKubernetesSystem(
 export async function updateKubernetesSystem(
   input: KubernetesSystemUpdateInput,
 ): Promise<KubernetesSystemUpdateResponse> {
-  const valuesPath: string = requireUpdateValuesPath(input.valuesPath);
   const materializedDirectory: string = await createKubernetesInstallMaterializedDirectory();
   try {
-    await applyMaterializedKubernetesUpdate(input, valuesPath, materializedDirectory);
+    await applyMaterializedKubernetesUpdate(input, materializedDirectory);
   } finally {
     await rm(materializedDirectory, { force: true, recursive: true });
   }
@@ -92,7 +91,6 @@ export async function getKubernetesSystemStatus(
 
 async function applyMaterializedKubernetesUpdate(
   input: KubernetesSystemUpdateInput,
-  valuesPath: string,
   materializedDirectory: string,
 ): Promise<void> {
   const chartPath: string = await resolveKubernetesChartPath(input, materializedDirectory);
@@ -103,11 +101,11 @@ async function applyMaterializedKubernetesUpdate(
     ...(input.kubeContext === undefined ? {} : { kubeContext: input.kubeContext }),
     namespace: input.namespace,
     outputPath: imageTrustValuesPath,
-    operatorValuesPaths: [valuesPath, updateValuesPath],
+    operatorValuesPaths: [input.valuesPath, updateValuesPath],
     releaseName: input.releaseName,
   });
   const result: CommandResult = await runCommand(
-    buildKubernetesUpdateHelmCommand(input, chartPath, valuesPath, updateValuesPath, imageTrustValuesPath),
+    buildKubernetesUpdateHelmCommand(input, chartPath, updateValuesPath, imageTrustValuesPath),
   );
   if (result.exitCode !== 0) {
     throw new Error(`Helm platform update failed: ${readCommandOutput(result)}`);
@@ -117,7 +115,6 @@ async function applyMaterializedKubernetesUpdate(
 function buildKubernetesUpdateHelmCommand(
   input: KubernetesSystemUpdateInput,
   chartPath: string,
-  valuesPath: string,
   updateValuesPath: string,
   imageTrustValuesPath: string,
 ): string[] {
@@ -129,7 +126,7 @@ function buildKubernetesUpdateHelmCommand(
     '--namespace',
     input.namespace,
     '--reuse-values',
-    ...buildKubernetesHelmValuesArgs([valuesPath, updateValuesPath, imageTrustValuesPath]),
+    ...buildKubernetesHelmValuesArgs([input.valuesPath, updateValuesPath, imageTrustValuesPath]),
     '--rollback-on-failure',
     '--wait',
     '--wait-for-jobs',
@@ -153,11 +150,4 @@ async function runRequiredKubectl(
   if (result.exitCode !== 0) {
     throw new Error(`${errorMessage} ${readCommandOutput(result)}`.trim());
   }
-}
-
-function requireUpdateValuesPath(value: string | undefined): string {
-  if (value === undefined || value.trim() === '') {
-    throw new Error('--values is required for a Kubernetes platform update.');
-  }
-  return value;
 }

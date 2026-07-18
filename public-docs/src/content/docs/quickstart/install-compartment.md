@@ -143,7 +143,7 @@ The bundled registry is addressed inside the cluster as `<release-fullname>-regi
 Kubelets do not use cluster DNS for image pulls, so configure the container runtime on every node with an equivalent
 registry mirror or route before deploying applications. The chart cannot mutate node-level container-runtime config.
 
-Verify the migration Job and platform workloads before inviting more users:
+Verify the Helm release and platform workload readiness before inviting more users:
 
 ```bash
 compartment system status \

@@ -29,6 +29,7 @@ export interface IssuePasswordResetCommandOptions extends KubernetesOperatorComm
 }
 
 export interface KubernetesSystemUpdateCommandOptions extends KubernetesOperatorCommandOptions {
+  values: string;
   version?: string | undefined;
 }
 

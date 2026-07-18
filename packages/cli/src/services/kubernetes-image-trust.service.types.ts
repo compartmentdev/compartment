@@ -26,12 +26,6 @@ export interface KubernetesReleaseImageTrustInput {
   releaseName: string;
 }
 
-export interface KubernetesReleaseValuesInput {
-  kubeContext?: string | undefined;
-  namespace: string;
-  releaseName: string;
-}
-
 export interface KubernetesInstallImageTrustInput {
   chartPath: string;
   operatorValuesPath: string;

@@ -23,6 +23,12 @@ export function addKubernetesOperatorReleaseOptions(command: Command): Command {
     .option('--chart <path>', 'Compartment Helm chart path for a source CLI build');
 }
 
+export function addKubernetesSystemUpdateOptions(command: Command): Command {
+  return addKubernetesOperatorTargetOptions(command)
+    .requiredOption('--values <path>', 'Operator values file for the Compartment Helm chart')
+    .option('--chart <path>', 'Compartment Helm chart path for a source CLI build');
+}
+
 export function addKubernetesOperatorTargetOptions(command: Command): Command {
   return command
     .option('--kube-context <name>', 'Kubernetes context')
