@@ -1,5 +1,5 @@
-{{- include "compartment.applyRetainedInstallState" . -}}
-{{- if eq .Values.platform.startupStage "full" }}
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if eq $installState.effective.platform.startupStage "full" }}
 apiVersion: v1
 kind: Service
 metadata:

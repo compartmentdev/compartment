@@ -15,7 +15,8 @@
 {{- end }}
 
 {{- define "compartment.customTlsSecretName" -}}
-{{- default (printf "%s-custom-tls" (include "compartment.fullname" .)) .Values.customTls.existingSecret -}}
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- default (printf "%s-custom-tls" (include "compartment.fullname" .)) $installState.effective.customTls.existingSecret -}}
 {{- end }}
 
 {{- define "compartment.installStateSecretName" -}}
@@ -27,115 +28,135 @@
 {{- end -}}
 {{- end }}
 
-{{- define "compartment.applyRetainedInstallState" -}}
+{{- define "compartment.installStateFields" -}}
+- secretKey: installation-id
+  valuesSection: platform
+  valueKey: installationId
+  policy: stable
+- secretKey: public-ingress-ipv4
+  valuesSection: platform
+  valueKey: publicIngressIpv4
+  policy: stable
+- secretKey: public-ingress-ipv6
+  valuesSection: platform
+  valueKey: publicIngressIpv6
+  policy: stable
+- secretKey: acme-email
+  valuesSection: platform
+  valueKey: acmeEmail
+  policy: stable
+- secretKey: managed-domain-broker-url
+  valuesSection: platform
+  valueKey: managedDomainBrokerUrl
+  policy: stable
+- secretKey: managed-domain-broker-token
+  valuesSection: secrets
+  valueKey: managedDomainBrokerToken
+  policy: stable
+- secretKey: domain-mode
+  valuesSection: platform
+  valueKey: domainMode
+  policy: domain
+- secretKey: base-domain
+  valuesSection: platform
+  valueKey: baseDomain
+  policy: domain
+- secretKey: public-protocol
+  valuesSection: platform
+  valueKey: publicProtocol
+  policy: domain
+- secretKey: tls-mode
+  valuesSection: platform
+  valueKey: tlsMode
+  policy: domain
+- secretKey: active-custom-tls-secret
+  valuesSection: customTls
+  valueKey: existingSecret
+  policy: domain
+- secretKey: operator-custom-tls-secret
+  valuesSection: customTls
+  valueKey: operatorSecretName
+  policy: domain
+{{- end }}
+
+{{- define "compartment.resolvedInstallState" -}}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace (include "compartment.installStateSecretName" .) -}}
+{{- $data := dict -}}
 {{- if and $existing $existing.data -}}
-{{- $retainedStartupStage := dig "startup-stage" "" $existing.data | b64dec -}}
-{{- if eq $retainedStartupStage "full" -}}
-{{- $_ := set .Values.platform "startupStage" "full" -}}
+{{- $data = $existing.data -}}
 {{- end -}}
-{{- $stablePlatformFields := list
-  (dict "secretKey" "installation-id" "valueKey" "installationId")
-  (dict "secretKey" "public-ingress-ipv4" "valueKey" "publicIngressIpv4")
-  (dict "secretKey" "public-ingress-ipv6" "valueKey" "publicIngressIpv6")
-  (dict "secretKey" "acme-email" "valueKey" "acmeEmail")
-  (dict "secretKey" "managed-domain-broker-url" "valueKey" "managedDomainBrokerUrl")
--}}
-{{- range $field := $stablePlatformFields -}}
-{{- $encodedValue := get $existing.data $field.secretKey -}}
-{{- if not (empty $encodedValue) -}}
-{{- $_ := set $.Values.platform $field.valueKey ($encodedValue | b64dec) -}}
-{{- end -}}
-{{- end -}}
-{{- $retainedGeneration := int (default "0" (dig "domain-generation" "" $existing.data | b64dec)) -}}
-{{- $useRetainedDomain := le (int .Values.platform.domainGeneration) $retainedGeneration -}}
-{{- if and (not (get . "compartmentSharedChecksum")) (le (int .Values.platform.domainGeneration) $retainedGeneration) -}}
-{{- $domainFields := list
-  (dict "secretKey" "domain-mode" "valueKey" "domainMode")
-  (dict "secretKey" "base-domain" "valueKey" "baseDomain")
-  (dict "secretKey" "public-protocol" "valueKey" "publicProtocol")
-  (dict "secretKey" "tls-mode" "valueKey" "tlsMode")
--}}
-{{- range $field := $domainFields -}}
-{{- $encodedValue := get $existing.data $field.secretKey -}}
-{{- if not (empty $encodedValue) -}}
-{{- $_ := set $.Values.platform $field.valueKey ($encodedValue | b64dec) -}}
+{{- $effective := dict "platform" (deepCopy .Values.platform) "customTls" (deepCopy .Values.customTls) "secrets" (deepCopy .Values.secrets) -}}
+{{- $persisted := deepCopy $effective -}}
+{{- $retainedGeneration := int (default "0" (dig "domain-generation" "" $data | b64dec)) -}}
+{{- $incomingGeneration := int .Values.platform.domainGeneration -}}
+{{- $useRetainedDomain := and (not (get . "compartmentSharedChecksum")) (le $incomingGeneration $retainedGeneration) -}}
+{{- $useIncomingPersistedDomain := or (empty $data) (and .Values.platform.domainCommit (gt $incomingGeneration $retainedGeneration)) -}}
+{{- range $field := include "compartment.installStateFields" . | fromYamlArray -}}
+{{- $incomingValue := get (get $.Values $field.valuesSection) $field.valueKey -}}
+{{- $retainedValue := get $data $field.secretKey -}}
+{{- if not (empty $retainedValue) -}}
+{{- $retainedValue = $retainedValue | b64dec -}}
+{{- if or (eq $field.policy "stable") $useRetainedDomain -}}
+{{- $_ := set (get $effective $field.valuesSection) $field.valueKey $retainedValue -}}
 {{- end -}}
 {{- end -}}
-{{- $_ := set .Values.platform "domainGeneration" $retainedGeneration -}}
-{{- end -}}
-{{- if and (not (get . "compartmentSharedChecksum")) $useRetainedDomain -}}
-{{- if hasKey $existing.data "active-custom-tls-secret" -}}
-{{- $_ := set .Values.customTls "existingSecret" (get $existing.data "active-custom-tls-secret" | b64dec) -}}
-{{- end -}}
-{{- if hasKey $existing.data "operator-custom-tls-secret" -}}
-{{- $_ := set .Values.customTls "operatorSecretName" (get $existing.data "operator-custom-tls-secret" | b64dec) -}}
+{{- if and (eq $field.policy "domain") (not $useIncomingPersistedDomain) -}}
+{{- $_ := set (get $persisted $field.valuesSection) $field.valueKey (default $incomingValue $retainedValue) -}}
+{{- else if and (eq $field.policy "stable") (not (empty $retainedValue)) -}}
+{{- $_ := set (get $persisted $field.valuesSection) $field.valueKey $retainedValue -}}
 {{- end -}}
 {{- end -}}
-{{- $encodedBrokerToken := get $existing.data "managed-domain-broker-token" -}}
-{{- if not (empty $encodedBrokerToken) -}}
-{{- $_ := set .Values.secrets "managedDomainBrokerToken" ($encodedBrokerToken | b64dec) -}}
+{{- if eq (dig "startup-stage" "" $data | b64dec) "full" -}}
+{{- $_ := set $effective.platform "startupStage" "full" -}}
+{{- $_ = set $persisted.platform "startupStage" "full" -}}
 {{- end -}}
+{{- if $useRetainedDomain -}}
+{{- $_ := set $effective.platform "domainGeneration" $retainedGeneration -}}
 {{- end -}}
+{{- $_ := set $persisted.platform "domainGeneration" (ternary $incomingGeneration $retainedGeneration $useIncomingPersistedDomain) -}}
+{{- $retainedManagedBaseDomain := dig "managed-base-domain" "" $data | b64dec -}}
+{{- $managedBaseDomain := ternary $persisted.platform.baseDomain "" (and (empty $retainedManagedBaseDomain) (eq $persisted.platform.domainMode "managed")) -}}
+{{- $_ = set $persisted.platform "managedBaseDomain" (default $managedBaseDomain $retainedManagedBaseDomain) -}}
+{{- dict "effective" $effective "persisted" $persisted | toYaml -}}
 {{- end }}
 
 {{- define "compartment.validateInstallValues" -}}
-{{- if eq .Values.platform.startupStage "full" -}}
-{{- $_ := required "platform.installationId is required for a full installation" .Values.platform.installationId -}}
-{{- $_ = required "platform.baseDomain is required for a full installation" .Values.platform.baseDomain -}}
-{{- if and (not (empty .Values.secrets.managedDomainBrokerToken)) (empty .Values.platform.managedDomainBrokerUrl) -}}
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- $effective := $installState.effective -}}
+{{- if eq $effective.platform.startupStage "full" -}}
+{{- $_ := required "platform.installationId is required for a full installation" $effective.platform.installationId -}}
+{{- $_ = required "platform.baseDomain is required for a full installation" $effective.platform.baseDomain -}}
+{{- if and (not (empty $effective.secrets.managedDomainBrokerToken)) (empty $effective.platform.managedDomainBrokerUrl) -}}
 {{- fail "platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured" -}}
 {{- end -}}
-{{- if not (or (eq .Values.platform.baseDomain "localhost") (hasSuffix ".localhost" .Values.platform.baseDomain)) -}}
-{{- if and (empty .Values.platform.publicIngressIpv4) (empty .Values.platform.publicIngressIpv6) -}}
+{{- if not (or (eq $effective.platform.baseDomain "localhost") (hasSuffix ".localhost" $effective.platform.baseDomain)) -}}
+{{- if and (empty $effective.platform.publicIngressIpv4) (empty $effective.platform.publicIngressIpv6) -}}
 {{- fail "platform.publicIngressIpv4 or platform.publicIngressIpv6 is required for a public installation" -}}
 {{- end -}}
-{{- if and (not (empty .Values.platform.publicIngressIpv4)) (regexMatch `^(0|10|127)\.|^100\.(6[4-9]|[789][0-9]|1[01][0-9]|12[0-7])\.|^169\.254\.|^172\.(1[6-9]|2[0-9]|3[01])\.|^192\.(0\.2|168)\.|^198\.(1[89]|51\.100)\.|^203\.0\.113\.|^(22[4-9]|23[0-9]|24[0-9]|25[0-5])\.` .Values.platform.publicIngressIpv4) -}}
-{{- fail "platform.publicIngressIpv4 must be a public IPv4 address" -}}
-{{- end -}}
-{{- $publicIngressIpv6 := lower .Values.platform.publicIngressIpv6 -}}
-{{- if and (not (empty $publicIngressIpv6)) (regexMatch `^([0:]+1?$|[0:]+0\.0\.0\.[01]$|[0:]+ffff:|2001:0?db8:|f[cd]|fe[89ab]|ff)` $publicIngressIpv6) -}}
-{{- fail "platform.publicIngressIpv6 must be a public IPv6 address" -}}
-{{- end -}}
-{{- if ne .Values.platform.publicProtocol "https" -}}
+{{- if ne $effective.platform.publicProtocol "https" -}}
 {{- fail "platform.publicProtocol must be https for a public installation" -}}
 {{- end -}}
 {{- if or (ne (int .Values.service.caddy.httpPort) 80) (ne (int .Values.service.caddy.httpsPort) 443) -}}
 {{- fail "public Caddy Service ports must be 80 and 443" -}}
 {{- end -}}
 {{- end -}}
-{{- if or (eq .Values.platform.tlsMode "managed") (eq .Values.platform.tlsMode "custom-cert") -}}
+{{- if or (eq $effective.platform.tlsMode "managed") (eq $effective.platform.tlsMode "custom-cert") -}}
 {{- if ne .Values.platform.acmeIssuer "acme" -}}
 {{- fail "platform.acmeIssuer must be acme for public TLS" -}}
 {{- end -}}
-{{- $acmeCaUrl := urlParse .Values.platform.acmeCaUrl -}}
-{{- if not (and (eq (get $acmeCaUrl "scheme") "https") (not (empty (get $acmeCaUrl "host"))) (empty (get $acmeCaUrl "userinfo")) (empty (get $acmeCaUrl "query")) (empty (get $acmeCaUrl "fragment"))) -}}
-{{- fail "platform.acmeCaUrl must be an absolute HTTPS URL without credentials, a query, or a fragment" -}}
+{{- $_ := required "platform.acmeCaUrl is required for public TLS" .Values.platform.acmeCaUrl -}}
+{{- $_ = required "platform.acmeEmail is required for public TLS" $effective.platform.acmeEmail -}}
 {{- end -}}
-{{- if not (regexMatch `^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$` .Values.platform.acmeEmail) -}}
-{{- fail "platform.acmeEmail must be a valid email address for public TLS" -}}
-{{- end -}}
-{{- end -}}
-{{- if eq .Values.platform.tlsMode "managed" -}}
-{{- if ne .Values.platform.domainMode "managed" -}}
+{{- if eq $effective.platform.tlsMode "managed" -}}
+{{- if ne $effective.platform.domainMode "managed" -}}
 {{- fail "platform.domainMode must be managed when platform.tlsMode is managed" -}}
 {{- end -}}
-{{- $brokerUrl := required "platform.managedDomainBrokerUrl is required for managed TLS" .Values.platform.managedDomainBrokerUrl -}}
-{{- $parsedBrokerUrl := urlParse $brokerUrl -}}
-{{- if not (and (or (eq (get $parsedBrokerUrl "scheme") "http") (eq (get $parsedBrokerUrl "scheme") "https")) (not (empty (get $parsedBrokerUrl "host"))) (empty (get $parsedBrokerUrl "userinfo")) (or (empty (get $parsedBrokerUrl "path")) (eq (get $parsedBrokerUrl "path") "/")) (empty (get $parsedBrokerUrl "query")) (empty (get $parsedBrokerUrl "fragment"))) -}}
-{{- fail "platform.managedDomainBrokerUrl must be an absolute HTTP(S) base URL without credentials, a path, query, or fragment" -}}
-{{- end -}}
-{{- $secretName := include "compartment.installStateSecretName" . -}}
-{{- $existingSecret := lookup "v1" "Secret" .Release.Namespace $secretName -}}
-{{- $existingToken := "" -}}
-{{- if and $existingSecret $existingSecret.data -}}
-{{- $existingToken = dig "managed-domain-broker-token" "" $existingSecret.data -}}
-{{- end -}}
-{{- if and (empty .Values.secrets.managedDomainBrokerToken) (empty $existingToken) -}}
+{{- $_ := required "platform.managedDomainBrokerUrl is required for managed TLS" $effective.platform.managedDomainBrokerUrl -}}
+{{- if empty $effective.secrets.managedDomainBrokerToken -}}
 {{- fail "secrets.managedDomainBrokerToken is required for managed TLS" -}}
 {{- end -}}
 {{- end -}}
-{{- if and (eq .Values.platform.tlsMode "custom-cert") (empty .Values.customTls.existingSecret) -}}
+{{- if and (eq $effective.platform.tlsMode "custom-cert") (empty $effective.customTls.existingSecret) -}}
 {{- $customSecretName := include "compartment.customTlsSecretName" . -}}
 {{- $existingCustomSecret := lookup "v1" "Secret" .Release.Namespace $customSecretName -}}
 {{- $existingCertificate := "" -}}
@@ -151,8 +172,8 @@
 {{- fail "customTls.privateKey or customTls.existingSecret is required for custom-cert TLS" -}}
 {{- end -}}
 {{- end -}}
-{{- if not (empty .Values.customTls.operatorSecretName) -}}
-{{- $operatorSecret := lookup "v1" "Secret" .Release.Namespace .Values.customTls.operatorSecretName -}}
+{{- if not (empty $effective.customTls.operatorSecretName) -}}
+{{- $operatorSecret := lookup "v1" "Secret" .Release.Namespace $effective.customTls.operatorSecretName -}}
 {{- $operatorCertificate := dig "data" "tls.crt" "" $operatorSecret -}}
 {{- $operatorPrivateKey := dig "data" "tls.key" "" $operatorSecret -}}
 {{- if and (empty .Values.customTls.operatorCertificate) (empty $operatorCertificate) -}}
@@ -233,6 +254,7 @@ compartment.dev/rollout-marker: {{ .Values.platform.rolloutMarker | quote }}
 {{- end }}
 
 {{- define "compartment.domainRolloutAnnotations" -}}
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- include "compartment.rolloutAnnotations" . }}
 {{ $activeTlsContext := deepCopy . -}}
 {{- $activeTlsValues := get (get $activeTlsContext "Values") "customTls" -}}
@@ -243,7 +265,7 @@ compartment.dev/rollout-marker: {{ .Values.platform.rolloutMarker | quote }}
 checksum/domain-config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
 checksum/install-state: {{ include (print $.Template.BasePath "/install-state-secret.yaml") . | sha256sum }}
 checksum/custom-tls: {{ include (print $.Template.BasePath "/custom-tls-secret.yaml") $activeTlsContext | sha256sum }}
-compartment.dev/domain-generation: {{ .Values.platform.domainGeneration | quote }}
+compartment.dev/domain-generation: {{ $installState.effective.platform.domainGeneration | quote }}
 {{- end }}
 
 {{- define "compartment.apiDomainRolloutAnnotations" -}}

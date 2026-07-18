@@ -46,7 +46,10 @@
         },
         "acmeIssuer": { "type": "string", "enum": ["acme"] },
         "acmeCaUrl": { "type": "string", "pattern": "^https://[^/?#@]+(/[^?#]*)?$" },
-        "acmeEmail": { "type": "string" },
+        "acmeEmail": {
+          "type": "string",
+          "oneOf": [{ "const": "" }, { "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$" }]
+        },
         "managedDomainBrokerUrl": {
           "oneOf": [{ "const": "" }, { "type": "string", "pattern": "^https?://[^/?#@]+/?$" }]
         }
