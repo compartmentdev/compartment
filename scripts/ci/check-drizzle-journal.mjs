@@ -26,7 +26,7 @@ const DOCKER_CUTOVER_SQUASH_BASE_ENTRIES = [
 const D16_REGENERATED_BASELINE_ORIGINAL_WHEN = 1779700755038;
 const D16_REGENERATED_BASELINE_NEW_WHEN = 1783948017382;
 
-export function isApprovedD16RegeneratedBaselineTimestamp(journalPath, baseJournal, headJournal) {
+function isApprovedD16RegeneratedBaselineTimestamp(journalPath, baseJournal, headJournal) {
   if (
     journalPath !== DOCKER_CUTOVER_SQUASH_JOURNAL_PATH ||
     baseJournal.entries.length !== 1 ||
