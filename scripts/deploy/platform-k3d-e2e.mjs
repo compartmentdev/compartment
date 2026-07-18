@@ -227,6 +227,19 @@ export function parseLoadedImageRefs(output) {
     .filter((imageRef) => imageRef !== '');
 }
 
+export function parseDockerImageCommand(value, fieldName) {
+  let command;
+  try {
+    command = JSON.parse(value);
+  } catch {
+    throw new Error(`Expected ${fieldName} to be a JSON command array.`);
+  }
+  if (!Array.isArray(command) || command.length === 0 || command.some((argument) => typeof argument !== 'string')) {
+    throw new Error(`Expected ${fieldName} to be a non-empty JSON command array.`);
+  }
+  return command;
+}
+
 export function isConsoleReadyStatus(status) {
   return status === 302;
 }
@@ -426,6 +439,18 @@ function buildManagedE2eCaddyImage(sourceImageRef) {
   const buildDirectory = managedCaddyBuildDirectory;
   const extractedCaPath = join(buildDirectory, 'pebble.minica.pem');
   const managedImageRef = `${registryPushHost}/compartment-caddy:managed-e2e`;
+  const sourceCommand = parseDockerImageCommand(
+    captureCommand('docker', ['image', 'inspect', '--format', '{{json .Config.Cmd}}', sourceImageRef], repositoryRoot),
+    'source Caddy command',
+  );
+  const sourceEntrypoint = parseDockerImageCommand(
+    captureCommand(
+      'docker',
+      ['image', 'inspect', '--format', '{{json .Config.Entrypoint}}', sourceImageRef],
+      repositoryRoot,
+    ),
+    'source Caddy entrypoint',
+  );
   let managedCaddyContainerReference;
   let pebbleContainerReference;
   let managedCaddyDigest;
@@ -462,7 +487,19 @@ function buildManagedE2eCaddyImage(sourceImageRef) {
       repositoryRoot,
     );
     runCommand('docker', ['start', '--attach', managedCaddyContainerReference], repositoryRoot);
-    runCommand('docker', ['commit', managedCaddyContainerReference, managedImageRef], repositoryRoot);
+    runCommand(
+      'docker',
+      [
+        'commit',
+        '--change',
+        `ENTRYPOINT ${JSON.stringify(sourceEntrypoint)}`,
+        '--change',
+        `CMD ${JSON.stringify(sourceCommand)}`,
+        managedCaddyContainerReference,
+        managedImageRef,
+      ],
+      repositoryRoot,
+    );
     runCommand('docker', ['push', '--quiet', managedImageRef], repositoryRoot);
     managedCaddyDigest = readPushedImageDigest(managedImageRef);
   } catch (error) {

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   isConsoleReadyStatus,
+  parseDockerImageCommand,
   parseK3dClusterNames,
   parseLoadedImageRefs,
   readPlatformK3dCommand,
@@ -27,6 +28,15 @@ import {
 } from './platform-k3d-e2e-support.mjs';
 
 describe('platform k3d e2e command boundary', () => {
+  it('preserves validated source image runtime commands for managed Caddy commits', () => {
+    expect(parseDockerImageCommand('["/usr/bin/entrypoint"]', 'entrypoint')).toEqual(['/usr/bin/entrypoint']);
+    expect(parseDockerImageCommand('["caddy","run"]', 'command')).toEqual(['caddy', 'run']);
+    expect(() => parseDockerImageCommand('null', 'entrypoint')).toThrow(
+      'Expected entrypoint to be a non-empty JSON command array.',
+    );
+    expect(() => parseDockerImageCommand('{', 'command')).toThrow('Expected command to be a JSON command array.');
+  });
+
   it('accepts the up action with built images by default', () => {
     expect(readPlatformK3dCommand(['up'])).toEqual({
       action: 'up',
