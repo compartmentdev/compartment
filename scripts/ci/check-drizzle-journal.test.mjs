@@ -18,6 +18,53 @@ describe('readPackageRootFromDrizzleJournalPath', () => {
 });
 
 describe('findDrizzleJournalDiffValidationErrors', () => {
+  it('allows only the D16 regenerated baseline timestamp change', () => {
+    expect(
+      findDrizzleJournalDiffValidationErrors(
+        'packages/api/drizzle/meta/_journal.json',
+        buildD16BaseJournal(),
+        buildD16HeadJournal(),
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ['changed tag', (journal) => (journal.entries[0].tag = '0000_rewritten')],
+    ['changed idx', (journal) => (journal.entries[0].idx = 1)],
+    ['removed entry', (journal) => (journal.entries = [])],
+    [
+      'appended entry',
+      (journal) =>
+        journal.entries.push({ breakpoints: true, idx: 1, tag: '0001_extra', version: '7', when: 1783948017383 }),
+    ],
+    [
+      'reordered entries',
+      (journal) => {
+        journal.entries.unshift({
+          breakpoints: true,
+          idx: 1,
+          tag: '0001_extra',
+          version: '7',
+          when: 1783948017383,
+        });
+      },
+    ],
+    ['changed entry version', (journal) => (journal.entries[0].version = '8')],
+    ['changed breakpoints', (journal) => (journal.entries[0].breakpoints = false)],
+    ['changed journal version', (journal) => (journal.version = '8')],
+  ])('rejects the D16 exemption with a %s', (_name, mutateHeadJournal) => {
+    const headJournal = buildD16HeadJournal();
+    mutateHeadJournal(headJournal);
+
+    expect(
+      findDrizzleJournalDiffValidationErrors(
+        'packages/api/drizzle/meta/_journal.json',
+        buildD16BaseJournal(),
+        headJournal,
+      ),
+    ).not.toEqual([]);
+  });
+
   it('allows the one-time docker cutover squash to a fresh 0000_initial', () => {
     const headJournal = {
       dialect: 'postgresql',
@@ -103,6 +150,22 @@ describe('findDrizzleJournalDiffValidationErrors', () => {
     ).toEqual(['packages/api/drizzle/meta/_journal.json: pull requests must not remove existing journal entries.']);
   });
 });
+
+function buildD16BaseJournal() {
+  return buildD16Journal(1779700755038);
+}
+
+function buildD16HeadJournal() {
+  return buildD16Journal(1783948017382);
+}
+
+function buildD16Journal(when) {
+  return {
+    dialect: 'postgresql',
+    entries: [{ breakpoints: true, idx: 0, tag: '0000_initial', version: '7', when }],
+    version: '7',
+  };
+}
 
 function buildDockerCutoverBaseJournal() {
   return {

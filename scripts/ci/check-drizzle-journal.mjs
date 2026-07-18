@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 
@@ -18,6 +19,39 @@ const DOCKER_CUTOVER_SQUASH_BASE_ENTRIES = [
   { idx: 3, tag: '0003_polite_sir_ram', when: 1783882325446 },
   { idx: 4, tag: '0004_greedy_overlord', when: 1783934368212 },
 ];
+
+// One-time exemption for the D16 baseline regeneration after the Docker→Kubernetes
+// cutover. Only the generated timestamp changed; any other journal difference still
+// needs its own explicit decision and exemption.
+const D16_REGENERATED_BASELINE_ORIGINAL_WHEN = 1779700755038;
+const D16_REGENERATED_BASELINE_NEW_WHEN = 1783948017382;
+
+export function isApprovedD16RegeneratedBaselineTimestamp(journalPath, baseJournal, headJournal) {
+  if (
+    journalPath !== DOCKER_CUTOVER_SQUASH_JOURNAL_PATH ||
+    baseJournal.entries.length !== 1 ||
+    headJournal.entries.length !== 1
+  ) {
+    return false;
+  }
+
+  const baseEntry = baseJournal.entries[0];
+  const headEntry = headJournal.entries[0];
+  if (
+    baseEntry.idx !== 0 ||
+    baseEntry.tag !== '0000_initial' ||
+    baseEntry.when !== D16_REGENERATED_BASELINE_ORIGINAL_WHEN ||
+    headEntry.when !== D16_REGENERATED_BASELINE_NEW_WHEN
+  ) {
+    return false;
+  }
+
+  const baseJournalWithRegeneratedWhen = {
+    ...baseJournal,
+    entries: [{ ...baseEntry, when: D16_REGENERATED_BASELINE_NEW_WHEN }],
+  };
+  return isDeepStrictEqual(baseJournalWithRegeneratedWhen, headJournal);
+}
 
 export function isApprovedDockerCutoverJournalSquash(journalPath, baseJournal, headJournal) {
   if (journalPath !== DOCKER_CUTOVER_SQUASH_JOURNAL_PATH) {
@@ -54,6 +88,10 @@ export function isApprovedDockerCutoverJournalSquash(journalPath, baseJournal, h
 
 export function findDrizzleJournalDiffValidationErrors(journalPath, baseJournal, headJournal) {
   const validationErrors = [];
+
+  if (isApprovedD16RegeneratedBaselineTimestamp(journalPath, baseJournal, headJournal)) {
+    return validationErrors;
+  }
 
   if (isApprovedDockerCutoverJournalSquash(journalPath, baseJournal, headJournal)) {
     return validationErrors;
