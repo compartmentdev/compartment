@@ -200,6 +200,44 @@ tests:
           count: 10
         template: project-provisioner-rbac.yaml
       - isKind:
+          of: Namespace
+        template: project-provisioner-rbac.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-project-provisioning
+        template: project-provisioner-rbac.yaml
+        documentIndex: 0
+      - isKind:
+          of: ServiceAccount
+        template: project-provisioner-rbac.yaml
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-project-provisioner
+        template: project-provisioner-rbac.yaml
+        documentIndex: 1
+      - isKind:
+          of: RoleBinding
+        template: project-provisioner-rbac.yaml
+        documentIndex: 5
+      - equal:
+          path: roleRef
+          value:
+            apiGroup: rbac.authorization.k8s.io
+            kind: Role
+            name: compartment-compartment-project-provisioning-job
+        template: project-provisioner-rbac.yaml
+        documentIndex: 5
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: compartment-compartment-project-provisioner
+              namespace: default
+        template: project-provisioner-rbac.yaml
+        documentIndex: 5
+      - isKind:
           of: ValidatingAdmissionPolicy
         template: project-provisioner-rbac.yaml
         documentIndex: 8
@@ -261,6 +299,14 @@ tests:
       - equal:
           path: subjects[0].name
           value: compartment-compartment-project-provisioner
+        template: project-provisioner-rbac.yaml
+        documentIndex: 7
+      - equal:
+          path: subjects
+          value:
+            - kind: ServiceAccount
+              name: compartment-compartment-project-provisioner
+              namespace: default
         template: project-provisioner-rbac.yaml
         documentIndex: 7
       - contains:
@@ -519,6 +565,14 @@ tests:
           value: '443'
         template: configmap.yaml
       - equal:
+          path: data.COMPARTMENT_CADDY_HTTP_PORT
+          value: '8080'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_CADDY_HTTPS_PORT
+          value: '8443'
+        template: configmap.yaml
+      - equal:
           path: data.COMPARTMENT_PUBLIC_INGRESS_IPV4
           value: 8.8.8.8
         template: configmap.yaml
@@ -542,6 +596,14 @@ tests:
               secretKeyRef:
                 name: compartment-compartment
                 key: install-token
+          any: true
+        template: api.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_WORKER_IMAGE
+            value: ghcr.io/compartmentdev/compartment-worker:latest
           any: true
         template: api.yaml
         documentIndex: 1
@@ -879,6 +941,48 @@ tests:
           path: spec.template.metadata.annotations["checksum/config"]
           value: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
         template: project-provisioner.yaml
+      - equal:
+          path: spec.template.metadata.annotations
+          value:
+            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
+            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
+            compartment.dev/rollout-marker: ''
+            checksum/domain-config: 3cf387830dae45829f0cdaafdd562eb058930cdfee6c0d3b1eef5271b5d1faeb
+            checksum/install-state: 57bbd2717fc527678cb1b383813af08d281321019adbf412c9677dd9dfbdb29e
+            checksum/custom-tls: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+            compartment.dev/domain-generation: '0'
+            checksum/pending-tls: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+            compartment.dev/pending-domain-operation: ''
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations
+          value: &managedDomainRolloutAnnotations
+            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
+            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
+            compartment.dev/rollout-marker: ''
+            checksum/domain-config: 3cf387830dae45829f0cdaafdd562eb058930cdfee6c0d3b1eef5271b5d1faeb
+            checksum/install-state: 57bbd2717fc527678cb1b383813af08d281321019adbf412c9677dd9dfbdb29e
+            checksum/custom-tls: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+            compartment.dev/domain-generation: '0'
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations
+          value: *managedDomainRolloutAnnotations
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations
+          value: &stableWorkloadRolloutAnnotations
+            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
+            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
+            compartment.dev/rollout-marker: ''
+        template: worker.yaml
+      - equal:
+          path: spec.template.metadata.annotations
+          value: *stableWorkloadRolloutAnnotations
+        template: project-provisioner.yaml
 
   - it: mounts one existing custom certificate read-only in API and Caddy
     set:
@@ -1143,6 +1247,45 @@ tests:
           path: spec.template.metadata.annotations["checksum/config"]
           value: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
         template: project-provisioner.yaml
+      - equal:
+          path: spec.template.metadata.annotations
+          value:
+            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
+            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
+            compartment.dev/rollout-marker: ''
+            checksum/domain-config: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
+            checksum/install-state: a784661c62476787910e1cd3c93d53abe909e86525b408aaf277c6b167c84a80
+            checksum/custom-tls: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
+            compartment.dev/domain-generation: '0'
+            checksum/pending-tls: 4bd7f96b97960fe5268ca3c465e1d527f0da70b681809b0501ca7d8340d4f3c7
+            compartment.dev/pending-domain-operation: domop_456
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations
+          value: &activeDomainRolloutAnnotations
+            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
+            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
+            compartment.dev/rollout-marker: ''
+            checksum/domain-config: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
+            checksum/install-state: a784661c62476787910e1cd3c93d53abe909e86525b408aaf277c6b167c84a80
+            checksum/custom-tls: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
+            compartment.dev/domain-generation: '0'
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations
+          value: *activeDomainRolloutAnnotations
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations
+          value: *stableWorkloadRolloutAnnotations
+        template: worker.yaml
+      - equal:
+          path: spec.template.metadata.annotations
+          value: *stableWorkloadRolloutAnnotations
+        template: project-provisioner.yaml
 
   - it: renders the active certificate without pending rotation state
     set:
@@ -1221,6 +1364,38 @@ tests:
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
           value: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
+        template: project-provisioner.yaml
+      - equal:
+          path: spec.template.metadata.annotations
+          value:
+            checksum/config: ab5e943dce1ada2b41d2f7bd3bb6ac0b62a62fe90f111875987d10bb4f1c26a5
+            checksum/secret: 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
+            compartment.dev/rollout-marker: ''
+            checksum/domain-config: 685ed77999087f87f91e66751ddb8efc9178cc146d0cccd99db43c21a51cb047
+            checksum/install-state: a784661c62476787910e1cd3c93d53abe909e86525b408aaf277c6b167c84a80
+            checksum/custom-tls: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
+            compartment.dev/domain-generation: '0'
+            checksum/pending-tls: 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
+            compartment.dev/pending-domain-operation: ''
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations
+          value: *activeDomainRolloutAnnotations
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations
+          value: *activeDomainRolloutAnnotations
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations
+          value: *stableWorkloadRolloutAnnotations
+        template: worker.yaml
+      - equal:
+          path: spec.template.metadata.annotations
+          value: *stableWorkloadRolloutAnnotations
         template: project-provisioner.yaml
 
   - it: renders inline custom certificate material into the shared TLS Secret
