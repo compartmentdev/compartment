@@ -19,8 +19,7 @@ import { prepareServiceDirectory } from './worker-source.service';
 import type { PreparedWorkerSource, WorkerSourceServiceInput } from './worker-source.service.types';
 import { runTrackedDeploymentStep } from './worker-step-runner.service';
 
-interface FreshReleaseImageInput {
-  archiveRequest: CompartmentBinaryRequester;
+interface ReleaseImageBuildContext {
   artifactRegistry: WorkerArtifactRegistryConfig;
   deployment: WorkerClaimedDeployment;
   eventContext: WorkerDeploymentEventContext;
@@ -47,10 +46,13 @@ export async function buildReleaseImageFromSource(
     return existingImageRef;
   }
 
-  return await buildFreshReleaseImage({ archiveRequest, artifactRegistry, deployment, eventContext, request });
+  return await buildFreshReleaseImage(archiveRequest, { artifactRegistry, deployment, eventContext, request });
 }
 
-async function buildFreshReleaseImage(input: FreshReleaseImageInput): Promise<string> {
+async function buildFreshReleaseImage(
+  archiveRequest: CompartmentBinaryRequester,
+  input: ReleaseImageBuildContext,
+): Promise<string> {
   const imageTag: string = buildReleaseImageTag(input.deployment, input.artifactRegistry.address);
   const pushImageTag: string = buildReleaseImageTag(
     input.deployment,
@@ -61,7 +63,7 @@ async function buildFreshReleaseImage(input: FreshReleaseImageInput): Promise<st
   try {
     const preparedSource: PreparedWorkerSource = await prepareDeploymentSource(
       input.eventContext,
-      input.archiveRequest,
+      archiveRequest,
       input.deployment,
       tempDirectory,
     );
@@ -93,7 +95,7 @@ async function appendClaimedDeploymentEvent(eventContext: WorkerDeploymentEventC
   await appendDeploymentStepEventSafely(eventContext, 'queued', 'succeeded', 'worker claimed deployment');
 }
 
-async function buildPreparedSourceImage(input: FreshReleaseImageInput, build: PreparedBuildInput): Promise<string> {
+async function buildPreparedSourceImage(input: ReleaseImageBuildContext, build: PreparedBuildInput): Promise<string> {
   const buildResult: DockerBuildImageResult = await runTrackedDeploymentStep({
     eventContext: input.eventContext,
     failureSummary: 'image build failed',
