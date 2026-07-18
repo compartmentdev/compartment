@@ -14,7 +14,7 @@ describe('system command options', (): void => {
     (expectedVersion: string): void => {
       expect((): void => {
         resolveSystemDomainVersionedCommand({ expectedVersion, output: 'text' });
-      }).toThrow('Expected --expected-version to be a non-negative integer.');
+      }).toThrow('Expected --expected-version to be an integer from 0 to 2147483647.');
     },
   );
 });

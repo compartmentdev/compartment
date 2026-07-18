@@ -15,7 +15,7 @@ Stage a TLS Secret and validate it against the pending domain
 Options:
   --cert-file <path>            Full-chain PEM certificate file
   --key-file <path>             Private-key PEM file
-  --expected-version <version>  Domain setup version
+  --expected-version <version>  Domain setup version from 0 to 2147483647
   --kube-context <name>         Kubernetes context
   --namespace <name>            Kubernetes namespace; defaults to compartment
   --release-name <name>         Helm release name; defaults to compartment

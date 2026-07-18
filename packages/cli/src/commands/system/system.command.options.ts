@@ -80,7 +80,7 @@ function readExpectedSetupVersion(value: string | undefined): number | undefined
       return setupVersion;
     }
   }
-  throw new Error('Expected --expected-version to be a non-negative integer.');
+  throw new Error('Expected --expected-version to be an integer from 0 to 2147483647.');
 }
 
 function normalizeKubernetesName(value: string, optionName: string, maximumLength: number): string {
