@@ -64,6 +64,17 @@ describe('Kubernetes cutover gate', () => {
     ]);
   });
 
+  it('allows the legacy restart policy only in the explicit compatibility surface', () => {
+    const legacyRestartPolicy = ['unless', '-stopped'].join('');
+
+    expect(
+      findContentViolations('packages/contracts/src/contracts/service-run.contract.ts', legacyRestartPolicy),
+    ).toEqual([]);
+    expect(findContentViolations('packages/worker/src/runtime.ts', legacyRestartPolicy)).toEqual([
+      `packages/worker/src/runtime.ts: contains forbidden runtime term ${legacyRestartPolicy}`,
+    ]);
+  });
+
   it.each([
     '.github/workflows/_system-user-flow-e2e.yml',
     'docker-compose.self-hosted.yml',

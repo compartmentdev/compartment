@@ -115,14 +115,14 @@ resources:
 - Run is not allowed for kinds: static.
 - Release is not allowed for kinds: static.
 - Readiness is not allowed for kinds: static.
-- Run fields: command.
+- Run fields: command, restart.
 - Release fields: command.
 - Readiness fields: type, path, timeoutMs.
 - Readiness types: http.
 - Resources are optional.
 - Resource names must match `^[a-z0-9][a-z0-9_-]{0,62}$` and must not collide with service names.
 - Resource values may be: resource_config.
-- Resource config fields: command, env, generatedVariables, image, operations, outputs, ports, preset, readiness, volumes.
+- Resource config fields: command, env, generatedVariables, image, operations, outputs, ports, preset, readiness, restart, volumes.
 - Resource config must include one of these field sets: [image] or [preset].
 - Resource presets: postgres.
 - Resource preset override fields: postgres accepts only env.

@@ -15,7 +15,15 @@ import type {
   CompartmentServiceReleaseConfig,
   ResolvedOptionalCompartmentServiceReleaseConfig,
 } from './service-release.contract';
-import type { CompartmentServiceRunConfig, ResolvedCompartmentServiceRunConfig } from './service-run.contract';
+import type {
+  CompartmentDeprecatedRestartPolicy,
+  CompartmentServiceRunConfig,
+  ResolvedCompartmentServiceRunConfig,
+} from './service-run.contract';
+
+export interface CompartmentDeprecatedResourceRestartConfig {
+  policy?: CompartmentDeprecatedRestartPolicy | undefined;
+}
 
 export type CompartmentResourceEnv = Record<string, string>;
 
@@ -94,6 +102,7 @@ export interface CompartmentAuthoredResourceConfig {
   ports?: number[] | undefined;
   preset?: CompartmentResourcePreset | undefined;
   readiness?: CompartmentResourceReadinessConfig | undefined;
+  restart?: CompartmentDeprecatedResourceRestartConfig | undefined;
   volumes?: CompartmentResourceVolumes | undefined;
 }
 

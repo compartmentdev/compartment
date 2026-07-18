@@ -1,4 +1,8 @@
-import { type CompartmentRoutesFile } from '@compartment/contracts';
+import {
+  readCompartmentDescriptorCompatibilityWarnings,
+  type CompartmentAuthoredDescriptor,
+  type CompartmentRoutesFile,
+} from '@compartment/contracts';
 import { findJoinedDeploymentById } from '../queries/deployment-joined.query';
 import type { DeploymentJoinedRow, DeploymentRow } from '../queries/deployments.query.types';
 import type { SourceUploadRow } from '../queries/source-uploads.query.types';
@@ -32,6 +36,7 @@ import {
 } from './deployment-service-connections.reconcile';
 import { validateDescriptorRoutes } from './compartment-routes.service';
 import {
+  appendDescriptorCompatibilityWarningEvents,
   appendQueuedDeploymentRunEvents,
   createDeploymentRunId,
   withDeploymentRunCleanupOnError,
@@ -115,6 +120,20 @@ async function queueDeploymentsFromValidatedSourceUpload(
     triggerType: resolveSourceUploadDeploymentRunTriggerType(input.sourceProvenance),
     updatedAt: new Date(),
   });
+  return await withDeploymentRunCleanupOnError(
+    deploymentRunId,
+    async (): Promise<DeploymentJoinedRow[]> =>
+      await queueValidatedDeploymentRun(deploymentRunId, input, contexts, sourceUpload),
+  );
+}
+
+async function queueValidatedDeploymentRun(
+  deploymentRunId: string,
+  input: DeployInputContext,
+  contexts: readonly ResolvedProjectContext[],
+  sourceUpload: SourceUploadRow,
+): Promise<DeploymentJoinedRow[]> {
+  await appendDeployCompatibilityWarnings(deploymentRunId, input.descriptor);
   const queuedDeployments: DeploymentRow[] = await createQueuedDeploymentsForSourceUploadRun(
     deploymentRunId,
     input,
@@ -126,27 +145,35 @@ async function queueDeploymentsFromValidatedSourceUpload(
   return await findQueuedJoinedDeployments(queuedDeployments);
 }
 
+async function appendDeployCompatibilityWarnings(
+  deploymentRunId: string,
+  descriptor: CompartmentAuthoredDescriptor,
+): Promise<void> {
+  await appendDescriptorCompatibilityWarningEvents(
+    deploymentRunId,
+    readCompartmentDescriptorCompatibilityWarnings(descriptor),
+  );
+}
+
 async function createQueuedDeploymentsForSourceUploadRun(
   deploymentRunId: string,
   input: DeployInputContext,
   contexts: readonly ResolvedProjectContext[],
   sourceUpload: SourceUploadRow,
 ): Promise<DeploymentRow[]> {
-  return await withDeploymentRunCleanupOnError(deploymentRunId, async (): Promise<DeploymentRow[]> => {
-    const preparedStates: PreparedQueuedDeploymentState[] = await prepareQueuedDeploymentStates(
-      deploymentRunId,
-      input.sourceProvenance,
-      contexts,
-      input.routes,
-      sourceUpload,
-    );
+  const preparedStates: PreparedQueuedDeploymentState[] = await prepareQueuedDeploymentStates(
+    deploymentRunId,
+    input.sourceProvenance,
+    contexts,
+    input.routes,
+    sourceUpload,
+  );
 
-    return await queuePreparedDeployments(
-      preparedStates,
-      buildSourceUploadConsumptionScope(input, contexts, sourceUpload),
-      input.label,
-    );
-  });
+  return await queuePreparedDeployments(
+    preparedStates,
+    buildSourceUploadConsumptionScope(input, contexts, sourceUpload),
+    input.label,
+  );
 }
 
 async function prepareQueuedDeploymentStates(

@@ -5,6 +5,7 @@ import {
   compartmentAuthoredDescriptorSchema,
   compartmentInitResultSchema,
   formatCompartmentAuthoredDescriptor,
+  readCompartmentDescriptorCompatibilityWarnings,
   type CompartmentAuthoredDescriptor,
   type CompartmentInitResult,
 } from '../src';
@@ -495,8 +496,35 @@ describe('compartment descriptor contracts', (): void => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects the removed restart config', (): void => {
-    const restartField: string = ['re', 'start'].join('');
+  it.each(['no', 'on-failure', 'unless-stopped'] as const)(
+    'accepts deprecated service restart policy %s for Docker-line compatibility',
+    (policy: 'no' | 'on-failure' | 'unless-stopped'): void => {
+      const descriptor: CompartmentAuthoredDescriptor = compartmentAuthoredDescriptorSchema.parse({
+        name: 'backoffice',
+        services: {
+          web: {
+            path: 'apps/web',
+            run: {
+              restart: {
+                ...(policy === 'on-failure' ? { maxRetries: 2 } : {}),
+                policy,
+              },
+            },
+          },
+        },
+      });
+
+      expect(descriptor.services.web).toMatchObject({
+        run: {
+          restart: {
+            policy,
+          },
+        },
+      });
+    },
+  );
+
+  it('rejects maxRetries outside the deprecated on-failure policy', (): void => {
     const result: SafeParseReturnType<CompartmentAuthoredDescriptor, CompartmentAuthoredDescriptor> =
       compartmentAuthoredDescriptorSchema.safeParse({
         name: 'backoffice',
@@ -504,9 +532,9 @@ describe('compartment descriptor contracts', (): void => {
           web: {
             path: 'apps/web',
             run: {
-              [restartField]: {
+              restart: {
                 maxRetries: 2,
-                policy: ['unless', 'stopped'].join('-'),
+                policy: 'unless-stopped',
               },
             },
           },
@@ -514,6 +542,53 @@ describe('compartment descriptor contracts', (): void => {
       });
 
     expect(result.success).toBe(false);
+  });
+
+  it('describes deprecated restart settings and actual Kubernetes behavior', (): void => {
+    const descriptor: CompartmentAuthoredDescriptor = compartmentAuthoredDescriptorSchema.parse({
+      name: 'backoffice',
+      resources: {
+        db: {
+          image: 'postgres:16',
+          restart: {},
+        },
+      },
+      services: {
+        web: {
+          path: 'apps/web',
+          run: {
+            restart: {
+              maxRetries: 2,
+              policy: 'on-failure',
+            },
+          },
+        },
+      },
+    });
+
+    expect(readCompartmentDescriptorCompatibilityWarnings(descriptor)).toEqual([
+      {
+        message:
+          'Warning: deprecated services.web.run.restart={"maxRetries":2,"policy":"on-failure"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment project stop scales service Deployments to zero.',
+        path: 'services.web.run.restart',
+        value: '{"maxRetries":2,"policy":"on-failure"}',
+      },
+      {
+        message:
+          'Warning: deprecated resources.db.restart={"policy":"unless-stopped"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment resource stop --resource db scales this resource Deployment to zero.',
+        path: 'resources.db.restart',
+        value: '{"policy":"unless-stopped"}',
+      },
+    ]);
+  });
+
+  it('does not warn when deprecated restart settings are absent', (): void => {
+    const descriptor: CompartmentAuthoredDescriptor = compartmentAuthoredDescriptorSchema.parse({
+      name: 'backoffice',
+      services: { web: '.' },
+    });
+
+    expect(readCompartmentDescriptorCompatibilityWarnings(descriptor)).toEqual([]);
   });
 
   it('rejects explicit dockerfile services with a run command', (): void => {

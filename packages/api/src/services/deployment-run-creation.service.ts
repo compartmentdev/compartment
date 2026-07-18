@@ -1,4 +1,4 @@
-import { type DeploymentRunTriggerType } from '@compartment/contracts';
+import { type CompartmentDescriptorCompatibilityWarning, type DeploymentRunTriggerType } from '@compartment/contracts';
 import { createId } from '../lib/tokens';
 import { appendDeploymentRunEvent } from '../queries/deployment-run-events.query';
 import { createDeploymentRun, deleteDeploymentRunById } from '../queries/deployment-runs.query';
@@ -65,6 +65,23 @@ export async function appendQueuedDeploymentRunEvents(deployments: readonly Depl
       level: 'info',
       message: 'deployment queued',
       status: 'running',
+      stepKey: 'queued',
+      stream: 'compartment',
+    });
+  }
+}
+
+export async function appendDescriptorCompatibilityWarningEvents(
+  deploymentRunId: string,
+  warnings: readonly CompartmentDescriptorCompatibilityWarning[],
+): Promise<void> {
+  for (const warning of warnings) {
+    await appendDeploymentRunEvent({
+      createdAt: new Date(),
+      deploymentRunId,
+      id: createId('drev'),
+      level: 'info',
+      message: warning.message,
       stepKey: 'queued',
       stream: 'compartment',
     });

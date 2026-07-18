@@ -23,7 +23,7 @@ import {
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   createOrganizationMemberSession,
   createStoredAppAccessSession as createStoredAppAccessSessionFixture,
@@ -40,6 +40,8 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 import {
   authSessions,
   buildArtifacts,
+  deploymentRunEvents,
+  deploymentRuns,
   deployments,
   operations,
   organizationMemberships,
@@ -618,6 +620,88 @@ describe('Phase 0 API integration deploy submission', (): void => {
     expect(storedBuildArtifact[0]?.sourceUploadId).toBe(sourceUpload.id);
     expect(storedSourceUploads[0]?.consumedAt).not.toBeNull();
   });
+  it('accepts a deprecated restart policy and records the Kubernetes compatibility warning', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+
+    const deployResponse: LightMyRequestResponse = await injectJsonDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+      {
+        descriptor: {
+          name: 'smoke-web',
+          services: {
+            web: {
+              path: '.',
+              run: {
+                restart: {
+                  maxRetries: 3,
+                  policy: 'on-failure',
+                },
+              },
+            },
+          },
+        },
+        sourceUploadId: sourceUpload.id,
+      },
+    );
+
+    expect(deployResponse.statusCode, deployResponse.body).toBe(200);
+    const deployPayload: DeployResponse = deployResponseSchema.parse(deployResponse.json());
+    const storedEvents: (typeof deploymentRunEvents.$inferSelect)[] = await db
+      .select()
+      .from(deploymentRunEvents)
+      .where(eq(deploymentRunEvents.deploymentRunId, deployPayload.deploymentRunId));
+
+    expect(storedEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          deploymentId: null,
+          level: 'info',
+          message:
+            'Warning: deprecated services.web.run.restart={"maxRetries":3,"policy":"on-failure"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment project stop scales service Deployments to zero.',
+          stepKey: 'queued',
+        }),
+      ]),
+    );
+  });
+  it('records the compatibility warning before inserting its deployment', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+
+    const deployResponse: LightMyRequestResponse = await withRequiredCompatibilityWarningBeforeDeployment(
+      async (): Promise<LightMyRequestResponse> =>
+        await injectNoRestartPolicyDeploy(installPayload.sessionToken, sourceUpload.id),
+    );
+
+    expect(deployResponse.statusCode, deployResponse.body).toBe(200);
+  });
+  it('does not queue a deployment when its compatibility warning cannot be recorded', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const sourceUpload: SourceUploadSummary = await createUploadedSourceArchive(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+
+    const deployResponse: LightMyRequestResponse = await withRejectedCompatibilityWarningEvents(
+      async (): Promise<LightMyRequestResponse> =>
+        await injectNoRestartPolicyDeploy(installPayload.sessionToken, sourceUpload.id),
+    );
+
+    expect(deployResponse.statusCode).toBe(500);
+    expect(await db.select().from(deploymentRuns)).toEqual([]);
+    expect(await db.select().from(deployments)).toEqual([]);
+  });
   it('auto-generates postgres preset passwords before resolving resource outputs', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     await setVariable(app, installPayload.sessionToken, 'acme-dev', {
@@ -1178,6 +1262,74 @@ async function createResourceDeploySourceArchive(): Promise<Buffer> {
       version: 1,
     },
   );
+}
+
+async function injectNoRestartPolicyDeploy(
+  sessionToken: string,
+  sourceUploadId: string,
+): Promise<LightMyRequestResponse> {
+  return await injectJsonDeployRequest(app, sessionToken, 'acme-dev', {
+    descriptor: {
+      name: 'smoke-web',
+      services: {
+        web: {
+          path: '.',
+          run: {
+            restart: {
+              policy: 'no',
+            },
+          },
+        },
+      },
+    },
+    sourceUploadId,
+  });
+}
+
+async function withRequiredCompatibilityWarningBeforeDeployment<T>(action: () => Promise<T>): Promise<T> {
+  await db.execute(sql`
+    CREATE FUNCTION require_compatibility_warning_before_deployment() RETURNS trigger AS $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM deployment_run_events
+        WHERE deployment_run_id = NEW.deployment_run_id
+          AND deployment_id IS NULL
+          AND message LIKE 'Warning: deprecated %'
+      ) THEN
+        RAISE EXCEPTION 'compatibility warning must exist before deployment insertion';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+  await db.execute(sql`
+    CREATE TRIGGER require_compatibility_warning_before_deployment
+    BEFORE INSERT ON deployments
+    FOR EACH ROW EXECUTE FUNCTION require_compatibility_warning_before_deployment()
+  `);
+  try {
+    return await action();
+  } finally {
+    await db.execute(sql`DROP TRIGGER require_compatibility_warning_before_deployment ON deployments`);
+    await db.execute(sql`DROP FUNCTION require_compatibility_warning_before_deployment()`);
+  }
+}
+
+async function withRejectedCompatibilityWarningEvents<T>(action: () => Promise<T>): Promise<T> {
+  await db.execute(sql`
+    ALTER TABLE deployment_run_events
+    ADD CONSTRAINT deployment_run_events_reject_compatibility_warning
+    CHECK (deployment_id IS NOT NULL OR message NOT LIKE 'Warning: deprecated %')
+  `);
+  try {
+    return await action();
+  } finally {
+    await db.execute(sql`
+      ALTER TABLE deployment_run_events
+      DROP CONSTRAINT deployment_run_events_reject_compatibility_warning
+    `);
+  }
 }
 
 async function createStoredSsoOidcProvider(providerId: string, organizationId: string): Promise<void> {

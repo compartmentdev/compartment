@@ -37,6 +37,7 @@ describe('compartment descriptor schema contract', (): void => {
     expect(response.rules.releaseForbiddenKinds).toEqual(expect.arrayContaining(['static']));
     expect(response.rules.resourceConfigRequiredFieldSets).toEqual([['image'], ['preset']]);
     expect(response.rules.resourceConfigFields).toContain('generatedVariables');
+    expect(response.rules.resourceConfigFields).toContain('restart');
     expect(response.rules.resourceGeneratedVariableEncodings).toEqual(['hex', 'base64url']);
     expect(response.rules.resourceGeneratedVariableFields).toEqual(['generator', 'bytes', 'encoding']);
     expect(response.rules.resourceGeneratedVariableGenerators).toEqual(['token']);
@@ -48,7 +49,7 @@ describe('compartment descriptor schema contract', (): void => {
     expect(response.rules.resourceOperationScheduleIntervals).toEqual(expect.arrayContaining(['daily', 'hourly']));
     expect(response.rules.resourceReadinessTypes).toEqual(['tcp']);
     expect(response.rules.resourceValueForms).toEqual(['resource_config']);
-    expect(response.rules.runFields).toEqual(['command']);
+    expect(response.rules.runFields).toEqual(['command', 'restart']);
     expect(response.rules.runForbiddenKinds).toContain('static');
     expect(response.rules.serviceConfigFields).toEqual(expect.arrayContaining(['release']));
     expect(response.rules.serviceConfigFields).toContain('connections');
