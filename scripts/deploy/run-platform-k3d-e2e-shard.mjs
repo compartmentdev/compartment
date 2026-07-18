@@ -1,7 +1,7 @@
 import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { runCommand, runCommandAsync } from '../lib/command.mjs';
+import { runCommandAsync } from '../lib/command.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { runMain } from '../lib/run-main.mjs';
 import { readPlatformK3dEnvironment } from './platform-k3d-e2e.mjs';
@@ -33,19 +33,6 @@ export function readPlatformK3dShardSuites(shardName) {
     throw new Error(`Unknown platform k3d e2e shard: ${shardName}`);
   }
   return definition.suites;
-}
-
-export function isPlatformK3dSuite(suite) {
-  return [
-    'managed-install',
-    'retained-state',
-    'install',
-    'system-user',
-    'console',
-    'build-matrix',
-    'g1',
-    'product-log',
-  ].includes(suite);
 }
 
 export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.env) {
@@ -85,18 +72,22 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
   return environment;
 }
 
-export function registerPlatformK3dSignalCleanup(cleanup, keepOnFailure) {
-  let cleanupPromise;
+export function registerPlatformK3dSignalCleanup(cancelExecution, waitForExecution) {
+  let signalPromise;
   const handlers = new Map();
   for (const signal of ['SIGINT', 'SIGTERM']) {
     const handler = () => {
-      cleanupPromise ??= keepOnFailure ? Promise.resolve() : cleanup();
-      cleanupPromise
-        .catch((error) => process.stderr.write(`Signal cleanup failed: ${String(error)}\n`))
-        .finally(() => {
+      signalPromise ??= (async () => {
+        cancelExecution();
+        try {
+          await waitForExecution();
+        } catch {
+          // The interrupted execution reports its own failure before cleanup.
+        } finally {
           unregister();
           process.kill(process.pid, signal);
-        });
+        }
+      })();
     };
     handlers.set(signal, handler);
     process.once(signal, handler);
@@ -114,21 +105,30 @@ export function registerPlatformK3dSignalCleanup(cleanup, keepOnFailure) {
 export async function runWithPlatformK3dCleanup({ cleanup, execute, keepOnFailure, reportFailure }) {
   let executionError;
   let cleanupError;
-  try {
-    await execute();
-  } catch (error) {
-    executionError = error;
+  let failureReported = false;
+  const reportFailureOnce = async () => {
+    if (failureReported) {
+      return;
+    }
+    failureReported = true;
     try {
       await reportFailure();
     } catch (reportError) {
       process.stderr.write(`Failure reporting also failed: ${String(reportError)}\n`);
     }
+  };
+  try {
+    await execute();
+  } catch (error) {
+    executionError = error;
+    await reportFailureOnce();
   } finally {
     if (executionError === undefined || !keepOnFailure) {
       try {
         await cleanup();
       } catch (error) {
         cleanupError = error;
+        await reportFailureOnce();
         if (executionError !== undefined) {
           process.stderr.write(`Cleanup also failed: ${String(error)}\n`);
         }
@@ -148,7 +148,7 @@ export async function runWithPlatformK3dCleanup({ cleanup, execute, keepOnFailur
 async function runShard(shardName) {
   const env = buildPlatformK3dShardEnvironment(shardName);
   const platformEnvironment = readPlatformK3dEnvironment(env);
-  const definition = shardDefinitions[shardName];
+  const suites = readPlatformK3dShardSuites(shardName);
   const diagnosticsPath = join(repositoryRoot, env.COMPARTMENT_E2E_DIAGNOSTICS_PATH);
   rmSync(diagnosticsPath, { force: true, recursive: true });
   let cleanupPromise;
@@ -156,18 +156,29 @@ async function runShard(shardName) {
     cleanupPromise ??= runCommandAsync(process.execPath, [lifecycleScript, 'down'], repositoryRoot, env);
     await cleanupPromise;
   };
-  const unregisterSignals = registerPlatformK3dSignalCleanup(cleanup, platformEnvironment.keepOnFailure);
+  const commandAbortController = new globalThis.AbortController();
+  let executionPromise;
+  const unregisterSignals = registerPlatformK3dSignalCleanup(
+    () => commandAbortController.abort(),
+    async () => await executionPromise,
+  );
   try {
-    await runWithPlatformK3dCleanup({
+    executionPromise = runWithPlatformK3dCleanup({
       cleanup,
       execute: async () => {
-        buildCliArtifact(env);
-        await startPlatform(env);
-        await runShardSuites(definition.suites, env, platformEnvironment.platformOwnerEnvironmentPath);
+        await buildCliArtifact(env, commandAbortController.signal);
+        await startPlatform(env, commandAbortController.signal);
+        await runShardSuites(
+          suites,
+          env,
+          platformEnvironment.platformOwnerEnvironmentPath,
+          commandAbortController.signal,
+        );
       },
       keepOnFailure: platformEnvironment.keepOnFailure,
       reportFailure: async () => await collectFailureDiagnostics(env, diagnosticsPath),
     });
+    await executionPromise;
   } finally {
     unregisterSignals();
   }
@@ -178,19 +189,19 @@ async function cleanShard(shardName) {
   await runCommandAsync(process.execPath, [lifecycleScript, 'down'], repositoryRoot, env);
 }
 
-function buildCliArtifact(env) {
+async function buildCliArtifact(env, signal) {
   if (env.COMPARTMENT_E2E_SKIP_CLI_BUILD !== '1') {
-    runCommand('pnpm', ['cli:build:sea', '--distribution-channel', 'source'], repositoryRoot, env);
+    await runInterruptibleCommand('pnpm', ['cli:build:sea', '--distribution-channel', 'source'], env, signal);
   }
 }
 
-async function startPlatform(env) {
+async function startPlatform(env, signal) {
   const archiveDirectory = env.COMPARTMENT_E2E_IMAGE_ARCHIVE_DIR;
   const args =
     archiveDirectory === undefined
       ? [lifecycleScript, 'up']
       : [lifecycleScript, 'up', '--image-source', 'archive', '--image-archive-dir', archiveDirectory];
-  await runCommandAsync(process.execPath, args, repositoryRoot, env);
+  await runInterruptibleCommand(process.execPath, args, env, signal);
 }
 
 async function collectFailureDiagnostics(env, diagnosticsPath) {
@@ -201,41 +212,47 @@ async function collectFailureDiagnostics(env, diagnosticsPath) {
   }
 }
 
-async function runShardSuites(suites, env, ownerEnvironmentPath) {
+async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
   for (const suite of suites) {
-    if (!isPlatformK3dSuite(suite)) {
-      throw new Error(`Unknown platform k3d e2e suite: ${suite}`);
-    }
     if (suite === 'managed-install') {
-      runCliE2eSuite(env, 'test/platform-k3d-managed-install.e2e.test.ts');
+      await runCliE2eSuite(env, 'test/platform-k3d-managed-install.e2e.test.ts', signal);
     } else if (suite === 'retained-state') {
-      runCommand(process.execPath, [retainedStateGateScript], repositoryRoot, env);
+      await runInterruptibleCommand(process.execPath, [retainedStateGateScript], env, signal);
     } else if (suite === 'install') {
-      runCliE2eSuite(env, 'test/platform-k3d-install.e2e.test.ts');
+      await runCliE2eSuite(env, 'test/platform-k3d-install.e2e.test.ts', signal);
       Object.assign(env, readOwnerEnvironment(ownerEnvironmentPath));
-      await runCommandAsync(process.execPath, [lifecycleScript, 'configure'], repositoryRoot, env);
+      await runInterruptibleCommand(process.execPath, [lifecycleScript, 'configure'], env, signal);
     } else if (suite === 'system-user') {
-      runCliE2eSuite(env, 'test/system-user-flow.e2e.test.ts');
+      await runCliE2eSuite(env, 'test/system-user-flow.e2e.test.ts', signal);
     } else if (suite === 'console') {
-      runCommand('pnpm', ['--filter', '@compartment/console', 'test:e2e:install'], repositoryRoot, env);
-      runCliE2eSuite(env, 'test/console.e2e.test.ts');
+      await runInterruptibleCommand('pnpm', ['--filter', '@compartment/console', 'test:e2e:install'], env, signal);
+      await runCliE2eSuite(env, 'test/console.e2e.test.ts', signal);
     } else if (suite === 'build-matrix') {
-      runCliE2eSuite(env, 'test/system-build-matrix.e2e.test.ts');
+      await runCliE2eSuite(env, 'test/system-build-matrix.e2e.test.ts', signal);
     } else if (suite === 'g1') {
-      runCliE2eSuite(env, 'test/platform-k3d-g1.e2e.test.ts');
+      await runCliE2eSuite(env, 'test/platform-k3d-g1.e2e.test.ts', signal);
     } else if (suite === 'product-log') {
-      runCommand(process.execPath, [productLogGateScript], repositoryRoot, env);
+      await runInterruptibleCommand(process.execPath, [productLogGateScript], env, signal);
     } else {
       throw new Error(`Unknown platform k3d e2e suite: ${suite}`);
     }
   }
 }
 
-function runCliE2eSuite(env, include) {
-  runCommand('pnpm', ['--filter', '@compartment/cli', 'test:e2e'], repositoryRoot, {
-    ...env,
-    COMPARTMENT_DEPLOY_E2E_INCLUDE: include,
-  });
+async function runCliE2eSuite(env, include, signal) {
+  await runInterruptibleCommand(
+    'pnpm',
+    ['--filter', '@compartment/cli', 'test:e2e'],
+    {
+      ...env,
+      COMPARTMENT_DEPLOY_E2E_INCLUDE: include,
+    },
+    signal,
+  );
+}
+
+async function runInterruptibleCommand(file, args, env, signal) {
+  await runCommandAsync(file, args, repositoryRoot, env, { signal, terminateProcessGroup: true });
 }
 
 function readOwnerEnvironment(path) {

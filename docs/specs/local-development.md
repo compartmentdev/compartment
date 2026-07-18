@@ -43,3 +43,5 @@ registry, builder cache, images, volumes, network, and temporary state on succes
 under `.compartment/platform-k3d-diagnostics-<shard>`.
 
 To retain a failed stand for investigation, set `COMPARTMENT_E2E_KEEP_ON_FAILURE=1`. Successful runs always clean up.
+CI uses the same opt-in through the `COMPARTMENT_E2E_KEEP_ON_FAILURE` Actions variable; leave it unset for the clean
+default.

@@ -11,6 +11,7 @@ import {
   renderK3dRegistryConfig,
   renderManagedPlatformK3dValues,
   renderPlatformK3dValues,
+  settlePlatformK3dStartup,
   shouldCleanLegacyPlatformResources,
 } from './platform-k3d-e2e.mjs';
 
@@ -95,7 +96,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(isRunOwnedDockerResourceName('k3d-compartment-e2e-build-gates-serverlb', environment)).toBe(true);
     expect(isRunOwnedDockerResourceName('k3d-compartment-e2e-user-flow', environment)).toBe(false);
     expect(isRunOwnedImageRef('localhost:15700/compartment-api:e2e', environment)).toBe(true);
-    expect(isRunOwnedImageRef('ghcr.io/compartmentdev/compartment-api:sha-abc123', environment)).toBe(true);
+    expect(isRunOwnedImageRef('ghcr.io/compartmentdev/compartment-api:sha-abc123', environment)).toBe(false);
     expect(
       isRunOwnedImageRef('ghcr.io/compartmentdev/compartment-api:e2e-compartment-e2e-build-gates', environment),
     ).toBe(true);
@@ -115,6 +116,22 @@ describe('platform k3d e2e command boundary', () => {
       'ghcr.io/compartmentdev/compartment-worker:sha-abc123',
     ]);
     expect(parseLoadedImageRefs('unrelated output\n')).toEqual([]);
+  });
+
+  it('waits for both startup branches before preserving the first failure', async () => {
+    let finishImages;
+    const images = new Promise((resolveImages) => {
+      finishImages = resolveImages;
+    });
+    let settled = false;
+    const startup = settlePlatformK3dStartup(Promise.reject(new Error('cluster failed')), images).finally(() => {
+      settled = true;
+    });
+
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finishImages({ imageDigestsByServiceName: {} });
+    await expect(startup).rejects.toThrow('cluster failed');
   });
 
   it('accepts only the console redirect as ready', () => {

@@ -28,6 +28,7 @@ jobs:
           - build-gates
     env:
       COMPARTMENT_E2E_IMAGE_ARCHIVE_DIR: ./.compartment/self-hosted-image-cache
+      COMPARTMENT_E2E_KEEP_ON_FAILURE: ${{ vars.COMPARTMENT_E2E_KEEP_ON_FAILURE || '0' }}
       COMPARTMENT_E2E_SKIP_CLI_BUILD: '1'
       COMPARTMENT_TEST_APP_NODE_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
       COMPARTMENT_TEST_POSTGRES_IMAGE: postgres:16
@@ -141,15 +142,23 @@ jobs:
             --output-dir ./.compartment/cli-dist
 
       - name: Run isolated k3d e2e shard
+        id: run-shard
         env:
           NO_PROXY: console.managed.compartment.test,managed-domain-broker,127.0.0.1,localhost
         run: node ./scripts/deploy/run-platform-k3d-e2e-shard.mjs "${{ matrix.shard }}"
 
       - name: Ensure shard cleanup
-        if: ${{ always() }}
+        id: cleanup-shard
+        if: ${{ always() && (success() || env.COMPARTMENT_E2E_KEEP_ON_FAILURE != '1') }}
         env:
           COMPARTMENT_E2E_CLEANUP_ONLY: '1'
         run: node ./scripts/deploy/run-platform-k3d-e2e-shard.mjs "${{ matrix.shard }}"
+
+      - name: Collect final shard diagnostics
+        if: ${{ always() && (steps.run-shard.outcome == 'failure' || steps.cleanup-shard.outcome == 'failure') }}
+        run: >-
+          node ./scripts/deploy/collect-platform-k3d-e2e-diagnostics.mjs
+          "./.compartment/platform-k3d-diagnostics-${{ matrix.shard }}"
 
       - name: Upload shard diagnostics
         if: ${{ failure() }}

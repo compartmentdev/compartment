@@ -1,15 +1,35 @@
 import { spawn, spawnSync } from 'node:child_process';
 
-export async function runCommandAsync(file, args, cwd, env) {
+export async function runCommandAsync(file, args, cwd, env, options = {}) {
   await new Promise((resolveCommand, rejectCommand) => {
+    const terminateProcessGroup = options.terminateProcessGroup === true;
     const child = spawn(file, args, {
       cwd,
+      detached: terminateProcessGroup,
       env,
       stdio: 'inherit',
     });
+    const abort = () => {
+      if (child.pid === undefined) {
+        return;
+      }
+      try {
+        process.kill(terminateProcessGroup ? -child.pid : child.pid, 'SIGTERM');
+      } catch (error) {
+        if (error?.code !== 'ESRCH') {
+          rejectCommand(error);
+        }
+      }
+    };
+    if (options.signal?.aborted === true) {
+      abort();
+    } else {
+      options.signal?.addEventListener('abort', abort, { once: true });
+    }
 
     child.once('error', rejectCommand);
     child.once('close', (status) => {
+      options.signal?.removeEventListener('abort', abort);
       if (status === 0) {
         resolveCommand();
         return;

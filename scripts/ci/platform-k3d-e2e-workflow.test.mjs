@@ -18,8 +18,12 @@ describe('platform k3d e2e workflow', () => {
     const runStep = job.steps.find((step) => step.name === 'Run isolated k3d e2e shard');
     expect(runStep.run).toContain('run-platform-k3d-e2e-shard.mjs "${{ matrix.shard }}"');
     const cleanupStep = job.steps.find((step) => step.name === 'Ensure shard cleanup');
-    expect(cleanupStep.if).toBe('${{ always() }}');
+    expect(job.env.COMPARTMENT_E2E_KEEP_ON_FAILURE).toContain('vars.COMPARTMENT_E2E_KEEP_ON_FAILURE');
+    expect(cleanupStep.if).toContain("env.COMPARTMENT_E2E_KEEP_ON_FAILURE != '1'");
     expect(cleanupStep.env.COMPARTMENT_E2E_CLEANUP_ONLY).toBe('1');
+    const finalDiagnosticsStep = job.steps.find((step) => step.name === 'Collect final shard diagnostics');
+    expect(finalDiagnosticsStep.if).toContain("steps.cleanup-shard.outcome == 'failure'");
+    expect(finalDiagnosticsStep.run).toContain('platform-k3d-diagnostics-${{ matrix.shard }}');
     const diagnosticsStep = job.steps.find((step) => step.name === 'Upload shard diagnostics');
     expect(diagnosticsStep.with.name).toContain('${{ matrix.shard }}');
     expect(diagnosticsStep.with.path).toContain('platform-k3d-diagnostics-${{ matrix.shard }}');

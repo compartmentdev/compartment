@@ -1,12 +1,11 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildPlatformK3dShardEnvironment,
-  isPlatformK3dSuite,
   readPlatformK3dShard,
   readPlatformK3dShardSuites,
   runWithPlatformK3dCleanup,
@@ -19,10 +18,24 @@ describe('platform k3d e2e shard runner', () => {
     );
 
     expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_CLUSTER_NAME))).toHaveLength(3);
-    expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_REGISTRY_NAME))).toHaveLength(3);
-    expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_REGISTRY_PORT))).toHaveLength(3);
-    expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_PLATFORM_NAMESPACE))).toHaveLength(3);
-    expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_PLATFORM_VALUES_PATH))).toHaveLength(3);
+    for (const name of [
+      'COMPARTMENT_E2E_REGISTRY_NAME',
+      'COMPARTMENT_E2E_REGISTRY_PORT',
+      'COMPARTMENT_E2E_HTTP_PORT',
+      'COMPARTMENT_E2E_HTTPS_PORT',
+      'COMPARTMENT_E2E_MANAGED_ACME_PORT',
+      'COMPARTMENT_E2E_MANAGED_BROKER_PORT',
+      'COMPARTMENT_E2E_PLATFORM_NAMESPACE',
+      'COMPARTMENT_E2E_MANAGED_NAMESPACE',
+      'COMPARTMENT_E2E_DIAGNOSTICS_PATH',
+      'COMPARTMENT_E2E_PLATFORM_VALUES_PATH',
+      'COMPARTMENT_E2E_MANAGED_VALUES_PATH',
+      'COMPARTMENT_E2E_OWNER_ENV_PATH',
+      'COMPARTMENT_E2E_PEBBLE_CA_PATH',
+      'COMPARTMENT_E2E_PEBBLE_ROOT_PATH',
+    ]) {
+      expect(new Set(environments.map((env) => env[name])), name).toHaveLength(3);
+    }
   });
 
   it('derives dependent settings from one cluster name and HTTP port', () => {
@@ -55,8 +68,6 @@ describe('platform k3d e2e shard runner', () => {
     expect(readPlatformK3dShardSuites('managed-install')).toEqual(['managed-install', 'retained-state']);
     expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user', 'console']);
     expect(readPlatformK3dShardSuites('build-gates')).toEqual(['install', 'build-matrix', 'g1', 'product-log']);
-    expect(isPlatformK3dSuite('product-log')).toBe(true);
-    expect(isPlatformK3dSuite('misspelled-suite')).toBe(false);
   });
 
   it('cleans successful and failed runs by default while preserving the original failure', async () => {
@@ -85,6 +96,21 @@ describe('platform k3d e2e shard runner', () => {
     expect(failureCleanup).toHaveBeenCalledOnce();
   });
 
+  it('reports a cleanup-only failure before returning it', async () => {
+    const reportFailure = vi.fn(async () => undefined);
+    await expect(
+      runWithPlatformK3dCleanup({
+        cleanup: async () => {
+          throw new Error('cleanup failed');
+        },
+        execute: async () => undefined,
+        keepOnFailure: false,
+        reportFailure,
+      }),
+    ).rejects.toThrow('cleanup failed');
+    expect(reportFailure).toHaveBeenCalledOnce();
+  });
+
   it('keeps only failed runs when explicitly requested', async () => {
     const cleanup = vi.fn(async () => undefined);
     await expect(
@@ -100,16 +126,33 @@ describe('platform k3d e2e shard runner', () => {
     expect(cleanup).not.toHaveBeenCalled();
   });
 
-  it('cleans before preserving process signal termination', async () => {
+  it('cancels an active command and cleans before preserving process signal termination', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'platform-k3d-signal-'));
     const markerPath = join(directory, 'cleaned');
+    const leakedChildMarkerPath = join(directory, 'leaked-child');
     const moduleUrl = new URL('./run-platform-k3d-e2e-shard.mjs', import.meta.url).href;
+    const grandchildProgram = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(leakedChildMarkerPath)}, 'leaked'), 400);`;
+    const activeCommandProgram = `require('node:child_process').spawn(process.execPath, ['--eval', ${JSON.stringify(grandchildProgram)}], { stdio: 'ignore' }); setInterval(() => undefined, 60000);`;
     const program = `
 import { writeFile } from 'node:fs/promises';
-import { registerPlatformK3dSignalCleanup } from ${JSON.stringify(moduleUrl)};
-registerPlatformK3dSignalCleanup(async () => await writeFile(${JSON.stringify(markerPath)}, 'cleaned'), false);
-process.stdout.write('ready');
-setInterval(() => undefined, 60_000);
+import { runCommandAsync } from ${JSON.stringify(new URL('../lib/command.mjs', import.meta.url).href)};
+import { registerPlatformK3dSignalCleanup, runWithPlatformK3dCleanup } from ${JSON.stringify(moduleUrl)};
+const abortController = new AbortController();
+let executionPromise;
+registerPlatformK3dSignalCleanup(
+  () => abortController.abort(),
+  async () => await executionPromise,
+);
+executionPromise = runWithPlatformK3dCleanup({
+  cleanup: async () => await writeFile(${JSON.stringify(markerPath)}, 'cleaned'),
+  execute: async () => {
+    process.stdout.write('ready');
+    await runCommandAsync(process.execPath, ['--eval', ${JSON.stringify(activeCommandProgram)}], process.cwd(), process.env, { signal: abortController.signal, terminateProcessGroup: true });
+  },
+  keepOnFailure: false,
+  reportFailure: async () => undefined,
+});
+await executionPromise;
 `;
     try {
       const child = spawn(process.execPath, ['--input-type=module', '--eval', program], {
@@ -126,6 +169,8 @@ setInterval(() => undefined, 60_000);
 
       expect(signal).toBe('SIGTERM');
       await expect(readFile(markerPath, 'utf8')).resolves.toBe('cleaned');
+      await new Promise((resolveDelay) => globalThis.setTimeout(resolveDelay, 600));
+      await expect(access(leakedChildMarkerPath)).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
