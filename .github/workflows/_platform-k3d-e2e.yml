@@ -16,16 +16,19 @@ permissions:
 
 jobs:
   run-platform-k3d-e2e:
-    name: run platform k3d e2e
+    name: run platform k3d e2e / ${{ matrix.shard }}
     runs-on: ${{ fromJson(inputs.runner_labels_json) }}
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - managed-install
+          - user-flow
+          - build-gates
     env:
-      COMPARTMENT_E2E_API_URL: http://console.compartment.localhost:18080
-      COMPARTMENT_E2E_COMPARTMENT_URL: http://console.compartment.localhost:18080
-      COMPARTMENT_E2E_KUBE_CONTEXT: k3d-compartment-e2e
-      COMPARTMENT_E2E_PLATFORM_MODE: k3d
-      COMPARTMENT_E2E_PLATFORM_NAMESPACE: compartment
-      COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E: '1'
+      COMPARTMENT_E2E_IMAGE_ARCHIVE_DIR: ./.compartment/self-hosted-image-cache
+      COMPARTMENT_E2E_SKIP_CLI_BUILD: '1'
       COMPARTMENT_TEST_APP_NODE_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
       COMPARTMENT_TEST_POSTGRES_IMAGE: postgres:16
       DOCKER_CONFIG: ${{ github.workspace }}/.compartment/docker-config
@@ -102,6 +105,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Validate Helm chart renders
+        if: ${{ matrix.shard == 'managed-install' }}
         env:
           HELM_DATA_HOME: ${{ runner.temp }}/helm-data
         run: |
@@ -136,129 +140,15 @@ jobs:
             --build-commit-sha "$BUILD_COMMIT_SHA" \
             --output-dir ./.compartment/cli-dist
 
-      - name: Prepare clean k3d cluster from cached images
-        run: node ./scripts/deploy/platform-k3d-e2e.mjs up --image-source archive --image-archive-dir ./.compartment/self-hosted-image-cache
-
-      - name: Verify production managed-domain install
+      - name: Run isolated k3d e2e shard
         env:
-          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/platform-k3d-managed-install.e2e.test.ts
           NO_PROXY: console.managed.compartment.test,managed-domain-broker,127.0.0.1,localhost
-        run: |
-          probe_managed_https() {
-            for _ in $(seq 1 600); do
-              if test -f ./.compartment/pebble.root.pem \
-                && kubectl --namespace compartment-managed-e2e get service managed-e2e-compartment-caddy >/dev/null 2>&1 \
-                && curl --silent --show-error --fail --output /dev/null --max-time 5 \
-                  --cacert ./.compartment/pebble.root.pem \
-                  --resolve console.managed.compartment.test:18443:127.0.0.1 \
-                  https://console.managed.compartment.test:18443/; then
-                echo 'Managed HTTPS probe passed.'
-                return 0
-              fi
-              sleep 2
-            done
-            echo 'Managed HTTPS probe timed out.' >&2
-            return 1
-          }
+        run: node ./scripts/deploy/run-platform-k3d-e2e-shard.mjs "${{ matrix.shard }}"
 
-          probe_managed_https &
-          probe_pid=$!
-          set +e
-          pnpm --filter @compartment/cli test:e2e
-          test_status=$?
-          if [ "${test_status}" -ne 0 ]; then
-            kill "${probe_pid}" 2>/dev/null || true
-            wait "${probe_pid}" 2>/dev/null || true
-            exit "${test_status}"
-          fi
-          wait "${probe_pid}"
-          probe_status=$?
-          set -e
-          exit "${probe_status}"
-
-      - name: Verify retained install-state lifecycle
-        run: |
-          set -euo pipefail
-          release=restore2-state
-          namespace=restore2-state
-          secret_name="${release}-install-state"
-          cleanup() {
-            helm uninstall "${release}" --namespace "${namespace}" >/dev/null 2>&1 || true
-            kubectl delete namespace "${namespace}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          helm upgrade --install "${release}" ./deploy/chart/compartment \
-            --namespace "${namespace}" \
-            --create-namespace \
-            --set platform.startupStage=foundation \
-            --set platform.installationId=retained-installation \
-            --set platform.domainMode=managed \
-            --set platform.baseDomain=retained.example.test \
-            --set platform.publicProtocol=https \
-            --set platform.tlsMode=managed \
-            --set platform.managedDomainBrokerUrl=https://broker.example.test \
-            --set secrets.managedDomainBrokerToken=retained-token
-          helm uninstall "${release}" --namespace "${namespace}"
-          kubectl --namespace "${namespace}" get secret "${secret_name}"
-
-          helm upgrade --install "${release}" ./deploy/chart/compartment \
-            --namespace "${namespace}" \
-            --set platform.startupStage=foundation \
-            --set platform.installationId=replacement-attempt
-          installation_id="$(kubectl --namespace "${namespace}" get secret "${secret_name}" --output jsonpath='{.data.installation-id}' | base64 --decode)"
-          broker_url="$(kubectl --namespace "${namespace}" get secret "${secret_name}" --output jsonpath='{.data.managed-domain-broker-url}' | base64 --decode)"
-          runtime_broker_url="$(kubectl --namespace "${namespace}" get configmap "${release}-compartment" --output jsonpath='{.data.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL}')"
-          test "${installation_id}" = retained-installation
-          test "${broker_url}" = https://broker.example.test
-          test "${runtime_broker_url}" = https://broker.example.test
-
-      - name: Install platform and bootstrap the first owner
-        env:
-          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/platform-k3d-install.e2e.test.ts
-        run: pnpm --filter @compartment/cli test:e2e
-
-      - name: Configure the k3d node registry route
-        run: node ./scripts/deploy/platform-k3d-e2e.mjs configure
-
-      - name: Run system user flow suite
-        env:
-          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/system-user-flow.e2e.test.ts
-        run: pnpm --filter @compartment/cli test:e2e
-
-      - name: Install console Playwright browser
-        run: pnpm --filter @compartment/console test:e2e:install
-
-      - name: Run console suite
-        env:
-          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/console.e2e.test.ts
-        run: pnpm --filter @compartment/cli test:e2e
-
-      - name: Run system build matrix suite
-        env:
-          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/system-build-matrix.e2e.test.ts
-        run: pnpm --filter @compartment/cli test:e2e
-
-      - name: Verify edge LKG and measure revocation convergence
-        env:
-          COMPARTMENT_DEPLOY_E2E_INCLUDE: test/platform-k3d-g1.e2e.test.ts
-        run: pnpm --filter @compartment/cli test:e2e
-
-      - name: Verify bounded product-log buffers under load
-        run: node ./scripts/deploy/run-platform-k3d-product-log-gate.mjs
-
-      - name: Collect k3d diagnostics
-        if: ${{ failure() }}
-        run: node ./scripts/deploy/collect-platform-k3d-e2e-diagnostics.mjs ./.compartment/platform-k3d-diagnostics
-
-      - name: Upload k3d diagnostics
+      - name: Upload shard diagnostics
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: platform-k3d-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ./.compartment/platform-k3d-diagnostics
+          name: platform-k3d-diagnostics-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ./.compartment/platform-k3d-diagnostics-${{ matrix.shard }}
           if-no-files-found: error
-
-      - name: Tear down k3d platform
-        if: ${{ always() }}
-        run: node ./scripts/deploy/platform-k3d-e2e.mjs down
