@@ -98,6 +98,24 @@ services:
       command: pnpm db:migrate
 ```
 
+## Restart policy compatibility
+
+Descriptors created for the former Docker runtime may include `services.<name>.run.restart` or
+`resources.<name>.restart`. Kubernetes deployments accept these fields during migration, but the fields are deprecated
+and are not applied. Deploy prints a warning for every authored restart setting.
+
+Kubernetes Deployment Pods always use `restartPolicy: Always` while the Deployment has running replicas. Running
+`compartment stop` scales the workload to zero, which prevents further restarts. This behavior also applies when the
+descriptor has no restart field.
+
+The compatibility parser accepts the former service policies `no`, `on-failure`, and `unless-stopped`.
+`maxRetries` remains valid only with `on-failure`. Generic resources accept the same policies under `restart.policy`;
+preset resources still accept only `env` overrides. None of these policy values or retry limits has a direct Deployment
+equivalent, so Compartment does not claim to map them. Full restart-policy semantics require a separate product decision
+about controller behavior or another Kubernetes workload type.
+
+Remove these deprecated fields after migration if the fixed Kubernetes behavior is suitable for the workload.
+
 Expanded example:
 
 ```yaml
