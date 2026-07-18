@@ -8,6 +8,13 @@ description = "Generated test build output is ignored by git and may contain com
 paths = ['''(^|/)dist-test/''']
 
 [[allowlists]]
+description = "Helm unit tests contain synthetic Secret providers and generated manifest snapshots."
+paths = [
+  '''^deploy/chart/compartment/tests/retained_state_test\.yaml$''',
+  '''^deploy/chart/compartment/tests/__snapshot__/render_test\.yaml\.snap$''',
+]
+
+[[allowlists]]
 description = "API tests use local-only PEM private keys for TLS and pending-certificate fixtures."
 condition = "AND"
 rules = ["private-key"]
