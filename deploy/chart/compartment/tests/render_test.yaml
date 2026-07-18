@@ -5,7 +5,7 @@ templates:
 release:
   name: compartment
 tests:
-  - it: renders the foundation stage
+  - it: renders only foundation resources during the foundation stage
     set:
       platform:
         startupStage: foundation
@@ -21,11 +21,84 @@ tests:
         systemToken: test-system-token
         variablesMasterKey: test-variables-master-key
         managedDomainBrokerToken: ''
-    asserts: &snapshotAsserts
+    asserts:
       - notFailedTemplate: {}
-      - matchSnapshot: {}
+      - hasDocuments:
+          count: 1
+        template: install-state-secret.yaml
+      - isKind:
+          of: Secret
+        template: install-state-secret.yaml
+      - hasDocuments:
+          count: 1
+        template: secret.yaml
+      - isKind:
+          of: Secret
+        template: secret.yaml
+      - hasDocuments:
+          count: 1
+        template: configmap.yaml
+      - isKind:
+          of: ConfigMap
+        template: configmap.yaml
+      - hasDocuments:
+          count: 2
+        template: pvc.yaml
+      - isKind:
+          of: PersistentVolumeClaim
+        template: pvc.yaml
+      - hasDocuments:
+          count: 1
+        template: caddy.yaml
+      - isKind:
+          of: Service
+        template: caddy.yaml
+        documentIndex: 0
+      - hasDocuments:
+          count: 2
+        template: postgres.yaml
+      - isKind:
+          of: Service
+        template: postgres.yaml
+        documentIndex: 0
+      - isKind:
+          of: Deployment
+        template: postgres.yaml
+        documentIndex: 1
+      - hasDocuments:
+          count: 2
+        template: registry.yaml
+      - isKind:
+          of: Service
+        template: registry.yaml
+        documentIndex: 0
+      - isKind:
+          of: Deployment
+        template: registry.yaml
+        documentIndex: 1
+      - hasDocuments:
+          count: 0
+        template: api.yaml
+      - hasDocuments:
+          count: 0
+        template: worker.yaml
+      - hasDocuments:
+          count: 0
+        template: edge.yaml
+      - hasDocuments:
+          count: 0
+        template: buildkit.yaml
+      - hasDocuments:
+          count: 0
+        template: api-migrate.yaml
+      - hasDocuments:
+          count: 0
+        template: project-provisioner.yaml
+      - hasDocuments:
+          count: 0
+        template: product-log-agent.yaml
 
-  - it: renders a full public installation
+  - it: renders a full public installation with public ingress and workloads
     set:
       platform:
         startupStage: full
@@ -35,9 +108,92 @@ tests:
         publicIngressIpv4: 8.8.8.8
         managedDomainBrokerUrl: ''
       secrets: *stableSecrets
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: compartment-compartment-api
+          any: true
+        template: api.yaml
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: compartment-compartment-worker
+          any: true
+        template: worker.yaml
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: compartment-compartment-edge
+          any: true
+        template: edge.yaml
+      - containsDocument:
+          apiVersion: apps/v1
+          kind: Deployment
+          name: compartment-compartment-caddy
+          any: true
+        template: caddy.yaml
+      - contains:
+          path: spec.ports
+          content:
+            name: http
+            port: 80
+            targetPort: http
+          any: true
+        template: caddy.yaml
+        documentIndex: 0
+      - contains:
+          path: spec.ports
+          content:
+            name: https
+            port: 443
+            targetPort: https
+          any: true
+        template: caddy.yaml
+        documentIndex: 0
+      - notExists:
+          path: spec.ports[0].nodePort
+        template: caddy.yaml
+        documentIndex: 0
+      - notExists:
+          path: spec.ports[1].nodePort
+        template: caddy.yaml
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: http
+            containerPort: 8080
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: https
+            containerPort: 8443
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: data.COMPARTMENT_PUBLIC_HTTP_PORT
+          value: '80'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_PUBLIC_HTTPS_PORT
+          value: '443'
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_PUBLIC_INGRESS_IPV4
+          value: 8.8.8.8
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_BASE_DOMAIN
+          value: apps.example.com
+        template: configmap.yaml
 
-  - it: renders a local full installation
+  - it: renders a local HTTP installation for a localhost domain
     set:
       platform:
         startupStage: full
@@ -46,9 +202,30 @@ tests:
         publicProtocol: http
         tlsMode: custom-http
       secrets: *stableSecrets
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - equal:
+          path: data.COMPARTMENT_BASE_DOMAIN
+          value: compartment.localhost
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_PUBLIC_PROTOCOL
+          value: http
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_CADDY_TLS_MODE
+          value: custom-http
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL
+          value: ''
+        template: configmap.yaml
+      - isKind:
+          of: Deployment
+        template: caddy.yaml
+        documentIndex: 1
 
-  - it: renders a custom broker configuration
+  - it: wires a custom managed-domain broker into a local installation
     set:
       platform:
         startupStage: full
@@ -60,9 +237,29 @@ tests:
       secrets:
         <<: *stableSecrets
         managedDomainBrokerToken: retained-token
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - equal:
+          path: data.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL
+          value: https://broker.example.test
+        template: configmap.yaml
+      - equal:
+          path: stringData.managed-domain-broker-token
+          value: retained-token
+        template: install-state-secret.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: compartment-install-state
+                key: managed-domain-broker-token
+          any: true
+        template: api.yaml
+        documentIndex: 1
 
-  - it: renders immutable platform image digests
+  - it: pins every platform image to its verified digest
     set:
       platform:
         startupStage: full
@@ -80,16 +277,66 @@ tests:
         caddy:
           digest: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
       secrets: *stableSecrets
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/compartmentdev/compartment-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        template: api.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_WORKER_IMAGE
+            value: ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          any: true
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        template: worker.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/compartmentdev/compartment-edge@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/compartmentdev/compartment-caddy@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+        template: caddy.yaml
+        documentIndex: 1
 
-  - it: renders the restricted kind profile
+  - it: renders the restricted kind profile without BuildKit
     values:
       - ../values-kind.yaml
     set:
       secrets: *stableSecrets
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - equal:
+          path: spec.type
+          value: NodePort
+        template: caddy.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.ports[0].nodePort
+          value: 30080
+        template: caddy.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.ports[1].nodePort
+          value: 30443
+        template: caddy.yaml
+        documentIndex: 0
+      - hasDocuments:
+          count: 0
+        template: buildkit.yaml
+      - hasDocuments:
+          count: 0
+        template: buildkit-network-policy.yaml
 
-  - it: renders edge snapshot storage
+  - it: renders persistent edge snapshot storage when enabled
     set:
       platform:
         startupStage: full
@@ -101,9 +348,33 @@ tests:
         snapshots:
           enabled: true
       secrets: *stableSecrets
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - containsDocument:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          name: compartment-compartment-edge-snapshots
+          any: true
+        template: pvc.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: snapshots
+            persistentVolumeClaim:
+              claimName: compartment-compartment-edge-snapshots
+          any: true
+        template: edge.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: snapshots
+            mountPath: /var/lib/compartment/snapshots
+          any: true
+        template: edge.yaml
+        documentIndex: 1
 
-  - it: renders managed TLS
+  - it: wires managed DNS and managed TLS through retained install state
     set:
       platform: &managedPlatform
         startupStage: full
@@ -126,9 +397,68 @@ tests:
       secrets:
         <<: *stableSecrets
         managedDomainBrokerToken: broker-token
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - equal:
+          path: data.COMPARTMENT_CADDY_TLS_MODE
+          value: managed
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_ACME_ISSUER
+          value: acme
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL
+          value: https://broker.compartment.run
+        template: configmap.yaml
+      - notExists:
+          path: data.COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN
+        template: configmap.yaml
+      - equal:
+          path: stringData.managed-domain-broker-token
+          value: broker-token
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.managed-base-domain
+          value: managed.compartment.run
+        template: install-state-secret.yaml
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        template: install-state-secret.yaml
+      - notExists:
+          path: stringData.managed-domain-broker-token
+        template: secret.yaml
+      - contains: &brokerTokenEnv
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: compartment-install-state
+                key: managed-domain-broker-token
+          any: true
+        template: api.yaml
+        documentIndex: 1
+      - contains: *brokerTokenEnv
+        template: caddy.yaml
+        documentIndex: 1
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: active-tls
+          any: true
+        template: api.yaml
+        documentIndex: 1
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tls
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
 
-  - it: renders an existing custom certificate
+  - it: mounts one existing custom certificate read-only in API and Caddy
     set:
       platform: &customCertPlatform
         startupStage: full
@@ -141,9 +471,74 @@ tests:
       customTls:
         existingSecret: operator-tls
       secrets: *stableSecrets
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - contains: &apiActiveTlsMount
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: active-tls
+            mountPath: /etc/compartment/tls
+            readOnly: true
+          any: true
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.secretName
+          value: operator-tls
+        template: api.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.items
+          content:
+            key: tls.crt
+            path: fullchain.pem
+        template: api.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.items
+          content:
+            key: tls.key
+            path: privkey.pem
+        template: api.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: tls
+            mountPath: /etc/compartment/tls
+            readOnly: true
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "tls")].secret.secretName
+          value: operator-tls
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.volumes[?(@.name == "tls")].secret.items
+          content:
+            key: tls.crt
+            path: fullchain.pem
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.volumes[?(@.name == "tls")].secret.items
+          content:
+            key: tls.key
+            path: privkey.pem
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: data.COMPARTMENT_CUSTOM_TLS_CERT_FILE
+          value: /etc/compartment/tls/fullchain.pem
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_CUSTOM_TLS_KEY_FILE
+          value: /etc/compartment/tls/privkey.pem
+        template: configmap.yaml
 
-  - it: renders pending custom certificate material
+  - it: mounts pending custom certificate material only in API
     set:
       platform:
         <<: *managedPlatform
@@ -156,9 +551,47 @@ tests:
       secrets:
         <<: *stableSecrets
         managedDomainBrokerToken: broker-token
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - equal:
+          path: metadata.name
+          value: operator-tls
+        template: custom-tls-secret.yaml
+        documentIndex: 0
+      - equal:
+          path: stringData["tls.crt"]
+          value: test-certificate
+        template: custom-tls-secret.yaml
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: pending-tls
+            mountPath: /etc/compartment/tls/domop_123
+            readOnly: true
+          any: true
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "pending-tls")].secret.secretName
+          value: operator-tls
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
+          value: domop_123
+        template: api.yaml
+        documentIndex: 1
+      - notExists:
+          path: spec.template.spec.volumes[?(@.secret.secretName == "operator-tls")]
+        template: caddy.yaml
+        documentIndex: 1
+      - notExists:
+          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
+        template: caddy.yaml
+        documentIndex: 1
 
-  - it: renders a rotating custom certificate
+  - it: keeps Caddy on the active certificate while API stages a rotation
     set:
       platform:
         <<: *customCertPlatform
@@ -176,9 +609,51 @@ tests:
       secrets:
         <<: *stableSecrets
         managedDomainBrokerToken: broker-token
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - hasDocuments:
+          count: 2
+        template: custom-tls-secret.yaml
+      - equal:
+          path: stringData["tls.crt"]
+          value: active-certificate
+        template: custom-tls-secret.yaml
+        documentIndex: 0
+      - equal:
+          path: stringData["tls.crt"]
+          value: pending-certificate
+        template: custom-tls-secret.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.secretName
+          value: active-operator-tls
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "pending-tls")].secret.secretName
+          value: pending-operator-tls
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "tls")].secret.secretName
+          value: active-operator-tls
+        template: caddy.yaml
+        documentIndex: 1
+      - notExists:
+          path: spec.template.spec.volumes[?(@.secret.secretName == "pending-operator-tls")]
+        template: caddy.yaml
+        documentIndex: 1
+      - isNotEmpty:
+          path: spec.template.metadata.annotations["checksum/pending-tls"]
+        template: api.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+          pattern: ^[a-f0-9]{64}$
+        template: caddy.yaml
+        documentIndex: 1
 
-  - it: renders the active certificate without pending rotation
+  - it: renders the active certificate without pending rotation state
     set:
       platform:
         <<: *customCertPlatform
@@ -192,9 +667,43 @@ tests:
       secrets:
         <<: *stableSecrets
         managedDomainBrokerToken: broker-token
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - hasDocuments:
+          count: 1
+        template: custom-tls-secret.yaml
+      - equal:
+          path: metadata.name
+          value: active-operator-tls
+        template: custom-tls-secret.yaml
+      - contains: *apiActiveTlsMount
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.secretName
+          value: active-operator-tls
+        template: api.yaml
+        documentIndex: 1
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: pending-tls
+          any: true
+        template: api.yaml
+        documentIndex: 1
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: pending-tls
+          any: true
+        template: api.yaml
+        documentIndex: 1
+      - isNotEmpty:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+        template: caddy.yaml
+        documentIndex: 1
 
-  - it: renders inline custom certificate material
+  - it: renders inline custom certificate material into the shared TLS Secret
     set:
       platform:
         <<: *customCertPlatform
@@ -203,9 +712,38 @@ tests:
         certificate: test-certificate
         privateKey: test-private-key
       secrets: *stableSecrets
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - hasDocuments:
+          count: 1
+        template: custom-tls-secret.yaml
+      - isKind:
+          of: Secret
+        template: custom-tls-secret.yaml
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-custom-tls
+        template: custom-tls-secret.yaml
+      - equal:
+          path: stringData["tls.crt"]
+          value: test-certificate
+        template: custom-tls-secret.yaml
+      - equal:
+          path: stringData["tls.key"]
+          value: test-private-key
+        template: custom-tls-secret.yaml
+      - equal:
+          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.secretName
+          value: compartment-compartment-custom-tls
+        template: api.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+          pattern: ^[a-f0-9]{64}$
+        template: caddy.yaml
+        documentIndex: 1
 
-  - it: renders rotated inline custom certificate material
+  - it: rolls the inline custom certificate checksum with rotated material
     set:
       platform:
         <<: *customCertPlatform
@@ -214,10 +752,50 @@ tests:
         certificate: rotated-certificate
         privateKey: test-private-key
       secrets: *stableSecrets
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - equal:
+          path: stringData["tls.crt"]
+          value: rotated-certificate
+        template: custom-tls-secret.yaml
+      - equal:
+          path: stringData["tls.key"]
+          value: test-private-key
+        template: custom-tls-secret.yaml
+      - isNotEmpty:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+        template: api.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/custom-tls"]
+          pattern: ^[a-f0-9]{64}$
+        template: caddy.yaml
+        documentIndex: 1
 
-  - it: keeps the retained Secret name independent of fullname override
+  - it: applies fullname override without renaming retained install state
     set:
       fullnameOverride: renamed-compartment
       secrets: *stableSecrets
-    asserts: *snapshotAsserts
+    asserts:
+      - notFailedTemplate: {}
+      - equal:
+          path: metadata.name
+          value: compartment-install-state
+        template: install-state-secret.yaml
+      - equal:
+          path: metadata.name
+          value: renamed-compartment
+        template: secret.yaml
+      - equal:
+          path: metadata.name
+          value: renamed-compartment
+        template: configmap.yaml
+      - equal:
+          path: metadata.name
+          value: renamed-compartment-caddy
+        template: caddy.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: metadata.name
+          pattern: ^renamed-compartment-(postgres|registry)$
+        template: pvc.yaml
