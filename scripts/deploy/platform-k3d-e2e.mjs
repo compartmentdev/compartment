@@ -58,6 +58,7 @@ const serverNodeName = `k3d-${clusterName}-server-0`;
 const builderName = `${clusterName}-builder`;
 const imageCacheLockOwnerToken = `e2e-${clusterName}`;
 const managedCaddyBuildDirectory = join(dirname(managedPlatformValuesPath), 'managed-caddy-build');
+const managedCaddyBuildContainerName = `${clusterName}-managed-caddy-build`;
 const managedCaddyPebbleContainerName = `${clusterName}-pebble-ca`;
 const registryConfigDirectory = join(dirname(platformValuesPath), 'registry-config');
 const platformImageTag = 'e2e';
@@ -424,28 +425,44 @@ function buildManagedE2eCaddyImage(sourceImageRef) {
   mkdirSync(managedCaddyBuildDirectory, { recursive: true });
   const buildDirectory = managedCaddyBuildDirectory;
   const extractedCaPath = join(buildDirectory, 'pebble.minica.pem');
-  const dockerfilePath = join(buildDirectory, 'Dockerfile');
   const managedImageRef = `${registryPushHost}/compartment-caddy:managed-e2e`;
-  let pebbleContainerId;
+  let managedCaddyContainerReference;
+  let pebbleContainerReference;
   let managedCaddyDigest;
   let buildError;
   try {
-    pebbleContainerId = captureCommand(
+    pebbleContainerReference = captureCommand(
       'docker',
       ['create', '--name', managedCaddyPebbleContainerName, pebbleImageRef],
       repositoryRoot,
     ).trim();
-    runCommand('docker', ['cp', `${pebbleContainerId}:/test/certs/pebble.minica.pem`, extractedCaPath], repositoryRoot);
-    copyFileSync(extractedCaPath, pebbleCaPath);
-    writeFileSync(
-      dockerfilePath,
-      'ARG CADDY_IMAGE\nFROM ${CADDY_IMAGE}\nCOPY pebble.minica.pem /usr/local/share/ca-certificates/pebble.crt\nRUN update-ca-certificates\n',
-    );
     runCommand(
       'docker',
-      ['build', '--build-arg', `CADDY_IMAGE=${sourceImageRef}`, '--tag', managedImageRef, buildDirectory],
+      ['cp', `${pebbleContainerReference}:/test/certs/pebble.minica.pem`, extractedCaPath],
       repositoryRoot,
     );
+    copyFileSync(extractedCaPath, pebbleCaPath);
+    managedCaddyContainerReference = captureCommand(
+      'docker',
+      [
+        'create',
+        '--name',
+        managedCaddyBuildContainerName,
+        '--entrypoint',
+        '/bin/sh',
+        sourceImageRef,
+        '-c',
+        'update-ca-certificates',
+      ],
+      repositoryRoot,
+    ).trim();
+    runCommand(
+      'docker',
+      ['cp', extractedCaPath, `${managedCaddyContainerReference}:/usr/local/share/ca-certificates/pebble.crt`],
+      repositoryRoot,
+    );
+    runCommand('docker', ['start', '--attach', managedCaddyContainerReference], repositoryRoot);
+    runCommand('docker', ['commit', managedCaddyContainerReference, managedImageRef], repositoryRoot);
     runCommand('docker', ['push', '--quiet', managedImageRef], repositoryRoot);
     managedCaddyDigest = readPushedImageDigest(managedImageRef);
   } catch (error) {
@@ -453,11 +470,14 @@ function buildManagedE2eCaddyImage(sourceImageRef) {
   }
 
   let cleanupError;
-  if (pebbleContainerId !== undefined && pebbleContainerId !== '') {
+  for (const containerReference of [managedCaddyContainerReference, pebbleContainerReference]) {
+    if (containerReference === undefined || containerReference === '') {
+      continue;
+    }
     try {
-      runCommand('docker', ['rm', '--force', pebbleContainerId], repositoryRoot);
+      runCommand('docker', ['rm', '--force', containerReference], repositoryRoot);
     } catch (error) {
-      cleanupError = error;
+      cleanupError ??= error;
     }
   }
   try {
@@ -650,6 +670,7 @@ function cleanResidualDockerResources(cleanupErrors) {
     `k3d-${clusterName}-serverlb`,
     `k3d-${registryName}`,
     `buildx_buildkit_${builderName}0`,
+    managedCaddyBuildContainerName,
     managedCaddyPebbleContainerName,
   ]) {
     if (dockerResourceExists('container', containerName)) {

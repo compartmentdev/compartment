@@ -37,6 +37,7 @@ export function isRunOwnedDockerResourceName(name, environment) {
     `k3d-${environment.clusterName}-serverlb`,
     `k3d-${environment.registryName}`,
     `buildx_buildkit_${environmentBuilderName}0_state`,
+    `${environment.clusterName}-managed-caddy-build`,
     `${environment.clusterName}-pebble-ca`,
   ].includes(name);
 }

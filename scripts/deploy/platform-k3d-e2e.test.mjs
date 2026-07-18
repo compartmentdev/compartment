@@ -106,6 +106,7 @@ describe('platform k3d e2e command boundary', () => {
     expect(isRunOwnedDockerResourceName('k3d-compartment-e2e-build-gates', environment)).toBe(true);
     expect(isRunOwnedDockerResourceName('k3d-compartment-e2e-build-gates-serverlb', environment)).toBe(true);
     expect(isRunOwnedDockerResourceName('compartment-e2e-build-gates-pebble-ca', environment)).toBe(true);
+    expect(isRunOwnedDockerResourceName('compartment-e2e-build-gates-managed-caddy-build', environment)).toBe(true);
     expect(isRunOwnedDockerResourceName('k3d-compartment-e2e-user-flow', environment)).toBe(false);
     expect(isRunOwnedImageRef('localhost:15700/compartment-api:e2e', environment)).toBe(true);
     expect(isRunOwnedImageRef('ghcr.io/compartmentdev/compartment-api:sha-abc123', environment)).toBe(false);
