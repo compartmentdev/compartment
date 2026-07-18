@@ -312,7 +312,7 @@ function cleanLegacyPlatformResourcesUnlocked() {
   ]) {
     if (dockerResourceExists('container', containerName)) {
       runCleanupStep(cleanupErrors, `legacy container ${containerName}`, () => {
-        runCommand('docker', ['container', 'rm', '--force', containerName], repositoryRoot);
+        runCommand('docker', buildDockerContainerRemovalArgs(containerName), repositoryRoot);
       });
     }
   }
