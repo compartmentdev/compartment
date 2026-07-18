@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildPlatformK3dShardEnvironment,
+  platformK3dShardNames,
   readPlatformK3dShard,
   readPlatformK3dShardSuites,
   runWithPlatformK3dCleanup,
@@ -13,9 +14,7 @@ import {
 
 describe('platform k3d e2e shard runner', () => {
   it('defines isolated names, ports, namespaces, and state for every shard', () => {
-    const environments = ['build-matrix-a', 'build-matrix-b', 'user-flow', 'console', 'managed-install'].map((shard) =>
-      buildPlatformK3dShardEnvironment(shard, {}),
-    );
+    const environments = platformK3dShardNames.map((shard) => buildPlatformK3dShardEnvironment(shard, {}));
 
     expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_CLUSTER_NAME))).toHaveLength(5);
     for (const name of [
@@ -61,14 +60,16 @@ describe('platform k3d e2e shard runner', () => {
     expect(readPlatformK3dShard(['user-flow'])).toBe('user-flow');
     expect(() => readPlatformK3dShard([])).toThrow('Usage:');
     expect(() => readPlatformK3dShard(['unknown'])).toThrow('Usage:');
+    expect(() => readPlatformK3dShard(['toString'])).toThrow('Usage:');
     expect(() => readPlatformK3dShard(['user-flow', 'extra'])).toThrow('Usage:');
+    expect(() => readPlatformK3dShardSuites('constructor')).toThrow('Unknown platform k3d e2e shard: constructor');
   });
 
   it('assigns every existing e2e suite and gate to one explicit shard', () => {
     expect(readPlatformK3dShardSuites('build-matrix-a')).toEqual(['install', 'build-matrix-a']);
-    expect(readPlatformK3dShardSuites('build-matrix-b')).toEqual(['install', 'build-matrix-b', 'g1', 'product-log']);
+    expect(readPlatformK3dShardSuites('build-matrix-b')).toEqual(['install', 'build-matrix-b']);
     expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user']);
-    expect(readPlatformK3dShardSuites('console')).toEqual(['install', 'console']);
+    expect(readPlatformK3dShardSuites('console')).toEqual(['install', 'console', 'g1', 'product-log']);
     expect(readPlatformK3dShardSuites('managed-install')).toEqual(['managed-install', 'retained-state']);
   });
 
