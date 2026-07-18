@@ -443,18 +443,7 @@ function buildManagedE2eCaddyImage(sourceImageRef) {
     );
     runCommand(
       'docker',
-      [
-        'buildx',
-        'build',
-        '--builder',
-        builderName,
-        '--load',
-        '--build-arg',
-        `CADDY_IMAGE=${sourceImageRef}`,
-        '--tag',
-        managedImageRef,
-        buildDirectory,
-      ],
+      ['build', '--build-arg', `CADDY_IMAGE=${sourceImageRef}`, '--tag', managedImageRef, buildDirectory],
       repositoryRoot,
     );
     runCommand('docker', ['push', '--quiet', managedImageRef], repositoryRoot);
