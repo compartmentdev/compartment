@@ -155,7 +155,7 @@ jobs:
         run: node ./scripts/deploy/run-platform-k3d-e2e-shard.mjs "${{ matrix.shard }}"
 
       - name: Collect final shard diagnostics
-        if: ${{ always() && (steps.run-shard.outcome == 'failure' || steps.cleanup-shard.outcome == 'failure') }}
+        if: ${{ always() && steps.run-shard.outcome != 'failure' && steps.cleanup-shard.outcome == 'failure' }}
         run: >-
           node ./scripts/deploy/collect-platform-k3d-e2e-diagnostics.mjs
           "./.compartment/platform-k3d-diagnostics-${{ matrix.shard }}"

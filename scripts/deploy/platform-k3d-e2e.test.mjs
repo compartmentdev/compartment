@@ -1,18 +1,26 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
   isConsoleReadyStatus,
+  isPlatformSourceCacheImageRef,
   isRunOwnedDockerResourceName,
   isRunOwnedImageRef,
   parseK3dClusterNames,
   parseLoadedImageRefs,
   readPlatformK3dCommand,
+  readPlatformK3dCleanupStageNames,
   readPlatformK3dEnvironment,
   renderK3dRegistryConfig,
   renderManagedPlatformK3dValues,
   renderPlatformK3dValues,
   settlePlatformK3dStartup,
   shouldCleanLegacyPlatformResources,
+  runPlatformK3dCleanupSequence,
+  withPlatformK3dProcessLock,
 } from './platform-k3d-e2e.mjs';
 
 describe('platform k3d e2e command boundary', () => {
@@ -102,8 +110,75 @@ describe('platform k3d e2e command boundary', () => {
     ).toBe(true);
     expect(isRunOwnedImageRef('localhost:15600/compartment-api:e2e', environment)).toBe(false);
     expect(isRunOwnedImageRef('postgres:16', environment)).toBe(false);
-    expect(shouldCleanLegacyPlatformResources({ COMPARTMENT_E2E_SHARD: 'managed-install' }, environment)).toBe(true);
-    expect(shouldCleanLegacyPlatformResources({ COMPARTMENT_E2E_SHARD: 'user-flow' }, environment)).toBe(false);
+    expect(isPlatformSourceCacheImageRef('ghcr.io/compartmentdev/compartment-api:sha-abc123')).toBe(true);
+    expect(isPlatformSourceCacheImageRef('postgres:16')).toBe(false);
+    expect(shouldCleanLegacyPlatformResources(environment)).toBe(true);
+    expect(shouldCleanLegacyPlatformResources(readPlatformK3dEnvironment({}))).toBe(false);
+  });
+
+  it('keeps every cleanup stage and continues after an individual failure', () => {
+    expect(readPlatformK3dCleanupStageNames()).toEqual([
+      'cluster',
+      'registry',
+      'builder',
+      'residual Docker resources',
+      'run-owned images',
+      'state files and directories',
+    ]);
+    const attempted = [];
+    const errors = runPlatformK3dCleanupSequence(
+      readPlatformK3dCleanupStageNames().map((label) => ({
+        cleanup: () => {
+          attempted.push(label);
+          if (label === 'cluster') {
+            throw new Error('cluster cleanup failed');
+          }
+        },
+        label,
+      })),
+    );
+    expect(attempted).toEqual(readPlatformK3dCleanupStageNames());
+    expect(errors).toHaveLength(1);
+  });
+
+  it('serializes process locks, recovers stale owners, and releases after failure', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'platform-k3d-lock-test-'));
+    const lockDirectory = join(directory, 'lock');
+    let releaseFirst;
+    let secondStarted = false;
+    try {
+      const first = withPlatformK3dProcessLock(
+        lockDirectory,
+        async () =>
+          await new Promise((resolveFirst) => {
+            releaseFirst = resolveFirst;
+          }),
+      );
+      await new Promise((resolveDelay) => globalThis.setTimeout(resolveDelay, 25));
+      const second = withPlatformK3dProcessLock(lockDirectory, async () => {
+        secondStarted = true;
+      });
+      await new Promise((resolveDelay) => globalThis.setTimeout(resolveDelay, 125));
+      expect(secondStarted).toBe(false);
+      releaseFirst();
+      await Promise.all([first, second]);
+      expect(secondStarted).toBe(true);
+
+      await expect(
+        withPlatformK3dProcessLock(lockDirectory, async () => {
+          throw new Error('operation failed');
+        }),
+      ).rejects.toThrow('operation failed');
+      await expect(withPlatformK3dProcessLock(lockDirectory, async () => 'reacquired')).resolves.toBe('reacquired');
+
+      mkdirSync(lockDirectory);
+      writeFileSync(join(lockDirectory, 'pid'), 'invalid');
+      await expect(withPlatformK3dProcessLock(lockDirectory, async () => 'stale-recovered')).resolves.toBe(
+        'stale-recovered',
+      );
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
   });
 
   it('reads loaded image refs from docker load output', () => {

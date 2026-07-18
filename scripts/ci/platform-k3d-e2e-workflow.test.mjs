@@ -23,6 +23,7 @@ describe('platform k3d e2e workflow', () => {
     expect(cleanupStep.env.COMPARTMENT_E2E_CLEANUP_ONLY).toBe('1');
     const finalDiagnosticsStep = job.steps.find((step) => step.name === 'Collect final shard diagnostics');
     expect(finalDiagnosticsStep.if).toContain("steps.cleanup-shard.outcome == 'failure'");
+    expect(finalDiagnosticsStep.if).toContain("steps.run-shard.outcome != 'failure'");
     expect(finalDiagnosticsStep.run).toContain('platform-k3d-diagnostics-${{ matrix.shard }}');
     const diagnosticsStep = job.steps.find((step) => step.name === 'Upload shard diagnostics');
     expect(diagnosticsStep.with.name).toContain('${{ matrix.shard }}');

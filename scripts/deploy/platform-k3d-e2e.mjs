@@ -56,6 +56,17 @@ const platformServiceNames = Object.freeze(['api', 'worker', 'edge', 'caddy']);
 const pebbleImageRef =
   'ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199';
 const archiveLoadLockDirectory = join(tmpdir(), 'compartment-platform-k3d-image-load.lock');
+const legacyCleanupLockDirectory = join(tmpdir(), 'compartment-platform-k3d-legacy-cleanup.lock');
+const processLockRetryMilliseconds = 100;
+const processLockTimeoutMilliseconds = 30 * 60 * 1_000;
+const platformCleanupStageNames = Object.freeze([
+  'cluster',
+  'registry',
+  'builder',
+  'residual Docker resources',
+  'run-owned images',
+  'state files and directories',
+]);
 const builtImageRefsByServiceName = Object.freeze(
   Object.fromEntries(
     platformServiceNames.map((serviceName) => [
@@ -117,6 +128,23 @@ export function isRunOwnedImageRef(imageRef, environment = platformEnvironment) 
   return platformServiceNames.some(
     (serviceName) => imageRef === `ghcr.io/compartmentdev/compartment-${serviceName}:e2e-${environment.clusterName}`,
   );
+}
+
+export function isPlatformSourceCacheImageRef(imageRef) {
+  return platformServiceNames.some((serviceName) =>
+    imageRef.startsWith(`ghcr.io/compartmentdev/compartment-${serviceName}:sha-`),
+  );
+}
+
+export function readPlatformK3dCleanupStageNames() {
+  return platformCleanupStageNames;
+}
+
+export function runPlatformK3dCleanupSequence(steps, cleanupErrors = []) {
+  for (const step of steps) {
+    runCleanupStep(cleanupErrors, step.label, step.cleanup);
+  }
+  return cleanupErrors;
 }
 
 function readNameEnv(env, name, defaultValue) {
@@ -272,8 +300,8 @@ function renderK3dServiceValues() {
   return 'service:\n  caddy:\n    type: NodePort\n    httpPort: 80\n    httpsPort: 443\n    httpNodePort: 30080\n    httpsNodePort: 30443\n';
 }
 
-export function shouldCleanLegacyPlatformResources(env, environment = platformEnvironment) {
-  return env.COMPARTMENT_E2E_SHARD === 'managed-install' && environment.clusterName !== 'compartment-e2e';
+export function shouldCleanLegacyPlatformResources(environment = platformEnvironment) {
+  return environment.clusterName !== 'compartment-e2e';
 }
 
 export async function settlePlatformK3dStartup(clusterPromise, imagePromise) {
@@ -287,10 +315,14 @@ export async function settlePlatformK3dStartup(clusterPromise, imagePromise) {
   return imageResult.value;
 }
 
-function cleanLegacyPlatformResources() {
-  if (!shouldCleanLegacyPlatformResources(process.env)) {
+async function cleanLegacyPlatformResources() {
+  if (!shouldCleanLegacyPlatformResources()) {
     return;
   }
+  await withPlatformK3dProcessLock(legacyCleanupLockDirectory, cleanLegacyPlatformResourcesUnlocked);
+}
+
+function cleanLegacyPlatformResourcesUnlocked() {
   const cleanupErrors = [];
   const legacyClusterName = 'compartment-e2e';
   const legacyRegistryName = 'compartment-e2e-registry';
@@ -355,7 +387,8 @@ function cleanLegacyPlatformResources() {
 async function upPlatform(command) {
   assertRequiredTools();
   try {
-    cleanLegacyPlatformResources();
+    await cleanLegacyPlatformResources();
+    await withPlatformK3dProcessLock(archiveLoadLockDirectory, async () => cleanHistoricalPlatformSourceImages());
     cleanPlatformResources();
     recreateRegistry();
     recreateBuilder();
@@ -551,65 +584,73 @@ async function buildPlatformImages() {
 }
 
 async function loadPlatformImageArchives(imageArchiveDir) {
-  const imageRefsByServiceName = {};
-  const loadedImageRefs = [];
-  const releaseLock = await acquireArchiveLoadLock();
-  try {
-    for (const serviceName of platformServiceNames) {
-      const archivePath = `${imageArchiveDir}/${serviceName}.tar`;
-      const loadOutput = captureCommand('docker', ['load', '--input', archivePath], repositoryRoot);
-      const [imageRef, ...extraImageRefs] = parseLoadedImageRefs(loadOutput);
-
-      if (imageRef === undefined || extraImageRefs.length > 0) {
-        throw new Error(`Expected exactly one loaded image ref in ${archivePath}, received: ${loadOutput}`);
-      }
-
-      const isolatedImageRef = builtImageRefsByServiceName[serviceName];
-      runCommand('docker', ['tag', imageRef, isolatedImageRef], repositoryRoot);
-      imageRefsByServiceName[serviceName] = isolatedImageRef;
-      loadedImageRefs.push(imageRef);
-    }
-  } catch (error) {
-    removeImageRefs(Object.values(imageRefsByServiceName));
-    throw error;
-  } finally {
+  return await withPlatformK3dProcessLock(archiveLoadLockDirectory, async () => {
+    cleanHistoricalPlatformSourceImages();
+    const imageRefsByServiceName = {};
+    const loadedImageRefs = [];
     try {
-      removeImageRefs(loadedImageRefs);
-    } finally {
-      releaseLock();
-    }
-  }
+      for (const serviceName of platformServiceNames) {
+        const archivePath = `${imageArchiveDir}/${serviceName}.tar`;
+        const loadOutput = captureCommand('docker', ['load', '--input', archivePath], repositoryRoot);
+        const [imageRef, ...extraImageRefs] = parseLoadedImageRefs(loadOutput);
 
-  return imageRefsByServiceName;
+        if (imageRef === undefined || extraImageRefs.length > 0) {
+          throw new Error(`Expected exactly one loaded image ref in ${archivePath}, received: ${loadOutput}`);
+        }
+
+        const isolatedImageRef = builtImageRefsByServiceName[serviceName];
+        runCommand('docker', ['tag', imageRef, isolatedImageRef], repositoryRoot);
+        imageRefsByServiceName[serviceName] = isolatedImageRef;
+        loadedImageRefs.push(imageRef);
+      }
+    } catch (error) {
+      removeImageRefs(Object.values(imageRefsByServiceName));
+      throw error;
+    } finally {
+      removeImageRefs(loadedImageRefs);
+    }
+
+    return imageRefsByServiceName;
+  });
 }
 
-async function acquireArchiveLoadLock() {
-  for (let attempt = 0; attempt < 600; attempt += 1) {
+export async function withPlatformK3dProcessLock(lockDirectory, operation) {
+  const releaseLock = await acquirePlatformK3dProcessLock(lockDirectory);
+  try {
+    return await operation();
+  } finally {
+    releaseLock();
+  }
+}
+
+async function acquirePlatformK3dProcessLock(lockDirectory) {
+  const attempts = Math.ceil(processLockTimeoutMilliseconds / processLockRetryMilliseconds);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      mkdirSync(archiveLoadLockDirectory);
-      writeFileSync(join(archiveLoadLockDirectory, 'pid'), process.pid.toString(), { mode: 0o600 });
-      return () => rmSync(archiveLoadLockDirectory, { force: true, recursive: true });
+      mkdirSync(lockDirectory);
+      writeFileSync(join(lockDirectory, 'pid'), process.pid.toString(), { mode: 0o600 });
+      return () => rmSync(lockDirectory, { force: true, recursive: true });
     } catch (error) {
       if (error?.code !== 'EEXIST') {
         throw error;
       }
-      if (!archiveLoadLockOwnerIsRunning()) {
-        rmSync(archiveLoadLockDirectory, { force: true, recursive: true });
+      if (!processLockOwnerIsRunning(lockDirectory)) {
+        rmSync(lockDirectory, { force: true, recursive: true });
         continue;
       }
-      await delay(100);
+      await delay(processLockRetryMilliseconds);
     }
   }
-  throw new Error(`Timed out waiting for the platform image archive lock at ${archiveLoadLockDirectory}.`);
+  throw new Error(`Timed out waiting for the platform k3d process lock at ${lockDirectory}.`);
 }
 
-function archiveLoadLockOwnerIsRunning() {
+function processLockOwnerIsRunning(lockDirectory) {
   let ownerPid;
   try {
-    ownerPid = Number(readFileSync(join(archiveLoadLockDirectory, 'pid'), 'utf8'));
+    ownerPid = Number(readFileSync(join(lockDirectory, 'pid'), 'utf8'));
   } catch {
     try {
-      return Date.now() - statSync(archiveLoadLockDirectory).mtimeMs < 5_000;
+      return Date.now() - statSync(lockDirectory).mtimeMs < 5_000;
     } catch {
       return false;
     }
@@ -625,6 +666,14 @@ function archiveLoadLockOwnerIsRunning() {
   }
 }
 
+function cleanHistoricalPlatformSourceImages() {
+  const imageRefs = captureCommand('docker', ['image', 'ls', '--format', '{{.Repository}}:{{.Tag}}'], repositoryRoot)
+    .split('\n')
+    .map((imageRef) => imageRef.trim())
+    .filter((imageRef) => imageRef !== '' && isPlatformSourceCacheImageRef(imageRef));
+  removeImageRefs(imageRefs);
+}
+
 function downPlatform() {
   assertTool('docker');
   assertTool('k3d');
@@ -634,15 +683,28 @@ function downPlatform() {
 
 function cleanPlatformResources() {
   const cleanupErrors = [];
-  runCleanupStep(cleanupErrors, 'cluster', () => {
-    if (clusterExists()) {
-      deleteCluster();
-    }
-  });
-  runCleanupStep(cleanupErrors, 'registry', deleteRegistry);
-  runCleanupStep(cleanupErrors, 'builder', deleteBuilder);
-  cleanResidualDockerResources(cleanupErrors);
-  cleanRunOwnedImages(cleanupErrors);
+  const cleanupByStageName = {
+    builder: deleteBuilder,
+    cluster: () => {
+      if (clusterExists()) {
+        deleteCluster();
+      }
+    },
+    registry: deleteRegistry,
+    'residual Docker resources': () => cleanResidualDockerResources(cleanupErrors),
+    'run-owned images': () => cleanRunOwnedImages(cleanupErrors),
+    'state files and directories': () => cleanPlatformState(cleanupErrors),
+  };
+  runPlatformK3dCleanupSequence(
+    readPlatformK3dCleanupStageNames().map((label) => ({ cleanup: cleanupByStageName[label], label })),
+    cleanupErrors,
+  );
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, `Unable to fully clean k3d resources for ${clusterName}.`);
+  }
+}
+
+function cleanPlatformState(cleanupErrors) {
   const statePaths = [
     platformValuesPath,
     managedPlatformValuesPath,
@@ -667,9 +729,6 @@ function cleanPlatformResources() {
         }
       }
     });
-  }
-  if (cleanupErrors.length > 0) {
-    throw new AggregateError(cleanupErrors, `Unable to fully clean k3d resources for ${clusterName}.`);
   }
 }
 

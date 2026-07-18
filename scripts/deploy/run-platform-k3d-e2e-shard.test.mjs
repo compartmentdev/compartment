@@ -132,7 +132,7 @@ describe('platform k3d e2e shard runner', () => {
     const leakedChildMarkerPath = join(directory, 'leaked-child');
     const moduleUrl = new URL('./run-platform-k3d-e2e-shard.mjs', import.meta.url).href;
     const grandchildProgram = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(leakedChildMarkerPath)}, 'leaked'), 400);`;
-    const activeCommandProgram = `require('node:child_process').spawn(process.execPath, ['--eval', ${JSON.stringify(grandchildProgram)}], { stdio: 'ignore' }); setInterval(() => undefined, 60000);`;
+    const activeCommandProgram = `require('node:child_process').spawn(process.execPath, ['--eval', ${JSON.stringify(grandchildProgram)}], { stdio: 'ignore' }); process.stdout.write('ready'); setInterval(() => undefined, 60000);`;
     const program = `
 import { writeFile } from 'node:fs/promises';
 import { runCommandAsync } from ${JSON.stringify(new URL('../lib/command.mjs', import.meta.url).href)};
@@ -146,7 +146,6 @@ registerPlatformK3dSignalCleanup(
 executionPromise = runWithPlatformK3dCleanup({
   cleanup: async () => await writeFile(${JSON.stringify(markerPath)}, 'cleaned'),
   execute: async () => {
-    process.stdout.write('ready');
     await runCommandAsync(process.execPath, ['--eval', ${JSON.stringify(activeCommandProgram)}], process.cwd(), process.env, { signal: abortController.signal, terminateProcessGroup: true });
   },
   keepOnFailure: false,
