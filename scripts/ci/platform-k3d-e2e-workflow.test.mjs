@@ -16,7 +16,7 @@ describe('platform k3d e2e workflow', () => {
 
     expect(job.strategy).toEqual({
       'fail-fast': false,
-      matrix: { shard: ['managed-install', 'user-flow', 'build-gates'] },
+      matrix: { shard: ['build-matrix-a', 'build-matrix-b', 'user-flow', 'console', 'managed-install'] },
     });
     expect(job.name).toContain('${{ matrix.shard }}');
     const runStep = job.steps.find((step) => step.name === 'Run isolated k3d e2e shard');

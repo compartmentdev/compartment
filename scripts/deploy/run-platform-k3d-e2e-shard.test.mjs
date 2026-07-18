@@ -13,11 +13,11 @@ import {
 
 describe('platform k3d e2e shard runner', () => {
   it('defines isolated names, ports, namespaces, and state for every shard', () => {
-    const environments = ['managed-install', 'user-flow', 'build-gates'].map((shard) =>
+    const environments = ['build-matrix-a', 'build-matrix-b', 'user-flow', 'console', 'managed-install'].map((shard) =>
       buildPlatformK3dShardEnvironment(shard, {}),
     );
 
-    expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_CLUSTER_NAME))).toHaveLength(3);
+    expect(new Set(environments.map((env) => env.COMPARTMENT_E2E_CLUSTER_NAME))).toHaveLength(5);
     for (const name of [
       'COMPARTMENT_E2E_REGISTRY_NAME',
       'COMPARTMENT_E2E_REGISTRY_PORT',
@@ -34,7 +34,7 @@ describe('platform k3d e2e shard runner', () => {
       'COMPARTMENT_E2E_PEBBLE_CA_PATH',
       'COMPARTMENT_E2E_PEBBLE_ROOT_PATH',
     ]) {
-      expect(new Set(environments.map((env) => env[name])), name).toHaveLength(3);
+      expect(new Set(environments.map((env) => env[name])), name).toHaveLength(5);
     }
   });
 
@@ -65,9 +65,11 @@ describe('platform k3d e2e shard runner', () => {
   });
 
   it('assigns every existing e2e suite and gate to one explicit shard', () => {
+    expect(readPlatformK3dShardSuites('build-matrix-a')).toEqual(['install', 'build-matrix-a']);
+    expect(readPlatformK3dShardSuites('build-matrix-b')).toEqual(['install', 'build-matrix-b', 'g1', 'product-log']);
+    expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user']);
+    expect(readPlatformK3dShardSuites('console')).toEqual(['install', 'console']);
     expect(readPlatformK3dShardSuites('managed-install')).toEqual(['managed-install', 'retained-state']);
-    expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user', 'console']);
-    expect(readPlatformK3dShardSuites('build-gates')).toEqual(['install', 'build-matrix', 'g1', 'product-log']);
   });
 
   it('cleans successful and failed runs by default while preserving the original failure', async () => {

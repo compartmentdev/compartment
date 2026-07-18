@@ -1,9 +1,14 @@
 import { readPlatformK3dEnvironment } from './platform-k3d-e2e.mjs';
 
 const shardDefinitions = Object.freeze({
-  'build-gates': Object.freeze({ index: 2, suites: Object.freeze(['install', 'build-matrix', 'g1', 'product-log']) }),
-  'managed-install': Object.freeze({ index: 0, suites: Object.freeze(['managed-install', 'retained-state']) }),
-  'user-flow': Object.freeze({ index: 1, suites: Object.freeze(['install', 'system-user', 'console']) }),
+  'build-matrix-a': Object.freeze({ index: 0, suites: Object.freeze(['install', 'build-matrix-a']) }),
+  'build-matrix-b': Object.freeze({
+    index: 1,
+    suites: Object.freeze(['install', 'build-matrix-b', 'g1', 'product-log']),
+  }),
+  'user-flow': Object.freeze({ index: 2, suites: Object.freeze(['install', 'system-user']) }),
+  console: Object.freeze({ index: 3, suites: Object.freeze(['install', 'console']) }),
+  'managed-install': Object.freeze({ index: 4, suites: Object.freeze(['managed-install', 'retained-state']) }),
 });
 
 export function readPlatformK3dShard(args) {

@@ -57,6 +57,10 @@ import {
   type SelfHostedSingleServiceBuildFixture,
 } from './self-hosted-build-matrix-fixtures';
 import {
+  readSelfHostedBuildMatrixPartition,
+  type SelfHostedBuildMatrixPartitionDefinition,
+} from './self-hosted-build-matrix-partitions';
+import {
   expectSuccessfulCommand,
   runCommand,
   runTimedStep,
@@ -71,6 +75,9 @@ const selfHostedBuildMatrixHttpProbeAttempts: number = 60;
 const selfHostedBuildMatrixHttpProbeDelayMs: number = 1_000;
 const selfHostedBuildMatrixHttpProbeTimeoutMs: number = 2_000;
 const selfHostedBuildMatrixLogConvergenceTimeoutMs: number = 3 * 60_000;
+const buildMatrixPartition: SelfHostedBuildMatrixPartitionDefinition | undefined = readSelfHostedBuildMatrixPartition(
+  process.env.COMPARTMENT_E2E_BUILD_MATRIX_PARTITION,
+);
 
 describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', (): void => {
   const setup: SelfHostedUserSetupHarness = useSelfHostedUserSetupHarness();
@@ -108,7 +115,14 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
       const staticPoisonFixture: SelfHostedSingleServiceBuildFixture =
         await createSelfHostedStaticPoisonDockerfileFixture(staticPoisonRootDirectory);
       try {
-        for (const fixture of [...selfHostedSingleServiceBuildFixtures, staticPoisonFixture]) {
+        const fixtures: readonly SelfHostedSingleServiceBuildFixture[] = [
+          ...selfHostedSingleServiceBuildFixtures,
+          staticPoisonFixture,
+        ].filter(
+          (fixture: SelfHostedSingleServiceBuildFixture): boolean =>
+            buildMatrixPartition === undefined || buildMatrixPartition.singleServiceFixtureNames.includes(fixture.name),
+        );
+        for (const fixture of fixtures) {
           await runTimedStep(`build-matrix single-service ${fixture.name}`, async (): Promise<void> => {
             await seedBuildVariables(admin, fixture);
 
@@ -156,7 +170,11 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
     'deploys multi-service fixtures with service-scoped commands and proxy routes',
     async (): Promise<void> => {
       expectSelfHostedUserSetupStepCompleted(completedStepCount, 2);
-      for (const fixture of selfHostedMultiServiceBuildFixtures) {
+      const fixtures: readonly SelfHostedMultiServiceBuildFixture[] = selfHostedMultiServiceBuildFixtures.filter(
+        (fixture: SelfHostedMultiServiceBuildFixture): boolean =>
+          buildMatrixPartition === undefined || buildMatrixPartition.multiServiceFixtureNames.includes(fixture.name),
+      );
+      for (const fixture of fixtures) {
         await runTimedStep(`build-matrix multi-service ${fixture.name}`, async (): Promise<void> => {
           const deployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
             'deploy',
