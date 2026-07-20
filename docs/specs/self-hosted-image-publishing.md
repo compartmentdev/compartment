@@ -35,7 +35,7 @@ Pull request and main CI build or restore the platform image cache once per comm
 
 The root `.trivyignore.yaml` is the only allowed suppression point for Trivy self-hosted image scans. Docker Scout has no repository suppression path in the CI or publish gates.
 
-Before promoting Docker Hub tags, the publish job pushes each attested image to a workflow-scoped staging tag, scans that staged image with Trivy and Docker Scout, and only then promotes the same image index to the public `main`, `sha-<commit>`, semver, or `latest` tags.
+Before promoting Docker Hub tags, the publish job pushes each attested image to a workflow-scoped staging tag, scans that staged image with Trivy and Docker Scout, and only then promotes the same image index to the public `main`, `kubernetes`, `sha-<commit>`, semver, or `latest` tags.
 
 After promoting a tag, the publish job resolves the tag to a concrete image digest and secures each unique runtime image digest:
 

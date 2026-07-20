@@ -1,0 +1,247 @@
+name: Publish Self-Hosted Image Channel
+description: Build, publish, sign, and verify a branch image channel
+
+inputs:
+  channel:
+    description: Mutable tag and source branch name
+    required: true
+  dockerhub-token:
+    description: Docker Hub access token
+    required: true
+  dockerhub-username:
+    description: Docker Hub username
+    required: true
+  publish-sha:
+    description: Commit to publish as an immutable sha tag
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      with:
+        node-version-file: .nvmrc
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+
+    - name: Set up Cosign
+      uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5
+      with:
+        cosign-release: v2.6.1
+
+    - name: Set up Trivy
+      uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514
+      with:
+        version: v0.70.0
+
+    - name: Set up Docker Scout
+      uses: ./.github/actions/setup-docker-scout
+
+    - name: Build self-hosted images
+      shell: bash
+      env:
+        COMPARTMENT_CADDY_BUILDER_IMAGE: public.ecr.aws/docker/library/caddy:2.11.4-builder
+        COMPARTMENT_CADDY_RUNTIME_IMAGE: public.ecr.aws/docker/library/alpine:3.22
+        COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.5-bookworm
+        COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
+        COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
+        PUBLISH_SHA: ${{ inputs.publish-sha }}
+      run: |
+        mkdir -p ./.compartment/release-assets
+        node ./scripts/deploy/build-self-hosted-images.mjs \
+          --tag "sha-${PUBLISH_SHA}" \
+          --repository-prefix docker.io/compartmentdev
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+      with:
+        username: ${{ inputs.dockerhub-username }}
+        password: ${{ inputs.dockerhub-token }}
+
+    - name: Scan self-hosted images before publish
+      shell: bash
+      env:
+        PUBLISH_SHA: ${{ inputs.publish-sha }}
+      run: |
+        node ./scripts/deploy/secure-self-hosted-images.mjs \
+          --scan-only \
+          --docker-scout \
+          --repository-prefix docker.io/compartmentdev \
+          "sha-${PUBLISH_SHA}"
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Push immutable self-hosted images
+      shell: bash
+      env:
+        CHANNEL: ${{ inputs.channel }}
+        COMPARTMENT_BUILDKIT_VERSION: v0.30.0
+        COMPARTMENT_CADDY_BUILDER_IMAGE: public.ecr.aws/docker/library/caddy:2.11.4-builder
+        COMPARTMENT_CADDY_RUNTIME_IMAGE: public.ecr.aws/docker/library/alpine:3.22
+        COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.5-bookworm
+        COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
+        COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
+        GH_TOKEN: ${{ github.token }}
+        MUTABLE_TAG: ${{ inputs.channel }}
+        PRIMARY_TAG: sha-${{ inputs.publish-sha }}
+        PUBLISH_SHA: ${{ inputs.publish-sha }}
+        STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.publish-sha }}
+      run: |
+        common_args=(--push --provenance=mode=max --sbom=true)
+        node_args=(
+          --build-arg "COMPARTMENT_NODE_BUILD_IMAGE=${COMPARTMENT_NODE_BUILD_IMAGE}"
+          --build-arg "COMPARTMENT_NODE_RUNTIME_IMAGE=${COMPARTMENT_NODE_RUNTIME_IMAGE}"
+        )
+        worker_args=(
+          "${node_args[@]}"
+          --build-arg "COMPARTMENT_BUILDKIT_VERSION=${COMPARTMENT_BUILDKIT_VERSION}"
+          --build-arg "COMPARTMENT_GO_BUILD_IMAGE=${COMPARTMENT_GO_BUILD_IMAGE}"
+        )
+        caddy_args=(
+          --build-arg "COMPARTMENT_CADDY_BUILDER_IMAGE=${COMPARTMENT_CADDY_BUILDER_IMAGE}"
+          --build-arg "COMPARTMENT_CADDY_RUNTIME_IMAGE=${COMPARTMENT_CADDY_RUNTIME_IMAGE}"
+        )
+        mutable_tags_file="./.compartment/release-assets/published-self-hosted-mutable-tags.txt"
+        : > "$mutable_tags_file"
+
+        push_dockerhub_image() {
+          local image_name="$1"
+          local dockerfile="$2"
+          shift 2
+          docker buildx build "${common_args[@]}" "$@" \
+            --tag "docker.io/compartmentdev/${image_name}:${STAGING_TAG}" \
+            --file "$dockerfile" .
+        }
+
+        read_image_digest() {
+          local image_ref="$1"
+          docker buildx imagetools inspect \
+            --format '{{ printf "%s" .Manifest.Digest }}' \
+            "$image_ref"
+        }
+
+        promote_immutable_image() {
+          local target_ref="$1"
+          local source_ref="$2"
+          local source_digest
+          local existing_digest
+          local inspect_error_file="./.compartment/release-assets/immutable-tag-inspect-error.txt"
+
+          source_digest="$(read_image_digest "$source_ref")"
+          if existing_digest="$(read_image_digest "$target_ref" 2> "$inspect_error_file")"; then
+            echo "Immutable image ${target_ref} already exists at ${existing_digest} and remains unchanged."
+            return 0
+          fi
+          if ! grep -Eiq 'manifest unknown|not found' "$inspect_error_file"; then
+            cat "$inspect_error_file" >&2
+            echo "Failed to determine whether immutable image ${target_ref} exists." >&2
+            return 1
+          fi
+
+          docker buildx imagetools create --tag "$target_ref" "$source_ref"
+          existing_digest="$(read_image_digest "$target_ref")"
+          if [ "$existing_digest" != "$source_digest" ]; then
+            echo "Immutable image ${target_ref} resolved to ${existing_digest} after publishing candidate ${source_digest}." >&2
+            return 1
+          fi
+        }
+
+        read_current_channel_sha() {
+          local current_channel_sha
+          if ! current_channel_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${CHANNEL}" --jq '.object.sha')"; then
+            echo "Failed to read current ${CHANNEL} ref." >&2
+            return 1
+          fi
+          if [ -z "$current_channel_sha" ]; then
+            echo "Expected current ${CHANNEL} ref SHA." >&2
+            return 1
+          fi
+          printf '%s\n' "$current_channel_sha"
+        }
+
+        push_dockerhub_image compartment-api packages/api/Dockerfile.self-hosted "${node_args[@]}"
+        push_dockerhub_image compartment-caddy packages/edge/Dockerfile.caddy.self-hosted "${caddy_args[@]}"
+        push_dockerhub_image compartment-edge packages/edge/Dockerfile.self-hosted "${node_args[@]}"
+        push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
+
+        mapfile -t self_hosted_services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
+
+        node ./scripts/deploy/secure-self-hosted-images.mjs \
+          --scan-only \
+          --docker-scout \
+          --repository-prefix docker.io/compartmentdev \
+          "$STAGING_TAG"
+
+        for service in "${self_hosted_services[@]}"; do
+          image_name="compartment-${service}"
+          promote_immutable_image \
+            "docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}" \
+            "docker.io/compartmentdev/${image_name}:${STAGING_TAG}"
+          promote_immutable_image \
+            "ghcr.io/compartmentdev/${image_name}:${PRIMARY_TAG}" \
+            "docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
+        done
+
+        current_channel_sha="$(read_current_channel_sha)" || exit 1
+        if [ "$current_channel_sha" = "$PUBLISH_SHA" ]; then
+          printf '%s\n' "$MUTABLE_TAG" >> "$mutable_tags_file"
+        fi
+
+    - name: Secure self-hosted image digests
+      shell: bash
+      env:
+        PUBLISH_SHA: ${{ inputs.publish-sha }}
+      run: |
+        tags=("sha-${PUBLISH_SHA}")
+
+        node ./scripts/deploy/secure-self-hosted-images.mjs \
+          --repository-prefix docker.io/compartmentdev \
+          --output-dir ./.compartment/release-assets/self-hosted-sboms/dockerhub \
+          "${tags[@]}"
+        node ./scripts/deploy/secure-self-hosted-images.mjs \
+          --repository-prefix ghcr.io/compartmentdev \
+          --output-dir ./.compartment/release-assets/self-hosted-sboms/ghcr \
+          "${tags[@]}"
+
+    - name: Promote mutable channel tags
+      shell: bash
+      env:
+        CHANNEL: ${{ inputs.channel }}
+        PUBLISH_SHA: ${{ inputs.publish-sha }}
+      run: |
+        mutable_tags_file="./.compartment/release-assets/published-self-hosted-mutable-tags.txt"
+        if ! grep -Fxq "$CHANNEL" "$mutable_tags_file"; then
+          echo "Skipping mutable ${CHANNEL} promotion because ${PUBLISH_SHA} is no longer the branch head."
+          exit 0
+        fi
+
+        mapfile -t self_hosted_services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
+        for service in "${self_hosted_services[@]}"; do
+          docker buildx imagetools create \
+            --tag "docker.io/compartmentdev/compartment-${service}:${CHANNEL}" \
+            "docker.io/compartmentdev/compartment-${service}:sha-${PUBLISH_SHA}"
+          docker buildx imagetools create \
+            --tag "ghcr.io/compartmentdev/compartment-${service}:${CHANNEL}" \
+            "ghcr.io/compartmentdev/compartment-${service}:sha-${PUBLISH_SHA}"
+        done
+
+    - name: Upload self-hosted SBOM artifacts
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        include-hidden-files: true
+        name: self-hosted-sboms-${{ inputs.channel }}
+        path: ./.compartment/release-assets/self-hosted-sboms/**/*.spdx.json
+
+    - name: Upload self-hosted provenance artifacts
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        include-hidden-files: true
+        name: self-hosted-provenance-${{ inputs.channel }}
+        path: ./.compartment/release-assets/self-hosted-sboms/**/*.slsa-v1-provenance.json

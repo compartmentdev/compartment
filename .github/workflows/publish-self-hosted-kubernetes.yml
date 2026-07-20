@@ -68,8 +68,19 @@ jobs:
       contents: read
       id-token: write
       packages: write
-    uses: ./.github/workflows/_publish-self-hosted-channel.yml
-    with:
-      channel: kubernetes
-      publish_sha: ${{ github.sha }}
-    secrets: inherit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Publish self-hosted image channel
+        uses: ./.github/actions/publish-self-hosted-channel
+        with:
+          channel: kubernetes
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          publish-sha: ${{ github.sha }}

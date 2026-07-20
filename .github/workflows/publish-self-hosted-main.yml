@@ -27,11 +27,22 @@ jobs:
       contents: read
       id-token: write
       packages: write
-    uses: ./.github/workflows/_publish-self-hosted-channel.yml
-    with:
-      channel: main
-      publish_sha: ${{ github.event.workflow_run.head_sha }}
-    secrets: inherit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+          ref: ${{ env.PUBLISH_SHA }}
+
+      - name: Publish self-hosted image channel
+        uses: ./.github/actions/publish-self-hosted-channel
+        with:
+          channel: main
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          publish-sha: ${{ env.PUBLISH_SHA }}
 
   build-main-cli:
     name: build CLI ${{ matrix.artifact_name }}
