@@ -31,18 +31,22 @@ export async function readKubePodMetrics(
       metric,
     ]),
   );
-  const productPods: V1Pod[] = pods.items.filter(hasDeploymentIdentity);
+  const productPods: V1Pod[] = pods.items.filter(isObservableProductPod);
+  if (productPods.length > 0 && metrics.items.length === 0) {
+    throw new Error('metrics-server returned an incomplete product Pod snapshot.');
+  }
   const observations: KubePodMetricObservation[] = productPods.flatMap((pod: V1Pod): KubePodMetricObservation[] =>
     toPodMetricObservation(pod, metricByPod),
   );
-  if (observations.length !== productPods.length) {
-    throw new Error('metrics-server returned an incomplete product Pod snapshot.');
-  }
   return observations;
 }
 
-function hasDeploymentIdentity(pod: V1Pod): boolean {
-  return pod.metadata?.labels?.['compartment.dev/deployment-id'] !== undefined;
+function isObservableProductPod(pod: V1Pod): boolean {
+  return (
+    pod.metadata?.labels?.['compartment.dev/deployment-id'] !== undefined &&
+    pod.status?.phase !== 'Succeeded' &&
+    pod.status?.phase !== 'Failed'
+  );
 }
 
 function toPodMetricObservation(pod: V1Pod, metricByPod: ReadonlyMap<string, PodMetric>): KubePodMetricObservation[] {
