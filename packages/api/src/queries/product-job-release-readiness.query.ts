@@ -44,13 +44,14 @@ export async function lockReleaseJobResourceFence(
     .innerJoin(environmentResourceOutputVariableBindings, releaseResourceBindingCondition())
     .innerJoin(projectResources, releaseProjectResourceCondition())
     .where(eq(deployments.id, deploymentId));
+  rows.sort((left: { id: string }, right: { id: string }): number => left.id.localeCompare(right.id));
+  for (const row of rows) {
+    await lockResourceReconcileProject(transaction, row.id);
+  }
   await lockResourceRuntimeClaims(
     transaction,
     rows.map((row: { id: string }): string => row.id),
   );
-  for (const row of rows) {
-    await lockResourceReconcileProject(transaction, row.id);
-  }
   return !(await hasBlockingReleaseResource(transaction, deploymentId));
 }
 
