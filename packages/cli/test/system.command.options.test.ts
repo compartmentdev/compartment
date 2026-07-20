@@ -40,7 +40,8 @@ describe('system command options', (): void => {
   );
 
   it('requires an explicit image tag for source-build updates', (): void => {
-    expect(resolveKubernetesSystemUpdateVersion('sha-release')).toBe('sha-release');
+    const shaTag: string = `sha-${'a'.repeat(40)}`;
+    expect(resolveKubernetesSystemUpdateVersion(shaTag)).toBe(shaTag);
     expect((): string => resolveKubernetesSystemUpdateVersion(undefined)).toThrow(
       '--version is required when system update runs from a source CLI build.',
     );

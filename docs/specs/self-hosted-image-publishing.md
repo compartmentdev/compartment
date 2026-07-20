@@ -6,6 +6,9 @@ GitHub Actions publishes platform images to Docker Hub and GitHub Container Regi
 
 - successful main CI runs publish immutable `sha-<commit>` images, and update
   mutable `main` only when that commit is still the current `main`;
+- pushes to `kubernetes` run the Kubernetes line's CI gates, publish immutable
+  `sha-<commit>` images, and update mutable `kubernetes` only when that commit is
+  still the current `kubernetes` branch head;
 - manual `Publish Self-Hosted Images (SHA)` runs publish only `sha-<commit>` for the selected ref;
 - semver tags like `v0.2.0` publish `0.2.0`, and update mutable `latest`
   only when that tag is the newest stable semver tag.
@@ -13,6 +16,12 @@ GitHub Actions publishes platform images to Docker Hub and GitHub Container Regi
 Publishing requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. Stable semver tags
 come from release-please; the tag publish workflow validates the tag version against
 checked-in release metadata before building images.
+
+The `kubernetes` tag is the edge channel for the parallel Kubernetes product line.
+It is published to both Docker Hub and GHCR from the branch workflow and is not a
+stable release: release-please, semver tags, and `latest` remain part of the release
+channel. Use the immutable `sha-<commit>` tag when pinning a specific Kubernetes
+line build.
 
 Release-please creates stable GitHub Releases as drafts while forcing immediate
 git tag creation. The tag publish workflow uploads CLI archives and checksums to
