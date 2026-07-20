@@ -7,22 +7,19 @@ import {
   type V1PolicyRule,
 } from '@kubernetes/client-node';
 import { z } from 'zod';
+import { readKubernetesStatusMessage, type KubernetesApiErrorBody } from './kubernetes-api-error';
 
 interface ProjectTeardownRbacEnvironment {
   COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE: string;
-  COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING: string;
-  COMPARTMENT_PROJECT_TEARDOWN_RBAC_EXISTING_BINDING: string;
   COMPARTMENT_PROVISIONING_NAMESPACE: string;
 }
 
 interface KubernetesApiError extends Error {
-  body?: { code?: number | undefined; message?: string | undefined } | undefined;
+  body?: KubernetesApiErrorBody;
 }
 
 const environmentSchema: z.ZodType<ProjectTeardownRbacEnvironment> = z.object({
   COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE: z.string().min(1),
-  COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING: z.string().min(1),
-  COMPARTMENT_PROJECT_TEARDOWN_RBAC_EXISTING_BINDING: z.string().min(1),
   COMPARTMENT_PROVISIONING_NAMESPACE: z.string().min(1),
 });
 
@@ -31,19 +28,11 @@ async function main(): Promise<void> {
   const kubeConfig: KubeConfig = new KubeConfig();
   kubeConfig.loadFromCluster();
   const rbacApi: RbacAuthorizationV1Api = kubeConfig.makeApiClient(RbacAuthorizationV1Api);
-  try {
-    await waitForNamespaceDeleteDenied(
-      kubeConfig.makeApiClient(CoreV1Api),
-      environment.COMPARTMENT_PROVISIONING_NAMESPACE,
-    );
-    await enableProjectTeardownRbac(rbacApi, environment.COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE);
-  } catch (error) {
-    await removeFailedHookBindings(rbacApi, [
-      environment.COMPARTMENT_PROJECT_TEARDOWN_RBAC_EXISTING_BINDING,
-      environment.COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING,
-    ]);
-    throw error;
-  }
+  await waitForNamespaceDeleteDenied(
+    kubeConfig.makeApiClient(CoreV1Api),
+    environment.COMPARTMENT_PROVISIONING_NAMESPACE,
+  );
+  await enableProjectTeardownRbac(rbacApi, environment.COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE);
 }
 
 async function enableProjectTeardownRbac(api: RbacAuthorizationV1Api, roleName: string): Promise<void> {
@@ -54,19 +43,6 @@ async function enableProjectTeardownRbac(api: RbacAuthorizationV1Api, roleName: 
   }
   namespaceRule.verbs.push('delete');
   await api.replaceClusterRole({ body: role, name: roleName });
-}
-
-async function removeFailedHookBindings(api: RbacAuthorizationV1Api, bindingNames: string[]): Promise<void> {
-  for (const bindingName of bindingNames) {
-    try {
-      await api.deleteClusterRoleBinding({ name: bindingName });
-    } catch (error) {
-      const apiError: KubernetesApiError = error as KubernetesApiError;
-      if (apiError.body?.code !== 404) {
-        throw error;
-      }
-    }
-  }
 }
 
 function requireNamespaceRule(role: V1ClusterRole): V1PolicyRule {
@@ -97,7 +73,7 @@ async function isNamespaceDeleteDenied(api: CoreV1Api, namespace: string): Promi
     await api.deleteNamespace({ dryRun: 'All', name: namespace });
   } catch (error) {
     const apiError: KubernetesApiError = error as KubernetesApiError;
-    if (apiError.body?.message?.includes('Project bootstrap authority is restricted') === true) {
+    if (readKubernetesStatusMessage(apiError.body)?.includes('Project bootstrap authority is restricted') === true) {
       return true;
     }
     throw error;

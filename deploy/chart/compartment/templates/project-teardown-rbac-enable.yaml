@@ -28,12 +28,6 @@ rules:
     resources: ["clusterroles"]
     resourceNames: [{{ include "compartment.fullname" . }}-project-provisioner]
     verbs: ["get", "update"]
-  - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["clusterrolebindings"]
-    resourceNames:
-      - {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
-      - {{ include "compartment.fullname" . }}-project-teardown-rbac-enable-existing
-    verbs: ["delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -105,10 +99,6 @@ spec:
           env:
             - name: COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE
               value: {{ include "compartment.fullname" . }}-project-provisioner
-            - name: COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING
-              value: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
-            - name: COMPARTMENT_PROJECT_TEARDOWN_RBAC_EXISTING_BINDING
-              value: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable-existing
             - name: COMPARTMENT_PROVISIONING_NAMESPACE
               value: {{ include "compartment.projectProvisioningNamespace" . }}
           volumeMounts:

@@ -8,7 +8,7 @@ const context = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e
 const platformNamespace = process.env.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? 'compartment';
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 
-export function parseDeploymentReferences(output) {
+export function parseNamespacedReferences(output) {
   return output
     .split('\n')
     .map((line) => line.trim())
@@ -16,7 +16,7 @@ export function parseDeploymentReferences(output) {
     .map((line) => {
       const separatorIndex = line.indexOf('/');
       if (separatorIndex <= 0 || separatorIndex === line.length - 1) {
-        throw new Error(`Invalid Kubernetes deployment reference: ${line}`);
+        throw new Error(`Invalid namespaced Kubernetes reference: ${line}`);
       }
       return { name: line.slice(separatorIndex + 1), namespace: line.slice(0, separatorIndex) };
     });
@@ -37,6 +37,7 @@ function collectPlatformK3dDiagnostics(outputDirectory) {
     '-o',
     'wide',
   ]);
+  capture(outputDirectory, 'jobs', 'kubectl', ['--context', context, 'get', 'jobs', '--all-namespaces', '-o', 'wide']);
   capture(outputDirectory, 'services', 'kubectl', [
     '--context',
     context,
@@ -72,7 +73,7 @@ function collectPlatformK3dDiagnostics(outputDirectory) {
     '--sort-by=.lastTimestamp',
   ]);
 
-  for (const deployment of readDeploymentReferences()) {
+  for (const deployment of readNamespacedReferences('deployments')) {
     capture(outputDirectory, `describe-${deployment.namespace}-${deployment.name}`, 'kubectl', [
       '--context',
       context,
@@ -93,18 +94,41 @@ function collectPlatformK3dDiagnostics(outputDirectory) {
       '--tail=500',
     ]);
   }
+
+  for (const job of readNamespacedReferences('jobs')) {
+    capture(outputDirectory, `describe-job-${job.namespace}-${job.name}`, 'kubectl', [
+      '--context',
+      context,
+      '--namespace',
+      job.namespace,
+      'describe',
+      'job',
+      job.name,
+    ]);
+    capture(outputDirectory, `logs-job-${job.namespace}-${job.name}`, 'kubectl', [
+      '--context',
+      context,
+      '--namespace',
+      job.namespace,
+      'logs',
+      `job/${job.name}`,
+      '--all-containers',
+      '--prefix',
+      '--tail=500',
+    ]);
+  }
 }
 
-function readDeploymentReferences() {
+function readNamespacedReferences(resource) {
   try {
-    return parseDeploymentReferences(
+    return parseNamespacedReferences(
       captureCommand(
         'kubectl',
         [
           '--context',
           context,
           'get',
-          'deployments',
+          resource,
           '--all-namespaces',
           '-o',
           'jsonpath={range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{"\\n"}{end}',

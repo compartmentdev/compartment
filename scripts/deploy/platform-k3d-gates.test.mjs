@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseDeploymentReferences } from './collect-platform-k3d-e2e-diagnostics.mjs';
+import { parseNamespacedReferences } from './collect-platform-k3d-e2e-diagnostics.mjs';
 import {
   findDegradedProductDeployments,
   parseNonNegativeInteger,
@@ -10,11 +10,11 @@ import {
 
 describe('platform k3d diagnostics and product-log gates', () => {
   it('parses namespaced deployment references', () => {
-    expect(parseDeploymentReferences('compartment/api\ncpt-project/app\n')).toEqual([
+    expect(parseNamespacedReferences('compartment/api\ncpt-project/app\n')).toEqual([
       { name: 'api', namespace: 'compartment' },
       { name: 'app', namespace: 'cpt-project' },
     ]);
-    expect(() => parseDeploymentReferences('missing-namespace')).toThrow('Invalid Kubernetes deployment reference');
+    expect(() => parseNamespacedReferences('missing-namespace')).toThrow('Invalid namespaced Kubernetes reference');
   });
 
   it('accepts only non-negative integer command output', () => {
