@@ -5,6 +5,7 @@ import {
   deployments,
   environments,
   productLogStoreQuota,
+  projects,
   projectResources,
 } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -49,7 +50,18 @@ export async function listDeploymentLogIdentities(namespaces: string[]): Promise
     .orderBy(asc(deployments.createdAt));
 }
 
-export async function listResourceLogIdentities(): Promise<ResourceLogIdentityRow[]> {
+export async function listResourceLogProjectIds(): Promise<string[]> {
+  const rows: { projectId: string }[] = await getApiDatabase()
+    .select({ projectId: projects.id })
+    .from(projects)
+    .orderBy(asc(projects.id));
+  return rows.map((row: { projectId: string }): string => row.projectId);
+}
+
+export async function listResourceLogIdentities(projectIds: string[]): Promise<ResourceLogIdentityRow[]> {
+  if (projectIds.length === 0) {
+    return [];
+  }
   return await getApiDatabase()
     .select({
       namespaceId: environments.projectId,
@@ -57,6 +69,7 @@ export async function listResourceLogIdentities(): Promise<ResourceLogIdentityRo
     })
     .from(projectResources)
     .innerJoin(environments, eq(environments.id, projectResources.environmentId))
+    .where(inArray(environments.projectId, projectIds))
     .orderBy(asc(projectResources.id));
 }
 

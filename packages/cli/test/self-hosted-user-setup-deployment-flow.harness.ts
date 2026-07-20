@@ -9,6 +9,7 @@ import {
   deploymentLogsResponseSchema,
   deploymentRunLogsResponseSchema,
   resourceListResponseSchema,
+  resourceLogsResponseSchema,
   type DeploymentLogLine,
   type DeploymentLogsResponse,
   type DeploymentReadSummary,
@@ -19,6 +20,7 @@ import {
   type ProjectLifecycleResponse,
   type ProjectResponse,
   type ResourceListResponse,
+  type ResourceLogsResponse,
   type ResourceSummary,
 } from '@compartment/contracts';
 import { expect } from 'vitest';
@@ -199,6 +201,28 @@ export async function waitForDeploymentRuntimeLog(
 
   throw new Error(
     `Timed out waiting for runtime log from ${projectName}/${serviceName}. Last payload: ${JSON.stringify(lastPayload)}`,
+  );
+}
+
+export async function waitForResourceRuntimeLogs(
+  cli: SelfHostedUserSetupCli,
+  projectName: string,
+  resourceName: string,
+): Promise<ResourceLogsResponse> {
+  let lastPayload: ResourceLogsResponse | null = null;
+  for (let attempt: number = 0; attempt < deploymentRunPollAttempts; attempt += 1) {
+    const payload: ResourceLogsResponse = await cli.runJson(
+      `resource logs --project ${projectName} --resource ${resourceName} --tail 50`,
+      resourceLogsResponseSchema,
+    );
+    if (payload.lines.length > 0) {
+      return payload;
+    }
+    lastPayload = payload;
+    await sleep(deploymentRunPollDelayMs);
+  }
+  throw new Error(
+    `Timed out waiting for resource logs from ${projectName}/${resourceName}: ${JSON.stringify(lastPayload)}`,
   );
 }
 

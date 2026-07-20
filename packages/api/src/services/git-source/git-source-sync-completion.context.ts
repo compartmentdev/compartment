@@ -25,6 +25,7 @@ export interface SourceSyncCandidateResolutionContext {
   disconnectedBindingsByProjectName: Map<string, SourceBindingRow>;
   excludedDescriptorPaths: Set<string>;
   now: Date;
+  projectSnapshotInvalidationRequired: boolean;
   requestedDescriptorPaths: Set<string>;
   resolvedCommitSha: string;
   source: SourceRow;
@@ -56,6 +57,7 @@ export async function buildSourceSyncCandidateResolutionContext(
     discoveredDescriptorPaths: new Set<string>(),
     excludedDescriptorPaths: await readExcludedSourceDescriptorPaths(transaction, source.id),
     now,
+    projectSnapshotInvalidationRequired: false,
     requestedDescriptorPaths: readRequestedDescriptorPaths(task.requestedDescriptorPathsJson),
     resolvedCommitSha,
     source,

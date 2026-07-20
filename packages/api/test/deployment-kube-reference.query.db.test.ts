@@ -43,6 +43,7 @@ import type { DeploymentRouteLookupRow } from '../src/queries/deployment-routes.
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import {
   ingestDeploymentProductLogs,
+  invalidateResourceLogProjectSnapshot,
   readStoredDeploymentProductLogs,
   readStoredResourceProductLogs,
 } from '../src/services/deployment-product-logs.service';
@@ -177,6 +178,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
   it('stores Kubernetes resource container logs under the resource identity', async (): Promise<void> => {
     const resourceId: string = `res_${'a'.repeat(32)}`;
     const otherResourceId: string = `res_${'b'.repeat(32)}`;
+    invalidateResourceLogProjectSnapshot();
     await db.insert(projectResources).values({
       commandJson: '[]',
       createdAt: new Date('2026-07-11T10:00:00.000Z'),
@@ -197,7 +199,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       containerName: 'resource',
       message: 'database system is ready',
       namespace: immutableKubeName('cpt', 'prj_kube'),
-      podName: `${immutableKubeName('resource', resourceId)}-abc`,
+      podName: 'resource-res-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-ec88c3f4b4b7abcde',
       podUid: '12121212-1212-4212-8212-121212121212',
       restartIdentity: '0',
       sourceFingerprint: 'c'.repeat(64),
@@ -209,8 +211,39 @@ describe('deployment Kubernetes transition persistence', (): void => {
     await expect(
       ingestDeploymentProductLogs([{ ...event, namespace: immutableKubeName('cpt', 'prj_other') }]),
     ).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
+    await db.insert(projects).values({ id: 'prj_other', name: 'Other', organizationId: 'org_kube' });
+    await db.insert(environments).values({ id: 'env_other', name: 'production', projectId: 'prj_other' });
+    await db.insert(projectResources).values({
+      commandJson: '[]',
+      envJson: '[]',
+      environmentId: 'env_other',
+      expectedClaimsJson: '[]',
+      id: otherResourceId,
+      image: 'postgres:16',
+      name: 'other-postgres',
+      outputsJson: '{}',
+      portsJson: '[5432]',
+      readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
+      runtimeDefinitionHash: 'other-resource-hash',
+      status: 'running',
+      volumesJson: '[]',
+    });
+    invalidateResourceLogProjectSnapshot();
     await expect(
-      ingestDeploymentProductLogs([{ ...event, podName: `${immutableKubeName('resource', otherResourceId)}-abc` }]),
+      ingestDeploymentProductLogs([
+        {
+          ...event,
+          namespace: immutableKubeName('cpt', 'prj_other'),
+          podName: 'resource-res-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-ad565b8528bbabcde',
+          podUid: '23232323-2323-4232-8232-232323232323',
+          sourceFingerprint: 'd'.repeat(64),
+        },
+      ]),
+    ).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
+    await expect(
+      ingestDeploymentProductLogs([
+        { ...event, podName: 'resource-res-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-ad565b8528bbabcde' },
+      ]),
     ).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
     await expect(ingestDeploymentProductLogs([event])).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
     await expect(readStoredResourceProductLogs(resourceId, 'postgres', undefined, 50)).resolves.toEqual([

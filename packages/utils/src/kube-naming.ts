@@ -1,9 +1,14 @@
 import { createHash } from 'node:crypto';
 
 const dnsLabelMaximumLength: number = 63;
+const generatedPodSuffixLength: number = 5;
 
 export function kubeResourceServiceDns(resourceId: string, namespaceId: string): string {
   return `${immutableKubeName('resource', resourceId)}.${immutableKubeName('cpt', namespaceId)}.svc`;
+}
+
+export function kubeResourcePodNamePrefix(resourceId: string): string {
+  return `${immutableKubeName('resource', resourceId)}-`.slice(0, dnsLabelMaximumLength - generatedPodSuffixLength);
 }
 
 export function immutableKubeName(prefix: string, immutableId: string): string {

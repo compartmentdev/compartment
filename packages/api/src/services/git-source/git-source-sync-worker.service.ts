@@ -22,6 +22,7 @@ import type { SourceMutationTransaction, SourceRow } from '../../queries/source.
 import { getApiConfig, getApiDatabase } from '../../runtime/runtime-access';
 import { recordAuditEvent, writeCommittedAuditEventsToLocalFileSink } from '../audit-events.service';
 import type { AuditEventResult } from '../audit-events.service.types';
+import { invalidateResourceLogProjectSnapshot } from '../deployment-product-logs.service';
 import { mintGitHubInstallationToken, type GitHubInstallationTokenInput } from './github-app-http.adapter';
 import { completeClaimedGitSourceSyncTask } from './git-source-sync-completion.service';
 import type { CompleteClaimedGitSourceSyncTaskResult } from './git-source-sync-completion.service.types';
@@ -33,6 +34,11 @@ import {
 } from './git-source-resolution-worker.support';
 
 const sourceSyncCanceledFailureReason: string = 'Source is no longer active for sync completion.';
+
+interface CompleteSourceSyncTransactionResult {
+  auditEvents: AuditEventResult[];
+  projectSnapshotInvalidationRequired: boolean;
+}
 
 export async function claimGitSourceSyncTaskForWorker(): Promise<WorkerClaimedGitSourceSyncTask | null> {
   const now: Date = new Date();
@@ -85,20 +91,23 @@ async function completeClaimedSourceSyncTaskAndRecordAudit(
   input: WorkerCompleteGitSourceSyncTaskRequest,
 ): Promise<void> {
   const now: Date = new Date();
-  const auditEvents: AuditEventResult[] = await getApiDatabase().transaction(
-    async (transaction: SourceMutationTransaction): Promise<AuditEventResult[]> =>
-      await completeClaimedSourceSyncTaskAndBuildAuditEvents(transaction, task, source, input, now),
+  const result: CompleteSourceSyncTransactionResult = await getApiDatabase().transaction(
+    async (transaction: SourceMutationTransaction): Promise<CompleteSourceSyncTransactionResult> =>
+      await completeClaimedSourceSyncTaskAndBuildResult(transaction, task, source, input, now),
   );
-  writeCommittedAuditEventsToLocalFileSink(auditEvents);
+  if (result.projectSnapshotInvalidationRequired) {
+    invalidateResourceLogProjectSnapshot();
+  }
+  writeCommittedAuditEventsToLocalFileSink(result.auditEvents);
 }
 
-async function completeClaimedSourceSyncTaskAndBuildAuditEvents(
+async function completeClaimedSourceSyncTaskAndBuildResult(
   transaction: SourceMutationTransaction,
   task: SourceSyncTaskRow,
   source: SourceRow,
   input: WorkerCompleteGitSourceSyncTaskRequest,
   now: Date,
-): Promise<AuditEventResult[]> {
+): Promise<CompleteSourceSyncTransactionResult> {
   const result: CompleteClaimedGitSourceSyncTaskResult | null = await completeClaimedGitSourceSyncTask(
     transaction,
     task,
@@ -107,13 +116,16 @@ async function completeClaimedSourceSyncTaskAndBuildAuditEvents(
     now,
   );
   if (result === null) {
-    return [];
+    return { auditEvents: [], projectSnapshotInvalidationRequired: false };
   }
 
-  return [
-    ...result.auditEvents,
-    await recordSucceededSourceSyncAuditEvent(transaction, source, result.completedTask, input.resolvedCommitSha),
-  ];
+  return {
+    auditEvents: [
+      ...result.auditEvents,
+      await recordSucceededSourceSyncAuditEvent(transaction, source, result.completedTask, input.resolvedCommitSha),
+    ],
+    projectSnapshotInvalidationRequired: result.projectSnapshotInvalidationRequired,
+  };
 }
 
 async function failSourceSyncTaskAndRecordAudit(

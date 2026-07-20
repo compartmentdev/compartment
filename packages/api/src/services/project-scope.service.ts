@@ -19,6 +19,7 @@ import type { ProjectRow } from '../queries/projects.query.types';
 import { resolveOrganizationForPrincipal } from './organizations.service';
 import { requireScopedPermission } from './access-scope.service';
 import type { ProjectScopePermissionOptions, ResolvedProjectScope } from './project-scope.service.types';
+import { invalidateResourceLogProjectSnapshot } from './deployment-product-logs.service';
 
 export async function resolveActiveProjectScope(
   principalId: string,
@@ -101,11 +102,18 @@ export async function resolveOrCreateActiveProjectScope(
       updatedAt: now,
     }),
   );
+  invalidateResourceLogProjectSnapshotForNewProject(existingProject);
 
   return {
     organization,
     project,
   };
+}
+
+function invalidateResourceLogProjectSnapshotForNewProject(existingProject: ProjectRow | undefined): void {
+  if (existingProject === undefined) {
+    invalidateResourceLogProjectSnapshot();
+  }
 }
 
 export async function resolveExistingEnvironment(projectId: string, environmentName: string): Promise<EnvironmentRow> {

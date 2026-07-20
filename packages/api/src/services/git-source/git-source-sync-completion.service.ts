@@ -65,6 +65,7 @@ export async function completeClaimedGitSourceSyncTask(
   return {
     auditEvents: completion.resolutionContext.auditEvents,
     completedTask: completion.completedTask,
+    projectSnapshotInvalidationRequired: completion.resolutionContext.projectSnapshotInvalidationRequired,
   };
 }
 
@@ -168,6 +169,7 @@ async function adoptCompletedSourceSyncCandidate(
   candidateContext: PersistedSourceSyncCandidateContext,
 ): Promise<CreateSourceSyncTaskCandidateInput> {
   const projectName: string = requireCandidateProjectName(candidate.projectName);
+  context.projectSnapshotInvalidationRequired = true;
 
   try {
     const adoptedBinding: SourceBindingRow = await adoptGitSourceBinding(

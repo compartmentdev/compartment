@@ -1,10 +1,11 @@
 import { logTailLineLimit, type ProductLogIngestEvent, type ResourceLogLine } from '@compartment/contracts';
-import { immutableKubeName } from '@compartment/utils';
+import { immutableKubeName, kubeResourcePodNamePrefix } from '@compartment/utils';
 import {
   insertDeploymentProductLogs,
   listDeploymentLogIdentities,
   listDeploymentProductLogLines,
   listResourceLogIdentities,
+  listResourceLogProjectIds,
   listResourceProductLogLines,
 } from '../queries/deployment-product-logs.query';
 import type {
@@ -19,18 +20,30 @@ import { listDeploymentLogWorkloadScopes } from '../queries/deployment-log-workl
 import type { DeploymentLogWorkloadScopeRow } from '../queries/deployment-log-workload.query.types';
 import type { ProductLogIngestResult } from './deployment-product-logs.service.types';
 
+interface ResourceLogPodIdentity {
+  podNamePrefix: string;
+  resourceId: string;
+}
+
+interface ResourceLogProjectSnapshot {
+  expiresAt: number;
+  generation: number;
+  projectIdByKubeNamespace: ReadonlyMap<string, string>;
+}
+
+const resourceLogProjectSnapshotTtlMs: number = 60_000;
+let resourceLogProjectSnapshot: ResourceLogProjectSnapshot | undefined;
+let resourceLogProjectSnapshotRefresh: Promise<ResourceLogProjectSnapshot> | undefined;
+let resourceLogProjectSnapshotGeneration: number = 0;
+
 export async function ingestDeploymentProductLogs(events: ProductLogIngestEvent[]): Promise<ProductLogIngestResult> {
   const identities: DeploymentLogIdentityRow[] = await listDeploymentLogIdentities(uniqueNamespaces(events));
-  const resourceIdentities: ResourceLogIdentityRow[] = events.some(
-    (event: ProductLogIngestEvent): boolean => event.containerName === 'resource',
-  )
-    ? await listResourceLogIdentities()
-    : [];
+  const resourceIdentityByNamespace: Map<string, ResourceLogPodIdentity[]> = await loadResourceLogIdentities(events);
   const deploymentByContainer: Map<string, string> = buildDeploymentIdentityMap(identities);
   const acceptedEvents: InsertProductLogInput[] = events.flatMap(
     (event: ProductLogIngestEvent): InsertProductLogInput[] => {
       if (event.containerName === 'resource') {
-        const resourceId: string | undefined = resolveResourceIdentity(event, resourceIdentities);
+        const resourceId: string | undefined = resolveResourceIdentity(event, resourceIdentityByNamespace);
         return resourceId === undefined ? [] : [{ ...event, resourceId }];
       }
       const deploymentId: string | undefined = resolveDeploymentIdentity(event, deploymentByContainer);
@@ -55,12 +68,98 @@ function buildProductLogIngestResult(
   };
 }
 
-function resolveResourceIdentity(event: ProductLogIngestEvent, rows: ResourceLogIdentityRow[]): string | undefined {
-  return rows.findLast(
-    (row: ResourceLogIdentityRow): boolean =>
-      event.namespace === immutableKubeName('cpt', row.namespaceId) &&
-      event.podName.startsWith(`${immutableKubeName('resource', row.resourceId)}-`),
-  )?.resourceId;
+async function loadResourceLogIdentities(
+  events: ProductLogIngestEvent[],
+): Promise<Map<string, ResourceLogPodIdentity[]>> {
+  const namespaces: Set<string> = new Set<string>(
+    events.flatMap((event: ProductLogIngestEvent): string[] =>
+      event.containerName === 'resource' ? [event.namespace] : [],
+    ),
+  );
+  if (namespaces.size === 0) {
+    return new Map<string, ResourceLogPodIdentity[]>();
+  }
+  const projectIds: string[] = await resolveResourceLogProjectIds(namespaces);
+  return buildResourceLogIdentityMap(await listResourceLogIdentities(projectIds));
+}
+
+async function resolveResourceLogProjectIds(namespaces: ReadonlySet<string>): Promise<string[]> {
+  const snapshot: ResourceLogProjectSnapshot = await loadResourceLogProjectSnapshot();
+  return [...namespaces].flatMap((namespace: string): string[] => {
+    const projectId: string | undefined = snapshot.projectIdByKubeNamespace.get(namespace);
+    return projectId === undefined ? [] : [projectId];
+  });
+}
+
+export function invalidateResourceLogProjectSnapshot(): void {
+  resourceLogProjectSnapshotGeneration += 1;
+  resourceLogProjectSnapshot = undefined;
+}
+
+async function loadResourceLogProjectSnapshot(): Promise<ResourceLogProjectSnapshot> {
+  const now: number = Date.now();
+  if (resourceLogProjectSnapshot !== undefined && resourceLogProjectSnapshot.expiresAt > now) {
+    return resourceLogProjectSnapshot;
+  }
+  const generation: number = resourceLogProjectSnapshotGeneration;
+  resourceLogProjectSnapshotRefresh ??= refreshResourceLogProjectSnapshot(now, generation);
+  const snapshot: ResourceLogProjectSnapshot | undefined = await awaitResourceLogProjectSnapshotRefresh(
+    resourceLogProjectSnapshotRefresh,
+  );
+  return snapshot ?? (await loadResourceLogProjectSnapshot());
+}
+
+async function awaitResourceLogProjectSnapshotRefresh(
+  refresh: Promise<ResourceLogProjectSnapshot>,
+): Promise<ResourceLogProjectSnapshot | undefined> {
+  try {
+    const snapshot: ResourceLogProjectSnapshot = await refresh;
+    return snapshot.generation === resourceLogProjectSnapshotGeneration ? snapshot : undefined;
+  } finally {
+    clearResourceLogProjectSnapshotRefresh(refresh);
+  }
+}
+
+function clearResourceLogProjectSnapshotRefresh(refresh: Promise<ResourceLogProjectSnapshot>): void {
+  if (resourceLogProjectSnapshotRefresh === refresh) {
+    resourceLogProjectSnapshotRefresh = undefined;
+  }
+}
+
+async function refreshResourceLogProjectSnapshot(now: number, generation: number): Promise<ResourceLogProjectSnapshot> {
+  const projectIds: string[] = await listResourceLogProjectIds();
+  const snapshot: ResourceLogProjectSnapshot = {
+    expiresAt: now + resourceLogProjectSnapshotTtlMs,
+    generation,
+    projectIdByKubeNamespace: new Map<string, string>(
+      projectIds.map((projectId: string): [string, string] => [immutableKubeName('cpt', projectId), projectId]),
+    ),
+  };
+  if (generation === resourceLogProjectSnapshotGeneration) {
+    resourceLogProjectSnapshot = snapshot;
+  }
+  return snapshot;
+}
+
+function buildResourceLogIdentityMap(rows: ResourceLogIdentityRow[]): Map<string, ResourceLogPodIdentity[]> {
+  const identityByNamespace: Map<string, ResourceLogPodIdentity[]> = new Map<string, ResourceLogPodIdentity[]>();
+  for (const row of rows) {
+    const namespace: string = immutableKubeName('cpt', row.namespaceId);
+    const identities: ResourceLogPodIdentity[] = identityByNamespace.get(namespace) ?? [];
+    identities.push({ podNamePrefix: kubeResourcePodNamePrefix(row.resourceId), resourceId: row.resourceId });
+    identityByNamespace.set(namespace, identities);
+  }
+  return identityByNamespace;
+}
+
+function resolveResourceIdentity(
+  event: ProductLogIngestEvent,
+  identityByNamespace: ReadonlyMap<string, ResourceLogPodIdentity[]>,
+): string | undefined {
+  return identityByNamespace
+    .get(event.namespace)
+    ?.findLast((identity: ResourceLogPodIdentity): boolean => event.podName.startsWith(identity.podNamePrefix))
+    ?.resourceId;
 }
 
 function resolveDeploymentIdentity(

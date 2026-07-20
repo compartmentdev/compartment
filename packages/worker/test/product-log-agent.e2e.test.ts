@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { parseAllDocuments, type Document } from 'yaml';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 interface ConfigMapDocument {
   data: { 'vector.yaml': string };
@@ -42,7 +42,10 @@ describe('product log agent transport', (): void => {
   let vectorDataVolume: string;
   const received: ReceivedLogEvent[] = [];
 
-  beforeAll(async (): Promise<void> => {
+  beforeEach(async (): Promise<void> => {
+    accepting = true;
+    attempts = 0;
+    received.length = 0;
     rootDirectory = await mkdtemp(join(process.cwd(), '.tmp-vector-e2e-'));
     configDirectory = join(rootDirectory, 'config');
     logsDirectory = join(rootDirectory, 'pods');
@@ -54,7 +57,7 @@ describe('product log agent transport', (): void => {
     logFile = join(podDirectory, '0.log');
     resourceLogFile = join(
       logsDirectory,
-      'cpt-project_resource-res-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-ec88c3f4b4b78368-abc_22222222-2222-4222-8222-222222222222',
+      'cpt-project_resource-res-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-ec88c3f4b4b7abcde_22222222-2222-4222-8222-222222222222',
       'resource',
       '0.log',
     );
@@ -102,7 +105,7 @@ describe('product log agent transport', (): void => {
     await execFileAsync('docker', ['volume', 'create', vectorDataVolume]);
   }, 30_000);
 
-  afterAll(async (): Promise<void> => {
+  afterEach(async (): Promise<void> => {
     await stopVector();
     await execFileAsync('docker', ['volume', 'rm', '--force', vectorDataVolume]).catch((): undefined => undefined);
     await new Promise<void>((resolveClose: () => void): void => {
@@ -110,6 +113,23 @@ describe('product log agent transport', (): void => {
     });
     await rm(rootDirectory, { force: true, recursive: true });
   });
+
+  it('delivers stdout from a resource Pod', async (): Promise<void> => {
+    await writeFile(resourceLogFile, criLine('database-system-ready'));
+    await startVector();
+    await waitForVectorReady();
+    await waitFor((): boolean =>
+      received.some((event: ReceivedLogEvent): boolean => event.message === 'database-system-ready'),
+    );
+    expect(
+      received.find((event: ReceivedLogEvent): boolean => event.message === 'database-system-ready'),
+    ).toMatchObject({
+      containerName: 'resource',
+      namespace: 'cpt-project',
+      podName: 'resource-res-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-ec88c3f4b4b7abcde',
+      stream: 'stdout',
+    });
+  }, 60_000);
 
   it('drains outages and preserves checkpoints and rotated offsets', async (): Promise<void> => {
     await writeFile(logFile, '');
@@ -147,19 +167,6 @@ describe('product log agent transport', (): void => {
     );
     expect(rotated).toMatchObject({ sourceOffset: 0, timestamp: '2026-07-13T12:00:00.000000000Z' });
     expect(rotated?.sourceFingerprint).not.toBe(initial?.sourceFingerprint);
-
-    await writeFile(resourceLogFile, criLine('database-system-ready'));
-    await waitFor((): boolean =>
-      received.some((event: ReceivedLogEvent): boolean => event.message === 'database-system-ready'),
-    );
-    expect(
-      received.find((event: ReceivedLogEvent): boolean => event.message === 'database-system-ready'),
-    ).toMatchObject({
-      containerName: 'resource',
-      namespace: 'cpt-project',
-      podName: 'resource-res-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-ec88c3f4b4b78368-abc',
-      stream: 'stdout',
-    });
   }, 120_000);
 
   async function startVector(): Promise<void> {
