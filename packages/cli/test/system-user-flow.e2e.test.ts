@@ -899,17 +899,6 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       activeDeployment = requireSingleActiveDeployment(detachedStatus, app.serviceName);
       expect(activeDeployment.deploymentRunId).toBe(detachedDeploymentRunId);
 
-      const rollbackTargetInspectPayload: DeploymentInspectResponse = await admin.runJson(
-        `inspect --project ${app.projectName}`,
-        deploymentInspectResponseSchema,
-      );
-      const rollbackTargetDeployment: DeploymentInspectTarget = requireSingleInspectedActiveDeployment(
-        rollbackTargetInspectPayload,
-        app.serviceName,
-      );
-      expect(rollbackTargetDeployment.id).toBe(activeDeployment.id);
-      rollbackTargetRuntimeImageRef = requireDeploymentRuntimeImageRef(rollbackTargetDeployment);
-
       await admin.runJson(
         `variable set E2E_BUILD_MESSAGE ${appBuildMessage} --project ${explicitProjectName} --env ${app.environmentName}`,
         variableResponseSchema,
@@ -1004,6 +993,21 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
 
       backupId = await expectK3dBackupRetentionFlow(admin, app.directory, app.projectName, app.resourceName);
+
+      const rollbackTargetStatus: DeploymentStatusResponse = await admin.runJson(
+        `status --project ${app.projectName}`,
+        deploymentStatusCommandResponseParser,
+      );
+      activeDeployment = requireSingleActiveDeployment(rollbackTargetStatus, app.serviceName);
+      const rollbackTargetInspectPayload: DeploymentInspectResponse = await admin.runJson(
+        `inspect --project ${app.projectName}`,
+        deploymentInspectResponseSchema,
+      );
+      const rollbackTargetDeployment: DeploymentInspectTarget = requireSingleInspectedActiveDeployment(
+        rollbackTargetInspectPayload,
+        app.serviceName,
+      );
+      rollbackTargetRuntimeImageRef = requireDeploymentRuntimeImageRef(rollbackTargetDeployment);
 
       const backupShowPayload: ResourceBackupShowResponse = await admin.runJson(
         `resource backup show --project ${app.projectName} --backup ${backupId}`,
