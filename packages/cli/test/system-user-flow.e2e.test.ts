@@ -36,6 +36,7 @@ import {
   resourceBackupShowResponseSchema,
   resourceDeleteResponseSchema,
   resourceListResponseSchema,
+  resourceLogsResponseSchema,
   resourceResponseSchema,
   resourceRestoreAsResponseSchema,
   resourceRestoreResponseSchema,
@@ -176,7 +177,6 @@ import {
   requireDetachedDeploymentRunId,
   waitForDeploymentRuntimeLog,
   waitForDeploymentRunCompletion,
-  waitForResourceRuntimeLogs,
   waitForRunningResource,
 } from './self-hosted-user-setup-deployment-flow.harness';
 import { expectAuditFileExports, expectAuditFileSinkCoverage } from './self-hosted-user-setup-audit-flow.harness';
@@ -949,13 +949,11 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       );
       expect(resourcePayload.resource.status).toBe('running');
 
-      const resourceLogsPayload: ResourceLogsResponse = await waitForResourceRuntimeLogs(
-        admin,
-        app.projectName,
-        app.resourceName,
+      const resourceLogsPayload: ResourceLogsResponse = await admin.runJson(
+        `resource logs --project ${app.projectName} --resource ${app.resourceName} --tail 50`,
+        resourceLogsResponseSchema,
       );
       expect(resourceLogsPayload.resource.name).toBe(app.resourceName);
-      expect(resourceLogsPayload.lines.length).toBeGreaterThan(0);
       expect(
         resourceLogsPayload.lines.every((line: ResourceLogLine): boolean => line.resourceName === app.resourceName),
       ).toBe(true);

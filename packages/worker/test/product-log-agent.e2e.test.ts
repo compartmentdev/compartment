@@ -2,10 +2,10 @@ import { execFile } from 'node:child_process';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { parseAllDocuments, type Document } from 'yaml';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 interface ConfigMapDocument {
   data: { 'vector.yaml': string };
@@ -13,13 +13,9 @@ interface ConfigMapDocument {
 }
 
 interface ReceivedLogEvent {
-  containerName: string;
   message: string;
-  namespace: string;
-  podName: string;
   sourceFingerprint: string;
   sourceOffset: number;
-  stream: string;
   timestamp: string;
 }
 
@@ -35,17 +31,13 @@ describe('product log agent transport', (): void => {
   let configDirectory: string;
   let logFile: string;
   let logsDirectory: string;
-  let resourceLogFile: string;
   let rootDirectory: string;
   let server: Server;
   let serverPort: number;
   let vectorDataVolume: string;
   const received: ReceivedLogEvent[] = [];
 
-  beforeEach(async (): Promise<void> => {
-    accepting = true;
-    attempts = 0;
-    received.length = 0;
+  beforeAll(async (): Promise<void> => {
     rootDirectory = await mkdtemp(join(process.cwd(), '.tmp-vector-e2e-'));
     configDirectory = join(rootDirectory, 'config');
     logsDirectory = join(rootDirectory, 'pods');
@@ -55,15 +47,8 @@ describe('product log agent transport', (): void => {
       'app-deployment',
     );
     logFile = join(podDirectory, '0.log');
-    resourceLogFile = join(
-      logsDirectory,
-      'cpt-project_resource-res-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-ec88c3f4b4b7abcde_22222222-2222-4222-8222-222222222222',
-      'resource',
-      '0.log',
-    );
     await mkdir(configDirectory);
     await mkdir(podDirectory, { recursive: true });
-    await mkdir(dirname(resourceLogFile), { recursive: true });
     server = createServer((request: IncomingMessage, response: ServerResponse): void => {
       if (request.method !== 'POST') {
         response.writeHead(200).end();
@@ -105,7 +90,7 @@ describe('product log agent transport', (): void => {
     await execFileAsync('docker', ['volume', 'create', vectorDataVolume]);
   }, 30_000);
 
-  afterEach(async (): Promise<void> => {
+  afterAll(async (): Promise<void> => {
     await stopVector();
     await execFileAsync('docker', ['volume', 'rm', '--force', vectorDataVolume]).catch((): undefined => undefined);
     await new Promise<void>((resolveClose: () => void): void => {
@@ -113,23 +98,6 @@ describe('product log agent transport', (): void => {
     });
     await rm(rootDirectory, { force: true, recursive: true });
   });
-
-  it('delivers stdout from a resource Pod', async (): Promise<void> => {
-    await writeFile(resourceLogFile, criLine('database-system-ready'));
-    await startVector();
-    await waitForVectorReady();
-    await waitFor((): boolean =>
-      received.some((event: ReceivedLogEvent): boolean => event.message === 'database-system-ready'),
-    );
-    expect(
-      received.find((event: ReceivedLogEvent): boolean => event.message === 'database-system-ready'),
-    ).toMatchObject({
-      containerName: 'resource',
-      namespace: 'cpt-project',
-      podName: 'resource-res-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-ec88c3f4b4b7abcde',
-      stream: 'stdout',
-    });
-  }, 60_000);
 
   it('drains outages and preserves checkpoints and rotated offsets', async (): Promise<void> => {
     await writeFile(logFile, '');

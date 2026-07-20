@@ -32,12 +32,12 @@ export async function readKubePodMetrics(
     ]),
   );
   const productPods: V1Pod[] = pods.items.filter(isObservableProductPod);
+  if (productPods.length > 0 && metrics.items.length === 0) {
+    throw new Error('metrics-server returned an incomplete product Pod snapshot.');
+  }
   const observations: KubePodMetricObservation[] = productPods.flatMap((pod: V1Pod): KubePodMetricObservation[] =>
     toPodMetricObservation(pod, metricByPod),
   );
-  if (observations.length !== productPods.length) {
-    throw new Error('metrics-server returned an incomplete product Pod snapshot.');
-  }
   return observations;
 }
 

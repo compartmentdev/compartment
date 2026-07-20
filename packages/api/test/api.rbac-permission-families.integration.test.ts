@@ -43,7 +43,6 @@ import {
   deployments,
   environments,
   operations,
-  principals,
   projectResources,
   projectServices,
   projects,
@@ -69,7 +68,6 @@ import {
   type RbacTestHarness,
 } from './rbac-test.fixtures';
 import { ingestDeploymentProductLogs } from '../src/services/deployment-product-logs.service';
-import { resolveOrCreateActiveProjectScope } from '../src/services/project-scope.service';
 
 interface AppAccessEdgeServiceModule {
   invalidateEdgeAppAccessSessions: () => Promise<void>;
@@ -276,38 +274,17 @@ describe('rbac permission-family integration', (): void => {
   });
 
   it('resolves resource access at environment scope and keeps resource logs behind explicit log-read grants', async (): Promise<void> => {
-    const resourceId: string = 'res_postgres';
+    const resourceId: string = 'res_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const installPayload: InstallResponse = await installCompartment(app);
-    await ingestDeploymentProductLogs([
-      {
-        containerName: 'resource',
-        message: 'stale resource log',
-        namespace: 'cpt-stale',
-        podName: 'resource-stale-abc',
-        podUid: '12121212-1212-4121-8121-121212121212',
-        restartIdentity: '0',
-        sourceFingerprint: 'c'.repeat(64),
-        sourceOffset: 1,
-        stream: 'stdout',
-        timestamp: new Date().toISOString(),
-      },
-    ]);
-    const [adminPrincipal]: (typeof principals.$inferSelect)[] = await harness.db
-      .select()
-      .from(principals)
-      .where(eq(principals.email, installPayload.adminEmail));
-    const projectId: string = (
-      await resolveOrCreateActiveProjectScope(
-        adminPrincipal!.id,
-        installPayload.organization.slug,
-        'billing',
-        new Date(),
-      )
-    ).project.id;
+    await seedProject(harness, {
+      id: 'prj_resource',
+      name: 'billing',
+      organizationId: installPayload.organization.id,
+    });
     await seedEnvironment(harness, {
       id: 'env_resource',
       name: 'production',
-      projectId,
+      projectId: 'prj_resource',
     });
     await harness.db.insert(projectResources).values({
       commandJson: '[]',
@@ -428,13 +405,13 @@ describe('rbac permission-family integration', (): void => {
     const resourceEvent: ProductLogIngestEvent = {
       containerName: 'resource',
       message: 'database system is ready',
-      namespace: immutableKubeName('cpt', projectId),
-      podName: 'resource-res-postgres-dd032af5cb36a8fe-abcde',
+      namespace: immutableKubeName('cpt', 'prj_resource'),
+      podName: `${immutableKubeName('resource', resourceId)}-abc`,
       podUid: '34343434-3434-4434-8434-343434343434',
       restartIdentity: '0',
       sourceFingerprint: 'd'.repeat(64),
       sourceOffset: 1,
-      stream: 'stdout',
+      stream: 'stderr',
       timestamp: new Date().toISOString(),
     };
     await expect(ingestDeploymentProductLogs([resourceEvent])).resolves.toEqual({
@@ -452,7 +429,7 @@ describe('rbac permission-family integration', (): void => {
       'database system is ready',
     );
     expect(revealOutputResponse.statusCode).toBe(200);
-    const expectedConnectionUrl: string = `postgres://${kubeResourceServiceDns(resourceId, projectId)}/app`;
+    const expectedConnectionUrl: string = `postgres://${kubeResourceServiceDns(resourceId, 'prj_resource')}/app`;
     expect(resourceOutputResponseSchema.parse(revealOutputResponse.json()).output.value).toBe(expectedConnectionUrl);
     const accessEvents: (typeof variableAccessEvents.$inferSelect)[] = await harness.db
       .select()
@@ -461,7 +438,7 @@ describe('rbac permission-family integration', (): void => {
       expect.objectContaining({
         environmentId: 'env_resource',
         operation: 'resource_output_reveal',
-        projectId,
+        projectId: 'prj_resource',
         targetEnvironmentName: 'production',
         targetProjectName: 'billing',
         targetResourceName: 'postgres',

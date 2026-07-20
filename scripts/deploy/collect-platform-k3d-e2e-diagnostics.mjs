@@ -93,38 +93,9 @@ function collectPlatformK3dDiagnostics(outputDirectory) {
       '--tail=500',
     ]);
   }
-  for (const daemonSet of readDaemonSetReferences()) {
-    capture(outputDirectory, `describe-${daemonSet.namespace}-${daemonSet.name}`, 'kubectl', [
-      '--context',
-      context,
-      '--namespace',
-      daemonSet.namespace,
-      'describe',
-      'daemonset',
-      daemonSet.name,
-    ]);
-    capture(outputDirectory, `logs-${daemonSet.namespace}-${daemonSet.name}`, 'kubectl', [
-      '--context',
-      context,
-      '--namespace',
-      daemonSet.namespace,
-      'logs',
-      `daemonset/${daemonSet.name}`,
-      '--all-containers',
-      '--tail=500',
-    ]);
-  }
 }
 
 function readDeploymentReferences() {
-  return readWorkloadReferences('deployments');
-}
-
-function readDaemonSetReferences() {
-  return readWorkloadReferences('daemonsets');
-}
-
-function readWorkloadReferences(resourceKind) {
   try {
     return parseDeploymentReferences(
       captureCommand(
@@ -133,7 +104,7 @@ function readWorkloadReferences(resourceKind) {
           '--context',
           context,
           'get',
-          resourceKind,
+          'deployments',
           '--all-namespaces',
           '-o',
           'jsonpath={range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{"\\n"}{end}',

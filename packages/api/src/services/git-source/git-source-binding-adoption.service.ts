@@ -80,19 +80,15 @@ async function requireAvailableProject(
 ): Promise<ProjectRow> {
   const project: ProjectRow = await resolveConnectProject(transaction, organizationId, projectName, now);
   const lockedProject: ProjectRow = await readLockedAvailableProject(transaction, project.id, projectName);
-  await requireNoActiveBinding(transaction, lockedProject);
-
-  return lockedProject;
-}
-
-async function requireNoActiveBinding(transaction: SourceMutationTransaction, project: ProjectRow): Promise<void> {
   const activeBinding: SourceBindingRow | undefined = await findActiveBindingByProjectIdWithExecutor(
     transaction,
-    project.id,
+    lockedProject.id,
   );
   if (activeBinding !== undefined) {
-    throw createGitSourceConflictError(`Project "${project.name}" already has an active Git binding.`);
+    throw createGitSourceConflictError(`Project "${lockedProject.name}" already has an active Git binding.`);
   }
+
+  return lockedProject;
 }
 
 async function upsertConnectedBinding(
@@ -161,13 +157,12 @@ async function resolveConnectProject(
 ): Promise<ProjectRow> {
   await findAvailableProjectByOrganizationAndName(transaction, organizationId, projectName);
 
-  const project: ProjectRow = await createOrGetProjectWithExecutor(transaction, {
+  return await createOrGetProjectWithExecutor(transaction, {
     id: createId('prj'),
     name: projectName,
     organizationId,
     updatedAt: now,
   });
-  return project;
 }
 
 async function readLockedAvailableProject(

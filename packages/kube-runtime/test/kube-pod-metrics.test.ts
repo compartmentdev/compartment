@@ -24,7 +24,7 @@ describe('Kubernetes Pod metrics observation', (): void => {
     ]);
   });
 
-  it('rejects an incomplete metrics-server snapshot', async (): Promise<void> => {
+  it('rejects an empty metrics-server snapshot while a live product Pod exists', async (): Promise<void> => {
     await expect(
       readKubePodMetrics(new StubCoreApi([productPod('pod-a', 'pod-uid-a')]), new StubMetricsApi([]), {
         kind: 'pod-metrics',
@@ -33,12 +33,27 @@ describe('Kubernetes Pod metrics observation', (): void => {
     ).rejects.toThrow('metrics-server returned an incomplete product Pod snapshot.');
   });
 
+  it('keeps sampled live Pod metrics while another live Pod is waiting for its sample', async (): Promise<void> => {
+    const sampledPod: V1Pod = productPod('pod-a', 'pod-uid-a', 'Running');
+    const unsampledPod: V1Pod = productPod('pod-b', 'pod-uid-b', 'Pending');
+
+    await expect(
+      readKubePodMetrics(new StubCoreApi([sampledPod, unsampledPod]), new StubMetricsApi([podMetric('pod-a')]), {
+        kind: 'pod-metrics',
+        labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+      }),
+    ).resolves.toMatchObject([
+      {
+        deploymentId: 'dep-a',
+        podName: 'pod-a',
+        podUid: 'pod-uid-a',
+      },
+    ]);
+  });
+
   it('keeps live Pod metrics when a completed release Job has no metrics-server sample', async (): Promise<void> => {
-    const livePod: V1Pod = productPod('pod-a', 'pod-uid-a');
-    const completedJobPod: V1Pod = {
-      ...productPod('release-job-a', 'release-job-uid-a'),
-      status: { phase: 'Succeeded' },
-    };
+    const livePod: V1Pod = productPod('pod-a', 'pod-uid-a', 'Running');
+    const completedJobPod: V1Pod = releaseJobPod('release-job-a', 'release-job-uid-a');
 
     await expect(
       readKubePodMetrics(new StubCoreApi([livePod, completedJobPod]), new StubMetricsApi([podMetric('pod-a')]), {
@@ -52,6 +67,17 @@ describe('Kubernetes Pod metrics observation', (): void => {
         podUid: 'pod-uid-a',
       },
     ]);
+  });
+
+  it('returns no observations when only a completed release Job Pod exists', async (): Promise<void> => {
+    const completedJobPod: V1Pod = releaseJobPod('release-job-a', 'release-job-uid-a');
+
+    await expect(
+      readKubePodMetrics(new StubCoreApi([completedJobPod]), new StubMetricsApi([]), {
+        kind: 'pod-metrics',
+        labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+      }),
+    ).resolves.toEqual([]);
   });
 });
 
@@ -71,13 +97,25 @@ class StubMetricsApi implements KubePodMetricsReader {
   }
 }
 
-function productPod(name: string, uid: string): V1Pod {
+function productPod(name: string, uid: string, phase: 'Pending' | 'Running' | 'Succeeded' = 'Running'): V1Pod {
   return {
     metadata: {
       labels: { 'app.kubernetes.io/managed-by': 'compartment', 'compartment.dev/deployment-id': 'dep-a' },
       name,
       namespace: 'cpt-project',
       uid,
+    },
+    status: { phase },
+  };
+}
+
+function releaseJobPod(name: string, uid: string): V1Pod {
+  const pod: V1Pod = productPod(name, uid, 'Succeeded');
+  return {
+    ...pod,
+    metadata: {
+      ...pod.metadata,
+      ownerReferences: [{ apiVersion: 'batch/v1', kind: 'Job', name, uid: 'job-uid-a' }],
     },
   };
 }

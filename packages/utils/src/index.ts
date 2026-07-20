@@ -41,5 +41,5 @@ export {
   type UnixSocketPathPolicy,
 } from './unix-socket-path';
 export { type JsonValue } from './json';
-export { immutableKubeName, kubeResourcePodNamePrefix, kubeResourceServiceDns } from './kube-naming';
+export { immutableKubeName, kubeResourceServiceDns } from './kube-naming';
 export { isValidEmailAddress, readNonEmptyLines, slugifyText } from './text';
