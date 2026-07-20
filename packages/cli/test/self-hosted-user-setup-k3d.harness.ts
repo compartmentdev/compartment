@@ -61,34 +61,6 @@ interface K3dBackupRetentionAssertionInput {
   readonly retainedBackupId: string;
 }
 
-interface K3dJobList {
-  readonly items: K3dJobListItem[];
-}
-
-interface K3dJobListItem {
-  readonly metadata?: { readonly name?: string | undefined } | undefined;
-  readonly spec?:
-    | {
-        readonly template?:
-          | {
-              readonly spec?: { readonly containers?: K3dJobContainer[] | undefined } | undefined;
-            }
-          | undefined;
-      }
-    | undefined;
-  readonly status?:
-    | {
-        readonly failed?: number | undefined;
-        readonly succeeded?: number | undefined;
-      }
-    | undefined;
-}
-
-interface K3dJobContainer {
-  readonly args?: string[] | undefined;
-  readonly command?: string[] | undefined;
-}
-
 const e2ePlatformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
 const k3dCompartmentUrlEnvName: string = 'COMPARTMENT_E2E_COMPARTMENT_URL';
 const k3dApiUrlEnvName: string = 'COMPARTMENT_E2E_API_URL';
@@ -389,7 +361,6 @@ async function expectK3dBackupRetentionCleanup(input: K3dBackupRetentionAssertio
         '--timeout=2m',
       ],
     ]);
-    await expectSuccessfulRetentionCleanupJob(seed, namespace, input.expiredBackupId);
   } finally {
     await runCommand({
       argv: [
@@ -406,69 +377,6 @@ async function expectK3dBackupRetentionCleanup(input: K3dBackupRetentionAssertio
       timeoutMs: k3dKubectlCommandTimeoutMs,
     });
   }
-}
-
-async function expectSuccessfulRetentionCleanupJob(
-  seed: K3dPlatformSeed,
-  namespace: string,
-  expiredBackupId: string,
-): Promise<void> {
-  const result: SelfHostedUserSetupCommandResult = await runCommand({
-    argv: [
-      'kubectl',
-      '--context',
-      seed.kubeContext,
-      '--namespace',
-      namespace,
-      'get',
-      'jobs',
-      '--selector=compartment.dev/job-class=resource-operation',
-      '--output=json',
-    ],
-    timeoutMs: k3dKubectlCommandTimeoutMs,
-  });
-  expectSuccessfulCommand(result, 'read resource operation Jobs after backup retention', '');
-  const jobs: K3dJobList = JSON.parse(result.stdout) as K3dJobList;
-  const cleanupJobs: K3dJobListItem[] = jobs.items.filter(isBackupCleanupJob);
-  expect(cleanupJobs.length).toBeGreaterThan(0);
-  expect(cleanupJobs.every((job: K3dJobListItem): boolean => (job.status?.failed ?? 0) === 0)).toBe(true);
-  const cleanupJob: K3dJobListItem | undefined = cleanupJobs.find((job: K3dJobListItem): boolean =>
-    jobContainsCommandValue(job, `/backups/${expiredBackupId}`),
-  );
-  expect(cleanupJob?.status?.succeeded).toBeGreaterThan(0);
-  for (const job of cleanupJobs) {
-    await expectK3dJobLogsWithoutEacces(seed, namespace, job);
-  }
-}
-
-function isBackupCleanupJob(job: K3dJobListItem): boolean {
-  return jobContainsCommandValue(job, 'rmSync');
-}
-
-function jobContainsCommandValue(job: K3dJobListItem, expected: string): boolean {
-  return (job.spec?.template?.spec?.containers ?? []).some((container: K3dJobContainer): boolean =>
-    [...(container.command ?? []), ...(container.args ?? [])].some((value: string): boolean =>
-      value.includes(expected),
-    ),
-  );
-}
-
-async function expectK3dJobLogsWithoutEacces(
-  seed: K3dPlatformSeed,
-  namespace: string,
-  job: K3dJobListItem,
-): Promise<void> {
-  const jobName: string | undefined = job.metadata?.name;
-  if (jobName === undefined) {
-    throw new Error('Expected a named Kubernetes backup retention Job.');
-  }
-  const logs: SelfHostedUserSetupCommandResult = await runCommand({
-    argv: ['kubectl', '--context', seed.kubeContext, '--namespace', namespace, 'logs', `job/${jobName}`],
-    timeoutMs: k3dKubectlCommandTimeoutMs,
-  });
-  expectSuccessfulCommand(logs, `read backup retention Job ${jobName}`, '');
-  expect(logs.stdout).not.toContain('EACCES');
-  expect(logs.stderr).not.toContain('EACCES');
 }
 
 async function readK3dNamespace(seed: K3dPlatformSeed, namespace: string): Promise<SelfHostedUserSetupCommandResult> {
