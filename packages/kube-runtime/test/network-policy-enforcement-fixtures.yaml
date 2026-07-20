@@ -60,7 +60,7 @@ spec:
   replicas: 1
   selector: { matchLabels: { app: client } }
   template:
-    metadata: { labels: { app: client, compartment.test/role: application } }
+    metadata: { labels: { app: client, compartment.dev/job-class: release } }
     spec:
       automountServiceAccountToken: false
       containers:

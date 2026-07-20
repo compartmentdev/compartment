@@ -95,7 +95,7 @@ export interface DeploymentInspectTargetInput extends DeploymentSummaryInput {
 
 export interface DeploymentInspectRuntimeInput {
   imageRef: string;
-  routeHost: string;
+  routeHost: string | null;
   serviceHost: string;
   servicePort: number;
 }

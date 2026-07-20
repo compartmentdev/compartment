@@ -1,5 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { deploymentKubeReferences, deploymentRoutes, deployments } from '../db/schema';
+import { findLatestReservedDeploymentRouteForOwner } from './deployment-routes.query';
 import type { SupersedeCandidateContext } from './deployment-reconcile-supersede.query';
 import type { PersistDeploymentReconcileObservationInput } from './deployment-reconcile.query.types';
 import type { DeploymentTransaction } from './deployments.query.types';
@@ -51,7 +52,7 @@ async function findReconcileRoute(
       return route;
     }
   }
-  return undefined;
+  return await findLatestReservedDeploymentRouteForOwner(tx, candidate.environmentId, candidate.serviceId);
 }
 
 async function findRouteByDeploymentId(

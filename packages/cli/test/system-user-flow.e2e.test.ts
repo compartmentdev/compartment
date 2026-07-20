@@ -123,6 +123,8 @@ import {
   type WhoAmICommandResponse,
 } from '@compartment/contracts';
 import {
+  disableSelfHostedUserSetupResourceRelease,
+  enableSelfHostedUserSetupResourceRelease,
   selfHostedUserSetupAppListeningLogText,
   type SelfHostedUserSetupAppFixture,
 } from './self-hosted-user-setup-app-fixture';
@@ -680,6 +682,14 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       );
       expect(bootstrapPayload.resource.name).toBe(app.resourceName);
       await waitForRunningResource(admin, app.projectName, app.resourceName);
+      await enableSelfHostedUserSetupResourceRelease(app);
+      const resourceReleaseDeployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
+        'deploy',
+        deployCommandResponseParser,
+        { cwd: app.directory },
+      );
+      expect(requireSingleActiveDeployment(resourceReleaseDeployPayload, app.serviceName).status).toBe('succeeded');
+      await disableSelfHostedUserSetupResourceRelease(app);
       const statusPayload: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,
         deploymentStatusCommandResponseParser,

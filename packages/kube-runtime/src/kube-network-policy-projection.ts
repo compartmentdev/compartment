@@ -1,4 +1,5 @@
 import { kubeNetworkPolicyName } from './kube-naming';
+import type { KubeNetworkPolicyKind } from './kube-naming.types';
 import type { ProjectNetworkPolicyProjection } from './kube-network-policy-projection.types';
 import type { KubeManifest } from './kube-runtime.types';
 
@@ -16,6 +17,7 @@ export function projectNetworkPolicyManifests(
   return [
     defaultDenyManifest(namespace, namespaceId, projectId),
     applicationEgressManifest(namespace, namespaceId, projectId, projection),
+    productJobEgressManifest(namespace, namespaceId, projectId, projection),
     applicationIngressManifest(namespace, namespaceId, projectId, projection),
     resourceIngressManifest(namespace, namespaceId, projectId, projection),
   ];
@@ -37,6 +39,19 @@ function applicationEgressManifest(
   return networkPolicyManifest(namespace, namespaceId, projectId, 'application-egress', {
     egress: applicationEgressRules(projection),
     podSelector: { matchLabels: projection.applicationPodLabels },
+    policyTypes: ['Egress'],
+  });
+}
+
+function productJobEgressManifest(
+  namespace: string,
+  namespaceId: string,
+  projectId: string,
+  projection: ProjectNetworkPolicyProjection,
+): KubeManifest {
+  return networkPolicyManifest(namespace, namespaceId, projectId, 'product-job-egress', {
+    egress: applicationEgressRules(projection),
+    podSelector: { matchExpressions: [productJobSelectorExpression()] },
     policyTypes: ['Egress'],
   });
 }
@@ -104,7 +119,10 @@ function resourceIngressManifest(
   return networkPolicyManifest(namespace, namespaceId, projectId, 'resource-ingress', {
     ingress: [
       {
-        from: [{ podSelector: { matchLabels: projection.applicationPodLabels } }],
+        from: [
+          { podSelector: { matchLabels: projection.applicationPodLabels } },
+          { podSelector: { matchExpressions: [productJobSelectorExpression()] } },
+        ],
         ports: [{ port: projection.resourcePort, protocol: 'TCP' }],
       },
     ],
@@ -113,11 +131,15 @@ function resourceIngressManifest(
   });
 }
 
+function productJobSelectorExpression(): object {
+  return { key: 'compartment.dev/job-class', operator: 'Exists' };
+}
+
 function networkPolicyManifest(
   namespace: string,
   namespaceId: string,
   projectId: string,
-  policy: 'application-egress' | 'application-ingress' | 'default-deny' | 'resource-ingress',
+  policy: KubeNetworkPolicyKind,
   spec: object,
 ): KubeManifest {
   return {

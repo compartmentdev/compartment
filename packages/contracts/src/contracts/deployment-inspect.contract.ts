@@ -8,7 +8,7 @@ import type { ContractSchema } from './schema.types';
 
 export interface DeploymentInspectRuntimeSummary {
   imageRef: string;
-  routeHost: string;
+  routeHost: string | null;
   serviceHost: string;
   servicePort: number;
 }
@@ -37,7 +37,7 @@ export interface DeploymentInspectResponse {
 const deploymentInspectRuntimeSummarySchema: ContractSchema<DeploymentInspectRuntimeSummary> = z
   .object({
     imageRef: z.string().min(1),
-    routeHost: z.string().min(1),
+    routeHost: z.string().min(1).nullable(),
     serviceHost: z.string().min(1),
     servicePort: z.number().int().positive(),
   })

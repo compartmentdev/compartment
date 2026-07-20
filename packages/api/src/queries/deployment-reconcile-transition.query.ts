@@ -1,9 +1,14 @@
 import { and, desc, eq, ne, type SQL } from 'drizzle-orm';
-import { deploymentKubeReferences, deploymentRunEvents, deployments, operations } from '../db/schema';
+import { deploymentKubeReferences, deploymentRunEvents, deployments } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { persistActiveDeploymentDrift } from './deployment-reconcile-transition-audit.query';
 import { switchReadyDeploymentRoute } from './deployment-reconcile-route.query';
+import {
+  lockDeploymentRun,
+  markReadyRunOperationsSucceeded,
+  markRunOperationsFailed,
+} from './deployment-reconcile-run-completion.query';
 import { persistStoppedReconcileObservation } from './deployment-reconcile-stop.query';
 import {
   supersedePreviousKubeDeployment,
@@ -78,10 +83,27 @@ async function persistFailure(
     await updateReference(tx, input, 'pending');
     return true;
   }
-  await markDeploymentFailed(tx, input);
-  await markOperationFailed(tx, input);
+  await markDeploymentRunFailed(tx, input, candidate);
   await updateReference(tx, input, 'pending');
   return true;
+}
+
+async function markDeploymentRunFailed(
+  tx: DeploymentTransaction,
+  input: PersistDeploymentReconcileObservationInput,
+  candidate: SupersedeCandidateContext | undefined,
+): Promise<void> {
+  await markDeploymentFailed(tx, input);
+  if (candidate === undefined) {
+    return;
+  }
+  await lockDeploymentRun(tx, candidate.deploymentRunId);
+  await markRunOperationsFailed(
+    tx,
+    candidate.deploymentRunId,
+    input.observedAt,
+    input.failureMessage ?? 'Kubernetes rollout failed.',
+  );
 }
 
 async function markDeploymentFailed(
@@ -98,20 +120,6 @@ async function markDeploymentFailed(
       updatedAt: input.observedAt,
     })
     .where(eq(deployments.id, input.deploymentId));
-}
-
-async function markOperationFailed(
-  tx: DeploymentTransaction,
-  input: PersistDeploymentReconcileObservationInput,
-): Promise<void> {
-  await tx
-    .update(operations)
-    .set({
-      completedAt: input.observedAt,
-      status: 'failed',
-      summary: input.failureMessage ?? 'Kubernetes rollout failed.',
-    })
-    .where(eq(operations.targetId, input.deploymentId));
 }
 
 async function persistReady(
@@ -139,6 +147,7 @@ async function promoteReadyCandidate(
   input: PersistDeploymentReconcileObservationInput,
   candidate: SupersedeCandidateContext,
 ): Promise<void> {
+  await lockDeploymentRun(tx, candidate.deploymentRunId);
   const previousActiveId: string | undefined = await findPreviousActiveId(tx, input.deploymentId, candidate);
   await supersedePreviousKubeDeployment(tx, {
     candidate,
@@ -173,7 +182,7 @@ async function publishReconcileSucceeded(
   input: PersistDeploymentReconcileObservationInput,
   deploymentRunId: string,
 ): Promise<void> {
-  await markReconcileOperationSucceeded(tx, input);
+  await markReadyRunOperationsSucceeded(tx, deploymentRunId);
   await tx.insert(deploymentRunEvents).values({
     createdAt: input.observedAt,
     deploymentId: input.deploymentId,
@@ -226,20 +235,6 @@ async function activateDeployment(
       updatedAt: input.observedAt,
     })
     .where(eq(deployments.id, input.deploymentId));
-}
-
-async function markReconcileOperationSucceeded(
-  tx: DeploymentTransaction,
-  input: PersistDeploymentReconcileObservationInput,
-): Promise<void> {
-  await tx
-    .update(operations)
-    .set({
-      completedAt: input.observedAt,
-      status: 'succeeded',
-      summary: `Deployment ${input.deploymentId} is active in Kubernetes`,
-    })
-    .where(eq(operations.targetId, input.deploymentId));
 }
 
 async function updateReference(
