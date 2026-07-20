@@ -67,12 +67,23 @@ export async function createSelfHostedUserSetupAppFixture(
 }
 
 export async function enableSelfHostedUserSetupResourceRelease(fixture: SelfHostedUserSetupAppFixture): Promise<void> {
+  await writeSelfHostedUserSetupDescriptor(fixture, true);
+}
+
+export async function disableSelfHostedUserSetupResourceRelease(fixture: SelfHostedUserSetupAppFixture): Promise<void> {
+  await writeSelfHostedUserSetupDescriptor(fixture, false);
+}
+
+async function writeSelfHostedUserSetupDescriptor(
+  fixture: SelfHostedUserSetupAppFixture,
+  includeResourceRelease: boolean,
+): Promise<void> {
   await writeFile(
     join(fixture.directory, 'compartment.yml'),
     buildProbeDescriptor(
       {
         includeCookieTossAttackerService: fixture.attackerServiceName !== undefined,
-        includeResourceRelease: true,
+        includeResourceRelease,
       },
       fixture.projectName,
     ),

@@ -125,6 +125,7 @@ import {
   type WhoAmICommandResponse,
 } from '@compartment/contracts';
 import {
+  disableSelfHostedUserSetupResourceRelease,
   enableSelfHostedUserSetupResourceRelease,
   selfHostedUserSetupAppListeningLogText,
   type SelfHostedUserSetupAppFixture,
@@ -678,6 +679,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
         { cwd: app.directory },
       );
       expect(requireSingleActiveDeployment(resourceReleaseDeployPayload, app.serviceName).status).toBe('succeeded');
+      await disableSelfHostedUserSetupResourceRelease(app);
       const statusPayload: DeploymentStatusResponse = await admin.runJson(
         `status --project ${app.projectName}`,
         deploymentStatusCommandResponseParser,
