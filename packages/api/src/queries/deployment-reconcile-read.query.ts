@@ -1,22 +1,19 @@
-import { and, asc, eq, lte, ne, not, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, lte, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { BuildAliasTable, SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import {
   buildArtifacts,
   deploymentKubeReferences,
   deployments,
-  environmentResourceOutputVariableBindings,
   environments,
   organizations,
   projectServices,
   projectKubeProvisioning,
-  projectResources,
   projects,
 } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type { DeploymentReconcilePair, DeploymentReconcileRow } from './deployment-reconcile.query.types';
-import { latestResourceReconcileRunHasPhase } from './latest-resource-reconcile-run.query';
 
 const replacementDeployments: BuildAliasTable<typeof deployments, 'replacement_deployments'> = alias(
   deployments,
@@ -130,7 +127,7 @@ function candidateFilter(tx: DeploymentTransaction): SQL | undefined {
       and(
         eq(projectKubeProvisioning.state, 'succeeded'),
         or(
-          desiredCandidateFilter(tx),
+          and(eq(deploymentKubeReferences.state, 'desired'), eq(deployments.status, 'running')),
           and(
             eq(deploymentKubeReferences.state, 'pending'),
             or(eq(deployments.status, 'running'), eq(deployments.status, 'succeeded')),
@@ -144,40 +141,6 @@ function candidateFilter(tx: DeploymentTransaction): SQL | undefined {
         ),
       ),
     ),
-  );
-}
-
-function desiredCandidateFilter(tx: DeploymentTransaction): SQL | undefined {
-  return and(
-    eq(deploymentKubeReferences.state, 'desired'),
-    eq(deployments.status, 'running'),
-    noPendingReleaseResources(tx),
-  );
-}
-
-function noPendingReleaseResources(tx: DeploymentTransaction): SQL {
-  return notExists(
-    tx
-      .select({ id: projectResources.id })
-      .from(projectResources)
-      .innerJoin(
-        environmentResourceOutputVariableBindings,
-        and(
-          eq(environmentResourceOutputVariableBindings.environmentId, projectResources.environmentId),
-          eq(environmentResourceOutputVariableBindings.resourceName, projectResources.name),
-        ),
-      )
-      .where(
-        and(
-          eq(projectResources.environmentId, environments.id),
-          eq(environmentResourceOutputVariableBindings.source, 'descriptor'),
-          eq(environmentResourceOutputVariableBindings.targetServiceName, projectServices.name),
-          or(
-            ne(projectResources.status, 'running'),
-            not(latestResourceReconcileRunHasPhase(projectResources.id, 'succeeded')),
-          ),
-        ),
-      ),
   );
 }
 

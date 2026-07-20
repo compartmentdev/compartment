@@ -15,11 +15,13 @@ export interface SelfHostedUserSetupAppFixture {
 
 interface SelfHostedUserSetupAppFixtureOptions {
   readonly includeCookieTossAttackerService?: boolean;
+  readonly includeResourceRelease?: boolean;
   readonly projectName?: string | undefined;
 }
 
 interface ProbeServiceDescriptorOptions {
   readonly includeResourceConnection: boolean;
+  readonly includeResourceRelease: boolean;
 }
 
 const defaultProjectName: string = 'self-hosted-e2e-app';
@@ -64,6 +66,20 @@ export async function createSelfHostedUserSetupAppFixture(
   };
 }
 
+export async function enableSelfHostedUserSetupResourceRelease(fixture: SelfHostedUserSetupAppFixture): Promise<void> {
+  await writeFile(
+    join(fixture.directory, 'compartment.yml'),
+    buildProbeDescriptor(
+      {
+        includeCookieTossAttackerService: fixture.attackerServiceName !== undefined,
+        includeResourceRelease: true,
+      },
+      fixture.projectName,
+    ),
+    'utf8',
+  );
+}
+
 const probeDockerfile: string = `FROM ${probeNodeImageRef}
 RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
@@ -77,13 +93,21 @@ CMD ["node", "server.mjs"]
 function buildProbeDescriptor(options: SelfHostedUserSetupAppFixtureOptions, projectName: string): string {
   const attackerServiceDescriptor: string =
     options.includeCookieTossAttackerService === true
-      ? `${renderProbeServiceDescriptor(cookieTossAttackerServiceName, { includeResourceConnection: false })}\n`
+      ? `${renderProbeServiceDescriptor(cookieTossAttackerServiceName, {
+          includeResourceConnection: false,
+          includeResourceRelease: false,
+        })}\n`
       : '';
+  const releaseReconcileEnv: string =
+    options.includeResourceRelease === true ? '      COMPARTMENT_E2E_RELEASE_RECONCILE: enabled\n' : '';
 
   return `name: ${projectName}
 
 services:
-${renderProbeServiceDescriptor(serviceName, { includeResourceConnection: true })}
+${renderProbeServiceDescriptor(serviceName, {
+  includeResourceConnection: true,
+  includeResourceRelease: options.includeResourceRelease === true,
+})}
 ${attackerServiceDescriptor}
 resources:
   ${resourceName}:
@@ -96,7 +120,7 @@ resources:
     env:
       POSTGRES_DB: app
       POSTGRES_USER: app
-    ports:
+${releaseReconcileEnv}    ports:
       - 5432
     outputs:
       connection-url:
@@ -117,12 +141,11 @@ resources:
 }
 
 function renderProbeServiceDescriptor(name: string, options: ProbeServiceDescriptorOptions): string {
-  const release: string =
-    options.includeResourceConnection === true
-      ? `    release:
+  const release: string = options.includeResourceRelease
+    ? `    release:
       command: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS compartment_release_probe (id integer PRIMARY KEY)"
 `
-      : '';
+    : '';
   const resourceConnections: string =
     options.includeResourceConnection === true
       ? `    connections:

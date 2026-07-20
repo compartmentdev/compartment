@@ -7,7 +7,6 @@ import {
 
 interface ReconcileMocks {
   buildPlan: Mock;
-  findFailedPrerequisite: Mock;
   findPair: Mock;
   persistObservation: Mock;
   planRetention: Mock;
@@ -17,7 +16,6 @@ interface ReconcileMocks {
 const mocks: ReconcileMocks = vi.hoisted(
   (): ReconcileMocks => ({
     buildPlan: vi.fn(),
-    findFailedPrerequisite: vi.fn(),
     findPair: vi.fn(),
     persistObservation: vi.fn(),
     planRetention: vi.fn(),
@@ -29,10 +27,6 @@ vi.mock('../src/queries/deployment-reconcile.query', (): object => ({
   findNextDeploymentReconcilePair: mocks.findPair,
   persistDeploymentReconcileObservation: mocks.persistObservation,
   prepareDeploymentReconcileReference: vi.fn(),
-}));
-
-vi.mock('../src/queries/deployment-resource-readiness.query', (): object => ({
-  findFailedDeploymentResourcePrerequisite: mocks.findFailedPrerequisite,
 }));
 
 vi.mock('../src/services/deployment-runtime-plan.service', (): object => ({
@@ -50,7 +44,6 @@ vi.mock('../src/services/app-access-edge.service', (): object => ({
 describe('deployment reconcile projection', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
-    mocks.findFailedPrerequisite.mockResolvedValue(null);
     mocks.persistObservation.mockResolvedValue(true);
     mocks.planRetention.mockResolvedValue([]);
     mocks.synchronizeEdge.mockResolvedValue(undefined);

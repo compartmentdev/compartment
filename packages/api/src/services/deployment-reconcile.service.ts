@@ -16,8 +16,6 @@ import type {
   DeploymentReconcileRow,
   PrepareDeploymentReconcileResult,
 } from '../queries/deployment-reconcile.query.types';
-import { findFailedDeploymentResourcePrerequisite } from '../queries/deployment-resource-readiness.query';
-import type { FailedDeploymentResourcePrerequisite } from '../queries/deployment-resource-readiness.query.types';
 import { createId } from '../lib/tokens';
 import { readPublicRouteSubdomain } from '../lib/public-route-host';
 import { getApiConfig } from '../runtime/runtime-access';
@@ -45,7 +43,6 @@ interface ProjectionBehavior {
 }
 
 export async function claimDeploymentReconcileTarget(): Promise<DeploymentReconcileTarget | null> {
-  await failTerminalResourcePrerequisite();
   const pair: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
   if (pair === null) {
     return null;
@@ -57,20 +54,6 @@ export async function claimDeploymentReconcileTarget(): Promise<DeploymentReconc
     rolloutStartedAt: pair.candidate.transitionedAt.toISOString(),
     state: pair.candidate.state,
   };
-}
-
-async function failTerminalResourcePrerequisite(): Promise<void> {
-  const failed: FailedDeploymentResourcePrerequisite | null = await findFailedDeploymentResourcePrerequisite();
-  if (failed === null) {
-    return;
-  }
-  await persistDeploymentReconcileObservation({
-    deploymentId: failed.deploymentId,
-    failureMessage: failed.failureMessage,
-    observation: 'failed',
-    observedAt: new Date(),
-    revision: failed.revision,
-  });
 }
 
 export async function observeDeploymentReconcile(
