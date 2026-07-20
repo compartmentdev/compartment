@@ -34,10 +34,6 @@ rules:
       - {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
       - {{ include "compartment.fullname" . }}-project-teardown-rbac-enable-existing
     verbs: ["delete"]
-  - apiGroups: ["admissionregistration.k8s.io"]
-    resources: ["validatingadmissionpolicies", "validatingadmissionpolicybindings"]
-    resourceNames: [{{ include "compartment.fullname" . }}-project-bootstrap-boundary]
-    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -107,8 +103,6 @@ spec:
           resources:
             {{- toYaml .Values.resources.wait | nindent 12 }}
           env:
-            - name: COMPARTMENT_PROJECT_BOOTSTRAP_ADMISSION_POLICY
-              value: {{ include "compartment.fullname" . }}-project-bootstrap-boundary
             - name: COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE
               value: {{ include "compartment.fullname" . }}-project-provisioner
             - name: COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING

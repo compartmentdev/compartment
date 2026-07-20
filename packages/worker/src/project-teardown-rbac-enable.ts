@@ -1,20 +1,14 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import {
-  AdmissionregistrationV1Api,
   CoreV1Api,
   KubeConfig,
   RbacAuthorizationV1Api,
   type V1ClusterRole,
-  type V1Condition,
-  type V1NamedRuleWithOperations,
   type V1PolicyRule,
-  type V1ValidatingAdmissionPolicy,
-  type V1ValidatingAdmissionPolicyBinding,
 } from '@kubernetes/client-node';
 import { z } from 'zod';
 
 interface ProjectTeardownRbacEnvironment {
-  COMPARTMENT_PROJECT_BOOTSTRAP_ADMISSION_POLICY: string;
   COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE: string;
   COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING: string;
   COMPARTMENT_PROJECT_TEARDOWN_RBAC_EXISTING_BINDING: string;
@@ -26,7 +20,6 @@ interface KubernetesApiError extends Error {
 }
 
 const environmentSchema: z.ZodType<ProjectTeardownRbacEnvironment> = z.object({
-  COMPARTMENT_PROJECT_BOOTSTRAP_ADMISSION_POLICY: z.string().min(1),
   COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE: z.string().min(1),
   COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING: z.string().min(1),
   COMPARTMENT_PROJECT_TEARDOWN_RBAC_EXISTING_BINDING: z.string().min(1),
@@ -39,11 +32,7 @@ async function main(): Promise<void> {
   kubeConfig.loadFromCluster();
   const rbacApi: RbacAuthorizationV1Api = kubeConfig.makeApiClient(RbacAuthorizationV1Api);
   try {
-    await waitForProjectTeardownAdmissionGuard(
-      kubeConfig.makeApiClient(AdmissionregistrationV1Api),
-      environment.COMPARTMENT_PROJECT_BOOTSTRAP_ADMISSION_POLICY,
-    );
-    await expectNamespaceDeleteDenied(
+    await waitForNamespaceDeleteDenied(
       kubeConfig.makeApiClient(CoreV1Api),
       environment.COMPARTMENT_PROVISIONING_NAMESPACE,
     );
@@ -91,56 +80,29 @@ function requireNamespaceRule(role: V1ClusterRole): V1PolicyRule {
   return namespaceRule;
 }
 
-async function waitForProjectTeardownAdmissionGuard(api: AdmissionregistrationV1Api, name: string): Promise<void> {
-  let consecutiveReadyObservations: number = 0;
+async function waitForNamespaceDeleteDenied(api: CoreV1Api, namespace: string): Promise<void> {
+  let consecutiveDenials: number = 0;
   for (let attempt: number = 0; attempt < 60; attempt += 1) {
-    const [policy, binding]: [V1ValidatingAdmissionPolicy, V1ValidatingAdmissionPolicyBinding] = await Promise.all([
-      api.readValidatingAdmissionPolicy({ name }),
-      api.readValidatingAdmissionPolicyBinding({ name }),
-    ]);
-    consecutiveReadyObservations = isProjectTeardownAdmissionGuardReady(policy, binding, name)
-      ? consecutiveReadyObservations + 1
-      : 0;
-    if (consecutiveReadyObservations >= 2) {
+    consecutiveDenials = (await isNamespaceDeleteDenied(api, namespace)) ? consecutiveDenials + 1 : 0;
+    if (consecutiveDenials >= 2) {
       return;
     }
     await delay(1_000);
   }
-  throw new Error('Project teardown admission guard did not become active.');
+  throw new Error('Project teardown admission guard did not deny the unmanaged namespace deletion probe.');
 }
 
-function isProjectTeardownAdmissionGuardReady(
-  policy: V1ValidatingAdmissionPolicy,
-  binding: V1ValidatingAdmissionPolicyBinding,
-  name: string,
-): boolean {
-  const generation: number | undefined = policy.metadata?.generation;
-  return (
-    generation !== undefined &&
-    policy.status?.observedGeneration === generation &&
-    policy.status.conditions?.some(
-      (condition: V1Condition): boolean => condition.type === 'Accepted' && condition.status === 'True',
-    ) === true &&
-    policy.spec?.matchConstraints?.resourceRules?.some(
-      (rule: V1NamedRuleWithOperations): boolean =>
-        rule.resources?.includes('namespaces') === true && rule.operations?.includes('DELETE') === true,
-    ) === true &&
-    binding.spec?.policyName === name &&
-    binding.spec.validationActions?.includes('Deny') === true
-  );
-}
-
-async function expectNamespaceDeleteDenied(api: CoreV1Api, namespace: string): Promise<void> {
+async function isNamespaceDeleteDenied(api: CoreV1Api, namespace: string): Promise<boolean> {
   try {
     await api.deleteNamespace({ dryRun: 'All', name: namespace });
   } catch (error) {
     const apiError: KubernetesApiError = error as KubernetesApiError;
     if (apiError.body?.message?.includes('Project bootstrap authority is restricted') === true) {
-      return;
+      return true;
     }
     throw error;
   }
-  throw new Error('Project teardown admission guard allowed an unmanaged namespace deletion probe.');
+  return false;
 }
 
 void main();
