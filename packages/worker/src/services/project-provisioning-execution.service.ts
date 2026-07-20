@@ -35,17 +35,22 @@ export async function executeProjectProvisioning(
   await cleanupProjectProvisioningAuthority(request, runtime, authority, target, logger);
   try {
     await runtime.apply(projectProvisioningAuthorityBundle(authority));
-    const result: KubeJobResult = await runtime.runJob(projectProvisioningJob(config, target, authority));
-    completion = projectProvisioningCompletion(result);
   } catch (error) {
     completion = failedProjectProvisioningCompletion(readErrorMessage(typeof error === 'object' ? error : null));
+    await cleanupProjectProvisioningAuthority(request, runtime, authority, target, logger);
+    return projectProvisioningRequest(target, completion);
   }
+  const result: KubeJobResult = await runtime.runJob(projectProvisioningJob(config, target, authority));
+  completion = projectProvisioningCompletion(result);
   await cleanupProjectProvisioningAuthority(request, runtime, authority, target, logger);
-  return {
-    ...completion,
-    leaseId: target.leaseId,
-    projectId: target.projectId,
-  };
+  return projectProvisioningRequest(target, completion);
+}
+
+function projectProvisioningRequest(
+  target: ProjectProvisioningTarget,
+  completion: ProjectProvisioningResult,
+): WorkerCompleteProjectProvisioningRequest {
+  return { ...completion, leaseId: target.leaseId, projectId: target.projectId };
 }
 
 async function cleanupProjectProvisioningAuthority(

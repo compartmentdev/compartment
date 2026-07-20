@@ -117,20 +117,28 @@ describe('executeProductJob', (): void => {
     expect(durable).toBe(true);
   });
 
-  it('durably terminates a claim when Kubernetes execution fails before result capture', async (): Promise<void> => {
-    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithSequence([new Error('killed after create')]);
+  it('leaves a transient Kubernetes failure non-terminal and retries the same Job identity', async (): Promise<void> => {
+    const result: KubeJobResult = successResult();
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithSequence([
+      new Error('observation startup unavailable'),
+      result,
+    ]);
+    const intent: ProductJobIntent = releaseIntent();
 
-    await expect(executeProductJob(requester(), runtime, releaseIntent())).rejects.toThrow('killed after create');
+    await expect(executeProductJob(requester(), runtime, intent)).rejects.toThrow('observation startup unavailable');
 
+    expect(mocks.persistResult).not.toHaveBeenCalled();
+
+    await expect(executeProductJob(requester(), runtime, intent)).resolves.toMatchObject({ status: 'succeeded' });
+
+    expect(runtime.runJob).toHaveBeenCalledTimes(2);
+    expect(runtime.runJob.mock.calls[1]?.[0]).toEqual(runtime.runJob.mock.calls[0]?.[0]);
+    expect(mocks.persistResult).toHaveBeenCalledOnce();
     expect(mocks.persistResult).toHaveBeenCalledWith(
       expect.any(Function),
-      expect.objectContaining({
-        identityId: 'dep-01jz',
-        logs: 'killed after create',
-        podName: null,
-        status: 'timed-out',
-      }),
+      expect.objectContaining({ identityId: 'dep-01jz', status: 'succeeded' }),
     );
+    expect((result.finalize as Mock).mock.calls).toHaveLength(1);
   });
 
   it('does not finalize when killed after terminal capture and before persistence', async (): Promise<void> => {
@@ -185,26 +193,7 @@ describe('executeProductJob', (): void => {
         }),
     );
     runtime.read = read;
-    const intent: ProductJobIntent = {
-      command: ['bin/backup'],
-      env: {},
-      image: 'postgres@sha256:abc',
-      jobClass: 'resource-operation',
-      namespace: 'cpt-prj-01jz',
-      operationId: 'operation-1',
-      projectId: 'prj-01jz',
-      resourceIds: ['res-1'],
-      timeoutMs: 30_000,
-      volumeMounts: [
-        {
-          claimName: 'backup-artifacts',
-          expectedClaimUid: 'uid-backup',
-          mountPath: '/backups',
-          name: 'backup',
-          resourceId: 'res-1',
-        },
-      ],
-    };
+    const intent: ProductJobIntent = resourceOperationIntent();
 
     await executeProductJob(requester(), runtime, intent);
 
@@ -214,6 +203,39 @@ describe('executeProductJob', (): void => {
       metadata: { name: 'backup-artifacts', namespace: 'cpt-prj-01jz' },
     });
     expect(runtime.runJob).toHaveBeenCalledWith(expect.objectContaining({ volumeMounts: intent.volumeMounts }));
+  });
+
+  it('durably terminates a Job intent when its mounted PVC identity is fenced', async (): Promise<void> => {
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
+    runtime.read = vi.fn(
+      async (): Promise<KubeObservedManifest> =>
+        await Promise.resolve({
+          apiVersion: 'v1',
+          kind: 'PersistentVolumeClaim',
+          metadata: { name: 'backup-artifacts', uid: 'replacement-uid' },
+          status: { phase: 'Bound' },
+        }),
+    );
+    const intent: ProductJobIntent = resourceOperationIntent();
+
+    await expect(executeProductJob(requester(), runtime, intent)).rejects.toThrow('PVC backup-artifacts UID changed');
+
+    expect(runtime.runJob).not.toHaveBeenCalled();
+    const persisted: WorkerPersistProductJobResultRequest | undefined = mocks.persistResult.mock.calls[0]?.[1];
+    expect(persisted).toMatchObject({ identityId: 'operation-1', status: 'timed-out' });
+    expect(persisted?.logs).toContain('PVC backup-artifacts UID changed');
+  });
+
+  it('leaves a mounted Job intent non-terminal when the PVC read is transiently unavailable', async (): Promise<void> => {
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
+    runtime.read = vi.fn(async (): Promise<never> => await Promise.reject(new Error('PVC read unavailable')));
+
+    await expect(executeProductJob(requester(), runtime, resourceOperationIntent())).rejects.toThrow(
+      'PVC read unavailable',
+    );
+
+    expect(runtime.runJob).not.toHaveBeenCalled();
+    expect(mocks.persistResult).not.toHaveBeenCalled();
   });
 });
 
@@ -228,6 +250,29 @@ function releaseIntent(): ProductJobIntent {
     namespace: 'cpt-prj-01jz',
     projectId: 'prj-01jz',
     timeoutMs: 30_000,
+  };
+}
+
+function resourceOperationIntent(): ProductJobIntent {
+  return {
+    command: ['bin/backup'],
+    env: {},
+    image: 'postgres@sha256:abc',
+    jobClass: 'resource-operation',
+    namespace: 'cpt-prj-01jz',
+    operationId: 'operation-1',
+    projectId: 'prj-01jz',
+    resourceIds: ['res-1'],
+    timeoutMs: 30_000,
+    volumeMounts: [
+      {
+        claimName: 'backup-artifacts',
+        expectedClaimUid: 'uid-backup',
+        mountPath: '/backups',
+        name: 'backup',
+        resourceId: 'res-1',
+      },
+    ],
   };
 }
 

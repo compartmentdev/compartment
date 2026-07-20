@@ -301,16 +301,28 @@ describe('KubeRuntime Job primitive', (): void => {
   it('rejoins the same Job after the worker is killed between creation and terminal observation', async (): Promise<void> => {
     const spec: KubeJobSpec = jobSpec('release');
     const jobName: string = kubeJobName(spec.id);
+    const finalizeDelete: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
     createObservationMock.mockRejectedValueOnce(new Error('worker killed after create'));
     const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
 
     await expect(runtime.runJob(spec)).rejects.toThrow('worker killed after create');
+    expect(objectApi.delete).not.toHaveBeenCalled();
     objectApi.jobExists = true;
-    createObservationMock.mockResolvedValueOnce(terminalObservation(jobName, true, 0, vi.fn()));
+    createObservationMock.mockResolvedValueOnce(terminalObservation(jobName, true, 0, finalizeDelete));
     const recovered: KubeJobResult = await runtime.runJob(spec);
 
     expect(recovered).toMatchObject({ jobName, logs: 'done\n', status: 'succeeded' });
     expect(objectApi.patches.filter(([object]: KubePatchInvocation): boolean => object.kind === 'Job')).toHaveLength(1);
+    await recovered.finalize();
+    expect(objectApi.delete).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'Job' }),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'Foreground',
+      undefined,
+    );
   });
 
   it('returns the cached failed container exit code and still stops observation', async (): Promise<void> => {
