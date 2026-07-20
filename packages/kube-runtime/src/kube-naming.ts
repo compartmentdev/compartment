@@ -1,4 +1,5 @@
 import { immutableKubeName } from '@compartment/utils';
+import type { KubeNetworkPolicyKind } from './kube-naming.types';
 
 export function kubeNamespaceName(namespaceId: string): string {
   return immutableKubeName('cpt', namespaceId);
@@ -28,9 +29,6 @@ export function kubeResourceVolumeName(resourceId: string, volumeHandle: string)
   return immutableKubeName('volume', `${resourceId}:${volumeHandle}`);
 }
 
-export function kubeNetworkPolicyName(
-  namespaceId: string,
-  policy: 'application-egress' | 'application-ingress' | 'default-deny' | 'resource-ingress',
-): string {
+export function kubeNetworkPolicyName(namespaceId: string, policy: KubeNetworkPolicyKind): string {
   return immutableKubeName(`np-${policy}`, namespaceId);
 }

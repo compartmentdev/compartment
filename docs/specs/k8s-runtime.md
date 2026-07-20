@@ -1,7 +1,7 @@
 # Kubernetes Runtime
 
 Status: implemented (F1 cutover)
-Updated: 2026-07-14
+Updated: 2026-07-20
 
 ## Ownership
 
@@ -106,9 +106,14 @@ termination grace period, a 3-second `preStop`, and the documented readiness
 probe timings. Failed rollout recovery reapplies the saved active manifest by
 SSA; it does not use `kubectl rollout undo`.
 
-Network isolation follows the T2 evidence. Secret projection follows the T5
-no-service-account-token and checksum rollout model. Resource rows project to
+Network isolation follows the T2 evidence. Application Pods and product Jobs
+carrying `compartment.dev/job-class` receive resource, kube-dns, and external
+egress; resource ingress admits those two workload classes only. Secret
+projection follows the T5 no-service-account-token and checksum rollout model. Resource rows project to
 `Recreate` Deployments, internal Services, Secrets, and stable PVC references.
+Release Jobs with descriptor-owned resource output bindings remain queued until
+the latest reconcile for each connected resource succeeds, bounded by the
+release timeout. Releases without those bindings remain immediately claimable.
 PVC creation is a separate explicit bootstrap operation. Stateful updates stop
 the old pod, prove absence, verify persisted claim UIDs, start the new manifest,
 and restore the saved executable manifest on failure. A live workload without

@@ -16,6 +16,7 @@ import {
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const lifecycleScript = join(repositoryRoot, 'scripts/deploy/platform-k3d-e2e.mjs');
 const diagnosticsScript = join(repositoryRoot, 'scripts/deploy/collect-platform-k3d-e2e-diagnostics.mjs');
+const networkPolicyGateScript = join(repositoryRoot, 'packages/kube-runtime/test/network-policy-enforcement-check.sh');
 const productLogGateScript = join(repositoryRoot, 'scripts/deploy/run-platform-k3d-product-log-gate.mjs');
 const retainedStateGateScript = join(repositoryRoot, 'scripts/deploy/run-platform-k3d-retained-state-gate.mjs');
 async function runShard(shardName) {
@@ -97,6 +98,13 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
       await runInterruptibleCommand(process.execPath, [lifecycleScript, 'configure'], env, signal);
     } else if (suite === 'system-user') {
       await runCliE2eSuite(env, 'test/system-user-flow.e2e.test.ts', signal);
+    } else if (suite === 'network-policy') {
+      await runInterruptibleCommand(
+        'bash',
+        [networkPolicyGateScript, env.COMPARTMENT_E2E_KUBE_CONTEXT, '10.42.0.0/16', '10.43.0.0/16'],
+        env,
+        signal,
+      );
     } else if (suite === 'console') {
       await runInterruptibleCommand('pnpm', ['--filter', '@compartment/console', 'test:e2e:install'], env, signal);
       await runCliE2eSuite(env, 'test/console.e2e.test.ts', signal);

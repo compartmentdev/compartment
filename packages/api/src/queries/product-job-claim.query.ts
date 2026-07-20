@@ -4,12 +4,20 @@ import type { ApiDatabaseTransaction } from '../db/client.types';
 import { productJobRuns, projects, resourceReconcileRuns } from '../db/schema';
 import type { ProductJobRunRow } from './product-job-runs.query.types';
 import { lockResourceRuntimeClaims } from './resource-runtime-claim-lock.query';
+import {
+  expireBlockedReleaseJobs,
+  lockReleaseJobResourceFence,
+  releaseResourceReadinessFence,
+} from './product-job-release-readiness.query';
 
 export async function prepareProductJobClaim(
   transaction: ApiDatabaseTransaction,
   jobClass: ProductJobClass,
 ): Promise<SQL | undefined> {
   await cancelArchivedProductJobs(transaction, jobClass, new Date());
+  if (jobClass === 'release') {
+    await expireBlockedReleaseJobs(transaction, new Date());
+  }
   return claimableProductJobCondition(jobClass);
 }
 
@@ -17,8 +25,11 @@ export async function lockProductJobResourceFence(
   transaction: ApiDatabaseTransaction,
   row: ProductJobRunRow,
 ): Promise<boolean> {
-  if (row.jobClass !== 'resource-operation' || row.status !== 'queued') {
+  if (row.status !== 'queued') {
     return true;
+  }
+  if (row.jobClass === 'release') {
+    return await lockReleaseJobResourceFence(transaction, row.identityId);
   }
   const resourceIds: string[] = JSON.parse(row.resourceIdsJson) as string[];
   await lockResourceRuntimeClaims(transaction, resourceIds);
@@ -146,7 +157,11 @@ function claimableProductJobCondition(jobClass: ProductJobClass): SQL | undefine
       terminal,
     );
   }
-  return or(inArray(productJobRuns.status, ['queued', 'running']), terminal);
+  return or(
+    and(eq(productJobRuns.status, 'queued'), releaseResourceReadinessFence()),
+    eq(productJobRuns.status, 'running'),
+    terminal,
+  );
 }
 
 function resourceOperationReconcileFence(): SQL {

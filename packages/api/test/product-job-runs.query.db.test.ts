@@ -12,12 +12,19 @@ import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
+  buildArtifacts,
+  deploymentRuns,
+  deployments,
+  environmentResourceOutputVariableBindings,
   environments,
+  operations,
   organizations,
   productJobRuns,
   projectKubeProvisioning,
   projectResources,
+  projectServices,
   projects,
+  resourceReconcileRuns,
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
@@ -49,6 +56,41 @@ describe('product Job persistence', (): void => {
     await db.insert(projects).values({ id: 'prj-job', name: 'jobs', organizationId: 'org_job' });
     await db.insert(projectKubeProvisioning).values({ projectId: 'prj-job', state: 'succeeded' });
     await db.insert(environments).values({ id: 'env-job', name: 'production', projectId: 'prj-job' });
+    await db
+      .insert(projectServices)
+      .values({ id: 'svc-job', kind: 'web', name: 'web', path: '.', projectId: 'prj-job' });
+    await db.insert(operations).values({
+      id: 'op-job',
+      status: 'running',
+      summary: 'Deploy',
+      targetId: 'dep_job',
+      targetType: 'deployment',
+      type: 'deployment.create',
+    });
+    await db.insert(buildArtifacts).values({
+      id: 'bar-job',
+      imageRef: 'registry.example/release@sha256:abc',
+      imageRepository: 'registry.example/release',
+      projectId: 'prj-job',
+      projectServiceId: 'svc-job',
+      resolvedBuildEnvJson: '{}',
+      resolvedBuildJson: '{}',
+      sourceDigest: 'sha256:job',
+    });
+    await db.insert(deploymentRuns).values({ environmentId: 'env-job', id: 'drn-job', triggerType: 'manual' });
+    await db.insert(deployments).values({
+      buildArtifactId: 'bar-job',
+      deploymentRunId: 'drn-job',
+      environmentId: 'env-job',
+      health: 'pending',
+      id: 'dep_job',
+      operationId: 'op-job',
+      projectServiceId: 'svc-job',
+      promotionStage: 'release',
+      resolvedReadinessJson: '[]',
+      resolvedRunJson: '{}',
+      status: 'running',
+    });
     await db.insert(projectResources).values({
       commandJson: '[]',
       envJson: '[]',
@@ -135,6 +177,107 @@ describe('product Job persistence', (): void => {
     await expect(claimProductJob('release')).resolves.toMatchObject({
       intent: { deploymentId: 'dep_job' },
       persistedResult: null,
+    });
+  });
+
+  it('claims a release immediately when the descriptor declares no resources', async (): Promise<void> => {
+    await db.delete(projectResources).where(eq(projectResources.id, 'res-db'));
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_job', jobClass: 'release' },
+      persistedResult: null,
+    });
+  });
+
+  it('claims a release immediately when an unbound environment resource is stopped', async (): Promise<void> => {
+    await db.update(projectResources).set({ status: 'stopped' }).where(eq(projectResources.id, 'res-db'));
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_job', jobClass: 'release' },
+      persistedResult: null,
+    });
+  });
+
+  it('keeps a release queued when a descriptor resource binding exists before its resource row', async (): Promise<void> => {
+    await db.delete(projectResources).where(eq(projectResources.id, 'res-db'));
+    await db.insert(environmentResourceOutputVariableBindings).values({
+      environmentId: 'env-job',
+      id: 'binding-db',
+      keyName: 'DATABASE_URL',
+      outputName: 'connection-url',
+      resourceName: 'postgres',
+      source: 'descriptor',
+      targetServiceName: 'web',
+    });
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+
+    await expect(claimProductJob('release')).resolves.toEqual({ intent: null, persistedResult: null });
+  });
+
+  it('requeues a release until its descriptor-connected resource latest reconcile succeeds', async (): Promise<void> => {
+    await db.insert(environmentResourceOutputVariableBindings).values({
+      environmentId: 'env-job',
+      id: 'binding-db',
+      keyName: 'DATABASE_URL',
+      outputName: 'connection-url',
+      resourceName: 'postgres',
+      source: 'descriptor',
+      targetServiceName: 'web',
+    });
+    await db.insert(resourceReconcileRuns).values([
+      {
+        createdAt: new Date('2026-07-20T10:00:00.000Z'),
+        expectedClaimsJson: '[]',
+        id: 'rrun-db-old',
+        intentJson: '{}',
+        operationType: 'bootstrap',
+        phase: 'succeeded',
+        projectResourceId: 'res-db',
+      },
+      {
+        createdAt: new Date('2026-07-20T11:00:00.000Z'),
+        expectedClaimsJson: '[]',
+        id: 'rrun-db',
+        intentJson: '{}',
+        operationType: 'reconcile',
+        phase: 'reconcile-pending',
+        projectResourceId: 'res-db',
+      },
+    ]);
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+
+    await expect(claimProductJob('release')).resolves.toEqual({ intent: null, persistedResult: null });
+    await expect(claimProductJob('release')).resolves.toEqual({ intent: null, persistedResult: null });
+
+    await db.update(resourceReconcileRuns).set({ phase: 'succeeded' }).where(eq(resourceReconcileRuns.id, 'rrun-db'));
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_job', jobClass: 'release' },
+      persistedResult: null,
+    });
+  });
+
+  it('times out a release that remains queued behind a declared resource', async (): Promise<void> => {
+    await db.insert(environmentResourceOutputVariableBindings).values({
+      environmentId: 'env-job',
+      id: 'binding-db',
+      keyName: 'DATABASE_URL',
+      outputName: 'connection-url',
+      resourceName: 'postgres',
+      source: 'descriptor',
+      targetServiceName: 'web',
+    });
+    await db.update(projectResources).set({ status: 'stopped' }).where(eq(projectResources.id, 'res-db'));
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+    await db
+      .update(productJobRuns)
+      .set({ createdAt: new Date(Date.now() - 31_000) })
+      .where(eq(productJobRuns.identityId, 'dep_job'));
+
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_job' },
+      persistedResult: { status: 'timed-out' },
     });
   });
 
