@@ -36,7 +36,7 @@ describe('project provisioning execution', (): void => {
     ).rejects.toThrow('lease');
 
     expect(runJob).toHaveBeenCalledOnce();
-    expect(apply).toHaveBeenCalledTimes(2);
+    expect(apply).toHaveBeenCalledOnce();
   });
 
   it('cleans exact live authority objects under a current lease and preserves Job success', async (): Promise<void> => {
@@ -58,10 +58,10 @@ describe('project provisioning execution', (): void => {
       projectId: 'prj_1',
       status: 'succeeded',
     });
-    expect(apply).toHaveBeenCalledTimes(3);
+    expect(apply).toHaveBeenCalledTimes(2);
     expect(finalize).not.toHaveBeenCalled();
     expect(logger.warn).not.toHaveBeenCalled();
-    const cleanup: ApplyBundle = apply.mock.calls[0]?.[0] as ApplyBundle;
+    const cleanup: ApplyBundle = apply.mock.calls[1]?.[0] as ApplyBundle;
     expect(cleanup.deleteAfterApply).toHaveLength(4);
     expect(cleanup.deleteAfterApply?.every((object: KubeManifest): boolean => object.metadata?.uid !== undefined)).toBe(
       true,
@@ -78,7 +78,6 @@ describe('project provisioning execution', (): void => {
     const apply: Mock = vi
       .fn<() => Promise<KubeManifest[]>>()
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
       .mockRejectedValueOnce(new Error('authority cleanup failed'))
       .mockResolvedValue([]);
     const runJob: Mock = vi.fn(async (): Promise<KubeJobResult> => await Promise.resolve(succeededJob(vi.fn())));
@@ -94,7 +93,7 @@ describe('project provisioning execution', (): void => {
     });
 
     expect(runJob).toHaveBeenCalledTimes(2);
-    expect(apply).toHaveBeenCalledTimes(6);
+    expect(apply).toHaveBeenCalledTimes(4);
   });
 
   it('leaves a transient Job failure running and rejoins on the next provisioning attempt', async (): Promise<void> => {
@@ -115,13 +114,20 @@ describe('project provisioning execution', (): void => {
 
     expect(runJob).toHaveBeenCalledTimes(2);
     expect(runJob.mock.calls[1]?.[0]).toEqual(runJob.mock.calls[0]?.[0]);
-    expect(apply).toHaveBeenCalledTimes(5);
+    const firstApply: ApplyBundle = apply.mock.calls[0]?.[0] as ApplyBundle;
+    const retryApply: ApplyBundle = apply.mock.calls[1]?.[0] as ApplyBundle;
+    const terminalCleanup: ApplyBundle = apply.mock.calls[2]?.[0] as ApplyBundle;
+    expect(firstApply.deleteAfterApply).toBeUndefined();
+    expect(retryApply.deleteAfterApply).toBeUndefined();
+    expect(terminalCleanup.deleteAfterApply).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'Job' })]),
+    );
+    expect(apply).toHaveBeenCalledTimes(3);
   });
 
   it('keeps a primary provisioning failure failed while still cleaning authority', async (): Promise<void> => {
     const apply: Mock = vi
       .fn<() => Promise<KubeManifest[]>>()
-      .mockResolvedValueOnce([])
       .mockRejectedValueOnce(new Error('authority apply failed'))
       .mockResolvedValueOnce([]);
     const runJob: Mock = vi.fn();
@@ -135,7 +141,7 @@ describe('project provisioning execution', (): void => {
       status: 'failed',
     });
     expect(runJob).not.toHaveBeenCalled();
-    expect(apply).toHaveBeenCalledTimes(3);
+    expect(apply).toHaveBeenCalledTimes(2);
   });
 
   it('builds a Job environment accepted by the canonical producer-consumer schema', async (): Promise<void> => {
