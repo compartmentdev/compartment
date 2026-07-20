@@ -74,7 +74,7 @@ await_matrix() {
 : >"${results}"
 await_matrix allow
 run_matrix without-policy allow
-pnpm --dir "${dir}/.." test:network-policy:render "${pod_cidr}" "${service_cidr}" |
+pnpm --silent --dir "${dir}/.." test:network-policy:render "${pod_cidr}" "${service_cidr}" |
   kubectl --context "${context}" apply -f - >/dev/null
 
 await_matrix deny
