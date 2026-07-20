@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lte, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, lte, ne, not, notExists, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { BuildAliasTable, SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import {
@@ -11,12 +11,12 @@ import {
   projectKubeProvisioning,
   projectResources,
   projects,
-  resourceReconcileRuns,
 } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type { DeploymentReconcilePair, DeploymentReconcileRow } from './deployment-reconcile.query.types';
 import { projectProvisioningGeneration } from './project-provisioning-policy';
+import { latestResourceReconcileRunHasPhase } from './latest-resource-reconcile-run.query';
 
 const replacementDeployments: BuildAliasTable<typeof deployments, 'replacement_deployments'> = alias(
   deployments,
@@ -29,14 +29,6 @@ const replacementReferences: BuildAliasTable<typeof deploymentKubeReferences, 'r
 const readinessResources: BuildAliasTable<typeof projectResources, 'readiness_resources'> = alias(
   projectResources,
   'readiness_resources',
-);
-const latestResourceRuns: BuildAliasTable<typeof resourceReconcileRuns, 'latest_resource_runs'> = alias(
-  resourceReconcileRuns,
-  'latest_resource_runs',
-);
-const newerResourceRuns: BuildAliasTable<typeof resourceReconcileRuns, 'newer_resource_runs'> = alias(
-  resourceReconcileRuns,
-  'newer_resource_runs',
 );
 
 interface ReconcileSelection extends SelectedFields {
@@ -176,39 +168,14 @@ function allEnvironmentResourcesRunning(tx: DeploymentTransaction): SQL {
       .where(
         and(
           eq(readinessResources.environmentId, environments.id),
-          or(ne(readinessResources.status, 'running'), latestResourceRunNotSucceeded(tx)),
+          or(ne(readinessResources.status, 'running'), latestResourceRunNotSucceeded()),
         ),
       ),
   );
 }
 
-function latestResourceRunNotSucceeded(tx: DeploymentTransaction): SQL {
-  return notExists(
-    tx
-      .select({ id: latestResourceRuns.id })
-      .from(latestResourceRuns)
-      .where(
-        and(
-          eq(latestResourceRuns.projectResourceId, readinessResources.id),
-          eq(latestResourceRuns.phase, 'succeeded'),
-          noNewerResourceRun(tx),
-        ),
-      ),
-  );
-}
-
-function noNewerResourceRun(tx: DeploymentTransaction): SQL {
-  return notExists(
-    tx
-      .select({ id: newerResourceRuns.id })
-      .from(newerResourceRuns)
-      .where(
-        and(
-          eq(newerResourceRuns.projectResourceId, latestResourceRuns.projectResourceId),
-          sql`(${newerResourceRuns.createdAt}, ${newerResourceRuns.id}) > (${latestResourceRuns.createdAt}, ${latestResourceRuns.id})`,
-        ),
-      ),
-  );
+function latestResourceRunNotSucceeded(): SQL {
+  return not(latestResourceReconcileRunHasPhase(readinessResources.id, 'succeeded'));
 }
 
 function noRunnableReplacement(tx: DeploymentTransaction): SQL {
