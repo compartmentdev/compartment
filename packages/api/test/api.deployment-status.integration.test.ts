@@ -10,6 +10,7 @@ import {
   type DeploymentLogLine,
   type DeploymentLogsResponse,
   type DeploymentInspectResponse,
+  type DeploymentInspectTarget,
   type DeploymentListResponse,
   type DeploymentRunLogsResponse,
   type DeploymentRunStepSummary,
@@ -35,6 +36,8 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 
 import { buildArtifacts, deployments, environments, projectServices, projects } from '../src/db/schema';
 import { ingestDeploymentProductLogs } from '../src/services/deployment-product-logs.service';
+import { persistDeploymentReconcileObservation } from '../src/queries/deployment-reconcile.query';
+import { prepareDeploymentReconcile } from '../src/services/deployment-reconcile.service';
 
 import {
   buildOrganizationAuthorizationHeaders,
@@ -66,6 +69,14 @@ type ResolveTxtRecord = (hostname: string) => Promise<string[][]>;
 interface AppAccessEdgeServiceMocks {
   invalidateEdgeAppAccessSessions: Mock<InvalidateEdgeAppAccessSessions>;
   synchronizeEdgeAppAccessState: Mock<SynchronizeEdgeAppAccessState>;
+}
+
+interface RunningReplacementFixture {
+  firstClaim: WorkerClaimedDeployment;
+  firstDeployment: DeploymentSummary;
+  installPayload: InstallResponse;
+  replacement: DeploymentSummary;
+  replacementClaim: WorkerClaimedDeployment;
 }
 
 interface DnsPromiseMocks {
@@ -534,6 +545,101 @@ describe('Phase 0 API integration deployment status', (): void => {
     const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
     expect(requireSingleDeployment(inspectPayload.deployments).runtime).toBeNull();
   });
+  it('returns runtime topology without a route host while a replacement is running', async (): Promise<void> => {
+    const { installPayload, replacement, replacementClaim } = await prepareRunningReplacement();
+    await prepareDeploymentReconcile({
+      deploymentId: replacement.id,
+      deploymentName: `app-${replacement.id}`,
+      imageRef: 'registry.example/app@sha256:replacement',
+      namespace: `cpt-${replacement.id}`,
+      networkPolicyNames: [],
+      routeHost: replacementClaim.routeHost,
+      serviceName: 'app',
+    });
+
+    const inspectResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken, 'acme-dev'),
+      method: 'GET',
+      url: `/v1/deployments/inspect?projectName=smoke-web&deploymentId=${replacement.id}`,
+    });
+
+    expect(inspectResponse.statusCode, inspectResponse.body).toBe(200);
+    const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
+    expect(requireSingleDeployment(inspectPayload.deployments)).toMatchObject({
+      id: replacement.id,
+      routeHost: null,
+      runtime: { routeHost: null },
+      status: 'running',
+    });
+  });
+  it('returns the active deployment runtime after a failed replacement rolls back', async (): Promise<void> => {
+    const { firstClaim, firstDeployment, installPayload, replacement, replacementClaim } =
+      await prepareRunningReplacement();
+    const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
+    await prepareDeploymentReconcile({
+      deploymentId: replacement.id,
+      deploymentName: `app-${replacement.id}`,
+      imageRef: 'registry.example/app@sha256:replacement',
+      namespace: `cpt-${replacement.id}`,
+      networkPolicyNames: [],
+      routeHost: replacementClaim.routeHost,
+      serviceName: 'app',
+    });
+    await persistDeploymentReconcileObservation({
+      deploymentId: replacement.id,
+      failureMessage: null,
+      observation: 'pending',
+      observedAt,
+      revision: 0,
+    });
+    await persistDeploymentReconcileObservation({
+      deploymentId: replacement.id,
+      failureMessage: 'readiness failed',
+      observation: 'failed',
+      observedAt,
+      revision: 1,
+    });
+
+    const inspectResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken, 'acme-dev'),
+      method: 'GET',
+      url: '/v1/deployments/inspect?projectName=smoke-web',
+    });
+
+    expect(inspectResponse.statusCode, inspectResponse.body).toBe(200);
+    const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
+    expect(requireSingleDeployment(inspectPayload.deployments)).toMatchObject({
+      id: replacement.id,
+      runtime: { routeHost: null },
+      status: 'failed',
+    });
+    const activeDeployment: DeploymentInspectTarget = requireSingleDeployment(inspectPayload.activeDeployments);
+    expect(activeDeployment).toMatchObject({ id: firstDeployment.id, status: 'succeeded' });
+    expect(activeDeployment.runtime).toMatchObject({ routeHost: firstClaim.routeHost });
+
+    const redeployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    const redeployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse(redeployResponse.json()),
+    );
+    const redeployClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+    await completeClaimedDeployment(app, redeployment.id, redeployClaim.routeHost);
+
+    const statusResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken, 'acme-dev'),
+      method: 'GET',
+      url: `/v1/deployments/status?projectName=smoke-web&deploymentId=${redeployment.id}&serviceName=web`,
+    });
+    expect(statusResponse.statusCode, statusResponse.body).toBe(200);
+    const statusPayload: DeploymentStatusResponse = deploymentStatusResponseSchema.parse(statusResponse.json());
+    expect(requireSingleDeployment(statusPayload.activeDeployments)).toMatchObject({
+      id: redeployment.id,
+      routeUrl: `http://${redeployClaim.routeHost}`,
+    });
+  });
   it('does not serve per-artifact archives for non-source-resolution deployments', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     const sourceArchive: Buffer = await createSourceArchive({
@@ -584,6 +690,30 @@ describe('Phase 0 API integration deployment status', (): void => {
     }
   });
 });
+
+async function prepareRunningReplacement(): Promise<RunningReplacementFixture> {
+  const installPayload: InstallResponse = await installCompartment(app);
+  const firstDeployResponse: LightMyRequestResponse = await injectDeployRequest(
+    app,
+    installPayload.sessionToken,
+    'acme-dev',
+  );
+  const firstDeployment: DeploymentSummary = requireDeployResponseDeployment(
+    deployResponseSchema.parse(firstDeployResponse.json()),
+  );
+  const firstClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+  await completeClaimedDeployment(app, firstDeployment.id, firstClaim.routeHost);
+  const replacementResponse: LightMyRequestResponse = await injectDeployRequest(
+    app,
+    installPayload.sessionToken,
+    'acme-dev',
+  );
+  const replacement: DeploymentSummary = requireDeployResponseDeployment(
+    deployResponseSchema.parse(replacementResponse.json()),
+  );
+  const replacementClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+  return { firstClaim, firstDeployment, installPayload, replacement, replacementClaim };
+}
 
 async function appendWorkerDeploymentEvent(apiApp: ApiApp, payload: WorkerAppendDeploymentEventRequest): Promise<void> {
   const response: LightMyRequestResponse = await apiApp.inject({

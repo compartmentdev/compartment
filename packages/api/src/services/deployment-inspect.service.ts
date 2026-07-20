@@ -39,7 +39,7 @@ function buildKubernetesRuntimeDeployment(
 ): DeploymentInspectRuntimeInput {
   return {
     imageRef: requireRuntimeValue(deployment.artifact.imageRef, 'image ref'),
-    routeHost: requireRuntimeValue(deployment.deployment.routeHost, 'route host'),
+    routeHost: deployment.deployment.routeHost,
     serviceHost: `${reference.serviceName}.${reference.namespace}.svc`,
     servicePort: 80,
   };
