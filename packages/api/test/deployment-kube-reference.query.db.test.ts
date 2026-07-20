@@ -1,5 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { immutableKubeName } from '@compartment/utils';
 import type { ProductLogIngestEvent } from '@compartment/contracts';
@@ -915,7 +915,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       deploymentId: 'dep_failed_decoy',
       id: 'route_failed_decoy',
       subdomain: 'failed-decoy',
-      updatedAt: new Date('2026-07-12T10:00:01.000Z'),
+      updatedAt: new Date('2026-07-12T10:00:03.000Z'),
     });
     await seedRedeploymentAfterFailure();
 
@@ -979,6 +979,15 @@ describe('deployment Kubernetes transition persistence', (): void => {
         { completedAt: secondReadyAt, id: 'op_backoffice', status: 'succeeded' },
       ]),
     );
+    const summaries: { summary: string }[] = await db
+      .select({ summary: operations.summary })
+      .from(operations)
+      .where(inArray(operations.id, ['op_backoffice', 'op_candidate']))
+      .orderBy(operations.id);
+    expect(summaries.map(({ summary }: { summary: string }): string => summary)).toEqual([
+      'Deployment dep_backoffice is active in Kubernetes',
+      'Deployment dep_candidate is active in Kubernetes',
+    ]);
   });
 
   it('serializes concurrent Ready observations and uses the latest service completion time', async (): Promise<void> => {
@@ -1162,17 +1171,13 @@ describe('deployment Kubernetes transition persistence', (): void => {
   });
 });
 
-async function waitForDatabaseBlocker(client: PoolClient, expectedCount: number = 1): Promise<void> {
+async function waitForDatabaseBlocker(client: PoolClient): Promise<void> {
   const deadline: number = Date.now() + 10_000;
   while (Date.now() < deadline) {
     const result: { rows: { blockedCount: number }[] } = await client.query(
-      `select count(*)::int as "blockedCount"
-        from pg_stat_activity activity
-        where activity.datname = current_database()
-          and pg_backend_pid() = any(pg_blocking_pids(activity.pid))
-      `,
+      `select count(*)::int as "blockedCount" from pg_stat_activity activity where activity.datname = current_database() and pg_backend_pid() = any(pg_blocking_pids(activity.pid))`,
     );
-    if ((result.rows[0]?.blockedCount ?? 0) >= expectedCount) {
+    if ((result.rows[0]?.blockedCount ?? 0) >= 1) {
       return;
     }
     await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));

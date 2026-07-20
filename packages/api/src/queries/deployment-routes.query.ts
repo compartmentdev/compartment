@@ -99,7 +99,7 @@ export async function findLatestReservedDeploymentRouteForOwner(
     .from(deploymentRoutes)
     .innerJoin(deployments, eq(deploymentRoutes.deploymentId, deployments.id))
     .where(buildReservedDeploymentRouteOwnerFilter(environmentId, serviceId))
-    .orderBy(desc(deploymentRoutes.updatedAt))
+    .orderBy(desc(deploymentRoutes.updatedAt), desc(deploymentRoutes.id))
     .limit(1);
   return rows[0];
 }

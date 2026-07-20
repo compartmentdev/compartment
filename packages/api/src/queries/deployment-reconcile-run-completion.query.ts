@@ -7,7 +7,8 @@ interface IncompleteDeploymentRow {
 }
 
 interface RunOperationRow {
-  id: string;
+  deploymentId: string;
+  operationId: string;
 }
 
 export async function lockDeploymentRun(tx: DeploymentTransaction, deploymentRunId: string): Promise<void> {
@@ -25,9 +26,18 @@ export async function markReadyRunOperationsSucceeded(
   if (await hasIncompleteDeployment(tx, deploymentRunId)) {
     return;
   }
-  const operationIds: string[] = await listRunOperationIds(tx, deploymentRunId);
+  const runOperations: RunOperationRow[] = await listRunOperations(tx, deploymentRunId);
   const completedAt: Date = await findRunCompletedAt(tx, deploymentRunId);
-  await tx.update(operations).set({ completedAt, status: 'succeeded' }).where(inArray(operations.id, operationIds));
+  for (const operation of runOperations) {
+    await tx
+      .update(operations)
+      .set({
+        completedAt,
+        status: 'succeeded',
+        summary: `Deployment ${operation.deploymentId} is active in Kubernetes`,
+      })
+      .where(eq(operations.id, operation.operationId));
+  }
 }
 
 export async function markRunOperationsFailed(
@@ -36,7 +46,9 @@ export async function markRunOperationsFailed(
   completedAt: Date,
   summary: string,
 ): Promise<void> {
-  const operationIds: string[] = await listRunOperationIds(tx, deploymentRunId);
+  const operationIds: string[] = (await listRunOperations(tx, deploymentRunId)).map(
+    (operation: RunOperationRow): string => operation.operationId,
+  );
   await tx
     .update(operations)
     .set({ completedAt, status: 'failed', summary })
@@ -65,10 +77,10 @@ async function hasIncompleteDeployment(tx: DeploymentTransaction, deploymentRunI
   return incompleteDeployment !== undefined;
 }
 
-async function listRunOperationIds(tx: DeploymentTransaction, deploymentRunId: string): Promise<string[]> {
+async function listRunOperations(tx: DeploymentTransaction, deploymentRunId: string): Promise<RunOperationRow[]> {
   const runOperations: RunOperationRow[] = await tx
-    .select({ id: deployments.operationId })
+    .select({ deploymentId: deployments.id, operationId: deployments.operationId })
     .from(deployments)
     .where(eq(deployments.deploymentRunId, deploymentRunId));
-  return runOperations.map((operation: RunOperationRow): string => operation.id);
+  return runOperations;
 }

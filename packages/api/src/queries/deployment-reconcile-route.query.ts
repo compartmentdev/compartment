@@ -52,13 +52,6 @@ async function findReconcileRoute(
       return route;
     }
   }
-  return await findLatestOwnerRoute(tx, candidate);
-}
-
-async function findLatestOwnerRoute(
-  tx: DeploymentTransaction,
-  candidate: SupersedeCandidateContext,
-): Promise<ReconcileRouteRow | undefined> {
   return await findLatestReservedDeploymentRouteForOwner(tx, candidate.environmentId, candidate.serviceId);
 }
 
