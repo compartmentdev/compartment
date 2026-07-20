@@ -8,6 +8,7 @@ import {
   projectServices,
   resourceReconcileRuns,
 } from '../db/schema';
+import { lockResourceReconcileProject } from './resource-reconcile-project.query';
 import { lockResourceRuntimeClaims } from './resource-runtime-claim-lock.query';
 
 export async function expireBlockedReleaseJobs(transaction: ApiDatabaseTransaction, expiredAt: Date): Promise<void> {
@@ -47,6 +48,9 @@ export async function lockReleaseJobResourceFence(
     transaction,
     rows.map((row: { id: string }): string => row.id),
   );
+  for (const row of rows) {
+    await lockResourceReconcileProject(transaction, row.id);
+  }
   return !(await hasBlockingReleaseResource(transaction, deploymentId));
 }
 
