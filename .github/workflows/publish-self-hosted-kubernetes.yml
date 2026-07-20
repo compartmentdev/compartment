@@ -1,0 +1,75 @@
+name: Publish Self-Hosted Images (Kubernetes)
+
+on:
+  push:
+    branches:
+      - kubernetes
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: publish-self-hosted-kubernetes
+  queue: max
+
+jobs:
+  select-runner:
+    name: kubernetes:ci / select runner
+    uses: ./.github/workflows/_select-ci-runner.yml
+
+  db-integration:
+    name: kubernetes:ci / db
+    needs:
+      - select-runner
+    uses: ./.github/workflows/_db-integration.yml
+    with:
+      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
+
+  self-hosted-image-cache:
+    name: kubernetes:ci / build images
+    needs:
+      - select-runner
+    uses: ./.github/workflows/_self-hosted-image-cache.yml
+    with:
+      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
+
+  self-hosted-image-security-gate:
+    name: kubernetes:ci / self-hosted image security gate
+    needs:
+      - select-runner
+      - self-hosted-image-cache
+    uses: ./.github/workflows/_self-hosted-image-security-gate.yml
+    with:
+      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
+      self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
+      docker_scout_enabled: true
+    secrets:
+      dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+      dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  platform-k3d-e2e:
+    name: kubernetes:ci / platform-k3d-e2e
+    needs:
+      - select-runner
+      - self-hosted-image-cache
+    uses: ./.github/workflows/_platform-k3d-e2e.yml
+    with:
+      self_hosted_image_cache_key: ${{ needs.self-hosted-image-cache.outputs.cache_key }}
+      runner_labels_json: ${{ needs.select-runner.outputs.runner_labels_json }}
+
+  publish-kubernetes-images:
+    name: publish kubernetes + sha
+    needs:
+      - db-integration
+      - platform-k3d-e2e
+      - self-hosted-image-security-gate
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    uses: ./.github/workflows/_publish-self-hosted-channel.yml
+    with:
+      channel: kubernetes
+      publish_sha: ${{ github.sha }}
+    secrets: inherit
