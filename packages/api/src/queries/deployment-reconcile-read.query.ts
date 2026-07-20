@@ -1,4 +1,4 @@
-import { and, asc, eq, lte, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, lte, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { BuildAliasTable, SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import {
@@ -16,6 +16,7 @@ import {
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type { DeploymentReconcilePair, DeploymentReconcileRow } from './deployment-reconcile.query.types';
+import { projectProvisioningGeneration } from './project-provisioning-policy';
 
 const replacementDeployments: BuildAliasTable<typeof deployments, 'replacement_deployments'> = alias(
   deployments,
@@ -140,6 +141,7 @@ function candidateFilter(tx: DeploymentTransaction): SQL | undefined {
       eq(deploymentKubeReferences.state, 'stopping'),
       and(
         eq(projectKubeProvisioning.state, 'succeeded'),
+        gte(projectKubeProvisioning.policyGeneration, projectProvisioningGeneration),
         or(
           desiredCandidateFilter(tx),
           and(

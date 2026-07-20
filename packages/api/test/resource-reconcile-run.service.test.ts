@@ -31,6 +31,7 @@ vi.mock('../src/queries/resource-reconcile-wait.query', (): object => ({
 }));
 vi.mock('../src/queries/project-provisioning-policy', (): object => ({
   projectProvisioningAttemptLimit: 3,
+  projectProvisioningGeneration: 1,
   projectProvisioningLeaseDurationMs: 420_000,
   projectProvisioningRetryDelayMs: 10_000,
 }));
@@ -216,6 +217,7 @@ describe('resource reconcile run boundary', (): void => {
       const resource: ProjectResourceRow = { expectedClaimsJson: '[]' } as ProjectResourceRow;
       readBootstrapSettlement.mockResolvedValue({
         provisioningAttempts: 0,
+        provisioningGeneration: 1,
         provisioningState: 'succeeded',
         resource,
         state: { failureMessage: null, operationId: 'bootstrap-operation', phase: 'running' },
@@ -244,6 +246,7 @@ describe('resource reconcile run boundary', (): void => {
       const bootstrapped: ProjectResourceRow = { expectedClaimsJson: '[{"uid":"claim"}]' } as ProjectResourceRow;
       readBootstrapSettlement.mockResolvedValue({
         provisioningAttempts: 0,
+        provisioningGeneration: 1,
         provisioningState: 'succeeded',
         resource: bootstrapped,
         state: null,
@@ -262,6 +265,7 @@ describe('resource reconcile run boundary', (): void => {
       const resource: ProjectResourceRow = { expectedClaimsJson: '[]' } as ProjectResourceRow;
       readBootstrapSettlement.mockResolvedValue({
         provisioningAttempts: 0,
+        provisioningGeneration: 1,
         provisioningState: 'succeeded',
         resource,
         state: { failureMessage: null, operationId: 'bootstrap-operation', phase: 'bootstrap-pending' },
@@ -291,6 +295,7 @@ describe('resource reconcile run boundary', (): void => {
       readRunState.mockResolvedValue({ failureMessage: null, phase: 'succeeded' });
       readBootstrapSettlement.mockResolvedValue({
         provisioningAttempts: 0,
+        provisioningGeneration: 1,
         provisioningState: 'succeeded',
         resource: bootstrapped,
         state: null,
@@ -306,6 +311,7 @@ describe('resource reconcile run boundary', (): void => {
     const resource: ProjectResourceRow = { status: 'starting' } as ProjectResourceRow;
     readReconcileSettlement.mockResolvedValue({
       provisioningAttempts: 0,
+      provisioningGeneration: 1,
       provisioningState: 'succeeded',
       resource,
       state: { failureMessage: 'rollout failed', phase: 'failed' },
@@ -319,6 +325,7 @@ describe('resource reconcile run boundary', (): void => {
     readReconcileSettlement
       .mockResolvedValueOnce({
         provisioningAttempts: 0,
+        provisioningGeneration: 1,
         provisioningState: 'succeeded',
         resource,
         state: { failureMessage: null, operationId: 'stopped-operation', phase: 'succeeded' },
@@ -338,6 +345,7 @@ describe('resource reconcile run boundary', (): void => {
       const resource: ProjectResourceRow = { status: 'starting' } as ProjectResourceRow;
       readReconcileSettlement.mockResolvedValue({
         provisioningAttempts: 0,
+        provisioningGeneration: 1,
         provisioningState: 'succeeded',
         resource,
         state: { failureMessage: null, operationId: 'follow-up-operation', phase: 'reconcile-pending' },
@@ -367,6 +375,7 @@ describe('resource reconcile run boundary', (): void => {
       readRunState.mockResolvedValue({ failureMessage: null, phase: 'succeeded' });
       readReconcileSettlement.mockResolvedValue({
         provisioningAttempts: 0,
+        provisioningGeneration: 1,
         provisioningState: 'succeeded',
         resource: running,
         state: { failureMessage: null, operationId: 'follow-up-operation', phase: 'succeeded' },
@@ -384,6 +393,7 @@ describe('resource reconcile run boundary', (): void => {
       const resource: ProjectResourceRow = { status: 'running' } as ProjectResourceRow;
       readReconcileSettlement.mockResolvedValue({
         provisioningAttempts: 0,
+        provisioningGeneration: 1,
         provisioningState: 'succeeded',
         resource,
         state: { failureMessage: null, operationId: 'latest-operation', phase: 'reconcile-pending' },
@@ -400,6 +410,7 @@ describe('resource reconcile run boundary', (): void => {
       readRunState.mockResolvedValue({ failureMessage: null, phase: 'succeeded' });
       readReconcileSettlement.mockResolvedValue({
         provisioningAttempts: 0,
+        provisioningGeneration: 1,
         provisioningState: 'succeeded',
         resource,
         state: { failureMessage: null, operationId: 'latest-operation', phase: 'succeeded' },
@@ -415,7 +426,17 @@ describe('resource reconcile run boundary', (): void => {
     const resource: ProjectResourceRow = { expectedClaimsJson: '[]' } as ProjectResourceRow;
     readBootstrapSettlement.mockResolvedValue({
       provisioningAttempts: 3,
-      provisioningState: 'failed',
+      provisioningGeneration: 0,
+      provisioningState: 'policy-failed',
+      resource,
+      state: { failureMessage: 'Project is unprovisionable', phase: 'failed' },
+    });
+
+    await expect(waitForResourceBootstrapForCleanup('resource')).rejects.toThrow('Project is unprovisionable');
+    readBootstrapSettlement.mockResolvedValue({
+      provisioningAttempts: 3,
+      provisioningGeneration: 1,
+      provisioningState: 'policy-failed',
       resource,
       state: { failureMessage: 'Project is unprovisionable', phase: 'failed' },
     });
@@ -429,13 +450,15 @@ describe('resource reconcile run boundary', (): void => {
     readBootstrapSettlement
       .mockResolvedValueOnce({
         provisioningAttempts: 2,
+        provisioningGeneration: 1,
         provisioningState: 'running',
         resource,
         state: { failureMessage: null, operationId: 'bootstrap-operation', phase: 'running' },
       })
       .mockResolvedValue({
         provisioningAttempts: 3,
-        provisioningState: 'failed',
+        provisioningGeneration: 1,
+        provisioningState: 'policy-failed',
         resource,
         state: {
           failureMessage: 'Project is unprovisionable',
@@ -459,6 +482,7 @@ describe('resource reconcile run boundary', (): void => {
     const resource: ProjectResourceRow = { expectedClaimsJson: '[]' } as ProjectResourceRow;
     readBootstrapSettlement.mockResolvedValue({
       provisioningAttempts: 0,
+      provisioningGeneration: 1,
       provisioningState: 'succeeded',
       resource,
       state: {

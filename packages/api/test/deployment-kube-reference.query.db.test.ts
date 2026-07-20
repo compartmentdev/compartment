@@ -522,7 +522,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('keeps a succeeded deployment claimable after active readiness drift', async (): Promise<void> => {
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
     await persistDeploymentReconcileObservation({
       deploymentId: 'dep_kube',
       failureMessage: 'active pod missing',
@@ -538,7 +538,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('does not orphan an active deployment when its recovery rollout exceeds the progress deadline', async (): Promise<void> => {
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
     await persistDeploymentReconcileObservation({
       deploymentId: 'dep_kube',
       failureMessage: 'active pod missing',
@@ -610,7 +610,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
   it('does not reconcile the active workload while its replacement claim is leased', async (): Promise<void> => {
     await seedCandidate();
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
 
     const replacement: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
     const duringReplacementLease: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
@@ -621,7 +621,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('does not start a desired deployment until every declared resource is running', async (): Promise<void> => {
     await seedCandidate();
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
     await db.insert(projectResources).values({
       commandJson: '[]',
       envJson: '[]',
@@ -675,7 +675,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('fails a desired deployment when its latest resource reconcile fails', async (): Promise<void> => {
     await seedCandidate();
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
     await db.insert(projectResources).values({
       commandJson: '[]',
       envJson: '[]',
@@ -764,9 +764,15 @@ describe('deployment Kubernetes transition persistence', (): void => {
     await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
   });
 
-  it('starts a desired deployment immediately when its environment declares no resources', async (): Promise<void> => {
+  it('starts a resource-free deployment only after the current project policy generation', async (): Promise<void> => {
     await seedCandidate();
     await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+
+    await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
+    await db
+      .update(projectKubeProvisioning)
+      .set({ policyGeneration: 1 })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_kube'));
 
     await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
       candidate: { deploymentId: 'dep_candidate', state: 'desired' },
@@ -832,14 +838,14 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('serializes terminal provisioning with preparation of future deployment work', async (): Promise<void> => {
     await seedCandidate();
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
     const holder: PoolClient = await pool.connect();
     let preparation: Promise<PrepareDeploymentReconcileResult> | null = null;
     try {
       await holder.query('begin');
       await holder.query(
         `update project_kube_provisioning
-         set attempts = 3, failure_message = 'terminal namespace failure', state = 'failed'
+         set attempts = 3, failure_message = 'terminal namespace failure', state = 'policy-failed'
          where project_id = 'prj_kube'`,
       );
       preparation = prepareDeploymentReconcileReference({
@@ -875,7 +881,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
   it('serializes deployment preparation with project archival', async (): Promise<void> => {
     await seedCandidate();
     await db.delete(deploymentKubeReferences).where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
     const holder: PoolClient = await pool.connect();
     let preparation: Promise<PrepareDeploymentReconcileResult> | null = null;
     try {
@@ -913,7 +919,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
   });
 
   it('claims a requested stop and accepts the worker acknowledgement', async (): Promise<void> => {
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
     await requestDeploymentKubeStop('dep_kube', new Date('2026-07-12T10:00:00.000Z'));
 
     const claimed: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
@@ -934,7 +940,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('rejects an in-flight observation after a stop request advances the revision', async (): Promise<void> => {
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
     const inFlight: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
     expect(inFlight?.candidate).toMatchObject({ deploymentId: 'dep_kube', revision: 1, state: 'active' });
 
@@ -1018,7 +1024,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
         { deploymentId: 'dep_kube', state: 'stopped' },
       ]),
     );
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
     expect(await findNextDeploymentReconcilePair()).toMatchObject({
       candidate: { deploymentId: 'dep_candidate', state: 'active' },
     });

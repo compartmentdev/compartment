@@ -11,7 +11,11 @@ import {
 } from '../db/schema';
 import { createId } from '../lib/tokens';
 import type { DeploymentTransaction } from './deployments.query.types';
-import { projectProvisioningAttemptLimit, projectProvisioningTerminalFailure } from './project-provisioning-policy';
+import {
+  projectProvisioningAttemptLimit,
+  projectProvisioningGeneration,
+  projectProvisioningTerminalFailure,
+} from './project-provisioning-policy';
 import type {
   ProjectProvisioningLockRow,
   TerminalProvisioningRow,
@@ -42,6 +46,7 @@ async function lockDeploymentProvisioning(
     .select({
       attempts: projectKubeProvisioning.attempts,
       failureMessage: projectKubeProvisioning.failureMessage,
+      policyGeneration: projectKubeProvisioning.policyGeneration,
       projectId: projectKubeProvisioning.projectId,
       state: projectKubeProvisioning.state,
     })
@@ -62,6 +67,7 @@ async function lockResourceProvisioning(
     .select({
       attempts: projectKubeProvisioning.attempts,
       failureMessage: projectKubeProvisioning.failureMessage,
+      policyGeneration: projectKubeProvisioning.policyGeneration,
       projectId: projectKubeProvisioning.projectId,
       state: projectKubeProvisioning.state,
     })
@@ -75,8 +81,8 @@ async function lockResourceProvisioning(
 }
 
 function terminalProvisioningRow(row: ProjectProvisioningLockRow | undefined): TerminalProvisioningRow | undefined {
-  return row !== undefined &&
-    ['failed', 'policy-failed'].includes(row.state) &&
+  return row?.state === 'policy-failed' &&
+    row.policyGeneration >= projectProvisioningGeneration &&
     row.attempts >= projectProvisioningAttemptLimit
     ? row
     : undefined;

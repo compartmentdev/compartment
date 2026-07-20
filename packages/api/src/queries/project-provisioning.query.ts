@@ -49,19 +49,26 @@ async function selectClaimableRow(
 
 function provisioningClaimableCondition(now: Date): SQL | undefined {
   const retryBefore: Date = new Date(now.getTime() - projectProvisioningRetryDelayMs);
-  return and(
-    lt(projectKubeProvisioning.policyGeneration, projectProvisioningGeneration),
-    or(
-      eq(projectKubeProvisioning.state, 'pending'),
-      eq(projectKubeProvisioning.state, 'succeeded'),
-      and(eq(projectKubeProvisioning.state, 'failed'), lt(projectKubeProvisioning.updatedAt, retryBefore)),
-      and(eq(projectKubeProvisioning.state, 'running'), lt(projectKubeProvisioning.leaseExpiresAt, now)),
-      and(
-        eq(projectKubeProvisioning.state, 'policy-failed'),
-        lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
-        lt(projectKubeProvisioning.updatedAt, retryBefore),
+  return or(
+    and(
+      lt(projectKubeProvisioning.policyGeneration, projectProvisioningGeneration),
+      or(
+        eq(projectKubeProvisioning.state, 'pending'),
+        eq(projectKubeProvisioning.state, 'succeeded'),
+        and(eq(projectKubeProvisioning.state, 'failed'), lt(projectKubeProvisioning.updatedAt, retryBefore)),
+        and(eq(projectKubeProvisioning.state, 'running'), lt(projectKubeProvisioning.leaseExpiresAt, now)),
       ),
-      and(eq(projectKubeProvisioning.state, 'policy-running'), lt(projectKubeProvisioning.leaseExpiresAt, now)),
+    ),
+    and(
+      eq(projectKubeProvisioning.policyGeneration, projectProvisioningGeneration),
+      or(
+        and(
+          eq(projectKubeProvisioning.state, 'policy-failed'),
+          lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
+          lt(projectKubeProvisioning.updatedAt, retryBefore),
+        ),
+        and(eq(projectKubeProvisioning.state, 'policy-running'), lt(projectKubeProvisioning.leaseExpiresAt, now)),
+      ),
     ),
   );
 }
@@ -88,6 +95,7 @@ async function leaseProjectExecution(
       failureMessage: null,
       leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDurationMs),
       leaseId,
+      policyGeneration: projectProvisioningGeneration,
       state: 'policy-running',
       updatedAt: now,
     })
@@ -153,7 +161,7 @@ async function renewProjectProvisioningLease(
         eq(projectKubeProvisioning.projectId, input.projectId),
         eq(projectKubeProvisioning.leaseId, input.leaseId),
         eq(projectKubeProvisioning.state, 'policy-running'),
-        lt(projectKubeProvisioning.policyGeneration, input.generation),
+        eq(projectKubeProvisioning.policyGeneration, input.generation),
         gt(projectKubeProvisioning.leaseExpiresAt, now),
       ),
     )
@@ -171,7 +179,6 @@ async function persistProjectProvisioningCompletion(
       failureMessage: input.failureMessage,
       leaseExpiresAt: null,
       leaseId: null,
-      ...(input.status === 'succeeded' ? { policyGeneration: input.generation } : {}),
       state: input.status === 'succeeded' ? 'succeeded' : 'policy-failed',
       updatedAt: new Date(),
     })
@@ -180,7 +187,7 @@ async function persistProjectProvisioningCompletion(
         eq(projectKubeProvisioning.projectId, input.projectId),
         eq(projectKubeProvisioning.leaseId, input.leaseId),
         eq(projectKubeProvisioning.state, 'policy-running'),
-        lt(projectKubeProvisioning.policyGeneration, input.generation),
+        eq(projectKubeProvisioning.policyGeneration, input.generation),
       ),
     )
     .returning({ attempts: projectKubeProvisioning.attempts, projectId: projectKubeProvisioning.projectId });

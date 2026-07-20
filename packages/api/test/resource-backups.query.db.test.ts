@@ -492,10 +492,10 @@ describe('resource backup queries', (): void => {
     expect(runs[0]?.id).toBe('rr_bootstrap_primary');
   });
 
-  it('blocks resource reconciliation until project namespace provisioning succeeds', async (): Promise<void> => {
+  it('blocks resource reconciliation until the current project policy generation succeeds', async (): Promise<void> => {
     await db
       .update(projectKubeProvisioning)
-      .set({ state: 'pending' })
+      .set({ policyGeneration: 0, state: 'succeeded' })
       .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
     await createResourceReconcileRun({
       expectedClaims: [],
@@ -507,7 +507,7 @@ describe('resource backup queries', (): void => {
     await expect(claimResourceReconcileRun()).resolves.toBeNull();
     await db
       .update(projectKubeProvisioning)
-      .set({ state: 'succeeded' })
+      .set({ policyGeneration: 1 })
       .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
     await expect(claimResourceReconcileRun()).resolves.toMatchObject({
       operationId: 'rr_before_project_provisioning',
@@ -1076,10 +1076,16 @@ describe('resource backup queries', (): void => {
     await expect(claimPendingProjectProvisioning()).resolves.toBeNull();
   });
 
-  it('dead-letters project provisioning after three failures and fails waiting resource work', async (): Promise<void> => {
+  it('retries a legacy terminal row before dead-lettering current policy failures', async (): Promise<void> => {
     await db
       .update(projectKubeProvisioning)
-      .set({ attempts: 0, failureMessage: null, policyGeneration: 0, state: 'pending' })
+      .set({
+        attempts: 3,
+        failureMessage: 'legacy failure',
+        policyGeneration: 0,
+        state: 'failed',
+        updatedAt: new Date(0),
+      })
       .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
     await createResourceReconcileRun({
       expectedClaims: [],
@@ -1142,7 +1148,7 @@ describe('resource backup queries', (): void => {
       await holder.query('begin');
       await holder.query(
         `update project_kube_provisioning
-         set attempts = 3, failure_message = 'terminal namespace failure', state = 'failed'
+         set attempts = 3, failure_message = 'terminal namespace failure', state = 'policy-failed'
          where project_id = 'prj_internal_tools'`,
       );
       creation = createResourceReconcileRun({
@@ -1168,7 +1174,7 @@ describe('resource backup queries', (): void => {
     }
   });
 
-  it('reclaims an expired execution lease without consuming another failed attempt', async (): Promise<void> => {
+  it('reclaims an expired legacy lease into the current policy generation', async (): Promise<void> => {
     await db
       .update(projectKubeProvisioning)
       .set({
@@ -1177,7 +1183,7 @@ describe('resource backup queries', (): void => {
         leaseExpiresAt: new Date(0),
         leaseId: 'expired-final-lease',
         policyGeneration: 0,
-        state: 'policy-running',
+        state: 'running',
       })
       .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
     await createResourceReconcileRun({
@@ -1194,12 +1200,7 @@ describe('resource backup queries', (): void => {
       .select()
       .from(projectKubeProvisioning)
       .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
-    expect(provisioning).toMatchObject({ attempts: 3, state: 'policy-running' });
-    const [resourceRun] = await db
-      .select()
-      .from(resourceReconcileRuns)
-      .where(eq(resourceReconcileRuns.id, 'rr_expired_final_provisioning'));
-    expect(resourceRun).toMatchObject({ phase: 'bootstrap-pending' });
+    expect(provisioning).toMatchObject({ attempts: 1, policyGeneration: 1, state: 'policy-running' });
   });
 
   it('renews cleanup authority only for the current unexpired provisioning lease', async (): Promise<void> => {
@@ -1209,7 +1210,7 @@ describe('resource backup queries', (): void => {
         attempts: 1,
         leaseExpiresAt: new Date(0),
         leaseId: 'expired-cleanup-lease',
-        policyGeneration: 0,
+        policyGeneration: 1,
         state: 'policy-running',
       })
       .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));

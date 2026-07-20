@@ -192,6 +192,26 @@ describe('internal worker routes', (): void => {
     });
   });
 
+  it('rejects legacy project provisioning completions without a generation', async (): Promise<void> => {
+    applyApiRouteTestEnv();
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const response: LightMyRequestResponse = await injectApiRoute(app, {
+        headers: {
+          accept: 'application/json',
+          authorization: 'Bearer test-runtime-control-token',
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+        payload: { leaseId: 'kpl_legacy', projectId: 'prj_123', status: 'succeeded' },
+        timeoutMs: 1000,
+        url: workerCompleteProjectProvisioningPathname,
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(mocks.acknowledgeProjectProvisioning).not.toHaveBeenCalled();
+    });
+  });
+
   it('returns the next scheduled resource operation response through the worker route contract', async (): Promise<void> => {
     applyApiRouteTestEnv();
     mocks.runNextScheduledResourceOperationForWorker.mockResolvedValueOnce({

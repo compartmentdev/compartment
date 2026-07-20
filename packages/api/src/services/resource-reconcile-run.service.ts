@@ -21,7 +21,7 @@ import type {
 } from '../queries/resource-reconcile-runs.query.types';
 import { createProjectArchivedError } from '../errors/api-business-error';
 import { archivedResourceRunFailureMessage } from '../queries/resource-reconcile-project.query';
-import { projectProvisioningAttemptLimit } from '../queries/project-provisioning-policy';
+import { projectProvisioningAttemptLimit, projectProvisioningGeneration } from '../queries/project-provisioning-policy';
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import { waitForResourceReconcile, waitForResourceReconcileSettlement } from './resource-reconcile-wait.service';
 import type { ClaimedResourceReconcileResult } from './resource-reconcile-run.service.types';
@@ -149,10 +149,10 @@ function readFailedBootstrapSettlement(
   settlement: ResourceBootstrapSettlement,
   allowTerminalProvisioningFailure: boolean,
 ): ProjectResourceRow {
-  const { provisioningAttempts, provisioningState, resource, state } = settlement;
+  const { provisioningAttempts, provisioningGeneration, provisioningState, resource, state } = settlement;
   if (
     allowTerminalProvisioningFailure &&
-    (isTerminalProvisioningFailure(provisioningAttempts, provisioningState) ||
+    (isTerminalProvisioningFailure(provisioningAttempts, provisioningGeneration, provisioningState) ||
       state?.failureMessage === archivedResourceRunFailureMessage)
   ) {
     return resource;
@@ -160,8 +160,12 @@ function readFailedBootstrapSettlement(
   throw new Error(state?.failureMessage ?? 'Kubernetes resource bootstrap failed.');
 }
 
-function isTerminalProvisioningFailure(attempts: number, state: string): boolean {
-  return ['failed', 'policy-failed'].includes(state) && attempts >= projectProvisioningAttemptLimit;
+function isTerminalProvisioningFailure(attempts: number, generation: number, state: string): boolean {
+  return (
+    state === 'policy-failed' &&
+    generation >= projectProvisioningGeneration &&
+    attempts >= projectProvisioningAttemptLimit
+  );
 }
 
 export async function claimNextResourceReconcile(): Promise<ClaimedResourceReconcileResult> {

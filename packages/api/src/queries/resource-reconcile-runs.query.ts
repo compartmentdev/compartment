@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ResourceClaimIdentity, ResourceReconcileIntent } from '@compartment/contracts';
-import { and, asc, desc, eq, inArray, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import {
   environments,
@@ -22,6 +22,7 @@ import type {
 } from './resource-reconcile-runs.query.types';
 import { claimableResourceProjectCondition } from './resource-reconcile-project.query';
 import { lockProjectResourceForReconcile } from './resource-reconcile-lock.query';
+import { projectProvisioningGeneration } from './project-provisioning-policy';
 import { resourceReconcileLeaseDurationMs } from './resource-reconcile-policy';
 import { toProjectResourceRow } from './resources.query';
 import { lockResourceRuntimeClaims } from './resource-runtime-claim-lock.query';
@@ -29,6 +30,7 @@ import { lockResourceRuntimeClaims } from './resource-runtime-claim-lock.query';
 export { acknowledgeResourceReconcileRun } from './resource-reconcile-acknowledgement.query';
 const resourceReconcileSettlementSelection: ResourceReconcileSettlementSelection = {
   provisioningAttempts: projectKubeProvisioning.attempts,
+  provisioningGeneration: projectKubeProvisioning.policyGeneration,
   provisioningState: projectKubeProvisioning.state,
   resource: projectResources,
   state: {
@@ -84,6 +86,7 @@ async function readResourceRunSettlement(
 function toResourceReconcileSettlement(row: ResourceReconcileSettlementRow): ResourceReconcileSettlement {
   return {
     provisioningAttempts: row.provisioningAttempts,
+    provisioningGeneration: row.provisioningGeneration,
     provisioningState: row.provisioningState,
     resource: toProjectResourceRow(row.resource),
     state: row.state,
@@ -125,6 +128,7 @@ async function lockNextClaimableResourceReconcileRun(
     .where(
       and(
         eq(projectKubeProvisioning.state, 'succeeded'),
+        gte(projectKubeProvisioning.policyGeneration, projectProvisioningGeneration),
         claimableResourceProjectCondition(),
         claimableResourceReconcileCondition(),
       ),

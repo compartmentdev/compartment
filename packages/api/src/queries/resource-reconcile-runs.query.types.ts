@@ -80,6 +80,7 @@ export interface ResourceReconcileProjectLockRow {
 
 export interface ResourceBootstrapSettlement {
   provisioningAttempts: number;
+  provisioningGeneration: number;
   provisioningState: typeof projectKubeProvisioning.$inferSelect.state;
   resource: ProjectResourceRow;
   state: ResourceReconcileSettlementState | null;
@@ -89,6 +90,7 @@ export type ResourceReconcileSettlement = ResourceBootstrapSettlement;
 
 export interface ResourceReconcileSettlementRow {
   provisioningAttempts: number;
+  provisioningGeneration: number;
   provisioningState: typeof projectKubeProvisioning.$inferSelect.state;
   resource: PersistedProjectResourceRow;
   state: ResourceReconcileSettlementState | null;
@@ -102,6 +104,7 @@ interface ResourceReconcileRunStateSelection extends SelectedFieldsFlat {
 
 export interface ResourceReconcileSettlementSelection extends SelectedFields {
   provisioningAttempts: typeof projectKubeProvisioning.attempts;
+  provisioningGeneration: typeof projectKubeProvisioning.policyGeneration;
   provisioningState: typeof projectKubeProvisioning.state;
   resource: typeof projectResources;
   state: ResourceReconcileRunStateSelection;

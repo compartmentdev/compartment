@@ -5,6 +5,7 @@ export interface TerminalProvisioningRow {
 
 export interface ProjectProvisioningLockRow extends TerminalProvisioningRow {
   attempts: number;
+  policyGeneration: number;
   state: 'pending' | 'running' | 'succeeded' | 'failed' | 'policy-running' | 'policy-failed';
 }
 

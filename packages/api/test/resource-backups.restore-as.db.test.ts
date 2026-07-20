@@ -244,7 +244,9 @@ async function seedRestoreAsScope(): Promise<void> {
     name: 'database',
     organizationId: 'org_restore_as',
   });
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_restore_as', state: 'succeeded' });
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ policyGeneration: 1, projectId: 'prj_restore_as', state: 'succeeded' });
   await db.insert(environments).values({
     id: 'env_restore_as',
     name: 'production',
