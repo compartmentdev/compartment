@@ -43,6 +43,10 @@ export interface DeploymentRouteSubdomainRow {
   subdomain: string;
 }
 
+export interface ReservedDeploymentRouteRow extends DeploymentRouteSubdomainRow {
+  id: string;
+}
+
 export interface DeploymentRouteLookupSelection extends SelectedFields {
   accessMode: typeof deployments.accessMode;
   accessScopeId: typeof deploymentRoutes.accessScopeId;

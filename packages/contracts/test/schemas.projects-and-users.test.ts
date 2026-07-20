@@ -193,6 +193,23 @@ describe('contract schemas projects and users', (): void => {
     expect(result.activeDeployments[0]?.runtime).toMatchObject({ servicePort: 80 });
   });
 
+  it('accepts Kubernetes inspect runtime details without a route host', (): void => {
+    const activeDeployment: DeploymentInspectTarget = buildDeploymentInspectTarget({
+      runtime: {
+        imageRef: 'registry.example/app@sha256:abc',
+        routeHost: null,
+        serviceHost: 'app-smoke.cpt-smoke.svc',
+        servicePort: 80,
+      },
+    });
+
+    const result: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(
+      buildDeploymentInspectResponse({ activeDeployments: [activeDeployment] }),
+    );
+
+    expect(result.activeDeployments[0]?.runtime).toMatchObject({ routeHost: null });
+  });
+
   it('rejects deployment inspect payloads without rollback availability', (): void => {
     const activeDeployment: DeploymentInspectTarget = buildDeploymentInspectTarget({
       id: 'dep_compat_123',
