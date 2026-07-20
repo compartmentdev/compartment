@@ -9,10 +9,12 @@ import {
   projectProvisioningLeaseDurationMs,
   projectProvisioningRetryDelayMs,
   projectProvisioningTerminalFailure,
+  projectTeardownLeaseDurationMs,
 } from './project-provisioning-policy';
 import type {
   CompleteProjectProvisioningInput,
   ProjectKubeProvisioningState,
+  ProjectProvisioningClaimPhase,
   ProjectProvisioningClaimRow,
   ProjectProvisioningCompletionStatus,
 } from './project-provisioning.query.types';
@@ -23,15 +25,25 @@ interface CompletedProjectProvisioningRow {
   projectId: string;
 }
 
-export async function claimPendingProjectProvisioning(): Promise<ProjectProvisioningClaimRow | null> {
-  return await getApiDatabase().transaction(claimPendingProjectProvisioningWithTransaction);
+export async function claimPendingProjectProvisioning(
+  action: ProjectProvisioningAction | 'any' = 'any',
+): Promise<ProjectProvisioningClaimRow | null> {
+  return await getApiDatabase().transaction(
+    async (transaction: DeploymentTransaction): Promise<ProjectProvisioningClaimRow | null> =>
+      await claimPendingProjectProvisioningWithTransaction(transaction, action),
+  );
 }
 
 async function claimPendingProjectProvisioningWithTransaction(
   transaction: DeploymentTransaction,
+  action: ProjectProvisioningAction | 'any',
 ): Promise<ProjectProvisioningClaimRow | null> {
   const now: Date = new Date();
-  const row: typeof projectKubeProvisioning.$inferSelect | undefined = await selectClaimableRow(transaction, now);
+  const row: typeof projectKubeProvisioning.$inferSelect | undefined = await selectClaimableRow(
+    transaction,
+    now,
+    action,
+  );
   if (row === undefined) {
     return null;
   }
@@ -41,31 +53,58 @@ async function claimPendingProjectProvisioningWithTransaction(
 async function selectClaimableRow(
   transaction: DeploymentTransaction,
   now: Date,
+  action: ProjectProvisioningAction | 'any',
 ): Promise<typeof projectKubeProvisioning.$inferSelect | undefined> {
   const rows: (typeof projectKubeProvisioning.$inferSelect)[] = await transaction
     .select()
     .from(projectKubeProvisioning)
-    .where(provisioningClaimableCondition(now))
+    .where(provisioningClaimableCondition(now, action))
     .orderBy(asc(projectKubeProvisioning.createdAt))
     .limit(1)
     .for('update', { skipLocked: true });
   return rows[0];
 }
 
-function provisioningClaimableCondition(now: Date): SQL | undefined {
+function provisioningClaimableCondition(now: Date, action: ProjectProvisioningAction | 'any'): SQL | undefined {
   return or(
-    eq(projectKubeProvisioning.state, 'pending'),
-    eq(projectKubeProvisioning.state, 'teardown_pending'),
+    claimableStateCondition(action, 'pending'),
     and(
-      or(eq(projectKubeProvisioning.state, 'failed'), eq(projectKubeProvisioning.state, 'teardown_failed')),
+      claimableStateCondition(action, 'failed'),
       lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
       lt(projectKubeProvisioning.updatedAt, new Date(now.getTime() - projectProvisioningRetryDelayMs)),
     ),
-    and(
-      or(eq(projectKubeProvisioning.state, 'running'), eq(projectKubeProvisioning.state, 'teardown_running')),
-      lt(projectKubeProvisioning.leaseExpiresAt, now),
-    ),
+    claimableExpiredRunningCondition(action, now),
   );
+}
+
+function claimableExpiredRunningCondition(action: ProjectProvisioningAction | 'any', now: Date): SQL | undefined {
+  const expiredProvisioning: SQL | undefined = and(
+    eq(projectKubeProvisioning.state, 'running'),
+    lt(projectKubeProvisioning.leaseExpiresAt, now),
+  );
+  const expiredTeardown: SQL | undefined = and(
+    eq(projectKubeProvisioning.state, 'teardown_running'),
+    lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
+    lt(projectKubeProvisioning.leaseExpiresAt, now),
+  );
+  if (action === 'provision') {
+    return expiredProvisioning;
+  }
+  if (action === 'teardown') {
+    return expiredTeardown;
+  }
+  return or(expiredProvisioning, expiredTeardown);
+}
+
+function claimableStateCondition(
+  action: ProjectProvisioningAction | 'any',
+  phase: ProjectProvisioningClaimPhase,
+): SQL | undefined {
+  if (action === 'any') {
+    return or(eq(projectKubeProvisioning.state, phase), eq(projectKubeProvisioning.state, `teardown_${phase}`));
+  }
+  const state: ProjectKubeProvisioningState = action === 'provision' ? phase : `teardown_${phase}`;
+  return eq(projectKubeProvisioning.state, state);
 }
 
 async function leaseProjectProvisioning(
@@ -87,9 +126,9 @@ async function leaseProjectExecution(
   await transaction
     .update(projectKubeProvisioning)
     .set({
-      attempts: isRunningProjectKubeState(row.state) ? row.attempts : sql`${projectKubeProvisioning.attempts} + 1`,
+      attempts: row.state === 'running' ? row.attempts : sql`${projectKubeProvisioning.attempts} + 1`,
       failureMessage: null,
-      leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDurationMs),
+      leaseExpiresAt: new Date(now.getTime() + leaseDurationMs(action)),
       leaseId,
       state: action === 'provision' ? 'running' : 'teardown_running',
       updatedAt: now,
@@ -146,7 +185,7 @@ async function renewProjectProvisioningLease(
 ): Promise<boolean> {
   const rows: { projectId: string }[] = await transaction
     .update(projectKubeProvisioning)
-    .set({ leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDurationMs), updatedAt: now })
+    .set({ leaseExpiresAt: new Date(now.getTime() + leaseDurationMs(input.action)), updatedAt: now })
     .where(
       and(
         eq(projectKubeProvisioning.projectId, input.projectId),
@@ -187,8 +226,8 @@ function readProjectProvisioningAction(state: ProjectKubeProvisioningState): Pro
   return state.startsWith('teardown_') ? 'teardown' : 'provision';
 }
 
-function isRunningProjectKubeState(state: ProjectKubeProvisioningState): boolean {
-  return state === 'running' || state === 'teardown_running';
+function leaseDurationMs(action: ProjectProvisioningAction): number {
+  return action === 'provision' ? projectProvisioningLeaseDurationMs : projectTeardownLeaseDurationMs;
 }
 
 function runningState(action: ProjectProvisioningAction): 'running' | 'teardown_running' {

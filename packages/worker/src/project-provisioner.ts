@@ -1,9 +1,9 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import type { ProjectProvisioningTarget, WorkerCompleteProjectProvisioningRequest } from '@compartment/contracts';
+import type { ProjectProvisioningTargetV2, WorkerCompleteProjectProvisioningV2Request } from '@compartment/contracts';
 import { createSelfCleaningKubeRuntimeFromEnvironment, type KubeRuntime } from '@compartment/kube-runtime';
 import {
-  claimProjectProvisioning,
-  completeProjectProvisioning,
+  claimProjectProvisioningV2,
+  completeProjectProvisioningV2,
   createCompartmentRequester,
   type CompartmentRequester,
 } from '@compartment/sdk';
@@ -31,7 +31,7 @@ async function runProjectProvisioningLoop(
 ): Promise<void> {
   for (;;) {
     try {
-      const claimed: ProjectProvisioningTarget | null = (await claimProjectProvisioning(request)).target;
+      const claimed: ProjectProvisioningTargetV2 | null = (await claimProjectProvisioningV2(request)).target;
       if (claimed === null) {
         await delay(config.pollIntervalMs);
         continue;
@@ -48,16 +48,16 @@ async function provisionClaimedProject(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   config: ProjectProvisionerConfig,
-  target: ProjectProvisioningTarget,
+  target: ProjectProvisioningTargetV2,
   logger: Logger,
 ): Promise<void> {
-  const completion: WorkerCompleteProjectProvisioningRequest = await executeProjectProvisioning(
+  const completion: WorkerCompleteProjectProvisioningV2Request = await executeProjectProvisioning(
     request,
     runtime,
     config,
     target,
     logger,
   );
-  await completeProjectProvisioning(request, completion);
+  await completeProjectProvisioningV2(request, completion);
   logger.info({ projectId: target.projectId, status: completion.status }, 'Project provisioning completed.');
 }

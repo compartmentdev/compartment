@@ -1,0 +1,105 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if eq $installState.effective.platform.startupStage "full" }}
+{{- $hookAnnotations := dict "helm.sh/hook" "post-install,post-upgrade" "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded,hook-failed" -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml $hookAnnotations | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml $hookAnnotations | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    resourceNames: [{{ include "compartment.fullname" . }}-project-provisioner]
+    verbs: ["get", "update", "escalate"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterrolebindings"]
+    resourceNames: [{{ include "compartment.fullname" . }}-project-teardown-rbac-enable]
+    verbs: ["delete"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingadmissionpolicies", "validatingadmissionpolicybindings"]
+    resourceNames: [{{ include "compartment.fullname" . }}-project-bootstrap-boundary]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml $hookAnnotations | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml $hookAnnotations | nindent 4 }}
+spec:
+  activeDeadlineSeconds: 120
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "project-teardown-rbac-enable") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: enable-project-teardown-rbac
+          image: {{ include "compartment.image" .Values.images.worker }}
+          imagePullPolicy: {{ .Values.images.worker.pullPolicy }}
+          command: ["node", "dist/project-teardown-rbac-enable.js"]
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+            runAsUser: 10001
+            runAsGroup: 10001
+          resources:
+            {{- toYaml .Values.resources.wait | nindent 12 }}
+          env:
+            - name: COMPARTMENT_PROJECT_BOOTSTRAP_ADMISSION_POLICY
+              value: {{ include "compartment.fullname" . }}-project-bootstrap-boundary
+            - name: COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE
+              value: {{ include "compartment.fullname" . }}-project-provisioner
+            - name: COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING
+              value: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+            - name: COMPARTMENT_PROVISIONING_NAMESPACE
+              value: {{ include "compartment.projectProvisioningNamespace" . }}
+          volumeMounts:
+            - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
+        - {name: tmp, emptyDir: {}}
+{{- end }}

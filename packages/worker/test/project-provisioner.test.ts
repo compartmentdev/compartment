@@ -1,4 +1,4 @@
-import type { ProjectProvisioningTarget, WorkerCompleteProjectProvisioningRequest } from '@compartment/contracts';
+import type { ProjectProvisioningTargetV2, WorkerCompleteProjectProvisioningV2Request } from '@compartment/contracts';
 import {
   kubeNamespaceName,
   KubeRuntime,
@@ -45,7 +45,7 @@ describe('project provisioning execution', (): void => {
     const runJob: Mock = vi.fn(async (): Promise<KubeJobResult> => await Promise.resolve(succeededJob(finalize)));
     const logger: Logger = loggerStub();
 
-    const completion: WorkerCompleteProjectProvisioningRequest = await executeProjectProvisioning(
+    const completion: WorkerCompleteProjectProvisioningV2Request = await executeProjectProvisioning(
       requester(true, true),
       runtimeStub(apply, runJob),
       config(),
@@ -163,10 +163,23 @@ describe('project provisioning execution', (): void => {
         kind: 'Namespace',
         metadata: { name: kubeNamespaceName('prj_1') },
       };
+      const cleanupAuthority: Mock = vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([]));
+      let namespaceReads: number = 0;
+      vi.spyOn(runtime, 'apply').mockImplementation(cleanupAuthority);
       vi.spyOn(runtime, 'delete').mockImplementation(deleteObjects);
-      vi.spyOn(runtime, 'read').mockResolvedValueOnce(namespace).mockResolvedValueOnce(null);
-      const teardownTarget: ProjectProvisioningTarget = { ...target, action: 'teardown' };
-      const completion: Promise<WorkerCompleteProjectProvisioningRequest> = executeProjectProvisioning(
+      vi.spyOn(runtime, 'read').mockImplementation(async (object: KubeManifest): Promise<KubeManifest | null> => {
+        if (object.kind === 'Namespace') {
+          const observed: KubeManifest | null = namespaceReads === 0 ? namespace : null;
+          namespaceReads += 1;
+          return await Promise.resolve(observed);
+        }
+        return await Promise.resolve({
+          ...object,
+          metadata: { ...object.metadata, resourceVersion: `${object.kind}-rv`, uid: `${object.kind}-uid` },
+        });
+      });
+      const teardownTarget: ProjectProvisioningTargetV2 = { ...target, action: 'teardown' };
+      const completion: Promise<WorkerCompleteProjectProvisioningV2Request> = executeProjectProvisioning(
         requester(true, true),
         runtime,
         config(),
@@ -181,14 +194,48 @@ describe('project provisioning execution', (): void => {
         projectId: 'prj_1',
         status: 'succeeded',
       });
+      const cleanup: ApplyBundle = cleanupAuthority.mock.calls[0]?.[0] as ApplyBundle;
+      expect(cleanup.deleteAfterApply).toHaveLength(4);
+      expect(
+        cleanup.deleteAfterApply?.every((object: KubeManifest): boolean => object.metadata?.uid !== undefined),
+      ).toBe(true);
       expect(deleteObjects).toHaveBeenCalledWith([namespace]);
     } finally {
       vi.useRealTimers();
     }
   });
+
+  it('acknowledges an idempotent teardown when the project namespace is already absent', async (): Promise<void> => {
+    const runtime: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
+    const cleanupAuthority: Mock = vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([]));
+    const deleteObjects: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
+    vi.spyOn(runtime, 'apply').mockImplementation(cleanupAuthority);
+    vi.spyOn(runtime, 'delete').mockImplementation(deleteObjects);
+    vi.spyOn(runtime, 'read').mockImplementation(async (object: KubeManifest): Promise<KubeManifest | null> => {
+      if (object.kind !== 'ClusterRoleBinding') {
+        return await Promise.resolve(null);
+      }
+      return await Promise.resolve({
+        ...object,
+        metadata: { ...object.metadata, uid: 'foreign-binding' },
+        subjects: [{ kind: 'ServiceAccount', name: 'another-project', namespace: 'compartment-project-provisioning' }],
+      });
+    });
+    const teardownTarget: ProjectProvisioningTargetV2 = { ...target, action: 'teardown' };
+
+    await expect(
+      executeProjectProvisioning(requester(true), runtime, config(), teardownTarget, loggerStub()),
+    ).resolves.toMatchObject({ action: 'teardown', status: 'succeeded' });
+
+    expect(deleteObjects).toHaveBeenCalledWith([
+      expect.objectContaining({ kind: 'Namespace', metadata: { name: kubeNamespaceName('prj_1') } }),
+    ]);
+    const cleanup: ApplyBundle = cleanupAuthority.mock.calls[0]?.[0] as ApplyBundle;
+    expect(cleanup.deleteAfterApply).toEqual([]);
+  });
 });
 
-const target: ProjectProvisioningTarget = {
+const target: ProjectProvisioningTargetV2 = {
   action: 'provision',
   leaseId: 'lease_1',
   namespaceId: 'prj_1',

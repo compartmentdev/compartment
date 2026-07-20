@@ -123,7 +123,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
-    verbs: ["get", "delete"]
+    verbs: ["get"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterrolebindings"]
     verbs: ["create"]
@@ -176,16 +176,25 @@ spec:
         operations: ["CREATE", "UPDATE", "DELETE"]
         resources: ["clusterrolebindings"]
         scope: Cluster
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["clusterroles"]
+        scope: Cluster
   matchConditions:
     - name: provisioning-identity
-      expression: {{ printf "request.userInfo.username.startsWith('system:serviceaccount:%s:cpt-') || request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner'" (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
+      expression: {{ printf "request.userInfo.username.startsWith('system:serviceaccount:%s:cpt-') || request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner' || request.userInfo.username == 'system:serviceaccount:%s:%s-project-teardown-rbac-enable'" (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
   validations:
     - expression: {{ printf "request.resource.resource != 'namespaces' || (request.operation == 'CREATE' ? request.userInfo.username == 'system:serviceaccount:%s:' + object.metadata.name : request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner' && request.name.startsWith('cpt-') && 'app.kubernetes.io/managed-by' in oldObject.metadata.labels && oldObject.metadata.labels['app.kubernetes.io/managed-by'] == 'compartment' && 'compartment.dev/namespace-id' in oldObject.metadata.labels && 'compartment.dev/project-id' in oldObject.metadata.labels && oldObject.metadata.labels['compartment.dev/namespace-id'] == oldObject.metadata.labels['compartment.dev/project-id'])" (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
       message: Project bootstrap authority is restricted to its encoded target namespace.
     - expression: {{ printf "request.resource.resource != 'rolebindings' || (request.userInfo.username.startsWith('system:serviceaccount:%s:cpt-') && request.userInfo.username == 'system:serviceaccount:%s:' + request.namespace && (request.operation == 'DELETE' ? request.name == 'compartment-project-bootstrap' : object.roleRef.apiGroup == 'rbac.authorization.k8s.io' && object.roleRef.kind == 'ClusterRole' && object.roleRef.name == 'compartment-controller' && (object.metadata.name == 'compartment-project-bootstrap' ? object.subjects.size() == 2 && object.subjects.exists(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && request.userInfo.username == 'system:serviceaccount:' + subject.namespace + ':' + subject.name) && object.subjects.exists(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && subject.name == '%s-worker') : object.metadata.name == 'compartment-controller' && object.subjects.size() == 1 && object.subjects.all(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && subject.name == '%s-worker'))))" (include "compartment.projectProvisioningNamespace" .) (include "compartment.projectProvisioningNamespace" .) (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
       message: Project bootstrap authority may manage only canonical controller RoleBindings.
-    - expression: {{ printf "request.resource.resource != 'clusterrolebindings' || (request.operation == 'DELETE' ? request.name == 'compartment-project-bootstrap' : request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner' && object.metadata.name == 'compartment-project-bootstrap' && object.roleRef.apiGroup == 'rbac.authorization.k8s.io' && object.roleRef.kind == 'ClusterRole' && object.roleRef.name == 'compartment-project-bootstrap' && object.subjects.size() == 1 && object.subjects.all(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && subject.name.startsWith('cpt-')))" .Release.Namespace (include "compartment.fullname" .) (include "compartment.projectProvisioningNamespace" .) | quote }}
+    - expression: {{ printf "request.resource.resource != 'clusterrolebindings' || (request.operation == 'DELETE' ? (request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner' && request.name == 'compartment-project-bootstrap' || request.userInfo.username == 'system:serviceaccount:%s:%s-project-teardown-rbac-enable' && request.name == '%s-project-teardown-rbac-enable') : request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner' && object.metadata.name == 'compartment-project-bootstrap' && object.roleRef.apiGroup == 'rbac.authorization.k8s.io' && object.roleRef.kind == 'ClusterRole' && object.roleRef.name == 'compartment-project-bootstrap' && object.subjects.size() == 1 && object.subjects.all(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && subject.name.startsWith('cpt-')))" .Release.Namespace (include "compartment.fullname" .) .Release.Namespace (include "compartment.fullname" .) (include "compartment.fullname" .) .Release.Namespace (include "compartment.fullname" .) (include "compartment.projectProvisioningNamespace" .) | quote }}
       message: Project provisioner may manage only the canonical short-lived bootstrap ClusterRoleBinding.
+    - expression: {{ printf "request.resource.resource != 'clusterroles' || request.userInfo.username == 'system:serviceaccount:%s:%s-project-teardown-rbac-enable' && request.name == '%s-project-provisioner' && object.metadata.labels == oldObject.metadata.labels && has(object.metadata.annotations) == has(oldObject.metadata.annotations) && (!has(object.metadata.annotations) || object.metadata.annotations == oldObject.metadata.annotations) && has(object.aggregationRule) == has(oldObject.aggregationRule) && (!has(object.aggregationRule) || object.aggregationRule == oldObject.aggregationRule)" .Release.Namespace (include "compartment.fullname" .) (include "compartment.fullname" .) | quote }}
+      message: Project teardown rollout may add only namespace delete to the project provisioner role.
+    - expression: "request.resource.resource != 'clusterroles' || oldObject.rules.size() == 4 && object.rules.size() == 4 && oldObject.rules[0].apiGroups == [''] && oldObject.rules[0].resources == ['namespaces'] && oldObject.rules[0].verbs == ['get'] && object.rules[0].apiGroups == [''] && object.rules[0].resources == ['namespaces'] && object.rules[0].verbs == ['get', 'delete'] && object.rules[1] == oldObject.rules[1] && object.rules[2] == oldObject.rules[2] && object.rules[3] == oldObject.rules[3]"
+      message: Project teardown rollout may change only the canonical namespace rule.
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

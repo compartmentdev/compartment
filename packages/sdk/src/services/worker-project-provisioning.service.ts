@@ -1,34 +1,34 @@
 import {
-  workerClaimProjectProvisioningPathname,
-  workerClaimProjectProvisioningResponseSchema,
-  workerCompleteProjectProvisioningPathname,
-  workerCompleteProjectProvisioningRequestSchema,
+  workerClaimProjectProvisioningV2Pathname,
+  workerClaimProjectProvisioningV2ResponseSchema,
   workerCompleteProjectProvisioningResponseSchema,
-  type WorkerClaimProjectProvisioningResponse,
-  type WorkerCompleteProjectProvisioningRequest,
+  workerCompleteProjectProvisioningV2Pathname,
+  workerCompleteProjectProvisioningV2RequestSchema,
+  type WorkerClaimProjectProvisioningV2Response,
   type WorkerCompleteProjectProvisioningResponse,
+  type WorkerCompleteProjectProvisioningV2Request,
 } from '@compartment/contracts';
 import type { CompartmentRequester } from '../http/request.types';
 
-export async function claimProjectProvisioning(
+export async function claimProjectProvisioningV2(
   request: CompartmentRequester,
-): Promise<WorkerClaimProjectProvisioningResponse> {
-  return await request<WorkerClaimProjectProvisioningResponse, undefined>({
+): Promise<WorkerClaimProjectProvisioningV2Response> {
+  return await request<WorkerClaimProjectProvisioningV2Response, undefined>({
     method: 'POST',
-    path: workerClaimProjectProvisioningPathname,
-    schema: workerClaimProjectProvisioningResponseSchema,
+    path: workerClaimProjectProvisioningV2Pathname,
+    schema: workerClaimProjectProvisioningV2ResponseSchema,
   });
 }
 
-export async function completeProjectProvisioning(
+export async function completeProjectProvisioningV2(
   request: CompartmentRequester,
-  body: WorkerCompleteProjectProvisioningRequest,
+  body: WorkerCompleteProjectProvisioningV2Request,
 ): Promise<WorkerCompleteProjectProvisioningResponse> {
-  workerCompleteProjectProvisioningRequestSchema.parse(body);
-  return await request<WorkerCompleteProjectProvisioningResponse, WorkerCompleteProjectProvisioningRequest>({
+  workerCompleteProjectProvisioningV2RequestSchema.parse(body);
+  return await request<WorkerCompleteProjectProvisioningResponse, WorkerCompleteProjectProvisioningV2Request>({
     body,
     method: 'POST',
-    path: workerCompleteProjectProvisioningPathname,
+    path: workerCompleteProjectProvisioningV2Pathname,
     schema: workerCompleteProjectProvisioningResponseSchema,
   });
 }

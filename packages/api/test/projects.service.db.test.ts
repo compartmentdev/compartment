@@ -156,14 +156,30 @@ describe('projects service', (): void => {
       principalId: 'prn_git_sources',
       projectName: 'billing',
     });
+    await waitForProjectTeardownRequest();
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
     const teardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
     expect(teardown).toMatchObject({ action: 'teardown', projectId: 'prj_billing' });
+    expect(await db.select().from(projects).where(eq(projects.id, 'prj_billing'))).toHaveLength(1);
+    await db
+      .update(projectKubeProvisioning)
+      .set({ leaseExpiresAt: new Date('2020-01-01T00:00:00.000Z') })
+      .where(eq(projectKubeProvisioning.projectId, teardown.projectId));
+    const retriedTeardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
+    expect(retriedTeardown).toMatchObject({ action: 'teardown', projectId: 'prj_billing' });
+    expect(retriedTeardown.leaseId).not.toBe(teardown.leaseId);
+    expect(
+      await db
+        .select({ attempts: projectKubeProvisioning.attempts })
+        .from(projectKubeProvisioning)
+        .where(eq(projectKubeProvisioning.projectId, teardown.projectId)),
+    ).toEqual([{ attempts: 2 }]);
     expect(await db.select().from(projects).where(eq(projects.id, 'prj_billing'))).toHaveLength(1);
     await completeProjectProvisioning({
       action: 'teardown',
       failureMessage: null,
-      leaseId: teardown.leaseId,
-      projectId: teardown.projectId,
+      leaseId: retriedTeardown.leaseId,
+      projectId: retriedTeardown.projectId,
       status: 'succeeded',
     });
 
@@ -551,4 +567,20 @@ async function waitForProjectTeardownClaim(): Promise<ProjectProvisioningClaimRo
     });
   }
   throw new Error('Timed out waiting for project teardown claim.');
+}
+
+async function waitForProjectTeardownRequest(): Promise<void> {
+  for (let attempt: number = 0; attempt < 100; attempt += 1) {
+    const rows: { state: string }[] = await db
+      .select({ state: projectKubeProvisioning.state })
+      .from(projectKubeProvisioning)
+      .where(eq(projectKubeProvisioning.projectId, 'prj_billing'));
+    if (rows[0]?.state === 'teardown_pending') {
+      return;
+    }
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 10);
+    });
+  }
+  throw new Error('Timed out waiting for project teardown request.');
 }

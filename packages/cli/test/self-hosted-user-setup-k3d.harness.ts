@@ -74,7 +74,12 @@ interface K3dJobListItem {
           | undefined;
       }
     | undefined;
-  readonly status?: { readonly succeeded?: number | undefined } | undefined;
+  readonly status?:
+    | {
+        readonly failed?: number | undefined;
+        readonly succeeded?: number | undefined;
+      }
+    | undefined;
 }
 
 interface K3dJobContainer {
@@ -290,7 +295,7 @@ async function expectK3dBackupRetentionCleanup(input: K3dBackupRetentionAssertio
       automountServiceAccountToken: false,
       containers: [
         {
-          args: [`test ! -e /backups/${input.expiredBackupId} && test -d /backups/${input.retainedBackupId}`],
+          args: [`test ! -e /backups/${input.expiredBackupId} && test -s /backups/${input.retainedBackupId}/dump.sql`],
           command: ['sh', '-c'],
           image: 'busybox:1.36',
           name: verifierName,
@@ -335,7 +340,7 @@ async function expectK3dBackupRetentionCleanup(input: K3dBackupRetentionAssertio
         '--timeout=2m',
       ],
     ]);
-    await expectSuccessfulRetentionCleanupJob(seed, namespace);
+    await expectSuccessfulRetentionCleanupJob(seed, namespace, input.expiredBackupId);
   } finally {
     await runCommand({
       argv: [
@@ -354,7 +359,11 @@ async function expectK3dBackupRetentionCleanup(input: K3dBackupRetentionAssertio
   }
 }
 
-async function expectSuccessfulRetentionCleanupJob(seed: K3dPlatformSeed, namespace: string): Promise<void> {
+async function expectSuccessfulRetentionCleanupJob(
+  seed: K3dPlatformSeed,
+  namespace: string,
+  expiredBackupId: string,
+): Promise<void> {
   const result: SelfHostedUserSetupCommandResult = await runCommand({
     argv: [
       'kubectl',
@@ -371,17 +380,38 @@ async function expectSuccessfulRetentionCleanupJob(seed: K3dPlatformSeed, namesp
   });
   expectSuccessfulCommand(result, 'read resource operation Jobs after backup retention', '');
   const jobs: K3dJobList = JSON.parse(result.stdout) as K3dJobList;
-  const cleanupJob: K3dJobListItem | undefined = jobs.items.find((job: K3dJobListItem): boolean =>
-    (job.spec?.template?.spec?.containers ?? []).some((container: K3dJobContainer): boolean =>
-      [...(container.command ?? []), ...(container.args ?? [])].some((value: string): boolean =>
-        value.includes('rmSync'),
-      ),
-    ),
+  const cleanupJobs: K3dJobListItem[] = jobs.items.filter(isBackupCleanupJob);
+  expect(cleanupJobs.length).toBeGreaterThan(0);
+  expect(cleanupJobs.every((job: K3dJobListItem): boolean => (job.status?.failed ?? 0) === 0)).toBe(true);
+  const cleanupJob: K3dJobListItem | undefined = cleanupJobs.find((job: K3dJobListItem): boolean =>
+    jobContainsCommandValue(job, `/backups/${expiredBackupId}`),
   );
   expect(cleanupJob?.status?.succeeded).toBeGreaterThan(0);
-  const jobName: string | undefined = cleanupJob?.metadata?.name;
+  for (const job of cleanupJobs) {
+    await expectK3dJobLogsWithoutEacces(seed, namespace, job);
+  }
+}
+
+function isBackupCleanupJob(job: K3dJobListItem): boolean {
+  return jobContainsCommandValue(job, 'rmSync');
+}
+
+function jobContainsCommandValue(job: K3dJobListItem, expected: string): boolean {
+  return (job.spec?.template?.spec?.containers ?? []).some((container: K3dJobContainer): boolean =>
+    [...(container.command ?? []), ...(container.args ?? [])].some((value: string): boolean =>
+      value.includes(expected),
+    ),
+  );
+}
+
+async function expectK3dJobLogsWithoutEacces(
+  seed: K3dPlatformSeed,
+  namespace: string,
+  job: K3dJobListItem,
+): Promise<void> {
+  const jobName: string | undefined = job.metadata?.name;
   if (jobName === undefined) {
-    throw new Error('Expected a completed Kubernetes backup retention Job.');
+    throw new Error('Expected a named Kubernetes backup retention Job.');
   }
   const logs: SelfHostedUserSetupCommandResult = await runCommand({
     argv: ['kubectl', '--context', seed.kubeContext, '--namespace', namespace, 'logs', `job/${jobName}`],
@@ -440,23 +470,36 @@ async function expectK3dProjectProvisionerAdmissionBoundary(seed: K3dPlatformSee
     `cpt-rbac-subject-${process.pid.toString()}`,
     'deny permanent provisioner noncanonical bootstrap binding',
   );
-  const namespaceDenied: SelfHostedUserSetupCommandResult = await runCommand({
-    argv: [
-      'kubectl',
-      '--context',
-      seed.kubeContext,
-      'delete',
-      'namespace',
-      'default',
-      '--dry-run=server',
-      `--as=${identity}`,
-    ],
-    timeoutMs: k3dKubectlCommandTimeoutMs,
-  });
-  expectFailedCommand(namespaceDenied, 'deny project provisioner teardown outside managed project namespaces');
-  expect(namespaceDenied.stderr).toContain(
-    'Project bootstrap authority is restricted to its encoded target namespace.',
-  );
+  await expectK3dProjectProvisionerNamespaceDeleteDenied(seed, identity);
+}
+
+async function expectK3dProjectProvisionerNamespaceDeleteDenied(
+  seed: K3dPlatformSeed,
+  identity: string,
+): Promise<void> {
+  const namespace: string = `gc-boundary-${process.pid.toString()}`;
+  await runK3dKubectlCommands([['kubectl', '--context', seed.kubeContext, 'create', 'namespace', namespace]]);
+  try {
+    const denied: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        'delete',
+        'namespace',
+        namespace,
+        '--dry-run=server',
+        `--as=${identity}`,
+      ],
+      timeoutMs: k3dKubectlCommandTimeoutMs,
+    });
+    expectFailedCommand(denied, 'deny project provisioner teardown outside managed project namespaces');
+    expect(denied.stderr).toContain('Project bootstrap authority is restricted to its encoded target namespace.');
+  } finally {
+    await runK3dKubectlCommands([
+      ['kubectl', '--context', seed.kubeContext, 'delete', 'namespace', namespace, '--wait=false'],
+    ]);
+  }
 }
 
 async function expectK3dProjectProvisionerClusterRoleBindingDenied(

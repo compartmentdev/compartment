@@ -1,7 +1,8 @@
-import type { ProjectProvisioningAction, ProjectProvisioningTarget } from '@compartment/contracts';
+import type { ProjectProvisioningAction, ProjectProvisioningTargetV2 } from '@compartment/contracts';
 
-export type ProjectProvisioningClaimRow = ProjectProvisioningTarget;
+export type ProjectProvisioningClaimRow = ProjectProvisioningTargetV2;
 export type ProjectProvisioningCompletionStatus = 'failed' | 'running' | 'succeeded';
+export type ProjectProvisioningClaimPhase = 'failed' | 'pending' | 'running';
 export type ProjectKubeProvisioningState =
   | 'pending'
   | 'running'
@@ -21,3 +22,8 @@ export interface CompleteProjectProvisioningInput {
 }
 
 export type ProjectTeardownState = 'pending' | 'running' | 'succeeded' | 'failed';
+
+export interface ProjectTeardownObservation {
+  attempts: number;
+  state: ProjectTeardownState;
+}

@@ -231,6 +231,9 @@ tests:
       - hasDocuments:
           count: 10
         template: project-provisioner-rbac.yaml
+      - hasDocuments:
+          count: 4
+        template: project-teardown-rbac-enable.yaml
       - isKind:
           of: Namespace
         template: project-provisioner-rbac.yaml
@@ -334,7 +337,7 @@ tests:
           value:
             - apiGroups: ['']
               resources: [namespaces]
-              verbs: [get, delete]
+              verbs: [get]
             - apiGroups: [rbac.authorization.k8s.io]
               resources: [clusterrolebindings]
               verbs: [create]
@@ -385,6 +388,11 @@ tests:
       - matchRegex:
           path: spec.matchConditions[0].expression
           pattern: system:serviceaccount:compartment-compartment-project-provisioning:cpt-
+        template: project-provisioner-rbac.yaml
+        documentIndex: 8
+      - matchRegex:
+          path: spec.matchConditions[0].expression
+          pattern: system:serviceaccount:default:compartment-compartment-project-teardown-rbac-enable
         template: project-provisioner-rbac.yaml
         documentIndex: 8
       - matchRegex:
@@ -469,9 +477,70 @@ tests:
               - namespaces
             verbs:
               - get
-              - delete
         template: project-provisioner-rbac.yaml
         documentIndex: 6
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+        template: project-teardown-rbac-enable.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+        template: project-teardown-rbac-enable.yaml
+        documentIndex: 1
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+        template: project-teardown-rbac-enable.yaml
+        documentIndex: 2
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+        template: project-teardown-rbac-enable.yaml
+        documentIndex: 3
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation,hook-succeeded,hook-failed
+        template: project-teardown-rbac-enable.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation,hook-succeeded,hook-failed
+        template: project-teardown-rbac-enable.yaml
+        documentIndex: 1
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation,hook-succeeded,hook-failed
+        template: project-teardown-rbac-enable.yaml
+        documentIndex: 2
+      - equal:
+          path: metadata.annotations["helm.sh/hook-delete-policy"]
+          value: before-hook-creation,hook-succeeded,hook-failed
+        template: project-teardown-rbac-enable.yaml
+        documentIndex: 3
+      - contains:
+          path: rules
+          content:
+            apiGroups: [rbac.authorization.k8s.io]
+            resources: [clusterroles]
+            resourceNames: [compartment-compartment-project-provisioner]
+            verbs: [get, update, escalate]
+        template: project-teardown-rbac-enable.yaml
+        documentIndex: 1
+      - contains:
+          path: rules
+          content:
+            apiGroups: ['']
+            resources: [namespaces]
+            verbs: [delete]
+        template: project-teardown-rbac-enable.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].command
+          value: [node, dist/project-teardown-rbac-enable.js]
+        template: project-teardown-rbac-enable.yaml
+        documentIndex: 3
       - contains:
           path: rules
           content:

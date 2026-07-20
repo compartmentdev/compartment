@@ -1,6 +1,6 @@
 import type {
-  ProjectProvisioningTarget,
-  WorkerCompleteProjectProvisioningRequest,
+  ProjectProvisioningTargetV2,
+  WorkerCompleteProjectProvisioningV2Request,
   WorkerCompleteProjectProvisioningResponse,
 } from '@compartment/contracts';
 import {
@@ -11,15 +11,17 @@ import {
   type KubeJobResult,
   type KubeJobSpec,
   type KubeManifest,
-  type KubeObservedManifest,
   type ProjectProvisioningAuthorityInput,
   type KubeRuntime,
 } from '@compartment/kube-runtime';
-import { completeProjectProvisioning, type CompartmentRequester } from '@compartment/sdk';
+import { completeProjectProvisioningV2, type CompartmentRequester } from '@compartment/sdk';
 import type { Logger } from 'pino';
 import { projectProvisionerJobEnvironment } from '../project-provisioning-environment';
 import type { ProjectProvisionerConfig } from '../project-provisioner.types';
-import type { ProjectProvisioningResult } from './project-provisioning-execution.service.types';
+import type {
+  ProjectProvisioningCleanupObservation,
+  ProjectProvisioningResult,
+} from './project-provisioning-execution.service.types';
 
 const bootstrapTokenExpirationSeconds: number = 600;
 const provisioningTimeoutMs: number = 5 * 60_000;
@@ -30,21 +32,21 @@ export async function executeProjectProvisioning(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   config: ProjectProvisionerConfig,
-  target: ProjectProvisioningTarget,
+  target: ProjectProvisioningTargetV2,
   logger: Logger,
-): Promise<WorkerCompleteProjectProvisioningRequest> {
+): Promise<WorkerCompleteProjectProvisioningV2Request> {
   return target.action === 'provision'
     ? await executeProjectProvisioningWork(request, runtime, config, target, logger)
-    : await executeProjectTeardown(request, runtime, target);
+    : await executeProjectTeardown(request, runtime, config, target, logger);
 }
 
 async function executeProjectProvisioningWork(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   config: ProjectProvisionerConfig,
-  target: ProjectProvisioningTarget,
+  target: ProjectProvisioningTargetV2,
   logger: Logger,
-): Promise<WorkerCompleteProjectProvisioningRequest> {
+): Promise<WorkerCompleteProjectProvisioningV2Request> {
   const authority: ProjectProvisioningAuthorityInput = projectProvisioningAuthority(config, target);
   let completion: ProjectProvisioningResult;
   await assertProjectProvisioningLease(request, target);
@@ -64,10 +66,13 @@ async function executeProjectProvisioningWork(
 async function executeProjectTeardown(
   request: CompartmentRequester,
   runtime: KubeRuntime,
-  target: ProjectProvisioningTarget,
-): Promise<WorkerCompleteProjectProvisioningRequest> {
+  config: ProjectProvisionerConfig,
+  target: ProjectProvisioningTargetV2,
+  logger: Logger,
+): Promise<WorkerCompleteProjectProvisioningV2Request> {
   try {
     await assertProjectProvisioningLease(request, target);
+    await cleanupProjectTeardownAuthority(request, runtime, config, target, logger);
     const namespace: KubeManifest = projectNamespaceDeleteTarget(target.namespaceId);
     await runtime.delete([namespace]);
     await waitForProjectNamespaceDeletion(runtime, namespace);
@@ -79,6 +84,22 @@ async function executeProjectTeardown(
       status: 'failed',
     });
   }
+}
+
+async function cleanupProjectTeardownAuthority(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  config: ProjectProvisionerConfig,
+  target: ProjectProvisioningTargetV2,
+  logger: Logger,
+): Promise<void> {
+  await cleanupProjectProvisioningAuthority(
+    request,
+    runtime,
+    projectProvisioningAuthority(config, target),
+    target,
+    logger,
+  );
 }
 
 async function waitForProjectNamespaceDeletion(runtime: KubeRuntime, namespace: KubeManifest): Promise<void> {
@@ -95,9 +116,9 @@ async function waitForProjectNamespaceDeletion(runtime: KubeRuntime, namespace: 
 }
 
 function projectProvisioningRequest(
-  target: ProjectProvisioningTarget,
+  target: ProjectProvisioningTargetV2,
   completion: ProjectProvisioningResult,
-): WorkerCompleteProjectProvisioningRequest {
+): WorkerCompleteProjectProvisioningV2Request {
   return { ...completion, action: target.action, leaseId: target.leaseId, projectId: target.projectId };
 }
 
@@ -105,7 +126,7 @@ async function cleanupProjectProvisioningAuthority(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   authority: ProjectProvisioningAuthorityInput,
-  target: ProjectProvisioningTarget,
+  target: ProjectProvisioningTargetV2,
   logger: Logger,
 ): Promise<void> {
   try {
@@ -120,9 +141,9 @@ async function cleanupProjectProvisioningAuthority(
 
 async function assertProjectProvisioningLease(
   request: CompartmentRequester,
-  target: ProjectProvisioningTarget,
+  target: ProjectProvisioningTargetV2,
 ): Promise<void> {
-  const lease: WorkerCompleteProjectProvisioningResponse = await completeProjectProvisioning(request, {
+  const lease: WorkerCompleteProjectProvisioningResponse = await completeProjectProvisioningV2(request, {
     action: target.action,
     leaseId: target.leaseId,
     projectId: target.projectId,
@@ -138,14 +159,34 @@ async function readProjectProvisioningCleanup(
   authority: ProjectProvisioningAuthorityInput,
 ): Promise<KubeManifest[]> {
   const cleanup: KubeManifest[] = projectProvisioningAuthorityCleanup(authority).deleteAfterApply ?? [];
-  const observed: (KubeObservedManifest | null)[] = await Promise.all(
-    cleanup.map(async (object: KubeManifest): Promise<KubeObservedManifest | null> => await runtime.read(object)),
+  const observed: ProjectProvisioningCleanupObservation[] = await Promise.all(
+    cleanup.map(
+      async (desired: KubeManifest): Promise<ProjectProvisioningCleanupObservation> => ({
+        desired,
+        live: await runtime.read(desired),
+      }),
+    ),
   );
-  return observed.filter(isCleanupManifest);
+  return observed
+    .filter(isOwnedCleanupManifest)
+    .map(
+      (observation: ProjectProvisioningCleanupObservation & { live: KubeManifest }): KubeManifest => observation.live,
+    );
 }
 
-function isCleanupManifest(object: KubeObservedManifest | null): object is KubeManifest {
-  return object !== null && object.kind !== 'Pod';
+function isOwnedCleanupManifest(
+  candidate: ProjectProvisioningCleanupObservation,
+): candidate is ProjectProvisioningCleanupObservation & { live: KubeManifest } {
+  if (candidate.live === null || candidate.live.kind === 'Pod') {
+    return false;
+  }
+  if (candidate.desired.kind !== 'ClusterRoleBinding') {
+    return true;
+  }
+  return (
+    JSON.stringify(candidate.live.roleRef) === JSON.stringify(candidate.desired.roleRef) &&
+    JSON.stringify(candidate.live.subjects) === JSON.stringify(candidate.desired.subjects)
+  );
 }
 
 function readErrorMessage(error: object | null): string {
@@ -168,7 +209,7 @@ function projectProvisioningCompletion(result: KubeJobResult): ProjectProvisioni
 
 function projectProvisioningJob(
   config: ProjectProvisionerConfig,
-  target: ProjectProvisioningTarget,
+  target: ProjectProvisioningTargetV2,
   authority: ProjectProvisioningAuthorityInput,
 ): KubeJobSpec {
   return {
@@ -188,7 +229,7 @@ function projectProvisioningJob(
 
 function projectProvisioningAuthority(
   config: ProjectProvisionerConfig,
-  target: ProjectProvisioningTarget,
+  target: ProjectProvisioningTargetV2,
 ): ProjectProvisioningAuthorityInput {
   return {
     jobId: `project-provision-${target.projectId}`,

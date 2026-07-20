@@ -3,7 +3,11 @@ import { projectKubeProvisioning } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import { projectProvisioningAttemptLimit } from './project-provisioning-policy';
-import type { ProjectKubeProvisioningState, ProjectTeardownState } from './project-provisioning.query.types';
+import type {
+  ProjectKubeProvisioningState,
+  ProjectTeardownObservation,
+  ProjectTeardownState,
+} from './project-provisioning.query.types';
 
 export async function requestProjectTeardown(projectId: string): Promise<void> {
   await getApiDatabase().transaction(
@@ -23,7 +27,7 @@ async function requestProjectTeardownWithTransaction(
   if (row === undefined) {
     throw new Error('Project Kubernetes lifecycle state not found.');
   }
-  if (!teardownAlreadyRequested(row.state, row.attempts)) {
+  if (!teardownAlreadyRequested(row, new Date())) {
     await resetProjectTeardown(transaction, projectId);
   }
 }
@@ -55,18 +59,20 @@ async function resetProjectTeardown(transaction: DeploymentTransaction, projectI
     .where(eq(projectKubeProvisioning.projectId, projectId));
 }
 
-function teardownAlreadyRequested(state: ProjectKubeProvisioningState, attempts: number): boolean {
+function teardownAlreadyRequested(row: typeof projectKubeProvisioning.$inferSelect, now: Date): boolean {
   return (
-    state === 'teardown_pending' ||
-    state === 'teardown_running' ||
-    state === 'teardown_succeeded' ||
-    (state === 'teardown_failed' && attempts < projectProvisioningAttemptLimit)
+    row.state === 'teardown_pending' ||
+    (row.state === 'teardown_running' &&
+      (row.attempts < projectProvisioningAttemptLimit ||
+        (row.leaseExpiresAt !== null && row.leaseExpiresAt.getTime() > now.getTime()))) ||
+    row.state === 'teardown_succeeded' ||
+    (row.state === 'teardown_failed' && row.attempts < projectProvisioningAttemptLimit)
   );
 }
 
-export async function readProjectTeardownState(projectId: string): Promise<ProjectTeardownState | null> {
-  const rows: { state: ProjectKubeProvisioningState }[] = await getApiDatabase()
-    .select({ state: projectKubeProvisioning.state })
+export async function readProjectTeardownState(projectId: string): Promise<ProjectTeardownObservation | null> {
+  const rows: { attempts: number; state: ProjectKubeProvisioningState }[] = await getApiDatabase()
+    .select({ attempts: projectKubeProvisioning.attempts, state: projectKubeProvisioning.state })
     .from(projectKubeProvisioning)
     .where(eq(projectKubeProvisioning.projectId, projectId))
     .limit(1);
@@ -74,5 +80,5 @@ export async function readProjectTeardownState(projectId: string): Promise<Proje
   if (state?.startsWith('teardown_') !== true) {
     return null;
   }
-  return state.slice('teardown_'.length) as ProjectTeardownState;
+  return { attempts: rows[0]?.attempts ?? 0, state: state.slice('teardown_'.length) as ProjectTeardownState };
 }

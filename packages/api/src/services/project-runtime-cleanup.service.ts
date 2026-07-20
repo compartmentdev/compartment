@@ -4,7 +4,12 @@ import {
 } from '../errors/api-business-error';
 import { listRuntimeJoinedDeploymentsForProject } from '../queries/deployment-joined.query';
 import { readProjectTeardownState, requestProjectTeardown } from '../queries/project-teardown.query';
-import type { ProjectTeardownState } from '../queries/project-provisioning.query.types';
+import {
+  projectProvisioningAttemptLimit,
+  projectProvisioningRetryDelayMs,
+  projectTeardownLeaseDurationMs,
+} from '../queries/project-provisioning-policy';
+import type { ProjectTeardownObservation } from '../queries/project-provisioning.query.types';
 import { listProjectEnvironmentsByProjectIds } from '../queries/deployment-context.query';
 import { markDeploymentStopped } from '../queries/deployment-lifecycle.query';
 import { findDeploymentKubeState } from '../queries/deployment-kube-membership.query';
@@ -33,7 +38,11 @@ interface ProjectRuntimeCleanupPlan {
   resources: ProjectRuntimeCleanupResource[];
 }
 
-const projectTeardownTimeoutMs: number = 30_000;
+const projectTeardownCompletionGraceMs: number = 10_000;
+const projectTeardownTimeoutMs: number =
+  projectProvisioningAttemptLimit * projectTeardownLeaseDurationMs +
+  (projectProvisioningAttemptLimit - 1) * projectProvisioningRetryDelayMs +
+  projectTeardownCompletionGraceMs;
 const projectTeardownPollIntervalMs: number = 100;
 
 export async function cleanupArchivedProjectRuntime(project: ProjectRow): Promise<void> {
@@ -62,9 +71,12 @@ async function teardownKubeProjectNamespace(projectId: string): Promise<void> {
   await requestProjectTeardown(projectId);
   const deadline: number = Date.now() + projectTeardownTimeoutMs;
   while (Date.now() < deadline) {
-    const state: ProjectTeardownState | null = await readProjectTeardownState(projectId);
-    if (state === 'succeeded') {
+    const observation: ProjectTeardownObservation | null = await readProjectTeardownState(projectId);
+    if (observation?.state === 'succeeded') {
       return;
+    }
+    if (observation?.state === 'failed' && observation.attempts >= projectProvisioningAttemptLimit) {
+      throw new Error('Project Kubernetes namespace teardown exhausted its retries.');
     }
     await new Promise<void>((resolve: () => void): void => {
       setTimeout(resolve, projectTeardownPollIntervalMs);
