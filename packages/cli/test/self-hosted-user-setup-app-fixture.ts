@@ -99,7 +99,7 @@ function buildProbeDescriptor(options: SelfHostedUserSetupAppFixtureOptions, pro
         })}\n`
       : '';
   const releaseReconcileEnv: string =
-    options.includeResourceRelease === true ? '      COMPARTMENT_E2E_RELEASE_RECONCILE: enabled\n' : '';
+    options.includeResourceRelease === true ? '      E2E_RELEASE_RECONCILE: enabled\n' : '';
 
   return `name: ${projectName}
 
