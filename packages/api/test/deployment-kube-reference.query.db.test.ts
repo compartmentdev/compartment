@@ -617,6 +617,42 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(duringReplacementLease).toBeNull();
   });
 
+  it('does not start a desired deployment until every declared resource is running', async (): Promise<void> => {
+    await seedCandidate();
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectResources).values({
+      commandJson: '[]',
+      envJson: '[]',
+      environmentId: 'env_kube',
+      expectedClaimsJson: '[]',
+      id: 'res_database',
+      image: 'postgres:16',
+      name: 'database',
+      outputsJson: '{}',
+      portsJson: '[5432]',
+      readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
+      runtimeDefinitionHash: 'database-hash',
+      status: 'stopped',
+      volumesJson: '[]',
+    });
+
+    await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
+
+    await db.update(projectResources).set({ status: 'running' }).where(eq(projectResources.id, 'res_database'));
+    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+      candidate: { deploymentId: 'dep_candidate', state: 'desired' },
+    });
+  });
+
+  it('starts a desired deployment immediately when its environment declares no resources', async (): Promise<void> => {
+    await seedCandidate();
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+
+    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+      candidate: { deploymentId: 'dep_candidate', state: 'desired' },
+    });
+  });
+
   it('fails a waiting deployment when project provisioning reaches its attempt cap', async (): Promise<void> => {
     await db.update(deploymentKubeReferences).set({ state: 'desired' });
     await db.update(operations).set({ status: 'running' }).where(eq(operations.id, 'op_kube'));

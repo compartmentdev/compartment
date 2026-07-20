@@ -36,7 +36,7 @@ function applicationEgressManifest(
 ): KubeManifest {
   return networkPolicyManifest(namespace, namespaceId, projectId, 'application-egress', {
     egress: applicationEgressRules(projection),
-    podSelector: { matchLabels: projection.applicationPodLabels },
+    podSelector: { matchLabels: { 'compartment.dev/project-id': projectId } },
     policyTypes: ['Egress'],
   });
 }
@@ -104,7 +104,7 @@ function resourceIngressManifest(
   return networkPolicyManifest(namespace, namespaceId, projectId, 'resource-ingress', {
     ingress: [
       {
-        from: [{ podSelector: { matchLabels: projection.applicationPodLabels } }],
+        from: [{ podSelector: { matchLabels: { 'compartment.dev/project-id': projectId } } }],
         ports: [{ port: projection.resourcePort, protocol: 'TCP' }],
       },
     ],

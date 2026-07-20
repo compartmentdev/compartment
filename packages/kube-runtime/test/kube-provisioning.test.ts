@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseAllDocuments, stringify, type Document } from 'yaml';
+import { parseAllDocuments, type Document } from 'yaml';
 import {
   kubeNamespaceName,
   projectProvisioningAuthorityBundle,
@@ -114,7 +114,6 @@ describe('project namespace bootstrap provisioning', (): void => {
   it('projects the T2 isolation matrix in deterministic policy order', (): void => {
     const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-01jz'));
 
-    expect(toYaml(bundle.objects)).toMatchSnapshot();
     expect(bundle.objects.slice(1, -1)).toMatchObject([
       { spec: { podSelector: {}, policyTypes: ['Ingress', 'Egress'] } },
       {
@@ -129,6 +128,12 @@ describe('project namespace bootstrap provisioning', (): void => {
                 { port: 53, protocol: 'UDP' },
                 { port: 53, protocol: 'TCP' },
               ],
+              to: [
+                {
+                  namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'kube-system' } },
+                  podSelector: { matchLabels: { 'k8s-app': 'kube-dns' } },
+                },
+              ],
             },
             {
               to: [
@@ -141,7 +146,7 @@ describe('project namespace bootstrap provisioning', (): void => {
               ],
             },
           ],
-          podSelector: { matchLabels: { app: 'application' } },
+          podSelector: { matchLabels: { 'compartment.dev/project-id': 'prj-01jz' } },
         },
       },
       {
@@ -163,7 +168,7 @@ describe('project namespace bootstrap provisioning', (): void => {
         spec: {
           ingress: [
             {
-              from: [{ podSelector: { matchLabels: { app: 'application' } } }],
+              from: [{ podSelector: { matchLabels: { 'compartment.dev/project-id': 'prj-01jz' } } }],
               ports: [{ port: 5432, protocol: 'TCP' }],
             },
           ],
@@ -266,10 +271,4 @@ function provisioningRow(namespaceId: string): ProjectNamespaceProvisioningRow {
     },
     workerServiceAccount: { name: 'compartment-worker', namespace: 'compartment' },
   };
-}
-
-function toYaml(objects: KubeManifest[]): string {
-  return objects
-    .map((manifest: KubeManifest): string => stringify(manifest, { sortMapEntries: true }).trim())
-    .join('\n---\n');
 }

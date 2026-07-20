@@ -9,6 +9,7 @@ import {
   organizations,
   projectServices,
   projectKubeProvisioning,
+  projectResources,
   projects,
 } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -127,7 +128,7 @@ function candidateFilter(tx: DeploymentTransaction): SQL | undefined {
       and(
         eq(projectKubeProvisioning.state, 'succeeded'),
         or(
-          and(eq(deploymentKubeReferences.state, 'desired'), eq(deployments.status, 'running')),
+          desiredCandidateFilter(tx),
           and(
             eq(deploymentKubeReferences.state, 'pending'),
             or(eq(deployments.status, 'running'), eq(deployments.status, 'succeeded')),
@@ -141,6 +142,23 @@ function candidateFilter(tx: DeploymentTransaction): SQL | undefined {
         ),
       ),
     ),
+  );
+}
+
+function desiredCandidateFilter(tx: DeploymentTransaction): SQL | undefined {
+  return and(
+    eq(deploymentKubeReferences.state, 'desired'),
+    eq(deployments.status, 'running'),
+    allEnvironmentResourcesRunning(tx),
+  );
+}
+
+function allEnvironmentResourcesRunning(tx: DeploymentTransaction): SQL {
+  return notExists(
+    tx
+      .select({ id: projectResources.id })
+      .from(projectResources)
+      .where(and(eq(projectResources.environmentId, environments.id), ne(projectResources.status, 'running'))),
   );
 }
 

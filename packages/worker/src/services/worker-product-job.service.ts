@@ -205,7 +205,7 @@ function buildKubeJobSpec(intent: ProductJobIntent, identityId: string): KubeJob
     image: intent.image,
     imagePullSecretId: intent.jobClass === 'release' ? intent.imagePullSecretId : undefined,
     jobClass: intent.jobClass === 'release' ? 'release' : 'operation',
-    labels: { 'compartment.dev/job-class': intent.jobClass },
+    labels: { 'compartment.dev/job-class': intent.jobClass, 'compartment.dev/project-id': intent.projectId },
     namespace: intent.namespace,
     timeoutMs: intent.timeoutMs,
     volumeMounts: intent.volumeMounts,
