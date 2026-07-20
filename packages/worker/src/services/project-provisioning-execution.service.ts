@@ -5,6 +5,7 @@ import type {
 } from '@compartment/contracts';
 import {
   kubeNamespaceName,
+  projectNamespaceDeleteTarget,
   projectProvisioningAuthorityBundle,
   projectProvisioningAuthorityCleanup,
   type KubeJobResult,
@@ -22,8 +23,22 @@ import type { ProjectProvisioningResult } from './project-provisioning-execution
 
 const bootstrapTokenExpirationSeconds: number = 600;
 const provisioningTimeoutMs: number = 5 * 60_000;
+const teardownPollIntervalMs: number = 100;
+const teardownTimeoutMs: number = 30_000;
 
 export async function executeProjectProvisioning(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  config: ProjectProvisionerConfig,
+  target: ProjectProvisioningTarget,
+  logger: Logger,
+): Promise<WorkerCompleteProjectProvisioningRequest> {
+  return target.action === 'provision'
+    ? await executeProjectProvisioningWork(request, runtime, config, target, logger)
+    : await executeProjectTeardown(request, runtime, target);
+}
+
+async function executeProjectProvisioningWork(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   config: ProjectProvisionerConfig,
@@ -46,11 +61,44 @@ export async function executeProjectProvisioning(
   return projectProvisioningRequest(target, completion);
 }
 
+async function executeProjectTeardown(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  target: ProjectProvisioningTarget,
+): Promise<WorkerCompleteProjectProvisioningRequest> {
+  try {
+    await assertProjectProvisioningLease(request, target);
+    const namespace: KubeManifest = projectNamespaceDeleteTarget(target.namespaceId);
+    await runtime.delete([namespace]);
+    await waitForProjectNamespaceDeletion(runtime, namespace);
+    await assertProjectProvisioningLease(request, target);
+    return projectProvisioningRequest(target, { status: 'succeeded' });
+  } catch (error) {
+    return projectProvisioningRequest(target, {
+      message: readErrorMessage(typeof error === 'object' ? error : null),
+      status: 'failed',
+    });
+  }
+}
+
+async function waitForProjectNamespaceDeletion(runtime: KubeRuntime, namespace: KubeManifest): Promise<void> {
+  const deadline: number = Date.now() + teardownTimeoutMs;
+  while (Date.now() < deadline) {
+    if ((await runtime.read(namespace)) === null) {
+      return;
+    }
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, teardownPollIntervalMs);
+    });
+  }
+  throw new Error('Project Kubernetes namespace teardown did not converge.');
+}
+
 function projectProvisioningRequest(
   target: ProjectProvisioningTarget,
   completion: ProjectProvisioningResult,
 ): WorkerCompleteProjectProvisioningRequest {
-  return { ...completion, leaseId: target.leaseId, projectId: target.projectId };
+  return { ...completion, action: target.action, leaseId: target.leaseId, projectId: target.projectId };
 }
 
 async function cleanupProjectProvisioningAuthority(
@@ -75,6 +123,7 @@ async function assertProjectProvisioningLease(
   target: ProjectProvisioningTarget,
 ): Promise<void> {
   const lease: WorkerCompleteProjectProvisioningResponse = await completeProjectProvisioning(request, {
+    action: target.action,
     leaseId: target.leaseId,
     projectId: target.projectId,
     status: 'running',

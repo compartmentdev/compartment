@@ -54,6 +54,7 @@ describe('project provisioning execution', (): void => {
     );
 
     expect(completion).toEqual({
+      action: 'provision',
       leaseId: 'lease_1',
       projectId: 'prj_1',
       status: 'succeeded',
@@ -132,6 +133,7 @@ describe('project provisioning execution', (): void => {
     await expect(
       executeProjectProvisioning(requester(true, true), runtimeStub(apply, runJob), config(), target, loggerStub()),
     ).resolves.toEqual({
+      action: 'provision',
       leaseId: 'lease_1',
       message: 'authority apply failed',
       projectId: 'prj_1',
@@ -150,9 +152,44 @@ describe('project provisioning execution', (): void => {
     const job: KubeJobSpec = runJob.mock.calls[0]?.[0] as KubeJobSpec;
     expect(projectProvisionerJobEnvironmentSchema.parse(job.env)).toEqual(job.env);
   });
+
+  it('acknowledges teardown only after the immutable project namespace is absent', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const runtime: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
+      const deleteObjects: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
+      const namespace: KubeManifest = {
+        apiVersion: 'v1',
+        kind: 'Namespace',
+        metadata: { name: kubeNamespaceName('prj_1') },
+      };
+      vi.spyOn(runtime, 'delete').mockImplementation(deleteObjects);
+      vi.spyOn(runtime, 'read').mockResolvedValueOnce(namespace).mockResolvedValueOnce(null);
+      const teardownTarget: ProjectProvisioningTarget = { ...target, action: 'teardown' };
+      const completion: Promise<WorkerCompleteProjectProvisioningRequest> = executeProjectProvisioning(
+        requester(true, true),
+        runtime,
+        config(),
+        teardownTarget,
+        loggerStub(),
+      );
+
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(completion).resolves.toEqual({
+        action: 'teardown',
+        leaseId: 'lease_1',
+        projectId: 'prj_1',
+        status: 'succeeded',
+      });
+      expect(deleteObjects).toHaveBeenCalledWith([namespace]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 const target: ProjectProvisioningTarget = {
+  action: 'provision',
   leaseId: 'lease_1',
   namespaceId: 'prj_1',
   projectId: 'prj_1',

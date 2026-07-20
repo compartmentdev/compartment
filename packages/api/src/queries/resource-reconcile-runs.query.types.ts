@@ -5,6 +5,7 @@ import type {
 } from '@compartment/contracts';
 import type { SelectedFields, SelectedFieldsFlat } from 'drizzle-orm/pg-core/query-builders/select.types';
 import type { projectKubeProvisioning, projectResources, resourceReconcileRuns } from '../db/schema';
+import type { ProjectKubeProvisioningState } from './project-provisioning.query.types';
 import type {
   PersistedProjectResourceRow,
   ProjectResourceRow,
@@ -80,7 +81,7 @@ export interface ResourceReconcileProjectLockRow {
 
 export interface ResourceBootstrapSettlement {
   provisioningAttempts: number;
-  provisioningState: 'pending' | 'running' | 'succeeded' | 'failed';
+  provisioningState: ProjectKubeProvisioningState;
   resource: ProjectResourceRow;
   state: ResourceReconcileSettlementState | null;
 }
@@ -89,7 +90,7 @@ export type ResourceReconcileSettlement = ResourceBootstrapSettlement;
 
 export interface ResourceReconcileSettlementRow {
   provisioningAttempts: number;
-  provisioningState: 'pending' | 'running' | 'succeeded' | 'failed';
+  provisioningState: ProjectKubeProvisioningState;
   resource: PersistedProjectResourceRow;
   state: ResourceReconcileSettlementState | null;
 }

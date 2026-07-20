@@ -193,7 +193,13 @@ function readOperationResourceIds(input: KubernetesResourceOperationInput): stri
 }
 
 function buildOperationCommand(command: string, operationKind: ResourceOperationKind): string[] {
-  return ['sh', '-c', operationKind === 'backup' ? `mkdir -p "$COMPARTMENT_BACKUP_DIR" && ${command}` : command];
+  return [
+    'sh',
+    '-c',
+    operationKind === 'backup'
+      ? `umask 0002 && mkdir -p "$COMPARTMENT_BACKUP_DIR" && chmod g+rwx "$COMPARTMENT_BACKUP_DIR" && ${command}`
+      : command,
+  ];
 }
 
 function buildOperationEnvironment(

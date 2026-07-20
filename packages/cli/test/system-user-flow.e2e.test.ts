@@ -31,7 +31,6 @@ import {
   projectListResponseSchema,
   projectResponseSchema,
   projectShowResponseSchema,
-  resourceBackupCreateResponseSchema,
   resourceBackupListResponseSchema,
   resourceBackupShowResponseSchema,
   resourceDeleteResponseSchema,
@@ -96,7 +95,6 @@ import {
   type ProjectOverviewSummary,
   type ProjectResponse,
   type ProjectShowResponse,
-  type ResourceBackupCreateResponse,
   type ResourceBackupListResponse,
   type ResourceBackupShowResponse,
   type ResourceBackupSummary,
@@ -183,7 +181,11 @@ import { expectAuditFileExports, expectAuditFileSinkCoverage } from './self-host
 import { expectCompartmentSkillInstallOnboarding } from './self-hosted-user-setup-agent-onboarding.harness';
 import { expectCurrentOrganizationSlug } from './cli-response-test.harness';
 import { cliRemoteListResponseSchema, cliRemoteResponseSchema } from './remote-command-response.harness';
-import { expectK3dWorkerNamespaceIsolation } from './self-hosted-user-setup-k3d.harness';
+import {
+  expectK3dBackupRetentionFlow,
+  expectK3dProjectNamespaceActive,
+  expectK3dWorkerNamespaceIsolation,
+} from './self-hosted-user-setup-k3d.harness';
 import {
   expectedAuditEventTypes,
   organizationUseResponseSchema,
@@ -229,6 +231,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
   let activeDeployment: DeploymentReadSummary;
   let rollbackTargetRuntimeImageRef: string;
   let adminAppSessionCookie: string;
+  let appProjectId: string;
   let backupId: string;
   let promotedDeploymentId: string;
   let completedCaseCount: number = 0;
@@ -238,7 +241,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
     async (): Promise<void> => {
       runtime = await setup.install();
       advertisedCompartmentUrl = buildSelfHostedAdvertisedCompartmentUrl(runtime.compartmentUrl);
-      app = await setup.createAppFixture();
+      app = await setup.createAppFixture({ includeBackupRetentionSchedule: true });
       admin = await setup.createFreshCli();
       viewer = await setup.createFreshCli();
 
@@ -657,6 +660,13 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
           cwd: app.directory,
         },
       );
+      const deployedProject: ProjectShowResponse = await admin.runJson('project show', projectShowResponseSchema, {
+        cwd: app.directory,
+      });
+      if (deployedProject.project === null) {
+        throw new Error('Expected the deployed project to be remotely connected.');
+      }
+      appProjectId = deployedProject.project.id;
       expect(requireSingleActiveDeployment(deployPayload, app.serviceName).status).toBe('succeeded');
       expect(deployPayload.resources).toEqual([
         expect.objectContaining({
@@ -922,7 +932,22 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
 
       await waitForDeploymentRuntimeLog(admin, explicitProjectName, app.serviceName, appListeningLogText);
 
-      await expectExplicitProjectLifecycleFlow(admin, explicitProjectName, app.serviceName, explicitRouteUrl);
+      const explicitProject: ProjectShowResponse = await admin.runJson(
+        `project show --project ${explicitProjectName}`,
+        projectShowResponseSchema,
+      );
+      if (explicitProject.project === null) {
+        throw new Error('Expected the explicit project to exist remotely.');
+      }
+
+      await expectExplicitProjectLifecycleFlow(
+        admin,
+        explicitProject.project.id,
+        explicitProjectName,
+        app.serviceName,
+        explicitRouteUrl,
+      );
+      await expectK3dProjectNamespaceActive(appProjectId);
       completedCaseCount = 4;
     },
     selfHostedUserSetupTimeoutMs,
@@ -978,12 +1003,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       await writeAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue);
       await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
 
-      const backupPayload: ResourceBackupCreateResponse = await admin.runJson(
-        `resource backup create --project ${app.projectName} --resource ${app.resourceName}`,
-        resourceBackupCreateResponseSchema,
-      );
-      expect(backupPayload.backup.status).toBe('succeeded');
-      backupId = backupPayload.backup.id;
+      backupId = await expectK3dBackupRetentionFlow(admin, app.projectName, app.resourceName);
 
       const backupShowPayload: ResourceBackupShowResponse = await admin.runJson(
         `resource backup show --project ${app.projectName} --backup ${backupId}`,

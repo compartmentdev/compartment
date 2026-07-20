@@ -5,15 +5,15 @@ describe('project provisioning contracts', (): void => {
   it('accepts one leased project target or an empty claim', (): void => {
     expect(
       workerClaimProjectProvisioningResponseSchema.safeParse({
-        target: { leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
+        target: { action: 'provision', leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
       }).success,
     ).toBe(true);
     expect(workerClaimProjectProvisioningResponseSchema.safeParse({ target: null }).success).toBe(true);
     expect(
       workerClaimProjectProvisioningResponseSchema.safeParse({
-        target: { action: 'provision', leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
+        target: { action: 'teardown', leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('keeps cleanup inside the ordinary provisioning lease', (): void => {
@@ -45,7 +45,11 @@ describe('project provisioning contracts', (): void => {
   });
 
   it('requires a message only for failed completion', (): void => {
-    const base: { leaseId: string; projectId: string } = { leaseId: 'kpl_1', projectId: 'prj_1' };
+    const base: { action: 'provision'; leaseId: string; projectId: string } = {
+      action: 'provision',
+      leaseId: 'kpl_1',
+      projectId: 'prj_1',
+    };
     expect(
       workerCompleteProjectProvisioningRequestSchema.safeParse({
         ...base,
@@ -66,12 +70,8 @@ describe('project provisioning contracts', (): void => {
       }).success,
     ).toBe(true);
     expect(workerCompleteProjectProvisioningRequestSchema.safeParse({ ...base, status: 'running' }).success).toBe(true);
-    expect(
-      workerCompleteProjectProvisioningRequestSchema.safeParse({
-        ...base,
-        action: 'provision',
-        status: 'succeeded',
-      }).success,
-    ).toBe(false);
+    expect(workerCompleteProjectProvisioningRequestSchema.safeParse({ ...base, action: 'teardown' }).success).toBe(
+      false,
+    );
   });
 });

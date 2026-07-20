@@ -13,7 +13,8 @@ export interface SelfHostedUserSetupAppFixture {
   readonly variableGroupName: string;
 }
 
-interface SelfHostedUserSetupAppFixtureOptions {
+export interface SelfHostedUserSetupAppFixtureOptions {
+  readonly includeBackupRetentionSchedule?: boolean;
   readonly includeCookieTossAttackerService?: boolean;
   readonly projectName?: string | undefined;
 }
@@ -79,6 +80,15 @@ function buildProbeDescriptor(options: SelfHostedUserSetupAppFixtureOptions, pro
     options.includeCookieTossAttackerService === true
       ? `${renderProbeServiceDescriptor(cookieTossAttackerServiceName, { includeResourceConnection: false })}\n`
       : '';
+  const backupSchedule: string =
+    options.includeBackupRetentionSchedule === true
+      ? `        schedule:
+          cron: '* * * * *'
+          retention:
+            includeManual: true
+            keepLast: 2
+`
+      : '';
 
   return `name: ${projectName}
 
@@ -111,7 +121,7 @@ resources:
     operations:
       backup:
         command: PGPASSWORD="$POSTGRES_PASSWORD" pg_dump --clean --if-exists --host "$COMPARTMENT_RESOURCE_HOST" --username "$POSTGRES_USER" "$POSTGRES_DB" > "$COMPARTMENT_BACKUP_DIR/dump.sql"
-      restore:
+${backupSchedule}      restore:
         command: PGPASSWORD="$POSTGRES_PASSWORD" psql --host "$COMPARTMENT_RESOURCE_HOST" --username "$POSTGRES_USER" "$POSTGRES_DB" < "$COMPARTMENT_BACKUP_DIR/dump.sql"
 `;
 }

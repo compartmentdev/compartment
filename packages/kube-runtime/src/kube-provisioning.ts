@@ -33,6 +33,14 @@ export function projectNamespaceProvisioningBundle(row: ProjectNamespaceProvisio
   };
 }
 
+export function projectNamespaceDeleteTarget(namespaceId: string): KubeManifest {
+  return {
+    apiVersion: 'v1',
+    kind: 'Namespace',
+    metadata: { name: kubeNamespaceName(namespaceId) },
+  };
+}
+
 function namespaceManifest(row: ProjectNamespaceProvisioningRow, namespace: string): KubeManifest {
   return {
     apiVersion: 'v1',

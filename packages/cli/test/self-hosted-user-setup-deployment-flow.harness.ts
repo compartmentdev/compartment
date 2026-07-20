@@ -26,6 +26,7 @@ import { sendCliHttpTextRequest, type CliHttpTextResponse } from './cli-http-tes
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import type { SelfHostedUserSetupCommandResult } from './self-hosted-user-setup-command.harness';
 import { deploymentStatusCommandResponseParser } from './self-hosted-user-setup-cli-response.harness';
+import { expectK3dProjectNamespaceDeleted, seedK3dProjectTeardownFixture } from './self-hosted-user-setup-k3d.harness';
 
 const deploymentRunPollAttempts: number = 90;
 const deploymentRunPollDelayMs: number = 2_000;
@@ -266,6 +267,7 @@ async function waitForSingleActiveDeployment(
 
 export async function expectExplicitProjectLifecycleFlow(
   cli: SelfHostedUserSetupCli,
+  projectId: string,
   projectName: string,
   serviceName: string,
   expectedRouteUrl: string,
@@ -312,11 +314,14 @@ export async function expectExplicitProjectLifecycleFlow(
   );
   expect(archivedStatus.stderr).toContain(archivedProjectMessage);
 
+  await seedK3dProjectTeardownFixture(projectId);
+
   const deletedProject: ProjectDeleteResponse = await cli.runJson(
     `project delete --project ${projectName} --yes`,
     projectDeleteResponseSchema,
   );
   expect(deletedProject.projectName).toBe(projectName);
+  await expectK3dProjectNamespaceDeleted(projectId);
 
   const deletedStatus: SelfHostedUserSetupCommandResult = await cli.runFailure(
     `status --project ${projectName} --output json`,

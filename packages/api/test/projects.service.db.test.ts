@@ -11,6 +11,7 @@ import {
   organizations,
   principals,
   productJobRuns,
+  projectKubeProvisioning,
   projects,
   sourceBindings,
   sourceExcludedDescriptors,
@@ -20,6 +21,11 @@ import {
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { claimProductJob } from '../src/queries/product-job-runs.query';
+import {
+  claimPendingProjectProvisioning,
+  completeProjectProvisioning,
+} from '../src/queries/project-provisioning.query';
+import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import type { RbacTransaction } from '../src/queries/rbac.query.types';
 import type { resolveActiveProjectScope, resolveRequiredProjectScope } from '../src/services/project-scope.service';
 import {
@@ -145,13 +151,23 @@ describe('projects service', (): void => {
   });
 
   it('deletes archived projects after disconnecting their git source', async (): Promise<void> => {
-    await expect(
-      deleteProjectForPrincipal({
-        organizationSlug: 'acme-dev',
-        principalId: 'prn_git_sources',
-        projectName: 'billing',
-      }),
-    ).resolves.toBe('billing');
+    const deletion: Promise<string> = deleteProjectForPrincipal({
+      organizationSlug: 'acme-dev',
+      principalId: 'prn_git_sources',
+      projectName: 'billing',
+    });
+    const teardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
+    expect(teardown).toMatchObject({ action: 'teardown', projectId: 'prj_billing' });
+    expect(await db.select().from(projects).where(eq(projects.id, 'prj_billing'))).toHaveLength(1);
+    await completeProjectProvisioning({
+      action: 'teardown',
+      failureMessage: null,
+      leaseId: teardown.leaseId,
+      projectId: teardown.projectId,
+      status: 'succeeded',
+    });
+
+    await expect(deletion).resolves.toBe('billing');
 
     expect(await db.select().from(projects).where(eq(projects.id, 'prj_billing'))).toHaveLength(0);
     expect(
@@ -353,6 +369,7 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
+  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_billing', state: 'succeeded' });
   await db.insert(projects).values({
     archivedAt: null,
     id: 'prj_ops',
@@ -521,4 +538,17 @@ function createResolvedProjectScope(
       updatedAt: new Date('2026-04-28T12:00:00.000Z'),
     },
   };
+}
+
+async function waitForProjectTeardownClaim(): Promise<ProjectProvisioningClaimRow> {
+  for (let attempt: number = 0; attempt < 100; attempt += 1) {
+    const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
+    if (claimed?.action === 'teardown') {
+      return claimed;
+    }
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 10);
+    });
+  }
+  throw new Error('Timed out waiting for project teardown claim.');
 }

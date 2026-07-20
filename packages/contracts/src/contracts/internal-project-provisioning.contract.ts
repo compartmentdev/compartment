@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import type { ContractSchema } from './schema.types';
 
+export type ProjectProvisioningAction = 'provision' | 'teardown';
+
 export interface ProjectProvisioningTarget {
+  action: ProjectProvisioningAction;
   leaseId: string;
   namespaceId: string;
   projectId: string;
@@ -12,6 +15,7 @@ export interface WorkerClaimProjectProvisioningResponse {
 }
 
 export interface WorkerCompleteProjectProvisioningRequest {
+  action: ProjectProvisioningAction;
   leaseId: string;
   message?: string | undefined;
   projectId: string;
@@ -27,6 +31,7 @@ export const workerCompleteProjectProvisioningPathname: string = '/internal/kube
 
 const projectProvisioningTargetSchema: ContractSchema<ProjectProvisioningTarget> = z
   .object({
+    action: z.enum(['provision', 'teardown']),
     leaseId: z.string().min(1),
     namespaceId: z.string().min(1),
     projectId: z.string().min(1),
@@ -40,6 +45,7 @@ export const workerClaimProjectProvisioningResponseSchema: ContractSchema<Worker
 export const workerCompleteProjectProvisioningRequestSchema: ContractSchema<WorkerCompleteProjectProvisioningRequest> =
   z
     .object({
+      action: z.enum(['provision', 'teardown']),
       leaseId: z.string().min(1),
       message: z.string().min(1).optional(),
       projectId: z.string().min(1),
