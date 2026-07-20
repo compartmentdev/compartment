@@ -600,6 +600,29 @@ describe('Phase 0 API integration deployment status', (): void => {
     const activeDeployment: DeploymentInspectTarget = requireSingleDeployment(inspectPayload.activeDeployments);
     expect(activeDeployment).toMatchObject({ id: firstDeployment.id, status: 'succeeded' });
     expect(activeDeployment.runtime).toMatchObject({ routeHost: firstClaim.routeHost });
+
+    const redeployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    const redeployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse(redeployResponse.json()),
+    );
+    const redeployClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+    await completeClaimedDeployment(app, redeployment.id, redeployClaim.routeHost);
+
+    const statusResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken, 'acme-dev'),
+      method: 'GET',
+      url: `/v1/deployments/status?projectName=smoke-web&deploymentId=${redeployment.id}&serviceName=web`,
+    });
+    expect(statusResponse.statusCode, statusResponse.body).toBe(200);
+    const statusPayload: DeploymentStatusResponse = deploymentStatusResponseSchema.parse(statusResponse.json());
+    expect(requireSingleDeployment(statusPayload.activeDeployments)).toMatchObject({
+      id: redeployment.id,
+      routeUrl: `http://${redeployClaim.routeHost}`,
+    });
   });
   it('does not serve per-artifact archives for non-source-resolution deployments', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);

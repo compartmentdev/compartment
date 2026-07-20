@@ -886,6 +886,37 @@ describe('deployment Kubernetes transition persistence', (): void => {
       observedAt: failedAt,
       revision: 1,
     });
+    await db
+      .update(deploymentRoutes)
+      .set({ updatedAt: new Date('2026-07-12T10:00:03.000Z') })
+      .where(eq(deploymentRoutes.id, 'route_kube'));
+    await db.insert(deploymentRuns).values({ environmentId: 'env_kube', id: 'drn_decoy', triggerType: 'manual' });
+    await db.insert(deployments).values({
+      accessMode: 'authenticated',
+      buildArtifactId: 'bar_candidate',
+      completedAt: failedAt,
+      createdAt: new Date('2026-07-12T10:00:02.000Z'),
+      deploymentRunId: 'drn_decoy',
+      environmentId: 'env_kube',
+      health: 'unhealthy',
+      id: 'dep_failed_decoy',
+      isActive: false,
+      operationId: 'op_candidate',
+      projectServiceId: 'svc_kube',
+      promotionStage: 'release',
+      resolvedReadinessJson: '[]',
+      resolvedRoutesJson: '[]',
+      resolvedRunJson: '{}',
+      status: 'failed',
+    });
+    await db.insert(deploymentRoutes).values({
+      accessScopeId: 'org_kube',
+      accessScopeType: 'organization',
+      deploymentId: 'dep_failed_decoy',
+      id: 'route_failed_decoy',
+      subdomain: 'failed-decoy',
+      updatedAt: new Date('2026-07-12T10:00:01.000Z'),
+    });
     await seedRedeploymentAfterFailure();
 
     await persistDeploymentReconcileObservation({
@@ -917,15 +948,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
     const firstReadyAt: Date = new Date('2026-07-12T10:00:01.000Z');
     const secondReadyAt: Date = new Date('2026-07-12T10:00:02.000Z');
 
-    for (const deploymentId of ['dep_candidate', 'dep_backoffice']) {
-      await persistDeploymentReconcileObservation({
-        deploymentId,
-        failureMessage: null,
-        observation: 'pending',
-        observedAt: new Date('2026-07-12T10:00:00.000Z'),
-        revision: 0,
-      });
-    }
+    await markTwoServiceCandidateRunPending();
     await persistDeploymentReconcileObservation({
       deploymentId: 'dep_candidate',
       failureMessage: null,
@@ -956,6 +979,89 @@ describe('deployment Kubernetes transition persistence', (): void => {
         { completedAt: secondReadyAt, id: 'op_backoffice', status: 'succeeded' },
       ]),
     );
+  });
+
+  it('serializes concurrent Ready observations and uses the latest service completion time', async (): Promise<void> => {
+    await seedTwoServiceCandidateRun();
+    const completedAt: Date = new Date('2026-07-12T10:00:02.000Z');
+    await markTwoServiceCandidateRunPending();
+
+    const holderPool: Pool = createDatabasePool(databaseUrl);
+    const holder: PoolClient = await holderPool.connect();
+    let readyObservations: Promise<boolean[]> | undefined;
+    try {
+      await holder.query('begin');
+      await holder.query("select id from deployment_runs where id = 'drn_candidate' for update");
+      readyObservations = Promise.all([
+        persistDeploymentReconcileObservation({
+          deploymentId: 'dep_candidate',
+          failureMessage: null,
+          observation: 'ready',
+          observedAt: completedAt,
+          revision: 1,
+        }),
+        persistDeploymentReconcileObservation({
+          deploymentId: 'dep_backoffice',
+          failureMessage: null,
+          observation: 'ready',
+          observedAt: new Date('2026-07-12T10:00:01.000Z'),
+          revision: 1,
+        }),
+      ]);
+      await Promise.race([
+        readyObservations.then((): never => {
+          throw new Error('Expected Ready observations to wait for the deployment run transaction.');
+        }),
+        waitForDatabaseBlocker(holder),
+      ]);
+      await holder.query('commit');
+      expect(await readyObservations).toEqual([true, true]);
+    } finally {
+      await holder.query('rollback');
+      if (readyObservations !== undefined) {
+        await Promise.allSettled([readyObservations]);
+      }
+      holder.release();
+      await holderPool.end();
+    }
+
+    const runOperations: { completedAt: Date | null; status: string }[] = await db
+      .select({ completedAt: operations.completedAt, status: operations.status })
+      .from(operations)
+      .where(eq(operations.targetId, 'env_kube'));
+    expect(runOperations).toEqual([
+      { completedAt, status: 'succeeded' },
+      { completedAt, status: 'succeeded' },
+    ]);
+  }, 15_000);
+
+  it('fails every operation in a multi-service run when one service fails readiness', async (): Promise<void> => {
+    await seedTwoServiceCandidateRun();
+    const failedAt: Date = new Date('2026-07-12T10:00:01.000Z');
+    await markTwoServiceCandidateRunPending();
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_candidate',
+      failureMessage: 'readiness failed',
+      observation: 'failed',
+      observedAt: failedAt,
+      revision: 1,
+    });
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_backoffice',
+      failureMessage: null,
+      observation: 'ready',
+      observedAt: new Date('2026-07-12T10:00:02.000Z'),
+      revision: 1,
+    });
+
+    const runOperations: { completedAt: Date | null; status: string }[] = await db
+      .select({ completedAt: operations.completedAt, status: operations.status })
+      .from(operations)
+      .where(eq(operations.targetId, 'env_kube'));
+    expect(runOperations).toEqual([
+      { completedAt: failedAt, status: 'failed' },
+      { completedAt: failedAt, status: 'failed' },
+    ]);
   });
 
   it('switches only the route bound to the exact previous active deployment', async (): Promise<void> => {
@@ -1056,18 +1162,17 @@ describe('deployment Kubernetes transition persistence', (): void => {
   });
 });
 
-async function waitForDatabaseBlocker(client: PoolClient): Promise<void> {
+async function waitForDatabaseBlocker(client: PoolClient, expectedCount: number = 1): Promise<void> {
   const deadline: number = Date.now() + 10_000;
   while (Date.now() < deadline) {
-    const result: { rows: { blocked: boolean }[] } = await client.query(
-      `select exists (
-        select 1
+    const result: { rows: { blockedCount: number }[] } = await client.query(
+      `select count(*)::int as "blockedCount"
         from pg_stat_activity activity
         where activity.datname = current_database()
           and pg_backend_pid() = any(pg_blocking_pids(activity.pid))
-      ) as blocked`,
+      `,
     );
-    if (result.rows[0]?.blocked === true) {
+    if ((result.rows[0]?.blockedCount ?? 0) >= expectedCount) {
       return;
     }
     await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, 10));
@@ -1298,6 +1403,18 @@ async function seedTwoServiceCandidateRun(): Promise<void> {
     networkPolicyNames: [],
     serviceName: 'app-env-kube-svc-backoffice',
   });
+}
+
+async function markTwoServiceCandidateRunPending(): Promise<void> {
+  for (const deploymentId of ['dep_candidate', 'dep_backoffice']) {
+    await persistDeploymentReconcileObservation({
+      deploymentId,
+      failureMessage: null,
+      observation: 'pending',
+      observedAt: new Date('2026-07-12T10:00:00.000Z'),
+      revision: 0,
+    });
+  }
 }
 
 function buildProductLogSequence(

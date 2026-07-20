@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { deploymentRuns, deployments, operations } from '../db/schema';
 import type { DeploymentTransaction } from './deployments.query.types';
 
@@ -21,13 +21,39 @@ export async function lockDeploymentRun(tx: DeploymentTransaction, deploymentRun
 export async function markReadyRunOperationsSucceeded(
   tx: DeploymentTransaction,
   deploymentRunId: string,
-  completedAt: Date,
 ): Promise<void> {
   if (await hasIncompleteDeployment(tx, deploymentRunId)) {
     return;
   }
   const operationIds: string[] = await listRunOperationIds(tx, deploymentRunId);
+  const completedAt: Date = await findRunCompletedAt(tx, deploymentRunId);
   await tx.update(operations).set({ completedAt, status: 'succeeded' }).where(inArray(operations.id, operationIds));
+}
+
+export async function markRunOperationsFailed(
+  tx: DeploymentTransaction,
+  deploymentRunId: string,
+  completedAt: Date,
+  summary: string,
+): Promise<void> {
+  const operationIds: string[] = await listRunOperationIds(tx, deploymentRunId);
+  await tx
+    .update(operations)
+    .set({ completedAt, status: 'failed', summary })
+    .where(inArray(operations.id, operationIds));
+}
+
+async function findRunCompletedAt(tx: DeploymentTransaction, deploymentRunId: string): Promise<Date> {
+  const [latestDeployment]: { completedAt: Date | null }[] = await tx
+    .select({ completedAt: deployments.completedAt })
+    .from(deployments)
+    .where(eq(deployments.deploymentRunId, deploymentRunId))
+    .orderBy(desc(deployments.completedAt))
+    .limit(1);
+  if (latestDeployment?.completedAt === null || latestDeployment === undefined) {
+    throw new Error('Completed deployment run is missing a completion timestamp.');
+  }
+  return latestDeployment.completedAt;
 }
 
 async function hasIncompleteDeployment(tx: DeploymentTransaction, deploymentRunId: string): Promise<boolean> {

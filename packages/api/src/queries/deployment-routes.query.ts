@@ -6,8 +6,10 @@ import { findActiveCustomDeploymentRouteByHost } from './custom-deployment-route
 import { createDeploymentRouteLookupQuery } from './deployment-route-lookup-selection';
 import type {
   DeploymentRouteLookupRow,
+  DeploymentRouteQueryExecutor,
   DeploymentRouteSubdomainRow,
   PersistedDeploymentRouteLookupRow,
+  ReservedDeploymentRouteRow,
 } from './deployment-routes.query.types';
 
 export async function findActiveDeploymentRouteByHost(
@@ -79,9 +81,27 @@ export async function findLatestReservedDeploymentRouteSubdomainForOwner(
   environmentId: string,
   serviceId: string,
 ): Promise<string | undefined> {
-  return await findLatestDeploymentRouteSubdomainForOwner(
-    buildReservedDeploymentRouteOwnerFilter(environmentId, serviceId),
+  const route: ReservedDeploymentRouteRow | undefined = await findLatestReservedDeploymentRouteForOwner(
+    getApiDatabase(),
+    environmentId,
+    serviceId,
   );
+  return route?.subdomain;
+}
+
+export async function findLatestReservedDeploymentRouteForOwner(
+  executor: DeploymentRouteQueryExecutor,
+  environmentId: string,
+  serviceId: string,
+): Promise<ReservedDeploymentRouteRow | undefined> {
+  const rows: ReservedDeploymentRouteRow[] = await executor
+    .select({ id: deploymentRoutes.id, subdomain: deploymentRoutes.subdomain })
+    .from(deploymentRoutes)
+    .innerJoin(deployments, eq(deploymentRoutes.deploymentId, deployments.id))
+    .where(buildReservedDeploymentRouteOwnerFilter(environmentId, serviceId))
+    .orderBy(desc(deploymentRoutes.updatedAt))
+    .limit(1);
+  return rows[0];
 }
 
 async function findLatestDeploymentRouteSubdomainForOwner(filter: SQL): Promise<string | undefined> {
