@@ -105,6 +105,39 @@ describe('product Job persistence', (): void => {
     expect(await claimProductJob('release')).toEqual({ intent: null, persistedResult: null });
   });
 
+  it('keeps a claimed Job running and reclaimable until terminal evidence is persisted', async (): Promise<void> => {
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_job' },
+      persistedResult: null,
+    });
+
+    const [running] = await db
+      .select({
+        completedAt: productJobRuns.completedAt,
+        exitCode: productJobRuns.exitCode,
+        jobName: productJobRuns.jobName,
+        logs: productJobRuns.logs,
+        podName: productJobRuns.podName,
+        status: productJobRuns.status,
+      })
+      .from(productJobRuns)
+      .where(eq(productJobRuns.identityId, 'dep_job'));
+    expect(running).toEqual({
+      completedAt: null,
+      exitCode: null,
+      jobName: null,
+      logs: null,
+      podName: null,
+      status: 'running',
+    });
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_job' },
+      persistedResult: null,
+    });
+  });
+
   it('persists resource-operation PVC mounts across claim and recovery', async (): Promise<void> => {
     const intent: ProductJobIntent = {
       command: ['sh', '-c', 'pg_dump'],

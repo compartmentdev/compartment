@@ -32,20 +32,25 @@ export async function executeProjectProvisioning(
 ): Promise<WorkerCompleteProjectProvisioningRequest> {
   const authority: ProjectProvisioningAuthorityInput = projectProvisioningAuthority(config, target);
   let completion: ProjectProvisioningResult;
-  await cleanupProjectProvisioningAuthority(request, runtime, authority, target, logger);
+  await assertProjectProvisioningLease(request, target);
   try {
     await runtime.apply(projectProvisioningAuthorityBundle(authority));
-    const result: KubeJobResult = await runtime.runJob(projectProvisioningJob(config, target, authority));
-    completion = projectProvisioningCompletion(result);
   } catch (error) {
     completion = failedProjectProvisioningCompletion(readErrorMessage(typeof error === 'object' ? error : null));
+    await cleanupProjectProvisioningAuthority(request, runtime, authority, target, logger);
+    return projectProvisioningRequest(target, completion);
   }
+  const result: KubeJobResult = await runtime.runJob(projectProvisioningJob(config, target, authority));
+  completion = projectProvisioningCompletion(result);
   await cleanupProjectProvisioningAuthority(request, runtime, authority, target, logger);
-  return {
-    ...completion,
-    leaseId: target.leaseId,
-    projectId: target.projectId,
-  };
+  return projectProvisioningRequest(target, completion);
+}
+
+function projectProvisioningRequest(
+  target: ProjectProvisioningTarget,
+  completion: ProjectProvisioningResult,
+): WorkerCompleteProjectProvisioningRequest {
+  return { ...completion, leaseId: target.leaseId, projectId: target.projectId };
 }
 
 async function cleanupProjectProvisioningAuthority(
@@ -57,18 +62,25 @@ async function cleanupProjectProvisioningAuthority(
 ): Promise<void> {
   try {
     const cleanup: KubeManifest[] = await readProjectProvisioningCleanup(runtime, authority);
-    const lease: WorkerCompleteProjectProvisioningResponse = await completeProjectProvisioning(request, {
-      leaseId: target.leaseId,
-      projectId: target.projectId,
-      status: 'running',
-    });
-    if (!lease.applied) {
-      throw new Error('Project provisioning lease is no longer current.');
-    }
+    await assertProjectProvisioningLease(request, target);
     await runtime.apply({ deleteAfterApply: cleanup, objects: [] });
   } catch (error) {
     logger.warn({ err: error }, 'Project provisioning authority cleanup failed.');
     throw error;
+  }
+}
+
+async function assertProjectProvisioningLease(
+  request: CompartmentRequester,
+  target: ProjectProvisioningTarget,
+): Promise<void> {
+  const lease: WorkerCompleteProjectProvisioningResponse = await completeProjectProvisioning(request, {
+    leaseId: target.leaseId,
+    projectId: target.projectId,
+    status: 'running',
+  });
+  if (!lease.applied) {
+    throw new Error('Project provisioning lease is no longer current.');
   }
 }
 

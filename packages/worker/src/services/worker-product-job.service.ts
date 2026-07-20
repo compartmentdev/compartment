@@ -34,6 +34,25 @@ class ProductJobFailedError extends Error {
   }
 }
 
+enum SyntheticProductJobFailureReason {
+  FencingViolation = 'fencing-violation',
+}
+
+interface SyntheticProductJobFailureClassification {
+  jobNamePrefix: string;
+  status: 'timed-out';
+}
+
+const syntheticProductJobFailureByReason: Record<
+  SyntheticProductJobFailureReason,
+  SyntheticProductJobFailureClassification
+> = {
+  [SyntheticProductJobFailureReason.FencingViolation]: {
+    jobNamePrefix: 'failed-before-result',
+    status: 'timed-out',
+  },
+};
+
 export async function executeProductJob(
   request: CompartmentRequester,
   runtime: KubeRuntime,
@@ -68,38 +87,60 @@ async function runProductJobWithDurableFailure(
   intent: ProductJobIntent,
   identityId: string,
 ): Promise<KubeJobResult> {
-  try {
-    await assertProductJobClaims(runtime, intent);
-    return await runtime.runJob(buildKubeJobSpec(intent, identityId));
-  } catch (error) {
-    const failure: Error = error instanceof Error ? error : new Error('Product Job execution failed.');
-    await persistProductJobResult(request, {
-      completedAt: new Date().toISOString(),
-      exitCode: null,
-      identityId,
-      jobClass: intent.jobClass,
-      jobName: `failed-before-result/${identityId}`,
-      logs: failure.message,
-      podName: null,
-      status: 'timed-out',
-    });
-    throw failure;
+  if (intent.volumeMounts !== undefined && intent.volumeMounts.length > 0) {
+    const observedClaims: ObservedResourceClaim[] = await readMountedClaims(runtime, intent);
+    try {
+      assertProductJobClaims(intent, observedClaims);
+    } catch (error) {
+      const failure: Error = error instanceof Error ? error : new Error('Product Job fencing failed.');
+      await persistProductJobFencingFailure(request, intent, identityId, failure);
+    }
   }
+  return await runtime.runJob(buildKubeJobSpec(intent, identityId));
 }
 
-async function assertProductJobClaims(runtime: KubeRuntime, intent: ProductJobIntent): Promise<void> {
-  if (intent.volumeMounts === undefined || intent.volumeMounts.length === 0) {
-    return;
-  }
+async function persistProductJobFencingFailure(
+  request: CompartmentRequester,
+  intent: ProductJobIntent,
+  identityId: string,
+  failure: Error,
+): Promise<never> {
+  await persistProductJobResult(
+    request,
+    buildSyntheticProductJobFailure(intent, identityId, SyntheticProductJobFailureReason.FencingViolation, failure),
+  );
+  throw failure;
+}
+
+function assertProductJobClaims(intent: ProductJobIntent, observedClaims: ObservedResourceClaim[]): void {
   assertResourceClaimOwnership(
-    intent.volumeMounts.map(
+    (intent.volumeMounts ?? []).map(
       (mount: ProductJobVolumeMount): ResourceClaimIdentity => ({
         claimName: mount.claimName,
         uid: mount.expectedClaimUid,
       }),
     ),
-    await readMountedClaims(runtime, intent),
+    observedClaims,
   );
+}
+
+function buildSyntheticProductJobFailure(
+  intent: ProductJobIntent,
+  identityId: string,
+  reason: SyntheticProductJobFailureReason,
+  failure: Error,
+): WorkerPersistProductJobResultRequest {
+  const classification: SyntheticProductJobFailureClassification = syntheticProductJobFailureByReason[reason];
+  return {
+    completedAt: new Date().toISOString(),
+    exitCode: null,
+    identityId,
+    jobClass: intent.jobClass,
+    jobName: `${classification.jobNamePrefix}/${identityId}`,
+    logs: failure.message,
+    podName: null,
+    status: classification.status,
+  };
 }
 
 async function readMountedClaims(runtime: KubeRuntime, intent: ProductJobIntent): Promise<ObservedResourceClaim[]> {
