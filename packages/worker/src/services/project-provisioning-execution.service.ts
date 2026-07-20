@@ -50,7 +50,7 @@ function projectProvisioningRequest(
   target: ProjectProvisioningTarget,
   completion: ProjectProvisioningResult,
 ): WorkerCompleteProjectProvisioningRequest {
-  return { ...completion, generation: target.generation, leaseId: target.leaseId, projectId: target.projectId };
+  return { ...completion, leaseId: target.leaseId, projectId: target.projectId };
 }
 
 async function cleanupProjectProvisioningAuthority(
@@ -75,7 +75,6 @@ async function assertProjectProvisioningLease(
   target: ProjectProvisioningTarget,
 ): Promise<void> {
   const lease: WorkerCompleteProjectProvisioningResponse = await completeProjectProvisioning(request, {
-    generation: target.generation,
     leaseId: target.leaseId,
     projectId: target.projectId,
     status: 'running',

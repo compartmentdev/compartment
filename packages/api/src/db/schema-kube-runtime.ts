@@ -130,10 +130,7 @@ export const projectKubeProvisioning: KubeRuntimeSchemaTypes.ProjectKubeProvisio
     projectId: text('project_id')
       .primaryKey()
       .references((): typeof projects.id => projects.id, { onDelete: 'cascade' }),
-    policyGeneration: integer('policy_generation').default(0).notNull(),
-    state: text('state', {
-      enum: ['pending', 'running', 'succeeded', 'failed', 'policy-running', 'policy-failed'],
-    })
+    state: text('state', { enum: ['pending', 'running', 'succeeded', 'failed'] })
       .default('pending')
       .notNull(),
     leaseId: text('lease_id'),

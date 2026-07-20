@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { immutableKubeName } from '@compartment/utils';
-import type { ProductLogIngestEvent, WorkerPersistProductJobResultRequest } from '@compartment/contracts';
+import type { ProductLogIngestEvent } from '@compartment/contracts';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
@@ -17,6 +17,7 @@ import {
   deploymentRuns,
   deploymentRoutes,
   deployments,
+  environmentResourceOutputVariableBindings,
   environments,
   operations,
   organizations,
@@ -61,7 +62,7 @@ import {
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import { claimProductJob } from '../src/queries/product-job-runs.query';
 import { persistProductJobIntent } from '../src/queries/product-job-intent.query';
-import { acknowledgeResourceReconcileRun } from '../src/queries/resource-reconcile-runs.query';
+import { claimDeploymentReconcileTarget } from '../src/services/deployment-reconcile.service';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'deployment_kube_reference');
@@ -522,7 +523,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('keeps a succeeded deployment claimable after active readiness drift', async (): Promise<void> => {
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
     await persistDeploymentReconcileObservation({
       deploymentId: 'dep_kube',
       failureMessage: 'active pod missing',
@@ -538,7 +539,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('does not orphan an active deployment when its recovery rollout exceeds the progress deadline', async (): Promise<void> => {
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
     await persistDeploymentReconcileObservation({
       deploymentId: 'dep_kube',
       failureMessage: 'active pod missing',
@@ -610,7 +611,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
   it('does not reconcile the active workload while its replacement claim is leased', async (): Promise<void> => {
     await seedCandidate();
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
 
     const replacement: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
     const duringReplacementLease: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
@@ -619,39 +620,58 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(duringReplacementLease).toBeNull();
   });
 
-  it('does not start a desired deployment until every declared resource is running', async (): Promise<void> => {
+  it('starts a desired deployment immediately when its environment declares no resources', async (): Promise<void> => {
     await seedCandidate();
-    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+
+    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+      candidate: { deploymentId: 'dep_candidate', state: 'desired' },
+    });
+  });
+
+  it('does not gate a desired deployment on an unrelated environment resource', async (): Promise<void> => {
+    await seedCandidate();
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
     await db.insert(projectResources).values({
       commandJson: '[]',
       envJson: '[]',
       environmentId: 'env_kube',
       expectedClaimsJson: '[]',
-      id: 'res_database',
+      id: 'res_unrelated',
       image: 'postgres:16',
-      name: 'database',
+      name: 'unrelated',
       outputsJson: '{}',
       portsJson: '[5432]',
       readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
-      runtimeDefinitionHash: 'database-hash',
+      runtimeDefinitionHash: 'unrelated-hash',
       status: 'stopped',
       volumesJson: '[]',
     });
+
+    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+      candidate: { deploymentId: 'dep_candidate', state: 'desired' },
+    });
+  });
+
+  it('leaves a desired deployment for a later poll until every connected resource reconcile succeeds', async (): Promise<void> => {
+    await seedCandidate();
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await seedConnectedResource('running');
     await db.insert(resourceReconcileRuns).values([
       {
-        createdAt: new Date('2026-07-12T09:00:00.000Z'),
+        createdAt: new Date('2026-07-11T09:00:00.000Z'),
         expectedClaimsJson: '[]',
-        failureMessage: 'old reconcile failed',
-        id: 'rr_database_old_failed',
+        failureMessage: 'superseded failure',
+        id: 'rrun_database_old',
         intentJson: '{}',
-        operationType: 'reconcile',
+        operationType: 'bootstrap',
         phase: 'failed',
         projectResourceId: 'res_database',
       },
       {
-        createdAt: new Date('2026-07-12T10:00:00.000Z'),
+        createdAt: new Date('2026-07-11T10:00:00.000Z'),
         expectedClaimsJson: '[]',
-        id: 'rr_database_current',
+        id: 'rrun_database',
         intentJson: '{}',
         operationType: 'reconcile',
         phase: 'reconcile-pending',
@@ -660,238 +680,41 @@ describe('deployment Kubernetes transition persistence', (): void => {
     ]);
 
     await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
-
-    await db.update(projectResources).set({ status: 'running' }).where(eq(projectResources.id, 'res_database'));
     await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
+    await expect(
+      db.select().from(deploymentKubeReferences).where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate')),
+    ).resolves.toEqual([expect.objectContaining({ revision: 0, state: 'desired' })]);
 
     await db
       .update(resourceReconcileRuns)
       .set({ phase: 'succeeded' })
-      .where(eq(resourceReconcileRuns.id, 'rr_database_current'));
+      .where(eq(resourceReconcileRuns.id, 'rrun_database'));
     await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
       candidate: { deploymentId: 'dep_candidate', state: 'desired' },
     });
   });
 
-  it('fails a desired deployment when its latest resource reconcile fails', async (): Promise<void> => {
+  it('fails a waiting deployment when its latest connected resource reconcile fails', async (): Promise<void> => {
     await seedCandidate();
-    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
-    await db.insert(projectResources).values({
-      commandJson: '[]',
-      envJson: '[]',
-      environmentId: 'env_kube',
-      expectedClaimsJson: '[]',
-      id: 'res_failed_database',
-      image: 'postgres:16',
-      name: 'database',
-      outputsJson: '{}',
-      portsJson: '[5432]',
-      readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
-      runtimeDefinitionHash: 'failed-database-hash',
-      status: 'running',
-      volumesJson: '[]',
-    });
-    await db.insert(resourceReconcileRuns).values([
-      {
-        createdAt: new Date('2026-07-12T10:00:00.000Z'),
-        expectedClaimsJson: '[]',
-        id: 'rr_database_running',
-        intentJson: '{}',
-        leaseExpiresAt: new Date(Date.now() + 60_000),
-        leaseId: 'lease_database_running',
-        operationType: 'reconcile',
-        phase: 'running',
-        projectResourceId: 'res_failed_database',
-      },
-      {
-        createdAt: new Date('2026-07-12T11:00:00.000Z'),
-        expectedClaimsJson: '[]',
-        id: 'rr_database_newer',
-        intentJson: '{}',
-        operationType: 'reconcile',
-        phase: 'reconcile-pending',
-        projectResourceId: 'res_failed_database',
-      },
-    ]);
-    await db.insert(operations).values({
-      id: 'op_unrelated_collision',
-      status: 'running',
-      summary: 'Unrelated',
-      targetId: 'dep_candidate',
-      targetType: 'deployment',
-      type: 'unrelated',
-    });
-
-    await acknowledgeResourceReconcileRun({
-      failureMessage: 'superseded rollout failed',
-      leaseId: 'lease_database_running',
-      operationId: 'rr_database_running',
-      status: 'failed',
-    });
-
-    const [waitingDeployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_candidate'));
-    const [waitingOperation] = await db.select().from(operations).where(eq(operations.id, 'op_candidate'));
-    expect(waitingDeployment).toMatchObject({ status: 'running' });
-    expect(waitingOperation).toMatchObject({ status: 'running' });
-
-    await db
-      .update(resourceReconcileRuns)
-      .set({
-        leaseExpiresAt: new Date(Date.now() + 60_000),
-        leaseId: 'lease_database_newer',
-        phase: 'running',
-      })
-      .where(eq(resourceReconcileRuns.id, 'rr_database_newer'));
-    await acknowledgeResourceReconcileRun({
-      failureMessage: 'database rollout failed',
-      leaseId: 'lease_database_newer',
-      operationId: 'rr_database_newer',
-      status: 'failed',
-    });
-
-    const [deployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_candidate'));
-    const [operation] = await db.select().from(operations).where(eq(operations.id, 'op_candidate'));
-    const [reference] = await db
-      .select()
-      .from(deploymentKubeReferences)
-      .where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
-    expect(deployment).toMatchObject({ health: 'unhealthy', status: 'failed' });
-    expect(deployment?.failureMessage).toContain('database rollout failed');
-    expect(operation).toMatchObject({ status: 'failed' });
-    const [unrelated] = await db.select().from(operations).where(eq(operations.id, 'op_unrelated_collision'));
-    expect(unrelated).toMatchObject({ status: 'running' });
-    expect(reference).toMatchObject({ state: 'pending' });
-    await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
-  });
-
-  it('fails a deployment prepared after its latest resource reconcile already failed', async (): Promise<void> => {
-    await seedCandidate();
-    await db.delete(deploymentKubeReferences).where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
-    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
-    await db.insert(projectResources).values({
-      commandJson: '[]',
-      envJson: '[]',
-      environmentId: 'env_kube',
-      expectedClaimsJson: '[]',
-      id: 'res_early_failed_database',
-      image: 'postgres:16',
-      name: 'database',
-      outputsJson: '{}',
-      portsJson: '[5432]',
-      readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
-      runtimeDefinitionHash: 'early-failed-database-hash',
-      status: 'stopped',
-      volumesJson: '[]',
-    });
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    await seedConnectedResource('stopped');
     await db.insert(resourceReconcileRuns).values({
       expectedClaimsJson: '[]',
-      failureMessage: 'bootstrap failed before build handoff',
-      id: 'rr_database_early_failed',
+      failureMessage: 'readiness timed out',
+      id: 'rrun_database_failed',
       intentJson: '{}',
       operationType: 'bootstrap',
       phase: 'failed',
-      projectResourceId: 'res_early_failed_database',
+      projectResourceId: 'res_database',
     });
 
-    await prepareDeploymentReconcileReference({
-      deploymentId: 'dep_candidate',
-      deploymentName: 'app-env-kube-svc-kube',
-      id: 'kref_candidate_after_resource_failure',
-      imageRef: 'repo/kube@sha256:resource-failure',
-      namespace: 'cpt-prj-kube',
-      networkPolicyNames: [],
-      routeId: 'route_kube',
-      routeSubdomain: 'kube',
-      serviceName: 'app-env-kube-svc-kube',
-    });
-
-    const [deployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_candidate'));
-    const [operation] = await db.select().from(operations).where(eq(operations.id, 'op_candidate'));
-    const [reference] = await db
-      .select()
-      .from(deploymentKubeReferences)
-      .where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
-    expect(deployment).toMatchObject({ health: 'unhealthy', status: 'failed' });
-    expect(deployment?.failureMessage).toContain('bootstrap failed before build handoff');
-    expect(operation).toMatchObject({ status: 'failed' });
-    expect(reference).toMatchObject({ state: 'pending' });
-    await expect(persistCandidateReleaseIntent()).resolves.toMatchObject({ status: 'failed' });
-    await expect(claimProductJob('release')).resolves.toMatchObject({
-      persistedResult: { status: 'failed' },
-    });
-  });
-
-  it('does not claim a queued release after a newer resource reconcile becomes pending', async (): Promise<void> => {
-    await seedReleaseResourcePrerequisite();
-    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
-      candidate: { deploymentId: 'dep_candidate', state: 'desired' },
-    });
-    await db.insert(resourceReconcileRuns).values({
-      createdAt: new Date('2026-07-12T11:00:00.000Z'),
-      expectedClaimsJson: '[]',
-      id: 'rr_release_fence_pending',
-      intentJson: '{}',
-      operationType: 'reconcile',
-      phase: 'reconcile-pending',
-      projectResourceId: 'res_release_fence_database',
-    });
-    await persistCandidateReleaseIntent();
-
-    await expect(claimProductJob('release')).resolves.toEqual({ intent: null, persistedResult: null });
-    await db
-      .update(resourceReconcileRuns)
-      .set({ phase: 'succeeded' })
-      .where(eq(resourceReconcileRuns.id, 'rr_release_fence_pending'));
-    await expect(claimProductJob('release')).resolves.toMatchObject({
-      intent: { deploymentId: 'dep_candidate' },
-      persistedResult: null,
-    });
-  });
-
-  it('terminal-cancels a queued release after its newer resource reconcile fails', async (): Promise<void> => {
-    await seedReleaseResourcePrerequisite();
-    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
-      candidate: { deploymentId: 'dep_candidate', state: 'desired' },
-    });
-    await persistCandidateReleaseIntent();
-    await db.insert(resourceReconcileRuns).values({
-      createdAt: new Date('2026-07-12T11:00:00.000Z'),
-      expectedClaimsJson: '[]',
-      id: 'rr_release_fence_failed',
-      intentJson: '{}',
-      leaseExpiresAt: new Date(Date.now() + 60_000),
-      leaseId: 'lease_release_fence_failed',
-      operationType: 'reconcile',
-      phase: 'running',
-      projectResourceId: 'res_release_fence_database',
-    });
-
-    await acknowledgeResourceReconcileRun({
-      failureMessage: 'release prerequisite failed',
-      leaseId: 'lease_release_fence_failed',
-      operationId: 'rr_release_fence_failed',
-      status: 'failed',
-    });
-
-    await expect(claimProductJob('release')).resolves.toMatchObject({
-      persistedResult: { status: 'failed' },
-    });
-    await expect(db.select().from(productJobRuns)).resolves.toMatchObject([{ status: 'failed' }]);
-  });
-
-  it('starts a resource-free deployment only after the current project policy generation', async (): Promise<void> => {
-    await seedCandidate();
-    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
-
-    await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
-    await db
-      .update(projectKubeProvisioning)
-      .set({ policyGeneration: 1 })
-      .where(eq(projectKubeProvisioning.projectId, 'prj_kube'));
-
-    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
-      candidate: { deploymentId: 'dep_candidate', state: 'desired' },
-    });
+    await expect(claimDeploymentReconcileTarget()).resolves.toBeNull();
+    const [failedDeployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_candidate'));
+    expect(failedDeployment).toMatchObject({ status: 'failed' });
+    expect(failedDeployment?.failureMessage).toContain('readiness timed out');
+    await expect(db.select().from(operations).where(eq(operations.id, 'op_candidate'))).resolves.toEqual([
+      expect.objectContaining({ status: 'failed' }),
+    ]);
   });
 
   it('fails a waiting deployment when project provisioning reaches its attempt cap', async (): Promise<void> => {
@@ -904,7 +727,6 @@ describe('deployment Kubernetes transition persistence', (): void => {
       expect(claimed?.projectId).toBe('prj_kube');
       await completeProjectProvisioning({
         failureMessage: `namespace provisioning attempt ${attempt} failed`,
-        generation: claimed?.generation ?? 1,
         leaseId: claimed?.leaseId ?? '',
         projectId: 'prj_kube',
         status: 'failed',
@@ -953,14 +775,14 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('serializes terminal provisioning with preparation of future deployment work', async (): Promise<void> => {
     await seedCandidate();
-    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
     const holder: PoolClient = await pool.connect();
     let preparation: Promise<PrepareDeploymentReconcileResult> | null = null;
     try {
       await holder.query('begin');
       await holder.query(
         `update project_kube_provisioning
-         set attempts = 3, failure_message = 'terminal namespace failure', state = 'policy-failed'
+         set attempts = 3, failure_message = 'terminal namespace failure', state = 'failed'
          where project_id = 'prj_kube'`,
       );
       preparation = prepareDeploymentReconcileReference({
@@ -996,7 +818,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
   it('serializes deployment preparation with project archival', async (): Promise<void> => {
     await seedCandidate();
     await db.delete(deploymentKubeReferences).where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
-    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
     const holder: PoolClient = await pool.connect();
     let preparation: Promise<PrepareDeploymentReconcileResult> | null = null;
     try {
@@ -1034,7 +856,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
   });
 
   it('claims a requested stop and accepts the worker acknowledgement', async (): Promise<void> => {
-    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
     await requestDeploymentKubeStop('dep_kube', new Date('2026-07-12T10:00:00.000Z'));
 
     const claimed: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
@@ -1055,7 +877,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
 
   it('rejects an in-flight observation after a stop request advances the revision', async (): Promise<void> => {
     await db.update(deployments).set({ status: 'succeeded' }).where(eq(deployments.id, 'dep_kube'));
-    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
     const inFlight: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
     expect(inFlight?.candidate).toMatchObject({ deploymentId: 'dep_kube', revision: 1, state: 'active' });
 
@@ -1139,7 +961,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
         { deploymentId: 'dep_kube', state: 'stopped' },
       ]),
     );
-    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
     expect(await findNextDeploymentReconcilePair()).toMatchObject({
       candidate: { deploymentId: 'dep_candidate', state: 'active' },
     });
@@ -1326,14 +1148,41 @@ async function seedDeploymentRuntimeRows(): Promise<void> {
   });
 }
 
+async function seedConnectedResource(status: 'running' | 'stopped'): Promise<void> {
+  await db.insert(projectResources).values({
+    commandJson: '[]',
+    envJson: '[]',
+    environmentId: 'env_kube',
+    expectedClaimsJson: '[]',
+    id: 'res_database',
+    image: 'postgres:16',
+    name: 'database',
+    outputsJson: '{}',
+    portsJson: '[5432]',
+    readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
+    runtimeDefinitionHash: 'database-hash',
+    status,
+    volumesJson: '[]',
+  });
+  await db.insert(environmentResourceOutputVariableBindings).values({
+    environmentId: 'env_kube',
+    id: 'erovb_database',
+    keyName: 'DATABASE_URL',
+    outputName: 'connection-url',
+    resourceName: 'database',
+    source: 'descriptor',
+    targetServiceName: 'web',
+  });
+}
+
 async function seedCandidate(): Promise<void> {
   await db.insert(operations).values({
     id: 'op_candidate',
     status: 'running',
     summary: 'Deploy',
-    targetId: 'env_kube',
-    targetType: 'environment',
-    type: 'deployment.run',
+    targetId: 'dep_candidate',
+    targetType: 'deployment',
+    type: 'deployment.create',
   });
   await db.insert(buildArtifacts).values({
     id: 'bar_candidate',
@@ -1377,52 +1226,6 @@ async function seedCandidate(): Promise<void> {
     namespace: 'cpt-prj-kube',
     networkPolicyNames: [],
     serviceName: 'app-env-kube-svc-kube',
-  });
-}
-
-async function seedReleaseResourcePrerequisite(): Promise<void> {
-  await seedCandidate();
-  await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
-  await db.insert(projectResources).values({
-    commandJson: '[]',
-    envJson: '[]',
-    environmentId: 'env_kube',
-    expectedClaimsJson: '[]',
-    id: 'res_release_fence_database',
-    image: 'postgres:16',
-    name: 'database',
-    outputsJson: '{}',
-    portsJson: '[5432]',
-    readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
-    runtimeDefinitionHash: 'release-fence-database-hash',
-    status: 'running',
-    volumesJson: '[]',
-  });
-  await db.insert(resourceReconcileRuns).values({
-    createdAt: new Date('2026-07-12T10:00:00.000Z'),
-    expectedClaimsJson: '[]',
-    id: 'rr_release_fence_ready',
-    intentJson: '{}',
-    operationType: 'bootstrap',
-    phase: 'succeeded',
-    projectResourceId: 'res_release_fence_database',
-  });
-}
-
-async function persistCandidateReleaseIntent(): Promise<WorkerPersistProductJobResultRequest | null> {
-  return await persistProductJobIntent({
-    identityId: 'dep_candidate',
-    intent: {
-      command: ['bin/release'],
-      deploymentId: 'dep_candidate',
-      env: {},
-      image: 'registry.example/release@sha256:abc',
-      imagePullSecretId: 'pull-project',
-      jobClass: 'release',
-      namespace: 'cpt-prj-kube',
-      projectId: 'prj_kube',
-      timeoutMs: 30_000,
-    },
   });
 }
 

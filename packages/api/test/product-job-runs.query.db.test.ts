@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { Pool, PoolClient } from 'pg';
+import type { Pool } from 'pg';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import type {
@@ -12,18 +12,12 @@ import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
-  buildArtifacts,
-  deploymentRuns,
-  deployments,
   environments,
-  operations,
   organizations,
   productJobRuns,
   projectKubeProvisioning,
   projectResources,
-  projectServices,
   projects,
-  resourceReconcileRuns,
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
@@ -53,51 +47,8 @@ describe('product Job persistence', (): void => {
   beforeEach(async (): Promise<void> => {
     await db.insert(organizations).values({ id: 'org_job', name: 'Product Jobs', slug: 'product-jobs' });
     await db.insert(projects).values({ id: 'prj-job', name: 'jobs', organizationId: 'org_job' });
-    await db.insert(projectServices).values({
-      id: 'svc-job',
-      kind: 'web',
-      name: 'web',
-      path: '.',
-      projectId: 'prj-job',
-    });
     await db.insert(projectKubeProvisioning).values({ projectId: 'prj-job', state: 'succeeded' });
-    await db.insert(environments).values([
-      { id: 'env-job', name: 'production', projectId: 'prj-job' },
-      { id: 'env-release', name: 'release', projectId: 'prj-job' },
-    ]);
-    await db.insert(operations).values({
-      id: 'op-job',
-      status: 'running',
-      summary: 'Deploy',
-      targetId: 'dep_job',
-      targetType: 'deployment',
-      type: 'deployment.create',
-    });
-    await db.insert(buildArtifacts).values({
-      id: 'bar-job',
-      imageRepository: 'repo/job',
-      imageRef: 'repo/job@sha256:release',
-      projectId: 'prj-job',
-      projectServiceId: 'svc-job',
-      resolvedBuildEnvJson: '{}',
-      resolvedBuildJson: '{}',
-      sourceDigest: 'sha256:release',
-    });
-    await db.insert(deploymentRuns).values({ environmentId: 'env-release', id: 'drn-job', triggerType: 'manual' });
-    await db.insert(deployments).values({
-      buildArtifactId: 'bar-job',
-      deploymentRunId: 'drn-job',
-      environmentId: 'env-release',
-      health: 'pending',
-      id: 'dep_job',
-      operationId: 'op-job',
-      projectServiceId: 'svc-job',
-      promotionStage: 'release',
-      resolvedReadinessJson: '[]',
-      resolvedRoutesJson: '[]',
-      resolvedRunJson: '{}',
-      status: 'running',
-    });
+    await db.insert(environments).values({ id: 'env-job', name: 'production', projectId: 'prj-job' });
     await db.insert(projectResources).values({
       commandJson: '[]',
       envJson: '[]',
@@ -185,63 +136,6 @@ describe('product Job persistence', (): void => {
       intent: { deploymentId: 'dep_job' },
       persistedResult: null,
     });
-  });
-
-  it('serializes release claim with an uncommitted newer resource reconcile', async (): Promise<void> => {
-    await db.insert(projectResources).values({
-      commandJson: '[]',
-      envJson: '[]',
-      environmentId: 'env-release',
-      expectedClaimsJson: '[]',
-      id: 'res-release-db',
-      image: 'postgres:17',
-      name: 'release-postgres',
-      outputsJson: '{}',
-      portsJson: '[5432]',
-      readinessJson: 'null',
-      runtimeDefinitionHash: 'release-runtime-hash',
-      status: 'running',
-      volumesJson: '[]',
-    });
-    await db.insert(resourceReconcileRuns).values({
-      createdAt: new Date('2026-07-12T10:00:00.000Z'),
-      expectedClaimsJson: '[]',
-      id: 'rr-release-ready',
-      intentJson: '{}',
-      operationType: 'bootstrap',
-      phase: 'succeeded',
-      projectResourceId: 'res-release-db',
-    });
-    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
-    const holder: PoolClient = await pool.connect();
-    let claim: Promise<ClaimedProductJobQueryResult> | null = null;
-    try {
-      await holder.query('begin');
-      await holder.query(`select id from project_resources where id = 'res-release-db' for no key update`);
-      await holder.query(`
-        insert into resource_reconcile_runs (
-          id, project_resource_id, operation_type, phase, intent_json, expected_claims_json, created_at
-        ) values (
-          'rr-release-uncommitted', 'res-release-db', 'reconcile',
-          'reconcile-pending', '{}', '[]', '2026-07-12T11:00:00.000Z'
-        )
-      `);
-      claim = claimProductJob('release');
-      await expect(
-        Promise.race([
-          claim.then((): string => 'resolved'),
-          new Promise<string>(
-            (resolve: (value: string) => void): NodeJS.Timeout => setTimeout((): void => resolve('blocked'), 100),
-          ),
-        ]),
-      ).resolves.toBe('blocked');
-      await holder.query('commit');
-      await expect(claim).resolves.toEqual({ intent: null, persistedResult: null });
-    } finally {
-      await holder.query('rollback');
-      await Promise.allSettled(claim === null ? [] : [claim]);
-      holder.release();
-    }
   });
 
   it('persists resource-operation PVC mounts across claim and recovery', async (): Promise<void> => {

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import {
   deploymentKubeReferences,
   deploymentRunEvents,
@@ -11,11 +11,7 @@ import {
 } from '../db/schema';
 import { createId } from '../lib/tokens';
 import type { DeploymentTransaction } from './deployments.query.types';
-import {
-  projectProvisioningAttemptLimit,
-  projectProvisioningGeneration,
-  projectProvisioningTerminalFailure,
-} from './project-provisioning-policy';
+import { projectProvisioningAttemptLimit, projectProvisioningTerminalFailure } from './project-provisioning-policy';
 import type {
   ProjectProvisioningLockRow,
   TerminalProvisioningRow,
@@ -46,7 +42,6 @@ async function lockDeploymentProvisioning(
     .select({
       attempts: projectKubeProvisioning.attempts,
       failureMessage: projectKubeProvisioning.failureMessage,
-      policyGeneration: projectKubeProvisioning.policyGeneration,
       projectId: projectKubeProvisioning.projectId,
       state: projectKubeProvisioning.state,
     })
@@ -67,7 +62,6 @@ async function lockResourceProvisioning(
     .select({
       attempts: projectKubeProvisioning.attempts,
       failureMessage: projectKubeProvisioning.failureMessage,
-      policyGeneration: projectKubeProvisioning.policyGeneration,
       projectId: projectKubeProvisioning.projectId,
       state: projectKubeProvisioning.state,
     })
@@ -81,11 +75,7 @@ async function lockResourceProvisioning(
 }
 
 function terminalProvisioningRow(row: ProjectProvisioningLockRow | undefined): TerminalProvisioningRow | undefined {
-  return row?.state === 'policy-failed' &&
-    row.policyGeneration >= projectProvisioningGeneration &&
-    row.attempts >= projectProvisioningAttemptLimit
-    ? row
-    : undefined;
+  return row?.state === 'failed' && row.attempts >= projectProvisioningAttemptLimit ? row : undefined;
 }
 
 export async function propagateTerminalProvisioningRow(
@@ -109,9 +99,9 @@ export async function failTerminalProjectProvisioning(
   failureMessage: string,
   failedAt: Date,
 ): Promise<void> {
-  const operationIds: string[] = await failWaitingProjectDeployments(transaction, projectId, failureMessage, failedAt);
+  const deploymentIds: string[] = await failWaitingProjectDeployments(transaction, projectId, failureMessage, failedAt);
   const resourceRunIds: string[] = await failWaitingResourceRuns(transaction, projectId, failureMessage, failedAt);
-  await failWaitingOperations(transaction, [...operationIds, ...resourceRunIds], failureMessage, failedAt);
+  await failWaitingOperations(transaction, [...deploymentIds, ...resourceRunIds], failureMessage, failedAt);
 }
 
 async function failWaitingProjectDeployments(
@@ -126,7 +116,7 @@ async function failWaitingProjectDeployments(
     await failDeployments(transaction, deploymentIds, failureMessage, failedAt);
     await transaction.insert(deploymentRunEvents).values(provisioningFailureEvents(waiting, failureMessage, failedAt));
   }
-  return waiting.map((deployment: WaitingDeploymentRow): string => deployment.operationId);
+  return deploymentIds;
 }
 
 async function findWaitingDeployments(
@@ -134,11 +124,7 @@ async function findWaitingDeployments(
   projectId: string,
 ): Promise<WaitingDeploymentRow[]> {
   return await transaction
-    .select({
-      deploymentId: deployments.id,
-      deploymentRunId: deployments.deploymentRunId,
-      operationId: deployments.operationId,
-    })
+    .select({ deploymentId: deployments.id, deploymentRunId: deployments.deploymentRunId })
     .from(deployments)
     .innerJoin(environments, eq(environments.id, deployments.environmentId))
     .innerJoin(deploymentKubeReferences, eq(deploymentKubeReferences.deploymentId, deployments.id))
@@ -222,15 +208,15 @@ async function findWaitingResourceRunIds(transaction: DeploymentTransaction, pro
 
 async function failWaitingOperations(
   transaction: DeploymentTransaction,
-  operationIds: string[],
+  targetIds: string[],
   failureMessage: string,
   failedAt: Date,
 ): Promise<void> {
-  if (operationIds.length === 0) {
+  if (targetIds.length === 0) {
     return;
   }
   await transaction
     .update(operations)
     .set({ completedAt: failedAt, status: 'failed', summary: failureMessage })
-    .where(inArray(operations.id, operationIds));
+    .where(or(inArray(operations.id, targetIds), inArray(operations.targetId, targetIds)));
 }

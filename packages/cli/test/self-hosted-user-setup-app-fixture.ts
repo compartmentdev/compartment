@@ -117,6 +117,12 @@ resources:
 }
 
 function renderProbeServiceDescriptor(name: string, options: ProbeServiceDescriptorOptions): string {
+  const release: string =
+    options.includeResourceConnection === true
+      ? `    release:
+      command: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE TABLE IF NOT EXISTS compartment_release_probe (id integer PRIMARY KEY)"
+`
+      : '';
   const resourceConnections: string =
     options.includeResourceConnection === true
       ? `    connections:
@@ -132,7 +138,7 @@ function renderProbeServiceDescriptor(name: string, options: ProbeServiceDescrip
       strategy: dockerfile
       env:
         - E2E_BUILD_MESSAGE
-    readiness:
+${release}    readiness:
       type: http
       path: /healthz
       timeoutMs: 60000

@@ -98,11 +98,7 @@ export type ProductLogStoreQuotaTable = PgTableOf<'product_log_store_quota', Pro
 
 interface ProjectKubeProvisioningColumnBuilders {
   projectId: PrimaryTextBuilder<'project_id'>;
-  policyGeneration: DefaultIntegerBuilder<'policy_generation'>;
-  state: DefaultEnumTextBuilder<
-    'state',
-    ['pending', 'running', 'succeeded', 'failed', 'policy-running', 'policy-failed']
-  >;
+  state: DefaultEnumTextBuilder<'state', ['pending', 'running', 'succeeded', 'failed']>;
   leaseId: OptionalTextBuilder<'lease_id'>;
   leaseExpiresAt: OptionalTimestampBuilder<'lease_expires_at'>;
   failureMessage: OptionalTextBuilder<'failure_message'>;

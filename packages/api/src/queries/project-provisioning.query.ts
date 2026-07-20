@@ -5,7 +5,6 @@ import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import {
   projectProvisioningAttemptLimit,
-  projectProvisioningGeneration,
   projectProvisioningLeaseDurationMs,
   projectProvisioningRetryDelayMs,
   projectProvisioningTerminalFailure,
@@ -48,28 +47,14 @@ async function selectClaimableRow(
 }
 
 function provisioningClaimableCondition(now: Date): SQL | undefined {
-  const retryBefore: Date = new Date(now.getTime() - projectProvisioningRetryDelayMs);
   return or(
+    eq(projectKubeProvisioning.state, 'pending'),
     and(
-      lt(projectKubeProvisioning.policyGeneration, projectProvisioningGeneration),
-      or(
-        eq(projectKubeProvisioning.state, 'pending'),
-        eq(projectKubeProvisioning.state, 'succeeded'),
-        and(eq(projectKubeProvisioning.state, 'failed'), lt(projectKubeProvisioning.updatedAt, retryBefore)),
-        and(eq(projectKubeProvisioning.state, 'running'), lt(projectKubeProvisioning.leaseExpiresAt, now)),
-      ),
+      eq(projectKubeProvisioning.state, 'failed'),
+      lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
+      lt(projectKubeProvisioning.updatedAt, new Date(now.getTime() - projectProvisioningRetryDelayMs)),
     ),
-    and(
-      eq(projectKubeProvisioning.policyGeneration, projectProvisioningGeneration),
-      or(
-        and(
-          eq(projectKubeProvisioning.state, 'policy-failed'),
-          lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
-          lt(projectKubeProvisioning.updatedAt, retryBefore),
-        ),
-        and(eq(projectKubeProvisioning.state, 'policy-running'), lt(projectKubeProvisioning.leaseExpiresAt, now)),
-      ),
-    ),
+    and(eq(projectKubeProvisioning.state, 'running'), lt(projectKubeProvisioning.leaseExpiresAt, now)),
   );
 }
 
@@ -91,32 +76,18 @@ async function leaseProjectExecution(
   await transaction
     .update(projectKubeProvisioning)
     .set({
-      attempts: nextProvisioningAttempt(row),
+      attempts: row.state === 'running' ? row.attempts : sql`${projectKubeProvisioning.attempts} + 1`,
       failureMessage: null,
       leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDurationMs),
       leaseId,
-      policyGeneration: projectProvisioningGeneration,
-      state: 'policy-running',
+      state: 'running',
       updatedAt: now,
     })
     .where(eq(projectKubeProvisioning.projectId, row.projectId));
-  return { generation: projectProvisioningGeneration, leaseId, namespaceId: row.projectId, projectId: row.projectId };
-}
-
-function nextProvisioningAttempt(row: typeof projectKubeProvisioning.$inferSelect): SQL {
-  if (row.state === 'policy-running') {
-    return sql`${projectKubeProvisioning.attempts}`;
-  }
-  if (row.state === 'policy-failed') {
-    return sql`${projectKubeProvisioning.attempts} + 1`;
-  }
-  return sql`1`;
+  return { leaseId, namespaceId: row.projectId, projectId: row.projectId };
 }
 
 export async function completeProjectProvisioning(input: CompleteProjectProvisioningInput): Promise<boolean> {
-  if (input.generation !== projectProvisioningGeneration) {
-    return false;
-  }
   return await getApiDatabase().transaction(
     async (transaction: DeploymentTransaction): Promise<boolean> =>
       await completeProjectProvisioningWithTransaction(transaction, input),
@@ -160,8 +131,7 @@ async function renewProjectProvisioningLease(
       and(
         eq(projectKubeProvisioning.projectId, input.projectId),
         eq(projectKubeProvisioning.leaseId, input.leaseId),
-        eq(projectKubeProvisioning.state, 'policy-running'),
-        eq(projectKubeProvisioning.policyGeneration, input.generation),
+        eq(projectKubeProvisioning.state, 'running'),
         gt(projectKubeProvisioning.leaseExpiresAt, now),
       ),
     )
@@ -179,15 +149,14 @@ async function persistProjectProvisioningCompletion(
       failureMessage: input.failureMessage,
       leaseExpiresAt: null,
       leaseId: null,
-      state: input.status === 'succeeded' ? 'succeeded' : 'policy-failed',
+      state: input.status,
       updatedAt: new Date(),
     })
     .where(
       and(
         eq(projectKubeProvisioning.projectId, input.projectId),
         eq(projectKubeProvisioning.leaseId, input.leaseId),
-        eq(projectKubeProvisioning.state, 'policy-running'),
-        eq(projectKubeProvisioning.policyGeneration, input.generation),
+        eq(projectKubeProvisioning.state, 'running'),
       ),
     )
     .returning({ attempts: projectKubeProvisioning.attempts, projectId: projectKubeProvisioning.projectId });

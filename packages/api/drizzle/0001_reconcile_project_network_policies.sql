@@ -1,1 +1,0 @@
-ALTER TABLE "project_kube_provisioning" ADD COLUMN "policy_generation" integer DEFAULT 0 NOT NULL;

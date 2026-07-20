@@ -183,10 +183,8 @@ cleanup succeeds. An expired in-flight lease is reclaimed without consuming a
 new failed attempt; only acknowledged provisioning failures count toward the
 three-attempt terminal limit. A third failed completion fails waiting deployment
 operations and resource reconcile runs instead of leaving them unclaimable.
-Existing project controller RoleBindings remain unchanged. A persisted policy
-generation makes new and existing projects converge on the current projection;
-legacy-unknown in-flight states fence old provisioners during rollout. New
-projects and explicit retries use the target-bound bootstrap identity.
+Existing project controller RoleBindings remain unchanged; new projects and
+explicit retries use the target-bound bootstrap identity.
 
 ## Migration and deletion
 

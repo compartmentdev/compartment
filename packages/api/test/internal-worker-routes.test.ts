@@ -172,7 +172,6 @@ describe('internal worker routes', (): void => {
         },
         method: 'POST',
         payload: {
-          generation: 1,
           leaseId: 'kpl_123',
           projectId: 'prj_123',
           status: 'succeeded',
@@ -184,31 +183,10 @@ describe('internal worker routes', (): void => {
       expect(response.statusCode).toBe(200);
       expect(workerCompleteProjectProvisioningResponseSchema.parse(response.json())).toEqual({ applied: true });
       expect(mocks.acknowledgeProjectProvisioning).toHaveBeenCalledWith({
-        generation: 1,
         leaseId: 'kpl_123',
         projectId: 'prj_123',
         status: 'succeeded',
       });
-    });
-  });
-
-  it('rejects legacy project provisioning completions without a generation', async (): Promise<void> => {
-    applyApiRouteTestEnv();
-    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
-      const response: LightMyRequestResponse = await injectApiRoute(app, {
-        headers: {
-          accept: 'application/json',
-          authorization: 'Bearer test-runtime-control-token',
-          'content-type': 'application/json',
-        },
-        method: 'POST',
-        payload: { leaseId: 'kpl_legacy', projectId: 'prj_123', status: 'succeeded' },
-        timeoutMs: 1000,
-        url: workerCompleteProjectProvisioningPathname,
-      });
-
-      expect(response.statusCode).toBe(400);
-      expect(mocks.acknowledgeProjectProvisioning).not.toHaveBeenCalled();
     });
   });
 

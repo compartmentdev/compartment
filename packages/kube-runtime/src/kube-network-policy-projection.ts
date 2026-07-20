@@ -1,4 +1,5 @@
 import { kubeNetworkPolicyName } from './kube-naming';
+import type { KubeNetworkPolicyKind } from './kube-naming.types';
 import type { ProjectNetworkPolicyProjection } from './kube-network-policy-projection.types';
 import type { KubeManifest } from './kube-runtime.types';
 
@@ -138,7 +139,7 @@ function networkPolicyManifest(
   namespace: string,
   namespaceId: string,
   projectId: string,
-  policy: 'application-egress' | 'application-ingress' | 'default-deny' | 'product-job-egress' | 'resource-ingress',
+  policy: KubeNetworkPolicyKind,
   spec: object,
 ): KubeManifest {
   return {

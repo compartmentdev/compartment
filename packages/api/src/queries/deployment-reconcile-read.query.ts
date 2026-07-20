@@ -1,10 +1,11 @@
-import { and, asc, eq, gte, lte, ne, not, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, lte, ne, not, notExists, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { BuildAliasTable, SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import {
   buildArtifacts,
   deploymentKubeReferences,
   deployments,
+  environmentResourceOutputVariableBindings,
   environments,
   organizations,
   projectServices,
@@ -15,7 +16,6 @@ import {
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type { DeploymentReconcilePair, DeploymentReconcileRow } from './deployment-reconcile.query.types';
-import { projectProvisioningGeneration } from './project-provisioning-policy';
 import { latestResourceReconcileRunHasPhase } from './latest-resource-reconcile-run.query';
 
 const replacementDeployments: BuildAliasTable<typeof deployments, 'replacement_deployments'> = alias(
@@ -25,10 +25,6 @@ const replacementDeployments: BuildAliasTable<typeof deployments, 'replacement_d
 const replacementReferences: BuildAliasTable<typeof deploymentKubeReferences, 'replacement_references'> = alias(
   deploymentKubeReferences,
   'replacement_references',
-);
-const readinessResources: BuildAliasTable<typeof projectResources, 'readiness_resources'> = alias(
-  projectResources,
-  'readiness_resources',
 );
 
 interface ReconcileSelection extends SelectedFields {
@@ -133,7 +129,6 @@ function candidateFilter(tx: DeploymentTransaction): SQL | undefined {
       eq(deploymentKubeReferences.state, 'stopping'),
       and(
         eq(projectKubeProvisioning.state, 'succeeded'),
-        gte(projectKubeProvisioning.policyGeneration, projectProvisioningGeneration),
         or(
           desiredCandidateFilter(tx),
           and(
@@ -156,26 +151,34 @@ function desiredCandidateFilter(tx: DeploymentTransaction): SQL | undefined {
   return and(
     eq(deploymentKubeReferences.state, 'desired'),
     eq(deployments.status, 'running'),
-    allEnvironmentResourcesRunning(tx),
+    noPendingReleaseResources(tx),
   );
 }
 
-function allEnvironmentResourcesRunning(tx: DeploymentTransaction): SQL {
+function noPendingReleaseResources(tx: DeploymentTransaction): SQL {
   return notExists(
     tx
-      .select({ id: readinessResources.id })
-      .from(readinessResources)
+      .select({ id: projectResources.id })
+      .from(projectResources)
+      .innerJoin(
+        environmentResourceOutputVariableBindings,
+        and(
+          eq(environmentResourceOutputVariableBindings.environmentId, projectResources.environmentId),
+          eq(environmentResourceOutputVariableBindings.resourceName, projectResources.name),
+        ),
+      )
       .where(
         and(
-          eq(readinessResources.environmentId, environments.id),
-          or(ne(readinessResources.status, 'running'), latestResourceRunNotSucceeded()),
+          eq(projectResources.environmentId, environments.id),
+          eq(environmentResourceOutputVariableBindings.source, 'descriptor'),
+          eq(environmentResourceOutputVariableBindings.targetServiceName, projectServices.name),
+          or(
+            ne(projectResources.status, 'running'),
+            not(latestResourceReconcileRunHasPhase(projectResources.id, 'succeeded')),
+          ),
         ),
       ),
   );
-}
-
-function latestResourceRunNotSucceeded(): SQL {
-  return not(latestResourceReconcileRunHasPhase(readinessResources.id, 'succeeded'));
 }
 
 function noRunnableReplacement(tx: DeploymentTransaction): SQL {
