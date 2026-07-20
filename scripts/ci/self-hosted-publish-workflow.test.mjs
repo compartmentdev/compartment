@@ -52,14 +52,16 @@ describe('self-hosted publish workflows', () => {
     });
     expect(action.runs.using).toBe('composite');
     expect(cosignStep.with['cosign-release']).toBe('v2.6.1');
-    expect(pushStep.run).toContain('git/ref/heads/${CHANNEL}');
-    expect(pushStep.run).toContain('already exists at ${existing_digest} and remains unchanged');
+    expect(pushStep.run).toContain('Immutable registries disagree for ${image_name}');
+    expect(pushStep.run).toContain('canonical_ref="$ghcr_ref"');
     expect(pushStep.run).toContain('Failed to determine whether immutable image');
     expect(pushStep.run).toContain('docker.io/compartmentdev');
     expect(pushStep.run).toContain('ghcr.io/compartmentdev');
     expect(secureStep.run).toContain('--repository-prefix docker.io/compartmentdev');
     expect(secureStep.run).toContain('--repository-prefix ghcr.io/compartmentdev');
     expect(action.runs.steps.indexOf(mutableStep)).toBeGreaterThan(action.runs.steps.indexOf(secureStep));
+    expect(mutableStep.run).toContain('git/ref/heads/${CHANNEL}');
+    expect(mutableStep.run).toContain('current_channel_sha" != "$PUBLISH_SHA');
     expect(mutableStep.run).toContain('docker.io/compartmentdev/compartment-${service}:${CHANNEL}');
     expect(mutableStep.run).toContain('ghcr.io/compartmentdev/compartment-${service}:${CHANNEL}');
   });

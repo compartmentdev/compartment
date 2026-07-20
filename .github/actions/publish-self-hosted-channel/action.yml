@@ -81,17 +81,13 @@ runs:
     - name: Push immutable self-hosted images
       shell: bash
       env:
-        CHANNEL: ${{ inputs.channel }}
         COMPARTMENT_BUILDKIT_VERSION: v0.30.0
         COMPARTMENT_CADDY_BUILDER_IMAGE: public.ecr.aws/docker/library/caddy:2.11.4-builder
         COMPARTMENT_CADDY_RUNTIME_IMAGE: public.ecr.aws/docker/library/alpine:3.22
         COMPARTMENT_GO_BUILD_IMAGE: public.ecr.aws/docker/library/golang:1.26.5-bookworm
         COMPARTMENT_NODE_BUILD_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm
         COMPARTMENT_NODE_RUNTIME_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm-slim
-        GH_TOKEN: ${{ github.token }}
-        MUTABLE_TAG: ${{ inputs.channel }}
         PRIMARY_TAG: sha-${{ inputs.publish-sha }}
-        PUBLISH_SHA: ${{ inputs.publish-sha }}
         STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.publish-sha }}
       run: |
         common_args=(--push --provenance=mode=max --sbom=true)
@@ -108,9 +104,6 @@ runs:
           --build-arg "COMPARTMENT_CADDY_BUILDER_IMAGE=${COMPARTMENT_CADDY_BUILDER_IMAGE}"
           --build-arg "COMPARTMENT_CADDY_RUNTIME_IMAGE=${COMPARTMENT_CADDY_RUNTIME_IMAGE}"
         )
-        mutable_tags_file="./.compartment/release-assets/published-self-hosted-mutable-tags.txt"
-        : > "$mutable_tags_file"
-
         push_dockerhub_image() {
           local image_name="$1"
           local dockerfile="$2"
@@ -127,43 +120,87 @@ runs:
             "$image_ref"
         }
 
-        promote_immutable_image() {
-          local target_ref="$1"
-          local source_ref="$2"
-          local source_digest
-          local existing_digest
-          local inspect_error_file="./.compartment/release-assets/immutable-tag-inspect-error.txt"
+        read_optional_image_digest() {
+          local image_ref="$1"
+          local inspect_error_file="$2"
+          local digest
 
-          source_digest="$(read_image_digest "$source_ref")"
-          if existing_digest="$(read_image_digest "$target_ref" 2> "$inspect_error_file")"; then
-            echo "Immutable image ${target_ref} already exists at ${existing_digest} and remains unchanged."
+          if digest="$(read_image_digest "$image_ref" 2> "$inspect_error_file")"; then
+            printf '%s\n' "$digest"
             return 0
           fi
-          if ! grep -Eiq 'manifest unknown|not found' "$inspect_error_file"; then
-            cat "$inspect_error_file" >&2
-            echo "Failed to determine whether immutable image ${target_ref} exists." >&2
-            return 1
+          if grep -Eiq 'manifest unknown|not found' "$inspect_error_file"; then
+            return 2
           fi
 
-          docker buildx imagetools create --tag "$target_ref" "$source_ref"
-          existing_digest="$(read_image_digest "$target_ref")"
-          if [ "$existing_digest" != "$source_digest" ]; then
-            echo "Immutable image ${target_ref} resolved to ${existing_digest} after publishing candidate ${source_digest}." >&2
-            return 1
-          fi
+          cat "$inspect_error_file" >&2
+          echo "Failed to determine whether immutable image ${image_ref} exists." >&2
+          return 1
         }
 
-        read_current_channel_sha() {
-          local current_channel_sha
-          if ! current_channel_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${CHANNEL}" --jq '.object.sha')"; then
-            echo "Failed to read current ${CHANNEL} ref." >&2
+        reconcile_immutable_image_pair() {
+          local image_name="$1"
+          local staging_ref="docker.io/compartmentdev/${image_name}:${STAGING_TAG}"
+          local dockerhub_ref="docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
+          local ghcr_ref="ghcr.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
+          local dockerhub_error_file="./.compartment/release-assets/${image_name}-dockerhub-inspect-error.txt"
+          local ghcr_error_file="./.compartment/release-assets/${image_name}-ghcr-inspect-error.txt"
+          local dockerhub_digest=""
+          local ghcr_digest=""
+          local canonical_digest
+          local canonical_ref
+          local status
+
+          if dockerhub_digest="$(read_optional_image_digest "$dockerhub_ref" "$dockerhub_error_file")"; then
+            :
+          else
+            status=$?
+            [ "$status" -eq 2 ] || return "$status"
+          fi
+          if ghcr_digest="$(read_optional_image_digest "$ghcr_ref" "$ghcr_error_file")"; then
+            :
+          else
+            status=$?
+            [ "$status" -eq 2 ] || return "$status"
+          fi
+
+          if [ -n "$dockerhub_digest" ] && [ -n "$ghcr_digest" ]; then
+            if [ "$dockerhub_digest" != "$ghcr_digest" ]; then
+              echo "Immutable registries disagree for ${image_name}: Docker Hub has ${dockerhub_digest}, GHCR has ${ghcr_digest}." >&2
+              return 1
+            fi
+            canonical_digest="$dockerhub_digest"
+            canonical_ref="$dockerhub_ref"
+          elif [ -n "$dockerhub_digest" ]; then
+            canonical_digest="$dockerhub_digest"
+            canonical_ref="$dockerhub_ref"
+          elif [ -n "$ghcr_digest" ]; then
+            canonical_digest="$ghcr_digest"
+            canonical_ref="$ghcr_ref"
+          else
+            canonical_digest="$(read_image_digest "$staging_ref")"
+            canonical_ref="$staging_ref"
+          fi
+
+          if [ -z "$dockerhub_digest" ]; then
+            docker buildx imagetools create --tag "$dockerhub_ref" "$canonical_ref"
+            dockerhub_digest="$(read_image_digest "$dockerhub_ref")"
+          fi
+          if [ "$dockerhub_digest" != "$canonical_digest" ]; then
+            echo "Immutable image ${dockerhub_ref} resolved to ${dockerhub_digest}; expected ${canonical_digest}." >&2
             return 1
           fi
-          if [ -z "$current_channel_sha" ]; then
-            echo "Expected current ${CHANNEL} ref SHA." >&2
+
+          if [ -z "$ghcr_digest" ]; then
+            docker buildx imagetools create --tag "$ghcr_ref" "$dockerhub_ref"
+            ghcr_digest="$(read_image_digest "$ghcr_ref")"
+          fi
+          if [ "$ghcr_digest" != "$canonical_digest" ]; then
+            echo "Immutable image ${ghcr_ref} resolved to ${ghcr_digest}; expected ${canonical_digest}." >&2
             return 1
           fi
-          printf '%s\n' "$current_channel_sha"
+
+          echo "Immutable image pair for ${image_name} is pinned at ${canonical_digest}."
         }
 
         push_dockerhub_image compartment-api packages/api/Dockerfile.self-hosted "${node_args[@]}"
@@ -180,19 +217,8 @@ runs:
           "$STAGING_TAG"
 
         for service in "${self_hosted_services[@]}"; do
-          image_name="compartment-${service}"
-          promote_immutable_image \
-            "docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}" \
-            "docker.io/compartmentdev/${image_name}:${STAGING_TAG}"
-          promote_immutable_image \
-            "ghcr.io/compartmentdev/${image_name}:${PRIMARY_TAG}" \
-            "docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
+          reconcile_immutable_image_pair "compartment-${service}"
         done
-
-        current_channel_sha="$(read_current_channel_sha)" || exit 1
-        if [ "$current_channel_sha" = "$PUBLISH_SHA" ]; then
-          printf '%s\n' "$MUTABLE_TAG" >> "$mutable_tags_file"
-        fi
 
     - name: Secure self-hosted image digests
       shell: bash
@@ -214,10 +240,18 @@ runs:
       shell: bash
       env:
         CHANNEL: ${{ inputs.channel }}
+        GH_TOKEN: ${{ github.token }}
         PUBLISH_SHA: ${{ inputs.publish-sha }}
       run: |
-        mutable_tags_file="./.compartment/release-assets/published-self-hosted-mutable-tags.txt"
-        if ! grep -Fxq "$CHANNEL" "$mutable_tags_file"; then
+        if ! current_channel_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${CHANNEL}" --jq '.object.sha')"; then
+          echo "Failed to read current ${CHANNEL} ref." >&2
+          exit 1
+        fi
+        if [ -z "$current_channel_sha" ]; then
+          echo "Expected current ${CHANNEL} ref SHA." >&2
+          exit 1
+        fi
+        if [ "$current_channel_sha" != "$PUBLISH_SHA" ]; then
           echo "Skipping mutable ${CHANNEL} promotion because ${PUBLISH_SHA} is no longer the branch head."
           exit 0
         fi
