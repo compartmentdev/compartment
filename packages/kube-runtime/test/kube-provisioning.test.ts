@@ -66,6 +66,7 @@ describe('project namespace bootstrap provisioning', (): void => {
       'NetworkPolicy',
       'NetworkPolicy',
       'NetworkPolicy',
+      'NetworkPolicy',
       'RoleBinding',
     ]);
 
@@ -146,7 +147,42 @@ describe('project namespace bootstrap provisioning', (): void => {
               ],
             },
           ],
-          podSelector: { matchLabels: { 'compartment.dev/project-id': 'prj-01jz' } },
+          podSelector: { matchLabels: { app: 'application' } },
+        },
+      },
+      {
+        spec: {
+          egress: [
+            {
+              ports: [{ port: 5432, protocol: 'TCP' }],
+              to: [{ podSelector: { matchLabels: { app: 'resource' } } }],
+            },
+            {
+              ports: [
+                { port: 53, protocol: 'UDP' },
+                { port: 53, protocol: 'TCP' },
+              ],
+              to: [
+                {
+                  namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'kube-system' } },
+                  podSelector: { matchLabels: { 'k8s-app': 'kube-dns' } },
+                },
+              ],
+            },
+            {
+              to: [
+                {
+                  ipBlock: {
+                    cidr: '0.0.0.0/0',
+                    except: [metadataServiceCidr, linkLocalCidr, podCidr, serviceCidr],
+                  },
+                },
+              ],
+            },
+          ],
+          podSelector: {
+            matchExpressions: [{ key: 'compartment.dev/job-class', operator: 'Exists' }],
+          },
         },
       },
       {
@@ -168,7 +204,14 @@ describe('project namespace bootstrap provisioning', (): void => {
         spec: {
           ingress: [
             {
-              from: [{ podSelector: { matchLabels: { 'compartment.dev/project-id': 'prj-01jz' } } }],
+              from: [
+                { podSelector: { matchLabels: { app: 'application' } } },
+                {
+                  podSelector: {
+                    matchExpressions: [{ key: 'compartment.dev/job-class', operator: 'Exists' }],
+                  },
+                },
+              ],
               ports: [{ port: 5432, protocol: 'TCP' }],
             },
           ],

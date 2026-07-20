@@ -1048,10 +1048,20 @@ describe('resource backup queries', (): void => {
       updatedAt: new Date(),
     });
     const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
-    expect(target).toMatchObject({ namespaceId: project.id, projectId: project.id });
+    expect(target).toMatchObject({ generation: 1, namespaceId: project.id, projectId: project.id });
     await expect(
       completeProjectProvisioning({
         failureMessage: null,
+        generation: 2,
+        leaseId: target!.leaseId,
+        projectId: project.id,
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      completeProjectProvisioning({
+        failureMessage: null,
+        generation: 1,
         leaseId: 'stale-lease',
         projectId: project.id,
         status: 'succeeded',
@@ -1060,6 +1070,7 @@ describe('resource backup queries', (): void => {
     await expect(
       completeProjectProvisioning({
         failureMessage: null,
+        generation: target!.generation,
         leaseId: target!.leaseId,
         projectId: project.id,
         status: 'succeeded',
@@ -1089,6 +1100,7 @@ describe('resource backup queries', (): void => {
       await expect(
         completeProjectProvisioning({
           failureMessage: `provisioning attempt ${attempt} failed`,
+          generation: claimed?.generation ?? 1,
           leaseId: claimed?.leaseId ?? '',
           projectId: 'prj_internal_tools',
           status: 'failed',
@@ -1209,6 +1221,7 @@ describe('resource backup queries', (): void => {
     await expect(
       completeProjectProvisioning({
         failureMessage: null,
+        generation: 1,
         leaseId: 'expired-cleanup-lease',
         projectId: 'prj_internal_tools',
         status: 'running',
@@ -1219,6 +1232,7 @@ describe('resource backup queries', (): void => {
     await expect(
       completeProjectProvisioning({
         failureMessage: null,
+        generation: reclaimed?.generation ?? 1,
         leaseId: reclaimed?.leaseId ?? '',
         projectId: 'prj_internal_tools',
         status: 'running',

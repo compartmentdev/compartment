@@ -31,7 +31,7 @@ run_matrix() {
   local phase="$1" isolated="$2"
   record "${phase}" project-to-project "${isolated}" "from_client 'wget -q -T 2 -O /dev/null http://foreign.ns-b.svc:8080'"
   record "${phase}" project-to-platform "${isolated}" "from_client 'wget -q -T 2 -O /dev/null http://platform.platform-ns.svc:8080'"
-  record "${phase}" application-to-resource allow "from_client 'wget -q -T 2 -O /dev/null http://resource.ns-a.svc:8080'"
+  record "${phase}" release-to-resource allow "from_client 'wget -q -T 2 -O /dev/null http://resource.ns-a.svc:8080'"
   record "${phase}" caddy-to-application allow "from_caddy 'wget -q -T 2 -O /dev/null http://app.ns-a.svc:8080'"
   record "${phase}" dns allow "from_client 'nslookup kubernetes.default.svc.cluster.local'"
 }

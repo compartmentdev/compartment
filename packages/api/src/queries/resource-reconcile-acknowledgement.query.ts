@@ -11,6 +11,7 @@ import type {
   ResourceReconcileProjectLockRow,
   ResourceReconcileRunLockRow,
 } from './resource-reconcile-runs.query.types';
+import { failDesiredDeploymentsWaitingForResource } from './deployment-resource-readiness-failure.query';
 
 export async function acknowledgeResourceReconcileRun(input: AcknowledgeResourceReconcileRunInput): Promise<void> {
   await getApiDatabase().transaction(
@@ -34,6 +35,14 @@ async function acknowledgeWithTransaction(
   }
   await persistResourceReconcileAcknowledgement(tx, input);
   await persistCompletedResourceState(tx, run, input, project.archivedAt !== null);
+  if (input.status === 'failed') {
+    await failDesiredDeploymentsWaitingForResource(
+      tx,
+      resourceId,
+      `Resource ${resourceId} reconcile failed: ${input.failureMessage ?? 'unknown failure'}`,
+      new Date(),
+    );
+  }
 }
 
 async function lockAcknowledgedRun(

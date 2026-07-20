@@ -54,6 +54,7 @@ describe('project provisioning execution', (): void => {
     );
 
     expect(completion).toEqual({
+      generation: 1,
       leaseId: 'lease_1',
       projectId: 'prj_1',
       status: 'succeeded',
@@ -132,6 +133,7 @@ describe('project provisioning execution', (): void => {
     await expect(
       executeProjectProvisioning(requester(true, true), runtimeStub(apply, runJob), config(), target, loggerStub()),
     ).resolves.toEqual({
+      generation: 1,
       leaseId: 'lease_1',
       message: 'authority apply failed',
       projectId: 'prj_1',
@@ -153,6 +155,7 @@ describe('project provisioning execution', (): void => {
 });
 
 const target: ProjectProvisioningTarget = {
+  generation: 1,
   leaseId: 'lease_1',
   namespaceId: 'prj_1',
   projectId: 'prj_1',

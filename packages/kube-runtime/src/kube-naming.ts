@@ -30,7 +30,7 @@ export function kubeResourceVolumeName(resourceId: string, volumeHandle: string)
 
 export function kubeNetworkPolicyName(
   namespaceId: string,
-  policy: 'application-egress' | 'application-ingress' | 'default-deny' | 'resource-ingress',
+  policy: 'application-egress' | 'application-ingress' | 'default-deny' | 'product-job-egress' | 'resource-ingress',
 ): string {
   return immutableKubeName(`np-${policy}`, namespaceId);
 }

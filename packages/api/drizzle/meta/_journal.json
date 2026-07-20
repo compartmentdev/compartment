@@ -8,6 +8,13 @@
       "when": 1783948017382,
       "tag": "0000_initial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784560782033,
+      "tag": "0001_reconcile_project_network_policies",
+      "breakpoints": true
     }
   ]
 }

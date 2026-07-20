@@ -5,19 +5,20 @@ describe('project provisioning contracts', (): void => {
   it('accepts one leased project target or an empty claim', (): void => {
     expect(
       workerClaimProjectProvisioningResponseSchema.safeParse({
-        target: { leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
+        target: { generation: 1, leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
       }).success,
     ).toBe(true);
     expect(workerClaimProjectProvisioningResponseSchema.safeParse({ target: null }).success).toBe(true);
     expect(
       workerClaimProjectProvisioningResponseSchema.safeParse({
-        target: { action: 'provision', leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
+        target: { action: 'provision', generation: 1, leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
       }).success,
     ).toBe(false);
   });
 
   it('keeps cleanup inside the ordinary provisioning lease', (): void => {
-    const base: { leaseId: string; namespaceId: string; projectId: string } = {
+    const base: { generation: number; leaseId: string; namespaceId: string; projectId: string } = {
+      generation: 1,
       leaseId: 'kpl_1',
       namespaceId: 'prj_1',
       projectId: 'prj_1',
@@ -28,6 +29,7 @@ describe('project provisioning contracts', (): void => {
     expect(
       workerCompleteProjectProvisioningRequestSchema.safeParse({
         action: 'cleanup',
+        generation: 1,
         leaseId: 'kpl_1',
         projectId: 'prj_1',
         status: 'succeeded',
@@ -37,6 +39,7 @@ describe('project provisioning contracts', (): void => {
       workerCompleteProjectProvisioningRequestSchema.safeParse({
         action: 'provision',
         cleanupRequired: true,
+        generation: 1,
         leaseId: 'kpl_1',
         projectId: 'prj_1',
         status: 'succeeded',
@@ -45,7 +48,11 @@ describe('project provisioning contracts', (): void => {
   });
 
   it('requires a message only for failed completion', (): void => {
-    const base: { leaseId: string; projectId: string } = { leaseId: 'kpl_1', projectId: 'prj_1' };
+    const base: { generation: number; leaseId: string; projectId: string } = {
+      generation: 1,
+      leaseId: 'kpl_1',
+      projectId: 'prj_1',
+    };
     expect(
       workerCompleteProjectProvisioningRequestSchema.safeParse({
         ...base,

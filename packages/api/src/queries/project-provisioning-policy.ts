@@ -1,4 +1,5 @@
 export const projectProvisioningAttemptLimit: number = 3;
+export const projectProvisioningGeneration: number = 1;
 export const projectProvisioningLeaseDurationMs: number = 7 * 60_000;
 export const projectProvisioningRetryDelayMs: number = 10_000;
 

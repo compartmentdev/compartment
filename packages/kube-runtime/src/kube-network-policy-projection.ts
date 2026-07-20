@@ -16,6 +16,7 @@ export function projectNetworkPolicyManifests(
   return [
     defaultDenyManifest(namespace, namespaceId, projectId),
     applicationEgressManifest(namespace, namespaceId, projectId, projection),
+    productJobEgressManifest(namespace, namespaceId, projectId, projection),
     applicationIngressManifest(namespace, namespaceId, projectId, projection),
     resourceIngressManifest(namespace, namespaceId, projectId, projection),
   ];
@@ -36,7 +37,20 @@ function applicationEgressManifest(
 ): KubeManifest {
   return networkPolicyManifest(namespace, namespaceId, projectId, 'application-egress', {
     egress: applicationEgressRules(projection),
-    podSelector: { matchLabels: { 'compartment.dev/project-id': projectId } },
+    podSelector: { matchLabels: projection.applicationPodLabels },
+    policyTypes: ['Egress'],
+  });
+}
+
+function productJobEgressManifest(
+  namespace: string,
+  namespaceId: string,
+  projectId: string,
+  projection: ProjectNetworkPolicyProjection,
+): KubeManifest {
+  return networkPolicyManifest(namespace, namespaceId, projectId, 'product-job-egress', {
+    egress: applicationEgressRules(projection),
+    podSelector: { matchExpressions: [productJobSelectorExpression()] },
     policyTypes: ['Egress'],
   });
 }
@@ -104,7 +118,10 @@ function resourceIngressManifest(
   return networkPolicyManifest(namespace, namespaceId, projectId, 'resource-ingress', {
     ingress: [
       {
-        from: [{ podSelector: { matchLabels: { 'compartment.dev/project-id': projectId } } }],
+        from: [
+          { podSelector: { matchLabels: projection.applicationPodLabels } },
+          { podSelector: { matchExpressions: [productJobSelectorExpression()] } },
+        ],
         ports: [{ port: projection.resourcePort, protocol: 'TCP' }],
       },
     ],
@@ -113,11 +130,15 @@ function resourceIngressManifest(
   });
 }
 
+function productJobSelectorExpression(): object {
+  return { key: 'compartment.dev/job-class', operator: 'Exists' };
+}
+
 function networkPolicyManifest(
   namespace: string,
   namespaceId: string,
   projectId: string,
-  policy: 'application-egress' | 'application-ingress' | 'default-deny' | 'resource-ingress',
+  policy: 'application-egress' | 'application-ingress' | 'default-deny' | 'product-job-egress' | 'resource-ingress',
   spec: object,
 ): KubeManifest {
   return {

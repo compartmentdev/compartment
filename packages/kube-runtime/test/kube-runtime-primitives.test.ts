@@ -463,7 +463,7 @@ describe('KubeRuntime Job primitive', (): void => {
     );
     await expect(
       runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-reordered'))),
-    ).resolves.toHaveLength(8);
+    ).resolves.toHaveLength(9);
   });
 
   it('captures every resource-operation attempt and selects the successful terminal Pod', async (): Promise<void> => {

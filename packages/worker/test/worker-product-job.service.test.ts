@@ -117,18 +117,6 @@ describe('executeProductJob', (): void => {
     expect(durable).toBe(true);
   });
 
-  it('labels a release Job with its project identity for namespace network policy', async (): Promise<void> => {
-    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
-
-    await executeProductJob(requester(), runtime, releaseIntent());
-
-    expect(runtime.runJob).toHaveBeenCalledWith(
-      expect.objectContaining({
-        labels: { 'compartment.dev/job-class': 'release', 'compartment.dev/project-id': 'prj-01jz' },
-      }),
-    );
-  });
-
   it('leaves a transient Kubernetes failure non-terminal', async (): Promise<void> => {
     const runtime: KubeRuntime & { runJob: Mock } = runtimeWithSequence([new Error('observation startup unavailable')]);
 

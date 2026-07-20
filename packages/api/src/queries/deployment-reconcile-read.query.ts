@@ -11,6 +11,7 @@ import {
   projectKubeProvisioning,
   projectResources,
   projects,
+  resourceReconcileRuns,
 } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
@@ -23,6 +24,18 @@ const replacementDeployments: BuildAliasTable<typeof deployments, 'replacement_d
 const replacementReferences: BuildAliasTable<typeof deploymentKubeReferences, 'replacement_references'> = alias(
   deploymentKubeReferences,
   'replacement_references',
+);
+const readinessResources: BuildAliasTable<typeof projectResources, 'readiness_resources'> = alias(
+  projectResources,
+  'readiness_resources',
+);
+const latestResourceRuns: BuildAliasTable<typeof resourceReconcileRuns, 'latest_resource_runs'> = alias(
+  resourceReconcileRuns,
+  'latest_resource_runs',
+);
+const newerResourceRuns: BuildAliasTable<typeof resourceReconcileRuns, 'newer_resource_runs'> = alias(
+  resourceReconcileRuns,
+  'newer_resource_runs',
 );
 
 interface ReconcileSelection extends SelectedFields {
@@ -156,9 +169,43 @@ function desiredCandidateFilter(tx: DeploymentTransaction): SQL | undefined {
 function allEnvironmentResourcesRunning(tx: DeploymentTransaction): SQL {
   return notExists(
     tx
-      .select({ id: projectResources.id })
-      .from(projectResources)
-      .where(and(eq(projectResources.environmentId, environments.id), ne(projectResources.status, 'running'))),
+      .select({ id: readinessResources.id })
+      .from(readinessResources)
+      .where(
+        and(
+          eq(readinessResources.environmentId, environments.id),
+          or(ne(readinessResources.status, 'running'), latestResourceRunNotSucceeded(tx)),
+        ),
+      ),
+  );
+}
+
+function latestResourceRunNotSucceeded(tx: DeploymentTransaction): SQL {
+  return notExists(
+    tx
+      .select({ id: latestResourceRuns.id })
+      .from(latestResourceRuns)
+      .where(
+        and(
+          eq(latestResourceRuns.projectResourceId, readinessResources.id),
+          eq(latestResourceRuns.phase, 'succeeded'),
+          noNewerResourceRun(tx),
+        ),
+      ),
+  );
+}
+
+function noNewerResourceRun(tx: DeploymentTransaction): SQL {
+  return notExists(
+    tx
+      .select({ id: newerResourceRuns.id })
+      .from(newerResourceRuns)
+      .where(
+        and(
+          eq(newerResourceRuns.projectResourceId, latestResourceRuns.projectResourceId),
+          sql`(${newerResourceRuns.createdAt}, ${newerResourceRuns.id}) > (${latestResourceRuns.createdAt}, ${latestResourceRuns.id})`,
+        ),
+      ),
   );
 }
 

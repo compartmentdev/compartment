@@ -10,6 +10,7 @@ export async function acknowledgeProjectProvisioning(
 ): Promise<boolean> {
   return await completeProjectProvisioning({
     failureMessage: input.message ?? null,
+    generation: input.generation,
     leaseId: input.leaseId,
     projectId: input.projectId,
     status: input.status,

@@ -5,6 +5,7 @@ import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import {
   projectProvisioningAttemptLimit,
+  projectProvisioningGeneration,
   projectProvisioningLeaseDurationMs,
   projectProvisioningRetryDelayMs,
   projectProvisioningTerminalFailure,
@@ -84,10 +85,13 @@ async function leaseProjectExecution(
       updatedAt: now,
     })
     .where(eq(projectKubeProvisioning.projectId, row.projectId));
-  return { leaseId, namespaceId: row.projectId, projectId: row.projectId };
+  return { generation: projectProvisioningGeneration, leaseId, namespaceId: row.projectId, projectId: row.projectId };
 }
 
 export async function completeProjectProvisioning(input: CompleteProjectProvisioningInput): Promise<boolean> {
+  if (input.generation !== projectProvisioningGeneration) {
+    return false;
+  }
   return await getApiDatabase().transaction(
     async (transaction: DeploymentTransaction): Promise<boolean> =>
       await completeProjectProvisioningWithTransaction(transaction, input),

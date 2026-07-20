@@ -172,6 +172,7 @@ describe('internal worker routes', (): void => {
         },
         method: 'POST',
         payload: {
+          generation: 1,
           leaseId: 'kpl_123',
           projectId: 'prj_123',
           status: 'succeeded',
@@ -183,6 +184,7 @@ describe('internal worker routes', (): void => {
       expect(response.statusCode).toBe(200);
       expect(workerCompleteProjectProvisioningResponseSchema.parse(response.json())).toEqual({ applied: true });
       expect(mocks.acknowledgeProjectProvisioning).toHaveBeenCalledWith({
+        generation: 1,
         leaseId: 'kpl_123',
         projectId: 'prj_123',
         status: 'succeeded',
