@@ -852,6 +852,8 @@ describe('deployment Kubernetes transition persistence', (): void => {
       stepKey: 'completed',
       stream: 'compartment',
     });
+    const [operation] = await db.select().from(operations).where(eq(operations.id, 'op_candidate'));
+    expect(operation).toMatchObject({ completedAt: observedAt, status: 'succeeded' });
     const references: { deploymentId: string; state: string }[] = await db
       .select({ deploymentId: deploymentKubeReferences.deploymentId, state: deploymentKubeReferences.state })
       .from(deploymentKubeReferences);
@@ -865,6 +867,95 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(await findNextDeploymentReconcilePair()).toMatchObject({
       candidate: { deploymentId: 'dep_candidate', state: 'active' },
     });
+  });
+
+  it('reattaches a route reserved by a failed rollout to the next Ready deployment', async (): Promise<void> => {
+    await seedCandidate();
+    const failedAt: Date = new Date('2026-07-12T10:00:00.000Z');
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_candidate',
+      failureMessage: null,
+      observation: 'pending',
+      observedAt: failedAt,
+      revision: 0,
+    });
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_candidate',
+      failureMessage: 'readiness failed',
+      observation: 'failed',
+      observedAt: failedAt,
+      revision: 1,
+    });
+    await seedRedeploymentAfterFailure();
+
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_redeploy',
+      failureMessage: null,
+      observation: 'pending',
+      observedAt: failedAt,
+      revision: 0,
+    });
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_redeploy',
+      failureMessage: null,
+      observation: 'ready',
+      observedAt: new Date('2026-07-12T10:00:01.000Z'),
+      revision: 1,
+    });
+
+    const route: DeploymentRouteLookupRow | undefined = await findActiveDeploymentRouteByHost(
+      'kube.localhost',
+      'localhost',
+    );
+    expect(route).toMatchObject({ deploymentId: 'dep_redeploy' });
+    const [active] = await db.select({ id: deployments.id }).from(deployments).where(eq(deployments.isActive, true));
+    expect(active).toEqual({ id: 'dep_redeploy' });
+  });
+
+  it('terminalizes both operations when every deployment in a two-service run is Ready', async (): Promise<void> => {
+    await seedTwoServiceCandidateRun();
+    const firstReadyAt: Date = new Date('2026-07-12T10:00:01.000Z');
+    const secondReadyAt: Date = new Date('2026-07-12T10:00:02.000Z');
+
+    for (const deploymentId of ['dep_candidate', 'dep_backoffice']) {
+      await persistDeploymentReconcileObservation({
+        deploymentId,
+        failureMessage: null,
+        observation: 'pending',
+        observedAt: new Date('2026-07-12T10:00:00.000Z'),
+        revision: 0,
+      });
+    }
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_candidate',
+      failureMessage: null,
+      observation: 'ready',
+      observedAt: firstReadyAt,
+      revision: 1,
+    });
+    const [firstOperationBeforeCompletion] = await db
+      .select({ status: operations.status })
+      .from(operations)
+      .where(eq(operations.id, 'op_candidate'));
+    expect(firstOperationBeforeCompletion).toEqual({ status: 'running' });
+
+    await persistDeploymentReconcileObservation({
+      deploymentId: 'dep_backoffice',
+      failureMessage: null,
+      observation: 'ready',
+      observedAt: secondReadyAt,
+      revision: 1,
+    });
+
+    const runOperations: { completedAt: Date | null; id: string; status: string }[] = await db
+      .select({ completedAt: operations.completedAt, id: operations.id, status: operations.status })
+      .from(operations);
+    expect(runOperations).toEqual(
+      expect.arrayContaining([
+        { completedAt: secondReadyAt, id: 'op_candidate', status: 'succeeded' },
+        { completedAt: secondReadyAt, id: 'op_backoffice', status: 'succeeded' },
+      ]),
+    );
   });
 
   it('switches only the route bound to the exact previous active deployment', async (): Promise<void> => {
@@ -1099,6 +1190,113 @@ async function seedCandidate(): Promise<void> {
     namespace: 'cpt-prj-kube',
     networkPolicyNames: [],
     serviceName: 'app-env-kube-svc-kube',
+  });
+}
+
+async function seedRedeploymentAfterFailure(): Promise<void> {
+  await db.insert(operations).values({
+    id: 'op_redeploy',
+    status: 'running',
+    summary: 'Deploy',
+    targetId: 'env_kube',
+    targetType: 'environment',
+    type: 'deployment.run',
+  });
+  await db.insert(buildArtifacts).values({
+    id: 'bar_redeploy',
+    imageRef: 'repo/kube@sha256:redeploy',
+    imageRepository: 'repo/kube',
+    projectId: 'prj_kube',
+    projectServiceId: 'svc_kube',
+    resolvedBuildEnvJson: '{}',
+    resolvedBuildJson: '{}',
+    sourceDigest: 'sha256:redeploy',
+  });
+  await db.insert(deploymentRuns).values({ environmentId: 'env_kube', id: 'drn_redeploy', triggerType: 'manual' });
+  await db.insert(deployments).values({
+    accessMode: 'authenticated',
+    buildArtifactId: 'bar_redeploy',
+    deploymentRunId: 'drn_redeploy',
+    environmentId: 'env_kube',
+    health: 'pending',
+    id: 'dep_redeploy',
+    isActive: false,
+    operationId: 'op_redeploy',
+    projectServiceId: 'svc_kube',
+    promotionStage: 'release',
+    resolvedReadinessJson: '[]',
+    resolvedRoutesJson: '[]',
+    resolvedRunJson: '{}',
+    status: 'running',
+  });
+  await upsertDeploymentKubeReference({
+    deploymentId: 'dep_redeploy',
+    deploymentName: 'app-env-kube-svc-kube',
+    id: 'kref_redeploy',
+    namespace: 'cpt-prj-kube',
+    networkPolicyNames: [],
+    serviceName: 'app-env-kube-svc-kube',
+  });
+}
+
+async function seedTwoServiceCandidateRun(): Promise<void> {
+  await seedCandidate();
+  await db.update(operations).set({ targetId: 'env_kube' }).where(eq(operations.id, 'op_candidate'));
+  await db.insert(projectServices).values({
+    id: 'svc_backoffice',
+    kind: 'api',
+    name: 'backoffice',
+    path: './backoffice',
+    projectId: 'prj_kube',
+  });
+  await db.insert(operations).values({
+    id: 'op_backoffice',
+    status: 'running',
+    summary: 'Deploy',
+    targetId: 'env_kube',
+    targetType: 'environment',
+    type: 'deployment.run',
+  });
+  await db.insert(buildArtifacts).values({
+    id: 'bar_backoffice',
+    imageRef: 'repo/backoffice@sha256:candidate',
+    imageRepository: 'repo/backoffice',
+    projectId: 'prj_kube',
+    projectServiceId: 'svc_backoffice',
+    resolvedBuildEnvJson: '{}',
+    resolvedBuildJson: '{}',
+    sourceDigest: 'sha256:backoffice',
+  });
+  await db.insert(deployments).values({
+    accessMode: 'authenticated',
+    buildArtifactId: 'bar_backoffice',
+    deploymentRunId: 'drn_candidate',
+    environmentId: 'env_kube',
+    health: 'pending',
+    id: 'dep_backoffice',
+    isActive: false,
+    operationId: 'op_backoffice',
+    projectServiceId: 'svc_backoffice',
+    promotionStage: 'release',
+    resolvedReadinessJson: '[]',
+    resolvedRoutesJson: '[]',
+    resolvedRunJson: '{}',
+    status: 'running',
+  });
+  await db.insert(deploymentRoutes).values({
+    accessScopeId: 'org_kube',
+    accessScopeType: 'organization',
+    deploymentId: 'dep_backoffice',
+    id: 'route_backoffice',
+    subdomain: 'backoffice-kube',
+  });
+  await upsertDeploymentKubeReference({
+    deploymentId: 'dep_backoffice',
+    deploymentName: 'app-env-kube-svc-backoffice',
+    id: 'kref_backoffice',
+    namespace: 'cpt-prj-kube',
+    networkPolicyNames: [],
+    serviceName: 'app-env-kube-svc-backoffice',
   });
 }
 

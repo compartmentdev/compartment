@@ -10,6 +10,7 @@ import {
   type DeploymentLogLine,
   type DeploymentLogsResponse,
   type DeploymentInspectResponse,
+  type DeploymentInspectTarget,
   type DeploymentListResponse,
   type DeploymentRunLogsResponse,
   type DeploymentRunStepSummary,
@@ -35,6 +36,8 @@ import { createDatabase, createDatabasePool, type Database } from '../src/db/cli
 
 import { buildArtifacts, deployments, environments, projectServices, projects } from '../src/db/schema';
 import { ingestDeploymentProductLogs } from '../src/services/deployment-product-logs.service';
+import { persistDeploymentReconcileObservation } from '../src/queries/deployment-reconcile.query';
+import { prepareDeploymentReconcile } from '../src/services/deployment-reconcile.service';
 
 import {
   buildOrganizationAuthorizationHeaders,
@@ -533,6 +536,70 @@ describe('Phase 0 API integration deployment status', (): void => {
     expect(inspectResponse.statusCode, inspectResponse.body).toBe(200);
     const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
     expect(requireSingleDeployment(inspectPayload.deployments).runtime).toBeNull();
+  });
+  it('returns the active deployment runtime after a failed replacement rolls back', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const firstDeployResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    const firstDeployment: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse(firstDeployResponse.json()),
+    );
+    const firstClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+    await completeClaimedDeployment(app, firstDeployment.id, firstClaim.routeHost);
+
+    const replacementResponse: LightMyRequestResponse = await injectDeployRequest(
+      app,
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+    const replacement: DeploymentSummary = requireDeployResponseDeployment(
+      deployResponseSchema.parse(replacementResponse.json()),
+    );
+    const replacementClaim: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
+    const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
+    await prepareDeploymentReconcile({
+      deploymentId: replacement.id,
+      deploymentName: `app-${replacement.id}`,
+      imageRef: 'registry.example/app@sha256:replacement',
+      namespace: `cpt-${replacement.id}`,
+      networkPolicyNames: [],
+      routeHost: replacementClaim.routeHost,
+      serviceName: 'app',
+    });
+    await persistDeploymentReconcileObservation({
+      deploymentId: replacement.id,
+      failureMessage: null,
+      observation: 'pending',
+      observedAt,
+      revision: 0,
+    });
+    await persistDeploymentReconcileObservation({
+      deploymentId: replacement.id,
+      failureMessage: 'readiness failed',
+      observation: 'failed',
+      observedAt,
+      revision: 1,
+    });
+
+    const inspectResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken, 'acme-dev'),
+      method: 'GET',
+      url: '/v1/deployments/inspect?projectName=smoke-web',
+    });
+
+    expect(inspectResponse.statusCode, inspectResponse.body).toBe(200);
+    const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
+    expect(requireSingleDeployment(inspectPayload.deployments)).toMatchObject({
+      id: replacement.id,
+      runtime: null,
+      status: 'failed',
+    });
+    const activeDeployment: DeploymentInspectTarget = requireSingleDeployment(inspectPayload.activeDeployments);
+    expect(activeDeployment).toMatchObject({ id: firstDeployment.id, status: 'succeeded' });
+    expect(activeDeployment.runtime).toMatchObject({ routeHost: firstClaim.routeHost });
   });
   it('does not serve per-artifact archives for non-source-resolution deployments', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);

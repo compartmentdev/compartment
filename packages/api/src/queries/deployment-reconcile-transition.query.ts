@@ -4,6 +4,7 @@ import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { persistActiveDeploymentDrift } from './deployment-reconcile-transition-audit.query';
 import { switchReadyDeploymentRoute } from './deployment-reconcile-route.query';
+import { lockDeploymentRun, markReadyRunOperationsSucceeded } from './deployment-reconcile-run-completion.query';
 import { persistStoppedReconcileObservation } from './deployment-reconcile-stop.query';
 import {
   supersedePreviousKubeDeployment,
@@ -139,6 +140,7 @@ async function promoteReadyCandidate(
   input: PersistDeploymentReconcileObservationInput,
   candidate: SupersedeCandidateContext,
 ): Promise<void> {
+  await lockDeploymentRun(tx, candidate.deploymentRunId);
   const previousActiveId: string | undefined = await findPreviousActiveId(tx, input.deploymentId, candidate);
   await supersedePreviousKubeDeployment(tx, {
     candidate,
@@ -173,7 +175,7 @@ async function publishReconcileSucceeded(
   input: PersistDeploymentReconcileObservationInput,
   deploymentRunId: string,
 ): Promise<void> {
-  await markReconcileOperationSucceeded(tx, input);
+  await markReadyRunOperationsSucceeded(tx, deploymentRunId, input.observedAt);
   await tx.insert(deploymentRunEvents).values({
     createdAt: input.observedAt,
     deploymentId: input.deploymentId,
@@ -226,20 +228,6 @@ async function activateDeployment(
       updatedAt: input.observedAt,
     })
     .where(eq(deployments.id, input.deploymentId));
-}
-
-async function markReconcileOperationSucceeded(
-  tx: DeploymentTransaction,
-  input: PersistDeploymentReconcileObservationInput,
-): Promise<void> {
-  await tx
-    .update(operations)
-    .set({
-      completedAt: input.observedAt,
-      status: 'succeeded',
-      summary: `Deployment ${input.deploymentId} is active in Kubernetes`,
-    })
-    .where(eq(operations.targetId, input.deploymentId));
 }
 
 async function updateReference(

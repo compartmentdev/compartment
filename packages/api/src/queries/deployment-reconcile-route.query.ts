@@ -51,7 +51,26 @@ async function findReconcileRoute(
       return route;
     }
   }
-  return undefined;
+  return await findLatestOwnerRoute(tx, candidate);
+}
+
+async function findLatestOwnerRoute(
+  tx: DeploymentTransaction,
+  candidate: SupersedeCandidateContext,
+): Promise<ReconcileRouteRow | undefined> {
+  const [route] = await tx
+    .select({ id: deploymentRoutes.id })
+    .from(deploymentRoutes)
+    .innerJoin(deployments, eq(deploymentRoutes.deploymentId, deployments.id))
+    .where(
+      and(
+        eq(deployments.environmentId, candidate.environmentId),
+        eq(deployments.projectServiceId, candidate.serviceId),
+      ),
+    )
+    .orderBy(desc(deployments.createdAt), desc(deployments.id))
+    .limit(1);
+  return route;
 }
 
 async function findRouteByDeploymentId(
