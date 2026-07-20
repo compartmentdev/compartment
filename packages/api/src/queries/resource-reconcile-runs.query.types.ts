@@ -80,7 +80,7 @@ export interface ResourceReconcileProjectLockRow {
 
 export interface ResourceBootstrapSettlement {
   provisioningAttempts: number;
-  provisioningState: 'pending' | 'running' | 'succeeded' | 'failed';
+  provisioningState: typeof projectKubeProvisioning.$inferSelect.state;
   resource: ProjectResourceRow;
   state: ResourceReconcileSettlementState | null;
 }
@@ -89,7 +89,7 @@ export type ResourceReconcileSettlement = ResourceBootstrapSettlement;
 
 export interface ResourceReconcileSettlementRow {
   provisioningAttempts: number;
-  provisioningState: 'pending' | 'running' | 'succeeded' | 'failed';
+  provisioningState: typeof projectKubeProvisioning.$inferSelect.state;
   resource: PersistedProjectResourceRow;
   state: ResourceReconcileSettlementState | null;
 }

@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import { resourceReconcileRuns } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -35,7 +35,7 @@ async function acknowledgeWithTransaction(
   }
   await persistResourceReconcileAcknowledgement(tx, input);
   await persistCompletedResourceState(tx, run, input, project.archivedAt !== null);
-  if (input.status === 'failed') {
+  if (input.status === 'failed' && (await isLatestResourceReconcileRun(tx, run))) {
     await failDesiredDeploymentsWaitingForResource(
       tx,
       resourceId,
@@ -43,6 +43,19 @@ async function acknowledgeWithTransaction(
       new Date(),
     );
   }
+}
+
+async function isLatestResourceReconcileRun(
+  tx: ApiDatabaseTransaction,
+  acknowledgedRun: typeof resourceReconcileRuns.$inferSelect,
+): Promise<boolean> {
+  const [latest] = await tx
+    .select({ id: resourceReconcileRuns.id })
+    .from(resourceReconcileRuns)
+    .where(eq(resourceReconcileRuns.projectResourceId, acknowledgedRun.projectResourceId))
+    .orderBy(desc(resourceReconcileRuns.createdAt), desc(resourceReconcileRuns.id))
+    .limit(1);
+  return latest?.id === acknowledgedRun.id;
 }
 
 async function lockAcknowledgedRun(

@@ -106,8 +106,10 @@ termination grace period, a 3-second `preStop`, and the documented readiness
 probe timings. Failed rollout recovery reapplies the saved active manifest by
 SSA; it does not use `kubectl rollout undo`.
 
-Network isolation follows the T2 evidence. Secret projection follows the T5
-no-service-account-token and checksum rollout model. Resource rows project to
+Network isolation follows the T2 evidence. Application Pods and product Jobs
+carrying `compartment.dev/job-class` receive resource, kube-dns, and external
+egress; resource ingress admits those two workload classes only. Secret
+projection follows the T5 no-service-account-token and checksum rollout model. Resource rows project to
 `Recreate` Deployments, internal Services, Secrets, and stable PVC references.
 PVC creation is a separate explicit bootstrap operation. Stateful updates stop
 the old pod, prove absence, verify persisted claim UIDs, start the new manifest,
@@ -181,8 +183,10 @@ cleanup succeeds. An expired in-flight lease is reclaimed without consuming a
 new failed attempt; only acknowledged provisioning failures count toward the
 three-attempt terminal limit. A third failed completion fails waiting deployment
 operations and resource reconcile runs instead of leaving them unclaimable.
-Existing project controller RoleBindings remain unchanged; new projects and
-explicit retries use the target-bound bootstrap identity.
+Existing project controller RoleBindings remain unchanged. A persisted policy
+generation makes new and existing projects converge on the current projection;
+legacy-unknown in-flight states fence old provisioners during rollout. New
+projects and explicit retries use the target-bound bootstrap identity.
 
 ## Migration and deletion
 

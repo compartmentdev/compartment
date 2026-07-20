@@ -691,21 +691,61 @@ describe('deployment Kubernetes transition persistence', (): void => {
       status: 'running',
       volumesJson: '[]',
     });
-    await db.insert(resourceReconcileRuns).values({
-      expectedClaimsJson: '[]',
-      id: 'rr_database_running',
-      intentJson: '{}',
-      leaseExpiresAt: new Date(Date.now() + 60_000),
-      leaseId: 'lease_database_running',
-      operationType: 'reconcile',
-      phase: 'running',
-      projectResourceId: 'res_failed_database',
+    await db.insert(resourceReconcileRuns).values([
+      {
+        createdAt: new Date('2026-07-12T10:00:00.000Z'),
+        expectedClaimsJson: '[]',
+        id: 'rr_database_running',
+        intentJson: '{}',
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+        leaseId: 'lease_database_running',
+        operationType: 'reconcile',
+        phase: 'running',
+        projectResourceId: 'res_failed_database',
+      },
+      {
+        createdAt: new Date('2026-07-12T11:00:00.000Z'),
+        expectedClaimsJson: '[]',
+        id: 'rr_database_newer',
+        intentJson: '{}',
+        operationType: 'reconcile',
+        phase: 'reconcile-pending',
+        projectResourceId: 'res_failed_database',
+      },
+    ]);
+    await db.insert(operations).values({
+      id: 'op_unrelated_collision',
+      status: 'running',
+      summary: 'Unrelated',
+      targetId: 'dep_candidate',
+      targetType: 'deployment',
+      type: 'unrelated',
     });
 
     await acknowledgeResourceReconcileRun({
-      failureMessage: 'database rollout failed',
+      failureMessage: 'superseded rollout failed',
       leaseId: 'lease_database_running',
       operationId: 'rr_database_running',
+      status: 'failed',
+    });
+
+    const [waitingDeployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_candidate'));
+    const [waitingOperation] = await db.select().from(operations).where(eq(operations.id, 'op_candidate'));
+    expect(waitingDeployment).toMatchObject({ status: 'running' });
+    expect(waitingOperation).toMatchObject({ status: 'running' });
+
+    await db
+      .update(resourceReconcileRuns)
+      .set({
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+        leaseId: 'lease_database_newer',
+        phase: 'running',
+      })
+      .where(eq(resourceReconcileRuns.id, 'rr_database_newer'));
+    await acknowledgeResourceReconcileRun({
+      failureMessage: 'database rollout failed',
+      leaseId: 'lease_database_newer',
+      operationId: 'rr_database_newer',
       status: 'failed',
     });
 
@@ -718,6 +758,8 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(deployment).toMatchObject({ health: 'unhealthy', status: 'failed' });
     expect(deployment?.failureMessage).toContain('database rollout failed');
     expect(operation).toMatchObject({ status: 'failed' });
+    const [unrelated] = await db.select().from(operations).where(eq(operations.id, 'op_unrelated_collision'));
+    expect(unrelated).toMatchObject({ status: 'running' });
     expect(reference).toMatchObject({ state: 'pending' });
     await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
   });
@@ -1168,9 +1210,9 @@ async function seedCandidate(): Promise<void> {
     id: 'op_candidate',
     status: 'running',
     summary: 'Deploy',
-    targetId: 'dep_candidate',
-    targetType: 'deployment',
-    type: 'deployment.create',
+    targetId: 'env_kube',
+    targetType: 'environment',
+    type: 'deployment.run',
   });
   await db.insert(buildArtifacts).values({
     id: 'bar_candidate',

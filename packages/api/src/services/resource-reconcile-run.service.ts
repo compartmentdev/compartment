@@ -161,7 +161,7 @@ function readFailedBootstrapSettlement(
 }
 
 function isTerminalProvisioningFailure(attempts: number, state: string): boolean {
-  return state === 'failed' && attempts >= projectProvisioningAttemptLimit;
+  return ['failed', 'policy-failed'].includes(state) && attempts >= projectProvisioningAttemptLimit;
 }
 
 export async function claimNextResourceReconcile(): Promise<ClaimedResourceReconcileResult> {

@@ -6,6 +6,7 @@ import type { DeploymentTransaction } from './deployments.query.types';
 interface WaitingResourceDeploymentRow {
   deploymentId: string;
   deploymentRunId: string;
+  operationId: string;
 }
 
 export async function failDesiredDeploymentsWaitingForResource(
@@ -20,7 +21,12 @@ export async function failDesiredDeploymentsWaitingForResource(
     return;
   }
   await failDeployments(tx, deploymentIds, failureMessage, failedAt);
-  await failOperations(tx, deploymentIds, failureMessage, failedAt);
+  await failOperations(
+    tx,
+    waiting.map((row: WaitingResourceDeploymentRow): string => row.operationId),
+    failureMessage,
+    failedAt,
+  );
   await failReferences(tx, deploymentIds, failedAt);
   await publishFailureEvents(tx, waiting, failureMessage, failedAt);
 }
@@ -51,7 +57,11 @@ async function findWaitingDeployments(
   resourceId: string,
 ): Promise<WaitingResourceDeploymentRow[]> {
   return await tx
-    .select({ deploymentId: deployments.id, deploymentRunId: deployments.deploymentRunId })
+    .select({
+      deploymentId: deployments.id,
+      deploymentRunId: deployments.deploymentRunId,
+      operationId: deployments.operationId,
+    })
     .from(deployments)
     .innerJoin(deploymentKubeReferences, eq(deploymentKubeReferences.deploymentId, deployments.id))
     .innerJoin(projectResources, eq(projectResources.environmentId, deployments.environmentId))
@@ -79,14 +89,14 @@ async function failDeployments(
 
 async function failOperations(
   tx: DeploymentTransaction,
-  deploymentIds: string[],
+  operationIds: string[],
   failureMessage: string,
   failedAt: Date,
 ): Promise<void> {
   await tx
     .update(operations)
     .set({ completedAt: failedAt, status: 'failed', summary: failureMessage })
-    .where(inArray(operations.targetId, deploymentIds));
+    .where(inArray(operations.id, operationIds));
 }
 
 async function failReferences(tx: DeploymentTransaction, deploymentIds: string[], failedAt: Date): Promise<void> {

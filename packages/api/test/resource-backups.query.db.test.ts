@@ -1040,24 +1040,18 @@ describe('resource backup queries', (): void => {
     await expect(db.select().from(resourceReconcileRuns)).resolves.toHaveLength(1);
   });
 
-  it('creates, leases, and acknowledges the project provisioning companion row', async (): Promise<void> => {
+  it('reclaims a legacy success and acknowledges the current project policy generation', async (): Promise<void> => {
     const project: ProjectRow = await createOrGetProject({
       id: 'prj_new_provisioning',
       name: 'new-provisioning',
       organizationId: 'org_resource_backups',
       updatedAt: new Date(),
     });
+    await db.execute(
+      sql`update project_kube_provisioning set state = 'succeeded' where project_id = 'prj_new_provisioning'`,
+    );
     const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
     expect(target).toMatchObject({ generation: 1, namespaceId: project.id, projectId: project.id });
-    await expect(
-      completeProjectProvisioning({
-        failureMessage: null,
-        generation: 2,
-        leaseId: target!.leaseId,
-        projectId: project.id,
-        status: 'succeeded',
-      }),
-    ).resolves.toBe(false);
     await expect(
       completeProjectProvisioning({
         failureMessage: null,
@@ -1078,14 +1072,14 @@ describe('resource backup queries', (): void => {
     ).resolves.toBe(true);
     await expect(
       db.select().from(projectKubeProvisioning).where(eq(projectKubeProvisioning.projectId, project.id)),
-    ).resolves.toMatchObject([{ state: 'succeeded' }]);
+    ).resolves.toMatchObject([{ policyGeneration: 1, state: 'succeeded' }]);
     await expect(claimPendingProjectProvisioning()).resolves.toBeNull();
   });
 
   it('dead-letters project provisioning after three failures and fails waiting resource work', async (): Promise<void> => {
     await db
       .update(projectKubeProvisioning)
-      .set({ attempts: 0, failureMessage: null, state: 'pending' })
+      .set({ attempts: 0, failureMessage: null, policyGeneration: 0, state: 'pending' })
       .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
     await createResourceReconcileRun({
       expectedClaims: [],
@@ -1117,7 +1111,7 @@ describe('resource backup queries', (): void => {
       .select()
       .from(projectKubeProvisioning)
       .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
-    expect(provisioning).toMatchObject({ attempts: 3, state: 'failed' });
+    expect(provisioning).toMatchObject({ attempts: 3, state: 'policy-failed' });
     const [resourceRun] = await db
       .select()
       .from(resourceReconcileRuns)
@@ -1182,7 +1176,8 @@ describe('resource backup queries', (): void => {
         failureMessage: null,
         leaseExpiresAt: new Date(0),
         leaseId: 'expired-final-lease',
-        state: 'running',
+        policyGeneration: 0,
+        state: 'policy-running',
       })
       .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
     await createResourceReconcileRun({
@@ -1199,7 +1194,7 @@ describe('resource backup queries', (): void => {
       .select()
       .from(projectKubeProvisioning)
       .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
-    expect(provisioning).toMatchObject({ attempts: 3, state: 'running' });
+    expect(provisioning).toMatchObject({ attempts: 3, state: 'policy-running' });
     const [resourceRun] = await db
       .select()
       .from(resourceReconcileRuns)
@@ -1214,7 +1209,8 @@ describe('resource backup queries', (): void => {
         attempts: 1,
         leaseExpiresAt: new Date(0),
         leaseId: 'expired-cleanup-lease',
-        state: 'running',
+        policyGeneration: 0,
+        state: 'policy-running',
       })
       .where(eq(projectKubeProvisioning.projectId, 'prj_internal_tools'));
 
@@ -1450,7 +1446,9 @@ async function seedResourceBackupScope(): Promise<void> {
     name: 'internal-tools',
     organizationId: 'org_resource_backups',
   });
-  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_internal_tools', state: 'succeeded' });
+  await db
+    .insert(projectKubeProvisioning)
+    .values({ policyGeneration: 1, projectId: 'prj_internal_tools', state: 'succeeded' });
   await db.insert(environments).values({
     id: 'env_production',
     name: 'production',
