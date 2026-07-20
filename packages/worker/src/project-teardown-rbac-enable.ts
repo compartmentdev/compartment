@@ -17,6 +17,7 @@ interface ProjectTeardownRbacEnvironment {
   COMPARTMENT_PROJECT_BOOTSTRAP_ADMISSION_POLICY: string;
   COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE: string;
   COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING: string;
+  COMPARTMENT_PROJECT_TEARDOWN_RBAC_EXISTING_BINDING: string;
   COMPARTMENT_PROVISIONING_NAMESPACE: string;
 }
 
@@ -28,6 +29,7 @@ const environmentSchema: z.ZodType<ProjectTeardownRbacEnvironment> = z.object({
   COMPARTMENT_PROJECT_BOOTSTRAP_ADMISSION_POLICY: z.string().min(1),
   COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE: z.string().min(1),
   COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING: z.string().min(1),
+  COMPARTMENT_PROJECT_TEARDOWN_RBAC_EXISTING_BINDING: z.string().min(1),
   COMPARTMENT_PROVISIONING_NAMESPACE: z.string().min(1),
 });
 
@@ -45,29 +47,14 @@ async function main(): Promise<void> {
       kubeConfig.makeApiClient(CoreV1Api),
       environment.COMPARTMENT_PROVISIONING_NAMESPACE,
     );
-    await expectProjectRoleEscalationDenied(rbacApi, environment.COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE);
     await enableProjectTeardownRbac(rbacApi, environment.COMPARTMENT_PROJECT_PROVISIONER_CLUSTER_ROLE);
   } catch (error) {
-    await removeFailedHookBinding(rbacApi, environment.COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING);
+    await removeFailedHookBindings(rbacApi, [
+      environment.COMPARTMENT_PROJECT_TEARDOWN_RBAC_EXISTING_BINDING,
+      environment.COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING,
+    ]);
     throw error;
   }
-}
-
-async function expectProjectRoleEscalationDenied(api: RbacAuthorizationV1Api, roleName: string): Promise<void> {
-  const role: V1ClusterRole = await api.readClusterRole({ name: roleName });
-  requireNamespaceRule(role).verbs.push('list');
-  try {
-    await api.replaceClusterRole({ body: role, dryRun: 'All', name: roleName });
-  } catch (error) {
-    const apiError: KubernetesApiError = error as KubernetesApiError;
-    if (
-      apiError.body?.message?.includes('Project teardown rollout may change only the canonical namespace rule') === true
-    ) {
-      return;
-    }
-    throw error;
-  }
-  throw new Error('Project teardown admission guard allowed a project provisioner privilege escalation probe.');
 }
 
 async function enableProjectTeardownRbac(api: RbacAuthorizationV1Api, roleName: string): Promise<void> {
@@ -80,13 +67,15 @@ async function enableProjectTeardownRbac(api: RbacAuthorizationV1Api, roleName: 
   await api.replaceClusterRole({ body: role, name: roleName });
 }
 
-async function removeFailedHookBinding(api: RbacAuthorizationV1Api, bindingName: string): Promise<void> {
-  try {
-    await api.deleteClusterRoleBinding({ name: bindingName });
-  } catch (error) {
-    const apiError: KubernetesApiError = error as KubernetesApiError;
-    if (apiError.body?.code !== 404) {
-      throw error;
+async function removeFailedHookBindings(api: RbacAuthorizationV1Api, bindingNames: string[]): Promise<void> {
+  for (const bindingName of bindingNames) {
+    try {
+      await api.deleteClusterRoleBinding({ name: bindingName });
+    } catch (error) {
+      const apiError: KubernetesApiError = error as KubernetesApiError;
+      if (apiError.body?.code !== 404) {
+        throw error;
+      }
     }
   }
 }

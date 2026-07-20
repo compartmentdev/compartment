@@ -27,10 +27,12 @@ rules:
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterroles"]
     resourceNames: [{{ include "compartment.fullname" . }}-project-provisioner]
-    verbs: ["get", "update", "escalate"]
+    verbs: ["get", "update"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterrolebindings"]
-    resourceNames: [{{ include "compartment.fullname" . }}-project-teardown-rbac-enable]
+    resourceNames:
+      - {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+      - {{ include "compartment.fullname" . }}-project-teardown-rbac-enable-existing
     verbs: ["delete"]
   - apiGroups: ["admissionregistration.k8s.io"]
     resources: ["validatingadmissionpolicies", "validatingadmissionpolicybindings"]
@@ -49,6 +51,23 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable-existing
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml $hookAnnotations | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "compartment.fullname" . }}-project-provisioner
 subjects:
   - kind: ServiceAccount
     name: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
@@ -94,6 +113,8 @@ spec:
               value: {{ include "compartment.fullname" . }}-project-provisioner
             - name: COMPARTMENT_PROJECT_TEARDOWN_RBAC_BINDING
               value: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable
+            - name: COMPARTMENT_PROJECT_TEARDOWN_RBAC_EXISTING_BINDING
+              value: {{ include "compartment.fullname" . }}-project-teardown-rbac-enable-existing
             - name: COMPARTMENT_PROVISIONING_NAMESPACE
               value: {{ include "compartment.projectProvisioningNamespace" . }}
           volumeMounts:
