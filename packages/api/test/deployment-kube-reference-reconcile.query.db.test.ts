@@ -52,6 +52,37 @@ describe('deployment Kubernetes transition persistence', (): void => {
     setup: async (): Promise<void> => await seedDeployment(db),
   });
 
+  it('serializes concurrent drift callbacks and writes one audit event', async (): Promise<void> => {
+    const observedAt: Date = new Date('2026-07-11T12:00:00.000Z');
+    const applied: boolean[] = await Promise.all([
+      persistDeploymentReconcileObservation({
+        deploymentId: 'dep_kube',
+        failureMessage: 'owned field changed',
+        observation: 'pending',
+        observedAt,
+        revision: 0,
+      }),
+      persistDeploymentReconcileObservation({
+        deploymentId: 'dep_kube',
+        failureMessage: 'owned field changed',
+        observation: 'pending',
+        observedAt,
+        revision: 0,
+      }),
+    ]);
+    const references: object[] = await db.select().from(deploymentKubeReferences);
+    const events: object[] = await db
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.eventType, 'deployment.kubernetes.drift_detected'));
+    expect(references).toHaveLength(1);
+    expect(references[0]).toMatchObject({ deploymentId: 'dep_kube', observedAt, state: 'pending' });
+    expect(events).toHaveLength(1);
+    expect(applied.filter((value: boolean): boolean => value)).toHaveLength(1);
+    expect(applied.filter((value: boolean): boolean => !value)).toHaveLength(1);
+    expect(events[0]).toMatchObject({ occurredAt: observedAt });
+  });
+
   it('keeps pending candidate inactive, ignores stale revisions, and preserves the active deployment on failure', async (): Promise<void> => {
     await seedCandidate(db);
     const observedAt: Date = new Date('2026-07-12T10:00:00.000Z');
