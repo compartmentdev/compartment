@@ -95,7 +95,6 @@
         "src/registry-auth-proxy.ts!",
         "src/project-provisioner-server.ts!",
         "src/project-provisioner-job.ts!",
-        "src/project-teardown-rbac-enable.ts!",
       ],
       "project": ["src/**/*.ts", "test/**/*.ts"],
     },

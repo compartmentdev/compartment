@@ -75,9 +75,6 @@ async function teardownKubeProjectNamespace(projectId: string): Promise<void> {
     if (observation?.state === 'succeeded') {
       return;
     }
-    if (observation?.state === 'failed' && observation.attempts >= projectProvisioningAttemptLimit) {
-      throw new Error('Project Kubernetes namespace teardown exhausted its retries.');
-    }
     await new Promise<void>((resolve: () => void): void => {
       setTimeout(resolve, projectTeardownPollIntervalMs);
     });

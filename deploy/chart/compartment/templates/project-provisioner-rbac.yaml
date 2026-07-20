@@ -123,7 +123,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
-    verbs: ["get"]
+    verbs: ["get", "delete"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterrolebindings"]
     verbs: ["create"]
@@ -178,7 +178,7 @@ spec:
         scope: Cluster
   matchConditions:
     - name: provisioning-identity
-      expression: {{ printf "request.userInfo.username.startsWith('system:serviceaccount:%s:cpt-') || request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner' || request.userInfo.username == 'system:serviceaccount:%s:%s-project-teardown-rbac-enable'" (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
+      expression: {{ printf "request.userInfo.username.startsWith('system:serviceaccount:%s:cpt-') || request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner'" (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
   validations:
     - expression: {{ printf "request.resource.resource != 'namespaces' || (request.operation == 'CREATE' ? request.userInfo.username == 'system:serviceaccount:%s:' + object.metadata.name : request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner' && request.name.startsWith('cpt-') && 'app.kubernetes.io/managed-by' in oldObject.metadata.labels && oldObject.metadata.labels['app.kubernetes.io/managed-by'] == 'compartment' && 'compartment.dev/namespace-id' in oldObject.metadata.labels && 'compartment.dev/project-id' in oldObject.metadata.labels && oldObject.metadata.labels['compartment.dev/namespace-id'] == oldObject.metadata.labels['compartment.dev/project-id'])" (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
       message: Project bootstrap authority is restricted to its encoded target namespace.

@@ -68,13 +68,29 @@ async function selectClaimableRow(
 function provisioningClaimableCondition(now: Date, action: ProjectProvisioningAction | 'any'): SQL | undefined {
   return or(
     claimableStateCondition(action, 'pending'),
-    and(
-      claimableStateCondition(action, 'failed'),
-      lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
-      lt(projectKubeProvisioning.updatedAt, new Date(now.getTime() - projectProvisioningRetryDelayMs)),
-    ),
+    claimableFailedCondition(action, now),
     claimableExpiredRunningCondition(action, now),
   );
+}
+
+function claimableFailedCondition(action: ProjectProvisioningAction | 'any', now: Date): SQL | undefined {
+  const retryReady: SQL = lt(
+    projectKubeProvisioning.updatedAt,
+    new Date(now.getTime() - projectProvisioningRetryDelayMs),
+  );
+  const failedProvisioning: SQL | undefined = and(
+    eq(projectKubeProvisioning.state, 'failed'),
+    lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
+    retryReady,
+  );
+  const failedTeardown: SQL | undefined = and(eq(projectKubeProvisioning.state, 'teardown_failed'), retryReady);
+  if (action === 'provision') {
+    return failedProvisioning;
+  }
+  if (action === 'teardown') {
+    return failedTeardown;
+  }
+  return or(failedProvisioning, failedTeardown);
 }
 
 function claimableExpiredRunningCondition(action: ProjectProvisioningAction | 'any', now: Date): SQL | undefined {
@@ -84,7 +100,6 @@ function claimableExpiredRunningCondition(action: ProjectProvisioningAction | 'a
   );
   const expiredTeardown: SQL | undefined = and(
     eq(projectKubeProvisioning.state, 'teardown_running'),
-    lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
     lt(projectKubeProvisioning.leaseExpiresAt, now),
   );
   if (action === 'provision') {

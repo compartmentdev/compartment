@@ -177,9 +177,40 @@ describe('projects service', (): void => {
     expect(await db.select().from(projects).where(eq(projects.id, 'prj_billing'))).toHaveLength(1);
     await completeProjectProvisioning({
       action: 'teardown',
-      failureMessage: null,
+      failureMessage: 'namespace still terminating',
       leaseId: retriedTeardown.leaseId,
       projectId: retriedTeardown.projectId,
+      status: 'failed',
+    });
+    await db
+      .update(projectKubeProvisioning)
+      .set({ updatedAt: new Date('2020-01-01T00:00:00.000Z') })
+      .where(eq(projectKubeProvisioning.projectId, retriedTeardown.projectId));
+    const thirdTeardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
+    await completeProjectProvisioning({
+      action: 'teardown',
+      failureMessage: 'namespace still terminating',
+      leaseId: thirdTeardown.leaseId,
+      projectId: thirdTeardown.projectId,
+      status: 'failed',
+    });
+    await db
+      .update(projectKubeProvisioning)
+      .set({ updatedAt: new Date('2020-01-01T00:00:00.000Z') })
+      .where(eq(projectKubeProvisioning.projectId, thirdTeardown.projectId));
+    const convergedTeardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
+    expect(convergedTeardown).toMatchObject({ action: 'teardown', projectId: 'prj_billing' });
+    expect(
+      await db
+        .select({ attempts: projectKubeProvisioning.attempts })
+        .from(projectKubeProvisioning)
+        .where(eq(projectKubeProvisioning.projectId, convergedTeardown.projectId)),
+    ).toEqual([{ attempts: 4 }]);
+    await completeProjectProvisioning({
+      action: 'teardown',
+      failureMessage: null,
+      leaseId: convergedTeardown.leaseId,
+      projectId: convergedTeardown.projectId,
       status: 'succeeded',
     });
 

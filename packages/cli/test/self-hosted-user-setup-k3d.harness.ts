@@ -1,3 +1,5 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
   accessAssignmentListResponseSchema,
@@ -141,6 +143,7 @@ export async function expectK3dWorkerNamespaceIsolation(): Promise<void> {
 export async function seedK3dProjectTeardownFixture(projectId: string): Promise<void> {
   const seed: K3dPlatformSeed = readK3dPlatformSeed();
   const namespace: string = immutableKubeName('cpt', projectId);
+  const workerImage: string = await readK3dWorkerImage(seed);
   await runK3dKubectlCommands([
     [
       'kubectl',
@@ -166,8 +169,8 @@ export async function seedK3dProjectTeardownFixture(projectId: string): Promise<
           automountServiceAccountToken: false,
           containers: [
             {
-              command: ['true'],
-              image: 'busybox:1.36',
+              command: ['node', '-e', 'process.exit(0)'],
+              image: workerImage,
               name: 'job',
               securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } },
             },
@@ -207,18 +210,34 @@ export async function seedK3dProjectTeardownFixture(projectId: string): Promise<
 export async function expectK3dProjectNamespaceDeleted(projectId: string): Promise<void> {
   const seed: K3dPlatformSeed = readK3dPlatformSeed();
   const namespace: string = immutableKubeName('cpt', projectId);
-  let result: SelfHostedUserSetupCommandResult = await readK3dNamespace(seed, namespace);
-  for (let attempt: number = 0; result.exitCode === 0 && attempt < 60; attempt += 1) {
+  let result: SelfHostedUserSetupCommandResult = await readK3dNamespaceIfPresent(seed, namespace);
+  for (let attempt: number = 0; result.stdout.trim() !== '' && attempt < 60; attempt += 1) {
     await sleep(1_000);
-    result = await readK3dNamespace(seed, namespace);
+    result = await readK3dNamespaceIfPresent(seed, namespace);
   }
-  expectFailedCommand(result, `wait for deleted project namespace ${namespace}`);
-  for (const resource of ['jobs', 'pods', 'secrets']) {
+  expectSuccessfulCommand(result, `wait for deleted project namespace ${namespace}`, '');
+  expect(result.stdout.trim()).toBe('');
+  for (const [resource, selector] of [
+    ['jobs', 'metadata.name=gc-regression-job'],
+    ['pods', 'compartment.dev/test=gc-regression'],
+    ['secrets', 'metadata.name=gc-regression-secret'],
+  ] as const) {
     const childResult: SelfHostedUserSetupCommandResult = await runCommand({
-      argv: ['kubectl', '--context', seed.kubeContext, '--namespace', namespace, 'get', resource],
+      argv: [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        'get',
+        resource,
+        '--all-namespaces',
+        resource === 'pods' ? '--selector' : '--field-selector',
+        selector,
+        '--output=name',
+      ],
       timeoutMs: k3dKubectlCommandTimeoutMs,
     });
-    expectFailedCommand(childResult, `verify ${resource} are absent with project namespace ${namespace}`);
+    expectSuccessfulCommand(childResult, `verify deleted project ${resource} are absent`, '');
+    expect(childResult.stdout.trim()).toBe('');
   }
 }
 
@@ -233,6 +252,7 @@ export async function expectK3dProjectNamespaceActive(projectId: string): Promis
 
 export async function expectK3dBackupRetentionFlow(
   cli: SelfHostedUserSetupCli,
+  fixtureDirectory: string,
   projectName: string,
   resourceName: string,
 ): Promise<string> {
@@ -259,7 +279,33 @@ export async function expectK3dBackupRetentionFlow(
     resourceId: expired.backup.resource.id,
     retainedBackupId: retained.backup.id,
   });
-  return retained.backup.id;
+  await disableK3dBackupRetentionSchedule(cli, fixtureDirectory, projectName);
+  const restoreBackup: ResourceBackupCreateResponse = await cli.runJson(
+    `resource backup create --project ${projectName} --resource ${resourceName}`,
+    resourceBackupCreateResponseSchema,
+  );
+  expect(restoreBackup.backup.status).toBe('succeeded');
+  return restoreBackup.backup.id;
+}
+
+async function disableK3dBackupRetentionSchedule(
+  cli: SelfHostedUserSetupCli,
+  fixtureDirectory: string,
+  projectName: string,
+): Promise<void> {
+  const descriptorPath: string = join(fixtureDirectory, 'compartment.yml');
+  const descriptor: string = await readFile(descriptorPath, 'utf8');
+  const schedule: string = `        schedule:
+          cron: '* * * * *'
+          retention:
+            includeManual: true
+            keepLast: 2
+`;
+  if (!descriptor.includes(schedule)) {
+    throw new Error('Expected the k3d app fixture to contain the backup retention schedule.');
+  }
+  await writeFile(descriptorPath, descriptor.replace(schedule, ''), 'utf8');
+  await cli.run(`deploy --project ${projectName}`, { cwd: fixtureDirectory });
 }
 
 async function waitForK3dBackupRetentionCleanup(
@@ -287,6 +333,7 @@ async function waitForK3dBackupRetentionCleanup(
 
 async function expectK3dBackupRetentionCleanup(input: K3dBackupRetentionAssertionInput): Promise<void> {
   const seed: K3dPlatformSeed = readK3dPlatformSeed();
+  const workerImage: string = await readK3dWorkerImage(seed);
   const namespace: string = immutableKubeName('cpt', input.projectId);
   const claimName: string = immutableKubeName('volume', `${input.resourceId}:backup-artifacts`);
   const verifierName: string = immutableKubeName('retention-check', input.expiredBackupId);
@@ -295,9 +342,11 @@ async function expectK3dBackupRetentionCleanup(input: K3dBackupRetentionAssertio
       automountServiceAccountToken: false,
       containers: [
         {
-          args: [`test ! -e /backups/${input.expiredBackupId} && test -s /backups/${input.retainedBackupId}/dump.sql`],
-          command: ['sh', '-c'],
-          image: 'busybox:1.36',
+          args: [
+            `const fs=require('node:fs');const retained='/backups/${input.retainedBackupId}/dump.sql';if(fs.existsSync('/backups/${input.expiredBackupId}')||!fs.existsSync(retained)||fs.statSync(retained).size===0)process.exit(1)`,
+          ],
+          command: ['node', '-e'],
+          image: workerImage,
           name: verifierName,
           securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } },
           volumeMounts: [{ mountPath: '/backups', name: 'backups' }],
@@ -324,7 +373,7 @@ async function expectK3dBackupRetentionCleanup(input: K3dBackupRetentionAssertio
         namespace,
         'run',
         verifierName,
-        '--image=busybox:1.36',
+        `--image=${workerImage}`,
         `--overrides=${overrides}`,
         '--restart=Never',
       ],
@@ -425,6 +474,48 @@ async function expectK3dJobLogsWithoutEacces(
 async function readK3dNamespace(seed: K3dPlatformSeed, namespace: string): Promise<SelfHostedUserSetupCommandResult> {
   return await runCommand({
     argv: ['kubectl', '--context', seed.kubeContext, 'get', 'namespace', namespace],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+}
+
+async function readK3dWorkerImage(seed: K3dPlatformSeed): Promise<string> {
+  const result: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      '--namespace',
+      seed.platformNamespace,
+      'get',
+      'deployment',
+      `${k3dPlatformResourceName}-worker`,
+      '--output=jsonpath={.spec.template.spec.containers[0].image}',
+    ],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(result, 'read the installed worker image', '');
+  const image: string = result.stdout.trim();
+  if (image === '') {
+    throw new Error('Expected the installed worker Deployment to use an image.');
+  }
+  return image;
+}
+
+async function readK3dNamespaceIfPresent(
+  seed: K3dPlatformSeed,
+  namespace: string,
+): Promise<SelfHostedUserSetupCommandResult> {
+  return await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'get',
+      'namespace',
+      namespace,
+      '--ignore-not-found',
+      '--output=name',
+    ],
     timeoutMs: k3dKubectlCommandTimeoutMs,
   });
 }

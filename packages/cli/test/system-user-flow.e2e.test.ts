@@ -1003,7 +1003,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
       await writeAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue);
       await expectAppDatabaseValue(routeUrl, adminAppSessionCookie, beforeBackupValue, true);
 
-      backupId = await expectK3dBackupRetentionFlow(admin, app.projectName, app.resourceName);
+      backupId = await expectK3dBackupRetentionFlow(admin, app.directory, app.projectName, app.resourceName);
 
       const backupShowPayload: ResourceBackupShowResponse = await admin.runJson(
         `resource backup show --project ${app.projectName} --backup ${backupId}`,

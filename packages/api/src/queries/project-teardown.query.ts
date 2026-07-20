@@ -2,7 +2,6 @@ import { eq } from 'drizzle-orm';
 import { projectKubeProvisioning } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
-import { projectProvisioningAttemptLimit } from './project-provisioning-policy';
 import type {
   ProjectKubeProvisioningState,
   ProjectTeardownObservation,
@@ -27,7 +26,7 @@ async function requestProjectTeardownWithTransaction(
   if (row === undefined) {
     throw new Error('Project Kubernetes lifecycle state not found.');
   }
-  if (!teardownAlreadyRequested(row, new Date())) {
+  if (!teardownAlreadyRequested(row)) {
     await resetProjectTeardown(transaction, projectId);
   }
 }
@@ -59,14 +58,12 @@ async function resetProjectTeardown(transaction: DeploymentTransaction, projectI
     .where(eq(projectKubeProvisioning.projectId, projectId));
 }
 
-function teardownAlreadyRequested(row: typeof projectKubeProvisioning.$inferSelect, now: Date): boolean {
+function teardownAlreadyRequested(row: typeof projectKubeProvisioning.$inferSelect): boolean {
   return (
     row.state === 'teardown_pending' ||
-    (row.state === 'teardown_running' &&
-      (row.attempts < projectProvisioningAttemptLimit ||
-        (row.leaseExpiresAt !== null && row.leaseExpiresAt.getTime() > now.getTime()))) ||
+    row.state === 'teardown_running' ||
     row.state === 'teardown_succeeded' ||
-    (row.state === 'teardown_failed' && row.attempts < projectProvisioningAttemptLimit)
+    row.state === 'teardown_failed'
   );
 }
 

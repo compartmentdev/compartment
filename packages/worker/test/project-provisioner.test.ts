@@ -173,6 +173,9 @@ describe('project provisioning execution', (): void => {
           namespaceReads += 1;
           return await Promise.resolve(observed);
         }
+        if (cleanupAuthority.mock.calls.length > 0) {
+          return await Promise.resolve(null);
+        }
         return await Promise.resolve({
           ...object,
           metadata: { ...object.metadata, resourceVersion: `${object.kind}-rv`, uid: `${object.kind}-uid` },
