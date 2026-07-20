@@ -49,10 +49,7 @@ export async function listDeploymentLogIdentities(namespaces: string[]): Promise
     .orderBy(asc(deployments.createdAt));
 }
 
-export async function listResourceLogIdentities(resourceIds: string[]): Promise<ResourceLogIdentityRow[]> {
-  if (resourceIds.length === 0) {
-    return [];
-  }
+export async function listResourceLogIdentities(): Promise<ResourceLogIdentityRow[]> {
   return await getApiDatabase()
     .select({
       namespaceId: environments.projectId,
@@ -60,7 +57,6 @@ export async function listResourceLogIdentities(resourceIds: string[]): Promise<
     })
     .from(projectResources)
     .innerJoin(environments, eq(environments.id, projectResources.environmentId))
-    .where(inArray(projectResources.id, resourceIds))
     .orderBy(asc(projectResources.id));
 }
 

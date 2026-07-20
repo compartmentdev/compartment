@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { parseAllDocuments, type Document } from 'yaml';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -13,9 +13,13 @@ interface ConfigMapDocument {
 }
 
 interface ReceivedLogEvent {
+  containerName: string;
   message: string;
+  namespace: string;
+  podName: string;
   sourceFingerprint: string;
   sourceOffset: number;
+  stream: string;
   timestamp: string;
 }
 
@@ -31,6 +35,7 @@ describe('product log agent transport', (): void => {
   let configDirectory: string;
   let logFile: string;
   let logsDirectory: string;
+  let resourceLogFile: string;
   let rootDirectory: string;
   let server: Server;
   let serverPort: number;
@@ -47,8 +52,15 @@ describe('product log agent transport', (): void => {
       'app-deployment',
     );
     logFile = join(podDirectory, '0.log');
+    resourceLogFile = join(
+      logsDirectory,
+      'cpt-project_resource-res-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-ec88c3f4b4b78368-abc_22222222-2222-4222-8222-222222222222',
+      'resource',
+      '0.log',
+    );
     await mkdir(configDirectory);
     await mkdir(podDirectory, { recursive: true });
+    await mkdir(dirname(resourceLogFile), { recursive: true });
     server = createServer((request: IncomingMessage, response: ServerResponse): void => {
       if (request.method !== 'POST') {
         response.writeHead(200).end();
@@ -135,6 +147,19 @@ describe('product log agent transport', (): void => {
     );
     expect(rotated).toMatchObject({ sourceOffset: 0, timestamp: '2026-07-13T12:00:00.000000000Z' });
     expect(rotated?.sourceFingerprint).not.toBe(initial?.sourceFingerprint);
+
+    await writeFile(resourceLogFile, criLine('database-system-ready'));
+    await waitFor((): boolean =>
+      received.some((event: ReceivedLogEvent): boolean => event.message === 'database-system-ready'),
+    );
+    expect(
+      received.find((event: ReceivedLogEvent): boolean => event.message === 'database-system-ready'),
+    ).toMatchObject({
+      containerName: 'resource',
+      namespace: 'cpt-project',
+      podName: 'resource-res-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-ec88c3f4b4b78368-abc',
+      stream: 'stdout',
+    });
   }, 120_000);
 
   async function startVector(): Promise<void> {

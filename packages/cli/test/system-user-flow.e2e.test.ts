@@ -954,6 +954,7 @@ describeSelfHostedUserSetupE2e('self-hosted system user flow end-to-end', (): vo
         resourceLogsResponseSchema,
       );
       expect(resourceLogsPayload.resource.name).toBe(app.resourceName);
+      expect(resourceLogsPayload.lines.length).toBeGreaterThan(0);
       expect(
         resourceLogsPayload.lines.every((line: ResourceLogLine): boolean => line.resourceName === app.resourceName),
       ).toBe(true);

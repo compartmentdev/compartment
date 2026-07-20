@@ -274,7 +274,7 @@ describe('rbac permission-family integration', (): void => {
   });
 
   it('resolves resource access at environment scope and keeps resource logs behind explicit log-read grants', async (): Promise<void> => {
-    const resourceId: string = 'res_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const resourceId: string = 'res_postgres';
     const installPayload: InstallResponse = await installCompartment(app);
     await seedProject(harness, {
       id: 'prj_resource',
@@ -411,7 +411,7 @@ describe('rbac permission-family integration', (): void => {
       restartIdentity: '0',
       sourceFingerprint: 'd'.repeat(64),
       sourceOffset: 1,
-      stream: 'stderr',
+      stream: 'stdout',
       timestamp: new Date().toISOString(),
     };
     await expect(ingestDeploymentProductLogs([resourceEvent])).resolves.toEqual({

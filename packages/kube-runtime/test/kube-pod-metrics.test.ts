@@ -32,6 +32,27 @@ describe('Kubernetes Pod metrics observation', (): void => {
       }),
     ).rejects.toThrow('metrics-server returned an incomplete product Pod snapshot.');
   });
+
+  it('keeps live Pod metrics when a completed release Job has no metrics-server sample', async (): Promise<void> => {
+    const livePod: V1Pod = productPod('pod-a', 'pod-uid-a');
+    const completedJobPod: V1Pod = {
+      ...productPod('release-job-a', 'release-job-uid-a'),
+      status: { phase: 'Succeeded' },
+    };
+
+    await expect(
+      readKubePodMetrics(new StubCoreApi([livePod, completedJobPod]), new StubMetricsApi([podMetric('pod-a')]), {
+        kind: 'pod-metrics',
+        labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+      }),
+    ).resolves.toMatchObject([
+      {
+        deploymentId: 'dep-a',
+        podName: 'pod-a',
+        podUid: 'pod-uid-a',
+      },
+    ]);
+  });
 });
 
 class StubCoreApi implements KubePodListReader {
