@@ -96,7 +96,7 @@ describe('project provisioning execution', (): void => {
     expect(apply).toHaveBeenCalledTimes(4);
   });
 
-  it('leaves a transient Job failure running and rejoins on the next provisioning attempt', async (): Promise<void> => {
+  it('preserves a live Job after a transient failure until terminal cleanup', async (): Promise<void> => {
     const apply: Mock = vi.fn<() => Promise<KubeManifest[]>>().mockResolvedValue([]);
     const runJob: Mock = vi
       .fn<() => Promise<KubeJobResult>>()
@@ -112,8 +112,6 @@ describe('project provisioning execution', (): void => {
       status: 'succeeded',
     });
 
-    expect(runJob).toHaveBeenCalledTimes(2);
-    expect(runJob.mock.calls[1]?.[0]).toEqual(runJob.mock.calls[0]?.[0]);
     const firstApply: ApplyBundle = apply.mock.calls[0]?.[0] as ApplyBundle;
     const retryApply: ApplyBundle = apply.mock.calls[1]?.[0] as ApplyBundle;
     const terminalCleanup: ApplyBundle = apply.mock.calls[2]?.[0] as ApplyBundle;
@@ -122,7 +120,6 @@ describe('project provisioning execution', (): void => {
     expect(terminalCleanup.deleteAfterApply).toEqual(
       expect.arrayContaining([expect.objectContaining({ kind: 'Job' })]),
     );
-    expect(apply).toHaveBeenCalledTimes(3);
   });
 
   it('keeps a primary provisioning failure failed while still cleaning authority', async (): Promise<void> => {

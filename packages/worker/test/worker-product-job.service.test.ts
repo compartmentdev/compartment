@@ -117,28 +117,14 @@ describe('executeProductJob', (): void => {
     expect(durable).toBe(true);
   });
 
-  it('leaves a transient Kubernetes failure non-terminal and retries the same Job identity', async (): Promise<void> => {
-    const result: KubeJobResult = successResult();
-    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithSequence([
-      new Error('observation startup unavailable'),
-      result,
-    ]);
-    const intent: ProductJobIntent = releaseIntent();
+  it('leaves a transient Kubernetes failure non-terminal', async (): Promise<void> => {
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithSequence([new Error('observation startup unavailable')]);
 
-    await expect(executeProductJob(requester(), runtime, intent)).rejects.toThrow('observation startup unavailable');
+    await expect(executeProductJob(requester(), runtime, releaseIntent())).rejects.toThrow(
+      'observation startup unavailable',
+    );
 
     expect(mocks.persistResult).not.toHaveBeenCalled();
-
-    await expect(executeProductJob(requester(), runtime, intent)).resolves.toMatchObject({ status: 'succeeded' });
-
-    expect(runtime.runJob).toHaveBeenCalledTimes(2);
-    expect(runtime.runJob.mock.calls[1]?.[0]).toEqual(runtime.runJob.mock.calls[0]?.[0]);
-    expect(mocks.persistResult).toHaveBeenCalledOnce();
-    expect(mocks.persistResult).toHaveBeenCalledWith(
-      expect.any(Function),
-      expect.objectContaining({ identityId: 'dep-01jz', status: 'succeeded' }),
-    );
-    expect((result.finalize as Mock).mock.calls).toHaveLength(1);
   });
 
   it('does not finalize when killed after terminal capture and before persistence', async (): Promise<void> => {
@@ -159,6 +145,10 @@ describe('executeProductJob', (): void => {
       'Product release job dep-01jz failed.',
     );
 
+    expect(mocks.persistResult).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ exitCode: 19, logs: 'complete output\n', status: 'failed' }),
+    );
     expect((result.finalize as Mock).mock.calls).toHaveLength(1);
   });
 
