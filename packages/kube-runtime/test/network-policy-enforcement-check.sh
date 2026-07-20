@@ -42,15 +42,42 @@ run_matrix() {
   record "${phase}" caddy-to-application allow "from_caddy 'wget -q -T 2 -O /dev/null http://app.ns-a.svc:8080'"
 }
 
+matrix_matches() {
+  local isolated="$1"
+  if [[ "${isolated}" == 'allow' ]]; then
+    from_application 'wget -q -T 1 -O /dev/null http://foreign.ns-b.svc:8080' &&
+      from_application 'wget -q -T 1 -O /dev/null http://platform.platform-ns.svc:8080' &&
+      from_release 'wget -q -T 1 -O /dev/null http://foreign.ns-b.svc:8080' &&
+      from_release 'wget -q -T 1 -O /dev/null http://platform.platform-ns.svc:8080'
+  else
+    ! from_application 'wget -q -T 1 -O /dev/null http://foreign.ns-b.svc:8080' &&
+      ! from_application 'wget -q -T 1 -O /dev/null http://platform.platform-ns.svc:8080' &&
+      ! from_release 'wget -q -T 1 -O /dev/null http://foreign.ns-b.svc:8080' &&
+      ! from_release 'wget -q -T 1 -O /dev/null http://platform.platform-ns.svc:8080'
+  fi &&
+    from_application 'wget -q -T 1 -O /dev/null http://resource.ns-a.svc:8080' &&
+    from_application 'nslookup kubernetes.default.svc.cluster.local' &&
+    from_release 'wget -q -T 1 -O /dev/null http://resource.ns-a.svc:8080' &&
+    from_release 'nslookup kubernetes.default.svc.cluster.local' &&
+    from_caddy 'wget -q -T 1 -O /dev/null http://app.ns-a.svc:8080'
+}
+
+await_matrix() {
+  local isolated="$1"
+  for _ in $(seq 1 30); do
+    if matrix_matches "${isolated}"; then return 0; fi
+    sleep 1
+  done
+  return 1
+}
+
 : >"${results}"
+await_matrix allow
 run_matrix without-policy allow
 pnpm --dir "${dir}/.." test:network-policy:render "${pod_cidr}" "${service_cidr}" |
   kubectl --context "${context}" apply -f - >/dev/null
 
-for _ in $(seq 1 30); do
-  if ! from_release 'wget -q -T 1 -O /dev/null http://foreign.ns-b.svc:8080'; then break; fi
-  sleep 1
-done
+await_matrix deny
 run_matrix with-policy deny
 
 if grep -q $'\tFAIL$' "${results}"; then

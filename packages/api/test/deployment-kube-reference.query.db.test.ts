@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { immutableKubeName } from '@compartment/utils';
-import type { ProductLogIngestEvent } from '@compartment/contracts';
+import type { ProductLogIngestEvent, WorkerPersistProductJobResultRequest } from '@compartment/contracts';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
@@ -764,6 +764,121 @@ describe('deployment Kubernetes transition persistence', (): void => {
     await expect(findNextDeploymentReconcilePair()).resolves.toBeNull();
   });
 
+  it('fails a deployment prepared after its latest resource reconcile already failed', async (): Promise<void> => {
+    await seedCandidate();
+    await db.delete(deploymentKubeReferences).where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
+    await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
+    await db.insert(projectResources).values({
+      commandJson: '[]',
+      envJson: '[]',
+      environmentId: 'env_kube',
+      expectedClaimsJson: '[]',
+      id: 'res_early_failed_database',
+      image: 'postgres:16',
+      name: 'database',
+      outputsJson: '{}',
+      portsJson: '[5432]',
+      readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
+      runtimeDefinitionHash: 'early-failed-database-hash',
+      status: 'stopped',
+      volumesJson: '[]',
+    });
+    await db.insert(resourceReconcileRuns).values({
+      expectedClaimsJson: '[]',
+      failureMessage: 'bootstrap failed before build handoff',
+      id: 'rr_database_early_failed',
+      intentJson: '{}',
+      operationType: 'bootstrap',
+      phase: 'failed',
+      projectResourceId: 'res_early_failed_database',
+    });
+
+    await prepareDeploymentReconcileReference({
+      deploymentId: 'dep_candidate',
+      deploymentName: 'app-env-kube-svc-kube',
+      id: 'kref_candidate_after_resource_failure',
+      imageRef: 'repo/kube@sha256:resource-failure',
+      namespace: 'cpt-prj-kube',
+      networkPolicyNames: [],
+      routeId: 'route_kube',
+      routeSubdomain: 'kube',
+      serviceName: 'app-env-kube-svc-kube',
+    });
+
+    const [deployment] = await db.select().from(deployments).where(eq(deployments.id, 'dep_candidate'));
+    const [operation] = await db.select().from(operations).where(eq(operations.id, 'op_candidate'));
+    const [reference] = await db
+      .select()
+      .from(deploymentKubeReferences)
+      .where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
+    expect(deployment).toMatchObject({ health: 'unhealthy', status: 'failed' });
+    expect(deployment?.failureMessage).toContain('bootstrap failed before build handoff');
+    expect(operation).toMatchObject({ status: 'failed' });
+    expect(reference).toMatchObject({ state: 'pending' });
+    await expect(persistCandidateReleaseIntent()).resolves.toMatchObject({ status: 'failed' });
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      persistedResult: { status: 'failed' },
+    });
+  });
+
+  it('does not claim a queued release after a newer resource reconcile becomes pending', async (): Promise<void> => {
+    await seedReleaseResourcePrerequisite();
+    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+      candidate: { deploymentId: 'dep_candidate', state: 'desired' },
+    });
+    await db.insert(resourceReconcileRuns).values({
+      createdAt: new Date('2026-07-12T11:00:00.000Z'),
+      expectedClaimsJson: '[]',
+      id: 'rr_release_fence_pending',
+      intentJson: '{}',
+      operationType: 'reconcile',
+      phase: 'reconcile-pending',
+      projectResourceId: 'res_release_fence_database',
+    });
+    await persistCandidateReleaseIntent();
+
+    await expect(claimProductJob('release')).resolves.toEqual({ intent: null, persistedResult: null });
+    await db
+      .update(resourceReconcileRuns)
+      .set({ phase: 'succeeded' })
+      .where(eq(resourceReconcileRuns.id, 'rr_release_fence_pending'));
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_candidate' },
+      persistedResult: null,
+    });
+  });
+
+  it('terminal-cancels a queued release after its newer resource reconcile fails', async (): Promise<void> => {
+    await seedReleaseResourcePrerequisite();
+    await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+      candidate: { deploymentId: 'dep_candidate', state: 'desired' },
+    });
+    await persistCandidateReleaseIntent();
+    await db.insert(resourceReconcileRuns).values({
+      createdAt: new Date('2026-07-12T11:00:00.000Z'),
+      expectedClaimsJson: '[]',
+      id: 'rr_release_fence_failed',
+      intentJson: '{}',
+      leaseExpiresAt: new Date(Date.now() + 60_000),
+      leaseId: 'lease_release_fence_failed',
+      operationType: 'reconcile',
+      phase: 'running',
+      projectResourceId: 'res_release_fence_database',
+    });
+
+    await acknowledgeResourceReconcileRun({
+      failureMessage: 'release prerequisite failed',
+      leaseId: 'lease_release_fence_failed',
+      operationId: 'rr_release_fence_failed',
+      status: 'failed',
+    });
+
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      persistedResult: { status: 'failed' },
+    });
+    await expect(db.select().from(productJobRuns)).resolves.toMatchObject([{ status: 'failed' }]);
+  });
+
   it('starts a resource-free deployment only after the current project policy generation', async (): Promise<void> => {
     await seedCandidate();
     await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
@@ -1262,6 +1377,52 @@ async function seedCandidate(): Promise<void> {
     namespace: 'cpt-prj-kube',
     networkPolicyNames: [],
     serviceName: 'app-env-kube-svc-kube',
+  });
+}
+
+async function seedReleaseResourcePrerequisite(): Promise<void> {
+  await seedCandidate();
+  await db.insert(projectKubeProvisioning).values({ policyGeneration: 1, projectId: 'prj_kube', state: 'succeeded' });
+  await db.insert(projectResources).values({
+    commandJson: '[]',
+    envJson: '[]',
+    environmentId: 'env_kube',
+    expectedClaimsJson: '[]',
+    id: 'res_release_fence_database',
+    image: 'postgres:16',
+    name: 'database',
+    outputsJson: '{}',
+    portsJson: '[5432]',
+    readinessJson: '{"type":"tcp","port":5432,"timeoutMs":30000}',
+    runtimeDefinitionHash: 'release-fence-database-hash',
+    status: 'running',
+    volumesJson: '[]',
+  });
+  await db.insert(resourceReconcileRuns).values({
+    createdAt: new Date('2026-07-12T10:00:00.000Z'),
+    expectedClaimsJson: '[]',
+    id: 'rr_release_fence_ready',
+    intentJson: '{}',
+    operationType: 'bootstrap',
+    phase: 'succeeded',
+    projectResourceId: 'res_release_fence_database',
+  });
+}
+
+async function persistCandidateReleaseIntent(): Promise<WorkerPersistProductJobResultRequest | null> {
+  return await persistProductJobIntent({
+    identityId: 'dep_candidate',
+    intent: {
+      command: ['bin/release'],
+      deploymentId: 'dep_candidate',
+      env: {},
+      image: 'registry.example/release@sha256:abc',
+      imagePullSecretId: 'pull-project',
+      jobClass: 'release',
+      namespace: 'cpt-prj-kube',
+      projectId: 'prj_kube',
+      timeoutMs: 30_000,
+    },
   });
 }
 

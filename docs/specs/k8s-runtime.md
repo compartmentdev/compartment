@@ -1,7 +1,7 @@
 # Kubernetes Runtime
 
 Status: implemented (F1 cutover)
-Updated: 2026-07-14
+Updated: 2026-07-20
 
 ## Ownership
 

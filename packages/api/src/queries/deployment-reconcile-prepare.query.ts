@@ -3,6 +3,7 @@ import { buildArtifacts, deploymentKubeReferences, deployments, environments, pr
 import { getApiDatabase } from '../runtime/runtime-access';
 import { ensureDeploymentRouteWithExecutor } from './deployment-route-persistence.query';
 import type { DeploymentTransaction } from './deployments.query.types';
+import { failPreparedDeploymentForLatestResourceFailure } from './deployment-resource-readiness-failure.query';
 import {
   lockTerminalProvisioningForDeployment,
   propagateTerminalProvisioningRow,
@@ -45,6 +46,7 @@ async function prepareWithTransaction(
   await updateBuildArtifact(tx, input, deployment, now);
   await insertDesiredReference(tx, input, now);
   await upsertPreparedRoute(tx, input, deployment, now);
+  await failPreparedDeploymentForLatestResourceFailure(tx, input.deploymentId, now);
   await propagateTerminalProvisioningRow(tx, terminal, now);
   return 'prepared';
 }

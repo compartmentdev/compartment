@@ -4,20 +4,32 @@ import type { ApiDatabaseTransaction } from '../db/client.types';
 import { productJobRuns, projects, resourceReconcileRuns } from '../db/schema';
 import type { ProductJobRunRow } from './product-job-runs.query.types';
 import { lockResourceRuntimeClaims } from './resource-runtime-claim-lock.query';
+import {
+  cancelInvalidReleaseProductJob,
+  lockReleaseProductJobResources,
+  releaseProductJobReady,
+} from './release-product-job-readiness.query';
 
 export async function prepareProductJobClaim(
   transaction: ApiDatabaseTransaction,
   jobClass: ProductJobClass,
 ): Promise<SQL | undefined> {
   await cancelArchivedProductJobs(transaction, jobClass, new Date());
-  return claimableProductJobCondition(jobClass);
+  if (jobClass === 'release') {
+    await cancelInvalidReleaseProductJob(transaction, new Date());
+  }
+  return claimableProductJobCondition(transaction, jobClass);
 }
 
 export async function lockProductJobResourceFence(
   transaction: ApiDatabaseTransaction,
   row: ProductJobRunRow,
 ): Promise<boolean> {
-  if (row.jobClass !== 'resource-operation' || row.status !== 'queued') {
+  if (row.status !== 'queued') {
+    return true;
+  }
+  if (row.jobClass === 'release') {
+    await lockReleaseProductJobResources(transaction, row.identityId);
     return true;
   }
   const resourceIds: string[] = JSON.parse(row.resourceIdsJson) as string[];
@@ -134,7 +146,7 @@ function archivedProductJobProjectCondition(): SQL {
   )`;
 }
 
-function claimableProductJobCondition(jobClass: ProductJobClass): SQL | undefined {
+function claimableProductJobCondition(transaction: ApiDatabaseTransaction, jobClass: ProductJobClass): SQL | undefined {
   const terminal: SQL | undefined = and(
     inArray(productJobRuns.status, ['succeeded', 'failed', 'timed-out']),
     isNull(productJobRuns.finalizedAt),
@@ -146,7 +158,11 @@ function claimableProductJobCondition(jobClass: ProductJobClass): SQL | undefine
       terminal,
     );
   }
-  return or(inArray(productJobRuns.status, ['queued', 'running']), terminal);
+  return or(
+    and(eq(productJobRuns.status, 'queued'), releaseProductJobReady(transaction)),
+    eq(productJobRuns.status, 'running'),
+    terminal,
+  );
 }
 
 function resourceOperationReconcileFence(): SQL {

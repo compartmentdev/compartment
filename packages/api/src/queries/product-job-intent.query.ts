@@ -7,6 +7,7 @@ import { productJobRuns, projects } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { readProductJobResult } from './product-job-runs.query';
 import type { PersistProductJobIntentInput } from './product-job-runs.query.types';
+import { cancelInvalidReleaseProductJob } from './release-product-job-readiness.query';
 
 export async function persistProductJobIntent(
   input: PersistProductJobIntentInput,
@@ -26,6 +27,9 @@ async function persistProductJobIntentWithExecutor(
   const canceled: WorkerPersistProductJobResultRequest | null =
     canceledAt === null ? null : archivedProductJobResult(input, canceledAt);
   await insertProductJobIntent(tx, input, canceled);
+  if (input.intent.jobClass === 'release' && canceled === null) {
+    await cancelInvalidReleaseProductJob(tx, new Date(), input.intent.deploymentId);
+  }
   return canceled;
 }
 

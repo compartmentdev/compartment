@@ -2,11 +2,37 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { deploymentKubeReferences, deploymentRunEvents, deployments, operations, projectResources } from '../db/schema';
 import { createId } from '../lib/tokens';
 import type { DeploymentTransaction } from './deployments.query.types';
+import {
+  latestResourceReconcileRunFailureMessage,
+  latestResourceReconcileRunHasPhase,
+} from './latest-resource-reconcile-run.query';
 
 interface WaitingResourceDeploymentRow {
   deploymentId: string;
   deploymentRunId: string;
   operationId: string;
+}
+
+interface FailedDeploymentResourceRow {
+  failureMessage: string | null;
+  resourceId: string;
+}
+
+export async function failPreparedDeploymentForLatestResourceFailure(
+  tx: DeploymentTransaction,
+  deploymentId: string,
+  failedAt: Date,
+): Promise<void> {
+  const failed: FailedDeploymentResourceRow | undefined = await findLatestFailedDeploymentResource(tx, deploymentId);
+  if (failed === undefined) {
+    return;
+  }
+  await failDesiredDeploymentsWaitingForResource(
+    tx,
+    failed.resourceId,
+    `Resource ${failed.resourceId} reconcile failed: ${failed.failureMessage ?? 'unknown failure'}`,
+    failedAt,
+  );
 }
 
 export async function failDesiredDeploymentsWaitingForResource(
@@ -73,6 +99,22 @@ async function findWaitingDeployments(
       ),
     )
     .for('update', { of: deploymentKubeReferences });
+}
+
+async function findLatestFailedDeploymentResource(
+  tx: DeploymentTransaction,
+  deploymentId: string,
+): Promise<FailedDeploymentResourceRow | undefined> {
+  const [failed] = await tx
+    .select({
+      failureMessage: latestResourceReconcileRunFailureMessage(projectResources.id),
+      resourceId: projectResources.id,
+    })
+    .from(deployments)
+    .innerJoin(projectResources, eq(projectResources.environmentId, deployments.environmentId))
+    .where(and(eq(deployments.id, deploymentId), latestResourceReconcileRunHasPhase(projectResources.id, 'failed')))
+    .limit(1);
+  return failed;
 }
 
 async function failDeployments(

@@ -18,6 +18,7 @@ import type {
   ProductJobResultRow,
 } from './product-job-runs.query.types';
 import { lockProductJobResourceFence, prepareProductJobClaim } from './product-job-claim.query';
+import { releaseProductJobReady } from './release-product-job-readiness.query';
 
 interface ProductJobRunSelection extends SelectedFields {
   commandJson: typeof productJobRuns.commandJson;
@@ -86,19 +87,29 @@ async function claimProductJobWithTransaction(
   if (row === undefined || !(await lockProductJobResourceFence(transaction, row))) {
     return { intent: null, persistedResult: null };
   }
-  if (row.status === 'queued') {
-    await transaction
-      .update(productJobRuns)
-      .set({ status: 'running', updatedAt: new Date() })
-      .where(
-        and(
-          eq(productJobRuns.jobClass, row.jobClass),
-          eq(productJobRuns.identityId, row.identityId),
-          eq(productJobRuns.status, 'queued'),
-        ),
-      );
+  if (row.status === 'queued' && !(await transitionQueuedProductJob(transaction, row))) {
+    return { intent: null, persistedResult: null };
   }
   return { intent: buildProductJobIntent(row), persistedResult: buildPersistedProductJobResult(row) };
+}
+
+async function transitionQueuedProductJob(
+  transaction: ApiDatabaseTransaction,
+  row: ProductJobRunRow,
+): Promise<boolean> {
+  const transitioned: { id: string }[] = await transaction
+    .update(productJobRuns)
+    .set({ status: 'running', updatedAt: new Date() })
+    .where(
+      and(
+        eq(productJobRuns.jobClass, row.jobClass),
+        eq(productJobRuns.identityId, row.identityId),
+        eq(productJobRuns.status, 'queued'),
+        row.jobClass === 'release' ? releaseProductJobReady(transaction) : undefined,
+      ),
+    )
+    .returning({ id: productJobRuns.id });
+  return transitioned.length > 0;
 }
 
 const claimableProductJobSelection: ProductJobRunSelection = {
