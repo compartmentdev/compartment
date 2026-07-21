@@ -156,9 +156,11 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
         resourceLogsResponseSchema,
       );
       expect(resourceLogsPayload.resource.name).toBe(app.resourceName);
+      expect(resourceLogsPayload.lines.length).toBeGreaterThan(0);
       expect(
         resourceLogsPayload.lines.every((line: ResourceLogLine): boolean => line.resourceName === app.resourceName),
       ).toBe(true);
+      expect(resourceLogsPayload.lines.some((line: ResourceLogLine): boolean => line.stream === 'stderr')).toBe(true);
 
       const stoppedResourcePayload: ResourceResponse = await admin.runJson(
         `resource stop --project ${app.projectName} --resource ${app.resourceName}`,

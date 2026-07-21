@@ -185,6 +185,18 @@ tests:
           value: compartment-compartment-log-agent
         template: product-log-agent.yaml
         documentIndex: 4
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value:
+            - --config
+            - /etc/vector/vector.yaml
+            - --watch-config
+            - --watch-config-method
+            - poll
+            - --watch-config-poll-interval-seconds
+            - '1'
+        template: product-log-agent.yaml
+        documentIndex: 4
       - hasDocuments:
           count: 5
         template: buildkit.yaml
