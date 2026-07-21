@@ -155,41 +155,6 @@ describe('deployment progress services', (): void => {
     ]);
   });
 
-  it('reports deprecated restart settings with actual Kubernetes behavior before deploy', async (): Promise<void> => {
-    const warningMessages: string[] = [];
-    mocks.resolveProjectTarget.mockResolvedValueOnce({
-      ...createResolvedProjectTarget(),
-      descriptor: {
-        ...createStoredProjectDescriptor(),
-        descriptor: {
-          name: 'smoke-web',
-          services: {
-            web: {
-              path: '.',
-              run: {
-                restart: {
-                  maxRetries: 3,
-                  policy: 'on-failure',
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    await deployProject(createAuthenticatedContext(), {
-      cwd: '/tmp/smoke-web',
-      reportWarning: (message: string): void => {
-        warningMessages.push(message);
-      },
-    });
-
-    expect(warningMessages).toContain(
-      'Warning: deprecated services.web.run.restart={"maxRetries":3,"policy":"on-failure"} is accepted for Docker-line compatibility but is not applied on Kubernetes. Kubernetes Deployment Pods use restartPolicy Always while the Deployment is running; compartment project stop scales service Deployments to zero.',
-    );
-  });
-
   it('keeps status available when the optional metrics request fails', async (): Promise<void> => {
     mocks.getDeploymentMetrics.mockRejectedValueOnce(new Error('metrics-server unavailable'));
 

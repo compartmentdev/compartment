@@ -64,12 +64,14 @@ describe('Kubernetes cutover gate', () => {
     ]);
   });
 
-  it('allows the legacy restart policy only in the explicit compatibility surface', () => {
+  it('rejects the removed legacy restart policy everywhere', () => {
     const legacyRestartPolicy = ['unless', '-stopped'].join('');
 
     expect(
       findContentViolations('packages/contracts/src/contracts/service-run.contract.ts', legacyRestartPolicy),
-    ).toEqual([]);
+    ).toEqual([
+      `packages/contracts/src/contracts/service-run.contract.ts: contains forbidden runtime term ${legacyRestartPolicy}`,
+    ]);
     expect(findContentViolations('packages/worker/src/runtime.ts', legacyRestartPolicy)).toEqual([
       `packages/worker/src/runtime.ts: contains forbidden runtime term ${legacyRestartPolicy}`,
     ]);

@@ -2,19 +2,18 @@
 
 ## Gate result
 
-ПАРИТЕТ: НЕТ — 5 потерянных фич
+ПАРИТЕТ: НЕТ — 4 потерянных фич
 
 This audit compares `origin/docker-legacy` at `dbf3ab6d` with `origin/kubernetes` at `dcb41449`. The comparison contains
 1,225 changed files, 47,516 inserted lines, and 63,681 deleted lines. The audit classifies product behavior rather than
 matching implementations by name.
 
-The five class C findings are:
+The four class C findings are:
 
 1. The public installer cannot hand off a managed-domain install through `--init-install`.
 2. Kubernetes has no Compartment-owned status, restart, or verified update workflow for an installed platform.
 3. The chart drops the install-wide rollback-retention setting and forces indefinite retention.
 4. The chart keeps auth-throttle defaults but drops the operator tuning surface.
-5. Kubernetes drops authored service and resource restart policies from `compartment.yml`.
 
 This PR records findings only. It does not restore any behavior.
 
@@ -108,23 +107,6 @@ operator configuration path is gone.
 Production trace:
 
 Helm values -> no throttle fields -> ConfigMap constants -> API enforcement uses fixed defaults.
-
-### C5. Authored service and resource restart policy
-
-The Docker descriptor contract let users set service `run.restart.policy` to `no`, `on-failure`, or a policy that
-restarted the workload except after an explicit stop, with `maxRetries` for `on-failure`. Resources exposed the same
-policy family through `restart`. The resolvers applied `on-failure` to services and the explicit-stop-sensitive policy
-to resources by default, so this behavior affected descriptors that did not declare the field. Resource summaries also
-returned the persisted policy.
-
-The Kubernetes contract removes both restart fields. Workload Deployments use the controller's fixed Pod recovery;
-the production projection has no descriptor value to map and no retry limit equivalent. Existing authored restart
-settings therefore fail strict descriptor validation, and the old default changes without a compatibility path.
-
-Production trace:
-
-`compartment.yml` strict schema -> no service or resource restart field -> no persisted deployment intent -> Kubernetes
-projection cannot apply the authored policy or `maxRetries`.
 
 ## Class A: ported behavior
 

@@ -10,15 +10,7 @@ import {
 type ResourcePresetRejectedOverride = Partial<
   Pick<
     CompartmentAuthoredResourceConfig,
-    | 'command'
-    | 'generatedVariables'
-    | 'image'
-    | 'operations'
-    | 'outputs'
-    | 'ports'
-    | 'readiness'
-    | 'restart'
-    | 'volumes'
+    'command' | 'generatedVariables' | 'image' | 'operations' | 'outputs' | 'ports' | 'readiness' | 'volumes'
   >
 >;
 
@@ -30,7 +22,6 @@ const resourcePresetRejectedOverrides: readonly [string, ResourcePresetRejectedO
   ['outputs', { outputs: { host: { sensitive: false, value: 'custom-host' } } }],
   ['ports', { ports: [5433] }],
   ['readiness', { readiness: { port: 5433, type: 'tcp' } }],
-  ['restart', { restart: { policy: 'unless-stopped' } }],
   ['volumes', { volumes: { data: '/data' } }],
 ];
 
@@ -84,23 +75,31 @@ describe('compartment descriptor resource contracts', (): void => {
     });
   });
 
-  it.each(['no', 'on-failure', 'unless-stopped'] as const)(
-    'accepts deprecated full-resource restart policy %s for Docker-line compatibility',
-    (policy: 'no' | 'on-failure' | 'unless-stopped'): void => {
-      const descriptor: CompartmentAuthoredDescriptor = compartmentAuthoredDescriptorSchema.parse({
+  it('rejects removed resource restart settings', (): void => {
+    const result: SafeParseReturnType<CompartmentAuthoredDescriptor, CompartmentAuthoredDescriptor> =
+      compartmentAuthoredDescriptorSchema.safeParse({
         name: 'backoffice',
         resources: {
           postgres: {
             image: 'postgres:16',
-            restart: { policy },
+            restart: { policy: 'no' },
           },
         },
         services: { web: '.' },
       });
 
-      expect(descriptor.resources?.postgres?.restart).toEqual({ policy });
-    },
-  );
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'unrecognized_keys',
+            path: ['resources', 'postgres'],
+          }),
+        ]),
+      );
+    }
+  });
 
   it('reserves the managed backup claim handle from authored resource volumes', (): void => {
     const result: SafeParseReturnType<CompartmentAuthoredDescriptor, CompartmentAuthoredDescriptor> =
