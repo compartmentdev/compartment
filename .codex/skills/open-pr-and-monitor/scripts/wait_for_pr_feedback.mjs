@@ -126,7 +126,7 @@ async function main() {
         repository,
         baseline,
         startedAt,
-        'Timed out with no new PR feedback, merge-state, or check changes on the pinned head.',
+        'Timed out with no decision-ready PR changes on the pinned head (intermediate check churn may have been absorbed).',
       );
       return;
     }
@@ -223,6 +223,18 @@ function readChecksProgress(checksKey) {
   let running = false;
   let failed = false;
   for (const check of checks) {
+    if (check.kind === 'required-check') {
+      // Entries from `gh pr checks --required` carry bucket/state, not
+      // status/conclusion. Buckets: pass, fail, pending, skipping, cancel.
+      const bucket = typeof check.bucket === 'string' ? check.bucket.toLowerCase() : '';
+      if (bucket === 'pending') {
+        running = true;
+      }
+      if (bucket === 'fail' || bucket === 'cancel') {
+        failed = true;
+      }
+      continue;
+    }
     if (check.kind === 'commit-status') {
       if (check.state === 'PENDING' || check.state === 'pending') {
         running = true;
@@ -232,12 +244,18 @@ function readChecksProgress(checksKey) {
       }
       continue;
     }
-    if (check.status !== 'completed') {
-      running = true;
+    if (check.kind === 'workflow-run') {
+      if (check.status !== 'completed') {
+        running = true;
+      }
+      if (typeof check.conclusion === 'string' && FAILED_CHECK_CONCLUSIONS.has(check.conclusion)) {
+        failed = true;
+      }
+      continue;
     }
-    if (typeof check.conclusion === 'string' && FAILED_CHECK_CONCLUSIONS.has(check.conclusion)) {
-      failed = true;
-    }
+    // Unknown snapshot shape: stay conservative — keep waiting; the timeout
+    // heartbeat still bounds the wait.
+    running = true;
   }
   return { failed, settled: !running };
 }
