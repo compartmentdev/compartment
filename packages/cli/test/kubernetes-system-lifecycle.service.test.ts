@@ -64,7 +64,7 @@ describe('Kubernetes system lifecycle', (): void => {
     );
   });
 
-  it('restarts only release workloads and waits for both controller kinds', async (): Promise<void> => {
+  it('restarts stateless Deployments including project-provisioner and excludes stateful infrastructure', async (): Promise<void> => {
     mocks.runCommand.mockImplementation(statusCommandHandler(true));
 
     const result: KubernetesSystemRestartResponse = await restartKubernetesSystem(target());
@@ -78,12 +78,29 @@ describe('Kubernetes system lifecycle', (): void => {
         expect.arrayContaining([
           'rollout',
           'restart',
-          'deployment,daemonset',
+          'deployment',
           '--selector',
-          'app.kubernetes.io/instance=compartment-prod',
+          'app.kubernetes.io/instance=compartment-prod,app.kubernetes.io/component notin (postgres,registry,buildkit)',
         ]),
-        expect.arrayContaining(['rollout', 'status', 'deployment', '--timeout', '10m']),
-        expect.arrayContaining(['rollout', 'status', 'daemonset', '--timeout', '10m']),
+        expect.arrayContaining([
+          'rollout',
+          'status',
+          'deployment',
+          '--selector',
+          'app.kubernetes.io/instance=compartment-prod,app.kubernetes.io/component notin (postgres,registry,buildkit)',
+          '--timeout',
+          '10m',
+        ]),
+      ]),
+    );
+    const rolloutCommands: readonly (readonly string[])[] = commands.filter((command: readonly string[]): boolean =>
+      command.includes('rollout'),
+    );
+    expect(rolloutCommands).toHaveLength(2);
+    expect(rolloutCommands).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining(['rollout', 'restart', 'deployment']),
+        expect.arrayContaining(['rollout', 'status', 'deployment']),
       ]),
     );
   });

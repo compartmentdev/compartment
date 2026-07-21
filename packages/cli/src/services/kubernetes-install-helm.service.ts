@@ -37,11 +37,19 @@ export async function resolveKubernetesChartPath(
 export async function runKubernetesHelmInstallStage(
   input: KubernetesInstallDeploymentInput,
   chartPath: string,
+  platformImageValuesPath: string,
   installValuesPath: string,
   imageTrustValuesPath: string,
   stage: KubernetesInstallStage,
 ): Promise<void> {
-  const command: string[] = buildHelmInstallCommand(input, chartPath, installValuesPath, imageTrustValuesPath, stage);
+  const command: string[] = buildHelmInstallCommand(
+    input,
+    chartPath,
+    platformImageValuesPath,
+    installValuesPath,
+    imageTrustValuesPath,
+    stage,
+  );
   const result: CommandResult = await runCommand(command);
   if (result.exitCode !== 0) {
     throwHelmInstallError(stage, result);
@@ -51,11 +59,18 @@ export async function runKubernetesHelmInstallStage(
 function buildHelmInstallCommand(
   input: KubernetesInstallDeploymentInput,
   chartPath: string,
+  platformImageValuesPath: string,
   installValuesPath: string,
   imageTrustValuesPath: string,
   stage: KubernetesInstallStage,
 ): string[] {
-  const args: string[] = buildHelmBaseCommand(input, chartPath, installValuesPath, imageTrustValuesPath);
+  const args: string[] = buildHelmBaseCommand(
+    input,
+    chartPath,
+    platformImageValuesPath,
+    installValuesPath,
+    imageTrustValuesPath,
+  );
   args.push('--set', `platform.startupStage=${stage}`);
   args.push(...buildHelmKubeContextArgs(input));
   if (stage === 'full') {
@@ -67,6 +82,7 @@ function buildHelmInstallCommand(
 function buildHelmBaseCommand(
   input: KubernetesInstallDeploymentInput,
   chartPath: string,
+  platformImageValuesPath: string,
   installValuesPath: string,
   imageTrustValuesPath: string,
 ): string[] {
@@ -79,12 +95,26 @@ function buildHelmBaseCommand(
     '--namespace',
     input.namespace,
     '--create-namespace',
-    ...buildKubernetesHelmValuesArgs([input.valuesPath, installValuesPath, imageTrustValuesPath]),
+    ...buildHelmInstallValuesArgs(input, platformImageValuesPath, installValuesPath, imageTrustValuesPath),
     '--rollback-on-failure',
     '--wait',
     '--timeout',
     helmInstallTimeout,
   ];
+}
+
+function buildHelmInstallValuesArgs(
+  input: KubernetesInstallDeploymentInput,
+  platformImageValuesPath: string,
+  installValuesPath: string,
+  imageTrustValuesPath: string,
+): string[] {
+  return buildKubernetesHelmValuesArgs([
+    platformImageValuesPath,
+    input.valuesPath,
+    installValuesPath,
+    imageTrustValuesPath,
+  ]);
 }
 
 export function buildKubernetesHelmValuesArgs(valuesPaths: readonly string[]): string[] {

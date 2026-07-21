@@ -25,34 +25,27 @@ import {
 } from './kubernetes-install-helm.service';
 import { writeVerifiedKubernetesReleaseImageValues } from './kubernetes-image-trust.service';
 import type { KubernetesOperatorTarget } from './kubernetes-operator.service.types';
-import type {
-  KubernetesPlatformUpdateImageValue,
-  KubernetesPlatformUpdateImageValues,
-  KubernetesSystemUpdateInput,
-} from './kubernetes-system-lifecycle.service.types';
+import type { KubernetesSystemUpdateInput } from './kubernetes-system-lifecycle.service.types';
+import { buildKubernetesPlatformImageVersionValues } from './kubernetes-platform-version.service';
 import { readKubernetesHelmReleaseStatus, readKubernetesPlatformWorkloads } from './kubernetes-system-status.service';
 
 const helmUpdateTimeout: string = '15m';
 const rolloutTimeout: string = '10m';
+const restartDeploymentSelectorComponents: string = 'app.kubernetes.io/component notin (postgres,registry,buildkit)';
 
 export async function restartKubernetesSystem(
   target: KubernetesOperatorTarget,
 ): Promise<KubernetesSystemRestartResponse> {
-  const selector: string = buildKubernetesReleaseSelector(target.releaseName);
+  const selector: string = `${buildKubernetesReleaseSelector(target.releaseName)},${restartDeploymentSelectorComponents}`;
   await runRequiredKubectl(
     target,
-    ['rollout', 'restart', 'deployment,daemonset', '--selector', selector],
+    ['rollout', 'restart', 'deployment', '--selector', selector],
     'Failed to restart Kubernetes platform workloads.',
   );
   await runRequiredKubectl(
     target,
     ['rollout', 'status', 'deployment', '--selector', selector, '--timeout', rolloutTimeout],
     'Kubernetes platform Deployment restart did not complete.',
-  );
-  await runRequiredKubectl(
-    target,
-    ['rollout', 'status', 'daemonset', '--selector', selector, '--timeout', rolloutTimeout],
-    'Kubernetes platform DaemonSet restart did not complete.',
   );
   const status: KubernetesSystemStatusResponse = await getKubernetesSystemStatus(target);
   return kubernetesSystemRestartResponseSchema.parse({ restarted: status.ready, status });
@@ -96,7 +89,7 @@ async function applyMaterializedKubernetesUpdate(
   const chartPath: string = await resolveKubernetesChartPath(input, materializedDirectory);
   const updateValuesPath: string = resolve(materializedDirectory, 'update-values.json');
   const imageTrustValuesPath: string = resolve(materializedDirectory, 'image-trust-values.json');
-  await writeKubernetesInstallValues(updateValuesPath, buildPlatformUpdateValues(input.version));
+  await writeKubernetesInstallValues(updateValuesPath, buildKubernetesPlatformImageVersionValues(input.version));
   await writeVerifiedKubernetesReleaseImageValues({
     ...(input.kubeContext === undefined ? {} : { kubeContext: input.kubeContext }),
     namespace: input.namespace,
@@ -134,11 +127,6 @@ function buildKubernetesUpdateHelmCommand(
     helmUpdateTimeout,
     ...buildHelmKubeContextArgs(input),
   ];
-}
-
-function buildPlatformUpdateValues(version: string): KubernetesPlatformUpdateImageValues {
-  const image: KubernetesPlatformUpdateImageValue = { digest: '', tag: version };
-  return { images: { api: image, caddy: image, edge: image, worker: image } };
 }
 
 async function runRequiredKubectl(

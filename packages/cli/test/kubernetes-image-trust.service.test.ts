@@ -41,11 +41,23 @@ describe('Kubernetes platform image trust', (): void => {
     vi.unstubAllEnvs();
   });
 
-  it('verifies effective platform refs and writes immutable digest overrides', async (): Promise<void> => {
+  it('pins packaged defaults while preserving later operator image overrides', async (): Promise<void> => {
     const directory: string = await createTemporaryDirectory();
     try {
       const operatorValuesPath: string = resolve(directory, 'values.yaml');
+      const platformValuesPath: string = resolve(directory, 'platform-values.json');
       const outputPath: string = resolve(directory, 'verified.json');
+      await writeFile(
+        platformValuesPath,
+        JSON.stringify({
+          images: {
+            api: { digest: '', tag: '0.9.2' },
+            caddy: { digest: '', tag: '0.9.2' },
+            edge: { digest: '', tag: '0.9.2' },
+            worker: { digest: '', tag: '0.9.2' },
+          },
+        }),
+      );
       await writeFile(
         operatorValuesPath,
         'images:\n  api:\n    repository: registry.example/compartment-api\n    tag: sha-release\n',
@@ -55,7 +67,7 @@ describe('Kubernetes platform image trust', (): void => {
 
       await writeVerifiedKubernetesInstallImageValues({
         chartPath: resolve(directory, 'chart'),
-        operatorValuesPath,
+        overrideValuesPaths: [platformValuesPath, operatorValuesPath],
         outputPath,
       });
 
@@ -75,6 +87,7 @@ describe('Kubernetes platform image trust', (): void => {
       );
       expect(cosignCalls).toHaveLength(4);
       expect(cosignCalls[0]?.[0]).toContain('registry.example/compartment-api:sha-release');
+      expect(cosignCalls[1]?.[0].at(-1)).toBe('ghcr.io/compartmentdev/compartment-worker:0.9.2');
       expect(cosignCalls[0]?.[0]).toEqual(
         expect.arrayContaining([
           selfHostedRuntimeImageSignaturePolicy.certificateOidcIssuer,
@@ -152,7 +165,7 @@ describe('Kubernetes platform image trust', (): void => {
         await expect(
           writeVerifiedKubernetesInstallImageValues({
             chartPath: resolve(directory, 'chart'),
-            operatorValuesPath,
+            overrideValuesPaths: [operatorValuesPath],
             outputPath: resolve(directory, 'verified.json'),
           }),
         ).rejects.toThrow(message);

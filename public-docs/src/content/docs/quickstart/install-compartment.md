@@ -66,9 +66,10 @@ account activation, and password-reset throttles under `platform.authThrottle.{l
 flow exposes a route `window` and `limit`; source and account or subject scopes also expose a `cooldown`. Keep the chart
 defaults unless your traffic and incident-response requirements call for different protection.
 
-Select one release with the `images.*.tag` values. Before Helm changes the release, the CLI verifies all four platform
-images against Compartment's GitHub Actions signing identity, resolves each tag to its immutable digest, and deploys
-only those digests. An unsigned image or an image signed by another identity stops the install before activation.
+The release CLI defaults all four `images.*.tag` values to its packaged platform version. Explicit tags in your
+operator values file take precedence. Before Helm changes the release, the CLI verifies all four platform images
+against Compartment's GitHub Actions signing identity, resolves each tag to its immutable digest, and deploys only
+those digests. An unsigned image or an image signed by another identity stops the install before activation.
 Supply the values under `secrets` through your normal secret-management workflow instead of committing them. Install
 with the release CLI, which uses its bundled matching chart, waits for the public Console endpoint, creates the first
 owner, and saves the owner session:
@@ -87,7 +88,8 @@ Helm and platform Secrets.
 
 Use `--kube-context`, `--namespace`, or `--release-name` when the defaults are not appropriate. Pass
 `--broker-url <url>` only for a managed-domain broker override. A CLI built directly from a source checkout has no
-embedded chart; pass `--chart ./deploy/chart/compartment` in that case.
+embedded chart; pass `--chart ./deploy/chart/compartment` in that case. Source builds retain the chart and operator
+image tags, so set all four `images.*.tag` values explicitly when you need a pinned source install.
 
 You can install the CLI and immediately start the same interactive platform install:
 
@@ -169,7 +171,8 @@ Check the Helm release state and the readiness of its Deployments and DaemonSets
 compartment system status --namespace compartment --release-name compartment
 ```
 
-Restart the release workloads and wait for both Deployment and DaemonSet rollouts:
+Restart the API, Worker, Edge, Caddy, Project Provisioner, and Registry Auth Deployments and wait for their rollouts.
+This leaves PostgreSQL, the stateful registry, and BuildKit running:
 
 ```bash
 compartment system restart --namespace compartment --release-name compartment
@@ -198,8 +201,8 @@ curl -fsSL https://compartment.dev/install.sh | sh -s -- \
 ```
 
 Use `--version <release>` or `--channel main` on the bootstrapper to select a specific platform release. The operator
-needs normal Helm update permissions plus permission to list the release's Deployments and DaemonSets and to restart
-and watch their rollouts.
+needs normal Helm update permissions, permission to list the release's Deployments and DaemonSets for status, and
+permission to restart and watch the API, Worker, Edge, Caddy, Project Provisioner, and Registry Auth Deployments.
 
 See the generated [`compartment system` reference](/reference/generated/cli/system/) for all lifecycle command options.
 
