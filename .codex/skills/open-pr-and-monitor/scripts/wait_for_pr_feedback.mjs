@@ -8,8 +8,8 @@ import { writePublicDocsWarning } from './public_docs_warning.mjs';
 
 const execFile = promisify(execFileCallback);
 
-const DEFAULT_INTERVAL_SECONDS = 30;
-const DEFAULT_TIMEOUT_SECONDS = 180;
+const DEFAULT_INTERVAL_SECONDS = 300;
+const DEFAULT_TIMEOUT_SECONDS = 1800;
 const GH_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 const REVIEW_THREADS_PAGE_SIZE = 100;
 
@@ -81,7 +81,7 @@ main().catch((error) => {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const repository = await resolveRepository(options.repo);
-  const baseline = await readSnapshot(repository, options.prNumber);
+  let baseline = await readSnapshot(repository, options.prNumber);
 
   if (baseline.terminalEvent !== null) {
     writeResult(
@@ -126,7 +126,7 @@ async function main() {
         repository,
         baseline,
         startedAt,
-        'Timed out with no new PR feedback, merge-state, or check changes on the pinned head.',
+        'Timed out with no decision-ready PR changes on the pinned head (intermediate check churn may have been absorbed).',
       );
       return;
     }
@@ -173,18 +173,6 @@ async function main() {
       return;
     }
 
-    if (current.mergeKey !== baseline.mergeKey) {
-      writeResult(
-        'merge-state-changed',
-        options,
-        repository,
-        current,
-        startedAt,
-        'Detected PR merge-state changes on the pinned head.',
-      );
-      return;
-    }
-
     if (current.feedbackKey !== baseline.feedbackKey) {
       writeResult(
         'feedback-changed',
@@ -197,18 +185,79 @@ async function main() {
       return;
     }
 
-    if (current.checksKey !== baseline.checksKey) {
-      writeResult(
-        'checks-changed',
-        options,
-        repository,
-        current,
-        startedAt,
-        'Detected required-check changes on the pinned head.',
-      );
-      return;
+    // Checks and merge-state churn constantly while CI runs (every check flips
+    // pending -> in_progress -> success, and mergeStateStatus follows). Waking
+    // the monitoring agent on every transition burns a full inspection pass per
+    // flip. Only return once the picture is decision-ready: a failure appeared
+    // or every check completed. Intermediate churn is absorbed into the
+    // baseline so it never re-triggers.
+    const checksMoved = current.checksKey !== baseline.checksKey;
+    const mergeMoved = current.mergeKey !== baseline.mergeKey;
+    if (checksMoved || mergeMoved) {
+      const progress = readChecksProgress(current.checksKey);
+      if (progress.failed || progress.settled) {
+        writeResult(
+          checksMoved ? 'checks-changed' : 'merge-state-changed',
+          options,
+          repository,
+          current,
+          startedAt,
+          checksMoved
+            ? 'Detected settled or failing required-check changes on the pinned head.'
+            : 'Detected PR merge-state changes on the pinned head.',
+        );
+        return;
+      }
+      baseline = current;
     }
   }
+}
+
+const FAILED_CHECK_CONCLUSIONS = new Set(['action_required', 'cancelled', 'failure', 'startup_failure', 'timed_out']);
+
+function readChecksProgress(checksKey) {
+  const checks = JSON.parse(checksKey);
+  if (!Array.isArray(checks) || checks.length === 0) {
+    return { failed: false, settled: false };
+  }
+  let running = false;
+  let failed = false;
+  for (const check of checks) {
+    if (check.kind === 'required-check') {
+      // Entries from `gh pr checks --required` carry bucket/state, not
+      // status/conclusion. Buckets: pass, fail, pending, skipping, cancel.
+      const bucket = typeof check.bucket === 'string' ? check.bucket.toLowerCase() : '';
+      if (bucket === 'pending') {
+        running = true;
+      }
+      if (bucket === 'fail' || bucket === 'cancel') {
+        failed = true;
+      }
+      continue;
+    }
+    if (check.kind === 'commit-status') {
+      if (check.state === 'PENDING' || check.state === 'pending') {
+        running = true;
+      }
+      if (['ERROR', 'FAILURE', 'error', 'failure'].includes(check.state)) {
+        failed = true;
+      }
+      continue;
+    }
+    if (check.kind === 'workflow-run') {
+      if (check.status !== 'completed') {
+        running = true;
+      }
+      if (typeof check.conclusion === 'string' && FAILED_CHECK_CONCLUSIONS.has(check.conclusion)) {
+        failed = true;
+      }
+      continue;
+    }
+    // Unknown snapshot shape: stay conservative — keep waiting; the timeout
+    // heartbeat still bounds the wait.
+    running = true;
+  }
+  return { failed, settled: !running };
 }
 
 function parseArgs(argv) {
