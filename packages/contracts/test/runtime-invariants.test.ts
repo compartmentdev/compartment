@@ -101,7 +101,6 @@ describe('runtime invariants', (): void => {
   it('keeps run config limited to the authored command', (): void => {
     expect(resolveCompartmentServiceRunConfig(undefined)).toEqual({});
     expect(resolveCompartmentServiceRunConfig({ command: 'pnpm start' })).toEqual({ command: 'pnpm start' });
-    expect(resolveCompartmentServiceRunConfig({ restart: { policy: 'no' } })).toEqual({});
   });
 
   it('disables readiness when the service omits readiness config', (): void => {

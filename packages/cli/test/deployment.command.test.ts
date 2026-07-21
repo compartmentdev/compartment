@@ -302,7 +302,6 @@ describe.sequential('compartment deployment commands', (): void => {
       .mockImplementation(
         async (_context: AuthenticatedContext, input: DeployCommandInput): Promise<DeploymentStatusResponse> => {
           input.reportProgress?.('Preparing source archive...');
-          input.reportWarning?.('Legacy restart warning');
           input.onStatusUpdate?.(runningResponse);
           vi.advanceTimersByTime(120);
           vi.setSystemTime(new Date('2026-03-30T10:00:03.200Z'));
@@ -331,7 +330,6 @@ describe.sequential('compartment deployment commands', (): void => {
 
     expectCliSuccess(result);
     const stderr: string = readCliStderr(capture);
-    expect(stderr).toContain('Legacy restart warning\n');
     const progressFrames: string[] = stderr.split('\r\u001B[2K').filter((frame: string): boolean => frame !== '');
     expect(progressFrames.every((frame: string): boolean => frame.length < 120)).toBe(true);
     expect(progressFrames.some((frame: string): boolean => frame.includes('elapsed 1.2s'))).toBe(true);
@@ -349,7 +347,6 @@ describe.sequential('compartment deployment commands', (): void => {
       .mockImplementation(
         async (_context: AuthenticatedContext, input: DeployCommandInput): Promise<DeploymentStatusResponse> => {
           input.reportProgress?.('Preparing source archive...');
-          input.reportWarning?.('Legacy restart warning');
           input.onStatusUpdate?.(response);
           await Promise.resolve();
           return response;
@@ -373,7 +370,7 @@ describe.sequential('compartment deployment commands', (): void => {
     const result: CliCommandResult = await runCliCommand(['deploy', '--output', 'json'], capture);
 
     expectCliSuccess(result);
-    expect(readCliStderr(capture)).toBe('Legacy restart warning\n');
+    expect(readCliStderr(capture)).toBe('');
     expect(JSON.parse(readCliStdout(capture))).toMatchObject({
       project: {
         name: 'smoke-web',

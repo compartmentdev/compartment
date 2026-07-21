@@ -150,10 +150,6 @@ export {
   resolveCompartmentServiceKind,
 } from './contracts/compartment-descriptor.contract';
 export {
-  type CompartmentDescriptorCompatibilityWarning,
-  readCompartmentDescriptorCompatibilityWarnings,
-} from './contracts/compartment-descriptor-compatibility.contract';
-export {
   createCompartmentDescriptorSchemaResponse,
   compartmentDescriptorSchemaResponseSchema,
 } from './contracts/compartment-descriptor-schema.contract';

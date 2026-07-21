@@ -27,7 +27,6 @@ import {
   compartmentResourceVolumeValueSchema,
   createResourceVolumeNameSchema,
 } from './compartment-resource-volume.contract';
-import { compartmentDeprecatedResourceRestartConfigSchema } from './compartment-resource-restart-compatibility.contract';
 import type { ContractSchema } from './schema.types';
 
 export const compartmentResourceReadinessFieldNames: readonly ['type', 'port', 'timeoutMs'] = [
@@ -64,7 +63,6 @@ export const compartmentDescriptorResourceConfigFieldNames: readonly [
   'ports',
   'preset',
   'readiness',
-  'restart',
   'volumes',
 ] = [
   'command',
@@ -76,7 +74,6 @@ export const compartmentDescriptorResourceConfigFieldNames: readonly [
   'ports',
   'preset',
   'readiness',
-  'restart',
   'volumes',
 ];
 export const compartmentDescriptorResourceConfigRequiredFieldSets: readonly [readonly ['image'], readonly ['preset']] =
@@ -186,7 +183,6 @@ const compartmentAuthoredResourceConfigInputSchema: ContractSchema<
       .optional(),
     preset: z.enum(compartmentResourcePresetValues).optional(),
     readiness: compartmentResourceReadinessConfigSchema.optional(),
-    restart: compartmentDeprecatedResourceRestartConfigSchema.optional(),
     volumes: z.record(createResourceVolumeNameSchema(), compartmentResourceVolumeValueSchema).optional(),
   })
   .strict()

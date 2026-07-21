@@ -25,7 +25,6 @@ export interface DeployCommandInput {
   onStatusUpdate?: DeploymentStatusReporter | undefined;
   projectName?: string | undefined;
   reportProgress?: CommandProgressReporter | undefined;
-  reportWarning?: CommandProgressReporter | undefined;
   serviceName?: string | undefined;
 }
 
