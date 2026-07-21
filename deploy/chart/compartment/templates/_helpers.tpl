@@ -102,8 +102,9 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- range $field := include "compartment.installStateFields" . | fromYamlArray -}}
 {{- $incomingValue := get (get $.Values $field.valuesSection) $field.valueKey -}}
 {{- $encodedRetainedValue := get $data $field.secretKey -}}
-{{- $hasRetainedValue := and (hasKey $data $field.secretKey) (or $field.allowEmpty (not (empty $encodedRetainedValue))) -}}
-{{- $hasPersistedRetainedValue := and (hasKey $data $field.secretKey) (or (not (empty $encodedRetainedValue)) (and $field.allowEmpty $useRetainedDomain)) -}}
+{{- $allowEmpty := default false $field.allowEmpty -}}
+{{- $hasRetainedValue := and (hasKey $data $field.secretKey) (or $allowEmpty (not (empty $encodedRetainedValue))) -}}
+{{- $hasPersistedRetainedValue := and (hasKey $data $field.secretKey) (or (not (empty $encodedRetainedValue)) (and $allowEmpty $useRetainedDomain)) -}}
 {{- $retainedValue := $encodedRetainedValue | b64dec -}}
 {{- if $hasRetainedValue -}}
 {{- if or (eq $field.policy "stable") $useRetainedDomain -}}
