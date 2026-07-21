@@ -185,23 +185,6 @@ tests:
           value: compartment-compartment-log-agent
         template: product-log-agent.yaml
         documentIndex: 4
-      - equal:
-          path: spec.template.spec.securityContext.fsGroup
-          value: 1000
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.spec.securityContext.fsGroupChangePolicy
-          value: OnRootMismatch
-        template: edge.yaml
-        documentIndex: 1
-      - notContains:
-          path: spec.template.spec.initContainers
-          content:
-            name: snapshots-ownership
-          any: true
-        template: edge.yaml
-        documentIndex: 1
       - hasDocuments:
           count: 5
         template: buildkit.yaml
@@ -1222,6 +1205,11 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.template.spec.containers[0].image
+          value: ghcr.io/compartmentdev/compartment-edge@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.initContainers[0].image
           value: ghcr.io/compartmentdev/compartment-edge@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
         template: edge.yaml
         documentIndex: 1
