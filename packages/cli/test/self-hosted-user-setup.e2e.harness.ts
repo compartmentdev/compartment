@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createSelfHostedUserSetupAppFixture,
   type SelfHostedUserSetupAppFixture,
+  type SelfHostedUserSetupAppFixtureOptions,
 } from './self-hosted-user-setup-app-fixture';
 import { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import { buildSelfHostedUserSetupClientEnv } from './self-hosted-user-setup-client-env.harness';
@@ -28,7 +29,7 @@ export interface SelfHostedUserSetupRuntime {
 }
 
 export interface SelfHostedUserSetupHarness {
-  createAppFixture(): Promise<SelfHostedUserSetupAppFixture>;
+  createAppFixture(options?: SelfHostedUserSetupAppFixtureOptions): Promise<SelfHostedUserSetupAppFixture>;
   createFreshCli(): Promise<SelfHostedUserSetupCli>;
   install(): Promise<SelfHostedUserSetupRuntime>;
 }
@@ -132,8 +133,11 @@ class SelfHostedUserSetupHarnessHandle implements SelfHostedUserSetupHarness {
     return new SelfHostedUserSetupCli(buildSelfHostedUserSetupClientEnv(homeDirectory), clientCommandTimeoutMs);
   }
 
-  async createAppFixture(): Promise<SelfHostedUserSetupAppFixture> {
-    const fixture: SelfHostedUserSetupAppFixture = await createSelfHostedUserSetupAppFixture(tempRootDirectory);
+  async createAppFixture(options: SelfHostedUserSetupAppFixtureOptions = {}): Promise<SelfHostedUserSetupAppFixture> {
+    const fixture: SelfHostedUserSetupAppFixture = await createSelfHostedUserSetupAppFixture(
+      tempRootDirectory,
+      options,
+    );
     this.#appFixtureDirectories.push(fixture.directory);
     return fixture;
   }

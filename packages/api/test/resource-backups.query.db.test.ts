@@ -1051,6 +1051,7 @@ describe('resource backup queries', (): void => {
     expect(target).toMatchObject({ namespaceId: project.id, projectId: project.id });
     await expect(
       completeProjectProvisioning({
+        action: 'provision',
         failureMessage: null,
         leaseId: 'stale-lease',
         projectId: project.id,
@@ -1059,6 +1060,7 @@ describe('resource backup queries', (): void => {
     ).resolves.toBe(false);
     await expect(
       completeProjectProvisioning({
+        action: 'provision',
         failureMessage: null,
         leaseId: target!.leaseId,
         projectId: project.id,
@@ -1088,6 +1090,7 @@ describe('resource backup queries', (): void => {
       expect(claimed?.projectId).toBe('prj_internal_tools');
       await expect(
         completeProjectProvisioning({
+          action: 'provision',
           failureMessage: `provisioning attempt ${attempt} failed`,
           leaseId: claimed?.leaseId ?? '',
           projectId: 'prj_internal_tools',
@@ -1208,6 +1211,7 @@ describe('resource backup queries', (): void => {
 
     await expect(
       completeProjectProvisioning({
+        action: 'provision',
         failureMessage: null,
         leaseId: 'expired-cleanup-lease',
         projectId: 'prj_internal_tools',
@@ -1218,6 +1222,7 @@ describe('resource backup queries', (): void => {
     expect(reclaimed?.projectId).toBe('prj_internal_tools');
     await expect(
       completeProjectProvisioning({
+        action: 'provision',
         failureMessage: null,
         leaseId: reclaimed?.leaseId ?? '',
         projectId: 'prj_internal_tools',

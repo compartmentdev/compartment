@@ -1,4 +1,5 @@
 import { and, asc, eq, gt, lt, or, sql, type SQL } from 'drizzle-orm';
+import type { ProjectProvisioningAction } from '@compartment/contracts';
 import { projectKubeProvisioning } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -8,8 +9,15 @@ import {
   projectProvisioningLeaseDurationMs,
   projectProvisioningRetryDelayMs,
   projectProvisioningTerminalFailure,
+  projectTeardownLeaseDurationMs,
 } from './project-provisioning-policy';
-import type { CompleteProjectProvisioningInput, ProjectProvisioningClaimRow } from './project-provisioning.query.types';
+import type {
+  CompleteProjectProvisioningInput,
+  ProjectKubeProvisioningState,
+  ProjectProvisioningClaimPhase,
+  ProjectProvisioningClaimRow,
+  ProjectProvisioningCompletionStatus,
+} from './project-provisioning.query.types';
 import { failTerminalProjectProvisioning } from './project-provisioning-terminal.query';
 
 interface CompletedProjectProvisioningRow {
@@ -17,15 +25,25 @@ interface CompletedProjectProvisioningRow {
   projectId: string;
 }
 
-export async function claimPendingProjectProvisioning(): Promise<ProjectProvisioningClaimRow | null> {
-  return await getApiDatabase().transaction(claimPendingProjectProvisioningWithTransaction);
+export async function claimPendingProjectProvisioning(
+  action: ProjectProvisioningAction | 'any' = 'any',
+): Promise<ProjectProvisioningClaimRow | null> {
+  return await getApiDatabase().transaction(
+    async (transaction: DeploymentTransaction): Promise<ProjectProvisioningClaimRow | null> =>
+      await claimPendingProjectProvisioningWithTransaction(transaction, action),
+  );
 }
 
 async function claimPendingProjectProvisioningWithTransaction(
   transaction: DeploymentTransaction,
+  action: ProjectProvisioningAction | 'any',
 ): Promise<ProjectProvisioningClaimRow | null> {
   const now: Date = new Date();
-  const row: typeof projectKubeProvisioning.$inferSelect | undefined = await selectClaimableRow(transaction, now);
+  const row: typeof projectKubeProvisioning.$inferSelect | undefined = await selectClaimableRow(
+    transaction,
+    now,
+    action,
+  );
   if (row === undefined) {
     return null;
   }
@@ -35,27 +53,73 @@ async function claimPendingProjectProvisioningWithTransaction(
 async function selectClaimableRow(
   transaction: DeploymentTransaction,
   now: Date,
+  action: ProjectProvisioningAction | 'any',
 ): Promise<typeof projectKubeProvisioning.$inferSelect | undefined> {
   const rows: (typeof projectKubeProvisioning.$inferSelect)[] = await transaction
     .select()
     .from(projectKubeProvisioning)
-    .where(provisioningClaimableCondition(now))
+    .where(provisioningClaimableCondition(now, action))
     .orderBy(asc(projectKubeProvisioning.createdAt))
     .limit(1)
     .for('update', { skipLocked: true });
   return rows[0];
 }
 
-function provisioningClaimableCondition(now: Date): SQL | undefined {
+function provisioningClaimableCondition(now: Date, action: ProjectProvisioningAction | 'any'): SQL | undefined {
   return or(
-    eq(projectKubeProvisioning.state, 'pending'),
-    and(
-      eq(projectKubeProvisioning.state, 'failed'),
-      lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
-      lt(projectKubeProvisioning.updatedAt, new Date(now.getTime() - projectProvisioningRetryDelayMs)),
-    ),
-    and(eq(projectKubeProvisioning.state, 'running'), lt(projectKubeProvisioning.leaseExpiresAt, now)),
+    claimableStateCondition(action, 'pending'),
+    claimableFailedCondition(action, now),
+    claimableExpiredRunningCondition(action, now),
   );
+}
+
+function claimableFailedCondition(action: ProjectProvisioningAction | 'any', now: Date): SQL | undefined {
+  const retryReady: SQL = lt(
+    projectKubeProvisioning.updatedAt,
+    new Date(now.getTime() - projectProvisioningRetryDelayMs),
+  );
+  const failedProvisioning: SQL | undefined = and(
+    eq(projectKubeProvisioning.state, 'failed'),
+    lt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit),
+    retryReady,
+  );
+  const failedTeardown: SQL | undefined = and(eq(projectKubeProvisioning.state, 'teardown_failed'), retryReady);
+  if (action === 'provision') {
+    return failedProvisioning;
+  }
+  if (action === 'teardown') {
+    return failedTeardown;
+  }
+  return or(failedProvisioning, failedTeardown);
+}
+
+function claimableExpiredRunningCondition(action: ProjectProvisioningAction | 'any', now: Date): SQL | undefined {
+  const expiredProvisioning: SQL | undefined = and(
+    eq(projectKubeProvisioning.state, 'running'),
+    lt(projectKubeProvisioning.leaseExpiresAt, now),
+  );
+  const expiredTeardown: SQL | undefined = and(
+    eq(projectKubeProvisioning.state, 'teardown_running'),
+    lt(projectKubeProvisioning.leaseExpiresAt, now),
+  );
+  if (action === 'provision') {
+    return expiredProvisioning;
+  }
+  if (action === 'teardown') {
+    return expiredTeardown;
+  }
+  return or(expiredProvisioning, expiredTeardown);
+}
+
+function claimableStateCondition(
+  action: ProjectProvisioningAction | 'any',
+  phase: ProjectProvisioningClaimPhase,
+): SQL | undefined {
+  if (action === 'any') {
+    return or(eq(projectKubeProvisioning.state, phase), eq(projectKubeProvisioning.state, `teardown_${phase}`));
+  }
+  const state: ProjectKubeProvisioningState = action === 'provision' ? phase : `teardown_${phase}`;
+  return eq(projectKubeProvisioning.state, state);
 }
 
 async function leaseProjectProvisioning(
@@ -64,12 +128,13 @@ async function leaseProjectProvisioning(
   now: Date,
 ): Promise<ProjectProvisioningClaimRow> {
   const leaseId: string = createId('kpl');
-  return await leaseProjectExecution(transaction, row, leaseId, now);
+  return await leaseProjectExecution(transaction, row, readProjectProvisioningAction(row.state), leaseId, now);
 }
 
 async function leaseProjectExecution(
   transaction: DeploymentTransaction,
   row: typeof projectKubeProvisioning.$inferSelect,
+  action: ProjectProvisioningAction,
   leaseId: string,
   now: Date,
 ): Promise<ProjectProvisioningClaimRow> {
@@ -78,13 +143,13 @@ async function leaseProjectExecution(
     .set({
       attempts: row.state === 'running' ? row.attempts : sql`${projectKubeProvisioning.attempts} + 1`,
       failureMessage: null,
-      leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDurationMs),
+      leaseExpiresAt: new Date(now.getTime() + leaseDurationMs(action)),
       leaseId,
-      state: 'running',
+      state: action === 'provision' ? 'running' : 'teardown_running',
       updatedAt: now,
     })
     .where(eq(projectKubeProvisioning.projectId, row.projectId));
-  return { leaseId, namespaceId: row.projectId, projectId: row.projectId };
+  return { action, leaseId, namespaceId: row.projectId, projectId: row.projectId };
 }
 
 export async function completeProjectProvisioning(input: CompleteProjectProvisioningInput): Promise<boolean> {
@@ -108,7 +173,7 @@ async function completeProjectProvisioningWithTransaction(
   if (completed === undefined) {
     return false;
   }
-  if (input.status === 'failed' && completed.attempts >= projectProvisioningAttemptLimit) {
+  if (shouldFailTerminalProvisioning(input, completed)) {
     await failTerminalProjectProvisioning(
       transaction,
       completed.projectId,
@@ -119,6 +184,15 @@ async function completeProjectProvisioningWithTransaction(
   return true;
 }
 
+function shouldFailTerminalProvisioning(
+  input: CompleteProjectProvisioningInput,
+  completed: CompletedProjectProvisioningRow,
+): boolean {
+  return (
+    input.action === 'provision' && input.status === 'failed' && completed.attempts >= projectProvisioningAttemptLimit
+  );
+}
+
 async function renewProjectProvisioningLease(
   transaction: DeploymentTransaction,
   input: CompleteProjectProvisioningInput,
@@ -126,12 +200,12 @@ async function renewProjectProvisioningLease(
 ): Promise<boolean> {
   const rows: { projectId: string }[] = await transaction
     .update(projectKubeProvisioning)
-    .set({ leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDurationMs), updatedAt: now })
+    .set({ leaseExpiresAt: new Date(now.getTime() + leaseDurationMs(input.action)), updatedAt: now })
     .where(
       and(
         eq(projectKubeProvisioning.projectId, input.projectId),
         eq(projectKubeProvisioning.leaseId, input.leaseId),
-        eq(projectKubeProvisioning.state, 'running'),
+        eq(projectKubeProvisioning.state, runningState(input.action)),
         gt(projectKubeProvisioning.leaseExpiresAt, now),
       ),
     )
@@ -149,16 +223,41 @@ async function persistProjectProvisioningCompletion(
       failureMessage: input.failureMessage,
       leaseExpiresAt: null,
       leaseId: null,
-      state: input.status,
+      state: completedState(input.action, input.status),
       updatedAt: new Date(),
     })
     .where(
       and(
         eq(projectKubeProvisioning.projectId, input.projectId),
         eq(projectKubeProvisioning.leaseId, input.leaseId),
-        eq(projectKubeProvisioning.state, 'running'),
+        eq(projectKubeProvisioning.state, runningState(input.action)),
       ),
     )
     .returning({ attempts: projectKubeProvisioning.attempts, projectId: projectKubeProvisioning.projectId });
   return rows[0];
+}
+
+function readProjectProvisioningAction(state: ProjectKubeProvisioningState): ProjectProvisioningAction {
+  return state.startsWith('teardown_') ? 'teardown' : 'provision';
+}
+
+function leaseDurationMs(action: ProjectProvisioningAction): number {
+  return action === 'provision' ? projectProvisioningLeaseDurationMs : projectTeardownLeaseDurationMs;
+}
+
+function runningState(action: ProjectProvisioningAction): 'running' | 'teardown_running' {
+  return action === 'provision' ? 'running' : 'teardown_running';
+}
+
+function completedState(
+  action: ProjectProvisioningAction,
+  status: ProjectProvisioningCompletionStatus,
+): 'failed' | 'succeeded' | 'teardown_failed' | 'teardown_succeeded' {
+  if (status === 'running') {
+    throw new Error('Running project Kubernetes work cannot be persisted as completed.');
+  }
+  if (action === 'provision') {
+    return status;
+  }
+  return status === 'failed' ? 'teardown_failed' : 'teardown_succeeded';
 }

@@ -22,9 +22,16 @@ import type {
 import { createProjectArchivedError } from '../errors/api-business-error';
 import { archivedResourceRunFailureMessage } from '../queries/resource-reconcile-project.query';
 import { projectProvisioningAttemptLimit } from '../queries/project-provisioning-policy';
+import { resourceReconcileOperationWaitTimeoutMs } from '../queries/resource-reconcile-policy';
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import { waitForResourceReconcile, waitForResourceReconcileSettlement } from './resource-reconcile-wait.service';
-import type { ClaimedResourceReconcileResult } from './resource-reconcile-run.service.types';
+import type {
+  ClaimedResourceReconcileResult,
+  ResourceClaimIdentityWaitContext,
+} from './resource-reconcile-run.service.types';
+
+const resourceClaimIdentityPollInitialDelayMs: number = 100;
+const resourceClaimIdentityPollMaxDelayMs: number = 5_000;
 
 export { waitForResourceReconcile };
 
@@ -61,6 +68,27 @@ export async function requestResourceReconcile(
 
 export async function waitForResourceBootstrap(projectResourceId: string): Promise<ProjectResourceRow> {
   return await waitForSettledResourceBootstrap(projectResourceId, false);
+}
+
+export async function waitForResourceClaimIdentities(projectResourceId: string): Promise<ProjectResourceRow> {
+  const context: ResourceClaimIdentityWaitContext = {
+    deadlineAt: Date.now() + resourceReconcileOperationWaitTimeoutMs('bootstrap'),
+    pollDelayMs: resourceClaimIdentityPollInitialDelayMs,
+  };
+  for (;;) {
+    const settlement: ResourceBootstrapSettlement = await requireResourceBootstrapSettlement(projectResourceId);
+    const ready: ProjectResourceRow | null = readResourceClaimIdentitySettlement(settlement);
+    if (ready !== null) {
+      return ready;
+    }
+    if (settlement.state !== null) {
+      await waitForResourceReconcile(requireSettlementOperationId(settlement));
+      continue;
+    }
+    assertResourceClaimIdentityBeforeDeadline(context.deadlineAt);
+    await delayResourceClaimIdentityPoll(context.pollDelayMs);
+    context.pollDelayMs = Math.min(context.pollDelayMs * 2, resourceClaimIdentityPollMaxDelayMs);
+  }
 }
 
 export async function waitForResourceBootstrapForCleanup(projectResourceId: string): Promise<ProjectResourceRow> {
@@ -117,6 +145,24 @@ function readRunningResource(settlement: ResourceReconcileSettlement | null): Pr
   return resource.status === 'running' && state?.phase === 'succeeded' ? resource : null;
 }
 
+async function requireResourceBootstrapSettlement(projectResourceId: string): Promise<ResourceBootstrapSettlement> {
+  const settlement: ResourceBootstrapSettlement | null = await readResourceBootstrapSettlement(projectResourceId);
+  if (settlement === null) {
+    throw new Error('Resource disappeared while waiting for Kubernetes bootstrap.');
+  }
+  return settlement;
+}
+
+function readResourceClaimIdentitySettlement(settlement: ResourceBootstrapSettlement): ProjectResourceRow | null {
+  if (settlement.resource.expectedClaimsJson !== '[]') {
+    return settlement.resource;
+  }
+  if (settlement.state !== null) {
+    readSettledBootstrapResource(settlement, false);
+  }
+  return null;
+}
+
 function readSettledBootstrapResource(
   settlement: ResourceBootstrapSettlement | null,
   allowTerminalProvisioningFailure: boolean,
@@ -162,6 +208,16 @@ function readFailedBootstrapSettlement(
 
 function isTerminalProvisioningFailure(attempts: number, state: string): boolean {
   return state === 'failed' && attempts >= projectProvisioningAttemptLimit;
+}
+
+async function delayResourceClaimIdentityPoll(delayMs: number): Promise<void> {
+  await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, delayMs));
+}
+
+function assertResourceClaimIdentityBeforeDeadline(deadlineAt: number): void {
+  if (Date.now() >= deadlineAt) {
+    throw new Error('Timed out waiting for Kubernetes resource bootstrap to start.');
+  }
 }
 
 export async function claimNextResourceReconcile(): Promise<ClaimedResourceReconcileResult> {

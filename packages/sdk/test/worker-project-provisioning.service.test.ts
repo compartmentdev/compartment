@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createCompartmentRequester } from '../src/http/request';
 import type { CompartmentRequester } from '../src/http/request.types';
 import {
-  claimProjectProvisioning,
-  completeProjectProvisioning,
+  claimProjectProvisioningV2,
+  completeProjectProvisioningV2,
 } from '../src/services/worker-project-provisioning.service';
 import { createJsonResponse, mockFetchSequence, readRequestUrl } from './fetch-test-helpers';
 import type { FetchCall, FetchMockState } from './fetch-test.types';
@@ -23,16 +23,17 @@ describe('worker project provisioning service', (): void => {
       internalToken: 'worker-token',
     });
 
-    await claimProjectProvisioning(request);
-    await completeProjectProvisioning(request, {
+    await claimProjectProvisioningV2(request);
+    await completeProjectProvisioningV2(request, {
+      action: 'provision',
       leaseId: 'kpl_1',
       projectId: 'prj_1',
       status: 'succeeded',
     });
 
     expect(fetchState.calls.map((call: FetchCall): string => readRequestUrl(call))).toEqual([
-      'https://console.example/internal/kube-projects/claim-next',
-      'https://console.example/internal/kube-projects/complete',
+      'https://console.example/internal/kube-projects/v2/claim-next',
+      'https://console.example/internal/kube-projects/v2/complete',
     ]);
   });
 });

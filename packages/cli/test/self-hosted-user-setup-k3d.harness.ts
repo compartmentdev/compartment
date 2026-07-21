@@ -1,3 +1,5 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
   accessAssignmentListResponseSchema,
@@ -7,6 +9,8 @@ import {
   createOrganizationResponseSchema,
   inviteUserResponseSchema,
   removeUserResponseSchema,
+  resourceBackupCreateResponseSchema,
+  resourceBackupListResponseSchema,
   userListResponseSchema,
   type AccessAssignmentListResponse,
   type AccessAssignmentResponse,
@@ -15,9 +19,13 @@ import {
   type AccessRoleListRow,
   type InviteUserResponse,
   type OrganizationUserListRow,
+  type ResourceBackupCreateResponse,
+  type ResourceBackupListResponse,
+  type ResourceBackupSummary,
   type UserListResponse,
 } from '@compartment/contracts';
 import { expect } from 'vitest';
+import { immutableKubeName } from '@compartment/utils';
 import type { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import { requireActivationToken } from './self-hosted-user-setup-cli-response.harness';
 import {
@@ -46,6 +54,13 @@ export interface K3dSuiteOrganizationCredentials {
   readonly principalEmail: string;
 }
 
+interface K3dBackupRetentionAssertionInput {
+  readonly expiredBackupId: string;
+  readonly projectId: string;
+  readonly resourceId: string;
+  readonly retainedBackupId: string;
+}
+
 const e2ePlatformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
 const k3dCompartmentUrlEnvName: string = 'COMPARTMENT_E2E_COMPARTMENT_URL';
 const k3dApiUrlEnvName: string = 'COMPARTMENT_E2E_API_URL';
@@ -62,6 +77,8 @@ const k3dRolloutTimeout: string = '4m';
 const k3dApiServiceProbeAttempts: number = 30;
 const k3dApiServiceProbeIntervalMs: number = 1_000;
 const k3dApiServiceProbeTimeoutMs: number = 10_000;
+const k3dBackupRetentionPollAttempts: number = 90;
+const k3dBackupRetentionPollDelayMs: number = 2_000;
 const k3dApiBoundaryProbeScript: string = `
 const [apiUrl, email] = process.argv.slice(1);
 const response = await fetch(new URL('/v1/auth/login-discovery', apiUrl), {
@@ -95,6 +112,322 @@ export async function expectK3dWorkerNamespaceIsolation(): Promise<void> {
   await expectK3dBootstrapAdmissionBoundary(seed);
 }
 
+export async function seedK3dProjectTeardownFixture(projectId: string): Promise<void> {
+  const seed: K3dPlatformSeed = readK3dPlatformSeed();
+  const namespace: string = immutableKubeName('cpt', projectId);
+  const workerImage: string = await readK3dWorkerImage(seed);
+  await runK3dKubectlCommands([
+    [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      '--namespace',
+      namespace,
+      'create',
+      'secret',
+      'generic',
+      'gc-regression-secret',
+      '--from-literal=value=present',
+    ],
+  ]);
+  const jobManifest: string = JSON.stringify({
+    apiVersion: 'batch/v1',
+    kind: 'Job',
+    metadata: { name: 'gc-regression-job', namespace },
+    spec: {
+      template: {
+        metadata: { labels: { 'compartment.dev/test': 'gc-regression' } },
+        spec: {
+          automountServiceAccountToken: false,
+          containers: [
+            {
+              command: ['node', '-e', 'process.exit(0)'],
+              image: workerImage,
+              name: 'job',
+              securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } },
+            },
+          ],
+          restartPolicy: 'Never',
+          securityContext: {
+            runAsGroup: 10_001,
+            runAsNonRoot: true,
+            runAsUser: 10_001,
+            seccompProfile: { type: 'RuntimeDefault' },
+          },
+        },
+      },
+    },
+  });
+  const applied: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: ['kubectl', '--context', seed.kubeContext, 'apply', '--filename=-'],
+    input: jobManifest,
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(applied, `seed teardown Job in ${namespace}`, '');
+  await runK3dKubectlCommands([
+    [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      '--namespace',
+      namespace,
+      'wait',
+      'job/gc-regression-job',
+      '--for=condition=complete',
+      '--timeout=2m',
+    ],
+  ]);
+}
+
+export async function expectK3dProjectNamespaceDeleted(projectId: string): Promise<void> {
+  const seed: K3dPlatformSeed = readK3dPlatformSeed();
+  const namespace: string = immutableKubeName('cpt', projectId);
+  let result: SelfHostedUserSetupCommandResult = await readK3dNamespaceIfPresent(seed, namespace);
+  for (let attempt: number = 0; result.stdout.trim() !== '' && attempt < 60; attempt += 1) {
+    await sleep(1_000);
+    result = await readK3dNamespaceIfPresent(seed, namespace);
+  }
+  expectSuccessfulCommand(result, `wait for deleted project namespace ${namespace}`, '');
+  expect(result.stdout.trim()).toBe('');
+  for (const [resource, selector] of [
+    ['jobs', 'metadata.name=gc-regression-job'],
+    ['pods', 'compartment.dev/test=gc-regression'],
+    ['secrets', 'metadata.name=gc-regression-secret'],
+  ] as const) {
+    const childResult: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        'get',
+        resource,
+        '--all-namespaces',
+        resource === 'pods' ? '--selector' : '--field-selector',
+        selector,
+        '--output=name',
+      ],
+      timeoutMs: k3dKubectlCommandTimeoutMs,
+    });
+    expectSuccessfulCommand(childResult, `verify deleted project ${resource} are absent`, '');
+    expect(childResult.stdout.trim()).toBe('');
+  }
+}
+
+export async function expectK3dProjectNamespaceActive(projectId: string): Promise<void> {
+  const seed: K3dPlatformSeed = readK3dPlatformSeed();
+  expectSuccessfulCommand(
+    await readK3dNamespace(seed, immutableKubeName('cpt', projectId)),
+    `verify active project namespace ${projectId}`,
+    '',
+  );
+}
+
+export async function expectK3dBackupRetentionFlow(
+  cli: SelfHostedUserSetupCli,
+  fixtureDirectory: string,
+  projectName: string,
+  resourceName: string,
+): Promise<string> {
+  const expired: ResourceBackupCreateResponse = await cli.runJson(
+    `resource backup create --project ${projectName} --resource ${resourceName}`,
+    resourceBackupCreateResponseSchema,
+  );
+  const retained: ResourceBackupCreateResponse = await cli.runJson(
+    `resource backup create --project ${projectName} --resource ${resourceName}`,
+    resourceBackupCreateResponseSchema,
+  );
+  expect(expired.backup.status).toBe('succeeded');
+  expect(retained.backup.status).toBe('succeeded');
+  const retention: ResourceBackupListResponse = await waitForK3dBackupRetentionCleanup(
+    cli,
+    projectName,
+    resourceName,
+    expired.backup.id,
+  );
+  expect(retention.scheduledOperation?.cleanedCount).toBeGreaterThan(0);
+  await expectK3dBackupRetentionCleanup({
+    expiredBackupId: expired.backup.id,
+    projectId: expired.project.id,
+    resourceId: expired.backup.resource.id,
+    retainedBackupId: retained.backup.id,
+  });
+  await disableK3dBackupRetentionSchedule(cli, fixtureDirectory, projectName);
+  const restoreBackup: ResourceBackupCreateResponse = await cli.runJson(
+    `resource backup create --project ${projectName} --resource ${resourceName}`,
+    resourceBackupCreateResponseSchema,
+  );
+  expect(restoreBackup.backup.status).toBe('succeeded');
+  return restoreBackup.backup.id;
+}
+
+async function disableK3dBackupRetentionSchedule(
+  cli: SelfHostedUserSetupCli,
+  fixtureDirectory: string,
+  projectName: string,
+): Promise<void> {
+  const descriptorPath: string = join(fixtureDirectory, 'compartment.yml');
+  const descriptor: string = await readFile(descriptorPath, 'utf8');
+  const schedule: string = `        schedule:
+          cron: '* * * * *'
+          retention:
+            includeManual: true
+            keepLast: 2
+`;
+  if (!descriptor.includes(schedule)) {
+    throw new Error('Expected the k3d app fixture to contain the backup retention schedule.');
+  }
+  await writeFile(descriptorPath, descriptor.replace(schedule, ''), 'utf8');
+  await cli.run(`deploy --project ${projectName}`, { cwd: fixtureDirectory });
+}
+
+async function waitForK3dBackupRetentionCleanup(
+  cli: SelfHostedUserSetupCli,
+  projectName: string,
+  resourceName: string,
+  expiredBackupId: string,
+): Promise<ResourceBackupListResponse> {
+  let payload: ResourceBackupListResponse | undefined;
+  for (let attempt: number = 0; attempt < k3dBackupRetentionPollAttempts; attempt += 1) {
+    payload = await cli.runJson(
+      `resource backup list --project ${projectName} --resource ${resourceName}`,
+      resourceBackupListResponseSchema,
+    );
+    const expired: ResourceBackupSummary | undefined = payload.backups.find(
+      (backup: ResourceBackupSummary): boolean => backup.id === expiredBackupId,
+    );
+    if (expired?.status === 'deleted' && expired.retentionDeletedAt !== null) {
+      return payload;
+    }
+    await sleep(k3dBackupRetentionPollDelayMs);
+  }
+  throw new Error(`Timed out waiting for retention to clean backup ${expiredBackupId}: ${JSON.stringify(payload)}`);
+}
+
+async function expectK3dBackupRetentionCleanup(input: K3dBackupRetentionAssertionInput): Promise<void> {
+  const seed: K3dPlatformSeed = readK3dPlatformSeed();
+  const workerImage: string = await readK3dWorkerImage(seed);
+  const namespace: string = immutableKubeName('cpt', input.projectId);
+  const claimName: string = immutableKubeName('volume', `${input.resourceId}:backup-artifacts`);
+  const verifierName: string = immutableKubeName('retention-check', input.expiredBackupId);
+  const overrides: string = JSON.stringify({
+    spec: {
+      automountServiceAccountToken: false,
+      containers: [
+        {
+          args: [
+            `const fs=require('node:fs');const retained='/backups/${input.retainedBackupId}/dump.sql';if(fs.existsSync('/backups/${input.expiredBackupId}')||!fs.existsSync(retained)||fs.statSync(retained).size===0)process.exit(1)`,
+          ],
+          command: ['node', '-e'],
+          image: workerImage,
+          name: verifierName,
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } },
+          volumeMounts: [{ mountPath: '/backups', name: 'backups' }],
+        },
+      ],
+      restartPolicy: 'Never',
+      securityContext: {
+        fsGroup: 10_001,
+        runAsGroup: 10_001,
+        runAsNonRoot: true,
+        runAsUser: 10_001,
+        seccompProfile: { type: 'RuntimeDefault' },
+      },
+      volumes: [{ name: 'backups', persistentVolumeClaim: { claimName } }],
+    },
+  });
+  try {
+    await runK3dKubectlCommands([
+      [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        '--namespace',
+        namespace,
+        'run',
+        verifierName,
+        `--image=${workerImage}`,
+        `--overrides=${overrides}`,
+        '--restart=Never',
+      ],
+      [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        '--namespace',
+        namespace,
+        'wait',
+        `pod/${verifierName}`,
+        '--for=jsonpath={.status.phase}=Succeeded',
+        '--timeout=2m',
+      ],
+    ]);
+  } finally {
+    await runCommand({
+      argv: [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        '--namespace',
+        namespace,
+        'delete',
+        'pod',
+        verifierName,
+        '--ignore-not-found',
+      ],
+      timeoutMs: k3dKubectlCommandTimeoutMs,
+    });
+  }
+}
+
+async function readK3dNamespace(seed: K3dPlatformSeed, namespace: string): Promise<SelfHostedUserSetupCommandResult> {
+  return await runCommand({
+    argv: ['kubectl', '--context', seed.kubeContext, 'get', 'namespace', namespace],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+}
+
+async function readK3dWorkerImage(seed: K3dPlatformSeed): Promise<string> {
+  const result: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      '--namespace',
+      seed.platformNamespace,
+      'get',
+      'deployment',
+      `${k3dPlatformResourceName}-worker`,
+      '--output=jsonpath={.spec.template.spec.containers[0].image}',
+    ],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(result, 'read the installed worker image', '');
+  const image: string = result.stdout.trim();
+  if (image === '') {
+    throw new Error('Expected the installed worker Deployment to use an image.');
+  }
+  return image;
+}
+
+async function readK3dNamespaceIfPresent(
+  seed: K3dPlatformSeed,
+  namespace: string,
+): Promise<SelfHostedUserSetupCommandResult> {
+  return await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'get',
+      'namespace',
+      namespace,
+      '--ignore-not-found',
+      '--output=name',
+    ],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+}
+
 async function expectK3dProjectProvisionerIsolation(seed: K3dPlatformSeed): Promise<void> {
   const identity: string = `system:serviceaccount:${seed.platformNamespace}:${k3dPlatformResourceName}-project-provisioner`;
   const assertions: readonly (readonly string[])[] = [
@@ -110,6 +443,12 @@ async function expectK3dProjectProvisionerIsolation(seed: K3dPlatformSeed): Prom
     expectFailedCommand(result, `verify project provisioner RBAC denial: ${assertion.join(' ')}`);
     expect(result.stdout.trim()).toBe('no');
   }
+  const namespaceDelete: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: ['kubectl', '--context', seed.kubeContext, 'auth', 'can-i', 'delete', 'namespaces', `--as=${identity}`],
+    timeoutMs: k3dKubectlCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(namespaceDelete, 'verify project provisioner namespace teardown authority', '');
+  expect(namespaceDelete.stdout.trim()).toBe('yes');
 }
 
 async function expectK3dProjectProvisionerAdmissionBoundary(seed: K3dPlatformSeed): Promise<void> {
@@ -130,6 +469,36 @@ async function expectK3dProjectProvisionerAdmissionBoundary(seed: K3dPlatformSee
     `cpt-rbac-subject-${process.pid.toString()}`,
     'deny permanent provisioner noncanonical bootstrap binding',
   );
+  await expectK3dProjectProvisionerNamespaceDeleteDenied(seed, identity);
+}
+
+async function expectK3dProjectProvisionerNamespaceDeleteDenied(
+  seed: K3dPlatformSeed,
+  identity: string,
+): Promise<void> {
+  const namespace: string = `gc-boundary-${process.pid.toString()}`;
+  await runK3dKubectlCommands([['kubectl', '--context', seed.kubeContext, 'create', 'namespace', namespace]]);
+  try {
+    const denied: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: [
+        'kubectl',
+        '--context',
+        seed.kubeContext,
+        'delete',
+        'namespace',
+        namespace,
+        '--dry-run=server',
+        `--as=${identity}`,
+      ],
+      timeoutMs: k3dKubectlCommandTimeoutMs,
+    });
+    expectFailedCommand(denied, 'deny project provisioner teardown outside managed project namespaces');
+    expect(denied.stderr).toContain('Project bootstrap authority is restricted to its encoded target namespace.');
+  } finally {
+    await runK3dKubectlCommands([
+      ['kubectl', '--context', seed.kubeContext, 'delete', 'namespace', namespace, '--wait=false'],
+    ]);
+  }
 }
 
 async function expectK3dProjectProvisionerClusterRoleBindingDenied(

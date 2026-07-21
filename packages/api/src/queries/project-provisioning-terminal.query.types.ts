@@ -1,3 +1,5 @@
+import type { ProjectKubeProvisioningState } from './project-provisioning.query.types';
+
 export interface TerminalProvisioningRow {
   failureMessage: string | null;
   projectId: string;
@@ -5,7 +7,7 @@ export interface TerminalProvisioningRow {
 
 export interface ProjectProvisioningLockRow extends TerminalProvisioningRow {
   attempts: number;
-  state: 'pending' | 'running' | 'succeeded' | 'failed';
+  state: ProjectKubeProvisioningState;
 }
 
 export interface WaitingDeploymentRow {

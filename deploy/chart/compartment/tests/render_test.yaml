@@ -332,6 +332,9 @@ tests:
       - equal:
           path: rules
           value:
+            - apiGroups: ['']
+              resources: [namespaces]
+              verbs: [get, delete]
             - apiGroups: [rbac.authorization.k8s.io]
               resources: [clusterrolebindings]
               verbs: [create]
@@ -382,6 +385,21 @@ tests:
       - matchRegex:
           path: spec.matchConditions[0].expression
           pattern: system:serviceaccount:compartment-compartment-project-provisioning:cpt-
+        template: project-provisioner-rbac.yaml
+        documentIndex: 8
+      - matchRegex:
+          path: spec.validations[0].expression
+          pattern: request\.operation == 'CREATE'
+        template: project-provisioner-rbac.yaml
+        documentIndex: 8
+      - matchRegex:
+          path: spec.validations[0].expression
+          pattern: request\.name\.startsWith\('cpt-'\)
+        template: project-provisioner-rbac.yaml
+        documentIndex: 8
+      - matchRegex:
+          path: spec.validations[0].expression
+          pattern: compartment\.dev/project-id
         template: project-provisioner-rbac.yaml
         documentIndex: 8
       - matchRegex:
@@ -442,6 +460,18 @@ tests:
               namespace: default
         template: project-provisioner-rbac.yaml
         documentIndex: 7
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - ''
+            resources:
+              - namespaces
+            verbs:
+              - get
+              - delete
+        template: project-provisioner-rbac.yaml
+        documentIndex: 6
       - contains:
           path: rules
           content:

@@ -20,6 +20,7 @@ import { assertBackupCanRestoreResource } from './resource-backup-manifest.servi
 import { applyResourceBackupRetention } from './resource-backups.retention.service';
 import { isResourceOperationScheduleDue } from './resource-operation-schedule.service';
 import { withResourceOperationLocks } from './resource-operation-lock.service';
+import { waitForResourceClaimIdentities } from './resource-reconcile-run.service';
 import { resolveResourceEnvironmentContext } from './resource-environment-context.service';
 import { parseStoredResourceOperations } from './resources.service.storage';
 import type {
@@ -170,6 +171,12 @@ async function runWithResourceOperationLock<Result>(
 ): Promise<Result> {
   let candidate: ProjectResourceRow = await readResourceOperationCandidate(context, resourceName);
   for (;;) {
+    if (candidate.status === 'deleting') {
+      failResourceLookup();
+    }
+    if (candidate.expectedClaimsJson === '[]') {
+      candidate = await waitForResourceClaimIdentities(candidate.id);
+    }
     const attempt: LockedResourceOperationResult<Result> = await runLockedResourceOperation(
       context,
       resourceName,
@@ -196,6 +203,9 @@ async function runLockedResourceOperation<Result>(
     }
     if (current.status === 'deleting') {
       failResourceLookup();
+    }
+    if (current.expectedClaimsJson === '[]') {
+      return { nextCandidate: current };
     }
     return { nextCandidate: null, result: await runOperation(current) };
   });

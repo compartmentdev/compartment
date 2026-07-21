@@ -77,7 +77,11 @@ async function deleteObjects(objectApi: KubernetesObjectApi | null, objects: Kub
     return;
   }
   for (const object of objects) {
-    await deleteObjectIgnoringNotFound(objectApi, object);
+    await deleteObjectIgnoringNotFound(
+      objectApi,
+      object,
+      object.kind === 'Namespace' || object.kind === 'Job' ? 'Foreground' : undefined,
+    );
   }
 }
 

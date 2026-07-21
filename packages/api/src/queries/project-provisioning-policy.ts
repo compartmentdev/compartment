@@ -1,6 +1,7 @@
 export const projectProvisioningAttemptLimit: number = 3;
 export const projectProvisioningLeaseDurationMs: number = 7 * 60_000;
 export const projectProvisioningRetryDelayMs: number = 10_000;
+export const projectTeardownLeaseDurationMs: number = 45_000;
 
 export function projectProvisioningTerminalFailure(failureMessage: string | null): string {
   const detail: string = failureMessage ?? 'Project Kubernetes provisioning failed.';

@@ -12,6 +12,9 @@ export async function runNextScheduledResourceOperationForWorker(): Promise<Sche
   const candidates: ScheduledResourceOperationCandidateRow[] = await listScheduledResourceOperationCandidates();
 
   for (const candidate of candidates) {
+    if (candidate.resource.expectedClaimsJson === '[]') {
+      continue;
+    }
     const result: ScheduledResourceBackupRunResult | null = await runDueScheduledResourceBackup(
       candidate,
       candidate.resource.name,

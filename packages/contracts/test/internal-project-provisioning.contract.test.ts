@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { workerClaimProjectProvisioningResponseSchema, workerCompleteProjectProvisioningRequestSchema } from '../src';
+import {
+  workerClaimProjectProvisioningResponseSchema,
+  workerClaimProjectProvisioningV2ResponseSchema,
+  workerCompleteProjectProvisioningRequestSchema,
+  workerCompleteProjectProvisioningV2RequestSchema,
+} from '../src';
 
 describe('project provisioning contracts', (): void => {
   it('accepts one leased project target or an empty claim', (): void => {
@@ -10,10 +15,10 @@ describe('project provisioning contracts', (): void => {
     ).toBe(true);
     expect(workerClaimProjectProvisioningResponseSchema.safeParse({ target: null }).success).toBe(true);
     expect(
-      workerClaimProjectProvisioningResponseSchema.safeParse({
-        target: { action: 'provision', leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
+      workerClaimProjectProvisioningV2ResponseSchema.safeParse({
+        target: { action: 'teardown', leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('keeps cleanup inside the ordinary provisioning lease', (): void => {
@@ -23,10 +28,10 @@ describe('project provisioning contracts', (): void => {
       projectId: 'prj_1',
     };
     expect(
-      workerClaimProjectProvisioningResponseSchema.safeParse({ target: { ...base, action: 'cleanup' } }).success,
+      workerClaimProjectProvisioningV2ResponseSchema.safeParse({ target: { ...base, action: 'cleanup' } }).success,
     ).toBe(false);
     expect(
-      workerCompleteProjectProvisioningRequestSchema.safeParse({
+      workerCompleteProjectProvisioningV2RequestSchema.safeParse({
         action: 'cleanup',
         leaseId: 'kpl_1',
         projectId: 'prj_1',
@@ -34,7 +39,7 @@ describe('project provisioning contracts', (): void => {
       }).success,
     ).toBe(false);
     expect(
-      workerCompleteProjectProvisioningRequestSchema.safeParse({
+      workerCompleteProjectProvisioningV2RequestSchema.safeParse({
         action: 'provision',
         cleanupRequired: true,
         leaseId: 'kpl_1',
@@ -45,7 +50,10 @@ describe('project provisioning contracts', (): void => {
   });
 
   it('requires a message only for failed completion', (): void => {
-    const base: { leaseId: string; projectId: string } = { leaseId: 'kpl_1', projectId: 'prj_1' };
+    const base: { leaseId: string; projectId: string } = {
+      leaseId: 'kpl_1',
+      projectId: 'prj_1',
+    };
     expect(
       workerCompleteProjectProvisioningRequestSchema.safeParse({
         ...base,
@@ -67,11 +75,11 @@ describe('project provisioning contracts', (): void => {
     ).toBe(true);
     expect(workerCompleteProjectProvisioningRequestSchema.safeParse({ ...base, status: 'running' }).success).toBe(true);
     expect(
-      workerCompleteProjectProvisioningRequestSchema.safeParse({
-        ...base,
-        action: 'provision',
-        status: 'succeeded',
-      }).success,
-    ).toBe(false);
+      workerCompleteProjectProvisioningV2RequestSchema.safeParse({ ...base, action: 'teardown', status: 'running' })
+        .success,
+    ).toBe(true);
+    expect(workerCompleteProjectProvisioningRequestSchema.safeParse({ ...base, action: 'teardown' }).success).toBe(
+      false,
+    );
   });
 });

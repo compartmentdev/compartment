@@ -46,6 +46,11 @@ import {
   sources,
 } from '../src/db/schema';
 import type { ProjectRow } from '../src/queries/projects.query.types';
+import {
+  claimPendingProjectProvisioning,
+  completeProjectProvisioning,
+} from '../src/queries/project-provisioning.query';
+import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import { findNextDeploymentReconcilePair } from '../src/queries/deployment-reconcile.query';
 import type { DeploymentKubeState } from '../src/queries/deployment-kube-state.types';
 import { createResourceReconcileRun } from '../src/queries/resource-reconcile-create.query';
@@ -356,14 +361,7 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     const deletedProjectId: string =
       (await db.select({ id: projects.id }).from(projects).where(eq(projects.name, 'smoke-web')).limit(1))[0]?.id ?? '';
 
-    const deleteResponse: LightMyRequestResponse = await app.inject({
-      method: 'DELETE',
-      url: '/v1/projects/smoke-web',
-      headers: {
-        authorization: `Bearer ${installPayload.sessionToken}`,
-        [compartmentCurrentOrganizationHeaderName]: 'acme-dev',
-      },
-    });
+    const deleteResponse: LightMyRequestResponse = await deleteArchivedProject(installPayload.sessionToken);
     expect(deleteResponse.statusCode).toBe(200);
     const deletePayload: ProjectDeleteResponse = projectDeleteResponseSchema.parse(deleteResponse.json());
     expect(deletePayload.projectName).toBe('smoke-web');
@@ -439,11 +437,7 @@ describe('Phase 0 API integration project lifecycle', (): void => {
       },
     ]);
 
-    const deleteResponse: LightMyRequestResponse = await app.inject({
-      method: 'DELETE',
-      url: '/v1/projects/smoke-web',
-      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
-    });
+    const deleteResponse: LightMyRequestResponse = await deleteArchivedProject(installPayload.sessionToken);
     expect(deleteResponse.statusCode).toBe(200);
     expect(await db.select().from(projects)).toEqual([]);
   });
@@ -486,11 +480,7 @@ describe('Phase 0 API integration project lifecycle', (): void => {
       await acknowledgeKubeDeploymentStopped(deployment.id);
       expect((await archiveResponsePromise).statusCode).toBe(200);
 
-      const deleteResponse: LightMyRequestResponse = await app.inject({
-        method: 'DELETE',
-        url: '/v1/projects/smoke-web',
-        headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
-      });
+      const deleteResponse: LightMyRequestResponse = await deleteArchivedProject(installPayload.sessionToken);
       expect(deleteResponse.statusCode).toBe(200);
       expect(await db.select().from(projects).where(eq(projects.id, projectId))).toHaveLength(0);
     },
@@ -552,11 +542,7 @@ describe('Phase 0 API integration project lifecycle', (): void => {
       headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
     });
     expect(archiveResponse.statusCode).toBe(200);
-    const deleteResponse: LightMyRequestResponse = await app.inject({
-      method: 'DELETE',
-      url: '/v1/projects/smoke-web',
-      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
-    });
+    const deleteResponse: LightMyRequestResponse = await deleteArchivedProject(installPayload.sessionToken);
     expect(deleteResponse.statusCode).toBe(200);
     expect(await db.select().from(projects).where(eq(projects.id, projectId))).toHaveLength(0);
   });
@@ -1015,6 +1001,36 @@ describe('Phase 0 API integration project lifecycle', (): void => {
     expect(storedDeployments[0]?.status).toBe('stopped');
   });
 });
+
+async function deleteArchivedProject(sessionToken: string): Promise<LightMyRequestResponse> {
+  const deletion: Promise<LightMyRequestResponse> = app.inject({
+    method: 'DELETE',
+    url: '/v1/projects/smoke-web',
+    headers: buildOrganizationAuthorizationHeaders(sessionToken),
+  });
+  const teardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
+  await completeProjectProvisioning({
+    action: 'teardown',
+    failureMessage: null,
+    leaseId: teardown.leaseId,
+    projectId: teardown.projectId,
+    status: 'succeeded',
+  });
+  return await deletion;
+}
+
+async function waitForProjectTeardownClaim(): Promise<ProjectProvisioningClaimRow> {
+  for (let attempt: number = 0; attempt < 100; attempt += 1) {
+    const claimed: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning();
+    if (claimed?.action === 'teardown') {
+      return claimed;
+    }
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 10);
+    });
+  }
+  throw new Error('Timed out waiting for project teardown claim.');
+}
 
 async function prepareKubeLifecycleDeployment(
   state: Extract<DeploymentKubeState, 'desired' | 'pending'>,

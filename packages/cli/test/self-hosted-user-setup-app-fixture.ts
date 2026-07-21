@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 export interface SelfHostedUserSetupAppFixture {
   readonly attackerServiceName?: string;
+  readonly backupRetentionScheduleEnabled: boolean;
   readonly directory: string;
   readonly environmentName: string;
   readonly importedGroupFileName: string;
@@ -13,7 +14,8 @@ export interface SelfHostedUserSetupAppFixture {
   readonly variableGroupName: string;
 }
 
-interface SelfHostedUserSetupAppFixtureOptions {
+export interface SelfHostedUserSetupAppFixtureOptions {
+  readonly includeBackupRetentionSchedule?: boolean;
   readonly includeCookieTossAttackerService?: boolean;
   readonly includeResourceRelease?: boolean;
   readonly projectName?: string | undefined;
@@ -55,6 +57,7 @@ export async function createSelfHostedUserSetupAppFixture(
     ...(options.includeCookieTossAttackerService === true
       ? { attackerServiceName: cookieTossAttackerServiceName }
       : {}),
+    backupRetentionScheduleEnabled: options.includeBackupRetentionSchedule === true,
     directory,
     environmentName,
     importedGroupFileName,
@@ -82,6 +85,7 @@ async function writeSelfHostedUserSetupDescriptor(
     join(fixture.directory, 'compartment.yml'),
     buildProbeDescriptor(
       {
+        includeBackupRetentionSchedule: fixture.backupRetentionScheduleEnabled,
         includeCookieTossAttackerService: fixture.attackerServiceName !== undefined,
         includeResourceRelease,
       },
@@ -108,6 +112,15 @@ function buildProbeDescriptor(options: SelfHostedUserSetupAppFixtureOptions, pro
           includeResourceConnection: false,
           includeResourceRelease: false,
         })}\n`
+      : '';
+  const backupSchedule: string =
+    options.includeBackupRetentionSchedule === true
+      ? `        schedule:
+          cron: '* * * * *'
+          retention:
+            includeManual: true
+            keepLast: 2
+`
       : '';
   const releaseReconcileEnv: string =
     options.includeResourceRelease === true ? '      E2E_RELEASE_RECONCILE: enabled\n' : '';
@@ -146,7 +159,7 @@ ${releaseReconcileEnv}    ports:
     operations:
       backup:
         command: PGPASSWORD="$POSTGRES_PASSWORD" pg_dump --clean --if-exists --host "$COMPARTMENT_RESOURCE_HOST" --username "$POSTGRES_USER" "$POSTGRES_DB" > "$COMPARTMENT_BACKUP_DIR/dump.sql"
-      restore:
+${backupSchedule}      restore:
         command: PGPASSWORD="$POSTGRES_PASSWORD" psql --host "$COMPARTMENT_RESOURCE_HOST" --username "$POSTGRES_USER" "$POSTGRES_DB" < "$COMPARTMENT_BACKUP_DIR/dump.sql"
 `;
 }

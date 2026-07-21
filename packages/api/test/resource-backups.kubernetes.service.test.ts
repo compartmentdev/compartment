@@ -90,7 +90,11 @@ describe('Kubernetes resource backup operations', (): void => {
     await runKubernetesResourceOperation(operationInput('backup'));
     const intent: ResourceOperationProductJobIntent | undefined = createIntent.mock.calls[0]?.[0];
     expect(intent).toMatchObject({
-      command: ['sh', '-c', 'mkdir -p "$COMPARTMENT_BACKUP_DIR" && pg_dump'],
+      command: [
+        'sh',
+        '-c',
+        'umask 0002 && mkdir -p "$COMPARTMENT_BACKUP_DIR" && chmod g+rwx "$COMPARTMENT_BACKUP_DIR" && pg_dump',
+      ],
       env: { COMPARTMENT_BACKUP_DIR: '/backups/rbak_test' },
       jobClass: 'resource-operation',
       operationId: 'op_backup',

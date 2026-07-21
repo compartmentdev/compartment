@@ -271,6 +271,35 @@ describe('KubeRuntime Job primitive', (): void => {
     });
   });
 
+  it('projects a shared filesystem group for Jobs that mount resource volumes', async (): Promise<void> => {
+    const spec: KubeJobSpec = {
+      ...jobSpec('operation'),
+      volumeMounts: [
+        {
+          claimName: 'backup-artifacts',
+          expectedClaimUid: 'backup-uid',
+          mountPath: '/backups',
+          name: 'backups',
+          resourceId: 'res-01jz',
+        },
+      ],
+    };
+    const jobName: string = kubeJobName(spec.id);
+    createObservationMock.mockResolvedValue(terminalObservation(jobName, true, 0, vi.fn()));
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    await runtime.runJob(spec);
+
+    const manifest: KubeManifest = objectApi.patches.find(
+      ([object]: KubePatchInvocation): boolean => object.kind === 'Job',
+    )![0];
+    const projectedSpec: JobManifestSpec = manifest.spec as JobManifestSpec;
+    expect(projectedSpec.template.spec.securityContext).toMatchObject({
+      fsGroup: 10_001,
+      fsGroupChangePolicy: 'Always',
+    });
+  });
+
   it('joins an existing deterministic Job without applying another Job', async (): Promise<void> => {
     const spec: KubeJobSpec = jobSpec('release');
     const jobName: string = kubeJobName(spec.id);
@@ -381,6 +410,29 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(objectApi.delete).toHaveBeenCalledWith(claim, undefined, undefined, undefined, undefined, undefined, {
       preconditions: { resourceVersion: 'resource-version-7', uid: 'uid-original' },
     });
+  });
+
+  it('deletes project namespaces with foreground cascading and treats absence as converged', async (): Promise<void> => {
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+    const namespace: KubeManifest = {
+      apiVersion: 'v1',
+      kind: 'Namespace',
+      metadata: { name: 'cpt-prj-01jz' },
+    };
+
+    await runtime.delete([namespace]);
+    expect(objectApi.delete).toHaveBeenCalledWith(
+      namespace,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'Foreground',
+      undefined,
+    );
+
+    objectApi.deleteError = Object.assign(new Error('not found'), { statusCode: 404 });
+    await expect(runtime.delete([namespace])).resolves.toBeUndefined();
   });
 
   it('uses installation authority to remove bootstrap access after a partial create failure', async (): Promise<void> => {
