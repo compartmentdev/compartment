@@ -25,19 +25,18 @@ import {
 } from './kubernetes-install-helm.service';
 import { writeVerifiedKubernetesReleaseImageValues } from './kubernetes-image-trust.service';
 import type { KubernetesOperatorTarget } from './kubernetes-operator.service.types';
-import { kubernetesPlatformImageNames } from './kubernetes-platform-image-names';
 import type { KubernetesSystemUpdateInput } from './kubernetes-system-lifecycle.service.types';
 import { buildKubernetesPlatformImageVersionValues } from './kubernetes-platform-version.service';
 import { readKubernetesHelmReleaseStatus, readKubernetesPlatformWorkloads } from './kubernetes-system-status.service';
 
 const helmUpdateTimeout: string = '15m';
 const rolloutTimeout: string = '10m';
-const platformDeploymentSelectorComponents: string = `app.kubernetes.io/component in (${kubernetesPlatformImageNames.join(',')})`;
+const restartDeploymentSelectorComponents: string = 'app.kubernetes.io/component notin (postgres,registry,buildkit)';
 
 export async function restartKubernetesSystem(
   target: KubernetesOperatorTarget,
 ): Promise<KubernetesSystemRestartResponse> {
-  const selector: string = `${buildKubernetesReleaseSelector(target.releaseName)},${platformDeploymentSelectorComponents}`;
+  const selector: string = `${buildKubernetesReleaseSelector(target.releaseName)},${restartDeploymentSelectorComponents}`;
   await runRequiredKubectl(
     target,
     ['rollout', 'restart', 'deployment', '--selector', selector],

@@ -64,7 +64,7 @@ describe('Kubernetes system lifecycle', (): void => {
     );
   });
 
-  it('restarts only application Deployments and excludes stateful infrastructure', async (): Promise<void> => {
+  it('restarts stateless Deployments including project-provisioner and excludes stateful infrastructure', async (): Promise<void> => {
     mocks.runCommand.mockImplementation(statusCommandHandler(true));
 
     const result: KubernetesSystemRestartResponse = await restartKubernetesSystem(target());
@@ -80,14 +80,14 @@ describe('Kubernetes system lifecycle', (): void => {
           'restart',
           'deployment',
           '--selector',
-          'app.kubernetes.io/instance=compartment-prod,app.kubernetes.io/component in (api,worker,edge,caddy)',
+          'app.kubernetes.io/instance=compartment-prod,app.kubernetes.io/component notin (postgres,registry,buildkit)',
         ]),
         expect.arrayContaining([
           'rollout',
           'status',
           'deployment',
           '--selector',
-          'app.kubernetes.io/instance=compartment-prod,app.kubernetes.io/component in (api,worker,edge,caddy)',
+          'app.kubernetes.io/instance=compartment-prod,app.kubernetes.io/component notin (postgres,registry,buildkit)',
           '--timeout',
           '10m',
         ]),
@@ -97,7 +97,12 @@ describe('Kubernetes system lifecycle', (): void => {
       command.includes('rollout'),
     );
     expect(rolloutCommands).toHaveLength(2);
-    expect(rolloutCommands.join(' ')).not.toMatch(/postgres|registry|buildkit|daemonset/u);
+    expect(rolloutCommands).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining(['rollout', 'restart', 'deployment']),
+        expect.arrayContaining(['rollout', 'status', 'deployment']),
+      ]),
+    );
   });
 
   it('verifies target tags before Helm and places immutable digest values last', async (): Promise<void> => {

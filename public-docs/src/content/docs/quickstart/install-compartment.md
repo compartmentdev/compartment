@@ -171,8 +171,8 @@ Check the Helm release state and the readiness of its Deployments and DaemonSets
 compartment system status --namespace compartment --release-name compartment
 ```
 
-Restart the API, Worker, Edge, and Caddy Deployments and wait for their rollouts. This leaves PostgreSQL, the registry,
-and BuildKit running:
+Restart the API, Worker, Edge, Caddy, Project Provisioner, and Registry Auth Deployments and wait for their rollouts.
+This leaves PostgreSQL, the stateful registry, and BuildKit running:
 
 ```bash
 compartment system restart --namespace compartment --release-name compartment
@@ -202,7 +202,7 @@ curl -fsSL https://compartment.dev/install.sh | sh -s -- \
 
 Use `--version <release>` or `--channel main` on the bootstrapper to select a specific platform release. The operator
 needs normal Helm update permissions, permission to list the release's Deployments and DaemonSets for status, and
-permission to restart and watch the API, Worker, Edge, and Caddy Deployments.
+permission to restart and watch the API, Worker, Edge, Caddy, Project Provisioner, and Registry Auth Deployments.
 
 See the generated [`compartment system` reference](/reference/generated/cli/system/) for all lifecycle command options.
 
