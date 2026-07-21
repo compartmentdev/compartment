@@ -503,6 +503,7 @@ describe('compartment descriptor contracts', (): void => {
           web: {
             path: 'apps/web',
             run: {
+              command: 'pnpm start',
               restart: {
                 maxRetries: 2,
                 policy: 'on-failure',

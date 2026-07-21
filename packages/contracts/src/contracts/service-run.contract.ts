@@ -5,7 +5,7 @@ import type { ContractSchema } from './schema.types';
 export const compartmentServiceRunFieldNames: readonly ['command'] = ['command'];
 
 export interface CompartmentServiceRunConfig {
-  command?: string | undefined;
+  command: string;
 }
 
 export interface ResolvedCompartmentServiceRunConfig {
@@ -14,20 +14,9 @@ export interface ResolvedCompartmentServiceRunConfig {
 
 export const compartmentServiceRunConfigSchema: ContractSchema<CompartmentServiceRunConfig> = z
   .object({
-    command: z.string().min(1).optional(),
+    command: z.string().min(1),
   })
-  .strict()
-  .superRefine((run: CompartmentServiceRunConfig, context: z.RefinementCtx): void => {
-    if (run.command !== undefined) {
-      return;
-    }
-
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'run must include command.',
-      path: ['command'],
-    });
-  });
+  .strict();
 
 export const resolvedCompartmentServiceRunConfigSchema: ContractSchema<ResolvedCompartmentServiceRunConfig> = z
   .object({
