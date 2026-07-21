@@ -5,6 +5,19 @@ import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+  buildInstalledCompartmentScript,
+  createStubCommands,
+  expectedArtifactName,
+  expectedCliDigestRef,
+  expectedInstalledVersion,
+  expectedKubernetesCommitSha,
+  expectedKubernetesReleaseTag,
+  expectedMainReleaseTag,
+  readExpectedArtifactName,
+  readExpectedOrasPlatform,
+  writeExecutableScript,
+} from './install-cli-script-test.fixtures';
 
 const defaultPath: string = process.env.PATH ?? '/usr/bin:/bin';
 const execFile: (
@@ -15,10 +28,6 @@ const execFile: (
     env?: NodeJS.ProcessEnv | undefined;
   },
 ) => Promise<ExecFileSuccess> = promisify(execFileCallback);
-const expectedArtifactName: string = 'compartment-linux-x64.tar.gz';
-const expectedInstalledVersion: string = '0.1.0-main+1234567';
-const expectedMainCommitSha: string = '1234567890abcdef1234567890abcdef12345678';
-const expectedMainReleaseTag: string = `sha-${expectedMainCommitSha}`;
 const repositoryRoot: string = resolve(__dirname, '../../..');
 const renderInstallerScriptPath: string = resolve(repositoryRoot, 'scripts/release/render-cli-install-script.mjs');
 const sourceInstallerScriptPath: string = resolve(repositoryRoot, 'install.sh');
@@ -30,12 +39,16 @@ interface InstallerFixture {
   tarballPath: string;
 }
 
+type InstallerSignatureOutcome = 'foreign-identity' | 'unsigned' | 'valid' | 'wrong-workflow-sha';
+
 interface InstallerScriptResult {
+  cosignInvocations: string[];
   exitCode: number | string;
   installerTerminalOutput: string;
   stderr: string;
   stdout: string;
   compartmentInvocations: string[];
+  orasInvocations: string[];
   sudoInvocations: string[];
   urlLog: string[];
 }
@@ -44,12 +57,15 @@ interface InstallerRunOptions {
   acceptPathUpdate?: boolean | undefined;
   allowFailure?: boolean | undefined;
   args: string[];
+  archName?: string | undefined;
   binDir?: string | undefined;
   defaultVersion?: string | undefined;
   installerTerminalPath?: string | undefined;
   osName?: string | undefined;
   pathEntries?: string[] | undefined;
   shell?: string | undefined;
+  signatureOutcome?: InstallerSignatureOutcome | undefined;
+  toolVersionMode?: 'compatible' | 'incompatible' | undefined;
 }
 
 interface InstallerProcessResult {
@@ -105,6 +121,107 @@ describe('render-cli-install-script', (): void => {
       `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/${expectedArtifactName}`,
       `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/checksums.txt`,
     ]);
+  });
+
+  it('verifies and installs the immutable CLI artifact resolved from the kubernetes branch head', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: ['--channel', 'kubernetes'],
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.stderr).toContain(`Resolved kubernetes to ${expectedKubernetesReleaseTag}`);
+    expect(result.stdout).toContain(`Installed compartment to ${join(binDirectory, 'compartment')}`);
+    expect(result.compartmentInvocations).toEqual(['--version']);
+    expect(result.urlLog).toEqual(['https://api.github.com/repos/example/compartment/git/ref/heads/kubernetes']);
+    expect(result.cosignInvocations).toEqual([
+      `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedKubernetesCommitSha} ${expectedCliDigestRef}`,
+    ]);
+    expect(result.orasInvocations[0]).toBe(
+      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}`,
+    );
+    expect(result.orasInvocations[1]).toMatch(
+      new RegExp(`^pull --platform linux/amd64 --output .+ ${expectedCliDigestRef}$`, 'u'),
+    );
+  });
+
+  it.each([
+    ['an unsigned artifact', 'unsigned', 'no signatures found'],
+    ['an artifact signed by another identity', 'foreign-identity', 'certificate identity mismatch'],
+    ['an artifact signed by another workflow run', 'wrong-workflow-sha', 'workflow SHA mismatch'],
+  ] as const)(
+    'fails closed before pulling %s',
+    async (_label: string, signatureOutcome: InstallerSignatureOutcome, expectedError: string): Promise<void> => {
+      const temporaryDirectory: string = await createTemporaryDirectory();
+      const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+      const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+        allowFailure: true,
+        args: ['--channel', 'kubernetes'],
+        pathEntries: [binDirectory],
+        signatureOutcome,
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(expectedError);
+      expect(result.stderr).toContain(`Failed to verify Kubernetes CLI artifact ${expectedCliDigestRef}`);
+      expect(result.orasInvocations.filter((invocation: string): boolean => invocation.startsWith('pull '))).toEqual(
+        [],
+      );
+      expect(result.compartmentInvocations).toEqual([]);
+      await expect(readFile(join(binDirectory, 'compartment'), 'utf8')).rejects.toThrow();
+    },
+  );
+
+  it.each([
+    ['Darwin x64', 'Darwin', 'x86_64', 'darwin/amd64', 'compartment-darwin-x64.tar.gz'],
+    ['Linux arm64', 'Linux', 'aarch64', 'linux/arm64', 'compartment-linux-arm64.tar.gz'],
+  ] as const)(
+    'selects the signed OCI platform for %s',
+    async (
+      _label: string,
+      osName: string,
+      archName: string,
+      expectedPlatform: string,
+      expectedPlatformArtifact: string,
+    ): Promise<void> => {
+      const temporaryDirectory: string = await createTemporaryDirectory();
+      const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+      const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+        archName,
+        args: ['--channel', 'kubernetes'],
+        osName,
+        pathEntries: [binDirectory],
+      });
+
+      expect(result.orasInvocations[1]).toMatch(
+        new RegExp(`^pull --platform ${expectedPlatform} --output .+ ${expectedCliDigestRef}$`, 'u'),
+      );
+      expect(result.stdout).toContain(`Installed compartment to ${join(binDirectory, 'compartment')}`);
+      expect(result.compartmentInvocations).toEqual(['--version']);
+      expect(result.stderr).not.toContain(`Missing checksum entry for ${expectedPlatformArtifact}`);
+    },
+  );
+
+  it('falls back from incompatible PATH tools and fails closed on a bootstrapped tool checksum mismatch', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      allowFailure: true,
+      args: ['--channel', 'kubernetes'],
+      pathEntries: [binDirectory],
+      toolVersionMode: 'incompatible',
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Checksum mismatch for cosign-linux-amd64');
+    expect(result.urlLog).toEqual([
+      'https://api.github.com/repos/example/compartment/git/ref/heads/kubernetes',
+      'https://github.com/sigstore/cosign/releases/download/v2.6.1/cosign-linux-amd64',
+    ]);
+    expect(result.cosignInvocations).toEqual([]);
+    expect(result.orasInvocations).toEqual([]);
+    expect(result.compartmentInvocations).toEqual([]);
   });
 
   it('selects the first supported user bin directory from PATH', async (): Promise<void> => {
@@ -619,11 +736,11 @@ async function runInstallerScript(
   const installerScriptPath: string = join(temporaryDirectory, 'install.sh');
   const stateDirectory: string = join(temporaryDirectory, 'state');
   const stubCommandDirectory: string = join(temporaryDirectory, 'stub-bin');
-  const fixture: InstallerFixture = await createInstallerFixture(temporaryDirectory, options.osName);
+  const fixture: InstallerFixture = await createInstallerFixture(temporaryDirectory, options.osName, options.archName);
   const pathEntries: string[] = options.pathEntries ?? [join(temporaryDirectory, '.local', 'bin')];
 
   await renderInstallerScript(installerScriptPath, options);
-  await createStubCommands(stubCommandDirectory, options.osName);
+  await createStubCommands(stubCommandDirectory, options);
 
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
@@ -632,7 +749,11 @@ async function runInstallerScript(
     SHELL: options.shell ?? process.env.SHELL,
     COMPARTMENT_TEST_ARTIFACT_PATH: fixture.tarballPath,
     COMPARTMENT_TEST_CHECKSUMS_PATH: fixture.checksumsPath,
+    COMPARTMENT_TEST_EXPECTED_ARTIFACT_NAME: fixture.artifactName,
+    COMPARTMENT_TEST_EXPECTED_ORAS_PLATFORM: readExpectedOrasPlatform(options.osName, options.archName),
+    COMPARTMENT_TEST_SIGNATURE_OUTCOME: options.signatureOutcome ?? 'valid',
     COMPARTMENT_TEST_STATE_DIR: stateDirectory,
+    COMPARTMENT_TEST_TOOL_VERSION_MODE: options.toolVersionMode ?? 'compatible',
   };
   if (options.acceptPathUpdate === true) {
     environment.COMPARTMENT_INSTALLER_ACCEPT_PATH_UPDATE = '1';
@@ -652,9 +773,11 @@ async function runInstallerScript(
   );
 
   return {
+    cosignInvocations: await readLogLines(join(stateDirectory, 'cosign.log')),
     compartmentInvocations: await readLogLines(join(stateDirectory, 'compartment.log')),
     exitCode: result.exitCode,
     installerTerminalOutput: await readOptionalText(options.installerTerminalPath),
+    orasInvocations: await readLogLines(join(stateDirectory, 'oras.log')),
     stderr: result.stderr,
     stdout: result.stdout,
     sudoInvocations: await readLogLines(join(stateDirectory, 'sudo.log')),
@@ -710,10 +833,14 @@ async function renderInstallerScript(outputPath: string, options: InstallerRunOp
   }
 }
 
-async function createInstallerFixture(temporaryDirectory: string, osName?: string): Promise<InstallerFixture> {
+async function createInstallerFixture(
+  temporaryDirectory: string,
+  osName?: string,
+  archName?: string,
+): Promise<InstallerFixture> {
   const fixtureDirectory: string = join(temporaryDirectory, 'fixture');
   const packageDirectory: string = join(fixtureDirectory, 'package');
-  const artifactName: string = readExpectedArtifactName(osName);
+  const artifactName: string = readExpectedArtifactName(osName, archName);
   const compartmentBinaryPath: string = join(packageDirectory, 'compartment');
   const tarballPath: string = join(fixtureDirectory, artifactName);
   const checksumsPath: string = join(fixtureDirectory, 'checksums.txt');
@@ -739,175 +866,8 @@ async function createChecksumsFile(artifactName: string, tarballPath: string): P
   return `${checksum}  ${artifactName}\n${installerChecksum}  install.sh\n`;
 }
 
-function readExpectedArtifactName(osName?: string): string {
-  return normalizeInstallerOsName(osName) === 'darwin' ? 'compartment-darwin-x64.tar.gz' : expectedArtifactName;
-}
-
-function normalizeInstallerOsName(osName?: string): string {
-  return (osName ?? 'Linux').trim().toLowerCase();
-}
-
-async function createStubCommands(stubCommandDirectory: string, osName?: string): Promise<void> {
-  await mkdir(stubCommandDirectory, { recursive: true });
-  await writeExecutableScript(join(stubCommandDirectory, 'curl'), buildStubCurlScript());
-  await writeExecutableScript(join(stubCommandDirectory, 'uname'), buildStubUnameScript(osName));
-  await writeExecutableScript(join(stubCommandDirectory, 'sudo'), buildStubSudoScript());
-}
-
-function buildStubCurlScript(): string {
-  return createShellScript(`
-artifact_path="\${COMPARTMENT_TEST_ARTIFACT_PATH:?}"
-checksums_path="\${COMPARTMENT_TEST_CHECKSUMS_PATH:?}"
-state_dir="\${COMPARTMENT_TEST_STATE_DIR:?}"
-
-mkdir -p "$state_dir"
-output_path=""
-url=""
-
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    -o)
-      output_path="$2"
-      shift 2
-      ;;
-    -*)
-      shift
-      ;;
-    *)
-      url="$1"
-      shift
-      ;;
-  esac
-done
-
-printf '%s\\n' "$url" >> "\${state_dir}/urls.log"
-
-case "$url" in
-  https://api.github.com/repos/example/compartment/git/ref/heads/main)
-    printf '{"object":{"sha":"${expectedMainCommitSha}"}}\\n'
-    ;;
-  https://github.com/example/compartment/releases/download/sha-*/checksums.txt)
-    cp "$checksums_path" "$output_path"
-    ;;
-  https://github.com/example/compartment/releases/download/sha-*/compartment-*.tar.gz)
-    cp "$artifact_path" "$output_path"
-    ;;
-  https://github.com/example/compartment/releases/download/v*/checksums.txt)
-    cp "$checksums_path" "$output_path"
-    ;;
-  https://github.com/example/compartment/releases/download/v*/compartment-*.tar.gz)
-    cp "$artifact_path" "$output_path"
-    ;;
-  https://github.com/example/compartment/releases/latest/download/checksums.txt)
-    cp "$checksums_path" "$output_path"
-    ;;
-  https://github.com/example/compartment/releases/latest/download/compartment-*.tar.gz)
-    cp "$artifact_path" "$output_path"
-    ;;
-  *)
-    printf 'Unexpected curl URL: %s\\n' "$url" >&2
-    exit 1
-    ;;
-esac
-`);
-}
-
-function buildStubUnameScript(osName: string = 'Linux'): string {
-  return createShellScript(`
-case "\${1:-}" in
-  -s)
-    printf '${osName}\\n'
-    ;;
-  -m)
-    printf 'x86_64\\n'
-    ;;
-  *)
-    printf 'Unexpected uname args: %s\\n' "$*" >&2
-    exit 1
-    ;;
-esac
-`);
-}
-
-function buildInstalledCompartmentScript(): string {
-  return createShellScript(`
-state_dir="\${COMPARTMENT_TEST_STATE_DIR:?}"
-mkdir -p "$state_dir"
-printf '%s\\n' "$*" >> "\${state_dir}/compartment.log"
-
-  case "\${1:-}" in
-  --version)
-    printf '${expectedInstalledVersion}\\n'
-    ;;
-  install)
-    printf 'Installed Compartment.\\n'
-    ;;
-  login)
-    api_url=""
-    email=""
-    organization=""
-    onboarding_session=""
-    shift
-    while [ "$#" -gt 0 ]; do
-      case "$1" in
-        --api-url)
-          api_url="$2"
-          shift 2
-          ;;
-        --email)
-          email="$2"
-          shift 2
-          ;;
-        --organization)
-          organization="$2"
-          shift 2
-          ;;
-        --onboarding-session)
-          onboarding_session="$2"
-          shift 2
-          ;;
-        *)
-          printf 'Unexpected login arg: %s\\n' "$1" >&2
-          exit 1
-          ;;
-      esac
-    done
-    printf 'Logged in to %s as %s.\\n' "$api_url" "$email"
-    ;;
-  system)
-    if [ "\${2:-}" != "update" ]; then
-      printf 'Unexpected system command: %s\\n' "$*" >&2
-      exit 1
-    fi
-    printf 'Updated Compartment platform.\\n'
-    ;;
-  *)
-    printf 'Unexpected installed compartment args: %s\\n' "$*" >&2
-    exit 1
-    ;;
-esac
-`);
-}
-
-function buildStubSudoScript(): string {
-  return createShellScript(`
-state_dir="\${COMPARTMENT_TEST_STATE_DIR:?}"
-mkdir -p "$state_dir"
-printf '%s\\n' "$*" >> "\${state_dir}/sudo.log"
-exec "$@"
-`);
-}
-
 function countOccurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;
-}
-
-function createShellScript(body: string): string {
-  return `#!/bin/sh
-set -eu
-
-${body.trim()}
-`;
 }
 
 async function readLogLines(logPath: string): Promise<string[]> {
@@ -943,11 +903,6 @@ async function readOptionalText(path: string | undefined): Promise<string> {
 
 function isDirectoryReadError(error: NodeJS.ErrnoException | Error): boolean {
   return error instanceof Error && (error as NodeJS.ErrnoException).code === 'EISDIR';
-}
-
-async function writeExecutableScript(path: string, contents: string): Promise<void> {
-  await writeFile(path, contents, 'utf8');
-  await chmod(path, 0o755);
 }
 
 function readExecFileOutput(output: Buffer | string | undefined): string {

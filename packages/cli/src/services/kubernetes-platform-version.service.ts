@@ -9,7 +9,10 @@ const imageTagPattern: RegExp = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/u;
 
 export function resolvePackagedKubernetesPlatformVersion(): string | undefined {
   const buildInfo: CliBuildInfo = readCliBuildInfo();
-  if (buildInfo.distributionChannel === 'main' && buildInfo.buildCommitSha !== undefined) {
+  if (
+    (buildInfo.distributionChannel === 'main' || buildInfo.distributionChannel === 'kubernetes') &&
+    buildInfo.buildCommitSha !== undefined
+  ) {
     return `sha-${buildInfo.buildCommitSha}`;
   }
   if (buildInfo.distributionChannel === 'release') {

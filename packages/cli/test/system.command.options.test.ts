@@ -60,6 +60,16 @@ describe('system command options', (): void => {
     expect(resolveKubernetesSystemUpdateVersion(undefined)).toBe('sha-1234567890abcdef1234567890abcdef12345678');
   });
 
+  it('selects the immutable kubernetes build tag for packaged kubernetes updates', (): void => {
+    mocks.readCliBuildInfo.mockReturnValue({
+      buildCommitSha: '1234567890abcdef1234567890abcdef12345678',
+      cliVersion: '0.9.2',
+      distributionChannel: 'kubernetes',
+    });
+
+    expect(resolveKubernetesSystemUpdateVersion(undefined)).toBe('sha-1234567890abcdef1234567890abcdef12345678');
+  });
+
   it('selects the CLI version for packaged release updates', (): void => {
     mocks.readCliBuildInfo.mockReturnValue({ cliVersion: '0.9.2', distributionChannel: 'release' });
 

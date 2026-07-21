@@ -3,6 +3,11 @@
 set -eu
 
 release_repository="${COMPARTMENT_RELEASES_REPOSITORY:-compartmentdev/compartment}"
+cli_oci_repository="ghcr.io/compartmentdev/compartment-cli"
+cosign_version="2.6.1"
+oras_version="1.3.3"
+kubernetes_cli_certificate_identity="https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes"
+kubernetes_cli_certificate_oidc_issuer="https://token.actions.githubusercontent.com"
 channel="latest"
 version=""
 version_argument="0"
@@ -163,7 +168,7 @@ else
 fi
 
 case "$channel" in
-  latest|main)
+  latest|main|kubernetes)
     ;;
   *)
     printf 'Unsupported channel: %s\n' "$channel" >&2
@@ -188,6 +193,167 @@ resolve_main_release_tag() {
   resolved_release_tag="sha-${main_commit_sha}"
   printf 'Resolved main to %s\n' "$resolved_release_tag" >&2
   printf '%s' "$resolved_release_tag"
+}
+
+resolve_kubernetes_release_tag() {
+  kubernetes_ref_url="https://api.github.com/repos/${release_repository}/git/ref/heads/kubernetes"
+  kubernetes_commit_sha="$(
+    curl -fsSL "$kubernetes_ref_url" \
+      | tr -d '\n' \
+      | sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' \
+      | head -n 1
+  )"
+
+  if [ -z "$kubernetes_commit_sha" ]; then
+    printf 'Missing kubernetes commit SHA in %s\n' "$kubernetes_ref_url" >&2
+    exit 1
+  fi
+
+  resolved_release_tag="sha-${kubernetes_commit_sha}"
+  printf 'Resolved kubernetes to %s\n' "$resolved_release_tag" >&2
+  printf '%s' "$resolved_release_tag"
+}
+
+verify_download_checksum() {
+  checksum_path="$1"
+  checksum_expected="$2"
+  checksum_label="$3"
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    checksum_actual="$(sha256sum "$checksum_path" | awk '{ print $1 }')"
+  elif command -v shasum >/dev/null 2>&1; then
+    checksum_actual="$(shasum -a 256 "$checksum_path" | awk '{ print $1 }')"
+  else
+    printf 'Missing sha256 checksum tool.\n' >&2
+    exit 1
+  fi
+
+  if [ "$checksum_actual" != "$checksum_expected" ]; then
+    printf 'Checksum mismatch for %s\n' "$checksum_label" >&2
+    exit 1
+  fi
+}
+
+prepare_kubernetes_cli_tools() {
+  tools_directory="$1"
+  tools_target_os="$2"
+  tools_target_arch="$3"
+
+  mkdir -p "$tools_directory"
+  case "$tools_target_arch" in
+    x64)
+      tools_upstream_arch="amd64"
+      ;;
+    arm64)
+      tools_upstream_arch="arm64"
+      ;;
+    *)
+      printf 'Unsupported Kubernetes CLI tool architecture: %s\n' "$tools_target_arch" >&2
+      exit 1
+      ;;
+  esac
+
+  cosign_command=""
+  if command -v cosign >/dev/null 2>&1; then
+    installed_cosign_command="$(command -v cosign)"
+    installed_cosign_version="$(
+      "$installed_cosign_command" version 2>/dev/null \
+        | sed -n 's/^[[:space:]]*GitVersion:[[:space:]]*v\{0,1\}\([^[:space:]]*\).*/\1/p' \
+        | head -n 1
+    )"
+    if [ "$installed_cosign_version" = "$cosign_version" ]; then
+      cosign_command="$installed_cosign_command"
+    fi
+  fi
+  if [ -z "$cosign_command" ]; then
+    cosign_command="${tools_directory}/cosign"
+    cosign_asset_name="cosign-${tools_target_os}-${tools_upstream_arch}"
+    case "${tools_target_os}-${tools_upstream_arch}" in
+      darwin-amd64)
+        cosign_checksum="f1ed2787cc9648fd3c644fcb279e43f3f55da63b788d69a527aa14ad97ffdca1"
+        ;;
+      darwin-arm64)
+        cosign_checksum="54047052cf46f40a5c3c95a510db276e164ba77e096aea1ca1b733f770359689"
+        ;;
+      linux-amd64)
+        cosign_checksum="064954c5d8c7e3b28188eee5b1727b31c411550bc5fefd41aa672d3c761d103a"
+        ;;
+      linux-arm64)
+        cosign_checksum="56a16480bdd56ec789abaa65924402f6b92c0041f06885995853c05567b76f34"
+        ;;
+    esac
+    curl -fsSL \
+      -o "$cosign_command" \
+      "https://github.com/sigstore/cosign/releases/download/v${cosign_version}/${cosign_asset_name}"
+    verify_download_checksum "$cosign_command" "$cosign_checksum" "$cosign_asset_name"
+    chmod 0755 "$cosign_command"
+  fi
+
+  oras_command=""
+  if command -v oras >/dev/null 2>&1; then
+    installed_oras_command="$(command -v oras)"
+    installed_oras_version="$(
+      "$installed_oras_command" version 2>/dev/null \
+        | sed -n 's/^Version:[[:space:]]*\([^[:space:]]*\).*/\1/p' \
+        | head -n 1
+    )"
+    if [ "$installed_oras_version" = "$oras_version" ]; then
+      oras_command="$installed_oras_command"
+    fi
+  fi
+  if [ -z "$oras_command" ]; then
+    oras_command="${tools_directory}/oras"
+    oras_asset_name="oras_${oras_version}_${tools_target_os}_${tools_upstream_arch}.tar.gz"
+    oras_archive_path="${tools_directory}/${oras_asset_name}"
+    case "${tools_target_os}-${tools_upstream_arch}" in
+      darwin-amd64)
+        oras_checksum="aeb684d8c24c18dce28fd1f7326636e4782b573108e244a93d4b1c4a5ec50f48"
+        ;;
+      darwin-arm64)
+        oras_checksum="f33fc12753c54172b0d0d19eaa0318d3f90fe9b094d96e8b259c881713c92e1c"
+        ;;
+      linux-amd64)
+        oras_checksum="9ce999f8d2de03fc03968b29d743077a58783e545e5eaa53917ca177352d0e59"
+        ;;
+      linux-arm64)
+        oras_checksum="ac7156f93a21e903f7ad606c792f3560f17e0cd0e36365634701b1e7cc4e4eca"
+        ;;
+    esac
+    curl -fsSL \
+      -o "$oras_archive_path" \
+      "https://github.com/oras-project/oras/releases/download/v${oras_version}/${oras_asset_name}"
+    verify_download_checksum "$oras_archive_path" "$oras_checksum" "$oras_asset_name"
+    tar -xzf "$oras_archive_path" -C "$tools_directory" oras
+    chmod 0755 "$oras_command"
+  fi
+}
+
+resolve_kubernetes_cli_digest_ref() {
+  cli_tag_ref="$1"
+  cli_manifest_digest="$("$oras_command" resolve "$cli_tag_ref")"
+  validated_cli_manifest_digest="$(
+    printf '%s\n' "$cli_manifest_digest" | sed -n '/^sha256:[0-9a-f]\{64\}$/p'
+  )"
+  if [ -z "$validated_cli_manifest_digest" ]; then
+    printf 'Invalid OCI manifest digest for %s: %s\n' "$cli_tag_ref" "$cli_manifest_digest" >&2
+    exit 1
+  fi
+
+  printf '%s@%s' "$cli_oci_repository" "$validated_cli_manifest_digest"
+}
+
+verify_kubernetes_cli_artifact() {
+  cli_digest_ref="$1"
+  cli_workflow_sha="$2"
+  if ! "$cosign_command" verify \
+    --new-bundle-format \
+    --certificate-identity "$kubernetes_cli_certificate_identity" \
+    --certificate-oidc-issuer "$kubernetes_cli_certificate_oidc_issuer" \
+    --certificate-github-workflow-sha "$cli_workflow_sha" \
+    "$cli_digest_ref" >/dev/null; then
+    printf 'Failed to verify Kubernetes CLI artifact %s\n' "$cli_digest_ref" >&2
+    exit 1
+  fi
 }
 
 can_use_installer_terminal() {
@@ -653,31 +819,33 @@ esac
 
 artifact_name="compartment-${target_os}-${target_arch}.tar.gz"
 
-if [ -n "$version" ]; then
-  case "$version" in
-    main)
+if [ "$channel" != "kubernetes" ]; then
+  if [ -n "$version" ]; then
+    case "$version" in
+      main)
+        resolved_release_tag="$(resolve_main_release_tag)"
+        release_path="releases/download/${resolved_release_tag}"
+        ;;
+      sha-*)
+        release_path="releases/download/${version}"
+        ;;
+      *)
+        release_path="releases/download/v${version}"
+        ;;
+    esac
+  else
+    if [ "$channel" = "main" ]; then
       resolved_release_tag="$(resolve_main_release_tag)"
       release_path="releases/download/${resolved_release_tag}"
-      ;;
-    sha-*)
-      release_path="releases/download/${version}"
-      ;;
-    *)
-      release_path="releases/download/v${version}"
-      ;;
-  esac
-else
-  if [ "$channel" = "main" ]; then
-    resolved_release_tag="$(resolve_main_release_tag)"
-    release_path="releases/download/${resolved_release_tag}"
-  else
-    release_path="releases/latest/download"
+    else
+      release_path="releases/latest/download"
+    fi
   fi
-fi
 
-base_url="https://github.com/${release_repository}/${release_path}"
-artifact_url="${base_url}/${artifact_name}"
-checksums_url="${base_url}/checksums.txt"
+  base_url="https://github.com/${release_repository}/${release_path}"
+  artifact_url="${base_url}/${artifact_name}"
+  checksums_url="${base_url}/checksums.txt"
+fi
 
 temp_directory="$(mktemp -d)"
 trap 'rm -rf "$temp_directory"' EXIT INT TERM
@@ -685,8 +853,21 @@ trap 'rm -rf "$temp_directory"' EXIT INT TERM
 artifact_path="${temp_directory}/${artifact_name}"
 checksums_path="${temp_directory}/checksums.txt"
 
-curl -fsSL -o "$artifact_path" "$artifact_url"
-curl -fsSL -o "$checksums_path" "$checksums_url"
+if [ "$channel" = "kubernetes" ]; then
+  resolved_release_tag="$(resolve_kubernetes_release_tag)"
+  resolved_kubernetes_commit_sha="${resolved_release_tag#sha-}"
+  prepare_kubernetes_cli_tools "${temp_directory}/tools" "$target_os" "$target_arch"
+  cli_tag_ref="${cli_oci_repository}:${resolved_release_tag}"
+  cli_digest_ref="$(resolve_kubernetes_cli_digest_ref "$cli_tag_ref")"
+  verify_kubernetes_cli_artifact "$cli_digest_ref" "$resolved_kubernetes_commit_sha"
+  "$oras_command" pull \
+    --platform "${target_os}/${tools_upstream_arch}" \
+    --output "$temp_directory" \
+    "$cli_digest_ref"
+else
+  curl -fsSL -o "$artifact_path" "$artifact_url"
+  curl -fsSL -o "$checksums_path" "$checksums_url"
+fi
 
 expected_checksum_line="$(awk -v target="$artifact_name" '$2 == target { print $0 }' "$checksums_path")"
 if [ -z "$expected_checksum_line" ]; then
