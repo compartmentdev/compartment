@@ -1,0 +1,84 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "compartment.fullname" . }}-postgres
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "postgres") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "api") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "worker") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "api-migrate") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 5432}
+{{ if eq $installState.effective.platform.startupStage "full" }}
+{{- $productLogsNamespace := default (printf "%s-observability" (include "compartment.fullname" .)) .Values.productLogs.namespace -}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "compartment.fullname" . }}-api
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "api") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "caddy") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "worker") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "edge") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "project-provisioner") | nindent 14 }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $productLogsNamespace }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "compartment.fullname" . }}-log-agent
+      ports:
+        - {protocol: TCP, port: {{ .Values.ports.api }}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "compartment.fullname" . }}-edge
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "edge") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "caddy") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "compartment.componentLabels" (dict "root" . "component" "api") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: {{ .Values.ports.edge }}}
+{{- end }}
