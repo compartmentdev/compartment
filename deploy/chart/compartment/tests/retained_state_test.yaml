@@ -57,6 +57,27 @@ kubernetesProvider:
         tls-mode: Y3VzdG9tLWh0dHA=
         active-custom-tls-secret: ''
         operator-custom-tls-secret: ''
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: interrupted-install-state
+        namespace: default
+      data:
+        startup-stage: Zm91bmRhdGlvbg==
+        installation-id: cmV0YWluZWQtaW50ZXJydXB0ZWQ=
+        public-ingress-ipv4: ''
+        public-ingress-ipv6: ''
+        acme-email: cmV0YWluZWRAZXhhbXBsZS50ZXN0
+        managed-domain-broker-url: aHR0cHM6Ly9icm9rZXIuZXhhbXBsZS50ZXN0
+        managed-domain-broker-token: ''
+        domain-generation: MA==
+        domain-mode: bWFuYWdlZA==
+        base-domain: ''
+        managed-base-domain: ''
+        public-protocol: aHR0cHM=
+        tls-mode: bWFuYWdlZA==
+        active-custom-tls-secret: ''
+        operator-custom-tls-secret: ''
 tests:
   - it: resolves every consumer from the retained Secret without mutating Values
     set:
@@ -163,4 +184,67 @@ tests:
       - equal:
           path: stringData.operator-custom-tls-secret
           value: incoming-operator-tls
+        template: install-state-secret.yaml
+
+  - it: resumes the foundation stage after an interrupted install with an empty domain
+    release:
+      name: interrupted
+      namespace: default
+      upgrade: true
+    set:
+      platform:
+        startupStage: foundation
+        installationId: replacement-attempt
+        domainGeneration: 0
+        domainMode: managed
+        baseDomain: ''
+        publicProtocol: https
+        tlsMode: managed
+        acmeEmail: retained@example.test
+        managedDomainBrokerUrl: https://broker.example.test
+      secrets:
+        managedDomainBrokerToken: ''
+    asserts:
+      - notFailedTemplate: {}
+      - equal:
+          path: stringData.installation-id
+          value: retained-interrupted
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.base-domain
+          value: ''
+        template: install-state-secret.yaml
+
+  - it: persists the resolved domain over the interrupted empty state
+    release:
+      name: interrupted
+      namespace: default
+      upgrade: true
+    set:
+      platform:
+        startupStage: foundation
+        installationId: replacement-attempt
+        domainGeneration: 1
+        domainMode: managed
+        baseDomain: resumed.example.test
+        publicProtocol: https
+        tlsMode: managed
+        publicIngressIpv4: 8.8.4.4
+        acmeEmail: retained@example.test
+        managedDomainBrokerUrl: https://broker.example.test
+      secrets:
+        managedDomainBrokerToken: incoming-token
+    asserts:
+      - notFailedTemplate: {}
+      - equal:
+          path: data.COMPARTMENT_BASE_DOMAIN
+          value: resumed.example.test
+        template: configmap.yaml
+      - equal:
+          path: stringData.installation-id
+          value: retained-interrupted
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.base-domain
+          value: resumed.example.test
         template: install-state-secret.yaml
