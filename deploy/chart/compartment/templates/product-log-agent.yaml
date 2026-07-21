@@ -174,7 +174,14 @@ spec:
         - name: vector
           image: {{ include "compartment.image" .Values.images.productLogAgent }}
           imagePullPolicy: {{ .Values.images.productLogAgent.pullPolicy }}
-          args: [--config, /etc/vector/vector.yaml]
+          args:
+            - --config
+            - /etc/vector/vector.yaml
+            - --watch-config
+            - --watch-config-method
+            - poll
+            - --watch-config-poll-interval-seconds
+            - '1'
           env:
             - name: COMPARTMENT_LOG_INGEST_URL
               value: {{ printf "http://%s-api.%s.svc:%v/internal/kubernetes/logs" (include "compartment.fullname" .) .Release.Namespace .Values.ports.api | quote }}
