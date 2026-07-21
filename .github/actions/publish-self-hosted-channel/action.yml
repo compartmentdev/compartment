@@ -107,9 +107,11 @@ runs:
         push_dockerhub_image() {
           local image_name="$1"
           local dockerfile="$2"
+          local metadata_file="./.compartment/release-assets/${image_name}-build-metadata.json"
           shift 2
           docker buildx build "${common_args[@]}" "$@" \
             --tag "docker.io/compartmentdev/${image_name}:${STAGING_TAG}" \
+            --metadata-file "$metadata_file" \
             --file "$dockerfile" .
         }
 
@@ -140,7 +142,8 @@ runs:
 
         reconcile_immutable_image_pair() {
           local image_name="$1"
-          local staging_ref="docker.io/compartmentdev/${image_name}:${STAGING_TAG}"
+          local scanned_digest="$2"
+          local scanned_ref="docker.io/compartmentdev/${image_name}@${scanned_digest}"
           local dockerhub_ref="docker.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
           local ghcr_ref="ghcr.io/compartmentdev/${image_name}:${PRIMARY_TAG}"
           local dockerhub_error_file="./.compartment/release-assets/${image_name}-dockerhub-inspect-error.txt"
@@ -164,23 +167,13 @@ runs:
             [ "$status" -eq 2 ] || return "$status"
           fi
 
-          if [ -n "$dockerhub_digest" ] && [ -n "$ghcr_digest" ]; then
-            if [ "$dockerhub_digest" != "$ghcr_digest" ]; then
-              echo "Immutable registries disagree for ${image_name}: Docker Hub has ${dockerhub_digest}, GHCR has ${ghcr_digest}." >&2
-              return 1
-            fi
-            canonical_digest="$dockerhub_digest"
-            canonical_ref="$dockerhub_ref"
-          elif [ -n "$dockerhub_digest" ]; then
-            canonical_digest="$dockerhub_digest"
-            canonical_ref="$dockerhub_ref"
-          elif [ -n "$ghcr_digest" ]; then
-            canonical_digest="$ghcr_digest"
-            canonical_ref="$ghcr_ref"
-          else
-            canonical_digest="$(read_image_digest "$staging_ref")"
-            canonical_ref="$staging_ref"
-          fi
+          canonical_digest="$(node ./scripts/deploy/secure-self-hosted-images.mjs \
+            --resolve-scanned-digest \
+            "$image_name" \
+            "$scanned_digest" \
+            "$dockerhub_digest" \
+            "$ghcr_digest")"
+          canonical_ref="$scanned_ref"
 
           if [ -z "$dockerhub_digest" ]; then
             docker buildx imagetools create --tag "$dockerhub_ref" "$canonical_ref"
@@ -192,7 +185,7 @@ runs:
           fi
 
           if [ -z "$ghcr_digest" ]; then
-            docker buildx imagetools create --tag "$ghcr_ref" "$dockerhub_ref"
+            docker buildx imagetools create --tag "$ghcr_ref" "$canonical_ref"
             ghcr_digest="$(read_image_digest "$ghcr_ref")"
           fi
           if [ "$ghcr_digest" != "$canonical_digest" ]; then
@@ -210,31 +203,45 @@ runs:
 
         mapfile -t self_hosted_services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
 
-        node ./scripts/deploy/secure-self-hosted-images.mjs \
-          --scan-only \
-          --docker-scout \
-          --repository-prefix docker.io/compartmentdev \
-          "$STAGING_TAG"
+        declare -A scanned_digest_by_service
+        digest_manifest="./.compartment/release-assets/self-hosted-scanned-digests.tsv"
+        : > "$digest_manifest"
+        scan_args=(--scan-only --docker-scout)
+        for service in "${self_hosted_services[@]}"; do
+          image_name="compartment-${service}"
+          metadata_file="./.compartment/release-assets/${image_name}-build-metadata.json"
+          scanned_digest_by_service["$service"]="$(node ./scripts/deploy/secure-self-hosted-images.mjs \
+            --read-build-metadata-digest "$metadata_file")"
+          scan_args+=(--image-ref "docker.io/compartmentdev/${image_name}@${scanned_digest_by_service[$service]}")
+          printf '%s\t%s\n' "$service" "${scanned_digest_by_service[$service]}" >> "$digest_manifest"
+        done
+        node ./scripts/deploy/secure-self-hosted-images.mjs "${scan_args[@]}"
 
         for service in "${self_hosted_services[@]}"; do
-          reconcile_immutable_image_pair "compartment-${service}"
+          reconcile_immutable_image_pair "compartment-${service}" "${scanned_digest_by_service[$service]}"
         done
 
     - name: Secure self-hosted image digests
       shell: bash
-      env:
-        PUBLISH_SHA: ${{ inputs.publish-sha }}
       run: |
-        tags=("sha-${PUBLISH_SHA}")
+        dockerhub_args=()
+        ghcr_args=()
+        digest_manifest="./.compartment/release-assets/self-hosted-scanned-digests.tsv"
+        while IFS=$'\t' read -r service digest; do
+          if [ -z "$service" ] || [ -z "$digest" ]; then
+            echo "Expected service and scanned digest in ${digest_manifest}." >&2
+            exit 1
+          fi
+          dockerhub_args+=(--image-ref "docker.io/compartmentdev/compartment-${service}@${digest}")
+          ghcr_args+=(--image-ref "ghcr.io/compartmentdev/compartment-${service}@${digest}")
+        done < "$digest_manifest"
 
         node ./scripts/deploy/secure-self-hosted-images.mjs \
-          --repository-prefix docker.io/compartmentdev \
           --output-dir ./.compartment/release-assets/self-hosted-sboms/dockerhub \
-          "${tags[@]}"
+          "${dockerhub_args[@]}"
         node ./scripts/deploy/secure-self-hosted-images.mjs \
-          --repository-prefix ghcr.io/compartmentdev \
           --output-dir ./.compartment/release-assets/self-hosted-sboms/ghcr \
-          "${tags[@]}"
+          "${ghcr_args[@]}"
 
     - name: Promote mutable channel tags
       shell: bash
