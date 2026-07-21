@@ -14,6 +14,7 @@ import type {
   ClaimedProductJobQueryResult,
   PersistProductJobResultInput,
   ProductJobCommonSpec,
+  ProductJobResourceFenceResult,
   ProductJobRunRow,
   ProductJobResultRow,
 } from './product-job-runs.query.types';
@@ -56,6 +57,55 @@ export async function readProductJobResult(
   return await readProductJobResultWithExecutor(getApiDatabase(), jobClass, identityId);
 }
 
+async function claimProductJobWithTransaction(
+  transaction: ApiDatabaseTransaction,
+  jobClass: ProductJobClass,
+): Promise<ClaimedProductJobQueryResult> {
+  const row: ProductJobRunRow | undefined = await readClaimableProductJobRow(transaction, jobClass);
+  if (row === undefined) {
+    return { intent: null, persistedResult: null };
+  }
+  const fenceResult: ProductJobResourceFenceResult = await lockProductJobResourceFence(transaction, row);
+  if (fenceResult === 'blocked') {
+    return { intent: null, persistedResult: null };
+  }
+  if (fenceResult === 'terminalized') {
+    return await buildTerminalizedProductJobClaim(transaction, row);
+  }
+  if (row.status === 'queued') {
+    await markProductJobRunning(transaction, row);
+  }
+  return { intent: buildProductJobIntent(row), persistedResult: buildPersistedProductJobResult(row) };
+}
+
+async function markProductJobRunning(transaction: ApiDatabaseTransaction, row: ProductJobRunRow): Promise<void> {
+  await transaction
+    .update(productJobRuns)
+    .set({ status: 'running', updatedAt: new Date() })
+    .where(
+      and(
+        eq(productJobRuns.jobClass, row.jobClass),
+        eq(productJobRuns.identityId, row.identityId),
+        eq(productJobRuns.status, 'queued'),
+      ),
+    );
+}
+
+async function buildTerminalizedProductJobClaim(
+  transaction: ApiDatabaseTransaction,
+  row: ProductJobRunRow,
+): Promise<ClaimedProductJobQueryResult> {
+  const persistedResult: WorkerPersistProductJobResultRequest | null = await readProductJobResultWithExecutor(
+    transaction,
+    row.jobClass,
+    row.identityId,
+  );
+  if (persistedResult === null) {
+    throw new Error(`Terminalized Product Job ${row.jobClass}/${row.identityId} has no persisted result.`);
+  }
+  return { intent: buildProductJobIntent(row), persistedResult };
+}
+
 async function readProductJobResultWithExecutor(
   executor: ApiDatabaseTransaction | Database,
   jobClass: ProductJobClass,
@@ -76,29 +126,6 @@ async function readProductJobResultWithExecutor(
     .where(and(eq(productJobRuns.jobClass, jobClass), eq(productJobRuns.identityId, identityId)))
     .limit(1);
   return row === undefined ? null : buildPersistedProductJobResult(row);
-}
-
-async function claimProductJobWithTransaction(
-  transaction: ApiDatabaseTransaction,
-  jobClass: ProductJobClass,
-): Promise<ClaimedProductJobQueryResult> {
-  const row: ProductJobRunRow | undefined = await readClaimableProductJobRow(transaction, jobClass);
-  if (row === undefined || !(await lockProductJobResourceFence(transaction, row))) {
-    return { intent: null, persistedResult: null };
-  }
-  if (row.status === 'queued') {
-    await transaction
-      .update(productJobRuns)
-      .set({ status: 'running', updatedAt: new Date() })
-      .where(
-        and(
-          eq(productJobRuns.jobClass, row.jobClass),
-          eq(productJobRuns.identityId, row.identityId),
-          eq(productJobRuns.status, 'queued'),
-        ),
-      );
-  }
-  return { intent: buildProductJobIntent(row), persistedResult: buildPersistedProductJobResult(row) };
 }
 
 const claimableProductJobSelection: ProductJobRunSelection = {

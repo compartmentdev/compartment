@@ -92,9 +92,7 @@ export async function lockProjectResourceReconciliation(
   environmentId: string,
   resourceName: string,
 ): Promise<Date | null> {
-  await tx.execute(sql`
-    select pg_advisory_xact_lock(hashtext(${`${environmentId}:${resourceName}`}))
-  `);
+  await lockProjectResourceIdentity(tx, environmentId, resourceName);
   await tx
     .select({ projectId: projectKubeProvisioning.projectId })
     .from(environments)
@@ -118,9 +116,7 @@ export async function lockProjectResourceOperation(
   environmentId: string,
   resourceName: string,
 ): Promise<Date | null> {
-  await tx.execute(sql`
-    select pg_advisory_xact_lock(hashtext(${`${environmentId}:${resourceName}`}))
-  `);
+  await lockProjectResourceIdentity(tx, environmentId, resourceName);
   const [project] = await tx
     .select({ archivedAt: projects.archivedAt })
     .from(environments)
@@ -131,6 +127,16 @@ export async function lockProjectResourceOperation(
     throw new Error(`Project for environment ${environmentId} was not found.`);
   }
   return project.archivedAt;
+}
+
+export async function lockProjectResourceIdentity(
+  tx: ResourceTransaction,
+  environmentId: string,
+  resourceName: string,
+): Promise<void> {
+  await tx.execute(sql`
+    select pg_advisory_xact_lock(hashtext(${`${environmentId}:${resourceName}`}))
+  `);
 }
 
 export async function createProjectResourceWithExecutor(

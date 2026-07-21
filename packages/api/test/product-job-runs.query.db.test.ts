@@ -38,6 +38,7 @@ import { expireProductJobWait, readProductJobQueueWaitState } from '../src/queri
 import type { ProductJobQueueWaitState } from '../src/queries/product-job-wait.query.types';
 import type { ClaimedProductJobQueryResult } from '../src/queries/product-job-runs.query.types';
 import { createResourceReconcileRun } from '../src/queries/resource-reconcile-create.query';
+import { finalizeProjectResourceDeletion } from '../src/queries/resource-reconcile-deletion.query';
 import { readResourceReconcileRunWaitState } from '../src/queries/resource-reconcile-wait.query';
 import type { ResourceReconcileRunWaitState } from '../src/queries/resource-reconcile-runs.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
@@ -47,6 +48,11 @@ const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'pro
 const apiConfig: ApiConfig = buildApiConfig(databaseUrl);
 const pool: Pool = createDatabasePool(databaseUrl);
 const db: Database = createDatabase(pool);
+
+interface TerminalReleaseResourceTestCase {
+  phase: 'failed' | 'reconcile-pending';
+  resourceStatus: 'deleting' | 'running';
+}
 
 describe('product Job persistence', (): void => {
   useApiRuntimeDatabaseTestHarness({ apiConfig, databaseUrl, db, pool });
@@ -216,6 +222,37 @@ describe('product Job persistence', (): void => {
     await expect(claimProductJob('release')).resolves.toEqual({ intent: null, persistedResult: null });
   });
 
+  it('keeps a cold-start release queued until its descriptor resource bootstrap succeeds', async (): Promise<void> => {
+    await db.insert(environmentResourceOutputVariableBindings).values({
+      environmentId: 'env-job',
+      id: 'binding-db',
+      keyName: 'DATABASE_URL',
+      outputName: 'connection-url',
+      resourceName: 'postgres',
+      source: 'descriptor',
+      targetServiceName: 'web',
+    });
+    await db.update(projectResources).set({ status: 'stopped' }).where(eq(projectResources.id, 'res-db'));
+    await db.insert(resourceReconcileRuns).values({
+      expectedClaimsJson: '[]',
+      id: 'rrun-db',
+      intentJson: '{}',
+      operationType: 'bootstrap',
+      phase: 'bootstrap-pending',
+      projectResourceId: 'res-db',
+    });
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+
+    await expect(claimProductJob('release')).resolves.toEqual({ intent: null, persistedResult: null });
+
+    await db.update(projectResources).set({ status: 'running' }).where(eq(projectResources.id, 'res-db'));
+    await db.update(resourceReconcileRuns).set({ phase: 'succeeded' }).where(eq(resourceReconcileRuns.id, 'rrun-db'));
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_job', jobClass: 'release' },
+      persistedResult: null,
+    });
+  });
+
   it('requeues a release until its descriptor-connected resource latest reconcile succeeds', async (): Promise<void> => {
     await db.insert(environmentResourceOutputVariableBindings).values({
       environmentId: 'env-job',
@@ -233,7 +270,7 @@ describe('product Job persistence', (): void => {
         id: 'rrun-db-old',
         intentJson: '{}',
         operationType: 'bootstrap',
-        phase: 'succeeded',
+        phase: 'failed',
         projectResourceId: 'res-db',
       },
       {
@@ -255,6 +292,66 @@ describe('product Job persistence', (): void => {
     await expect(claimProductJob('release')).resolves.toMatchObject({
       intent: { deploymentId: 'dep_job', jobClass: 'release' },
       persistedResult: null,
+    });
+  });
+
+  it.each([
+    { phase: 'failed' as const, resourceStatus: 'running' as const },
+    { phase: 'reconcile-pending' as const, resourceStatus: 'deleting' as const },
+  ])(
+    'fails a release immediately when its descriptor-connected resource is terminal ($resourceStatus/$phase)',
+    async ({ phase, resourceStatus }: TerminalReleaseResourceTestCase): Promise<void> => {
+      await db.insert(environmentResourceOutputVariableBindings).values({
+        environmentId: 'env-job',
+        id: 'binding-db',
+        keyName: 'DATABASE_URL',
+        outputName: 'connection-url',
+        resourceName: 'postgres',
+        source: 'descriptor',
+        targetServiceName: 'web',
+      });
+      await db.update(projectResources).set({ status: resourceStatus }).where(eq(projectResources.id, 'res-db'));
+      await db.insert(resourceReconcileRuns).values({
+        expectedClaimsJson: '[]',
+        id: 'rrun-db',
+        intentJson: '{}',
+        operationType: 'reconcile',
+        phase,
+        projectResourceId: 'res-db',
+      });
+      await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+
+      await expect(claimProductJob('release')).resolves.toMatchObject({
+        intent: { deploymentId: 'dep_job', jobClass: 'release' },
+        persistedResult: {
+          identityId: 'dep_job',
+          jobClass: 'release',
+          status: 'failed',
+        },
+      });
+    },
+  );
+
+  it('fails a release immediately when its descriptor-connected resource was deleted', async (): Promise<void> => {
+    await db.insert(environmentResourceOutputVariableBindings).values({
+      environmentId: 'env-job',
+      id: 'binding-db',
+      keyName: 'DATABASE_URL',
+      outputName: 'connection-url',
+      resourceName: 'postgres',
+      source: 'descriptor',
+      targetServiceName: 'web',
+    });
+    await persistProductJobIntent({ identityId: 'dep_job', intent: releaseIntent() });
+    await db.update(projectResources).set({ status: 'deleting' }).where(eq(projectResources.id, 'res-db'));
+    await expect(finalizeProjectResourceDeletion('res-db')).resolves.toEqual({
+      deleteData: false,
+      finalized: true,
+    });
+
+    await expect(claimProductJob('release')).resolves.toMatchObject({
+      intent: { deploymentId: 'dep_job', jobClass: 'release' },
+      persistedResult: { identityId: 'dep_job', jobClass: 'release', status: 'failed' },
     });
   });
 

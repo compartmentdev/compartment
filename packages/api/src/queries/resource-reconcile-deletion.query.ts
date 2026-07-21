@@ -1,17 +1,22 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import type { ApiDatabaseTransaction } from '../db/client.types';
-import { environments, operations, projectResources, projects, resourceReconcileRuns } from '../db/schema';
+import { operations, projectResources, resourceReconcileRuns } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
+import { lockProjectResourceReconciliation } from './resources.query';
 import type {
+  ResourceDeletionDemandRow,
   ResourceDeletionFinalizationResult,
   ResourceDeletionOutcomeRow,
+  ResourceDeletionOutcomeValues,
 } from './resource-reconcile-deletion.query.types';
-import type { ResourceDeletionDemandRow, ResourceDeletionRunState } from './resource-reconcile-runs.query.types';
+import type { ResourceDeletionRunState } from './resource-reconcile-runs.query.types';
 
 const resourceDeletionOutcomeTargetType: string = 'resource-deletion-outcome';
 const resourceDeleteDataOperationType: string = 'resource.delete-data';
 const resourceRetainDataOperationType: string = 'resource.delete-retain-data';
+export const resourceDeletionBindingOutcomeTargetType: string = 'resource-deletion-binding-outcome';
+export const resourceDeletionBindingTargetSeparator: string = '/';
 
 export async function readLatestResourceDeletionRun(resourceId: string): Promise<ResourceDeletionRunState | null> {
   return await readLatestResourceDeletionRunWithExecutor(getApiDatabase(), resourceId);
@@ -36,7 +41,7 @@ async function finalizeProjectResourceDeletionWithExecutor(
   if (!deletionDemandSatisfied(resource, deletion)) {
     return { deleteData: null, finalized: false };
   }
-  await persistResourceDeletionOutcome(tx, resourceId, resource.deleteDataRequested);
+  await persistResourceDeletionOutcome(tx, resourceId, resource);
   await tx.delete(projectResources).where(eq(projectResources.id, resourceId));
   return { deleteData: resource.deleteDataRequested, finalized: true };
 }
@@ -44,18 +49,50 @@ async function finalizeProjectResourceDeletionWithExecutor(
 async function persistResourceDeletionOutcome(
   tx: ApiDatabaseTransaction,
   resourceId: string,
-  deleteData: boolean,
+  resource: ResourceDeletionDemandRow,
 ): Promise<void> {
+  await tx.insert(operations).values(buildResourceDeletionOutcomes(resourceId, resource));
+}
+
+function buildResourceDeletionOutcomes(
+  resourceId: string,
+  resource: ResourceDeletionDemandRow,
+): ResourceDeletionOutcomeValues[] {
   const now: Date = new Date();
-  await tx.insert(operations).values({
-    completedAt: now,
-    id: resourceDeletionOutcomeId(resourceId),
-    status: 'succeeded',
-    summary: deleteData ? 'Resource data deleted.' : 'Resource data retained.',
-    targetId: resourceId,
-    targetType: resourceDeletionOutcomeTargetType,
-    type: deleteData ? resourceDeleteDataOperationType : resourceRetainDataOperationType,
-  });
+  const type: string = resource.deleteDataRequested ? resourceDeleteDataOperationType : resourceRetainDataOperationType;
+  return [
+    buildResourceDeletionOutcomeValues(
+      resourceDeletionOutcomeId(resourceId),
+      resourceId,
+      resourceDeletionOutcomeTargetType,
+      type,
+      resourceDeletionOutcomeSummary(resource.deleteDataRequested),
+      now,
+    ),
+    buildResourceDeletionOutcomeValues(
+      resourceDeletionBindingOutcomeId(resourceId),
+      resourceDeletionBindingTargetId(resource.environmentId, resource.name),
+      resourceDeletionBindingOutcomeTargetType,
+      type,
+      resourceDeletionOutcomeSummary(resource.deleteDataRequested),
+      now,
+    ),
+  ];
+}
+
+function resourceDeletionOutcomeSummary(deleteData: boolean): string {
+  return deleteData ? 'Resource data deleted.' : 'Resource data retained.';
+}
+
+function buildResourceDeletionOutcomeValues(
+  id: string,
+  targetId: string,
+  targetType: string,
+  type: string,
+  summary: string,
+  completedAt: Date,
+): ResourceDeletionOutcomeValues {
+  return { completedAt, id, status: 'succeeded', summary, targetId, targetType, type };
 }
 
 async function readResourceDeletionOutcome(
@@ -87,19 +124,29 @@ function resourceDeletionOutcomeId(resourceId: string): string {
   return `op_resource_deletion_${resourceId}`;
 }
 
+function resourceDeletionBindingOutcomeId(resourceId: string): string {
+  return `op_resource_deletion_binding_${resourceId}`;
+}
+
+function resourceDeletionBindingTargetId(environmentId: string, resourceName: string): string {
+  return `${environmentId}${resourceDeletionBindingTargetSeparator}${resourceName}`;
+}
+
 async function lockResourceDeletionDemand(
   tx: ApiDatabaseTransaction,
   resourceId: string,
 ): Promise<ResourceDeletionDemandRow | null> {
-  const projectId: string | null = await readResourceProjectId(tx, resourceId);
-  if (projectId === null) {
+  const candidate: ResourceDeletionDemandRow | null = await readResourceDeletionDemand(tx, resourceId);
+  if (candidate === null) {
     return null;
   }
-  await tx.select({ id: projects.id }).from(projects).where(eq(projects.id, projectId)).for('no key update');
+  await lockProjectResourceReconciliation(tx, candidate.environmentId, candidate.name);
   const [resource] = await tx
     .select({
       deleteDataRequested: projectResources.deleteDataRequested,
+      environmentId: projectResources.environmentId,
       expectedClaimsJson: projectResources.expectedClaimsJson,
+      name: projectResources.name,
     })
     .from(projectResources)
     .where(eq(projectResources.id, resourceId))
@@ -108,14 +155,21 @@ async function lockResourceDeletionDemand(
   return resource ?? null;
 }
 
-async function readResourceProjectId(tx: ApiDatabaseTransaction, resourceId: string): Promise<string | null> {
-  const [candidate] = await tx
-    .select({ projectId: environments.projectId })
+async function readResourceDeletionDemand(
+  tx: ApiDatabaseTransaction,
+  resourceId: string,
+): Promise<ResourceDeletionDemandRow | null> {
+  const [resource] = await tx
+    .select({
+      deleteDataRequested: projectResources.deleteDataRequested,
+      environmentId: projectResources.environmentId,
+      expectedClaimsJson: projectResources.expectedClaimsJson,
+      name: projectResources.name,
+    })
     .from(projectResources)
-    .innerJoin(environments, eq(environments.id, projectResources.environmentId))
     .where(eq(projectResources.id, resourceId))
     .limit(1);
-  return candidate?.projectId ?? null;
+  return resource ?? null;
 }
 
 function deletionDemandSatisfied(

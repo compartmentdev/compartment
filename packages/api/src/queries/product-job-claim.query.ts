@@ -2,7 +2,7 @@ import type { ProductJobClass } from '@compartment/contracts';
 import { and, eq, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import { productJobRuns, projects, resourceReconcileRuns } from '../db/schema';
-import type { ProductJobRunRow } from './product-job-runs.query.types';
+import type { ProductJobResourceFenceResult, ProductJobRunRow } from './product-job-runs.query.types';
 import { lockResourceRuntimeClaims } from './resource-runtime-claim-lock.query';
 import {
   expireBlockedReleaseJobs,
@@ -24,19 +24,19 @@ export async function prepareProductJobClaim(
 export async function lockProductJobResourceFence(
   transaction: ApiDatabaseTransaction,
   row: ProductJobRunRow,
-): Promise<boolean> {
+): Promise<ProductJobResourceFenceResult> {
   if (row.status !== 'queued') {
-    return true;
+    return 'claimable';
   }
   if (row.jobClass === 'release') {
     return await lockReleaseJobResourceFence(transaction, row.identityId);
   }
   const resourceIds: string[] = JSON.parse(row.resourceIdsJson) as string[];
   await lockResourceRuntimeClaims(transaction, resourceIds);
-  return (
-    !(await hasBlockingResourceReconcile(transaction, row, resourceIds)) &&
+  return !(await hasBlockingResourceReconcile(transaction, row, resourceIds)) &&
     !(await hasActiveResourceJob(transaction, row.identityId, resourceIds))
-  );
+    ? 'claimable'
+    : 'blocked';
 }
 
 async function hasBlockingResourceReconcile(

@@ -44,11 +44,6 @@ export interface ResourceDeletionRunState extends ResourceReconcileRunState {
   operationId: string;
 }
 
-export interface ResourceDeletionDemandRow {
-  deleteDataRequested: boolean;
-  expectedClaimsJson: string;
-}
-
 export interface ResourceReconcileRunWaitState extends ResourceReconcileRunState {
   operationType: 'bootstrap' | 'reconcile';
   predecessorCount: number;
