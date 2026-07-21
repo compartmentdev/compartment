@@ -99,6 +99,7 @@ async function failTerminalProjectTeardown(
 }
 
 async function finalizeProjectTeardown(transaction: DeploymentTransaction, projectId: string): Promise<void> {
+  // Delete eligibility is validated transactionally before teardown; completion commits only its async runtime outcome.
   const finalizedAt: Date = new Date();
   await clearDisconnectedBindingProjectReferences(transaction, projectId, finalizedAt);
   await deleteArchivedProjectWithExecutor(transaction, projectId);

@@ -26,5 +26,11 @@ export type ProjectTeardownState = 'preparing' | 'pending' | 'running' | 'succee
 
 export interface ProjectTeardownObservation {
   attempts: number;
+  failureMessage: string | null;
   state: ProjectTeardownState;
+}
+
+export interface ProjectTeardownPreparationResult {
+  preparationLeaseId: string | null;
+  recoveredTerminalFailureMessage: string | null;
 }

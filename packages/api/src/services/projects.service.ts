@@ -19,7 +19,10 @@ import {
   lockProjectTeardownStateWithTransaction,
   prepareProjectTeardownWithTransaction,
 } from '../queries/project-teardown.query';
-import type { ProjectTeardownObservation } from '../queries/project-provisioning.query.types';
+import type {
+  ProjectTeardownObservation,
+  ProjectTeardownPreparationResult,
+} from '../queries/project-provisioning.query.types';
 import { isUniqueConstraintError } from '../queries/query-error';
 import { cancelProjectProductJobsForArchive } from '../queries/product-job-claim.query';
 import { cancelResourceReconcileRunsForProjectArchive } from '../queries/resource-reconcile-project.query';
@@ -35,6 +38,7 @@ import type { ResolvedProjectScope } from './project-scope.service.types';
 import { cleanupPreparedProjectRuntime } from './project-teardown-preparation.service';
 import type {
   ProjectDeletePreparation,
+  ProjectDeleteResult,
   ProjectReadResult,
   ProjectScopeInput,
   RenameProjectServiceInput,
@@ -113,7 +117,7 @@ export async function unarchiveProjectForPrincipal(input: ProjectScopeInput): Pr
   });
 }
 
-export async function deleteProjectForPrincipal(input: ProjectScopeInput): Promise<string> {
+export async function deleteProjectForPrincipal(input: ProjectScopeInput): Promise<ProjectDeleteResult> {
   const projectScope: ProjectRow = (
     await resolveRequiredProjectScope(input.principalId, input.organizationSlug, input.projectName, {
       permission: 'project.delete',
@@ -124,7 +128,10 @@ export async function deleteProjectForPrincipal(input: ProjectScopeInput): Promi
     await cleanupPreparedProjectRuntime(preparation.project, preparation.preparationLeaseId);
     await activateProjectTeardownAfterRuntimeCleanup(preparation.project.id, preparation.preparationLeaseId);
   }
-  return preparation.project.name;
+  return {
+    projectName: preparation.project.name,
+    recoveredTerminalFailureMessage: preparation.terminalFailureMessage,
+  };
 }
 
 export async function getActiveProjectForPrincipal(input: ProjectScopeInput): Promise<ProjectReadResult> {
@@ -162,9 +169,16 @@ async function ensureArchivedProject(
 async function prepareProjectRuntimeCleanupBeforeDelete(projectId: string): Promise<ProjectDeletePreparation> {
   return await getApiDatabase().transaction(
     async (transaction: ProjectsMutationTransaction): Promise<ProjectDeletePreparation> => {
-      const preparationLeaseId: string | null = await prepareProjectTeardownWithTransaction(transaction, projectId);
+      const teardown: ProjectTeardownPreparationResult = await prepareProjectTeardownWithTransaction(
+        transaction,
+        projectId,
+      );
       const project: ProjectRow = await requireDeletableProject(transaction, projectId);
-      return { preparationLeaseId, project };
+      return {
+        preparationLeaseId: teardown.preparationLeaseId,
+        project,
+        terminalFailureMessage: teardown.recoveredTerminalFailureMessage,
+      };
     },
   );
 }

@@ -169,7 +169,10 @@ async function leaseProjectExecution(
   await transaction
     .update(projectKubeProvisioning)
     .set({
-      attempts: row.state === 'running' ? row.attempts : sql`${projectKubeProvisioning.attempts} + 1`,
+      attempts:
+        row.state === 'running' || row.state === 'teardown_running'
+          ? row.attempts
+          : sql`${projectKubeProvisioning.attempts} + 1`,
       failureMessage: null,
       leaseExpiresAt: new Date(now.getTime() + leaseDurationMs(action)),
       leaseId,

@@ -10,33 +10,53 @@ import {
 import type {
   ProjectKubeProvisioningState,
   ProjectTeardownObservation,
+  ProjectTeardownPreparationResult,
   ProjectTeardownState,
 } from './project-provisioning.query.types';
 
 export async function prepareProjectTeardownWithTransaction(
   transaction: DeploymentTransaction,
   projectId: string,
-): Promise<string | null> {
+): Promise<ProjectTeardownPreparationResult> {
   const row: typeof projectKubeProvisioning.$inferSelect | undefined = await lockProjectKubeLifecycle(
     transaction,
     projectId,
   );
+  assertProjectKubeLifecycleFound(row);
+  const now: Date = new Date();
+  if (teardownPreparationAlreadyActive(row, now)) {
+    return emptyProjectTeardownPreparation();
+  }
+  const recoveredTerminalFailureMessage: string | null = recoverableTeardownFailureMessage(row);
+  return {
+    preparationLeaseId: await leaseProjectTeardownPreparation(
+      transaction,
+      row.projectId,
+      recoveredTerminalFailureMessage,
+      now,
+    ),
+    recoveredTerminalFailureMessage,
+  };
+}
+
+function assertProjectKubeLifecycleFound(
+  row: typeof projectKubeProvisioning.$inferSelect | undefined,
+): asserts row is typeof projectKubeProvisioning.$inferSelect {
   if (row === undefined) {
     throw new Error('Project Kubernetes lifecycle state not found.');
   }
-  const now: Date = new Date();
-  if (row.state === 'teardown_preparing' && row.leaseExpiresAt !== null && row.leaseExpiresAt > now) {
-    return null;
-  }
-  if (teardownAlreadyActive(row)) {
-    return null;
-  }
-  return await leaseProjectTeardownPreparation(transaction, projectId, now);
+}
+
+function teardownPreparationAlreadyActive(row: typeof projectKubeProvisioning.$inferSelect, now: Date): boolean {
+  const preparationLeaseActive: boolean =
+    row.state === 'teardown_preparing' && row.leaseExpiresAt !== null && row.leaseExpiresAt > now;
+  return preparationLeaseActive || teardownAlreadyActive(row);
 }
 
 async function leaseProjectTeardownPreparation(
   transaction: DeploymentTransaction,
   projectId: string,
+  recoveredTerminalFailureMessage: string | null,
   now: Date,
 ): Promise<string> {
   const preparationLeaseId: string = createId('kpl');
@@ -44,7 +64,7 @@ async function leaseProjectTeardownPreparation(
     .update(projectKubeProvisioning)
     .set({
       attempts: 0,
-      failureMessage: null,
+      failureMessage: recoveredTerminalFailureMessage,
       leaseExpiresAt: new Date(now.getTime() + projectTeardownPreparationLeaseDurationMs),
       leaseId: preparationLeaseId,
       state: 'teardown_preparing',
@@ -52,6 +72,17 @@ async function leaseProjectTeardownPreparation(
     })
     .where(eq(projectKubeProvisioning.projectId, projectId));
   return preparationLeaseId;
+}
+
+function recoverableTeardownFailureMessage(row: typeof projectKubeProvisioning.$inferSelect): string | null {
+  const terminalFailure: boolean =
+    row.state === 'teardown_preparing' ||
+    (row.state === 'teardown_failed' && row.attempts >= projectProvisioningAttemptLimit);
+  return terminalFailure ? row.failureMessage : null;
+}
+
+function emptyProjectTeardownPreparation(): ProjectTeardownPreparationResult {
+  return { preparationLeaseId: null, recoveredTerminalFailureMessage: null };
 }
 
 export async function activateProjectTeardownWithTransaction(
@@ -129,16 +160,25 @@ function teardownAlreadyActive(row: typeof projectKubeProvisioning.$inferSelect)
 }
 
 export async function readProjectTeardownState(projectId: string): Promise<ProjectTeardownObservation | null> {
-  const rows: { attempts: number; state: ProjectKubeProvisioningState }[] = await getApiDatabase()
-    .select({ attempts: projectKubeProvisioning.attempts, state: projectKubeProvisioning.state })
-    .from(projectKubeProvisioning)
-    .where(eq(projectKubeProvisioning.projectId, projectId))
-    .limit(1);
+  const rows: { attempts: number; failureMessage: string | null; state: ProjectKubeProvisioningState }[] =
+    await getApiDatabase()
+      .select({
+        attempts: projectKubeProvisioning.attempts,
+        failureMessage: projectKubeProvisioning.failureMessage,
+        state: projectKubeProvisioning.state,
+      })
+      .from(projectKubeProvisioning)
+      .where(eq(projectKubeProvisioning.projectId, projectId))
+      .limit(1);
   const state: ProjectKubeProvisioningState | undefined = rows[0]?.state;
   if (state?.startsWith('teardown_') !== true) {
     return null;
   }
-  return { attempts: rows[0]?.attempts ?? 0, state: state.slice('teardown_'.length) as ProjectTeardownState };
+  return {
+    attempts: rows[0]?.attempts ?? 0,
+    failureMessage: rows[0]?.failureMessage ?? null,
+    state: state.slice('teardown_'.length) as ProjectTeardownState,
+  };
 }
 
 export async function lockProjectTeardownStateWithTransaction(
@@ -154,6 +194,7 @@ export async function lockProjectTeardownStateWithTransaction(
   }
   return {
     attempts: row.attempts,
+    failureMessage: row.failureMessage,
     state: row.state.slice('teardown_'.length) as ProjectTeardownState,
   };
 }

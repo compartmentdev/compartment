@@ -16,8 +16,8 @@ export function createProjectDeleteRequiresArchiveError(): ApiBusinessError {
   return new ApiBusinessError('project_delete_requires_archive');
 }
 
-export function createProjectDeleteRuntimeCleanupFailedError(): ApiBusinessError {
-  return new ApiBusinessError('project_delete_runtime_cleanup_failed');
+export function createProjectDeleteRuntimeCleanupFailedError(cause?: Error): ApiBusinessError {
+  return new ApiBusinessError('project_delete_runtime_cleanup_failed', undefined, { cause });
 }
 
 export function createProjectGitSourceBoundError(): ApiBusinessError {

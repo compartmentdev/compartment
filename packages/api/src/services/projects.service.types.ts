@@ -117,4 +117,10 @@ export interface ProjectReadResult {
 export interface ProjectDeletePreparation {
   preparationLeaseId: string | null;
   project: ProjectRow;
+  terminalFailureMessage: string | null;
+}
+
+export interface ProjectDeleteResult {
+  projectName: string;
+  recoveredTerminalFailureMessage: string | null;
 }

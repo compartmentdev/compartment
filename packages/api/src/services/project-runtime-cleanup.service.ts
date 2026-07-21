@@ -47,8 +47,8 @@ export async function cleanupDeletedProjectRuntime(project: ProjectRow): Promise
     const plan: ProjectRuntimeCleanupPlan = await buildProjectRuntimeCleanupPlan(project);
     await stopKubeProjectDeployments(plan.deployments);
     await deleteKubeProjectResources(plan.resources);
-  } catch {
-    throw createProjectDeleteRuntimeCleanupFailedError();
+  } catch (error) {
+    throw createProjectDeleteRuntimeCleanupFailedError(error instanceof Error ? error : undefined);
   }
 }
 

@@ -1,8 +1,4 @@
-import type {
-  ProjectProvisioningTargetV2,
-  WorkerCompleteProjectProvisioningV2Request,
-  WorkerCompleteProjectProvisioningResponse,
-} from '@compartment/contracts';
+import type { ProjectProvisioningTargetV2, WorkerCompleteProjectProvisioningV2Request } from '@compartment/contracts';
 import {
   kubeNamespaceName,
   projectNamespaceDeleteTarget,
@@ -15,7 +11,7 @@ import {
   type ProjectProvisioningAuthorityInput,
   type KubeRuntime,
 } from '@compartment/kube-runtime';
-import { completeProjectProvisioningV2, type CompartmentRequester } from '@compartment/sdk';
+import type { CompartmentRequester } from '@compartment/sdk';
 import type { Logger } from 'pino';
 import { projectProvisionerJobEnvironment } from '../project-provisioning-environment';
 import type { ProjectProvisionerConfig } from '../project-provisioner.types';
@@ -23,6 +19,11 @@ import type {
   ProjectProvisioningCleanupObservation,
   ProjectProvisioningResult,
 } from './project-provisioning-execution.service.types';
+import {
+  assertProjectProvisioningLease,
+  rethrowProjectProvisioningLeaseError,
+} from './project-provisioning-lease.service';
+import { waitForProjectNamespaceDeletion } from './project-teardown-wait.service';
 
 const bootstrapTokenExpirationSeconds: number = 600;
 const provisioningTimeoutMs: number = 5 * 60_000;
@@ -78,15 +79,29 @@ async function executeProjectTeardown(
     await assertProjectProvisioningLease(request, target);
     const namespace: KubeManifest = projectNamespaceDeleteTarget(target.namespaceId);
     await runtime.delete([namespace]);
-    await waitForProjectNamespaceDeletion(runtime, namespace);
+    await waitForNamespaceDeletion(request, runtime, namespace, target);
     await assertProjectProvisioningLease(request, target);
     return projectProvisioningRequest(target, { status: 'succeeded' });
   } catch (error) {
+    rethrowProjectProvisioningLeaseError(typeof error === 'object' ? error : null);
     return projectProvisioningRequest(target, {
       message: readErrorMessage(typeof error === 'object' ? error : null),
       status: 'failed',
     });
   }
+}
+
+async function waitForNamespaceDeletion(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  namespace: KubeManifest,
+  target: ProjectProvisioningTargetV2,
+): Promise<void> {
+  await waitForProjectNamespaceDeletion(
+    runtime,
+    namespace,
+    async (): Promise<void> => await assertProjectProvisioningLease(request, target),
+  );
 }
 
 async function cleanupProjectTeardownAuthority(
@@ -105,10 +120,6 @@ async function cleanupProjectTeardownAuthority(
   );
 }
 
-async function waitForProjectNamespaceDeletion(runtime: KubeRuntime, namespace: KubeManifest): Promise<void> {
-  await waitForKubeObjectsDeletion(runtime, [namespace]);
-}
-
 async function waitForKubeObjectsDeletion(runtime: KubeRuntime, objects: KubeManifest[]): Promise<void> {
   const deadline: number = Date.now() + teardownTimeoutMs;
   while (Date.now() < deadline) {
@@ -122,11 +133,15 @@ async function waitForKubeObjectsDeletion(runtime: KubeRuntime, objects: KubeMan
     ) {
       return;
     }
-    await new Promise<void>((resolve: () => void): void => {
-      setTimeout(resolve, teardownPollIntervalMs);
-    });
+    await waitForTeardownPoll();
   }
   throw new Error('Project Kubernetes namespace teardown did not converge.');
+}
+
+async function waitForTeardownPoll(): Promise<void> {
+  await new Promise<void>((resolve: () => void): void => {
+    setTimeout(resolve, teardownPollIntervalMs);
+  });
 }
 
 function deletedObjectIsAbsent(expected: KubeManifest, observed: KubeObservedManifest | null): boolean {
@@ -156,21 +171,6 @@ async function cleanupProjectProvisioningAuthority(
   } catch (error) {
     logger.warn({ err: error }, 'Project provisioning authority cleanup failed.');
     throw error;
-  }
-}
-
-async function assertProjectProvisioningLease(
-  request: CompartmentRequester,
-  target: ProjectProvisioningTargetV2,
-): Promise<void> {
-  const lease: WorkerCompleteProjectProvisioningResponse = await completeProjectProvisioningV2(request, {
-    action: target.action,
-    leaseId: target.leaseId,
-    projectId: target.projectId,
-    status: 'running',
-  });
-  if (!lease.applied) {
-    throw new Error('Project provisioning lease is no longer current.');
   }
 }
 
