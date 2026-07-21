@@ -2,10 +2,12 @@ import type { ContainerMetric, PodMetric, V1Pod } from '@kubernetes/client-node'
 import { kubeLabelSelector } from './kube-informer-registration';
 import type {
   KubeContainerMetricUsage,
+  KubePodMetricCollection,
   KubePodListResult,
   KubePodListReader,
-  KubePodMetricObservation,
   KubePodMetricListResult,
+  KubePodMetricNamespaceFailure,
+  KubePodMetricObservation,
   KubePodMetricsReader,
   ObservePodMetrics,
 } from './kube-pod-metrics.types';
@@ -22,39 +24,91 @@ interface NamespacePodMetricSnapshot {
   pods: V1Pod[];
 }
 
+interface NamespacePodMetricReadResult {
+  failures: KubePodMetricNamespaceFailure[];
+  snapshots: NamespacePodMetricSnapshot[];
+}
+
+interface NamespacePodMetricReadSuccess {
+  snapshot: NamespacePodMetricSnapshot;
+  status: 'fulfilled';
+}
+
+interface NamespacePodMetricReadFailure extends KubePodMetricNamespaceFailure {
+  status: 'rejected';
+}
+
+type NamespacePodMetricRead = NamespacePodMetricReadFailure | NamespacePodMetricReadSuccess;
+
 export async function readKubePodMetrics(
   coreApi: KubePodListReader,
   metricsApi: KubePodMetricsReader,
   input: ObservePodMetrics,
-): Promise<KubePodMetricObservation[]> {
-  const namespaceSnapshots: NamespacePodMetricSnapshot[] = await readNamespaceSnapshots(coreApi, metricsApi, input);
+): Promise<KubePodMetricCollection> {
+  const namespaceResult: NamespacePodMetricReadResult = await readNamespaceSnapshots(coreApi, metricsApi, input);
+  const namespaceSnapshots: NamespacePodMetricSnapshot[] = namespaceResult.snapshots;
   const pods: V1Pod[] = namespaceSnapshots.flatMap((snapshot: NamespacePodMetricSnapshot): V1Pod[] => snapshot.pods);
   const metrics: PodMetric[] = namespaceSnapshots.flatMap(
     (snapshot: NamespacePodMetricSnapshot): PodMetric[] => snapshot.metrics,
   );
   const productPods: V1Pod[] = pods.filter(isObservableProductPod);
-  if (productPods.length > 0 && metrics.length === 0) {
-    throw new Error('metrics-server returned an incomplete product Pod snapshot.');
-  }
   const metricByPod: Map<string, PodMetric> = indexMetricsByPod(metrics);
   const observations: KubePodMetricObservation[] = productPods.flatMap((pod: V1Pod): KubePodMetricObservation[] =>
     toPodMetricObservation(pod, metricByPod),
   );
-  return observations;
+  return {
+    failures: namespaceResult.failures,
+    observations,
+    successfulNamespaceCount: namespaceSnapshots.length,
+  };
 }
 
 async function readNamespaceSnapshots(
   coreApi: KubePodListReader,
   metricsApi: KubePodMetricsReader,
   input: ObservePodMetrics,
-): Promise<NamespacePodMetricSnapshot[]> {
+): Promise<NamespacePodMetricReadResult> {
   const selector: string = kubeLabelSelector(input.labels);
-  return await Promise.all(
-    [...new Set(input.namespaces)].map(
-      async (namespace: string): Promise<NamespacePodMetricSnapshot> =>
-        await readNamespacePodMetrics(coreApi, metricsApi, namespace, selector),
+  const namespaces: string[] = [...new Set(input.namespaces)];
+  const results: NamespacePodMetricRead[] = await Promise.all(
+    namespaces.map(
+      async (namespace: string): Promise<NamespacePodMetricRead> =>
+        await readNamespacePodMetricsIsolated(coreApi, metricsApi, namespace, selector),
     ),
   );
+  const snapshots: NamespacePodMetricSnapshot[] = [];
+  const failures: KubePodMetricNamespaceFailure[] = [];
+  results.forEach((result: NamespacePodMetricRead): void => {
+    if (result.status === 'fulfilled') {
+      snapshots.push(result.snapshot);
+      return;
+    }
+    failures.push({ namespace: result.namespace, reason: result.reason });
+  });
+  return { failures, snapshots };
+}
+
+async function readNamespacePodMetricsIsolated(
+  coreApi: KubePodListReader,
+  metricsApi: KubePodMetricsReader,
+  namespace: string,
+  labelSelector: string,
+): Promise<NamespacePodMetricRead> {
+  try {
+    return {
+      snapshot: await readNamespacePodMetrics(coreApi, metricsApi, namespace, labelSelector),
+      status: 'fulfilled',
+    };
+  } catch (reason) {
+    return {
+      namespace,
+      reason:
+        reason instanceof Error
+          ? reason
+          : new Error('Kubernetes namespace Pod metrics read failed.', { cause: reason }),
+      status: 'rejected',
+    };
+  }
 }
 
 async function readNamespacePodMetrics(
@@ -67,6 +121,9 @@ async function readNamespacePodMetrics(
     coreApi.listNamespacedPod({ labelSelector, namespace }),
     metricsApi.getPodMetrics(namespace),
   ]);
+  if (pods.items.some(isObservableProductPod) && metrics.items.length === 0) {
+    throw new Error('metrics-server returned an incomplete product Pod snapshot.');
+  }
   return { metrics: metrics.items, pods: pods.items };
 }
 

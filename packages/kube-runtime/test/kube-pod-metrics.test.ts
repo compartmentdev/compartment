@@ -3,11 +3,34 @@ import { describe, expect, it } from 'vitest';
 import { readKubePodMetrics } from '../src/kube-pod-metrics';
 import type {
   KubeNamespacedPodListInput,
+  KubePodMetricCollection,
   KubePodListReader,
   KubePodMetricsReader,
 } from '../src/kube-pod-metrics.types';
 
 describe('Kubernetes Pod metrics observation', (): void => {
+  it('keeps healthy namespace metrics when another namespace read fails', async (): Promise<void> => {
+    const namespaceError: Error = new Error('metrics access denied');
+    const result: KubePodMetricCollection = await readKubePodMetrics(
+      new StubCoreApi([
+        productPod('pod-a', 'pod-uid-a'),
+        productPod('pod-b', 'pod-uid-b', 'Running', 'cpt-project-two'),
+      ]),
+      new FailingNamespaceMetricsApi([podMetric('pod-a')], 'cpt-project-two', namespaceError),
+      {
+        kind: 'pod-metrics',
+        labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+        namespaces: ['cpt-project', 'cpt-project-two'],
+      },
+    );
+
+    expect(result).toMatchObject({
+      failures: [{ namespace: 'cpt-project-two', reason: namespaceError }],
+      observations: [{ namespace: 'cpt-project', podName: 'pod-a' }],
+      successfulNamespaceCount: 1,
+    });
+  });
+
   it('joins metrics-server samples to product Pods by namespace and name', async (): Promise<void> => {
     const coreApi: StubCoreApi = new StubCoreApi([
       productPod('pod-a', 'pod-uid-a'),
@@ -26,37 +49,50 @@ describe('Kubernetes Pod metrics observation', (): void => {
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
         namespaces: ['cpt-project', 'cpt-project', 'cpt-project-two'],
       }),
-    ).resolves.toMatchObject([
-      {
-        containers: [{ cpu: '125m', memory: '64Mi' }],
-        deploymentId: 'dep-a',
-        namespace: 'cpt-project',
-        podName: 'pod-a',
-        podUid: 'pod-uid-a',
-      },
-      {
-        namespace: 'cpt-project',
-        podName: 'pod-b',
-        podUid: 'pod-uid-b',
-      },
-      {
-        namespace: 'cpt-project-two',
-        podName: 'pod-c',
-        podUid: 'pod-uid-c',
-      },
-    ]);
+    ).resolves.toMatchObject({
+      failures: [],
+      observations: [
+        {
+          containers: [{ cpu: '125m', memory: '64Mi' }],
+          deploymentId: 'dep-a',
+          namespace: 'cpt-project',
+          podName: 'pod-a',
+          podUid: 'pod-uid-a',
+        },
+        {
+          namespace: 'cpt-project',
+          podName: 'pod-b',
+          podUid: 'pod-uid-b',
+        },
+        {
+          namespace: 'cpt-project-two',
+          podName: 'pod-c',
+          podUid: 'pod-uid-c',
+        },
+      ],
+      successfulNamespaceCount: 2,
+    });
     expect(metricsApi.requestedNamespaces).toEqual(['cpt-project', 'cpt-project-two']);
     expect(coreApi.requestedNamespaces).toEqual(['cpt-project', 'cpt-project-two']);
   });
 
-  it('rejects an empty metrics-server snapshot while a live product Pod exists', async (): Promise<void> => {
+  it('reports an empty metrics-server snapshot while a live product Pod exists', async (): Promise<void> => {
     await expect(
       readKubePodMetrics(new StubCoreApi([productPod('pod-a', 'pod-uid-a')]), new StubMetricsApi([]), {
         kind: 'pod-metrics',
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
         namespaces: ['cpt-project'],
       }),
-    ).rejects.toThrow('metrics-server returned an incomplete product Pod snapshot.');
+    ).resolves.toMatchObject({
+      failures: [
+        {
+          namespace: 'cpt-project',
+          reason: new Error('metrics-server returned an incomplete product Pod snapshot.'),
+        },
+      ],
+      observations: [],
+      successfulNamespaceCount: 0,
+    });
   });
 
   it('keeps sampled live Pod metrics while another live Pod is waiting for its sample', async (): Promise<void> => {
@@ -69,13 +105,15 @@ describe('Kubernetes Pod metrics observation', (): void => {
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
         namespaces: ['cpt-project'],
       }),
-    ).resolves.toMatchObject([
-      {
-        deploymentId: 'dep-a',
-        podName: 'pod-a',
-        podUid: 'pod-uid-a',
-      },
-    ]);
+    ).resolves.toMatchObject({
+      observations: [
+        {
+          deploymentId: 'dep-a',
+          podName: 'pod-a',
+          podUid: 'pod-uid-a',
+        },
+      ],
+    });
   });
 
   it('keeps live Pod metrics when a completed release Job has no metrics-server sample', async (): Promise<void> => {
@@ -88,13 +126,15 @@ describe('Kubernetes Pod metrics observation', (): void => {
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
         namespaces: ['cpt-project'],
       }),
-    ).resolves.toMatchObject([
-      {
-        deploymentId: 'dep-a',
-        podName: 'pod-a',
-        podUid: 'pod-uid-a',
-      },
-    ]);
+    ).resolves.toMatchObject({
+      observations: [
+        {
+          deploymentId: 'dep-a',
+          podName: 'pod-a',
+          podUid: 'pod-uid-a',
+        },
+      ],
+    });
   });
 
   it('returns no observations when only a completed release Job Pod exists', async (): Promise<void> => {
@@ -106,7 +146,7 @@ describe('Kubernetes Pod metrics observation', (): void => {
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
         namespaces: ['cpt-project'],
       }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual({ failures: [], observations: [], successfulNamespaceCount: 1 });
   });
 });
 
@@ -136,6 +176,23 @@ class StubMetricsApi implements KubePodMetricsReader {
     return await Promise.resolve({
       items: this.items.filter((item: PodMetric): boolean => item.metadata.namespace === namespace),
     });
+  }
+}
+
+class FailingNamespaceMetricsApi extends StubMetricsApi {
+  public constructor(
+    items: PodMetric[],
+    private readonly failingNamespace: string,
+    private readonly error: Error,
+  ) {
+    super(items);
+  }
+
+  public override async getPodMetrics(namespace?: string): Promise<{ items: PodMetric[] }> {
+    if (namespace === this.failingNamespace) {
+      return await Promise.reject(this.error);
+    }
+    return await super.getPodMetrics(namespace);
   }
 }
 

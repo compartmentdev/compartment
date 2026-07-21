@@ -1,7 +1,7 @@
 import { CoreV1Api, KubernetesObjectApi, Metrics, type KubeConfig } from '@kubernetes/client-node';
 import { createKubeObservation } from './kube-observation';
 import { readKubePodMetrics } from './kube-pod-metrics';
-import type { KubePodMetricObservation, ObservePodMetrics } from './kube-pod-metrics.types';
+import type { KubePodMetricCollection, ObservePodMetrics } from './kube-pod-metrics.types';
 import { waitForTerminalJob, type TerminalJob } from './kube-job';
 import { kubeFinalizedJobManifest, kubeJobManifest, kubeJobSecretManifest } from './kube-job-projection';
 import { kubeJobName } from './kube-naming';
@@ -114,7 +114,7 @@ export class KubeRuntime {
     await deleteObjectsPreservingPrimary(this.objectApi, objects, null);
   }
 
-  public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricObservation[]> {
+  public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricCollection> {
     return await readKubePodMetrics(this.coreApi, new Metrics(this.kubeConfig), input);
   }
 

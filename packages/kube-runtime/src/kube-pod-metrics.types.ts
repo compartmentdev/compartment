@@ -40,3 +40,14 @@ export interface KubePodMetricObservation {
   podName: string;
   podUid: string;
 }
+
+export interface KubePodMetricNamespaceFailure {
+  namespace: string;
+  reason: Error;
+}
+
+export interface KubePodMetricCollection {
+  failures: KubePodMetricNamespaceFailure[];
+  observations: KubePodMetricObservation[];
+  successfulNamespaceCount: number;
+}

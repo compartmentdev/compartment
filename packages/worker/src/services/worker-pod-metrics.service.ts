@@ -6,6 +6,8 @@ import type {
 import {
   kubeNamespaceName,
   type KubeContainerMetricUsage,
+  type KubePodMetricCollection,
+  type KubePodMetricNamespaceFailure,
   type KubePodMetricObservation,
 } from '@compartment/kube-runtime';
 import { listPodMetricNamespaces, publishPodMetrics, type CompartmentRequester } from '@compartment/sdk';
@@ -26,11 +28,7 @@ export async function collectAndPublishPodMetrics(
   let observations: KubePodMetricObservation[];
   try {
     const scope: WorkerListPodMetricNamespacesResponse = await listPodMetricNamespaces(request);
-    observations = await runtime.observePodMetrics({
-      kind: 'pod-metrics',
-      labels: managedLabels,
-      namespaces: scope.namespaceIds.map(kubeNamespaceName),
-    });
+    observations = await collectPodMetrics(runtime, logger, scope);
   } catch (error) {
     await publishUnavailableSnapshot(request, logger, requestedAt, error as WorkerCaughtError);
     return;
@@ -40,6 +38,35 @@ export async function collectAndPublishPodMetrics(
     pods: observations.map(toWorkerPodMetric),
     state: 'available',
   });
+}
+
+async function collectPodMetrics(
+  runtime: PodMetricsRuntime,
+  logger: Logger,
+  scope: WorkerListPodMetricNamespacesResponse,
+): Promise<KubePodMetricObservation[]> {
+  const collection: KubePodMetricCollection = await runtime.observePodMetrics({
+    kind: 'pod-metrics',
+    labels: managedLabels,
+    namespaces: scope.namespaceIds.map(kubeNamespaceName),
+  });
+  logNamespaceFailures(logger, collection.failures);
+  if (collection.successfulNamespaceCount === 0 && scope.namespaceIds.length > 0) {
+    throw new AggregateError(
+      collection.failures.map((failure: KubePodMetricNamespaceFailure): Error => failure.reason),
+      'Kubernetes Pod metrics collection failed in every namespace.',
+    );
+  }
+  return collection.observations;
+}
+
+function logNamespaceFailures(logger: Logger, failures: KubePodMetricNamespaceFailure[]): void {
+  for (const failure of failures) {
+    logger.warn(
+      { namespace: failure.namespace, ...buildWorkerCaughtErrorLogPayload(failure.reason) },
+      'Kubernetes Pod metrics namespace collection failed.',
+    );
+  }
 }
 
 async function publishUnavailableSnapshot(

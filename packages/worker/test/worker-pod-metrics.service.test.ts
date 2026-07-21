@@ -1,7 +1,12 @@
 import pino, { type Logger } from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkerPublishPodMetricsRequest } from '@compartment/contracts';
-import { kubeNamespaceName, type KubePodMetricObservation, type ObservePodMetrics } from '@compartment/kube-runtime';
+import {
+  kubeNamespaceName,
+  type KubePodMetricCollection,
+  type KubePodMetricObservation,
+  type ObservePodMetrics,
+} from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import { parseKubernetesQuantity } from '../src/services/kubernetes-quantity';
 import { collectAndPublishPodMetrics } from '../src/services/worker-pod-metrics.service';
@@ -33,6 +38,53 @@ describe('Kubernetes resource quantities', (): void => {
 });
 
 describe('Pod metric publication isolation', (): void => {
+  it('logs one namespace failure and publishes healthy namespace metrics as available', async (): Promise<void> => {
+    const namespaceError: Error = new Error('metrics access denied');
+    const runtime: PartialMetricsRuntime = new PartialMetricsRuntime(namespaceError);
+    const request: CompartmentRequester = vi.fn();
+    vi.mocked(request)
+      .mockResolvedValueOnce({ namespaceIds: ['prj_1', 'prj_2'] })
+      .mockResolvedValueOnce({});
+    const logger: Logger = pino({ level: 'silent' });
+    vi.spyOn(logger, 'warn');
+
+    await expect(collectAndPublishPodMetrics(request, runtime, logger)).resolves.toBeUndefined();
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      { err: namespaceError, namespace: kubeNamespaceName('prj_2') },
+      'Kubernetes Pod metrics namespace collection failed.',
+    );
+    const publishInput: CapturedPodMetricsRequest | undefined = vi.mocked(request).mock.calls.at(1)?.[0] as
+      | CapturedPodMetricsRequest
+      | undefined;
+    expect(publishInput?.body).toMatchObject({
+      pods: [{ namespace: kubeNamespaceName('prj_1'), podName: 'pod-a' }],
+      state: 'available',
+    });
+  });
+
+  it('publishes unavailable when every requested namespace fails', async (): Promise<void> => {
+    const namespaceError: Error = new Error('metrics-server unavailable');
+    const runtime: FailedNamespaceCollectionRuntime = new FailedNamespaceCollectionRuntime(namespaceError);
+    const request: CompartmentRequester = vi.fn();
+    vi.mocked(request)
+      .mockResolvedValueOnce({ namespaceIds: ['prj_1'] })
+      .mockResolvedValueOnce({});
+    const logger: Logger = pino({ level: 'silent' });
+    vi.spyOn(logger, 'error');
+
+    await expect(collectAndPublishPodMetrics(request, runtime, logger)).resolves.toBeUndefined();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      { err: new AggregateError([namespaceError], 'Kubernetes Pod metrics collection failed in every namespace.') },
+      'Kubernetes Pod metrics collection failed.',
+    );
+    const publishInput: CapturedPodMetricsRequest | undefined = vi.mocked(request).mock.calls.at(1)?.[0] as
+      | CapturedPodMetricsRequest
+      | undefined;
+    expect(publishInput?.body).toMatchObject({ pods: [], state: 'unavailable' });
+  });
+
   it('logs and isolates metrics-server and unavailable snapshot publication failures', async (): Promise<void> => {
     const metricsError: Error = new Error('metrics-server unavailable');
     const runtime: FailingMetricsRuntime = new FailingMetricsRuntime(metricsError);
@@ -58,8 +110,43 @@ class FailingMetricsRuntime implements PodMetricsRuntime {
 
   public constructor(private readonly error: Error) {}
 
-  public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricObservation[]> {
+  public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricCollection> {
     this.lastInput = input;
     return await Promise.reject(this.error);
   }
+}
+
+class PartialMetricsRuntime implements PodMetricsRuntime {
+  public constructor(private readonly error: Error) {}
+
+  public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricCollection> {
+    return await Promise.resolve({
+      failures: [{ namespace: input.namespaces[1]!, reason: this.error }],
+      observations: [podObservation(input.namespaces[0]!)],
+      successfulNamespaceCount: 1,
+    });
+  }
+}
+
+class FailedNamespaceCollectionRuntime implements PodMetricsRuntime {
+  public constructor(private readonly error: Error) {}
+
+  public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricCollection> {
+    return await Promise.resolve({
+      failures: [{ namespace: input.namespaces[0]!, reason: this.error }],
+      observations: [],
+      successfulNamespaceCount: 0,
+    });
+  }
+}
+
+function podObservation(namespace: string): KubePodMetricObservation {
+  return {
+    containers: [{ cpu: '125m', memory: '64Mi' }],
+    deploymentId: 'dep-a',
+    namespace,
+    observedAt: new Date('2026-07-13T12:00:00.000Z'),
+    podName: 'pod-a',
+    podUid: 'pod-uid-a',
+  };
 }

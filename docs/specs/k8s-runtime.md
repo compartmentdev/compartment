@@ -28,7 +28,7 @@ The package exposes seven Kubernetes transport primitives. Only `apply`,
   fences;
 - `delete(objects)` deletes exact projected objects, with UID and resource
   version preconditions where data ownership requires them;
-- `observePodMetrics(labels)` reads resource usage for label-selected pods;
+- `observePodMetrics({ labels, namespaces })` reads resource usage for label-selected pods in explicitly supplied namespaces;
 - `logs(ref)` reads workload or Job logs;
 - `runJob(spec)` applies a deterministic Job and reads its terminal result.
 
