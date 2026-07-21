@@ -6,6 +6,8 @@ settings:
 
 overrides:
   '@esbuild-kit/core-utils>esbuild': 0.25.11
+  gel@2.2.0>shell-quote: 1.9.0
+  minimatch@10.2.5>brace-expansion: 5.0.7
   yaml-language-server@1.20.0>yaml: 2.8.3
 
 importers:
@@ -3767,9 +3769,9 @@ packages:
     resolution:
       { integrity: sha512-TN1kCZAgdgweJhWWpgKYrQaMNHcDULHkWwQIspdtjV4Y5aurRdZpjAqn6yX3FPqTA9ngHCc4hJxMAMgGfve85w== }
 
-  brace-expansion@5.0.6:
+  brace-expansion@5.0.7:
     resolution:
-      { integrity: sha512-kLpxurY4Z4r9sgMsyG0Z9uzsBlgiU/EFKhj/h91/8yHu0edo7XuixOIH3VcJ8kkxs6/jPzoI6U9Vj3WqbMQ94g== }
+      { integrity: sha512-7oFy703dxfY3/NLxC1fh2SUCQ0H9rmAY+5EpDVfXjUTTs+HEwR2nYaqLv+GWcTsumwxPfiz6CzCNkwXwBUwqCA== }
     engines: { node: 18 || 20 || >=22 }
 
   braces@3.0.3:
@@ -7575,9 +7577,9 @@ packages:
       { integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A== }
     engines: { node: '>=8' }
 
-  shell-quote@1.8.4:
+  shell-quote@1.9.0:
     resolution:
-      { integrity: sha512-VsC6n6vz1ihYYyZZwX7YZSF5l5x36ca17OC+a69h94YqB7X6XLwf+5MOgynYir2SLFUbl8gIYvBo8K8RoNQ6bQ== }
+      { integrity: sha512-Iov+JwFv/2HcTpcwNMKd8+IWNb8tboQJNQTkAY/LLVK7gGH9jy+LGkVqPxfekHl+yMmiqXszdGWXgkfml7hjqA== }
     engines: { node: '>= 0.4' }
 
   shiki@4.0.2:
@@ -11667,7 +11669,7 @@ snapshots:
     dependencies:
       balanced-match: 1.0.2
 
-  brace-expansion@5.0.6:
+  brace-expansion@5.0.7:
     dependencies:
       balanced-match: 4.0.4
 
@@ -12820,7 +12822,7 @@ snapshots:
       debug: 4.4.3
       env-paths: 3.0.0
       semver: 7.8.1
-      shell-quote: 1.8.4
+      shell-quote: 1.9.0
       which: 4.0.0
     transitivePeerDependencies:
       - supports-color
@@ -14288,7 +14290,7 @@ snapshots:
 
   minimatch@10.2.5:
     dependencies:
-      brace-expansion: 5.0.6
+      brace-expansion: 5.0.7
 
   minimatch@3.1.5:
     dependencies:
@@ -15454,7 +15456,7 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  shell-quote@1.8.4:
+  shell-quote@1.9.0:
     optional: true
 
   shiki@4.0.2:
