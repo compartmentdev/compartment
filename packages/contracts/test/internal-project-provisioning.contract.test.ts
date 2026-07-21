@@ -1,19 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  workerClaimProjectProvisioningResponseSchema,
   workerClaimProjectProvisioningV2ResponseSchema,
-  workerCompleteProjectProvisioningRequestSchema,
   workerCompleteProjectProvisioningV2RequestSchema,
 } from '../src';
 
 describe('project provisioning contracts', (): void => {
   it('accepts one leased project target or an empty claim', (): void => {
-    expect(
-      workerClaimProjectProvisioningResponseSchema.safeParse({
-        target: { leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
-      }).success,
-    ).toBe(true);
-    expect(workerClaimProjectProvisioningResponseSchema.safeParse({ target: null }).success).toBe(true);
     expect(
       workerClaimProjectProvisioningV2ResponseSchema.safeParse({
         target: { action: 'teardown', leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
@@ -55,31 +47,27 @@ describe('project provisioning contracts', (): void => {
       projectId: 'prj_1',
     };
     expect(
-      workerCompleteProjectProvisioningRequestSchema.safeParse({
+      workerCompleteProjectProvisioningV2RequestSchema.safeParse({
         ...base,
-        status: 'failed',
-      }).success,
-    ).toBe(false);
-    expect(
-      workerCompleteProjectProvisioningRequestSchema.safeParse({
-        ...base,
+        action: 'provision',
         message: 'denied',
         status: 'failed',
       }).success,
     ).toBe(true);
     expect(
-      workerCompleteProjectProvisioningRequestSchema.safeParse({
+      workerCompleteProjectProvisioningV2RequestSchema.safeParse({
         ...base,
+        action: 'provision',
         status: 'succeeded',
       }).success,
     ).toBe(true);
-    expect(workerCompleteProjectProvisioningRequestSchema.safeParse({ ...base, status: 'running' }).success).toBe(true);
     expect(
       workerCompleteProjectProvisioningV2RequestSchema.safeParse({ ...base, action: 'teardown', status: 'running' })
         .success,
     ).toBe(true);
-    expect(workerCompleteProjectProvisioningRequestSchema.safeParse({ ...base, action: 'teardown' }).success).toBe(
-      false,
-    );
+    expect(
+      workerCompleteProjectProvisioningV2RequestSchema.safeParse({ ...base, action: 'teardown', status: 'failed' })
+        .success,
+    ).toBe(false);
   });
 });

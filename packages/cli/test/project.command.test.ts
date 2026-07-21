@@ -131,7 +131,7 @@ describe.sequential('compartment project commands', (): void => {
     );
 
     expectCliSuccess(result);
-    expect(readCliStdout(result.capture)).toBe('Deleted project smoke-web.\n');
+    expect(readCliStdout(result.capture)).toBe('Queued deletion for project smoke-web.\n');
   });
 
   it('stops a project in text mode', async (): Promise<void> => {

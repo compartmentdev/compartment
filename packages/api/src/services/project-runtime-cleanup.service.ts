@@ -3,13 +3,6 @@ import {
   createProjectDeleteRuntimeCleanupFailedError,
 } from '../errors/api-business-error';
 import { listRuntimeJoinedDeploymentsForProject } from '../queries/deployment-joined.query';
-import { readProjectTeardownState, requestProjectTeardown } from '../queries/project-teardown.query';
-import {
-  projectProvisioningAttemptLimit,
-  projectProvisioningRetryDelayMs,
-  projectTeardownLeaseDurationMs,
-} from '../queries/project-provisioning-policy';
-import type { ProjectTeardownObservation } from '../queries/project-provisioning.query.types';
 import { listProjectEnvironmentsByProjectIds } from '../queries/deployment-context.query';
 import { markDeploymentStopped } from '../queries/deployment-lifecycle.query';
 import { findDeploymentKubeState } from '../queries/deployment-kube-membership.query';
@@ -38,13 +31,6 @@ interface ProjectRuntimeCleanupPlan {
   resources: ProjectRuntimeCleanupResource[];
 }
 
-const projectTeardownCompletionGraceMs: number = 10_000;
-const projectTeardownTimeoutMs: number =
-  projectProvisioningAttemptLimit * projectTeardownLeaseDurationMs +
-  (projectProvisioningAttemptLimit - 1) * projectProvisioningRetryDelayMs +
-  projectTeardownCompletionGraceMs;
-const projectTeardownPollIntervalMs: number = 100;
-
 export async function cleanupArchivedProjectRuntime(project: ProjectRow): Promise<void> {
   try {
     const plan: ProjectRuntimeCleanupPlan = await buildProjectRuntimeCleanupPlan(project);
@@ -61,25 +47,9 @@ export async function cleanupDeletedProjectRuntime(project: ProjectRow): Promise
     const plan: ProjectRuntimeCleanupPlan = await buildProjectRuntimeCleanupPlan(project);
     await stopKubeProjectDeployments(plan.deployments);
     await deleteKubeProjectResources(plan.resources);
-    await teardownKubeProjectNamespace(project.id);
-  } catch {
-    throw createProjectDeleteRuntimeCleanupFailedError();
+  } catch (error) {
+    throw createProjectDeleteRuntimeCleanupFailedError(error instanceof Error ? error : undefined);
   }
-}
-
-async function teardownKubeProjectNamespace(projectId: string): Promise<void> {
-  await requestProjectTeardown(projectId);
-  const deadline: number = Date.now() + projectTeardownTimeoutMs;
-  while (Date.now() < deadline) {
-    const observation: ProjectTeardownObservation | null = await readProjectTeardownState(projectId);
-    if (observation?.state === 'succeeded') {
-      return;
-    }
-    await new Promise<void>((resolve: () => void): void => {
-      setTimeout(resolve, projectTeardownPollIntervalMs);
-    });
-  }
-  throw new Error('Project Kubernetes namespace teardown did not converge.');
 }
 
 async function buildProjectRuntimeCleanupPlan(project: ProjectRow): Promise<ProjectRuntimeCleanupPlan> {

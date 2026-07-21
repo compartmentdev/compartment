@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
-  workerClaimProjectProvisioningPathname,
-  workerCompleteProjectProvisioningPathname,
+  workerClaimProjectProvisioningV2Pathname,
+  workerCompleteProjectProvisioningV2Pathname,
   workerAppendDeploymentEventPathname,
   projectDeleteResponseSchema,
   projectLifecycleResponseSchema,
@@ -48,13 +48,13 @@ const blockedPublicControlPlaneRequests: readonly BlockedPublicControlPlaneReque
     body: '{}',
     headers: { 'content-type': 'application/json' },
     method: 'POST',
-    pathname: workerClaimProjectProvisioningPathname,
+    pathname: workerClaimProjectProvisioningV2Pathname,
   },
   {
     body: '{}',
     headers: { 'content-type': 'application/json' },
     method: 'POST',
-    pathname: workerCompleteProjectProvisioningPathname,
+    pathname: workerCompleteProjectProvisioningV2Pathname,
   },
   { pathname: '/healthz' },
   { pathname: '/readyz' },

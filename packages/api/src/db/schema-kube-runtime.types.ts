@@ -105,6 +105,7 @@ interface ProjectKubeProvisioningColumnBuilders {
       'running',
       'succeeded',
       'failed',
+      'teardown_preparing',
       'teardown_pending',
       'teardown_running',
       'teardown_succeeded',

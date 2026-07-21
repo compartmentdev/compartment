@@ -4,8 +4,8 @@ import type { ApiBusinessErrorCode, ApiBusinessErrorDefinition, ApiMappedError }
 export class ApiBusinessError extends Error {
   public readonly code: ApiBusinessErrorCode;
 
-  public constructor(code: ApiBusinessErrorCode, message?: string) {
-    super(message ?? businessErrorDefinitions[code].message);
+  public constructor(code: ApiBusinessErrorCode, message?: string, options?: ErrorOptions) {
+    super(message ?? businessErrorDefinitions[code].message, options);
     this.name = 'ApiBusinessError';
     this.code = code;
   }

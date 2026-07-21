@@ -115,7 +115,7 @@ export function createStopProjectMessage(response: ProjectLifecycleResponse): st
 }
 
 export function createDeleteProjectMessage(response: ProjectDeleteResponse): string {
-  return `Deleted project ${response.projectName}.`;
+  return `Queued deletion for project ${response.projectName}.`;
 }
 
 function formatProjectListRow(project: ProjectListItem): string {

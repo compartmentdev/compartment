@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ProjectProvisioningTarget } from '@compartment/contracts';
+import type { ProjectProvisioningTargetV2 } from '@compartment/contracts';
 import type { ProjectProvisionerConfig } from './project-provisioner.types';
 
 export interface ProjectProvisioningEnvironment {
@@ -43,7 +43,7 @@ export const projectProvisionerJobEnvironmentSchema: z.ZodType<ProjectProvisione
 
 export function projectProvisionerJobEnvironment(
   config: ProjectProvisionerConfig,
-  target: ProjectProvisioningTarget,
+  target: ProjectProvisioningTargetV2,
   bootstrapServiceAccountName: string,
 ): ProjectProvisionerJobEnvironment {
   const registryUrl: URL = new URL(`http://${config.artifactRegistry.address}`);

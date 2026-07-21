@@ -12,6 +12,7 @@ import pino, { type Logger } from 'pino';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProjectProvisionerConfig } from '../src/project-provisioner.types';
 import { executeProjectProvisioning } from '../src/services/project-provisioning-execution.service';
+import { waitForProjectNamespaceDeletion } from '../src/services/project-teardown-wait.service';
 import { projectProvisionerJobEnvironmentSchema } from '../src/project-provisioning-environment';
 
 describe('project provisioning execution', (): void => {
@@ -206,6 +207,250 @@ describe('project provisioning execution', (): void => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('keeps a slowly terminating namespace running beyond the old retry window', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const startedAt: number = Date.now();
+      const runtime: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
+      const deleteObjects: Mock = vi.fn(async (): Promise<void> => await Promise.resolve());
+      let leaseReports: number = 0;
+      const request: CompartmentRequester = async function respond<TResult>(): Promise<TResult> {
+        leaseReports += 1;
+        return await Promise.resolve({ applied: true } as TResult);
+      };
+      vi.spyOn(runtime, 'apply').mockResolvedValue([]);
+      vi.spyOn(runtime, 'delete').mockImplementation(deleteObjects);
+      vi.spyOn(runtime, 'read').mockImplementation(async (object: KubeManifest): Promise<KubeManifest | null> => {
+        if (object.kind !== 'Namespace' || Date.now() - startedAt > 91_000) {
+          return await Promise.resolve(null);
+        }
+        return await Promise.resolve({
+          ...object,
+          metadata: {
+            ...object.metadata,
+            deletionTimestamp: new Date('2026-07-21T00:00:00.000Z'),
+            finalizers: ['kubernetes'],
+            resourceVersion: `${Math.floor((Date.now() - startedAt) / 20_000)}`,
+            uid: 'namespace-uid',
+          },
+        });
+      });
+      const completion: Promise<WorkerCompleteProjectProvisioningV2Request> = executeProjectProvisioning(
+        request,
+        runtime,
+        config(),
+        { ...target, action: 'teardown' },
+        loggerStub(),
+      );
+
+      await vi.advanceTimersByTimeAsync(92_000);
+
+      await expect(completion).resolves.toMatchObject({ action: 'teardown', status: 'succeeded' });
+      expect(leaseReports).toBeGreaterThan(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fails a terminating namespace only after its progress signature stays unchanged', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const runtime: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
+      vi.spyOn(runtime, 'apply').mockResolvedValue([]);
+      vi.spyOn(runtime, 'delete').mockResolvedValue();
+      vi.spyOn(runtime, 'read').mockImplementation(async (object: KubeManifest): Promise<KubeManifest | null> => {
+        if (object.kind !== 'Namespace') {
+          return await Promise.resolve(null);
+        }
+        return await Promise.resolve({
+          ...object,
+          metadata: {
+            ...object.metadata,
+            deletionTimestamp: new Date('2026-07-21T00:00:00.000Z'),
+            finalizers: ['kubernetes'],
+            resourceVersion: 'unchanged',
+            uid: 'namespace-uid',
+          },
+        });
+      });
+      const completion: Promise<WorkerCompleteProjectProvisioningV2Request> = executeProjectProvisioning(
+        requester(...Array.from({ length: 100 }, (): boolean => true)),
+        runtime,
+        config(),
+        { ...target, action: 'teardown' },
+        loggerStub(),
+      );
+
+      await vi.advanceTimersByTimeAsync(15 * 60_000 + 1_000);
+
+      await expect(completion).resolves.toMatchObject({
+        action: 'teardown',
+        message: 'Project Kubernetes namespace teardown stopped making progress.',
+        status: 'failed',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fails at the absolute teardown deadline while the namespace progress signature keeps changing', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const runtime: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
+      let resourceVersion: number = 0;
+      const namespace: KubeManifest = {
+        apiVersion: 'v1',
+        kind: 'Namespace',
+        metadata: { name: kubeNamespaceName('prj_1'), uid: 'namespace-uid' },
+      };
+      vi.spyOn(runtime, 'read').mockImplementation(async (object: KubeManifest): Promise<KubeManifest> => {
+        resourceVersion += 1;
+        return await Promise.resolve({
+          ...object,
+          metadata: {
+            ...object.metadata,
+            deletionTimestamp: new Date('2026-07-21T00:00:00.000Z'),
+            finalizers: ['kubernetes'],
+            resourceVersion: `${resourceVersion}`,
+          },
+        });
+      });
+      const completion: Promise<void> = waitForProjectNamespaceDeletion(runtime, namespace, vi.fn(), 500);
+      const deadlineFailure: Promise<void> = expect(completion).rejects.toThrow(
+        'Project Kubernetes namespace teardown did not finish within the absolute teardown deadline.',
+      );
+
+      await vi.advanceTimersByTimeAsync(600);
+
+      await deadlineFailure;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the lease alive through transient namespace read failures', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const startedAt: number = Date.now();
+      const runtime: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
+      let leaseReports: number = 0;
+      const request: CompartmentRequester = async function respond<TResult>(): Promise<TResult> {
+        leaseReports += 1;
+        return await Promise.resolve({ applied: true } as TResult);
+      };
+      vi.spyOn(runtime, 'apply').mockResolvedValue([]);
+      vi.spyOn(runtime, 'delete').mockResolvedValue();
+      vi.spyOn(runtime, 'read').mockImplementation(async (object: KubeManifest): Promise<KubeManifest | null> => {
+        if (object.kind !== 'Namespace') {
+          return await Promise.resolve(null);
+        }
+        if (Date.now() - startedAt <= 50_000) {
+          throw new Error('Kubernetes API temporarily unavailable');
+        }
+        return await Promise.resolve(null);
+      });
+      const completion: Promise<WorkerCompleteProjectProvisioningV2Request> = executeProjectProvisioning(
+        request,
+        runtime,
+        config(),
+        { ...target, action: 'teardown' },
+        loggerStub(),
+      );
+
+      await vi.advanceTimersByTimeAsync(51_000);
+
+      await expect(completion).resolves.toMatchObject({ action: 'teardown', status: 'succeeded' });
+      expect(leaseReports).toBeGreaterThan(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not report a failed attempt after losing the teardown lease heartbeat', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const runtime: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
+      vi.spyOn(runtime, 'apply').mockResolvedValue([]);
+      vi.spyOn(runtime, 'delete').mockResolvedValue();
+      vi.spyOn(runtime, 'read').mockImplementation(async (object: KubeManifest): Promise<KubeManifest | null> => {
+        if (object.kind !== 'Namespace') {
+          return await Promise.resolve(null);
+        }
+        return await Promise.resolve({
+          ...object,
+          metadata: {
+            ...object.metadata,
+            deletionTimestamp: new Date('2026-07-21T00:00:00.000Z'),
+            resourceVersion: `${Date.now()}`,
+            uid: 'namespace-uid',
+          },
+        });
+      });
+      const completion: Promise<WorkerCompleteProjectProvisioningV2Request> = executeProjectProvisioning(
+        requester(true, true, true, false),
+        runtime,
+        config(),
+        { ...target, action: 'teardown' },
+        loggerStub(),
+      );
+      const leaseLoss: Promise<void> = expect(completion).rejects.toThrow('lease');
+
+      await vi.advanceTimersByTimeAsync(11_000);
+
+      await leaseLoss;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fails when namespace deletion never enters the Terminating state', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const runtime: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
+      vi.spyOn(runtime, 'apply').mockResolvedValue([]);
+      vi.spyOn(runtime, 'delete').mockResolvedValue();
+      vi.spyOn(runtime, 'read').mockImplementation(async (object: KubeManifest): Promise<KubeManifest | null> => {
+        if (object.kind !== 'Namespace') {
+          return await Promise.resolve(null);
+        }
+        return await Promise.resolve({ ...object, metadata: { ...object.metadata, uid: 'namespace-uid' } });
+      });
+      const completion: Promise<WorkerCompleteProjectProvisioningV2Request> = executeProjectProvisioning(
+        requester(true, true),
+        runtime,
+        config(),
+        { ...target, action: 'teardown' },
+        loggerStub(),
+      );
+
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      await expect(completion).resolves.toMatchObject({
+        message: 'Project Kubernetes namespace did not enter the Terminating state.',
+        status: 'failed',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fails a teardown attempt when the namespace delete call fails', async (): Promise<void> => {
+    const runtime: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
+    vi.spyOn(runtime, 'apply').mockResolvedValue([]);
+    vi.spyOn(runtime, 'delete').mockRejectedValue(new Error('namespace delete rejected'));
+    vi.spyOn(runtime, 'read').mockResolvedValue(null);
+
+    await expect(
+      executeProjectProvisioning(
+        requester(true, true),
+        runtime,
+        config(),
+        { ...target, action: 'teardown' },
+        loggerStub(),
+      ),
+    ).resolves.toMatchObject({ message: 'namespace delete rejected', status: 'failed' });
   });
 
   it('acknowledges an idempotent teardown when the project namespace is already absent', async (): Promise<void> => {

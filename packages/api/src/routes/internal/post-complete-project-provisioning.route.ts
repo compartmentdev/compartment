@@ -1,49 +1,24 @@
 import {
   buildFastifyResponseSchemas,
-  workerCompleteProjectProvisioningPathname,
-  workerCompleteProjectProvisioningRequestSchema,
   workerCompleteProjectProvisioningResponseSchema,
   workerCompleteProjectProvisioningV2Pathname,
   workerCompleteProjectProvisioningV2RequestSchema,
-  type WorkerCompleteProjectProvisioningRequest,
   type WorkerCompleteProjectProvisioningResponse,
   type WorkerCompleteProjectProvisioningV2Request,
 } from '@compartment/contracts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import { parseRequestValue } from '../../http/validation';
-import {
-  acknowledgeProjectProvisioning,
-  acknowledgeProjectProvisioningV2,
-} from '../../services/project-provisioning.service';
+import { acknowledgeProjectProvisioningV2 } from '../../services/project-provisioning.service';
+import type { ProjectProvisioningAcknowledgement } from '../../services/project-provisioning.service.types';
 import { buildWorkerCompleteProjectProvisioningResponse } from './project-provisioning.presenter';
 
 export function registerPostCompleteProjectProvisioningRoute(app: ApiApp): void {
-  app.post(
-    workerCompleteProjectProvisioningPathname,
-    { schema: { response: buildFastifyResponseSchemas({ 200: workerCompleteProjectProvisioningResponseSchema }) } },
-    handlePostCompleteProjectProvisioning,
-  );
   app.post(
     workerCompleteProjectProvisioningV2Pathname,
     { schema: { response: buildFastifyResponseSchemas({ 200: workerCompleteProjectProvisioningResponseSchema }) } },
     handlePostCompleteProjectProvisioningV2,
   );
-}
-
-async function handlePostCompleteProjectProvisioning(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<FastifyReply> {
-  const input: WorkerCompleteProjectProvisioningRequest = parseRequestValue(
-    workerCompleteProjectProvisioningRequestSchema,
-    request.body,
-    'invalid_project_provisioning_completion',
-  );
-  const response: WorkerCompleteProjectProvisioningResponse = workerCompleteProjectProvisioningResponseSchema.parse(
-    buildWorkerCompleteProjectProvisioningResponse(await acknowledgeProjectProvisioning(input)),
-  );
-  return await reply.send(response);
 }
 
 async function handlePostCompleteProjectProvisioningV2(
@@ -55,8 +30,15 @@ async function handlePostCompleteProjectProvisioningV2(
     request.body,
     'invalid_project_provisioning_completion',
   );
+  const acknowledgement: ProjectProvisioningAcknowledgement = await acknowledgeProjectProvisioningV2(input);
+  if (acknowledgement.terminalFailure) {
+    request.log.error(
+      { failureMessage: input.message, projectId: input.projectId },
+      'Project Kubernetes teardown reached its terminal retry limit.',
+    );
+  }
   const response: WorkerCompleteProjectProvisioningResponse = workerCompleteProjectProvisioningResponseSchema.parse(
-    buildWorkerCompleteProjectProvisioningResponse(await acknowledgeProjectProvisioningV2(input)),
+    buildWorkerCompleteProjectProvisioningResponse(acknowledgement.applied),
   );
   return await reply.send(response);
 }

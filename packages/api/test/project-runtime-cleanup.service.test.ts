@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProjectResourceRow } from '../src/queries/resources.query.types';
 import type { ProjectRow } from '../src/queries/projects.query.types';
-import { cleanupArchivedProjectRuntime } from '../src/services/project-runtime-cleanup.service';
+import {
+  cleanupArchivedProjectRuntime,
+  cleanupDeletedProjectRuntime,
+} from '../src/services/project-runtime-cleanup.service';
 import type { ResourceEnvironmentContext } from '../src/services/resources.service.types';
 
 const listEnvironments: Mock = vi.hoisted((): Mock => vi.fn());
@@ -54,6 +57,25 @@ describe('project runtime cleanup', (): void => {
     expect(resource).toMatchObject({ id: 'resource', status: 'deleting' });
     expect(deleteData).toBe(false);
     expect(reconcileReplicas).not.toHaveBeenCalled();
+  });
+
+  it('keeps the concrete delete failure as the logged cause without exposing it in the public message', async (): Promise<void> => {
+    deleteResource.mockRejectedValue(new Error('Namespace finalizers stopped making progress.'));
+
+    let cleanupError: Error | null = null;
+    try {
+      await cleanupDeletedProjectRuntime(project());
+    } catch (error) {
+      cleanupError = error instanceof Error ? error : null;
+    }
+    expect(cleanupError).toMatchObject({
+      code: 'project_delete_runtime_cleanup_failed',
+      message: 'The project runtime resources could not be removed. Retry the delete command.',
+    });
+    if (!(cleanupError?.cause instanceof Error)) {
+      throw new Error('Expected the concrete runtime cleanup failure cause.');
+    }
+    expect(cleanupError.cause.message).toBe('Namespace finalizers stopped making progress.');
   });
 });
 

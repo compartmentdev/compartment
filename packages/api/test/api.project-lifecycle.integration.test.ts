@@ -46,10 +46,8 @@ import {
   sources,
 } from '../src/db/schema';
 import type { ProjectRow } from '../src/queries/projects.query.types';
-import {
-  claimPendingProjectProvisioning,
-  completeProjectProvisioning,
-} from '../src/queries/project-provisioning.query';
+import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
+import { claimPendingProjectProvisioning } from '../src/queries/project-provisioning.query';
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import { findNextDeploymentReconcilePair } from '../src/queries/deployment-reconcile.query';
 import type { DeploymentKubeState } from '../src/queries/deployment-kube-state.types';
@@ -1003,11 +1001,15 @@ describe('Phase 0 API integration project lifecycle', (): void => {
 });
 
 async function deleteArchivedProject(sessionToken: string): Promise<LightMyRequestResponse> {
-  const deletion: Promise<LightMyRequestResponse> = app.inject({
+  const deletion: LightMyRequestResponse = await app.inject({
     method: 'DELETE',
     url: '/v1/projects/smoke-web',
     headers: buildOrganizationAuthorizationHeaders(sessionToken),
   });
+  expect(deletion.statusCode).toBe(200);
+  await expect(
+    db.select({ id: projects.id }).from(projects).where(eq(projects.name, 'smoke-web')),
+  ).resolves.toHaveLength(1);
   const teardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
   await completeProjectProvisioning({
     action: 'teardown',
@@ -1016,7 +1018,7 @@ async function deleteArchivedProject(sessionToken: string): Promise<LightMyReque
     projectId: teardown.projectId,
     status: 'succeeded',
   });
-  return await deletion;
+  return deletion;
 }
 
 async function waitForProjectTeardownClaim(): Promise<ProjectProvisioningClaimRow> {
