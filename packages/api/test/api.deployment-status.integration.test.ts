@@ -1,5 +1,7 @@
 import {
   compartmentDeploymentRunLogsPathname,
+  compartmentDeploymentMetricsPathname,
+  deploymentMetricsSnapshotSchema,
   deploymentInspectResponseSchema,
   deploymentListResponseSchema,
   deploymentRunLogsResponseSchema,
@@ -9,6 +11,7 @@ import {
   errorResponseSchema,
   type DeploymentLogLine,
   type DeploymentLogsResponse,
+  type DeploymentMetricsSnapshot,
   type DeploymentInspectResponse,
   type DeploymentInspectTarget,
   type DeploymentListResponse,
@@ -19,9 +22,11 @@ import {
   type DeployResponse,
   type InstallResponse,
   type ProductLogIngestEvent,
+  type PodResourceMetric,
   type WorkerClaimDeploymentResponse,
   type WorkerAppendDeploymentEventRequest,
   type WorkerClaimedDeployment,
+  type WorkerPublishPodMetricsRequest,
   compartmentCurrentOrganizationHeaderName,
   workerAppendDeploymentEventPathname,
 } from '@compartment/contracts';
@@ -38,6 +43,7 @@ import { buildArtifacts, deployments, environments, projectServices, projects } 
 import { ingestDeploymentProductLogs } from '../src/services/deployment-product-logs.service';
 import { persistDeploymentReconcileObservation } from '../src/queries/deployment-reconcile.query';
 import { prepareDeploymentReconcile } from '../src/services/deployment-reconcile.service';
+import { publishPodMetricsSnapshot } from '../src/services/pod-metrics-snapshot.service';
 
 import {
   buildOrganizationAuthorizationHeaders,
@@ -571,6 +577,58 @@ describe('Phase 0 API integration deployment status', (): void => {
       runtime: { routeHost: null },
       status: 'running',
     });
+  });
+  it('keeps active deployment metrics visible while a replacement is running', async (): Promise<void> => {
+    const { firstDeployment, installPayload, replacement, replacementClaim } = await prepareRunningReplacement();
+    const snapshot: WorkerPublishPodMetricsRequest = {
+      observedAt: new Date().toISOString(),
+      pods: [
+        {
+          cpuMillicores: 100,
+          deploymentId: firstDeployment.id,
+          memoryBytes: 64 * 1024 * 1024,
+          namespace: 'cpt-smoke-web',
+          observedAt: new Date().toISOString(),
+          podName: 'active-pod',
+          podUid: '11111111-1111-4111-8111-111111111111',
+        },
+        {
+          cpuMillicores: 200,
+          deploymentId: replacement.id,
+          memoryBytes: 128 * 1024 * 1024,
+          namespace: 'cpt-smoke-web',
+          observedAt: new Date().toISOString(),
+          podName: 'replacement-pod',
+          podUid: '22222222-2222-4222-8222-222222222222',
+        },
+      ],
+      state: 'available',
+    };
+    publishPodMetricsSnapshot(snapshot);
+
+    const rolloutResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken, 'acme-dev'),
+      method: 'GET',
+      url: `${compartmentDeploymentMetricsPathname}?projectName=smoke-web`,
+    });
+
+    expect(rolloutResponse.statusCode, rolloutResponse.body).toBe(200);
+    const rolloutMetrics: DeploymentMetricsSnapshot = deploymentMetricsSnapshotSchema.parse(rolloutResponse.json());
+    expect(rolloutMetrics.pods.map((pod: PodResourceMetric): string => pod.deploymentId)).toEqual([
+      firstDeployment.id,
+      replacement.id,
+    ]);
+
+    await completeClaimedDeployment(app, replacement.id, replacementClaim.routeHost);
+    const steadyResponse: LightMyRequestResponse = await app.inject({
+      headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken, 'acme-dev'),
+      method: 'GET',
+      url: `${compartmentDeploymentMetricsPathname}?projectName=smoke-web`,
+    });
+
+    expect(steadyResponse.statusCode, steadyResponse.body).toBe(200);
+    const steadyMetrics: DeploymentMetricsSnapshot = deploymentMetricsSnapshotSchema.parse(steadyResponse.json());
+    expect(steadyMetrics.pods.map((pod: PodResourceMetric): string => pod.deploymentId)).toEqual([replacement.id]);
   });
   it('returns the active deployment runtime after a failed replacement rolls back', async (): Promise<void> => {
     const { firstClaim, firstDeployment, installPayload, replacement, replacementClaim } =

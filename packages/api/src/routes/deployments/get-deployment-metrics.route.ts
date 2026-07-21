@@ -14,7 +14,7 @@ export function registerGetDeploymentMetricsRoute(app: ApiApp): void {
   registerDeploymentQueryRoute({
     app,
     buildResponse: (result: DeploymentStatusLookupResult): DeploymentMetricsSnapshot =>
-      readPodMetricsSnapshot(result.deployments),
+      readPodMetricsSnapshot([...result.activeDeployments, ...result.deployments]),
     currentOrganizationPermission: undefined,
     invalidQueryErrorCode: 'invalid_deployment_metrics_query',
     loadSummary: getDeploymentStatusSummary,
