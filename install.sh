@@ -253,9 +253,19 @@ prepare_kubernetes_cli_tools() {
       ;;
   esac
 
+  cosign_command=""
   if command -v cosign >/dev/null 2>&1; then
-    cosign_command="$(command -v cosign)"
-  else
+    installed_cosign_command="$(command -v cosign)"
+    installed_cosign_version="$(
+      "$installed_cosign_command" version 2>/dev/null \
+        | sed -n 's/^[[:space:]]*GitVersion:[[:space:]]*v\{0,1\}\([^[:space:]]*\).*/\1/p' \
+        | head -n 1
+    )"
+    if [ "$installed_cosign_version" = "$cosign_version" ]; then
+      cosign_command="$installed_cosign_command"
+    fi
+  fi
+  if [ -z "$cosign_command" ]; then
     cosign_command="${tools_directory}/cosign"
     cosign_asset_name="cosign-${tools_target_os}-${tools_upstream_arch}"
     case "${tools_target_os}-${tools_upstream_arch}" in
@@ -279,9 +289,19 @@ prepare_kubernetes_cli_tools() {
     chmod 0755 "$cosign_command"
   fi
 
+  oras_command=""
   if command -v oras >/dev/null 2>&1; then
-    oras_command="$(command -v oras)"
-  else
+    installed_oras_command="$(command -v oras)"
+    installed_oras_version="$(
+      "$installed_oras_command" version 2>/dev/null \
+        | sed -n 's/^Version:[[:space:]]*\([^[:space:]]*\).*/\1/p' \
+        | head -n 1
+    )"
+    if [ "$installed_oras_version" = "$oras_version" ]; then
+      oras_command="$installed_oras_command"
+    fi
+  fi
+  if [ -z "$oras_command" ]; then
     oras_command="${tools_directory}/oras"
     oras_asset_name="oras_${oras_version}_${tools_target_os}_${tools_upstream_arch}.tar.gz"
     oras_archive_path="${tools_directory}/${oras_asset_name}"
@@ -324,10 +344,12 @@ resolve_kubernetes_cli_digest_ref() {
 
 verify_kubernetes_cli_artifact() {
   cli_digest_ref="$1"
+  cli_workflow_sha="$2"
   if ! "$cosign_command" verify \
     --new-bundle-format \
     --certificate-identity "$kubernetes_cli_certificate_identity" \
     --certificate-oidc-issuer "$kubernetes_cli_certificate_oidc_issuer" \
+    --certificate-github-workflow-sha "$cli_workflow_sha" \
     "$cli_digest_ref" >/dev/null; then
     printf 'Failed to verify Kubernetes CLI artifact %s\n' "$cli_digest_ref" >&2
     exit 1
@@ -833,10 +855,11 @@ checksums_path="${temp_directory}/checksums.txt"
 
 if [ "$channel" = "kubernetes" ]; then
   resolved_release_tag="$(resolve_kubernetes_release_tag)"
+  resolved_kubernetes_commit_sha="${resolved_release_tag#sha-}"
   prepare_kubernetes_cli_tools "${temp_directory}/tools" "$target_os" "$target_arch"
   cli_tag_ref="${cli_oci_repository}:${resolved_release_tag}"
   cli_digest_ref="$(resolve_kubernetes_cli_digest_ref "$cli_tag_ref")"
-  verify_kubernetes_cli_artifact "$cli_digest_ref"
+  verify_kubernetes_cli_artifact "$cli_digest_ref" "$resolved_kubernetes_commit_sha"
   "$oras_command" pull \
     --platform "${target_os}/${tools_upstream_arch}" \
     --output "$temp_directory" \

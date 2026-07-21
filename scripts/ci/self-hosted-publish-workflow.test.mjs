@@ -45,7 +45,7 @@ describe('self-hosted publish workflows', () => {
     const publishJob = workflow.jobs['publish-kubernetes-cli'];
     const buildStep = buildJob.steps.find((step) => step.name === 'Build kubernetes CLI binary');
     const publishStep = publishJob.steps.find((step) => step.name === 'Publish immutable CLI artifact');
-    const anonymousPullStep = publishJob.steps.find((step) => step.name === 'Enable anonymous CLI artifact pulls');
+    const anonymousPullStep = publishJob.steps.find((step) => step.name === 'Verify anonymous CLI artifact pulls');
     const signStep = publishJob.steps.find((step) => step.name === 'Sign and verify CLI artifact');
     const promoteStep = publishJob.steps.find((step) => step.name === 'Promote mutable kubernetes CLI tag');
 
@@ -61,11 +61,11 @@ describe('self-hosted publish workflows', () => {
     expect(publishJob.permissions).toEqual({ contents: 'read', 'id-token': 'write', packages: 'write' });
     expect(publishStep.run).toContain('${CLI_REPOSITORY}:sha-${PUBLISH_SHA}');
     expect(publishStep.run).toContain('Immutable CLI artifact ${immutable_ref} already points to');
-    expect(anonymousPullStep.run).toContain('--field visibility=public');
     expect(anonymousPullStep.run).toContain('--registry-config ./.compartment/anonymous-registry-config.json');
     expect(signStep.run).toContain('cosign sign --yes --new-bundle-format "$digest_ref"');
     expect(signStep.run).toContain('publish-self-hosted-kubernetes.yml@refs/heads/kubernetes');
     expect(signStep.run).toContain('--certificate-oidc-issuer https://token.actions.githubusercontent.com');
+    expect(signStep.run).toContain('--certificate-github-workflow-sha "$PUBLISH_SHA"');
     expect(workflow.jobs['publish-kubernetes-cli'].steps.indexOf(anonymousPullStep)).toBeGreaterThan(
       workflow.jobs['publish-kubernetes-cli'].steps.indexOf(signStep),
     );

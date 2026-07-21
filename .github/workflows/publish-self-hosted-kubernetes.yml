@@ -223,6 +223,7 @@ jobs:
               oras push \
                 --artifact-platform "${platform_os}/${platform_arch}" \
                 --artifact-type application/vnd.compartment.cli.platform.v1 \
+                --annotation "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
                 "${CLI_REPOSITORY}:${platform_tag}" \
                 "compartment-${platform_os}-${archive_arch}.tar.gz:application/vnd.compartment.cli.archive.v1+gzip" \
                 checksums.txt:text/plain \
@@ -277,16 +278,11 @@ jobs:
             --new-bundle-format \
             --certificate-identity "$certificate_identity" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-sha "$PUBLISH_SHA" \
             "$digest_ref"
 
-      - name: Enable anonymous CLI artifact pulls
+      - name: Verify anonymous CLI artifact pulls
         run: |
-          gh api \
-            --method PATCH \
-            "orgs/compartmentdev/packages/container/compartment-cli/visibility" \
-            --field visibility=public \
-            >/dev/null
-
           printf '{"auths":{}}\n' > ./.compartment/anonymous-registry-config.json
           expected_digest="$(cat ./.compartment/cli-artifact-digest)"
           anonymous_digest="$(oras resolve \

@@ -207,13 +207,15 @@ The public bootstrapper can download the selected release CLI and immediately ru
 
 ```bash
 curl -fsSL https://compartment.dev/install.sh | sh -s -- \
+  --channel kubernetes \
   --init-update \
   --values compartment-values.yaml
 ```
 
-Use `--version <release>` or `--channel main` on the bootstrapper to select a specific platform release. The operator
-needs normal Helm update permissions, permission to list the release's Deployments and DaemonSets for status, and
-permission to restart and watch the API, Worker, Edge, Caddy, Project Provisioner, and Registry Auth Deployments.
+Use `--channel kubernetes` to stay on the Kubernetes line. Use `--version <release>` or `--channel main` only when you
+intend to switch to that release line. The operator needs normal Helm update permissions, permission to list the
+release's Deployments and DaemonSets for status, and permission to restart and watch the API, Worker, Edge, Caddy,
+Project Provisioner, and Registry Auth Deployments.
 
 See the generated [`compartment system` reference](/reference/generated/cli/system/) for all lifecycle command options.
 
