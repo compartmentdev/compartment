@@ -51,20 +51,6 @@ const forbiddenRuntimeTerms = [
   ['runtime ', 'verifier'].join(''),
 ];
 
-const restartCompatibilityPolicy = ['unless', '-stopped'].join('');
-const allowedRuntimeTermPaths = new Map([
-  [
-    restartCompatibilityPolicy,
-    new Set([
-      'packages/contracts/src/contracts/compartment-descriptor-compatibility.contract.ts',
-      'packages/contracts/src/contracts/service-run.contract.ts',
-      'packages/contracts/test/compartment-descriptor-resources.test.ts',
-      'packages/contracts/test/compartment-descriptor.test.ts',
-      'public-docs/src/content/docs/deploy-apps/project-descriptor.md',
-    ]),
-  ],
-]);
-
 const forbiddenPathPrefixes = [
   ['.github/workflows/', '_system-user-flow-e2e.yml'].join(''),
   ['docker', '-compose.self-hosted'].join(''),
@@ -144,9 +130,7 @@ export function findMigrationSnapshotViolations(path, contents) {
 
 export function findContentViolations(path, contents) {
   return forbiddenRuntimeTerms.flatMap((term) =>
-    contents.includes(term) && allowedRuntimeTermPaths.get(term)?.has(path) !== true
-      ? [`${path}: contains forbidden runtime term ${term}`]
-      : [],
+    contents.includes(term) ? [`${path}: contains forbidden runtime term ${term}`] : [],
   );
 }
 

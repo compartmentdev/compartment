@@ -1,5 +1,4 @@
 import {
-  readCompartmentDescriptorCompatibilityWarnings,
   type CompartmentAuthoredDescriptor,
   type DeployResponse,
   type DeploymentInspectResponse,
@@ -41,7 +40,6 @@ export async function deployProject(
   reportDeployProgress(input, 'Resolving deployment target...');
   const target: ResolvedProjectTarget = await resolveProjectTarget(input.cwd, input.projectName);
   const descriptor: StoredProjectDescriptor = requireDeploymentDescriptor(target);
-  reportDescriptorCompatibilityWarnings(input, descriptor);
   const deployResponse: DeployResponse = await submitProjectDeployment(context, descriptor, target.projectName, input);
 
   if (input.detach === true) {
@@ -213,12 +211,6 @@ function createMissingDeployDescriptorError(): Error {
   return new Error(
     'compartment.yml was not found in the current directory. compartment deploy requires a local compartment repo.',
   );
-}
-
-function reportDescriptorCompatibilityWarnings(input: DeployCommandInput, descriptor: StoredProjectDescriptor): void {
-  for (const warning of readCompartmentDescriptorCompatibilityWarnings(descriptor.descriptor)) {
-    input.reportWarning?.(warning.message);
-  }
 }
 
 function reportDeployProgress(input: DeployCommandInput, message: string): void {

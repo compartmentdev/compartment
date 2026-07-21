@@ -748,7 +748,7 @@ async function seedDeploymentRunLogsFixture(organizationId: string): Promise<voi
     promotionStage: 'active',
     resolvedReadinessJson: 'null',
     resolvedRoutesJson: '[]',
-    resolvedRunJson: '{"restart":{"policy":"on-failure"}}',
+    resolvedRunJson: '{}',
     status: 'succeeded',
     updatedAt: now,
   });

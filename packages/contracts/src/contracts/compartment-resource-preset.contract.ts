@@ -4,7 +4,6 @@ import type {
   CompartmentAuthoredResourceConfigInput,
   CompartmentAuthoredResourceFullConfigInput,
   CompartmentAuthoredResourcePresetConfigInput,
-  CompartmentDeprecatedResourceRestartConfig,
   CompartmentResourceEnv,
   CompartmentResourceGeneratedVariableConfig,
   CompartmentResourceGeneratedVariables,
@@ -90,7 +89,6 @@ export interface CompartmentAuthoredResourceConfigRawInput {
   ports?: number[] | undefined;
   preset?: CompartmentResourcePreset | undefined;
   readiness?: CompartmentResourceReadinessConfig | undefined;
-  restart?: CompartmentDeprecatedResourceRestartConfig | undefined;
   volumes?: CompartmentResourceVolumes | undefined;
 }
 
@@ -102,7 +100,6 @@ const compartmentResourcePresetUnsupportedFieldNames: readonly (keyof Compartmen
   'outputs',
   'ports',
   'readiness',
-  'restart',
   'volumes',
 ];
 
@@ -199,7 +196,6 @@ function createFullResourceConfigInput(
     outputs: resource.outputs,
     ports: resource.ports,
     readiness: resource.readiness,
-    restart: resource.restart,
     volumes: resource.volumes,
   };
 }
