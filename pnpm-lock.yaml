@@ -6,6 +6,7 @@ settings:
 
 overrides:
   '@esbuild-kit/core-utils>esbuild': 0.25.11
+  '@kubernetes/client-node@1.4.0>js-yaml': 4.3.0
   gel@2.2.0>shell-quote: 1.9.0
   minimatch@10.2.5>brace-expansion: 5.0.7
   yaml-language-server@1.20.0>yaml: 2.8.3
@@ -5809,6 +5810,11 @@ packages:
       { integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA== }
     hasBin: true
 
+  js-yaml@4.3.0:
+    resolution:
+      { integrity: sha512-1td788aAnnZ5qs7V2QIRl1owjtYpbKt749Y3xauqQgwIIGF/xXWz1wMTEBx5O3LK3lXLVuqXPdPxj2BoFHaW9Q== }
+    hasBin: true
+
   jscpd-sarif-reporter@4.0.7:
     resolution:
       { integrity: sha512-Q/VlfTI/Nbjc8dZ/2pDVIf1aRi2bM2CTYujcAoeYr7brRnS4o5ZeW86W8q7MM7cQu40gezlNckl+E9wKFSMFiA== }
@@ -9983,7 +9989,7 @@ snapshots:
       form-data: 4.0.6
       hpagent: 1.2.0
       isomorphic-ws: 5.0.0(ws@8.21.0)
-      js-yaml: 4.1.1
+      js-yaml: 4.3.0
       jsonpath-plus: 10.4.0
       node-fetch: 2.7.0
       openid-client: 6.8.3
@@ -13505,6 +13511,10 @@ snapshots:
   js-tokens@9.0.1: {}
 
   js-yaml@4.1.1:
+    dependencies:
+      argparse: 2.0.1
+
+  js-yaml@4.3.0:
     dependencies:
       argparse: 2.0.1
 
