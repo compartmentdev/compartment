@@ -5,8 +5,16 @@ import type { KubePodListReader, KubePodMetricsReader } from '../src/kube-pod-me
 
 describe('Kubernetes Pod metrics observation', (): void => {
   it('joins metrics-server samples to product Pods by namespace and name', async (): Promise<void> => {
-    const coreApi: KubePodListReader = new StubCoreApi([productPod('pod-a', 'pod-uid-a')]);
-    const metricsApi: KubePodMetricsReader = new StubMetricsApi([podMetric('pod-a')]);
+    const coreApi: KubePodListReader = new StubCoreApi([
+      productPod('pod-a', 'pod-uid-a'),
+      productPod('pod-b', 'pod-uid-b'),
+      productPod('pod-c', 'pod-uid-c', 'Running', 'cpt-project-two'),
+    ]);
+    const metricsApi: StubMetricsApi = new StubMetricsApi([
+      podMetric('pod-a'),
+      podMetric('pod-b'),
+      podMetric('pod-c', 'cpt-project-two'),
+    ]);
 
     await expect(
       readKubePodMetrics(coreApi, metricsApi, {
@@ -21,7 +29,18 @@ describe('Kubernetes Pod metrics observation', (): void => {
         podName: 'pod-a',
         podUid: 'pod-uid-a',
       },
+      {
+        namespace: 'cpt-project',
+        podName: 'pod-b',
+        podUid: 'pod-uid-b',
+      },
+      {
+        namespace: 'cpt-project-two',
+        podName: 'pod-c',
+        podUid: 'pod-uid-c',
+      },
     ]);
+    expect(metricsApi.requestedNamespaces).toEqual(['cpt-project', 'cpt-project-two']);
   });
 
   it('rejects an empty metrics-server snapshot while a live product Pod exists', async (): Promise<void> => {
@@ -90,19 +109,32 @@ class StubCoreApi implements KubePodListReader {
 }
 
 class StubMetricsApi implements KubePodMetricsReader {
+  public readonly requestedNamespaces: string[] = [];
+
   public constructor(private readonly items: PodMetric[]) {}
 
-  public async getPodMetrics(): Promise<{ items: PodMetric[] }> {
-    return await Promise.resolve({ items: this.items });
+  public async getPodMetrics(namespace?: string): Promise<{ items: PodMetric[] }> {
+    if (namespace === undefined) {
+      throw new Error('Cluster-wide metrics requests are forbidden.');
+    }
+    this.requestedNamespaces.push(namespace);
+    return await Promise.resolve({
+      items: this.items.filter((item: PodMetric): boolean => item.metadata.namespace === namespace),
+    });
   }
 }
 
-function productPod(name: string, uid: string, phase: 'Pending' | 'Running' | 'Succeeded' = 'Running'): V1Pod {
+function productPod(
+  name: string,
+  uid: string,
+  phase: 'Pending' | 'Running' | 'Succeeded' = 'Running',
+  namespace: string = 'cpt-project',
+): V1Pod {
   return {
     metadata: {
       labels: { 'app.kubernetes.io/managed-by': 'compartment', 'compartment.dev/deployment-id': 'dep-a' },
       name,
-      namespace: 'cpt-project',
+      namespace,
       uid,
     },
     status: { phase },
@@ -120,14 +152,14 @@ function releaseJobPod(name: string, uid: string): V1Pod {
   };
 }
 
-function podMetric(name: string): PodMetric {
+function podMetric(name: string, namespace: string = 'cpt-project'): PodMetric {
   return {
     containers: [{ name: 'app', usage: { cpu: '125m', memory: '64Mi' } }],
     metadata: {
       creationTimestamp: '2026-07-13T11:59:30.000Z',
       name,
-      namespace: 'cpt-project',
-      selfLink: `/apis/metrics.k8s.io/v1beta1/namespaces/cpt-project/pods/${name}`,
+      namespace,
+      selfLink: `/apis/metrics.k8s.io/v1beta1/namespaces/${namespace}/pods/${name}`,
     },
     timestamp: '2026-07-13T12:00:00.000Z',
     window: '30s',

@@ -17,7 +17,7 @@ export interface KubePodListReader {
 }
 
 export interface KubePodMetricsReader {
-  getPodMetrics(): Promise<KubePodMetricListResult>;
+  getPodMetrics(namespace: string): Promise<KubePodMetricListResult>;
 }
 
 export interface ObservePodMetrics {

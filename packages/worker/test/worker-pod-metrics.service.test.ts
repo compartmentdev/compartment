@@ -1,9 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import pino, { type Logger } from 'pino';
+import { describe, expect, it, vi } from 'vitest';
+import type { WorkerPublishPodMetricsRequest } from '@compartment/contracts';
 import type { KubePodMetricObservation, ObservePodMetrics } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import { parseKubernetesQuantity } from '../src/services/kubernetes-quantity';
 import { collectAndPublishPodMetrics } from '../src/services/worker-pod-metrics.service';
 import type { PodMetricsRuntime } from '../src/services/worker-pod-metrics.service.types';
+
+interface CapturedPodMetricsRequest {
+  readonly body: WorkerPublishPodMetricsRequest;
+}
 
 describe('Kubernetes resource quantities', (): void => {
   it('normalizes CPU usage to millicores', (): void => {
@@ -27,18 +33,29 @@ describe('Kubernetes resource quantities', (): void => {
 });
 
 describe('Pod metric publication isolation', (): void => {
-  it('does not propagate metrics-server and snapshot publication failures', async (): Promise<void> => {
-    const runtime: PodMetricsRuntime = new FailingMetricsRuntime();
-    const request: CompartmentRequester = async (): Promise<never> =>
-      await Promise.reject(new Error('control plane unavailable'));
+  it('logs and isolates metrics-server and unavailable snapshot publication failures', async (): Promise<void> => {
+    const metricsError: Error = new Error('metrics-server unavailable');
+    const runtime: PodMetricsRuntime = new FailingMetricsRuntime(metricsError);
+    const request: CompartmentRequester = vi.fn(
+      async (): Promise<never> => await Promise.reject(new Error('control plane unavailable')),
+    );
+    const logger: Logger = pino({ level: 'silent' });
+    vi.spyOn(logger, 'error');
 
-    await expect(collectAndPublishPodMetrics(request, runtime)).resolves.toBeUndefined();
+    await expect(collectAndPublishPodMetrics(request, runtime, logger)).resolves.toBeUndefined();
+    expect(logger.error).toHaveBeenCalledWith({ err: metricsError }, 'Kubernetes Pod metrics collection failed.');
+    const publishInput: CapturedPodMetricsRequest | undefined = vi.mocked(request).mock.calls.at(0)?.[0] as
+      | CapturedPodMetricsRequest
+      | undefined;
+    expect(publishInput?.body).toMatchObject({ pods: [], state: 'unavailable' });
   });
 });
 
 class FailingMetricsRuntime implements PodMetricsRuntime {
+  public constructor(private readonly error: Error) {}
+
   public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricObservation[]> {
     void input;
-    return await Promise.reject(new Error('metrics-server unavailable'));
+    return await Promise.reject(this.error);
   }
 }

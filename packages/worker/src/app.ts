@@ -23,7 +23,7 @@ interface WorkerFetchError extends Error {
 export async function runWorker(config: WorkerConfig = readWorkerConfig()): Promise<void> {
   const logger: pino.Logger<never, boolean> = createWorkerLogger(config);
   const state: WorkerState = { hasReachedApi: false, recoveredOrphanedBuildClaims: false };
-  const kubeControllers: KubeControllerHost[] = createKubeControllerHosts(config);
+  const kubeControllers: KubeControllerHost[] = createKubeControllerHosts(config, logger);
 
   void prewarmSourceBuildToolchainAtStartup(logger);
   for (const kubeController of kubeControllers) {

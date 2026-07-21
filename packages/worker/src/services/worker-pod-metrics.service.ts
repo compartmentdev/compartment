@@ -1,6 +1,9 @@
 import type { WorkerPodResourceMetric, WorkerPublishPodMetricsRequest } from '@compartment/contracts';
 import type { KubeContainerMetricUsage, KubePodMetricObservation } from '@compartment/kube-runtime';
 import { publishPodMetrics, type CompartmentRequester } from '@compartment/sdk';
+import type { Logger } from 'pino';
+import { buildWorkerCaughtErrorLogPayload } from '../logging/worker-error-log';
+import type { WorkerCaughtError } from '../logging/worker-error-log.types';
 import { parseKubernetesQuantity } from './kubernetes-quantity';
 import type { PodMetricsRuntime } from './worker-pod-metrics.service.types';
 
@@ -9,25 +12,44 @@ const managedLabels: Readonly<Record<string, string>> = { 'app.kubernetes.io/man
 export async function collectAndPublishPodMetrics(
   request: CompartmentRequester,
   runtime: PodMetricsRuntime,
+  logger: Logger,
 ): Promise<void> {
   const requestedAt: string = new Date().toISOString();
+  let observations: KubePodMetricObservation[];
   try {
-    const observations: KubePodMetricObservation[] = await runtime.observePodMetrics({
+    observations = await runtime.observePodMetrics({
       kind: 'pod-metrics',
       labels: managedLabels,
     });
-    await publishPodMetrics(request, {
-      observedAt: readSnapshotTimestamp(observations, requestedAt),
-      pods: observations.map(toWorkerPodMetric),
-      state: 'available',
-    });
+  } catch (error) {
+    await publishUnavailableSnapshot(request, logger, requestedAt, error as WorkerCaughtError);
+    return;
+  }
+  await publishSnapshotIgnoringFailure(request, {
+    observedAt: readSnapshotTimestamp(observations, requestedAt),
+    pods: observations.map(toWorkerPodMetric),
+    state: 'available',
+  });
+}
+
+async function publishUnavailableSnapshot(
+  request: CompartmentRequester,
+  logger: Logger,
+  observedAt: string,
+  error: WorkerCaughtError,
+): Promise<void> {
+  logger.error(buildWorkerCaughtErrorLogPayload(error), 'Kubernetes Pod metrics collection failed.');
+  await publishSnapshotIgnoringFailure(request, { observedAt, pods: [], state: 'unavailable' });
+}
+
+async function publishSnapshotIgnoringFailure(
+  request: CompartmentRequester,
+  snapshot: WorkerPublishPodMetricsRequest,
+): Promise<void> {
+  try {
+    await publishPodMetrics(request, snapshot);
   } catch {
-    const unavailable: WorkerPublishPodMetricsRequest = { observedAt: requestedAt, pods: [], state: 'unavailable' };
-    try {
-      await publishPodMetrics(request, unavailable);
-    } catch {
-      return;
-    }
+    return;
   }
 }
 
