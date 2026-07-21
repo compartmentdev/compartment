@@ -1,11 +1,15 @@
 import type { PodMetric, V1Pod } from '@kubernetes/client-node';
 import { describe, expect, it } from 'vitest';
 import { readKubePodMetrics } from '../src/kube-pod-metrics';
-import type { KubePodListReader, KubePodMetricsReader } from '../src/kube-pod-metrics.types';
+import type {
+  KubeNamespacedPodListInput,
+  KubePodListReader,
+  KubePodMetricsReader,
+} from '../src/kube-pod-metrics.types';
 
 describe('Kubernetes Pod metrics observation', (): void => {
   it('joins metrics-server samples to product Pods by namespace and name', async (): Promise<void> => {
-    const coreApi: KubePodListReader = new StubCoreApi([
+    const coreApi: StubCoreApi = new StubCoreApi([
       productPod('pod-a', 'pod-uid-a'),
       productPod('pod-b', 'pod-uid-b'),
       productPod('pod-c', 'pod-uid-c', 'Running', 'cpt-project-two'),
@@ -20,6 +24,7 @@ describe('Kubernetes Pod metrics observation', (): void => {
       readKubePodMetrics(coreApi, metricsApi, {
         kind: 'pod-metrics',
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+        namespaces: ['cpt-project', 'cpt-project', 'cpt-project-two'],
       }),
     ).resolves.toMatchObject([
       {
@@ -41,6 +46,7 @@ describe('Kubernetes Pod metrics observation', (): void => {
       },
     ]);
     expect(metricsApi.requestedNamespaces).toEqual(['cpt-project', 'cpt-project-two']);
+    expect(coreApi.requestedNamespaces).toEqual(['cpt-project', 'cpt-project-two']);
   });
 
   it('rejects an empty metrics-server snapshot while a live product Pod exists', async (): Promise<void> => {
@@ -48,6 +54,7 @@ describe('Kubernetes Pod metrics observation', (): void => {
       readKubePodMetrics(new StubCoreApi([productPod('pod-a', 'pod-uid-a')]), new StubMetricsApi([]), {
         kind: 'pod-metrics',
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+        namespaces: ['cpt-project'],
       }),
     ).rejects.toThrow('metrics-server returned an incomplete product Pod snapshot.');
   });
@@ -60,6 +67,7 @@ describe('Kubernetes Pod metrics observation', (): void => {
       readKubePodMetrics(new StubCoreApi([sampledPod, unsampledPod]), new StubMetricsApi([podMetric('pod-a')]), {
         kind: 'pod-metrics',
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+        namespaces: ['cpt-project'],
       }),
     ).resolves.toMatchObject([
       {
@@ -78,6 +86,7 @@ describe('Kubernetes Pod metrics observation', (): void => {
       readKubePodMetrics(new StubCoreApi([livePod, completedJobPod]), new StubMetricsApi([podMetric('pod-a')]), {
         kind: 'pod-metrics',
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+        namespaces: ['cpt-project'],
       }),
     ).resolves.toMatchObject([
       {
@@ -95,16 +104,22 @@ describe('Kubernetes Pod metrics observation', (): void => {
       readKubePodMetrics(new StubCoreApi([completedJobPod]), new StubMetricsApi([]), {
         kind: 'pod-metrics',
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+        namespaces: ['cpt-project'],
       }),
     ).resolves.toEqual([]);
   });
 });
 
 class StubCoreApi implements KubePodListReader {
+  public readonly requestedNamespaces: string[] = [];
+
   public constructor(private readonly items: V1Pod[]) {}
 
-  public async listPodForAllNamespaces(): Promise<{ items: V1Pod[] }> {
-    return await Promise.resolve({ items: this.items });
+  public async listNamespacedPod(input: KubeNamespacedPodListInput): Promise<{ items: V1Pod[] }> {
+    this.requestedNamespaces.push(input.namespace);
+    return await Promise.resolve({
+      items: this.items.filter((item: V1Pod): boolean => item.metadata?.namespace === input.namespace),
+    });
   }
 }
 

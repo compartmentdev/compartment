@@ -1,7 +1,7 @@
 import pino, { type Logger } from 'pino';
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkerPublishPodMetricsRequest } from '@compartment/contracts';
-import type { KubePodMetricObservation, ObservePodMetrics } from '@compartment/kube-runtime';
+import { kubeNamespaceName, type KubePodMetricObservation, type ObservePodMetrics } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import { parseKubernetesQuantity } from '../src/services/kubernetes-quantity';
 import { collectAndPublishPodMetrics } from '../src/services/worker-pod-metrics.service';
@@ -35,16 +35,18 @@ describe('Kubernetes resource quantities', (): void => {
 describe('Pod metric publication isolation', (): void => {
   it('logs and isolates metrics-server and unavailable snapshot publication failures', async (): Promise<void> => {
     const metricsError: Error = new Error('metrics-server unavailable');
-    const runtime: PodMetricsRuntime = new FailingMetricsRuntime(metricsError);
-    const request: CompartmentRequester = vi.fn(
-      async (): Promise<never> => await Promise.reject(new Error('control plane unavailable')),
-    );
+    const runtime: FailingMetricsRuntime = new FailingMetricsRuntime(metricsError);
+    const request: CompartmentRequester = vi.fn();
+    vi.mocked(request)
+      .mockResolvedValueOnce({ namespaceIds: ['prj_1'] })
+      .mockRejectedValueOnce(new Error('control plane unavailable'));
     const logger: Logger = pino({ level: 'silent' });
     vi.spyOn(logger, 'error');
 
     await expect(collectAndPublishPodMetrics(request, runtime, logger)).resolves.toBeUndefined();
+    expect(runtime.lastInput?.namespaces).toEqual([kubeNamespaceName('prj_1')]);
     expect(logger.error).toHaveBeenCalledWith({ err: metricsError }, 'Kubernetes Pod metrics collection failed.');
-    const publishInput: CapturedPodMetricsRequest | undefined = vi.mocked(request).mock.calls.at(0)?.[0] as
+    const publishInput: CapturedPodMetricsRequest | undefined = vi.mocked(request).mock.calls.at(1)?.[0] as
       | CapturedPodMetricsRequest
       | undefined;
     expect(publishInput?.body).toMatchObject({ pods: [], state: 'unavailable' });
@@ -52,10 +54,12 @@ describe('Pod metric publication isolation', (): void => {
 });
 
 class FailingMetricsRuntime implements PodMetricsRuntime {
+  public lastInput: ObservePodMetrics | undefined;
+
   public constructor(private readonly error: Error) {}
 
   public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricObservation[]> {
-    void input;
+    this.lastInput = input;
     return await Promise.reject(this.error);
   }
 }

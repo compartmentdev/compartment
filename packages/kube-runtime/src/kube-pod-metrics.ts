@@ -17,43 +17,66 @@ interface PodMetricIdentity {
   podUid: string;
 }
 
+interface NamespacePodMetricSnapshot {
+  metrics: PodMetric[];
+  pods: V1Pod[];
+}
+
 export async function readKubePodMetrics(
   coreApi: KubePodListReader,
   metricsApi: KubePodMetricsReader,
   input: ObservePodMetrics,
 ): Promise<KubePodMetricObservation[]> {
-  const selector: string = kubeLabelSelector(input.labels);
-  const pods: KubePodListResult = await coreApi.listPodForAllNamespaces({ labelSelector: selector });
-  const productPods: V1Pod[] = pods.items.filter(isObservableProductPod);
-  const metrics: PodMetric[] = await readMetricsForPods(metricsApi, productPods);
-  const metricByPod: Map<string, PodMetric> = new Map<string, PodMetric>(
-    metrics.map((metric: PodMetric): [string, PodMetric] => [
-      podMetricKey(metric.metadata.namespace, metric.metadata.name),
-      metric,
-    ]),
+  const namespaceSnapshots: NamespacePodMetricSnapshot[] = await readNamespaceSnapshots(coreApi, metricsApi, input);
+  const pods: V1Pod[] = namespaceSnapshots.flatMap((snapshot: NamespacePodMetricSnapshot): V1Pod[] => snapshot.pods);
+  const metrics: PodMetric[] = namespaceSnapshots.flatMap(
+    (snapshot: NamespacePodMetricSnapshot): PodMetric[] => snapshot.metrics,
   );
+  const productPods: V1Pod[] = pods.filter(isObservableProductPod);
   if (productPods.length > 0 && metrics.length === 0) {
     throw new Error('metrics-server returned an incomplete product Pod snapshot.');
   }
+  const metricByPod: Map<string, PodMetric> = indexMetricsByPod(metrics);
   const observations: KubePodMetricObservation[] = productPods.flatMap((pod: V1Pod): KubePodMetricObservation[] =>
     toPodMetricObservation(pod, metricByPod),
   );
   return observations;
 }
 
-async function readMetricsForPods(metricsApi: KubePodMetricsReader, pods: V1Pod[]): Promise<PodMetric[]> {
-  const namespaces: string[] = [...new Set(pods.flatMap(readPodNamespace))];
-  const metricLists: KubePodMetricListResult[] = await Promise.all(
-    namespaces.map(
-      async (namespace: string): Promise<KubePodMetricListResult> => await metricsApi.getPodMetrics(namespace),
+async function readNamespaceSnapshots(
+  coreApi: KubePodListReader,
+  metricsApi: KubePodMetricsReader,
+  input: ObservePodMetrics,
+): Promise<NamespacePodMetricSnapshot[]> {
+  const selector: string = kubeLabelSelector(input.labels);
+  return await Promise.all(
+    [...new Set(input.namespaces)].map(
+      async (namespace: string): Promise<NamespacePodMetricSnapshot> =>
+        await readNamespacePodMetrics(coreApi, metricsApi, namespace, selector),
     ),
   );
-  return metricLists.flatMap((metricList: KubePodMetricListResult): PodMetric[] => metricList.items);
 }
 
-function readPodNamespace(pod: V1Pod): string[] {
-  const namespace: string | undefined = pod.metadata?.namespace;
-  return namespace === undefined ? [] : [namespace];
+async function readNamespacePodMetrics(
+  coreApi: KubePodListReader,
+  metricsApi: KubePodMetricsReader,
+  namespace: string,
+  labelSelector: string,
+): Promise<NamespacePodMetricSnapshot> {
+  const [pods, metrics]: [KubePodListResult, KubePodMetricListResult] = await Promise.all([
+    coreApi.listNamespacedPod({ labelSelector, namespace }),
+    metricsApi.getPodMetrics(namespace),
+  ]);
+  return { metrics: metrics.items, pods: pods.items };
+}
+
+function indexMetricsByPod(metrics: PodMetric[]): Map<string, PodMetric> {
+  return new Map<string, PodMetric>(
+    metrics.map((metric: PodMetric): [string, PodMetric] => [
+      podMetricKey(metric.metadata.namespace, metric.metadata.name),
+      metric,
+    ]),
+  );
 }
 
 function isObservableProductPod(pod: V1Pod): boolean {

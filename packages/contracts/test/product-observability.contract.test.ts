@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   productLogIngestRequestSchema,
   type ProductLogIngestEvent,
+  workerListPodMetricNamespacesResponseSchema,
   workerPublishPodMetricsRequestSchema,
 } from '../src';
 
@@ -39,5 +40,12 @@ describe('product observability contracts', (): void => {
         state: 'available',
       }).success,
     ).toBe(false);
+  });
+
+  it('requires explicit project namespace identifiers for metrics collection', (): void => {
+    expect(workerListPodMetricNamespacesResponseSchema.parse({ namespaceIds: ['prj_1'] })).toEqual({
+      namespaceIds: ['prj_1'],
+    });
+    expect(workerListPodMetricNamespacesResponseSchema.safeParse({ namespaceIds: [''] }).success).toBe(false);
   });
 });

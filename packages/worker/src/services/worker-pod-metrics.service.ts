@@ -1,6 +1,14 @@
-import type { WorkerPodResourceMetric, WorkerPublishPodMetricsRequest } from '@compartment/contracts';
-import type { KubeContainerMetricUsage, KubePodMetricObservation } from '@compartment/kube-runtime';
-import { publishPodMetrics, type CompartmentRequester } from '@compartment/sdk';
+import type {
+  WorkerListPodMetricNamespacesResponse,
+  WorkerPodResourceMetric,
+  WorkerPublishPodMetricsRequest,
+} from '@compartment/contracts';
+import {
+  kubeNamespaceName,
+  type KubeContainerMetricUsage,
+  type KubePodMetricObservation,
+} from '@compartment/kube-runtime';
+import { listPodMetricNamespaces, publishPodMetrics, type CompartmentRequester } from '@compartment/sdk';
 import type { Logger } from 'pino';
 import { buildWorkerCaughtErrorLogPayload } from '../logging/worker-error-log';
 import type { WorkerCaughtError } from '../logging/worker-error-log.types';
@@ -17,9 +25,11 @@ export async function collectAndPublishPodMetrics(
   const requestedAt: string = new Date().toISOString();
   let observations: KubePodMetricObservation[];
   try {
+    const scope: WorkerListPodMetricNamespacesResponse = await listPodMetricNamespaces(request);
     observations = await runtime.observePodMetrics({
       kind: 'pod-metrics',
       labels: managedLabels,
+      namespaces: scope.namespaceIds.map(kubeNamespaceName),
     });
   } catch (error) {
     await publishUnavailableSnapshot(request, logger, requestedAt, error as WorkerCaughtError);
