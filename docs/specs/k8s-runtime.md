@@ -113,7 +113,8 @@ projection follows the T5 no-service-account-token and checksum rollout model. R
 `Recreate` Deployments, internal Services, Secrets, and stable PVC references.
 Release Jobs with descriptor-owned resource output bindings remain queued until
 the latest reconcile for each connected resource succeeds, bounded by the
-release timeout. Releases without those bindings remain immediately claimable.
+release timeout. A failed latest reconcile or a deleting/deleted connected
+resource fails the release immediately. Releases without those bindings remain immediately claimable.
 PVC creation is a separate explicit bootstrap operation. Stateful updates stop
 the old pod, prove absence, verify persisted claim UIDs, start the new manifest,
 and restore the saved executable manifest on failure. A live workload without

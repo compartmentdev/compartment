@@ -3,13 +3,26 @@ import type { ApiDatabaseTransaction } from '../db/client.types';
 import {
   deployments,
   environmentResourceOutputVariableBindings,
+  operations,
   productJobRuns,
   projectResources,
   projectServices,
   resourceReconcileRuns,
 } from '../db/schema';
 import { lockResourceReconcileProject } from './resource-reconcile-project.query';
+import {
+  resourceDeletionBindingOutcomeTargetType,
+  resourceDeletionBindingTargetSeparator,
+} from './resource-reconcile-deletion.query';
 import { lockResourceRuntimeClaims } from './resource-runtime-claim-lock.query';
+import { lockProjectResourceIdentity } from './resources.query';
+import type {
+  ReleaseResourceBindingRow,
+  ReleaseResourceIdRow,
+  TerminalReleaseResourceRow,
+  TerminalReleaseResourceStatus,
+} from './product-job-release-readiness.query.types';
+import type { ProductJobResourceFenceResult } from './product-job-runs.query.types';
 
 export async function expireBlockedReleaseJobs(transaction: ApiDatabaseTransaction, expiredAt: Date): Promise<void> {
   await transaction
@@ -36,23 +49,127 @@ export async function expireBlockedReleaseJobs(transaction: ApiDatabaseTransacti
 export async function lockReleaseJobResourceFence(
   transaction: ApiDatabaseTransaction,
   deploymentId: string,
-): Promise<boolean> {
-  const rows: { id: string }[] = await transaction
+): Promise<ProductJobResourceFenceResult> {
+  await lockReleaseResources(transaction, deploymentId);
+  const terminalResource: TerminalReleaseResourceRow | undefined = await findTerminalReleaseResource(
+    transaction,
+    deploymentId,
+  );
+  if (terminalResource !== undefined) {
+    await failTerminalReleaseJob(transaction, deploymentId, terminalResource, new Date());
+    return 'terminalized';
+  }
+  return (await hasBlockingReleaseResource(transaction, deploymentId)) ? 'blocked' : 'claimable';
+}
+
+async function lockReleaseResources(transaction: ApiDatabaseTransaction, deploymentId: string): Promise<void> {
+  await lockReleaseResourceBindings(transaction, deploymentId);
+  const rows: ReleaseResourceIdRow[] = await readReleaseResourceIds(transaction, deploymentId);
+  for (const row of rows) {
+    await lockResourceReconcileProject(transaction, row.id);
+  }
+  await lockResourceRuntimeClaims(
+    transaction,
+    rows.map((row: ReleaseResourceIdRow): string => row.id),
+  );
+}
+
+async function lockReleaseResourceBindings(transaction: ApiDatabaseTransaction, deploymentId: string): Promise<void> {
+  const bindings: ReleaseResourceBindingRow[] = await transaction
+    .select({
+      environmentId: environmentResourceOutputVariableBindings.environmentId,
+      resourceName: environmentResourceOutputVariableBindings.resourceName,
+    })
+    .from(deployments)
+    .innerJoin(projectServices, eq(projectServices.id, deployments.projectServiceId))
+    .innerJoin(environmentResourceOutputVariableBindings, releaseResourceBindingCondition())
+    .where(eq(deployments.id, deploymentId));
+  bindings.sort((left: ReleaseResourceBindingRow, right: ReleaseResourceBindingRow): number =>
+    releaseResourceBindingLockKey(left).localeCompare(releaseResourceBindingLockKey(right)),
+  );
+  for (const binding of bindings) {
+    await lockProjectResourceIdentity(transaction, binding.environmentId, binding.resourceName);
+  }
+}
+
+function releaseResourceBindingLockKey(binding: ReleaseResourceBindingRow): string {
+  return `${binding.environmentId}:${binding.resourceName}`;
+}
+
+async function readReleaseResourceIds(
+  transaction: ApiDatabaseTransaction,
+  deploymentId: string,
+): Promise<ReleaseResourceIdRow[]> {
+  const rows: ReleaseResourceIdRow[] = await transaction
     .select({ id: projectResources.id })
     .from(deployments)
     .innerJoin(projectServices, eq(projectServices.id, deployments.projectServiceId))
     .innerJoin(environmentResourceOutputVariableBindings, releaseResourceBindingCondition())
     .innerJoin(projectResources, releaseProjectResourceCondition())
     .where(eq(deployments.id, deploymentId));
-  rows.sort((left: { id: string }, right: { id: string }): number => left.id.localeCompare(right.id));
-  for (const row of rows) {
-    await lockResourceReconcileProject(transaction, row.id);
+  rows.sort((left: ReleaseResourceIdRow, right: ReleaseResourceIdRow): number => left.id.localeCompare(right.id));
+  return rows;
+}
+
+async function findTerminalReleaseResource(
+  transaction: ApiDatabaseTransaction,
+  deploymentId: string,
+): Promise<TerminalReleaseResourceRow | undefined> {
+  const [terminal] = await transaction
+    .select({
+      failureMessage: sql<string | null>`(
+        select latest_reconcile.failure_message
+        from ${resourceReconcileRuns} latest_reconcile
+        where latest_reconcile.project_resource_id = ${projectResources.id}
+        order by latest_reconcile.created_at desc, latest_reconcile.id desc
+        limit 1
+      )`,
+      name: environmentResourceOutputVariableBindings.resourceName,
+      status: sql<TerminalReleaseResourceStatus>`coalesce(${projectResources.status}, 'deleted')`,
+    })
+    .from(deployments)
+    .innerJoin(projectServices, eq(projectServices.id, deployments.projectServiceId))
+    .innerJoin(environmentResourceOutputVariableBindings, releaseResourceBindingCondition())
+    .leftJoin(projectResources, releaseProjectResourceCondition())
+    .where(and(eq(deployments.id, deploymentId), terminalReleaseResourceCondition()))
+    .limit(1);
+  return terminal;
+}
+
+async function failTerminalReleaseJob(
+  transaction: ApiDatabaseTransaction,
+  deploymentId: string,
+  resource: TerminalReleaseResourceRow,
+  failedAt: Date,
+): Promise<void> {
+  await transaction
+    .update(productJobRuns)
+    .set({
+      completedAt: failedAt,
+      exitCode: null,
+      jobName: sql`'resource-readiness/' || ${productJobRuns.identityId}`,
+      logs: terminalReleaseFailureLog(resource),
+      podName: null,
+      status: 'failed',
+      updatedAt: failedAt,
+    })
+    .where(queuedReleaseJobCondition(deploymentId));
+}
+
+function terminalReleaseFailureLog(resource: TerminalReleaseResourceRow): string {
+  if (resource.status === 'deleting' || resource.status === 'deleted') {
+    return `Release Job failed before execution. Declared resource ${resource.name} was deleted.`;
   }
-  await lockResourceRuntimeClaims(
-    transaction,
-    rows.map((row: { id: string }): string => row.id),
+  const detail: string = resource.failureMessage === null ? '.' : `: ${resource.failureMessage}`;
+  return `Release Job failed before execution. Declared resource ${resource.name} reconciliation failed${detail}`;
+}
+
+function queuedReleaseJobCondition(deploymentId: string): SQL | undefined {
+  return and(
+    eq(productJobRuns.jobClass, 'release'),
+    eq(productJobRuns.identityId, deploymentId),
+    eq(productJobRuns.status, 'queued'),
   );
-  return !(await hasBlockingReleaseResource(transaction, deploymentId));
 }
 
 async function hasBlockingReleaseResource(transaction: ApiDatabaseTransaction, deploymentId: string): Promise<boolean> {
@@ -95,15 +212,48 @@ function releaseProjectResourceCondition(): SQL {
 
 function blockingReleaseResourceCondition(): SQL {
   return sql`(
-    ${projectResources.id} is null
-    or ${projectResources.status} <> 'running'
-    or not exists (
-      select 1
-      from ${resourceReconcileRuns}
-      where ${resourceReconcileRuns.projectResourceId} = ${projectResources.id}
-        and ${resourceReconcileRuns.phase} = 'succeeded'
-        and not exists (${newerResourceReconcileRun()})
+    not (${terminalReleaseResourceCondition()})
+    and (
+      ${projectResources.id} is null
+      or ${projectResources.status} <> 'running'
+      or not (${latestResourceReconcilePhaseCondition('succeeded')})
     )
+  )`;
+}
+
+function terminalReleaseResourceCondition(): SQL {
+  return sql`(
+    coalesce(${projectResources.status} = 'deleting', false)
+    or ${latestResourceReconcilePhaseCondition('failed')}
+    or (
+      ${projectResources.id} is null
+      and exists (
+        select 1
+        from ${operations}
+        where ${operations.targetType} = ${resourceDeletionBindingOutcomeTargetType}
+          and ${operations.targetId} = (
+            ${environmentResourceOutputVariableBindings.environmentId}
+              || ${resourceDeletionBindingTargetSeparator}
+              || ${environmentResourceOutputVariableBindings.resourceName}
+          )
+          and ${operations.completedAt} >= (
+            select release_job.created_at
+            from ${productJobRuns} release_job
+            where release_job.job_class = 'release'
+              and release_job.identity_id = ${deployments.id}
+          )
+      )
+    )
+  )`;
+}
+
+function latestResourceReconcilePhaseCondition(phase: 'failed' | 'succeeded'): SQL {
+  return sql`exists (
+    select 1
+    from ${resourceReconcileRuns}
+    where ${resourceReconcileRuns.projectResourceId} = ${projectResources.id}
+      and ${resourceReconcileRuns.phase} = ${phase}
+      and not exists (${newerResourceReconcileRun()})
   )`;
 }
 

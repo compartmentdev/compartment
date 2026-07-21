@@ -56,3 +56,5 @@ export interface ClaimedProductJobQueryResult {
   intent: ProductJobIntent | null;
   persistedResult: WorkerPersistProductJobResultRequest | null;
 }
+
+export type ProductJobResourceFenceResult = 'blocked' | 'claimable' | 'terminalized';

@@ -122,6 +122,7 @@ function buildProbeDescriptor(options: SelfHostedUserSetupAppFixtureOptions, pro
             keepLast: 2
 `
       : '';
+  // Changing this env value forces the already-running resource through a release-time reconcile.
   const releaseReconcileEnv: string =
     options.includeResourceRelease === true ? '      E2E_RELEASE_RECONCILE: enabled\n' : '';
 
