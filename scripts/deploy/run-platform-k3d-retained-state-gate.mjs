@@ -6,8 +6,11 @@ const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const context = process.env.COMPARTMENT_E2E_KUBE_CONTEXT ?? 'k3d-compartment-e2e';
 const shard = process.env.COMPARTMENT_E2E_SHARD ?? 'default';
 const namespace = `retained-state-${shard}`;
+const buildNamespace = `${namespace}-build`;
 const release = 'restore2-state';
+const projectProvisioningNamespace = `${release}-compartment-project-provisioning`;
 const secretName = `${release}-install-state`;
+const registryAuthServiceName = `${release}-compartment-registry-auth`;
 
 function helm(args) {
   runCommand('helm', [...args, '--kube-context', context], repositoryRoot);
@@ -56,14 +59,35 @@ async function runRetainedInstallStateGate() {
       '--set',
       'platform.publicProtocol=https',
       '--set',
+      'platform.publicIngressIpv4=8.8.8.8',
+      '--set',
+      'platform.acmeEmail=retained@example.test',
+      '--set',
       'platform.tlsMode=managed',
       '--set',
       'platform.managedDomainBrokerUrl=https://broker.example.test',
       '--set',
       'secrets.managedDomainBrokerToken=retained-token',
     ]);
+    helm([
+      'upgrade',
+      release,
+      './deploy/chart/compartment',
+      '--namespace',
+      namespace,
+      '--set',
+      'platform.startupStage=full',
+      '--set',
+      `buildkit.namespace=${buildNamespace}`,
+      '--set',
+      'productLogs.enabled=false',
+    ]);
+    const registryClusterIp = readServiceClusterIp();
     helm(['uninstall', release, '--namespace', namespace]);
+    kubectl(['wait', '--for=delete', `namespace/${buildNamespace}`, '--timeout=60s']);
+    kubectl(['wait', '--for=delete', `namespace/${projectProvisioningNamespace}`, '--timeout=60s']);
     kubectl(['--namespace', namespace, 'get', 'secret', secretName]);
+    kubectl(['--namespace', namespace, 'get', 'service', registryAuthServiceName]);
     helm([
       'upgrade',
       '--install',
@@ -72,12 +96,22 @@ async function runRetainedInstallStateGate() {
       '--namespace',
       namespace,
       '--set',
-      'platform.startupStage=foundation',
+      'platform.startupStage=full',
       '--set',
       'platform.installationId=replacement-attempt',
+      '--set',
+      'secrets.registryWritePassword=reinstalled-registry-password',
+      '--set',
+      'secrets.productLogIngestToken=reinstalled-product-log-token',
+      '--set',
+      `buildkit.namespace=${buildNamespace}`,
+      '--set',
+      'productLogs.enabled=false',
     ]);
     const installationId = readSecretValue('installation-id');
     const brokerUrl = readSecretValue('managed-domain-broker-url');
+    const reinstalledRegistryClusterIp = readServiceClusterIp();
+    kubectl(['--namespace', namespace, 'get', 'deployment', `${release}-compartment-registry-auth`]);
     const runtimeBrokerUrl = captureKubectl([
       '--namespace',
       namespace,
@@ -90,13 +124,26 @@ async function runRetainedInstallStateGate() {
     if (
       installationId !== 'retained-installation' ||
       brokerUrl !== 'https://broker.example.test' ||
-      runtimeBrokerUrl !== 'https://broker.example.test'
+      runtimeBrokerUrl !== 'https://broker.example.test' ||
+      reinstalledRegistryClusterIp !== registryClusterIp
     ) {
-      throw new Error('Retained install-state values changed during the replacement install attempt.');
+      throw new Error('Retained install state or registry Service address changed during reinstall.');
     }
   } finally {
     cleanup();
   }
+}
+
+function readServiceClusterIp() {
+  return captureKubectl([
+    '--namespace',
+    namespace,
+    'get',
+    'service',
+    registryAuthServiceName,
+    '--output',
+    'jsonpath={.spec.clusterIP}',
+  ]);
 }
 
 function readSecretValue(key) {

@@ -14,6 +14,12 @@
 {{- printf "%s-registry-auth.%s.svc" (include "compartment.fullname" .) .Release.Namespace -}}
 {{- end }}
 
+{{- define "compartment.retainedResourceAnnotations" -}}
+helm.sh/resource-policy: keep
+meta.helm.sh/release-name: {{ .Release.Name | quote }}
+meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
+{{- end }}
+
 {{- define "compartment.customTlsSecretName" -}}
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- default (printf "%s-custom-tls" (include "compartment.fullname" .)) $installState.effective.customTls.existingSecret -}}

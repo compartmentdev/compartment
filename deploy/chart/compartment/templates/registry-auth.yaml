@@ -6,6 +6,8 @@ metadata:
   name: {{ include "compartment.fullname" . }}-registry-auth
   labels:
     {{- include "compartment.labels" . | nindent 4 }}
+  annotations:
+    {{- include "compartment.retainedResourceAnnotations" . | nindent 4 }}
 spec:
   selector:
     {{- include "compartment.componentLabels" (dict "root" . "component" "registry-auth") | nindent 4 }}
