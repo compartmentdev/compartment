@@ -44,6 +44,7 @@ describe('self-hosted publish workflows', () => {
     const buildJob = workflow.jobs['build-kubernetes-cli'];
     const publishJob = workflow.jobs['publish-kubernetes-cli'];
     const buildStep = buildJob.steps.find((step) => step.name === 'Build kubernetes CLI binary');
+    const orasStep = publishJob.steps.find((step) => step.name === 'Set up ORAS');
     const publishStep = publishJob.steps.find((step) => step.name === 'Publish immutable CLI artifact');
     const anonymousPullStep = publishJob.steps.find((step) => step.name === 'Verify anonymous CLI artifact pulls');
     const signStep = publishJob.steps.find((step) => step.name === 'Sign and verify CLI artifact');
@@ -59,6 +60,11 @@ describe('self-hosted publish workflows', () => {
     expect(buildStep.run).toContain('--build-commit-sha "${GITHUB_SHA}"');
     expect(publishJob.needs).toEqual(['build-kubernetes-cli', 'publish-kubernetes-images']);
     expect(publishJob.permissions).toEqual({ contents: 'read', 'id-token': 'write', packages: 'write' });
+    expect(orasStep.uses).toBe('oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d');
+    expect(orasStep.with).toEqual({
+      url: 'https://github.com/oras-project/oras/releases/download/v1.3.3/oras_1.3.3_linux_amd64.tar.gz',
+      checksum: '9ce999f8d2de03fc03968b29d743077a58783e545e5eaa53917ca177352d0e59',
+    });
     expect(publishStep.run).toContain('${CLI_REPOSITORY}:sha-${PUBLISH_SHA}');
     expect(publishStep.run).toContain('Immutable CLI artifact ${immutable_ref} already points to');
     expect(anonymousPullStep.run).toContain('--registry-config ./.compartment/anonymous-registry-config.json');
