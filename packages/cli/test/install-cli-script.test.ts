@@ -19,6 +19,10 @@ const expectedArtifactName: string = 'compartment-linux-x64.tar.gz';
 const expectedInstalledVersion: string = '0.1.0-main+1234567';
 const expectedMainCommitSha: string = '1234567890abcdef1234567890abcdef12345678';
 const expectedMainReleaseTag: string = `sha-${expectedMainCommitSha}`;
+const expectedKubernetesCommitSha: string = 'abcdef1234567890abcdef1234567890abcdef12';
+const expectedKubernetesReleaseTag: string = `sha-${expectedKubernetesCommitSha}`;
+const expectedCliManifestDigest: string = `sha256:${'c'.repeat(64)}`;
+const expectedCliDigestRef: string = `ghcr.io/compartmentdev/compartment-cli@${expectedCliManifestDigest}`;
 const repositoryRoot: string = resolve(__dirname, '../../..');
 const renderInstallerScriptPath: string = resolve(repositoryRoot, 'scripts/release/render-cli-install-script.mjs');
 const sourceInstallerScriptPath: string = resolve(repositoryRoot, 'install.sh');
@@ -30,12 +34,16 @@ interface InstallerFixture {
   tarballPath: string;
 }
 
+type InstallerSignatureOutcome = 'foreign-identity' | 'unsigned' | 'valid';
+
 interface InstallerScriptResult {
+  cosignInvocations: string[];
   exitCode: number | string;
   installerTerminalOutput: string;
   stderr: string;
   stdout: string;
   compartmentInvocations: string[];
+  orasInvocations: string[];
   sudoInvocations: string[];
   urlLog: string[];
 }
@@ -50,6 +58,7 @@ interface InstallerRunOptions {
   osName?: string | undefined;
   pathEntries?: string[] | undefined;
   shell?: string | undefined;
+  signatureOutcome?: InstallerSignatureOutcome | undefined;
 }
 
 interface InstallerProcessResult {
@@ -106,6 +115,55 @@ describe('render-cli-install-script', (): void => {
       `https://github.com/example/compartment/releases/download/${expectedMainReleaseTag}/checksums.txt`,
     ]);
   });
+
+  it('verifies and installs the immutable CLI artifact resolved from the kubernetes branch head', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: ['--channel', 'kubernetes'],
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.stderr).toContain(`Resolved kubernetes to ${expectedKubernetesReleaseTag}`);
+    expect(result.stdout).toContain(`Installed compartment to ${join(binDirectory, 'compartment')}`);
+    expect(result.compartmentInvocations).toEqual(['--version']);
+    expect(result.urlLog).toEqual(['https://api.github.com/repos/example/compartment/git/ref/heads/kubernetes']);
+    expect(result.cosignInvocations).toEqual([
+      `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com ${expectedCliDigestRef}`,
+    ]);
+    expect(result.orasInvocations[0]).toBe(
+      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}`,
+    );
+    expect(result.orasInvocations[1]).toMatch(
+      new RegExp(`^pull --platform linux/amd64 --output .+ ${expectedCliDigestRef}$`, 'u'),
+    );
+  });
+
+  it.each([
+    ['an unsigned artifact', 'unsigned', 'no signatures found'],
+    ['an artifact signed by another identity', 'foreign-identity', 'certificate identity mismatch'],
+  ] as const)(
+    'fails closed before pulling %s',
+    async (_label: string, signatureOutcome: InstallerSignatureOutcome, expectedError: string): Promise<void> => {
+      const temporaryDirectory: string = await createTemporaryDirectory();
+      const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+      const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+        allowFailure: true,
+        args: ['--channel', 'kubernetes'],
+        pathEntries: [binDirectory],
+        signatureOutcome,
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(expectedError);
+      expect(result.stderr).toContain(`Failed to verify Kubernetes CLI artifact ${expectedCliDigestRef}`);
+      expect(result.orasInvocations.filter((invocation: string): boolean => invocation.startsWith('pull '))).toEqual(
+        [],
+      );
+      expect(result.compartmentInvocations).toEqual([]);
+      await expect(readFile(join(binDirectory, 'compartment'), 'utf8')).rejects.toThrow();
+    },
+  );
 
   it('selects the first supported user bin directory from PATH', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
@@ -632,6 +690,7 @@ async function runInstallerScript(
     SHELL: options.shell ?? process.env.SHELL,
     COMPARTMENT_TEST_ARTIFACT_PATH: fixture.tarballPath,
     COMPARTMENT_TEST_CHECKSUMS_PATH: fixture.checksumsPath,
+    COMPARTMENT_TEST_SIGNATURE_OUTCOME: options.signatureOutcome ?? 'valid',
     COMPARTMENT_TEST_STATE_DIR: stateDirectory,
   };
   if (options.acceptPathUpdate === true) {
@@ -652,9 +711,11 @@ async function runInstallerScript(
   );
 
   return {
+    cosignInvocations: await readLogLines(join(stateDirectory, 'cosign.log')),
     compartmentInvocations: await readLogLines(join(stateDirectory, 'compartment.log')),
     exitCode: result.exitCode,
     installerTerminalOutput: await readOptionalText(options.installerTerminalPath),
+    orasInvocations: await readLogLines(join(stateDirectory, 'oras.log')),
     stderr: result.stderr,
     stdout: result.stdout,
     sudoInvocations: await readLogLines(join(stateDirectory, 'sudo.log')),
@@ -749,7 +810,9 @@ function normalizeInstallerOsName(osName?: string): string {
 
 async function createStubCommands(stubCommandDirectory: string, osName?: string): Promise<void> {
   await mkdir(stubCommandDirectory, { recursive: true });
+  await writeExecutableScript(join(stubCommandDirectory, 'cosign'), buildStubCosignScript());
   await writeExecutableScript(join(stubCommandDirectory, 'curl'), buildStubCurlScript());
+  await writeExecutableScript(join(stubCommandDirectory, 'oras'), buildStubOrasScript());
   await writeExecutableScript(join(stubCommandDirectory, 'uname'), buildStubUnameScript(osName));
   await writeExecutableScript(join(stubCommandDirectory, 'sudo'), buildStubSudoScript());
 }
@@ -786,6 +849,9 @@ case "$url" in
   https://api.github.com/repos/example/compartment/git/ref/heads/main)
     printf '{"object":{"sha":"${expectedMainCommitSha}"}}\\n'
     ;;
+  https://api.github.com/repos/example/compartment/git/ref/heads/kubernetes)
+    printf '{"object":{"sha":"${expectedKubernetesCommitSha}"}}\\n'
+    ;;
   https://github.com/example/compartment/releases/download/sha-*/checksums.txt)
     cp "$checksums_path" "$output_path"
     ;;
@@ -806,6 +872,91 @@ case "$url" in
     ;;
   *)
     printf 'Unexpected curl URL: %s\\n' "$url" >&2
+    exit 1
+    ;;
+esac
+`);
+}
+
+function buildStubCosignScript(): string {
+  return createShellScript(`
+state_dir="\${COMPARTMENT_TEST_STATE_DIR:?}"
+signature_outcome="\${COMPARTMENT_TEST_SIGNATURE_OUTCOME:?}"
+mkdir -p "$state_dir"
+printf '%s\\n' "$*" >> "\${state_dir}/cosign.log"
+
+expected_args="verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com ${expectedCliDigestRef}"
+if [ "$*" != "$expected_args" ]; then
+  printf 'Unexpected cosign args: %s\\n' "$*" >&2
+  exit 1
+fi
+
+case "$signature_outcome" in
+  valid)
+    : > "\${state_dir}/cosign-verified"
+    ;;
+  unsigned)
+    printf 'no signatures found\\n' >&2
+    exit 1
+    ;;
+  foreign-identity)
+    printf 'certificate identity mismatch\\n' >&2
+    exit 1
+    ;;
+esac
+`);
+}
+
+function buildStubOrasScript(): string {
+  return createShellScript(`
+artifact_path="\${COMPARTMENT_TEST_ARTIFACT_PATH:?}"
+checksums_path="\${COMPARTMENT_TEST_CHECKSUMS_PATH:?}"
+state_dir="\${COMPARTMENT_TEST_STATE_DIR:?}"
+mkdir -p "$state_dir"
+printf '%s\\n' "$*" >> "\${state_dir}/oras.log"
+
+case "\${1:-}" in
+  resolve)
+    if [ "$*" != "resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}" ]; then
+      printf 'Unexpected oras resolve args: %s\\n' "$*" >&2
+      exit 1
+    fi
+    printf '${expectedCliManifestDigest}\\n'
+    ;;
+  pull)
+    if [ ! -f "\${state_dir}/cosign-verified" ]; then
+      printf 'Refusing CLI payload pull before cosign verification.\\n' >&2
+      exit 1
+    fi
+    output_path=""
+    shift
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --platform)
+          if [ "$2" != "linux/amd64" ]; then
+            printf 'Unexpected oras pull platform: %s\\n' "$2" >&2
+            exit 1
+          fi
+          shift 2
+          ;;
+        --output)
+          output_path="$2"
+          shift 2
+          ;;
+        ${expectedCliDigestRef})
+          shift
+          ;;
+        *)
+          printf 'Unexpected oras pull arg: %s\\n' "$1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    cp "$artifact_path" "$output_path/${expectedArtifactName}"
+    cp "$checksums_path" "$output_path/checksums.txt"
+    ;;
+  *)
+    printf 'Unexpected oras command: %s\\n' "$*" >&2
     exit 1
     ;;
 esac

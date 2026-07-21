@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 const defaultPath = process.env.PATH ?? '/usr/bin:/bin';
-const distributionChannel = 'main';
+const distributionChannel = 'kubernetes';
 const buildCommitSha = '1234567890abcdef1234567890abcdef12345678';
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const buildCliSeaScriptPath = resolve(repositoryRoot, 'scripts/release/build-cli-sea.mjs');

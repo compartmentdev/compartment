@@ -39,6 +39,43 @@ describe('self-hosted publish workflows', () => {
     expect(publishStep.with).toMatchObject({ channel: 'kubernetes', 'publish-sha': '${{ github.sha }}' });
   });
 
+  it('builds and publishes a signed kubernetes CLI OCI artifact for all supported platforms', async () => {
+    const workflow = await readWorkflow(kubernetesWorkflowPath);
+    const buildJob = workflow.jobs['build-kubernetes-cli'];
+    const publishJob = workflow.jobs['publish-kubernetes-cli'];
+    const buildStep = buildJob.steps.find((step) => step.name === 'Build kubernetes CLI binary');
+    const publishStep = publishJob.steps.find((step) => step.name === 'Publish immutable CLI artifact');
+    const anonymousPullStep = publishJob.steps.find((step) => step.name === 'Enable anonymous CLI artifact pulls');
+    const signStep = publishJob.steps.find((step) => step.name === 'Sign and verify CLI artifact');
+    const promoteStep = publishJob.steps.find((step) => step.name === 'Promote mutable kubernetes CLI tag');
+
+    expect(buildJob.strategy.matrix.include).toEqual([
+      { artifact_name: 'compartment-darwin-arm64.tar.gz', runner: 'macos-14' },
+      { artifact_name: 'compartment-darwin-x64.tar.gz', runner: 'macos-15-intel' },
+      { artifact_name: 'compartment-linux-arm64.tar.gz', runner: 'ubuntu-24.04-arm' },
+      { artifact_name: 'compartment-linux-x64.tar.gz', runner: 'ubuntu-24.04' },
+    ]);
+    expect(buildStep.run).toContain('--distribution-channel kubernetes');
+    expect(buildStep.run).toContain('--build-commit-sha "${GITHUB_SHA}"');
+    expect(publishJob.needs).toEqual(['build-kubernetes-cli', 'publish-kubernetes-images']);
+    expect(publishJob.permissions).toEqual({ contents: 'read', 'id-token': 'write', packages: 'write' });
+    expect(publishStep.run).toContain('${CLI_REPOSITORY}:sha-${PUBLISH_SHA}');
+    expect(publishStep.run).toContain('Immutable CLI artifact ${immutable_ref} already points to');
+    expect(anonymousPullStep.run).toContain('--field visibility=public');
+    expect(anonymousPullStep.run).toContain('--registry-config ./.compartment/anonymous-registry-config.json');
+    expect(signStep.run).toContain('cosign sign --yes --new-bundle-format "$digest_ref"');
+    expect(signStep.run).toContain('publish-self-hosted-kubernetes.yml@refs/heads/kubernetes');
+    expect(signStep.run).toContain('--certificate-oidc-issuer https://token.actions.githubusercontent.com');
+    expect(workflow.jobs['publish-kubernetes-cli'].steps.indexOf(anonymousPullStep)).toBeGreaterThan(
+      workflow.jobs['publish-kubernetes-cli'].steps.indexOf(signStep),
+    );
+    expect(workflow.jobs['publish-kubernetes-cli'].steps.indexOf(promoteStep)).toBeGreaterThan(
+      workflow.jobs['publish-kubernetes-cli'].steps.indexOf(signStep),
+    );
+    expect(promoteStep.run).toContain('git/ref/heads/kubernetes');
+    expect(promoteStep.run).toContain('${CLI_REPOSITORY}:kubernetes');
+  });
+
   it('publishes, signs, and verifies both registries through one channel action', async () => {
     const action = await readWorkflow(channelActionPath);
     const pushStep = action.runs.steps.find((step) => step.name === 'Push immutable self-hosted images');

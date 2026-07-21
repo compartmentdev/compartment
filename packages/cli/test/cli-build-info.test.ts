@@ -44,6 +44,18 @@ describe('readCliVersion', (): void => {
     expect(readCliVersion()).toBe(`${readCliPackageVersion()}-main+1234567`);
   });
 
+  it('formats kubernetes builds with the embedded short commit sha', (): void => {
+    mocks.readSeaAssetText.mockReturnValue(
+      JSON.stringify({
+        buildCommitSha: '1234567890abcdef1234567890abcdef12345678',
+        cliVersion: readCliPackageVersion(),
+        distributionChannel: 'kubernetes',
+      }),
+    );
+
+    expect(readCliVersion()).toBe(`${readCliPackageVersion()}-kubernetes+1234567`);
+  });
+
   it('keeps stable release output on the plain CLI version', (): void => {
     mocks.readSeaAssetText.mockReturnValue(
       JSON.stringify({

@@ -80,6 +80,7 @@ function readCliSeaBuildOptions(args, repositoryRoot) {
   if (
     options.distributionChannel === 'source' ||
     options.distributionChannel === 'main' ||
+    options.distributionChannel === 'kubernetes' ||
     options.distributionChannel === 'release'
   ) {
     return {
@@ -89,7 +90,7 @@ function readCliSeaBuildOptions(args, repositoryRoot) {
     };
   }
 
-  throw new Error('Expected --distribution-channel (source|main|release) when building the CLI SEA binary.');
+  throw new Error('Expected --distribution-channel (source|main|kubernetes|release) when building the CLI SEA binary.');
 }
 
 function readRequiredCliSeaOptionValue(args, index, optionName) {

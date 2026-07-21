@@ -11,6 +11,16 @@ Install the CLI with the public bootstrapper:
 curl -fsSL https://compartment.dev/install.sh | sh
 ```
 
+To install the current Kubernetes branch CLI, select its channel:
+
+```bash
+curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel kubernetes
+```
+
+The bootstrapper resolves the branch head to an immutable OCI artifact, verifies its keyless signature against the
+Kubernetes publish workflow identity, and only then downloads the CLI. An unsigned artifact or a signature from
+another identity stops the install. This CLI includes the matching Helm chart.
+
 For a verified install from an immutable stable release, use GitHub CLI 2.81.0 or newer:
 
 ```bash
@@ -95,6 +105,7 @@ You can install the CLI and immediately start the same interactive platform inst
 
 ```bash
 curl -fsSL https://compartment.dev/install.sh | sh -s -- \
+  --channel kubernetes \
   --init-install \
   --values compartment-values.yaml
 ```

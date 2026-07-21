@@ -12,7 +12,7 @@ import type {
 const cliBuildInfoAssetName: string = 'cli-build-info.json';
 const commitShaPattern: RegExp = /^[0-9a-f]{7,40}$/i;
 const defaultDistributionChannel: CliDistributionChannel = 'source';
-const mainVersionCommitLength: number = 7;
+const rollingVersionCommitLength: number = 7;
 const packageJsonPath: string = resolve(__dirname, '../package.json');
 
 export function readCliVersion(): string {
@@ -32,7 +32,7 @@ export function readCliBuildInfo(): CliBuildInfo {
 }
 
 function formatCliVersion(buildInfo: CliBuildInfo): string {
-  if (buildInfo.distributionChannel !== 'main') {
+  if (buildInfo.distributionChannel !== 'main' && buildInfo.distributionChannel !== 'kubernetes') {
     return buildInfo.cliVersion;
   }
 
@@ -40,7 +40,7 @@ function formatCliVersion(buildInfo: CliBuildInfo): string {
     return buildInfo.cliVersion;
   }
 
-  return `${buildInfo.cliVersion}-main+${buildInfo.buildCommitSha.slice(0, mainVersionCommitLength)}`;
+  return `${buildInfo.cliVersion}-${buildInfo.distributionChannel}+${buildInfo.buildCommitSha.slice(0, rollingVersionCommitLength)}`;
 }
 
 function parseCliBuildInfo(value: string): CliBuildInfo {
@@ -78,7 +78,7 @@ function isCliBuildInfoCandidate(value: CliBuildInfoCandidate | JsonValue): valu
 }
 
 function isCliDistributionChannel(value: JsonValue | undefined): value is CliDistributionChannel {
-  return value === 'source' || value === 'main' || value === 'release';
+  return value === 'source' || value === 'main' || value === 'kubernetes' || value === 'release';
 }
 
 function isOptionalBuildCommitSha(value: string | JsonValue | undefined): boolean {
