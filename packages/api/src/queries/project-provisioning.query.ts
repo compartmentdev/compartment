@@ -31,7 +31,6 @@ async function claimPendingProjectProvisioningWithTransaction(
   action: ProjectProvisioningAction | 'any',
 ): Promise<ProjectProvisioningClaimRow | null> {
   const now: Date = new Date();
-  await failExhaustedProjectTeardownLeases(transaction, now);
   const row: typeof projectKubeProvisioning.$inferSelect | undefined = await selectClaimableRow(
     transaction,
     now,
@@ -43,8 +42,18 @@ async function claimPendingProjectProvisioningWithTransaction(
   return await leaseProjectProvisioning(transaction, row, now);
 }
 
-async function failExhaustedProjectTeardownLeases(transaction: DeploymentTransaction, now: Date): Promise<void> {
-  await transaction
+export async function failExhaustedProjectTeardownLeases(): Promise<string[]> {
+  return await getApiDatabase().transaction(
+    async (transaction: DeploymentTransaction): Promise<string[]> =>
+      await failExhaustedProjectTeardownLeasesWithTransaction(transaction, new Date()),
+  );
+}
+
+async function failExhaustedProjectTeardownLeasesWithTransaction(
+  transaction: DeploymentTransaction,
+  now: Date,
+): Promise<string[]> {
+  const rows: { projectId: string }[] = await transaction
     .update(projectKubeProvisioning)
     .set({
       failureMessage: projectTeardownTerminalFailure('The final teardown lease expired.'),
@@ -59,7 +68,9 @@ async function failExhaustedProjectTeardownLeases(transaction: DeploymentTransac
         lt(projectKubeProvisioning.leaseExpiresAt, now),
         gt(projectKubeProvisioning.attempts, projectProvisioningAttemptLimit - 1),
       ),
-    );
+    )
+    .returning({ projectId: projectKubeProvisioning.projectId });
+  return rows.map((row: { projectId: string }): string => row.projectId);
 }
 
 async function selectClaimableRow(

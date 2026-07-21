@@ -1001,11 +1001,15 @@ describe('Phase 0 API integration project lifecycle', (): void => {
 });
 
 async function deleteArchivedProject(sessionToken: string): Promise<LightMyRequestResponse> {
-  const deletion: Promise<LightMyRequestResponse> = app.inject({
+  const deletion: LightMyRequestResponse = await app.inject({
     method: 'DELETE',
     url: '/v1/projects/smoke-web',
     headers: buildOrganizationAuthorizationHeaders(sessionToken),
   });
+  expect(deletion.statusCode).toBe(200);
+  await expect(
+    db.select({ id: projects.id }).from(projects).where(eq(projects.name, 'smoke-web')),
+  ).resolves.toHaveLength(1);
   const teardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
   await completeProjectProvisioning({
     action: 'teardown',
@@ -1014,7 +1018,7 @@ async function deleteArchivedProject(sessionToken: string): Promise<LightMyReque
     projectId: teardown.projectId,
     status: 'succeeded',
   });
-  return await deletion;
+  return deletion;
 }
 
 async function waitForProjectTeardownClaim(): Promise<ProjectProvisioningClaimRow> {

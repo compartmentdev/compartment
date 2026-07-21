@@ -1,25 +1,22 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { projectKubeProvisioning } from '../db/schema';
+import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
-import { projectProvisioningAttemptLimit } from './project-provisioning-policy';
+import {
+  projectProvisioningAttemptLimit,
+  projectTeardownPreparationLeaseDurationMs,
+} from './project-provisioning-policy';
 import type {
   ProjectKubeProvisioningState,
   ProjectTeardownObservation,
   ProjectTeardownState,
 } from './project-provisioning.query.types';
 
-export async function requestProjectTeardown(projectId: string): Promise<void> {
-  await getApiDatabase().transaction(
-    async (transaction: DeploymentTransaction): Promise<void> =>
-      await requestProjectTeardownWithTransaction(transaction, projectId),
-  );
-}
-
-async function requestProjectTeardownWithTransaction(
+export async function prepareProjectTeardownWithTransaction(
   transaction: DeploymentTransaction,
   projectId: string,
-): Promise<void> {
+): Promise<string | null> {
   const row: typeof projectKubeProvisioning.$inferSelect | undefined = await lockProjectKubeLifecycle(
     transaction,
     projectId,
@@ -27,28 +24,88 @@ async function requestProjectTeardownWithTransaction(
   if (row === undefined) {
     throw new Error('Project Kubernetes lifecycle state not found.');
   }
-  if (row.state === 'teardown_failed' && row.attempts >= projectProvisioningAttemptLimit) {
-    throw new Error(row.failureMessage ?? 'Project Kubernetes namespace teardown failed terminally.');
+  const now: Date = new Date();
+  if (row.state === 'teardown_preparing' && row.leaseExpiresAt !== null && row.leaseExpiresAt > now) {
+    return null;
   }
-  if (!teardownAlreadyRequested(row)) {
-    await resetProjectTeardown(transaction, projectId);
+  if (teardownAlreadyActive(row)) {
+    return null;
   }
+  return await leaseProjectTeardownPreparation(transaction, projectId, now);
 }
 
-async function lockProjectKubeLifecycle(
+async function leaseProjectTeardownPreparation(
   transaction: DeploymentTransaction,
   projectId: string,
-): Promise<typeof projectKubeProvisioning.$inferSelect | undefined> {
-  const rows: (typeof projectKubeProvisioning.$inferSelect)[] = await transaction
-    .select()
-    .from(projectKubeProvisioning)
-    .where(eq(projectKubeProvisioning.projectId, projectId))
-    .limit(1)
-    .for('update');
-  return rows[0];
+  now: Date,
+): Promise<string> {
+  const preparationLeaseId: string = createId('kpl');
+  await transaction
+    .update(projectKubeProvisioning)
+    .set({
+      attempts: 0,
+      failureMessage: null,
+      leaseExpiresAt: new Date(now.getTime() + projectTeardownPreparationLeaseDurationMs),
+      leaseId: preparationLeaseId,
+      state: 'teardown_preparing',
+      updatedAt: now,
+    })
+    .where(eq(projectKubeProvisioning.projectId, projectId));
+  return preparationLeaseId;
 }
 
-async function resetProjectTeardown(transaction: DeploymentTransaction, projectId: string): Promise<void> {
+export async function activateProjectTeardownWithTransaction(
+  transaction: DeploymentTransaction,
+  projectId: string,
+  preparationLeaseId: string,
+): Promise<void> {
+  const row: typeof projectKubeProvisioning.$inferSelect | undefined = await lockProjectKubeLifecycle(
+    transaction,
+    projectId,
+  );
+  if (row?.state !== 'teardown_preparing' || row.leaseId !== preparationLeaseId) {
+    throw new Error('Project Kubernetes teardown is not ready to activate.');
+  }
+  await resetProjectTeardown(transaction, projectId, 'teardown_pending');
+}
+
+export async function releaseProjectTeardownPreparation(projectId: string, preparationLeaseId: string): Promise<void> {
+  await getApiDatabase()
+    .update(projectKubeProvisioning)
+    .set({ leaseExpiresAt: new Date(0), updatedAt: new Date() })
+    .where(
+      and(
+        eq(projectKubeProvisioning.projectId, projectId),
+        eq(projectKubeProvisioning.leaseId, preparationLeaseId),
+        eq(projectKubeProvisioning.state, 'teardown_preparing'),
+      ),
+    );
+}
+
+export async function renewProjectTeardownPreparation(projectId: string, preparationLeaseId: string): Promise<boolean> {
+  const now: Date = new Date();
+  const rows: { projectId: string }[] = await getApiDatabase()
+    .update(projectKubeProvisioning)
+    .set({
+      leaseExpiresAt: new Date(now.getTime() + projectTeardownPreparationLeaseDurationMs),
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(projectKubeProvisioning.projectId, projectId),
+        eq(projectKubeProvisioning.leaseId, preparationLeaseId),
+        eq(projectKubeProvisioning.state, 'teardown_preparing'),
+      ),
+    )
+    .returning({ projectId: projectKubeProvisioning.projectId });
+  return rows.length === 1;
+}
+
+async function resetProjectTeardown(
+  transaction: DeploymentTransaction,
+  projectId: string,
+  state: 'teardown_pending' | 'teardown_preparing',
+): Promise<void> {
   await transaction
     .update(projectKubeProvisioning)
     .set({
@@ -56,18 +113,18 @@ async function resetProjectTeardown(transaction: DeploymentTransaction, projectI
       failureMessage: null,
       leaseExpiresAt: null,
       leaseId: null,
-      state: 'teardown_pending',
+      state,
       updatedAt: new Date(),
     })
     .where(eq(projectKubeProvisioning.projectId, projectId));
 }
 
-function teardownAlreadyRequested(row: typeof projectKubeProvisioning.$inferSelect): boolean {
+function teardownAlreadyActive(row: typeof projectKubeProvisioning.$inferSelect): boolean {
   return (
     row.state === 'teardown_pending' ||
     row.state === 'teardown_running' ||
     row.state === 'teardown_succeeded' ||
-    row.state === 'teardown_failed'
+    (row.state === 'teardown_failed' && row.attempts < projectProvisioningAttemptLimit)
   );
 }
 
@@ -82,4 +139,34 @@ export async function readProjectTeardownState(projectId: string): Promise<Proje
     return null;
   }
   return { attempts: rows[0]?.attempts ?? 0, state: state.slice('teardown_'.length) as ProjectTeardownState };
+}
+
+export async function lockProjectTeardownStateWithTransaction(
+  transaction: DeploymentTransaction,
+  projectId: string,
+): Promise<ProjectTeardownObservation | null> {
+  const row: typeof projectKubeProvisioning.$inferSelect | undefined = await lockProjectKubeLifecycle(
+    transaction,
+    projectId,
+  );
+  if (row?.state.startsWith('teardown_') !== true) {
+    return null;
+  }
+  return {
+    attempts: row.attempts,
+    state: row.state.slice('teardown_'.length) as ProjectTeardownState,
+  };
+}
+
+async function lockProjectKubeLifecycle(
+  transaction: DeploymentTransaction,
+  projectId: string,
+): Promise<typeof projectKubeProvisioning.$inferSelect | undefined> {
+  const rows: (typeof projectKubeProvisioning.$inferSelect)[] = await transaction
+    .select()
+    .from(projectKubeProvisioning)
+    .where(eq(projectKubeProvisioning.projectId, projectId))
+    .limit(1)
+    .for('update');
+  return rows[0];
 }

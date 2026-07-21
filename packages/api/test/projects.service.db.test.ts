@@ -22,8 +22,18 @@ import {
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { claimProductJob } from '../src/queries/product-job-runs.query';
 import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
-import { claimPendingProjectProvisioning } from '../src/queries/project-provisioning.query';
+import {
+  claimPendingProjectProvisioning,
+  failExhaustedProjectTeardownLeases,
+} from '../src/queries/project-provisioning.query';
+import {
+  activateProjectTeardownWithTransaction,
+  prepareProjectTeardownWithTransaction,
+  releaseProjectTeardownPreparation,
+  renewProjectTeardownPreparation,
+} from '../src/queries/project-teardown.query';
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
+import type { ProjectsMutationTransaction } from '../src/queries/projects.query.types';
 import type { RbacTransaction } from '../src/queries/rbac.query.types';
 import type { resolveActiveProjectScope, resolveRequiredProjectScope } from '../src/services/project-scope.service';
 import {
@@ -31,6 +41,7 @@ import {
   deleteProjectForPrincipal,
   getActiveProjectForPrincipal,
   renameProjectForPrincipal,
+  unarchiveProjectForPrincipal,
 } from '../src/services/projects.service';
 import { assignOrganizationSystemRoleToPrincipalWithExecutor } from '../src/services/rbac-seed.service';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
@@ -179,7 +190,7 @@ describe('projects service', (): void => {
     ]);
   });
 
-  it('caps failed project teardown and preserves the terminal state on repeated delete', async (): Promise<void> => {
+  it('caps failed project teardown until an explicit delete requeues it', async (): Promise<void> => {
     await expect(
       deleteProjectForPrincipal({
         organizationSlug: 'acme-dev',
@@ -226,8 +237,15 @@ describe('projects service', (): void => {
         principalId: 'prn_git_sources',
         projectName: 'billing',
       }),
-    ).rejects.toMatchObject({ code: 'project_delete_runtime_cleanup_failed' });
-    await expect(claimPendingProjectProvisioning('teardown')).resolves.toBeNull();
+    ).resolves.toBe('billing');
+    const retriedTeardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
+    expect(retriedTeardown).toMatchObject({ action: 'teardown', projectId: 'prj_billing' });
+    await expect(
+      db
+        .select({ attempts: projectKubeProvisioning.attempts, state: projectKubeProvisioning.state })
+        .from(projectKubeProvisioning)
+        .where(eq(projectKubeProvisioning.projectId, 'prj_billing')),
+    ).resolves.toEqual([{ attempts: 1, state: 'teardown_running' }]);
   });
 
   it('terminally fails an expired final teardown lease', async (): Promise<void> => {
@@ -248,6 +266,7 @@ describe('projects service', (): void => {
       })
       .where(eq(projectKubeProvisioning.projectId, 'prj_billing'));
 
+    await expect(failExhaustedProjectTeardownLeases()).resolves.toEqual(['prj_billing']);
     await expect(claimPendingProjectProvisioning('teardown')).resolves.toBeNull();
     await expect(
       db
@@ -260,6 +279,94 @@ describe('projects service', (): void => {
         state: 'teardown_failed',
       },
     ]);
+  });
+
+  it('blocks unarchiving while project deletion is pending', async (): Promise<void> => {
+    await expect(
+      deleteProjectForPrincipal({
+        organizationSlug: 'acme-dev',
+        principalId: 'prn_git_sources',
+        projectName: 'billing',
+      }),
+    ).resolves.toBe('billing');
+
+    await expect(
+      unarchiveProjectForPrincipal({
+        organizationSlug: 'acme-dev',
+        principalId: 'prn_git_sources',
+        projectName: 'billing',
+      }),
+    ).rejects.toMatchObject({ code: 'project_lifecycle_not_available' });
+    await expect(
+      db.select({ archivedAt: projects.archivedAt }).from(projects).where(eq(projects.id, 'prj_billing')),
+    ).resolves.toEqual([{ archivedAt: new Date('2026-04-28T12:00:00.000Z') }]);
+  });
+
+  it('keeps project teardown preparation durable and unclaimable', async (): Promise<void> => {
+    const preparationLeaseId: string | null = await db.transaction(
+      async (transaction: ProjectsMutationTransaction): Promise<string | null> =>
+        await prepareProjectTeardownWithTransaction(transaction, 'prj_billing'),
+    );
+    expect(preparationLeaseId).toEqual(expect.any(String));
+    await db.transaction(async (transaction: ProjectsMutationTransaction): Promise<void> => {
+      await expect(prepareProjectTeardownWithTransaction(transaction, 'prj_billing')).resolves.toBeNull();
+    });
+
+    await expect(claimPendingProjectProvisioning('teardown')).resolves.toBeNull();
+    await expect(
+      unarchiveProjectForPrincipal({
+        organizationSlug: 'acme-dev',
+        principalId: 'prn_git_sources',
+        projectName: 'billing',
+      }),
+    ).rejects.toMatchObject({ code: 'project_lifecycle_not_available' });
+    await expect(
+      db
+        .select({ attempts: projectKubeProvisioning.attempts, state: projectKubeProvisioning.state })
+        .from(projectKubeProvisioning)
+        .where(eq(projectKubeProvisioning.projectId, 'prj_billing')),
+    ).resolves.toEqual([{ attempts: 0, state: 'teardown_preparing' }]);
+  });
+
+  it('fences stale project teardown preparation owners', async (): Promise<void> => {
+    const firstLeaseId: string | null = await db.transaction(
+      async (transaction: ProjectsMutationTransaction): Promise<string | null> =>
+        await prepareProjectTeardownWithTransaction(transaction, 'prj_billing'),
+    );
+    expect(firstLeaseId).toEqual(expect.any(String));
+    if (firstLeaseId === null) {
+      throw new Error('Expected the first project teardown preparation lease.');
+    }
+    await expect(renewProjectTeardownPreparation('prj_billing', firstLeaseId)).resolves.toBe(true);
+    await db
+      .update(projectKubeProvisioning)
+      .set({ leaseExpiresAt: new Date(0) })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_billing'));
+
+    const nextLeaseId: string | null = await db.transaction(
+      async (transaction: ProjectsMutationTransaction): Promise<string | null> =>
+        await prepareProjectTeardownWithTransaction(transaction, 'prj_billing'),
+    );
+    expect(nextLeaseId).toEqual(expect.any(String));
+    expect(nextLeaseId).not.toBe(firstLeaseId);
+    if (nextLeaseId === null) {
+      throw new Error('Expected the replacement project teardown preparation lease.');
+    }
+
+    await expect(
+      db.transaction(async (transaction: ProjectsMutationTransaction): Promise<void> => {
+        await activateProjectTeardownWithTransaction(transaction, 'prj_billing', firstLeaseId);
+      }),
+    ).rejects.toThrow('Project Kubernetes teardown is not ready to activate.');
+    await releaseProjectTeardownPreparation('prj_billing', firstLeaseId);
+    await expect(renewProjectTeardownPreparation('prj_billing', firstLeaseId)).resolves.toBe(false);
+    await expect(renewProjectTeardownPreparation('prj_billing', nextLeaseId)).resolves.toBe(true);
+    await expect(
+      db
+        .select({ leaseId: projectKubeProvisioning.leaseId, state: projectKubeProvisioning.state })
+        .from(projectKubeProvisioning)
+        .where(eq(projectKubeProvisioning.projectId, 'prj_billing')),
+    ).resolves.toEqual([{ leaseId: nextLeaseId, state: 'teardown_preparing' }]);
   });
 
   it('blocks deleting archived projects while an active git binding exists', async (): Promise<void> => {
@@ -459,6 +566,7 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
+  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_ops', state: 'succeeded' });
   await db.insert(projects).values({
     archivedAt: null,
     id: 'prj_plain',
@@ -466,6 +574,7 @@ async function seedDeleteScope(): Promise<void> {
     organizationId: 'org_git_sources',
     updatedAt: new Date('2026-04-28T12:00:00.000Z'),
   });
+  await db.insert(projectKubeProvisioning).values({ projectId: 'prj_plain', state: 'succeeded' });
   await db.insert(gitProviderRegistrations).values({
     appId: 'app_123',
     appName: 'Compartment GitHub App',

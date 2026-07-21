@@ -136,6 +136,7 @@ export const projectKubeProvisioning: KubeRuntimeSchemaTypes.ProjectKubeProvisio
         'running',
         'succeeded',
         'failed',
+        'teardown_preparing',
         'teardown_pending',
         'teardown_running',
         'teardown_succeeded',

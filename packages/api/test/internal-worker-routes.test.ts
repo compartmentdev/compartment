@@ -3,13 +3,14 @@ import {
   compartmentInternalAppAccessStatePathname,
   workerClaimNextDeploymentPathname,
   workerClaimProjectProvisioningV2Pathname,
+  workerClaimProjectProvisioningV2ResponseSchema,
   workerCompleteProjectProvisioningV2Pathname,
   workerCompleteProjectProvisioningResponseSchema,
   workerRunNextScheduledResourceOperationPathname,
   workerRunNextScheduledResourceOperationResponseSchema,
   workerUploadGitSourceResolutionTaskArchiveResponseSchema,
 } from '@compartment/contracts';
-import type { LightMyRequestResponse } from 'fastify';
+import type { FastifyReply, FastifyRequest, HookHandlerDoneFunction, LightMyRequestResponse } from 'fastify';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ApiApp } from '../src/app.types';
 import type {
@@ -160,6 +161,34 @@ describe('internal worker routes', (): void => {
     });
   });
 
+  it('logs terminal teardown leases while returning the v2 claim response', async (): Promise<void> => {
+    applyApiRouteTestEnv();
+    mocks.claimProjectProvisioningV2.mockResolvedValueOnce({
+      target: null,
+      terminalFailureProjectIds: ['prj_expired'],
+    });
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const errorLog: Mock = vi.fn();
+      app.addHook('onRequest', (request: FastifyRequest, _reply: FastifyReply, done: HookHandlerDoneFunction): void => {
+        request.log.error = errorLog;
+        done();
+      });
+      const response: LightMyRequestResponse = await injectApiRoute(app, {
+        headers: { accept: 'application/json', authorization: 'Bearer test-runtime-control-token' },
+        method: 'POST',
+        timeoutMs: 1000,
+        url: workerClaimProjectProvisioningV2Pathname,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(workerClaimProjectProvisioningV2ResponseSchema.parse(response.json())).toEqual({ target: null });
+      expect(errorLog).toHaveBeenCalledWith(
+        { projectId: 'prj_expired' },
+        'Project Kubernetes teardown reached its terminal retry limit after the final lease expired.',
+      );
+    });
+  });
+
   it('completes project provisioning through the worker route contract', async (): Promise<void> => {
     applyApiRouteTestEnv();
     mocks.acknowledgeProjectProvisioningV2.mockResolvedValueOnce({ applied: true, terminalFailure: false });
@@ -189,6 +218,41 @@ describe('internal worker routes', (): void => {
         projectId: 'prj_123',
         status: 'succeeded',
       });
+    });
+  });
+
+  it('logs terminal teardown failure through the worker completion route', async (): Promise<void> => {
+    applyApiRouteTestEnv();
+    mocks.acknowledgeProjectProvisioningV2.mockResolvedValueOnce({ applied: true, terminalFailure: true });
+    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
+      const errorLog: Mock = vi.fn();
+      app.addHook('onRequest', (request: FastifyRequest, _reply: FastifyReply, done: HookHandlerDoneFunction): void => {
+        request.log.error = errorLog;
+        done();
+      });
+      const response: LightMyRequestResponse = await injectApiRoute(app, {
+        headers: {
+          accept: 'application/json',
+          authorization: 'Bearer test-runtime-control-token',
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+        payload: {
+          action: 'teardown',
+          leaseId: 'kpl_terminal',
+          message: 'namespace still terminating',
+          projectId: 'prj_terminal',
+          status: 'failed',
+        },
+        timeoutMs: 1000,
+        url: workerCompleteProjectProvisioningV2Pathname,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(errorLog).toHaveBeenCalledWith(
+        { failureMessage: 'namespace still terminating', projectId: 'prj_terminal' },
+        'Project Kubernetes teardown reached its terminal retry limit.',
+      );
     });
   });
 

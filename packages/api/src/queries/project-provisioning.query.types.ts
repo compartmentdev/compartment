@@ -8,6 +8,7 @@ export type ProjectKubeProvisioningState =
   | 'running'
   | 'succeeded'
   | 'failed'
+  | 'teardown_preparing'
   | 'teardown_pending'
   | 'teardown_running'
   | 'teardown_succeeded'
@@ -21,7 +22,7 @@ export interface CompleteProjectProvisioningInput {
   status: ProjectProvisioningCompletionStatus;
 }
 
-export type ProjectTeardownState = 'pending' | 'running' | 'succeeded' | 'failed';
+export type ProjectTeardownState = 'preparing' | 'pending' | 'running' | 'succeeded' | 'failed';
 
 export interface ProjectTeardownObservation {
   attempts: number;

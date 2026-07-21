@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { projectKubeProvisioning, projects } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -113,10 +113,6 @@ export async function renameProjectWithExecutor(
   return requirePersistedRow(project, 'project');
 }
 
-export async function setProjectArchivedAt(input: SetProjectArchivedAtInput): Promise<ProjectRow> {
-  return await setProjectArchivedAtWithExecutor(getApiDatabase(), input);
-}
-
 export async function setProjectArchivedAtWithExecutor(
   executor: ProjectsWriteExecutor,
   input: SetProjectArchivedAtInput,
@@ -141,13 +137,13 @@ export async function findProjectByIdWithExecutor(
   return rows[0];
 }
 
-export async function deleteProjectWithExecutor(
+export async function deleteArchivedProjectWithExecutor(
   executor: ProjectsMutationTransaction,
   projectId: string,
 ): Promise<ProjectRow> {
   const [project]: PersistedProjectRow[] = await executor
     .delete(projects)
-    .where(eq(projects.id, projectId))
+    .where(and(eq(projects.id, projectId), isNotNull(projects.archivedAt)))
     .returning();
   return requirePersistedRow(project, 'project');
 }

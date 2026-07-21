@@ -15,7 +15,7 @@ import type {
   CompleteProjectProvisioningInput,
   ProjectProvisioningCompletionStatus,
 } from './project-provisioning.query.types';
-import { deleteProjectWithExecutor } from './projects.query';
+import { deleteArchivedProjectWithExecutor } from './projects.query';
 import { clearDisconnectedBindingProjectReferences } from './source.query';
 
 interface CompletedProjectProvisioningRow {
@@ -101,7 +101,7 @@ async function failTerminalProjectTeardown(
 async function finalizeProjectTeardown(transaction: DeploymentTransaction, projectId: string): Promise<void> {
   const finalizedAt: Date = new Date();
   await clearDisconnectedBindingProjectReferences(transaction, projectId, finalizedAt);
-  await deleteProjectWithExecutor(transaction, projectId);
+  await deleteArchivedProjectWithExecutor(transaction, projectId);
 }
 
 async function renewProjectProvisioningLease(

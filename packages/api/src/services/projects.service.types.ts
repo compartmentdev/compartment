@@ -113,3 +113,8 @@ export interface ProjectReadResult {
   project: ProjectRow;
   remoteState: ExistingProjectRemoteState;
 }
+
+export interface ProjectDeletePreparation {
+  preparationLeaseId: string | null;
+  project: ProjectRow;
+}

@@ -3,7 +3,6 @@ import {
   createProjectDeleteRuntimeCleanupFailedError,
 } from '../errors/api-business-error';
 import { listRuntimeJoinedDeploymentsForProject } from '../queries/deployment-joined.query';
-import { requestProjectTeardown } from '../queries/project-teardown.query';
 import { listProjectEnvironmentsByProjectIds } from '../queries/deployment-context.query';
 import { markDeploymentStopped } from '../queries/deployment-lifecycle.query';
 import { findDeploymentKubeState } from '../queries/deployment-kube-membership.query';
@@ -48,7 +47,6 @@ export async function cleanupDeletedProjectRuntime(project: ProjectRow): Promise
     const plan: ProjectRuntimeCleanupPlan = await buildProjectRuntimeCleanupPlan(project);
     await stopKubeProjectDeployments(plan.deployments);
     await deleteKubeProjectResources(plan.resources);
-    await requestProjectTeardown(project.id);
   } catch {
     throw createProjectDeleteRuntimeCleanupFailedError();
   }
