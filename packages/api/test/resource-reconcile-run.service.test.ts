@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProjectResourceRow } from '../src/queries/resources.query.types';
 import {
   requestResourceReconcile,
+  waitForResourceClaimIdentities,
   waitForResourceBootstrap,
   waitForResourceBootstrapForCleanup,
   waitForResourceRunning,
@@ -254,6 +255,89 @@ describe('resource reconcile run boundary', (): void => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('waits for a bootstrap run to persist claim identities before returning', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const resource: ProjectResourceRow = { expectedClaimsJson: '[]' } as ProjectResourceRow;
+      readBootstrapSettlement.mockResolvedValue({
+        provisioningAttempts: 0,
+        provisioningState: 'succeeded',
+        resource,
+        state: null,
+      });
+      const waiting: Promise<ProjectResourceRow> = waitForResourceClaimIdentities('resource');
+      let settled: boolean = false;
+      void waiting.then(
+        (): void => {
+          settled = true;
+        },
+        (): void => {
+          settled = true;
+        },
+      );
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(settled).toBe(false);
+      const bootstrapped: ProjectResourceRow = { expectedClaimsJson: '[{"uid":"claim"}]' } as ProjectResourceRow;
+      readBootstrapSettlement.mockResolvedValue({
+        provisioningAttempts: 0,
+        provisioningState: 'succeeded',
+        resource: bootstrapped,
+        state: null,
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(waiting).resolves.toBe(bootstrapped);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for an active bootstrap before returning claim identities', async (): Promise<void> => {
+    const resource: ProjectResourceRow = { expectedClaimsJson: '[]' } as ProjectResourceRow;
+    const bootstrapped: ProjectResourceRow = { expectedClaimsJson: '[{"uid":"claim"}]' } as ProjectResourceRow;
+    readBootstrapSettlement
+      .mockResolvedValueOnce({
+        provisioningAttempts: 0,
+        provisioningState: 'succeeded',
+        resource,
+        state: { failureMessage: null, operationId: 'bootstrap-operation', phase: 'running' },
+      })
+      .mockResolvedValue({
+        provisioningAttempts: 0,
+        provisioningState: 'succeeded',
+        resource: bootstrapped,
+        state: null,
+      });
+    readRunState.mockResolvedValue({ failureMessage: null, phase: 'succeeded' });
+
+    await expect(waitForResourceClaimIdentities('resource')).resolves.toBe(bootstrapped);
+    expect(readRunState).toHaveBeenCalledWith('bootstrap-operation');
+  });
+
+  it('reports a failed bootstrap while waiting for claim identities', async (): Promise<void> => {
+    readBootstrapSettlement.mockResolvedValue({
+      provisioningAttempts: 1,
+      provisioningState: 'failed',
+      resource: { expectedClaimsJson: '[]' } as ProjectResourceRow,
+      state: { failureMessage: 'bootstrap failed', operationId: 'bootstrap-operation', phase: 'failed' },
+    });
+
+    await expect(waitForResourceClaimIdentities('resource')).rejects.toThrow('bootstrap failed');
+  });
+
+  it('refuses a successful bootstrap without claim identities', async (): Promise<void> => {
+    readBootstrapSettlement.mockResolvedValue({
+      provisioningAttempts: 0,
+      provisioningState: 'succeeded',
+      resource: { expectedClaimsJson: '[]' } as ProjectResourceRow,
+      state: { failureMessage: null, operationId: 'bootstrap-operation', phase: 'succeeded' },
+    });
+
+    await expect(waitForResourceClaimIdentities('resource')).rejects.toThrow(
+      'Kubernetes resource bootstrap completed without persistent claim identities.',
+    );
   });
 
   it('keeps bootstrap settlement alive behind globally queued resource work', async (): Promise<void> => {

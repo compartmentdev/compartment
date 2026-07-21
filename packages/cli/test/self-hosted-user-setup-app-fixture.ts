@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 export interface SelfHostedUserSetupAppFixture {
   readonly attackerServiceName?: string;
+  readonly backupRetentionScheduleEnabled: boolean;
   readonly directory: string;
   readonly environmentName: string;
   readonly importedGroupFileName: string;
@@ -56,6 +57,7 @@ export async function createSelfHostedUserSetupAppFixture(
     ...(options.includeCookieTossAttackerService === true
       ? { attackerServiceName: cookieTossAttackerServiceName }
       : {}),
+    backupRetentionScheduleEnabled: options.includeBackupRetentionSchedule === true,
     directory,
     environmentName,
     importedGroupFileName,
@@ -83,6 +85,7 @@ async function writeSelfHostedUserSetupDescriptor(
     join(fixture.directory, 'compartment.yml'),
     buildProbeDescriptor(
       {
+        includeBackupRetentionSchedule: fixture.backupRetentionScheduleEnabled,
         includeCookieTossAttackerService: fixture.attackerServiceName !== undefined,
         includeResourceRelease,
       },

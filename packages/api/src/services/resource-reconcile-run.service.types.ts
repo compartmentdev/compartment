@@ -8,3 +8,8 @@ export interface ClaimedResourceReconcileResult {
   previousManifestJson: string | null;
   type: 'bootstrap' | 'reconcile' | null;
 }
+
+export interface ResourceClaimIdentityWaitContext {
+  deadlineAt: number;
+  pollDelayMs: number;
+}
