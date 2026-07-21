@@ -19,7 +19,7 @@ import { listDeploymentLogWorkloadScopes } from '../queries/deployment-log-workl
 import type { DeploymentLogWorkloadScopeRow } from '../queries/deployment-log-workload.query.types';
 import type { ProductLogIngestResult } from './deployment-product-logs.service.types';
 
-const canonicalResourcePodNamePattern: RegExp = /^resource-res-([0-9a-f]{32})-[0-9a-f]{16}-/;
+const resourcePodNamePattern: RegExp = /^resource-res-([0-9a-f]{32})/;
 
 export async function ingestDeploymentProductLogs(events: ProductLogIngestEvent[]): Promise<ProductLogIngestResult> {
   const identities: DeploymentLogIdentityRow[] = await listDeploymentLogIdentities(uniqueNamespaces(events));
@@ -55,10 +55,13 @@ function buildProductLogIngestResult(
 }
 
 function resolveResourceIdentity(event: ProductLogIngestEvent, rows: ResourceLogIdentityRow[]): string | undefined {
+  const resourceId: string | undefined = extractResourceIdFromPodName(event.podName);
+  if (resourceId === undefined) {
+    return undefined;
+  }
   return rows.findLast(
     (row: ResourceLogIdentityRow): boolean =>
-      event.namespace === immutableKubeName('cpt', row.namespaceId) &&
-      event.podName.startsWith(`${immutableKubeName('resource', row.resourceId)}-`),
+      event.namespace === immutableKubeName('cpt', row.namespaceId) && row.resourceId === resourceId,
   )?.resourceId;
 }
 
@@ -69,11 +72,16 @@ function resourceIdsFromEvents(events: ProductLogIngestEvent[]): string[] {
         if (event.containerName !== 'resource') {
           return [];
         }
-        const match: RegExpExecArray | null = canonicalResourcePodNamePattern.exec(event.podName);
-        return match?.[1] === undefined ? [] : [`res_${match[1]}`];
+        const resourceId: string | undefined = extractResourceIdFromPodName(event.podName);
+        return resourceId === undefined ? [] : [resourceId];
       }),
     ),
   ];
+}
+
+function extractResourceIdFromPodName(podName: string): string | undefined {
+  const match: RegExpExecArray | null = resourcePodNamePattern.exec(podName);
+  return match?.[1] === undefined ? undefined : `res_${match[1]}`;
 }
 
 function resolveDeploymentIdentity(

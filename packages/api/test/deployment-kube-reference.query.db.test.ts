@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { immutableKubeName } from '@compartment/utils';
-import type { ProductLogIngestEvent } from '@compartment/contracts';
+import type { ProductLogIngestEvent, ResourceLogLine } from '@compartment/contracts';
 import {
   deploymentKubeReferences,
   deploymentProductLogs,
@@ -118,8 +118,10 @@ describe('deployment Kubernetes transition persistence', (): void => {
   });
 
   it('stores Kubernetes resource container logs under the resource identity', async (): Promise<void> => {
-    const resourceId: string = `res_${'a'.repeat(32)}`;
+    const resourceId: string = 'res_2df21be0b23d4e0f9ebe493950cf89a7';
     const otherResourceId: string = `res_${'b'.repeat(32)}`;
+    const podName: string = `${immutableKubeName('resource', resourceId).slice(0, -4)}djqt5`;
+    expect(podName).toBe('resource-res-2df21be0b23d4e0f9ebe493950cf89a7-c432897ab9d0djqt5');
     await db.insert(projectResources).values({
       commandJson: '[]',
       createdAt: new Date('2026-07-11T10:00:00.000Z'),
@@ -140,7 +142,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       containerName: 'resource',
       message: 'database system is ready',
       namespace: immutableKubeName('cpt', 'prj_kube'),
-      podName: `${immutableKubeName('resource', resourceId)}-abc`,
+      podName,
       podUid: '12121212-1212-4212-8212-121212121212',
       restartIdentity: '0',
       sourceFingerprint: 'c'.repeat(64),
@@ -156,7 +158,10 @@ describe('deployment Kubernetes transition persistence', (): void => {
       ingestDeploymentProductLogs([{ ...event, podName: `${immutableKubeName('resource', otherResourceId)}-abc` }]),
     ).resolves.toEqual({ accepted: 0, duplicates: 0, rejected: 1 });
     await expect(ingestDeploymentProductLogs([event])).resolves.toEqual({ accepted: 1, duplicates: 0, rejected: 0 });
-    await expect(readStoredResourceProductLogs(resourceId, 'postgres', undefined, 50)).resolves.toEqual([
+    const lines: ResourceLogLine[] = await readStoredResourceProductLogs(resourceId, 'postgres', undefined, 50);
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.some((line: ResourceLogLine): boolean => line.stream === 'stderr')).toBe(true);
+    expect(lines).toEqual([
       {
         message: 'database system is ready',
         resourceName: 'postgres',
