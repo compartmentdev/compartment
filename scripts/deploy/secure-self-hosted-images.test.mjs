@@ -7,12 +7,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import selfHostedRuntimeImageSignaturePolicy from '../../packages/contracts/src/contracts/self-hosted-runtime-image-signature-policy.json' with { type: 'json' };
+import { resolveScannedCanonicalDigest } from './secure-self-hosted-image-digests.mjs';
 import {
   buildDigestImageRef,
   buildSelfHostedImageSbomPath,
   readSecureSelfHostedImageOptions,
   scanSelfHostedImages,
-  secureSelfHostedImages,
 } from './secure-self-hosted-images.mjs';
 
 const secureSelfHostedImagesScriptPath = fileURLToPath(new URL('./secure-self-hosted-images.mjs', import.meta.url));
@@ -22,6 +22,7 @@ describe('readSecureSelfHostedImageOptions', () => {
   it('reads unique tags and output directory', () => {
     expect(readSecureSelfHostedImageOptions(['--output-dir', './sboms', 'sha-123', 'main', 'main'])).toEqual({
       dockerScout: false,
+      imageRefs: [],
       outputDirectory: './sboms',
       repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: false,
@@ -33,6 +34,7 @@ describe('readSecureSelfHostedImageOptions', () => {
   it('reads scan-only mode', () => {
     expect(readSecureSelfHostedImageOptions(['--scan-only', 'sha-123'])).toEqual({
       dockerScout: false,
+      imageRefs: [],
       outputDirectory: './.compartment/release-assets/self-hosted-sboms',
       repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: true,
@@ -44,6 +46,7 @@ describe('readSecureSelfHostedImageOptions', () => {
   it('reads provenance attestation validation mode', () => {
     expect(readSecureSelfHostedImageOptions(['--validate-provenance-attestation'])).toEqual({
       dockerScout: false,
+      imageRefs: [],
       outputDirectory: './.compartment/release-assets/self-hosted-sboms',
       repositoryPrefix: 'ghcr.io/compartmentdev',
       scanOnly: false,
@@ -70,6 +73,26 @@ describe('readSecureSelfHostedImageOptions', () => {
     });
   });
 
+  it('reads immutable digest refs for scan-only mode', () => {
+    const digestRef = `docker.io/compartmentdev/compartment-api@${testDigest}`;
+
+    expect(readSecureSelfHostedImageOptions(['--scan-only', '--image-ref', digestRef])).toMatchObject({
+      imageRefs: [digestRef],
+      scanOnly: true,
+      tags: [],
+    });
+  });
+
+  it('reads immutable digest refs for securing mode', () => {
+    const digestRef = `docker.io/compartmentdev/compartment-api@${testDigest}`;
+
+    expect(readSecureSelfHostedImageOptions(['--image-ref', digestRef])).toMatchObject({
+      imageRefs: [digestRef],
+      scanOnly: false,
+      tags: [],
+    });
+  });
+
   it('requires at least one image tag', () => {
     expect(() => readSecureSelfHostedImageOptions([])).toThrow('Expected at least one self-hosted image tag.');
   });
@@ -78,6 +101,65 @@ describe('readSecureSelfHostedImageOptions', () => {
     expect(() => readSecureSelfHostedImageOptions(['--docker-scout', 'sha-123'])).toThrow(
       'Can only use --docker-scout with --scan-only.',
     );
+  });
+});
+
+describe('resolveScannedCanonicalDigest', () => {
+  it('rejects a pre-existing digest that was not scanned in this run', () => {
+    expect(() =>
+      resolveScannedCanonicalDigest({
+        dockerhubDigest: `sha256:${'b'.repeat(64)}`,
+        ghcrDigest: '',
+        imageName: 'compartment-api',
+        scannedDigest: testDigest,
+      }),
+    ).toThrow('immutable tag resolves to unscanned digest');
+  });
+
+  it('accepts the freshly scanned digest when no immutable tag exists', () => {
+    expect(
+      resolveScannedCanonicalDigest({
+        dockerhubDigest: '',
+        ghcrDigest: '',
+        imageName: 'compartment-api',
+        scannedDigest: testDigest,
+      }),
+    ).toBe(testDigest);
+  });
+
+  it('accepts a pre-existing immutable tag only when it matches the digest scanned in this run', () => {
+    expect(
+      resolveScannedCanonicalDigest({
+        dockerhubDigest: testDigest,
+        ghcrDigest: '',
+        imageName: 'compartment-api',
+        scannedDigest: testDigest,
+      }),
+    ).toBe(testDigest);
+  });
+});
+
+describe('build metadata digest', () => {
+  it('reads the digest produced by the current Buildx invocation', async () => {
+    const tempDirectory = await mkdtemp(join(tmpdir(), 'compartment-build-metadata-test-'));
+
+    try {
+      const metadataPath = join(tempDirectory, 'metadata.json');
+      await writeFile(metadataPath, JSON.stringify({ 'containerimage.digest': testDigest }), 'utf8');
+
+      const result = spawnSync(
+        process.execPath,
+        [secureSelfHostedImagesScriptPath, '--read-build-metadata-digest', metadataPath],
+        { encoding: 'utf8' },
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe(testDigest);
+    } finally {
+      await rm(tempDirectory, { force: true, recursive: true });
+    }
   });
 });
 
@@ -257,11 +339,24 @@ describe('secureSelfHostedImages', () => {
       process.env.GITHUB_WORKFLOW = 'Publish Self-Hosted Images (Main)';
       delete process.env.GITHUB_WORKFLOW_REF;
 
-      await secureSelfHostedImages({
-        outputDirectory,
-        repositoryRoot: tempDirectory,
-        tags: ['sha-test'],
-      });
+      const digestRefs = ['api', 'caddy', 'edge', 'worker'].map(
+        (serviceName, index) =>
+          `ghcr.io/compartmentdev/compartment-${serviceName}@sha256:${String.fromCharCode(97 + index).repeat(64)}`,
+      );
+      const result = spawnSync(
+        process.execPath,
+        [
+          secureSelfHostedImagesScriptPath,
+          '--output-dir',
+          outputDirectory,
+          ...digestRefs.flatMap((digestRef) => ['--image-ref', digestRef]),
+        ],
+        { encoding: 'utf8' },
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
 
       const provenanceText = await readFile(
         join(outputDirectory, `compartment-api-sha256-${'a'.repeat(64)}.slsa-v1-provenance.json`),
@@ -289,6 +384,9 @@ describe('secureSelfHostedImages', () => {
       const cosignCalls = parseCommandArgsLog(await readFile(commandArgsLogPath, 'utf8')).filter(
         (entry) => entry.file === 'cosign',
       );
+      const dockerCalls = parseCommandArgsLog(await readFile(commandArgsLogPath, 'utf8')).filter(
+        (entry) => entry.file === 'docker',
+      );
       const mainImageDigestRef = `ghcr.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`;
       const workerDigestRef = `ghcr.io/compartmentdev/compartment-worker@sha256:${'d'.repeat(64)}`;
       const expectedBundleFormatFlag = selfHostedRuntimeImageSignaturePolicy.cosignBundleFormatFlag;
@@ -308,6 +406,7 @@ describe('secureSelfHostedImages', () => {
       expect(cosignCalls.some((entry) => entry.args[0] === 'attest' && entry.args.includes(workerDigestRef))).toBe(
         true,
       );
+      expect(dockerCalls).toEqual([]);
       expect(
         hasCosignCall(cosignCalls, [
           'verify',

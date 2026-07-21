@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { captureCommand, runCommand } from '../lib/command.mjs';
 import { readRequiredOptionValue } from '../lib/options.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
+import { assertImageDigest, resolveScannedCanonicalDigest } from './secure-self-hosted-image-digests.mjs';
 import {
   buildSelfHostedImageRefForRepository,
   defaultSelfHostedImageRepositoryPrefix,
@@ -17,7 +18,6 @@ import {
 
 const defaultOutputDirectory = './.compartment/release-assets/self-hosted-sboms';
 const defaultRepositoryPrefix = defaultSelfHostedImageRepositoryPrefix;
-const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const slsaProvenanceV1FileSuffix = '.slsa-v1-provenance.json';
 const slsaProvenanceV1AttestationType = 'slsaprovenance1';
 const transientCosignBundleRegistryErrorMessage = 'no valid bundles exist in registry';
@@ -28,7 +28,17 @@ const selfHostedRuntimeImageSignaturePolicy = readSelfHostedRuntimeImageSignatur
 const trivyIgnorefile = '.trivyignore.yaml';
 
 async function main() {
-  const options = readSecureSelfHostedImageOptions(process.argv.slice(2));
+  const args = process.argv.slice(2);
+  if (args[0] === '--resolve-scanned-digest') {
+    process.stdout.write(`${resolveScannedCanonicalDigest(readScannedDigestResolutionInput(args.slice(1)))}\n`);
+    return;
+  }
+  if (args[0] === '--read-build-metadata-digest') {
+    process.stdout.write(`${readBuildMetadataDigest(args.slice(1))}\n`);
+    return;
+  }
+
+  const options = readSecureSelfHostedImageOptions(args);
   if (options.validateProvenanceAttestation) {
     validateSelfHostedImageProvenanceAttestation(repositoryRoot);
     return;
@@ -37,6 +47,7 @@ async function main() {
   if (options.scanOnly) {
     scanSelfHostedImages({
       dockerScout: options.dockerScout,
+      imageRefs: options.imageRefs,
       repositoryPrefix: options.repositoryPrefix,
       repositoryRoot,
       tags: options.tags,
@@ -45,6 +56,7 @@ async function main() {
   }
 
   await secureSelfHostedImages({
+    imageRefs: options.imageRefs,
     outputDirectory: options.outputDirectory,
     repositoryPrefix: options.repositoryPrefix,
     repositoryRoot,
@@ -52,39 +64,47 @@ async function main() {
   });
 }
 
-export async function secureSelfHostedImages(input) {
+function readBuildMetadataDigest(args) {
+  if (args.length !== 1) {
+    throw new Error('Expected one metadata file path after --read-build-metadata-digest.');
+  }
+
+  const metadata = JSON.parse(readFileSync(resolve(repositoryRoot, args[0]), 'utf8'));
+  const digest = metadata?.['containerimage.digest'];
+  assertImageDigest(digest);
+  return digest;
+}
+
+async function secureSelfHostedImages(input) {
   const outputDirectory = resolveOutputDirectory(input.repositoryRoot, input.outputDirectory);
   await mkdir(outputDirectory, { recursive: true });
 
   const securedDigestRefs = new Set();
+  const imageTargets = buildSecureSelfHostedImageTargets(input);
 
-  for (const serviceName of selfHostedRuntimeImageArtifacts) {
-    for (const tag of input.tags) {
-      const imageRef = buildSecureSelfHostedImageRef(input.repositoryPrefix, serviceName, tag);
-      const digestRef = readSelfHostedImageDigestRef(input.repositoryRoot, imageRef);
-
-      if (securedDigestRefs.has(digestRef)) {
-        process.stdout.write(`Skipping already secured self-hosted image digest ${digestRef} from ${imageRef}.\n`);
-        continue;
-      }
-
-      const sbomPath = buildSelfHostedImageSbomPath(outputDirectory, digestRef);
-      const provenancePath = buildSelfHostedImageProvenancePath(outputDirectory, digestRef);
-      process.stdout.write(`Securing self-hosted image ${digestRef} from ${imageRef}.\n`);
-      writeSelfHostedImageSbom(input.repositoryRoot, digestRef, sbomPath);
-      writeSelfHostedImageProvenance(digestRef, serviceName, provenancePath);
-      signSelfHostedImage(input.repositoryRoot, digestRef);
-      await verifySelfHostedImageSignature(input.repositoryRoot, digestRef);
-      attestSelfHostedImageSbom(input.repositoryRoot, digestRef, sbomPath);
-      attestSelfHostedImageProvenance(input.repositoryRoot, digestRef, provenancePath);
-      securedDigestRefs.add(digestRef);
+  for (const { digestRef, imageRef, serviceName } of imageTargets) {
+    if (securedDigestRefs.has(digestRef)) {
+      process.stdout.write(`Skipping already secured self-hosted image digest ${digestRef} from ${imageRef}.\n`);
+      continue;
     }
+
+    const sbomPath = buildSelfHostedImageSbomPath(outputDirectory, digestRef);
+    const provenancePath = buildSelfHostedImageProvenancePath(outputDirectory, digestRef);
+    process.stdout.write(`Securing self-hosted image ${digestRef} from ${imageRef}.\n`);
+    writeSelfHostedImageSbom(input.repositoryRoot, digestRef, sbomPath);
+    writeSelfHostedImageProvenance(digestRef, serviceName, provenancePath);
+    signSelfHostedImage(input.repositoryRoot, digestRef);
+    await verifySelfHostedImageSignature(input.repositoryRoot, digestRef);
+    attestSelfHostedImageSbom(input.repositoryRoot, digestRef, sbomPath);
+    attestSelfHostedImageProvenance(input.repositoryRoot, digestRef, provenancePath);
+    securedDigestRefs.add(digestRef);
   }
 }
 
 export function scanSelfHostedImages(input) {
   const dockerScoutFailedImageRefs = [];
-  const imageRefs = input.imageRefs ?? buildSelfHostedImageRefs(input.repositoryPrefix, input.tags);
+  const imageRefs =
+    input.imageRefs?.length > 0 ? input.imageRefs : buildSelfHostedImageRefs(input.repositoryPrefix, input.tags);
   const scannedImageRefs = new Set();
   const trivyFailedImageRefs = [];
 
@@ -123,6 +143,7 @@ export function scanSelfHostedImages(input) {
 
 export function readSecureSelfHostedImageOptions(args) {
   let dockerScout = false;
+  const imageRefs = [];
   const tags = [];
   let outputDirectory = defaultOutputDirectory;
   let repositoryPrefix = defaultRepositoryPrefix;
@@ -139,6 +160,12 @@ export function readSecureSelfHostedImageOptions(args) {
 
     if (argument === '--docker-scout') {
       dockerScout = true;
+      continue;
+    }
+
+    if (argument === '--image-ref') {
+      imageRefs.push(readRequiredOptionValue(args, index + 1, '--image-ref'));
+      index += 1;
       continue;
     }
 
@@ -177,11 +204,15 @@ export function readSecureSelfHostedImageOptions(args) {
     throw new Error('Can only use --docker-scout with --scan-only.');
   }
 
-  if (validateProvenanceAttestation && tags.length !== 0) {
-    throw new Error('Expected no image tags with --validate-provenance-attestation.');
+  if (validateProvenanceAttestation && (tags.length !== 0 || imageRefs.length !== 0)) {
+    throw new Error('Expected no image tags or refs with --validate-provenance-attestation.');
   }
 
-  if (!validateProvenanceAttestation && tags.length === 0) {
+  if (imageRefs.length !== 0 && tags.length !== 0) {
+    throw new Error('Cannot combine image tags with --image-ref.');
+  }
+
+  if (!validateProvenanceAttestation && tags.length === 0 && imageRefs.length === 0) {
     throw new Error(
       'Expected at least one self-hosted image tag. Example: `node ./scripts/deploy/secure-self-hosted-images.mjs sha-<commit> main`.',
     );
@@ -189,11 +220,27 @@ export function readSecureSelfHostedImageOptions(args) {
 
   return {
     dockerScout,
+    imageRefs: [...new Set(imageRefs)],
     outputDirectory,
     repositoryPrefix,
     scanOnly,
     tags: [...new Set(tags)],
     validateProvenanceAttestation,
+  };
+}
+
+function readScannedDigestResolutionInput(args) {
+  if (args.length !== 4) {
+    throw new Error(
+      'Expected image name, scanned digest, Docker Hub digest, and GHCR digest after --resolve-scanned-digest.',
+    );
+  }
+
+  return {
+    dockerhubDigest: args[2],
+    ghcrDigest: args[3],
+    imageName: args[0],
+    scannedDigest: args[1],
   };
 }
 
@@ -203,14 +250,54 @@ function buildSelfHostedImageRefs(repositoryPrefix, tags) {
   );
 }
 
+function buildSecureSelfHostedImageTargets(input) {
+  if (input.imageRefs?.length > 0) {
+    return input.imageRefs.map((digestRef) => ({
+      digestRef: validateSelfHostedImageDigestRef(digestRef),
+      imageRef: digestRef,
+      serviceName: readSelfHostedServiceNameFromDigestRef(digestRef),
+    }));
+  }
+
+  return selfHostedRuntimeImageArtifacts.flatMap((serviceName) =>
+    input.tags.map((tag) => {
+      const imageRef = buildSecureSelfHostedImageRef(input.repositoryPrefix, serviceName, tag);
+      return {
+        digestRef: readSelfHostedImageDigestRef(input.repositoryRoot, imageRef),
+        imageRef,
+        serviceName,
+      };
+    }),
+  );
+}
+
+function validateSelfHostedImageDigestRef(digestRef) {
+  const digestSeparatorIndex = digestRef.lastIndexOf('@');
+  if (digestSeparatorIndex === -1) {
+    throw new Error(`Expected digest-pinned Docker image ref, received: ${digestRef}`);
+  }
+
+  assertImageDigest(digestRef.slice(digestSeparatorIndex + 1));
+  return digestRef;
+}
+
+function readSelfHostedServiceNameFromDigestRef(digestRef) {
+  const serviceName = selfHostedRuntimeImageArtifacts.find((candidate) =>
+    digestRef.includes(`/compartment-${candidate}@`),
+  );
+  if (serviceName === undefined) {
+    throw new Error(`Expected self-hosted runtime image digest ref, received: ${digestRef}`);
+  }
+
+  return serviceName;
+}
+
 function buildSecureSelfHostedImageRef(repositoryPrefix, serviceName, tag) {
   return buildSelfHostedImageRefForRepository(serviceName, tag, repositoryPrefix ?? defaultRepositoryPrefix);
 }
 
 export function buildDigestImageRef(imageRef, digest) {
-  if (!imageDigestPattern.test(digest)) {
-    throw new Error(`Expected Docker image digest, received: ${digest}`);
-  }
+  assertImageDigest(digest);
 
   const tagSeparatorIndex = imageRef.lastIndexOf(':');
   const pathSeparatorIndex = imageRef.lastIndexOf('/');

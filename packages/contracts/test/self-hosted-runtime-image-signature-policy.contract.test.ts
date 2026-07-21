@@ -11,6 +11,11 @@ describe('self-hosted runtime image signature policy', (): void => {
     );
     expect(
       identity.test(
+        'https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-main.yml@refs/heads/main',
+      ),
+    ).toBe(true);
+    expect(
+      identity.test(
         'https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-release.yml@refs/tags/v1.2.3',
       ),
     ).toBe(true);
@@ -19,6 +24,11 @@ describe('self-hosted runtime image signature policy', (): void => {
         'https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes',
       ),
     ).toBe(true);
+    expect(
+      identity.test(
+        'https://github.com/compartmentdev/compartment/.github/workflows/publish-onprem-main.yml@refs/heads/main',
+      ),
+    ).toBe(false);
     expect(
       identity.test(
         'https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/feature-x',
