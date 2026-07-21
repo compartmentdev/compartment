@@ -7,6 +7,8 @@
 - Helm 4.x.
 - Installer credentials that can manage the chart's Namespaces, ClusterRoles, ClusterRoleBinding,
   ValidatingAdmissionPolicy, ValidatingAdmissionPolicyBinding, and namespaced resources.
+- One Compartment Helm release per cluster. Project provisioning uses canonical cluster-scoped RBAC names shared with
+  tenant RoleBindings and admission policy checks, so a second release would conflict with the first.
 
 The chart declares its Kubernetes compatibility range in `Chart.yaml`; Helm rejects older clusters before rendering.
 

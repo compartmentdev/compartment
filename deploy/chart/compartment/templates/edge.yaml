@@ -36,16 +36,9 @@ spec:
       {{- include "compartment.waiterPodSpec" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
       initContainers:
-        - name: snapshots-ownership
-          image: {{ include "compartment.image" .Values.images.edge }}
-          imagePullPolicy: {{ .Values.images.edge.pullPolicy }}
-          securityContext:
-            runAsUser: 0
-            runAsGroup: 0
-          command: ['sh', '-c', 'chown -R 1000:1000 {{ .Values.edge.snapshots.mountPath }}']
-          volumeMounts:
-            - {name: snapshots, mountPath: {{ .Values.edge.snapshots.mountPath | quote }}}
         {{- include "compartment.waitForMigrationInit" . | nindent 8 }}
       containers:
         - name: edge

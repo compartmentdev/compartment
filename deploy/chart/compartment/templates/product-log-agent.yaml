@@ -3,7 +3,7 @@
 {{- $name := printf "%s-log-agent" (include "compartment.fullname" .) -}}
 {{- $namespace := default (printf "%s-observability" (include "compartment.fullname" .)) .Values.productLogs.namespace -}}
 {{- $platformSecret := lookup "v1" "Secret" .Release.Namespace (include "compartment.fullname" .) -}}
-{{- $productLogIngestToken := required "install the foundation stage first or set secrets.productLogIngestToken" (default .Values.secrets.productLogIngestToken (dig "data" "product-log-ingest-token" "" $platformSecret | b64dec)) -}}
+{{- $productLogIngestToken := required "install the foundation stage first or set secrets.productLogIngestToken" (default (dig "data" "product-log-ingest-token" "" $platformSecret | b64dec) .Values.secrets.productLogIngestToken) -}}
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -163,6 +163,7 @@ spec:
       labels:
         app.kubernetes.io/name: {{ $name }}
       annotations:
+        checksum/ingest-token: {{ $productLogIngestToken | sha256sum }}
         prometheus.io/port: '9598'
         prometheus.io/scrape: 'true'
     spec:

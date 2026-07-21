@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: product log token upgrades
+templates:
+  - templates/product-log-agent.yaml
+release:
+  name: compartment
+  namespace: default
+  upgrade: true
+kubernetesProvider:
+  scheme:
+    v1/Secret:
+      gvr:
+        version: v1
+        resource: secrets
+      namespaced: true
+  objects:
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: compartment-compartment
+        namespace: default
+      data:
+        product-log-ingest-token: T0xE
+tests:
+  - it: renders an explicitly rotated product log ingest token
+    set:
+      platform.startupStage: full
+      secrets.productLogIngestToken: NEW
+    asserts:
+      - isKind:
+          of: Secret
+        template: product-log-agent.yaml
+        documentIndex: 3
+      - equal:
+          path: stringData.ingest-token
+          value: NEW
+        template: product-log-agent.yaml
+        documentIndex: 3
+      - equal:
+          path: spec.template.metadata.annotations["checksum/ingest-token"]
+          value: a253ff09c5a8678e1fd1962b2c329245e139e45f9cc6ced4e5d7ad42c4108fc0
+        template: product-log-agent.yaml
+        documentIndex: 4
+
+  - it: keeps the live token and rollout checksum without an explicit rotation
+    set:
+      platform.startupStage: full
+      secrets.productLogIngestToken: ''
+    asserts:
+      - equal:
+          path: stringData.ingest-token
+          value: OLD
+        template: product-log-agent.yaml
+        documentIndex: 3
+      - equal:
+          path: spec.template.metadata.annotations["checksum/ingest-token"]
+          value: 099d90cbee62f89e6478e153eb3240efcbe4ac2231bedc3e84549bbeaaba87e8
+        template: product-log-agent.yaml
+        documentIndex: 4

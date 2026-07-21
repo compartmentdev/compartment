@@ -1,0 +1,193 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: platform security boundaries
+templates:
+  - templates/platform-network-policy.yaml
+release:
+  name: compartment
+  namespace: default
+tests:
+  - it: protects foundation Postgres before platform workloads start
+    set:
+      platform.startupStage: foundation
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: platform-network-policy.yaml
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-postgres
+        template: platform-network-policy.yaml
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: compartment
+            app.kubernetes.io/instance: compartment
+            app.kubernetes.io/component: postgres
+        template: platform-network-policy.yaml
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: api
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: worker
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: api-migrate
+              ports:
+                - protocol: TCP
+                  port: 5432
+        template: platform-network-policy.yaml
+
+  - it: allows only API Worker and migration pods to reach Postgres
+    set: &fullStage
+      platform.startupStage: full
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+        template: platform-network-policy.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-postgres
+        template: platform-network-policy.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: compartment
+            app.kubernetes.io/instance: compartment
+            app.kubernetes.io/component: postgres
+        template: platform-network-policy.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: api
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: worker
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: api-migrate
+              ports:
+                - protocol: TCP
+                  port: 5432
+        template: platform-network-policy.yaml
+        documentIndex: 0
+
+  - it: allows only platform API clients and the product log agent to reach API
+    set:
+      <<: *fullStage
+      productLogs.namespace: compartment-logs
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+        template: platform-network-policy.yaml
+        documentIndex: 1
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-api
+        template: platform-network-policy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: compartment
+            app.kubernetes.io/instance: compartment
+            app.kubernetes.io/component: api
+        template: platform-network-policy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: caddy
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: worker
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: edge
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: project-provisioner
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: compartment-logs
+                  podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment-compartment-log-agent
+              ports:
+                - protocol: TCP
+                  port: 39444
+        template: platform-network-policy.yaml
+        documentIndex: 1
+
+  - it: allows only Caddy and API to reach Edge
+    set: *fullStage
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+        template: platform-network-policy.yaml
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-edge
+        template: platform-network-policy.yaml
+        documentIndex: 2
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: compartment
+            app.kubernetes.io/instance: compartment
+            app.kubernetes.io/component: edge
+        template: platform-network-policy.yaml
+        documentIndex: 2
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: caddy
+                - podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: compartment
+                      app.kubernetes.io/instance: compartment
+                      app.kubernetes.io/component: api
+              ports:
+                - protocol: TCP
+                  port: 39081
+        template: platform-network-policy.yaml
+        documentIndex: 2
