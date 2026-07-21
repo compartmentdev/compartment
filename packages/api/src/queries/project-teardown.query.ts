@@ -160,23 +160,20 @@ function teardownAlreadyActive(row: typeof projectKubeProvisioning.$inferSelect)
 }
 
 export async function readProjectTeardownState(projectId: string): Promise<ProjectTeardownObservation | null> {
-  const rows: { attempts: number; failureMessage: string | null; state: ProjectKubeProvisioningState }[] =
-    await getApiDatabase()
-      .select({
-        attempts: projectKubeProvisioning.attempts,
-        failureMessage: projectKubeProvisioning.failureMessage,
-        state: projectKubeProvisioning.state,
-      })
-      .from(projectKubeProvisioning)
-      .where(eq(projectKubeProvisioning.projectId, projectId))
-      .limit(1);
+  const rows: { attempts: number; state: ProjectKubeProvisioningState }[] = await getApiDatabase()
+    .select({
+      attempts: projectKubeProvisioning.attempts,
+      state: projectKubeProvisioning.state,
+    })
+    .from(projectKubeProvisioning)
+    .where(eq(projectKubeProvisioning.projectId, projectId))
+    .limit(1);
   const state: ProjectKubeProvisioningState | undefined = rows[0]?.state;
   if (state?.startsWith('teardown_') !== true) {
     return null;
   }
   return {
     attempts: rows[0]?.attempts ?? 0,
-    failureMessage: rows[0]?.failureMessage ?? null,
     state: state.slice('teardown_'.length) as ProjectTeardownState,
   };
 }
@@ -194,7 +191,6 @@ export async function lockProjectTeardownStateWithTransaction(
   }
   return {
     attempts: row.attempts,
-    failureMessage: row.failureMessage,
     state: row.state.slice('teardown_'.length) as ProjectTeardownState,
   };
 }

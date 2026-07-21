@@ -29,6 +29,8 @@ const bootstrapTokenExpirationSeconds: number = 600;
 const provisioningTimeoutMs: number = 5 * 60_000;
 const teardownPollIntervalMs: number = 100;
 const teardownTimeoutMs: number = 30_000;
+// Two hours accommodates slow Kubernetes finalizers while bounding the single serial provisioner attempt.
+const projectNamespaceTeardownAbsoluteTimeoutMs: number = 2 * 60 * 60_000;
 
 export async function executeProjectProvisioning(
   request: CompartmentRequester,
@@ -101,6 +103,7 @@ async function waitForNamespaceDeletion(
     runtime,
     namespace,
     async (): Promise<void> => await assertProjectProvisioningLease(request, target),
+    projectNamespaceTeardownAbsoluteTimeoutMs,
   );
 }
 
@@ -135,7 +138,7 @@ async function waitForKubeObjectsDeletion(runtime: KubeRuntime, objects: KubeMan
     }
     await waitForTeardownPoll();
   }
-  throw new Error('Project Kubernetes namespace teardown did not converge.');
+  throw new Error('Project Kubernetes authority objects cleanup did not converge.');
 }
 
 async function waitForTeardownPoll(): Promise<void> {

@@ -19,11 +19,20 @@ export async function waitForProjectNamespaceDeletion(
   runtime: KubeRuntime,
   namespace: KubeManifest,
   heartbeat: ProjectTeardownHeartbeat,
+  absoluteTimeoutMs: number,
 ): Promise<void> {
+  const absoluteDeadline: number = Date.now() + absoluteTimeoutMs;
   const nonTerminatingDeadline: number = Date.now() + teardownNotTerminatingTimeoutMs;
   const progress: ProjectNamespaceDeletionProgress = createProjectNamespaceDeletionProgress();
   for (;;) {
-    const observed: KubeObservedManifest | null = await readProjectNamespace(runtime, namespace, progress, heartbeat);
+    const observed: KubeObservedManifest | null = await readProjectNamespace(
+      runtime,
+      namespace,
+      progress,
+      heartbeat,
+      absoluteDeadline,
+    );
+    assertAbsoluteTeardownDeadline(Date.now(), absoluteDeadline);
     if (observed === null || namespaceWasReplaced(namespace, observed)) {
       return;
     }
@@ -37,11 +46,13 @@ async function readProjectNamespace(
   namespace: KubeManifest,
   progress: ProjectNamespaceDeletionProgress,
   heartbeat: ProjectTeardownHeartbeat,
+  absoluteDeadline: number,
 ): Promise<KubeObservedManifest | null> {
   for (;;) {
     try {
       return await runtime.read(namespace);
     } catch {
+      assertAbsoluteTeardownDeadline(Date.now(), absoluteDeadline);
       await observeNamespaceReadFailure(progress, heartbeat, Date.now());
       await waitForTeardownPoll();
     }
@@ -91,6 +102,12 @@ async function observePresentNamespace(
 function assertNamespaceEnteredTerminating(now: number, deadline: number): void {
   if (now >= deadline) {
     throw new Error('Project Kubernetes namespace did not enter the Terminating state.');
+  }
+}
+
+function assertAbsoluteTeardownDeadline(now: number, deadline: number): void {
+  if (now >= deadline) {
+    throw new Error('Project Kubernetes namespace teardown did not finish within the absolute teardown deadline.');
   }
 }
 

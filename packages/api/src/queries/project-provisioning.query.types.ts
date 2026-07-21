@@ -26,7 +26,6 @@ export type ProjectTeardownState = 'preparing' | 'pending' | 'running' | 'succee
 
 export interface ProjectTeardownObservation {
   attempts: number;
-  failureMessage: string | null;
   state: ProjectTeardownState;
 }
 

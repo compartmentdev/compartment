@@ -12,6 +12,7 @@ import pino, { type Logger } from 'pino';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProjectProvisionerConfig } from '../src/project-provisioner.types';
 import { executeProjectProvisioning } from '../src/services/project-provisioning-execution.service';
+import { waitForProjectNamespaceDeletion } from '../src/services/project-teardown-wait.service';
 import { projectProvisionerJobEnvironmentSchema } from '../src/project-provisioning-environment';
 
 describe('project provisioning execution', (): void => {
@@ -289,6 +290,41 @@ describe('project provisioning execution', (): void => {
         message: 'Project Kubernetes namespace teardown stopped making progress.',
         status: 'failed',
       });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fails at the absolute teardown deadline while the namespace progress signature keeps changing', async (): Promise<void> => {
+    vi.useFakeTimers();
+    try {
+      const runtime: KubeRuntime = Object.create(KubeRuntime.prototype) as KubeRuntime;
+      let resourceVersion: number = 0;
+      const namespace: KubeManifest = {
+        apiVersion: 'v1',
+        kind: 'Namespace',
+        metadata: { name: kubeNamespaceName('prj_1'), uid: 'namespace-uid' },
+      };
+      vi.spyOn(runtime, 'read').mockImplementation(async (object: KubeManifest): Promise<KubeManifest> => {
+        resourceVersion += 1;
+        return await Promise.resolve({
+          ...object,
+          metadata: {
+            ...object.metadata,
+            deletionTimestamp: new Date('2026-07-21T00:00:00.000Z'),
+            finalizers: ['kubernetes'],
+            resourceVersion: `${resourceVersion}`,
+          },
+        });
+      });
+      const completion: Promise<void> = waitForProjectNamespaceDeletion(runtime, namespace, vi.fn(), 500);
+      const deadlineFailure: Promise<void> = expect(completion).rejects.toThrow(
+        'Project Kubernetes namespace teardown did not finish within the absolute teardown deadline.',
+      );
+
+      await vi.advanceTimersByTimeAsync(600);
+
+      await deadlineFailure;
     } finally {
       vi.useRealTimers();
     }
