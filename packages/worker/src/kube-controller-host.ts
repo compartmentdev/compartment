@@ -12,6 +12,7 @@ import type {
   WorkerClaimResourceReconcileResponse,
   ProductJobClass,
 } from '@compartment/contracts';
+import type { Logger } from 'pino';
 import type { WorkerConfig } from './config';
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
 import { cleanupWorkerArtifacts } from './services/worker-artifact-cleanup.service';
@@ -92,6 +93,7 @@ class PodMetricsReconcileArea implements KubeControllerHost {
   public constructor(
     private readonly request: CompartmentRequester,
     private readonly runtime: KubeRuntime,
+    private readonly logger: Logger,
   ) {}
 
   public async reconcile(): Promise<boolean> {
@@ -99,12 +101,12 @@ class PodMetricsReconcileArea implements KubeControllerHost {
       return false;
     }
     this.nextCollectionAt = Date.now() + 10_000;
-    await collectAndPublishPodMetrics(this.request, this.runtime);
+    await collectAndPublishPodMetrics(this.request, this.runtime, this.logger);
     return true;
   }
 }
 
-export function createKubeControllerHosts(config: WorkerConfig): KubeControllerHost[] {
+export function createKubeControllerHosts(config: WorkerConfig, logger: Logger): KubeControllerHost[] {
   if (!isKubeRuntimeConfigured()) {
     throw new Error('Kubernetes worker requires KUBERNETES_SERVICE_HOST or KUBECONFIG.');
   }
@@ -115,7 +117,7 @@ export function createKubeControllerHosts(config: WorkerConfig): KubeControllerH
   });
   const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
   return [
-    new PodMetricsReconcileArea(request, runtime),
+    new PodMetricsReconcileArea(request, runtime, logger),
     new DeploymentReconcileArea(request, runtime, config.artifactRegistry),
     new ResourceReconcileArea(request, runtime),
   ];

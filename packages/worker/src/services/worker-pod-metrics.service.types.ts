@@ -1,5 +1,5 @@
-import type { KubePodMetricObservation, ObservePodMetrics } from '@compartment/kube-runtime';
+import type { KubePodMetricCollection, ObservePodMetrics } from '@compartment/kube-runtime';
 
 export interface PodMetricsRuntime {
-  observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricObservation[]>;
+  observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricCollection>;
 }

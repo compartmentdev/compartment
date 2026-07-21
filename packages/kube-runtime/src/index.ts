@@ -29,7 +29,13 @@ export type {
   KubeObservation,
   KubeObservedManifest,
 } from './kube-runtime.types';
-export type { KubeContainerMetricUsage, KubePodMetricObservation, ObservePodMetrics } from './kube-pod-metrics.types';
+export type {
+  KubeContainerMetricUsage,
+  KubePodMetricCollection,
+  KubePodMetricNamespaceFailure,
+  KubePodMetricObservation,
+  ObservePodMetrics,
+} from './kube-pod-metrics.types';
 export type { KubeRolloutObservation, KubeRolloutStatus } from './kube-rollout.types';
 export type {
   ObservedResourceClaim,

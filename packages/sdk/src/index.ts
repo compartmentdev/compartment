@@ -21,6 +21,7 @@ export { getOrganizationSettings, updateOrganizationSettings } from './services/
 export { archiveProject } from './services/project-archive.service';
 export { appendDeploymentEvent } from './services/worker-append-deployment-event.service';
 export { publishPodMetrics } from './services/worker-publish-pod-metrics.service';
+export { listPodMetricNamespaces } from './services/worker-list-pod-metric-namespaces.service';
 export { claimNextDeployment } from './services/worker-claim-deployment.service';
 export { recoverOrphanedBuildClaims } from './services/worker-recover-orphaned-build-claims.service';
 export { exchangeAppAccess } from './services/app-access-exchange.service';

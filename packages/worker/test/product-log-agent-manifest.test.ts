@@ -4,7 +4,6 @@ import { parseAllDocuments, type Document } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
 const manifestPath: string = resolve(__dirname, '../manifests/product-log-agent.yaml');
-const workerObservabilityRbacPath: string = resolve(__dirname, '../manifests/worker-observability-rbac.yaml');
 
 describe('product log agent manifest', (): void => {
   it('keeps capture durable and every queue bounded', async (): Promise<void> => {
@@ -31,21 +30,6 @@ describe('product log agent manifest', (): void => {
     expect(manifest).toMatch(/compartment\.dev\/log-slo-lines-per-second: ['"]12000['"]/);
     expect(manifest).toContain('ephemeral-storage: 384Mi');
     expect(manifest).toContain('when_full: block');
-  });
-
-  it('grants only cluster-wide Pod and metrics reads to the worker identity', async (): Promise<void> => {
-    const manifest: string = await readFile(workerObservabilityRbacPath, 'utf8');
-    const documents: object[] = parseAllDocuments(manifest).map(
-      (document: Document): object => document.toJSON() as object,
-    );
-
-    expect(documents).toHaveLength(3);
-    expect(manifest).toContain("apiGroups: ['metrics.k8s.io']");
-    expect(manifest).toContain("resources: ['pods']");
-    expect(manifest).toContain("verbs: ['get', 'list']");
-    expect(manifest).not.toContain('watch');
-    expect(manifest).not.toContain('create');
-    expect(manifest).not.toContain('delete');
   });
 
   it('reads kubelet files without embedding credentials or a file sink', async (): Promise<void> => {

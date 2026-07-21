@@ -5,6 +5,7 @@ import { authenticateInternalWorkerRequest } from './authenticate-internal-worke
 import { authenticateProductLogIngestRequest } from './authenticate-product-log-ingest-request';
 import { registerGetAppAccessStateRoute } from './get-app-access-state.route';
 import { registerGetArtifactSourceArchiveRoute } from './get-artifact-source-archive.route';
+import { registerGetPodMetricNamespacesRoute } from './get-pod-metric-namespaces.route';
 import { registerPostAppAccessExchangeRoute } from './post-app-access-exchange.route';
 import { registerPostAppAccessLogoutRoute } from './post-app-access-logout.route';
 import { registerPostClaimDeploymentRoute } from './post-claim-deployment.route';
@@ -72,6 +73,7 @@ function registerWorkerInternalRoutes(
 ): void {
   app.addHook('preHandler', authenticateInternalWorkerRequest);
   registerGetArtifactSourceArchiveRoute(app);
+  registerGetPodMetricNamespacesRoute(app);
   registerPostClaimDeploymentRoute(app);
   registerPostRecoverOrphanedBuildClaimsRoute(app);
   registerPostDeploymentRuntimeEventRoute(app);

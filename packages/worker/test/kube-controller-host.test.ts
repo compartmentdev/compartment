@@ -1,3 +1,4 @@
+import pino, { type Logger } from 'pino';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createKubeControllerHosts, type KubeControllerHost } from '../src/kube-controller-host';
 import type { WorkerConfig } from '../src/config';
@@ -32,6 +33,7 @@ vi.mock('../src/services/worker-pod-metrics.service', (): object => ({ collectAn
 
 const originalKubeServiceHost: string | undefined = process.env.KUBERNETES_SERVICE_HOST;
 const originalKubeconfig: string | undefined = process.env.KUBECONFIG;
+const logger: Logger = pino({ level: 'silent' });
 
 describe('createKubeControllerHosts', (): void => {
   beforeEach((): void => {
@@ -52,7 +54,7 @@ describe('createKubeControllerHosts', (): void => {
     delete process.env.KUBECONFIG;
 
     expect((): void => {
-      createKubeControllerHosts({} as WorkerConfig);
+      createKubeControllerHosts({} as WorkerConfig, logger);
     }).toThrow('Kubernetes worker requires KUBERNETES_SERVICE_HOST or KUBECONFIG.');
   });
 
@@ -61,9 +63,12 @@ describe('createKubeControllerHosts', (): void => {
     claimDeployment.mockResolvedValue({ target: { state: 'desired' } });
     claimResource.mockResolvedValue({ intent: { operation: 'reconcile' } });
 
-    const hosts: KubeControllerHost[] = createKubeControllerHosts({
-      artifactRegistry: {},
-    } as WorkerConfig);
+    const hosts: KubeControllerHost[] = createKubeControllerHosts(
+      {
+        artifactRegistry: {},
+      } as WorkerConfig,
+      logger,
+    );
 
     const results: boolean[] = await Promise.all(
       hosts.map(async (host: KubeControllerHost): Promise<boolean> => await host.reconcile()),
@@ -80,7 +85,7 @@ describe('createKubeControllerHosts', (): void => {
     process.env.KUBECONFIG = '/tmp/kubeconfig';
     claimDeployment.mockResolvedValue({ target: { state: 'desired' } });
     reconcileDeployment.mockRejectedValue(new Error('deployment failed'));
-    const hosts: KubeControllerHost[] = createKubeControllerHosts({ artifactRegistry: {} } as WorkerConfig);
+    const hosts: KubeControllerHost[] = createKubeControllerHosts({ artifactRegistry: {} } as WorkerConfig, logger);
 
     await expect(hosts[1]!.reconcile()).rejects.toThrow('deployment failed');
 
@@ -96,7 +101,7 @@ describe('createKubeControllerHosts', (): void => {
         finishReconcile = resolve;
       }),
     );
-    const hosts: KubeControllerHost[] = createKubeControllerHosts({ artifactRegistry: {} } as WorkerConfig);
+    const hosts: KubeControllerHost[] = createKubeControllerHosts({ artifactRegistry: {} } as WorkerConfig, logger);
 
     const iteration: Promise<boolean> = hosts[2]!.reconcile();
     await Promise.resolve();

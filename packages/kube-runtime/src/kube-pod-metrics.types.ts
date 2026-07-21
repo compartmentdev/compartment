@@ -1,7 +1,8 @@
 import type { PodMetric, V1Pod } from '@kubernetes/client-node';
 
-export interface KubePodListInput {
+export interface KubeNamespacedPodListInput {
   labelSelector: string;
+  namespace: string;
 }
 
 export interface KubePodListResult {
@@ -13,16 +14,17 @@ export interface KubePodMetricListResult {
 }
 
 export interface KubePodListReader {
-  listPodForAllNamespaces(input: KubePodListInput): Promise<KubePodListResult>;
+  listNamespacedPod(input: KubeNamespacedPodListInput): Promise<KubePodListResult>;
 }
 
 export interface KubePodMetricsReader {
-  getPodMetrics(): Promise<KubePodMetricListResult>;
+  getPodMetrics(namespace: string): Promise<KubePodMetricListResult>;
 }
 
 export interface ObservePodMetrics {
   kind: 'pod-metrics';
   labels: Readonly<Record<string, string>>;
+  namespaces: string[];
 }
 
 export interface KubeContainerMetricUsage {
@@ -37,4 +39,15 @@ export interface KubePodMetricObservation {
   observedAt: Date;
   podName: string;
   podUid: string;
+}
+
+export interface KubePodMetricNamespaceFailure {
+  namespace: string;
+  reason: Error;
+}
+
+export interface KubePodMetricCollection {
+  failures: KubePodMetricNamespaceFailure[];
+  observations: KubePodMetricObservation[];
+  successfulNamespaceCount: number;
 }
