@@ -37,13 +37,20 @@ verification, so an operator using it must supply already verified `images.*.dig
 ## Install identity and retries
 
 The `<release>-install-state` Secret retains the installation ID, install token, domain allocation, ingress addresses,
-domain generation, and TLS identity. Helm keeps it across upgrades and uninstall/reinstall with the same namespace and
-release name. A retry with the same release coordinates and domain selection resumes the saved foundation or full
-release and does not allocate a second managed domain.
+domain generation, and TLS identity. Helm keeps it and the registry-auth Service across upgrades and
+uninstall/reinstall with the same namespace and release name. Retaining the Service preserves its ClusterIP and keeps
+node-level registry mirrors valid. A retry with the same release coordinates and domain selection resumes the saved
+foundation or full release and does not allocate a second managed domain. The supported reinstall path keeps the
+namespace and registry-auth Service.
 
 The `/v1/install` endpoint is available only before the first owner is created. After bootstrap, use
 `compartment login --api-url <console-url>` to recover a local CLI session. To intentionally abandon an install
 identity, uninstall the release and explicitly delete the retained Secret before reinstalling.
+
+Deleting the namespace or retained registry-auth Service is a destructive reset that allows Kubernetes to allocate a
+different ClusterIP. On k3s, update `/etc/rancher/k3s/registries.yaml` on every node with the current Service IP and
+restart k3s before the first application deployment. Other distributions require the equivalent container-runtime
+mirror update and restart.
 
 ## Install domain operations
 

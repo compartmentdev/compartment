@@ -129,6 +129,21 @@ tests:
       secrets: *stableSecrets
     asserts:
       - notFailedTemplate: {}
+      - equal:
+          path: metadata.annotations["helm.sh/resource-policy"]
+          value: keep
+        template: registry-auth.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["meta.helm.sh/release-name"]
+          value: compartment
+        template: registry-auth.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["meta.helm.sh/release-namespace"]
+          value: default
+        template: registry-auth.yaml
+        documentIndex: 0
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment

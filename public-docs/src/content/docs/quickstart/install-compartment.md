@@ -153,14 +153,33 @@ install`. If certificate and key material are supplied inline instead, Helm reta
 Secrets; `customTls.existingSecret` is preferred. When rotating an existing Secret in place, change
 `platform.rolloutMarker` so API and Caddy restart and Caddy reloads the certificate.
 
-The install-state Secret has Helm's `keep` policy so upgrades, resets, and an uninstall followed by reinstall retain
-the installation ID, domain allocation, and ingress addresses. To intentionally abandon that identity, uninstall the
-release and delete the Secret selected by both `app.kubernetes.io/instance=<release>` and
+The install-state Secret and registry-auth Service have Helm's `keep` policy. An uninstall followed by reinstall with
+the same namespace and release name retains the installation ID, domain allocation, ingress addresses, and registry
+ClusterIP, so an existing node registry mirror remains valid. Keep the namespace and registry-auth Service during this
+supported reinstall path. To intentionally abandon only the install identity, uninstall the release and delete the
+Secret selected by both `app.kubernetes.io/instance=<release>` and
 `app.kubernetes.io/component=install-state` before reinstalling. The next managed install requests a new allocation.
+
+For a same-release reinstall, record the registry address, uninstall without deleting the namespace, and confirm that
+Helm retained the Service. Rerun the same Compartment install command with the same namespace, release name, and values,
+then repeat the final check before deploying applications:
+
+```bash
+registry_service=compartment-compartment-registry-auth
+registry_ip="$(kubectl --namespace compartment get service "$registry_service" --output jsonpath='{.spec.clusterIP}')"
+helm uninstall compartment --namespace compartment
+test "$(kubectl --namespace compartment get service "$registry_service" --output jsonpath='{.spec.clusterIP}')" = "$registry_ip"
+# Rerun the same compartment install command here.
+test "$(kubectl --namespace compartment get service "$registry_service" --output jsonpath='{.spec.clusterIP}')" = "$registry_ip"
+```
 
 The bundled registry is addressed inside the cluster as `<release-fullname>-registry-auth.<namespace>.svc:5000`.
 Kubelets do not use cluster DNS for image pulls, so configure the container runtime on every node with an equivalent
 registry mirror or route before deploying applications. The chart cannot mutate node-level container-runtime config.
+If you delete the namespace or retained registry-auth Service, reinstall can allocate a different ClusterIP. On k3s,
+rewrite the mirror endpoint in `/etc/rancher/k3s/registries.yaml` on every node with the current Service IP, restart
+k3s, and verify the new endpoint before deploying an application. Use the equivalent mirror update and runtime restart
+for other Kubernetes distributions.
 
 Verify the Helm release and platform workload readiness before inviting more users:
 

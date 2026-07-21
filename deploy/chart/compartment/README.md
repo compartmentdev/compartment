@@ -84,11 +84,11 @@ commit private key material to a values file. Inline material is also retained i
 prefer `customTls.existingSecret`. After rotating an existing Secret in place, change `platform.rolloutMarker` to
 restart API and Caddy so Caddy reloads the certificate.
 
-The `<release>-install-state` Secret has Helm's `keep` resource policy so upgrades, resets, and an uninstall
-followed by reinstall with the same namespace and release name reuse the installation ID and managed-domain
-allocation. To intentionally abandon that identity and request a new allocation, uninstall the release and delete the
-Secret selected by both `app.kubernetes.io/instance=<release>` and
-`app.kubernetes.io/component=install-state` before reinstalling.
+The `<release>-install-state` Secret and registry-auth Service have Helm's `keep` resource policy. An uninstall
+followed by reinstall with the same namespace and release name reuses the installation ID, managed-domain allocation,
+and registry ClusterIP. Keep the namespace and registry-auth Service during this supported reinstall path. To
+intentionally abandon only the install identity, uninstall the release and delete the Secret selected by both
+`app.kubernetes.io/instance=<release>` and `app.kubernetes.io/component=install-state` before reinstalling.
 
 The chart's Caddy Service is the only public entrypoint. It never routes `/internal/*`. Point both
 `console.<baseDomain>` and `*.<baseDomain>` at that entrypoint.
@@ -141,4 +141,6 @@ DNS when their container runtime pulls images. Configure every node's container 
 route to the bundled registry before deploying applications. This node-level configuration is outside Helm's scope.
 
 The k3d e2e harness configures its k3s `registries.yaml` explicitly; use the corresponding mechanism for your
-Kubernetes distribution.
+Kubernetes distribution. If you delete the namespace or retained registry-auth Service, update every node's mirror
+with the newly allocated Service IP and restart the container runtime before deploying applications. For k3s, edit
+`/etc/rancher/k3s/registries.yaml` and restart k3s.
