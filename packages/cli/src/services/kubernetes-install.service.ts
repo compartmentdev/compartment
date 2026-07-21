@@ -141,6 +141,7 @@ async function deployResumableFoundation(
   await runKubernetesHelmInstallStage(
     input,
     material.chartPath,
+    material.platformImageValuesPath,
     material.installValuesPath,
     material.imageTrustValuesPath,
     'foundation',
@@ -160,6 +161,7 @@ async function deployInitialFoundation(
   await runKubernetesHelmInstallStage(
     input,
     material.chartPath,
+    material.platformImageValuesPath,
     material.installValuesPath,
     material.imageTrustValuesPath,
     'foundation',
@@ -176,6 +178,7 @@ async function persistResolvedInstallState(
   await runKubernetesHelmInstallStage(
     input,
     material.chartPath,
+    material.platformImageValuesPath,
     material.installValuesPath,
     material.imageTrustValuesPath,
     'foundation',
@@ -191,6 +194,7 @@ async function deployFullKubernetesInstall(
   await runKubernetesHelmInstallStage(
     input,
     material.chartPath,
+    material.platformImageValuesPath,
     material.installValuesPath,
     material.imageTrustValuesPath,
     'full',
@@ -240,6 +244,7 @@ async function materializeAdoptedKubernetesInstall(
     await runKubernetesHelmInstallStage(
       input,
       material.chartPath,
+      material.platformImageValuesPath,
       material.installValuesPath,
       material.imageTrustValuesPath,
       'full',

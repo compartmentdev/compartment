@@ -22,6 +22,7 @@ export interface KubernetesInstallHelmMaterial {
   chartPath: string;
   imageTrustValuesPath: string;
   installValuesPath: string;
+  platformImageValuesPath: string;
 }
 
 export interface ExistingKubernetesInstall extends KubernetesInstallState {

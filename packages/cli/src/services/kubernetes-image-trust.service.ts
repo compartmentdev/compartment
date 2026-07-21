@@ -10,11 +10,12 @@ import { readNonCompartmentEnvironment } from '../command-environment';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { readCommandOutput } from './kubernetes-command.support';
+import { kubernetesPlatformImageNames } from './kubernetes-platform-image-names';
+import type { KubernetesPlatformImageName } from './kubernetes-platform-image.types';
 import { writeKubernetesInstallValues } from './kubernetes-install-helm.service';
 import type {
   KubernetesInstallImageTrustInput,
   KubernetesImageTrustJsonObject,
-  KubernetesPlatformImageName,
   KubernetesPlatformImageValueFields,
   KubernetesPlatformImageValues,
   KubernetesReleaseImageTrustInput,
@@ -25,14 +26,12 @@ import type {
 import { readKubernetesReleaseValues } from './kubernetes-release-values.service';
 
 const imageDigestPattern: RegExp = /^sha256:[a-f0-9]{64}$/u;
-const platformImageNames: readonly KubernetesPlatformImageName[] = ['api', 'worker', 'edge', 'caddy'];
-
 export async function writeVerifiedKubernetesInstallImageValues(
   input: KubernetesInstallImageTrustInput,
 ): Promise<void> {
   const chartValues: JsonValue = await readChartValues(input.chartPath);
-  const operatorValues: JsonValue = await readYamlFile(input.operatorValuesPath);
-  await writeVerifiedPlatformImageValues(input.outputPath, chartValues, [operatorValues]);
+  const overrideValues: JsonValue[] = await Promise.all(input.overrideValuesPaths.map(readYamlFile));
+  await writeVerifiedPlatformImageValues(input.outputPath, chartValues, overrideValues);
 }
 
 export async function writeVerifiedKubernetesReleaseImageValues(
@@ -69,7 +68,7 @@ async function writeVerifiedPlatformImageValues(
     worker: { digest: '' },
   };
 
-  for (const imageName of platformImageNames) {
+  for (const imageName of kubernetesPlatformImageNames) {
     const resolvedImage: ResolvedKubernetesPlatformImage = resolvePlatformImage(effectiveImages[imageName], imageName);
     let digest: string | undefined = verifiedDigests.get(resolvedImage.imageRef);
     if (digest === undefined) {

@@ -1,6 +1,5 @@
 import type { JsonValue } from '@compartment/utils';
-
-export type KubernetesPlatformImageName = 'api' | 'caddy' | 'edge' | 'worker';
+import type { KubernetesPlatformImageName } from './kubernetes-platform-image.types';
 
 export interface KubernetesPlatformImageValueFields {
   digest?: string | undefined;
@@ -28,7 +27,7 @@ export interface KubernetesReleaseImageTrustInput {
 
 export interface KubernetesInstallImageTrustInput {
   chartPath: string;
-  operatorValuesPath: string;
+  overrideValuesPaths: readonly string[];
   outputPath: string;
 }
 
