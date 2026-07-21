@@ -26,10 +26,8 @@ import type {
 import { findActiveDeploymentRouteByHost } from '../src/queries/deployment-routes.query';
 import type { DeploymentRouteLookupRow } from '../src/queries/deployment-routes.query.types';
 import { requestDeploymentKubeStop } from '../src/queries/deployment-kube-membership.query';
-import {
-  claimPendingProjectProvisioning,
-  completeProjectProvisioning,
-} from '../src/queries/project-provisioning.query';
+import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
+import { claimPendingProjectProvisioning } from '../src/queries/project-provisioning.query';
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import { upsertDeploymentKubeReference } from '../src/queries/deployment-kube-reference.query';
 import {

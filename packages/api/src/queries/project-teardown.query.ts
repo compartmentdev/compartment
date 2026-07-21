@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { projectKubeProvisioning } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
+import { projectProvisioningAttemptLimit } from './project-provisioning-policy';
 import type {
   ProjectKubeProvisioningState,
   ProjectTeardownObservation,
@@ -25,6 +26,9 @@ async function requestProjectTeardownWithTransaction(
   );
   if (row === undefined) {
     throw new Error('Project Kubernetes lifecycle state not found.');
+  }
+  if (row.state === 'teardown_failed' && row.attempts >= projectProvisioningAttemptLimit) {
+    throw new Error(row.failureMessage ?? 'Project Kubernetes namespace teardown failed terminally.');
   }
   if (!teardownAlreadyRequested(row)) {
     await resetProjectTeardown(transaction, projectId);

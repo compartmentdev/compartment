@@ -43,7 +43,7 @@ If app access requires authentication, opening a browser app URL sends you throu
 
 On the active Projects page, Compartment also refreshes the visible project lifecycle and status fields automatically. Use the browser view when you want a live operator overview while deploy, start, stop, archive, or unarchive actions are still settling.
 
-Project-scoped commands usually resolve the default project from the current repository descriptor. `project archive` and `project delete` are the destructive exceptions and require explicit `--yes` confirmation. `project delete` also requires an explicit `--project <slug>` target.
+Project-scoped commands usually resolve the default project from the current repository descriptor. `project archive` and `project delete` are the destructive exceptions and require explicit `--yes` confirmation. `project delete` also requires an explicit `--project <slug>` target. The delete command queues runtime cleanup and returns before the project disappears; Compartment removes the project record after its Kubernetes namespace is gone.
 
 Compartment also ships project runtime commands:
 

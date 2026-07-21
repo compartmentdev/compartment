@@ -54,10 +54,8 @@ import {
   persistProductJobResult,
 } from '../src/queries/product-job-runs.query';
 import { persistProductJobIntent } from '../src/queries/product-job-intent.query';
-import {
-  claimPendingProjectProvisioning,
-  completeProjectProvisioning,
-} from '../src/queries/project-provisioning.query';
+import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
+import { claimPendingProjectProvisioning } from '../src/queries/project-provisioning.query';
 import { createOrGetProject } from '../src/queries/projects.query';
 import type { ProductJobIntent, ResourceClaimIdentity, ResourceReconcileIntent } from '@compartment/contracts';
 import type {

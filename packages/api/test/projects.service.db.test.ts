@@ -21,10 +21,8 @@ import {
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { claimProductJob } from '../src/queries/product-job-runs.query';
-import {
-  claimPendingProjectProvisioning,
-  completeProjectProvisioning,
-} from '../src/queries/project-provisioning.query';
+import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
+import { claimPendingProjectProvisioning } from '../src/queries/project-provisioning.query';
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import type { RbacTransaction } from '../src/queries/rbac.query.types';
 import type { resolveActiveProjectScope, resolveRequiredProjectScope } from '../src/services/project-scope.service';
@@ -151,70 +149,24 @@ describe('projects service', (): void => {
   });
 
   it('deletes archived projects after disconnecting their git source', async (): Promise<void> => {
-    const deletion: Promise<string> = deleteProjectForPrincipal({
-      organizationSlug: 'acme-dev',
-      principalId: 'prn_git_sources',
-      projectName: 'billing',
-    });
-    await waitForProjectTeardownRequest();
+    await expect(
+      deleteProjectForPrincipal({
+        organizationSlug: 'acme-dev',
+        principalId: 'prn_git_sources',
+        projectName: 'billing',
+      }),
+    ).resolves.toBe('billing');
     await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
     const teardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
     expect(teardown).toMatchObject({ action: 'teardown', projectId: 'prj_billing' });
     expect(await db.select().from(projects).where(eq(projects.id, 'prj_billing'))).toHaveLength(1);
-    await db
-      .update(projectKubeProvisioning)
-      .set({ leaseExpiresAt: new Date('2020-01-01T00:00:00.000Z') })
-      .where(eq(projectKubeProvisioning.projectId, teardown.projectId));
-    const retriedTeardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
-    expect(retriedTeardown).toMatchObject({ action: 'teardown', projectId: 'prj_billing' });
-    expect(retriedTeardown.leaseId).not.toBe(teardown.leaseId);
-    expect(
-      await db
-        .select({ attempts: projectKubeProvisioning.attempts })
-        .from(projectKubeProvisioning)
-        .where(eq(projectKubeProvisioning.projectId, teardown.projectId)),
-    ).toEqual([{ attempts: 2 }]);
-    expect(await db.select().from(projects).where(eq(projects.id, 'prj_billing'))).toHaveLength(1);
-    await completeProjectProvisioning({
-      action: 'teardown',
-      failureMessage: 'namespace still terminating',
-      leaseId: retriedTeardown.leaseId,
-      projectId: retriedTeardown.projectId,
-      status: 'failed',
-    });
-    await db
-      .update(projectKubeProvisioning)
-      .set({ updatedAt: new Date('2020-01-01T00:00:00.000Z') })
-      .where(eq(projectKubeProvisioning.projectId, retriedTeardown.projectId));
-    const thirdTeardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
-    await completeProjectProvisioning({
-      action: 'teardown',
-      failureMessage: 'namespace still terminating',
-      leaseId: thirdTeardown.leaseId,
-      projectId: thirdTeardown.projectId,
-      status: 'failed',
-    });
-    await db
-      .update(projectKubeProvisioning)
-      .set({ updatedAt: new Date('2020-01-01T00:00:00.000Z') })
-      .where(eq(projectKubeProvisioning.projectId, thirdTeardown.projectId));
-    const convergedTeardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
-    expect(convergedTeardown).toMatchObject({ action: 'teardown', projectId: 'prj_billing' });
-    expect(
-      await db
-        .select({ attempts: projectKubeProvisioning.attempts })
-        .from(projectKubeProvisioning)
-        .where(eq(projectKubeProvisioning.projectId, convergedTeardown.projectId)),
-    ).toEqual([{ attempts: 4 }]);
     await completeProjectProvisioning({
       action: 'teardown',
       failureMessage: null,
-      leaseId: convergedTeardown.leaseId,
-      projectId: convergedTeardown.projectId,
+      leaseId: teardown.leaseId,
+      projectId: teardown.projectId,
       status: 'succeeded',
     });
-
-    await expect(deletion).resolves.toBe('billing');
 
     expect(await db.select().from(projects).where(eq(projects.id, 'prj_billing'))).toHaveLength(0);
     expect(
@@ -223,6 +175,89 @@ describe('projects service', (): void => {
       {
         projectId: null,
         status: 'disconnected',
+      },
+    ]);
+  });
+
+  it('caps failed project teardown and preserves the terminal state on repeated delete', async (): Promise<void> => {
+    await expect(
+      deleteProjectForPrincipal({
+        organizationSlug: 'acme-dev',
+        principalId: 'prn_git_sources',
+        projectName: 'billing',
+      }),
+    ).resolves.toBe('billing');
+
+    for (let attempt: number = 1; attempt <= 3; attempt += 1) {
+      const teardown: ProjectProvisioningClaimRow = await waitForProjectTeardownClaim();
+      await completeProjectProvisioning({
+        action: 'teardown',
+        failureMessage: 'namespace still terminating',
+        leaseId: teardown.leaseId,
+        projectId: teardown.projectId,
+        status: 'failed',
+      });
+      await db
+        .update(projectKubeProvisioning)
+        .set({ updatedAt: new Date('2020-01-01T00:00:00.000Z') })
+        .where(eq(projectKubeProvisioning.projectId, teardown.projectId));
+    }
+
+    await expect(claimPendingProjectProvisioning('teardown')).resolves.toBeNull();
+    await expect(
+      db
+        .select({
+          attempts: projectKubeProvisioning.attempts,
+          failureMessage: projectKubeProvisioning.failureMessage,
+          state: projectKubeProvisioning.state,
+        })
+        .from(projectKubeProvisioning)
+        .where(eq(projectKubeProvisioning.projectId, 'prj_billing')),
+    ).resolves.toEqual([
+      {
+        attempts: 3,
+        failureMessage: 'Project Kubernetes teardown failed after 3 attempts: namespace still terminating',
+        state: 'teardown_failed',
+      },
+    ]);
+    await expect(
+      deleteProjectForPrincipal({
+        organizationSlug: 'acme-dev',
+        principalId: 'prn_git_sources',
+        projectName: 'billing',
+      }),
+    ).rejects.toMatchObject({ code: 'project_delete_runtime_cleanup_failed' });
+    await expect(claimPendingProjectProvisioning('teardown')).resolves.toBeNull();
+  });
+
+  it('terminally fails an expired final teardown lease', async (): Promise<void> => {
+    await expect(
+      deleteProjectForPrincipal({
+        organizationSlug: 'acme-dev',
+        principalId: 'prn_git_sources',
+        projectName: 'billing',
+      }),
+    ).resolves.toBe('billing');
+    await db
+      .update(projectKubeProvisioning)
+      .set({
+        attempts: 3,
+        leaseExpiresAt: new Date('2020-01-01T00:00:00.000Z'),
+        leaseId: 'kpl_expired',
+        state: 'teardown_running',
+      })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_billing'));
+
+    await expect(claimPendingProjectProvisioning('teardown')).resolves.toBeNull();
+    await expect(
+      db
+        .select({ failureMessage: projectKubeProvisioning.failureMessage, state: projectKubeProvisioning.state })
+        .from(projectKubeProvisioning)
+        .where(eq(projectKubeProvisioning.projectId, 'prj_billing')),
+    ).resolves.toEqual([
+      {
+        failureMessage: 'Project Kubernetes teardown failed after 3 attempts: The final teardown lease expired.',
+        state: 'teardown_failed',
       },
     ]);
   });
@@ -598,20 +633,4 @@ async function waitForProjectTeardownClaim(): Promise<ProjectProvisioningClaimRo
     });
   }
   throw new Error('Timed out waiting for project teardown claim.');
-}
-
-async function waitForProjectTeardownRequest(): Promise<void> {
-  for (let attempt: number = 0; attempt < 100; attempt += 1) {
-    const rows: { state: string }[] = await db
-      .select({ state: projectKubeProvisioning.state })
-      .from(projectKubeProvisioning)
-      .where(eq(projectKubeProvisioning.projectId, 'prj_billing'));
-    if (rows[0]?.state === 'teardown_pending') {
-      return;
-    }
-    await new Promise<void>((resolve: () => void): void => {
-      setTimeout(resolve, 10);
-    });
-  }
-  throw new Error('Timed out waiting for project teardown request.');
 }

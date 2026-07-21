@@ -23,11 +23,6 @@ export interface CreateProjectInput {
   updatedAt: Date;
 }
 
-export interface DeleteProjectResult {
-  projectName: string;
-  status: 'blocked' | 'deleted' | 'requires_archive';
-}
-
 export interface RenameProjectInput {
   name: string;
   projectId: string;

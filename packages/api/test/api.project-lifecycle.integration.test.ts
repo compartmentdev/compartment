@@ -46,10 +46,8 @@ import {
   sources,
 } from '../src/db/schema';
 import type { ProjectRow } from '../src/queries/projects.query.types';
-import {
-  claimPendingProjectProvisioning,
-  completeProjectProvisioning,
-} from '../src/queries/project-provisioning.query';
+import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
+import { claimPendingProjectProvisioning } from '../src/queries/project-provisioning.query';
 import type { ProjectProvisioningClaimRow } from '../src/queries/project-provisioning.query.types';
 import { findNextDeploymentReconcilePair } from '../src/queries/deployment-reconcile.query';
 import type { DeploymentKubeState } from '../src/queries/deployment-kube-state.types';

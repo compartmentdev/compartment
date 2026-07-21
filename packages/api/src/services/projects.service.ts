@@ -8,7 +8,6 @@ import {
 import { hasBlockingProjectDeployments } from '../queries/deployments.query';
 import { getApiDatabase } from '../runtime/runtime-access';
 import {
-  deleteProjectWithExecutor,
   findProjectByIdWithExecutor,
   lockProjectMutationWithExecutor,
   renameProjectWithExecutor,
@@ -18,9 +17,8 @@ import {
 import { isUniqueConstraintError } from '../queries/query-error';
 import { cancelProjectProductJobsForArchive } from '../queries/product-job-claim.query';
 import { cancelResourceReconcileRunsForProjectArchive } from '../queries/resource-reconcile-project.query';
-import type { DeleteProjectResult, ProjectRow, ProjectsMutationTransaction } from '../queries/projects.query.types';
+import type { ProjectRow, ProjectsMutationTransaction } from '../queries/projects.query.types';
 import {
-  clearDisconnectedBindingProjectReferences,
   findActiveBindingByProjectIdWithExecutor,
   findDisconnectedBindingByProjectIdWithExecutor,
 } from '../queries/source.query';
@@ -101,18 +99,7 @@ export async function deleteProjectForPrincipal(input: ProjectScopeInput): Promi
   ).project;
   const project: ProjectRow = await requireProjectRuntimeCleanupBeforeDelete(projectScope.id);
   await cleanupDeletedProjectRuntime(project);
-  const result: DeleteProjectResult = await getApiDatabase().transaction(
-    async (transaction: ProjectsMutationTransaction): Promise<DeleteProjectResult> =>
-      await deleteProjectWithinTransaction(transaction, projectScope.id),
-  );
-  if (result.status === 'requires_archive') {
-    throw createProjectDeleteRequiresArchiveError();
-  }
-  if (result.status === 'blocked') {
-    throw createProjectDeleteBlockedError();
-  }
-
-  return result.projectName;
+  return project.name;
 }
 
 export async function getActiveProjectForPrincipal(input: ProjectScopeInput): Promise<ProjectReadResult> {
@@ -145,31 +132,6 @@ async function ensureArchivedProject(
     projectId: project.id,
     updatedAt: now,
   });
-}
-
-async function deleteProjectWithinTransaction(
-  transaction: ProjectsMutationTransaction,
-  projectId: string,
-): Promise<DeleteProjectResult> {
-  const project: ProjectRow = await requireMutableProject(transaction, projectId);
-  if (project.archivedAt === null) {
-    return {
-      projectName: project.name,
-      status: 'requires_archive',
-    };
-  }
-  if (await hasBlockingProjectDeployments(transaction, project.id)) {
-    return {
-      projectName: project.name,
-      status: 'blocked',
-    };
-  }
-  await clearDisconnectedBindingProjectReferences(transaction, project.id, new Date());
-
-  return {
-    projectName: (await deleteProjectWithExecutor(transaction, project.id)).name,
-    status: 'deleted',
-  };
 }
 
 async function requireProjectRuntimeCleanupBeforeDelete(projectId: string): Promise<ProjectRow> {

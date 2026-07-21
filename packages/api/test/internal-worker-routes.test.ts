@@ -2,9 +2,7 @@ import {
   buildWorkerUploadGitSourceResolutionTaskArchivePath,
   compartmentInternalAppAccessStatePathname,
   workerClaimNextDeploymentPathname,
-  workerClaimProjectProvisioningPathname,
   workerClaimProjectProvisioningV2Pathname,
-  workerCompleteProjectProvisioningPathname,
   workerCompleteProjectProvisioningV2Pathname,
   workerCompleteProjectProvisioningResponseSchema,
   workerRunNextScheduledResourceOperationPathname,
@@ -21,9 +19,7 @@ import type {
 import type { storeSourceResolutionTaskArchive } from '../src/services/git-source/source-resolution-task-archive-storage.service';
 import type { runNextScheduledResourceOperationForWorker } from '../src/services/resource-operation-scheduler.service';
 import type {
-  acknowledgeProjectProvisioning,
   acknowledgeProjectProvisioningV2,
-  claimProjectProvisioning,
   claimProjectProvisioningV2,
 } from '../src/services/project-provisioning.service';
 import { applyApiRouteTestEnv, injectApiRoute, withApiRouteApp } from './api-route-test.harness';
@@ -32,17 +28,13 @@ type ClaimQueuedDeploymentForWorker = typeof claimQueuedDeploymentForWorker;
 type RecoverOrphanedDeploymentBuildClaims = typeof recoverOrphanedDeploymentBuildClaims;
 type RunNextScheduledResourceOperationForWorker = typeof runNextScheduledResourceOperationForWorker;
 type StoreSourceResolutionTaskArchive = typeof storeSourceResolutionTaskArchive;
-type ClaimProjectProvisioning = typeof claimProjectProvisioning;
 type ClaimProjectProvisioningV2 = typeof claimProjectProvisioningV2;
-type AcknowledgeProjectProvisioning = typeof acknowledgeProjectProvisioning;
 type AcknowledgeProjectProvisioningV2 = typeof acknowledgeProjectProvisioningV2;
 
 interface InternalWorkerRouteMocks {
-  acknowledgeProjectProvisioning: Mock<AcknowledgeProjectProvisioning>;
   acknowledgeProjectProvisioningV2: Mock<AcknowledgeProjectProvisioningV2>;
   claimQueuedDeploymentForWorker: Mock<ClaimQueuedDeploymentForWorker>;
   recoverOrphanedDeploymentBuildClaims: Mock<RecoverOrphanedDeploymentBuildClaims>;
-  claimProjectProvisioning: Mock<ClaimProjectProvisioning>;
   claimProjectProvisioningV2: Mock<ClaimProjectProvisioningV2>;
   runNextScheduledResourceOperationForWorker: Mock<RunNextScheduledResourceOperationForWorker>;
   storeSourceResolutionTaskArchive: Mock<StoreSourceResolutionTaskArchive>;
@@ -53,11 +45,9 @@ let shouldRestoreSourceArchiveMaxBytes: boolean = false;
 
 const mocks: InternalWorkerRouteMocks = vi.hoisted(
   (): InternalWorkerRouteMocks => ({
-    acknowledgeProjectProvisioning: vi.fn<AcknowledgeProjectProvisioning>(),
     acknowledgeProjectProvisioningV2: vi.fn<AcknowledgeProjectProvisioningV2>(),
     claimQueuedDeploymentForWorker: vi.fn<ClaimQueuedDeploymentForWorker>(),
     recoverOrphanedDeploymentBuildClaims: vi.fn<RecoverOrphanedDeploymentBuildClaims>(),
-    claimProjectProvisioning: vi.fn<ClaimProjectProvisioning>(),
     claimProjectProvisioningV2: vi.fn<ClaimProjectProvisioningV2>(),
     runNextScheduledResourceOperationForWorker: vi.fn<RunNextScheduledResourceOperationForWorker>(),
     storeSourceResolutionTaskArchive: vi.fn<StoreSourceResolutionTaskArchive>(),
@@ -78,14 +68,10 @@ vi.mock(
 vi.mock(
   '../src/services/project-provisioning.service',
   (): {
-    acknowledgeProjectProvisioning: Mock<AcknowledgeProjectProvisioning>;
     acknowledgeProjectProvisioningV2: Mock<AcknowledgeProjectProvisioningV2>;
-    claimProjectProvisioning: Mock<ClaimProjectProvisioning>;
     claimProjectProvisioningV2: Mock<ClaimProjectProvisioningV2>;
   } => ({
-    acknowledgeProjectProvisioning: mocks.acknowledgeProjectProvisioning,
     acknowledgeProjectProvisioningV2: mocks.acknowledgeProjectProvisioningV2,
-    claimProjectProvisioning: mocks.claimProjectProvisioning,
     claimProjectProvisioningV2: mocks.claimProjectProvisioningV2,
   }),
 );
@@ -110,10 +96,10 @@ vi.mock(
 
 describe('internal worker routes', (): void => {
   afterEach((): void => {
-    mocks.acknowledgeProjectProvisioning.mockReset();
+    mocks.acknowledgeProjectProvisioningV2.mockReset();
     mocks.claimQueuedDeploymentForWorker.mockReset();
     mocks.recoverOrphanedDeploymentBuildClaims.mockReset();
-    mocks.claimProjectProvisioning.mockReset();
+    mocks.claimProjectProvisioningV2.mockReset();
     mocks.runNextScheduledResourceOperationForWorker.mockReset();
     mocks.storeSourceResolutionTaskArchive.mockReset();
     if (shouldRestoreSourceArchiveMaxBytes) {
@@ -174,48 +160,9 @@ describe('internal worker routes', (): void => {
     });
   });
 
-  it('keeps the v1 provisioning routes compatible during a worker rollout', async (): Promise<void> => {
-    applyApiRouteTestEnv();
-    mocks.claimProjectProvisioning.mockResolvedValueOnce({
-      leaseId: 'kpl_legacy',
-      namespaceId: 'prj_legacy',
-      projectId: 'prj_legacy',
-    });
-    mocks.acknowledgeProjectProvisioning.mockResolvedValueOnce(true);
-    await withApiRouteApp(async (app: ApiApp): Promise<void> => {
-      const headers: Record<string, string> = {
-        accept: 'application/json',
-        authorization: 'Bearer test-runtime-control-token',
-        'content-type': 'application/json',
-      };
-      const claim: LightMyRequestResponse = await injectApiRoute(app, {
-        headers,
-        method: 'POST',
-        timeoutMs: 1000,
-        url: workerClaimProjectProvisioningPathname,
-      });
-      expect(claim.json()).toEqual({
-        target: { leaseId: 'kpl_legacy', namespaceId: 'prj_legacy', projectId: 'prj_legacy' },
-      });
-      const completion: LightMyRequestResponse = await injectApiRoute(app, {
-        headers,
-        method: 'POST',
-        payload: { leaseId: 'kpl_legacy', projectId: 'prj_legacy', status: 'succeeded' },
-        timeoutMs: 1000,
-        url: workerCompleteProjectProvisioningPathname,
-      });
-      expect(completion.statusCode).toBe(200);
-      expect(mocks.acknowledgeProjectProvisioning).toHaveBeenCalledWith({
-        leaseId: 'kpl_legacy',
-        projectId: 'prj_legacy',
-        status: 'succeeded',
-      });
-    });
-  });
-
   it('completes project provisioning through the worker route contract', async (): Promise<void> => {
     applyApiRouteTestEnv();
-    mocks.acknowledgeProjectProvisioningV2.mockResolvedValueOnce(true);
+    mocks.acknowledgeProjectProvisioningV2.mockResolvedValueOnce({ applied: true, terminalFailure: false });
     await withApiRouteApp(async (app: ApiApp): Promise<void> => {
       const response: LightMyRequestResponse = await injectApiRoute(app, {
         headers: {

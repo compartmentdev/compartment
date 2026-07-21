@@ -7,3 +7,8 @@ export function projectProvisioningTerminalFailure(failureMessage: string | null
   const detail: string = failureMessage ?? 'Project Kubernetes provisioning failed.';
   return `Project is unprovisionable after ${projectProvisioningAttemptLimit} attempts: ${detail}`;
 }
+
+export function projectTeardownTerminalFailure(failureMessage: string | null): string {
+  const detail: string = failureMessage ?? 'Project Kubernetes teardown failed.';
+  return `Project Kubernetes teardown failed after ${projectProvisioningAttemptLimit} attempts: ${detail}`;
+}
