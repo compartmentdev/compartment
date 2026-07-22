@@ -3,34 +3,76 @@
   "@id": "https://github.com/compartmentdev/compartment/security/vex/2026-07-22-grpc-buildctl-railpack",
   "author": "compartment maintainers",
   "timestamp": "2026-07-22T05:40:00Z",
-  "version": 2,
+  "version": 3,
   "statements": [
     {
-      "vulnerability": { "name": "GHSA-hrxh-6v49-42gf" },
+      "vulnerability": {
+        "name": "GHSA-hrxh-6v49-42gf"
+      },
       "products": [
         {
           "@id": "pkg:oci/compartment-worker?repository_url=ghcr.io/compartmentdev/compartment-worker",
           "subcomponents": [
-            { "@id": "pkg:golang/google.golang.org/grpc@v1.80.0" },
-            { "@id": "pkg:golang/google.golang.org/grpc@v1.79.3" }
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@1.80.0"
+            },
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@1.79.3"
+            },
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@v1.80.0"
+            },
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@v1.79.3"
+            }
           ]
         },
         {
           "@id": "pkg:oci/compartment-worker?repository_url=ghcr.io%2Fcompartmentdev%2Fcompartment-worker",
           "subcomponents": [
-            { "@id": "pkg:golang/google.golang.org/grpc@v1.80.0" },
-            { "@id": "pkg:golang/google.golang.org/grpc@v1.79.3" }
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@1.80.0"
+            },
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@1.79.3"
+            },
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@v1.80.0"
+            },
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@v1.79.3"
+            }
           ]
         },
         {
           "@id": "pkg:docker/compartmentdev/compartment-worker",
           "subcomponents": [
-            { "@id": "pkg:golang/google.golang.org/grpc@v1.80.0" },
-            { "@id": "pkg:golang/google.golang.org/grpc@v1.79.3" }
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@1.80.0"
+            },
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@1.79.3"
+            },
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@v1.80.0"
+            },
+            {
+              "@id": "pkg:golang/google.golang.org/grpc@v1.79.3"
+            }
           ]
         },
-        { "@id": "pkg:golang/google.golang.org/grpc@v1.80.0" },
-        { "@id": "pkg:golang/google.golang.org/grpc@v1.79.3" }
+        {
+          "@id": "pkg:golang/google.golang.org/grpc@1.80.0"
+        },
+        {
+          "@id": "pkg:golang/google.golang.org/grpc@1.79.3"
+        },
+        {
+          "@id": "pkg:golang/google.golang.org/grpc@v1.80.0"
+        },
+        {
+          "@id": "pkg:golang/google.golang.org/grpc@v1.79.3"
+        }
       ],
       "status": "not_affected",
       "justification": "vulnerable_code_not_in_execute_path",
