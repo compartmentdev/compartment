@@ -104,8 +104,9 @@ configuration on Kubernetes nodes.
 
 When the CLI is running as root on the local k3s node with an unambiguous
 `KUBECONFIG=/etc/rancher/k3s/k3s.yaml` and `systemctl` is available, it merges only the installed Compartment mirror
-into `/etc/rancher/k3s/registries.yaml` and restarts k3s automatically. It preserves other registry mirrors. A TTY
-install asks for confirmation with a default of yes; a non-TTY install applies it automatically and logs the action.
+into `/etc/rancher/k3s/registries.yaml` and restarts k3s automatically when the config changes. It preserves other
+registry mirrors. A declarative `--values` install applies it automatically and logs the action; a guided install asks
+for confirmation with a default of yes.
 Pass `--skip-registry-mirror` to decline automatic application. Automatic application configures only the local node;
 make the same Compartment CLI version available and run the printed apply command on every other k3s node in the
 cluster. The command exits unsuccessfully if k3s does not restart or the written endpoint fails its post-check. If any

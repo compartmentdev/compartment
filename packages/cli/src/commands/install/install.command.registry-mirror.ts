@@ -1,6 +1,5 @@
 import type { CliIo } from '../../app.types';
 import { promptYesNoChoice } from '../../prompts/prompt';
-import { isInteractivePromptInput } from '../../prompts/prompt-reader';
 import {
   applyKubernetesRegistryMirror,
   canAutoApplyKubernetesRegistryMirror,
@@ -15,9 +14,10 @@ export async function finishInstallRegistryMirrorSetup(
   target: KubernetesOperatorTarget,
   mirror: KubernetesRegistryMirror,
   skipAutoApply: boolean,
+  declarativeInstall: boolean,
 ): Promise<void> {
   io.stderr(renderKubernetesRegistryMirrorInstructions(mirror));
-  if (await shouldAutoApplyRegistryMirror(io, target, skipAutoApply)) {
+  if (await shouldAutoApplyRegistryMirror(io, target, skipAutoApply, declarativeInstall)) {
     await applyAndRenderRegistryMirror(io, mirror);
   }
 }
@@ -26,6 +26,7 @@ async function shouldAutoApplyRegistryMirror(
   io: CliIo,
   target: KubernetesOperatorTarget,
   skipAutoApply: boolean,
+  declarativeInstall: boolean,
 ): Promise<boolean> {
   if (skipAutoApply) {
     io.stderr('Automatic registry mirror setup was skipped by --skip-registry-mirror.\n');
@@ -35,11 +36,32 @@ async function shouldAutoApplyRegistryMirror(
     io.stderr('Automatic registry mirror setup is unavailable; follow the instructions on every k3s node.\n');
     return false;
   }
-  if (!isInteractivePromptInput(io.stdin)) {
+  if (declarativeInstall) {
     io.stderr('Applying the registry mirror automatically on the local k3s node.\n');
     return true;
   }
   return await promptYesNoChoice(io, 'Apply this registry mirror on the local k3s node now? [Y/n]: ', true);
+}
+
+export function renderKubernetesRegistryMirrorDiscoveryFailure(
+  target: KubernetesOperatorTarget,
+  failureMessage: string,
+): string {
+  const contextArgument: string = target.kubeContext === undefined ? '' : ` --context '${target.kubeContext}'`;
+  return `
+Warning: could not inspect the installed registry-auth Service: ${failureMessage}
+Registry mirror setup is still required before the first application deploy.
+After kubectl access recovers, inspect the retained registry-auth Service:
+
+kubectl${contextArgument} --namespace '${target.namespace}' get service \\
+  --selector 'app.kubernetes.io/instance=${target.releaseName}'
+
+Then run this command on every k3s node with the Service name and ClusterIP from kubectl:
+
+sudo compartment system registry-mirror apply \\
+  --registry-host '<service-name>.${target.namespace}.svc:5000' \\
+  --cluster-ip '<cluster-ip>'
+`;
 }
 
 async function applyAndRenderRegistryMirror(io: CliIo, mirror: KubernetesRegistryMirror): Promise<void> {

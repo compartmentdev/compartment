@@ -60,11 +60,15 @@ export async function applyKubernetesRegistryMirror(
   if (configChanged) {
     await writeRegistryConfigAtomically(mergedConfig);
   }
-  const restartResult: CommandResult = await runCommand(['systemctl', 'restart', 'k3s']);
+  const restartResult: CommandResult | undefined = configChanged
+    ? await runCommand(['systemctl', 'restart', 'k3s'])
+    : undefined;
   return {
     configChanged,
     current: await hasCurrentRegistryEndpoint(mirror),
-    ...(restartResult.exitCode === 0 ? {} : { restartError: readCommandOutput(restartResult) }),
+    ...(restartResult === undefined || restartResult.exitCode === 0
+      ? {}
+      : { restartError: readCommandOutput(restartResult) }),
   };
 }
 
@@ -91,7 +95,7 @@ sudo "$compartment_binary" system registry-mirror apply \\
   --registry-host '${mirror.host}' \\
   --cluster-ip '${mirror.clusterIp}'
 
-The apply command writes /etc/rancher/k3s/registries.yaml and runs systemctl restart k3s.
+The apply command writes /etc/rancher/k3s/registries.yaml and restarts k3s when the config changes.
 `;
 }
 

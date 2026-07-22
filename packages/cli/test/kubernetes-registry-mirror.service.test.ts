@@ -1,14 +1,62 @@
 import { parse } from 'yaml';
 import type { JsonValue } from '@compartment/utils';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import type { CommandResult } from '../src/command-runner.types';
+import { renderRegistryMirrorApplyResult } from '../src/commands/registry-mirror.output';
 import {
   createKubernetesRegistryMirror,
   isLocalK3sKubeconfigChain,
   mergeKubernetesRegistryMirrorConfig,
   renderKubernetesRegistryMirrorConfig,
 } from '../src/services/kubernetes-registry-mirror-config.service';
-import { renderKubernetesRegistryMirrorInstructions } from '../src/services/kubernetes-registry-mirror.service';
-import type { KubernetesRegistryMirror } from '../src/services/kubernetes-registry-mirror.service.types';
+import {
+  applyKubernetesRegistryMirror,
+  renderKubernetesRegistryMirrorInstructions,
+} from '../src/services/kubernetes-registry-mirror.service';
+import type {
+  KubernetesRegistryMirror,
+  KubernetesRegistryMirrorApplyResult,
+} from '../src/services/kubernetes-registry-mirror.service.types';
+import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
+
+type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
+
+interface RegistryMirrorServiceMocks {
+  lstat: Mock<(path: string) => Promise<never>>;
+  readFile: Mock<(path: string, encoding: string) => Promise<string>>;
+  rename: Mock<(source: string, destination: string) => Promise<void>>;
+  runCommand: Mock<RunCommand>;
+  unlink: Mock<(path: string) => Promise<void>>;
+  writeFile: Mock<(path: string, config: string) => Promise<void>>;
+}
+
+interface RegistryMirrorFileState {
+  config?: string | undefined;
+  temporaryConfig?: string | undefined;
+}
+
+const fileState: RegistryMirrorFileState = {};
+const mocks: RegistryMirrorServiceMocks = vi.hoisted(
+  (): RegistryMirrorServiceMocks => ({
+    lstat: vi.fn<(path: string) => Promise<never>>(),
+    readFile: vi.fn<(path: string, encoding: string) => Promise<string>>(),
+    rename: vi.fn<(source: string, destination: string) => Promise<void>>(),
+    runCommand: vi.fn<RunCommand>(),
+    unlink: vi.fn<(path: string) => Promise<void>>(),
+    writeFile: vi.fn<(path: string, config: string) => Promise<void>>(),
+  }),
+);
+
+vi.mock('../src/command-runner', (): object => ({ runCommand: mocks.runCommand }));
+vi.mock('node:fs/promises', (): object => ({
+  access: vi.fn(),
+  lstat: mocks.lstat,
+  readFile: mocks.readFile,
+  realpath: vi.fn(),
+  rename: mocks.rename,
+  unlink: mocks.unlink,
+  writeFile: mocks.writeFile,
+}));
 
 const serviceClusterIp: string = ['10', '43', '210', '17'].join('.');
 const staleClusterIp: string = ['10', '43', '99', '8'].join('.');
@@ -19,18 +67,65 @@ const registryMirror: KubernetesRegistryMirror = createKubernetesRegistryMirror(
 );
 
 describe('Kubernetes registry mirror setup', (): void => {
+  beforeEach((): void => {
+    fileState.config = undefined;
+    fileState.temporaryConfig = undefined;
+    mocks.lstat.mockReset().mockRejectedValue(createMissingFileError());
+    mocks.readFile.mockReset().mockImplementation(async (): Promise<string> => {
+      await Promise.resolve();
+      if (fileState.config === undefined) {
+        throw createMissingFileError();
+      }
+      return fileState.config;
+    });
+    mocks.rename.mockReset().mockImplementation(async (): Promise<void> => {
+      await Promise.resolve();
+      fileState.config = fileState.temporaryConfig;
+      fileState.temporaryConfig = undefined;
+    });
+    mocks.runCommand.mockReset().mockResolvedValue({ exitCode: 0, stderr: '', stdout: '' });
+    mocks.unlink.mockReset().mockResolvedValue(undefined);
+    mocks.writeFile.mockReset().mockImplementation(async (_path: string, config: string): Promise<void> => {
+      await Promise.resolve();
+      fileState.temporaryConfig = config;
+    });
+  });
+
   it('renders the exact k3s registry mirror format for the installed Service', (): void => {
     expect(renderKubernetesRegistryMirrorConfig(registryMirror)).toBe(
       `mirrors:
-  "compartment-compartment-registry-auth.compartment.svc:5000":
+  compartment-compartment-registry-auth.compartment.svc:5000:
     endpoint:
-      - "http://${serviceClusterIp}:5000"
+      - http://${serviceClusterIp}:5000
 `,
     );
     const instructions: string = renderKubernetesRegistryMirrorInstructions(registryMirror);
     expect(instructions).toContain(renderKubernetesRegistryMirrorConfig(registryMirror));
     expect(instructions).toContain('system registry-mirror apply');
-    expect(instructions).toContain('runs systemctl restart k3s');
+    expect(instructions).toContain('restarts k3s when the config changes');
+  });
+
+  it('renders config that is already current for the merge and post-check path', (): void => {
+    const renderedConfig: string = renderKubernetesRegistryMirrorConfig(registryMirror);
+
+    expect(mergeKubernetesRegistryMirrorConfig(renderedConfig, registryMirror)).toBe(renderedConfig);
+  });
+
+  it('applies a fresh config without a warning and skips the restart when applied again', async (): Promise<void> => {
+    const firstResult: KubernetesRegistryMirrorApplyResult = await applyKubernetesRegistryMirror(registryMirror);
+    const capture: CliCommandCapture = createCliCapture();
+
+    renderRegistryMirrorApplyResult(capture.io, firstResult);
+
+    expect(firstResult).toEqual({ configChanged: true, current: true });
+    expect(readCliStderr(capture)).not.toContain('Warning:');
+    expect(readCliStderr(capture)).toContain('Restarted k3s');
+
+    const secondResult: KubernetesRegistryMirrorApplyResult = await applyKubernetesRegistryMirror(registryMirror);
+
+    expect(secondResult).toEqual({ configChanged: false, current: true });
+    expect(mocks.runCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.runCommand).toHaveBeenCalledWith(['systemctl', 'restart', 'k3s']);
   });
 
   it('updates only the installed registry endpoint and keeps foreign registry configuration', (): void => {
@@ -82,3 +177,7 @@ configs:
     expect(isLocalK3sKubeconfigChain({ KUBECONFIG: '/etc/rancher/k3s/k3s.yaml' }, undefined)).toBe(true);
   });
 });
+
+function createMissingFileError(): NodeJS.ErrnoException {
+  return Object.assign(new Error('missing registry config'), { code: 'ENOENT' });
+}

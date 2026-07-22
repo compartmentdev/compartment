@@ -1,7 +1,7 @@
 import { isIPv4 } from 'node:net';
 import { delimiter, resolve } from 'node:path';
 import { type JsonValue } from '@compartment/utils';
-import { isMap, parseDocument, type Document, type ParsedNode } from 'yaml';
+import { isMap, isSeq, parseDocument, type Document, type ParsedNode } from 'yaml';
 import type { KubernetesRegistryMirror } from './kubernetes-registry-mirror.service.types';
 
 const k3sKubeconfigPath: string = '/etc/rancher/k3s/k3s.yaml';
@@ -35,13 +35,17 @@ export function createKubernetesRegistryMirrorFromHost(
   return { clusterIp, host: registryHost };
 }
 
+export function renderKubernetesRegistryMirrorConfig(mirror: KubernetesRegistryMirror): string {
+  return mergeKubernetesRegistryMirrorConfig('', mirror);
+}
+
 export function mergeKubernetesRegistryMirrorConfig(existingConfig: string, mirror: KubernetesRegistryMirror): string {
-  if (existingConfig.trim() === '') {
-    return renderKubernetesRegistryMirrorConfig(mirror);
-  }
   const document: Document.Parsed<ParsedNode> = parseRegistryConfig(existingConfig);
   const endpointPath: string[] = ['mirrors', mirror.host, 'endpoint'];
-  const currentEndpoint: JsonValue = document.getIn(endpointPath) as JsonValue;
+  const currentEndpoint: ParsedNode | null | undefined = document.getIn(endpointPath, true) as
+    | ParsedNode
+    | null
+    | undefined;
   if (isCurrentEndpoint(currentEndpoint, mirror)) {
     return existingConfig;
   }
@@ -51,10 +55,6 @@ export function mergeKubernetesRegistryMirrorConfig(existingConfig: string, mirr
   }
   document.setIn(endpointPath, [readKubernetesRegistryMirrorEndpoint(mirror)]);
   return document.toString();
-}
-
-export function renderKubernetesRegistryMirrorConfig(mirror: KubernetesRegistryMirror): string {
-  return `mirrors:\n  "${mirror.host}":\n    endpoint:\n      - "${readKubernetesRegistryMirrorEndpoint(mirror)}"\n`;
 }
 
 export function isLocalK3sKubeconfigChain(environment: NodeJS.ProcessEnv, kubeContext: string | undefined): boolean {
@@ -74,10 +74,12 @@ function parseRegistryConfig(config: string): Document.Parsed<ParsedNode> {
   return document;
 }
 
-function isCurrentEndpoint(endpoint: JsonValue | undefined, mirror: KubernetesRegistryMirror): boolean {
-  return (
-    Array.isArray(endpoint) && endpoint.length === 1 && endpoint[0] === readKubernetesRegistryMirrorEndpoint(mirror)
-  );
+function isCurrentEndpoint(endpoint: ParsedNode | null | undefined, mirror: KubernetesRegistryMirror): boolean {
+  if (!isSeq(endpoint)) {
+    return false;
+  }
+  const values: JsonValue = endpoint.toJSON() as JsonValue;
+  return Array.isArray(values) && values.length === 1 && values[0] === readKubernetesRegistryMirrorEndpoint(mirror);
 }
 
 function readKubernetesRegistryMirrorEndpoint(mirror: KubernetesRegistryMirror): string {

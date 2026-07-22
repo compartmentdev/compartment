@@ -12,7 +12,10 @@ import type {
 } from '../../services/kubernetes-install.service.types';
 import type { CliCommandDependencies } from '../command.types';
 import { resolveInstallIdentityPrompts } from './install.command.identity';
-import { finishInstallRegistryMirrorSetup } from './install.command.registry-mirror';
+import {
+  finishInstallRegistryMirrorSetup,
+  renderKubernetesRegistryMirrorDiscoveryFailure,
+} from './install.command.registry-mirror';
 import { readManagedDomainRequestedLabelSource } from './install.command.managed-domain';
 import { createInstallResultMessage, toInstallResponse } from './install.command.result';
 import { persistDevInstallSession, persistInstallSession } from './install.command.session';
@@ -84,7 +87,10 @@ async function executeKubernetesInstallCommand(
     options.organizationSlug,
   );
   const deployment: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(deploymentInput);
-  const registryMirror: KubernetesRegistryMirror = await readInstalledKubernetesRegistryMirror(installOptions);
+  const registryMirror: KubernetesRegistryMirror | undefined = await readRegistryMirrorForInstall(
+    dependencies,
+    installOptions,
+  );
 
   const result: CliInstallResult = await installKubernetesOwner(deployment.apiUrl, deployment.installToken, {
     ...buildOwnerInstallInput(prompts, options),
@@ -98,17 +104,33 @@ async function completeKubernetesInstall(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
   installOptions: ResolvedKubernetesInstallCommandOptions,
-  registryMirror: KubernetesRegistryMirror,
+  registryMirror: KubernetesRegistryMirror | undefined,
   result: CliInstallResult,
 ): Promise<void> {
   await persistInstallSession(result, options.remote);
-  await finishInstallRegistryMirrorSetup(
-    dependencies.io,
-    installOptions,
-    registryMirror,
-    options.skipRegistryMirror === true,
-  );
+  if (registryMirror !== undefined) {
+    await finishInstallRegistryMirrorSetup(
+      dependencies.io,
+      installOptions,
+      registryMirror,
+      options.skipRegistryMirror === true,
+      options.values !== undefined,
+    );
+  }
   renderInstallResult(dependencies, options, result, false);
+}
+
+async function readRegistryMirrorForInstall(
+  dependencies: CliCommandDependencies,
+  installOptions: ResolvedKubernetesInstallCommandOptions,
+): Promise<KubernetesRegistryMirror | undefined> {
+  try {
+    return await readInstalledKubernetesRegistryMirror(installOptions);
+  } catch (error) {
+    const failureMessage: string = error instanceof Error ? error.message : String(error);
+    dependencies.io.stderr(renderKubernetesRegistryMirrorDiscoveryFailure(installOptions, failureMessage));
+    return undefined;
+  }
 }
 
 function buildKubernetesInstallDeploymentInput(

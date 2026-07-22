@@ -7,10 +7,12 @@ export function renderRegistryMirrorApplyResult(io: CliIo, result: KubernetesReg
   } else {
     io.stderr('The registry mirror file is already current.\n');
   }
-  if (result.restartError === undefined) {
-    io.stderr('Restarted k3s after applying the registry mirror.\n');
-  } else {
-    io.stderr(`Warning: k3s did not restart: ${result.restartError}\n`);
+  if (result.configChanged) {
+    if (result.restartError === undefined) {
+      io.stderr('Restarted k3s after applying the registry mirror.\n');
+    } else {
+      io.stderr(`Warning: k3s did not restart: ${result.restartError}\n`);
+    }
   }
   if (!result.current) {
     io.stderr('Warning: /etc/rancher/k3s/registries.yaml does not contain the current registry Service IP.\n');
