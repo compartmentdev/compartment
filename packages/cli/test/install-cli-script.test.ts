@@ -147,6 +147,25 @@ describe('render-cli-install-script', (): void => {
   });
 
   it.each([
+    ['version before channel', ['--version', 'sha-pinned', '--channel', 'kubernetes']],
+    ['channel before version', ['--channel', 'kubernetes', '--version', 'sha-pinned']],
+  ] as const)(
+    'rejects explicit version with the kubernetes channel: %s',
+    async (_label: string, args: readonly string[]): Promise<void> => {
+      const temporaryDirectory: string = await createTemporaryDirectory();
+      const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+        allowFailure: true,
+        args: [...args],
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Choose either --version or --channel, not both.');
+      expect(result.urlLog).toEqual([]);
+      expect(result.compartmentInvocations).toEqual([]);
+    },
+  );
+
+  it.each([
     ['an unsigned artifact', 'unsigned', 'no signatures found'],
     ['an artifact signed by another identity', 'foreign-identity', 'certificate identity mismatch'],
     ['an artifact signed by another workflow run', 'wrong-workflow-sha', 'workflow SHA mismatch'],

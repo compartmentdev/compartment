@@ -231,10 +231,11 @@ curl -fsSL https://compartment.dev/install.sh | sh -s -- \
   --values compartment-values.yaml
 ```
 
-Use `--channel kubernetes` to stay on the Kubernetes line. Use `--version <release>` or `--channel main` only when you
-intend to switch to that release line. The operator needs normal Helm update permissions, permission to list the
-release's Deployments and DaemonSets for status, and permission to restart and watch the API, Worker, Edge, Caddy,
-Project Provisioner, and Registry Auth Deployments.
+Use `--channel kubernetes` to stay on the Kubernetes line. This channel always resolves the current Kubernetes branch
+HEAD and does not support version pinning; the installer rejects combining it with `--version`. Use
+`--version <release>` or `--channel main` only when you intend to switch to that release line. The operator needs normal
+Helm update permissions, permission to list the release's Deployments and DaemonSets for status, and permission to
+restart and watch the API, Worker, Edge, Caddy, Project Provisioner, and Registry Auth Deployments.
 
 See the generated [`compartment system` reference](/reference/generated/cli/system/) for all lifecycle command options.
 
