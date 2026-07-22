@@ -5,3 +5,11 @@ vulnerabilities:
     purls:
       - pkg:golang/github.com/docker/docker@v28.5.2%2Bincompatible
     statement: Docker Buildx v0.34.1 is the current upstream release, but Trivy maps github.com/docker/docker to a non-existent v29 module tag.
+  - id: GHSA-hrxh-6v49-42gf
+    paths:
+      - usr/local/bin/buildctl
+      - usr/local/bin/railpack
+    purls:
+      - pkg:golang/google.golang.org/grpc@v1.80.0
+      - pkg:golang/google.golang.org/grpc@v1.79.3
+    statement: Upstream buildkit v0.30.0 (buildctl) and railpack v0.23.0 binaries embed grpc-go 1.80.0/1.79.3; no upstream releases built with the patched 1.82.1 exist yet. The vulnerable surfaces are the grpc xDS RBAC filter and HTTP/2 server, which buildctl/railpack CLI invocations do not expose as network listeners. Revisit and drop on the next buildkit/railpack version bump.
