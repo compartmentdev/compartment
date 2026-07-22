@@ -1,8 +1,10 @@
+import { rm } from 'node:fs/promises';
 import type { Command } from 'commander';
 import type { CliInstallResult } from '../../install.types';
 import { installDev, installKubernetesOwner } from '../../install';
 import { renderOutput } from '../../output/render';
 import { deployAndWaitForKubernetesInstall } from '../../services/kubernetes-install.service';
+import type { KubernetesInstallPreflightResult } from '../../services/kubernetes-install-preflight.service.types';
 import type { InstallInput } from '../../services/install.service.types';
 import type {
   KubernetesInstallDeploymentInput,
@@ -11,14 +13,30 @@ import type {
 import type { CliCommandDependencies } from '../command.types';
 import { resolveInstallIdentityPrompts } from './install.command.identity';
 import { readManagedDomainRequestedLabelSource } from './install.command.managed-domain';
+import { runInstallPreflightChecklist } from './install.command.preflight';
 import { createInstallResultMessage, toInstallResponse } from './install.command.result';
 import { persistDevInstallSession, persistInstallSession } from './install.command.session';
 import type {
   InstallCommandOptions,
+  InstallPreflightChecklistResult,
+  InstallWizardResolution,
+  KubernetesInstallTargetOptions,
+  PreparedInstallCommandInput,
+  PreparedKubernetesInstallCommandOptions,
   ResolvedInstallIdentityPrompts,
   ResolvedKubernetesInstallCommandOptions,
 } from './install.command.types';
-import { assertDevInstallOptions, resolveKubernetesInstallCommandOptions } from './install.command.validation';
+import {
+  assertDevInstallOptions,
+  resolveKubernetesInstallCommandOptions,
+  resolveKubernetesInstallTargetOptions,
+} from './install.command.validation';
+import {
+  materializeInstallWizardValues,
+  removeInstallWizardValues,
+  type MaterializedInstallWizardValues,
+} from './install.command.values';
+import { resolveInstallWizard } from './install.command.wizard';
 
 export function registerInstallCommand(program: Command, dependencies: CliCommandDependencies): void {
   program
@@ -71,21 +89,101 @@ async function executeKubernetesInstallCommand(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
 ): Promise<void> {
-  const installOptions: ResolvedKubernetesInstallCommandOptions = resolveKubernetesInstallCommandOptions(options);
+  const target: KubernetesInstallTargetOptions = resolveKubernetesInstallTargetOptions(options);
+  const guidedInstall: boolean = options.values === undefined && hasInteractiveInput(dependencies);
+  const checklist: InstallPreflightChecklistResult = await runInstallPreflightChecklist(
+    dependencies,
+    target,
+    guidedInstall,
+    guidedInstall,
+  );
+  try {
+    await executeChecklistInstall(dependencies, options, checklist);
+  } finally {
+    await removeMaterializedKubeconfig(checklist);
+  }
+}
+
+async function executeChecklistInstall(
+  dependencies: CliCommandDependencies,
+  options: InstallCommandOptions,
+  checklist: InstallPreflightChecklistResult,
+): Promise<void> {
+  const prepared: PreparedInstallCommandInput = await resolveGuidedInstallInput(
+    dependencies,
+    options,
+    checklist.preflight,
+  );
+  try {
+    await executePreparedKubernetesInstall(dependencies, prepared.options, checklist.kubeconfig.path);
+  } finally {
+    if (prepared.material !== null) {
+      await removeInstallWizardValues(prepared.material);
+    }
+  }
+}
+
+async function removeMaterializedKubeconfig(checklist: InstallPreflightChecklistResult): Promise<void> {
+  if (checklist.kubeconfig.materializedDirectory !== undefined) {
+    await rm(checklist.kubeconfig.materializedDirectory, { force: true, recursive: true });
+  }
+}
+
+async function resolveGuidedInstallInput(
+  dependencies: CliCommandDependencies,
+  options: InstallCommandOptions,
+  preflight: KubernetesInstallPreflightResult,
+): Promise<PreparedInstallCommandInput> {
+  if (options.values !== undefined) {
+    return { material: null, options: { ...options, values: options.values } };
+  }
+  assertInteractiveInstall(dependencies);
+  const wizard: InstallWizardResolution = await resolveInstallWizard(dependencies.io, preflight.storageClass);
+  const material: MaterializedInstallWizardValues = await materializeInstallWizardValues(wizard.values);
+  return {
+    material,
+    options: {
+      ...options,
+      ...(wizard.answers.baseDomain === undefined ? {} : { baseDomain: wizard.answers.baseDomain }),
+      managedDomain: wizard.answers.domainMode === 'managed',
+      values: material.path,
+    },
+  };
+}
+
+function assertInteractiveInstall(dependencies: CliCommandDependencies): void {
+  if (hasInteractiveInput(dependencies)) {
+    return;
+  }
+  throw new Error(
+    '--values is required when running non-interactively. A minimal values file:\n' +
+      'storage:\n  storageClass: local-path\nplatform:\n  logLevel: info\n' +
+      'Or run `compartment install` from an interactive terminal for the guided setup.',
+  );
+}
+
+function hasInteractiveInput(dependencies: CliCommandDependencies): boolean {
+  return (dependencies.io.stdin as { isTTY?: boolean | undefined }).isTTY === true;
+}
+
+async function executePreparedKubernetesInstall(
+  dependencies: CliCommandDependencies,
+  options: PreparedKubernetesInstallCommandOptions,
+  kubeconfigPath: string,
+): Promise<void> {
+  const installOptions: ResolvedKubernetesInstallCommandOptions = resolveKubernetesInstallCommandOptions(
+    options,
+    kubeconfigPath,
+  );
   const prompts: ResolvedInstallIdentityPrompts = await resolveInstallIdentityPrompts(dependencies, options);
   dependencies.io.stderr('Installing the Compartment platform with Helm...\n');
-  const deploymentInput: KubernetesInstallDeploymentInput = buildKubernetesInstallDeploymentInput(
-    installOptions,
-    prompts,
-    options.organizationSlug,
+  const deployment: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(
+    buildKubernetesInstallDeploymentInput(installOptions, prompts, options.organizationSlug),
   );
-  const deployment: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(deploymentInput);
-
   const result: CliInstallResult = await installKubernetesOwner(deployment.apiUrl, deployment.installToken, {
     ...buildOwnerInstallInput(prompts, options),
     baseDomain: deployment.baseDomain,
   });
-
   await persistInstallSession(result, options.remote);
   renderInstallResult(dependencies, options, result, false);
 }

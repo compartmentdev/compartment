@@ -30,7 +30,7 @@ export async function readRetainedKubernetesInstallState(
 }
 
 export async function readRetainedManagedKubernetesDomainState(
-  input: Pick<KubernetesInstallDeploymentInput, 'kubeContext' | 'namespace' | 'releaseName'>,
+  input: Pick<KubernetesInstallDeploymentInput, 'kubeconfigPath' | 'kubeContext' | 'namespace' | 'releaseName'>,
 ): Promise<RetainedManagedDomainState> {
   const result: CommandResult = await runCommand(buildRetainedStateSecretCommand(input));
   if (result.exitCode !== 0) {
@@ -87,7 +87,7 @@ function isMissingNamespaceFailure(result: CommandResult, namespace: string): bo
 }
 
 function buildRetainedStateSecretCommand(
-  input: Pick<KubernetesInstallDeploymentInput, 'kubeContext' | 'namespace' | 'releaseName'>,
+  input: Pick<KubernetesInstallDeploymentInput, 'kubeconfigPath' | 'kubeContext' | 'namespace' | 'releaseName'>,
 ): string[] {
   return buildKubectlCommand(input, [
     'get',

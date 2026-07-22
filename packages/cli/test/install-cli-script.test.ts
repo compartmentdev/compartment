@@ -61,6 +61,7 @@ interface InstallerRunOptions {
   binDir?: string | undefined;
   defaultVersion?: string | undefined;
   installerTerminalPath?: string | undefined;
+  installerTerminalOutputPath?: string | undefined;
   osName?: string | undefined;
   pathEntries?: string[] | undefined;
   shell?: string | undefined;
@@ -656,7 +657,9 @@ describe('render-cli-install-script', (): void => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const installerTerminalPath: string = join(temporaryDirectory, 'installer-tty');
+    const installerTerminalOutputPath: string = join(temporaryDirectory, 'installer-tty-output');
     await writeFile(installerTerminalPath, 'admin@example.com\n', 'utf8');
+    await mkdir(installerTerminalOutputPath);
     await chmod(installerTerminalPath, 0o444);
 
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
@@ -672,6 +675,7 @@ describe('render-cli-install-script', (): void => {
         'fdo_123',
       ],
       installerTerminalPath,
+      installerTerminalOutputPath,
       pathEntries: [binDirectory],
     });
 
@@ -776,7 +780,9 @@ async function runInstallerScript(
     cosignInvocations: await readLogLines(join(stateDirectory, 'cosign.log')),
     compartmentInvocations: await readLogLines(join(stateDirectory, 'compartment.log')),
     exitCode: result.exitCode,
-    installerTerminalOutput: await readOptionalText(options.installerTerminalPath),
+    installerTerminalOutput: await readOptionalText(
+      options.installerTerminalOutputPath ?? options.installerTerminalPath,
+    ),
     orasInvocations: await readLogLines(join(stateDirectory, 'oras.log')),
     stderr: result.stderr,
     stdout: result.stdout,
@@ -828,7 +834,14 @@ async function renderInstallerScript(outputPath: string, options: InstallerRunOp
 
   if (options.installerTerminalPath !== undefined) {
     const scriptText: string = await readFile(outputPath, 'utf8');
-    await writeFile(outputPath, scriptText.replaceAll('/dev/tty', options.installerTerminalPath), 'utf8');
+    const installerTerminalOutputPath: string = options.installerTerminalOutputPath ?? options.installerTerminalPath;
+    await writeFile(
+      outputPath,
+      scriptText
+        .replaceAll('</dev/tty', `<${options.installerTerminalPath}`)
+        .replaceAll('>/dev/tty', `>>${installerTerminalOutputPath}`),
+      'utf8',
+    );
     await chmod(outputPath, 0o755);
   }
 }

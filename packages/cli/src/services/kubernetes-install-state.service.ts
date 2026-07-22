@@ -182,6 +182,7 @@ async function resolveInstallPublicIngress(
     };
   }
   return await resolveKubernetesPublicIngress({
+    kubeconfigPath: input.kubeconfigPath,
     kubeContext: input.kubeContext,
     namespace: input.namespace,
     publicIngressIpv4: foundationInstall.publicIngressIpv4,
