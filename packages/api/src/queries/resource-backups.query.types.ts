@@ -16,7 +16,10 @@ export interface ResourceBackupRow {
   operationId: string;
   projectResourceId: string;
   purpose: ResourceBackupPurpose;
+  retentionAttempts: number;
   retentionDeletedAt: Date | null;
+  retentionFailureSummary: string | null;
+  retentionNextAttemptAt: Date | null;
   retentionReason: string | null;
   resourceDefinitionJson: string | null;
   sizeBytes: number | null;
@@ -61,4 +64,12 @@ export interface MarkResourceBackupRetentionDeletedInput {
   backupId: string;
   retentionDeletedAt: Date;
   retentionReason: string;
+}
+
+export interface RecordResourceBackupRetentionFailureInput {
+  backupId: string;
+  failedAt: Date;
+  failureSummary: string;
+  retryInitialDelayMs: number;
+  retryMaxDelayMs: number;
 }

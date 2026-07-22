@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { ResourceBackupPurpose } from '@compartment/contracts';
 import { resourceBackups } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -10,6 +10,7 @@ import type {
   PersistedResourceBackupRow,
   ResourceBackupMutationExecutor,
   ResourceBackupRow,
+  RecordResourceBackupRetentionFailureInput,
 } from './resource-backups.query.types';
 
 export async function createResourceBackupWithExecutor(
@@ -113,8 +114,30 @@ export async function markResourceBackupRetentionDeletedWithExecutor(
     .set({
       artifactLocation: null,
       retentionDeletedAt: input.retentionDeletedAt,
+      retentionFailureSummary: null,
+      retentionNextAttemptAt: null,
       retentionReason: input.retentionReason,
       status: 'deleted',
+    })
+    .where(eq(resourceBackups.id, input.backupId))
+    .returning();
+
+  return requireResourceBackupRow(backup !== undefined ? toResourceBackupRow(backup) : undefined);
+}
+
+export async function recordResourceBackupRetentionFailureWithExecutor(
+  executor: ResourceBackupMutationExecutor,
+  input: RecordResourceBackupRetentionFailureInput,
+): Promise<ResourceBackupRow> {
+  const [backup] = await executor
+    .update(resourceBackups)
+    .set({
+      retentionAttempts: sql`${resourceBackups.retentionAttempts} + 1`,
+      retentionFailureSummary: input.failureSummary,
+      retentionNextAttemptAt: sql`${input.failedAt}::timestamptz + least(
+        ${input.retryMaxDelayMs},
+        ${input.retryInitialDelayMs} * power(2, least(${resourceBackups.retentionAttempts}, 30))
+      ) * interval '1 millisecond'`,
     })
     .where(eq(resourceBackups.id, input.backupId))
     .returning();

@@ -65,8 +65,17 @@ export interface ResourceBackupRetentionCleanup {
   reason: string;
 }
 
-export interface ScheduledResourceBackupRunResult extends ResourceBackupResult {
+export interface ResourceBackupRetentionResult {
+  attempted: boolean;
   cleanedBackups: ResourceBackupRetentionCleanup[];
+  recordedFailure: boolean;
+}
+
+export interface ScheduledResourceBackupRunResult extends ResourceLookupResult {
+  backup: ResourceBackupRow | null;
+  cleanedBackups: ResourceBackupRetentionCleanup[];
+  manifest: string | null;
+  recordedFailure: boolean;
 }
 
 export interface ResourceRestoreResult extends ResourceLookupResult {

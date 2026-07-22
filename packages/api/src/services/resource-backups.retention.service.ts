@@ -2,12 +2,19 @@ import type { CompartmentResourceOperationRetentionConfig } from '@compartment/c
 import {
   listRetentionEligibleResourceBackups,
   markResourceBackupRetentionDeletedWithExecutor,
+  recordResourceBackupRetentionFailureWithExecutor,
 } from '../queries/resource-backups.query';
 import type { ResourceBackupRow } from '../queries/resource-backups.query.types';
+import { insertOperationRecordWithExecutor } from '../queries/operations.query';
 import type { ProjectResourceRow, ResourceTransaction } from '../queries/resources.query.types';
 import { getApiDatabase } from '../runtime/runtime-access';
 import { deleteKubernetesBackupArtifact } from './resource-backups.kubernetes.service';
-import type { ResourceBackupRetentionCleanup, ResourceEnvironmentContext } from './resources.service.types';
+import { ResourceBackupRetentionOperationError } from './resource-backup-retention-operation.error';
+import type {
+  ResourceBackupRetentionCleanup,
+  ResourceBackupRetentionResult,
+  ResourceEnvironmentContext,
+} from './resources.service.types';
 
 interface ResourceBackupRetentionInput {
   context: ResourceEnvironmentContext;
@@ -16,25 +23,53 @@ interface ResourceBackupRetentionInput {
   retention: CompartmentResourceOperationRetentionConfig | null | undefined;
 }
 
+const retentionRetryInitialDelayMs: number = 60_000;
+const retentionRetryMaxDelayMs: number = 60 * 60_000;
+
 export async function applyResourceBackupRetention(
   input: ResourceBackupRetentionInput,
-): Promise<ResourceBackupRetentionCleanup[]> {
+): Promise<ResourceBackupRetentionResult> {
   if (input.retention === null || input.retention === undefined) {
-    return [];
+    return { attempted: false, cleanedBackups: [], recordedFailure: false };
   }
 
   const backups: ResourceBackupRow[] = await listRetentionEligibleResourceBackups(
     input.resource.id,
     input.retention.includeManual === true,
   );
-  const expiredBackups: ResourceBackupRetentionCleanup[] = selectExpiredBackups(backups, input.retention, input.now);
+  const expiredBackups: ResourceBackupRetentionCleanup[] = selectExpiredBackups(
+    backups,
+    input.retention,
+    input.now,
+  ).filter((cleanup: ResourceBackupRetentionCleanup): boolean => isRetentionAttemptDue(cleanup.backup, input.now));
+  return await executeRetentionCleanups(expiredBackups, input);
+}
+
+async function executeRetentionCleanups(
+  expiredBackups: ResourceBackupRetentionCleanup[],
+  input: ResourceBackupRetentionInput,
+): Promise<ResourceBackupRetentionResult> {
   const cleanedBackups: ResourceBackupRetentionCleanup[] = [];
+  let recordedFailure: boolean = false;
 
   for (const expiredBackup of expiredBackups) {
-    cleanedBackups.push(await deleteBackupArtifactAndMarkRecord(expiredBackup, input));
+    const cleanedBackup: ResourceBackupRetentionCleanup | null = await deleteBackupArtifactAndMarkRecord(
+      expiredBackup,
+      input,
+    );
+    if (cleanedBackup !== null) {
+      cleanedBackups.push(cleanedBackup);
+    } else {
+      recordedFailure = true;
+      break;
+    }
   }
 
-  return cleanedBackups;
+  return { attempted: expiredBackups.length > 0, cleanedBackups, recordedFailure };
+}
+
+function isRetentionAttemptDue(backup: ResourceBackupRow, now: Date): boolean {
+  return backup.retentionNextAttemptAt === null || backup.retentionNextAttemptAt <= now;
 }
 
 function selectExpiredBackups(
@@ -90,22 +125,63 @@ function addMaxAgeExpirations(
 async function deleteBackupArtifactAndMarkRecord(
   cleanup: ResourceBackupRetentionCleanup,
   input: ResourceBackupRetentionInput,
-): Promise<ResourceBackupRetentionCleanup> {
+): Promise<ResourceBackupRetentionCleanup | null> {
   if (cleanup.backup.artifactLocation !== null) {
-    await deleteKubernetesBackupArtifact({ backup: cleanup.backup, context: input.context, resource: input.resource });
+    try {
+      await deleteKubernetesBackupArtifact({
+        backup: cleanup.backup,
+        context: input.context,
+        resource: input.resource,
+      });
+    } catch (error) {
+      if (!(error instanceof ResourceBackupRetentionOperationError)) {
+        throw error;
+      }
+      await recordResourceBackupRetentionFailure(cleanup.backup, input, error);
+      return null;
+    }
   }
-
-  const backup: ResourceBackupRow = await getApiDatabase().transaction(
-    async (tx: ResourceTransaction): Promise<ResourceBackupRow> =>
-      await markResourceBackupRetentionDeletedWithExecutor(tx, {
-        backupId: cleanup.backup.id,
-        retentionDeletedAt: input.now,
-        retentionReason: cleanup.reason,
-      }),
-  );
-
+  const backup: ResourceBackupRow = await markResourceBackupRetentionDeleted(cleanup, input.now);
   return {
     backup,
     reason: cleanup.reason,
   };
+}
+
+async function markResourceBackupRetentionDeleted(
+  cleanup: ResourceBackupRetentionCleanup,
+  retentionDeletedAt: Date,
+): Promise<ResourceBackupRow> {
+  return await getApiDatabase().transaction(
+    async (tx: ResourceTransaction): Promise<ResourceBackupRow> =>
+      await markResourceBackupRetentionDeletedWithExecutor(tx, {
+        backupId: cleanup.backup.id,
+        retentionDeletedAt,
+        retentionReason: cleanup.reason,
+      }),
+  );
+}
+
+async function recordResourceBackupRetentionFailure(
+  backup: ResourceBackupRow,
+  input: ResourceBackupRetentionInput,
+  failure: Error,
+): Promise<void> {
+  await getApiDatabase().transaction(async (tx: ResourceTransaction): Promise<void> => {
+    const failedBackup: ResourceBackupRow = await recordResourceBackupRetentionFailureWithExecutor(tx, {
+      backupId: backup.id,
+      failedAt: input.now,
+      failureSummary: failure.message,
+      retryInitialDelayMs: retentionRetryInitialDelayMs,
+      retryMaxDelayMs: retentionRetryMaxDelayMs,
+    });
+    await insertOperationRecordWithExecutor(tx, {
+      completedAt: input.now,
+      status: 'failed',
+      summary: `Backup retention failed: ${failure.message}. Retry scheduled for ${failedBackup.retentionNextAttemptAt?.toISOString() ?? 'later'}.`,
+      targetId: backup.id,
+      targetType: 'resource_backup',
+      type: 'resource.backup.retention',
+    });
+  });
 }

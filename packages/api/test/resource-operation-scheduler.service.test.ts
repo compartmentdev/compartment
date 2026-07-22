@@ -27,6 +27,7 @@ describe('resource operation scheduler service', (): void => {
     runScheduledBackup.mockResolvedValue({
       backup: { id: 'rbak_redis' },
       cleanedBackups: [],
+      recordedFailure: false,
       resource: fenced.resource,
     });
 
@@ -38,6 +39,27 @@ describe('resource operation scheduler service', (): void => {
 
     expect(runScheduledBackup).toHaveBeenCalledOnce();
     expect(runScheduledBackup).toHaveBeenCalledWith(fenced, 'redis', expect.any(Date));
+  });
+
+  it('returns a normal response that identifies a durably recorded retention failure', async (): Promise<void> => {
+    const scheduled: ScheduledResourceOperationCandidateRow = candidate(
+      'postgres',
+      '[{"claimName":"volume-postgres","uid":"uid-postgres"}]',
+    );
+    listCandidates.mockResolvedValue([scheduled]);
+    runScheduledBackup.mockResolvedValue({
+      backup: null,
+      cleanedBackups: [],
+      recordedFailure: true,
+      resource: scheduled.resource,
+    });
+
+    await expect(runNextScheduledResourceOperationForWorker()).resolves.toMatchObject({
+      backupId: null,
+      recordedFailure: true,
+      resourceName: 'postgres',
+      ran: true,
+    });
   });
 });
 

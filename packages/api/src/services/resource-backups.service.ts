@@ -26,7 +26,7 @@ import { parseStoredResourceOperations } from './resources.service.storage';
 import type {
   ResourceActionInput,
   ResourceBackupListResult,
-  ResourceBackupRetentionCleanup,
+  ResourceBackupRetentionResult,
   ResourceBackupResult,
   ResourceBackupShowInput,
   ResourceEnvironmentContext,
@@ -132,24 +132,62 @@ async function runDueLockedScheduledResourceBackup(
 ): Promise<ScheduledResourceBackupRunResult | null> {
   const schedule: CompartmentResourceOperationScheduleConfig | null | undefined =
     parseStoredResourceOperations(resource).backup?.schedule;
-  if (schedule === null || schedule === undefined || !(await isScheduledResourceBackupDue(resource, schedule, now))) {
+  if (schedule === null || schedule === undefined) {
     return null;
   }
+  return await runScheduledBackupAndRetention(context, resource, schedule, now);
+}
 
-  const result: Pick<ResourceBackupResult, 'backup' | 'manifest'> = await runResourceBackup({
-    actorPrincipalId: null,
+async function runScheduledBackupAndRetention(
+  context: ResourceEnvironmentContext,
+  resource: ProjectResourceRow,
+  schedule: CompartmentResourceOperationScheduleConfig,
+  now: Date,
+): Promise<ScheduledResourceBackupRunResult | null> {
+  const result: Pick<ResourceBackupResult, 'backup' | 'manifest'> | null = await runScheduledBackupIfDue(
     context,
-    purpose: 'scheduled',
     resource,
-  });
-  const cleanedBackups: ResourceBackupRetentionCleanup[] = await applyResourceBackupRetention({
+    schedule,
+    now,
+  );
+  const retention: ResourceBackupRetentionResult = await applyResourceBackupRetention({
     context,
     now,
     resource,
     retention: schedule.retention,
   });
+  if (result === null && !retention.attempted) {
+    return null;
+  }
+  return buildScheduledResourceBackupRunResult(context, resource, result, retention);
+}
 
-  return { ...context, cleanedBackups, resource, ...result };
+async function runScheduledBackupIfDue(
+  context: ResourceEnvironmentContext,
+  resource: ProjectResourceRow,
+  schedule: CompartmentResourceOperationScheduleConfig,
+  now: Date,
+): Promise<Pick<ResourceBackupResult, 'backup' | 'manifest'> | null> {
+  if (!(await isScheduledResourceBackupDue(resource, schedule, now))) {
+    return null;
+  }
+  return await runResourceBackup({ actorPrincipalId: null, context, purpose: 'scheduled', resource });
+}
+
+function buildScheduledResourceBackupRunResult(
+  context: ResourceEnvironmentContext,
+  resource: ProjectResourceRow,
+  result: Pick<ResourceBackupResult, 'backup' | 'manifest'> | null,
+  retention: ResourceBackupRetentionResult,
+): ScheduledResourceBackupRunResult {
+  return {
+    ...context,
+    backup: result?.backup ?? null,
+    cleanedBackups: retention.cleanedBackups,
+    manifest: result?.manifest ?? null,
+    recordedFailure: retention.recordedFailure,
+    resource,
+  };
 }
 
 async function isScheduledResourceBackupDue(

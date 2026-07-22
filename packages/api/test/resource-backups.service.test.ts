@@ -15,6 +15,7 @@ type TestTransactionCallback = (tx: ResourceTransaction) => Promise<ResourceBack
 type TestTransaction = (run: TestTransactionCallback) => Promise<ResourceBackupResult>;
 
 const lockReconciliation: Mock = vi.hoisted((): Mock => vi.fn());
+const applyRetention: Mock = vi.hoisted((): Mock => vi.fn());
 const lockResource: Mock = vi.hoisted((): Mock => vi.fn());
 const listBackups: Mock = vi.hoisted((): Mock => vi.fn());
 const resolveContext: Mock = vi.hoisted((): Mock => vi.fn());
@@ -43,7 +44,7 @@ vi.mock('../src/runtime/runtime-access', (): object => ({
   getApiDatabase: (): object => ({ transaction }),
 }));
 vi.mock('../src/services/resource-backups.retention.service', (): object => ({
-  applyResourceBackupRetention: vi.fn().mockResolvedValue([]),
+  applyResourceBackupRetention: applyRetention,
 }));
 vi.mock('../src/services/resource-reconcile-run.service', (): object => ({
   waitForResourceClaimIdentities: waitForBootstrap,
@@ -55,6 +56,7 @@ vi.mock('../src/services/resource-operation-lock.service', (): object => ({
 describe('resource backup archive boundary', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
+    applyRetention.mockResolvedValue({ attempted: false, cleanedBackups: [], recordedFailure: false });
     resolveContext.mockResolvedValue({
       environment: { id: 'env_prod' },
       organization: { id: 'org' },

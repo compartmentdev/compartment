@@ -8,6 +8,7 @@ export function buildWorkerRunNextScheduledResourceOperationResponse(
     backupId: result.backupId,
     cleanedBackups: result.cleanedBackups,
     operationType: result.operationType,
+    recordedFailure: result.recordedFailure,
     resourceName: result.resourceName,
     ran: result.ran,
   };

@@ -10,6 +10,7 @@ import {
   type CompartmentRawRequester,
   type CompartmentRequester,
 } from '@compartment/sdk';
+import type { Logger } from 'pino';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
 import { buildReleaseImageFromSource } from './worker-build.service';
 import { appendDeploymentStepEventSafely, buildDeploymentEventContext } from './worker-deployment-event.service';
@@ -28,6 +29,7 @@ export async function runWorkerIteration(
   apiUrl: string,
   internalToken: string,
   artifactRegistry: WorkerArtifactRegistryConfig,
+  logger: Logger<never, boolean>,
 ): Promise<boolean> {
   const requesterInput: WorkerRequesterInput = { apiUrl, internalToken };
   const request: CompartmentRequester = createCompartmentRequester(requesterInput);
@@ -36,7 +38,7 @@ export async function runWorkerIteration(
 
   return (
     (await runGitSourceResolutionIteration(request, rawRequest)) ||
-    (await runScheduledResourceOperationIteration(request)) ||
+    (await runScheduledResourceOperationIteration(request, logger)) ||
     (await handleClaimedDeploymentOrContinue(request, releaseArchiveRequest, artifactRegistry)) ||
     (await runGitSourceSyncIteration(request))
   );

@@ -9,6 +9,7 @@ import { createId } from '../lib/tokens';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import { getApiConfig } from '../runtime/runtime-access';
 import type { ResourceBackupArtifactSummary } from './resource-backup-artifact.types';
+import { ResourceBackupRetentionOperationError } from './resource-backup-retention-operation.error';
 import {
   assertKubernetesArtifactLocation,
   assertKubernetesRestoreArtifactIntegrity,
@@ -84,7 +85,7 @@ export async function deleteKubernetesBackupArtifact(input: KubernetesBackupArti
   await createProductJobIntent(intent);
   const result: WorkerPersistProductJobResultRequest = await waitForResourceOperationProductJob(intent.operationId);
   if (result.status !== 'succeeded') {
-    throw new Error(`Kubernetes backup retention ${result.status}: ${result.logs}`);
+    throw new ResourceBackupRetentionOperationError(`Kubernetes backup retention ${result.status}: ${result.logs}`);
   }
 }
 

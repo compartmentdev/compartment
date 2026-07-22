@@ -32,7 +32,7 @@ function buildRanScheduledResourceOperationResult(
   result: ScheduledResourceBackupRunResult,
 ): ScheduledResourceOperationResult {
   return {
-    backupId: result.backup.id,
+    backupId: result.backup?.id ?? null,
     cleanedBackups: result.cleanedBackups.map(
       (cleanup: ResourceBackupRetentionCleanup): ScheduledResourceOperationCleanupResult => ({
         backupId: cleanup.backup.id,
@@ -40,6 +40,7 @@ function buildRanScheduledResourceOperationResult(
       }),
     ),
     operationType: 'backup',
+    recordedFailure: result.recordedFailure,
     resourceName: result.resource.name,
     ran: true,
   };
@@ -50,6 +51,7 @@ function buildEmptyScheduledResourceOperationResult(): ScheduledResourceOperatio
     backupId: null,
     cleanedBackups: [],
     operationType: null,
+    recordedFailure: false,
     resourceName: null,
     ran: false,
   };
