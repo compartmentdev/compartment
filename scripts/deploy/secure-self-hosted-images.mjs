@@ -6,7 +6,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
-import { captureCommand, runCommand } from '../lib/command.mjs';
+import { captureCommand, captureCommandResult, runCommand } from '../lib/command.mjs';
 import { readRequiredOptionValue } from '../lib/options.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { assertImageDigest, resolveScannedCanonicalDigest } from './secure-self-hosted-image-digests.mjs';
@@ -408,22 +408,91 @@ function scanSelfHostedImage(repositoryRoot, imageRef) {
 }
 
 function scanSelfHostedImageWithDockerScout(repositoryRoot, imageRef) {
-  runCommand(
-    'docker',
-    [
-      'scout',
-      'cves',
-      '--only-fixed',
-      '--only-severity',
-      'critical,high',
-      '--vex-location',
-      resolve(repositoryRoot, dockerScoutVexFile),
-      '--only-vex-affected',
-      '--exit-code',
-      imageRef,
-    ],
-    repositoryRoot,
-  );
+  // Docker Scout ignores local VEX statements in its --exit-code verdict, so we
+  // gate deterministically ourselves: run Scout to a SARIF report (no
+  // --exit-code) and fail only on fixable HIGH/CRITICAL findings that are not
+  // covered by a suppression, using the same suppression source Trivy honors.
+  const suppressedVulnerabilityIds = readScoutSuppressedVulnerabilityIds(repositoryRoot);
+  const sarifDirectory = mkdtempSync(join(tmpdir(), 'compartment-scout-sarif-'));
+  const sarifPath = join(sarifDirectory, 'scout.sarif.json');
+  try {
+    const scoutResult = captureCommandResult(
+      'docker',
+      [
+        'scout',
+        'cves',
+        '--only-fixed',
+        '--only-severity',
+        'critical,high',
+        '--format',
+        'sarif',
+        '--output',
+        sarifPath,
+        imageRef,
+      ],
+      repositoryRoot,
+    );
+    if (scoutResult.error !== undefined) {
+      throw scoutResult.error;
+    }
+    if (scoutResult.stdout) {
+      process.stdout.write(scoutResult.stdout);
+    }
+    if (scoutResult.stderr) {
+      process.stderr.write(scoutResult.stderr);
+    }
+    const blockingVulnerabilityIds = readScoutBlockingVulnerabilityIds(sarifPath, suppressedVulnerabilityIds);
+    if (blockingVulnerabilityIds.length > 0) {
+      throw new Error(
+        `Docker Scout found fixable HIGH/CRITICAL vulnerabilities without a suppression for ${imageRef}: ${blockingVulnerabilityIds.join(', ')}`,
+      );
+    }
+  } finally {
+    rmSync(sarifDirectory, { force: true, recursive: true });
+  }
+}
+
+function readScoutSuppressedVulnerabilityIds(repositoryRoot) {
+  const vexPath = resolve(repositoryRoot, dockerScoutVexFile);
+  let raw;
+  try {
+    raw = readFileSync(vexPath, 'utf8');
+  } catch {
+    // No suppression file: suppress nothing (strict — every finding blocks).
+    return new Set();
+  }
+  const vex = JSON.parse(raw);
+  const suppressedVulnerabilityIds = new Set();
+  for (const statement of vex.statements ?? []) {
+    if (statement.status === 'not_affected' && typeof statement.vulnerability?.name === 'string') {
+      suppressedVulnerabilityIds.add(statement.vulnerability.name);
+    }
+  }
+  return suppressedVulnerabilityIds;
+}
+
+function readScoutBlockingVulnerabilityIds(sarifPath, suppressedVulnerabilityIds) {
+  let raw;
+  try {
+    raw = readFileSync(sarifPath, 'utf8');
+  } catch {
+    // Fail closed: no report means we cannot prove the image is clean.
+    throw new Error(`Docker Scout did not produce a SARIF report at ${sarifPath}.`);
+  }
+  const sarif = JSON.parse(raw);
+  const blockingVulnerabilityIds = new Set();
+  for (const run of sarif.runs ?? []) {
+    for (const result of run.results ?? []) {
+      const serializedResult = JSON.stringify(result);
+      const isSuppressed = [...suppressedVulnerabilityIds].some((id) => serializedResult.includes(id));
+      if (!isSuppressed) {
+        blockingVulnerabilityIds.add(
+          typeof result.ruleId === 'string' ? result.ruleId : serializedResult.slice(0, 120),
+        );
+      }
+    }
+  }
+  return [...blockingVulnerabilityIds];
 }
 
 function reportSelfHostedImageScanFailures(input) {

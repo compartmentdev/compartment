@@ -231,15 +231,57 @@ describe('scanSelfHostedImages', () => {
       const dockerScoutCalls = parseCommandArgsLog(await readFile(scannerPaths.dockerScoutArgsLogPath, 'utf8'));
       expect(dockerScoutCalls.map((args) => args.at(-1))).toEqual(expectedImageRefs);
       for (const scoutArgs of dockerScoutCalls) {
-        const vexFlagIndex = scoutArgs.indexOf('--vex-location');
-        expect(vexFlagIndex).toBeGreaterThan(-1);
-        expect(scoutArgs[vexFlagIndex + 1]).toMatch(/\.scout-vex\.openvex\.json$/);
-        expect(scoutArgs).toContain('--only-vex-affected');
+        expect(scoutArgs).toContain('--format');
+        expect(scoutArgs[scoutArgs.indexOf('--format') + 1]).toBe('sarif');
+        expect(scoutArgs).toContain('--output');
+        expect(scoutArgs).not.toContain('--exit-code');
       }
     } finally {
       restoreEnv('PATH', oldPath);
       restoreEnv('DOCKER_SCOUT_ARGS_LOG', oldDockerScoutArgsLog);
       restoreEnv('TRIVY_ARGS_LOG', oldTrivyArgsLog);
+      await rm(tempDirectory, { force: true, recursive: true });
+    }
+  });
+
+  it('does not fail the Docker Scout gate for a vulnerability covered by a VEX suppression', async () => {
+    const tempDirectory = await mkdtemp(join(tmpdir(), 'compartment-scout-vex-test-'));
+    const oldPath = process.env.PATH;
+    const oldDockerScoutArgsLog = process.env.DOCKER_SCOUT_ARGS_LOG;
+    const oldTrivyArgsLog = process.env.TRIVY_ARGS_LOG;
+    const oldFakeRuleId = process.env.DOCKER_SCOUT_FAKE_RULE_ID;
+
+    try {
+      const scannerPaths = await installFakeImageScanners(tempDirectory);
+      // Scout reports the suppressed advisory; the VEX marks it not_affected.
+      await writeFile(
+        join(tempDirectory, '.scout-vex.openvex.json'),
+        JSON.stringify({
+          statements: [{ vulnerability: { name: 'GHSA-suppressed-0001' }, status: 'not_affected' }],
+        }),
+        'utf8',
+      );
+      // Passing Trivy so we isolate the Docker Scout gate.
+      await writeFile(
+        join(tempDirectory, 'trivy'),
+        `#!/usr/bin/env node\nimport { appendFileSync } from 'node:fs';\nappendFileSync(process.env.TRIVY_ARGS_LOG, \`\${JSON.stringify(process.argv.slice(2))}\\n\`);\n`,
+        'utf8',
+      );
+      await chmod(join(tempDirectory, 'trivy'), 0o755);
+
+      process.env.PATH = `${tempDirectory}:${oldPath ?? ''}`;
+      process.env.DOCKER_SCOUT_ARGS_LOG = scannerPaths.dockerScoutArgsLogPath;
+      process.env.TRIVY_ARGS_LOG = scannerPaths.trivyArgsLogPath;
+      process.env.DOCKER_SCOUT_FAKE_RULE_ID = 'GHSA-suppressed-0001';
+
+      expect(() =>
+        scanSelfHostedImages({ dockerScout: true, repositoryRoot: tempDirectory, tags: ['sha-test'] }),
+      ).not.toThrow();
+    } finally {
+      restoreEnv('PATH', oldPath);
+      restoreEnv('DOCKER_SCOUT_ARGS_LOG', oldDockerScoutArgsLog);
+      restoreEnv('TRIVY_ARGS_LOG', oldTrivyArgsLog);
+      restoreEnv('DOCKER_SCOUT_FAKE_RULE_ID', oldFakeRuleId);
       await rm(tempDirectory, { force: true, recursive: true });
     }
   });
@@ -450,13 +492,26 @@ if (imageRef.startsWith('ghcr.io/') && imageRef.includes('compartment-worker')) 
 
 function renderFakeDockerScoutScript() {
   return `#!/usr/bin/env node
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, writeFileSync } from 'node:fs';
 
-const imageRef = process.argv.at(-1) ?? '';
-appendFileSync(process.env.DOCKER_SCOUT_ARGS_LOG, \`\${JSON.stringify(process.argv.slice(2))}\\n\`);
+const argv = process.argv.slice(2);
+const imageRef = argv.at(-1) ?? '';
+appendFileSync(process.env.DOCKER_SCOUT_ARGS_LOG, \`\${JSON.stringify(argv)}\n\`);
 
-if (imageRef.startsWith('ghcr.io/') && imageRef.includes('compartment-caddy')) {
-  process.exit(2);
+const outputIndex = argv.indexOf('--output');
+const outputPath = outputIndex >= 0 ? argv[outputIndex + 1] : '';
+const emitsVulnerability = imageRef.startsWith('ghcr.io/') && imageRef.includes('compartment-caddy');
+const ruleId = process.env.DOCKER_SCOUT_FAKE_RULE_ID ?? 'CVE-0000-0001';
+const results = emitsVulnerability ? [{ ruleId, message: { text: \`\${ruleId} in image\` } }] : [];
+
+if (outputPath) {
+  writeFileSync(
+    outputPath,
+    JSON.stringify({
+      version: '2.1.0',
+      runs: [{ tool: { driver: { name: 'docker-scout' } }, results }],
+    }),
+  );
 }
 `;
 }
