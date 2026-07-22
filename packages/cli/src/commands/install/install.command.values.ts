@@ -1,6 +1,9 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import {
+  createKubernetesInstallMaterializedDirectory,
+  writeKubernetesInstallValues,
+} from '../../services/kubernetes-install-helm.service';
 import type { InstallWizardValues } from './install.command.types';
 
 export interface MaterializedInstallWizardValues {
@@ -11,9 +14,9 @@ export interface MaterializedInstallWizardValues {
 export async function materializeInstallWizardValues(
   values: InstallWizardValues,
 ): Promise<MaterializedInstallWizardValues> {
-  const directory: string = await mkdtemp(join(tmpdir(), 'compartment-install-wizard-'));
+  const directory: string = await createKubernetesInstallMaterializedDirectory();
   const path: string = join(directory, 'values.json');
-  await writeFile(path, JSON.stringify(values), { mode: 0o600 });
+  await writeKubernetesInstallValues(path, values);
   return { directory, path };
 }
 

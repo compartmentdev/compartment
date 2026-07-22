@@ -1,9 +1,7 @@
 import type { OutputFormat } from '../../output/output.types';
 import type { KubernetesInstallDomainMode } from '../../services/kubernetes-install.service.types';
-import type {
-  KubernetesInstallPreflightResult,
-  ResolvedKubernetesKubeconfig,
-} from '../../services/kubernetes-install-preflight.service.types';
+import type { ResolvedKubernetesKubeconfig } from '../../services/kubernetes-install-kubeconfig.service.types';
+import type { KubernetesInstallPreflightResult } from '../../services/kubernetes-install-preflight.service.types';
 import type { MaterializedInstallWizardValues } from './install.command.values';
 
 export interface InstallCommandOptions {
@@ -82,7 +80,11 @@ export interface InstallWizardResolution {
 
 export interface PreparedInstallCommandInput {
   material: MaterializedInstallWizardValues | null;
-  options: InstallCommandOptions;
+  options: PreparedKubernetesInstallCommandOptions;
+}
+
+export interface PreparedKubernetesInstallCommandOptions extends InstallCommandOptions {
+  values: string;
 }
 
 export interface InstallPreflightChecklistResult {

@@ -67,21 +67,28 @@ compartment install
 ```
 
 Before asking for configuration or owner credentials, the CLI selects a usable kubeconfig, checks cluster access,
-and checks whether another LoadBalancer Service already owns port 80 or 443. It tries `KUBECONFIG`, a usable
-`~/.kube/config` with a current context and cluster, and then the standard readable k3s config at
+and checks whether another LoadBalancer Service exposes port 80 or 443. When `KUBECONFIG` is set, all paths in it
+are merged and treated as authoritative; an invalid explicit value fails instead of falling back to another cluster.
+Otherwise, the CLI tries a usable `~/.kube/config` with the explicit `--kube-context` or its current context and
+cluster, then the readable k3s config at
 `/etc/rancher/k3s/k3s.yaml`. The wizard then asks only
 for managed or custom domain setup, the storage class, and the first owner's email, organization, and password. It
 prefers `local-path` when the cluster provides that storage class. For `custom-cert`, create the Kubernetes TLS Secret
 first; the wizard asks for its existing name.
 
-k3s installs Traefik by default, which conflicts with Compartment's Caddy LoadBalancer. Install k3s without Traefik,
-or disable and remove it before retrying Compartment:
+k3s with klipper assigns LoadBalancer ports through shared node host ports. In that environment, a foreign
+LoadBalancer on port 80 or 443 blocks installation; k3s installs Traefik this way by default. Install k3s without
+Traefik, or disable and remove it before retrying Compartment:
 
 ```bash
 printf 'disable:\n  - traefik\n' >/etc/rancher/k3s/config.yaml
 systemctl restart k3s
 kubectl -n kube-system delete helmchart traefik traefik-crd
 ```
+
+On clusters where LoadBalancer Services receive separate addresses, such as managed cloud load balancers or MetalLB,
+another ingress LoadBalancer produces a warning instead. The guided wizard asks you to confirm that you want to
+continue. An install using `--values` prints the warning and continues without adding a prompt.
 
 For CI or advanced operator configuration, create a values file with your storage and image decisions and pass it
 with `--values`. Non-interactive installs require this file. The CLI supplies managed-domain, ingress, ACME email, and

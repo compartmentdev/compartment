@@ -1,30 +1,4 @@
-export interface KubernetesKubeconfigResolutionInput {
-  contextName?: string | undefined;
-  env: NodeJS.ProcessEnv;
-  homeDirectory: string;
-  k3sPath?: string | undefined;
-}
-
-export interface KubernetesKubeconfigCandidate {
-  configured: boolean;
-  displayPath: string;
-  label?: string | undefined;
-  path: string;
-}
-
-export interface KubernetesKubeconfigCandidateResult {
-  reason: KubernetesKubeconfigFailureReason;
-  resolved: ResolvedKubernetesKubeconfig | null;
-}
-
-export type KubernetesKubeconfigFailureReason = 'no current context' | 'not found' | 'unusable';
-
-export interface ResolvedKubernetesKubeconfig {
-  clusterServer: string;
-  contextName: string;
-  label?: string | undefined;
-  path: string;
-}
+import type { ResolvedKubernetesKubeconfig } from './kubernetes-install-kubeconfig.service.types';
 
 export interface KubernetesInstallPreflightInput {
   detectStorageClass: boolean;
@@ -35,6 +9,7 @@ export interface KubernetesInstallPreflightInput {
 }
 
 export interface KubernetesInstallPreflightResult {
+  ingressWarning?: KubernetesIngressPortConflict | undefined;
   storageClass: string;
 }
 

@@ -52,6 +52,50 @@ describe.sequential('install command boundary', (): void => {
     expect(stderr).not.toContain('connection refused');
   });
 
+  it('aborts with a failure when interactive input closes at a wizard question', async (): Promise<void> => {
+    process.env.KUBECONFIG = await createUsableKubeconfig();
+    mockedRunCommand
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' })
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' })
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' });
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+    Object.assign(capture.stdin, { setRawMode: vi.fn() });
+
+    const result: Promise<number> = runCli(['install'], capture.io);
+    setImmediate((): void => {
+      capture.stdin.end();
+    });
+
+    await expect(result).resolves.toBe(1);
+    expect(readCliStderr(capture)).toContain('Prompt input cancelled.');
+  });
+
+  it('continues past a cloud LoadBalancer warning without a new prompt when --values is explicit', async (): Promise<void> => {
+    process.env.KUBECONFIG = await createUsableKubeconfig();
+    mockedRunCommand
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stderr: '',
+        stdout:
+          '{"items":[{"metadata":{"name":"nginx","namespace":"ingress-nginx"},"spec":{"ports":[{"port":443}],"type":"LoadBalancer"}}]}',
+      })
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' });
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+    Object.assign(capture.stdin, { setRawMode: vi.fn() });
+
+    const result: Promise<number> = runCli(['install', '--values', 'operator-values.yaml'], capture.io);
+    setImmediate((): void => {
+      capture.stdin.end();
+    });
+
+    await expect(result).resolves.toBe(1);
+    const stderr: string = readCliStderr(capture);
+    expect(stderr).toContain('This can coexist when LoadBalancer Services receive separate addresses.');
+    expect(stderr).toContain('Admin email:');
+    expect(stderr).not.toContain('Continue installation?');
+  });
+
   it('keeps Kubernetes deployment options out of the dev install path', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 

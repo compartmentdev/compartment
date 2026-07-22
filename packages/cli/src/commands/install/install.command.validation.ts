@@ -1,10 +1,11 @@
 import { isOrganizationSlug } from '@compartment/contracts';
-import { hasText, isValidDnsHostname, normalizeDnsHostname } from '@compartment/utils';
+import { isValidDnsHostname, normalizeDnsHostname } from '@compartment/utils';
 import { isReservedKubernetesInstallLocalhostDomain } from '../../kubernetes-install-domain';
 import { readInstallManagedDomainBrokerUrl, resolveInstallDomainMode } from './install.command.options';
 import type {
   InstallCommandOptions,
   KubernetesInstallTargetOptions,
+  PreparedKubernetesInstallCommandOptions,
   ResolvedKubernetesInstallCommandOptions,
 } from './install.command.types';
 import { parseInstallHttpOrigin } from './install.command.url';
@@ -34,7 +35,7 @@ export function assertDevInstallOptions(options: InstallCommandOptions): void {
 }
 
 export function resolveKubernetesInstallCommandOptions(
-  options: InstallCommandOptions,
+  options: PreparedKubernetesInstallCommandOptions,
   kubeconfigPath: string,
 ): ResolvedKubernetesInstallCommandOptions {
   const baseDomain: string | undefined =
@@ -51,7 +52,7 @@ export function resolveKubernetesInstallCommandOptions(
 }
 
 function buildResolvedInstallOptions(
-  options: InstallCommandOptions,
+  options: PreparedKubernetesInstallCommandOptions,
   kubeconfigPath: string,
   baseDomain: string | undefined,
   domainMode: KubernetesInstallDomainMode,
@@ -68,7 +69,7 @@ function buildResolvedInstallOptions(
     ...(options.kubeContext === undefined ? {} : { kubeContext: options.kubeContext }),
     namespace: options.namespace ?? defaultKubernetesNamespace,
     releaseName: options.releaseName ?? defaultKubernetesReleaseName,
-    valuesPath: readRequiredOption(options.values, '--values'),
+    valuesPath: options.values,
   };
 }
 
@@ -88,13 +89,6 @@ function assertInstallOrganizationSlug(organizationSlug: string | undefined): vo
   if (!isOrganizationSlug(organizationSlug)) {
     throw new Error('Organization slug must use lowercase letters, digits, and single hyphens.');
   }
-}
-
-function readRequiredOption(value: string | undefined, optionName: string): string {
-  if (!hasText(value)) {
-    throw new Error(`${optionName} is required for a Kubernetes install.`);
-  }
-  return value;
 }
 
 export function normalizeInstallBaseDomain(value: string): string {

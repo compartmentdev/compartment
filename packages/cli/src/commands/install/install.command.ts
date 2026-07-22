@@ -1,3 +1,4 @@
+import { rm } from 'node:fs/promises';
 import type { Command } from 'commander';
 import type { CliInstallResult } from '../../install.types';
 import { installDev, installKubernetesOwner } from '../../install';
@@ -21,6 +22,7 @@ import type {
   InstallWizardResolution,
   KubernetesInstallTargetOptions,
   PreparedInstallCommandInput,
+  PreparedKubernetesInstallCommandOptions,
   ResolvedInstallIdentityPrompts,
   ResolvedKubernetesInstallCommandOptions,
 } from './install.command.types';
@@ -88,11 +90,25 @@ async function executeKubernetesInstallCommand(
   options: InstallCommandOptions,
 ): Promise<void> {
   const target: KubernetesInstallTargetOptions = resolveKubernetesInstallTargetOptions(options);
+  const guidedInstall: boolean = options.values === undefined && hasInteractiveInput(dependencies);
   const checklist: InstallPreflightChecklistResult = await runInstallPreflightChecklist(
     dependencies,
     target,
-    options.values === undefined && hasInteractiveInput(dependencies),
+    guidedInstall,
+    guidedInstall,
   );
+  try {
+    await executeChecklistInstall(dependencies, options, checklist);
+  } finally {
+    await removeMaterializedKubeconfig(checklist);
+  }
+}
+
+async function executeChecklistInstall(
+  dependencies: CliCommandDependencies,
+  options: InstallCommandOptions,
+  checklist: InstallPreflightChecklistResult,
+): Promise<void> {
   const prepared: PreparedInstallCommandInput = await resolveGuidedInstallInput(
     dependencies,
     options,
@@ -107,13 +123,19 @@ async function executeKubernetesInstallCommand(
   }
 }
 
+async function removeMaterializedKubeconfig(checklist: InstallPreflightChecklistResult): Promise<void> {
+  if (checklist.kubeconfig.materializedDirectory !== undefined) {
+    await rm(checklist.kubeconfig.materializedDirectory, { force: true, recursive: true });
+  }
+}
+
 async function resolveGuidedInstallInput(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
   preflight: KubernetesInstallPreflightResult,
 ): Promise<PreparedInstallCommandInput> {
   if (options.values !== undefined) {
-    return { material: null, options };
+    return { material: null, options: { ...options, values: options.values } };
   }
   assertInteractiveInstall(dependencies);
   const wizard: InstallWizardResolution = await resolveInstallWizard(dependencies.io, preflight.storageClass);
@@ -146,7 +168,7 @@ function hasInteractiveInput(dependencies: CliCommandDependencies): boolean {
 
 async function executePreparedKubernetesInstall(
   dependencies: CliCommandDependencies,
-  options: InstallCommandOptions,
+  options: PreparedKubernetesInstallCommandOptions,
   kubeconfigPath: string,
 ): Promise<void> {
   const installOptions: ResolvedKubernetesInstallCommandOptions = resolveKubernetesInstallCommandOptions(

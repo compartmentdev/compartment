@@ -1,31 +1,17 @@
-import { access, readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
 import type { JsonValue } from '@compartment/utils';
-import { parse } from 'yaml';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import {
-  buildIngressConflictMessage,
-  buildMissingKubeconfigMessage,
-  formatCheckedCandidate,
-} from './kubernetes-install-preflight.messages';
 import type {
   KubernetesIngressPortConflict,
   KubernetesInstallPreflightInput,
   KubernetesInstallPreflightResult,
-  KubernetesKubeconfigCandidate,
-  KubernetesKubeconfigCandidateResult,
-  KubernetesKubeconfigResolutionInput,
   KubernetesPreflightServiceItem,
   KubernetesPreflightServiceList,
   KubernetesServicePort,
   KubernetesStorageClassItem,
   KubernetesStorageClassList,
-  ResolvedKubernetesKubeconfig,
 } from './kubernetes-install-preflight.service.types';
 
-const defaultK3sKubeconfigPath: string = '/etc/rancher/k3s/k3s.yaml';
 const requestTimeout: string = '3s';
 
 export class KubernetesInstallPreflightError extends Error {
@@ -37,47 +23,37 @@ export class KubernetesInstallPreflightError extends Error {
   }
 }
 
-export async function resolveKubernetesInstallKubeconfig(
-  input: KubernetesKubeconfigResolutionInput = { env: process.env, homeDirectory: homedir() },
-): Promise<ResolvedKubernetesKubeconfig> {
-  const homePath: string = join(input.homeDirectory, '.kube', 'config');
-  const k3sPath: string = input.k3sPath ?? defaultK3sKubeconfigPath;
-  const checked: string[] = [];
-  for (const candidate of buildKubeconfigCandidates(input.env.KUBECONFIG, homePath, k3sPath)) {
-    const result: KubernetesKubeconfigCandidateResult = await readKubeconfigCandidate(
-      candidate.path,
-      candidate.label,
-      input.contextName,
-    );
-    if (result.resolved !== null) {
-      return result.resolved;
-    }
-    checked.push(formatCheckedCandidate(candidate.path, candidate.displayPath, candidate.configured, result.reason));
-  }
-  throw new Error(buildMissingKubeconfigMessage(checked));
-}
-
 export async function runKubernetesInstallPreflight(
   input: KubernetesInstallPreflightInput,
 ): Promise<KubernetesInstallPreflightResult> {
   await assertClusterReachable(input);
+  const conflict: KubernetesIngressPortConflict | null = await readIngressPortConflict(input);
+  if (conflict !== null) {
+    return await handleIngressPortConflict(input, conflict);
+  }
+  return { storageClass: input.detectStorageClass ? await readDetectedStorageClass(input) : '' };
+}
+
+async function readIngressPortConflict(
+  input: KubernetesInstallPreflightInput,
+): Promise<KubernetesIngressPortConflict | null> {
   const services: KubernetesPreflightServiceList = await readClusterJson<KubernetesPreflightServiceList>(
     buildKubectlCommand(input, ['get', 'services', '--all-namespaces', '--output', 'json']),
     'ingress ports',
     'services',
   );
-  const conflict: KubernetesIngressPortConflict | null = findIngressPortConflict(
-    services.items,
-    input.releaseName,
-    input.namespace,
-  );
-  if (conflict !== null) {
+  return findIngressPortConflict(services.items, input.releaseName, input.namespace);
+}
+
+async function handleIngressPortConflict(
+  input: KubernetesInstallPreflightInput,
+  conflict: KubernetesIngressPortConflict,
+): Promise<KubernetesInstallPreflightResult> {
+  if (await isKlipperEnvironment(input)) {
     throw new KubernetesInstallPreflightError('ingress ports', buildIngressConflictMessage(conflict));
   }
-  if (!input.detectStorageClass) {
-    return { storageClass: '' };
-  }
-  return { storageClass: await readDetectedStorageClass(input) };
+  const storageClass: string = input.detectStorageClass ? await readDetectedStorageClass(input) : '';
+  return { ingressWarning: conflict, storageClass };
 }
 
 async function readDetectedStorageClass(input: KubernetesInstallPreflightInput): Promise<string> {
@@ -109,92 +85,40 @@ function findIngressPortConflict(
   return { name, namespace: service.metadata?.namespace ?? 'default' };
 }
 
-function buildKubeconfigCandidates(
-  environmentValue: string | undefined,
-  homePath: string,
-  k3sPath: string,
-): KubernetesKubeconfigCandidate[] {
-  const environmentPaths: string[] =
-    environmentValue?.split(delimiter).filter((path: string): boolean => path !== '') ?? [];
-  return [
-    ...environmentPaths.map(
-      (path: string): KubernetesKubeconfigCandidate => ({ configured: true, displayPath: path, path }),
-    ),
-    { configured: false, displayPath: '~/.kube/config', path: homePath },
-    { configured: false, displayPath: k3sPath, label: 'k3s', path: k3sPath },
-  ];
-}
-
-async function readKubeconfigCandidate(
-  path: string,
-  label?: string,
-  contextName?: string,
-): Promise<KubernetesKubeconfigCandidateResult> {
-  try {
-    await access(path);
-  } catch {
-    return { reason: 'not found', resolved: null };
-  }
-  try {
-    const value: JsonValue = parse(await readFile(path, 'utf8')) as JsonValue;
-    const resolved: ResolvedKubernetesKubeconfig | null = parseKubeconfig(value, path, label, contextName);
-    return resolved === null ? { reason: 'no current context', resolved: null } : { reason: 'unusable', resolved };
-  } catch {
-    return { reason: 'unusable', resolved: null };
-  }
-}
-
-function parseKubeconfig(
-  value: JsonValue,
-  path: string,
-  label?: string,
-  requestedContextName?: string,
-): ResolvedKubernetesKubeconfig | null {
-  if (!isObject(value) || typeof value['current-context'] !== 'string' || value['current-context'].trim() === '') {
-    return null;
-  }
-  const clusters: JsonValue | undefined = value.clusters;
-  const contexts: JsonValue | undefined = value.contexts;
-  if (!Array.isArray(clusters) || clusters.length === 0 || !Array.isArray(contexts)) {
-    return null;
-  }
-  const contextName: string = requestedContextName ?? value['current-context'];
-  const clusterName: string | undefined = readCurrentClusterName(contexts, contextName);
-  const clusterServer: string | undefined = readClusterServer(clusters, clusterName);
-  if (clusterServer === undefined) {
-    return null;
-  }
-  return { clusterServer, contextName, ...(label === undefined ? {} : { label }), path };
-}
-
-function readCurrentClusterName(contexts: JsonValue[], contextName: string): string | undefined {
-  const context: JsonValue | undefined = contexts.find(
-    (candidate: JsonValue): boolean => isObject(candidate) && candidate.name === contextName,
-  );
-  return isObject(context) && isObject(context.context) && typeof context.context.cluster === 'string'
-    ? context.context.cluster
-    : undefined;
-}
-
-function readClusterServer(clusters: JsonValue[], clusterName: string | undefined): string | undefined {
-  const cluster: JsonValue | undefined = clusters.find(
-    (candidate: JsonValue): boolean => isObject(candidate) && candidate.name === clusterName,
-  );
-  return isObject(cluster) &&
-    isObject(cluster.cluster) &&
-    typeof cluster.cluster.server === 'string' &&
-    cluster.cluster.server.trim() !== ''
-    ? cluster.cluster.server.trim()
-    : undefined;
-}
-
 async function assertClusterReachable(input: KubernetesInstallPreflightInput): Promise<void> {
   const result: CommandResult = await runCommand(buildKubectlCommand(input, ['version', '--output', 'json']));
   if (result.exitCode !== 0) {
+    if (result.exitCode === 127) {
+      throw new KubernetesInstallPreflightError('cluster', 'kubectl is not installed or not on PATH.');
+    }
     throw new KubernetesInstallPreflightError(
       'cluster',
       `Cannot reach Kubernetes cluster at ${input.resolvedKubeconfig.clusterServer}. Verify the cluster is running and your kubeconfig credentials are valid, then retry install.`,
     );
+  }
+}
+
+async function isKlipperEnvironment(input: KubernetesInstallPreflightInput): Promise<boolean> {
+  const result: CommandResult = await runCommand(
+    buildKubectlCommand(input, ['get', 'daemonsets', '--all-namespaces', '--output', 'json']),
+  );
+  if (result.exitCode !== 0) {
+    return false;
+  }
+  try {
+    const value: JsonValue = JSON.parse(result.stdout) as JsonValue;
+    if (!isObject(value) || !Array.isArray(value.items)) {
+      return false;
+    }
+    return value.items.some(
+      (daemonSet: JsonValue): boolean =>
+        isObject(daemonSet) &&
+        isObject(daemonSet.metadata) &&
+        typeof daemonSet.metadata.name === 'string' &&
+        daemonSet.metadata.name.startsWith('svclb-'),
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -249,6 +173,10 @@ function detectStorageClass(list: KubernetesStorageClassList): string {
   return list.items.some((item: KubernetesStorageClassItem): boolean => item.metadata?.name === 'local-path')
     ? 'local-path'
     : '';
+}
+
+function buildIngressConflictMessage(conflict: KubernetesIngressPortConflict): string {
+  return `Ports 80/443 are already taken by Service ${conflict.namespace}/${conflict.name} — the platform's Caddy LoadBalancer will never get an address. On k3s disable Traefik: printf 'disable:\\n  - traefik\\n' >/etc/rancher/k3s/config.yaml && systemctl restart k3s && kubectl -n kube-system delete helmchart traefik traefik-crd. Then retry install.`;
 }
 
 function isObject(value: JsonValue | undefined): value is Record<string, JsonValue> {

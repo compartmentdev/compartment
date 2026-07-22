@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { InstallCommandOptions } from '../src/commands/install/install.command.types';
+import type { PreparedKubernetesInstallCommandOptions } from '../src/commands/install/install.command.types';
 import { readManagedDomainRequestedLabelSource } from '../src/commands/install/install.command.managed-domain';
 import { resolveKubernetesInstallCommandOptions } from '../src/commands/install/install.command.validation';
 
@@ -120,7 +120,7 @@ describe('production install option validation', (): void => {
   });
 });
 
-function createOptions(baseDomain: string, apiUrl: string): InstallCommandOptions {
+function createOptions(baseDomain: string, apiUrl: string): PreparedKubernetesInstallCommandOptions {
   return {
     apiUrl,
     baseDomain,
