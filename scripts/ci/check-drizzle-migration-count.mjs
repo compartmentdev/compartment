@@ -16,6 +16,25 @@ const DOCKER_CUTOVER_SQUASH_DELETED_PATHS = [
   'packages/api/drizzle/0004_greedy_overlord.sql',
 ];
 
+// One-time exemption for folding #165's retention migration back into the
+// reinstall-only Kubernetes baseline.
+const KUBERNETES_RETENTION_RESQUASH_REWRITTEN_PATH = 'packages/api/drizzle/0000_initial.sql';
+const KUBERNETES_RETENTION_RESQUASH_DELETED_PATH = 'packages/api/drizzle/0001_living_spirit.sql';
+
+function isApprovedKubernetesRetentionResquash(migrationChanges) {
+  return (
+    migrationChanges.length === 2 &&
+    migrationChanges.some(
+      (migrationChange) =>
+        migrationChange.path === KUBERNETES_RETENTION_RESQUASH_REWRITTEN_PATH && migrationChange.status === 'M',
+    ) &&
+    migrationChanges.some(
+      (migrationChange) =>
+        migrationChange.path === KUBERNETES_RETENTION_RESQUASH_DELETED_PATH && migrationChange.status === 'D',
+    )
+  );
+}
+
 export function isApprovedDockerCutoverMigrationReset(migrationChanges) {
   if (migrationChanges.length !== DOCKER_CUTOVER_SQUASH_DELETED_PATHS.length + 1) {
     return false;
@@ -39,6 +58,10 @@ export function findDrizzleMigrationCountValidationErrors(migrationChanges) {
   }
 
   if (isApprovedDockerCutoverMigrationReset(migrationChanges)) {
+    return [];
+  }
+
+  if (isApprovedKubernetesRetentionResquash(migrationChanges)) {
     return [];
   }
 

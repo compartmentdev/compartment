@@ -26,6 +26,31 @@ const DOCKER_CUTOVER_SQUASH_BASE_ENTRIES = [
 const D16_REGENERATED_BASELINE_ORIGINAL_WHEN = 1779700755038;
 const D16_REGENERATED_BASELINE_NEW_WHEN = 1783948017382;
 
+// One-time exemption for folding the retention columns from #165 back into the
+// reinstall-only Kubernetes baseline. Match the complete journals so this cannot
+// authorize another history rewrite.
+const KUBERNETES_RETENTION_RESQUASH_BASE_JOURNAL = {
+  version: '7',
+  dialect: 'postgresql',
+  entries: [
+    { idx: 0, version: '7', when: 1783948017382, tag: '0000_initial', breakpoints: true },
+    { idx: 1, version: '7', when: 1784734906421, tag: '0001_living_spirit', breakpoints: true },
+  ],
+};
+const KUBERNETES_RETENTION_RESQUASH_HEAD_JOURNAL = {
+  version: '7',
+  dialect: 'postgresql',
+  entries: [{ idx: 0, version: '7', when: 1783948017382, tag: '0000_initial', breakpoints: true }],
+};
+
+function isApprovedKubernetesRetentionResquash(journalPath, baseJournal, headJournal) {
+  return (
+    journalPath === DOCKER_CUTOVER_SQUASH_JOURNAL_PATH &&
+    isDeepStrictEqual(baseJournal, KUBERNETES_RETENTION_RESQUASH_BASE_JOURNAL) &&
+    isDeepStrictEqual(headJournal, KUBERNETES_RETENTION_RESQUASH_HEAD_JOURNAL)
+  );
+}
+
 function isApprovedD16RegeneratedBaselineTimestamp(journalPath, baseJournal, headJournal) {
   if (
     journalPath !== DOCKER_CUTOVER_SQUASH_JOURNAL_PATH ||
@@ -88,6 +113,10 @@ export function isApprovedDockerCutoverJournalSquash(journalPath, baseJournal, h
 
 export function findDrizzleJournalDiffValidationErrors(journalPath, baseJournal, headJournal) {
   const validationErrors = [];
+
+  if (isApprovedKubernetesRetentionResquash(journalPath, baseJournal, headJournal)) {
+    return validationErrors;
+  }
 
   if (isApprovedD16RegeneratedBaselineTimestamp(journalPath, baseJournal, headJournal)) {
     return validationErrors;
