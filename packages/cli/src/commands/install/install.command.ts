@@ -3,6 +3,8 @@ import type { CliInstallResult } from '../../install.types';
 import { installDev, installKubernetesOwner } from '../../install';
 import { renderOutput } from '../../output/render';
 import { deployAndWaitForKubernetesInstall } from '../../services/kubernetes-install.service';
+import { readInstalledKubernetesRegistryMirror } from '../../services/kubernetes-registry-mirror.service';
+import type { KubernetesRegistryMirror } from '../../services/kubernetes-registry-mirror.service.types';
 import type { InstallInput } from '../../services/install.service.types';
 import type {
   KubernetesInstallDeploymentInput,
@@ -10,6 +12,7 @@ import type {
 } from '../../services/kubernetes-install.service.types';
 import type { CliCommandDependencies } from '../command.types';
 import { resolveInstallIdentityPrompts } from './install.command.identity';
+import { finishInstallRegistryMirrorSetup } from './install.command.registry-mirror';
 import { readManagedDomainRequestedLabelSource } from './install.command.managed-domain';
 import { createInstallResultMessage, toInstallResponse } from './install.command.result';
 import { persistDevInstallSession, persistInstallSession } from './install.command.session';
@@ -33,6 +36,7 @@ export function registerInstallCommand(program: Command, dependencies: CliComman
     .option('--kube-context <name>', 'Kubernetes context for Helm')
     .option('--namespace <name>', 'Kubernetes namespace; defaults to compartment')
     .option('--release-name <name>', 'Helm release name; defaults to compartment')
+    .option('--skip-registry-mirror', 'Do not automatically configure the local k3s registry mirror')
     .option('--email <email>', 'First admin email')
     .option('--organization <name>', 'First organization name')
     .option('--organization-slug <slug>')
@@ -80,13 +84,30 @@ async function executeKubernetesInstallCommand(
     options.organizationSlug,
   );
   const deployment: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(deploymentInput);
+  const registryMirror: KubernetesRegistryMirror = await readInstalledKubernetesRegistryMirror(installOptions);
 
   const result: CliInstallResult = await installKubernetesOwner(deployment.apiUrl, deployment.installToken, {
     ...buildOwnerInstallInput(prompts, options),
     baseDomain: deployment.baseDomain,
   });
 
+  await completeKubernetesInstall(dependencies, options, installOptions, registryMirror, result);
+}
+
+async function completeKubernetesInstall(
+  dependencies: CliCommandDependencies,
+  options: InstallCommandOptions,
+  installOptions: ResolvedKubernetesInstallCommandOptions,
+  registryMirror: KubernetesRegistryMirror,
+  result: CliInstallResult,
+): Promise<void> {
   await persistInstallSession(result, options.remote);
+  await finishInstallRegistryMirrorSetup(
+    dependencies.io,
+    installOptions,
+    registryMirror,
+    options.skipRegistryMirror === true,
+  );
   renderInstallResult(dependencies, options, result, false);
 }
 

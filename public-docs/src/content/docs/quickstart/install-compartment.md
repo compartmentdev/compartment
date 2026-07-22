@@ -96,6 +96,22 @@ with managed DNS-01 TLS. At runtime the broker credential is read from that Secr
 ConfigMap. Helm also records supplied secret values in its Kubernetes release revision Secrets, so restrict access to
 Helm and platform Secrets.
 
+After the platform and first owner are ready, the CLI reads the installed registry-auth Service and prints the exact
+k3s `registries.yaml` entry using its actual ClusterIP. It also prints a ready `compartment system registry-mirror
+apply` command that safely merges the entry, writes the file, and restarts k3s without replacing other mirrors.
+Complete this required node-level step before the first application deploy. The chart cannot change container-runtime
+configuration on Kubernetes nodes.
+
+When the CLI is running as root on the local k3s node with an unambiguous
+`KUBECONFIG=/etc/rancher/k3s/k3s.yaml` and `systemctl` is available, it merges only the installed Compartment mirror
+into `/etc/rancher/k3s/registries.yaml` and restarts k3s automatically. It preserves other registry mirrors. A TTY
+install asks for confirmation with a default of yes; a non-TTY install applies it automatically and logs the action.
+Pass `--skip-registry-mirror` to decline automatic application. Automatic application configures only the local node;
+make the same Compartment CLI version available and run the printed apply command on every other k3s node in the
+cluster. The command exits unsuccessfully if k3s does not restart or the written endpoint fails its post-check. If any
+safety condition is not met, use the printed instructions on every k3s node. Other Kubernetes distributions require
+the equivalent container-runtime mirror or route.
+
 Use `--kube-context`, `--namespace`, or `--release-name` when the defaults are not appropriate. Pass
 `--broker-url <url>` only for a managed-domain broker override. A CLI built directly from a source checkout has no
 embedded chart; pass `--chart ./deploy/chart/compartment` in that case. Source builds retain the chart and operator
@@ -173,13 +189,9 @@ test "$(kubectl --namespace compartment get service "$registry_service" --output
 test "$(kubectl --namespace compartment get service "$registry_service" --output jsonpath='{.spec.clusterIP}')" = "$registry_ip"
 ```
 
-The bundled registry is addressed inside the cluster as `<release-fullname>-registry-auth.<namespace>.svc:5000`.
-Kubelets do not use cluster DNS for image pulls, so configure the container runtime on every node with an equivalent
-registry mirror or route before deploying applications. The chart cannot mutate node-level container-runtime config.
-If you delete the namespace or retained registry-auth Service, reinstall can allocate a different ClusterIP. On k3s,
-rewrite the mirror endpoint in `/etc/rancher/k3s/registries.yaml` on every node with the current Service IP, restart
-k3s, and verify the new endpoint before deploying an application. Use the equivalent mirror update and runtime restart
-for other Kubernetes distributions.
+If you delete the namespace or retained registry-auth Service, reinstall can allocate a different ClusterIP. The CLI
+renders the new endpoint after reinstall and idempotently updates the same mirror key when local-k3s auto-application
+is available. Otherwise, apply the newly printed instructions on every node before deploying an application.
 
 Verify the Helm release and platform workload readiness before inviting more users:
 

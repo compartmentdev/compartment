@@ -16,6 +16,7 @@ export interface InstallCommandOptions {
   output: OutputFormat;
   releaseName?: string | undefined;
   remote?: string | undefined;
+  skipRegistryMirror?: boolean | undefined;
   values?: string | undefined;
 }
 

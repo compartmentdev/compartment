@@ -24,6 +24,14 @@ describe('install command boundary', (): void => {
     expect(readCliStderr(capture)).toContain('--dev cannot be combined with --api-url.');
   });
 
+  it('keeps registry mirror setup out of the dev install path', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    const exitCode: number = await runCli(['install', '--dev', '--skip-registry-mirror'], capture.io);
+
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toContain('--dev cannot be combined with --skip-registry-mirror.');
+  });
+
   it('rejects the removed local Docker runtime option', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 
