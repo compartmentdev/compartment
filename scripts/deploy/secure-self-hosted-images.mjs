@@ -441,6 +441,15 @@ function scanSelfHostedImageWithDockerScout(repositoryRoot, imageRef) {
     if (scoutResult.stderr) {
       process.stderr.write(scoutResult.stderr);
     }
+    // Without --exit-code, a non-zero exit (or a kill signal) can only mean an
+    // operational scanner error, not a vulnerability verdict. Fail closed on it
+    // so a scout auth/DB failure that still emits a valid-but-empty SARIF cannot
+    // pass the gate.
+    if (scoutResult.status !== 0 || scoutResult.signal !== null) {
+      throw new Error(
+        `Docker Scout scan errored for ${imageRef} (exit ${scoutResult.status}, signal ${scoutResult.signal}).`,
+      );
+    }
     const blockingVulnerabilityIds = readScoutBlockingVulnerabilityIds(sarifPath, suppressedVulnerabilityIds);
     if (blockingVulnerabilityIds.length > 0) {
       throw new Error(
@@ -483,16 +492,33 @@ function readScoutBlockingVulnerabilityIds(sarifPath, suppressedVulnerabilityIds
   const blockingVulnerabilityIds = new Set();
   for (const run of sarif.runs ?? []) {
     for (const result of run.results ?? []) {
-      const serializedResult = JSON.stringify(result);
-      const isSuppressed = [...suppressedVulnerabilityIds].some((id) => serializedResult.includes(id));
+      const resultVulnerabilityIds = collectResultVulnerabilityIds(result);
+      const isSuppressed = [...resultVulnerabilityIds].some((id) => suppressedVulnerabilityIds.has(id));
       if (!isSuppressed) {
-        blockingVulnerabilityIds.add(
-          typeof result.ruleId === 'string' ? result.ruleId : serializedResult.slice(0, 120),
-        );
+        const [firstId] = resultVulnerabilityIds;
+        blockingVulnerabilityIds.add(firstId ?? (typeof result.ruleId === 'string' ? result.ruleId : 'unknown'));
       }
     }
   }
   return [...blockingVulnerabilityIds];
+}
+
+// Exact CVE/GHSA identifiers, so a suppressed id cannot substring-collide with a
+// wider real one (e.g. CVE-2024-3094 vs CVE-2024-30949).
+const cveOrGhsaIdPattern = /CVE-\d{4}-\d{4,}|GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}/gi;
+
+function collectResultVulnerabilityIds(result) {
+  const ids = new Set();
+  if (typeof result?.ruleId === 'string') {
+    ids.add(result.ruleId);
+  }
+  const messageText = result?.message?.text;
+  if (typeof messageText === 'string') {
+    for (const match of messageText.matchAll(cveOrGhsaIdPattern)) {
+      ids.add(match[0]);
+    }
+  }
+  return ids;
 }
 
 function reportSelfHostedImageScanFailures(input) {
