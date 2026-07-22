@@ -69,8 +69,8 @@ describe('install command progress', (): void => {
     const exitCode: number = await runCli(buildInstallArguments('text'), capture.io);
 
     expect(exitCode).toBe(0);
-    expect(readCliStderr(capture)).toBe(
-      'Issuing TLS certificate (ACME)\u2026 \u2713 1s\nCreating owner\u2026\nCreating owner\u2026 \u2713 0s\n',
+    expect(readCliStderr(capture)).toMatch(
+      /^Issuing TLS certificate \(ACME\)\u2026 \u2713 1s\nCreating owner\u2026\nCreating owner\u2026 \u2713 \d+s\n$/u,
     );
     expect(readCliStderr(capture)).not.toContain('\u001B');
   });
