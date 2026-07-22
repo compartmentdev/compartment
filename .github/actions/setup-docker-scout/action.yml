@@ -5,11 +5,11 @@ inputs:
   version:
     description: Docker Scout CLI version to install.
     required: false
-    default: 1.21.0
+    default: 1.23.1
   sha256:
     description: SHA-256 checksum for the Docker Scout CLI archive.
     required: false
-    default: 07b075d532efd3ca04893a0a1845cb57df3b367e2c4b4717658e2425caa8e1f8
+    default: 0f778f9d833f28bc6cccff95e33039849c0afcecafa38d9f46fe74bfd0915714
 
 runs:
   using: composite
