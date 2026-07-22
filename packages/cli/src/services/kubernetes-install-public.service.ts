@@ -1,9 +1,9 @@
-import { setTimeout as sleep } from 'node:timers/promises';
+import { waitForInstallDelay } from './kubernetes-install-delay.service';
 import type { PublicControlPlaneObservation } from './kubernetes-install.service.types';
 
 const publicControlPlanePollIntervalMs: number = 2_000;
 const publicControlPlaneRequestTimeoutMs: number = 10_000;
-const publicControlPlaneWaitTimeoutMs: number = 15 * 60_000;
+const publicControlPlaneWaitTimeoutMs: number = 5 * 60_000;
 
 export async function waitForPublicControlPlane(apiUrl: string): Promise<void> {
   const deadline: number = Date.now() + publicControlPlaneWaitTimeoutMs;
@@ -18,9 +18,11 @@ export async function waitForPublicControlPlane(apiUrl: string): Promise<void> {
     } catch (error) {
       lastFailure = error instanceof Error ? error.message : 'network request failed';
     }
-    await sleep(publicControlPlanePollIntervalMs);
+    await waitForInstallDelay(publicControlPlanePollIntervalMs);
   }
-  throw new Error(`Timed out waiting for the public Compartment control plane at ${apiUrl}: ${lastFailure}`);
+  throw new Error(
+    `Public Compartment control plane at ${apiUrl} was not ready after 300s: ${lastFailure}. Check DNS, ports 80/443, and the TLS certificate status, then re-run install to resume.`,
+  );
 }
 
 async function observePublicControlPlane(apiUrl: string): Promise<PublicControlPlaneObservation> {

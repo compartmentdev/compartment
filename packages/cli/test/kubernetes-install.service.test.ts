@@ -3,16 +3,23 @@ import type { LookupAddress } from 'node:dns';
 import type { ManagedDomainAllocationRequest } from '@compartment/contracts';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { CommandResult } from '../src/command-runner.types';
+import { createCommandProgress } from '../src/commands/command.progress';
 import { deployAndWaitForKubernetesInstall } from '../src/services/kubernetes-install.service';
 import { resolveKubernetesPublicIngress } from '../src/services/kubernetes-install-ingress.service';
+import { runKubernetesHelmInstallStage } from '../src/services/kubernetes-install-helm.service';
+import { waitForPublicControlPlane } from '../src/services/kubernetes-install-public.service';
+import type { KubernetesInstallProgressReporter } from '../src/services/kubernetes-install-progress.types';
 import { readRetainedKubernetesInstallState } from '../src/services/kubernetes-install-retained-state.service';
 import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallDeploymentResult,
   KubernetesInstallSecretValues,
   KubernetesInstallState,
+  KubernetesPublicIngress,
   KubernetesPublicIngressResolutionInput,
 } from '../src/services/kubernetes-install.service.types';
+import type { CommandProgress } from '../src/commands/command.progress.types';
+import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
 type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
 type RunCommandCall = [command: readonly string[]];
@@ -49,7 +56,10 @@ const mocks: KubernetesInstallServiceMocks = vi.hoisted(
 const detectedPublicIpv4: string = [8, 8, 8, 8].join('.');
 const configuredPublicIpv4: string = [8, 8, 4, 4].join('.');
 
-vi.mock('../src/command-runner', (): object => ({ runCommand: mocks.runCommand }));
+vi.mock('../src/command-runner', (): object => ({
+  runCommand: mocks.runCommand,
+  runCommandWithTimeout: mocks.runCommand,
+}));
 vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
   writeVerifiedKubernetesInstallImageValues: mocks.writeVerifiedImages,
 }));
@@ -115,6 +125,185 @@ describe('Kubernetes install deployment', (): void => {
     expect(readCommandText()).not.toContain(result.installToken);
     expect(readCommandText()).not.toContain('acme-token');
     await expect(readFile(state.installValuePaths[0]!, 'utf8')).rejects.toThrow();
+  });
+
+  it('retries transient broker failures with the same installation identity', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const state: InstallHarnessState = createInstallHarnessState();
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
+    const brokerRequests: RequestInit[] = [];
+    let brokerAttempt: number = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        if (readFetchUrl(input).startsWith('https://broker.compartment.run')) {
+          brokerRequests.push(init ?? {});
+          brokerAttempt += 1;
+          if (brokerAttempt < 3) {
+            return await Promise.resolve(new Response('', { status: 502 }));
+          }
+          return await Promise.resolve(
+            Response.json({ acmeDnsToken: 'acme-token', baseDomain: 'acme.compartment.run', dnsRecords: [] }),
+          );
+        }
+        return await Promise.resolve(readyControlPlaneResponse());
+      }),
+    );
+
+    const install: Promise<KubernetesInstallDeploymentResult> =
+      deployAndWaitForKubernetesInstall(managedDeploymentInput);
+    await vi.waitFor((): void => {
+      expect(brokerAttempt).toBe(1);
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(install).resolves.toMatchObject({ baseDomain: 'acme.compartment.run' });
+    expect(brokerRequests).toHaveLength(3);
+    expect(brokerRequests.map(readBrokerRequestBody)).toEqual([
+      readBrokerRequestBody(brokerRequests[0]!),
+      readBrokerRequestBody(brokerRequests[0]!),
+      readBrokerRequestBody(brokerRequests[0]!),
+    ]);
+  });
+
+  it('retries a reset broker connection and exposes the retry event', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const state: InstallHarnessState = createInstallHarnessState();
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
+    const brokerRequests: RequestInit[] = [];
+    const retryEvents: string[] = [];
+    let brokerAttempt: number = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        if (!readFetchUrl(input).startsWith('https://broker.compartment.run')) {
+          return await Promise.resolve(readyControlPlaneResponse());
+        }
+        brokerRequests.push(init ?? {});
+        brokerAttempt += 1;
+        if (brokerAttempt === 1) {
+          throw createFetchConnectionError('ECONNRESET');
+        }
+        return await Promise.resolve(
+          Response.json({ acmeDnsToken: 'acme-token', baseDomain: 'acme.compartment.run', dnsRecords: [] }),
+        );
+      }),
+    );
+
+    const install: Promise<KubernetesInstallDeploymentResult> = deployAndWaitForKubernetesInstall({
+      ...managedDeploymentInput,
+      progress: new RecordingProgressReporter(retryEvents),
+    });
+    await vi.waitFor((): void => {
+      expect(brokerAttempt).toBe(1);
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(install).resolves.toMatchObject({ baseDomain: 'acme.compartment.run' });
+    expect(brokerRequests.map(readBrokerRequestBody)).toEqual([
+      readBrokerRequestBody(brokerRequests[0]!),
+      readBrokerRequestBody(brokerRequests[0]!),
+    ]);
+    expect(retryEvents).toContainEqual(expect.stringContaining('transient failure on attempt 1/4; retrying'));
+  });
+
+  it('retries broker rate limiting', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const state: InstallHarnessState = createInstallHarnessState();
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
+    let brokerAttempt: number = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request): Promise<Response> => {
+        if (!readFetchUrl(input).startsWith('https://broker.compartment.run')) {
+          return await Promise.resolve(readyControlPlaneResponse());
+        }
+        brokerAttempt += 1;
+        return await Promise.resolve(
+          brokerAttempt === 1
+            ? new Response('', { status: 429 })
+            : Response.json({ acmeDnsToken: 'acme-token', baseDomain: 'acme.compartment.run', dnsRecords: [] }),
+        );
+      }),
+    );
+
+    const install: Promise<KubernetesInstallDeploymentResult> =
+      deployAndWaitForKubernetesInstall(managedDeploymentInput);
+    await vi.waitFor((): void => {
+      expect(brokerAttempt).toBe(1);
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(install).resolves.toMatchObject({ baseDomain: 'acme.compartment.run' });
+    expect(brokerAttempt).toBe(2);
+  });
+
+  it('reports request context and resume advice after exhausting broker retries', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const state: InstallHarnessState = createInstallHarnessState();
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
+    const retryEvents: string[] = [];
+    const brokerFetch: Mock<(input: string | URL | Request) => Promise<Response>> = vi.fn(
+      async (): Promise<Response> =>
+        await Promise.resolve(new Response('', { headers: { 'x-request-id': 'req_retry_123' }, status: 502 })),
+    );
+    vi.stubGlobal('fetch', brokerFetch);
+
+    const install: Promise<KubernetesInstallDeploymentResult> = deployAndWaitForKubernetesInstall({
+      ...managedDeploymentInput,
+      progress: new RecordingProgressReporter(retryEvents),
+    });
+    const failure: Promise<void> = expect(install).rejects.toThrow(
+      'Managed-domain broker POST https://broker.compartment.run/v1/managed-domains failed with status 502 (request-id: req_retry_123); transient failure after 4 attempts. Re-run install to resume.',
+    );
+    await vi.waitFor((): void => {
+      expect(brokerFetch).toHaveBeenCalledTimes(1);
+    });
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    await failure;
+    expect(brokerFetch).toHaveBeenCalledTimes(4);
+    expect(retryEvents.filter((event: string): boolean => event.includes('retrying'))).toHaveLength(3);
+  });
+
+  it('does not retry broker 4xx responses and reports actionable request context', async (): Promise<void> => {
+    const state: InstallHarnessState = createInstallHarnessState();
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
+    const brokerFetch: Mock<(input: string | URL | Request) => Promise<Response>> = vi.fn(
+      async (): Promise<Response> =>
+        await Promise.resolve(new Response('', { headers: { 'x-request-id': 'req_invalid_123' }, status: 400 })),
+    );
+    vi.stubGlobal('fetch', brokerFetch);
+
+    await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).rejects.toThrow(
+      'Managed-domain broker POST https://broker.compartment.run/v1/managed-domains failed with status 400 (request-id: req_invalid_123). Check the install configuration before re-running install.',
+    );
+    expect(brokerFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits observable install phases in execution order', async (): Promise<void> => {
+    const state: InstallHarnessState = createInstallHarnessState();
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
+    stubManagedInstallFetch(state.events, []);
+    const capture: CliCommandCapture = createCliCapture({ stderrIsTTY: false });
+    const progress: CommandProgress = createCommandProgress({ io: capture.io, output: 'text' });
+
+    await deployAndWaitForKubernetesInstall({
+      ...managedDeploymentInput,
+      progress,
+    });
+    const progressEvents: string[] = readCliStderr(capture).trim().split('\n');
+
+    expect(progressEvents.filter((event: string): boolean => event.includes('\u2713'))).toEqual([
+      expect.stringMatching(/^Inspecting existing installation.* \u2713 /u),
+      expect.stringMatching(/^Preparing Helm chart and verifying images.* \u2713 /u),
+      expect.stringMatching(/^Installing foundation \(postgres, registry\).* \u2713 /u),
+      expect.stringMatching(/^Waiting for public LoadBalancer address.* \u2713 .*8\.8\.8\.8/u),
+      expect.stringMatching(/^Requesting managed domain.* \u2713 /u),
+      expect.stringMatching(/^Saving installation configuration.* \u2713 /u),
+      expect.stringMatching(/^Waiting for platform pods \(api, worker, caddy\).* \u2713 /u),
+      expect.stringMatching(/^Issuing TLS certificate \(ACME\).* \u2713 /u),
+    ]);
+    expect(readCliStderr(capture)).not.toContain('\u001B');
   });
 
   it('resumes persisted managed allocation state without calling the broker again', async (): Promise<void> => {
@@ -230,6 +419,7 @@ describe('Kubernetes install deployment', (): void => {
       'fetch',
       vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
     );
+    const progressEvents: string[] = [];
     const customInput: KubernetesInstallDeploymentInput = {
       ...managedDeploymentInput,
       apiUrl: 'https://console.apps.example.com',
@@ -237,6 +427,7 @@ describe('Kubernetes install deployment', (): void => {
       brokerUrl: undefined,
       domainMode: 'custom',
       managedDomainRequestedLabelSource: undefined,
+      progress: new RecordingProgressReporter(progressEvents),
     };
 
     await expect(deployAndWaitForKubernetesInstall(customInput)).resolves.toEqual({
@@ -247,6 +438,8 @@ describe('Kubernetes install deployment', (): void => {
     expect(readHelmStages()).toEqual(['full']);
     expect(readResolvedInstallValues(state).platform.installationId).toMatch(/^[\da-f-]{36}$/u);
     expect(state.retainedState?.baseDomain).toBe('apps.example.com');
+    expect(progressEvents).toContainEqual(expect.stringMatching(/^Preparing Helm chart and verifying images/u));
+    expect(progressEvents).toContainEqual(expect.stringMatching(/^Waiting for platform pods \(api, worker, caddy\)/u));
   });
 
   it('materializes resumable state for a legacy foundation release', async (): Promise<void> => {
@@ -397,6 +590,62 @@ describe('Kubernetes install deployment', (): void => {
       );
     },
   );
+
+  it('bounds the initial cluster inspection and explains how to recover', async (): Promise<void> => {
+    const progressEvents: string[] = [];
+    mocks.runCommand.mockResolvedValueOnce({
+      exitCode: 124,
+      stderr: 'Command timed out after 30 seconds.',
+      stdout: '',
+    });
+
+    await expect(
+      deployAndWaitForKubernetesInstall({
+        ...managedDeploymentInput,
+        progress: new RecordingProgressReporter(progressEvents),
+      }),
+    ).rejects.toThrow(
+      'Timed out after 30s during Helm release lookup. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.',
+    );
+    expect(progressEvents).toEqual(['Inspecting existing installation\u2026']);
+  });
+});
+
+describe('Kubernetes Helm install timeout diagnostics', (): void => {
+  afterEach((): void => {
+    mocks.runCommand.mockReset();
+  });
+
+  it('reports non-Ready pods and a recovery command after the Helm timeout', async (): Promise<void> => {
+    mocks.runCommand
+      .mockResolvedValueOnce({ exitCode: 1, stderr: 'context deadline exceeded', stdout: '' })
+      .mockResolvedValueOnce(
+        successfulCommandResult(
+          JSON.stringify({
+            items: [
+              {
+                metadata: { name: 'compartment-api-123' },
+                status: { conditions: [{ status: 'False', type: 'Ready' }], phase: 'Pending' },
+              },
+            ],
+          }),
+        ),
+      );
+
+    await expect(
+      runKubernetesHelmInstallStage(
+        managedDeploymentInput,
+        '/tmp/chart',
+        '/tmp/platform-images.yaml',
+        '/tmp/install-values.json',
+        '/tmp/image-trust.yaml',
+        'full',
+      ),
+    ).rejects.toThrow(
+      'Non-Ready pods: compartment-api-123 (Pending). Check with `kubectl get pods -n compartment` and re-run install to resume.',
+    );
+    expect(mocks.runCommand.mock.calls[0]?.[0]).toEqual(expect.arrayContaining(['--timeout', '8m']));
+  });
 });
 
 describe('Kubernetes public ingress discovery', (): void => {
@@ -426,6 +675,22 @@ describe('Kubernetes public ingress discovery', (): void => {
     expect(mocks.lookup).toHaveBeenCalledTimes(2);
   });
 
+  it('times out LoadBalancer discovery with a cause and operator advice', async (): Promise<void> => {
+    vi.useFakeTimers();
+    mocks.runCommand.mockResolvedValue(successfulCommandResult(loadBalancerAddressList([])));
+    const resolution: Promise<KubernetesPublicIngress> = resolveKubernetesPublicIngress({
+      namespace: 'compartment',
+      publicIngressIpv4: '',
+      publicIngressIpv6: '',
+      releaseName: 'compartment',
+    });
+    const failure: Promise<void> = expect(resolution).rejects.toThrow(
+      'No public LoadBalancer address after 300s. Check that ports 80/443 are free and that the cluster has a LoadBalancer provider, then re-run install to resume.',
+    );
+    await vi.advanceTimersByTimeAsync(300_000);
+    await failure;
+  });
+
   it('selects a deterministic address from reordered LoadBalancer ingress', async (): Promise<void> => {
     const firstAddress: string = [8, 8, 8, 8].join('.');
     const secondAddress: string = [8, 8, 4, 4].join('.');
@@ -445,6 +710,28 @@ describe('Kubernetes public ingress discovery', (): void => {
     await expect(resolveKubernetesPublicIngress(input)).resolves.toMatchObject({
       publicIngressIpv4: secondAddress,
     });
+  });
+});
+
+describe('Kubernetes public control-plane readiness', (): void => {
+  afterEach((): void => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('times out with the observed response and recovery advice', async (): Promise<void> => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (): Promise<Response> => await Promise.resolve(new Response('', { status: 502 }))),
+    );
+    const readiness: Promise<void> = waitForPublicControlPlane('https://console.apps.example.com');
+    const failure: Promise<void> = expect(readiness).rejects.toThrow(
+      'Public Compartment control plane at https://console.apps.example.com was not ready after 300s: HTTP 502 with location <none>. Check DNS, ports 80/443, and the TLS certificate status, then re-run install to resume.',
+    );
+
+    await vi.advanceTimersByTimeAsync(300_000);
+    await failure;
   });
 });
 
@@ -797,4 +1084,17 @@ function readyControlPlaneResponse(): Response {
 
 function successfulCommandResult(stdout: string): CommandResult {
   return { exitCode: 0, stderr: '', stdout };
+}
+
+function createFetchConnectionError(code: string): Error {
+  const error: Error = new TypeError('fetch failed');
+  (error as Error & { cause?: { code?: string | undefined } | undefined }).cause = { code };
+  return error;
+}
+
+class RecordingProgressReporter implements KubernetesInstallProgressReporter {
+  public constructor(private readonly events: string[]) {}
+  public report(message: string): void {
+    this.events.push(message);
+  }
 }

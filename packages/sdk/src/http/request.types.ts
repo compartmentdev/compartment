@@ -5,6 +5,7 @@ export type CompartmentRequestMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
 export interface CompartmentRequestOptions<TResult, TBody> {
   body?: TBody | undefined;
   currentOrganization?: string | undefined;
+  idempotencyKey?: string | undefined;
   method: CompartmentRequestMethod;
   path: string;
   schema: ZodType<TResult>;
@@ -30,7 +31,10 @@ export interface CompartmentRawRequestOptions<TResult> {
 
 export interface CompartmentRequestErrorFields {
   code: string;
+  method: CompartmentRequestMethod;
+  requestId?: string | undefined;
   statusCode: number;
+  url: string;
 }
 
 export type CompartmentRequester = <TResult, TBody>(

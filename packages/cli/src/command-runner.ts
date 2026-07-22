@@ -15,24 +15,47 @@ const executeFileAsync: (
 ) => Promise<{ stderr: string; stdout: string }> = promisify(execFile);
 
 export async function runCommand(command: readonly string[], env?: NodeJS.ProcessEnv): Promise<CommandResult> {
+  return await executeCommand(command, env);
+}
+
+export async function runCommandWithTimeout(
+  command: readonly string[],
+  timeoutMs: number,
+  env?: NodeJS.ProcessEnv,
+): Promise<CommandResult> {
+  return await executeCommand(command, env, timeoutMs);
+}
+
+async function executeCommand(
+  command: readonly string[],
+  env?: NodeJS.ProcessEnv,
+  timeoutMs?: number,
+): Promise<CommandResult> {
   const [file, ...args] = command;
   if (file === undefined) {
     throw new Error('Expected a command to execute.');
   }
+  const options: ExecFileOptionsWithStringEncoding = {
+    ...(env === undefined ? {} : { env }),
+    ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
+  };
+  return await executeResolvedCommand(file, args, options, timeoutMs);
+}
 
+async function executeResolvedCommand(
+  file: string,
+  args: readonly string[],
+  options: ExecFileOptionsWithStringEncoding,
+  timeoutMs?: number,
+): Promise<CommandResult> {
   try {
-    const result: { stderr: string; stdout: string } = await executeFileAsync(
-      file,
-      args,
-      env === undefined ? {} : { env },
-    );
-    return {
-      exitCode: 0,
-      stderr: result.stderr,
-      stdout: result.stdout,
-    };
+    const result: { stderr: string; stdout: string } = await executeFileAsync(file, args, options);
+    return { exitCode: 0, stderr: result.stderr, stdout: result.stdout };
   } catch (error) {
-    return readFailedCommandResult(error as ExecFileException);
+    const failure: ExecFileException = error as ExecFileException;
+    return timeoutMs !== undefined && failure.killed === true
+      ? readTimedOutCommandResult(failure, timeoutMs)
+      : readFailedCommandResult(failure);
   }
 }
 
@@ -63,6 +86,14 @@ function readFailedCommandResult(error: ExecFileException): CommandResult {
   return {
     exitCode: readFailedExitCode(error),
     stderr: error.stderr ?? error.message,
+    stdout: error.stdout ?? '',
+  };
+}
+
+function readTimedOutCommandResult(error: ExecFileException, timeoutMs: number): CommandResult {
+  return {
+    exitCode: 124,
+    stderr: `Command timed out after ${Math.ceil(timeoutMs / 1000).toString()} seconds.${error.stderr === undefined || error.stderr === '' ? '' : `\n${error.stderr}`}`,
     stdout: error.stdout ?? '',
   };
 }

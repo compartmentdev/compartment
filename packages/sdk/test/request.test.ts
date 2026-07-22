@@ -310,7 +310,7 @@ describe('compartment requester', (): void => {
     };
     const request: CompartmentRequester = createCompartmentRequester(defaults);
 
-    mockFetchSequence([createTextResponse('', 502)]);
+    mockFetchSequence([createTextResponse('', 502, { 'x-request-id': 'req_broker_123' })]);
 
     await expect(
       request<OrganizationListResponse, undefined>({
@@ -321,9 +321,11 @@ describe('compartment requester', (): void => {
     ).rejects.toEqual(
       expect.objectContaining<Partial<CompartmentRequestErrorShape>>({
         code: 'request_error',
-        message: 'Request failed with status 502',
+        message: 'GET https://console.example/v1/orgs failed with status 502 (request-id: req_broker_123).',
         name: 'CompartmentRequestError',
+        requestId: 'req_broker_123',
         statusCode: 502,
+        url: 'https://console.example/v1/orgs',
       }),
     );
   });
@@ -425,7 +427,7 @@ describe('compartment requester', (): void => {
     ).rejects.toEqual(
       expect.objectContaining<Partial<CompartmentRequestErrorShape>>({
         code: 'request_error',
-        message: 'Request failed with status 502',
+        message: 'GET https://console.example/internal/artifacts/artifact_123/source-archive failed with status 502.',
         name: 'CompartmentRequestError',
         statusCode: 502,
       }),
@@ -469,7 +471,7 @@ describe('compartment requester', (): void => {
         path: '/v1/orgs',
         schema: organizationListResponseSchema,
       }),
-      'GET /v1/orgs timed out after 30 seconds.',
+      'GET /v1/orgs timed out after 30 seconds. URL: https://console.example/v1/orgs.',
       timeoutError,
     );
   });
@@ -490,7 +492,7 @@ describe('compartment requester', (): void => {
         path: '/v1/orgs',
         schema: organizationListResponseSchema,
       }),
-      'GET /v1/orgs failed: connection refused.',
+      'GET /v1/orgs failed: connection refused. URL: https://console.example/v1/orgs.',
       connectionError,
     );
   });
@@ -511,7 +513,7 @@ describe('compartment requester', (): void => {
         path: '/v1/orgs',
         schema: organizationListResponseSchema,
       }),
-      'GET /v1/orgs failed: connection closed.',
+      'GET /v1/orgs failed: connection closed. URL: https://console.example/v1/orgs.',
       connectionError,
     );
   });
@@ -540,7 +542,7 @@ describe('compartment requester', (): void => {
           createFetchConnectionError('ENOTFOUND'),
         ),
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isRetryableTransportRequestError(
         createTransportRequestError(
@@ -552,7 +554,7 @@ describe('compartment requester', (): void => {
           createFetchTimeoutError(),
         ),
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isRetryableTransportRequestError(createWrappedTransportRequestError(createFetchConnectionError('ECONNRESET'), 4)),
     ).toBe(true);
@@ -640,10 +642,11 @@ function createFetchConnectionError(code: string): Error {
   return error;
 }
 
-function createTextResponse(text: string, status: number): Response {
+function createTextResponse(text: string, status: number, headers?: Record<string, string>): Response {
   return new Response(text, {
     headers: {
       'Content-Type': 'text/plain',
+      ...headers,
     },
     status,
   });

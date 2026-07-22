@@ -37,18 +37,13 @@ tests:
                     matchLabels:
                       app.kubernetes.io/name: compartment
                       app.kubernetes.io/instance: compartment
-                      app.kubernetes.io/component: worker
-                - podSelector:
-                    matchLabels:
-                      app.kubernetes.io/name: compartment
-                      app.kubernetes.io/instance: compartment
                       app.kubernetes.io/component: api-migrate
               ports:
                 - protocol: TCP
                   port: 5432
         template: platform-network-policy.yaml
 
-  - it: allows only API Worker and migration pods to reach Postgres
+  - it: allows only API and migration pods to reach Postgres
     set: &fullStage
       platform.startupStage: full
     asserts:
@@ -78,11 +73,6 @@ tests:
                       app.kubernetes.io/name: compartment
                       app.kubernetes.io/instance: compartment
                       app.kubernetes.io/component: api
-                - podSelector:
-                    matchLabels:
-                      app.kubernetes.io/name: compartment
-                      app.kubernetes.io/instance: compartment
-                      app.kubernetes.io/component: worker
                 - podSelector:
                     matchLabels:
                       app.kubernetes.io/name: compartment

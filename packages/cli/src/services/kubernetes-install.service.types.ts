@@ -1,3 +1,5 @@
+import type { KubernetesInstallProgressReporter } from './kubernetes-install-progress.types';
+
 export interface KubernetesInstallDeploymentInput {
   acmeEmail: string;
   apiUrl?: string | undefined;
@@ -5,9 +7,11 @@ export interface KubernetesInstallDeploymentInput {
   brokerUrl?: string | undefined;
   chartPath?: string | undefined;
   domainMode: KubernetesInstallDomainMode;
+  kubeconfigPath?: string | undefined;
   kubeContext?: string | undefined;
   managedDomainRequestedLabelSource?: string | undefined;
   namespace: string;
+  progress?: KubernetesInstallProgressReporter | undefined;
   releaseName: string;
   valuesPath: string;
 }
@@ -16,6 +20,11 @@ export interface KubernetesInstallDeploymentResult {
   apiUrl: string;
   baseDomain: string;
   installToken: string;
+}
+
+export interface KubernetesInstallInspection {
+  existingInstall: ExistingKubernetesInstall | null;
+  retainedState: RetainedKubernetesInstallState | null;
 }
 
 export interface KubernetesInstallHelmMaterial {
@@ -83,6 +92,7 @@ export interface KubernetesPublicIngress {
 }
 
 export interface KubernetesPublicIngressResolutionInput extends KubernetesPublicIngress {
+  kubeconfigPath?: string | undefined;
   kubeContext?: string | undefined;
   namespace: string;
   releaseName: string;
@@ -108,6 +118,29 @@ export interface KubernetesSecretList {
 
 export interface KubernetesSecretListItem {
   data?: Record<string, string> | undefined;
+}
+
+export interface KubernetesPodList {
+  items: KubernetesPodListItem[];
+}
+
+export interface KubernetesPodListItem {
+  metadata?: KubernetesPodMetadata | undefined;
+  status?: KubernetesPodStatus | undefined;
+}
+
+export interface KubernetesPodMetadata {
+  name?: string | undefined;
+}
+
+export interface KubernetesPodStatus {
+  conditions?: KubernetesPodStatusCondition[] | undefined;
+  phase?: string | undefined;
+}
+
+export interface KubernetesPodStatusCondition {
+  status?: string | undefined;
+  type?: string | undefined;
 }
 
 export interface KubernetesServiceSpec {

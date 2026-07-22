@@ -95,8 +95,10 @@ class PromptCancelRegistration {
         reject(new Error('Prompt input cancelled.'));
       };
       cleanup = (): void => {
+        readline.off('close', handleCancel);
         readline.off('SIGINT', handleCancel);
       };
+      readline.once('close', handleCancel);
       readline.once('SIGINT', handleCancel);
     });
     this.#cleanup = cleanup;

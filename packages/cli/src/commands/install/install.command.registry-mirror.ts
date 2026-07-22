@@ -3,13 +3,31 @@ import { promptYesNoChoice } from '../../prompts/prompt';
 import {
   applyKubernetesRegistryMirror,
   canAutoApplyKubernetesRegistryMirror,
+  readInstalledKubernetesRegistryMirror,
   renderKubernetesRegistryMirrorInstructions,
 } from '../../services/kubernetes-registry-mirror.service';
 import type { KubernetesRegistryMirror } from '../../services/kubernetes-registry-mirror.service.types';
 import type { KubernetesOperatorTarget } from '../../services/kubernetes-operator.service.types';
 import { renderRegistryMirrorApplyResult } from '../registry-mirror.output';
 
-export async function finishInstallRegistryMirrorSetup(
+export async function finishDiscoveredInstallRegistryMirrorSetup(
+  io: CliIo,
+  target: KubernetesOperatorTarget,
+  skipAutoApply: boolean,
+  declarativeInstall: boolean,
+): Promise<void> {
+  let mirror: KubernetesRegistryMirror;
+  try {
+    mirror = await readInstalledKubernetesRegistryMirror(target);
+  } catch (error) {
+    const failureMessage: string = error instanceof Error ? error.message : String(error);
+    io.stderr(renderKubernetesRegistryMirrorDiscoveryFailure(target, failureMessage));
+    return;
+  }
+  await finishInstallRegistryMirrorSetup(io, target, mirror, skipAutoApply, declarativeInstall);
+}
+
+async function finishInstallRegistryMirrorSetup(
   io: CliIo,
   target: KubernetesOperatorTarget,
   mirror: KubernetesRegistryMirror,
@@ -43,7 +61,7 @@ async function shouldAutoApplyRegistryMirror(
   return await promptYesNoChoice(io, 'Apply this registry mirror on the local k3s node now? [Y/n]: ', true);
 }
 
-export function renderKubernetesRegistryMirrorDiscoveryFailure(
+function renderKubernetesRegistryMirrorDiscoveryFailure(
   target: KubernetesOperatorTarget,
   failureMessage: string,
 ): string {

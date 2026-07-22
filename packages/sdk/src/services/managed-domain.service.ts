@@ -12,6 +12,7 @@ export async function allocateManagedDomain(
 ): Promise<ManagedDomainAllocationResponse> {
   return await request<ManagedDomainAllocationResponse, ManagedDomainAllocationRequest>({
     body,
+    idempotencyKey: body.installationId,
     method: 'POST',
     path: managedDomainAllocationPathname,
     schema: managedDomainAllocationResponseSchema,

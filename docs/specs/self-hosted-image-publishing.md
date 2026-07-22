@@ -52,6 +52,29 @@ Mutable tags such as `main` and `latest` share the same digest signature, SBOM a
 Before every CLI-owned Helm activation, the installer verifies the effective `api`, `worker`, `edge`, and `caddy`
 references against this signing policy and passes only the resolved digests to the chart.
 
+## Retry after partial publish
+
+After correcting the credential, registry, or runner failure, rerun only the failed jobs from the original workflow
+run and watch that rerun to completion:
+
+```bash
+gh run rerun <run-id> --failed
+gh run watch <run-id> --exit-status
+```
+
+For `main` and `kubernetes` branch-channel publishes, workflow-scoped staging tags may be replaced, a missing immutable
+tag in either registry is recreated from the digest scanned by the current run, and an existing immutable tag is
+accepted only when it matches that scanned digest. Signing, signature verification, SBOM generation, and provenance
+generation may be repeated for the same digest. Mutable channel tags are promoted only after both registries complete
+the security steps.
+
+A branch-channel failure after immutable-tag creation can leave that digest unsigned until the rerun reaches the
+signing step, but it does not promote the mutable channel tag. Stable release publishing has a different ordering: it
+can update semver and `latest` tags before the security step, so operators must treat those tags as incomplete until
+the rerun succeeds. In both flows the installer rejects unsigned digests. If a branch-channel rerun reports that an
+immutable tag resolves to an unscanned digest, do not delete or retag it; preserve the logs and investigate why the
+rebuilt digest differs from the immutable tag.
+
 As a manual fallback only, prepare a release commit locally by updating all workspace package versions and `.release-please-manifest.json` together. Add a matching `CHANGELOG.md` section before pushing the tag when the release needs detailed notes; otherwise the distribution release falls back to generic manual-release notes.
 
 ```bash

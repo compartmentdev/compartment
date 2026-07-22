@@ -1,5 +1,9 @@
+import type { CliInstallResult } from '../../install.types';
 import type { OutputFormat } from '../../output/output.types';
 import type { KubernetesInstallDomainMode } from '../../services/kubernetes-install.service.types';
+import type { ResolvedKubernetesKubeconfig } from '../../services/kubernetes-install-kubeconfig.service.types';
+import type { KubernetesInstallPreflightResult } from '../../services/kubernetes-install-preflight.service.types';
+import type { MaterializedInstallWizardValues } from './install.command.values';
 
 export interface InstallCommandOptions {
   apiUrl?: string | undefined;
@@ -32,8 +36,65 @@ export interface ResolvedKubernetesInstallCommandOptions {
   brokerUrl?: string | undefined;
   chartPath?: string | undefined;
   domainMode: KubernetesInstallDomainMode;
+  kubeconfigPath: string;
   kubeContext?: string | undefined;
   namespace: string;
   releaseName: string;
   valuesPath: string;
+}
+
+export interface KubernetesInstallTargetOptions {
+  kubeContext?: string | undefined;
+  namespace: string;
+  releaseName: string;
+}
+
+export interface InstallWizardAnswers {
+  baseDomain?: string | undefined;
+  customTlsSecret?: string | undefined;
+  domainMode: KubernetesInstallDomainMode;
+  storageClass: string;
+  tlsMode?: 'custom-cert' | 'custom-http' | undefined;
+}
+
+export interface InstallWizardValues {
+  customTls?: InstallWizardCustomTlsValues | undefined;
+  platform?: InstallWizardPlatformValues | undefined;
+  storage: InstallWizardStorageValues;
+}
+
+export interface InstallWizardCustomTlsValues {
+  existingSecret: string;
+}
+
+export interface InstallWizardPlatformValues {
+  tlsMode: 'custom-cert' | 'custom-http';
+}
+
+export interface InstallWizardStorageValues {
+  storageClass: string;
+}
+
+export interface InstallWizardResolution {
+  answers: InstallWizardAnswers;
+  values: InstallWizardValues;
+}
+
+export interface PreparedInstallCommandInput {
+  material: MaterializedInstallWizardValues | null;
+  options: PreparedKubernetesInstallCommandOptions;
+}
+
+export interface PreparedKubernetesInstallCommandOptions extends InstallCommandOptions {
+  values: string;
+}
+
+export interface PreparedKubernetesInstallResult {
+  installOptions: ResolvedKubernetesInstallCommandOptions;
+  result: CliInstallResult;
+}
+
+export interface InstallPreflightChecklistResult {
+  kubeconfig: ResolvedKubernetesKubeconfig;
+  preflight: KubernetesInstallPreflightResult;
 }

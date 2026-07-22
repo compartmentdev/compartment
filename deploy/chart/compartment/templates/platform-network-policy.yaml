@@ -17,9 +17,6 @@ spec:
               {{- include "compartment.componentLabels" (dict "root" . "component" "api") | nindent 14 }}
         - podSelector:
             matchLabels:
-              {{- include "compartment.componentLabels" (dict "root" . "component" "worker") | nindent 14 }}
-        - podSelector:
-            matchLabels:
               {{- include "compartment.componentLabels" (dict "root" . "component" "api-migrate") | nindent 14 }}
       ports:
         - {protocol: TCP, port: 5432}

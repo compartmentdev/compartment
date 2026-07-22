@@ -1,17 +1,22 @@
 import type { CommandResult } from '../command-runner.types';
 
 interface KubernetesCommandTarget {
+  kubeconfigPath?: string | undefined;
   kubeContext?: string | undefined;
   namespace: string;
 }
 
 export function buildHelmKubeContextArgs(target: KubernetesCommandTarget): string[] {
-  return target.kubeContext === undefined ? [] : ['--kube-context', target.kubeContext];
+  return [
+    ...(target.kubeconfigPath === undefined ? [] : ['--kubeconfig', target.kubeconfigPath]),
+    ...(target.kubeContext === undefined ? [] : ['--kube-context', target.kubeContext]),
+  ];
 }
 
 export function buildKubectlCommand(target: KubernetesCommandTarget, args: readonly string[]): string[] {
   return [
     'kubectl',
+    ...(target.kubeconfigPath === undefined ? [] : ['--kubeconfig', target.kubeconfigPath]),
     ...(target.kubeContext === undefined ? [] : ['--context', target.kubeContext]),
     '--namespace',
     target.namespace,

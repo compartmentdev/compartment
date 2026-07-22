@@ -1,8 +1,20 @@
 import type { InstallResponse } from '@compartment/contracts';
+import type { CliIo } from '../../app.types';
 import { buildCompartmentBrowserEntryUrl } from '../../compartment-url';
 import type { CliInstallResult } from '../../install.types';
+import type { OutputFormat } from '../../output/output.types';
+import { renderOutput } from '../../output/render';
 
-export function toInstallResponse(result: CliInstallResult): InstallResponse {
+export function renderInstallResult(
+  io: CliIo,
+  output: OutputFormat,
+  result: CliInstallResult,
+  development: boolean,
+): void {
+  renderOutput(io, output, toInstallResponse(result), createInstallResultMessage(result, development));
+}
+
+function toInstallResponse(result: CliInstallResult): InstallResponse {
   return {
     adminEmail: result.adminEmail,
     baseDomain: result.baseDomain,
@@ -14,7 +26,7 @@ export function toInstallResponse(result: CliInstallResult): InstallResponse {
   };
 }
 
-export function createInstallResultMessage(result: CliInstallResult, development: boolean): string {
+function createInstallResultMessage(result: CliInstallResult, development: boolean): string {
   const installKind: string = development ? 'local development Compartment' : 'Compartment';
   const onboardingUrl: string = buildCompartmentBrowserEntryUrl(result.compartmentUrl, result.adminEmail, {
     startOnboarding: true,

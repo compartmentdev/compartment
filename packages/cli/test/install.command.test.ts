@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { runCli } from '../src/app';
+import type {
+  InstallPreflightChecklistResult,
+  ResolvedInstallIdentityPrompts,
+} from '../src/commands/install/install.command.types';
 import type { CliInstallResult } from '../src/install.types';
 import type { KubernetesInstallDeploymentResult } from '../src/services/kubernetes-install.service.types';
 import type {
   KubernetesRegistryMirror,
   KubernetesRegistryMirrorApplyResult,
 } from '../src/services/kubernetes-registry-mirror.service.types';
-import type { ResolvedInstallIdentityPrompts } from '../src/commands/install/install.command.types';
 import { createCliCapture, readCliStderr, readCliStdout, type CliCommandCapture } from './cli-test.harness';
 
 type ApplyRegistryMirror = (mirror: KubernetesRegistryMirror) => Promise<KubernetesRegistryMirrorApplyResult>;
@@ -57,7 +60,26 @@ vi.mock('../src/services/kubernetes-registry-mirror.service', (): object => ({
   renderKubernetesRegistryMirrorInstructions: (): string => 'Exact registry mirror instructions.\n',
 }));
 vi.mock('../src/commands/install/install.command.identity', (): object => ({
+  buildOwnerInstallInput: (prompts: ResolvedInstallIdentityPrompts): object => ({
+    adminEmail: prompts.adminEmail,
+    adminPassword: prompts.adminPassword,
+    organizationName: prompts.organizationName,
+  }),
   resolveInstallIdentityPrompts: mocks.resolveIdentity,
+}));
+vi.mock('../src/commands/install/install.command.preflight', (): object => ({
+  runInstallPreflightChecklist: vi.fn(
+    async (): Promise<InstallPreflightChecklistResult> =>
+      await Promise.resolve({
+        kubeconfig: {
+          clusterServer: 'https://127.0.0.1:6443',
+          contextName: 'default',
+          materializedDirectory: undefined,
+          path: '/tmp/kubeconfig',
+        },
+        preflight: { storageClass: 'local-path' },
+      }),
+  ),
 }));
 vi.mock('../src/commands/install/install.command.session', (): object => ({
   persistDevInstallSession: vi.fn(),
@@ -85,7 +107,7 @@ describe('install command boundary', (): void => {
     const exitCode: number = await runCli(['install', '--output', 'json'], capture.io);
 
     expect(exitCode).toBe(1);
-    expect(readCliStderr(capture)).toContain('--values is required for a Kubernetes install.');
+    expect(readCliStderr(capture)).toContain('--values is required when running non-interactively.');
   });
 
   it('keeps Kubernetes deployment options out of the dev install path', async (): Promise<void> => {

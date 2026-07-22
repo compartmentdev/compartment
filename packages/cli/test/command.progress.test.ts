@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createCommandProgress } from '../src/commands/command.progress';
 import type { CommandProgress } from '../src/commands/command.progress.types';
+import { runObservableInstallStep } from '../src/services/kubernetes-install-progress.service';
 import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
 describe('command progress', (): void => {
@@ -36,6 +37,7 @@ describe('command progress', (): void => {
     progress.stop();
 
     expect(readCliStderr(capture)).toBe('Preparing source archive...\n');
+    expect(readCliStderr(capture)).not.toContain('\u001B');
   });
 
   it('truncates TTY spinner frames before the terminal wraps them', (): void => {
@@ -106,5 +108,43 @@ describe('command progress', (): void => {
     progress.stop();
 
     expect(readCliStderr(capture)).toBe('');
+  });
+
+  it('emits readable non-TTY heartbeats during a long install phase', async (): Promise<void> => {
+    vi.useFakeTimers();
+    const capture: CliCommandCapture = createCliCapture({ stderrIsTTY: false });
+    const progress: CommandProgress = createCommandProgress({ io: capture.io, output: 'text' });
+    const phase: Promise<void> = runObservableInstallStep(
+      progress,
+      'Waiting for platform pods',
+      async (): Promise<void> => {
+        await new Promise<void>((resolvePhase: () => void): void => {
+          setTimeout(resolvePhase, 11_000);
+        });
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(11_000);
+    await phase;
+    vi.useRealTimers();
+
+    expect(readCliStderr(capture)).toBe(
+      'Waiting for platform pods\u2026\nWaiting for platform pods\u2026 5s elapsed\nWaiting for platform pods\u2026 10s elapsed\nWaiting for platform pods\u2026 \u2713 11s\n',
+    );
+    expect(readCliStderr(capture)).not.toContain('\u001B');
+  });
+
+  it('keeps completed install phases as durable TTY lines', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture({ stderrIsTTY: true });
+    const progress: CommandProgress = createCommandProgress({ io: capture.io, output: 'text' });
+
+    await runObservableInstallStep(
+      progress,
+      'Installing foundation',
+      async (): Promise<void> => await Promise.resolve(),
+    );
+    progress.stop();
+
+    expect(readCliStderr(capture)).toContain('Installing foundation\u2026 \u2713 0s\n');
   });
 });

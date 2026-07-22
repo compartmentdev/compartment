@@ -1,4 +1,5 @@
 import { promptNewPassword, promptRegisterEmail, promptRegisterOrganization } from '../../prompts/prompt';
+import type { InstallInput } from '../../services/install.service.types';
 import type { CliIoCommandDependencies } from '../command.types';
 import type { InstallCommandOptions, ResolvedInstallIdentityPrompts } from './install.command.types';
 
@@ -14,5 +15,17 @@ export async function resolveInstallIdentityPrompts(
     adminEmail,
     adminPassword,
     organizationName,
+  };
+}
+
+export function buildOwnerInstallInput(
+  prompts: ResolvedInstallIdentityPrompts,
+  options: InstallCommandOptions,
+): Omit<InstallInput, 'baseDomain'> {
+  return {
+    adminEmail: prompts.adminEmail,
+    adminPassword: prompts.adminPassword,
+    organizationName: prompts.organizationName,
+    ...(options.organizationSlug === undefined ? {} : { organizationSlug: options.organizationSlug }),
   };
 }

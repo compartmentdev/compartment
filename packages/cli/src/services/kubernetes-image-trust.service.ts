@@ -7,7 +7,7 @@ import type { JsonValue } from '@compartment/utils';
 import { parse } from 'yaml';
 import { readCosignCommand } from '../bundled-cosign';
 import { readNonCompartmentEnvironment } from '../command-environment';
-import { runCommand } from '../command-runner';
+import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { readCommandOutput } from './kubernetes-command.support';
 import { kubernetesPlatformImageNames } from './kubernetes-platform-image-names';
@@ -43,7 +43,7 @@ export async function writeVerifiedKubernetesReleaseImageValues(
 }
 
 async function readChartValues(chartPath: string): Promise<JsonValue> {
-  const result: CommandResult = await runCommand(['helm', 'show', 'values', chartPath]);
+  const result: CommandResult = await runCommandWithTimeout(['helm', 'show', 'values', chartPath], 30_000);
   if (result.exitCode !== 0) {
     throw createImageTrustCommandError('Failed to read Helm chart values before platform image verification.', result);
   }
@@ -173,8 +173,9 @@ function requireNonEmptyImageField(
 
 async function verifyPlatformImage(image: ResolvedKubernetesPlatformImage): Promise<string> {
   const cosignCommand: readonly string[] = await readCosignCommand();
-  const result: CommandResult = await runCommand(
+  const result: CommandResult = await runCommandWithTimeout(
     buildCosignVerifyCommand(cosignCommand, image.imageRef),
+    120_000,
     readNonCompartmentEnvironment(process.env),
   );
   if (result.exitCode !== 0) {
@@ -251,5 +252,10 @@ function readImageTrustObject(value: JsonValue | undefined, label: string): Kube
 
 function createImageTrustCommandError(prefix: string, result: CommandResult): Error {
   const output: string = readCommandOutput(result);
+  if (result.exitCode === 124) {
+    return new Error(
+      `${prefix} The registry or signature service did not respond before the command timeout. Check registry connectivity and re-run install to resume.${output === '' ? '' : `\n${output}`}`,
+    );
+  }
   return new Error(output === '' ? prefix : `${prefix}\n${output}`);
 }

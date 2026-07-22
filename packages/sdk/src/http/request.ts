@@ -14,30 +14,13 @@ import type {
   CompartmentRequester,
 } from './request.types';
 import {
+  CompartmentRequestError,
   createRequestSignal,
   createTransportRequestError,
   type RequestTransportFailure,
   type RequestTransportOptions,
 } from './request-error';
 import { createRawRequestHeaders, createRequestHeaders } from './request-headers';
-
-interface CompartmentRequestErrorInput {
-  code: string;
-  message: string;
-  statusCode: number;
-}
-
-class CompartmentRequestError extends Error {
-  public readonly code: string;
-  public readonly statusCode: number;
-
-  public constructor({ code, message, statusCode }: CompartmentRequestErrorInput) {
-    super(message);
-    this.name = 'CompartmentRequestError';
-    this.code = code;
-    this.statusCode = statusCode;
-  }
-}
 
 export function isCompartmentRequestError(
   value: Error | null | undefined,
@@ -49,7 +32,9 @@ export function isCompartmentRequestError(
     value instanceof Error &&
     candidate.name === 'CompartmentRequestError' &&
     typeof candidate.code === 'string' &&
-    typeof candidate.statusCode === 'number'
+    typeof candidate.statusCode === 'number' &&
+    typeof candidate.method === 'string' &&
+    typeof candidate.url === 'string'
   );
 }
 
@@ -62,14 +47,17 @@ export function createCompartmentRequester(defaultOptions: ClientOptions): Compa
     ...requestOptions
   }: CompartmentRequestOptions<TResult, TBody>): Promise<TResult> {
     const headers: Headers = createRequestHeaders(body, requestOptions, defaultOptions);
+    const url: string = createRequestUrl(defaultOptions, path);
     return await readJsonRequestResponse(
       path,
       schema,
-      fetchCompartmentResponse(
-        createRequestUrl(defaultOptions, path),
-        createRequestInit(body, headers, method, defaultOptions.requestTimeoutMs),
-        { method, path, requestTimeoutMs: defaultOptions.requestTimeoutMs },
-      ),
+      fetchCompartmentResponse(url, createRequestInit(body, headers, method, defaultOptions.requestTimeoutMs), {
+        method,
+        path,
+        requestTimeoutMs: defaultOptions.requestTimeoutMs,
+        url,
+      }),
+      { method, url },
     );
   };
 }
@@ -77,14 +65,15 @@ export function createCompartmentRequester(defaultOptions: ClientOptions): Compa
 export function createCompartmentBinaryRequester(defaultOptions: ClientOptions): CompartmentBinaryRequester {
   return async function request({ method, path, ...requestOptions }: CompartmentBinaryRequestOptions): Promise<Buffer> {
     const headers: Headers = createRequestHeaders(undefined, requestOptions, defaultOptions);
+    const url: string = createRequestUrl(defaultOptions, path);
     const response: Response = await fetchCompartmentResponse(
-      createRequestUrl(defaultOptions, path),
+      url,
       createRequestInit(undefined, headers, method, defaultOptions.requestTimeoutMs),
-      { method, path, requestTimeoutMs: defaultOptions.requestTimeoutMs },
+      { method, path, requestTimeoutMs: defaultOptions.requestTimeoutMs, url },
     );
 
     if (!response.ok) {
-      throw await createBinaryRequestError(response);
+      throw await createBinaryRequestError(response, { method, url });
     }
     return Buffer.from(await response.arrayBuffer());
   };
@@ -100,14 +89,17 @@ export function createCompartmentRawRequester(defaultOptions: ClientOptions): Co
     ...requestOptions
   }: CompartmentRawRequestOptions<TResult>): Promise<TResult> {
     const headers: Headers = createRawRequestHeaders(contentType, requestOptions, defaultOptions);
+    const url: string = createRequestUrl(defaultOptions, path);
     return await readJsonRequestResponse(
       path,
       schema,
-      fetchCompartmentResponse(
-        createRequestUrl(defaultOptions, path),
-        createRawRequestInit(body, headers, method, defaultOptions.requestTimeoutMs),
-        { method, path, requestTimeoutMs: defaultOptions.requestTimeoutMs },
-      ),
+      fetchCompartmentResponse(url, createRawRequestInit(body, headers, method, defaultOptions.requestTimeoutMs), {
+        method,
+        path,
+        requestTimeoutMs: defaultOptions.requestTimeoutMs,
+        url,
+      }),
+      { method, url },
     );
   };
 }
@@ -116,11 +108,12 @@ async function readJsonRequestResponse<TResult>(
   path: string,
   schema: CompartmentRequestSchema<TResult>,
   responsePromise: Promise<Response>,
+  request: Pick<CompartmentRequestErrorFields, 'method' | 'url'>,
 ): Promise<TResult> {
   const response: Response = await responsePromise;
   const payload: JsonValue = await readJsonPayload(response);
   if (!response.ok) {
-    throw createCompartmentRequestError(payload, response.status);
+    throw createCompartmentRequestError(payload, response, request);
   }
   return parseResponsePayload(payload, path, schema);
 }
@@ -185,28 +178,41 @@ async function fetchCompartmentResponse(
   }
 }
 
-async function createBinaryRequestError(response: Response): Promise<CompartmentRequestError> {
+async function createBinaryRequestError(
+  response: Response,
+  request: Pick<CompartmentRequestErrorFields, 'method' | 'url'>,
+): Promise<CompartmentRequestError> {
   try {
-    return createCompartmentRequestError(await readJsonPayload(response), response.status);
+    return createCompartmentRequestError(await readJsonPayload(response), response, request);
   } catch {
-    return createCompartmentRequestError(null, response.status);
+    return createCompartmentRequestError(null, response, request);
   }
 }
 
-function createCompartmentRequestError(payload: JsonValue, statusCode: number): CompartmentRequestError {
+function createCompartmentRequestError(
+  payload: JsonValue,
+  response: Response,
+  request: Pick<CompartmentRequestErrorFields, 'method' | 'url'>,
+): CompartmentRequestError {
+  const requestId: string | undefined = response.headers.get('x-request-id') ?? undefined;
+  const context: Pick<CompartmentRequestErrorFields, 'method' | 'requestId' | 'statusCode' | 'url'> = {
+    ...request,
+    requestId,
+    statusCode: response.status,
+  };
   const parsedError: SafeParseReturnType<JsonValue, ErrorResponse> = errorResponseSchema.safeParse(payload);
   if (parsedError.success) {
     return new CompartmentRequestError({
       code: parsedError.data.error.code,
       message: parsedError.data.error.message,
-      statusCode,
+      ...context,
     });
   }
 
   return new CompartmentRequestError({
     code: 'request_error',
-    message: `Request failed with status ${statusCode}`,
-    statusCode,
+    message: `${request.method} ${request.url} failed with status ${response.status.toString()}${requestId === undefined ? '' : ` (request-id: ${requestId})`}.`,
+    ...context,
   });
 }
 
