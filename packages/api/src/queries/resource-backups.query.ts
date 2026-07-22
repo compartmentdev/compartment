@@ -134,7 +134,7 @@ export async function recordResourceBackupRetentionFailureWithExecutor(
     .set({
       retentionAttempts: sql`${resourceBackups.retentionAttempts} + 1`,
       retentionFailureSummary: input.failureSummary,
-      retentionNextAttemptAt: sql`${input.failedAt} + least(
+      retentionNextAttemptAt: sql`${input.failedAt}::timestamptz + least(
         ${input.retryMaxDelayMs},
         ${input.retryInitialDelayMs} * power(2, least(${resourceBackups.retentionAttempts}, 30))
       ) * interval '1 millisecond'`,
