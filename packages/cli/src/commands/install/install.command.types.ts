@@ -1,3 +1,4 @@
+import type { CliInstallResult } from '../../install.types';
 import type { OutputFormat } from '../../output/output.types';
 import type { KubernetesInstallDomainMode } from '../../services/kubernetes-install.service.types';
 import type { ResolvedKubernetesKubeconfig } from '../../services/kubernetes-install-kubeconfig.service.types';
@@ -19,6 +20,7 @@ export interface InstallCommandOptions {
   output: OutputFormat;
   releaseName?: string | undefined;
   remote?: string | undefined;
+  skipRegistryMirror?: boolean | undefined;
   values?: string | undefined;
 }
 
@@ -85,6 +87,11 @@ export interface PreparedInstallCommandInput {
 
 export interface PreparedKubernetesInstallCommandOptions extends InstallCommandOptions {
   values: string;
+}
+
+export interface PreparedKubernetesInstallResult {
+  installOptions: ResolvedKubernetesInstallCommandOptions;
+  result: CliInstallResult;
 }
 
 export interface InstallPreflightChecklistResult {

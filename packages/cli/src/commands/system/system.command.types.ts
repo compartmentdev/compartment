@@ -28,6 +28,11 @@ export interface IssuePasswordResetCommandOptions extends KubernetesOperatorComm
   email: string;
 }
 
+export interface RegistryMirrorApplyCommandOptions {
+  clusterIp: string;
+  registryHost: string;
+}
+
 export interface KubernetesSystemUpdateCommandOptions extends KubernetesOperatorCommandOptions {
   values: string;
   version?: string | undefined;

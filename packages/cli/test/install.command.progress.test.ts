@@ -48,6 +48,9 @@ vi.mock('../src/commands/install/install.command.preflight', (): object => ({
       }),
   ),
 }));
+vi.mock('../src/commands/install/install.command.registry-mirror', (): object => ({
+  finishDiscoveredInstallRegistryMirrorSetup: vi.fn(async (): Promise<void> => await Promise.resolve()),
+}));
 vi.mock('../src/install', (): object => ({ installDev: vi.fn(), installKubernetesOwner: mocks.installOwner }));
 vi.mock('../src/prompts/prompt', (): object => ({
   promptNewPassword: vi.fn(async (): Promise<string> => await Promise.resolve('supersecretpassword')),

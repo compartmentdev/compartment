@@ -15,6 +15,18 @@ to immutable digests, and applies two Helm stages:
    for `full`.
 2. The CLI resolves the public ingress and install domain, persists that state, and applies `full`. It then waits for
    HTTPS, calls the one-time `/v1/install` boundary, creates the first owner, and saves the owner session.
+3. The CLI reads the actual retained registry-auth Service name and ClusterIP and always renders the required k3s
+   registry mirror entry plus a `compartment system registry-mirror apply` command before the first application deploy.
+   That command uses the CLI's YAML-aware merge, atomically writes the node config, and restarts k3s. The chart cannot
+   mutate node-level container-runtime configuration.
+
+For an unambiguous `KUBECONFIG=/etc/rancher/k3s/k3s.yaml` on the local node, a root CLI process with write access to
+`/etc/rancher/k3s` and an available `systemctl` can apply the mirror. Interactive installs confirm with `Y/n`;
+non-interactive installs apply automatically unless `--skip-registry-mirror` is set. The merge changes only the
+installed registry host entry and preserves other mirrors. The CLI restarts k3s and verifies that the written endpoint
+contains the Service's current ClusterIP. Automatic application covers only the local node; every other k3s node must
+have the same CLI version available and run the rendered apply command separately. All other environments receive
+instructions only.
 
 The default mode is a managed domain. When `--base-domain` is omitted, the CLI waits for a public LoadBalancer address,
 requests an allocation from `https://broker.compartment.run`, and configures managed DNS-01 TLS. The broker credential
@@ -48,9 +60,9 @@ The `/v1/install` endpoint is available only before the first owner is created. 
 identity, uninstall the release and explicitly delete the retained Secret before reinstalling.
 
 Deleting the namespace or retained registry-auth Service is a destructive reset that allows Kubernetes to allocate a
-different ClusterIP. On k3s, update `/etc/rancher/k3s/registries.yaml` on every node with the current Service IP and
-restart k3s before the first application deployment. Other distributions require the equivalent container-runtime
-mirror update and restart.
+different ClusterIP. A subsequent install renders the new endpoint and reapplies the owned mirror idempotently when
+the local-k3s safety conditions hold. Otherwise, update every node from the rendered instructions before the first
+application deployment. Other distributions require the equivalent container-runtime mirror update and restart.
 
 ## Install domain operations
 
