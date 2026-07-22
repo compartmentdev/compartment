@@ -32,3 +32,7 @@ export function kubeResourceVolumeName(resourceId: string, volumeHandle: string)
 export function kubeNetworkPolicyName(namespaceId: string, policy: KubeNetworkPolicyKind): string {
   return immutableKubeName(`np-${policy}`, namespaceId);
 }
+
+export function kubeLimitRangeName(namespaceId: string): string {
+  return immutableKubeName('limits', namespaceId);
+}

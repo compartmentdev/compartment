@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parseAllDocuments, type Document } from 'yaml';
 import {
   kubeNamespaceName,
+  projectNamespaceDeleteTarget,
   projectProvisioningAuthorityBundle,
   projectProvisioningAuthorityCleanup,
   projectNamespaceProvisioningBundle,
@@ -12,7 +13,7 @@ import {
   type ProjectNamespaceProvisioningRow,
   type ProjectProvisioningAuthorityInput,
 } from '../src';
-import { kubeSecretName } from '../src/kube-naming';
+import { kubeLimitRangeName, kubeSecretName } from '../src/kube-naming';
 
 interface RbacRule {
   apiGroups: string[];
@@ -62,6 +63,7 @@ describe('project namespace bootstrap provisioning', (): void => {
     const binding: KubeManifest = created[1]!;
     expect(bundle.objects.map((manifest: KubeManifest): string => manifest.kind)).toEqual([
       'Secret',
+      'LimitRange',
       'NetworkPolicy',
       'NetworkPolicy',
       'NetworkPolicy',
@@ -112,10 +114,54 @@ describe('project namespace bootstrap provisioning', (): void => {
     });
   });
 
+  it('projects container defaults into the namespace lifecycle', (): void => {
+    const namespaceId: string = 'prj-01jz';
+    const namespaceName: string = kubeNamespaceName(namespaceId);
+    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow(namespaceId));
+    const namespace: KubeManifest = (bundle.createBeforeApply ?? []).find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Namespace',
+    )!;
+    const limitRange: KubeManifest = bundle.objects.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'LimitRange',
+    )!;
+
+    expect(namespace.metadata?.name).toBe(namespaceName);
+    expect(limitRange).toEqual({
+      apiVersion: 'v1',
+      kind: 'LimitRange',
+      metadata: {
+        labels: {
+          'app.kubernetes.io/managed-by': 'compartment',
+          'compartment.dev/namespace-id': namespaceId,
+          'compartment.dev/project-id': namespaceId,
+        },
+        name: kubeLimitRangeName(namespaceId),
+        namespace: namespaceName,
+      },
+      spec: {
+        limits: [
+          {
+            default: { cpu: '1', memory: '1Gi' },
+            defaultRequest: { cpu: '50m', memory: '128Mi' },
+            type: 'Container',
+          },
+        ],
+      },
+    });
+    expect(projectNamespaceDeleteTarget(namespaceId)).toEqual({
+      apiVersion: 'v1',
+      kind: 'Namespace',
+      metadata: { name: namespaceName },
+    });
+  });
+
   it('projects the T2 isolation matrix in deterministic policy order', (): void => {
     const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-01jz'));
+    const networkPolicies: KubeManifest[] = bundle.objects.filter(
+      (manifest: KubeManifest): boolean => manifest.kind === 'NetworkPolicy',
+    );
 
-    expect(bundle.objects.slice(1, -1)).toMatchObject([
+    expect(networkPolicies).toMatchObject([
       { spec: { podSelector: {}, policyTypes: ['Ingress', 'Egress'] } },
       {
         spec: {
@@ -264,6 +310,7 @@ describe('project namespace bootstrap provisioning', (): void => {
       'services',
       'secrets',
       'persistentvolumeclaims',
+      'limitranges',
       'networkpolicies',
     ]) {
       expect(ruleFor(rules, resource)?.verbs).toEqual(['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']);
