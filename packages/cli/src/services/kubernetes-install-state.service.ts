@@ -204,6 +204,7 @@ async function discoverKubernetesPublicIngress(
   foundationInstall: ExistingKubernetesInstall,
 ): Promise<KubernetesPublicIngress> {
   return await resolveKubernetesPublicIngress({
+    kubeconfigPath: input.kubeconfigPath,
     kubeContext: input.kubeContext,
     namespace: input.namespace,
     publicIngressIpv4: foundationInstall.publicIngressIpv4,

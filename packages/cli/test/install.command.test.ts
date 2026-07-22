@@ -1,15 +1,99 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi, type MockedFunction } from 'vitest';
 import { runCli } from '../src/app';
+import { runCommand } from '../src/command-runner';
 import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
-describe('install command boundary', (): void => {
-  it('requires operator values for production Kubernetes install', async (): Promise<void> => {
+vi.mock('../src/command-runner', (): object => ({ runCommand: vi.fn() }));
+
+const mockedRunCommand: MockedFunction<typeof runCommand> = vi.mocked(runCommand);
+const originalKubeconfig: string | undefined = process.env.KUBECONFIG;
+
+afterEach((): void => {
+  vi.clearAllMocks();
+  if (originalKubeconfig === undefined) {
+    delete process.env.KUBECONFIG;
+  } else {
+    process.env.KUBECONFIG = originalKubeconfig;
+  }
+});
+
+describe.sequential('install command boundary', (): void => {
+  it('explains minimal values without waiting for input when no TTY is available', async (): Promise<void> => {
+    process.env.KUBECONFIG = await createUsableKubeconfig();
+    mockedRunCommand
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' })
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' })
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' });
     const capture: CliCommandCapture = createCliCapture();
 
     const exitCode: number = await runCli(['install', '--output', 'json'], capture.io);
 
     expect(exitCode).toBe(1);
-    expect(readCliStderr(capture)).toContain('--values is required for a Kubernetes install.');
+    expect(readCliStderr(capture)).toContain('--values is required when running non-interactively.');
+    expect(readCliStderr(capture)).toContain('storage:\n  storageClass: local-path');
+    expect(readCliStderr(capture)).toContain('interactive terminal for the guided setup');
+  });
+
+  it('reports an unreachable cluster before any configuration or owner question', async (): Promise<void> => {
+    process.env.KUBECONFIG = await createUsableKubeconfig('https://10.0.0.2:6443');
+    mockedRunCommand.mockResolvedValueOnce({ exitCode: 1, stderr: 'connection refused', stdout: '' });
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+
+    const exitCode: number = await runCli(['install'], capture.io);
+    const stderr: string = readCliStderr(capture);
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('✗ cluster: Cannot reach Kubernetes cluster at https://10.0.0.2:6443.');
+    expect(stderr).not.toContain('Domain:');
+    expect(stderr).not.toContain('Admin email:');
+    expect(stderr).not.toContain('connection refused');
+  });
+
+  it('aborts with a failure when interactive input closes at a wizard question', async (): Promise<void> => {
+    process.env.KUBECONFIG = await createUsableKubeconfig();
+    mockedRunCommand
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' })
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' })
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' });
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+    Object.assign(capture.stdin, { setRawMode: vi.fn() });
+
+    const result: Promise<number> = runCli(['install'], capture.io);
+    setImmediate((): void => {
+      capture.stdin.end();
+    });
+
+    await expect(result).resolves.toBe(1);
+    expect(readCliStderr(capture)).toContain('Prompt input cancelled.');
+  });
+
+  it('continues past a cloud LoadBalancer warning without a new prompt when --values is explicit', async (): Promise<void> => {
+    process.env.KUBECONFIG = await createUsableKubeconfig();
+    mockedRunCommand
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stderr: '',
+        stdout:
+          '{"items":[{"metadata":{"name":"nginx","namespace":"ingress-nginx"},"spec":{"ports":[{"port":443}],"type":"LoadBalancer"}}]}',
+      })
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' });
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+    Object.assign(capture.stdin, { setRawMode: vi.fn() });
+
+    const result: Promise<number> = runCli(['install', '--values', 'operator-values.yaml'], capture.io);
+    setImmediate((): void => {
+      capture.stdin.end();
+    });
+
+    await expect(result).resolves.toBe(1);
+    const stderr: string = readCliStderr(capture);
+    expect(stderr).toContain('This can coexist when LoadBalancer Services receive separate addresses.');
+    expect(stderr).toContain('Admin email:');
+    expect(stderr).not.toContain('Continue installation?');
   });
 
   it('keeps Kubernetes deployment options out of the dev install path', async (): Promise<void> => {
@@ -33,3 +117,13 @@ describe('install command boundary', (): void => {
     expect(readCliStderr(capture)).toContain("unknown option '--local-runtime'");
   });
 });
+
+async function createUsableKubeconfig(server: string = 'https://127.0.0.1:6443'): Promise<string> {
+  const directory: string = await mkdtemp(join(tmpdir(), 'compartment-install-command-'));
+  const path: string = join(directory, 'config.yaml');
+  await writeFile(
+    path,
+    `clusters:\n  - name: default\n    cluster:\n      server: ${server}\ncontexts:\n  - name: default\n    context:\n      cluster: default\ncurrent-context: default\n`,
+  );
+  return path;
+}

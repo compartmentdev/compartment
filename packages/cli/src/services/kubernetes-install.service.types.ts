@@ -7,6 +7,7 @@ export interface KubernetesInstallDeploymentInput {
   brokerUrl?: string | undefined;
   chartPath?: string | undefined;
   domainMode: KubernetesInstallDomainMode;
+  kubeconfigPath?: string | undefined;
   kubeContext?: string | undefined;
   managedDomainRequestedLabelSource?: string | undefined;
   namespace: string;
@@ -91,6 +92,7 @@ export interface KubernetesPublicIngress {
 }
 
 export interface KubernetesPublicIngressResolutionInput extends KubernetesPublicIngress {
+  kubeconfigPath?: string | undefined;
   kubeContext?: string | undefined;
   namespace: string;
   releaseName: string;
