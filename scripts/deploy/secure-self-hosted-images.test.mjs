@@ -234,7 +234,7 @@ describe('scanSelfHostedImages', () => {
         const vexFlagIndex = scoutArgs.indexOf('--vex-location');
         expect(vexFlagIndex).toBeGreaterThan(-1);
         expect(scoutArgs[vexFlagIndex + 1]).toMatch(/\.scout-vex\.openvex\.json$/);
-        expect(scoutArgs).toContain('--ignore-suppressed');
+        expect(scoutArgs).toContain('--only-vex-affected');
       }
     } finally {
       restoreEnv('PATH', oldPath);
