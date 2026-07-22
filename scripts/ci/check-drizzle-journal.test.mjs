@@ -18,6 +18,66 @@ describe('readPackageRootFromDrizzleJournalPath', () => {
 });
 
 describe('findDrizzleJournalDiffValidationErrors', () => {
+  it('allows only the one-time Kubernetes retention resquash', () => {
+    expect(
+      findDrizzleJournalDiffValidationErrors(
+        'packages/api/drizzle/meta/_journal.json',
+        buildKubernetesRetentionResquashBaseJournal(),
+        buildKubernetesRetentionResquashHeadJournal(),
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ['another package journal', 'packages/audit/drizzle/meta/_journal.json', () => {}, () => {}],
+    [
+      'changed base 0000 timestamp',
+      'packages/api/drizzle/meta/_journal.json',
+      (journal) => (journal.entries[0].when -= 1),
+      () => {},
+    ],
+    [
+      'changed base 0001 tag',
+      'packages/api/drizzle/meta/_journal.json',
+      (journal) => (journal.entries[1].tag = '0001_other'),
+      () => {},
+    ],
+    [
+      'changed surviving 0000 entry',
+      'packages/api/drizzle/meta/_journal.json',
+      () => {},
+      (journal) => (journal.entries[0].breakpoints = false),
+    ],
+    [
+      'removed every head entry',
+      'packages/api/drizzle/meta/_journal.json',
+      () => {},
+      (journal) => (journal.entries = []),
+    ],
+    [
+      'extra different head entry',
+      'packages/api/drizzle/meta/_journal.json',
+      () => {},
+      (journal) =>
+        journal.entries.push({ breakpoints: true, idx: 2, tag: '0002_extra', version: '7', when: 1784734906422 }),
+    ],
+    [
+      'changed head dialect',
+      'packages/api/drizzle/meta/_journal.json',
+      () => {},
+      (journal) => (journal.dialect = 'sqlite'),
+    ],
+    ['changed base version', 'packages/api/drizzle/meta/_journal.json', (journal) => (journal.version = '8'), () => {}],
+    ['added a head field', 'packages/api/drizzle/meta/_journal.json', () => {}, (journal) => (journal.extra = true)],
+  ])('rejects the Kubernetes retention resquash exemption for %s', (_name, journalPath, mutateBase, mutateHead) => {
+    const baseJournal = buildKubernetesRetentionResquashBaseJournal();
+    const headJournal = buildKubernetesRetentionResquashHeadJournal();
+    mutateBase(baseJournal);
+    mutateHead(headJournal);
+
+    expect(findDrizzleJournalDiffValidationErrors(journalPath, baseJournal, headJournal)).not.toEqual([]);
+  });
+
   it('allows only the D16 regenerated baseline timestamp change', () => {
     expect(
       findDrizzleJournalDiffValidationErrors(
@@ -178,6 +238,25 @@ describe('findDrizzleJournalDiffValidationErrors', () => {
 
 function buildD16BaseJournal() {
   return buildD16Journal(1779700755038);
+}
+
+function buildKubernetesRetentionResquashBaseJournal() {
+  return {
+    dialect: 'postgresql',
+    entries: [
+      { breakpoints: true, idx: 0, tag: '0000_initial', version: '7', when: 1783948017382 },
+      { breakpoints: true, idx: 1, tag: '0001_living_spirit', version: '7', when: 1784734906421 },
+    ],
+    version: '7',
+  };
+}
+
+function buildKubernetesRetentionResquashHeadJournal() {
+  return {
+    dialect: 'postgresql',
+    entries: [{ breakpoints: true, idx: 0, tag: '0000_initial', version: '7', when: 1783948017382 }],
+    version: '7',
+  };
 }
 
 function buildD16HeadJournal() {

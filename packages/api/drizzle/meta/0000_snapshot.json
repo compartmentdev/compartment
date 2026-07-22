@@ -1,5 +1,5 @@
 {
-  "id": "2905c0be-8133-4a07-9153-9d7cda0cdf6f",
+  "id": "2813ac7d-e1c9-4f8e-b389-51c91553db4a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -4467,8 +4467,27 @@
           "primaryKey": false,
           "notNull": false
         },
+        "retention_attempts": {
+          "name": "retention_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "retention_deleted_at": {
           "name": "retention_deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retention_failure_summary": {
+          "name": "retention_failure_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retention_next_attempt_at": {
+          "name": "retention_next_attempt_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
