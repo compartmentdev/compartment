@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import type { InstallPreflightChecklistResult } from '../src/commands/install/install.command.types';
 import type { CliInstallResult } from '../src/install.types';
 import type {
   KubernetesInstallDeploymentInput,
@@ -33,6 +34,19 @@ const installResult: CliInstallResult = {
 
 vi.mock('../src/services/kubernetes-install.service', (): object => ({
   deployAndWaitForKubernetesInstall: mocks.deploy,
+}));
+vi.mock('../src/commands/install/install.command.preflight', (): object => ({
+  runInstallPreflightChecklist: vi.fn(
+    async (): Promise<InstallPreflightChecklistResult> =>
+      await Promise.resolve({
+        kubeconfig: {
+          clusterServer: 'https://127.0.0.1:6443',
+          contextName: 'default',
+          path: '/tmp/kubeconfig',
+        },
+        preflight: { storageClass: 'local-path' },
+      }),
+  ),
 }));
 vi.mock('../src/install', (): object => ({ installDev: vi.fn(), installKubernetesOwner: mocks.installOwner }));
 vi.mock('../src/prompts/prompt', (): object => ({
