@@ -98,6 +98,7 @@ describe('runWorker', (): void => {
       'http://127.0.0.1:9443',
       'worker-secret',
       createArtifactRegistryConfig(),
+      expect.any(Object),
     );
     expect(mocks.runKubeControllerLoop).toHaveBeenCalledTimes(3);
   });

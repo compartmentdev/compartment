@@ -3,8 +3,10 @@ import type {
   WorkerClaimDeploymentResponse,
   WorkerClaimedDeployment,
   WorkerFailDeploymentRequest,
+  WorkerRunNextScheduledResourceOperationResponse,
 } from '@compartment/contracts';
 import type { CompartmentBinaryRequester, CompartmentRawRequester, CompartmentRequester } from '@compartment/sdk';
+import pino, { type Logger } from 'pino';
 import { runWorkerIteration } from '../src/services/worker.service';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import type { WorkerDeploymentEventContext } from '../src/services/worker-deployment-event.types';
@@ -36,6 +38,9 @@ type RunGitSourceResolutionIteration = (
   rawRequest: CompartmentRawRequester,
 ) => Promise<boolean>;
 type RunRequesterIteration = (request: CompartmentRequester) => Promise<boolean>;
+type RunNextScheduledResourceOperation = (
+  request: CompartmentRequester,
+) => Promise<WorkerRunNextScheduledResourceOperationResponse>;
 
 interface WorkerServiceMocks {
   archiveRequest: CompartmentBinaryRequester;
@@ -48,7 +53,7 @@ interface WorkerServiceMocks {
   request: CompartmentRequester;
   runGitSourceResolutionIteration: Mock<RunGitSourceResolutionIteration>;
   runGitSourceSyncIteration: Mock<RunRequesterIteration>;
-  runScheduledResourceOperationIteration: Mock<RunRequesterIteration>;
+  runNextScheduledResourceOperation: Mock<RunNextScheduledResourceOperation>;
 }
 
 const mocks: WorkerServiceMocks = vi.hoisted(
@@ -63,9 +68,11 @@ const mocks: WorkerServiceMocks = vi.hoisted(
     request: vi.fn() as CompartmentRequester,
     runGitSourceResolutionIteration: vi.fn<RunGitSourceResolutionIteration>(),
     runGitSourceSyncIteration: vi.fn<RunRequesterIteration>(),
-    runScheduledResourceOperationIteration: vi.fn<RunRequesterIteration>(),
+    runNextScheduledResourceOperation: vi.fn<RunNextScheduledResourceOperation>(),
   }),
 );
+
+const logger: Logger<never, boolean> = pino({ enabled: false });
 
 vi.mock(
   '@compartment/sdk',
@@ -76,6 +83,7 @@ vi.mock(
     createCompartmentRequester: () => CompartmentRequester;
     failDeployment: Mock<FailDeployment>;
     isCompartmentRequestError: (error: Error | null | undefined) => boolean;
+    runNextScheduledResourceOperation: Mock<RunNextScheduledResourceOperation>;
   } => ({
     claimNextDeployment: mocks.claimNextDeployment,
     createCompartmentBinaryRequester: (): CompartmentBinaryRequester => mocks.archiveRequest,
@@ -83,6 +91,7 @@ vi.mock(
     createCompartmentRequester: (): CompartmentRequester => mocks.request,
     failDeployment: mocks.failDeployment,
     isCompartmentRequestError: (error: Error | null | undefined): boolean => error?.name === 'CompartmentRequestError',
+    runNextScheduledResourceOperation: mocks.runNextScheduledResourceOperation,
   }),
 );
 
@@ -135,17 +144,17 @@ vi.mock(
   }),
 );
 
-vi.mock(
-  '../src/services/worker-resource-operation-scheduler.service',
-  (): { runScheduledResourceOperationIteration: Mock<RunRequesterIteration> } => ({
-    runScheduledResourceOperationIteration: mocks.runScheduledResourceOperationIteration,
-  }),
-);
-
 describe('runWorkerIteration', (): void => {
   beforeEach((): void => {
     mocks.runGitSourceResolutionIteration.mockResolvedValue(false);
-    mocks.runScheduledResourceOperationIteration.mockResolvedValue(false);
+    mocks.runNextScheduledResourceOperation.mockResolvedValue({
+      backupId: null,
+      cleanedBackups: [],
+      operationType: null,
+      ran: false,
+      recordedFailure: false,
+      resourceName: null,
+    });
     mocks.runGitSourceSyncIteration.mockResolvedValue(false);
     mocks.claimNextDeployment.mockResolvedValue({ deployment: null });
     mocks.buildReleaseImageFromSource.mockResolvedValue(`registry.example/app@sha256:${'a'.repeat(64)}`);
@@ -165,7 +174,7 @@ describe('runWorkerIteration', (): void => {
     const deployment: WorkerClaimedDeployment = createClaimedDeployment();
     mocks.claimNextDeployment.mockResolvedValueOnce({ deployment });
 
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry)).resolves.toBe(true);
+    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
     expect(mocks.buildReleaseImageFromSource).toHaveBeenCalledWith(
       mocks.request,
@@ -185,7 +194,7 @@ describe('runWorkerIteration', (): void => {
     mocks.claimNextDeployment.mockResolvedValueOnce({ deployment: createClaimedDeployment() });
     mocks.handoffBuiltDeploymentToKube.mockRejectedValueOnce(new Error('namespace provisioning failed'));
 
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry)).resolves.toBe(true);
+    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
     expect(mocks.failDeployment).toHaveBeenCalledWith(mocks.request, {
       deploymentId: 'dep_123',
@@ -200,7 +209,7 @@ describe('runWorkerIteration', (): void => {
       mocks.claimNextDeployment.mockResolvedValueOnce({ deployment: createClaimedDeployment() });
       mocks.handoffBuiltDeploymentToKube.mockRejectedValueOnce(createCompartmentRequestError(code));
 
-      await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry)).resolves.toBe(true);
+      await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
       expect(mocks.failDeployment).not.toHaveBeenCalled();
       expect(mocks.appendDeploymentStepEventSafely).not.toHaveBeenCalled();
@@ -211,7 +220,7 @@ describe('runWorkerIteration', (): void => {
     mocks.claimNextDeployment.mockResolvedValueOnce({ deployment: createClaimedDeployment() });
     mocks.buildReleaseImageFromSource.mockRejectedValueOnce('build failed');
 
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry)).resolves.toBe(true);
+    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
     expect(mocks.failDeployment).toHaveBeenCalledWith(mocks.request, {
       deploymentId: 'dep_123',
@@ -222,7 +231,7 @@ describe('runWorkerIteration', (): void => {
   it('continues to later queues when no deployment is claimable', async (): Promise<void> => {
     mocks.runGitSourceSyncIteration.mockResolvedValueOnce(true);
 
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry)).resolves.toBe(true);
+    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
     expect(mocks.claimNextDeployment).toHaveBeenCalledWith(mocks.request);
     expect(mocks.runGitSourceSyncIteration).toHaveBeenCalledWith(mocks.request);
@@ -231,9 +240,48 @@ describe('runWorkerIteration', (): void => {
   it('does not claim a deployment while an earlier queue has work', async (): Promise<void> => {
     mocks.runGitSourceResolutionIteration.mockResolvedValueOnce(true);
 
-    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry)).resolves.toBe(true);
+    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
 
     expect(mocks.claimNextDeployment).not.toHaveBeenCalled();
+  });
+
+  it('continues to deployment work when the scheduled resource phase throws', async (): Promise<void> => {
+    const deployment: WorkerClaimedDeployment = createClaimedDeployment();
+    vi.spyOn(logger, 'error');
+    mocks.runNextScheduledResourceOperation.mockRejectedValueOnce(new Error('retention delete failed'));
+    mocks.claimNextDeployment.mockResolvedValueOnce({ deployment });
+
+    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
+
+    expect(logger.error).toHaveBeenCalledOnce();
+    expect(mocks.buildReleaseImageFromSource).toHaveBeenCalledWith(
+      mocks.request,
+      mocks.archiveRequest,
+      deployment,
+      artifactRegistry,
+    );
+  });
+
+  it('continues to deployment work after the API records a scheduled operation failure', async (): Promise<void> => {
+    const deployment: WorkerClaimedDeployment = createClaimedDeployment();
+    mocks.runNextScheduledResourceOperation.mockResolvedValueOnce({
+      backupId: null,
+      cleanedBackups: [],
+      operationType: 'backup',
+      ran: true,
+      recordedFailure: true,
+      resourceName: 'postgres',
+    });
+    mocks.claimNextDeployment.mockResolvedValueOnce({ deployment });
+
+    await expect(runWorkerIteration('http://api', 'worker-secret', artifactRegistry, logger)).resolves.toBe(true);
+
+    expect(mocks.buildReleaseImageFromSource).toHaveBeenCalledWith(
+      mocks.request,
+      mocks.archiveRequest,
+      deployment,
+      artifactRegistry,
+    );
   });
 });
 

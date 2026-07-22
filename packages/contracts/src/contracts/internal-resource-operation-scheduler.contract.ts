@@ -15,6 +15,7 @@ export interface WorkerRunNextScheduledResourceOperationResponse {
   backupId: string | null;
   cleanedBackups: WorkerScheduledResourceOperationCleanupSummary[];
   operationType: WorkerScheduledResourceOperationType | null;
+  recordedFailure: boolean;
   resourceName: string | null;
   ran: boolean;
 }
@@ -35,6 +36,7 @@ export const workerRunNextScheduledResourceOperationResponseSchema: ContractSche
       backupId: z.string().min(1).nullable(),
       cleanedBackups: z.array(workerScheduledResourceOperationCleanupSummarySchema),
       operationType: workerScheduledResourceOperationTypeSchema.nullable(),
+      recordedFailure: z.boolean(),
       resourceName: z.string().min(1).nullable(),
       ran: z.boolean(),
     })

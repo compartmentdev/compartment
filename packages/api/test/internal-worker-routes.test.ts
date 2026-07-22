@@ -267,6 +267,7 @@ describe('internal worker routes', (): void => {
         },
       ],
       operationType: 'backup',
+      recordedFailure: false,
       resourceName: 'postgres',
       ran: true,
     });
@@ -292,6 +293,7 @@ describe('internal worker routes', (): void => {
           },
         ],
         operationType: 'backup',
+        recordedFailure: false,
         resourceName: 'postgres',
         ran: true,
       });

@@ -1,6 +1,7 @@
 import type {
   DefaultBooleanBuilder,
   DefaultEnumTextBuilder,
+  DefaultIntegerBuilder,
   DefaultTextBuilder,
   DefaultTimestampBuilder,
   OptionalIntegerBuilder,
@@ -184,7 +185,10 @@ interface ResourceBackupsColumnBuilders {
   manifestJson: OptionalTextBuilder<'manifest_json'>;
   resourceDefinitionJson: OptionalTextBuilder<'resource_definition_json'>;
   failureSummary: OptionalTextBuilder<'failure_summary'>;
+  retentionAttempts: DefaultIntegerBuilder<'retention_attempts'>;
   retentionDeletedAt: OptionalTimestampBuilder<'retention_deleted_at'>;
+  retentionFailureSummary: OptionalTextBuilder<'retention_failure_summary'>;
+  retentionNextAttemptAt: OptionalTimestampBuilder<'retention_next_attempt_at'>;
   retentionReason: OptionalTextBuilder<'retention_reason'>;
   stdoutSummary: OptionalTextBuilder<'stdout_summary'>;
   stderrSummary: OptionalTextBuilder<'stderr_summary'>;
