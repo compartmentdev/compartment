@@ -10,6 +10,7 @@ overrides:
   gel@2.2.0>shell-quote: 1.9.0
   minimatch@10.2.5>brace-expansion: 5.0.7
   yaml-language-server@1.20.0>yaml: 2.8.3
+  fast-uri: 3.1.4
 
 importers:
   .:
@@ -4896,9 +4897,9 @@ packages:
     resolution:
       { integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg== }
 
-  fast-uri@3.1.2:
+  fast-uri@3.1.4:
     resolution:
-      { integrity: sha512-rVjf7ArG3LTk+FS6Yw81V1DLuZl1bRbNrev6Tmd/9RaroeeRRJhAt7jg/6YFxbvAQXUCavSoZhPPj6oOx+5KjQ== }
+      { integrity: sha512-8JnbkQ4juDyvYs4mgFGQqg4yCYtFDtUtmp2QIQq11ZZe5CFQ5wcqm1rqDgAh/QdMySuBnPzMUiJUNZG5N/AiQw== }
 
   fast-wrap-ansi@0.2.0:
     resolution:
@@ -9698,7 +9699,7 @@ snapshots:
     dependencies:
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
-      fast-uri: 3.1.2
+      fast-uri: 3.1.4
 
   '@fastify/busboy@3.2.0': {}
 
@@ -11335,7 +11336,7 @@ snapshots:
   ajv@8.18.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.2
+      fast-uri: 3.1.4
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -12652,7 +12653,7 @@ snapshots:
       '@fastify/merge-json-schemas': 0.2.1
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
-      fast-uri: 3.1.2
+      fast-uri: 3.1.4
       json-schema-ref-resolver: 3.0.0
       rfdc: 1.4.1
 
@@ -12668,7 +12669,7 @@ snapshots:
     dependencies:
       fast-string-truncated-width: 3.0.3
 
-  fast-uri@3.1.2: {}
+  fast-uri@3.1.4: {}
 
   fast-wrap-ansi@0.2.0:
     dependencies:
