@@ -418,6 +418,7 @@ function scanSelfHostedImageWithDockerScout(repositoryRoot, imageRef) {
       'critical,high',
       '--vex-location',
       resolve(repositoryRoot, dockerScoutVexFile),
+      '--ignore-suppressed',
       '--exit-code',
       imageRef,
     ],
