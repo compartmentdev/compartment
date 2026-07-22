@@ -60,10 +60,32 @@ The machine running the CLI must also reach every configured platform-image regi
 used by cosign.
 
 The default install uses a Kubernetes LoadBalancer Service on public ports 80 and 443. Its internal Caddy ports remain
-8080 and 8443. Make sure your cluster can allocate a stable public LoadBalancer address before starting.
+8080 and 8443. Start the guided install from an interactive terminal:
 
-Create an operator values file with your storage and image decisions. The CLI supplies the managed-domain, ingress,
-ACME email, and one-time install values; the chart supplies the ACME issuer and CA defaults:
+```bash
+compartment install
+```
+
+Before asking for configuration or owner credentials, the CLI selects a usable kubeconfig, checks cluster access,
+and checks whether another LoadBalancer Service already owns port 80 or 443. It tries `KUBECONFIG`, a usable
+`~/.kube/config` with a current context and cluster, and then the standard readable k3s config at
+`/etc/rancher/k3s/k3s.yaml`. The wizard then asks only
+for managed or custom domain setup, the storage class, and the first owner's email, organization, and password. It
+prefers `local-path` when the cluster provides that storage class. For `custom-cert`, create the Kubernetes TLS Secret
+first; the wizard asks for its existing name.
+
+k3s installs Traefik by default, which conflicts with Compartment's Caddy LoadBalancer. Install k3s without Traefik,
+or disable and remove it before retrying Compartment:
+
+```bash
+printf 'disable:\n  - traefik\n' >/etc/rancher/k3s/config.yaml
+systemctl restart k3s
+kubectl -n kube-system delete helmchart traefik traefik-crd
+```
+
+For CI or advanced operator configuration, create a values file with your storage and image decisions and pass it
+with `--values`. Non-interactive installs require this file. The CLI supplies managed-domain, ingress, ACME email, and
+one-time install values; the chart supplies the ACME issuer and CA defaults:
 
 ```yaml
 storage:
@@ -89,12 +111,13 @@ compartment install \
   --values compartment-values.yaml
 ```
 
-The command prompts for the first owner's email, organization, and password. It creates the foundation release,
-detects the Caddy LoadBalancer public IP, allocates a domain through `https://broker.compartment.run`, persists the
-installation ID, domain allocation, and ingress addresses in a retained Kubernetes Secret, then completes the chart
-with managed DNS-01 TLS. At runtime the broker credential is read from that Secret only by API and Caddy, never from a
-ConfigMap. Helm also records supplied secret values in its Kubernetes release revision Secrets, so restrict access to
-Helm and platform Secrets.
+With `--values`, the configuration wizard is skipped but the same preflight checks and existing owner prompts still
+run. In the managed-domain example above, the command creates the foundation release, detects the Caddy LoadBalancer
+public IP, allocates a domain through `https://broker.compartment.run`, persists the installation ID, domain
+allocation, and ingress addresses in a retained Kubernetes Secret, then completes the chart with managed DNS-01 TLS.
+At runtime the broker credential is read from that Secret only by API and Caddy, never from a ConfigMap. Helm also
+records supplied secret values in its Kubernetes release revision Secrets, so restrict access to Helm and platform
+Secrets.
 
 Use `--kube-context`, `--namespace`, or `--release-name` when the defaults are not appropriate. Pass
 `--broker-url <url>` only for a managed-domain broker override. A CLI built directly from a source checkout has no

@@ -14,9 +14,9 @@ Compartment has two user-facing parts:
 - the `compartment` CLI, which you use to log in, deploy, inspect, and operate projects;
 - the system itself, which exposes a browser control plane at `console.<baseDomain>` and hosts deployed apps under the install base domain.
 
-Operators run `compartment install` with an operator values file. The CLI deploys its matching bundled Helm chart,
-waits for the public control plane, and creates the first owner. `compartment install --dev` remains the repository
-development path.
+Operators run the guided `compartment install` flow, or pass an operator values file for advanced and CI installs.
+The CLI preflights Kubernetes, deploys its matching bundled Helm chart, waits for the public control plane, and
+creates the first owner. `compartment install --dev` remains the repository development path.
 
 ## What it can run
 
