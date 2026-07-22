@@ -36,7 +36,10 @@ const mocks: InstallMaterialMocks = vi.hoisted(
 );
 
 vi.mock('../src/cli-build-info', (): object => ({ readCliBuildInfo: mocks.readCliBuildInfo }));
-vi.mock('../src/command-runner', (): object => ({ runCommand: mocks.runCommand }));
+vi.mock('../src/command-runner', (): object => ({
+  runCommand: mocks.runCommand,
+  runCommandWithTimeout: mocks.runCommand,
+}));
 vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
   writeVerifiedKubernetesInstallImageValues: mocks.verifyInstallImages,
 }));

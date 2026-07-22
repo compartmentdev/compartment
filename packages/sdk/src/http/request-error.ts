@@ -1,9 +1,32 @@
-import type { CompartmentRequestMethod } from './request.types';
+import type { CompartmentRequestErrorFields, CompartmentRequestMethod } from './request.types';
+
+interface CompartmentRequestErrorInput extends CompartmentRequestErrorFields {
+  message: string;
+}
+
+export class CompartmentRequestError extends Error {
+  public readonly code: string;
+  public readonly method: CompartmentRequestMethod;
+  public readonly requestId?: string | undefined;
+  public readonly statusCode: number;
+  public readonly url: string;
+
+  public constructor({ code, message, method, requestId, statusCode, url }: CompartmentRequestErrorInput) {
+    super(message);
+    this.name = 'CompartmentRequestError';
+    this.code = code;
+    this.method = method;
+    this.requestId = requestId;
+    this.statusCode = statusCode;
+    this.url = url;
+  }
+}
 
 export interface RequestTransportOptions {
   method: CompartmentRequestMethod;
   path: string;
   requestTimeoutMs?: number | null | undefined;
+  url?: string | undefined;
 }
 
 interface RequestTransportFailureShape {
@@ -17,6 +40,7 @@ const retryableTransportFailureCodes: Set<string> = new Set<string>([
   'EAI_AGAIN',
   'ECONNREFUSED',
   'ECONNRESET',
+  'ENOTFOUND',
   'ETIMEDOUT',
   'UND_ERR_SOCKET',
 ]);
@@ -34,16 +58,36 @@ export function createRequestSignal(requestTimeoutMs?: number | null): AbortSign
 }
 
 export function isRetryableTransportRequestError(error: RequestTransportFailure): boolean {
+  if (hasTransportTimeout(error)) {
+    return true;
+  }
   const code: string | null = readTransportFailureCode(error);
   return code !== null && retryableTransportFailureCodes.has(code);
 }
 
+function hasTransportTimeout(error: RequestTransportFailure): boolean {
+  let candidate: RequestTransportFailure = error;
+  const visitedCandidates: Set<object> = new Set<object>();
+  while (candidate !== null && candidate !== undefined) {
+    if (candidate instanceof Error && candidate.name === 'TimeoutError') {
+      return true;
+    }
+    if (typeof candidate !== 'object' || visitedCandidates.has(candidate)) {
+      return false;
+    }
+    visitedCandidates.add(candidate);
+    candidate = readTransportFailureCause(candidate);
+  }
+  return false;
+}
+
 function readTransportRequestErrorMessage(options: RequestTransportOptions, cause: RequestTransportFailure): string {
+  const urlContext: string = options.url === undefined ? '' : ` URL: ${options.url}.`;
   if (cause instanceof Error && cause.name === 'TimeoutError') {
-    return `${options.method} ${options.path} timed out after ${Math.ceil((options.requestTimeoutMs ?? 0) / 1000)} seconds.`;
+    return `${options.method} ${options.path} timed out after ${Math.ceil((options.requestTimeoutMs ?? 0) / 1000)} seconds.${urlContext}`;
   }
 
-  return `${options.method} ${options.path} failed: ${readTransportFailureReason(cause)}.`;
+  return `${options.method} ${options.path} failed: ${readTransportFailureReason(cause)}.${urlContext}`;
 }
 
 function readTransportFailureReason(cause: RequestTransportFailure): string {

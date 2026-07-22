@@ -1,6 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { waitForPublicControlPlane } from './kubernetes-install-public.service';
-import type { ExistingKubernetesInstall, KubernetesInstallDeploymentResult } from './kubernetes-install.service.types';
+import { runObservableInstallStep } from './kubernetes-install-progress.service';
+import type { KubernetesInstallProgressReporter } from './kubernetes-install-progress.types';
+import type {
+  ExistingKubernetesInstall,
+  KubernetesInstallDeploymentResult,
+  KubernetesInstallDomainMode,
+} from './kubernetes-install.service.types';
 
 const installTokenByteLength: number = 32;
 
@@ -8,9 +14,15 @@ export async function finishKubernetesInstall(
   apiUrl: string,
   installToken: string,
   baseDomain: string,
+  domainMode: KubernetesInstallDomainMode,
+  progress?: KubernetesInstallProgressReporter,
 ): Promise<KubernetesInstallDeploymentResult> {
-  await waitForPublicControlPlane(apiUrl);
-  return { apiUrl, baseDomain, installToken };
+  const message: string =
+    domainMode === 'managed' ? 'Issuing TLS certificate (ACME)' : 'Waiting for public control plane';
+  return await runObservableInstallStep(progress, message, async (): Promise<KubernetesInstallDeploymentResult> => {
+    await waitForPublicControlPlane(apiUrl);
+    return { apiUrl, baseDomain, installToken };
+  });
 }
 
 export function requireFoundationInstall(existingInstall: ExistingKubernetesInstall | null): ExistingKubernetesInstall {

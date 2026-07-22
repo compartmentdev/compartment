@@ -1,14 +1,21 @@
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { runCommand } from '../command-runner';
+import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { readSeaAssetBuffer } from '../sea';
-import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
-import type { KubernetesInstallDeploymentInput, KubernetesInstallStage } from './kubernetes-install.service.types';
+import { buildHelmKubeContextArgs, buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
+import type {
+  KubernetesInstallDeploymentInput,
+  KubernetesInstallStage,
+  KubernetesPodList,
+  KubernetesPodListItem,
+  KubernetesPodStatusCondition,
+} from './kubernetes-install.service.types';
 
 const bundledKubernetesChartAssetName: string = 'compartment-chart.tgz';
-const helmInstallTimeout: string = '15m';
+const helmInstallTimeout: string = '8m';
+const helmInstallProcessTimeoutMs: number = 9 * 60_000;
 
 export async function createKubernetesInstallMaterializedDirectory(): Promise<string> {
   return await mkdtemp(resolve(tmpdir(), 'compartment-install-'));
@@ -50,9 +57,10 @@ export async function runKubernetesHelmInstallStage(
     imageTrustValuesPath,
     stage,
   );
-  const result: CommandResult = await runCommand(command);
+  const startedAt: number = Date.now();
+  const result: CommandResult = await runCommandWithTimeout(command, helmInstallProcessTimeoutMs);
   if (result.exitCode !== 0) {
-    throwHelmInstallError(stage, result);
+    await throwHelmInstallError(input, stage, result, startedAt);
   }
 }
 
@@ -121,9 +129,52 @@ export function buildKubernetesHelmValuesArgs(valuesPaths: readonly string[]): s
   return valuesPaths.flatMap((valuesPath: string): string[] => ['--values', resolve(valuesPath)]);
 }
 
-function throwHelmInstallError(stage: KubernetesInstallStage, result: CommandResult): never {
+async function throwHelmInstallError(
+  input: KubernetesInstallDeploymentInput,
+  stage: KubernetesInstallStage,
+  result: CommandResult,
+  startedAt: number,
+): Promise<never> {
   const output: string = readCommandOutput(result);
+  if (/timed out|deadline exceeded/u.test(output.toLowerCase())) {
+    const notReadyPods: string = await readNotReadyPods(input);
+    throw new Error(
+      `Timed out waiting for ${stage === 'foundation' ? 'foundation workloads' : 'platform pods'} after ${Math.max(1, Math.ceil((Date.now() - startedAt) / 1_000)).toString()}s.${output === '' ? '' : `\n${output}`}\nNon-Ready pods: ${notReadyPods}. Check with \`kubectl get pods -n ${input.namespace}\` and re-run install to resume.`,
+    );
+  }
   throw new Error(
     `Helm ${stage} install failed with exit code ${result.exitCode.toString()}.${output === '' ? '' : `\n${output}`}`,
   );
+}
+
+async function readNotReadyPods(input: KubernetesInstallDeploymentInput): Promise<string> {
+  const result: CommandResult = await runCommandWithTimeout(
+    buildKubectlCommand(input, ['--request-timeout=10s', 'get', 'pods', '--output', 'json']),
+    15_000,
+  );
+  if (result.exitCode !== 0) {
+    return `unable to inspect (${readCommandOutput(result)})`;
+  }
+  try {
+    const pods: KubernetesPodList = JSON.parse(result.stdout) as KubernetesPodList;
+    return formatNotReadyPods(pods);
+  } catch {
+    return 'unable to parse kubectl output';
+  }
+}
+
+function formatNotReadyPods(pods: KubernetesPodList): string {
+  const descriptions: string[] = pods.items
+    .filter(
+      (pod: KubernetesPodListItem): boolean =>
+        pod.status?.conditions?.some(
+          (condition: KubernetesPodStatusCondition): boolean =>
+            condition.type === 'Ready' && condition.status === 'True',
+        ) !== true,
+    )
+    .map(
+      (pod: KubernetesPodListItem): string =>
+        `${pod.metadata?.name ?? '<unknown>'} (${pod.status?.phase ?? 'Unknown'})`,
+    );
+  return descriptions.length === 0 ? 'none reported by Kubernetes' : descriptions.join(', ');
 }

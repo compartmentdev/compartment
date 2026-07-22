@@ -1,5 +1,5 @@
 import type { JsonValue } from '@compartment/utils';
-import { runCommand } from '../command-runner';
+import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
 import type {
@@ -15,16 +15,20 @@ import type {
 } from './kubernetes-install.service.types';
 
 const installStateComponentLabel: string = 'install-state';
+const kubernetesInspectionTimeoutMs: number = 30_000;
 
 export async function readRetainedKubernetesInstallState(
   input: KubernetesInstallDeploymentInput,
 ): Promise<RetainedKubernetesInstallState | null> {
-  const result: CommandResult = await runCommand(buildRetainedStateSecretCommand(input));
+  const result: CommandResult = await runCommandWithTimeout(
+    buildRetainedStateSecretCommand(input),
+    kubernetesInspectionTimeoutMs,
+  );
   if (result.exitCode !== 0) {
     if (isMissingNamespaceFailure(result, input.namespace)) {
       return null;
     }
-    throw new Error(`Failed to inspect retained Kubernetes install state: ${readCommandOutput(result)}`);
+    throw createRetainedStateInspectionError(result);
   }
   return parseRetainedStateSecretList(result.stdout);
 }
@@ -32,15 +36,26 @@ export async function readRetainedKubernetesInstallState(
 export async function readRetainedManagedKubernetesDomainState(
   input: Pick<KubernetesInstallDeploymentInput, 'kubeContext' | 'namespace' | 'releaseName'>,
 ): Promise<RetainedManagedDomainState> {
-  const result: CommandResult = await runCommand(buildRetainedStateSecretCommand(input));
+  const result: CommandResult = await runCommandWithTimeout(
+    buildRetainedStateSecretCommand(input),
+    kubernetesInspectionTimeoutMs,
+  );
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to inspect retained Kubernetes install state: ${readCommandOutput(result)}`);
+    throw createRetainedStateInspectionError(result);
   }
   const data: Record<string, string> | null = parseRetainedStateSecretData(result.stdout);
   if (data === null) {
     throw new Error('Expected exactly one retained install-state Secret for the Helm release.');
   }
-  const state: RetainedManagedDomainState = {
+  const state: RetainedManagedDomainState = buildRetainedManagedDomainState(data);
+  if (state.baseDomain === '' || state.brokerUrl === '' || state.brokerToken === '' || state.acmeEmail === '') {
+    throw new Error('This installation has no retained managed domain to restore.');
+  }
+  return state;
+}
+
+function buildRetainedManagedDomainState(data: Record<string, string>): RetainedManagedDomainState {
+  return {
     acmeEmail: readSecretText(data, 'acme-email'),
     baseDomain: readSecretText(data, 'managed-base-domain').toLowerCase(),
     brokerToken: readSecretText(data, 'managed-domain-broker-token'),
@@ -48,10 +63,15 @@ export async function readRetainedManagedKubernetesDomainState(
     publicProtocol: 'https',
     tlsMode: 'managed',
   };
-  if (state.baseDomain === '' || state.brokerUrl === '' || state.brokerToken === '' || state.acmeEmail === '') {
-    throw new Error('This installation has no retained managed domain to restore.');
-  }
-  return state;
+}
+
+function createRetainedStateInspectionError(result: CommandResult): Error {
+  const output: string = readCommandOutput(result);
+  return result.exitCode === 124
+    ? new Error(
+        `Timed out after 30s inspecting retained Kubernetes install state. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.${output === '' ? '' : `\n${output}`}`,
+      )
+    : new Error(`Failed to inspect retained Kubernetes install state: ${output}`);
 }
 
 export function mergeRetainedKubernetesInstallState(
@@ -90,6 +110,7 @@ function buildRetainedStateSecretCommand(
   input: Pick<KubernetesInstallDeploymentInput, 'kubeContext' | 'namespace' | 'releaseName'>,
 ): string[] {
   return buildKubectlCommand(input, [
+    '--request-timeout=10s',
     'get',
     'secret',
     '--selector',

@@ -35,7 +35,10 @@ async function handleRequest(request, response) {
   if (request.method === 'POST' && requestUrl.pathname === allocationPath) {
     const body = await readJsonBody(request);
     assertAllocationRequest(body);
-    state.allocations.push(body);
+    assertAllocationIdempotencyKey(request, body);
+    if (!state.allocations.some((allocation) => allocation.installationId === body.installationId)) {
+      state.allocations.push(body);
+    }
     writeJson(response, 201, { acmeDnsToken: brokerToken, baseDomain });
     return;
   }
@@ -72,6 +75,12 @@ function assertAllocationRequest(body) {
     !hasText(body.requestedLabelSource)
   ) {
     throw new Error('Invalid managed-domain allocation request.');
+  }
+}
+
+function assertAllocationIdempotencyKey(request, body) {
+  if (request.headers['idempotency-key'] !== body.installationId) {
+    throw new Error('Managed-domain allocation idempotency key must match installationId.');
   }
 }
 

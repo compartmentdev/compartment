@@ -7,6 +7,7 @@ import type {
 import { readCliVersion } from '../cli-build-info';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 import { resolveKubernetesPublicIngress } from './kubernetes-install-ingress.service';
+import { runObservableInstallStep } from './kubernetes-install-progress.service';
 import { allocateInstallManagedDomain } from './managed-domain.service';
 import type {
   ExistingKubernetesInstall,
@@ -111,7 +112,13 @@ async function resolveManagedInstallState(
   const existingAllocation: ManagedDomainAllocationResponse | null = readExistingManagedAllocation(foundationInstall);
   const brokerUrl: string = requireManagedBrokerUrl(foundationInstall.brokerUrl);
   const allocation: ManagedDomainAllocationResponse =
-    existingAllocation ?? (await requestManagedDomainAllocation(input, foundationInstall, publicIngress, brokerUrl));
+    existingAllocation ??
+    (await runObservableInstallStep(
+      input.progress,
+      'Requesting managed domain',
+      async (): Promise<ManagedDomainAllocationResponse> =>
+        await requestManagedDomainAllocation(input, foundationInstall, publicIngress, brokerUrl),
+    ));
   return buildManagedInstallState(input, foundationInstall, publicIngress, brokerUrl, allocation);
 }
 
@@ -121,14 +128,17 @@ async function requestManagedDomainAllocation(
   publicIngress: KubernetesPublicIngress,
   brokerUrl: string,
 ): Promise<ManagedDomainAllocationResponse> {
-  return await allocateInstallManagedDomain({
-    brokerUrl,
-    installationId: foundationInstall.installationId,
-    metadata: buildManagedDomainAllocationMetadata(),
-    publicIp:
-      publicIngress.publicIngressIpv4 !== '' ? publicIngress.publicIngressIpv4 : publicIngress.publicIngressIpv6,
-    requestedLabelSource: requireManagedDomainRequestedLabelSource(input.managedDomainRequestedLabelSource),
-  });
+  return await allocateInstallManagedDomain(
+    {
+      brokerUrl,
+      installationId: foundationInstall.installationId,
+      metadata: buildManagedDomainAllocationMetadata(),
+      publicIp:
+        publicIngress.publicIngressIpv4 !== '' ? publicIngress.publicIngressIpv4 : publicIngress.publicIngressIpv6,
+      requestedLabelSource: requireManagedDomainRequestedLabelSource(input.managedDomainRequestedLabelSource),
+    },
+    input.progress,
+  );
 }
 
 function buildManagedInstallState(
@@ -181,6 +191,18 @@ async function resolveInstallPublicIngress(
       publicIngressIpv6: foundationInstall.publicIngressIpv6,
     };
   }
+  return await runObservableInstallStep(
+    input.progress,
+    'Waiting for public LoadBalancer address',
+    async (): Promise<KubernetesPublicIngress> => await discoverKubernetesPublicIngress(input, foundationInstall),
+    readPublicIngressAddress,
+  );
+}
+
+async function discoverKubernetesPublicIngress(
+  input: KubernetesInstallDeploymentInput,
+  foundationInstall: ExistingKubernetesInstall,
+): Promise<KubernetesPublicIngress> {
   return await resolveKubernetesPublicIngress({
     kubeContext: input.kubeContext,
     namespace: input.namespace,
@@ -188,6 +210,13 @@ async function resolveInstallPublicIngress(
     publicIngressIpv6: foundationInstall.publicIngressIpv6,
     releaseName: input.releaseName,
   });
+}
+
+function readPublicIngressAddress(ingress: KubernetesPublicIngress): string | undefined {
+  if (ingress.publicIngressIpv4 !== '') {
+    return ingress.publicIngressIpv4;
+  }
+  return ingress.publicIngressIpv6 === '' ? undefined : ingress.publicIngressIpv6;
 }
 
 function readExistingManagedAllocation(
