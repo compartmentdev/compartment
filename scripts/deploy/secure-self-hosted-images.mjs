@@ -6,7 +6,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
-import { captureCommand, runCommand } from '../lib/command.mjs';
+import { captureCommand, captureCommandResult, runCommand } from '../lib/command.mjs';
 import { readRequiredOptionValue } from '../lib/options.mjs';
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 import { assertImageDigest, resolveScannedCanonicalDigest } from './secure-self-hosted-image-digests.mjs';
@@ -26,6 +26,7 @@ const validationDigestRef = `docker.io/compartmentdev/compartment-api@sha256:${'
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const selfHostedRuntimeImageSignaturePolicy = readSelfHostedRuntimeImageSignaturePolicy(repositoryRoot);
 const trivyIgnorefile = '.trivyignore.yaml';
+const dockerScoutVexFile = '.scout-vex.openvex.json';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -407,11 +408,117 @@ function scanSelfHostedImage(repositoryRoot, imageRef) {
 }
 
 function scanSelfHostedImageWithDockerScout(repositoryRoot, imageRef) {
-  runCommand(
-    'docker',
-    ['scout', 'cves', '--only-fixed', '--only-severity', 'critical,high', '--exit-code', imageRef],
-    repositoryRoot,
-  );
+  // Docker Scout ignores local VEX statements in its --exit-code verdict, so we
+  // gate deterministically ourselves: run Scout to a SARIF report (no
+  // --exit-code) and fail only on fixable HIGH/CRITICAL findings that are not
+  // covered by a suppression, using the same suppression source Trivy honors.
+  const suppressedVulnerabilityIds = readScoutSuppressedVulnerabilityIds(repositoryRoot);
+  const sarifDirectory = mkdtempSync(join(tmpdir(), 'compartment-scout-sarif-'));
+  const sarifPath = join(sarifDirectory, 'scout.sarif.json');
+  try {
+    const scoutResult = captureCommandResult(
+      'docker',
+      [
+        'scout',
+        'cves',
+        '--only-fixed',
+        '--only-severity',
+        'critical,high',
+        '--format',
+        'sarif',
+        '--output',
+        sarifPath,
+        imageRef,
+      ],
+      repositoryRoot,
+    );
+    if (scoutResult.error !== undefined) {
+      throw scoutResult.error;
+    }
+    if (scoutResult.stdout) {
+      process.stdout.write(scoutResult.stdout);
+    }
+    if (scoutResult.stderr) {
+      process.stderr.write(scoutResult.stderr);
+    }
+    // Without --exit-code, a non-zero exit (or a kill signal) can only mean an
+    // operational scanner error, not a vulnerability verdict. Fail closed on it
+    // so a scout auth/DB failure that still emits a valid-but-empty SARIF cannot
+    // pass the gate.
+    if (scoutResult.status !== 0 || scoutResult.signal !== null) {
+      throw new Error(
+        `Docker Scout scan errored for ${imageRef} (exit ${scoutResult.status}, signal ${scoutResult.signal}).`,
+      );
+    }
+    const blockingVulnerabilityIds = readScoutBlockingVulnerabilityIds(sarifPath, suppressedVulnerabilityIds);
+    if (blockingVulnerabilityIds.length > 0) {
+      throw new Error(
+        `Docker Scout found fixable HIGH/CRITICAL vulnerabilities without a suppression for ${imageRef}: ${blockingVulnerabilityIds.join(', ')}`,
+      );
+    }
+  } finally {
+    rmSync(sarifDirectory, { force: true, recursive: true });
+  }
+}
+
+function readScoutSuppressedVulnerabilityIds(repositoryRoot) {
+  const vexPath = resolve(repositoryRoot, dockerScoutVexFile);
+  let raw;
+  try {
+    raw = readFileSync(vexPath, 'utf8');
+  } catch {
+    // No suppression file: suppress nothing (strict — every finding blocks).
+    return new Set();
+  }
+  const vex = JSON.parse(raw);
+  const suppressedVulnerabilityIds = new Set();
+  for (const statement of vex.statements ?? []) {
+    if (statement.status === 'not_affected' && typeof statement.vulnerability?.name === 'string') {
+      suppressedVulnerabilityIds.add(statement.vulnerability.name);
+    }
+  }
+  return suppressedVulnerabilityIds;
+}
+
+function readScoutBlockingVulnerabilityIds(sarifPath, suppressedVulnerabilityIds) {
+  let raw;
+  try {
+    raw = readFileSync(sarifPath, 'utf8');
+  } catch {
+    // Fail closed: no report means we cannot prove the image is clean.
+    throw new Error(`Docker Scout did not produce a SARIF report at ${sarifPath}.`);
+  }
+  const sarif = JSON.parse(raw);
+  const blockingVulnerabilityIds = new Set();
+  for (const run of sarif.runs ?? []) {
+    for (const result of run.results ?? []) {
+      const resultVulnerabilityIds = collectResultVulnerabilityIds(result);
+      const isSuppressed = [...resultVulnerabilityIds].some((id) => suppressedVulnerabilityIds.has(id));
+      if (!isSuppressed) {
+        const [firstId] = resultVulnerabilityIds;
+        blockingVulnerabilityIds.add(firstId ?? (typeof result.ruleId === 'string' ? result.ruleId : 'unknown'));
+      }
+    }
+  }
+  return [...blockingVulnerabilityIds];
+}
+
+// Exact CVE/GHSA identifiers, so a suppressed id cannot substring-collide with a
+// wider real one (e.g. CVE-2024-3094 vs CVE-2024-30949).
+const cveOrGhsaIdPattern = /CVE-\d{4}-\d{4,}|GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}/gi;
+
+function collectResultVulnerabilityIds(result) {
+  const ids = new Set();
+  if (typeof result?.ruleId === 'string') {
+    ids.add(result.ruleId);
+  }
+  const messageText = result?.message?.text;
+  if (typeof messageText === 'string') {
+    for (const match of messageText.matchAll(cveOrGhsaIdPattern)) {
+      ids.add(match[0]);
+    }
+  }
+  return ids;
 }
 
 function reportSelfHostedImageScanFailures(input) {
