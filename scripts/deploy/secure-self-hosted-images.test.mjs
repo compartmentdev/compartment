@@ -116,6 +116,17 @@ describe('resolveScannedCanonicalDigest', () => {
     ).toThrow('immutable tag resolves to unscanned digest');
   });
 
+  it('rejects a pre-existing GHCR digest that was not scanned in this run', () => {
+    expect(() =>
+      resolveScannedCanonicalDigest({
+        dockerhubDigest: '',
+        ghcrDigest: `sha256:${'b'.repeat(64)}`,
+        imageName: 'compartment-api',
+        scannedDigest: testDigest,
+      }),
+    ).toThrow('immutable tag resolves to unscanned digest');
+  });
+
   it('accepts the freshly scanned digest when no immutable tag exists', () => {
     expect(
       resolveScannedCanonicalDigest({

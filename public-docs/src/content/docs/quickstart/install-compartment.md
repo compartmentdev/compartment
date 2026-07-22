@@ -59,6 +59,9 @@ ValidatingAdmissionPolicy, and ValidatingAdmissionPolicyBinding as well as names
 The machine running the CLI must also reach every configured platform-image registry and the Sigstore trust services
 used by cosign.
 
+Readiness probes use HTTP traffic from kubelet. If your CNI filters node-originated probe traffic, allow node or
+kubelet traffic to the configured probe ports or platform workloads can remain unready.
+
 The default install uses a Kubernetes LoadBalancer Service on public ports 80 and 443. Its internal Caddy ports remain
 8080 and 8443. Start the guided install from an interactive terminal:
 
@@ -261,10 +264,11 @@ curl -fsSL https://compartment.dev/install.sh | sh -s -- \
   --values compartment-values.yaml
 ```
 
-Use `--channel kubernetes` to stay on the Kubernetes line. Use `--version <release>` or `--channel main` only when you
-intend to switch to that release line. The operator needs normal Helm update permissions, permission to list the
-release's Deployments and DaemonSets for status, and permission to restart and watch the API, Worker, Edge, Caddy,
-Project Provisioner, and Registry Auth Deployments.
+Use `--channel kubernetes` to stay on the Kubernetes line. This channel always resolves the current Kubernetes branch
+HEAD and does not support version pinning; the installer rejects combining it with `--version`. Use
+`--version <release>` or `--channel main` only when you intend to switch to that release line. The operator needs normal
+Helm update permissions, permission to list the release's Deployments and DaemonSets for status, and permission to
+restart and watch the API, Worker, Edge, Caddy, Project Provisioner, and Registry Auth Deployments.
 
 See the generated [`compartment system` reference](/reference/generated/cli/system/) for all lifecycle command options.
 

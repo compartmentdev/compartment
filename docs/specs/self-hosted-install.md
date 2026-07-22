@@ -88,3 +88,6 @@ chart. The publication, signature identity, SBOM, and provenance contract is def
 
 The chart never exposes `/internal/*`, the private operator channel, install tokens, registry services, BuildKit, or
 control-plane health routes through public ingress.
+
+Readiness probes are HTTP requests from kubelet. On CNI implementations that filter node-originated probe traffic,
+operators must allow node or kubelet traffic to the configured probe ports or the workloads can remain unready.
