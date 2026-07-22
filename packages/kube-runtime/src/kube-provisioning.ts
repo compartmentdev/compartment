@@ -1,4 +1,5 @@
 import { kubeNamespaceName } from './kube-naming';
+import { projectLimitRangeManifest } from './kube-limit-range-projection';
 import { projectNetworkPolicyManifests } from './kube-network-policy-projection';
 import { registryPullSecretManifest } from './kube-secret-projection';
 import type { ProjectNamespaceProvisioningRow, ProjectProvisioningServiceAccount } from './kube-provisioning.types';
@@ -27,6 +28,7 @@ export function projectNamespaceProvisioningBundle(row: ProjectNamespaceProvisio
         namespaceId: row.namespaceId,
         secretId: row.registryPullCredentials.secretId,
       }),
+      projectLimitRangeManifest(namespace, row.namespaceId, row.projectId),
       ...projectNetworkPolicyManifests(namespace, row.namespaceId, row.projectId, row.networkPolicy),
       roleBindingManifest(controllerName, namespace, [row.workerServiceAccount]),
     ],

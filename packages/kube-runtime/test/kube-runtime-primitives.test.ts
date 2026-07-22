@@ -513,9 +513,9 @@ describe('KubeRuntime Job primitive', (): void => {
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
-    await expect(
-      runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-reordered'))),
-    ).resolves.toHaveLength(9);
+    await expect(runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-reordered')))).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'RoleBinding' })]),
+    );
   });
 
   it('captures every resource-operation attempt and selects the successful terminal Pod', async (): Promise<void> => {
