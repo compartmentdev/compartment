@@ -59,6 +59,9 @@ ValidatingAdmissionPolicy, and ValidatingAdmissionPolicyBinding as well as names
 The machine running the CLI must also reach every configured platform-image registry and the Sigstore trust services
 used by cosign.
 
+Readiness probes use HTTP traffic from kubelet. If your CNI filters node-originated probe traffic, allow node or
+kubelet traffic to the configured probe ports or platform workloads can remain unready.
+
 The default install uses a Kubernetes LoadBalancer Service on public ports 80 and 443. Its internal Caddy ports remain
 8080 and 8443. Make sure your cluster can allocate a stable public LoadBalancer address before starting.
 
