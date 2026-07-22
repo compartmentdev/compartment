@@ -4,6 +4,7 @@ import type { ClientOptions } from '../client.types';
 
 interface RequestHeaderOptions {
   currentOrganization?: string | undefined;
+  idempotencyKey?: string | undefined;
   internalToken?: string | undefined;
   sessionToken?: string | undefined;
 }
@@ -37,6 +38,9 @@ export function createRawRequestHeaders(
   const organization: string | undefined = options.currentOrganization ?? defaults.currentOrganization;
   if (hasText(organization)) {
     headers.set(compartmentCurrentOrganizationHeaderName, organization);
+  }
+  if (hasText(options.idempotencyKey)) {
+    headers.set('Idempotency-Key', options.idempotencyKey);
   }
   return headers;
 }

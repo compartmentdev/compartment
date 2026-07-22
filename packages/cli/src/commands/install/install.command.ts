@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 import type { CliInstallResult } from '../../install.types';
 import { installDev, installKubernetesOwner } from '../../install';
 import { renderOutput } from '../../output/render';
+import { runObservableInstallStep } from '../../services/kubernetes-install-progress.service';
 import { deployAndWaitForKubernetesInstall } from '../../services/kubernetes-install.service';
 import type { KubernetesInstallPreflightResult } from '../../services/kubernetes-install-preflight.service.types';
 import type { InstallInput } from '../../services/install.service.types';
@@ -11,6 +12,8 @@ import type {
   KubernetesInstallDeploymentResult,
 } from '../../services/kubernetes-install.service.types';
 import type { CliCommandDependencies } from '../command.types';
+import { createCommandProgress } from '../command.progress';
+import type { CommandProgress } from '../command.progress.types';
 import { resolveInstallIdentityPrompts } from './install.command.identity';
 import { readManagedDomainRequestedLabelSource } from './install.command.managed-domain';
 import { runInstallPreflightChecklist } from './install.command.preflight';
@@ -91,8 +94,13 @@ async function executeKubernetesInstallCommand(
 ): Promise<void> {
   const target: KubernetesInstallTargetOptions = resolveKubernetesInstallTargetOptions(options);
   const guidedInstall: boolean = options.values === undefined && hasInteractiveInput(dependencies);
+  const writePreflightOutput: (value: string) => void = (value: string): void => {
+    if (guidedInstall || !value.startsWith('✓ ')) {
+      dependencies.io.stderr(value);
+    }
+  };
   const checklist: InstallPreflightChecklistResult = await runInstallPreflightChecklist(
-    dependencies,
+    { ...dependencies, io: { ...dependencies.io, stderr: writePreflightOutput } },
     target,
     guidedInstall,
     guidedInstall,
@@ -176,16 +184,38 @@ async function executePreparedKubernetesInstall(
     kubeconfigPath,
   );
   const prompts: ResolvedInstallIdentityPrompts = await resolveInstallIdentityPrompts(dependencies, options);
-  dependencies.io.stderr('Installing the Compartment platform with Helm...\n');
-  const deployment: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(
-    buildKubernetesInstallDeploymentInput(installOptions, prompts, options.organizationSlug),
-  );
-  const result: CliInstallResult = await installKubernetesOwner(deployment.apiUrl, deployment.installToken, {
-    ...buildOwnerInstallInput(prompts, options),
-    baseDomain: deployment.baseDomain,
-  });
+  const progress: CommandProgress = createCommandProgress({ io: dependencies.io, output: options.output });
+  let result: CliInstallResult;
+  try {
+    result = await installKubernetesPlatformAndOwner(installOptions, prompts, options, progress);
+  } finally {
+    progress.stop();
+  }
+
   await persistInstallSession(result, options.remote);
   renderInstallResult(dependencies, options, result, false);
+}
+
+async function installKubernetesPlatformAndOwner(
+  installOptions: ResolvedKubernetesInstallCommandOptions,
+  prompts: ResolvedInstallIdentityPrompts,
+  options: InstallCommandOptions,
+  progress: CommandProgress,
+): Promise<CliInstallResult> {
+  const deploymentInput: KubernetesInstallDeploymentInput = {
+    ...buildKubernetesInstallDeploymentInput(installOptions, prompts, options.organizationSlug),
+    progress,
+  };
+  const deployment: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(deploymentInput);
+  return await runObservableInstallStep(
+    progress,
+    'Creating owner',
+    async (): Promise<CliInstallResult> =>
+      await installKubernetesOwner(deployment.apiUrl, deployment.installToken, {
+        ...buildOwnerInstallInput(prompts, options),
+        baseDomain: deployment.baseDomain,
+      }),
+  );
 }
 
 function buildKubernetesInstallDeploymentInput(

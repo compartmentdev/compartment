@@ -34,5 +34,7 @@ describe('managed-domain broker service', (): void => {
         method: 'POST',
       }),
     );
+    const requestHeaders: Headers = fetchMock.mock.calls[0]?.[1].headers as Headers;
+    expect(requestHeaders.get('Idempotency-Key')).toBe('installation-123');
   });
 });

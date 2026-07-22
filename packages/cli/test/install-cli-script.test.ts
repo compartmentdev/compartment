@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
 import { execFile as execFileCallback } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import type { Stats } from 'node:fs';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -856,13 +857,28 @@ async function renderInstallerScript(outputPath: string, options: InstallerRunOp
     const installerTerminalOutputPath: string = options.installerTerminalOutputPath ?? options.installerTerminalPath;
     await writeFile(
       outputPath,
-      scriptText
-        .replaceAll('</dev/tty', `<${options.installerTerminalPath}`)
-        .replaceAll('>/dev/tty', `>>${installerTerminalOutputPath}`),
+      await replaceInstallerTerminal(scriptText, options.installerTerminalPath, installerTerminalOutputPath),
       'utf8',
     );
     await chmod(outputPath, 0o755);
   }
+}
+
+async function replaceInstallerTerminal(
+  scriptText: string,
+  terminalPath: string,
+  terminalOutputPath: string,
+): Promise<string> {
+  try {
+    const terminalOutput: Stats = await stat(terminalOutputPath);
+    if (terminalOutput.isDirectory() || (terminalOutput.mode & 0o222) === 0) {
+      const rejectedWritePath: string = `${terminalPath}.write-denied/tty`;
+      return scriptText.replaceAll('</dev/tty', `<${terminalPath}`).replaceAll('>/dev/tty', `>${rejectedWritePath}`);
+    }
+  } catch {
+    return scriptText.replaceAll('</dev/tty', `<${terminalPath}`).replaceAll('>/dev/tty', `>>${terminalOutputPath}`);
+  }
+  return scriptText.replaceAll('</dev/tty', `<${terminalPath}`).replaceAll('>/dev/tty', `>>${terminalOutputPath}`);
 }
 
 async function createInstallerFixture(

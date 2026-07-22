@@ -5,6 +5,7 @@ export const managedDomainRequestedLabelSourceMaxLength: number = 128;
 export const managedDomainAllocationPathname: string = '/v1/managed-domains';
 
 export interface ManagedDomainAllocationRequest {
+  /** Stable idempotency key, also sent as Idempotency-Key. Brokers must return its existing allocation on retry. */
   installationId: string;
   metadata?: ManagedDomainAllocationMetadata | undefined;
   publicIp: string;

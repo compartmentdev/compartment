@@ -1,5 +1,5 @@
 import type { JsonValue } from '@compartment/utils';
-import { runCommand } from '../command-runner';
+import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
 import type {
@@ -12,6 +12,7 @@ import type {
 } from './kubernetes-install.service.types';
 
 type HelmJsonObject = Record<string, JsonValue>;
+const kubernetesInspectionTimeoutMs: number = 30_000;
 
 export async function readExistingKubernetesInstall(
   input: KubernetesInstallDeploymentInput,
@@ -60,11 +61,16 @@ function buildHelmReleaseValuesCommand(input: KubernetesInstallDeploymentInput):
 }
 
 async function runHelmInspection(command: readonly string[], operation: string): Promise<CommandResult> {
-  const result: CommandResult = await runCommand(command);
+  const result: CommandResult = await runCommandWithTimeout(command, kubernetesInspectionTimeoutMs);
   if (result.exitCode === 0) {
     return result;
   }
   const output: string = readCommandOutput(result);
+  if (result.exitCode === 124) {
+    throw new Error(
+      `Timed out after 30s during Helm ${operation}. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.${output === '' ? '' : `\n${output}`}`,
+    );
+  }
   throw new Error(
     `Helm ${operation} failed with exit code ${result.exitCode.toString()}.${output === '' ? '' : `\n${output}`}`,
   );
