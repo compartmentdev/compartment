@@ -1,0 +1,19 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://github.com/compartmentdev/compartment/security/vex/2026-07-22-grpc-buildctl-railpack",
+  "author": "compartment maintainers",
+  "timestamp": "2026-07-22T05:40:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": { "name": "GHSA-hrxh-6v49-42gf" },
+      "products": [
+        { "@id": "pkg:golang/google.golang.org/grpc@v1.80.0" },
+        { "@id": "pkg:golang/google.golang.org/grpc@v1.79.3" }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_in_execute_path",
+      "impact_statement": "Upstream buildkit v0.30.0 (buildctl) and railpack v0.23.0 binaries in the worker image embed grpc-go 1.80.0/1.79.3. The vulnerable surfaces are the grpc xDS RBAC filter and HTTP/2 server, which these CLI invocations do not expose as network listeners. No upstream releases built with the patched grpc 1.82.1 exist yet; drop this statement on the next buildkit/railpack version bump (mirrors the .trivyignore.yaml entry)."
+    }
+  ]
+}

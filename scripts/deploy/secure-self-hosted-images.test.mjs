@@ -230,6 +230,11 @@ describe('scanSelfHostedImages', () => {
       expect(trivyCalls.map((args) => args.at(-1))).toEqual(expectedImageRefs);
       const dockerScoutCalls = parseCommandArgsLog(await readFile(scannerPaths.dockerScoutArgsLogPath, 'utf8'));
       expect(dockerScoutCalls.map((args) => args.at(-1))).toEqual(expectedImageRefs);
+      for (const scoutArgs of dockerScoutCalls) {
+        const vexFlagIndex = scoutArgs.indexOf('--vex-location');
+        expect(vexFlagIndex).toBeGreaterThan(-1);
+        expect(scoutArgs[vexFlagIndex + 1]).toMatch(/\.scout-vex\.openvex\.json$/);
+      }
     } finally {
       restoreEnv('PATH', oldPath);
       restoreEnv('DOCKER_SCOUT_ARGS_LOG', oldDockerScoutArgsLog);

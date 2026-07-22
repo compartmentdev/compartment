@@ -26,6 +26,7 @@ const validationDigestRef = `docker.io/compartmentdev/compartment-api@sha256:${'
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const selfHostedRuntimeImageSignaturePolicy = readSelfHostedRuntimeImageSignaturePolicy(repositoryRoot);
 const trivyIgnorefile = '.trivyignore.yaml';
+const dockerScoutVexFile = '.scout-vex.openvex.json';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -409,7 +410,17 @@ function scanSelfHostedImage(repositoryRoot, imageRef) {
 function scanSelfHostedImageWithDockerScout(repositoryRoot, imageRef) {
   runCommand(
     'docker',
-    ['scout', 'cves', '--only-fixed', '--only-severity', 'critical,high', '--exit-code', imageRef],
+    [
+      'scout',
+      'cves',
+      '--only-fixed',
+      '--only-severity',
+      'critical,high',
+      '--vex-location',
+      resolve(repositoryRoot, dockerScoutVexFile),
+      '--exit-code',
+      imageRef,
+    ],
     repositoryRoot,
   );
 }
