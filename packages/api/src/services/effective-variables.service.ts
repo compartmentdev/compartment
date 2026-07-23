@@ -264,7 +264,11 @@ function decryptRequiredStoredValue(variable: StoredEffectiveVariable): string {
     throw createInvalidDeployConfigError(`Variable "${variable.keyName}" has no stored value.`);
   }
 
-  return decryptStoredValue(variable.valueCiphertext, variable.encryptionKeyId);
+  try {
+    return decryptStoredValue(variable.valueCiphertext, variable.encryptionKeyId);
+  } catch (error) {
+    throw createInvalidDeployConfigError(`Variable "${variable.keyName}" cannot be decrypted.`, { cause: error });
+  }
 }
 
 function decryptStoredValue(valueCiphertext: string, encryptionKeyId: string): string {
