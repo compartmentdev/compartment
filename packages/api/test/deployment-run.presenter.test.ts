@@ -36,6 +36,32 @@ describe('buildDeploymentRunLogsResponse', (): void => {
     expect(response.deployment.status).toBe('running');
     expect(response.deployment.completedAt).toBeNull();
   });
+
+  it('reads trigger fields only from valid JSON objects with string values', (): void => {
+    const input: DeploymentRunLogsResponseInput = createDeploymentRunLogsResponseInput({
+      runDeployments: [createDeploymentJoinedRow('web', 'succeeded', '2026-04-30T18:11:03.109Z')],
+    });
+    input.run.sourceBindingSnapshotJson = JSON.stringify({ branchName: 'main', ignored: true });
+    input.run.sourceRepositorySnapshotJson = JSON.stringify({
+      repositoryName: 'compartment',
+      repositoryOwner: 'openai',
+    });
+
+    expect(buildDeploymentRunLogsResponse(input).deployment.trigger).toMatchObject({
+      branchName: 'main',
+      repositoryName: 'compartment',
+      repositoryOwner: 'openai',
+    });
+
+    input.run.sourceBindingSnapshotJson = '[]';
+    input.run.sourceRepositorySnapshotJson = '{"repositoryName":42';
+
+    expect(buildDeploymentRunLogsResponse(input).deployment.trigger).toMatchObject({
+      branchName: null,
+      repositoryName: null,
+      repositoryOwner: null,
+    });
+  });
 });
 
 function createDeploymentRunLogsResponseInput(input: {

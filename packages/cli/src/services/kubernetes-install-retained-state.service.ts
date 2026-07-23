@@ -1,4 +1,5 @@
-import type { JsonValue } from '@compartment/utils';
+import { parseJsonWith } from '@compartment/utils';
+import { z } from 'zod';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
@@ -15,6 +16,11 @@ import type {
 } from './kubernetes-install.service.types';
 
 const installStateComponentLabel: string = 'install-state';
+const kubernetesSecretListSchema: z.ZodType<KubernetesSecretList> = z
+  .object({
+    items: z.array(z.custom<KubernetesSecretListItem>()),
+  })
+  .passthrough();
 const kubernetesInspectionTimeoutMs: number = 30_000;
 
 export async function readRetainedKubernetesInstallState(
@@ -126,10 +132,7 @@ function parseRetainedStateSecretList(output: string): RetainedKubernetesInstall
 }
 
 function parseRetainedStateSecretData(output: string): Record<string, string> | null {
-  const value: JsonValue = parseJson(output);
-  if (!isSecretList(value)) {
-    throw new Error('kubectl returned an invalid retained install-state Secret response.');
-  }
+  const value: KubernetesSecretList = parseJsonWith(kubernetesSecretListSchema, output);
   if (value.items.length === 0) {
     return null;
   }
@@ -190,16 +193,4 @@ function readRequiredSecretText(data: Record<string, string>, key: string): stri
 function readSecretText(data: Record<string, string>, key: string): string {
   const encodedValue: string | undefined = data[key];
   return encodedValue === undefined ? '' : Buffer.from(encodedValue, 'base64').toString('utf8').trim();
-}
-
-function parseJson(output: string): JsonValue {
-  try {
-    return JSON.parse(output) as JsonValue;
-  } catch {
-    throw new Error('kubectl returned invalid JSON for the retained install-state Secret.');
-  }
-}
-
-function isSecretList(value: JsonValue): value is KubernetesSecretList & JsonValue {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) && Array.isArray(value.items);
 }

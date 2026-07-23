@@ -1,5 +1,6 @@
 import { errorResponseSchema, type ErrorResponse } from '@compartment/contracts';
-import type { JsonValue } from '@compartment/utils';
+import { parseJsonWith, type JsonValue } from '@compartment/utils';
+import { z } from 'zod';
 import { runCommand, runCommandWithInput } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
@@ -12,6 +13,17 @@ import type {
 } from './kubernetes-operator.service.types';
 
 const systemApiNodeProgram: string = `const http=require('node:http');let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{const r=JSON.parse(input);const body=r.body===undefined?undefined:JSON.stringify(r.body);const headers={Accept:'application/json',Authorization:'Bearer '+process.env.COMPARTMENT_SYSTEM_TOKEN,...(body===undefined?{}:{'Content-Length':Buffer.byteLength(body),'Content-Type':'application/json'}),...(r.idempotencyKey===undefined?{}:{'Idempotency-Key':r.idempotencyKey})};const q=http.request({headers,method:r.method,path:r.path,socketPath:process.env.COMPARTMENT_SYSTEM_API_SOCKET},res=>{const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>process.stdout.write(JSON.stringify({body:Buffer.concat(chunks).toString('utf8'),statusCode:res.statusCode})));});q.on('error',e=>{process.stderr.write(e.message);process.exitCode=1;});if(body!==undefined)q.write(body);q.end();});`;
+const kubernetesResourceListSchema: z.ZodType<{ items: JsonValue[] }> = z
+  .object({
+    items: z.array(z.custom<JsonValue>()),
+  })
+  .passthrough();
+const kubernetesSystemApiResponseEnvelopeSchema: z.ZodType<KubernetesSystemApiResponseEnvelope> = z
+  .object({
+    body: z.string(),
+    statusCode: z.number(),
+  })
+  .passthrough();
 
 export async function requestKubernetesSystemApi<TResponse>(
   target: KubernetesOperatorTarget,
@@ -27,7 +39,7 @@ export async function requestKubernetesSystemApi<TResponse>(
     throw new Error(`Private system API request failed: ${readCommandOutput(result)}`);
   }
   const envelope: KubernetesSystemApiResponseEnvelope = parseResponseEnvelope(result.stdout);
-  const value: JsonValue | null = envelope.body === '' ? null : parseJson(envelope.body, 'system API response');
+  const value: JsonValue | null = envelope.body === '' ? null : (JSON.parse(envelope.body) as JsonValue);
   if (envelope.statusCode >= 400) {
     throw new Error(readSystemApiError(value));
   }
@@ -71,24 +83,11 @@ async function readApiDeploymentName(target: KubernetesOperatorTarget): Promise<
 }
 
 function parseResponseEnvelope(output: string): KubernetesSystemApiResponseEnvelope {
-  const value: JsonValue = parseJson(output, 'kubectl exec response');
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    Array.isArray(value) ||
-    typeof value.body !== 'string' ||
-    typeof value.statusCode !== 'number'
-  ) {
-    throw new Error('kubectl exec returned an invalid private system API response.');
-  }
-  return { body: value.body, statusCode: value.statusCode };
+  return parseJsonWith(kubernetesSystemApiResponseEnvelopeSchema, output);
 }
 
 function parseResourceList(output: string): KubernetesResourceList {
-  const value: JsonValue = parseJson(output, 'API deployment lookup');
-  if (typeof value !== 'object' || value === null || Array.isArray(value) || !Array.isArray(value.items)) {
-    throw new Error('kubectl returned an invalid API deployment list.');
-  }
+  const value: { items: JsonValue[] } = parseJsonWith(kubernetesResourceListSchema, output);
   return { items: value.items.filter(isResourceListItem) };
 }
 
@@ -102,13 +101,5 @@ function readSystemApiError(value: JsonValue | null): string {
     return result.error.message;
   } catch {
     return 'Private system API request failed.';
-  }
-}
-
-function parseJson(output: string, operation: string): JsonValue {
-  try {
-    return JSON.parse(output) as JsonValue;
-  } catch {
-    throw new Error(`Invalid JSON returned by ${operation}.`);
   }
 }

@@ -40,6 +40,6 @@ export {
   restrictUnixSocketPathPermissions,
   type UnixSocketPathPolicy,
 } from './unix-socket-path';
-export { type JsonValue } from './json';
+export { parseJsonWith, type JsonValue } from './json';
 export { immutableKubeName, kubeResourceServiceDns } from './kube-naming';
 export { isValidEmailAddress, readNonEmptyLines, slugifyText } from './text';
