@@ -40,9 +40,7 @@ function main() {
   }
 
   if (errors.length > 0) {
-    throw new Error(
-      `Repository content must be written in English. Cyrillic text found:\n${errors.join('\n')}`,
-    );
+    throw new Error(`Repository content must be written in English. Cyrillic text found:\n${errors.join('\n')}`);
   }
 }
 
