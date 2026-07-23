@@ -1,4 +1,4 @@
-import { and, desc, eq, ne, type SQL } from 'drizzle-orm';
+import { and, desc, eq, ne, sql, type SQL } from 'drizzle-orm';
 import { deploymentKubeReferences, deploymentRunEvents, deployments } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -35,7 +35,10 @@ async function persistObservationWithTransaction(
   input: PersistDeploymentReconcileObservationInput,
 ): Promise<boolean> {
   const [reference] = await lockReference(tx, input.deploymentId);
-  if (reference?.revision !== input.revision) {
+  if (
+    reference === undefined ||
+    (reference.revision !== input.revision && (input.observation !== 'pending' || reference.state !== 'desired'))
+  ) {
     return false;
   }
   if (input.observation === 'pending') {
@@ -246,7 +249,7 @@ async function updateReference(
     .update(deploymentKubeReferences)
     .set({
       observedAt: input.observedAt,
-      revision: input.revision + 1,
+      revision: sql`${deploymentKubeReferences.revision} + 1`,
       state,
       transitionedAt: input.observedAt,
       updatedAt: input.observedAt,

@@ -271,6 +271,67 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(duringReplacementLease).toBeNull();
   });
 
+  it('accepts the first desired apply acknowledgement after the lease is reclaimed', async (): Promise<void> => {
+    await seedCandidate(db);
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    const firstClaim: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
+    await db
+      .update(deploymentKubeReferences)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
+    const reclaimed: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
+    const observedAt: Date = new Date('2026-07-12T10:00:01.000Z');
+
+    expect(firstClaim?.candidate).toMatchObject({ deploymentId: 'dep_candidate', state: 'desired' });
+    expect(reclaimed?.candidate).toMatchObject({ deploymentId: 'dep_candidate', state: 'desired' });
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'pending',
+        observedAt,
+        revision: firstClaim?.candidate.revision ?? -1,
+      }),
+    ).toBe(true);
+    const [reference] = await db
+      .select()
+      .from(deploymentKubeReferences)
+      .where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
+    expect(reference).toMatchObject({ observedAt, state: 'pending' });
+    expect(reference?.revision).toBeGreaterThan(reclaimed?.candidate.revision ?? Number.MAX_SAFE_INTEGER);
+  });
+
+  it('accepts a desired apply acknowledgement after repeated lease reclaims', async (): Promise<void> => {
+    await seedCandidate(db);
+    await db.insert(projectKubeProvisioning).values({ projectId: 'prj_kube', state: 'succeeded' });
+    const firstClaim: DeploymentReconcilePair | null = await findNextDeploymentReconcilePair();
+
+    for (let reclaim: number = 0; reclaim < 5; reclaim += 1) {
+      await db
+        .update(deploymentKubeReferences)
+        .set({ updatedAt: new Date(0) })
+        .where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
+      await expect(findNextDeploymentReconcilePair()).resolves.toMatchObject({
+        candidate: { deploymentId: 'dep_candidate', state: 'desired' },
+      });
+    }
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'pending',
+        observedAt: new Date('2026-07-12T10:00:01.000Z'),
+        revision: firstClaim?.candidate.revision ?? -1,
+      }),
+    ).toBe(true);
+    const [reference] = await db
+      .select()
+      .from(deploymentKubeReferences)
+      .where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
+    expect(reference).toMatchObject({ state: 'pending' });
+  });
+
   it('fails a waiting deployment when project provisioning reaches its attempt cap', async (): Promise<void> => {
     await db.update(deploymentKubeReferences).set({ state: 'desired' });
     await db.update(operations).set({ status: 'running' }).where(eq(operations.id, 'op_kube'));
