@@ -13,6 +13,7 @@ Keep changes small, explicit, and package-owned.
 
 ## Rules
 
+- Write every repository artifact in English: code, comments, docs, tests, commit messages, and PR titles/bodies. CI rejects Cyrillic text (`pnpm check:no-cyrillic`).
 - Find the owning package before editing code.
 - Read the relevant file under `docs/layers/` before changing code in that layer.
 - Treat `docs/layers/*` and `docs/specs/type-placement.md` as the source of truth for ownership, boundaries, and type placement.
