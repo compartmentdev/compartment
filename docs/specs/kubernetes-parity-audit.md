@@ -2,7 +2,7 @@
 
 ## Gate result
 
-ПАРИТЕТ: НЕТ — 3 потерянных фич
+PARITY: NO — 3 features lost
 
 This audit compares `origin/docker-legacy` at `dbf3ab6d` with `origin/kubernetes` at `dcb41449`. The comparison contains
 1,225 changed files, 47,516 inserted lines, and 63,681 deleted lines. The audit classifies product behavior rather than
@@ -256,4 +256,4 @@ ConfigMap or workload mapping. The only legacy production settings without such 
 
 ## Final verdict
 
-ПАРИТЕТ: НЕТ — 5 потерянных фич
+PARITY: NO — 5 features lost
