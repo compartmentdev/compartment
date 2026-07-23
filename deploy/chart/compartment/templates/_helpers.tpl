@@ -87,6 +87,10 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
   allowEmpty: true
 {{- end }}
 
+{{- define "compartment.persistedSecretValue" -}}
+{{- default (default .fallback (dig .secretKey "" .data | b64dec)) .override -}}
+{{- end }}
+
 {{- define "compartment.resolvedInstallState" -}}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace (include "compartment.installStateSecretName" .) -}}
 {{- $data := dict -}}
@@ -290,22 +294,21 @@ serviceAccountName: {{ include "compartment.fullname" . }}-waiter
 automountServiceAccountToken: false
 {{- end }}
 
-{{- define "compartment.waitForMigrationInit" -}}
-- name: wait-for-api-migrate
-  image: {{ include "compartment.image" .Values.images.kubectl }}
-  imagePullPolicy: {{ .Values.images.kubectl.pullPolicy }}
+{{- define "compartment.kubectlWaitInit" -}}
+- name: {{ .name }}
+  image: {{ include "compartment.image" .root.Values.images.kubectl }}
+  imagePullPolicy: {{ .root.Values.images.kubectl.pullPolicy }}
   command: ["kubectl"]
   args:
-    - wait
-    - --for=condition=complete
-    - job/{{ include "compartment.fullname" . }}-api-migrate-{{ .Release.Revision }}
-    - --timeout=6m
+    {{- range .args }}
+    - {{ . }}
+    {{- end }}
   securityContext:
-    {{- include "compartment.containerSecurityContext" . | nindent 4 }}
+    {{- include "compartment.containerSecurityContext" .root | nindent 4 }}
     runAsUser: 1000
     runAsGroup: 1000
   resources:
-    {{- toYaml .Values.resources.wait | nindent 4 }}
+    {{- toYaml .root.Values.resources.wait | nindent 4 }}
   env:
     - name: HOME
       value: /tmp
@@ -314,28 +317,14 @@ automountServiceAccountToken: false
     - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
 {{- end }}
 
+{{- define "compartment.waitForMigrationInit" -}}
+{{- $args := list "wait" "--for=condition=complete" (printf "job/%s-api-migrate-%v" (include "compartment.fullname" .) .Release.Revision) "--timeout=6m" -}}
+{{- include "compartment.kubectlWaitInit" (dict "root" . "name" "wait-for-api-migrate" "args" $args) -}}
+{{- end }}
+
 {{- define "compartment.waitForApiRolloutInit" -}}
-- name: wait-for-api-rollout
-  image: {{ include "compartment.image" .Values.images.kubectl }}
-  imagePullPolicy: {{ .Values.images.kubectl.pullPolicy }}
-  command: ["kubectl"]
-  args:
-    - rollout
-    - status
-    - deployment/{{ include "compartment.fullname" . }}-api
-    - --timeout=6m
-  securityContext:
-    {{- include "compartment.containerSecurityContext" . | nindent 4 }}
-    runAsUser: 1000
-    runAsGroup: 1000
-  resources:
-    {{- toYaml .Values.resources.wait | nindent 4 }}
-  env:
-    - name: HOME
-      value: /tmp
-  volumeMounts:
-    - {name: tmp, mountPath: /tmp}
-    - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+{{- $args := list "rollout" "status" (printf "deployment/%s-api" (include "compartment.fullname" .)) "--timeout=6m" -}}
+{{- include "compartment.kubectlWaitInit" (dict "root" . "name" "wait-for-api-rollout" "args" $args) -}}
 {{- end }}
 
 {{- define "compartment.waitForApiInit" -}}
@@ -376,28 +365,8 @@ automountServiceAccountToken: false
 {{- end }}
 
 {{- define "compartment.waitForFoundationInit" -}}
-- name: wait-for-foundation
-  image: {{ include "compartment.image" .Values.images.kubectl }}
-  imagePullPolicy: {{ .Values.images.kubectl.pullPolicy }}
-  command: ["kubectl"]
-  args:
-    - wait
-    - --for=condition=available
-    - deployment/{{ include "compartment.fullname" . }}-postgres
-    - deployment/{{ include "compartment.fullname" . }}-registry
-    - --timeout=6m
-  securityContext:
-    {{- include "compartment.containerSecurityContext" . | nindent 4 }}
-    runAsUser: 1000
-    runAsGroup: 1000
-  resources:
-    {{- toYaml .Values.resources.wait | nindent 4 }}
-  env:
-    - name: HOME
-      value: /tmp
-  volumeMounts:
-    - {name: tmp, mountPath: /tmp}
-    - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+{{- $args := list "wait" "--for=condition=available" (printf "deployment/%s-postgres" (include "compartment.fullname" .)) (printf "deployment/%s-registry" (include "compartment.fullname" .)) "--timeout=6m" -}}
+{{- include "compartment.kubectlWaitInit" (dict "root" . "name" "wait-for-foundation" "args" $args) -}}
 {{- end }}
 
 {{- define "compartment.kubeApiAccessVolume" -}}
