@@ -21,7 +21,9 @@ interface PodMetricIdentity {
 
 interface NamespacePodMetricSnapshot {
   metrics: PodMetric[];
+  persistentGaps: KubePodMetricNamespaceFailure[];
   pods: V1Pod[];
+  transientGaps: KubePodMetricNamespaceFailure[];
 }
 
 interface NamespacePodMetricReadResult {
@@ -46,6 +48,10 @@ export async function readKubePodMetrics(
   input: ObservePodMetrics,
 ): Promise<KubePodMetricCollection> {
   const namespaceResult: NamespacePodMetricReadResult = await readNamespaceSnapshots(coreApi, metricsApi, input);
+  return buildPodMetricCollection(namespaceResult);
+}
+
+function buildPodMetricCollection(namespaceResult: NamespacePodMetricReadResult): KubePodMetricCollection {
   const namespaceSnapshots: NamespacePodMetricSnapshot[] = namespaceResult.snapshots;
   const pods: V1Pod[] = namespaceSnapshots.flatMap((snapshot: NamespacePodMetricSnapshot): V1Pod[] => snapshot.pods);
   const metrics: PodMetric[] = namespaceSnapshots.flatMap(
@@ -59,7 +65,13 @@ export async function readKubePodMetrics(
   return {
     failures: namespaceResult.failures,
     observations,
+    persistentGaps: namespaceSnapshots.flatMap(
+      (snapshot: NamespacePodMetricSnapshot): KubePodMetricNamespaceFailure[] => snapshot.persistentGaps,
+    ),
     successfulNamespaceCount: namespaceSnapshots.length,
+    transientGaps: namespaceSnapshots.flatMap(
+      (snapshot: NamespacePodMetricSnapshot): KubePodMetricNamespaceFailure[] => snapshot.transientGaps,
+    ),
   };
 }
 
@@ -121,10 +133,59 @@ async function readNamespacePodMetrics(
     coreApi.listNamespacedPod({ labelSelector, namespace }),
     metricsApi.getPodMetrics(namespace),
   ]);
-  if (pods.items.some(isObservableProductPod) && metrics.items.length === 0) {
+  return buildNamespacePodMetricSnapshot(pods.items, metrics.items, namespace);
+}
+
+function buildNamespacePodMetricSnapshot(
+  pods: V1Pod[],
+  metrics: PodMetric[],
+  namespace: string,
+): NamespacePodMetricSnapshot {
+  const observablePods: V1Pod[] = pods.filter(isObservableProductPod);
+  const unsampledPods: V1Pod[] = readUnsampledPods(observablePods, metrics);
+  const freshUnsampledPods: V1Pod[] = unsampledPods.filter(isFreshPod);
+  const persistentUnsampledPods: V1Pod[] = unsampledPods.filter((pod: V1Pod): boolean => !isFreshPod(pod));
+  requireCompletePersistentSnapshot(persistentUnsampledPods, metrics);
+  return {
+    metrics,
+    persistentGaps: buildNamespaceMetricGap(
+      namespace,
+      persistentUnsampledPods,
+      'metrics-server is persistently missing product Pod samples.',
+    ),
+    pods,
+    transientGaps: buildNamespaceMetricGap(
+      namespace,
+      freshUnsampledPods,
+      'metrics-server has not sampled a fresh product Pod yet.',
+    ),
+  };
+}
+
+function requireCompletePersistentSnapshot(persistentUnsampledPods: V1Pod[], metrics: PodMetric[]): void {
+  if (persistentUnsampledPods.length > 0 && metrics.length === 0) {
     throw new Error('metrics-server returned an incomplete product Pod snapshot.');
   }
-  return { metrics: metrics.items, pods: pods.items };
+}
+
+function buildNamespaceMetricGap(namespace: string, pods: V1Pod[], message: string): KubePodMetricNamespaceFailure[] {
+  return pods.length === 0 ? [] : [{ namespace, reason: new Error(message) }];
+}
+
+function readUnsampledPods(pods: V1Pod[], metrics: PodMetric[]): V1Pod[] {
+  const sampledPods: Set<string> = new Set<string>(
+    metrics.map((metric: PodMetric): string => podMetricKey(metric.metadata.namespace, metric.metadata.name)),
+  );
+  return pods.filter((pod: V1Pod): boolean => {
+    const namespace: string | undefined = pod.metadata?.namespace;
+    const name: string | undefined = pod.metadata?.name;
+    return namespace !== undefined && name !== undefined && !sampledPods.has(podMetricKey(namespace, name));
+  });
+}
+
+function isFreshPod(pod: V1Pod): boolean {
+  const createdAt: Date | undefined = pod.metadata?.creationTimestamp;
+  return createdAt !== undefined && Date.now() - createdAt.getTime() <= 180_000;
 }
 
 function indexMetricsByPod(metrics: PodMetric[]): Map<string, PodMetric> {

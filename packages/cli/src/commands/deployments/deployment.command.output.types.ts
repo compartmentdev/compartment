@@ -4,6 +4,7 @@ export type { DeploymentStatusReporter } from '../../services/deployments.types'
 
 export interface DeploymentFormatOptions {
   now?: number | undefined;
+  showSelectionNotice?: boolean | undefined;
   verbose?: boolean | undefined;
 }
 
@@ -18,9 +19,4 @@ export interface DeploymentProgressState {
 
 export interface DeploymentSummaryParts {
   durationLabel: string | null;
-}
-
-export interface LogsMessageParts {
-  details: string;
-  lines: string;
 }

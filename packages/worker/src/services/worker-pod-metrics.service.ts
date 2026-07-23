@@ -15,9 +15,19 @@ import type { Logger } from 'pino';
 import { buildWorkerCaughtErrorLogPayload } from '../logging/worker-error-log';
 import type { WorkerCaughtError } from '../logging/worker-error-log.types';
 import { parseKubernetesQuantity } from './kubernetes-quantity';
-import type { PodMetricsRuntime } from './worker-pod-metrics.service.types';
+import type { CollectedPodMetrics, PodMetricsRuntime } from './worker-pod-metrics.service.types';
 
 const managedLabels: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
+const persistentFailureLogIntervalMs: number = 300_000;
+const persistentFailureLogState: WeakMap<Logger, Map<string, PersistentFailureLogState>> = new WeakMap<
+  Logger,
+  Map<string, PersistentFailureLogState>
+>();
+
+interface PersistentFailureLogState {
+  lastLoggedAt: number;
+  suppressedRepeats: number;
+}
 
 export async function collectAndPublishPodMetrics(
   request: CompartmentRequester,
@@ -25,17 +35,20 @@ export async function collectAndPublishPodMetrics(
   logger: Logger,
 ): Promise<void> {
   const requestedAt: string = new Date().toISOString();
-  let observations: KubePodMetricObservation[];
+  let collected: CollectedPodMetrics;
   try {
     const scope: WorkerListPodMetricNamespacesResponse = await listPodMetricNamespaces(request);
-    observations = await collectPodMetrics(runtime, logger, scope);
+    collected = await collectPodMetrics(runtime, logger, scope);
   } catch (error) {
     await publishUnavailableSnapshot(request, logger, requestedAt, error as WorkerCaughtError);
     return;
   }
+  if (!collected.hasPersistentGaps) {
+    persistentFailureLogState.delete(logger);
+  }
   await publishSnapshotIgnoringFailure(request, {
-    observedAt: readSnapshotTimestamp(observations, requestedAt),
-    pods: observations.map(toWorkerPodMetric),
+    observedAt: readSnapshotTimestamp(collected.observations, requestedAt),
+    pods: collected.observations.map(toWorkerPodMetric),
     state: 'available',
   });
 }
@@ -44,20 +57,56 @@ async function collectPodMetrics(
   runtime: PodMetricsRuntime,
   logger: Logger,
   scope: WorkerListPodMetricNamespacesResponse,
-): Promise<KubePodMetricObservation[]> {
+): Promise<CollectedPodMetrics> {
   const collection: KubePodMetricCollection = await runtime.observePodMetrics({
     kind: 'pod-metrics',
     labels: managedLabels,
     namespaces: scope.namespaceIds.map(kubeNamespaceName),
   });
-  logNamespaceFailures(logger, collection.failures);
+  logTransientGaps(logger, collection.transientGaps);
+  logPersistentGaps(logger, collection.persistentGaps);
+  if (collection.successfulNamespaceCount > 0) {
+    logNamespaceFailures(logger, collection.failures);
+  }
+  requireSuccessfulNamespace(collection, scope);
+  return {
+    hasPersistentGaps: collection.persistentGaps.length > 0,
+    observations: collection.observations,
+  };
+}
+
+function requireSuccessfulNamespace(
+  collection: KubePodMetricCollection,
+  scope: WorkerListPodMetricNamespacesResponse,
+): void {
   if (collection.successfulNamespaceCount === 0 && scope.namespaceIds.length > 0) {
     throw new AggregateError(
       collection.failures.map((failure: KubePodMetricNamespaceFailure): Error => failure.reason),
       'Kubernetes Pod metrics collection failed in every namespace.',
     );
   }
-  return collection.observations;
+}
+
+function logPersistentGaps(logger: Logger, gaps: KubePodMetricNamespaceFailure[]): void {
+  if (gaps.length === 0) {
+    return;
+  }
+  logPersistentFailure(
+    logger,
+    new AggregateError(
+      gaps.map((gap: KubePodMetricNamespaceFailure): Error => gap.reason),
+      'Kubernetes Pod metrics samples remain incomplete.',
+    ),
+  );
+}
+
+function logTransientGaps(logger: Logger, gaps: KubePodMetricNamespaceFailure[]): void {
+  for (const gap of gaps) {
+    logger.debug(
+      { namespace: gap.namespace, ...buildWorkerCaughtErrorLogPayload(gap.reason) },
+      'Kubernetes Pod metrics sample is temporarily missing.',
+    );
+  }
 }
 
 function logNamespaceFailures(logger: Logger, failures: KubePodMetricNamespaceFailure[]): void {
@@ -75,8 +124,49 @@ async function publishUnavailableSnapshot(
   observedAt: string,
   error: WorkerCaughtError,
 ): Promise<void> {
-  logger.error(buildWorkerCaughtErrorLogPayload(error), 'Kubernetes Pod metrics collection failed.');
+  logPersistentFailure(logger, error);
   await publishSnapshotIgnoringFailure(request, { observedAt, pods: [], state: 'unavailable' });
+}
+
+function logPersistentFailure(logger: Logger, error: WorkerCaughtError): void {
+  const now: number = Date.now();
+  const failureKey: string = readPersistentFailureKey(error);
+  const states: Map<string, PersistentFailureLogState> =
+    persistentFailureLogState.get(logger) ?? new Map<string, PersistentFailureLogState>();
+  const state: PersistentFailureLogState | undefined = states.get(failureKey);
+  if (state !== undefined && now - state.lastLoggedAt < persistentFailureLogIntervalMs) {
+    state.suppressedRepeats += 1;
+    return;
+  }
+  const suppressedRepeats: number = state?.suppressedRepeats ?? 0;
+  logger.error(
+    {
+      ...buildWorkerCaughtErrorLogPayload(error),
+      ...(suppressedRepeats > 0 ? { suppressedRepeats } : {}),
+    },
+    'Kubernetes Pod metrics collection failed.',
+  );
+  states.set(failureKey, { lastLoggedAt: now, suppressedRepeats: 0 });
+  persistentFailureLogState.set(logger, states);
+}
+
+function readPersistentFailureKey(error: WorkerCaughtError): string {
+  if (error instanceof AggregateError) {
+    const errors: WorkerCaughtError[] = error.errors as WorkerCaughtError[];
+    const causes: string = errors
+      .map((cause: WorkerCaughtError): string => readPersistentFailureCause(cause))
+      .sort((left: string, right: string): number => left.localeCompare(right))
+      .join('|');
+    return `${error.name}:${error.message}:${causes}`;
+  }
+  return readPersistentFailureCause(error);
+}
+
+function readPersistentFailureCause(cause: WorkerCaughtError): string {
+  if (cause instanceof Error) {
+    return `${cause.name}:${cause.message}`;
+  }
+  return typeof cause === 'object' ? JSON.stringify(cause) : String(cause);
 }
 
 async function publishSnapshotIgnoringFailure(

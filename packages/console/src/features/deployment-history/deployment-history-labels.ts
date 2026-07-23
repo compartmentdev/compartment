@@ -17,8 +17,17 @@ export const deploymentStatusLabels: Record<DeploymentRuntimeStatus, string> = {
 
 export const deploymentStageLabels: Record<DeploymentPromotionStage, string> = {
   active: 'Active',
+  activating: 'Activating',
+  awaiting_readiness: 'Awaiting readiness',
   building: 'Building',
+  building_image: 'Building image',
+  kube_apply: 'Applying to Kubernetes',
+  preparing_source: 'Preparing source',
+  publishing_image: 'Publishing image',
+  queued: 'Queued',
   release: 'Release',
+  releasing: 'Releasing',
+  restoring: 'Restoring',
   rolled_back: 'Rolled back',
   stopped: 'Stopped',
 };
@@ -81,8 +90,17 @@ export function readDeploymentStageTagVariant(stage: DeploymentPromotionStage): 
       return 'success';
     case 'rolled_back':
       return 'error';
+    case 'activating':
+    case 'awaiting_readiness':
     case 'building':
+    case 'building_image':
+    case 'kube_apply':
+    case 'preparing_source':
+    case 'publishing_image':
+    case 'queued':
     case 'release':
+    case 'releasing':
+    case 'restoring':
     case 'stopped':
       return 'secondary';
   }
@@ -92,9 +110,18 @@ export function readDeploymentStageTagIcon(stage: DeploymentPromotionStage): Sta
   switch (stage) {
     case 'active':
       return 'active';
+    case 'activating':
+    case 'awaiting_readiness':
     case 'building':
+    case 'building_image':
+    case 'kube_apply':
+    case 'preparing_source':
+    case 'queued':
+    case 'restoring':
       return 'updating';
+    case 'publishing_image':
     case 'release':
+    case 'releasing':
       return 'release';
     case 'rolled_back':
       return 'rolled-back';

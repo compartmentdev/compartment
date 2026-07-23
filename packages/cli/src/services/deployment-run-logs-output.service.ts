@@ -7,6 +7,7 @@ import {
 } from '@compartment/contracts';
 
 interface DeploymentRunLogsFormatOptions {
+  showSelectionNotice?: boolean | undefined;
   verbose?: boolean | undefined;
 }
 
@@ -15,12 +16,26 @@ export function createDeploymentRunLogsResultMessage(
   options: DeploymentRunLogsFormatOptions = {},
 ): string {
   const lines: string = response.lines.map(formatDeploymentRunLogLineText).join('\n');
+  const notice: string | null = options.showSelectionNotice === false ? null : buildFailedRunNotice(response);
   if (options.verbose !== true) {
-    return lines;
+    return joinRunLogsOutput(notice, lines);
   }
 
   const details: string = buildDeploymentRunLogDetails(response).join('\n');
-  return lines === '' ? details : `${details}\n\n${lines}`;
+  return joinRunLogsOutput(notice, lines === '' ? details : `${details}\n\n${lines}`);
+}
+
+function buildFailedRunNotice(response: DeploymentRunLogsResponse): string | null {
+  return response.deployment.status === 'failed'
+    ? `Showing logs of failed deployment run ${response.deployment.id} from ${response.deployment.createdAt}.`
+    : null;
+}
+
+function joinRunLogsOutput(notice: string | null, output: string): string {
+  if (notice === null) {
+    return output;
+  }
+  return output === '' ? notice : `${notice}\n${output}`;
 }
 
 function buildDeploymentRunLogDetails(response: DeploymentRunLogsResponse): string[] {

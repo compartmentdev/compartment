@@ -90,6 +90,15 @@ compartment deployment logs --run <id> --project <name> --service web --follow -
 
 Without `--run`, `compartment deployment logs` reads the latest deployment run in the selected project, environment, and service scope. Use `--run <id>` with the run id from `compartment deployment list` or the `Run:` value in detached deploy output when you want an earlier rollout instead.
 
+The latest run can be failed; it does not need to be active. Text output identifies a selected failed run before printing
+its event trail. The shorter `compartment logs --service <name>` command also falls back to that service's latest
+deployment when no active deployment exists, and identifies the failed deployment it selected.
+
+When a deployment fails, `compartment status` and `compartment inspect` show the observed stage and stored failure
+reason, followed by a deployment-logs command to run next. Stages follow the work that actually ran, including source
+preparation, image build and publication, Kubernetes apply, readiness waiting, and rollback restoration or activation.
+They do not describe a Kubernetes rollout failure or rollback as an image build.
+
 The browser control plane also exposes deployment history and deployment run details for projects, which is useful when you want to inspect older rollouts interactively instead of staying in the CLI.
 
 `compartment logs` reads the retained product log store. `--follow` polls that same store for new lines; it is a viewing convenience and does not replace durable capture. Logs remain available after a Kubernetes Pod is replaced or removed until the install retention window expires.

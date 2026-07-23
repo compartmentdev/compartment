@@ -1,10 +1,14 @@
 import type { DeploymentLogLine } from '@compartment/contracts';
-import { createActiveDeploymentNotFoundError } from '../errors/api-business-error';
+import { createDeploymentNotFoundError } from '../errors/api-business-error';
 import { listDeploymentRuntimeEvents } from '../queries/deployment-runtime-events.query';
 import type { DeploymentRuntimeEventRow } from '../queries/deployment-runtime-events.query.types';
+import { listDeploymentRunEventsForRuns } from '../queries/deployment-run-events.query';
+import type { DeploymentRunEventRow } from '../queries/deployment-run-events.query.types';
 import {
   findActiveJoinedDeployment,
+  findLatestJoinedDeployment,
   listActiveJoinedDeploymentsForEnvironment,
+  listJoinedDeploymentsForEnvironment,
 } from '../queries/deployment-joined.query';
 import { findProjectServiceByName } from '../queries/deployment-context.query';
 import type { DeploymentJoinedRow, ProjectServiceRow } from '../queries/deployments.query.types';
@@ -22,6 +26,7 @@ import type {
 } from './deployments.service.types';
 import { parseLogsSince } from './deployment-log-query.service';
 import { readStoredDeploymentProductLogs } from './deployment-product-logs.service';
+import { readLatestDeploymentsByService } from './deployment-selection.service';
 import { collectReleaseJobLogLines } from './release-job-logs.service';
 
 export async function getDeploymentLogsForEnvironment(
@@ -32,6 +37,7 @@ export async function getDeploymentLogsForEnvironment(
   const lines: DeploymentLogLine[] = await collectDeploymentLogs(
     context.deployments,
     context.environment.name,
+    context.historicalFallback,
     sinceDate,
     input.tailLines,
   );
@@ -47,16 +53,58 @@ export async function getDeploymentLogsForEnvironment(
 async function collectDeploymentLogs(
   activeDeployments: DeploymentJoinedRow[],
   environmentName: string,
+  historicalFallback: boolean,
   sinceDate: Date | undefined,
   tailLines: number | undefined,
 ): Promise<DeploymentLogLine[]> {
   const logLineGroups: DeploymentLogLine[][] = await Promise.all([
     collectReleaseJobLogLines(activeDeployments, environmentName, sinceDate),
-    resolveCompartmentEventLines(activeDeployments, environmentName, sinceDate),
+    historicalFallback
+      ? resolveHistoricalRunEventLines(activeDeployments, environmentName, sinceDate)
+      : resolveCompartmentEventLines(activeDeployments, environmentName, sinceDate),
     readStoredDeploymentProductLogs(activeDeployments, environmentName, sinceDate, tailLines),
   ]);
 
   return trimMergedDeploymentLines(logLineGroups.flat().sort(compareDeploymentLogLinesByTimestamp), tailLines);
+}
+
+async function resolveHistoricalRunEventLines(
+  deployments: DeploymentJoinedRow[],
+  environmentName: string,
+  sinceDate: Date | undefined,
+): Promise<DeploymentLogLine[]> {
+  const deploymentById: Map<string, DeploymentJoinedRow> = buildDeploymentMap(deployments);
+  const runIds: string[] = [
+    ...new Set(deployments.map((deployment: DeploymentJoinedRow): string => deployment.deployment.deploymentRunId)),
+  ];
+  const events: DeploymentRunEventRow[] = await listDeploymentRunEventsForRuns(runIds);
+  return events.flatMap((event: DeploymentRunEventRow): DeploymentLogLine[] => {
+    if (sinceDate !== undefined && event.createdAt < sinceDate) {
+      return [];
+    }
+    const deployment: DeploymentJoinedRow | undefined =
+      event.deploymentId === null ? readSingleDeployment(deployments) : deploymentById.get(event.deploymentId);
+    return deployment === undefined ? [] : [buildRunEventLine(event, deployment, environmentName)];
+  });
+}
+
+function readSingleDeployment(deployments: DeploymentJoinedRow[]): DeploymentJoinedRow | undefined {
+  return deployments.length === 1 ? deployments[0] : undefined;
+}
+
+function buildRunEventLine(
+  event: DeploymentRunEventRow,
+  deployment: DeploymentJoinedRow,
+  environmentName: string,
+): DeploymentLogLine {
+  return {
+    deploymentId: deployment.deployment.id,
+    environmentName,
+    message: event.message,
+    serviceName: deployment.service.name,
+    stream: event.stream,
+    timestamp: event.createdAt.toISOString(),
+  };
 }
 
 async function resolveCompartmentEventLines(
@@ -132,12 +180,15 @@ async function resolveDeploymentLogsContext(input: DeploymentLogsLookupInput): P
   );
   const activeDeployments: DeploymentJoinedRow[] = await resolveActiveDeploymentsForLogs(context, input.serviceName);
   if (activeDeployments.length === 0) {
-    throw createActiveDeploymentNotFoundError();
+    throw createDeploymentNotFoundError();
   }
 
   return {
     deployments: activeDeployments,
     environment: context.environment,
+    historicalFallback: activeDeployments.every(
+      (deployment: DeploymentJoinedRow): boolean => !deployment.deployment.isActive,
+    ),
     project: context.project,
   };
 }
@@ -152,7 +203,15 @@ async function resolveActiveDeploymentsForLogs(
 
   const routeBaseDomain: string = getApiConfig().baseDomain;
 
-  return await listActiveJoinedDeploymentsForEnvironment(context.environment.id, routeBaseDomain);
+  const activeDeployments: DeploymentJoinedRow[] = await listActiveJoinedDeploymentsForEnvironment(
+    context.environment.id,
+    routeBaseDomain,
+  );
+  return activeDeployments.length > 0
+    ? activeDeployments
+    : readLatestDeploymentsByService(
+        await listJoinedDeploymentsForEnvironment(context.environment.id, routeBaseDomain),
+      );
 }
 
 async function resolveScopedActiveDeployments(
@@ -169,5 +228,7 @@ async function resolveScopedActiveDeployments(
     routeBaseDomain,
   );
 
-  return activeDeployment !== undefined ? [activeDeployment] : [];
+  const deployment: DeploymentJoinedRow | undefined =
+    activeDeployment ?? (await findLatestJoinedDeployment(context.environment.id, service.id, routeBaseDomain));
+  return deployment !== undefined ? [deployment] : [];
 }

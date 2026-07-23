@@ -77,6 +77,22 @@ describe('deployment inspect output service', (): void => {
 
     expect(message).toBe('Inspect smoke-web/production: web=succeeded (active); backoffice=succeeded (active).');
   });
+
+  it('shows the failed stage, reason, and run-log recovery command', (): void => {
+    const response: DeploymentInspectResponse = createInspectResponse();
+    response.deployments[0] = {
+      ...response.deployments[0]!,
+      failureMessage: 'Kubernetes rollout timed out.',
+      promotionStage: 'awaiting_readiness',
+      status: 'failed',
+    };
+
+    expect(createInspectResultMessage(response, false)).toBe(
+      'Inspect smoke-web/production web: failed (awaiting_readiness).\n' +
+        'Failure: Kubernetes rollout timed out.\n' +
+        'See: compartment deployment logs --service web',
+    );
+  });
 });
 
 interface CreateAggregateInspectResponseInput {

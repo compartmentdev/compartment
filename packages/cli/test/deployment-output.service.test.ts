@@ -162,6 +162,25 @@ describe('deployment output service', (): void => {
     );
   });
 
+  it('shows a failed deployment reason and run-log recovery command', (): void => {
+    const response: DeploymentStatusView = createDeploymentStatusResponse({
+      completedAt: '2026-03-23T12:01:00.000Z',
+      createdAt: '2026-03-23T12:00:00.000Z',
+      failureMessage: 'Kubernetes rollout timed out.',
+      operationCompletedAt: '2026-03-23T12:01:00.000Z',
+      operationCreatedAt: '2026-03-23T12:00:00.000Z',
+      promotionStage: 'awaiting_readiness',
+      routeUrl: null,
+      status: 'failed',
+    });
+
+    expect(createStatusResultMessage(response)).toContain(
+      'Deployment dep_123 is failed (awaiting_readiness) in 1m.\n' +
+        'Failure: Kubernetes rollout timed out.\n' +
+        'See: compartment deployment logs --run drn_123',
+    );
+  });
+
   it('shows raw pod CPU and RAM samples in status output', (): void => {
     const response: DeploymentStatusView = createHistoricalDeploymentStatusResponse();
     response.metrics = {
@@ -199,6 +218,20 @@ describe('deployment output service', (): void => {
 
     expect(message).toContain('2026-03-23T12:00:05.000Z [web] stdout boot complete');
     expect(message).toContain('2026-03-23T12:00:06.000Z [admin] stderr worker warning');
+  });
+
+  it('marks failed historical deployment logs selected by the fallback', (): void => {
+    const response: DeploymentLogsResponse = createDeploymentLogsResponse();
+    response.deployments[0] = {
+      ...response.deployments[0]!,
+      failureMessage: 'Kubernetes rollout timed out.',
+      isActive: false,
+      status: 'failed',
+    };
+
+    expect(createLogsResultMessage(response)).toContain(
+      'Showing logs of failed deployment dep_123 from 2026-03-23T12:00:00.000Z.',
+    );
   });
 
   it('summarizes aggregate deployment status for multiple services', (): void => {
@@ -332,6 +365,7 @@ interface CreateDeploymentStatusResponseInput {
   accessProtected?: boolean | undefined;
   completedAt: string | null;
   createdAt: string;
+  failureMessage?: string | null | undefined;
   label?: string | null;
   operationCompletedAt: string | null;
   operationCreatedAt: string;
@@ -345,6 +379,7 @@ function createDeploymentStatusResponse(input: CreateDeploymentStatusResponseInp
     ...(input.accessProtected === undefined ? {} : { accessProtected: input.accessProtected }),
     completedAt: input.completedAt,
     createdAt: input.createdAt,
+    failureMessage: input.failureMessage ?? null,
     isActive: input.status === 'succeeded',
     label: input.label ?? null,
     operation: {

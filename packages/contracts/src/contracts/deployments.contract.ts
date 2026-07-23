@@ -29,7 +29,21 @@ export { environmentNameSchema };
 export type { EnvironmentSummary };
 
 export type DeploymentRuntimeHealth = 'pending' | 'healthy' | 'unhealthy';
-export type DeploymentPromotionStage = 'active' | 'building' | 'release' | 'rolled_back' | 'stopped';
+export type DeploymentPromotionStage =
+  | 'active'
+  | 'activating'
+  | 'awaiting_readiness'
+  | 'building'
+  | 'building_image'
+  | 'kube_apply'
+  | 'preparing_source'
+  | 'publishing_image'
+  | 'queued'
+  | 'release'
+  | 'releasing'
+  | 'restoring'
+  | 'rolled_back'
+  | 'stopped';
 export type DeploymentReusableImageState = 'available' | 'cleaned' | 'missing';
 export type DeploymentRuntimeStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'stopped';
 export type DeploymentLogStream = 'compartment' | 'stdout' | 'stderr';
@@ -118,8 +132,17 @@ export const deploymentRuntimeHealthSchema: ContractSchema<DeploymentRuntimeHeal
 
 export const deploymentPromotionStageSchema: ContractSchema<DeploymentPromotionStage> = z.enum([
   'active',
+  'activating',
+  'awaiting_readiness',
   'building',
+  'building_image',
+  'kube_apply',
+  'preparing_source',
+  'publishing_image',
+  'queued',
   'release',
+  'releasing',
+  'restoring',
   'rolled_back',
   'stopped',
 ]);
