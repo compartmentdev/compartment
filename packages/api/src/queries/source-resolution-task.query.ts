@@ -1,6 +1,7 @@
 import { and, eq, type SQL } from 'drizzle-orm';
 import { sourceResolutionTasks } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
+import { claimSelectedRow } from './claim-row.query.shared';
 import { requirePersistedRow } from './persisted-row.query.shared';
 import { buildNonTerminalSourceResolutionTaskStatusFilter } from './source-resolution.query.support';
 import { findClaimableSourceResolutionTaskIdForUpdate } from './source-resolution-claim.query';
@@ -32,12 +33,14 @@ export async function claimNextSourceResolutionTask(
   leaseExpiresAt: Date,
 ): Promise<SourceResolutionTaskRow | null> {
   return await getApiDatabase().transaction(
-    async (tx: SourceResolutionMutationTransaction): Promise<SourceResolutionTaskRow | null> => {
-      const taskId: string | undefined = await findClaimableSourceResolutionTaskIdForUpdate(tx);
-      return taskId === undefined
-        ? null
-        : await markSourceResolutionTaskClaimed(tx, taskId, claimantId, now, leaseExpiresAt);
-    },
+    async (tx: SourceResolutionMutationTransaction): Promise<SourceResolutionTaskRow | null> =>
+      await claimSelectedRow(
+        tx,
+        findClaimableSourceResolutionTaskIdForUpdate,
+        async (transaction: SourceResolutionMutationTransaction, taskId: string): Promise<SourceResolutionTaskRow> =>
+          await markSourceResolutionTaskClaimed(transaction, taskId, claimantId, now, leaseExpiresAt),
+        null,
+      ),
   );
 }
 

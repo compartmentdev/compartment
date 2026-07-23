@@ -5,9 +5,8 @@ import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import {
   projectProvisioningAttemptLimit,
-  projectProvisioningLeaseDurationMs,
+  projectProvisioningLeaseDuration,
   projectProvisioningTerminalFailure,
-  projectTeardownLeaseDurationMs,
   projectTeardownTerminalFailure,
 } from './project-provisioning-policy';
 import { failTerminalProjectProvisioning } from './project-provisioning-terminal.query';
@@ -112,7 +111,10 @@ async function renewProjectProvisioningLease(
 ): Promise<boolean> {
   const rows: { projectId: string }[] = await transaction
     .update(projectKubeProvisioning)
-    .set({ leaseExpiresAt: new Date(now.getTime() + leaseDurationMs(input.action)), updatedAt: now })
+    .set({
+      leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDuration(input.action)),
+      updatedAt: now,
+    })
     .where(
       and(
         eq(projectKubeProvisioning.projectId, input.projectId),
@@ -147,10 +149,6 @@ async function persistProjectProvisioningCompletion(
     )
     .returning({ attempts: projectKubeProvisioning.attempts, projectId: projectKubeProvisioning.projectId });
   return rows[0];
-}
-
-function leaseDurationMs(action: ProjectProvisioningAction): number {
-  return action === 'provision' ? projectProvisioningLeaseDurationMs : projectTeardownLeaseDurationMs;
 }
 
 function runningState(action: ProjectProvisioningAction): 'running' | 'teardown_running' {

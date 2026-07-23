@@ -3,13 +3,13 @@ import type { ProjectProvisioningAction } from '@compartment/contracts';
 import { projectKubeProvisioning } from '../db/schema';
 import { createId } from '../lib/tokens';
 import { getApiDatabase } from '../runtime/runtime-access';
+import { claimSelectedRow } from './claim-row.query.shared';
 import type { DeploymentTransaction } from './deployments.query.types';
 import {
   projectProvisioningAttemptLimit,
-  projectProvisioningLeaseDurationMs,
+  projectProvisioningLeaseDuration,
   projectProvisioningRetryDelayMs,
   projectTeardownTerminalFailure,
-  projectTeardownLeaseDurationMs,
 } from './project-provisioning-policy';
 import type {
   ProjectKubeProvisioningState,
@@ -31,15 +31,16 @@ async function claimPendingProjectProvisioningWithTransaction(
   action: ProjectProvisioningAction | 'any',
 ): Promise<ProjectProvisioningClaimRow | null> {
   const now: Date = new Date();
-  const row: typeof projectKubeProvisioning.$inferSelect | undefined = await selectClaimableRow(
+  return await claimSelectedRow(
     transaction,
-    now,
-    action,
+    async (tx: DeploymentTransaction): Promise<typeof projectKubeProvisioning.$inferSelect | undefined> =>
+      await selectClaimableRow(tx, now, action),
+    async (
+      tx: DeploymentTransaction,
+      row: typeof projectKubeProvisioning.$inferSelect,
+    ): Promise<ProjectProvisioningClaimRow> => await leaseProjectProvisioning(tx, row, now),
+    null,
   );
-  if (row === undefined) {
-    return null;
-  }
-  return await leaseProjectProvisioning(transaction, row, now);
 }
 
 export async function failExhaustedProjectTeardownLeases(): Promise<string[]> {
@@ -156,16 +157,7 @@ async function leaseProjectProvisioning(
   now: Date,
 ): Promise<ProjectProvisioningClaimRow> {
   const leaseId: string = createId('kpl');
-  return await leaseProjectExecution(transaction, row, readProjectProvisioningAction(row.state), leaseId, now);
-}
-
-async function leaseProjectExecution(
-  transaction: DeploymentTransaction,
-  row: typeof projectKubeProvisioning.$inferSelect,
-  action: ProjectProvisioningAction,
-  leaseId: string,
-  now: Date,
-): Promise<ProjectProvisioningClaimRow> {
+  const action: ProjectProvisioningAction = readProjectProvisioningAction(row.state);
   await transaction
     .update(projectKubeProvisioning)
     .set({
@@ -174,7 +166,7 @@ async function leaseProjectExecution(
           ? row.attempts
           : sql`${projectKubeProvisioning.attempts} + 1`,
       failureMessage: null,
-      leaseExpiresAt: new Date(now.getTime() + leaseDurationMs(action)),
+      leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDuration(action)),
       leaseId,
       state: action === 'provision' ? 'running' : 'teardown_running',
       updatedAt: now,
@@ -185,8 +177,4 @@ async function leaseProjectExecution(
 
 function readProjectProvisioningAction(state: ProjectKubeProvisioningState): ProjectProvisioningAction {
   return state.startsWith('teardown_') ? 'teardown' : 'provision';
-}
-
-function leaseDurationMs(action: ProjectProvisioningAction): number {
-  return action === 'provision' ? projectProvisioningLeaseDurationMs : projectTeardownLeaseDurationMs;
 }

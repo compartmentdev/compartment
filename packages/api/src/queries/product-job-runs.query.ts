@@ -1,5 +1,4 @@
 import { and, asc, eq, inArray, type SQL } from 'drizzle-orm';
-import type { SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import type {
   ProductJobClass,
   ProductJobIntent,
@@ -10,6 +9,7 @@ import type { Database } from '../db/client';
 import type { ApiDatabaseTransaction } from '../db/client.types';
 import { productJobRuns } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
+import { claimSelectedRow } from './claim-row.query.shared';
 import type {
   ClaimedProductJobQueryResult,
   PersistProductJobResultInput,
@@ -20,28 +20,7 @@ import type {
 } from './product-job-runs.query.types';
 import { lockProductJobResourceFence, prepareProductJobClaim } from './product-job-claim.query';
 
-interface ProductJobRunSelection extends SelectedFields {
-  commandJson: typeof productJobRuns.commandJson;
-  completedAt: typeof productJobRuns.completedAt;
-  createdAt: typeof productJobRuns.createdAt;
-  envJson: typeof productJobRuns.envJson;
-  exitCode: typeof productJobRuns.exitCode;
-  id: typeof productJobRuns.id;
-  identityId: typeof productJobRuns.identityId;
-  image: typeof productJobRuns.image;
-  imagePullSecretId: typeof productJobRuns.imagePullSecretId;
-  jobClass: typeof productJobRuns.jobClass;
-  jobName: typeof productJobRuns.jobName;
-  logs: typeof productJobRuns.logs;
-  namespace: typeof productJobRuns.namespace;
-  podName: typeof productJobRuns.podName;
-  projectId: typeof productJobRuns.projectId;
-  resourceIdsJson: typeof productJobRuns.resourceIdsJson;
-  status: typeof productJobRuns.status;
-  timeoutMs: typeof productJobRuns.timeoutMs;
-  updatedAt: typeof productJobRuns.updatedAt;
-  volumeMountsJson: typeof productJobRuns.volumeMountsJson;
-}
+type ProductJobRunSelection = Pick<typeof productJobRuns, keyof ProductJobRunRow>;
 
 export async function claimProductJob(jobClass: ProductJobClass): Promise<ClaimedProductJobQueryResult> {
   return await getApiDatabase().transaction(
@@ -61,10 +40,19 @@ async function claimProductJobWithTransaction(
   transaction: ApiDatabaseTransaction,
   jobClass: ProductJobClass,
 ): Promise<ClaimedProductJobQueryResult> {
-  const row: ProductJobRunRow | undefined = await readClaimableProductJobRow(transaction, jobClass);
-  if (row === undefined) {
-    return { intent: null, persistedResult: null };
-  }
+  return await claimSelectedRow(
+    transaction,
+    async (tx: ApiDatabaseTransaction): Promise<ProductJobRunRow | undefined> =>
+      await readClaimableProductJobRow(tx, jobClass),
+    claimLockedProductJob,
+    { intent: null, persistedResult: null },
+  );
+}
+
+async function claimLockedProductJob(
+  transaction: ApiDatabaseTransaction,
+  row: ProductJobRunRow,
+): Promise<ClaimedProductJobQueryResult> {
   const fenceResult: ProductJobResourceFenceResult = await lockProductJobResourceFence(transaction, row);
   if (fenceResult === 'blocked') {
     return { intent: null, persistedResult: null };
