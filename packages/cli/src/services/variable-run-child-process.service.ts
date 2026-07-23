@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
-import { execa, type Result, type ResultPromise } from 'execa';
+import type { execa as Execa, Result, ResultPromise } from 'execa';
 import type { CommandResult } from '../command-runner.types';
 
 interface VariableChildOptions {
@@ -23,23 +23,30 @@ export async function runVariableChildCommand(
   if (file === undefined) {
     throw new Error('Expected a command to execute.');
   }
-
   const options: VariableChildOptions = {
     env,
     extendEnv: false,
     reject: false,
     stdio: 'inherit',
   };
-  const subprocess: ResultPromise<VariableChildOptions> = execa(file, args, options);
+  const subprocess: ResultPromise<VariableChildOptions> = (await loadExeca())(file, args, options);
   const signalHandlers: VariableChildSignalHandler[] = registerVariableChildSignalHandlers(subprocess);
   const result: Result<VariableChildOptions> = await subprocess.finally((): void => {
     cleanupVariableChildSignalHandlers(signalHandlers);
   });
+  return readVariableChildResult(result);
+}
+
+function readVariableChildResult(result: Result<VariableChildOptions>): CommandResult {
   return {
     exitCode: readVariableChildExitCode(result.exitCode ?? null, result.signal ?? null, result.code),
     stderr: result.exitCode === undefined && result.signal === undefined ? (result.originalMessage ?? '') : '',
     stdout: '',
   };
+}
+
+async function loadExeca(): Promise<typeof Execa> {
+  return (await import(/* webpackMode: "eager" */ 'execa')).execa;
 }
 
 function registerVariableChildSignalHandlers(child: Pick<ChildProcess, 'kill'>): VariableChildSignalHandler[] {

@@ -1,4 +1,4 @@
-import { execa, type Result } from 'execa';
+import type { Result } from 'execa';
 import type { CommandResult } from './command-runner.types';
 
 interface CommandExecutionOptions {
@@ -44,6 +44,7 @@ async function executeCommand(
     ...(input === undefined ? {} : { input }),
     ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
   };
+  const { execa } = await import(/* webpackMode: "eager" */ 'execa');
   const result: Result<CommandExecutionOptions> = await execa(file, args, options);
   return readCommandResult(result, timeoutMs);
 }
