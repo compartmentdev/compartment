@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { eq } from 'drizzle-orm';
 import type { LightMyRequestResponse } from 'fastify';
 import type { Pool } from 'pg';
 import {
@@ -30,6 +31,7 @@ import { type ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
   environmentVariableSetBindings,
+  environmentVariableValues,
   environmentResourceOutputVariableBindings,
   environments,
   organizations,
@@ -41,6 +43,10 @@ import {
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import type * as VariablesQueryModule from '../src/queries/variables.query';
+import {
+  buildDeploymentRuntimePlan,
+  type DeploymentRuntimePlan,
+} from '../src/services/deployment-runtime-plan.service';
 import { createOrganizationMemberSession as createOrganizationMemberSessionFixture } from './api-auth-session-test.fixtures';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
 import { expectJsonError } from './api-route-test.harness';
@@ -194,6 +200,89 @@ describe('variables integration', (): void => {
     });
     expect(serviceShow.variable.value).toBe('debug');
     expect(serviceShow.variable.scopeType).toBe('service');
+  });
+
+  it('keeps empty service variables from breaking later reads and deployment planning', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installTestCompartment();
+    await deployWebService(installPayload);
+
+    const setPayload: VariableResponse = await setVariable(installPayload, {
+      keyName: 'OPTIONAL_VALUE',
+      projectName: 'billing',
+      serviceName: 'web',
+      value: '',
+    });
+    expect(setPayload.variable.value).toBe('');
+
+    await setVariable(installPayload, {
+      keyName: 'GREETING',
+      projectName: 'billing',
+      serviceName: 'web',
+      value: 'hello',
+    });
+
+    const serviceList: VariableListResponse = await listVariables(installPayload, {
+      projectName: 'billing',
+      serviceName: 'web',
+    });
+    expect(serviceList.variables).toEqual([
+      expect.objectContaining({
+        keyName: 'GREETING',
+        scopeType: 'service',
+        sourceType: 'direct',
+      }),
+      expect.objectContaining({
+        keyName: 'OPTIONAL_VALUE',
+        scopeType: 'service',
+        sourceType: 'direct',
+      }),
+    ]);
+
+    const greetingShow: VariableResponse = await showVariable(installPayload, 'GREETING', {
+      projectName: 'billing',
+      serviceName: 'web',
+    });
+    expect(greetingShow.variable.value).toBe('hello');
+
+    const target: VariableSetBindingTarget = await readVariableSetBindingTarget('web');
+    const serviceId: string = readRequiredFixtureRow(target.serviceId ?? undefined, 'web service id');
+    const runtimePlan: DeploymentRuntimePlan = await buildDeploymentRuntimePlan(
+      target.environmentId,
+      installPayload.organization.id,
+      serviceId,
+      'production',
+      'billing',
+      'web',
+    );
+    expect(runtimePlan.runtimeEnv.GREETING).toBe('hello');
+    expect(runtimePlan.runtimeEnv.OPTIONAL_VALUE).toBe('');
+  });
+
+  it('returns a specific error when a stored variable cannot be decrypted', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installTestCompartment();
+    await setVariable(installPayload, {
+      keyName: 'BROKEN_VALUE',
+      projectName: 'billing',
+      value: 'secret',
+    });
+    await db
+      .update(environmentVariableValues)
+      .set({ valueCiphertext: JSON.stringify('unsupported envelope') })
+      .where(eq(environmentVariableValues.keyName, 'BROKEN_VALUE'));
+
+    const response: LightMyRequestResponse = await injectVariablesRequest(
+      installPayload,
+      'GET',
+      buildVariablePath('/v1/variables/BROKEN_VALUE', { projectName: 'billing' }),
+    );
+
+    expectJsonError(response, 400, 'invalid_deploy_config');
+    expect(response.json()).toEqual({
+      error: {
+        code: 'invalid_deploy_config',
+        message: 'Variable "BROKEN_VALUE" cannot be decrypted.',
+      },
+    });
   });
 
   it('stores service resource-output bindings by service name before first deploy', async (): Promise<void> => {

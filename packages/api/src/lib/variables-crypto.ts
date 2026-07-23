@@ -119,7 +119,7 @@ function isVariableCiphertextEnvelopeV1(
     parsed !== null &&
     parsed.version === 1 &&
     parsed.algorithm === 'aes-256-gcm' &&
-    hasText(parsed.ciphertext) &&
+    typeof parsed.ciphertext === 'string' &&
     hasText(parsed.dekWrapIv) &&
     hasText(parsed.dekWrapTag) &&
     hasText(parsed.valueIv) &&

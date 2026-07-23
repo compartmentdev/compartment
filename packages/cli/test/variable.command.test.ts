@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  createErrorResponse,
   importVariablesResponseSchema,
   variableResponseSchema,
   type VariableDetail,
@@ -120,6 +121,28 @@ describe.sequential('compartment variable commands', { timeout: 15_000 }, (): vo
     expect(readCliStdout(result.capture)).toContain('production/*');
     expect(readCliStdout(result.capture)).toContain('QUEUE_TOKEN');
     expect(readCliStdout(result.capture)).toContain('production/worker');
+  });
+
+  it('prints API error details and exits non-zero when a variable request fails', async (): Promise<void> => {
+    const projectDirectory: string = await createProjectDirectory(tempRoot);
+    const apiErrorMessage: string = 'Variable "BROKEN_VALUE" cannot be decrypted.';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(createErrorResponse('invalid_deploy_config', apiErrorMessage)), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 400,
+        }),
+      ),
+    );
+    process.chdir(projectDirectory);
+
+    const result: CliCommandResult = await runCliCommand(['variable', 'list']);
+
+    expect(result.exitCode).toBe(1);
+    expect(readCliStdout(result.capture)).toBe('');
+    expect(readCliStderr(result.capture)).toContain(apiErrorMessage);
+    expect(readCliStderr(result.capture)).not.toBe('An unexpected error occurred.\n');
   });
 
   it('renders environment inventory with service-scoped variants in default lists', async (): Promise<void> => {

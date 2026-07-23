@@ -46,8 +46,8 @@ export function createDescriptorServiceNotFoundError(): ApiBusinessError {
   return new ApiBusinessError('descriptor_service_not_found');
 }
 
-export function createInvalidDeployConfigError(message?: string): ApiBusinessError {
-  return new ApiBusinessError('invalid_deploy_config', message);
+export function createInvalidDeployConfigError(message?: string, options?: ErrorOptions): ApiBusinessError {
+  return new ApiBusinessError('invalid_deploy_config', message, options);
 }
 
 export function createDeploymentNotFoundError(): ApiBusinessError {
