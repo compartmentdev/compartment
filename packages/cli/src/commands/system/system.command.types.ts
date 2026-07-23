@@ -1,5 +1,4 @@
 import type { OutputFormat } from '../../output/output.types';
-import type { KubernetesOperatorTarget } from '../../services/kubernetes-operator.service.types';
 
 export interface KubernetesOperatorCommandOptions {
   chart?: string | undefined;
@@ -40,5 +39,4 @@ export interface KubernetesSystemUpdateCommandOptions extends KubernetesOperator
 
 export interface ResolvedSystemDomainVersionedCommand {
   expectedSetupVersion?: number | undefined;
-  target: KubernetesOperatorTarget;
 }

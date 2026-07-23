@@ -105,6 +105,7 @@ export function createCliConfigFixture(input: CreateCliConfigFixtureInput = {}):
 
 function createDeploymentReadSummaryFixture(overrides: DeploymentReadSummaryFixtureInput = {}): DeploymentReadSummary {
   const defaultDeployment: DeploymentReadSummary = {
+    accessProtected: true,
     completedAt: '2026-03-30T10:00:05.000Z',
     createdAt: '2026-03-30T10:00:00.000Z',
     deploymentRunId: 'drn_123',
@@ -235,6 +236,7 @@ export function createProjectSummaryFixture(overrides: Partial<ProjectSummary> =
 
 export function createDeploymentSummaryFixture(overrides: Partial<DeploymentSummary> = {}): DeploymentSummary {
   const defaultDeployment: DeploymentSummary = {
+    accessProtected: true,
     build: {
       env: [],
       include: [],

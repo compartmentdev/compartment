@@ -34,6 +34,7 @@ export interface DeploymentReadProjectSummary {
 }
 
 export interface DeploymentReadSummary {
+  accessProtected?: boolean | undefined;
   completedAt: string | null;
   createdAt: string;
   deploymentRunId: string;
@@ -102,6 +103,7 @@ export const deploymentReadProjectSummarySchema: ContractSchema<DeploymentReadPr
   .strict();
 
 type DeploymentReadSummaryObjectSchema = z.ZodObject<{
+  accessProtected: z.ZodOptional<z.ZodBoolean>;
   completedAt: z.ZodNullable<z.ZodString>;
   createdAt: z.ZodString;
   deploymentRunId: z.ZodString;
@@ -121,6 +123,7 @@ type DeploymentReadSummaryObjectSchema = z.ZodObject<{
 
 export const deploymentReadSummarySchema: DeploymentReadSummaryObjectSchema = z
   .object({
+    accessProtected: z.boolean().optional(),
     completedAt: z.string().datetime().nullable(),
     createdAt: z.string().datetime(),
     deploymentRunId: z.string().min(1),

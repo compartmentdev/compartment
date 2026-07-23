@@ -13,6 +13,7 @@ import type { DeploymentSummaryInput } from '../../services/presenter.types';
 import { toNullableIsoString } from '../presenters/date.presenter';
 
 interface DeploymentBaseSummary {
+  accessProtected: boolean;
   completedAt: string | null;
   createdAt: string;
   failureMessage: string | null;
@@ -32,6 +33,7 @@ export function buildDeploymentBaseSummary(parts: DeploymentSummaryInput): Deplo
   const reusableImageState: DeploymentReusableImageState = readDeploymentReusableImageState(parts.artifact);
 
   return {
+    accessProtected: parts.deployment.accessMode === 'authenticated',
     completedAt: toNullableIsoString(parts.deployment.completedAt),
     createdAt: parts.deployment.createdAt.toISOString(),
     failureMessage: parts.deployment.failureMessage,

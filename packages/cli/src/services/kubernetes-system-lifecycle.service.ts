@@ -92,6 +92,7 @@ async function applyMaterializedKubernetesUpdate(
   await writeKubernetesInstallValues(updateValuesPath, buildKubernetesPlatformImageVersionValues(input.version));
   await writeVerifiedKubernetesReleaseImageValues({
     ...(input.kubeContext === undefined ? {} : { kubeContext: input.kubeContext }),
+    ...(input.kubeconfigPath === undefined ? {} : { kubeconfigPath: input.kubeconfigPath }),
     namespace: input.namespace,
     outputPath: imageTrustValuesPath,
     operatorValuesPaths: [input.valuesPath, updateValuesPath],

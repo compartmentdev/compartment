@@ -12,6 +12,7 @@ import {
   updateKubernetesSystem,
 } from '../../services/kubernetes-system-lifecycle.service';
 import type { KubernetesOperatorTarget } from '../../services/kubernetes-operator.service.types';
+import { withResolvedKubernetesOperatorTarget } from '../../services/kubernetes-operator-target.service';
 import type { CliCommandDependencies } from '../command.types';
 import {
   addKubernetesOperatorTargetOptions,
@@ -34,8 +35,9 @@ function registerStatusCommand(program: Command, dependencies: CliCommandDepende
   addKubernetesOperatorTargetOptions(
     program.command('status').description('Show Helm release status and platform workload readiness'),
   ).action(async (options: KubernetesOperatorCommandOptions): Promise<void> => {
-    const result: KubernetesSystemStatusResponse = await getKubernetesSystemStatus(
+    const result: KubernetesSystemStatusResponse = await withResolvedKubernetesOperatorTarget(
       resolveKubernetesOperatorTarget(options),
+      getKubernetesSystemStatus,
     );
     renderOutput(dependencies.io, options.output, result, createStatusMessage(result));
   });
@@ -45,8 +47,9 @@ function registerRestartCommand(program: Command, dependencies: CliCommandDepend
   addKubernetesOperatorTargetOptions(
     program.command('restart').description('Restart platform workloads and wait for their rollout'),
   ).action(async (options: KubernetesOperatorCommandOptions): Promise<void> => {
-    const result: KubernetesSystemRestartResponse = await restartKubernetesSystem(
+    const result: KubernetesSystemRestartResponse = await withResolvedKubernetesOperatorTarget(
       resolveKubernetesOperatorTarget(options),
+      restartKubernetesSystem,
     );
     renderOutput(dependencies.io, options.output, result, createRestartMessage(result));
   });
@@ -59,12 +62,16 @@ function registerUpdateCommand(program: Command, dependencies: CliCommandDepende
       .description('Verify and update the Kubernetes platform images')
       .option('--version <version>', 'Platform image tag; defaults to the packaged CLI release'),
   ).action(async (options: KubernetesSystemUpdateCommandOptions): Promise<void> => {
-    const target: KubernetesOperatorTarget = resolveKubernetesOperatorTarget(options);
-    const result: KubernetesSystemUpdateResponse = await updateKubernetesSystem({
-      ...target,
-      valuesPath: options.values,
-      version: resolveKubernetesSystemUpdateVersion(options.version),
-    });
+    const version: string = resolveKubernetesSystemUpdateVersion(options.version);
+    const result: KubernetesSystemUpdateResponse = await withResolvedKubernetesOperatorTarget(
+      resolveKubernetesOperatorTarget(options),
+      async (target: KubernetesOperatorTarget): Promise<KubernetesSystemUpdateResponse> =>
+        await updateKubernetesSystem({
+          ...target,
+          valuesPath: options.values,
+          version,
+        }),
+    );
     renderOutput(dependencies.io, options.output, result, createUpdateMessage(result));
   });
 }

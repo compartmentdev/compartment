@@ -39,6 +39,7 @@ import {
   type HealthResponse,
   type DeploymentListResponse,
   type DeploymentReadSummary,
+  type DeploymentSummary,
   type DeploymentStatusResponse,
   type CompartmentRoutesFile,
   type ProjectReadResponse,
@@ -397,6 +398,7 @@ describe('contract schemas deployment and app access', (): void => {
       deploymentRunId: 'drn_123',
       deployments: [
         {
+          accessProtected: true,
           build: {
             env: [],
             include: [],
@@ -453,7 +455,9 @@ describe('contract schemas deployment and app access', (): void => {
       resources: [],
     });
 
-    expect(expectPresent(result.deployments[0], 'deployment').serviceName).toBe('web');
+    const deployment: DeploymentSummary = expectPresent(result.deployments[0], 'deployment');
+    expect(deployment.serviceName).toBe('web');
+    expect(deployment.accessProtected).toBe(true);
   });
 
   it('rejects deployment payloads without rollback availability', (): void => {
@@ -789,9 +793,16 @@ describe('contract schemas deployment and app access', (): void => {
   });
 
   it('accepts readonly-safe deployment status payloads', (): void => {
-    const result: DeploymentStatusResponse = deploymentStatusResponseSchema.parse(buildDeploymentStatusResponse());
+    const deployment: DeploymentReadSummary = buildDeploymentReadSummary({ accessProtected: false });
+    const result: DeploymentStatusResponse = deploymentStatusResponseSchema.parse(
+      buildDeploymentStatusResponse({
+        activeDeployments: [deployment],
+        deployments: [deployment],
+      }),
+    );
 
     expect(expectPresent(result.activeDeployments[0], 'active deployment').serviceName).toBe('web');
+    expect(expectPresent(result.activeDeployments[0], 'active deployment').accessProtected).toBe(false);
   });
 
   it('rejects deployment status payloads without rollback availability', (): void => {
