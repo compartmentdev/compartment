@@ -4,29 +4,44 @@ This document defines the supported production install and operator contract for
 Kubernetes is the only production runtime. The release CLI owns install orchestration and image verification; the Helm
 chart owns installation-time Kubernetes resources.
 
+For a fresh dedicated k3s node, disable its default Traefik ingress during installation so Compartment's Caddy
+LoadBalancer can use ports 80 and 443:
+
+```bash
+curl -sfL https://get.k3s.io | sh -s - --disable traefik
+```
+
+Only the default `kube-system/traefik` should receive the disable/remove guidance. If another Service owns the ports,
+do not remove it: free 80 and 443 on a dedicated cluster. A shared-cluster topology requires
+`service.caddy.type=ClusterIP` or `NodePort`, an explicit `platform.publicIngressIpv4` or
+`platform.publicIngressIpv6`, and routing through the existing ingress. The guided installer does not automate this
+mode yet and its klipper preflight still stops at the conflict.
+
 ## Install modes
 
-`compartment install --values <path>` is the normal production entrypoint. A release CLI uses its bundled matching
-chart, verifies the effective API, Worker, Edge, and Caddy images against the published signing policy, resolves them
-to immutable digests, and applies two Helm stages:
+`compartment install` is the guided production entrypoint. `compartment install --values <path>` is the declarative
+entrypoint for CI and advanced operator configuration. Both use the bundled matching chart, verify the effective API,
+Worker, Edge, and Caddy images against the published signing policy, resolve them to immutable digests, and apply two
+Helm stages:
 
 1. `foundation` creates the public Caddy Service, generated install secrets, storage, and the retained install-state
    Secret. PostgreSQL and the registry start here; API, Worker, Edge, Caddy, and the remaining platform workloads wait
    for `full`.
 2. The CLI resolves the public ingress and install domain, persists that state, and applies `full`. It then waits for
    HTTPS, calls the one-time `/v1/install` boundary, creates the first owner, and saves the owner session.
-3. The CLI reads the actual retained registry-auth Service name and ClusterIP and always renders the required k3s
-   registry mirror entry plus a `compartment system registry-mirror apply` command before the first application deploy.
-   That command uses the CLI's YAML-aware merge, atomically writes the node config, and restarts k3s. The chart cannot
-   mutate node-level container-runtime configuration.
+3. The CLI reads the actual retained registry-auth Service name and ClusterIP and configures the required local k3s
+   registry mirror before the first application deploy when it can do so safely. The apply command uses the CLI's
+   YAML-aware merge, atomically writes the node config, and restarts k3s. The chart cannot mutate node-level
+   container-runtime configuration.
 
 For an unambiguous `KUBECONFIG=/etc/rancher/k3s/k3s.yaml` on the local node, a root CLI process with write access to
-`/etc/rancher/k3s` and an available `systemctl` can apply the mirror. Interactive installs confirm with `Y/n`;
-non-interactive installs apply automatically unless `--skip-registry-mirror` is set. The merge changes only the
-installed registry host entry and preserves other mirrors. The CLI restarts k3s and verifies that the written endpoint
-contains the Service's current ClusterIP. Automatic application covers only the local node; every other k3s node must
-have the same CLI version available and run the rendered apply command separately. All other environments receive
-instructions only.
+`/etc/rancher/k3s` and an available `systemctl` can apply the mirror. Interactive installs ask one short `Y/n`
+question before printing any multi-node instructions; non-interactive installs apply automatically unless
+`--skip-registry-mirror` is set. The merge changes only the installed registry host entry and preserves other mirrors.
+The CLI restarts k3s and verifies that the written endpoint contains the Service's current ClusterIP. It prints compact
+numbered instructions when the operator declines, automatic local setup is unavailable, or the cluster has additional
+nodes, and after a local apply or verification failure. Every other k3s node must have the same CLI version available
+and run the rendered apply command separately.
 
 The default mode is a managed domain. When `--base-domain` is omitted, the CLI waits for a public LoadBalancer address,
 requests an allocation from `https://broker.compartment.run`, and configures managed DNS-01 TLS. The broker credential

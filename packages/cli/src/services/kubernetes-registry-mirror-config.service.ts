@@ -35,10 +35,6 @@ export function createKubernetesRegistryMirrorFromHost(
   return { clusterIp, host: registryHost };
 }
 
-export function renderKubernetesRegistryMirrorConfig(mirror: KubernetesRegistryMirror): string {
-  return mergeKubernetesRegistryMirrorConfig('', mirror);
-}
-
 export function mergeKubernetesRegistryMirrorConfig(existingConfig: string, mirror: KubernetesRegistryMirror): string {
   const document: Document.Parsed<ParsedNode> = parseRegistryConfig(existingConfig);
   const endpointPath: string[] = ['mirrors', mirror.host, 'endpoint'];

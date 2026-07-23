@@ -2,20 +2,19 @@
 
 ## Gate result
 
-ПАРИТЕТ: НЕТ — 4 потерянных фич
+ПАРИТЕТ: НЕТ — 3 потерянных фич
 
 This audit compares `origin/docker-legacy` at `dbf3ab6d` with `origin/kubernetes` at `dcb41449`. The comparison contains
 1,225 changed files, 47,516 inserted lines, and 63,681 deleted lines. The audit classifies product behavior rather than
 matching implementations by name.
 
-The four class C findings are:
+The three remaining class C findings are:
 
-1. The public installer cannot hand off a managed-domain install through `--init-install`.
-2. Kubernetes has no Compartment-owned status, restart, or verified update workflow for an installed platform.
-3. The chart drops the install-wide rollback-retention setting and forces indefinite retention.
-4. The chart keeps auth-throttle defaults but drops the operator tuning surface.
+1. Kubernetes has no Compartment-owned status, restart, or verified update workflow for an installed platform.
+2. The chart drops the install-wide rollback-retention setting and forces indefinite retention.
+3. The chart keeps auth-throttle defaults but drops the operator tuning surface.
 
-This PR records findings only. It does not restore any behavior.
+The original audit recorded four findings. The public installer hand-off described in C1 has since been restored.
 
 ## Method and coverage
 
@@ -45,23 +44,19 @@ The classifications are:
 - **C, lost:** users or operators could observe or configure the behavior in 0.9.2, and the Kubernetes production path
   neither implements nor calls an equivalent.
 
-## Class C: lost behavior
+## Resolved class C behavior
 
 ### C1. Managed-domain `install.sh --init-install` hand-off
 
-The Docker installer accepted `--init-install` and invoked `compartment install`, whose default mode allocated a managed
-domain. The Kubernetes guide still publishes this flow with only `--init-install --values compartment-values.yaml` in
-`public-docs/src/content/docs/quickstart/install-compartment.md`.
-
-The current `install.sh` and `scripts/release/install-cli.sh.template` require both `--api-url` and `--base-domain` when
-`--init-install` is set. Passing `--base-domain` makes `resolveInstallDomainMode()` select `custom`, so the installer has
-no argument combination that reaches the CLI's default managed-domain path. Direct `compartment install --values ...`
-works; the public bootstrap hand-off does not.
+The installer again accepts bare `--init-install` and invokes `compartment install`, preserving the guided default
+managed-domain path. Passing `--values` still selects the declarative path.
 
 Production trace:
 
-`install.sh` argument validation stops before `run_init_install()` -> no call to
-`packages/cli/src/commands/install/install.command.ts` -> no managed allocation.
+`install.sh --init-install` -> `run_init_install()` -> `compartment install` -> guided configuration and managed-domain
+allocation.
+
+## Class C: lost behavior
 
 ### C2. Platform status, restart, and verified update
 

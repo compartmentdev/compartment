@@ -11,7 +11,6 @@ import {
   createKubernetesRegistryMirror,
   isLocalK3sKubeconfigChain,
   mergeKubernetesRegistryMirrorConfig,
-  renderKubernetesRegistryMirrorConfig,
 } from './kubernetes-registry-mirror-config.service';
 import type {
   KubernetesRegistryMirror,
@@ -51,6 +50,27 @@ export async function canAutoApplyKubernetesRegistryMirror(target: KubernetesOpe
   return systemctlResult.exitCode === 0;
 }
 
+export async function hasMultipleKubernetesNodes(target: KubernetesOperatorTarget): Promise<boolean> {
+  const result: CommandResult = await runCommand(buildKubectlCommand(target, ['get', 'nodes', '--output', 'json']));
+  if (result.exitCode !== 0) {
+    return true;
+  }
+  try {
+    const nodeList: JsonValue = JSON.parse(result.stdout) as JsonValue;
+    if (
+      typeof nodeList !== 'object' ||
+      nodeList === null ||
+      Array.isArray(nodeList) ||
+      !Array.isArray(nodeList.items)
+    ) {
+      return true;
+    }
+    return nodeList.items.length > 1;
+  } catch {
+    return true;
+  }
+}
+
 export async function applyKubernetesRegistryMirror(
   mirror: KubernetesRegistryMirror,
 ): Promise<KubernetesRegistryMirrorApplyResult> {
@@ -73,29 +93,16 @@ export async function applyKubernetesRegistryMirror(
 }
 
 export function renderKubernetesRegistryMirrorInstructions(mirror: KubernetesRegistryMirror): string {
-  const config: string = renderKubernetesRegistryMirrorConfig(mirror).trimEnd();
   const cliVersion: string = readCliVersion();
   return `
-Registry mirror setup is required before the first application deploy.
-Configure every k3s node with this registry mirror:
-
-${config}
-
-The same Compartment CLI version must be available on every k3s node.
-
-compartment_binary="$(command -v compartment)" || {
-  echo "Install the same Compartment CLI version on this node, then rerun these commands." >&2
-  exit 1
-}
-test "$("$compartment_binary" --version)" = '${cliVersion}' || {
-  echo "Install Compartment CLI ${cliVersion} on this node, then rerun these commands." >&2
-  exit 1
-}
-sudo "$compartment_binary" system registry-mirror apply \\
+Configure the registry mirror on every k3s node:
+1. Install Compartment CLI ${cliVersion} on the node.
+2. Run:
+sudo compartment system registry-mirror apply \\
   --registry-host '${mirror.host}' \\
   --cluster-ip '${mirror.clusterIp}'
 
-The apply command writes /etc/rancher/k3s/registries.yaml and restarts k3s when the config changes.
+This writes /etc/rancher/k3s/registries.yaml and restarts k3s when the config changes.
 `;
 }
 

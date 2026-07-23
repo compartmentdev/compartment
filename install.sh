@@ -134,10 +134,6 @@ if [ "$init_mode_count" -gt 1 ]; then
 fi
 
 if [ "$init_install" = "1" ]; then
-  if [ -z "$install_values_path" ]; then
-    printf 'Expected --values <path> with --init-install.\n' >&2
-    exit 1
-  fi
   if [ -n "$init_onboarding_session" ]; then
     printf 'Use --onboarding-session only with --init-login.\n' >&2
     exit 1
@@ -449,9 +445,10 @@ format_init_install_command() {
   format_install_release_name="$1"
   format_install_chart_path="$2"
   format_install_remote="$3"
-  format_install_command="$(printf '"%s" install --values %s' \
-    "$format_install_path" \
-    "$(quote_shell_argument "$format_install_values_path")")"
+  format_install_command="$(printf '"%s" install' "$format_install_path")"
+  if [ -n "$format_install_values_path" ]; then
+    format_install_command="${format_install_command} --values $(quote_shell_argument "$format_install_values_path")"
+  fi
 
   if [ -n "$format_install_api_url" ]; then
     format_install_command="${format_install_command} --api-url $(quote_shell_argument "$format_install_api_url")"
@@ -508,7 +505,10 @@ run_init_install() {
     exit 1
   fi
 
-  set -- install --values "$init_install_values_path"
+  set -- install
+  if [ -n "$init_install_values_path" ]; then
+    set -- "$@" --values "$init_install_values_path"
+  fi
   if [ -n "$init_install_api_url" ]; then
     set -- "$@" --api-url "$init_install_api_url"
   fi
@@ -917,4 +917,4 @@ if [ "$init_login" = "1" ]; then
   exit 0
 fi
 
-printf 'Installed CLI. Run `"%s" install` to create a Kubernetes platform owner, run `"%s" login` to connect to a platform, or use `--init-install`/`--init-update`/`--init-login`.\n' "$install_path" "$install_path"
+printf 'Compartment CLI installed. Run `compartment install` to set up the platform.\n'

@@ -8,7 +8,10 @@ import { resolveKubernetesInstallKubeconfig } from '../src/services/kubernetes-i
 import type { ResolvedKubernetesKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service.types';
 import { runKubernetesInstallPreflight } from '../src/services/kubernetes-install-preflight.service';
 import type { KubernetesPublicIngressResolutionInput } from '../src/services/kubernetes-install.service.types';
-import type { KubernetesInstallPreflightInput } from '../src/services/kubernetes-install-preflight.service.types';
+import type {
+  KubernetesInstallPreflightInput,
+  KubernetesInstallPreflightResult,
+} from '../src/services/kubernetes-install-preflight.service.types';
 
 interface FileSystemPromisesModule {
   readFile: typeof readFile;
@@ -229,13 +232,33 @@ describe('Kubernetes install cluster preflight', (): void => {
       stdout: '{"items":[{"metadata":{"name":"svclb-traefik-abcd"}}]}',
     });
 
-    await expect(runKubernetesInstallPreflight(preflightInput())).rejects.toThrow(
+    const result: Promise<KubernetesInstallPreflightResult> = runKubernetesInstallPreflight(preflightInput());
+
+    await expect(result).rejects.toThrow(
       "Ports 80/443 are already taken by Service kube-system/traefik — the platform's Caddy LoadBalancer will never get an address.",
+    );
+    await expect(result).rejects.toThrow(
+      /default k3s Traefik ingress.*Disable it:.*delete helmchart traefik traefik-crd/su,
     );
     const daemonSetCommand: readonly string[] | undefined = mockedRunCommand.mock.calls[2]?.[0];
     expect(mockedRunCommand).toHaveBeenCalledTimes(3);
     expect(daemonSetCommand).toContain('--all-namespaces');
     expect(daemonSetCommand).not.toContain('storageclass');
+  });
+
+  it('does not recommend deleting a non-Traefik ingress that owns klipper ports', async (): Promise<void> => {
+    mockForeignIngressService('ingress-nginx-controller', 'ingress-nginx');
+    mockedRunCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stderr: '',
+      stdout: '{"items":[{"metadata":{"name":"svclb-ingress-nginx-abcd"}}]}',
+    });
+
+    const result: Promise<KubernetesInstallPreflightResult> = runKubernetesInstallPreflight(preflightInput());
+
+    await expect(result).rejects.toThrow('Compartment ships its own ingress (Caddy)');
+    await expect(result).rejects.toThrow('service.caddy.type=ClusterIP or NodePort');
+    await expect(result).rejects.not.toThrow(/delete|remove|disable/iu);
   });
 
   it('returns a warning when a cloud LoadBalancer can receive a separate address', async (): Promise<void> => {
@@ -342,14 +365,14 @@ describe('Kubernetes install cluster preflight', (): void => {
   });
 });
 
-function mockForeignIngressService(): void {
+function mockForeignIngressService(name: string = 'traefik', namespace: string = 'kube-system'): void {
   mockedRunCommand.mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' }).mockResolvedValueOnce({
     exitCode: 0,
     stderr: '',
     stdout: JSON.stringify({
       items: [
         {
-          metadata: { name: 'traefik', namespace: 'kube-system' },
+          metadata: { name, namespace },
           spec: { ports: [{ port: 80 }], type: 'LoadBalancer' },
         },
       ],
