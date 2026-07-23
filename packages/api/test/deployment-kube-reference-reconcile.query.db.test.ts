@@ -332,6 +332,41 @@ describe('deployment Kubernetes transition persistence', (): void => {
     expect(reference).toMatchObject({ state: 'pending' });
   });
 
+  it('rejects a stale pending acknowledgement after the reference leaves desired state', async (): Promise<void> => {
+    await seedCandidate(db);
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'pending',
+        observedAt: new Date('2026-07-12T10:00:00.000Z'),
+        revision: 0,
+      }),
+    ).toBe(true);
+    const [referenceAfterFirstAcknowledgement] = await db
+      .select()
+      .from(deploymentKubeReferences)
+      .where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
+    expect(referenceAfterFirstAcknowledgement).toMatchObject({ state: 'pending' });
+    expect(referenceAfterFirstAcknowledgement?.revision).toBeGreaterThan(0);
+
+    expect(
+      await persistDeploymentReconcileObservation({
+        deploymentId: 'dep_candidate',
+        failureMessage: null,
+        observation: 'pending',
+        observedAt: new Date('2026-07-12T10:00:01.000Z'),
+        revision: 0,
+      }),
+    ).toBe(false);
+    const [referenceAfterStaleAcknowledgement] = await db
+      .select()
+      .from(deploymentKubeReferences)
+      .where(eq(deploymentKubeReferences.deploymentId, 'dep_candidate'));
+    expect(referenceAfterStaleAcknowledgement?.revision).toBe(referenceAfterFirstAcknowledgement?.revision);
+  });
+
   it('fails a waiting deployment when project provisioning reaches its attempt cap', async (): Promise<void> => {
     await db.update(deploymentKubeReferences).set({ state: 'desired' });
     await db.update(operations).set({ status: 'running' }).where(eq(operations.id, 'op_kube'));

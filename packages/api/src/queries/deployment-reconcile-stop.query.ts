@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { deploymentKubeReferences } from '../db/schema';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type { PersistDeploymentReconcileObservationInput } from './deployment-reconcile.query.types';
@@ -15,7 +15,7 @@ export async function persistStoppedReconcileObservation(
     .update(deploymentKubeReferences)
     .set({
       observedAt: input.observedAt,
-      revision: input.revision + 1,
+      revision: sql`${deploymentKubeReferences.revision} + 1`,
       state: 'stopped',
       transitionedAt: input.observedAt,
       updatedAt: input.observedAt,
