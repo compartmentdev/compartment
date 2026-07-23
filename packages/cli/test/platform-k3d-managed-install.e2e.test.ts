@@ -69,11 +69,10 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       const suffix: string = randomUUID().replaceAll('-', '').slice(0, 12);
       const ownerEmail: string = `managed-e2e-${suffix}@compartment.test`;
       const ownerPassword: string = `ManagedE2e-${randomBytes(24).toString('base64url')}!`;
-      const installerCli: SelfHostedUserSetupCli = await createFreshCli();
+      const installerCli: SelfHostedUserSetupCli = await createFreshCli(ownerPassword);
       const result: InstallResponse = await installerCli.runJson(
         `install --api-url ${managedInstallApiUrl} --broker-url ${managedInstallBrokerUrl} --values ${managedInstallValuesPath} --kube-context ${managedInstallKubeContext} --namespace ${managedInstallNamespace} --release-name ${managedInstallReleaseName} --email ${ownerEmail} --organization "${organizationName}" --organization-slug ${organizationSlug}`,
         installResponseSchema,
-        { input: `${ownerPassword}\n${ownerPassword}\n` },
       );
 
       expect(result.adminEmail).toBe(ownerEmail);
@@ -112,14 +111,13 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
   );
 });
 
-async function createFreshCli(): Promise<SelfHostedUserSetupCli> {
+async function createFreshCli(adminPassword?: string): Promise<SelfHostedUserSetupCli> {
   const homeDirectory: string = await mkdtemp(join(tempRootDirectory, 'client-'));
   createdDirectories.push(homeDirectory);
-  return new SelfHostedUserSetupCli(
-    {
-      ...buildSelfHostedUserSetupClientEnv(homeDirectory),
-      NODE_EXTRA_CA_CERTS: managedInstallCertificateAuthorityPath,
-    },
-    installTimeoutMs,
-  );
+  const env: NodeJS.ProcessEnv = buildSelfHostedUserSetupClientEnv(homeDirectory);
+  env.NODE_EXTRA_CA_CERTS = managedInstallCertificateAuthorityPath;
+  if (adminPassword !== undefined) {
+    env.COMPARTMENT_ADMIN_PASSWORD = adminPassword;
+  }
+  return new SelfHostedUserSetupCli(env, installTimeoutMs);
 }

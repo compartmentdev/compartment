@@ -761,6 +761,7 @@ export async function provisionK3dSuiteOrganization(
     activateResponseSchema,
     {
       input: `${credentials.password}\n${credentials.password}\n`,
+      interactive: true,
     },
   );
   await suiteCli.runBrowserLogin(

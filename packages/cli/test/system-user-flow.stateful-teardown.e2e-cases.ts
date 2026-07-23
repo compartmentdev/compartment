@@ -382,6 +382,7 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
         activateResponseSchema,
         {
           input: `${viewerPassword}\n${viewerPassword}\n`,
+          interactive: true,
         },
       );
       expect(activationPayload.principal.email).toBe(viewerEmail);

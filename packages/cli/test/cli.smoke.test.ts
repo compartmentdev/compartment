@@ -1,5 +1,6 @@
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { PassThrough } from 'node:stream';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -71,7 +72,16 @@ const orgUseResponseSchema: z.ZodType<CliOrgUsePayload> = z.object({
     slug: z.string(),
   }),
 });
-const installInputText: string = 'admin@example.com\nAcme Dev\nsupersecretpassword\nsupersecretpassword\n';
+
+interface InteractivePromptInput {
+  setRawMode: (mode: boolean) => void;
+}
+
+type InteractivePromptTestInput = PassThrough & InteractivePromptInput;
+
+const adminPasswordEnvName: string = 'COMPARTMENT_ADMIN_PASSWORD';
+const installAdminPassword: string = 'supersecretpassword';
+const installInputText: string = 'admin@example.com\nAcme Dev\n';
 const smokeTempRootDirectory: string = readSocketSafeTempRootDirectory('ccli-', 'sys-65535.sock');
 
 const { testDatabaseUrl } = readDatabaseTestMode();
@@ -569,9 +579,10 @@ describe.sequential('Phase 0 CLI smoke flow', (): void => {
     installCapture.stdin.end(installInputText);
 
     await withInstallDevRepository('# intentionally missing COMPARTMENT_API_URL\n', async (): Promise<void> => {
-      const installExitCode: number = await runCli(
-        ['install', '--dev', '--organization-slug', 'acme-dev', '--output', 'json'],
-        installCapture.io,
+      const installExitCode: number = await withInstallAdminPassword(
+        installAdminPassword,
+        async (): Promise<number> =>
+          await runCli(['install', '--dev', '--organization-slug', 'acme-dev', '--output', 'json'], installCapture.io),
       );
 
       expect(installExitCode).toBe(1);
@@ -597,9 +608,10 @@ describe.sequential('Phase 0 CLI smoke flow', (): void => {
     const logoutExitCode: number = await runCli(['logout', '--output', 'json'], logoutCapture.io);
     expect(logoutExitCode).toBe(0);
 
-    const activateCapture: CliTestCapture = createCliCapture();
-    activateCapture.stdin.end('viewersecretpassword\nviewersecretpassword\n');
-    const activateExitCode: number = await runCli(
+    const activateCapture: CliTestCapture = createCliCapture({ isTTY: true });
+    const activateInput: InteractivePromptTestInput = activateCapture.stdin as InteractivePromptTestInput;
+    activateInput.setRawMode = (): void => undefined;
+    const activatePromise: Promise<number> = runCli(
       [
         'activate',
         '--api-url',
@@ -613,6 +625,10 @@ describe.sequential('Phase 0 CLI smoke flow', (): void => {
       ],
       activateCapture.io,
     );
+    await answerInteractivePrompt(activateCapture, 'Password: ', 'viewersecretpassword');
+    await answerInteractivePrompt(activateCapture, 'Confirm password: ', 'viewersecretpassword');
+    const activateExitCode: number = await activatePromise;
+    activateCapture.stdin.end();
     expect(activateExitCode).toBe(0);
     const activatePayload: ActivateResponse = activateResponseSchema.parse(JSON.parse(readCliStdout(activateCapture)));
     expect(activatePayload.principal.email).toBe('Viewer@Example.com');
@@ -752,14 +768,39 @@ async function runInstallDev(targetApiUrl: string): Promise<InstallResponse> {
   installCapture.stdin.end(installInputText);
 
   return await withInstallDevRepository(`COMPARTMENT_API_URL=${targetApiUrl}\n`, async (): Promise<InstallResponse> => {
-    const installExitCode: number = await runCli(
-      ['install', '--dev', '--organization-slug', 'acme-dev', '--output', 'json'],
-      installCapture.io,
+    const installExitCode: number = await withInstallAdminPassword(
+      installAdminPassword,
+      async (): Promise<number> =>
+        await runCli(['install', '--dev', '--organization-slug', 'acme-dev', '--output', 'json'], installCapture.io),
     );
 
     expect(installExitCode).toBe(0);
     return installResponseSchema.parse(JSON.parse(readCliStdout(installCapture)));
   });
+}
+
+async function withInstallAdminPassword<TResult>(password: string, action: () => Promise<TResult>): Promise<TResult> {
+  const previousPassword: string | undefined = process.env[adminPasswordEnvName];
+  process.env[adminPasswordEnvName] = password;
+
+  try {
+    return await action();
+  } finally {
+    if (previousPassword === undefined) {
+      delete process.env[adminPasswordEnvName];
+    } else {
+      process.env[adminPasswordEnvName] = previousPassword;
+    }
+  }
+}
+
+async function answerInteractivePrompt(capture: CliTestCapture, label: string, answer: string): Promise<void> {
+  while (!readCliStderr(capture).includes(label)) {
+    await new Promise<void>((resolve: () => void): void => {
+      setImmediate(resolve);
+    });
+  }
+  capture.stdin.write(`${answer}\n`);
 }
 
 async function waitForCliVerificationUrl(capture: CliTestCapture, timeoutMs: number = 5_000): Promise<string> {

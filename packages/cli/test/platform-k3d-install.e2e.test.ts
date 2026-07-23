@@ -75,11 +75,10 @@ describe.sequential('production Kubernetes install', (): void => {
       const suffix: string = randomUUID().replaceAll('-', '').slice(0, 12);
       const ownerEmail: string = `platform-e2e-${suffix}@compartment.test`;
       const ownerPassword: string = `PlatformE2e-${randomBytes(24).toString('base64url')}!`;
-      const installerCli: SelfHostedUserSetupCli = await createFreshCli();
+      const installerCli: SelfHostedUserSetupCli = await createFreshCli(ownerPassword);
       const result: InstallResponse = await installerCli.runJson(
         `install --api-url ${platformApiUrl} --base-domain ${platformBaseDomain} --values ${platformValuesPath} --kube-context ${platformKubeContext} --namespace ${platformNamespace} --release-name compartment --email ${ownerEmail} --organization "${platformOrganizationName}" --organization-slug ${platformOrganizationSlug}`,
         installResponseSchema,
-        { input: `${ownerPassword}\n${ownerPassword}\n` },
       );
 
       await expectCleanControllerStartup();
@@ -138,10 +137,14 @@ describe.sequential('production Kubernetes install', (): void => {
   );
 });
 
-async function createFreshCli(): Promise<SelfHostedUserSetupCli> {
+async function createFreshCli(adminPassword?: string): Promise<SelfHostedUserSetupCli> {
   const homeDirectory: string = await mkdtemp(join(tempRootDirectory, 'client-'));
   createdDirectories.push(homeDirectory);
-  return new SelfHostedUserSetupCli(buildSelfHostedUserSetupClientEnv(homeDirectory), installTimeoutMs);
+  const env: NodeJS.ProcessEnv = buildSelfHostedUserSetupClientEnv(homeDirectory);
+  if (adminPassword !== undefined) {
+    env.COMPARTMENT_ADMIN_PASSWORD = adminPassword;
+  }
+  return new SelfHostedUserSetupCli(env, installTimeoutMs);
 }
 
 async function expectCleanControllerStartup(): Promise<void> {

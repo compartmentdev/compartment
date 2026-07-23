@@ -22,6 +22,7 @@ interface SelfHostedUserSetupCommandInput {
   readonly cwd?: string | undefined;
   readonly env?: NodeJS.ProcessEnv | undefined;
   readonly input?: string | undefined;
+  readonly promptedInput?: boolean | undefined;
   readonly timeoutMs: number;
 }
 
@@ -41,7 +42,7 @@ interface SelfHostedUserSetupCliCommandLineInput {
   readonly timeoutMs: number;
 }
 
-interface SelfHostedUserSetupCliJsonCommandLineInput<TPayload> extends SelfHostedUserSetupCliCommandLineInput {
+export interface SelfHostedUserSetupCliJsonCommandLineInput<TPayload> extends SelfHostedUserSetupCliCommandLineInput {
   readonly parser: SelfHostedUserSetupJsonParser<TPayload>;
 }
 
@@ -135,6 +136,19 @@ export async function runBuiltCliJsonCommandLine<TPayload>(
   return input.parser.parse(JSON.parse(result.stdout) as JsonValue);
 }
 
+export async function runBuiltCliInteractiveJsonCommandLine<TPayload>(
+  input: SelfHostedUserSetupCliJsonCommandLineInput<TPayload>,
+): Promise<TPayload> {
+  const result: SelfHostedUserSetupCommandResult = await runCommand({
+    ...input,
+    argv: buildPseudoTerminalArgv(splitCliCommandLine(input.command)),
+    promptedInput: true,
+  });
+  expectSuccessfulCommand(result, input.command);
+
+  return input.parser.parse(readPseudoTerminalJson(result.stdout));
+}
+
 export async function runCommand(input: SelfHostedUserSetupCommandInput): Promise<SelfHostedUserSetupCommandResult> {
   return await startCommand(input).result;
 }
@@ -146,6 +160,9 @@ function startCommand(input: SelfHostedUserSetupCommandInput): SelfHostedUserSet
   let completed: boolean = false;
   let timedOut: boolean = false;
   let forceKillTimeout: NodeJS.Timeout | null = null;
+  const promptedInputLines: string[] =
+    input.promptedInput === true ? (input.input ?? '').split('\n').filter((line: string): boolean => line !== '') : [];
+  let promptedInputCount: number = 0;
   const child: ChildProcess = spawn(input.argv[0] ?? '', input.argv.slice(1), {
     cwd: resolveCommandCwd(input),
     env: buildCommandEnv(input),
@@ -156,6 +173,7 @@ function startCommand(input: SelfHostedUserSetupCommandInput): SelfHostedUserSet
       child.stdout?.setEncoding('utf8');
       child.stdout?.on('data', (chunk: string | Buffer): void => {
         stdout = appendCappedOutput(stdout, chunk.toString());
+        promptedInputCount = writePromptedInput(child, stdout, promptedInputLines, promptedInputCount);
       });
       child.stderr?.setEncoding('utf8');
       child.stderr?.on('data', (chunk: string | Buffer): void => {
@@ -179,7 +197,9 @@ function startCommand(input: SelfHostedUserSetupCommandInput): SelfHostedUserSet
     },
   );
 
-  child.stdin?.end(input.input);
+  if (input.promptedInput !== true) {
+    child.stdin?.end(input.input);
+  }
   const timeout: NodeJS.Timeout = setTimeout((): void => {
     if (completed) {
       return;
@@ -197,6 +217,25 @@ function startCommand(input: SelfHostedUserSetupCommandInput): SelfHostedUserSet
   return new StartedSelfHostedUserSetupCommand((): string => stderr, resultPromise);
 }
 
+function writePromptedInput(
+  child: ChildProcess,
+  output: string,
+  inputLines: readonly string[],
+  writtenCount: number,
+): number {
+  const promptCount: number = countSecretPrompts(output);
+  let nextWrittenCount: number = writtenCount;
+  while (nextWrittenCount < promptCount && nextWrittenCount < inputLines.length) {
+    child.stdin?.write(`${inputLines[nextWrittenCount] ?? ''}\n`);
+    nextWrittenCount += 1;
+  }
+  return nextWrittenCount;
+}
+
+function countSecretPrompts(output: string): number {
+  return [...output.matchAll(/Password: |Confirm password: /gu)].length;
+}
+
 function resolveCommandCwd(input: SelfHostedUserSetupCommandInput): string {
   return input.cwd ?? selfHostedUserSetupRepoRoot;
 }
@@ -207,6 +246,25 @@ function buildCommandEnv(input: SelfHostedUserSetupCommandInput): NodeJS.Process
   delete env.INIT_CWD;
   env.PWD = cwd;
   return env;
+}
+
+function buildPseudoTerminalArgv(args: readonly string[]): readonly string[] {
+  const command: string = buildSelfHostedUserSetupCliArgv(args).map(quoteShellArgument).join(' ');
+  return ['script', '-q', '-E', 'never', '-e', '-c', command, '/dev/null'];
+}
+
+function quoteShellArgument(value: string): string {
+  return `'${value.replaceAll("'", "'\"'\"'")}'`;
+}
+
+function readPseudoTerminalJson(output: string): JsonValue {
+  const jsonStart: number = output.indexOf('{');
+  const jsonEnd: number = output.lastIndexOf('}');
+  if (jsonStart < 0 || jsonEnd < jsonStart) {
+    throw new Error(`Expected pseudo-terminal output to contain a JSON object.\n${formatCommandOutput(output)}`);
+  }
+
+  return JSON.parse(output.slice(jsonStart, jsonEnd + 1)) as JsonValue;
 }
 
 export async function runTimedStep<TResult>(label: string, step: () => Promise<TResult>): Promise<TResult> {

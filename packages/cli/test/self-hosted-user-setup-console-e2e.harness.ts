@@ -412,6 +412,7 @@ async function provisionConsoleE2eLoginPrincipal(
     activateResponseSchema,
     {
       input: `${seed.userPassword}\n${seed.userPassword}\n`,
+      interactive: true,
     },
   );
   expect(activationPayload.principal.email).toBe(seed.userEmail);

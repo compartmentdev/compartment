@@ -5,11 +5,13 @@ import { waitForCliVerificationUrl } from './self-hosted-user-setup-browser-logi
 import {
   expectFailedCommand,
   expectSuccessfulCommand,
+  runBuiltCliInteractiveJsonCommandLine,
   runBuiltCliJsonCommandLine,
   splitCliCommandLine,
   startBuiltCliCommandLine,
   type SelfHostedUserSetupCommandResult,
   type SelfHostedUserSetupJsonParser,
+  type SelfHostedUserSetupCliJsonCommandLineInput,
   type SelfHostedUserSetupRunningCommand,
 } from './self-hosted-user-setup-command.harness';
 
@@ -26,6 +28,7 @@ interface SelfHostedUserSetupBrowserLoginOptions {
 interface SelfHostedUserSetupCliRunOptions {
   readonly cwd?: string | undefined;
   readonly input?: string | undefined;
+  readonly interactive?: boolean | undefined;
 }
 
 const selfHostedUserSetupJsonOutputOption: string = '--output json';
@@ -90,14 +93,17 @@ export class SelfHostedUserSetupCli {
     parser: SelfHostedUserSetupJsonParser<TPayload>,
     options: SelfHostedUserSetupCliRunOptions = {},
   ): Promise<TPayload> {
-    return await runBuiltCliJsonCommandLine({
+    const input: SelfHostedUserSetupCliJsonCommandLineInput<TPayload> = {
       command: buildSelfHostedUserSetupJsonCommand(command),
       cwd: options.cwd,
       env: this.#env,
       input: options.input,
       parser,
       timeoutMs: this.#timeoutMs,
-    });
+    };
+    return options.interactive === true
+      ? await runBuiltCliInteractiveJsonCommandLine(input)
+      : await runBuiltCliJsonCommandLine(input);
   }
 
   async run(
