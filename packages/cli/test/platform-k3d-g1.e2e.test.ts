@@ -87,7 +87,7 @@ describeSelfHostedUserSetupE2e('platform k3d G1 edge gate', (): void => {
       await viewer.runJson(
         `activate --api-url ${runtime.apiUrl} --email ${viewerEmail} --token ${requireActivationToken(invite)}`,
         activateResponseSchema,
-        { input: `${viewerPassword}\n${viewerPassword}\n` },
+        { input: `${viewerPassword}\n${viewerPassword}\n`, interactive: true },
       );
       const role: AccessRoleResponse = await admin.runJson(
         'role create platform-k3d-g1-reader --permission project.read app.route.access',
