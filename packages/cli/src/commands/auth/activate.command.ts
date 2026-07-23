@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import type { ActivateResponse } from '@compartment/contracts';
 import { renderOutput } from '../../output/render';
 import { promptActivationToken, promptLoginEmail, promptNewPassword } from '../../prompts/prompt';
+import { validatePassword } from '../../prompts/prompt.validation';
 import { activate } from '../../services/activation.service';
 import { readCliConfig } from '../../store/config.store';
 import type { CliConfig, CliOrganizationConfig } from '../../store/config.types';
@@ -12,6 +13,8 @@ import { persistLoginBindingIfNeeded } from './login-binding.service';
 import { persistResolvedLoginSession, type PersistResolvedLoginSessionResult } from './login-session.helpers';
 import type { ResolvedLoginRemote } from './auth-remote.command';
 import { addRemoteOption, assertValidRemoteOption } from '../remote.command.helpers';
+
+const viewerPasswordEnvName: string = ['COMPARTMENT', 'VIEWER', 'PASSWORD'].join('_');
 
 interface ResolvedActivationPrompt {
   email: string;
@@ -63,8 +66,21 @@ async function activateResolvedPrompt(
   return await activate(createApiContext(prompt.remote.apiUrl), {
     bootstrapToken: prompt.token,
     email: prompt.email,
-    password: await promptNewPassword(dependencies.io, 'Password'),
+    password: await resolveActivateViewerPassword(dependencies),
   });
+}
+
+async function resolveActivateViewerPassword(dependencies: CliCommandDependencies): Promise<string> {
+  const configuredPassword: string | undefined = process.env[viewerPasswordEnvName];
+  if (configuredPassword === undefined || configuredPassword.length === 0) {
+    return await promptNewPassword(dependencies.io, 'Password');
+  }
+
+  const validationError: string | undefined = validatePassword(configuredPassword);
+  if (validationError !== undefined) {
+    throw new Error(`${viewerPasswordEnvName}: ${validationError}`);
+  }
+  return configuredPassword;
 }
 
 async function persistActivateAndBinding(
