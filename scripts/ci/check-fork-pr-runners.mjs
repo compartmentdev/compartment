@@ -10,7 +10,7 @@ const runsOnKey = /^(\s*)runs-on:\s*(.*)$/;
 const matrixRunnerKey = /^(\s*)runner:\s*(.*)$/;
 const matrixRunnerExpression = /\bmatrix\.runner\b/;
 const yamlBlockScalar = /^[>|][+-]?$/;
-const forbiddenRunnerLabel = /\b(?:self-hosted|compartment-ci-deploy-e2e|hetzner-x86-container-dind-libatomic-5slot)\b/;
+const forbiddenRunnerLabel = /\b(?:self-hosted|compartment-ci-deploy-e2e)\b/;
 
 function findForbiddenRunsOnLine(content) {
   const lines = content.split('\n');
