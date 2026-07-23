@@ -35,7 +35,39 @@ describe('deployment output service', (): void => {
       status: 'succeeded',
     });
 
-    expect(createDeployResultMessage(response)).toBe('Deployment dep_123 is active at http://127.0.0.1:31000 in 5.0s.');
+    expect(createDeployResultMessage(response)).toBe(
+      'Deployment dep_123 is active at http://127.0.0.1:31000 in 5.0s.\nProtected by app access — open in a browser and sign in to view.',
+    );
+  });
+
+  it('explains browser sign-in for an app-access-protected route', (): void => {
+    const response: DeploymentStatusView = createDeploymentStatusResponse({
+      accessProtected: true,
+      completedAt: '2026-03-23T12:00:05.000Z',
+      createdAt: '2026-03-23T12:00:00.000Z',
+      operationCompletedAt: '2026-03-23T12:00:05.000Z',
+      operationCreatedAt: '2026-03-23T12:00:00.000Z',
+      routeUrl: 'http://127.0.0.1:31000',
+      status: 'succeeded',
+    });
+
+    expect(createDeployResultMessage(response)).toBe(
+      'Deployment dep_123 is active at http://127.0.0.1:31000 in 5.0s.\nProtected by app access — open in a browser and sign in to view.',
+    );
+  });
+
+  it('does not describe public routes as app-access protected', (): void => {
+    const response: DeploymentStatusView = createDeploymentStatusResponse({
+      accessProtected: false,
+      completedAt: '2026-03-23T12:00:05.000Z',
+      createdAt: '2026-03-23T12:00:00.000Z',
+      operationCompletedAt: '2026-03-23T12:00:05.000Z',
+      operationCreatedAt: '2026-03-23T12:00:00.000Z',
+      routeUrl: 'http://127.0.0.1:31000',
+      status: 'succeeded',
+    });
+
+    expect(createDeployResultMessage(response)).not.toContain('Protected by app access');
   });
 
   it('shows deployment labels in summary output', (): void => {
@@ -50,7 +82,7 @@ describe('deployment output service', (): void => {
     });
 
     expect(createDeployResultMessage(response)).toBe(
-      'Deployment dep_123 [label="release=1;hotfix"] is active at http://127.0.0.1:31000 in 5.0s.',
+      'Deployment dep_123 [label="release=1;hotfix"] is active at http://127.0.0.1:31000 in 5.0s.\nProtected by app access — open in a browser and sign in to view.',
     );
   });
 
@@ -186,7 +218,7 @@ describe('deployment output service', (): void => {
     };
 
     expect(createDeployResultMessage(response)).toBe(
-      'Deployments for smoke-web/production: web active at http://127.0.0.1:31000; admin active at http://127.0.0.1:31001.\nResource postgres is running.',
+      'Deployments for smoke-web/production: web active at http://127.0.0.1:31000; admin active at http://127.0.0.1:31001.\nResource postgres is running.\nProtected by app access — open in a browser and sign in to view.',
     );
   });
 
@@ -297,6 +329,7 @@ describe('deployment output service', (): void => {
 });
 
 interface CreateDeploymentStatusResponseInput {
+  accessProtected?: boolean | undefined;
   completedAt: string | null;
   createdAt: string;
   label?: string | null;
@@ -309,6 +342,7 @@ interface CreateDeploymentStatusResponseInput {
 
 function createDeploymentStatusResponse(input: CreateDeploymentStatusResponseInput): DeploymentStatusView {
   const deployment: DeploymentReadSummary = createActiveDeploymentReadSummaryFixture({
+    ...(input.accessProtected === undefined ? {} : { accessProtected: input.accessProtected }),
     completedAt: input.completedAt,
     createdAt: input.createdAt,
     isActive: input.status === 'succeeded',

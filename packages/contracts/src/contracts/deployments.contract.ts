@@ -45,6 +45,7 @@ interface DeploymentRollbackAvailabilityInput {
 }
 
 export interface DeploymentSummary {
+  accessProtected?: boolean | undefined;
   build: ResolvedCompartmentServiceBuildConfig;
   completedAt: string | null;
   createdAt: string;
@@ -145,6 +146,7 @@ const deploymentLabelSchema: ContractSchema<string> = z
 const deployRequestLabelSchema: ContractSchema<string> = z.string().trim().pipe(deploymentLabelSchema);
 
 type DeploymentSummaryObjectSchema = z.ZodObject<{
+  accessProtected: z.ZodOptional<z.ZodBoolean>;
   build: typeof resolvedCompartmentServiceBuildConfigSchema;
   completedAt: z.ZodNullable<z.ZodString>;
   createdAt: z.ZodString;
@@ -166,6 +168,7 @@ type DeploymentSummaryObjectSchema = z.ZodObject<{
 
 export const deploymentSummarySchema: DeploymentSummaryObjectSchema = z
   .object({
+    accessProtected: z.boolean().optional(),
     build: resolvedCompartmentServiceBuildConfigSchema,
     id: z.string().min(1),
     serviceName: compartmentServiceNameSchema,

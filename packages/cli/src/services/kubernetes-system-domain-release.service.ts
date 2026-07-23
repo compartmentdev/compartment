@@ -167,6 +167,7 @@ async function applyMaterializedDomainRelease(
   const imageTrustValuesPath: string = resolve(materializedDirectory, 'image-trust-values.json');
   await writeVerifiedKubernetesReleaseImageValues({
     ...(target.kubeContext === undefined ? {} : { kubeContext: target.kubeContext }),
+    ...(target.kubeconfigPath === undefined ? {} : { kubeconfigPath: target.kubeconfigPath }),
     namespace: target.namespace,
     operatorValuesPaths: [valuesPath],
     outputPath: imageTrustValuesPath,

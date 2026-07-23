@@ -9,6 +9,11 @@ import { resolveVariableValue } from './variable.command.input';
 import { assertDeclaredResourceOutputBinding, createMutatingVariableScopeInput } from './variable.command.helpers';
 import { createSetVariableMessage } from './variable.command.output';
 
+interface SetVariableArguments {
+  keyName: string;
+  value?: string | undefined;
+}
+
 export function registerSetVariableCommand(program: Command, dependencies: CliCommandDependencies): void {
   addRemoteOption(
     program
@@ -33,15 +38,16 @@ async function executeSetVariableCommand(
   value: string | undefined,
   options: SetVariableCommandOptions,
 ): Promise<void> {
+  const resolvedArguments: SetVariableArguments = resolveSetVariableArguments(keyName, value);
   const scopeInput: VariableScopeInput = await createMutatingVariableScopeInput(options);
-  assertSetVariableSourceOptions(value, options);
+  assertSetVariableSourceOptions(resolvedArguments.value, options);
   if (options.fromResource !== undefined) {
     await assertDeclaredResourceOutputBinding(scopeInput, options.fromResource, options.service!);
   }
   const request: Omit<SetVariableInput, keyof VariableScopeInput> = await buildSetVariableRequest(
     dependencies,
-    keyName,
-    value,
+    resolvedArguments.keyName,
+    resolvedArguments.value,
     options,
   );
   const response: VariableResponse = await setVariable(await createRemoteAuthenticatedContext(options), {
@@ -50,6 +56,20 @@ async function executeSetVariableCommand(
   });
 
   renderOutput(dependencies.io, options.output, response, createSetVariableMessage(response));
+}
+
+function resolveSetVariableArguments(keyName: string, value: string | undefined): SetVariableArguments {
+  const separatorIndex: number = keyName.indexOf('=');
+  if (separatorIndex === -1) {
+    return { keyName, ...(value === undefined ? {} : { value }) };
+  }
+  if (value !== undefined) {
+    throw new Error('Pass the variable value either as KEY VALUE or KEY=VALUE, not both.');
+  }
+  return {
+    keyName: keyName.slice(0, separatorIndex),
+    value: keyName.slice(separatorIndex + 1),
+  };
 }
 
 async function buildSetVariableRequest(

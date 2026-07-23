@@ -62,6 +62,34 @@ describe('buildDeploymentRunLogsResponse', (): void => {
       repositoryOwner: null,
     });
   });
+
+  it('presents app-access protection from the persisted deployment access mode', (): void => {
+    const authenticatedDeployment: DeploymentJoinedRow = createDeploymentJoinedRow(
+      'web',
+      'succeeded',
+      '2026-04-30T18:11:03.109Z',
+    );
+    authenticatedDeployment.deployment.accessMode = 'authenticated';
+    const publicDeployment: DeploymentJoinedRow = createDeploymentJoinedRow(
+      'backoffice',
+      'succeeded',
+      '2026-04-30T18:11:04.109Z',
+    );
+
+    const authenticatedResponse: DeploymentRunLogsResponse = buildDeploymentRunLogsResponse(
+      createDeploymentRunLogsResponseInput({
+        runDeployments: [authenticatedDeployment],
+      }),
+    );
+    const publicResponse: DeploymentRunLogsResponse = buildDeploymentRunLogsResponse(
+      createDeploymentRunLogsResponseInput({
+        runDeployments: [publicDeployment],
+      }),
+    );
+
+    expect(authenticatedResponse.deployments[0]?.accessProtected).toBe(true);
+    expect(publicResponse.deployments[0]?.accessProtected).toBe(false);
+  });
 });
 
 function createDeploymentRunLogsResponseInput(input: {

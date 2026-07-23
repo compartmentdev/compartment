@@ -69,5 +69,5 @@ function stripSingleTrailingLineBreak(value: string): string {
 function buildMissingVariableValueMessage(keyName: string, sensitive: boolean): string {
   return sensitive
     ? `Missing value for ${keyName}. Use --stdin or run from a TTY to enter it securely.`
-    : `Missing value for ${keyName}. Pass a value, use --stdin, or run from a TTY to be prompted.`;
+    : `Missing value for ${keyName}. Use "variable set ${keyName} VALUE" or "variable set ${keyName}=VALUE", pass --stdin, or run from a TTY to be prompted.`;
 }

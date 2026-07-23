@@ -9,7 +9,11 @@ import {
   setKubernetesSystemDomain,
   verifyKubernetesSystemDomain,
 } from '../../services/kubernetes-system-domain.service';
-import type { KubernetesDomainVersionedInput } from '../../services/kubernetes-operator.service.types';
+import type {
+  KubernetesDomainVersionedInput,
+  KubernetesOperatorTarget,
+} from '../../services/kubernetes-operator.service.types';
+import { withResolvedKubernetesOperatorTarget } from '../../services/kubernetes-operator-target.service';
 import type { CliCommandDependencies } from '../command.types';
 import {
   addKubernetesOperatorReleaseOptions,
@@ -75,8 +79,9 @@ function registerDomainStatusCommand(program: Command, dependencies: CliCommandD
   addKubernetesOperatorTargetOptions(
     program.command('status').description('Refresh and show system-domain status'),
   ).action(async (options: KubernetesOperatorCommandOptions): Promise<void> => {
-    const result: SystemDomainStatusResponse = await getKubernetesSystemDomainStatus(
+    const result: SystemDomainStatusResponse = await withResolvedKubernetesOperatorTarget(
       resolveKubernetesOperatorTarget(options),
+      getKubernetesSystemDomainStatus,
     );
     renderOutput(dependencies.io, options.output, result, createSystemDomainStatusMessage(result));
   });
@@ -90,11 +95,17 @@ function registerDomainSetCommand(program: Command, dependencies: CliCommandDepe
       .requiredOption('--base-domain <domain>', 'Public base domain')
       .option('--tls <mode>', 'external or custom-cert', 'external'),
   ).action(async (options: SystemDomainSetCommandOptions): Promise<void> => {
-    const result: SystemDomainMutationResponse = await setKubernetesSystemDomain({
-      ...resolveKubernetesOperatorTarget(options),
-      baseDomain: readSystemDomainBaseDomain(options.baseDomain),
-      tlsMode: readSystemDomainTlsMode(options.tls),
-    });
+    const baseDomain: string = readSystemDomainBaseDomain(options.baseDomain);
+    const tlsMode: 'custom-cert' | 'external' = readSystemDomainTlsMode(options.tls);
+    const result: SystemDomainMutationResponse = await withResolvedKubernetesOperatorTarget(
+      resolveKubernetesOperatorTarget(options),
+      async (target: KubernetesOperatorTarget): Promise<SystemDomainMutationResponse> =>
+        await setKubernetesSystemDomain({
+          ...target,
+          baseDomain,
+          tlsMode,
+        }),
+    );
     renderOutput(dependencies.io, options.output, result, createSystemDomainMutationMessage(result));
   });
 }
@@ -109,12 +120,18 @@ function registerDomainAttachCertificateCommand(program: Command, dependencies: 
       .option('--expected-version <version>', systemDomainExpectedVersionDescription),
   ).action(async (options: SystemDomainAttachCertificateCommandOptions): Promise<void> => {
     const resolved: ResolvedSystemDomainVersionedCommand = resolveSystemDomainVersionedCommand(options);
-    const result: SystemDomainMutationResponse = await attachKubernetesSystemDomainCertificate({
-      ...resolved.target,
-      ...(resolved.expectedSetupVersion === undefined ? {} : { expectedSetupVersion: resolved.expectedSetupVersion }),
-      certificateFile: options.certFile,
-      privateKeyFile: options.keyFile,
-    });
+    const result: SystemDomainMutationResponse = await withResolvedKubernetesOperatorTarget(
+      resolveKubernetesOperatorTarget(options),
+      async (target: KubernetesOperatorTarget): Promise<SystemDomainMutationResponse> =>
+        await attachKubernetesSystemDomainCertificate({
+          ...target,
+          ...(resolved.expectedSetupVersion === undefined
+            ? {}
+            : { expectedSetupVersion: resolved.expectedSetupVersion }),
+          certificateFile: options.certFile,
+          privateKeyFile: options.keyFile,
+        }),
+    );
     renderOutput(dependencies.io, options.output, result, createSystemDomainMutationMessage(result));
   });
 }
@@ -133,11 +150,22 @@ function registerDomainMutationCommand(
       .description(description)
       .option('--expected-version <version>', systemDomainExpectedVersionDescription),
   ).action(async (options: SystemDomainVersionedCommandOptions): Promise<void> => {
-    const resolved: ResolvedSystemDomainVersionedCommand = resolveSystemDomainVersionedCommand(options);
-    const result: SystemDomainMutationResponse = await mutate({
-      ...resolved.target,
-      ...(resolved.expectedSetupVersion === undefined ? {} : { expectedSetupVersion: resolved.expectedSetupVersion }),
-    });
+    const result: SystemDomainMutationResponse = await runVersionedDomainMutation(options, mutate);
     renderOutput(dependencies.io, options.output, result, createSystemDomainMutationMessage(result));
   });
+}
+
+async function runVersionedDomainMutation(
+  options: SystemDomainVersionedCommandOptions,
+  mutate: VersionedDomainMutation,
+): Promise<SystemDomainMutationResponse> {
+  const resolved: ResolvedSystemDomainVersionedCommand = resolveSystemDomainVersionedCommand(options);
+  return await withResolvedKubernetesOperatorTarget(
+    resolveKubernetesOperatorTarget(options),
+    async (target: KubernetesOperatorTarget): Promise<SystemDomainMutationResponse> =>
+      await mutate({
+        ...target,
+        ...(resolved.expectedSetupVersion === undefined ? {} : { expectedSetupVersion: resolved.expectedSetupVersion }),
+      }),
+  );
 }

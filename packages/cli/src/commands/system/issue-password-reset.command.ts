@@ -1,6 +1,8 @@
 import type { IssuePasswordResetResponse } from '@compartment/contracts';
 import type { Command } from 'commander';
 import { renderOutput } from '../../output/render';
+import { withResolvedKubernetesOperatorTarget } from '../../services/kubernetes-operator-target.service';
+import type { KubernetesOperatorTarget } from '../../services/kubernetes-operator.service.types';
 import { issueKubernetesPasswordReset } from '../../services/kubernetes-password-recovery.service';
 import type { CliCommandDependencies } from '../command.types';
 import { addKubernetesOperatorTargetOptions, resolveKubernetesOperatorTarget } from './system.command.options';
@@ -14,9 +16,10 @@ export function registerIssuePasswordResetSystemCommand(program: Command, depend
       .description('Issue a private one-time password reset')
       .requiredOption('--email <email>', 'Local-password account email'),
   ).action(async (options: IssuePasswordResetCommandOptions): Promise<void> => {
-    const result: IssuePasswordResetResponse = await issueKubernetesPasswordReset(
+    const result: IssuePasswordResetResponse = await withResolvedKubernetesOperatorTarget(
       resolveKubernetesOperatorTarget(options),
-      options.email,
+      async (target: KubernetesOperatorTarget): Promise<IssuePasswordResetResponse> =>
+        await issueKubernetesPasswordReset(target, options.email),
     );
     renderOutput(dependencies.io, options.output, result, createIssuePasswordResetMessage(result));
   });

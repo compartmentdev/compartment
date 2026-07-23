@@ -3,10 +3,13 @@ import type { DomainHostPlan } from '@compartment/contracts';
 export interface KubernetesOperatorTarget {
   chartPath?: string | undefined;
   kubeContext?: string | undefined;
+  kubeconfigPath?: string | undefined;
   namespace: string;
   releaseName: string;
   valuesPath?: string | undefined;
 }
+
+export type KubernetesOperatorTargetAction<Result> = (target: KubernetesOperatorTarget) => Promise<Result>;
 
 export interface KubernetesSystemApiRequest {
   body?: object | undefined;

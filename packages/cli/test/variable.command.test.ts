@@ -244,6 +244,50 @@ describe.sequential('compartment variable commands', { timeout: 15_000 }, (): vo
     expect(result.payload.variable.valueHidden).toBe(true);
   });
 
+  it.each([
+    ['GREETING=privet', 'GREETING', 'privet'],
+    ['TOKEN=a=b=c', 'TOKEN', 'a=b=c'],
+  ])(
+    'accepts KEY=VALUE syntax and splits only the first equals sign: %s',
+    async (argument: string, expectedKey: string, expectedValue: string): Promise<void> => {
+      const projectDirectory: string = await createProjectDirectory(tempRoot);
+      const fetchMock: Mock = vi
+        .fn()
+        .mockImplementation(async (_input: string | URL, init?: RequestInit): Promise<Response> => {
+          const body: Record<string, VariableRequestFieldValue> = readJsonRequestBody(init);
+          const isExpectedRequest: boolean = body.keyName === expectedKey && body.value === expectedValue;
+          return await Promise.resolve(
+            new Response(
+              JSON.stringify(
+                buildEnvironmentVariableResponse(buildPlainValueVariableDetail(expectedKey, expectedValue)),
+              ),
+              { headers: { 'Content-Type': 'application/json' }, status: isExpectedRequest ? 200 : 400 },
+            ),
+          );
+        });
+      vi.stubGlobal('fetch', fetchMock);
+      process.chdir(projectDirectory);
+
+      const result: CliCommandResult = await runCliCommand(['variable', 'set', argument]);
+
+      expectCliSuccess(result);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('shows both supported forms when a variable value is missing', async (): Promise<void> => {
+    const projectDirectory: string = await createProjectDirectory(tempRoot);
+    const fetchMock: Mock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    process.chdir(projectDirectory);
+
+    const result: CliCommandResult = await runCliCommand(['variable', 'set', 'GREETING']);
+
+    expectCliFailure(result, 'variable set GREETING VALUE');
+    expect(readCliStderr(result.capture)).toContain('variable set GREETING=VALUE');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('rejects resource and service target ambiguity before sending requests', async (): Promise<void> => {
     const projectDirectory: string = await createProjectDirectory(tempRoot);
     const fetchMock: Mock = vi.fn();

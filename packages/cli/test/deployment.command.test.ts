@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   deployResponseSchema,
+  deploymentStatusResponseSchema,
   type DeploymentListResponse,
   type DeploymentReadSummary,
   type DeploymentStatusResponse,
@@ -188,6 +189,7 @@ describe.sequential('compartment deployment commands', (): void => {
 
     expectCliSuccess(result);
     expect(result.payload).toEqual(response);
+    expect(result.payload.deployments[0]?.accessProtected).toBe(true);
   });
 
   it('clears the stored first-deploy onboarding session after an accepted detached deploy', async (): Promise<void> => {
@@ -371,11 +373,13 @@ describe.sequential('compartment deployment commands', (): void => {
 
     expectCliSuccess(result);
     expect(readCliStderr(capture)).toBe('');
-    expect(JSON.parse(readCliStdout(capture))).toMatchObject({
+    const payload: DeploymentStatusResponse = deploymentStatusResponseSchema.parse(JSON.parse(readCliStdout(capture)));
+    expect(payload).toMatchObject({
       project: {
         name: 'smoke-web',
       },
     });
+    expect(payload.deployments[0]?.accessProtected).toBe(true);
   });
 
   it.each([

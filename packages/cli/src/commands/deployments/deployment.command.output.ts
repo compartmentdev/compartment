@@ -8,6 +8,7 @@ import type {
   ResourceSummary,
   DeploymentSummary,
 } from '@compartment/contracts';
+import { appendDeploymentAccessProtectionMessage } from '../../services/deployment-access-output.service';
 import { readDisplayedDeployments } from '../../services/deployment-displayed-deployments.service';
 import { readDeploymentDurationLabel } from '../../services/deployment-duration.service';
 import { buildNoDeploymentsFoundMessage } from '../../services/deployment-empty-message.service';
@@ -32,23 +33,21 @@ export function createDeployResultMessage(
   if (deployments.length === 0) {
     return buildNoDeploymentsMessage(response);
   }
-  if (deployments.length > 1) {
-    return appendResourceSummary(
-      appendVerboseDetails(buildMultiDeploymentDeployMessage(response), response, options.verbose),
-      response,
-    );
-  }
+  const baseMessage: string =
+    deployments.length > 1
+      ? buildMultiDeploymentDeployMessage(response)
+      : buildSingleDeploymentDeployMessage(deployments[0]!, options.now);
+  const message: string = appendResourceSummary(appendVerboseDetails(baseMessage, response, options.verbose), response);
+  return appendDeploymentAccessProtectionMessage(message, deployments);
+}
 
-  const deployment: DeploymentReadSummary = deployments[0]!;
-  const summary: DeploymentSummaryParts = buildDeploymentSummaryParts(deployment, options.now);
+function buildSingleDeploymentDeployMessage(deployment: DeploymentReadSummary, now: number | undefined): string {
+  const summary: DeploymentSummaryParts = buildDeploymentSummaryParts(deployment, now);
   const durationText: string = readDeployDurationText(summary.durationLabel);
   const labelText: string = formatDeploymentLabelTag(deployment.label);
-  const baseMessage: string =
-    deployment.routeUrl !== null
-      ? `Deployment ${deployment.id}${labelText} is active at ${deployment.routeUrl}${durationText}.`
-      : `Deployment ${deployment.id}${labelText} is ${deployment.status}${durationText}.`;
-
-  return appendResourceSummary(appendVerboseDetails(baseMessage, response, options.verbose), response);
+  return deployment.routeUrl !== null
+    ? `Deployment ${deployment.id}${labelText} is active at ${deployment.routeUrl}${durationText}.`
+    : `Deployment ${deployment.id}${labelText} is ${deployment.status}${durationText}.`;
 }
 
 export function createDeployDetachMessage(response: DeployResponse): string {

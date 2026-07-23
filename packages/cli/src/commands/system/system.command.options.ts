@@ -42,10 +42,7 @@ export function resolveSystemDomainVersionedCommand(
   options: SystemDomainVersionedCommandOptions,
 ): ResolvedSystemDomainVersionedCommand {
   const expectedSetupVersion: number | undefined = readExpectedSetupVersion(options.expectedVersion);
-  return {
-    ...(expectedSetupVersion === undefined ? {} : { expectedSetupVersion }),
-    target: resolveKubernetesOperatorTarget(options),
-  };
+  return expectedSetupVersion === undefined ? {} : { expectedSetupVersion };
 }
 
 export function resolveKubernetesOperatorTarget(options: KubernetesOperatorCommandOptions): KubernetesOperatorTarget {
