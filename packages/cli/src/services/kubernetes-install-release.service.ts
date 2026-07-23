@@ -1,4 +1,5 @@
-import type { JsonValue } from '@compartment/utils';
+import { parseJsonWith, type JsonValue } from '@compartment/utils';
+import { z } from 'zod';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
@@ -12,6 +13,8 @@ import type {
 } from './kubernetes-install.service.types';
 
 type HelmJsonObject = Record<string, JsonValue>;
+const helmJsonObjectSchema: z.ZodType<HelmJsonObject> = z.record(z.custom<JsonValue>());
+const helmReleaseListSchema: z.ZodType<JsonValue[]> = z.array(z.custom<JsonValue>());
 const kubernetesInspectionTimeoutMs: number = 30_000;
 
 export async function readExistingKubernetesInstall(
@@ -77,10 +80,7 @@ async function runHelmInspection(command: readonly string[], operation: string):
 }
 
 function readNamedHelmRelease(output: string, releaseName: string): HelmReleaseSummary | null {
-  const value: JsonValue = parseHelmJson(output, 'release lookup');
-  if (!Array.isArray(value)) {
-    throw new Error('Helm release lookup returned an unexpected response.');
-  }
+  const value: JsonValue[] = parseJsonWith(helmReleaseListSchema, output);
   const candidate: JsonValue | undefined = value.find(
     (releaseCandidate: JsonValue): boolean =>
       isHelmJsonObject(releaseCandidate) && releaseCandidate.name === releaseName,
@@ -105,10 +105,7 @@ function requireDeployedHelmRelease(release: HelmReleaseSummary): void {
 }
 
 function parseExistingKubernetesInstall(output: string): ExistingKubernetesInstall {
-  const value: JsonValue = parseHelmJson(output, 'release values lookup');
-  if (!isHelmJsonObject(value)) {
-    throw new Error('Helm release values lookup returned an unexpected response.');
-  }
+  const value: HelmJsonObject = parseJsonWith(helmJsonObjectSchema, output);
   const platform: JsonValue | undefined = value.platform;
   const secrets: JsonValue | undefined = value.secrets;
   return {
@@ -179,14 +176,6 @@ function readOptionalSecretText(secrets: JsonValue | undefined, fieldName: strin
 
 function isHelmJsonObject(value: JsonValue | undefined): value is HelmJsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function parseHelmJson(output: string, operation: string): JsonValue {
-  try {
-    return JSON.parse(output) as JsonValue;
-  } catch {
-    throw new Error(`Helm ${operation} returned invalid JSON.`);
-  }
 }
 
 function escapeRegularExpression(value: string): string {

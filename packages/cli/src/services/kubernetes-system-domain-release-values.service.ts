@@ -1,8 +1,11 @@
-import type { JsonValue } from '@compartment/utils';
+import { parseJsonWith, type JsonValue } from '@compartment/utils';
+import { z } from 'zod';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
 import type { KubernetesOperatorTarget } from './kubernetes-operator.service.types';
+
+const helmDomainValuesSchema: z.ZodType<Record<string, JsonValue>> = z.record(z.custom<JsonValue>());
 
 export async function readPendingKubernetesDomainTlsSecretName(
   target: KubernetesOperatorTarget,
@@ -29,22 +32,11 @@ function buildHelmGetValuesCommand(target: KubernetesOperatorTarget): string[] {
 }
 
 function parsePendingTlsSecretName(output: string): string | undefined {
-  const value: JsonValue = parseJson(output);
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error('Helm returned invalid current domain values.');
-  }
+  const value: Record<string, JsonValue> = parseJsonWith(helmDomainValuesSchema, output);
   const customTls: JsonValue | undefined = value.customTls;
   if (typeof customTls !== 'object' || customTls === null || Array.isArray(customTls)) {
     return undefined;
   }
   const pendingSecretName: JsonValue | undefined = customTls.pendingSecretName;
   return typeof pendingSecretName === 'string' && pendingSecretName !== '' ? pendingSecretName : undefined;
-}
-
-function parseJson(output: string): JsonValue {
-  try {
-    return JSON.parse(output) as JsonValue;
-  } catch {
-    throw new Error('Invalid JSON returned by current Helm domain values.');
-  }
 }

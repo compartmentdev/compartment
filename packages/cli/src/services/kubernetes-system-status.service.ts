@@ -1,5 +1,6 @@
 import type { KubernetesPlatformWorkloadStatus } from '@compartment/contracts';
-import type { JsonValue } from '@compartment/utils';
+import { parseJsonWith, type JsonValue } from '@compartment/utils';
+import { z } from 'zod';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import {
@@ -14,6 +15,13 @@ import type {
   KubernetesWorkloadList,
   KubernetesWorkloadListItem,
 } from './kubernetes-system-status.service.types';
+
+const helmStatusJsonObjectSchema: z.ZodType<KubernetesHelmStatusJsonObject> = z.record(z.custom<JsonValue>());
+const kubernetesWorkloadListSchema: z.ZodType<KubernetesWorkloadList> = z
+  .object({
+    items: z.array(z.custom<KubernetesWorkloadListItem>()),
+  })
+  .passthrough();
 
 export async function readKubernetesHelmReleaseStatus(target: KubernetesOperatorTarget): Promise<string> {
   const result: CommandResult = await runCommand([
@@ -61,11 +69,7 @@ export async function readKubernetesPlatformWorkloads(
 }
 
 function parseWorkloadList(output: string): KubernetesWorkloadList {
-  try {
-    return JSON.parse(output) as KubernetesWorkloadList;
-  } catch {
-    throw new Error('Kubectl returned invalid workload JSON.');
-  }
+  return parseJsonWith(kubernetesWorkloadListSchema, output);
 }
 
 function readWorkloadStatus(item: KubernetesWorkloadListItem): KubernetesPlatformWorkloadStatus {
@@ -105,18 +109,13 @@ function readRequiredString(value: JsonValue | undefined, label: string): string
 }
 
 function readJsonObject(value: JsonValue | string | undefined, message: string): KubernetesHelmStatusJsonObject {
-  let parsed: JsonValue = value ?? null;
-  if (typeof value === 'string') {
-    try {
-      parsed = JSON.parse(value) as JsonValue;
-    } catch {
-      throw new Error(message);
-    }
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+  try {
+    return typeof value === 'string'
+      ? parseJsonWith(helmStatusJsonObjectSchema, value)
+      : helmStatusJsonObjectSchema.parse(value ?? null);
+  } catch {
     throw new Error(message);
   }
-  return parsed;
 }
 
 function compareWorkloads(left: KubernetesPlatformWorkloadStatus, right: KubernetesPlatformWorkloadStatus): number {

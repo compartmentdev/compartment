@@ -8,7 +8,8 @@ import {
   type DeploymentRunSummary,
   type DeploymentRunTriggerSummary,
 } from '@compartment/contracts';
-import type { JsonValue } from '@compartment/utils';
+import { parseJsonWith, type JsonValue } from '@compartment/utils';
+import { z } from 'zod';
 import type {
   DeploymentRunEventInput,
   DeploymentRunInput,
@@ -23,6 +24,7 @@ import {
 import { buildDeploymentRunLogLine, buildDeploymentRunSteps } from './deployment-run-steps.presenter';
 
 type ParsedJsonRecord = Record<string, JsonValue>;
+const parsedJsonRecordSchema: z.ZodType<ParsedJsonRecord> = z.record(z.custom<JsonValue>());
 
 export function buildDeploymentRunLogsResponse(result: DeploymentRunLogsResponseInput): DeploymentRunLogsResponse {
   const deployments: DeploymentReadSummary[] = result.deployments.map(buildDeploymentReadSummary);
@@ -102,13 +104,8 @@ function parseJsonRecord(value: string | null): ParsedJsonRecord | null {
   }
 
   try {
-    const parsed: JsonValue = JSON.parse(value) as JsonValue;
-    return isRecord(parsed) ? parsed : null;
+    return parseJsonWith(parsedJsonRecordSchema, value);
   } catch {
     return null;
   }
-}
-
-function isRecord(value: JsonValue): value is ParsedJsonRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
