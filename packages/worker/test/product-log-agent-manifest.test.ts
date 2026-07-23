@@ -28,6 +28,7 @@ describe('product log agent manifest', (): void => {
     expect(manifest).toContain('type: prometheus_exporter');
     expect(manifest).toContain('type: host_metrics');
     expect(manifest).toMatch(/compartment\.dev\/log-slo-lines-per-second: ['"]12000['"]/);
+    expect(manifest).toMatch(/image: timberio\/vector:0\.49\.0-alpine@sha256:[a-f0-9]{64}/u);
     expect(manifest).toContain('ephemeral-storage: 384Mi');
     expect(manifest).toContain('when_full: block');
   });

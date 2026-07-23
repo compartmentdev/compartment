@@ -41,7 +41,7 @@ The preset is equivalent to this expanded resource config:
 ```yaml
 resources:
   db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     env:
       POSTGRES_DB: app
       POSTGRES_USER: app
