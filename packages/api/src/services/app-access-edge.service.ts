@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
   compartmentInternalAppAccessSessionsRevokePathname,
   compartmentInternalAppAccessStatePathname,
@@ -79,7 +80,5 @@ function isRetryableEdgeRequestError(error: Error): boolean {
 }
 
 async function waitForNextEdgeRequestAttempt(): Promise<void> {
-  await new Promise<void>((resolve: () => void): void => {
-    setTimeout(resolve, edgeRequestRetryDelayMs);
-  });
+  await sleep(edgeRequestRetryDelayMs);
 }

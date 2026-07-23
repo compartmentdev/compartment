@@ -48,6 +48,12 @@ const getApiConfig: Mock<() => { workerImageRef: string | null }> = vi.hoisted(
   (): Mock<() => { workerImageRef: string | null }> => vi.fn(),
 );
 
+vi.mock('node:timers/promises', (): object => ({
+  setTimeout: async (delayMs: number): Promise<void> =>
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, delayMs);
+    }),
+}));
 vi.mock('../src/services/product-job.service', (): object => ({ createProductJobIntent: createIntent }));
 vi.mock('../src/queries/product-job-wait.query', (): object => ({
   expireProductJobWait: expireWait,

@@ -16,6 +16,12 @@ const readWaitState: Mock = vi.hoisted((): Mock => vi.fn());
 const readBootstrapSettlement: Mock = vi.hoisted((): Mock => vi.fn());
 const readReconcileSettlement: Mock = vi.hoisted((): Mock => vi.fn());
 
+vi.mock('node:timers/promises', (): object => ({
+  setTimeout: async (delayMs: number): Promise<void> =>
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, delayMs);
+    }),
+}));
 vi.mock('../src/queries/resource-reconcile-create.query', (): object => ({
   createResourceReconcileRun: createRun,
 }));

@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
   type ResourceClaimIdentity,
   type ResourceReconcileIntent,
@@ -211,7 +212,7 @@ function isTerminalProvisioningFailure(attempts: number, state: string): boolean
 }
 
 async function delayResourceClaimIdentityPoll(delayMs: number): Promise<void> {
-  await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, delayMs));
+  await sleep(delayMs);
 }
 
 function assertResourceClaimIdentityBeforeDeadline(deadlineAt: number): void {

@@ -12,27 +12,26 @@ import {
 import type { readAppAccessState } from '../src/services/app-access-state.service';
 
 type FetchEdgeInternalHttp = (path: string, init?: RequestInit) => Promise<Response>;
-type ReadAppAccessState = typeof readAppAccessState;
-type TimeoutCallback = () => void;
-type TimeoutHandlerInput = string | TimeoutCallback;
 
 interface AppAccessEdgeServiceMocks {
   fetchEdgeInternalHttp: Mock<FetchEdgeInternalHttp>;
-  readAppAccessState: Mock<ReadAppAccessState>;
+  readAppAccessState: Mock<typeof readAppAccessState>;
 }
 
 const mocks: AppAccessEdgeServiceMocks = vi.hoisted(
   (): AppAccessEdgeServiceMocks => ({
     fetchEdgeInternalHttp: vi.fn<FetchEdgeInternalHttp>(),
-    readAppAccessState: vi.fn<ReadAppAccessState>(),
+    readAppAccessState: vi.fn<typeof readAppAccessState>(),
   }),
 );
+
+vi.mock('node:timers/promises', (): object => ({ setTimeout: vi.fn() }));
 
 vi.mock('../src/services/outbound-http.service', (): { fetchEdgeInternalHttp: Mock<FetchEdgeInternalHttp> } => ({
   fetchEdgeInternalHttp: mocks.fetchEdgeInternalHttp,
 }));
 
-vi.mock('../src/services/app-access-state.service', (): { readAppAccessState: Mock<ReadAppAccessState> } => ({
+vi.mock('../src/services/app-access-state.service', (): { readAppAccessState: Mock<typeof readAppAccessState> } => ({
   readAppAccessState: mocks.readAppAccessState,
 }));
 
@@ -89,7 +88,6 @@ describe('app access edge service', (): void => {
   });
 
   it('retries transient edge sync failures before succeeding', async (): Promise<void> => {
-    stubImmediateTimeout();
     const fetchMock: Mock<FetchEdgeInternalHttp> = mocks.fetchEdgeInternalHttp
       .mockReset()
       .mockRejectedValueOnce(new Error('socket closed'))
@@ -115,7 +113,6 @@ describe('app access edge service', (): void => {
   });
 
   it('raises a business error when edge session invalidation still fails after retries', async (): Promise<void> => {
-    stubImmediateTimeout();
     const fetchMock: Mock<FetchEdgeInternalHttp> = mocks.fetchEdgeInternalHttp.mockResolvedValue(
       new Response('unavailable', { status: 503 }),
     );
@@ -140,15 +137,3 @@ describe('app access edge service', (): void => {
     expect(fetchMock).toHaveBeenCalledTimes(10);
   });
 });
-
-function stubImmediateTimeout(): void {
-  const timeoutHandle: NodeJS.Timeout = setTimeout((): void => undefined, 0);
-  clearTimeout(timeoutHandle);
-  vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback: TimeoutHandlerInput): NodeJS.Timeout => {
-    if (typeof callback === 'function') {
-      callback();
-    }
-
-    return timeoutHandle;
-  });
-}
