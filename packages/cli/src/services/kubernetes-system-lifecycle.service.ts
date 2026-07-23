@@ -12,7 +12,7 @@ import {
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import {
-  buildHelmKubeContextArgs,
+  buildHelmUpgradeCommand,
   buildKubectlCommand,
   buildKubernetesReleaseSelector,
   readCommandOutput,
@@ -111,13 +111,7 @@ function buildKubernetesUpdateHelmCommand(
   updateValuesPath: string,
   imageTrustValuesPath: string,
 ): string[] {
-  return [
-    'helm',
-    'upgrade',
-    input.releaseName,
-    chartPath,
-    '--namespace',
-    input.namespace,
+  return buildHelmUpgradeCommand(input, input.releaseName, chartPath, [
     '--reuse-values',
     ...buildKubernetesHelmValuesArgs([input.valuesPath, updateValuesPath, imageTrustValuesPath]),
     '--rollback-on-failure',
@@ -125,8 +119,7 @@ function buildKubernetesUpdateHelmCommand(
     '--wait-for-jobs',
     '--timeout',
     helmUpdateTimeout,
-    ...buildHelmKubeContextArgs(input),
-  ];
+  ]);
 }
 
 async function runRequiredKubectl(

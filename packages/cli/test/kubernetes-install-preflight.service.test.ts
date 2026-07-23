@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, it, vi, type MockedFunction } from 'vitest';
 import { runCommand } from '../src/command-runner';
-import { buildHelmKubeContextArgs, buildKubectlCommand } from '../src/services/kubernetes-command.support';
+import { buildHelmCommand, buildKubectlCommand } from '../src/services/kubernetes-command.support';
 import { resolveKubernetesInstallKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service';
 import type { ResolvedKubernetesKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service.types';
 import { runKubernetesInstallPreflight } from '../src/services/kubernetes-install-preflight.service';
@@ -210,7 +210,14 @@ describe('Kubernetes install cluster preflight', (): void => {
       releaseName: 'compartment',
     };
 
-    expect(buildHelmKubeContextArgs(target)).toEqual(['--kubeconfig', '/tmp/k3s.yaml', '--kube-context', 'default']);
+    expect(buildHelmCommand(target, ['status'])).toEqual([
+      'helm',
+      'status',
+      '--kubeconfig',
+      '/tmp/k3s.yaml',
+      '--kube-context',
+      'default',
+    ]);
     expect(buildKubectlCommand(target, ['get', 'service'])).toContain('/tmp/k3s.yaml');
   });
 
