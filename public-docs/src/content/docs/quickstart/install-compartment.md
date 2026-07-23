@@ -14,9 +14,10 @@ curl -fsSL https://compartment.dev/install.sh | sh
 To install the current Kubernetes branch CLI, select its channel:
 
 ```bash
-curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel kubernetes
+curl -fsSL https://raw.githubusercontent.com/compartmentdev/compartment/kubernetes/install.sh | sh -s -- --channel kubernetes
 ```
 
+This raw GitHub URL is temporary until the Kubernetes branch replaces the public `compartment.dev` installer.
 The bootstrapper resolves the branch head to an immutable OCI artifact, verifies its keyless signature against the
 Kubernetes publish workflow identity, and only then downloads the CLI. An unsigned artifact or a signature from
 another identity stops the install. This CLI includes the matching Helm chart.
@@ -79,15 +80,26 @@ for managed or custom domain setup, the storage class, and the first owner's ema
 prefers `local-path` when the cluster provides that storage class. For `custom-cert`, create the Kubernetes TLS Secret
 first; the wizard asks for its existing name.
 
-k3s with klipper assigns LoadBalancer ports through shared node host ports. In that environment, a foreign
-LoadBalancer on port 80 or 443 blocks installation; k3s installs Traefik this way by default. Install k3s without
-Traefik, or disable and remove it before retrying Compartment:
+k3s with klipper assigns LoadBalancer ports through shared node host ports. Install a fresh dedicated k3s node without
+its default Traefik ingress:
+
+```bash
+curl -sfL https://get.k3s.io | sh -s - --disable traefik
+```
+
+If the default `kube-system/traefik` already holds port 80 or 443, disable and remove it before retrying Compartment:
 
 ```bash
 printf 'disable:\n  - traefik\n' >/etc/rancher/k3s/config.yaml
 systemctl restart k3s
 kubectl -n kube-system delete helmchart traefik traefik-crd
 ```
+
+Do not remove a different existing ingress. On a dedicated cluster, free ports 80 and 443 for Compartment's Caddy
+ingress. On a shared cluster, Compartment must use `service.caddy.type` set to `ClusterIP` or `NodePort`, an explicit
+`platform.publicIngressIpv4` or `platform.publicIngressIpv6`, and routing through your existing ingress. The guided
+installer does not automate this topology yet and its klipper preflight will stop at the port conflict; do not delete
+the foreign ingress to make the check pass.
 
 On clusters where LoadBalancer Services receive separate addresses, such as managed cloud load balancers or MetalLB,
 another ingress LoadBalancer produces a warning instead. The guided wizard asks you to confirm that you want to
@@ -132,17 +144,17 @@ At runtime the broker credential is read from that Secret only by API and Caddy,
 records supplied secret values in its Kubernetes release revision Secrets, so restrict access to Helm and platform
 Secrets.
 
-After the platform and first owner are ready, the CLI reads the installed registry-auth Service and prints the exact
-k3s `registries.yaml` entry using its actual ClusterIP. It also prints a ready `compartment system registry-mirror
-apply` command that safely merges the entry, writes the file, and restarts k3s without replacing other mirrors.
-Complete this required node-level step before the first application deploy. The chart cannot change container-runtime
-configuration on Kubernetes nodes.
+After the platform and first owner are ready, the CLI reads the installed registry-auth Service using its actual
+ClusterIP. Complete the required node-level registry mirror setup before the first application deploy. The chart
+cannot change container-runtime configuration on Kubernetes nodes.
 
 When the CLI is running as root on the local k3s node with an unambiguous
 `KUBECONFIG=/etc/rancher/k3s/k3s.yaml` and `systemctl` is available, it merges only the installed Compartment mirror
 into `/etc/rancher/k3s/registries.yaml` and restarts k3s automatically when the config changes. It preserves other
 registry mirrors. A declarative `--values` install applies it automatically and logs the action; a guided install asks
-for confirmation with a default of yes.
+one short confirmation question first, with a default of yes. It prints the multi-node steps only when you decline,
+when local automatic setup is unavailable, when the cluster has additional nodes, or after a local apply or
+verification failure.
 Pass `--skip-registry-mirror` to decline automatic application. Automatic application configures only the local node;
 make the same Compartment CLI version available and run the printed apply command on every other k3s node in the
 cluster. The command exits unsuccessfully if k3s does not restart or the written endpoint fails its post-check. If any
@@ -157,15 +169,13 @@ image tags, so set all four `images.*.tag` values explicitly when you need a pin
 You can install the CLI and immediately start the same interactive platform install:
 
 ```bash
-curl -fsSL https://compartment.dev/install.sh | sh -s -- \
+curl -fsSL https://raw.githubusercontent.com/compartmentdev/compartment/kubernetes/install.sh | sh -s -- \
   --channel kubernetes \
-  --init-install \
-  --values compartment-values.yaml
+  --init-install
 ```
 
-This path omits `--base-domain`, so it requests a managed domain. To use your own domain through the bootstrapper,
-add `--base-domain <baseDomain>`; add `--api-url <console-url>` only when you need to state the derived Console URL
-explicitly.
+This starts the same guided install as `compartment install`. Add `--values compartment-values.yaml` for the
+declarative path. This raw GitHub URL is temporary until the Kubernetes branch replaces the public installer.
 
 If the command stops before confirming owner creation, rerun it with the same release name, namespace, domain mode,
 and values. For managed domains, omit `--base-domain` again. A deployed release resumes its saved allocation; a

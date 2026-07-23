@@ -116,7 +116,7 @@ describe('render-cli-install-script', (): void => {
     expect(result.stderr).toContain(`Resolved main to ${expectedMainReleaseTag}`);
     expect(result.stdout).toContain(`Installed compartment to ${join(binDirectory, 'compartment')}`);
     expect(result.stdout).toContain(expectedInstalledVersion);
-    expect(result.stdout).toContain(createCliOnlyInstallMessage(join(binDirectory, 'compartment')));
+    expect(result.stdout).toContain(createCliOnlyInstallMessage());
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
       'https://api.github.com/repos/example/compartment/git/ref/heads/main',
@@ -284,7 +284,7 @@ describe('render-cli-install-script', (): void => {
 
     expect(result.stderr).not.toContain('Resolved main to');
     expect(result.stdout).toContain(expectedInstalledVersion);
-    expect(result.stdout).toContain(createCliOnlyInstallMessage(join(binDirectory, 'compartment')));
+    expect(result.stdout).toContain(createCliOnlyInstallMessage());
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
       `https://github.com/example/compartment/releases/download/${explicitReleaseTag}/${expectedArtifactName}`,
@@ -303,7 +303,7 @@ describe('render-cli-install-script', (): void => {
 
     expect(result.stderr).not.toContain('Resolved main to');
     expect(result.stdout).toContain(expectedInstalledVersion);
-    expect(result.stdout).toContain(createCliOnlyInstallMessage(join(binDirectory, 'compartment')));
+    expect(result.stdout).toContain(createCliOnlyInstallMessage());
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
       `https://github.com/example/compartment/releases/download/v${explicitReleaseVersion}/${expectedArtifactName}`,
@@ -323,7 +323,7 @@ describe('render-cli-install-script', (): void => {
 
     expect(result.stderr).not.toContain('Resolved main to');
     expect(result.stdout).toContain(expectedInstalledVersion);
-    expect(result.stdout).toContain(createCliOnlyInstallMessage(join(binDirectory, 'compartment')));
+    expect(result.stdout).toContain(createCliOnlyInstallMessage());
     expect(result.compartmentInvocations).toEqual(['--version']);
     expect(result.urlLog).toEqual([
       `https://github.com/example/compartment/releases/download/v${defaultReleaseVersion}/${expectedArtifactName}`,
@@ -551,6 +551,22 @@ describe('render-cli-install-script', (): void => {
     expect(result.compartmentInvocations).toEqual(['--version', 'install --values compartment-values.yaml']);
   });
 
+  it('hands init install without values to the guided install', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const installerTerminalPath: string = join(temporaryDirectory, 'installer-tty');
+    await writeFile(installerTerminalPath, '', 'utf8');
+
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: ['--version', 'main', '--init-install'],
+      installerTerminalPath,
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.compartmentInvocations).toEqual(['--version', 'install']);
+  });
+
   it('runs the Kubernetes install command through init install without sudo or host-runtime setup', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
@@ -743,8 +759,8 @@ describe('render-cli-install-script', (): void => {
   });
 });
 
-function createCliOnlyInstallMessage(installPath: string): string {
-  return `Installed CLI. Run \`"${installPath}" install\` to create a Kubernetes platform owner, run \`"${installPath}" login\` to connect to a platform, or use \`--init-install\`/\`--init-update\`/\`--init-login\`.`;
+function createCliOnlyInstallMessage(): string {
+  return 'Compartment CLI installed. Run `compartment install` to set up the platform.';
 }
 
 async function createTemporaryDirectory(): Promise<string> {

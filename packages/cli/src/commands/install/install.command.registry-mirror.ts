@@ -3,10 +3,14 @@ import { promptYesNoChoice } from '../../prompts/prompt';
 import {
   applyKubernetesRegistryMirror,
   canAutoApplyKubernetesRegistryMirror,
+  hasMultipleKubernetesNodes,
   readInstalledKubernetesRegistryMirror,
   renderKubernetesRegistryMirrorInstructions,
 } from '../../services/kubernetes-registry-mirror.service';
-import type { KubernetesRegistryMirror } from '../../services/kubernetes-registry-mirror.service.types';
+import type {
+  KubernetesRegistryMirror,
+  KubernetesRegistryMirrorApplyResult,
+} from '../../services/kubernetes-registry-mirror.service.types';
 import type { KubernetesOperatorTarget } from '../../services/kubernetes-operator.service.types';
 import { renderRegistryMirrorApplyResult } from '../registry-mirror.output';
 
@@ -34,31 +38,74 @@ async function finishInstallRegistryMirrorSetup(
   skipAutoApply: boolean,
   declarativeInstall: boolean,
 ): Promise<void> {
-  io.stderr(renderKubernetesRegistryMirrorInstructions(mirror));
-  if (await shouldAutoApplyRegistryMirror(io, target, skipAutoApply, declarativeInstall)) {
-    await applyAndRenderRegistryMirror(io, mirror);
+  const needsInstructions: boolean = await configureLocalRegistryMirror(
+    io,
+    target,
+    mirror,
+    skipAutoApply,
+    declarativeInstall,
+  );
+  if (needsInstructions) {
+    io.stderr(renderKubernetesRegistryMirrorInstructions(mirror));
   }
 }
 
-async function shouldAutoApplyRegistryMirror(
+async function configureLocalRegistryMirror(
   io: CliIo,
   target: KubernetesOperatorTarget,
+  mirror: KubernetesRegistryMirror,
   skipAutoApply: boolean,
   declarativeInstall: boolean,
 ): Promise<boolean> {
   if (skipAutoApply) {
     io.stderr('Automatic registry mirror setup was skipped by --skip-registry-mirror.\n');
-    return false;
+    writeRegistryMirrorDeclineWarning(io, mirror);
+    return true;
   }
   if (!(await canAutoApplyKubernetesRegistryMirror(target))) {
-    io.stderr('Automatic registry mirror setup is unavailable; follow the instructions on every k3s node.\n');
-    return false;
+    io.stderr('Automatic registry mirror setup is unavailable on this machine.\n');
+    writeRegistryMirrorDeclineWarning(io, mirror);
+    return true;
   }
   if (declarativeInstall) {
     io.stderr('Applying the registry mirror automatically on the local k3s node.\n');
+    return await applyLocalRegistryMirror(io, target, mirror);
+  }
+  return await configureGuidedRegistryMirror(io, target, mirror);
+}
+
+async function configureGuidedRegistryMirror(
+  io: CliIo,
+  target: KubernetesOperatorTarget,
+  mirror: KubernetesRegistryMirror,
+): Promise<boolean> {
+  const shouldApply: boolean = await promptYesNoChoice(
+    io,
+    'Configure the registry mirror on this k3s node (writes /etc/rancher/k3s/registries.yaml, restarts k3s)? [Y/n]: ',
+    true,
+  );
+  if (!shouldApply) {
+    writeRegistryMirrorDeclineWarning(io, mirror);
     return true;
   }
-  return await promptYesNoChoice(io, 'Apply this registry mirror on the local k3s node now? [Y/n]: ', true);
+  return await applyLocalRegistryMirror(io, target, mirror);
+}
+
+async function applyLocalRegistryMirror(
+  io: CliIo,
+  target: KubernetesOperatorTarget,
+  mirror: KubernetesRegistryMirror,
+): Promise<boolean> {
+  if (!(await applyAndRenderRegistryMirror(io, mirror))) {
+    return true;
+  }
+  return await hasMultipleKubernetesNodes(target);
+}
+
+function writeRegistryMirrorDeclineWarning(io: CliIo, mirror: KubernetesRegistryMirror): void {
+  io.stderr(
+    `Registry mirror not configured. Until you apply it, the first deploy cannot pull images. Retry: compartment system registry-mirror apply --registry-host '${mirror.host}' --cluster-ip '${mirror.clusterIp}'.\n`,
+  );
 }
 
 function renderKubernetesRegistryMirrorDiscoveryFailure(
@@ -82,12 +129,19 @@ sudo compartment system registry-mirror apply \\
 `;
 }
 
-async function applyAndRenderRegistryMirror(io: CliIo, mirror: KubernetesRegistryMirror): Promise<void> {
+async function applyAndRenderRegistryMirror(io: CliIo, mirror: KubernetesRegistryMirror): Promise<boolean> {
   try {
-    renderRegistryMirrorApplyResult(io, await applyKubernetesRegistryMirror(mirror));
+    const result: KubernetesRegistryMirrorApplyResult = await applyKubernetesRegistryMirror(mirror);
+    renderRegistryMirrorApplyResult(io, result);
+    if (result.current && result.restartError === undefined) {
+      io.stderr('✓ Registry mirror configured\n');
+      return true;
+    }
+    return false;
   } catch (error) {
     const message: string = error instanceof Error ? error.message : String(error);
     io.stderr(`Warning: automatic registry mirror setup failed: ${message}\n`);
     io.stderr('Complete the printed registry mirror instructions before the first deploy.\n');
+    return false;
   }
 }

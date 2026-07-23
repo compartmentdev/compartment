@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { runCli } from '../src/app';
+import { finishDiscoveredInstallRegistryMirrorSetup } from '../src/commands/install/install.command.registry-mirror';
 import type {
   InstallPreflightChecklistResult,
   ResolvedInstallIdentityPrompts,
@@ -14,6 +15,7 @@ import { createCliCapture, readCliStderr, readCliStdout, type CliCommandCapture 
 
 type ApplyRegistryMirror = (mirror: KubernetesRegistryMirror) => Promise<KubernetesRegistryMirrorApplyResult>;
 type CanAutoApplyRegistryMirror = () => Promise<boolean>;
+type HasMultipleKubernetesNodes = () => Promise<boolean>;
 type DeployInstall = () => Promise<KubernetesInstallDeploymentResult>;
 type InstallOwner = () => Promise<CliInstallResult>;
 type PersistSession = () => Promise<void>;
@@ -24,6 +26,7 @@ interface InstallCommandMocks {
   applyRegistryMirror: Mock<ApplyRegistryMirror>;
   canAutoApplyRegistryMirror: Mock<CanAutoApplyRegistryMirror>;
   deployInstall: Mock<DeployInstall>;
+  hasMultipleKubernetesNodes: Mock<HasMultipleKubernetesNodes>;
   installOwner: Mock<InstallOwner>;
   persistSession: Mock<PersistSession>;
   readRegistryMirror: Mock<ReadRegistryMirror>;
@@ -39,6 +42,7 @@ const mocks: InstallCommandMocks = vi.hoisted(
     applyRegistryMirror: vi.fn<ApplyRegistryMirror>(),
     canAutoApplyRegistryMirror: vi.fn<CanAutoApplyRegistryMirror>(),
     deployInstall: vi.fn<DeployInstall>(),
+    hasMultipleKubernetesNodes: vi.fn<HasMultipleKubernetesNodes>(),
     installOwner: vi.fn<InstallOwner>(),
     persistSession: vi.fn<PersistSession>(),
     readRegistryMirror: vi.fn<ReadRegistryMirror>(),
@@ -56,6 +60,7 @@ vi.mock('../src/services/kubernetes-install.service', (): object => ({
 vi.mock('../src/services/kubernetes-registry-mirror.service', (): object => ({
   applyKubernetesRegistryMirror: mocks.applyRegistryMirror,
   canAutoApplyKubernetesRegistryMirror: mocks.canAutoApplyRegistryMirror,
+  hasMultipleKubernetesNodes: mocks.hasMultipleKubernetesNodes,
   readInstalledKubernetesRegistryMirror: mocks.readRegistryMirror,
   renderKubernetesRegistryMirrorInstructions: (): string => 'Exact registry mirror instructions.\n',
 }));
@@ -91,6 +96,7 @@ describe('install command boundary', (): void => {
     mocks.applyRegistryMirror.mockReset().mockResolvedValue({ configChanged: true, current: true });
     mocks.canAutoApplyRegistryMirror.mockReset().mockResolvedValue(true);
     mocks.deployInstall.mockReset().mockResolvedValue(createDeploymentResult());
+    mocks.hasMultipleKubernetesNodes.mockReset().mockResolvedValue(false);
     mocks.installOwner.mockReset().mockResolvedValue(createInstallResult());
     mocks.persistSession.mockReset().mockResolvedValue(undefined);
     mocks.readRegistryMirror.mockReset().mockResolvedValue(registryMirror);
@@ -163,6 +169,78 @@ describe('install command boundary', (): void => {
     expect(stderr).toContain('Applying the registry mirror automatically on the local k3s node.');
     expect(stderr).toContain('Updated /etc/rancher/k3s/registries.yaml');
     expect(stderr).not.toContain('Apply this registry mirror on the local k3s node now?');
+  });
+
+  it('asks once before rendering registry mirror instructions when guided setup is declined', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('n\n');
+
+    await finishDiscoveredInstallRegistryMirrorSetup(
+      capture.io,
+      { namespace: 'compartment', releaseName: 'compartment' },
+      false,
+      false,
+    );
+
+    const stderr: string = readCliStderr(capture);
+    const prompt: string =
+      'Configure the registry mirror on this k3s node (writes /etc/rancher/k3s/registries.yaml, restarts k3s)? [Y/n]: ';
+    expect(stderr.indexOf(prompt)).toBeLessThan(stderr.indexOf('Exact registry mirror instructions.'));
+    expect(stderr.split(prompt)).toHaveLength(2);
+    expect(stderr).toContain('Until you apply it, the first deploy cannot pull images.');
+    expect(stderr).toContain('Retry: compartment system registry-mirror apply');
+    expect(mocks.applyRegistryMirror).not.toHaveBeenCalled();
+  });
+
+  it('configures a single local k3s node after the guided mirror prompt without printing multi-node steps', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('\n');
+
+    await finishDiscoveredInstallRegistryMirrorSetup(
+      capture.io,
+      { namespace: 'compartment', releaseName: 'compartment' },
+      false,
+      false,
+    );
+
+    const stderr: string = readCliStderr(capture);
+    expect(stderr).toContain('Configure the registry mirror on this k3s node');
+    expect(stderr).toContain('✓ Registry mirror configured');
+    expect(stderr).not.toContain('Exact registry mirror instructions.');
+    expect(mocks.applyRegistryMirror).toHaveBeenCalledWith(registryMirror);
+  });
+
+  it('prints multi-node mirror steps after configuring the local node when the cluster has more nodes', async (): Promise<void> => {
+    mocks.hasMultipleKubernetesNodes.mockResolvedValue(true);
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('\n');
+
+    await finishDiscoveredInstallRegistryMirrorSetup(
+      capture.io,
+      { namespace: 'compartment', releaseName: 'compartment' },
+      false,
+      false,
+    );
+
+    expect(readCliStderr(capture)).toContain('Exact registry mirror instructions.');
+  });
+
+  it('prints mirror steps without prompting when local automatic setup is unavailable', async (): Promise<void> => {
+    mocks.canAutoApplyRegistryMirror.mockResolvedValue(false);
+    const capture: CliCommandCapture = createCliCapture();
+
+    await finishDiscoveredInstallRegistryMirrorSetup(
+      capture.io,
+      { namespace: 'compartment', releaseName: 'compartment' },
+      false,
+      false,
+    );
+
+    const stderr: string = readCliStderr(capture);
+    expect(stderr).toContain('Automatic registry mirror setup is unavailable on this machine.');
+    expect(stderr).toContain('Exact registry mirror instructions.');
+    expect(stderr).not.toContain('[Y/n]');
+    expect(mocks.applyRegistryMirror).not.toHaveBeenCalled();
   });
 });
 

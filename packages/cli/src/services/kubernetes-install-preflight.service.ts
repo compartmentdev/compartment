@@ -176,7 +176,11 @@ function detectStorageClass(list: KubernetesStorageClassList): string {
 }
 
 function buildIngressConflictMessage(conflict: KubernetesIngressPortConflict): string {
-  return `Ports 80/443 are already taken by Service ${conflict.namespace}/${conflict.name} — the platform's Caddy LoadBalancer will never get an address. On k3s disable Traefik: printf 'disable:\\n  - traefik\\n' >/etc/rancher/k3s/config.yaml && systemctl restart k3s && kubectl -n kube-system delete helmchart traefik traefik-crd. Then retry install.`;
+  const prefix: string = `Ports 80/443 are already taken by Service ${conflict.namespace}/${conflict.name} — the platform's Caddy LoadBalancer will never get an address.`;
+  if (conflict.namespace === 'kube-system' && conflict.name === 'traefik') {
+    return `${prefix} This is the default k3s Traefik ingress. Disable it: printf 'disable:\\n  - traefik\\n' >/etc/rancher/k3s/config.yaml && systemctl restart k3s && kubectl -n kube-system delete helmchart traefik traefik-crd. Then retry install.`;
+  }
+  return `${prefix} Compartment ships its own ingress (Caddy). On a dedicated cluster, free ports 80/443. On a shared cluster, Compartment must use service.caddy.type=ClusterIP or NodePort and route through your existing ingress; the guided installer does not automate this topology yet. See the install documentation.`;
 }
 
 function isObject(value: JsonValue | undefined): value is Record<string, JsonValue> {

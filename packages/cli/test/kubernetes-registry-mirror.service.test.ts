@@ -7,16 +7,17 @@ import {
   createKubernetesRegistryMirror,
   isLocalK3sKubeconfigChain,
   mergeKubernetesRegistryMirrorConfig,
-  renderKubernetesRegistryMirrorConfig,
 } from '../src/services/kubernetes-registry-mirror-config.service';
 import {
   applyKubernetesRegistryMirror,
+  hasMultipleKubernetesNodes,
   renderKubernetesRegistryMirrorInstructions,
 } from '../src/services/kubernetes-registry-mirror.service';
 import type {
   KubernetesRegistryMirror,
   KubernetesRegistryMirrorApplyResult,
 } from '../src/services/kubernetes-registry-mirror.service.types';
+import type { KubernetesOperatorTarget } from '../src/services/kubernetes-operator.service.types';
 import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
 type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
@@ -92,7 +93,7 @@ describe('Kubernetes registry mirror setup', (): void => {
   });
 
   it('renders the exact k3s registry mirror format for the installed Service', (): void => {
-    expect(renderKubernetesRegistryMirrorConfig(registryMirror)).toBe(
+    expect(mergeKubernetesRegistryMirrorConfig('', registryMirror)).toBe(
       `mirrors:
   compartment-compartment-registry-auth.compartment.svc:5000:
     endpoint:
@@ -100,15 +101,30 @@ describe('Kubernetes registry mirror setup', (): void => {
 `,
     );
     const instructions: string = renderKubernetesRegistryMirrorInstructions(registryMirror);
-    expect(instructions).toContain(renderKubernetesRegistryMirrorConfig(registryMirror));
+    expect(instructions).toContain('1. Install Compartment CLI');
+    expect(instructions).toContain('2. Run:');
     expect(instructions).toContain('system registry-mirror apply');
     expect(instructions).toContain('restarts k3s when the config changes');
   });
 
   it('renders config that is already current for the merge and post-check path', (): void => {
-    const renderedConfig: string = renderKubernetesRegistryMirrorConfig(registryMirror);
+    const renderedConfig: string = mergeKubernetesRegistryMirrorConfig('', registryMirror);
 
     expect(mergeKubernetesRegistryMirrorConfig(renderedConfig, registryMirror)).toBe(renderedConfig);
+  });
+
+  it('detects when registry mirror instructions are needed for additional nodes', async (): Promise<void> => {
+    mocks.runCommand
+      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[{"metadata":{"name":"node-1"}}]}' })
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stderr: '',
+        stdout: '{"items":[{"metadata":{"name":"node-1"}},{"metadata":{"name":"node-2"}}]}',
+      });
+    const target: KubernetesOperatorTarget = { namespace: 'compartment', releaseName: 'compartment' };
+
+    await expect(hasMultipleKubernetesNodes(target)).resolves.toBe(false);
+    await expect(hasMultipleKubernetesNodes(target)).resolves.toBe(true);
   });
 
   it('applies a fresh config without a warning and skips the restart when applied again', async (): Promise<void> => {
