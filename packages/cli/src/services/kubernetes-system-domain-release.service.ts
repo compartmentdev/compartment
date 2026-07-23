@@ -5,7 +5,7 @@ import type { DomainHostPlan } from '@compartment/contracts';
 import { immutableKubeName } from '@compartment/utils';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
+import { buildHelmUpgradeCommand, readCommandOutput } from './kubernetes-command.support';
 import {
   buildKubernetesHelmValuesArgs,
   createKubernetesInstallMaterializedDirectory,
@@ -226,21 +226,14 @@ function buildDomainHelmCommand(
   domainValuesPath: string,
   imageTrustValuesPath: string,
 ): string[] {
-  return [
-    'helm',
-    'upgrade',
-    target.releaseName,
-    chartPath,
-    '--namespace',
-    target.namespace,
+  return buildHelmUpgradeCommand(target, target.releaseName, chartPath, [
     '--reuse-values',
     ...buildKubernetesHelmValuesArgs([operatorValuesPath, domainValuesPath, imageTrustValuesPath]),
     '--rollback-on-failure',
     '--wait',
     '--timeout',
     helmDomainTimeout,
-    ...buildHelmKubeContextArgs(target),
-  ];
+  ]);
 }
 
 function buildDomainTlsSecretName(releaseName: string, operationId: string): string {

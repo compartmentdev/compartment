@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import {
-  buildHelmKubeContextArgs,
+  buildHelmCommand,
   buildKubectlCommand,
   buildKubernetesReleaseSelector,
   readCommandOutput,
@@ -24,16 +24,9 @@ const kubernetesWorkloadListSchema: z.ZodType<KubernetesWorkloadList> = z
   .passthrough();
 
 export async function readKubernetesHelmReleaseStatus(target: KubernetesOperatorTarget): Promise<string> {
-  const result: CommandResult = await runCommand([
-    'helm',
-    'status',
-    target.releaseName,
-    '--namespace',
-    target.namespace,
-    '--output',
-    'json',
-    ...buildHelmKubeContextArgs(target),
-  ]);
+  const result: CommandResult = await runCommand(
+    buildHelmCommand(target, ['status', target.releaseName, '--namespace', target.namespace, '--output', 'json']),
+  );
   if (result.exitCode !== 0) {
     throw new Error(`Failed to read Helm release status: ${readCommandOutput(result)}`);
   }

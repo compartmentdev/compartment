@@ -2,7 +2,7 @@ import { parseJsonWith, type JsonValue } from '@compartment/utils';
 import { z } from 'zod';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { buildHelmKubeContextArgs, readCommandOutput } from './kubernetes-command.support';
+import { buildHelmCommand, buildHelmGetValuesCommand, readCommandOutput } from './kubernetes-command.support';
 import type {
   ExistingKubernetesInstall,
   HelmReleaseSummary,
@@ -35,8 +35,7 @@ export async function readExistingKubernetesInstall(
 }
 
 function buildHelmReleaseListCommand(input: KubernetesInstallDeploymentInput): string[] {
-  return [
-    'helm',
+  return buildHelmCommand(input, [
     'list',
     '--namespace',
     input.namespace,
@@ -44,23 +43,11 @@ function buildHelmReleaseListCommand(input: KubernetesInstallDeploymentInput): s
     `^${escapeRegularExpression(input.releaseName)}$`,
     '--output',
     'json',
-    ...buildHelmKubeContextArgs(input),
-  ];
+  ]);
 }
 
 function buildHelmReleaseValuesCommand(input: KubernetesInstallDeploymentInput): string[] {
-  return [
-    'helm',
-    'get',
-    'values',
-    input.releaseName,
-    '--namespace',
-    input.namespace,
-    '--all',
-    '--output',
-    'json',
-    ...buildHelmKubeContextArgs(input),
-  ];
+  return buildHelmGetValuesCommand(input, input.releaseName, ['--all', '--output', 'json']);
 }
 
 async function runHelmInspection(command: readonly string[], operation: string): Promise<CommandResult> {

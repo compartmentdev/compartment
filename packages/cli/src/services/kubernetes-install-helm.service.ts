@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { readSeaAssetBuffer } from '../sea';
-import { buildHelmKubeContextArgs, buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
+import { buildHelmCommand, buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
 import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallStage,
@@ -72,15 +72,11 @@ function buildHelmInstallCommand(
   imageTrustValuesPath: string,
   stage: KubernetesInstallStage,
 ): string[] {
-  const args: string[] = buildHelmBaseCommand(
-    input,
-    chartPath,
-    platformImageValuesPath,
-    installValuesPath,
-    imageTrustValuesPath,
-  );
-  args.push('--set', `platform.startupStage=${stage}`);
-  args.push(...buildHelmKubeContextArgs(input));
+  const args: string[] = buildHelmCommand(input, [
+    ...buildHelmBaseCommand(input, chartPath, platformImageValuesPath, installValuesPath, imageTrustValuesPath),
+    '--set',
+    `platform.startupStage=${stage}`,
+  ]);
   if (stage === 'full') {
     args.push('--wait-for-jobs');
   }
@@ -95,7 +91,6 @@ function buildHelmBaseCommand(
   imageTrustValuesPath: string,
 ): string[] {
   return [
-    'helm',
     'upgrade',
     '--install',
     input.releaseName,

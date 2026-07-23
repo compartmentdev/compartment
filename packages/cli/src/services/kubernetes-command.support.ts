@@ -1,12 +1,36 @@
 import type { CommandResult } from '../command-runner.types';
 
-interface KubernetesCommandTarget {
+interface HelmCommandTarget {
   kubeconfigPath?: string | undefined;
   kubeContext?: string | undefined;
+}
+
+interface KubernetesCommandTarget extends HelmCommandTarget {
   namespace: string;
 }
 
-export function buildHelmKubeContextArgs(target: KubernetesCommandTarget): string[] {
+export function buildHelmGetValuesCommand(
+  target: KubernetesCommandTarget,
+  releaseName: string,
+  args: readonly string[],
+): string[] {
+  return buildHelmCommand(target, ['get', 'values', releaseName, '--namespace', target.namespace, ...args]);
+}
+
+export function buildHelmUpgradeCommand(
+  target: KubernetesCommandTarget,
+  releaseName: string,
+  chartPath: string,
+  args: readonly string[],
+): string[] {
+  return buildHelmCommand(target, ['upgrade', releaseName, chartPath, '--namespace', target.namespace, ...args]);
+}
+
+export function buildHelmCommand(target: HelmCommandTarget, args: readonly string[]): string[] {
+  return ['helm', ...args, ...buildHelmKubeContextArgs(target)];
+}
+
+function buildHelmKubeContextArgs(target: HelmCommandTarget): string[] {
   return [
     ...(target.kubeconfigPath === undefined ? [] : ['--kubeconfig', target.kubeconfigPath]),
     ...(target.kubeContext === undefined ? [] : ['--kube-context', target.kubeContext]),

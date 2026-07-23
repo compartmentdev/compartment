@@ -9,7 +9,7 @@ import { readCosignCommand } from '../bundled-cosign';
 import { readNonCompartmentEnvironment } from '../command-environment';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { readCommandOutput } from './kubernetes-command.support';
+import { buildHelmCommand, readCommandOutput } from './kubernetes-command.support';
 import { kubernetesPlatformImageNames } from './kubernetes-platform-image-names';
 import type { KubernetesPlatformImageName } from './kubernetes-platform-image.types';
 import { writeKubernetesInstallValues } from './kubernetes-install-helm.service';
@@ -43,7 +43,10 @@ export async function writeVerifiedKubernetesReleaseImageValues(
 }
 
 async function readChartValues(chartPath: string): Promise<JsonValue> {
-  const result: CommandResult = await runCommandWithTimeout(['helm', 'show', 'values', chartPath], 30_000);
+  const result: CommandResult = await runCommandWithTimeout(
+    buildHelmCommand({}, ['show', 'values', chartPath]),
+    30_000,
+  );
   if (result.exitCode !== 0) {
     throw createImageTrustCommandError('Failed to read Helm chart values before platform image verification.', result);
   }
