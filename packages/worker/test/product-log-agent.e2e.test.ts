@@ -32,7 +32,8 @@ interface ReceivedLogEvent {
 const execFileAsync: (file: string, args: string[]) => Promise<{ stderr: string; stdout: string }> =
   promisify(execFile);
 const manifestPath: string = resolve(__dirname, '../manifests/product-log-agent.yaml');
-const vectorImage: string = 'timberio/vector:0.49.0-alpine';
+const vectorImage: string =
+  'timberio/vector:0.49.0-alpine@sha256:2a31648e67280953aaf6b219c1b04729ac5ed12820ec2bfb698630b2d989d135';
 const resourceId: string = `res_${'a'.repeat(32)}`;
 const resourceNamespace: string = immutableKubeName('cpt', `prj_${'b'.repeat(32)}`);
 const resourcePodName: string = `${immutableKubeName('resource', resourceId)}-7bcf79d87f-q4m2n`;

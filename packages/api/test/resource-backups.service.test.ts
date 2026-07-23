@@ -241,7 +241,7 @@ function resourceRow(expectedClaimsJson: string): ProjectResourceRow {
     environmentId: 'env_prod',
     expectedClaimsJson,
     id: 'res_postgres',
-    image: 'postgres:16-alpine',
+    image: 'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777',
     name: 'postgres',
     operationConfigHash: 'operations',
     operationsJson:

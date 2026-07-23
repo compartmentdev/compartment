@@ -32,7 +32,8 @@ const postgresResourcePreset: CompartmentAuthoredResourceConfig = {
       generator: 'token',
     },
   },
-  image: 'postgres:16-alpine',
+  // Pinned from postgres:16-alpine on 2026-07-23; refresh the digest intentionally with the readable tag.
+  image: 'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777',
   operations: {
     backup: {
       command: postgresPresetBackupCommand,

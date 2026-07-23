@@ -597,7 +597,9 @@ describe('contract schemas deployment and app access', (): void => {
 
     const result: DeployRequest = deployRequestSchema.parse(payload);
 
-    expect(result.descriptor.resources?.db?.image).toBe('postgres:16-alpine');
+    expect(result.descriptor.resources?.db?.image).toBe(
+      'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777',
+    );
     expect(result.descriptor.resources?.db?.env?.POSTGRES_DB).toBe('smoke');
     expect(result.descriptor.resources?.db?.generatedVariables?.POSTGRES_PASSWORD).toEqual({
       generator: 'token',

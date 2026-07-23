@@ -112,6 +112,9 @@ The release CLI defaults all four `images.*.tag` values to its packaged platform
 operator values file take precedence. Before Helm changes the release, the CLI verifies all four platform images
 against Compartment's GitHub Actions signing identity, resolves each tag to its immutable digest, and deploys only
 those digests. An unsigned image or an image signed by another identity stops the install before activation.
+The chart also pins its bundled PostgreSQL, registry, BuildKit, kubectl, and Vector images by digest. When you override
+one of those third-party image repositories or tags, set its matching `images.<name>.digest` too; a nonempty digest
+takes precedence over the tag.
 Supply the values under `secrets` through your normal secret-management workflow instead of committing them. Install
 with the release CLI, which uses its bundled matching chart, waits for the public Console endpoint, creates the first
 owner, and saves the owner session:

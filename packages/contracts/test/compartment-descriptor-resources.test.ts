@@ -155,7 +155,7 @@ describe('compartment descriptor resource contracts', (): void => {
           generator: 'token',
         },
       },
-      image: 'postgres:16-alpine',
+      image: 'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777',
       operations: {
         backup: {
           command:
@@ -224,7 +224,9 @@ describe('compartment descriptor resource contracts', (): void => {
       POSTGRES_DB: 'billing',
       POSTGRES_USER: 'billing',
     });
-    expect(descriptor.resources?.db?.image).toBe('postgres:16-alpine');
+    expect(descriptor.resources?.db?.image).toBe(
+      'postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777',
+    );
     expect(descriptor.resources?.db?.ports).toEqual([5432]);
     expect(descriptor.resources?.db?.readiness).toEqual({
       port: 5432,

@@ -117,6 +117,47 @@ tests:
           count: 0
         template: product-log-agent.yaml
 
+  - it: pins default third-party runtime images by digest
+    set:
+      platform:
+        startupStage: full
+        installationId: test-third-party-digests
+        baseDomain: compartment.localhost
+        publicProtocol: http
+        tlsMode: custom-http
+      secrets: *stableSecrets
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^postgres@sha256:[a-f0-9]{64}$'
+        template: postgres.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^registry@sha256:[a-f0-9]{64}$'
+        template: registry.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^moby/buildkit@sha256:[a-f0-9]{64}$'
+        template: buildkit.yaml
+        documentIndex: 3
+      - matchRegex:
+          path: spec.jobTemplate.spec.template.spec.containers[0].image
+          pattern: '^moby/buildkit@sha256:[a-f0-9]{64}$'
+        template: buildkit.yaml
+        documentIndex: 4
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].image
+          pattern: '^registry.k8s.io/kubectl@sha256:[a-f0-9]{64}$'
+        template: api.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: '^timberio/vector@sha256:[a-f0-9]{64}$'
+        template: product-log-agent.yaml
+        documentIndex: 4
+
   - it: renders a full public installation with public ingress and workloads
     set:
       platform:

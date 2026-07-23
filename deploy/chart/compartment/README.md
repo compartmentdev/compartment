@@ -56,6 +56,7 @@ At minimum, decide and persist these values:
   external ports 80 and 443 with Caddy listening internally on 8080 and 8443;
 - `storage.storageClass` and the PVC sizes under `storage`;
 - verified digests for the four platform images;
+- matching digests when overriding any bundled PostgreSQL, registry, BuildKit, kubectl, or Vector repository or tag;
 - the values under `secrets`, supplied through the installation's secret-management workflow.
 
 Use `platform.rollbackRetentionLimit` to set the install-wide number of rollback images retained for organizations that

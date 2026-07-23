@@ -8,6 +8,22 @@ import {
 } from '../src';
 
 describe('compartment resource preset contracts', (): void => {
+  it('pins the postgres preset image by digest', (): void => {
+    const descriptor: CompartmentAuthoredDescriptor = compartmentAuthoredDescriptorSchema.parse({
+      name: 'backoffice',
+      resources: {
+        db: {
+          preset: 'postgres',
+        },
+      },
+      services: {
+        web: '.',
+      },
+    });
+
+    expect(descriptor.resources?.db?.image).toMatch(/^postgres:16-alpine@sha256:[a-f0-9]{64}$/u);
+  });
+
   it('keeps serialized postgres preset password overrides out of generated variables', (): void => {
     const descriptor: CompartmentAuthoredDescriptor = compartmentAuthoredDescriptorSchema.parse({
       name: 'backoffice',
