@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { createProjectLifecycleRuntimeStopFailedError } from '../errors/api-business-error';
 import { findDeploymentKubeState, requestDeploymentKubeStop } from '../queries/deployment-kube-membership.query';
 import type { DeploymentKubeState } from '../queries/deployment-kube-state.types';
@@ -22,9 +23,7 @@ async function waitUntilStopped(deploymentId: string): Promise<void> {
     if ((await findDeploymentKubeState(deploymentId)) === 'stopped') {
       return;
     }
-    await new Promise<void>((resolve: () => void): void => {
-      setTimeout(resolve, stopPollIntervalMs);
-    });
+    await sleep(stopPollIntervalMs);
   }
   throw createProjectLifecycleRuntimeStopFailedError();
 }

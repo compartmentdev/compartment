@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { readResourceReconcileRunState } from '../queries/resource-reconcile-runs.query';
 import type {
   ResourceReconcileRunState,
@@ -101,5 +102,5 @@ function nextResourceReconcilePollDelayMs(currentDelayMs: number): number {
 }
 
 async function delayResourceReconcilePoll(delayMs: number): Promise<void> {
-  await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, delayMs));
+  await sleep(delayMs);
 }

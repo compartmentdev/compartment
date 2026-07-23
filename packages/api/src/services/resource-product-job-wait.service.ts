@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { WorkerPersistProductJobResultRequest } from '@compartment/contracts';
 import { expireProductJobWait, readProductJobQueueWaitState } from '../queries/product-job-wait.query';
 import type { ProductJobQueueWaitState } from '../queries/product-job-wait.query.types';
@@ -87,5 +88,5 @@ async function expireQueuedResourceOperation(operationId: string): Promise<Worke
 }
 
 async function delayProductJobPoll(delayMs: number): Promise<void> {
-  await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, delayMs));
+  await sleep(delayMs);
 }

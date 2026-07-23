@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { PoolClient, QueryResult } from 'pg';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type {
@@ -55,7 +56,7 @@ function canonicalResourceIds(resourceIds: string[]): string[] {
 }
 
 async function waitForResourceOperationLockRetry(): Promise<void> {
-  await new Promise<void>((resolve: () => void): NodeJS.Timeout => setTimeout(resolve, resourceOperationLockRetryMs));
+  await sleep(resourceOperationLockRetryMs);
 }
 
 class PgResourceOperationLock implements ResourceOperationLock {
