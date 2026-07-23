@@ -8,6 +8,7 @@ Owns:
 May depend on:
 
 - Node built-ins.
+- `execa` for process execution.
 
 Must not:
 

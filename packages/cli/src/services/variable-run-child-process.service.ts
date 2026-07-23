@@ -1,5 +1,13 @@
-import { spawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { execa, type Result, type ResultPromise } from 'execa';
 import type { CommandResult } from '../command-runner.types';
+
+interface VariableChildOptions {
+  env: NodeJS.ProcessEnv;
+  extendEnv: false;
+  reject: false;
+  stdio: 'inherit';
+}
 
 const forwardedSignals: readonly NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
 const forwardedSignalExitCodes: ReadonlyMap<NodeJS.Signals, number> = new Map([
@@ -16,21 +24,25 @@ export async function runVariableChildCommand(
     throw new Error('Expected a command to execute.');
   }
 
-  return await new Promise<CommandResult>((resolve: (result: CommandResult) => void): void => {
-    const child: ChildProcess = spawn(file, args, readVariableChildSpawnOptions(env));
-    const signalHandlers: VariableChildSignalHandler[] = registerVariableChildSignalHandlers(child);
-    registerVariableChildCompletionHandlers(child, signalHandlers, resolve);
-  });
-}
-
-function readVariableChildSpawnOptions(env: NodeJS.ProcessEnv): SpawnOptions {
-  return {
+  const options: VariableChildOptions = {
     env,
+    extendEnv: false,
+    reject: false,
     stdio: 'inherit',
+  };
+  const subprocess: ResultPromise<VariableChildOptions> = execa(file, args, options);
+  const signalHandlers: VariableChildSignalHandler[] = registerVariableChildSignalHandlers(subprocess);
+  const result: Result<VariableChildOptions> = await subprocess.finally((): void => {
+    cleanupVariableChildSignalHandlers(signalHandlers);
+  });
+  return {
+    exitCode: readVariableChildExitCode(result.exitCode ?? null, result.signal ?? null, result.code),
+    stderr: result.exitCode === undefined && result.signal === undefined ? (result.originalMessage ?? '') : '',
+    stdout: '',
   };
 }
 
-function registerVariableChildSignalHandlers(child: ChildProcess): VariableChildSignalHandler[] {
+function registerVariableChildSignalHandlers(child: Pick<ChildProcess, 'kill'>): VariableChildSignalHandler[] {
   return forwardedSignals.map((signal: NodeJS.Signals): VariableChildSignalHandler => {
     const handler: () => void = (): void => {
       child.kill(signal);
@@ -40,32 +52,12 @@ function registerVariableChildSignalHandlers(child: ChildProcess): VariableChild
   });
 }
 
-function registerVariableChildCompletionHandlers(
-  child: ChildProcess,
-  signalHandlers: readonly VariableChildSignalHandler[],
-  resolve: (result: CommandResult) => void,
-): void {
-  child.on('error', (error: Error): void => {
-    cleanupVariableChildSignalHandlers(signalHandlers);
-    resolve({
-      exitCode: 127,
-      stderr: error.message,
-      stdout: '',
-    });
-  });
-  child.on('close', (code: number | null, signal: NodeJS.Signals | null): void => {
-    cleanupVariableChildSignalHandlers(signalHandlers);
-    resolve({
-      exitCode: readVariableChildExitCode(code, signal),
-      stderr: '',
-      stdout: '',
-    });
-  });
-}
-
-function readVariableChildExitCode(code: number | null, signal: NodeJS.Signals | null): number {
+function readVariableChildExitCode(code: number | null, signal: NodeJS.Signals | null, errorCode?: string): number {
   if (code !== null) {
     return code;
+  }
+  if (errorCode !== undefined) {
+    return 127;
   }
   if (signal !== null) {
     return forwardedSignalExitCodes.get(signal) ?? 1;

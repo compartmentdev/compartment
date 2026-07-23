@@ -14,7 +14,7 @@
     "!dist/**/*.map"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "dotenv -e ../../.env -- tsx --tsconfig tsconfig.json src/bin.ts",
@@ -28,11 +28,12 @@
   },
   "dependencies": {
     "@compartment/contracts": "workspace:*",
-    "@compartment/source-archive": "workspace:*",
     "@compartment/sdk": "workspace:*",
+    "@compartment/source-archive": "workspace:*",
     "@compartment/utils": "workspace:*",
     "commander": "^14.0.3",
     "dotenv": "^16.6.1",
+    "execa": "10.0.0",
     "yaml": "^2.9.0",
     "zod": "^3.24.2"
   },

@@ -1,5 +1,5 @@
-import { spawn, type ChildProcess } from 'node:child_process';
 import { hasText } from '@compartment/utils';
+import { execa } from 'execa';
 import { readRequiredDatabaseUrl } from './database-url';
 import { runMigrations } from './migrate';
 import { assertSafeResetTarget, parsePostgresConnection, type PostgresConnection } from './reset-target';
@@ -58,28 +58,5 @@ function buildConnectionArgs(connection: PostgresConnection): string[] {
 }
 
 async function runCommand(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<void> {
-  await new Promise<void>((resolvePromise: () => void, rejectPromise: (error: Error) => void): void => {
-    const child: ChildProcess = spawn(command, args, {
-      env,
-      stdio: 'inherit',
-    });
-
-    child.on('error', (error: Error): void => {
-      rejectPromise(error);
-    });
-
-    child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void => {
-      if (signal !== null) {
-        rejectPromise(new Error(`${command} exited from signal ${signal}.`));
-        return;
-      }
-
-      if (code === 0) {
-        resolvePromise();
-        return;
-      }
-
-      rejectPromise(new Error(`${command} exited with code ${code ?? 1}.`));
-    });
-  });
+  await execa(command, args, { env, extendEnv: false, stdio: 'inherit' });
 }
