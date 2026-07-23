@@ -147,6 +147,7 @@ export interface DeploymentInspectLookupResult {
 export interface DeploymentLogsContext {
   deployments: DeploymentJoinedRow[];
   environment: EnvironmentRow;
+  historicalFallback: boolean;
   project: ProjectRow;
 }
 

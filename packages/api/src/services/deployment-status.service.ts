@@ -14,6 +14,7 @@ import {
   resolveExistingProjectContext,
 } from './deployment-context.service';
 import { readLatestDeploymentsByService, sortDeploymentsByServiceName } from './deployment-selection.service';
+import { applyObservedDeploymentPhases } from './deployment-phase.service';
 import type {
   DeploymentIdStatusLookupInput,
   DeploymentStatusLookupResult,
@@ -59,7 +60,7 @@ async function resolveDeploymentStatusById(
     deployment,
   );
 
-  return buildDeploymentStatusResult(context, [deployment], activeDeployment !== null ? [activeDeployment] : []);
+  return await buildDeploymentStatusResult(context, [deployment], activeDeployment !== null ? [activeDeployment] : []);
 }
 
 async function resolveScopedDeploymentStatus(
@@ -78,7 +79,7 @@ async function resolveScopedDeploymentStatus(
     deployment,
   );
 
-  return buildDeploymentStatusResult(
+  return await buildDeploymentStatusResult(
     context,
     deployment !== null ? [deployment] : [],
     activeDeployment !== null ? [activeDeployment] : [],
@@ -117,7 +118,7 @@ async function resolveEnvironmentDeploymentStatus(
     await listActiveJoinedDeploymentsForEnvironment(context.environment.id, getApiConfig().baseDomain),
   );
 
-  return buildDeploymentStatusResult(context, deployments, activeDeployments);
+  return await buildDeploymentStatusResult(context, deployments, activeDeployments);
 }
 
 async function resolveActiveDeploymentForService(
@@ -132,15 +133,41 @@ async function resolveActiveDeploymentForService(
   return (await findActiveJoinedDeployment(environmentId, projectServiceId, getApiConfig().baseDomain)) ?? null;
 }
 
-function buildDeploymentStatusResult(
+async function buildDeploymentStatusResult(
   context: ResolvedEnvironmentContext,
   deployments: DeploymentJoinedRow[],
   activeDeployments: DeploymentJoinedRow[],
-): DeploymentStatusLookupResult {
+): Promise<DeploymentStatusLookupResult> {
+  const uniqueDeployments: DeploymentJoinedRow[] = deduplicateDeployments([...deployments, ...activeDeployments]);
+  const observedById: ReadonlyMap<string, DeploymentJoinedRow> = new Map(
+    (await applyObservedDeploymentPhases(uniqueDeployments)).map(
+      (deployment: DeploymentJoinedRow): [string, DeploymentJoinedRow] => [deployment.deployment.id, deployment],
+    ),
+  );
   return {
-    activeDeployments,
-    deployments,
+    activeDeployments: projectObservedDeployments(activeDeployments, observedById),
+    deployments: projectObservedDeployments(deployments, observedById),
     environment: context.environment,
     project: context.project,
   };
+}
+
+function deduplicateDeployments(deployments: DeploymentJoinedRow[]): DeploymentJoinedRow[] {
+  return [
+    ...new Map<string, DeploymentJoinedRow>(
+      deployments.map((deployment: DeploymentJoinedRow): [string, DeploymentJoinedRow] => [
+        deployment.deployment.id,
+        deployment,
+      ]),
+    ).values(),
+  ];
+}
+
+function projectObservedDeployments(
+  deployments: DeploymentJoinedRow[],
+  observedById: ReadonlyMap<string, DeploymentJoinedRow>,
+): DeploymentJoinedRow[] {
+  return deployments.map(
+    (deployment: DeploymentJoinedRow): DeploymentJoinedRow => observedById.get(deployment.deployment.id) ?? deployment,
+  );
 }

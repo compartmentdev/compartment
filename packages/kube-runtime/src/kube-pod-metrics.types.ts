@@ -49,5 +49,7 @@ export interface KubePodMetricNamespaceFailure {
 export interface KubePodMetricCollection {
   failures: KubePodMetricNamespaceFailure[];
   observations: KubePodMetricObservation[];
+  persistentGaps: KubePodMetricNamespaceFailure[];
   successfulNamespaceCount: number;
+  transientGaps: KubePodMetricNamespaceFailure[];
 }

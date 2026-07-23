@@ -38,6 +38,7 @@ import {
   type EdgeInvalidateAppSessionsRequest,
   type HealthResponse,
   type DeploymentListResponse,
+  type DeploymentPromotionStage,
   type DeploymentReadSummary,
   type DeploymentStatusResponse,
   type CompartmentRoutesFile,
@@ -52,6 +53,21 @@ import { expectPresent } from './schema-test.helpers';
 import type { ErrorResponsePayload } from './schemas.test.types';
 
 describe('contract schemas deployment and app access', (): void => {
+  it.each(['kube_apply', 'awaiting_readiness', 'restoring', 'activating'] as const)(
+    'accepts the observed deployment stage %s',
+    (promotionStage: DeploymentPromotionStage): void => {
+      const deployment: DeploymentReadSummary = buildDeploymentReadSummary();
+      expect(
+        deploymentStatusResponseSchema.safeParse(
+          buildDeploymentStatusResponse({
+            activeDeployments: [],
+            deployments: [{ ...deployment, promotionStage }],
+          }),
+        ).success,
+      ).toBe(true);
+    },
+  );
+
   it('accepts valid health response payloads', (): void => {
     const healthPayload: HealthResponse = healthResponseSchema.parse({
       service: 'api',

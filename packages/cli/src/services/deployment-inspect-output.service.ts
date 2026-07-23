@@ -27,14 +27,15 @@ function buildAggregateInspectMessage(
         `${deployment.serviceName}${formatDeploymentLabelTag(deployment.label)}=${deployment.status} (${deployment.promotionStage})`,
     )
     .join('; ')}.`;
+  const failureDetails: string[] = deployments.flatMap(buildFailureDetails);
   if (verbose !== true) {
-    return header;
+    return renderInspectMessage(header, failureDetails);
   }
 
-  return renderInspectMessage(
-    header,
-    buildMultiDeploymentInspectDetails(deployments, response.sensitiveTopologyVisible),
-  );
+  return renderInspectMessage(header, [
+    ...failureDetails,
+    ...buildMultiDeploymentInspectDetails(deployments, response.sensitiveTopologyVisible),
+  ]);
 }
 
 function buildSingleInspectMessage(
@@ -45,11 +46,25 @@ function buildSingleInspectMessage(
   const header: string = `Inspect ${response.project.name}/${response.environment.name} ${deployment.serviceName}${formatDeploymentLabelTag(
     deployment.label,
   )}: ${deployment.status} (${deployment.promotionStage}).`;
+  const failureDetails: string[] = buildFailureDetails(deployment);
   if (verbose !== true) {
-    return header;
+    return renderInspectMessage(header, failureDetails);
   }
 
-  return renderInspectMessage(header, buildInspectDetails(deployment, response.sensitiveTopologyVisible));
+  return renderInspectMessage(header, [
+    ...failureDetails,
+    ...buildInspectDetails(deployment, response.sensitiveTopologyVisible),
+  ]);
+}
+
+function buildFailureDetails(deployment: DeploymentInspectTarget): string[] {
+  if (deployment.status !== 'failed') {
+    return [];
+  }
+  return [
+    `Failure: ${deployment.failureMessage ?? `Deployment failed during ${deployment.promotionStage}.`}`,
+    `See: compartment deployment logs --service ${deployment.serviceName}`,
+  ];
 }
 
 function buildMultiDeploymentInspectDetails(
@@ -94,7 +109,7 @@ function formatSensitiveValue(value: string | null, sensitiveTopologyVisible: bo
 }
 
 function renderInspectMessage(header: string, detailLines: readonly string[]): string {
-  return `${header}\n${detailLines.join('\n')}`;
+  return detailLines.length === 0 ? header : `${header}\n${detailLines.join('\n')}`;
 }
 
 function formatRoutes(deployment: DeploymentInspectTarget): string {

@@ -34,7 +34,7 @@ async function executeLogsCommand(dependencies: CliCommandDependencies, options:
         verbose: commandOptions.verbose,
       }),
     renderLines: (response: DeploymentLogsResponse, lines: DeploymentLogLine[]): string =>
-      createLogsResultMessage({ ...response, lines }, { verbose: false }),
+      createLogsResultMessage({ ...response, lines }, { showSelectionNotice: false, verbose: false }),
   });
 }
 

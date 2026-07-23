@@ -265,6 +265,72 @@ describe('Phase 0 API integration deployment status', (): void => {
     expect(logsResponse.statusCode).toBe(400);
     expect(errorResponseSchema.parse(logsResponse.json()).error.code).toBe('missing_current_organization');
   });
+  it('falls back to a failed service deployment and returns its run trail', async (): Promise<void> => {
+    const installPayload: InstallResponse = await installCompartment(app);
+    const deployPayload: DeployResponse = deployResponseSchema.parse(
+      (await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev')).json(),
+    );
+    const deployment: DeploymentSummary = requireDeployResponseDeployment(deployPayload);
+    requireClaimedDeployment(await claimNextQueuedDeployment(app));
+    await appendWorkerDeploymentEvent(app, {
+      deploymentId: deployment.id,
+      deploymentRunId: deployPayload.deploymentRunId,
+      level: 'error',
+      message: 'image build failed: Dockerfile compile error',
+      status: 'failed',
+      stepKey: 'building_image',
+      stream: 'compartment',
+    });
+    await appendWorkerDeploymentEvent(app, {
+      deploymentId: deployment.id,
+      deploymentRunId: deployPayload.deploymentRunId,
+      level: 'error',
+      message: 'Dockerfile compile error',
+      status: 'failed',
+      stepKey: 'completed',
+      stream: 'compartment',
+    });
+    const failedResponse: LightMyRequestResponse = await app.inject({
+      headers: { authorization: 'Bearer test-runtime-control-token' },
+      method: 'POST',
+      payload: { deploymentId: deployment.id, message: 'Dockerfile compile error' },
+      url: '/internal/deployments/fail',
+    });
+    expect(failedResponse.statusCode, failedResponse.body).toBe(200);
+    await db.update(deployments).set({ failureMessage: null }).where(eq(deployments.id, deployment.id));
+    const headers: Record<string, string> = buildOrganizationAuthorizationHeaders(
+      installPayload.sessionToken,
+      'acme-dev',
+    );
+
+    const logsResponse: LightMyRequestResponse = await app.inject({
+      headers,
+      method: 'GET',
+      url: '/v1/deployments/logs?projectName=smoke-web&serviceName=web',
+    });
+    expect(logsResponse.statusCode, logsResponse.body).toBe(200);
+    const logsPayload: DeploymentLogsResponse = deploymentLogsResponseSchema.parse(logsResponse.json());
+    expect(requireSingleDeployment(logsPayload.deployments)).toMatchObject({
+      id: deployment.id,
+      status: 'failed',
+    });
+    expect(logsPayload.lines.map((line: DeploymentLogLine): string => line.message)).toContain(
+      'image build failed: Dockerfile compile error',
+    );
+
+    const statusResponse: LightMyRequestResponse = await app.inject({
+      headers,
+      method: 'GET',
+      url: '/v1/deployments/status?projectName=smoke-web&serviceName=web',
+    });
+    expect(statusResponse.statusCode, statusResponse.body).toBe(200);
+    expect(
+      requireSingleDeployment(deploymentStatusResponseSchema.parse(statusResponse.json()).deployments),
+    ).toMatchObject({
+      failureMessage: 'Dockerfile compile error',
+      promotionStage: 'building_image',
+    });
+  });
   it('returns not found when a deployment id belongs to a different organization scope', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     const acmeDeployResponse: LightMyRequestResponse = await injectDeployRequest(
@@ -667,7 +733,9 @@ describe('Phase 0 API integration deployment status', (): void => {
     expect(inspectResponse.statusCode, inspectResponse.body).toBe(200);
     const inspectPayload: DeploymentInspectResponse = deploymentInspectResponseSchema.parse(inspectResponse.json());
     expect(requireSingleDeployment(inspectPayload.deployments)).toMatchObject({
+      failureMessage: 'readiness failed',
       id: replacement.id,
+      promotionStage: 'awaiting_readiness',
       runtime: { routeHost: null },
       status: 'failed',
     });

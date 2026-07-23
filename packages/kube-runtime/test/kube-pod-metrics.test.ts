@@ -76,9 +76,50 @@ describe('Kubernetes Pod metrics observation', (): void => {
     expect(coreApi.requestedNamespaces).toEqual(['cpt-project', 'cpt-project-two']);
   });
 
-  it('reports an empty metrics-server snapshot while a live product Pod exists', async (): Promise<void> => {
+  it('treats a fresh product Pod without a metrics sample as transient', async (): Promise<void> => {
+    const pod: V1Pod = productPod('pod-a', 'pod-uid-a');
+    pod.metadata!.creationTimestamp = new Date(Date.now() - 60_000);
+
     await expect(
-      readKubePodMetrics(new StubCoreApi([productPod('pod-a', 'pod-uid-a')]), new StubMetricsApi([]), {
+      readKubePodMetrics(new StubCoreApi([pod]), new StubMetricsApi([]), {
+        kind: 'pod-metrics',
+        labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+        namespaces: ['cpt-project'],
+      }),
+    ).resolves.toMatchObject({
+      failures: [],
+      transientGaps: [
+        {
+          namespace: 'cpt-project',
+          reason: new Error('metrics-server has not sampled a fresh product Pod yet.'),
+        },
+      ],
+      observations: [],
+      successfulNamespaceCount: 1,
+    });
+  });
+
+  it('does not report an empty desired namespace as a snapshot failure', async (): Promise<void> => {
+    await expect(
+      readKubePodMetrics(new StubCoreApi([]), new StubMetricsApi([]), {
+        kind: 'pod-metrics',
+        labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+        namespaces: ['cpt-project'],
+      }),
+    ).resolves.toMatchObject({
+      failures: [],
+      observations: [],
+      successfulNamespaceCount: 1,
+      transientGaps: [],
+    });
+  });
+
+  it('keeps an old unsampled product Pod as a persistent namespace failure', async (): Promise<void> => {
+    const pod: V1Pod = productPod('pod-a', 'pod-uid-a');
+    pod.metadata!.creationTimestamp = new Date(Date.now() - 181_000);
+
+    await expect(
+      readKubePodMetrics(new StubCoreApi([pod]), new StubMetricsApi([]), {
         kind: 'pod-metrics',
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
         namespaces: ['cpt-project'],
@@ -92,6 +133,7 @@ describe('Kubernetes Pod metrics observation', (): void => {
       ],
       observations: [],
       successfulNamespaceCount: 0,
+      transientGaps: [],
     });
   });
 
@@ -113,6 +155,29 @@ describe('Kubernetes Pod metrics observation', (): void => {
           podUid: 'pod-uid-a',
         },
       ],
+    });
+  });
+
+  it('reports an old unsampled Pod even when another Pod has a sample', async (): Promise<void> => {
+    const sampledPod: V1Pod = productPod('pod-a', 'pod-uid-a', 'Running');
+    const unsampledPod: V1Pod = productPod('pod-b', 'pod-uid-b', 'Running');
+    unsampledPod.metadata!.creationTimestamp = new Date(Date.now() - 181_000);
+
+    await expect(
+      readKubePodMetrics(new StubCoreApi([sampledPod, unsampledPod]), new StubMetricsApi([podMetric('pod-a')]), {
+        kind: 'pod-metrics',
+        labels: { 'app.kubernetes.io/managed-by': 'compartment' },
+        namespaces: ['cpt-project'],
+      }),
+    ).resolves.toMatchObject({
+      observations: [{ podName: 'pod-a' }],
+      persistentGaps: [
+        {
+          namespace: 'cpt-project',
+          reason: new Error('metrics-server is persistently missing product Pod samples.'),
+        },
+      ],
+      successfulNamespaceCount: 1,
     });
   });
 
@@ -146,7 +211,13 @@ describe('Kubernetes Pod metrics observation', (): void => {
         labels: { 'app.kubernetes.io/managed-by': 'compartment' },
         namespaces: ['cpt-project'],
       }),
-    ).resolves.toEqual({ failures: [], observations: [], successfulNamespaceCount: 1 });
+    ).resolves.toEqual({
+      failures: [],
+      observations: [],
+      persistentGaps: [],
+      successfulNamespaceCount: 1,
+      transientGaps: [],
+    });
   });
 });
 

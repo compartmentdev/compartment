@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import type {
   DeploymentLogStream,
   DeploymentRunLogLevel,
@@ -42,6 +42,18 @@ export async function listDeploymentRunEvents(deploymentRunId: string): Promise<
     .where(eq(deploymentRunEvents.deploymentRunId, deploymentRunId))
     .orderBy(asc(deploymentRunEvents.createdAt), asc(deploymentRunEvents.id));
 
+  return rows.map(toDeploymentRunEventRow);
+}
+
+export async function listDeploymentRunEventsForRuns(deploymentRunIds: string[]): Promise<DeploymentRunEventRow[]> {
+  if (deploymentRunIds.length === 0) {
+    return [];
+  }
+  const rows: PersistedDeploymentRunEventRow[] = await getApiDatabase()
+    .select()
+    .from(deploymentRunEvents)
+    .where(inArray(deploymentRunEvents.deploymentRunId, deploymentRunIds))
+    .orderBy(asc(deploymentRunEvents.createdAt), asc(deploymentRunEvents.id));
   return rows.map(toDeploymentRunEventRow);
 }
 

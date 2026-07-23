@@ -1,5 +1,5 @@
 import pino, { type Logger } from 'pino';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkerPublishPodMetricsRequest } from '@compartment/contracts';
 import {
   kubeNamespaceName,
@@ -38,6 +38,10 @@ describe('Kubernetes resource quantities', (): void => {
 });
 
 describe('Pod metric publication isolation', (): void => {
+  afterEach((): void => {
+    vi.useRealTimers();
+  });
+
   it('logs one namespace failure and publishes healthy namespace metrics as available', async (): Promise<void> => {
     const namespaceError: Error = new Error('metrics access denied');
     const runtime: PartialMetricsRuntime = new PartialMetricsRuntime(namespaceError);
@@ -85,6 +89,72 @@ describe('Pod metric publication isolation', (): void => {
     expect(publishInput?.body).toMatchObject({ pods: [], state: 'unavailable' });
   });
 
+  it('logs transient missing samples at debug without making the snapshot unavailable', async (): Promise<void> => {
+    const transientReason: Error = new Error('metrics-server has not sampled a fresh product Pod yet.');
+    const runtime: TransientGapMetricsRuntime = new TransientGapMetricsRuntime(transientReason);
+    const request: CompartmentRequester = vi.fn();
+    vi.mocked(request)
+      .mockResolvedValueOnce({ namespaceIds: ['prj_1'] })
+      .mockResolvedValueOnce({});
+    const logger: Logger = pino({ level: 'silent' });
+    vi.spyOn(logger, 'debug');
+    vi.spyOn(logger, 'warn');
+    vi.spyOn(logger, 'error');
+
+    await collectAndPublishPodMetrics(request, runtime, logger);
+
+    expect(logger.debug).toHaveBeenCalledWith(
+      { err: transientReason, namespace: kubeNamespaceName('prj_1') },
+      'Kubernetes Pod metrics sample is temporarily missing.',
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+    expect((vi.mocked(request).mock.calls.at(1)?.[0] as CapturedPodMetricsRequest).body.state).toBe('available');
+  });
+
+  it('rate-limits persistent aggregate failures and reports suppressed repeats', async (): Promise<void> => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-23T12:00:00.000Z'));
+    const runtime: FailedNamespaceCollectionRuntime = new FailedNamespaceCollectionRuntime(
+      new Error('metrics-server unavailable'),
+    );
+    const request: CompartmentRequester = vi.fn().mockResolvedValue({ namespaceIds: ['prj_1'] });
+    const logger: Logger = pino({ level: 'silent' });
+    vi.spyOn(logger, 'error');
+
+    await collectAndPublishPodMetrics(request, runtime, logger);
+    await collectAndPublishPodMetrics(request, runtime, logger);
+    vi.advanceTimersByTime(300_000);
+    await collectAndPublishPodMetrics(request, runtime, logger);
+
+    expect(logger.error).toHaveBeenCalledTimes(2);
+    expect(logger.error).toHaveBeenLastCalledWith(
+      expect.objectContaining({ suppressedRepeats: 1 }),
+      'Kubernetes Pod metrics collection failed.',
+    );
+  });
+
+  it('logs a different persistent failure immediately', async (): Promise<void> => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-23T12:00:00.000Z'));
+    const request: CompartmentRequester = vi.fn().mockResolvedValue({ namespaceIds: ['prj_1'] });
+    const logger: Logger = pino({ level: 'silent' });
+    vi.spyOn(logger, 'error');
+
+    await collectAndPublishPodMetrics(
+      request,
+      new FailedNamespaceCollectionRuntime(new Error('metrics-server unavailable')),
+      logger,
+    );
+    await collectAndPublishPodMetrics(
+      request,
+      new FailedNamespaceCollectionRuntime(new Error('metrics authorization denied')),
+      logger,
+    );
+
+    expect(logger.error).toHaveBeenCalledTimes(2);
+  });
+
   it('logs and isolates metrics-server and unavailable snapshot publication failures', async (): Promise<void> => {
     const metricsError: Error = new Error('metrics-server unavailable');
     const runtime: FailingMetricsRuntime = new FailingMetricsRuntime(metricsError);
@@ -123,7 +193,23 @@ class PartialMetricsRuntime implements PodMetricsRuntime {
     return await Promise.resolve({
       failures: [{ namespace: input.namespaces[1]!, reason: this.error }],
       observations: [podObservation(input.namespaces[0]!)],
+      persistentGaps: [],
       successfulNamespaceCount: 1,
+      transientGaps: [],
+    });
+  }
+}
+
+class TransientGapMetricsRuntime implements PodMetricsRuntime {
+  public constructor(private readonly reason: Error) {}
+
+  public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricCollection> {
+    return await Promise.resolve({
+      failures: [],
+      observations: [],
+      persistentGaps: [],
+      successfulNamespaceCount: 1,
+      transientGaps: [{ namespace: input.namespaces[0]!, reason: this.reason }],
     });
   }
 }
@@ -135,7 +221,9 @@ class FailedNamespaceCollectionRuntime implements PodMetricsRuntime {
     return await Promise.resolve({
       failures: [{ namespace: input.namespaces[0]!, reason: this.error }],
       observations: [],
+      persistentGaps: [],
       successfulNamespaceCount: 0,
+      transientGaps: [],
     });
   }
 }

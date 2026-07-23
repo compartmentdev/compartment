@@ -42,7 +42,7 @@ async function executeDeploymentLogsCommand(
         verbose: commandOptions.verbose,
       }),
     renderLines: (response: DeploymentRunLogsResponse, lines: DeploymentRunLogLine[]): string =>
-      createDeploymentRunLogsResultMessage({ ...response, lines }, { verbose: false }),
+      createDeploymentRunLogsResultMessage({ ...response, lines }, { showSelectionNotice: false, verbose: false }),
   });
 }
 

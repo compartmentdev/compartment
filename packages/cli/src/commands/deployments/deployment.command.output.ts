@@ -20,9 +20,14 @@ import type {
   DeploymentProgressState,
   DeploymentStatusReporter,
   DeploymentSummaryParts,
-  LogsMessageParts,
 } from './deployment.command.output.types';
 import type { DeploymentStatusView } from '../../services/deployments.types';
+import {
+  appendFailedDeploymentGuidance,
+  buildHistoricalLogsNotice,
+  joinDeploymentLogsOutput,
+  readFailureStageText,
+} from '../../services/deployment-failure-output.service';
 
 export function createDeployResultMessage(
   response: DeploymentStatusResponse,
@@ -68,22 +73,29 @@ export function createStatusResultMessage(
   if (deployments.length === 0) {
     return buildNoDeploymentsMessage(response);
   }
-  if (deployments.length > 1) {
-    return appendPodMetrics(
-      appendVerboseDetails(buildMultiDeploymentStatusMessage(response, options.now), response, options.verbose),
-      response,
-    );
-  }
+  const baseMessage: string = buildStatusBaseMessage(response, deployments, options.now);
+  return appendPodMetrics(
+    appendVerboseDetails(appendFailedDeploymentGuidance(baseMessage, deployments), response, options.verbose),
+    response,
+  );
+}
 
+function buildStatusBaseMessage(
+  response: DeploymentStatusResponse,
+  deployments: DeploymentReadSummary[],
+  now: number | undefined,
+): string {
+  if (deployments.length > 1) {
+    return buildMultiDeploymentStatusMessage(response, now);
+  }
   const deployment: DeploymentReadSummary = deployments[0]!;
-  const summary: DeploymentSummaryParts = buildDeploymentSummaryParts(deployment, options.now);
+  const summary: DeploymentSummaryParts = buildDeploymentSummaryParts(deployment, now);
   const durationText: string = readStatusDurationText(summary.durationLabel, deployment);
-  const baseMessage: string = `Deployment ${deployment.id}${formatDeploymentLabelTag(deployment.label)} is ${deployment.status}${durationText}.${buildStatusRouteText(
+  const failureStage: string = readFailureStageText(deployment);
+  return `Deployment ${deployment.id}${formatDeploymentLabelTag(deployment.label)} is ${deployment.status}${failureStage}${durationText}.${buildStatusRouteText(
     response,
     deployment,
   )}`;
-
-  return appendPodMetrics(appendVerboseDetails(baseMessage, response, options.verbose), response);
 }
 
 function appendPodMetrics(baseMessage: string, response: DeploymentStatusView): string {
@@ -115,14 +127,15 @@ export function createLogsResultMessage(
   const lines: string = response.lines
     .map((line: DeploymentLogLine): string => formatDeploymentLogLine(line, includeServicePrefix))
     .join('\n');
+  const selectionNotice: string | null =
+    options.showSelectionNotice === false ? null : buildHistoricalLogsNotice(response);
   if (options.verbose !== true) {
-    return lines;
+    return joinDeploymentLogsOutput(selectionNotice ?? '', lines);
   }
 
-  const details: string = buildVerboseDetails(response);
-  const parts: LogsMessageParts = { details, lines };
-
-  return joinLogsMessage(parts);
+  const verboseDetails: string = buildVerboseDetails(response);
+  const details: string = selectionNotice === null ? verboseDetails : `${selectionNotice}\n${verboseDetails}`;
+  return joinDeploymentLogsOutput(details, lines);
 }
 
 export function createDeploymentProgressReporter(options: DeploymentProgressReporterOptions): DeploymentStatusReporter {
@@ -194,7 +207,7 @@ function formatMultiDeploymentStatusPart(deployment: DeploymentReadSummary, now:
   const durationLabel: string | null = readDeploymentDurationLabel(deployment, now ?? Date.now());
   const durationText: string = readStatusDurationText(durationLabel, deployment);
 
-  return `${deployment.serviceName}${formatDeploymentLabelTag(deployment.label)}=${deployment.status}${durationText}`;
+  return `${deployment.serviceName}${formatDeploymentLabelTag(deployment.label)}=${deployment.status}${readFailureStageText(deployment)}${durationText}`;
 }
 
 function buildStatusRouteText(response: DeploymentStatusResponse, deployment: DeploymentReadSummary): string {
@@ -240,10 +253,6 @@ function shouldPrefixLogServiceName(response: DeploymentLogsResponse): boolean {
 
 function hasMultipleServiceNames(serviceNames: string[]): boolean {
   return new Set(serviceNames).size > 1;
-}
-
-function joinLogsMessage(parts: LogsMessageParts): string {
-  return parts.lines === '' ? parts.details : `${parts.details}\n\n${parts.lines}`;
 }
 
 function buildVerboseDetails(response: DeploymentLogsResponse | DeploymentStatusResponse): string {
