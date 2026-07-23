@@ -1,123 +1,69 @@
-import { execFile, spawn, type ChildProcessByStdio, type ExecFileOptions } from 'node:child_process';
 import { createInterface, type Interface } from 'node:readline';
 import type { Readable } from 'node:stream';
-import { promisify } from 'node:util';
+import { execa, type ResultPromise } from 'execa';
 import type {
-  ProcessCommandError,
   ProcessCommandInput,
-  ProcessCommandOutputBuffers,
   ProcessCommandProgressHandlers,
   ProcessCommandResult,
 } from './process-command.types';
 import type { DockerLogStream } from './docker-models';
 
-type ExecuteFileAsync = (
-  file: string,
-  args: readonly string[],
-  options?: ExecFileOptions,
-) => Promise<ProcessCommandResult>;
-type ResolveProcessCommandResult = (value: ProcessCommandResult | PromiseLike<ProcessCommandResult>) => void;
-type RejectProcessCommand = (error: Error) => void;
-type IsProcessCommandRejected = () => boolean;
-type ProcessCommandChild = ChildProcessByStdio<null, Readable, Readable>;
-
-const executeFileAsync: ExecuteFileAsync = promisify(execFile);
 const maxTrackedProcessCommandOutputLength: number = 64 * 1024;
+interface ProgressProcessCommandOptions {
+  buffer: false;
+  env: NodeJS.ProcessEnv;
+  reject: false;
+  stdin: 'ignore';
+  stripFinalNewline: false;
+}
 
 export async function runProcessCommand(input: ProcessCommandInput): Promise<ProcessCommandResult> {
-  return await executeFileAsync(input.file, input.args, buildProcessCommandOptions(input));
+  return await execa(input.file, input.args, {
+    env: buildProcessCommandEnv(input),
+    stripFinalNewline: false,
+  });
 }
 
 export async function runProcessCommandWithProgress(
   input: ProcessCommandInput,
   progressHandlers: ProcessCommandProgressHandlers,
 ): Promise<ProcessCommandResult> {
-  return await new Promise<ProcessCommandResult>(
-    (resolve: ResolveProcessCommandResult, reject: RejectProcessCommand): void => {
-      const child: ProcessCommandChild = createProcessCommandChild(input);
-      const outputBuffers: ProcessCommandOutputBuffers = { stderr: '', stdout: '' };
-      let rejected: boolean = false;
-      const rejectOnce: RejectProcessCommand = (error: Error): void => {
-        if (rejected) {
-          return;
-        }
-
-        rejected = true;
-        reject(error);
-      };
-      const isRejected: IsProcessCommandRejected = (): boolean => rejected;
-
-      child.once('error', rejectOnce);
-      collectProcessCommandOutput(child, outputBuffers);
-      trackProcessCommandProgress(child, progressHandlers, rejectOnce, isRejected);
-      settleProcessCommand(child, input, outputBuffers, resolve, rejectOnce, isRejected);
-    },
-  );
+  const output: ProcessCommandResult = { stderr: '', stdout: '' };
+  const progressAbortController: AbortController = new AbortController();
+  const options: ProgressProcessCommandOptions = buildProgressProcessCommandOptions(input);
+  const subprocess: ResultPromise<ProgressProcessCommandOptions> = execa(input.file, input.args, options);
+  collectProcessCommandOutput(subprocess.stdout, 'stdout', output);
+  collectProcessCommandOutput(subprocess.stderr, 'stderr', output);
+  const [result] = await Promise.all([
+    subprocess,
+    pipeProcessCommandLines(subprocess.stdout, 'stdout', progressHandlers, progressAbortController),
+    pipeProcessCommandLines(subprocess.stderr, 'stderr', progressHandlers, progressAbortController),
+  ]);
+  if (result instanceof Error) {
+    Object.assign(result, output);
+    throw result;
+  }
+  return output;
 }
 
-function createProcessCommandChild(input: ProcessCommandInput): ProcessCommandChild {
-  return spawn(input.file, input.args, {
-    ...buildProcessCommandOptions(input),
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-}
-
-function buildProcessCommandOptions(input: ProcessCommandInput): ExecFileOptions {
+function buildProgressProcessCommandOptions(input: ProcessCommandInput): ProgressProcessCommandOptions {
   return {
-    env: {
-      ...process.env,
-      ...(input.env ?? {}),
-    },
+    buffer: false,
+    env: buildProcessCommandEnv(input),
+    reject: false,
+    stdin: 'ignore',
+    stripFinalNewline: false,
   };
 }
 
-function collectProcessCommandOutput(child: ProcessCommandChild, outputBuffers: ProcessCommandOutputBuffers): void {
-  child.stdout.setEncoding('utf8');
-  child.stderr.setEncoding('utf8');
-  child.stdout.on('data', (chunk: string): void => {
-    outputBuffers.stdout = appendTrackedProcessCommandOutput(outputBuffers.stdout, chunk);
-  });
-  child.stderr.on('data', (chunk: string): void => {
-    outputBuffers.stderr = appendTrackedProcessCommandOutput(outputBuffers.stderr, chunk);
-  });
-}
-
-function appendTrackedProcessCommandOutput(buffer: string, chunk: string): string {
-  const nextBuffer: string = `${buffer}${chunk}`;
-  return nextBuffer.length <= maxTrackedProcessCommandOutputLength
-    ? nextBuffer
-    : nextBuffer.slice(-maxTrackedProcessCommandOutputLength);
-}
-
-function trackProcessCommandProgress(
-  child: ProcessCommandChild,
-  progressHandlers: ProcessCommandProgressHandlers,
-  reject: RejectProcessCommand,
-  isRejected: IsProcessCommandRejected,
+function collectProcessCommandOutput(
+  stream: Readable,
+  outputStream: DockerLogStream,
+  output: ProcessCommandResult,
 ): void {
-  void pipeProcessCommandLines(child.stdout, 'stdout', progressHandlers, reject, isRejected);
-  void pipeProcessCommandLines(child.stderr, 'stderr', progressHandlers, reject, isRejected);
-}
-
-function settleProcessCommand(
-  child: ProcessCommandChild,
-  input: ProcessCommandInput,
-  outputBuffers: ProcessCommandOutputBuffers,
-  resolve: ResolveProcessCommandResult,
-  reject: RejectProcessCommand,
-  isRejected: IsProcessCommandRejected,
-): void {
-  child.once('close', (code: number | null): void => {
-    if (isRejected()) {
-      return;
-    }
-
-    if (code === 0) {
-      resolve(outputBuffers);
-      return;
-    }
-
-    reject(buildProcessCommandFailure(input, code, outputBuffers.stdout, outputBuffers.stderr));
+  stream.setEncoding('utf8');
+  stream.on('data', (chunk: string): void => {
+    output[outputStream] = `${output[outputStream]}${chunk}`.slice(-maxTrackedProcessCommandOutputLength);
   });
 }
 
@@ -125,8 +71,7 @@ async function pipeProcessCommandLines(
   stream: NodeJS.ReadableStream,
   outputStream: DockerLogStream,
   progressHandlers: ProcessCommandProgressHandlers,
-  reject: RejectProcessCommand,
-  isRejected: IsProcessCommandRejected,
+  abortController: AbortController,
 ): Promise<void> {
   const reader: Interface = createInterface({
     input: stream,
@@ -134,32 +79,19 @@ async function pipeProcessCommandLines(
 
   try {
     for await (const line of reader) {
-      if (isRejected()) {
+      if (abortController.signal.aborted) {
         return;
       }
-
       await progressHandlers.onLine(outputStream, line);
     }
   } catch (error) {
-    const processError: Error =
-      error instanceof Error ? error : new Error('Process command failed while streaming progress.');
-    reject(processError);
+    abortController.abort();
+    throw error instanceof Error ? error : new Error('Process command failed while streaming progress.');
   } finally {
     reader.close();
   }
 }
 
-function buildProcessCommandFailure(
-  input: ProcessCommandInput,
-  code: number | null,
-  stdout: string,
-  stderr: string,
-): Error {
-  const error: ProcessCommandError = new Error(
-    `${input.file} ${input.args.join(' ')} failed${code === null ? '' : ` with exit code ${code}`}.`,
-  );
-  error.code = code ?? undefined;
-  error.stderr = stderr;
-  error.stdout = stdout;
-  return error;
+function buildProcessCommandEnv(input: ProcessCommandInput): NodeJS.ProcessEnv {
+  return { ...process.env, ...(input.env ?? {}) };
 }

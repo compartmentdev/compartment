@@ -11,17 +11,6 @@ export interface ProcessCommandResult {
   stdout: string;
 }
 
-export interface ProcessCommandOutputBuffers {
-  stderr: string;
-  stdout: string;
-}
-
 export interface ProcessCommandProgressHandlers {
   onLine: (stream: DockerLogStream, message: string) => void | Promise<void>;
-}
-
-export interface ProcessCommandError extends Error {
-  code?: number | undefined;
-  stderr?: string | undefined;
-  stdout?: string | undefined;
 }

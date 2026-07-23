@@ -24,5 +24,8 @@
   },
   "devDependencies": {
     "@compartment/eslint-config": "workspace:*"
+  },
+  "dependencies": {
+    "execa": "10.0.0"
   }
 }
