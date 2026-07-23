@@ -28,6 +28,7 @@ const queuedPromptReaders: WeakMap<NodeJS.ReadableStream, QueuedPromptLineReader
   NodeJS.ReadableStream,
   QueuedPromptLineReader
 >();
+const interactiveTerminalRequiredMessage: string = 'Interactive terminal required for prompt input.';
 
 export async function readPromptLine(io: CliIo, label: string): Promise<string> {
   if (isInteractivePromptInput(io.stdin)) {
@@ -39,13 +40,12 @@ export async function readPromptLine(io: CliIo, label: string): Promise<string> 
 }
 
 export async function readSecretPromptLine(io: CliIo, label: string): Promise<string> {
-  if (isInteractivePromptInput(io.stdin)) {
-    io.stderr(label);
-    return await readInteractiveSecretPromptLine(io);
+  io.stderr(label);
+  if (!isInteractivePromptInput(io.stdin)) {
+    throw new Error(interactiveTerminalRequiredMessage);
   }
 
-  io.stderr(label);
-  return await readQueuedPromptLine(io.stdin);
+  return await readInteractiveSecretPromptLine(io);
 }
 
 async function readInteractivePromptLine(io: CliIo, label: string): Promise<string> {
@@ -92,7 +92,7 @@ class PromptCancelRegistration {
     let cleanup: () => void = (): void => undefined;
     this.promise = new Promise<never>((_resolve: ResolvePromptCancel, reject: RejectPromptCancel): void => {
       const handleCancel: () => void = (): void => {
-        reject(new Error('Prompt input cancelled.'));
+        reject(new Error(interactiveTerminalRequiredMessage));
       };
       cleanup = (): void => {
         readline.off('close', handleCancel);
@@ -116,7 +116,7 @@ async function readQueuedPromptLine(input: NodeJS.ReadableStream): Promise<strin
     return line;
   }
   if (reader.ended) {
-    return '';
+    throw new Error(interactiveTerminalRequiredMessage);
   }
 
   return await new Promise<string>((resolve: (value: string) => void, reject: (error: Error) => void): void => {
@@ -167,24 +167,13 @@ function registerQueuedPromptLineHandlers(
   });
   readline.once('close', (): void => {
     reader.ended = true;
-    resolveWaitingPromptLines(reader);
+    rejectWaitingPromptLines(reader, new Error(interactiveTerminalRequiredMessage));
   });
   readline.once('error', (error: Error): void => {
     reader.ended = true;
     rejectWaitingPromptLines(reader, error);
     queuedPromptReaders.delete(input);
   });
-}
-
-function resolveWaitingPromptLines(reader: QueuedPromptLineReader): void {
-  for (;;) {
-    const waiter: PromptLineWaiter | undefined = reader.waiters.shift();
-    if (waiter === undefined) {
-      return;
-    }
-
-    waiter.resolve('');
-  }
 }
 
 function rejectWaitingPromptLines(reader: QueuedPromptLineReader, error: Error): void {

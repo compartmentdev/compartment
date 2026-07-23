@@ -137,7 +137,22 @@ compartment install \
 ```
 
 With `--values`, the configuration wizard is skipped but the same preflight checks and existing owner prompts still
-run. In the managed-domain example above, the command creates the foundation release, detects the Caddy LoadBalancer
+run. For a non-interactive install, pass `--email` and `--organization`, and provide the first owner password through
+`COMPARTMENT_ADMIN_PASSWORD`:
+
+```bash
+: "${COMPARTMENT_ADMIN_PASSWORD:?Load it from your secret manager first}"
+export COMPARTMENT_ADMIN_PASSWORD
+compartment install \
+  --values compartment-values.yaml \
+  --email admin@example.com \
+  --organization 'Acme Dev'
+```
+
+The password must contain at least eight characters. Supply it from your CI or secret-management system and avoid
+persisting it in shell history or committed files.
+
+In the managed-domain example above, the command creates the foundation release, detects the Caddy LoadBalancer
 public IP, allocates a domain through `https://broker.compartment.run`, persists the installation ID, domain
 allocation, and ingress addresses in a retained Kubernetes Secret, then completes the chart with managed DNS-01 TLS.
 At runtime the broker credential is read from that Secret only by API and Caddy, never from a ConfigMap. Helm also

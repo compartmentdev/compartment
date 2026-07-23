@@ -326,7 +326,22 @@ prepare_kubernetes_cli_tools() {
 
 resolve_kubernetes_cli_digest_ref() {
   cli_tag_ref="$1"
-  cli_manifest_digest="$("$oras_command" resolve "$cli_tag_ref")"
+  oras_resolve_error_path="${temp_directory}/oras-resolve.stderr"
+  if ! cli_manifest_digest="$("$oras_command" resolve "$cli_tag_ref" 2>"$oras_resolve_error_path")"; then
+    oras_resolve_error="$(cat "$oras_resolve_error_path")"
+    rm -f "$oras_resolve_error_path"
+    case "$oras_resolve_error" in
+      *"not found"* | *"manifest unknown"*)
+        printf 'Images for %s are still publishing (this can take a few minutes after a merge). Please retry shortly.\n' \
+          "$resolved_release_tag" >&2
+        ;;
+      *)
+        printf 'Failed to resolve Kubernetes CLI image %s. Check registry access and retry.\n' "$cli_tag_ref" >&2
+        ;;
+    esac
+    return 1
+  fi
+  rm -f "$oras_resolve_error_path"
   validated_cli_manifest_digest="$(
     printf '%s\n' "$cli_manifest_digest" | sed -n '/^sha256:[0-9a-f]\{64\}$/p'
   )"

@@ -1,6 +1,7 @@
 import { rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { readPromptLine } from '../../prompts/prompt-reader';
+import { ReportedCliError } from '../../reported-error';
 import { resolveKubernetesInstallKubeconfig } from '../../services/kubernetes-install-kubeconfig.service';
 import type { ResolvedKubernetesKubeconfig } from '../../services/kubernetes-install-kubeconfig.service.types';
 import {
@@ -52,7 +53,7 @@ async function resolvePreflightKubeconfig(
   } catch (error) {
     const failure: Error = error instanceof Error ? error : new Error('Kubeconfig resolution failed.');
     dependencies.io.stderr(`✗ kubeconfig: ${failure.message}\n`);
-    throw failure;
+    throw new ReportedCliError(failure.message);
   }
 }
 
@@ -76,7 +77,7 @@ async function runClusterChecks(
   } catch (error) {
     const failure: Error = error instanceof Error ? error : new Error('Kubernetes preflight failed.');
     writeFailedClusterCheck(dependencies, failure, resolvedKubeconfig.clusterServer);
-    throw failure;
+    throw new ReportedCliError(failure.message);
   }
 }
 

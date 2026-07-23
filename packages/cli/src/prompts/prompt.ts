@@ -17,6 +17,8 @@ export interface RemoteSelectionPromptOption {
   name: string;
 }
 
+const newPasswordAttemptLimit: number = 3;
+
 export async function promptRegisterEmail(io: CliIo, configuredEmail?: string): Promise<string> {
   if (hasText(configuredEmail)) {
     assertEmail(configuredEmail);
@@ -85,7 +87,7 @@ export async function promptActivationToken(io: CliIo, configuredToken?: string)
 }
 
 export async function promptNewPassword(io: CliIo, label: string = 'Admin password'): Promise<string> {
-  for (;;) {
+  for (let attempt: number = 1; attempt <= newPasswordAttemptLimit; attempt += 1) {
     const password: string = await promptSecretText(io, label);
     const passwordError: string | undefined = validatePassword(password);
     if (passwordError !== undefined) {
@@ -100,6 +102,8 @@ export async function promptNewPassword(io: CliIo, label: string = 'Admin passwo
 
     writePromptError(io, 'Password confirmation does not match.');
   }
+
+  throw new Error(`Password entry failed after ${String(newPasswordAttemptLimit)} attempts.`);
 }
 
 export async function promptProjectBindingSave(io: CliIo, remoteName: string): Promise<boolean> {

@@ -41,6 +41,7 @@ interface InstallerFixture {
 }
 
 type InstallerSignatureOutcome = 'foreign-identity' | 'unsigned' | 'valid' | 'wrong-workflow-sha';
+type OrasResolveOutcome = 'missing' | 'unavailable' | 'valid';
 
 interface InstallerScriptResult {
   cosignInvocations: string[];
@@ -64,6 +65,7 @@ interface InstallerRunOptions {
   installerTerminalPath?: string | undefined;
   installerTerminalOutputPath?: string | undefined;
   osName?: string | undefined;
+  orasResolveOutcome?: OrasResolveOutcome | undefined;
   pathEntries?: string[] | undefined;
   shell?: string | undefined;
   signatureOutcome?: InstallerSignatureOutcome | undefined;
@@ -166,6 +168,42 @@ describe('render-cli-install-script', (): void => {
       expect(result.compartmentInvocations).toEqual([]);
     },
   );
+
+  it('explains when Kubernetes channel images are still publishing', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      allowFailure: true,
+      args: ['--channel', 'kubernetes'],
+      orasResolveOutcome: 'missing',
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      `Images for ${expectedKubernetesReleaseTag} are still publishing (this can take a few minutes after a merge). Please retry shortly.`,
+    );
+    expect(result.stderr).not.toContain('Error response from registry');
+    expect(result.orasInvocations).toEqual([
+      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}`,
+    ]);
+    expect(result.cosignInvocations).toEqual([]);
+    expect(result.compartmentInvocations).toEqual([]);
+  });
+
+  it('keeps non-publishing registry failures distinct', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      allowFailure: true,
+      args: ['--channel', 'kubernetes'],
+      orasResolveOutcome: 'unavailable',
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      `Failed to resolve Kubernetes CLI image ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}. Check registry access and retry.`,
+    );
+    expect(result.stderr).not.toContain('still publishing');
+    expect(result.stderr).not.toContain('registry unavailable');
+  });
 
   it.each([
     ['an unsigned artifact', 'unsigned', 'no signatures found'],
@@ -791,6 +829,7 @@ async function runInstallerScript(
     COMPARTMENT_TEST_CHECKSUMS_PATH: fixture.checksumsPath,
     COMPARTMENT_TEST_EXPECTED_ARTIFACT_NAME: fixture.artifactName,
     COMPARTMENT_TEST_EXPECTED_ORAS_PLATFORM: readExpectedOrasPlatform(options.osName, options.archName),
+    COMPARTMENT_TEST_ORAS_RESOLVE_OUTCOME: options.orasResolveOutcome ?? 'valid',
     COMPARTMENT_TEST_SIGNATURE_OUTCOME: options.signatureOutcome ?? 'valid',
     COMPARTMENT_TEST_STATE_DIR: stateDirectory,
     COMPARTMENT_TEST_TOOL_VERSION_MODE: options.toolVersionMode ?? 'compatible',

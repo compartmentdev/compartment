@@ -231,6 +231,7 @@ expected_artifact_name="\${COMPARTMENT_TEST_EXPECTED_ARTIFACT_NAME:?}"
 expected_platform="\${COMPARTMENT_TEST_EXPECTED_ORAS_PLATFORM:?}"
 state_dir="\${COMPARTMENT_TEST_STATE_DIR:?}"
 tool_version_mode="\${COMPARTMENT_TEST_TOOL_VERSION_MODE:?}"
+oras_resolve_outcome="\${COMPARTMENT_TEST_ORAS_RESOLVE_OUTCOME:?}"
 
 if [ "$*" = "version" ]; then
   if [ "$tool_version_mode" = "compatible" ]; then
@@ -248,6 +249,14 @@ case "\${1:-}" in
   resolve)
     if [ "$*" != "resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}" ]; then
       printf 'Unexpected oras resolve args: %s\\n' "$*" >&2
+      exit 1
+    fi
+    if [ "$oras_resolve_outcome" = "missing" ]; then
+      printf 'Error response from registry: failed to resolve digest: not found\\n' >&2
+      exit 1
+    fi
+    if [ "$oras_resolve_outcome" = "unavailable" ]; then
+      printf 'registry unavailable\\n' >&2
       exit 1
     fi
     printf '${expectedCliManifestDigest}\\n'
