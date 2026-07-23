@@ -11,8 +11,10 @@ const observabilityNamespace = `${platformName}-observability`;
 const agentName = `${platformName}-log-agent`;
 const quotaMaxBytes = 1_073_741_824;
 const configuredBufferMaxBytes = 268_435_488;
-const bufferMinBytes = 125_829_120;
+// Backpressure settles near 112.8 MiB; observe it between 100 MiB and the unchanged 144 MiB runaway guard.
+const bufferMinBytes = 104_857_600;
 const bufferMaxBytes = 150_994_944;
+const bufferHoldAttempts = 10;
 const loadPodCount = 7;
 const loadPodImage = 'public.ecr.aws/docker/library/node:24.15.0-bookworm';
 const kubernetesReadinessTimeout = '4m';
@@ -226,37 +228,51 @@ async function waitForBoundedBuffer() {
   );
   let bufferBytes = 0;
   for (let attempt = 0; attempt < 300; attempt += 1) {
-    const metrics = captureCommand(
-      'kubectl',
-      [
-        '--context',
-        context,
-        '--namespace',
-        observabilityNamespace,
-        'exec',
-        agentPod,
-        '--',
-        'wget',
-        '--quiet',
-        '--output-document=-',
-        'http://127.0.0.1:9598/metrics',
-      ],
-      repositoryRoot,
-    );
-    const configuredMaxBytes = parseProductLogBufferMaxBytes(metrics);
-    if (configuredMaxBytes !== configuredBufferMaxBytes) {
-      throw new Error(`Unexpected product-log buffer maximum: bytes=${configuredMaxBytes}.`);
-    }
-    bufferBytes = parseProductLogBufferBytes(metrics);
+    bufferBytes = readProductLogBufferBytes(agentPod);
     if (bufferBytes >= bufferMinBytes) {
       break;
     }
     await delay(1_000);
   }
+  if (bufferBytes < bufferMinBytes) {
+    throw new Error(`Product-log buffer did not backpressure within bounds: bytes=${bufferBytes}.`);
+  }
+  for (let attempt = 0; attempt < bufferHoldAttempts; attempt += 1) {
+    if (bufferBytes < bufferMinBytes || bufferBytes > bufferMaxBytes) {
+      throw new Error(`Product-log buffer did not backpressure within bounds: bytes=${bufferBytes}.`);
+    }
+    await delay(1_000);
+    bufferBytes = readProductLogBufferBytes(agentPod);
+  }
   if (bufferBytes < bufferMinBytes || bufferBytes > bufferMaxBytes) {
     throw new Error(`Product-log buffer did not backpressure within bounds: bytes=${bufferBytes}.`);
   }
   return bufferBytes;
+}
+
+function readProductLogBufferBytes(agentPod) {
+  const metrics = captureCommand(
+    'kubectl',
+    [
+      '--context',
+      context,
+      '--namespace',
+      observabilityNamespace,
+      'exec',
+      agentPod,
+      '--',
+      'wget',
+      '--quiet',
+      '--output-document=-',
+      'http://127.0.0.1:9598/metrics',
+    ],
+    repositoryRoot,
+  );
+  const configuredMaxBytes = parseProductLogBufferMaxBytes(metrics);
+  if (configuredMaxBytes !== configuredBufferMaxBytes) {
+    throw new Error(`Unexpected product-log buffer maximum: bytes=${configuredMaxBytes}.`);
+  }
+  return parseProductLogBufferBytes(metrics);
 }
 
 async function assertPlatformHealthy(loadTarget) {
