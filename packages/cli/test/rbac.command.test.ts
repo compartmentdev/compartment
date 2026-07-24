@@ -29,6 +29,7 @@ import {
 interface RbacCommandMocks {
   createOrganizationAccessAssignment: Mock<CreateOrganizationAccessAssignment>;
   createOrganizationAccessGroup: Mock<CreateOrganizationAccessGroup>;
+  deleteOrganizationAccessAssignment: Mock<DeleteOrganizationAccessAssignment>;
   deleteOrganizationAccessGroup: Mock<DeleteOrganizationAccessGroup>;
   deleteOrganizationAccessRole: Mock<DeleteOrganizationAccessRole>;
   listOrganizationAccessAssignments: Mock<ListOrganizationAccessAssignments>;
@@ -42,6 +43,7 @@ interface RbacCommandMocks {
 interface RbacServiceModule {
   createOrganizationAccessAssignment: Mock<CreateOrganizationAccessAssignment>;
   createOrganizationAccessGroup: Mock<CreateOrganizationAccessGroup>;
+  deleteOrganizationAccessAssignment: Mock<DeleteOrganizationAccessAssignment>;
   deleteOrganizationAccessGroup: Mock<DeleteOrganizationAccessGroup>;
   deleteOrganizationAccessRole: Mock<DeleteOrganizationAccessRole>;
   listOrganizationAccessAssignments: Mock<ListOrganizationAccessAssignments>;
@@ -63,6 +65,10 @@ type CreateOrganizationAccessGroup = (
   context: AuthenticatedContext,
   input: { name: string },
 ) => Promise<AccessGroupResponse>;
+type DeleteOrganizationAccessAssignment = (
+  context: AuthenticatedContext,
+  assignmentId: string,
+) => Promise<AccessAssignmentResponse>;
 type DeleteOrganizationAccessGroup = (context: AuthenticatedContext, groupId: string) => Promise<AccessGroupResponse>;
 type DeleteOrganizationAccessRole = (context: AuthenticatedContext, roleId: string) => Promise<AccessRoleResponse>;
 type ListOrganizationAccessAssignments = (context: AuthenticatedContext) => Promise<AccessAssignmentListResponse>;
@@ -249,8 +255,27 @@ describe.sequential('rbac cli commands', (): void => {
     expect(mocks.deleteOrganizationAccessGroup).not.toHaveBeenCalled();
   });
 
-  it('deletes roles and groups when explicit confirmation is provided', async (): Promise<void> => {
+  it('requires explicit destructive confirmation for assignment delete', async (): Promise<void> => {
     const mocks: RbacCommandMocks = mockRbacCommandModules();
+    const result: CliCommandResult = await runCliCommand(['assignment', 'delete', 'asg_123']);
+
+    expectCliFailure(result, 'Assignment delete requires --yes.');
+    expect(mocks.deleteOrganizationAccessAssignment).not.toHaveBeenCalled();
+  });
+
+  it('deletes assignments, roles, and groups when explicit confirmation is provided', async (): Promise<void> => {
+    const mocks: RbacCommandMocks = mockRbacCommandModules();
+    mocks.deleteOrganizationAccessAssignment.mockResolvedValue({
+      assignment: {
+        createdAt: '2026-05-05T10:00:00.000Z',
+        id: 'asg_123',
+        roleId: 'rol_123',
+        roleKind: 'custom',
+        roleName: 'Project Operator',
+        scope: { projectName: 'billing', scopeType: 'project' },
+        subject: { principalEmail: 'viewer@example.com', subjectType: 'principal' },
+      },
+    });
     mocks.deleteOrganizationAccessRole.mockResolvedValue({
       role: {
         description: null,
@@ -270,11 +295,14 @@ describe.sequential('rbac cli commands', (): void => {
       },
     });
 
+    const deleteAssignmentResult: CliCommandResult = await runCliCommand(['assignment', 'delete', 'asg_123', '--yes']);
     const deleteRoleResult: CliCommandResult = await runCliCommand(['role', 'delete', 'rol_123', '--yes']);
     const deleteGroupResult: CliCommandResult = await runCliCommand(['group', 'delete', 'grp_123', '--yes']);
 
+    expectCliSuccess(deleteAssignmentResult);
     expectCliSuccess(deleteRoleResult);
     expectCliSuccess(deleteGroupResult);
+    expect(readCliStdout(deleteAssignmentResult.capture)).toContain('Deleted assignment asg_123.');
     expect(readCliStdout(deleteRoleResult.capture)).toContain('Deleted role Project Operator.');
     expect(readCliStdout(deleteGroupResult.capture)).toContain('Deleted group Operators.');
   });
@@ -289,6 +317,8 @@ function mockRbacCommandModules(): RbacCommandMocks {
   const createOrganizationAccessAssignment: Mock<CreateOrganizationAccessAssignment> =
     vi.fn<CreateOrganizationAccessAssignment>();
   const createOrganizationAccessGroup: Mock<CreateOrganizationAccessGroup> = vi.fn<CreateOrganizationAccessGroup>();
+  const deleteOrganizationAccessAssignment: Mock<DeleteOrganizationAccessAssignment> =
+    vi.fn<DeleteOrganizationAccessAssignment>();
   const deleteOrganizationAccessGroup: Mock<DeleteOrganizationAccessGroup> = vi.fn<DeleteOrganizationAccessGroup>();
   const deleteOrganizationAccessRole: Mock<DeleteOrganizationAccessRole> = vi.fn<DeleteOrganizationAccessRole>();
   const listOrganizationAccessAssignments: Mock<ListOrganizationAccessAssignments> =
@@ -304,6 +334,7 @@ function mockRbacCommandModules(): RbacCommandMocks {
     (): RbacServiceModule => ({
       createOrganizationAccessAssignment,
       createOrganizationAccessGroup,
+      deleteOrganizationAccessAssignment,
       deleteOrganizationAccessGroup,
       deleteOrganizationAccessRole,
       listOrganizationAccessAssignments,
@@ -323,6 +354,7 @@ function mockRbacCommandModules(): RbacCommandMocks {
   return {
     createOrganizationAccessAssignment,
     createOrganizationAccessGroup,
+    deleteOrganizationAccessAssignment,
     deleteOrganizationAccessGroup,
     deleteOrganizationAccessRole,
     listOrganizationAccessAssignments,

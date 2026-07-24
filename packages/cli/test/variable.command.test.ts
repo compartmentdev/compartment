@@ -145,6 +145,22 @@ describe.sequential('compartment variable commands', { timeout: 15_000 }, (): vo
     expect(readCliStderr(result.capture)).not.toBe('An unexpected error occurred.\n');
   });
 
+  it.each(['--project', '--service', '--env'])(
+    'explains organization scope when variable group list receives %s',
+    async (scopeOption: string): Promise<void> => {
+      const fetchMock: Mock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result: CliCommandResult = await runCliCommand(['variable', 'group', 'list', scopeOption, 'billing']);
+
+      expectCliFailure(
+        result,
+        'Variable groups are organization-scoped; --project, --service, and --env are not applicable.',
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('renders environment inventory with service-scoped variants in default lists', async (): Promise<void> => {
     const projectDirectory: string = await createProjectDirectory(tempRoot);
 
