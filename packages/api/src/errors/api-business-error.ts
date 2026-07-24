@@ -194,6 +194,10 @@ export function createResourceNameTakenError(message?: string): ApiBusinessError
   return new ApiBusinessError('resource_name_taken', message);
 }
 
+export function createResourceConflictError(message?: string): ApiBusinessError {
+  return new ApiBusinessError('resource_conflict', message);
+}
+
 export function createLastOrganizationAdminError(): ApiBusinessError {
   return new ApiBusinessError('last_organization_admin');
 }

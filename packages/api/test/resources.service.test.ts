@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { isApiBusinessError, mapApiBusinessError } from '../src/errors/api-business-error';
 import type { ProjectResourceRow } from '../src/queries/resources.query.types';
-import { deleteResourceForPrincipal } from '../src/services/resources.service';
+import { bootstrapResourceForPrincipal, deleteResourceForPrincipal } from '../src/services/resources.service';
 
 const deleteResource: Mock = vi.hoisted((): Mock => vi.fn());
 const findResource: Mock = vi.hoisted((): Mock => vi.fn());
@@ -19,7 +20,7 @@ vi.mock('../src/services/resource-environment-context.service', (): object => ({
   resolveResourceEnvironmentContext: resolveContext,
 }));
 
-describe('resource service deletion response', (): void => {
+describe('resource service', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
     resolveContext.mockResolvedValue({
@@ -41,6 +42,28 @@ describe('resource service deletion response', (): void => {
         query: { projectName: 'project', resourceName: 'postgres' },
       }),
     ).resolves.toEqual([]);
+  });
+
+  it('reports an already bootstrapped resource as a conflict', async (): Promise<void> => {
+    const error: Error = await bootstrapResourceForPrincipal({
+      actorPrincipalId: 'prn_admin',
+      organizationSlug: 'organization',
+      query: { projectName: 'project', resourceName: 'postgres' },
+    }).then(
+      (): never => {
+        throw new Error('Expected resource bootstrap to fail.');
+      },
+      (reason: Error): Error => reason,
+    );
+
+    if (!isApiBusinessError(error)) {
+      throw error;
+    }
+    expect(mapApiBusinessError(error)).toEqual({
+      code: 'resource_conflict',
+      message: 'Resource "postgres" is already bootstrapped.',
+      statusCode: 409,
+    });
   });
 });
 

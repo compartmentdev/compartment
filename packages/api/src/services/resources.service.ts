@@ -1,5 +1,5 @@
 import type { ResourceVolumeSummary } from '@compartment/contracts';
-import { createResourceNotFoundError } from '../errors/api-business-error';
+import { createResourceConflictError, createResourceNotFoundError } from '../errors/api-business-error';
 import { findProjectResourceByName, listProjectResourcesByEnvironmentId } from '../queries/resources.query';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import { resolveResourceEnvironmentContext } from './resource-environment-context.service';
@@ -90,7 +90,7 @@ export async function bootstrapResourceForPrincipal(input: ResourceActionInput):
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
   if (resource.expectedClaimsJson !== '[]') {
-    throw new Error(`Resource ${resource.name} is already bootstrapped.`);
+    throw createResourceConflictError(`Resource "${resource.name}" is already bootstrapped.`);
   }
   await bootstrapKubernetesResource(context, resource);
   return { ...context, resource };

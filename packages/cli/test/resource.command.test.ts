@@ -124,6 +124,36 @@ describe.sequential('compartment resource commands', (): void => {
     expect(readCliStderr(result.capture)).not.toBe('An unexpected error occurred.\n');
   });
 
+  it('prints the resource conflict and exits non-zero when resource bootstrap is repeated', async (): Promise<void> => {
+    const message: string = 'Resource "postgres" is already bootstrapped.';
+    const response: ErrorResponse = createErrorResponse('resource_conflict', message);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(response), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 409,
+        }),
+      ),
+    );
+    mockConfigStore();
+
+    const result: CliCommandResult = await runCliCommand([
+      'resource',
+      'bootstrap',
+      '--project',
+      'project',
+      '--env',
+      'production',
+      '--resource',
+      'postgres',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(readCliStderr(result.capture)).toContain(message);
+    expect(readCliStderr(result.capture)).not.toBe('An unexpected error occurred.\n');
+  });
+
   it('rejects restore target ambiguity when --resource and --as are combined', async (): Promise<void> => {
     const mocks: ResourceCommandMocks = mockResourceCommandModules(createResourceRestoreResponse());
 
