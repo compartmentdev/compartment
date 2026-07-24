@@ -3,6 +3,7 @@ import type {
   DeploymentArtifactCleanupTarget,
   DeploymentReconcileTarget,
   ProductJobIntent,
+  ProjectNetworkPolicyPorts,
   WorkerPersistProductJobIntentResponse,
   WorkerObserveDeploymentReconcileRequest,
 } from '@compartment/contracts';
@@ -23,7 +24,11 @@ import {
   rolloutFailureMessage,
 } from './worker-deployment-reconcile.helpers';
 import { readRolloutObservation, rolloutTimeoutMs } from './worker-deployment-rollout-observation.service';
-import { applyProjectNetworkPolicies } from './worker-network-policy.service';
+import {
+  applyProjectNetworkPolicies,
+  includeApplicationNetworkPolicyPorts,
+  projectProjectNetworkPolicyManifests,
+} from './worker-network-policy.service';
 
 const releaseTimeoutMs: number = 600_000;
 const activeReadinessCheckCount: number = 6;
@@ -67,7 +72,6 @@ async function reconcileActiveDeployment(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
 ): Promise<void> {
-  await applyProjectNetworkPolicies(runtime, target.candidate.projectId, target.networkPolicy);
   const applied: KubeDeploymentManifest = await applyApplication(runtime, target);
   if (await activeDeploymentRemainsNonReady(runtime, applied, target)) {
     await persistObservation(request, target, 'pending', 'Active Kubernetes Deployment drifted or became non-Ready.');
@@ -96,9 +100,9 @@ async function reconcileDesiredDeployment(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
 ): Promise<void> {
-  await applyProjectNetworkPolicies(runtime, target.candidate.projectId, target.networkPolicy);
   const release: ProductJobIntent | null = releaseIntent(target.candidate, releaseTimeoutMs);
   if (release !== null) {
+    await applyProjectNetworkPolicies(runtime, target.candidate.projectId, deploymentNetworkPolicy(target));
     const persisted: WorkerPersistProductJobIntentResponse = await persistProductJobIntent(request, release);
     if (persisted.result === null) {
       return;
@@ -113,7 +117,7 @@ async function reconcileDesiredDeployment(
       return;
     }
   }
-  await runtime.apply({ objects: projectApplicationManifests(target.candidate) });
+  await applyApplication(runtime, target);
   await persistObservation(request, target, 'pending');
 }
 
@@ -122,7 +126,6 @@ async function reconcilePendingDeployment(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  await applyProjectNetworkPolicies(runtime, target.candidate.projectId, target.networkPolicy);
   const candidate: KubeDeploymentManifest = await applyApplication(runtime, target);
   const rollout: KubeRolloutObservation | null = readRolloutObservation(
     await runtime.read(candidate),
@@ -157,7 +160,14 @@ async function applyApplication(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
 ): Promise<KubeDeploymentManifest> {
-  return deploymentFromObjects(await runtime.apply({ objects: projectApplicationManifests(target.candidate) }));
+  return deploymentFromObjects(
+    await runtime.apply({
+      objects: [
+        ...projectProjectNetworkPolicyManifests(target.candidate.projectId, deploymentNetworkPolicy(target)),
+        ...projectApplicationManifests(target.candidate),
+      ],
+    }),
+  );
 }
 
 async function handleRolloutStatus(
@@ -189,7 +199,13 @@ async function restartActiveCandidate(
     return false;
   }
   await runtime.delete([deploymentManifest(target.candidate)]);
-  await runtime.apply({ force: true, objects: projectApplicationManifests(target.candidate) });
+  await runtime.apply({
+    force: true,
+    objects: [
+      ...projectProjectNetworkPolicyManifests(target.candidate.projectId, deploymentNetworkPolicy(target)),
+      ...projectApplicationManifests(target.candidate),
+    ],
+  });
   await persistObservation(request, target, 'pending', 'Restarting an unhealthy active Kubernetes Deployment.');
   return true;
 }
@@ -199,7 +215,17 @@ async function recoverFailedRollout(runtime: KubeRuntime, target: DeploymentReco
     return;
   }
   const activeObjects: KubeManifest[] = projectApplicationManifests(target.active);
-  await runtime.apply({ force: true, objects: activeObjects });
+  await runtime.apply({
+    force: true,
+    objects: [
+      ...projectProjectNetworkPolicyManifests(target.candidate.projectId, deploymentNetworkPolicy(target)),
+      ...activeObjects,
+    ],
+  });
+}
+
+function deploymentNetworkPolicy(target: DeploymentReconcileTarget): ProjectNetworkPolicyPorts {
+  return includeApplicationNetworkPolicyPorts(target.networkPolicy, target.candidate.containerPorts);
 }
 
 async function persistObservation(

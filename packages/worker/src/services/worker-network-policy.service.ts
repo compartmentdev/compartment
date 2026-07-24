@@ -1,5 +1,10 @@
 import type { ProjectNetworkPolicyPorts } from '@compartment/contracts';
-import { kubeNamespaceName, projectNetworkPolicyManifests, type KubeRuntime } from '@compartment/kube-runtime';
+import {
+  kubeNamespaceName,
+  projectNetworkPolicyManifests,
+  type KubeManifest,
+  type KubeRuntime,
+} from '@compartment/kube-runtime';
 import { z } from 'zod';
 import { projectNetworkPolicy, type ProjectNetworkPolicyEnvironment } from '../project-network-policy';
 
@@ -9,18 +14,50 @@ const networkPolicyEnvironmentSchema: z.ZodType<ProjectNetworkPolicyEnvironment>
   COMPARTMENT_KUBE_SERVICE_CIDR: z.string().min(1),
 });
 
+export async function applyResourceNetworkPolicy(
+  runtime: KubeRuntime,
+  projectId: string,
+  ports: ProjectNetworkPolicyPorts,
+  resourcePorts: number[],
+): Promise<void> {
+  await applyProjectNetworkPolicies(runtime, projectId, includeResourceNetworkPolicyPorts(ports, resourcePorts));
+}
+
 export async function applyProjectNetworkPolicies(
   runtime: KubeRuntime,
   projectId: string,
   ports: ProjectNetworkPolicyPorts,
 ): Promise<void> {
+  await runtime.apply({ objects: projectProjectNetworkPolicyManifests(projectId, ports) });
+}
+
+export function projectProjectNetworkPolicyManifests(
+  projectId: string,
+  ports: ProjectNetworkPolicyPorts,
+): KubeManifest[] {
   const environment: ProjectNetworkPolicyEnvironment = networkPolicyEnvironmentSchema.parse(process.env);
-  await runtime.apply({
-    objects: projectNetworkPolicyManifests(
-      kubeNamespaceName(projectId),
-      projectId,
-      projectId,
-      projectNetworkPolicy(environment, ports),
-    ),
-  });
+  return projectNetworkPolicyManifests(
+    kubeNamespaceName(projectId),
+    projectId,
+    projectId,
+    projectNetworkPolicy(environment, ports),
+  );
+}
+
+export function includeApplicationNetworkPolicyPorts(
+  ports: ProjectNetworkPolicyPorts,
+  applicationPorts: number[],
+): ProjectNetworkPolicyPorts {
+  return { ...ports, applicationPorts: unionPorts(ports.applicationPorts, applicationPorts) };
+}
+
+function includeResourceNetworkPolicyPorts(
+  ports: ProjectNetworkPolicyPorts,
+  resourcePorts: number[],
+): ProjectNetworkPolicyPorts {
+  return { ...ports, resourcePorts: unionPorts(ports.resourcePorts, resourcePorts) };
+}
+
+function unionPorts(current: number[], required: number[]): number[] {
+  return [...new Set([...current, ...required])].sort((left: number, right: number): number => left - right);
 }

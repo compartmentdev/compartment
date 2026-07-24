@@ -1,6 +1,7 @@
 import type {
   DeploymentReconcileProjection,
   DeploymentReconcileTarget,
+  ProjectNetworkPolicyPorts,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
 import {
@@ -17,22 +18,28 @@ import { reconcileDeploymentTarget } from '../src/services/worker-deployment-rec
 interface ReconcileMocks {
   applyNetworkPolicy: Mock;
   delay: Mock;
+  includeApplicationPorts: Mock;
   observeDeploymentReconcile: Mock;
   persistProductJobIntent: Mock;
+  projectNetworkPolicyManifests: Mock;
 }
 
 const mocks: ReconcileMocks = vi.hoisted(
   (): ReconcileMocks => ({
     applyNetworkPolicy: vi.fn(),
     delay: vi.fn(),
+    includeApplicationPorts: vi.fn(),
     observeDeploymentReconcile: vi.fn(),
     persistProductJobIntent: vi.fn(),
+    projectNetworkPolicyManifests: vi.fn(),
   }),
 );
 
 vi.mock('node:timers/promises', (): object => ({ setTimeout: mocks.delay }));
 vi.mock('../src/services/worker-network-policy.service', (): object => ({
   applyProjectNetworkPolicies: mocks.applyNetworkPolicy,
+  includeApplicationNetworkPolicyPorts: mocks.includeApplicationPorts,
+  projectProjectNetworkPolicyManifests: mocks.projectNetworkPolicyManifests,
 }));
 
 vi.mock('@compartment/sdk', async (importOriginal: () => Promise<object>): Promise<object> => {
@@ -49,6 +56,22 @@ describe('deployment reconciliation', (): void => {
     vi.clearAllMocks();
     mocks.delay.mockResolvedValue(undefined);
     mocks.applyNetworkPolicy.mockResolvedValue(undefined);
+    mocks.includeApplicationPorts.mockImplementation(
+      (ports: ProjectNetworkPolicyPorts, applicationPorts: number[]): ProjectNetworkPolicyPorts => ({
+        ...ports,
+        applicationPorts: [...new Set([...ports.applicationPorts, ...applicationPorts])],
+      }),
+    );
+    mocks.projectNetworkPolicyManifests.mockImplementation(
+      (_projectId: string, ports: ProjectNetworkPolicyPorts): KubeManifest[] => [
+        {
+          apiVersion: 'networking.k8s.io/v1',
+          kind: 'NetworkPolicy',
+          metadata: { name: 'application-ingress' },
+          spec: { ingress: [{ ports: ports.applicationPorts.map((port: number): object => ({ port })) }] },
+        },
+      ],
+    );
     mocks.persistProductJobIntent.mockResolvedValue({ result: null });
     mocks.observeDeploymentReconcile.mockResolvedValue({ applied: true, cleanupArtifacts: [] });
   });
@@ -88,15 +111,27 @@ describe('deployment reconciliation', (): void => {
     );
   });
 
-  it('repeats SSA after restart between apply and pending persistence', async (): Promise<void> => {
+  it('applies the current application port policy before the Deployment in the same bundle', async (): Promise<void> => {
     const runtime: KubeRuntime & { apply: Mock; read: Mock } = pendingRuntimeStub(true);
+    const staleTarget: DeploymentReconcileTarget = {
+      ...target(projection(null)),
+      networkPolicy: { applicationPorts: [], resourcePorts: [5432] },
+    };
 
-    await reconcileDeploymentTarget(requester(), runtime, target(projection(null)));
+    await reconcileDeploymentTarget(requester(), runtime, staleTarget);
 
     expect(runtime.apply).toHaveBeenCalledOnce();
-    expect(mocks.applyNetworkPolicy.mock.invocationCallOrder[0]).toBeLessThan(
-      runtime.apply.mock.invocationCallOrder[0]!,
+    const bundle: ApplyBundle = runtime.apply.mock.calls[0]?.[0] as ApplyBundle;
+    const policyIndex: number = bundle.objects.findIndex(
+      (object: KubeManifest): boolean => object.kind === 'NetworkPolicy',
     );
+    const deploymentIndex: number = bundle.objects.findIndex(
+      (object: KubeManifest): boolean => object.kind === 'Deployment',
+    );
+    expect(bundle.objects.map((object: KubeManifest): string => object.kind)).toContain('NetworkPolicy');
+    expect(policyIndex).toBeGreaterThanOrEqual(0);
+    expect(policyIndex).toBeLessThan(deploymentIndex);
+    expect(bundle.objects[policyIndex]?.spec).toEqual({ ingress: [{ ports: [{ port: 3000 }] }] });
     expect(runtime.read).not.toHaveBeenCalled();
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
@@ -329,7 +364,7 @@ function projection(releaseCommand: string | null): DeploymentReconcileProjectio
 
 function runtimeStub(): KubeRuntime & { apply: Mock } {
   return {
-    apply: vi.fn(async (): Promise<KubeManifest[]> => await Promise.resolve([])),
+    apply: vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => await Promise.resolve(bundle.objects)),
     read: vi.fn(async (): Promise<KubeManifest | null> => await Promise.resolve(null)),
   } as never;
 }

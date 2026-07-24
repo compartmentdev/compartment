@@ -53,13 +53,19 @@ interface TestKubeObservationHealth {
 interface ResourceSdkMocks {
   acknowledge: Mock;
   applyNetworkPolicy: Mock;
+  applyResourceNetworkPolicy: Mock;
 }
 
 const mocks: ResourceSdkMocks = vi.hoisted(
-  (): ResourceSdkMocks => ({ acknowledge: vi.fn(), applyNetworkPolicy: vi.fn() }),
+  (): ResourceSdkMocks => ({
+    acknowledge: vi.fn(),
+    applyNetworkPolicy: vi.fn(),
+    applyResourceNetworkPolicy: vi.fn(),
+  }),
 );
 vi.mock('../src/services/worker-network-policy.service', (): object => ({
   applyProjectNetworkPolicies: mocks.applyNetworkPolicy,
+  applyResourceNetworkPolicy: mocks.applyResourceNetworkPolicy,
 }));
 vi.mock(
   '@compartment/sdk',
@@ -74,6 +80,8 @@ describe('worker resource reconcile lifecycle', (): void => {
     mocks.acknowledge.mockReset();
     mocks.applyNetworkPolicy.mockReset();
     mocks.applyNetworkPolicy.mockResolvedValue(undefined);
+    mocks.applyResourceNetworkPolicy.mockReset();
+    mocks.applyResourceNetworkPolicy.mockResolvedValue(undefined);
   });
 
   it('rejects substituted PVC UID before mutating a Deployment', async (): Promise<void> => {
@@ -128,6 +136,41 @@ describe('worker resource reconcile lifecycle', (): void => {
     await executeResourceReconcile(requester(), runtime(apply, observation), claim(null));
 
     expect(apply).toHaveBeenCalledTimes(2);
+    expect(mocks.acknowledge).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: 'succeeded' }),
+    );
+  });
+
+  it('applies the current resource port policy before starting the resource workload', async (): Promise<void> => {
+    const observation: TestObservation = new TestObservation('uid-original', false, true, false);
+    observation.addClaim(backupClaimName, 'uid-backup', false);
+    const apply: Mock = vi.fn(async (bundle: ApplyBundle): Promise<KubeManifest[]> => {
+      const applied: KubeManifest[] = withAppliedDeploymentIdentity(bundle.objects, 2);
+      const deployment: KubeManifest | undefined = applied.find(
+        (object: KubeManifest): boolean => object.kind === 'Deployment',
+      );
+      if (deployment !== undefined) {
+        observation.addReadyDeployment(deployment, 2);
+      }
+      return await Promise.resolve(applied);
+    });
+    const staleClaim: WorkerClaimResourceReconcileResponse = {
+      ...claim(null),
+      networkPolicy: { applicationPorts: [8080], resourcePorts: [] },
+    };
+
+    await executeResourceReconcile(requester(), runtime(apply, observation), staleClaim);
+
+    expect(mocks.applyResourceNetworkPolicy).toHaveBeenCalledWith(
+      expect.anything(),
+      'project',
+      { applicationPorts: [8080], resourcePorts: [] },
+      [5432],
+    );
+    expect(mocks.applyResourceNetworkPolicy.mock.invocationCallOrder[0]).toBeLessThan(
+      apply.mock.invocationCallOrder[0]!,
+    );
     expect(mocks.acknowledge).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.objectContaining({ status: 'succeeded' }),
