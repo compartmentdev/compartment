@@ -20,7 +20,7 @@ import type {
   ResourceBootstrapSettlement,
   ResourceReconcileSettlement,
 } from '../queries/resource-reconcile-runs.query.types';
-import { createProjectArchivedError } from '../errors/api-business-error';
+import { createInvalidDeployConfigError, createProjectArchivedError } from '../errors/api-business-error';
 import { archivedResourceRunFailureMessage } from '../queries/resource-reconcile-project.query';
 import { projectProvisioningAttemptLimit } from '../queries/project-provisioning-policy';
 import { resourceReconcileOperationWaitTimeoutMs } from '../queries/resource-reconcile-policy';
@@ -49,7 +49,7 @@ export async function requestResourceReconcileWithExecutor(
   resource: ProjectResourceRow,
 ): Promise<void> {
   const expectedClaims: ResourceClaimIdentity[] = readExpectedResourceClaims(resource);
-  assertExpectedResourceClaims(expectedClaims);
+  assertExpectedResourceClaims(resource.name, expectedClaims);
   requireCreatedResourceRun(
     await createResourceReconcileRunWithExecutor(tx, { expectedClaims, intent, operationId, type: 'reconcile' }),
   );
@@ -61,7 +61,7 @@ export async function requestResourceReconcile(
   resource: ProjectResourceRow,
 ): Promise<void> {
   const expectedClaims: ResourceClaimIdentity[] = readExpectedResourceClaims(resource);
-  assertExpectedResourceClaims(expectedClaims);
+  assertExpectedResourceClaims(resource.name, expectedClaims);
   requireCreatedResourceRun(
     await createResourceReconcileRun({ expectedClaims, intent, operationId, type: 'reconcile' }),
   );
@@ -243,9 +243,11 @@ function readExpectedResourceClaims(resource: ProjectResourceRow): ResourceClaim
   return JSON.parse(resource.expectedClaimsJson) as ResourceClaimIdentity[];
 }
 
-function assertExpectedResourceClaims(expectedClaims: ResourceClaimIdentity[]): void {
+function assertExpectedResourceClaims(resourceName: string, expectedClaims: ResourceClaimIdentity[]): void {
   if (expectedClaims.length === 0) {
-    throw new Error('Resource reconcile refused: expected PVC identity is missing. Bootstrap is required.');
+    throw createInvalidDeployConfigError(
+      `Resource "${resourceName}" is not bootstrapped yet. Run \`compartment resource bootstrap --resource ${resourceName}\` first.`,
+    );
   }
 }
 

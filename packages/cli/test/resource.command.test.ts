@@ -1,9 +1,11 @@
-import type {
-  ResourceBackupSummary,
-  ResourceDeleteResponse,
-  ResourceRestoreAsResponse,
-  ResourceRestoreResponse,
-  ResourceSummary,
+import {
+  createErrorResponse,
+  type ErrorResponse,
+  type ResourceBackupSummary,
+  type ResourceDeleteResponse,
+  type ResourceRestoreAsResponse,
+  type ResourceRestoreResponse,
+  type ResourceSummary,
 } from '@compartment/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { AuthenticatedContext } from '../src/services/context.types';
@@ -70,6 +72,7 @@ describe.sequential('compartment resource commands', (): void => {
 
   afterEach((): void => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     restoreCliCommandModules(['../src/services/resources.service', '../src/store/config.store']);
   });
 
@@ -88,6 +91,37 @@ describe.sequential('compartment resource commands', (): void => {
 
     expectCliFailure(result, "unknown command 'restore'");
     expect(mocks.restoreResourceBackupMock).not.toHaveBeenCalled();
+  });
+
+  it('prints the bootstrap business error and exits non-zero when resource start fails', async (): Promise<void> => {
+    const message: string =
+      'Resource "postgres" is not bootstrapped yet. Run `compartment resource bootstrap --resource postgres` first.';
+    const response: ErrorResponse = createErrorResponse('invalid_deploy_config', message);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(response), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 400,
+        }),
+      ),
+    );
+    mockConfigStore();
+
+    const result: CliCommandResult = await runCliCommand([
+      'resource',
+      'start',
+      '--project',
+      'project',
+      '--env',
+      'production',
+      '--resource',
+      'postgres',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(readCliStderr(result.capture)).toContain(message);
+    expect(readCliStderr(result.capture)).not.toBe('An unexpected error occurred.\n');
   });
 
   it('rejects restore target ambiguity when --resource and --as are combined', async (): Promise<void> => {
@@ -179,7 +213,7 @@ function mockResourceCommandModules(
   const restoreResourceBackupMock: RestoreResourceBackupMock = vi
     .fn<RestoreResourceBackupCommand>()
     .mockResolvedValue(response);
-  const readCliConfigMock: Mock<ReadCliConfig> = vi.fn<ReadCliConfig>().mockResolvedValue(createCliConfigFixture());
+  mockConfigStore();
 
   vi.doMock(
     '../src/services/resources.service',
@@ -199,17 +233,20 @@ function mockResourceCommandModules(
       stopResource: createUnusedResourceServiceMock(),
     }),
   );
+  return {
+    deleteResourceMock,
+    restoreResourceBackupMock,
+  };
+}
+
+function mockConfigStore(): void {
+  const readCliConfigMock: Mock<ReadCliConfig> = vi.fn<ReadCliConfig>().mockResolvedValue(createCliConfigFixture());
   vi.doMock(
     '../src/store/config.store',
     (): ConfigStoreModule => ({
       readCliConfig: readCliConfigMock,
     }),
   );
-
-  return {
-    deleteResourceMock,
-    restoreResourceBackupMock,
-  };
 }
 
 function createUnusedResourceServiceMock(): UnusedResourceServiceMock {

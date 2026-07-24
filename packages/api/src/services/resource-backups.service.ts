@@ -168,6 +168,9 @@ async function runScheduledBackupIfDue(
   schedule: CompartmentResourceOperationScheduleConfig,
   now: Date,
 ): Promise<Pick<ResourceBackupResult, 'backup' | 'manifest'> | null> {
+  if (resource.status !== 'running') {
+    return null;
+  }
   if (!(await isScheduledResourceBackupDue(resource, schedule, now))) {
     return null;
   }
