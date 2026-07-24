@@ -44,6 +44,7 @@ function buildArtifactDeploymentInput(
       label: sourceDeployment.deployment.label,
       movementSourceDeploymentId: operationType === 'deployment.start' ? null : sourceDeployment.deployment.id,
       projectServiceId: sourceDeployment.service.id,
+      resolvedPortsJson: sourceDeployment.deployment.resolvedPortsJson,
       resolvedReadinessJson: sourceDeployment.deployment.resolvedReadinessJson,
       resolvedReleaseJson: serializeResolvedRelease(null),
       resolvedRoutesJson: sourceDeployment.deployment.resolvedRoutesJson,

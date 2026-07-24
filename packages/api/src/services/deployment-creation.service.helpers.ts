@@ -1,5 +1,6 @@
 import {
   buildCompartmentArtifactImageRepository,
+  defaultApplicationPorts,
   defaultAppRouteAccessMode,
   resolveCompartmentServiceBuildConfig,
   resolveCompartmentServiceReleaseConfig,
@@ -111,6 +112,7 @@ function buildQueuedDeploymentInput(
     environmentId: preparedState.context.environment.id,
     label,
     projectServiceId: preparedState.context.service.id,
+    resolvedPortsJson: JSON.stringify(preparedState.context.descriptorService?.ports ?? defaultApplicationPorts),
     resolvedReadinessJson: serializeResolvedReadiness(
       resolveDescriptorServiceReadiness(preparedState.context.descriptorService),
     ),

@@ -2,6 +2,7 @@ import type { V1ObjectMeta } from '@kubernetes/client-node';
 import type {
   ApplicationProjectionRow,
   ApplicationReadinessConfig,
+  KubeContainerPort,
   KubeReadinessProbe,
 } from './kube-application-projection.types';
 import type {
@@ -11,6 +12,7 @@ import type {
   KubeProjectedContainer,
   KubeProjectedPodSpec,
   KubeSecretEnvVariable,
+  KubeServicePort,
 } from './kube-runtime.types';
 import { kubeApplicationIdentityName, kubeApplicationName, kubeNamespaceName, kubeSecretName } from './kube-naming';
 import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
@@ -30,6 +32,7 @@ const minimumTerminationGracePeriodSeconds: number = 45;
 
 export function projectApplicationManifests(row: ApplicationProjectionRow): KubeManifest[] {
   assertTerminationGracePeriod(row.terminationGracePeriodSeconds ?? minimumTerminationGracePeriodSeconds);
+  assertContainerPorts(row.containerPorts);
   const context: ApplicationProjectionContext = applicationProjectionContext(row);
   const secret: KubeManifest = projectSecretManifest({
     data: row.env,
@@ -117,7 +120,13 @@ function applicationContainer(row: ApplicationProjectionRow): KubeProjectedConta
     image: row.image,
     lifecycle: { preStop: { exec: { command: ['sh', '-c', 'sleep 3'] } } },
     name: kubeApplicationName(row.deploymentId),
-    ports: [{ containerPort: row.containerPort, name: 'http', protocol: 'TCP' }],
+    ports: row.containerPorts.map(
+      (containerPort: number, index: number): KubeContainerPort => ({
+        containerPort,
+        name: index === 0 ? 'http' : applicationPortName(containerPort),
+        protocol: 'TCP',
+      }),
+    ),
     ...(row.readiness === null ? {} : { readinessProbe: readinessProbe(row.readiness) }),
   };
 }
@@ -149,10 +158,33 @@ function serviceManifest(row: ApplicationProjectionRow, context: ApplicationProj
     kind: 'Service',
     metadata,
     spec: {
-      ports: [{ name: 'http', port: 80, protocol: 'TCP', targetPort: row.containerPort }],
+      ports: applicationServicePorts(row.containerPorts),
       selector: context.workloadLabels,
     },
   };
+}
+
+function applicationServicePorts(containerPorts: number[]): KubeServicePort[] {
+  const primaryPort: number | undefined = containerPorts[0];
+  if (primaryPort === undefined) {
+    throw new Error('Application projection requires at least one container port.');
+  }
+  const ports: KubeServicePort[] = [{ name: 'http', port: 80, protocol: 'TCP', targetPort: primaryPort }];
+  for (const containerPort of containerPorts) {
+    if (containerPort !== 80) {
+      ports.push({
+        name: applicationPortName(containerPort),
+        port: containerPort,
+        protocol: 'TCP',
+        targetPort: containerPort,
+      });
+    }
+  }
+  return ports;
+}
+
+function applicationPortName(port: number): string {
+  return `tcp-${port}`;
 }
 
 function manifestMetadata(context: ApplicationProjectionContext): V1ObjectMeta {
@@ -164,5 +196,15 @@ function assertTerminationGracePeriod(value: number): void {
     throw new Error(
       `Application termination grace period must be an integer of at least ${minimumTerminationGracePeriodSeconds} seconds.`,
     );
+  }
+}
+
+function assertContainerPorts(ports: number[]): void {
+  if (
+    ports.length === 0 ||
+    new Set(ports).size !== ports.length ||
+    ports.some((port: number): boolean => !Number.isInteger(port) || port < 1 || port > 65_535)
+  ) {
+    throw new Error('Application container ports must be unique valid TCP ports.');
   }
 }

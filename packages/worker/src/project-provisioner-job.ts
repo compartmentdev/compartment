@@ -3,13 +3,13 @@ import {
   createSelfCleaningKubeRuntimeFromEnvironment,
   projectNamespaceProvisioningBundle,
   type ApplyBundle,
-  type ProjectNetworkPolicyProjection,
   type ProjectNamespaceProvisioningRow,
 } from '@compartment/kube-runtime';
 import {
   projectProvisionerJobEnvironmentSchema,
   type ProjectProvisionerJobEnvironment,
 } from './project-provisioning-environment';
+import { projectNetworkPolicy } from './project-network-policy';
 
 async function main(): Promise<void> {
   const environment: ProjectProvisionerJobEnvironment = projectProvisionerJobEnvironmentSchema.parse(process.env);
@@ -27,7 +27,7 @@ function projectProvisioningRow(environment: ProjectProvisionerJobEnvironment): 
       namespace: environment.COMPARTMENT_PROVISIONING_NAMESPACE,
     },
     namespaceId: environment.COMPARTMENT_PROJECT_ID,
-    networkPolicy: projectNetworkPolicy(environment),
+    networkPolicy: projectNetworkPolicy(environment, { applicationPorts: [], resourcePorts: [] }),
     projectId: environment.COMPARTMENT_PROJECT_ID,
     registryPullCredentials: {
       dockerConfigJson: registryDockerConfig(environment),
@@ -37,19 +37,6 @@ function projectProvisioningRow(environment: ProjectProvisionerJobEnvironment): 
       name: environment.COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME,
       namespace: environment.COMPARTMENT_PLATFORM_NAMESPACE,
     },
-  };
-}
-
-function projectNetworkPolicy(environment: ProjectProvisionerJobEnvironment): ProjectNetworkPolicyProjection {
-  return {
-    applicationPodLabels: { app: 'application' },
-    applicationPort: 3000,
-    edgeNamespaceName: environment.COMPARTMENT_EDGE_NAMESPACE,
-    edgePodLabels: { 'app.kubernetes.io/component': 'edge' },
-    podCidr: environment.COMPARTMENT_KUBE_POD_CIDR,
-    resourcePodLabels: { app: 'resource' },
-    resourcePort: 5432,
-    serviceCidr: environment.COMPARTMENT_KUBE_SERVICE_CIDR,
   };
 }
 

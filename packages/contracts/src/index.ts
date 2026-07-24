@@ -62,6 +62,7 @@ export * from './index.deployments';
 export { logTailLineLimit } from './contracts/logs.contract';
 export * from './index.resources';
 export * from './contracts/internal-resource-reconcile.contract';
+export * from './contracts/internal-network-policy.contract';
 export {
   compartmentSourceUploadsPathname,
   type SourceUploadCreateQuery,
@@ -140,6 +141,7 @@ export {
   type CompartmentInitResult,
   buildDefaultCompartmentAuthoredDescriptor,
   compartmentAuthoredDescriptorSchema,
+  defaultApplicationPorts,
   compartmentInitResultSchema,
   compartmentProjectNameSchema,
   compartmentResourceNameSchema,

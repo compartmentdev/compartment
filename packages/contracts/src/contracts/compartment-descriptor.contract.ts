@@ -28,6 +28,8 @@ import { compartmentServiceRunConfigSchema } from './service-run.contract';
 import { validateStaticCompartmentServiceConfig } from './service-static.contract';
 import type { ContractSchema } from './schema.types';
 
+export const defaultApplicationPorts: number[] = [3_000];
+
 export {
   compartmentServiceKindSchema,
   isDeployableCompartmentServiceKind,
@@ -89,6 +91,13 @@ const compartmentAuthoredServiceConfigSchema: ContractSchema<CompartmentAuthored
   .object(createCompartmentAuthoredServiceConfigShape())
   .strict()
   .superRefine((service: CompartmentAuthoredServiceConfig, context: z.RefinementCtx): void => {
+    if (service.ports !== undefined && new Set(service.ports).size !== service.ports.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Service ports must be unique.',
+        path: ['ports'],
+      });
+    }
     if (service.build?.strategy === 'dockerfile' && service.run?.command !== undefined) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -177,6 +186,7 @@ function createCompartmentAuthoredServiceConfigShape(): {
   connections: z.ZodOptional<typeof compartmentServiceConnectionsSchema>;
   kind: z.ZodOptional<typeof compartmentServiceKindSchema>;
   path: typeof compartmentPathSchema;
+  ports: z.ZodOptional<z.ZodArray<z.ZodNumber>>;
   readiness: z.ZodOptional<typeof compartmentServiceReadinessConfigSchema>;
   release: z.ZodOptional<typeof compartmentServiceReleaseConfigSchema>;
   run: z.ZodOptional<typeof compartmentServiceRunConfigSchema>;
@@ -187,6 +197,7 @@ function createCompartmentAuthoredServiceConfigShape(): {
     connections: compartmentServiceConnectionsSchema.optional(),
     path: compartmentPathSchema,
     kind: compartmentServiceKindSchema.optional(),
+    ports: z.array(z.number().int().min(1).max(65_535)).min(1).optional(),
     run: compartmentServiceRunConfigSchema.optional(),
     release: compartmentServiceReleaseConfigSchema.optional(),
     readiness: compartmentServiceReadinessConfigSchema.optional(),

@@ -33,6 +33,7 @@ interface ReconcileSelection extends SelectedFields {
   organizationName: typeof organizations.name;
   projectId: typeof projects.id;
   projectName: typeof projects.name;
+  resolvedPortsJson: typeof deployments.resolvedPortsJson;
   resolvedReadinessJson: typeof deployments.resolvedReadinessJson;
   resolvedReleaseJson: typeof deployments.resolvedReleaseJson;
   resolvedRunJson: typeof deployments.resolvedRunJson;
@@ -177,6 +178,7 @@ function reconcileSelection(): ReconcileSelection {
     organizationName: organizations.name,
     projectId: projects.id,
     projectName: projects.name,
+    resolvedPortsJson: deployments.resolvedPortsJson,
     resolvedReadinessJson: deployments.resolvedReadinessJson,
     resolvedReleaseJson: deployments.resolvedReleaseJson,
     resolvedRunJson: deployments.resolvedRunJson,

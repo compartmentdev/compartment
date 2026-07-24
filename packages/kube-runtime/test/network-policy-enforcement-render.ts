@@ -10,12 +10,12 @@ if (podCidr.length === 0 || serviceCidr.length === 0) {
 
 const manifests: KubeManifest[] = projectNetworkPolicyManifests('ns-a', 't2-namespace', 't2-project', {
   applicationPodLabels: { 'compartment.test/role': 'application' },
-  applicationPort: 8080,
+  applicationPorts: [8080],
   edgeNamespaceName: 'platform-ns',
   edgePodLabels: { app: 'caddy' },
   podCidr,
   resourcePodLabels: { app: 'resource' },
-  resourcePort: 8080,
+  resourcePorts: [6379, 8080],
   serviceCidr,
 });
 

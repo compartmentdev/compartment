@@ -93,7 +93,7 @@ resources:
 - Services must contain at least one entry: `true`.
 - Service names must match `^[a-z0-9][a-z0-9_-]{0,62}$`.
 - Service values may be: string_path, service_config.
-- Service config fields: accessMode, build, connections, path, kind, run, release, readiness.
+- Service config fields: accessMode, build, connections, path, kind, ports, run, release, readiness.
 - Required service config fields: path.
 - Service connections use `connections.<resource>.env.<KEY>: <resource-output-name>`.
 - Service connection env keys must match `^[A-Za-z_][A-Za-z0-9_]*$`.

@@ -127,6 +127,7 @@ export interface CompartmentAuthoredServiceConfig {
   connections?: CompartmentServiceConnections | undefined;
   kind?: CompartmentServiceKind | undefined;
   path: string;
+  ports?: number[] | undefined;
   readiness?: CompartmentServiceReadinessConfig | undefined;
   release?: CompartmentServiceReleaseConfig | undefined;
   run?: CompartmentServiceRunConfig | undefined;

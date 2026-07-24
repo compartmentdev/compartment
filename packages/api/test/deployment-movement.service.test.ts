@@ -351,6 +351,7 @@ function createDeployment(
       operationId: `op_${deploymentId}`,
       projectServiceId: 'svc_web',
       promotionStage: 'active',
+      resolvedPortsJson: '[3000]',
       resolvedReadinessJson: '{}',
       resolvedReleaseJson: 'null',
       resolvedRoutesJson: '[]',

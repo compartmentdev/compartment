@@ -52,6 +52,9 @@ spec:
             - name: COMPARTMENT_RUNTIME_CONTROL_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: runtime-control-token}
+            - {name: COMPARTMENT_EDGE_NAMESPACE, value: {{ .Release.Namespace | quote }}}
+            - {name: COMPARTMENT_KUBE_POD_CIDR, value: {{ .Values.buildkit.podCidr | quote }}}
+            - {name: COMPARTMENT_KUBE_SERVICE_CIDR, value: {{ .Values.buildkit.serviceCidr | quote }}}
             - name: DOCKER_CONFIG
               value: /tmp/.docker
             - name: TMPDIR

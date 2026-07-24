@@ -240,6 +240,7 @@ async function createDeployment(input: CreateDeploymentInput): Promise<void> {
     operationId: `op_${input.prefix}`,
     projectServiceId: `svc_${input.prefix}`,
     promotionStage: 'active',
+    resolvedPortsJson: '[3000]',
     resolvedReadinessJson: '[]',
     resolvedRoutesJson: '[]',
     resolvedRunJson: '{}',

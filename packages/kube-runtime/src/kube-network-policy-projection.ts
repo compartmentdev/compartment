@@ -57,12 +57,16 @@ function productJobEgressManifest(
 }
 
 function applicationEgressRules(projection: ProjectNetworkPolicyProjection): object[] {
-  return [resourceEgressRule(projection), dnsEgressRule(), internetEgressRule(projection)];
+  return [
+    ...(projection.resourcePorts.length === 0 ? [] : [resourceEgressRule(projection)]),
+    dnsEgressRule(),
+    internetEgressRule(projection),
+  ];
 }
 
 function resourceEgressRule(projection: ProjectNetworkPolicyProjection): object {
   return {
-    ports: [{ port: projection.resourcePort, protocol: 'TCP' }],
+    ports: tcpPorts(projection.resourcePorts),
     to: [{ podSelector: { matchLabels: projection.resourcePodLabels } }],
   };
 }
@@ -94,17 +98,20 @@ function applicationIngressManifest(
   projection: ProjectNetworkPolicyProjection,
 ): KubeManifest {
   return networkPolicyManifest(namespace, namespaceId, projectId, 'application-ingress', {
-    ingress: [
-      {
-        from: [
-          {
-            namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': projection.edgeNamespaceName } },
-            podSelector: { matchLabels: projection.edgePodLabels },
-          },
-        ],
-        ports: [{ port: projection.applicationPort, protocol: 'TCP' }],
-      },
-    ],
+    ingress:
+      projection.applicationPorts.length === 0
+        ? []
+        : [
+            {
+              from: [
+                {
+                  namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': projection.edgeNamespaceName } },
+                  podSelector: { matchLabels: projection.edgePodLabels },
+                },
+              ],
+              ports: tcpPorts(projection.applicationPorts),
+            },
+          ],
     podSelector: { matchLabels: projection.applicationPodLabels },
     policyTypes: ['Ingress'],
   });
@@ -117,18 +124,27 @@ function resourceIngressManifest(
   projection: ProjectNetworkPolicyProjection,
 ): KubeManifest {
   return networkPolicyManifest(namespace, namespaceId, projectId, 'resource-ingress', {
-    ingress: [
-      {
-        from: [
-          { podSelector: { matchLabels: projection.applicationPodLabels } },
-          { podSelector: { matchExpressions: [productJobSelectorExpression()] } },
-        ],
-        ports: [{ port: projection.resourcePort, protocol: 'TCP' }],
-      },
-    ],
+    ingress:
+      projection.resourcePorts.length === 0
+        ? []
+        : [
+            {
+              from: [
+                { podSelector: { matchLabels: projection.applicationPodLabels } },
+                { podSelector: { matchExpressions: [productJobSelectorExpression()] } },
+              ],
+              ports: tcpPorts(projection.resourcePorts),
+            },
+          ],
     podSelector: { matchLabels: projection.resourcePodLabels },
     policyTypes: ['Ingress'],
   });
+}
+
+function tcpPorts(ports: number[]): object[] {
+  return [...new Set(ports)]
+    .sort((left: number, right: number): number => left - right)
+    .map((port: number): object => ({ port, protocol: 'TCP' }));
 }
 
 function productJobSelectorExpression(): object {

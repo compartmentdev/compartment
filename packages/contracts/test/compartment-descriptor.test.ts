@@ -40,6 +40,30 @@ describe('compartment descriptor contracts', (): void => {
     expect(descriptor.services.admin_ui).toBe('apps/admin-ui');
   });
 
+  it('accepts unique application ports and rejects duplicates', (): void => {
+    const input: object = {
+      name: 'backoffice',
+      services: { web: { path: 'apps/web', ports: [8080, 9090] } },
+    };
+
+    expect(compartmentAuthoredDescriptorSchema.parse(input).services.web).toEqual({
+      path: 'apps/web',
+      ports: [8080, 9090],
+    });
+    expect(
+      compartmentAuthoredDescriptorSchema.safeParse({
+        name: 'backoffice',
+        services: { web: { path: 'apps/web', ports: [8080, 8080] } },
+      }).success,
+    ).toBe(false);
+    expect(
+      compartmentAuthoredDescriptorSchema.safeParse({
+        name: 'backoffice',
+        services: { web: { path: 'apps/web', ports: [] } },
+      }).success,
+    ).toBe(false);
+  });
+
   it('accepts a service object with readiness config', (): void => {
     const descriptor: CompartmentAuthoredDescriptor = compartmentAuthoredDescriptorSchema.parse({
       name: 'backoffice',

@@ -53,6 +53,7 @@ interface DeploymentRecordRuntimeSummaryInput {
 
 interface DeploymentRecordRouteSummaryInput {
   accessMode: AppRouteAccessMode;
+  resolvedPortsJson: string;
   resolvedReadinessJson: string;
   resolvedReleaseJson: string;
   resolvedRoutesJson: string;

@@ -56,6 +56,7 @@ export interface CreateDeploymentInput extends CreateDeploymentSourceProvenanceI
   operationId: string;
   promotionStage: DeploymentPromotionStage;
   projectServiceId: string;
+  resolvedPortsJson: string;
   resolvedReadinessJson: string;
   resolvedReleaseJson: string;
   resolvedRoutesJson: string;

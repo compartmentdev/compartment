@@ -10,6 +10,7 @@ interface ReconcileMocks {
   findPair: Mock;
   persistObservation: Mock;
   planRetention: Mock;
+  readNetworkPolicyPorts: Mock;
   synchronizeEdge: Mock;
 }
 
@@ -19,6 +20,7 @@ const mocks: ReconcileMocks = vi.hoisted(
     findPair: vi.fn(),
     persistObservation: vi.fn(),
     planRetention: vi.fn(),
+    readNetworkPolicyPorts: vi.fn(),
     synchronizeEdge: vi.fn(),
   }),
 );
@@ -31,6 +33,10 @@ vi.mock('../src/queries/deployment-reconcile.query', (): object => ({
 
 vi.mock('../src/services/deployment-runtime-plan.service', (): object => ({
   buildDeploymentRuntimePlan: mocks.buildPlan,
+}));
+
+vi.mock('../src/queries/network-policy-ports.query', (): object => ({
+  readProjectNetworkPolicyPorts: mocks.readNetworkPolicyPorts,
 }));
 
 vi.mock('../src/services/deployment-retention.service', (): object => ({
@@ -46,6 +52,7 @@ describe('deployment reconcile projection', (): void => {
     vi.clearAllMocks();
     mocks.persistObservation.mockResolvedValue(true);
     mocks.planRetention.mockResolvedValue([]);
+    mocks.readNetworkPolicyPorts.mockResolvedValue({ applicationPorts: [3000], resourcePorts: [] });
     mocks.synchronizeEdge.mockResolvedValue(undefined);
   });
 
@@ -77,6 +84,7 @@ describe('deployment reconcile projection', (): void => {
 
     await expect(claimDeploymentReconcileTarget()).resolves.toMatchObject({
       candidate: {
+        containerPorts: [8080, 9090],
         readiness: { path: '/healthz', timeoutMs: 60_000, type: 'http' },
         runCommand: 'npm run start:override',
       },
@@ -96,6 +104,7 @@ function pair(): DeploymentReconcilePair {
       organizationName: 'Acme',
       projectId: 'prj-1',
       projectName: 'app',
+      resolvedPortsJson: '[8080,9090]',
       resolvedReadinessJson: '{"path":"/healthz","timeoutMs":60000,"type":"http"}',
       resolvedReleaseJson: 'null',
       resolvedRunJson: '{"command":"npm run start:override"}',

@@ -17,6 +17,7 @@ import type {
   PrepareDeploymentReconcileResult,
 } from '../queries/deployment-reconcile.query.types';
 import { createId } from '../lib/tokens';
+import { readProjectNetworkPolicyPorts } from '../queries/network-policy-ports.query';
 import { readPublicRouteSubdomain } from '../lib/public-route-host';
 import { getApiConfig } from '../runtime/runtime-access';
 import { synchronizeEdgeAppAccessState } from './app-access-edge.service';
@@ -28,7 +29,6 @@ import { archivedProjectDeploymentFailureMessage, finalizeFailedDeployment } fro
 import { planRollbackRetentionCleanup } from './deployment-retention.service';
 import type { DeploymentReconcileObservationResult } from './deployment-reconcile.service.types';
 
-const defaultContainerPort: number = 3000;
 const defaultTerminationGracePeriodSeconds: number = 45;
 
 interface ProjectionRuntime {
@@ -50,6 +50,7 @@ export async function claimDeploymentReconcileTarget(): Promise<DeploymentReconc
   return {
     active: pair.active === null ? null : await projectDeployment(pair.active),
     candidate: await projectDeployment(pair.candidate),
+    networkPolicy: await readProjectNetworkPolicyPorts(pair.candidate.projectId),
     revision: pair.candidate.revision,
     rolloutStartedAt: pair.candidate.transitionedAt.toISOString(),
     state: pair.candidate.state,
@@ -111,21 +112,21 @@ async function projectDeployment(row: DeploymentReconcileRow): Promise<Deploymen
     row.projectName,
     row.serviceName,
   );
-  const configuredPort: number = readContainerPort(plan.runtimeEnv.PORT);
-  return createProjection(row, plan, configuredPort);
+  const containerPorts: number[] = readContainerPorts(row.resolvedPortsJson);
+  return createProjection(row, plan, containerPorts);
 }
 
 function createProjection(
   row: DeploymentReconcileRow,
   plan: DeploymentRuntimePlan,
-  port: number,
+  ports: number[],
 ): DeploymentReconcileProjection {
   return {
-    containerPort: port,
+    containerPorts: ports,
     deploymentId: row.deploymentId,
     environmentId: row.environmentId,
     environmentName: row.environmentName,
-    ...projectionRuntime(plan, port),
+    ...projectionRuntime(plan, ports[0]),
     image: requiredImage(row),
     imagePullSecretId: row.projectId,
     namespaceId: row.projectId,
@@ -149,9 +150,12 @@ function projectionBehavior(row: DeploymentReconcileRow): ProjectionBehavior {
   };
 }
 
-function projectionRuntime(plan: DeploymentRuntimePlan, port: number): ProjectionRuntime {
+function projectionRuntime(plan: DeploymentRuntimePlan, primaryPort: number | undefined): ProjectionRuntime {
+  if (primaryPort === undefined) {
+    throw new Error('Deployment must resolve at least one application port.');
+  }
   return {
-    env: { ...plan.runtimeEnv, PORT: port.toString() },
+    env: { ...plan.runtimeEnv, PORT: primaryPort.toString() },
     terminationGracePeriodSeconds: readTerminationGracePeriod(
       plan.runtimeEnv.COMPARTMENT_TERMINATION_GRACE_PERIOD_SECONDS,
     ),
@@ -176,7 +180,13 @@ function requiredImage(row: DeploymentReconcileRow): string {
   return row.image;
 }
 
-function readContainerPort(rawPort: string | undefined): number {
-  const port: number = Number.parseInt(rawPort ?? '', 10);
-  return Number.isInteger(port) && port > 0 ? port : defaultContainerPort;
+function readContainerPorts(resolvedPortsJson: string): number[] {
+  const ports: number[] = JSON.parse(resolvedPortsJson) as number[];
+  if (
+    ports.length === 0 ||
+    ports.some((port: number): boolean => !Number.isInteger(port) || port < 1 || port > 65_535)
+  ) {
+    throw new Error('Deployment resolved ports must contain valid TCP ports.');
+  }
+  return [...new Set(ports)];
 }

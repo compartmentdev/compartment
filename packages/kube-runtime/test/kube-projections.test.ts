@@ -24,7 +24,7 @@ interface DeploymentContainer {
 describe('Kubernetes manifest projection goldens', (): void => {
   it('projects an application row to the T1 workload bundle', (): void => {
     const manifests: KubeManifest[] = projectApplicationManifests({
-      containerPort: 8080,
+      containerPorts: [8080],
       deploymentId: 'dep-01jz',
       environmentId: 'env-01jz',
       environmentName: 'Production',
@@ -223,7 +223,7 @@ function serviceFor(row: ApplicationProjectionRow): KubeManifest {
 
 function applicationRow(env: Readonly<Record<string, string>>): ApplicationProjectionRow {
   return {
-    containerPort: 8080,
+    containerPorts: [8080],
     deploymentId: 'dep-01jz',
     environmentId: 'env-01jz',
     environmentName: 'Production',

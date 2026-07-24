@@ -379,6 +379,7 @@ function createDeployment(serviceName: string, overrides?: Partial<DeploymentRow
       operationId: `op_${deploymentId}`,
       projectServiceId: `svc_${serviceName}`,
       promotionStage: 'active',
+      resolvedPortsJson: '[3000]',
       resolvedReadinessJson: '{}',
       resolvedReleaseJson: 'null',
       resolvedRoutesJson: '[]',

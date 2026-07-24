@@ -269,6 +269,7 @@ async function insertActiveDeploymentRoute(input?: {
     operationId: `op_${deploymentId}`,
     projectServiceId: serviceId,
     promotionStage: 'active',
+    resolvedPortsJson: '[3000]',
     resolvedReadinessJson: '{}',
     resolvedRoutesJson: '[]',
     resolvedRunJson: '{}',

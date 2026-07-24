@@ -9,7 +9,7 @@ import {
 describe('deployment reconcile contracts', (): void => {
   it('accepts candidate and saved active projections without rollout DTO state', (): void => {
     const projection: DeploymentReconcileProjection = {
-      containerPort: 3000,
+      containerPorts: [3000],
       deploymentId: 'dep_candidate',
       environmentId: 'env_1',
       environmentName: 'production',
@@ -35,6 +35,7 @@ describe('deployment reconcile contracts', (): void => {
         target: {
           active: { ...projection, deploymentId: 'dep_active', image: 'registry/app@sha256:old' },
           candidate: projection,
+          networkPolicy: { applicationPorts: [3000], resourcePorts: [5432] },
           revision: 2,
           rolloutStartedAt: '2026-07-12T10:00:00.000Z',
           state: 'pending',

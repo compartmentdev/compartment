@@ -14,6 +14,7 @@ import {
   readResourceBootstrapSettlement,
   readResourceReconcileSettlement,
 } from '../queries/resource-reconcile-runs.query';
+import { readProjectNetworkPolicyPorts } from '../queries/network-policy-ports.query';
 import type {
   ClaimedResourceReconcileRun,
   CreateResourceReconcileRunResult,
@@ -223,16 +224,21 @@ function assertResourceClaimIdentityBeforeDeadline(deadlineAt: number): void {
 
 export async function claimNextResourceReconcile(): Promise<ClaimedResourceReconcileResult> {
   const claimed: ClaimedResourceReconcileRun | null = await claimResourceReconcileRun();
-  return (
-    claimed ?? {
+  if (claimed === null) {
+    return {
       expectedClaims: [],
       intent: null,
       leaseId: null,
+      networkPolicy: { applicationPorts: [], resourcePorts: [] },
       operationId: null,
       previousManifestJson: null,
       type: null,
-    }
-  );
+    };
+  }
+  return {
+    ...claimed,
+    networkPolicy: await readProjectNetworkPolicyPorts(claimed.intent.namespaceId),
+  };
 }
 
 export async function acknowledgeResourceReconcile(input: WorkerAcknowledgeResourceReconcileRequest): Promise<void> {

@@ -746,6 +746,7 @@ async function seedDeploymentRunLogsFixture(organizationId: string): Promise<voi
     operationId: 'op_run_logs',
     projectServiceId: 'svc_run_logs',
     promotionStage: 'active',
+    resolvedPortsJson: '[3000]',
     resolvedReadinessJson: 'null',
     resolvedRoutesJson: '[]',
     resolvedRunJson: '{}',

@@ -321,6 +321,7 @@ async function insertDeployment(input: InsertDeploymentInput): Promise<void> {
     operationId: `${input.id}_operation`,
     projectServiceId: readServiceId(input.projectName, input.serviceName),
     promotionStage: input.promotionStage,
+    resolvedPortsJson: '[3000]',
     resolvedReadinessJson: '{}',
     resolvedRoutesJson: '[]',
     resolvedRunJson: '{}',
