@@ -30,6 +30,21 @@ Current local-password flows include:
 - invited-user activation;
 - current-user session inspection and logout.
 
+For non-interactive invited-user activation, provide the new password through
+`COMPARTMENT_VIEWER_PASSWORD` and pass the email and invitation token as options:
+
+```bash
+: "${COMPARTMENT_VIEWER_PASSWORD:?Load it from your secret manager first}"
+export COMPARTMENT_VIEWER_PASSWORD
+compartment activate \
+  --api-url https://console.example.com \
+  --email viewer@example.com \
+  --token "$INVITATION_TOKEN"
+```
+
+The password must contain at least eight characters. Supply it from your CI or secret-management system and avoid
+persisting it in shell history or committed files.
+
 Activation links are issued only for newly created local-password users and are bound to the inviting organization. If a user is invited to another organization before activating, the original activation link still signs the browser into only the original organization. The link stops working if that organization no longer allows local-password access for that user, even when another organization still does.
 
 Human accounts can use runtime actions only after they have a real login path: a local password or an SSO identity. An invited human user without either can stay visible in the organization, but cannot run deploy or deployment-mutation flows yet.

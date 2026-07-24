@@ -59,6 +59,8 @@ type ReadCliConfig = () => Promise<CliConfig>;
 type WriteCliConfig = (config: CliConfig) => Promise<void>;
 
 const commandTestTimeoutMs: number = 10000;
+const viewerPasswordEnvName: string = 'COMPARTMENT_VIEWER_PASSWORD';
+const originalViewerPassword: string | undefined = process.env[viewerPasswordEnvName];
 
 interface SuccessfulMockActivateCommandModulesInput {
   config: Partial<CliConfig>;
@@ -78,10 +80,16 @@ type MockActivateCommandModulesInput =
 
 describe.sequential('compartment activate command', (): void => {
   beforeEach((): void => {
+    delete process.env[viewerPasswordEnvName];
     resetCliCommandModules();
   });
 
   afterEach((): void => {
+    if (originalViewerPassword === undefined) {
+      delete process.env[viewerPasswordEnvName];
+    } else {
+      process.env[viewerPasswordEnvName] = originalViewerPassword;
+    }
     restoreCliCommandModules([
       '../src/prompts/prompt',
       '../src/services/activation.service',
@@ -154,6 +162,47 @@ describe.sequential('compartment activate command', (): void => {
     },
     commandTestTimeoutMs,
   );
+
+  it('uses COMPARTMENT_VIEWER_PASSWORD without prompting', async (): Promise<void> => {
+    process.env[viewerPasswordEnvName] = 'configured-viewer-password';
+    const mocks: ActivateCommandMocks = mockActivateCommandModules({
+      config: {},
+      response: createActivateResponse(),
+    });
+
+    const result: CliCommandResult = await runCliCommand(
+      ['activate', '--api-url', 'https://api.example', '--email', 'viewer@example.com', '--token', 'invite-token'],
+      createCliCapture(),
+    );
+
+    expectCliSuccess(result);
+    expect(mocks.promptNewPasswordMock).not.toHaveBeenCalled();
+    expect(mocks.activateMock).toHaveBeenCalledWith(
+      { apiUrl: 'https://api.example' },
+      {
+        bootstrapToken: 'invite-token',
+        email: 'viewer@example.com',
+        password: 'configured-viewer-password',
+      },
+    );
+  });
+
+  it('rejects an invalid configured viewer password without prompting', async (): Promise<void> => {
+    process.env[viewerPasswordEnvName] = 'short';
+    const mocks: ActivateCommandMocks = mockActivateCommandModules({
+      config: {},
+      response: createActivateResponse(),
+    });
+
+    const result: CliCommandResult = await runCliCommand(
+      ['activate', '--api-url', 'https://api.example'],
+      createCliCapture(),
+    );
+
+    expectCliFailure(result, 'COMPARTMENT_VIEWER_PASSWORD: Password must be at least 8 characters.');
+    expect(mocks.promptNewPasswordMock).not.toHaveBeenCalled();
+    expect(mocks.activateMock).not.toHaveBeenCalled();
+  });
 
   it('returns activation service errors without writing config', async (): Promise<void> => {
     const mocks: ActivateCommandMocks = mockActivateCommandModules({
