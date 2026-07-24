@@ -35,13 +35,11 @@ export function registerDomainCommands(program: Command, dependencies: CliComman
 
 function registerAddDomainCommand(program: Command, dependencies: CliCommandDependencies): void {
   addRemoteOption(
-    program
-      .command('add')
-      .argument('<host>')
-      .option('--project <name>')
-      .option('--env <name>')
-      .option('--service <name>')
-      .option('--output <format>', 'text or json', 'text'),
+    addDomainTargetOptions(program.command('add').argument('<host>')).option(
+      '--output <format>',
+      'text or json',
+      'text',
+    ),
   ).action(
     async (host: string, options: CustomDomainCommandOptions): Promise<void> =>
       await executeAddDomainCommand(dependencies, host, options),
@@ -50,12 +48,7 @@ function registerAddDomainCommand(program: Command, dependencies: CliCommandDepe
 
 function registerListDomainCommand(program: Command, dependencies: CliCommandDependencies): void {
   addRemoteOption(
-    program
-      .command('list')
-      .option('--project <name>')
-      .option('--env <name>')
-      .option('--service <name>')
-      .option('--output <format>', 'text or json', 'text'),
+    addDomainTargetOptions(program.command('list')).option('--output <format>', 'text or json', 'text'),
   ).action(
     async (options: CustomDomainCommandOptions): Promise<void> => await executeListDomainCommand(dependencies, options),
   );
@@ -63,7 +56,11 @@ function registerListDomainCommand(program: Command, dependencies: CliCommandDep
 
 function registerShowDomainCommand(program: Command, dependencies: CliCommandDependencies): void {
   addRemoteOption(
-    program.command('show').argument('<host>').option('--output <format>', 'text or json', 'text'),
+    addDomainTargetOptions(program.command('show').argument('<host>')).option(
+      '--output <format>',
+      'text or json',
+      'text',
+    ),
   ).action(
     async (host: string, options: CustomDomainCommandOptions): Promise<void> =>
       await executeShowDomainCommand(dependencies, host, options),
@@ -72,7 +69,11 @@ function registerShowDomainCommand(program: Command, dependencies: CliCommandDep
 
 function registerVerifyDomainCommand(program: Command, dependencies: CliCommandDependencies): void {
   addRemoteOption(
-    program.command('verify').argument('<host>').option('--output <format>', 'text or json', 'text'),
+    addDomainTargetOptions(program.command('verify').argument('<host>')).option(
+      '--output <format>',
+      'text or json',
+      'text',
+    ),
   ).action(
     async (host: string, options: CustomDomainCommandOptions): Promise<void> =>
       await executeVerifyDomainCommand(dependencies, host, options),
@@ -81,11 +82,19 @@ function registerVerifyDomainCommand(program: Command, dependencies: CliCommandD
 
 function registerRemoveDomainCommand(program: Command, dependencies: CliCommandDependencies): void {
   addRemoteOption(
-    program.command('remove').argument('<host>').option('--output <format>', 'text or json', 'text'),
+    addDomainTargetOptions(program.command('remove').argument('<host>')).option(
+      '--output <format>',
+      'text or json',
+      'text',
+    ),
   ).action(
     async (host: string, options: CustomDomainCommandOptions): Promise<void> =>
       await executeRemoveDomainCommand(dependencies, host, options),
   );
+}
+
+function addDomainTargetOptions(command: Command): Command {
+  return command.option('--project <name>').option('--env <name>').option('--service <name>');
 }
 
 async function executeAddDomainCommand(

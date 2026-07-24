@@ -24,7 +24,6 @@ export function createCustomDomainVerifyMessage(response: VerifyCustomDomainResp
     `Custom domain ${response.domain.host} is ${response.domain.status}.`,
     `Ownership: ${response.domain.ownershipStatus}`,
     `Routing: ${response.domain.routingStatus}`,
-    ...(response.domain.failureMessage === null ? [] : [response.domain.failureMessage]),
   ]);
 }
 

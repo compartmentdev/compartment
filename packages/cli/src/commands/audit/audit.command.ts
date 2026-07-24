@@ -9,6 +9,7 @@ import {
   type AuditEventType,
 } from '@compartment/contracts';
 import type { Command } from 'commander';
+import type { SafeParseReturnType } from 'zod';
 import { renderOutput } from '../../output/render';
 import { exportOrganizationAuditEvents, listOrganizationAuditEvents } from '../../services/audit-events.service';
 import type { AuthenticatedContext } from '../../services/context.types';
@@ -161,7 +162,13 @@ function parseAuditEventType(value: string | undefined): AuditEventType | undefi
 }
 
 function parseAuditExportFormat(value: string): AuditEventExportFormat {
-  return auditEventExportFormatSchema.parse(value);
+  const parsedFormat: SafeParseReturnType<string, AuditEventExportFormat> =
+    auditEventExportFormatSchema.safeParse(value);
+  if (!parsedFormat.success) {
+    throw new Error(`Invalid format "${value}". Use one of: csv, ndjson.`);
+  }
+
+  return parsedFormat.data;
 }
 
 function normalizeAuditTimeFilter(value: string | undefined, optionName: string): string | undefined {
