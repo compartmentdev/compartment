@@ -197,6 +197,24 @@ tests:
           name: compartment-compartment-worker
           any: true
         template: worker.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_EDGE_NAMESPACE
+            value: default
+        template: worker.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_KUBE_POD_CIDR
+            value: 10.42.0.0/16
+        template: worker.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_KUBE_SERVICE_CIDR
+            value: 10.43.0.0/16
+        template: worker.yaml
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
