@@ -12,7 +12,9 @@ import { createCliConfigFixture } from './cli-test.fixtures';
 import {
   type CliCommandResult,
   type CliJsonResult,
+  expectCliFailure,
   expectCliSuccess,
+  readCliStderr,
   readCliStdout,
   resetCliCommandModules,
   restoreCliCommandModules,
@@ -129,6 +131,16 @@ describe.sequential('compartment audit commands', (): void => {
       to: undefined,
     });
     expect(readCliStdout(result.capture)).toBe('{"id":"aud_123"}\n');
+  });
+
+  it('rejects an invalid audit export format with a human-readable error', async (): Promise<void> => {
+    const mocks: AuditCommandMocks = mockAuditCommandModules();
+
+    const result: CliCommandResult = await runCliCommand(['audit', 'export', '--format', 'json']);
+
+    expectCliFailure(result, 'Invalid format "json". Use one of: csv, ndjson.');
+    expect(readCliStderr(result.capture)).not.toContain('invalid_enum_value');
+    expect(mocks.exportOrganizationAuditEvents).not.toHaveBeenCalled();
   });
 });
 

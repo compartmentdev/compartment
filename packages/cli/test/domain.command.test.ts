@@ -107,6 +107,12 @@ describe.sequential('compartment domain commands', (): void => {
     expect(readCliStdout(result.capture)).toContain('Ownership: valid');
     expect(readCliStdout(result.capture)).toContain('Routing: invalid');
     expect(readCliStderr(result.capture)).toContain('CNAME does not point to the canonical route.');
+    expect(
+      countOccurrences(
+        `${readCliStdout(result.capture)}${readCliStderr(result.capture)}`,
+        'CNAME does not point to the canonical route.',
+      ),
+    ).toBe(1);
   });
 
   it('surfaces the public HTTPS port preflight failure when domain add is unsupported on a non-443 ingress', async (): Promise<void> => {
@@ -308,6 +314,49 @@ describe.sequential('compartment domain commands', (): void => {
     expect(readRequestUrl(fetchMock)).toContain('/v1/domains/app.customer.example.com');
   });
 
+  it('accepts project, environment, and service options for show, verify, and remove', async (): Promise<void> => {
+    const fetchMock: Mock<typeof fetch> = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          domain: createCustomDomainSummary('ready', null),
+        }),
+      )
+      .mockResolvedValueOnce(createJsonResponse(createVerifyCustomDomainResponse('ready', null)))
+      .mockResolvedValueOnce(
+        createJsonResponse({
+          host: 'app.customer.example.com',
+          removed: true,
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const targetOptions: string[] = ['--project', 'smoke-web', '--env', 'production', '--service', 'web'];
+
+    const showResult: CliCommandResult = await runCliCommand([
+      'domain',
+      'show',
+      'app.customer.example.com',
+      ...targetOptions,
+    ]);
+    const verifyResult: CliCommandResult = await runCliCommand([
+      'domain',
+      'verify',
+      'app.customer.example.com',
+      ...targetOptions,
+    ]);
+    const removeResult: CliCommandResult = await runCliCommand([
+      'domain',
+      'remove',
+      'app.customer.example.com',
+      ...targetOptions,
+    ]);
+
+    expectCliSuccess(showResult);
+    expectCliSuccess(verifyResult);
+    expectCliSuccess(removeResult);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('requires --service when the current project has multiple services', async (): Promise<void> => {
     const projectDirectory: string = await createProjectDirectory(tempRoot, 'smoke-web', ['web', 'worker']);
     const fetchMock: Mock<typeof fetch> = vi.fn<typeof fetch>();
@@ -445,6 +494,10 @@ function readRequestUrl(fetchMock: Mock<typeof fetch>): string {
   }
 
   return input.toString();
+}
+
+function countOccurrences(value: string, searchValue: string): number {
+  return value.split(searchValue).length - 1;
 }
 
 function createCustomDomainResponse(status: CustomDomainState): CreateCustomDomainResponse {

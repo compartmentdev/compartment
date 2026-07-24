@@ -15,6 +15,9 @@ Related guides:
 Usage: compartment domain remove [options] <host>
 
 Options:
+  --project <name>
+  --env <name>
+  --service <name>
   --output <format>  text or json (default: "text")
   --remote <name>
   -h, --help         display help for command
