@@ -79,6 +79,7 @@ export type ApiBusinessErrorCode =
   | 'resource_not_found'
   | 'resource_name_taken'
   | 'resource_backup_not_found'
+  | 'resource_conflict'
   | 'source_upload_already_consumed'
   | 'source_upload_expired'
   | 'source_upload_not_found'
