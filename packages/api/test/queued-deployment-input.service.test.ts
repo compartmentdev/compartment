@@ -45,6 +45,7 @@ interface QueuedDeploymentBaseTestInput {
   deploymentRunId: string;
   environmentId: string;
   projectServiceId: string;
+  resolvedPortsJson: string;
   resolvedReadinessJson: string;
   resolvedReleaseJson: string;
   resolvedRoutesJson: string;
@@ -57,6 +58,7 @@ function createBaseInput(): QueuedDeploymentBaseTestInput {
     deploymentRunId: 'drn_123',
     environmentId: 'env_123',
     projectServiceId: 'svc_123',
+    resolvedPortsJson: '[3000]',
     resolvedReadinessJson: '{"kind":"http"}',
     resolvedReleaseJson: 'null',
     resolvedRoutesJson: '[]',

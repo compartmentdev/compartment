@@ -23,6 +23,7 @@ import {
   rolloutFailureMessage,
 } from './worker-deployment-reconcile.helpers';
 import { readRolloutObservation, rolloutTimeoutMs } from './worker-deployment-rollout-observation.service';
+import { applyProjectNetworkPolicies } from './worker-network-policy.service';
 
 const releaseTimeoutMs: number = 600_000;
 const activeReadinessCheckCount: number = 6;
@@ -56,6 +57,7 @@ async function reconcileStopState(
     return target.state === 'stopped';
   }
   await runtime.delete(projectApplicationManifests(target.candidate));
+  await applyProjectNetworkPolicies(runtime, target.candidate.projectId, target.networkPolicy);
   await persistObservation(request, target, 'stopped');
   return true;
 }
@@ -65,6 +67,7 @@ async function reconcileActiveDeployment(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
 ): Promise<void> {
+  await applyProjectNetworkPolicies(runtime, target.candidate.projectId, target.networkPolicy);
   const applied: KubeDeploymentManifest = await applyApplication(runtime, target);
   if (await activeDeploymentRemainsNonReady(runtime, applied, target)) {
     await persistObservation(request, target, 'pending', 'Active Kubernetes Deployment drifted or became non-Ready.');
@@ -93,6 +96,7 @@ async function reconcileDesiredDeployment(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
 ): Promise<void> {
+  await applyProjectNetworkPolicies(runtime, target.candidate.projectId, target.networkPolicy);
   const release: ProductJobIntent | null = releaseIntent(target.candidate, releaseTimeoutMs);
   if (release !== null) {
     const persisted: WorkerPersistProductJobIntentResponse = await persistProductJobIntent(request, release);
@@ -118,6 +122,7 @@ async function reconcilePendingDeployment(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
+  await applyProjectNetworkPolicies(runtime, target.candidate.projectId, target.networkPolicy);
   const candidate: KubeDeploymentManifest = await applyApplication(runtime, target);
   const rollout: KubeRolloutObservation | null = readRolloutObservation(
     await runtime.read(candidate),

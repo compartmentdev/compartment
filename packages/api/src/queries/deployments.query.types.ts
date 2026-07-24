@@ -120,6 +120,7 @@ export interface DeploymentRow {
   projectServiceId: string;
   promotionStage: DeploymentPromotionStage;
   buildArtifactId: string;
+  resolvedPortsJson: string;
   resolvedReadinessJson: string;
   resolvedReleaseJson: string;
   resolvedRunJson: string;

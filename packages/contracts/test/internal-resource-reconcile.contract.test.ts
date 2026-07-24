@@ -26,6 +26,7 @@ interface TestResourceReconcileClaim {
   expectedClaims: { claimName: string; uid: string }[];
   intent: ResourceReconcileIntent;
   leaseId: string;
+  networkPolicy: { applicationPorts: number[]; resourcePorts: number[] };
   operationId: string;
   previousManifestJson: null;
   type: 'reconcile';
@@ -86,6 +87,7 @@ function claim(candidate: ResourceReconcileIntent): TestResourceReconcileClaim {
     expectedClaims: [{ claimName: 'claim', uid: 'uid' }],
     intent: candidate,
     leaseId: 'lease_1',
+    networkPolicy: { applicationPorts: [8080], resourcePorts: candidate.ports },
     operationId: 'resource_operation_1',
     previousManifestJson: null,
     type: 'reconcile',

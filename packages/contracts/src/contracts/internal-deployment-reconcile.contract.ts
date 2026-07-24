@@ -4,12 +4,13 @@ import {
   resolvedOptionalServiceReadinessConfigSchema,
   type ResolvedOptionalServiceReadinessConfig,
 } from './service-readiness.contract';
+import { projectNetworkPolicyPortsSchema, type ProjectNetworkPolicyPorts } from './internal-network-policy.contract';
 
 export type DeploymentReconcileState = 'desired' | 'pending' | 'active' | 'stopping' | 'stopped';
 export type DeploymentReconcileObservation = 'pending' | 'ready' | 'failed' | 'stopped';
 
 export interface DeploymentReconcileProjection {
-  containerPort: number;
+  containerPorts: number[];
   deploymentId: string;
   environmentId: string;
   environmentName: string;
@@ -34,6 +35,7 @@ export interface DeploymentReconcileProjection {
 export interface DeploymentReconcileTarget {
   active: DeploymentReconcileProjection | null;
   candidate: DeploymentReconcileProjection;
+  networkPolicy: ProjectNetworkPolicyPorts;
   revision: number;
   rolloutStartedAt: string;
   state: DeploymentReconcileState;
@@ -81,7 +83,7 @@ export const workerPrepareDeploymentReconcilePathname: string = '/internal/kube-
 
 const deploymentReconcileProjectionSchema: ContractSchema<DeploymentReconcileProjection> = z
   .object({
-    containerPort: z.number().int().positive(),
+    containerPorts: z.array(z.number().int().min(1).max(65_535)).min(1),
     deploymentId: z.string().min(1),
     environmentId: z.string().min(1),
     environmentName: z.string().min(1),
@@ -108,6 +110,7 @@ const deploymentReconcileTargetSchema: ContractSchema<DeploymentReconcileTarget>
   .object({
     active: deploymentReconcileProjectionSchema.nullable(),
     candidate: deploymentReconcileProjectionSchema,
+    networkPolicy: projectNetworkPolicyPortsSchema,
     revision: z.number().int().nonnegative(),
     rolloutStartedAt: z.string().datetime(),
     state: z.enum(['desired', 'pending', 'active', 'stopping', 'stopped']),

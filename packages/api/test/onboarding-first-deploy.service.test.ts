@@ -324,6 +324,7 @@ function createDeploymentRow(overrides: Partial<DeploymentRow> = {}): Deployment
     operationId: 'op_123',
     projectServiceId: 'svc_123',
     promotionStage: 'active',
+    resolvedPortsJson: '[3000]',
     resolvedReadinessJson: '{}',
     resolvedReleaseJson: 'null',
     resolvedRoutesJson: '[]',

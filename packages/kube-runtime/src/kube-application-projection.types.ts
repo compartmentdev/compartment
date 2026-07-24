@@ -42,7 +42,7 @@ export interface ApplicationReadinessConfig {
 }
 
 export interface ApplicationProjectionRow {
-  containerPort: number;
+  containerPorts: number[];
   deploymentId: string;
   environmentId: string;
   environmentName: string;

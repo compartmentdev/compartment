@@ -25,6 +25,7 @@ import type {
   CompleteResourceReconcileClaim,
   ManagedResourceUpdatePlan,
 } from './worker-resource-reconcile.service.types';
+import { applyProjectNetworkPolicies } from './worker-network-policy.service';
 
 export async function executeResourceReconcile(
   request: CompartmentRequester,
@@ -39,7 +40,13 @@ export async function executeResourceReconcile(
     resources: ['deployments', 'persistentvolumeclaims', 'pods', 'secrets', 'services'],
   });
   try {
+    if (row.operation !== 'delete') {
+      await applyProjectNetworkPolicies(runtime, row.namespaceId, complete.networkPolicy);
+    }
     await executeClaimedResource(request, runtime, observation, complete, row);
+    if (row.operation === 'delete') {
+      await applyProjectNetworkPolicies(runtime, row.namespaceId, complete.networkPolicy);
+    }
   } finally {
     await observation.stop();
   }

@@ -15,16 +15,25 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { reconcileDeploymentTarget } from '../src/services/worker-deployment-reconcile.service';
 
 interface ReconcileMocks {
+  applyNetworkPolicy: Mock;
   delay: Mock;
   observeDeploymentReconcile: Mock;
   persistProductJobIntent: Mock;
 }
 
 const mocks: ReconcileMocks = vi.hoisted(
-  (): ReconcileMocks => ({ delay: vi.fn(), observeDeploymentReconcile: vi.fn(), persistProductJobIntent: vi.fn() }),
+  (): ReconcileMocks => ({
+    applyNetworkPolicy: vi.fn(),
+    delay: vi.fn(),
+    observeDeploymentReconcile: vi.fn(),
+    persistProductJobIntent: vi.fn(),
+  }),
 );
 
 vi.mock('node:timers/promises', (): object => ({ setTimeout: mocks.delay }));
+vi.mock('../src/services/worker-network-policy.service', (): object => ({
+  applyProjectNetworkPolicies: mocks.applyNetworkPolicy,
+}));
 
 vi.mock('@compartment/sdk', async (importOriginal: () => Promise<object>): Promise<object> => {
   const original: object = await importOriginal();
@@ -39,6 +48,7 @@ describe('deployment reconciliation', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
     mocks.delay.mockResolvedValue(undefined);
+    mocks.applyNetworkPolicy.mockResolvedValue(undefined);
     mocks.persistProductJobIntent.mockResolvedValue({ result: null });
     mocks.observeDeploymentReconcile.mockResolvedValue({ applied: true, cleanupArtifacts: [] });
   });
@@ -84,6 +94,9 @@ describe('deployment reconciliation', (): void => {
     await reconcileDeploymentTarget(requester(), runtime, target(projection(null)));
 
     expect(runtime.apply).toHaveBeenCalledOnce();
+    expect(mocks.applyNetworkPolicy.mock.invocationCallOrder[0]).toBeLessThan(
+      runtime.apply.mock.invocationCallOrder[0]!,
+    );
     expect(runtime.read).not.toHaveBeenCalled();
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
@@ -266,6 +279,7 @@ function target(candidate: DeploymentReconcileProjection): DeploymentReconcileTa
   return {
     active: null,
     candidate,
+    networkPolicy: { applicationPorts: [3000], resourcePorts: [5432] },
     revision: 0,
     rolloutStartedAt: '2026-07-12T12:00:00.000Z',
     state: 'desired',
@@ -290,7 +304,7 @@ function productJobResult(
 
 function projection(releaseCommand: string | null): DeploymentReconcileProjection {
   return {
-    containerPort: 3000,
+    containerPorts: [3000],
     deploymentId: 'dep_candidate',
     environmentId: 'env_1',
     environmentName: 'production',

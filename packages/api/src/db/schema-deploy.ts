@@ -1,5 +1,5 @@
 import { boolean, index, pgTable, text, timestamp, type PgTableExtraConfig, unique } from 'drizzle-orm/pg-core';
-import { defaultAppRouteAccessMode } from '@compartment/contracts';
+import { defaultApplicationPorts, defaultAppRouteAccessMode } from '@compartment/contracts';
 import { organizations, principals } from './schema-core';
 import { environments, operations, projectServices, projects } from './schema-platform';
 import { sourceUploads } from './schema-source-uploads';
@@ -105,6 +105,7 @@ export const deployments: DeploySchemaTypes.DeploymentsTable = pgTable(
       .default(defaultAppRouteAccessMode)
       .notNull(),
     isActive: boolean('is_active').default(false).notNull(),
+    resolvedPortsJson: text('resolved_ports_json').default(JSON.stringify(defaultApplicationPorts)).notNull(),
     resolvedReadinessJson: text('resolved_readiness_json').notNull(),
     resolvedReleaseJson: text('resolved_release_json').default('null').notNull(),
     resolvedRunJson: text('resolved_run_json').notNull(),

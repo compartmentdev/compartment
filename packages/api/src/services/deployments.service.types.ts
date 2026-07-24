@@ -30,6 +30,7 @@ export interface ResolvedDescriptorService {
   kind: CompartmentServiceKind;
   name: string;
   path: string;
+  ports: number[];
   readiness: ResolvedOptionalServiceReadinessConfig;
   release: ResolvedOptionalCompartmentServiceReleaseConfig;
   run: ResolvedCompartmentServiceRunConfig;

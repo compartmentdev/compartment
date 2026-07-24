@@ -82,6 +82,7 @@ interface DeploymentsColumnBuilders extends DeploymentSourceProvenanceColumnBuil
   failureMessage: OptionalTextBuilder<'failure_message'>;
   accessMode: DefaultEnumTextBuilder<'access_mode', ['authenticated', 'public']>;
   isActive: DefaultBooleanBuilder<'is_active'>;
+  resolvedPortsJson: DefaultTextBuilder<'resolved_ports_json'>;
   resolvedReadinessJson: RequiredTextBuilder<'resolved_readiness_json'>;
   resolvedReleaseJson: DefaultTextBuilder<'resolved_release_json'>;
   resolvedRunJson: RequiredTextBuilder<'resolved_run_json'>;

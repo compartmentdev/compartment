@@ -157,6 +157,7 @@ function createDeploymentJoinedRow(
       operationId: `op_${serviceName}`,
       projectServiceId: `svc_${serviceName}`,
       promotionStage: readDeploymentPromotionStage(status),
+      resolvedPortsJson: '[3000]',
       resolvedReadinessJson: '{}',
       resolvedReleaseJson: 'null',
       resolvedRoutesJson: '[]',

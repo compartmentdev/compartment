@@ -52,9 +52,15 @@ interface TestKubeObservationHealth {
 
 interface ResourceSdkMocks {
   acknowledge: Mock;
+  applyNetworkPolicy: Mock;
 }
 
-const mocks: ResourceSdkMocks = vi.hoisted((): ResourceSdkMocks => ({ acknowledge: vi.fn() }));
+const mocks: ResourceSdkMocks = vi.hoisted(
+  (): ResourceSdkMocks => ({ acknowledge: vi.fn(), applyNetworkPolicy: vi.fn() }),
+);
+vi.mock('../src/services/worker-network-policy.service', (): object => ({
+  applyProjectNetworkPolicies: mocks.applyNetworkPolicy,
+}));
 vi.mock(
   '@compartment/sdk',
   async (loadOriginal: () => Promise<typeof CompartmentSdk>): Promise<typeof CompartmentSdk> => {
@@ -66,6 +72,8 @@ vi.mock(
 describe('worker resource reconcile lifecycle', (): void => {
   beforeEach((): void => {
     mocks.acknowledge.mockReset();
+    mocks.applyNetworkPolicy.mockReset();
+    mocks.applyNetworkPolicy.mockResolvedValue(undefined);
   });
 
   it('rejects substituted PVC UID before mutating a Deployment', async (): Promise<void> => {
@@ -823,6 +831,7 @@ function claim(
       volumes: [{ mountPath: '/data', size: '1Gi', volumeHandle: 'data' }],
     },
     leaseId: 'lease-1',
+    networkPolicy: { applicationPorts: [8080], resourcePorts: [5432] },
     operationId: 'operation-1',
     previousManifestJson,
     type: 'reconcile',

@@ -2,6 +2,7 @@ export { createKubeRuntimeFromEnvironment, createSelfCleaningKubeRuntimeFromEnvi
 export { KubeRuntime } from './kube-runtime';
 export { kubeApplicationIdentityName, kubeNamespaceName, kubeResourceVolumeName } from './kube-naming';
 export { projectApplicationManifests } from './kube-projections';
+export { projectNetworkPolicyManifests } from './kube-network-policy-projection';
 export {
   assertResourceClaimIdentity,
   assertResourceClaimOwnership,

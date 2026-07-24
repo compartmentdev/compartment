@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { resourceReadinessSummarySchema, type ResourceReadinessSummary } from './resources.contract';
 import type { ContractSchema } from './schema.types';
+import { projectNetworkPolicyPortsSchema, type ProjectNetworkPolicyPorts } from './internal-network-policy.contract';
 
 export const resourceReconcileLifecycleTimeoutMs: number = 120_000;
 
@@ -36,6 +37,7 @@ export interface WorkerClaimResourceReconcileResponse {
   intent: ResourceReconcileIntent | null;
   operationId: string | null;
   leaseId: string | null;
+  networkPolicy: ProjectNetworkPolicyPorts;
   previousManifestJson: string | null;
   type: 'bootstrap' | 'reconcile' | null;
 }
@@ -81,6 +83,7 @@ export const workerClaimResourceReconcileResponseSchema: ContractSchema<WorkerCl
     intent: resourceReconcileIntentSchema.nullable(),
     operationId: z.string().min(1).nullable(),
     leaseId: z.string().min(1).nullable(),
+    networkPolicy: projectNetworkPolicyPortsSchema,
     previousManifestJson: z.string().min(1).nullable(),
     type: z.enum(['bootstrap', 'reconcile']).nullable(),
   })

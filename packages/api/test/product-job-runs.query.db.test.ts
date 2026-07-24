@@ -93,6 +93,7 @@ describe('product Job persistence', (): void => {
       operationId: 'op-job',
       projectServiceId: 'svc-job',
       promotionStage: 'release',
+      resolvedPortsJson: '[3000]',
       resolvedReadinessJson: '[]',
       resolvedRunJson: '{}',
       status: 'running',
