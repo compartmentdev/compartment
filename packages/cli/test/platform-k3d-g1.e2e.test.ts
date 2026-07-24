@@ -204,7 +204,7 @@ async function writeGateCommands(input: GateCommandInput): Promise<GateCommands>
   const revoke: string = await writeCommand(
     input.commandDirectory,
     'revoke.sh',
-    `assignment_id="$(cat ${shellQuote(input.assignmentStatePath)})"\n${input.cliEnvironment} assignment delete "$assignment_id" --output json >/dev/null\nrm -f ${shellQuote(input.assignmentStatePath)}`,
+    `assignment_id="$(cat ${shellQuote(input.assignmentStatePath)})"\n${input.cliEnvironment} assignment delete "$assignment_id" --yes --output json >/dev/null\nrm -f ${shellQuote(input.assignmentStatePath)}`,
   );
   const postRestore: string = await writePostRestoreCommand(input);
   return { authorized, grant, postRestore, relogin, revoke, upstream };

@@ -120,7 +120,7 @@ In the browser control plane, the Users page shows friendly access summaries in 
 To remove a grant, delete the assignment directly:
 
 ```bash
-compartment assignment delete asg_123 --output json
+compartment assignment delete asg_123 --yes --output json
 ```
 
 Access-management changes are rejected when they would remove the current session's admin path or leave the organization without an unblocked admin who can sign in. Replace any old `organization.user.manage` grants manually with the split user permissions.

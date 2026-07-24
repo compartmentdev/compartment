@@ -93,6 +93,12 @@ export interface SetVariableCommandOptions extends VariableCommandOptions {
 
 export type VariableGroupCommandOptions = OutputOnlyOptions;
 
+export interface VariableGroupListCommandOptions extends VariableGroupCommandOptions {
+  env?: string | undefined;
+  project?: string | undefined;
+  service?: string | undefined;
+}
+
 export interface VariableGroupCaptureCommandOptions extends VariableCommandOptions {
   effective?: boolean | undefined;
 }

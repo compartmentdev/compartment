@@ -5,6 +5,7 @@ import type {
   KubernetesPlatformWorkloadStatus,
 } from '@compartment/contracts';
 import type { Command } from 'commander';
+import { readCliVersion } from '../../cli-build-info';
 import { renderOutput } from '../../output/render';
 import {
   getKubernetesSystemStatus,
@@ -21,6 +22,7 @@ import {
   resolveKubernetesSystemUpdateVersion,
 } from './system.command.options';
 import type { KubernetesOperatorCommandOptions, KubernetesSystemUpdateCommandOptions } from './system.command.types';
+import { createKubernetesSystemUpdateMessage } from './system.command.output';
 
 export function registerKubernetesSystemLifecycleCommands(
   program: Command,
@@ -72,16 +74,17 @@ function registerUpdateCommand(program: Command, dependencies: CliCommandDepende
           version,
         }),
     );
-    renderOutput(dependencies.io, options.output, result, createUpdateMessage(result));
+    renderOutput(
+      dependencies.io,
+      options.output,
+      result,
+      createKubernetesSystemUpdateMessage(result, readCliVersion(), createStatusMessage(result.status)),
+    );
   });
 }
 
 function createRestartMessage(result: KubernetesSystemRestartResponse): string {
   return `Platform restart ${result.restarted ? 'completed' : 'finished without full readiness'}.\n${createStatusMessage(result.status)}`;
-}
-
-function createUpdateMessage(result: KubernetesSystemUpdateResponse): string {
-  return `Platform update to ${result.version} ${result.updated ? 'completed' : 'finished without full readiness'}.\n${createStatusMessage(result.status)}`;
 }
 
 function createStatusMessage(result: KubernetesSystemStatusResponse): string {

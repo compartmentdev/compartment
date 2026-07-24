@@ -604,13 +604,13 @@ export function registerSystemUserFlowStatefulTeardownCases(context: SystemUserF
       await expectAppWhoAmI(routeUrl, viewerAppSessionCookie, viewerEmail, runtime.organizationSlug);
 
       const deletedAssignmentPayload: AccessAssignmentResponse = await admin.runJson(
-        `assignment delete ${assignmentPayload.assignment.id}`,
+        `assignment delete ${assignmentPayload.assignment.id} --yes`,
         accessAssignmentResponseSchema,
       );
       expect(deletedAssignmentPayload.assignment.id).toBe(assignmentPayload.assignment.id);
 
       const deletedDeployerAssignmentPayload: AccessAssignmentResponse = await admin.runJson(
-        `assignment delete ${deployerAssignmentPayload.assignment.id}`,
+        `assignment delete ${deployerAssignmentPayload.assignment.id} --yes`,
         accessAssignmentResponseSchema,
       );
       expect(deletedDeployerAssignmentPayload.assignment.id).toBe(deployerAssignmentPayload.assignment.id);

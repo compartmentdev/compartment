@@ -20,6 +20,7 @@ Usage: compartment assignment delete [options] <assignmentId>
 
 Options:
   --output <format>  text or json (default: "text")
+  --yes              confirm assignment deletion
   --remote <name>
   -h, --help         display help for command
 ```
