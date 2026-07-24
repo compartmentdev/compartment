@@ -24,7 +24,7 @@ export async function listScheduledResourceOperationCandidates(): Promise<Schedu
     .innerJoin(environments, eq(projectResources.environmentId, environments.id))
     .innerJoin(projects, eq(environments.projectId, projects.id))
     .innerJoin(organizations, eq(projects.organizationId, organizations.id))
-    .where(and(isNull(projects.archivedAt), hasScheduledBackupOperation()))
+    .where(and(isNull(projects.archivedAt), eq(projectResources.status, 'running'), hasScheduledBackupOperation()))
     .orderBy(asc(projectResources.createdAt));
 
   return rows.map(toScheduledResourceOperationCandidateRow);

@@ -162,6 +162,29 @@ describe('resource backup archive boundary', (): void => {
     expect(runBackup).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'scheduled', resource: bootstrapped }));
   });
 
+  it('skips a scheduled backup while the resource is stopped', async (): Promise<void> => {
+    lockReconciliation.mockResolvedValue(null);
+    lockResource.mockResolvedValue({
+      ...resourceRow('[{"claimName":"volume-backups","uid":"uid-backups"}]'),
+      status: 'stopped',
+    });
+
+    await expect(
+      runDueScheduledResourceBackup(
+        {
+          environment: { id: 'env_prod' },
+          organization: { id: 'org' },
+          project: { id: 'prj' },
+        } as ResourceEnvironmentContext,
+        'postgres',
+        new Date('2026-07-21T12:00:00.000Z'),
+      ),
+    ).resolves.toBeNull();
+
+    expect(runBackup).not.toHaveBeenCalled();
+    expect(applyRetention).toHaveBeenCalledOnce();
+  });
+
   it('retries identity observation when the resource is still unfenced under the operation lock', async (): Promise<void> => {
     const waiting: ProjectResourceRow = resourceRow('[]');
     const bootstrapped: ProjectResourceRow = resourceRow('[{"claimName":"volume-backups","uid":"uid-backups"}]');

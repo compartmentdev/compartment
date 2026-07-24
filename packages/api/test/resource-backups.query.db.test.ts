@@ -283,6 +283,10 @@ describe('resource backup queries', (): void => {
         },
       },
     ]);
+
+    await db.update(projectResources).set({ status: 'stopped' }).where(eq(projectResources.id, 'res_postgres'));
+
+    await expect(listScheduledResourceOperationCandidates()).resolves.toEqual([]);
   });
 
   it('locks resource references without blocking backup foreign key inserts', async (): Promise<void> => {

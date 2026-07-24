@@ -54,9 +54,13 @@ describe('resource reconcile run boundary', (): void => {
   });
 
   it('refuses ordinary reconcile before the implicit backup claim is bootstrapped', async (): Promise<void> => {
-    const resource: ProjectResourceRow = { expectedClaimsJson: '[]' } as ProjectResourceRow;
+    const resource: ProjectResourceRow = { expectedClaimsJson: '[]', name: 'postgres' } as ProjectResourceRow;
 
-    await expect(requestResourceReconcile('operation', intent(), resource)).rejects.toThrow('Bootstrap is required');
+    await expect(requestResourceReconcile('operation', intent(), resource)).rejects.toMatchObject({
+      code: 'invalid_deploy_config',
+      message:
+        'Resource "postgres" is not bootstrapped yet. Run `compartment resource bootstrap --resource postgres` first.',
+    });
     expect(createRun).not.toHaveBeenCalled();
   });
 
