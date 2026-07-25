@@ -7,6 +7,7 @@ import type { EffectiveVariable } from './effective-variables.service.types';
 import { auditResourceOutputReveal, requireResourceOutputRevealPermission } from './resource-output-disclosure.service';
 import { resolveResourceOutputForLookup } from './resource-output-lookup.service';
 import { listResolvedResourceOutputSummaries } from './resource-output-resolution.service';
+import { withResourceOperationLocks } from './resource-operation-lock.service';
 import { loadResourceEffectiveVariables } from './resources-effective-variables.service';
 import {
   bootstrapKubernetesResource,
@@ -99,7 +100,17 @@ export async function bootstrapResourceForPrincipal(input: ResourceActionInput):
 export async function stopResourceForPrincipal(input: ResourceActionInput): Promise<ResourceLookupResult> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
   const resource: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
-  return { ...context, resource: await reconcileKubernetesResourceReplicas(context, resource, 0) };
+  const stopped: ProjectResourceRow = await withResourceOperationLocks(
+    [resource.id],
+    async (): Promise<ProjectResourceRow> => {
+      const current: ProjectResourceRow = await resolveRequiredResource(
+        context.environment.id,
+        input.query.resourceName,
+      );
+      return await reconcileKubernetesResourceReplicas(context, current, 0);
+    },
+  );
+  return { ...context, resource: stopped };
 }
 
 export async function deleteResourceForPrincipal(input: ResourceDeleteInput): Promise<string[]> {
