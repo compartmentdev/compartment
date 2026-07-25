@@ -32,13 +32,13 @@ import { addRemoteOption, createRemoteAuthenticatedContext } from '../remote.com
 import {
   createResourceListMessage,
   createResourceDeleteMessage,
-  createResourceBackupCreateMessage,
   createResourceBackupListMessage,
   createResourceBackupShowMessage,
   createResourceLogsMessage,
   createResourceResponseMessage,
   createResourceRestoreMessage,
 } from './resource.command.output';
+import { renderResourceBackupCreateResult } from './resource-backup-create-command.service';
 import { registerOutputCommands } from './register-resource-output.commands';
 import {
   createNamedResourceCommand,
@@ -176,7 +176,7 @@ function registerBackupCreateCommand(program: Command, dependencies: CliCommandD
         await createRemoteAuthenticatedContext(options),
         createResourceTargetInput(options),
       );
-      renderOutput(dependencies.io, options.output, response, createResourceBackupCreateMessage(response));
+      renderResourceBackupCreateResult(dependencies.io, options.output, response);
     },
   );
 }

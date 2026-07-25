@@ -1,6 +1,8 @@
 import {
   createErrorResponse,
   type ErrorResponse,
+  type ResourceBackupCreateResponse,
+  type ResourceBackupStatus,
   type ResourceBackupSummary,
   type ResourceDeleteResponse,
   type ResourceRestoreAsResponse,
@@ -9,7 +11,11 @@ import {
 } from '@compartment/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { AuthenticatedContext } from '../src/services/context.types';
-import type { ResourceDeleteInput, ResourceRestoreInput } from '../src/services/resources.service.types';
+import type {
+  ResourceDeleteInput,
+  ResourceRestoreInput,
+  ResourceTargetInput,
+} from '../src/services/resources.service.types';
 import type { CliConfig } from '../src/store/config.types';
 import { createCliConfigFixture } from './cli-test.fixtures';
 import {
@@ -28,6 +34,10 @@ type DeleteResourceCommand = (
   context: AuthenticatedContext,
   input: ResourceDeleteInput,
 ) => Promise<ResourceDeleteResponse>;
+type CreateResourceBackupCommand = (
+  context: AuthenticatedContext,
+  input: ResourceTargetInput,
+) => Promise<ResourceBackupCreateResponse>;
 type RestoreResourceBackupAsResponse = ResourceRestoreResponse | ResourceRestoreAsResponse;
 type RestoreResourceBackupCommand = (
   context: AuthenticatedContext,
@@ -37,17 +47,19 @@ type UnusedResourceService = () => Promise<never>;
 type ReadCliConfig = () => Promise<CliConfig>;
 
 type DeleteResourceMock = Mock<DeleteResourceCommand>;
+type CreateResourceBackupMock = Mock<CreateResourceBackupCommand>;
 type RestoreResourceBackupMock = Mock<RestoreResourceBackupCommand>;
 type UnusedResourceServiceMock = Mock<UnusedResourceService>;
 
 interface ResourceCommandMocks {
+  createResourceBackupMock: CreateResourceBackupMock;
   deleteResourceMock: DeleteResourceMock;
   restoreResourceBackupMock: RestoreResourceBackupMock;
 }
 
 interface ResourceServiceModule {
   bootstrapResource: UnusedResourceServiceMock;
-  createResourceBackup: UnusedResourceServiceMock;
+  createResourceBackup: CreateResourceBackupMock;
   deleteResource: DeleteResourceMock;
   inspectResource: UnusedResourceServiceMock;
   listResourceBackups: UnusedResourceServiceMock;
@@ -154,6 +166,68 @@ describe.sequential('compartment resource commands', (): void => {
     expect(readCliStderr(result.capture)).not.toBe('An unexpected error occurred.\n');
   });
 
+  it('prints the stopped-resource backup error and exits non-zero', async (): Promise<void> => {
+    const message: string =
+      'Resource "postgres" is stopped. Start it with `compartment resource start --resource postgres` before creating a backup.';
+    const response: ErrorResponse = createErrorResponse('resource_conflict', message);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(response), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 409,
+        }),
+      ),
+    );
+    mockConfigStore();
+
+    const result: CliCommandResult = await runCliCommand([
+      'resource',
+      'backup',
+      'create',
+      '--project',
+      'project',
+      '--env',
+      'production',
+      '--resource',
+      'postgres',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(readCliStderr(result.capture)).toContain(message);
+    expect(readCliStderr(result.capture)).not.toContain('pg_dump');
+  });
+
+  it('exits non-zero after rendering a failed backup as JSON', async (): Promise<void> => {
+    const mocks: ResourceCommandMocks = mockResourceCommandModules(createResourceRestoreResponse(), 'failed');
+
+    const result: CliCommandResult = await runCliCommand([
+      'resource',
+      'backup',
+      'create',
+      '--resource',
+      'postgres',
+      '--output',
+      'json',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.capture.stdout.join(''))).toMatchObject({
+      backup: { failureSummary: 'pg_dump failed', status: 'failed' },
+    });
+    expect(mocks.createResourceBackupMock).toHaveBeenCalledOnce();
+  });
+
+  it('exits zero after creating a successful backup', async (): Promise<void> => {
+    const mocks: ResourceCommandMocks = mockResourceCommandModules(createResourceRestoreResponse(), 'succeeded');
+
+    const result: CliCommandResult = await runCliCommand(['resource', 'backup', 'create', '--resource', 'postgres']);
+
+    expectCliSuccess(result);
+    expect(result.capture.stdout.join('')).toContain('Backup rbak_created succeeded for resource postgres.');
+    expect(mocks.createResourceBackupMock).toHaveBeenCalledOnce();
+  });
+
   it('rejects restore target ambiguity when --resource and --as are combined', async (): Promise<void> => {
     const mocks: ResourceCommandMocks = mockResourceCommandModules(createResourceRestoreResponse());
 
@@ -235,7 +309,11 @@ function createInteractiveCliCapture(): CliCommandCapture {
 
 function mockResourceCommandModules(
   response: RestoreResourceBackupAsResponse = createResourceRestoreResponse(),
+  backupStatus: ResourceBackupStatus = 'succeeded',
 ): ResourceCommandMocks {
+  const createResourceBackupMock: CreateResourceBackupMock = vi
+    .fn<CreateResourceBackupCommand>()
+    .mockResolvedValue(createResourceBackupResponse(backupStatus));
   const deleteResourceMock: DeleteResourceMock = vi.fn<DeleteResourceCommand>().mockResolvedValue({
     retainedVolumes: [],
     success: true,
@@ -249,7 +327,7 @@ function mockResourceCommandModules(
     '../src/services/resources.service',
     (): ResourceServiceModule => ({
       bootstrapResource: createUnusedResourceServiceMock(),
-      createResourceBackup: createUnusedResourceServiceMock(),
+      createResourceBackup: createResourceBackupMock,
       deleteResource: deleteResourceMock,
       inspectResource: createUnusedResourceServiceMock(),
       listResourceBackups: createUnusedResourceServiceMock(),
@@ -264,8 +342,44 @@ function mockResourceCommandModules(
     }),
   );
   return {
+    createResourceBackupMock,
     deleteResourceMock,
     restoreResourceBackupMock,
+  };
+}
+
+function createResourceBackupResponse(status: ResourceBackupStatus): ResourceBackupCreateResponse {
+  const resource: ResourceSummary = createResourceSummary();
+  return {
+    backup: {
+      artifactLocation: status === 'succeeded' ? '/tmp/backups/rbak_created' : null,
+      checksum: status === 'succeeded' ? 'sha256:abc123' : null,
+      completedAt: '2026-05-06T12:05:00.000Z',
+      createdAt: '2026-05-06T12:00:00.000Z',
+      failureSummary: status === 'failed' ? 'pg_dump failed' : null,
+      id: 'rbak_created',
+      purpose: 'manual',
+      retentionDeletedAt: null,
+      retentionReason: null,
+      resource,
+      size: status === 'succeeded' ? 128 : null,
+      status,
+    },
+    environment: {
+      createdAt: '2026-05-06T12:00:00.000Z',
+      id: 'env_123',
+      name: 'staging',
+      projectId: 'prj_123',
+      updatedAt: '2026-05-06T12:00:00.000Z',
+    },
+    project: {
+      archivedAt: null,
+      createdAt: '2026-05-06T12:00:00.000Z',
+      id: 'prj_123',
+      name: 'internal-tools',
+      organizationId: 'org_123',
+      updatedAt: '2026-05-06T12:00:00.000Z',
+    },
   };
 }
 

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { mapApiBusinessError } from '../src/errors/api-business-error';
+import { ApiBusinessError } from '../src/errors/api-business-error.shared';
 import type { ProjectResourceRow, ResourceTransaction } from '../src/queries/resources.query.types';
 import {
   createResourceBackupForPrincipal,
@@ -16,6 +18,7 @@ type TestTransaction = (run: TestTransactionCallback) => Promise<ResourceBackupR
 
 const lockReconciliation: Mock = vi.hoisted((): Mock => vi.fn());
 const applyRetention: Mock = vi.hoisted((): Mock => vi.fn());
+const findResource: Mock = vi.hoisted((): Mock => vi.fn());
 const lockResource: Mock = vi.hoisted((): Mock => vi.fn());
 const listBackups: Mock = vi.hoisted((): Mock => vi.fn());
 const resolveContext: Mock = vi.hoisted((): Mock => vi.fn());
@@ -25,7 +28,7 @@ const waitForBootstrap: Mock = vi.hoisted((): Mock => vi.fn());
 const withResourceOperationLocks: Mock = vi.hoisted((): Mock => vi.fn());
 
 vi.mock('../src/queries/resources.query', (): object => ({
-  findProjectResourceByName: vi.fn(),
+  findProjectResourceByName: findResource,
   lockProjectResourceOperation: lockReconciliation,
   lockProjectResourceReferenceByName: lockResource,
 }));
@@ -66,6 +69,7 @@ describe('resource backup archive boundary', (): void => {
       async (run: TestTransactionCallback): Promise<ResourceBackupResult> => await run({} as ResourceTransaction),
     );
     lockResource.mockResolvedValue(resourceRow('[{"claimName":"volume-backups","uid":"uid-backups"}]'));
+    findResource.mockResolvedValue(resourceRow('[{"claimName":"volume-backups","uid":"uid-backups"}]'));
     listBackups.mockResolvedValue([]);
     let previous: Promise<void> = Promise.resolve();
     withResourceOperationLocks.mockImplementation(
@@ -138,6 +142,46 @@ describe('resource backup archive boundary', (): void => {
     expect(result.resource).toBe(bootstrapped);
     expect(waitForBootstrap).toHaveBeenCalledWith('res_postgres');
     expect(runBackup).toHaveBeenCalledWith(expect.objectContaining({ resource: bootstrapped }));
+  });
+
+  it('rejects a manual backup while the resource is stopped without starting backup execution', async (): Promise<void> => {
+    const stopped: ProjectResourceRow = { ...resourceRow('[]'), status: 'stopped' };
+    lockReconciliation.mockResolvedValue(null);
+    findResource.mockResolvedValue(stopped);
+    lockResource.mockResolvedValue(stopped);
+
+    const backupPromise: Promise<ResourceBackupResult> = createResourceBackupForPrincipal({
+      actorPrincipalId: 'prn_admin',
+      organizationSlug: 'organization',
+      query: { projectName: 'project', resourceName: 'postgres' },
+    });
+
+    const error: ApiBusinessError = await captureApiBusinessError(backupPromise);
+    expect(error).toMatchObject({
+      code: 'resource_conflict',
+      message:
+        'Resource "postgres" is stopped. Start it with `compartment resource start --resource postgres` before creating a backup.',
+    });
+    expect(mapApiBusinessError(error).statusCode).toBe(409);
+    expect(waitForBootstrap).not.toHaveBeenCalled();
+    expect(runBackup).not.toHaveBeenCalled();
+  });
+
+  it('creates a manual backup while the resource is running', async (): Promise<void> => {
+    const running: ProjectResourceRow = resourceRow('[{"claimName":"volume-backups","uid":"uid-backups"}]');
+    lockReconciliation.mockResolvedValue(null);
+    lockResource.mockResolvedValue(running);
+    runBackup.mockResolvedValue({ backup: {}, manifest: null });
+
+    await expect(
+      createResourceBackupForPrincipal({
+        actorPrincipalId: 'prn_admin',
+        organizationSlug: 'organization',
+        query: { projectName: 'project', resourceName: 'postgres' },
+      }),
+    ).resolves.toMatchObject({ resource: running });
+
+    expect(runBackup).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'manual', resource: running }));
   });
 
   it('waits for persisted PVC identity before starting a scheduled backup', async (): Promise<void> => {
@@ -277,4 +321,16 @@ function resourceRow(expectedClaimsJson: string): ProjectResourceRow {
     updatedAt: new Date('2026-07-21T10:00:00.000Z'),
     volumesJson: '{}',
   };
+}
+
+async function captureApiBusinessError(promise: Promise<ResourceBackupResult>): Promise<ApiBusinessError> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof ApiBusinessError) {
+      return error;
+    }
+    throw error;
+  }
+  throw new Error('Expected an API business error.');
 }

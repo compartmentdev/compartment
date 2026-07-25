@@ -14,6 +14,7 @@ import {
   runResourceBackup,
   runResourceRestore,
 } from './resource-backups.execution.service';
+import { assertResourceRunningForManualBackup } from './resource-backups.manual.service';
 import { assertResourceBackupBelongsToEnvironment } from './resource-backups.environment.service';
 import { resolveRequiredBackupResourceById, resolveRequiredResourceBackup } from './resource-backups.lookup.service';
 import { assertBackupCanRestoreResource } from './resource-backup-manifest.service';
@@ -23,6 +24,7 @@ import { withResourceOperationLocks } from './resource-operation-lock.service';
 import { waitForResourceClaimIdentities } from './resource-reconcile-run.service';
 import { resolveResourceEnvironmentContext } from './resource-environment-context.service';
 import { parseStoredResourceOperations } from './resources.service.storage';
+import type { LockedResourceOperationResult } from './resource-backups.service.types';
 import type {
   ResourceActionInput,
   ResourceBackupListResult,
@@ -35,24 +37,16 @@ import type {
   ScheduledResourceBackupRunResult,
 } from './resources.service.types';
 
-interface CompletedResourceOperation<Result> {
-  nextCandidate: null;
-  result: Result;
-}
-
-interface RetryResourceOperation {
-  nextCandidate: ProjectResourceRow;
-}
-
-type LockedResourceOperationResult<Result> = CompletedResourceOperation<Result> | RetryResourceOperation;
-
 export async function createResourceBackupForPrincipal(input: ResourceActionInput): Promise<ResourceBackupResult> {
   const context: ResourceEnvironmentContext = await resolveResourceEnvironmentContext(input);
+  const candidate: ProjectResourceRow = await resolveRequiredResource(context.environment.id, input.query.resourceName);
+  assertResourceRunningForManualBackup(candidate);
 
   return await runWithResourceOperationLock(
     context,
     input.query.resourceName,
     async (resource: ProjectResourceRow): Promise<ResourceBackupResult> => {
+      assertResourceRunningForManualBackup(resource);
       const result: Pick<ResourceBackupResult, 'backup' | 'manifest'> = await runResourceBackup({
         actorPrincipalId: input.actorPrincipalId,
         context,
