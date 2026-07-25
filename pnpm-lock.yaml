@@ -8,7 +8,7 @@ overrides:
   '@esbuild-kit/core-utils>esbuild': 0.25.11
   '@kubernetes/client-node@1.4.0>js-yaml': 4.3.0
   gel@2.2.0>shell-quote: 1.9.0
-  minimatch@10.2.5>brace-expansion: 5.0.7
+  minimatch@10.2.5>brace-expansion: 5.0.8
   yaml-language-server@1.20.0>yaml: 2.8.3
   fast-uri: 3.1.4
   find-my-way: '>=9.7.0'
@@ -3786,10 +3786,10 @@ packages:
     resolution:
       { integrity: sha512-TN1kCZAgdgweJhWWpgKYrQaMNHcDULHkWwQIspdtjV4Y5aurRdZpjAqn6yX3FPqTA9ngHCc4hJxMAMgGfve85w== }
 
-  brace-expansion@5.0.7:
+  brace-expansion@5.0.8:
     resolution:
-      { integrity: sha512-7oFy703dxfY3/NLxC1fh2SUCQ0H9rmAY+5EpDVfXjUTTs+HEwR2nYaqLv+GWcTsumwxPfiz6CzCNkwXwBUwqCA== }
-    engines: { node: 18 || 20 || >=22 }
+      { integrity: sha512-JZyDyq3D4AUifKTPOB7DELf6XsB3WdPuNxCtob1vFXPsSXhdAiHBWJ/tJ8HAc9aH84BK+5JFZLNkJKx3G9kzQg== }
+    engines: { node: 20 || >=22 }
 
   braces@3.0.3:
     resolution:
@@ -11712,7 +11712,7 @@ snapshots:
     dependencies:
       balanced-match: 1.0.2
 
-  brace-expansion@5.0.7:
+  brace-expansion@5.0.8:
     dependencies:
       balanced-match: 4.0.4
 
@@ -14357,7 +14357,7 @@ snapshots:
 
   minimatch@10.2.5:
     dependencies:
-      brace-expansion: 5.0.7
+      brace-expansion: 5.0.8
 
   minimatch@3.1.5:
     dependencies:
