@@ -198,6 +198,20 @@ export function createResourceConflictError(message?: string): ApiBusinessError 
   return new ApiBusinessError('resource_conflict', message);
 }
 
+export function createResourceNotBootstrappedError(resourceName: string): ApiBusinessError {
+  return new ApiBusinessError(
+    'resource_not_bootstrapped',
+    `Resource "${resourceName}" is not bootstrapped. Run \`compartment resource bootstrap --resource ${resourceName}\` first, then redeploy.`,
+  );
+}
+
+export function createResourceNotRunningError(resourceName: string): ApiBusinessError {
+  return new ApiBusinessError(
+    'resource_not_running',
+    `Resource "${resourceName}" is not running. Start it with \`compartment resource start --resource ${resourceName}\` before deploying, then redeploy.`,
+  );
+}
+
 export function createLastOrganizationAdminError(): ApiBusinessError {
   return new ApiBusinessError('last_organization_admin');
 }

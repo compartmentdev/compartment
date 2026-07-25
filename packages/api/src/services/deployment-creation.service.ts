@@ -62,6 +62,7 @@ export async function createDeploymentsFromSourceUpload(input: DeployInputContex
   const onboardingSessionId: string | null = await readDeployOnboardingSessionId(input);
   const resources: ResourceListResult = await reconcileDeclaredResourcesAndDescriptorServiceConnections(
     input,
+    descriptorServices,
     connectionBindingPlan,
   );
 
