@@ -486,6 +486,17 @@ describe.sequential('compartment deployment commands', (): void => {
     expect(mocks.createDeployResultMessageMock).not.toHaveBeenCalled();
   });
 
+  it('prints actionable unbootstrapped resource submission errors and exits non-zero', async (): Promise<void> => {
+    const message: string =
+      'Resource "db" is not bootstrapped. Run `compartment resource bootstrap --resource db` first, then redeploy.';
+    mockDeploymentCommandModules({
+      error: new Error(message),
+    });
+    const result: CliCommandResult = await runCliCommand(['deploy'], createCliCapture());
+
+    expectCliFailure(result, message);
+  });
+
   it('fails before deploy when a repo has no binding and multiple remotes are configured', async (): Promise<void> => {
     const cwd: string = await mkdtemp(join(tmpdir(), 'compartment-cli-deploy-'));
     createdDirectories.push(cwd);

@@ -5,6 +5,7 @@ import type {
   ResolvedDescriptorService,
   ResolvedProjectContext,
 } from './deployments.service.types';
+import { assertDeployResourcesBootstrapped } from './deployment-resource-preflight.service';
 import { prepareDescriptorServiceConnectionBindingPlan } from './deployment-service-connections.plan';
 import { validateDescriptorServiceConnectionBindingPreflight } from './deployment-service-connections.preflight';
 import { applyDescriptorServiceConnectionBindingPlan } from './deployment-service-connections.service';
@@ -36,15 +37,16 @@ export async function prepareDeployDescriptorServiceConnectionBindingPlan(
 
 export async function reconcileDeclaredResourcesAndDescriptorServiceConnections(
   input: DeployInputContext,
+  descriptorServices: readonly ResolvedDescriptorService[],
   connectionBindingPlan: DescriptorServiceConnectionBindingPlan,
 ): Promise<ResourceListResult> {
-  const resources: ResourceListResult = await reconcileResourcesForDeploy(input);
+  const resources: ResourceListResult = await reconcileDeclaredResourcesForDeploy(input);
+  assertDeployResourcesBootstrapped(descriptorServices, resources.resources);
   await applyDescriptorServiceConnectionBindingPlan({ plan: connectionBindingPlan });
-
   return resources;
 }
 
-async function reconcileResourcesForDeploy(input: DeployInputContext): Promise<ResourceListResult> {
+async function reconcileDeclaredResourcesForDeploy(input: DeployInputContext): Promise<ResourceListResult> {
   return await reconcileDeclaredResources({
     actorPrincipalId: input.actorPrincipalId,
     descriptor: input.descriptor,

@@ -6,10 +6,12 @@ import {
   type InstallResponse,
 } from '@compartment/contracts';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { eq } from 'drizzle-orm';
 import type { ApiApp } from '../src/app.types';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
   buildArtifacts,
+  deploymentRuns,
   deployments,
   environmentResourceOutputVariableBindings,
   environmentVariableValues,
@@ -115,13 +117,52 @@ describe('API deploy descriptor service connections integration', (): void => {
     await cleanupApiIntegrationRuntime(app, systemApp, pool);
   });
 
-  it('injects descriptor resource connections without manual resource-output variables', async (): Promise<void> => {
+  it('rejects a release deployment connected to an unbootstrapped resource before queueing build work', async (): Promise<void> => {
     const context: InstalledDeployContext = await installDeployContext();
-    const deployResponse: LightMyRequestResponse = await deployConnectionDescriptor(context.installPayload);
+    const deployResponse: LightMyRequestResponse = await deployReleaseConnectionDescriptor(context.installPayload);
 
-    expect(deployResponse.statusCode, deployResponse.body).toBe(200);
-    await expectDescriptorConnectionBinding();
+    expect(deployResponse.statusCode, deployResponse.body).toBe(409);
+    const payload: ParsedErrorResponse = errorResponseSchema.parse(deployResponse.json());
+    expect(payload.error.code).toBe('resource_not_bootstrapped');
+    expect(payload.error.message).toBe(
+      'Resource "db" is not bootstrapped. Run `compartment resource bootstrap --resource db` first, then redeploy.',
+    );
+    expect(await db.select().from(projectResources)).toEqual([
+      expect.objectContaining({
+        expectedClaimsJson: '[]',
+        name: 'db',
+      }),
+    ]);
+    expect(await db.select().from(deploymentRuns)).toHaveLength(0);
+    expect(await db.select().from(deployments)).toHaveLength(0);
+    expect(await db.select().from(buildArtifacts)).toHaveLength(0);
+    expect(await db.select().from(environmentResourceOutputVariableBindings)).toHaveLength(0);
     await expectGeneratedPasswordStoredEncrypted();
+  });
+
+  it('queues the same release deployment after its connected resource is bootstrapped', async (): Promise<void> => {
+    const context: InstalledDeployContext = await installDeployContext();
+    expect((await deployReleaseConnectionDescriptor(context.installPayload)).statusCode).toBe(409);
+    await markResourceBootstrapped('db');
+
+    const deployResponse: LightMyRequestResponse = await deployReleaseConnectionDescriptor(context.installPayload);
+
+    expectSuccessfulDeploy(deployResponse);
+    expect(await db.select().from(deploymentRuns)).toHaveLength(1);
+    expect(await db.select().from(deployments)).toHaveLength(1);
+    expect(await db.select().from(buildArtifacts)).toHaveLength(1);
+    await expectDescriptorConnectionBinding();
+  });
+
+  it('queues a deployment that declares but does not depend on an unbootstrapped resource', async (): Promise<void> => {
+    const context: InstalledDeployContext = await installDeployContext();
+
+    const deployResponse: LightMyRequestResponse = await deployPresetDescriptor(context.installPayload);
+
+    expectSuccessfulDeploy(deployResponse);
+    expect(await db.select().from(deploymentRuns)).toHaveLength(1);
+    expect(await db.select().from(deployments)).toHaveLength(1);
+    expect(await db.select().from(buildArtifacts)).toHaveLength(1);
   });
 
   it('rejects descriptor resource connections selected for build env', async (): Promise<void> => {
@@ -168,6 +209,8 @@ describe('API deploy descriptor service connections integration', (): void => {
   it('removes descriptor-owned bindings when connections are removed from the descriptor', async (): Promise<void> => {
     const context: InstalledDeployContext = await installDeployContext();
 
+    expect((await deployConnectionDescriptor(context.installPayload)).statusCode).toBe(409);
+    await markResourceBootstrapped('db');
     expectSuccessfulDeploy(await deployConnectionDescriptor(context.installPayload));
     await expectDescriptorConnectionBinding();
     requireClaimedDeployment(await claimNextQueuedDeployment(app));
@@ -179,6 +222,8 @@ describe('API deploy descriptor service connections integration', (): void => {
   it('allows removed descriptor-owned bindings to move to build env in the same deploy', async (): Promise<void> => {
     const context: InstalledDeployContext = await installDeployContext();
 
+    expect((await deployConnectionDescriptor(context.installPayload)).statusCode).toBe(409);
+    await markResourceBootstrapped('db');
     expectSuccessfulDeploy(await deployConnectionDescriptor(context.installPayload));
     await expectDescriptorConnectionBinding();
     requireClaimedDeployment(await claimNextQueuedDeployment(app));
@@ -206,6 +251,13 @@ async function deployConnectionDescriptor(
 ): Promise<LightMyRequestResponse> {
   return await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev', {
     descriptor: createPostgresPresetConnectionDeployDescriptor(buildEnv, servicePath),
+    sourceArchive: await createPostgresPresetDeploySourceArchive(),
+  });
+}
+
+async function deployReleaseConnectionDescriptor(installPayload: InstallResponse): Promise<LightMyRequestResponse> {
+  return await injectDeployRequest(app, installPayload.sessionToken, 'acme-dev', {
+    descriptor: createPostgresPresetReleaseConnectionDeployDescriptor(),
     sourceArchive: await createPostgresPresetDeploySourceArchive(),
   });
 }
@@ -261,6 +313,15 @@ async function expectGeneratedPasswordStoredEncrypted(): Promise<void> {
   ]);
   expect(variableRows[0]?.valueCiphertext).not.toBeNull();
   expect(JSON.stringify(await db.select().from(variableChangeEvents))).not.toContain('valueCiphertext');
+}
+
+async function markResourceBootstrapped(resourceName: string): Promise<void> {
+  await db
+    .update(projectResources)
+    .set({
+      expectedClaimsJson: JSON.stringify([{ claimName: 'data', uid: 'pvc-data' }]),
+    })
+    .where(eq(projectResources.name, resourceName));
 }
 
 async function setServiceDatabaseUrlLiteral(installPayload: InstallResponse): Promise<void> {
@@ -366,6 +427,27 @@ function createPostgresPresetConnectionDeployDescriptor(
       },
     },
   };
+}
+
+function createPostgresPresetReleaseConnectionDeployDescriptor(): CompartmentAuthoredDescriptorInput {
+  const descriptor: CompartmentAuthoredDescriptorInput = createPostgresPresetConnectionDeployDescriptor(
+    [],
+    './services/api',
+  );
+  descriptor.services.api = {
+    connections: {
+      db: {
+        env: {
+          DATABASE_URL: 'connection-url',
+        },
+      },
+    },
+    path: './services/api',
+    release: {
+      command: 'pnpm db:migrate',
+    },
+  };
+  return descriptor;
 }
 
 async function createPostgresPresetDeploySourceArchive(): Promise<Buffer> {
