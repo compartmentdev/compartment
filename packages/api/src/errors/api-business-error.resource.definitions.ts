@@ -5,6 +5,7 @@ type ResourceApiBusinessErrorCode =
   | 'resource_conflict'
   | 'resource_name_taken'
   | 'resource_not_bootstrapped'
+  | 'resource_not_running'
   | 'resource_not_found';
 
 export const resourceBusinessErrorDefinitions: Record<ResourceApiBusinessErrorCode, ApiBusinessErrorDefinition> = {
@@ -22,6 +23,10 @@ export const resourceBusinessErrorDefinitions: Record<ResourceApiBusinessErrorCo
   },
   resource_not_bootstrapped: {
     message: 'The resource is not bootstrapped.',
+    statusCode: 409,
+  },
+  resource_not_running: {
+    message: 'The resource is not running.',
     statusCode: 409,
   },
   resource_not_found: {

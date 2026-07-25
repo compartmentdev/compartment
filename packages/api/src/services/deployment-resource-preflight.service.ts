@@ -1,9 +1,9 @@
 import type { ResourceClaimIdentity } from '@compartment/contracts';
-import { createResourceNotBootstrappedError } from '../errors/api-business-error';
+import { createResourceNotBootstrappedError, createResourceNotRunningError } from '../errors/api-business-error';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import type { ResolvedDescriptorService } from './deployments.service.types';
 
-export function assertDeployResourcesBootstrapped(
+export function assertDeployReleaseResourcesReady(
   descriptorServices: readonly ResolvedDescriptorService[],
   resources: readonly ProjectResourceRow[],
 ): void {
@@ -19,12 +19,18 @@ export function assertDeployResourcesBootstrapped(
     if (readExpectedResourceClaims(resource).length === 0) {
       throw createResourceNotBootstrappedError(resourceName);
     }
+    if (resource.status !== 'running') {
+      throw createResourceNotRunningError(resourceName);
+    }
   }
 }
 
 function listDependentResourceNames(descriptorServices: readonly ResolvedDescriptorService[]): string[] {
   const resourceNames: Set<string> = new Set<string>();
   for (const service of descriptorServices) {
+    if (service.release === null) {
+      continue;
+    }
     for (const resourceName of Object.keys(service.connections)) {
       resourceNames.add(resourceName);
     }

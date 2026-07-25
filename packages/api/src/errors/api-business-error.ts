@@ -205,6 +205,13 @@ export function createResourceNotBootstrappedError(resourceName: string): ApiBus
   );
 }
 
+export function createResourceNotRunningError(resourceName: string): ApiBusinessError {
+  return new ApiBusinessError(
+    'resource_not_running',
+    `Resource "${resourceName}" is not running. Start it with \`compartment resource start --resource ${resourceName}\` before deploying, then redeploy.`,
+  );
+}
+
 export function createLastOrganizationAdminError(): ApiBusinessError {
   return new ApiBusinessError('last_organization_admin');
 }
