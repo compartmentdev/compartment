@@ -10,6 +10,7 @@ The repo keeps three internal doc families:
 
 ## Operational Specs
 
+- [specs/existing-kubernetes-install.md](./specs/existing-kubernetes-install.md): implementation plan for installing Compartment into a customer-owned Kubernetes cluster.
 - [specs/kubernetes-parity-audit.md](./specs/kubernetes-parity-audit.md): final Docker-to-Kubernetes feature parity audit and migration gate verdict.
 - [specs/local-development.md](./specs/local-development.md): local prerequisites and `pnpm dev` behavior.
 - [specs/self-hosted-install.md](./specs/self-hosted-install.md): production Kubernetes install, domain, TLS, and operator contract.
@@ -20,6 +21,7 @@ The repo keeps three internal doc families:
 ## Canonical Files
 
 - [layers/README.md](./layers/README.md): index for package boundary docs.
+- [specs/existing-kubernetes-install.md](./specs/existing-kubernetes-install.md): existing-cluster installation target, cutover plan, and removal inventory.
 - [specs/local-development.md](./specs/local-development.md): local prerequisites and repo runtime boot notes.
 - [specs/self-hosted-install.md](./specs/self-hosted-install.md): production Kubernetes install and operator contract.
 - [specs/k8s-runtime.md](./specs/k8s-runtime.md): Kubernetes runtime and provisioning contract.
