@@ -7,6 +7,7 @@ import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallDomainMode,
   KubernetesInstallTlsMode,
+  KubernetesIngressEndpoint,
   KubernetesPublicProtocol,
   KubernetesSecretList,
   KubernetesSecretListItem,
@@ -93,6 +94,8 @@ export function mergeRetainedKubernetesInstallState(
     baseDomain: preferRetainedText(retainedState.baseDomain, existingInstall.baseDomain),
     brokerUrl: preferRetainedText(retainedState.brokerUrl, existingInstall.brokerUrl),
     installToken: existingInstall.installToken,
+    ingressClassName: preferRetainedText(retainedState.ingressClassName, existingInstall.ingressClassName),
+    ingressEndpoint: retainedState.ingressEndpoint ?? existingInstall.ingressEndpoint,
     managedDomainBrokerToken: preferRetainedText(
       retainedState.managedDomainBrokerToken,
       existingInstall.managedDomainBrokerToken,
@@ -150,12 +153,26 @@ function parseRetainedStateSecret(data: Record<string, string>): RetainedKuberne
     brokerUrl: readSecretText(data, 'managed-domain-broker-url'),
     domainMode: readDomainMode(data),
     installationId: readRequiredSecretText(data, 'installation-id'),
+    ingressClassName: readRequiredSecretText(data, 'ingress-class-name'),
+    ingressEndpoint: readIngressEndpoint(data),
     managedDomainBrokerToken: readSecretText(data, 'managed-domain-broker-token'),
     publicIngressIpv4: readSecretText(data, 'public-ingress-ipv4'),
     publicIngressIpv6: readSecretText(data, 'public-ingress-ipv6'),
     publicProtocol: readPublicProtocol(data),
     tlsMode: readTlsMode(data),
   };
+}
+
+function readIngressEndpoint(data: Record<string, string>): KubernetesIngressEndpoint | null {
+  const type: string = readSecretText(data, 'ingress-endpoint-type');
+  const value: string = readSecretText(data, 'ingress-endpoint-value');
+  if (type === '' && value === '') {
+    return null;
+  }
+  if ((type === 'A' || type === 'AAAA' || type === 'hostname') && value !== '') {
+    return { type, value };
+  }
+  throw new Error('The retained install-state Secret has no recognized ingress endpoint.');
 }
 
 function readDomainMode(data: Record<string, string>): KubernetesInstallDomainMode {

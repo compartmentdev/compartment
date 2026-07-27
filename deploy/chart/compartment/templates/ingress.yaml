@@ -1,0 +1,32 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- $baseDomain := default (printf "pending.%s.invalid" .Release.Name) $installState.effective.platform.baseDomain -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "compartment.fullname" . }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingress
+spec:
+  ingressClassName: {{ $installState.effective.ingress.className | quote }}
+  rules:
+    - host: {{ printf "console.%s" $baseDomain | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "compartment.fullname" . }}-caddy
+                port:
+                  name: http
+    - host: {{ printf "*.%s" $baseDomain | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "compartment.fullname" . }}-caddy
+                port:
+                  name: http

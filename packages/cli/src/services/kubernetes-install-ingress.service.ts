@@ -1,5 +1,3 @@
-import type { LookupAddress } from 'node:dns';
-import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { isUnsafePublicIpAddress } from '@compartment/utils';
 import { runCommandWithTimeout } from '../command-runner';
@@ -7,189 +5,171 @@ import type { CommandResult } from '../command-runner.types';
 import { waitForInstallDelay } from './kubernetes-install-delay.service';
 import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
 import type {
+  KubernetesIngressAddress,
+  KubernetesIngressEndpoint,
+  KubernetesIngressEndpointType,
+  KubernetesIngressList,
+  KubernetesIngressListItem,
   KubernetesPublicIngress,
   KubernetesPublicIngressResolutionInput,
-  KubernetesServiceAddress,
-  KubernetesServiceList,
-  KubernetesServiceListItem,
 } from './kubernetes-install.service.types';
 
-const loadBalancerPollIntervalMs: number = 2_000;
-const loadBalancerWaitTimeoutMs: number = 5 * 60_000;
-const loadBalancerDnsLookupTimeoutMs: number = 5_000;
-const loadBalancerServiceInspectionTimeoutMs: number = 15_000;
+const ingressPollIntervalMs: number = 2_000;
+const ingressWaitTimeoutMs: number = 5 * 60_000;
+const ingressInspectionTimeoutMs: number = 15_000;
 
 export async function resolveKubernetesPublicIngress(
   input: KubernetesPublicIngressResolutionInput,
 ): Promise<KubernetesPublicIngress> {
-  const configuredIngress: KubernetesPublicIngress = validateConfiguredPublicIngress(input);
-  if (configuredIngress.publicIngressIpv4 !== '' || configuredIngress.publicIngressIpv6 !== '') {
-    return configuredIngress;
+  if (input.configuredEndpoint !== null) {
+    return buildPublicIngress(input.ingressClassName, validateIngressEndpoint(input.configuredEndpoint));
   }
 
-  return await waitForLoadBalancerPublicIngress(input);
-}
-
-async function waitForLoadBalancerPublicIngress(
-  input: KubernetesPublicIngressResolutionInput,
-): Promise<KubernetesPublicIngress> {
-  const deadline: number = Date.now() + loadBalancerWaitTimeoutMs;
+  const deadline: number = Date.now() + ingressWaitTimeoutMs;
   for (;;) {
-    const resolvedIngress: KubernetesPublicIngress | null = await observeLoadBalancerPublicIngress(input, deadline);
-    if (resolvedIngress !== null) {
-      return resolvedIngress;
+    const endpoint: KubernetesIngressEndpoint | null = await observeIngressEndpoint(input, deadline);
+    if (endpoint !== null) {
+      return buildPublicIngress(input.ingressClassName, endpoint);
     }
-    const delayMs: number = Math.min(loadBalancerPollIntervalMs, Math.max(0, deadline - Date.now()));
+    const delayMs: number = Math.min(ingressPollIntervalMs, Math.max(0, deadline - Date.now()));
     if (delayMs > 0) {
       await waitForInstallDelay(delayMs);
     }
   }
 }
 
-async function observeLoadBalancerPublicIngress(
+export function readManagedDomainPublicIp(publicIngress: KubernetesPublicIngress): string {
+  if (publicIngress.publicIngressIpv4 !== '') {
+    return publicIngress.publicIngressIpv4;
+  }
+  if (publicIngress.publicIngressIpv6 !== '') {
+    return publicIngress.publicIngressIpv6;
+  }
+  throw new Error(
+    'Managed-domain allocation requires an A or AAAA ingress endpoint until the Phase 3 broker target contract is available.',
+  );
+}
+
+async function observeIngressEndpoint(
   input: KubernetesPublicIngressResolutionInput,
   deadline: number,
-): Promise<KubernetesPublicIngress | null> {
+): Promise<KubernetesIngressEndpoint | null> {
   const remainingMs: number = deadline - Date.now();
   if (remainingMs <= 0) {
-    return loadBalancerWaitTimeout();
+    throw new Error(
+      'No endpoint was published in the Compartment Ingress status after 300s. Configure ingress.endpoint explicitly or fix the selected Ingress Controller, then re-run install to resume.',
+    );
   }
-  const service: KubernetesServiceListItem = await readCaddyService(
+  const ingress: KubernetesIngressListItem = await readInstallationIngress(
     input,
-    Math.min(loadBalancerServiceInspectionTimeoutMs, remainingMs),
+    Math.min(ingressInspectionTimeoutMs, remainingMs),
   );
-  requireLoadBalancerService(service);
-  return await resolveLoadBalancerIngress(service.status?.loadBalancer?.ingress ?? [], deadline);
+  return readObservedEndpoint(ingress.status?.loadBalancer?.ingress ?? []);
 }
 
-async function readCaddyService(
+async function readInstallationIngress(
   input: KubernetesPublicIngressResolutionInput,
   timeoutMs: number,
-): Promise<KubernetesServiceListItem> {
-  const command: string[] = buildKubectlCommand(input, [
-    '--request-timeout=10s',
-    'get',
-    'service',
-    '--selector',
-    `app.kubernetes.io/instance=${input.releaseName},app.kubernetes.io/component=caddy`,
-    '--output',
-    'json',
-  ]);
-  const result: CommandResult = await runCommandWithTimeout(command, timeoutMs);
-  return readCaddyServiceResult(result);
+): Promise<KubernetesIngressListItem> {
+  const result: CommandResult = await runCommandWithTimeout(
+    buildKubectlCommand(input, [
+      '--request-timeout=10s',
+      'get',
+      'ingress',
+      '--selector',
+      `app.kubernetes.io/instance=${input.releaseName},app.kubernetes.io/component=ingress`,
+      '--output',
+      'json',
+    ]),
+    timeoutMs,
+  );
+  return readInstallationIngressResult(result);
 }
 
-function readCaddyServiceResult(result: CommandResult): KubernetesServiceListItem {
+function readInstallationIngressResult(result: CommandResult): KubernetesIngressListItem {
   if (result.exitCode !== 0) {
     if (result.exitCode === 124) {
       throw new Error(
-        'Timed out inspecting the Caddy LoadBalancer Service. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.',
+        'Timed out inspecting the Compartment Ingress. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.',
       );
     }
-    throw new Error(`Failed to inspect the Caddy Service: ${readCommandOutput(result)}`);
+    throw new Error(`Failed to inspect the Compartment Ingress: ${readCommandOutput(result)}`);
   }
-  const list: KubernetesServiceList = parseServiceList(result.stdout);
+  const list: KubernetesIngressList = parseIngressList(result.stdout);
   if (list.items.length !== 1 || list.items[0] === undefined) {
-    throw new Error('Expected exactly one Caddy Service for the Helm release.');
+    throw new Error('Expected exactly one Compartment Ingress for the Helm release.');
   }
   return list.items[0];
 }
 
-function parseServiceList(output: string): KubernetesServiceList {
+function parseIngressList(output: string): KubernetesIngressList {
   try {
-    const value: KubernetesServiceList = JSON.parse(output) as KubernetesServiceList;
+    const value: KubernetesIngressList = JSON.parse(output) as KubernetesIngressList;
     if (Array.isArray(value.items)) {
       return value;
     }
   } catch {
     // The shared error below is intentionally stable for malformed kubectl output.
   }
-  throw new Error('kubectl returned an invalid Caddy Service response.');
+  throw new Error('kubectl returned an invalid Ingress response.');
 }
 
-async function resolveLoadBalancerIngress(
-  addresses: readonly KubernetesServiceAddress[],
-  deadline: number,
-): Promise<KubernetesPublicIngress | null> {
-  const candidates: string[] = [];
-  for (const address of addresses) {
-    candidates.push(...(await resolveLoadBalancerAddress(address, deadline)));
+function readObservedEndpoint(addresses: readonly KubernetesIngressAddress[]): KubernetesIngressEndpoint | null {
+  const endpoints: KubernetesIngressEndpoint[] = addresses
+    .flatMap((address: KubernetesIngressAddress): KubernetesIngressEndpoint[] => {
+      if (address.ip !== undefined) {
+        const version: number = isIP(address.ip);
+        if (version === 4) {
+          return [{ type: 'A', value: address.ip }];
+        }
+        return version === 6 ? [{ type: 'AAAA', value: address.ip }] : [];
+      }
+      return address.hostname === undefined ? [] : [{ type: 'hostname', value: normalizeHostname(address.hostname) }];
+    })
+    .filter((endpoint: KubernetesIngressEndpoint): boolean => endpoint.value !== '')
+    .sort(compareEndpoints);
+  return endpoints[0] ?? null;
+}
+
+function validateIngressEndpoint(endpoint: KubernetesIngressEndpoint): KubernetesIngressEndpoint {
+  if (
+    ((endpoint.type === 'A' && isIP(endpoint.value) === 4) ||
+      (endpoint.type === 'AAAA' && isIP(endpoint.value) === 6)) &&
+    !isUnsafePublicIpAddress(endpoint.value)
+  ) {
+    return endpoint;
   }
-  const publicAddresses: string[] = [...new Set(candidates)]
-    .filter((candidate: string): boolean => !isUnsafePublicIpAddress(candidate))
-    .sort((left: string, right: string): number => left.localeCompare(right, 'en'));
-  if (publicAddresses.length === 0) {
-    return null;
+  if (endpoint.type === 'hostname') {
+    const hostname: string = normalizeHostname(endpoint.value);
+    if (
+      hostname !== '' &&
+      hostname.length <= 253 &&
+      hostname.split('.').every((label: string): boolean => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(label))
+    ) {
+      return { type: 'hostname', value: hostname };
+    }
   }
+  throw new Error('ingress.endpoint must contain a public A or AAAA address, or a valid hostname.');
+}
+
+function normalizeHostname(hostname: string): string {
+  return hostname.trim().toLowerCase().replace(/\.$/u, '');
+}
+
+function compareEndpoints(left: KubernetesIngressEndpoint, right: KubernetesIngressEndpoint): number {
+  const rank: Record<KubernetesIngressEndpointType, number> = { A: 0, AAAA: 1, hostname: 2 };
+  const rankDifference: number = rank[left.type] - rank[right.type];
+  return rankDifference !== 0 ? rankDifference : left.value.localeCompare(right.value, 'en');
+}
+
+function buildPublicIngress(
+  ingressClassName: string,
+  ingressEndpoint: KubernetesIngressEndpoint,
+): KubernetesPublicIngress {
   return {
-    publicIngressIpv4: publicAddresses.find((candidate: string): boolean => isIP(candidate) === 4) ?? '',
-    publicIngressIpv6: publicAddresses.find((candidate: string): boolean => isIP(candidate) === 6) ?? '',
+    ingressClassName,
+    ingressEndpoint,
+    publicIngressIpv4: ingressEndpoint.type === 'A' ? ingressEndpoint.value : '',
+    publicIngressIpv6: ingressEndpoint.type === 'AAAA' ? ingressEndpoint.value : '',
   };
-}
-
-async function resolveLoadBalancerAddress(address: KubernetesServiceAddress, deadline: number): Promise<string[]> {
-  if (address.ip !== undefined) {
-    return [address.ip];
-  }
-  if (address.hostname === undefined) {
-    return [];
-  }
-  try {
-    const timeoutMs: number = Math.min(loadBalancerDnsLookupTimeoutMs, Math.max(0, deadline - Date.now()));
-    const resolvedAddresses: LookupAddress[] = await lookupHostnameWithTimeout(address.hostname, timeoutMs);
-    return resolvedAddresses.map((resolvedAddress: LookupAddress): string => resolvedAddress.address);
-  } catch {
-    // LoadBalancer hostnames can be published before their DNS records propagate.
-    return [];
-  }
-}
-
-async function lookupHostnameWithTimeout(hostname: string, timeoutMs: number): Promise<LookupAddress[]> {
-  return await new Promise<LookupAddress[]>(
-    (resolveLookup: (addresses: LookupAddress[]) => void, rejectLookup: (error: Error) => void): void => {
-      const timer: NodeJS.Timeout = setTimeout((): void => resolveLookup([]), timeoutMs);
-      lookup(hostname, { all: true, verbatim: true }).then(
-        (addresses: LookupAddress[]): void => {
-          clearTimeout(timer);
-          resolveLookup(addresses);
-        },
-        (error: Error): void => {
-          clearTimeout(timer);
-          rejectLookup(error);
-        },
-      );
-    },
-  );
-}
-
-function requireLoadBalancerService(service: KubernetesServiceListItem): void {
-  if (service.spec?.type !== 'LoadBalancer') {
-    throw new Error(
-      'Public ingress addresses are required when the Caddy Service is not a LoadBalancer. Set platform.publicIngressIpv4 or platform.publicIngressIpv6.',
-    );
-  }
-}
-
-function loadBalancerWaitTimeout(): never {
-  throw new Error(
-    'No public LoadBalancer address after 300s. Check that ports 80/443 are free and that the cluster has a LoadBalancer provider, then re-run install to resume.',
-  );
-}
-
-function validateConfiguredPublicIngress(input: KubernetesPublicIngress): KubernetesPublicIngress {
-  assertPublicIngressAddress(input.publicIngressIpv4, 4, 'platform.publicIngressIpv4');
-  assertPublicIngressAddress(input.publicIngressIpv6, 6, 'platform.publicIngressIpv6');
-  return {
-    publicIngressIpv4: input.publicIngressIpv4,
-    publicIngressIpv6: input.publicIngressIpv6,
-  };
-}
-
-function assertPublicIngressAddress(value: string, version: 4 | 6, fieldName: string): void {
-  if (value === '') {
-    return;
-  }
-  if (isIP(value) !== version || isUnsafePublicIpAddress(value)) {
-    throw new Error(`${fieldName} must be empty or a public IPv${version} address.`);
-  }
 }

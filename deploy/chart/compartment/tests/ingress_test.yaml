@@ -1,0 +1,104 @@
+suite: shared ingress topology
+templates:
+  - templates/caddy.yaml
+  - templates/caddy-network-policy.yaml
+  - templates/ingress.yaml
+tests:
+  - it: exposes Caddy only as one-port ClusterIP
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+        template: caddy.yaml
+        documentIndex: 0
+      - lengthEqual:
+          path: spec.ports
+          count: 1
+        template: caddy.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.ports[0].name
+          value: http
+        template: caddy.yaml
+        documentIndex: 0
+      - notExists:
+          path: spec.ports[0].nodePort
+        template: caddy.yaml
+        documentIndex: 0
+
+  - it: renders exact console and canonical wildcard hosts with an explicit class
+    set:
+      ingress:
+        className: ingress-nginx
+      platform:
+        baseDomain: apps.example.com
+    asserts:
+      - equal:
+          path: spec.ingressClassName
+          value: ingress-nginx
+        template: ingress.yaml
+      - equal:
+          path: spec.rules[0].host
+          value: console.apps.example.com
+        template: ingress.yaml
+      - equal:
+          path: spec.rules[1].host
+          value: '*.apps.example.com'
+        template: ingress.yaml
+      - lengthEqual:
+          path: spec.rules
+          count: 2
+        template: ingress.yaml
+      - notExists:
+          path: metadata.annotations
+        template: ingress.yaml
+      - notExists:
+          path: spec.defaultBackend
+        template: ingress.yaml
+      - notEqual:
+          path: spec.rules[0].host
+          value: ''
+        template: ingress.yaml
+      - notEqual:
+          path: spec.rules[1].host
+          value: ''
+        template: ingress.yaml
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.name
+          value: RELEASE-NAME-compartment-caddy
+        template: ingress.yaml
+      - equal:
+          path: spec.rules[1].http.paths[0].backend.service.name
+          value: RELEASE-NAME-compartment-caddy
+        template: ingress.yaml
+
+  - it: accepts Caddy traffic only from the selected ingress controller pods
+    set:
+      ingress:
+        controller:
+          namespace: ingress-system
+          podSelector:
+            - key: app.kubernetes.io/component
+              value: controller
+    asserts:
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: compartment
+            app.kubernetes.io/instance: RELEASE-NAME
+            app.kubernetes.io/component: caddy
+        template: caddy-network-policy.yaml
+      - equal:
+          path: spec.ingress
+          value:
+            - from:
+                - namespaceSelector:
+                    matchLabels:
+                      kubernetes.io/metadata.name: ingress-system
+                  podSelector:
+                    matchLabels:
+                      app.kubernetes.io/component: controller
+              ports:
+                - protocol: TCP
+                  port: 8080
+        template: caddy-network-policy.yaml

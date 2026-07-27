@@ -23,9 +23,7 @@ import {
   managedInstallPublicIpv4,
   managedInstallReleaseName,
   managedInstallValuesPath,
-  probeManagedInstallConsole,
   prepareManagedInstallFixture,
-  readManagedInstallCertificateSubjectAltName,
   waitForManagedDomainBrokerObservation,
   type ManagedDomainBrokerObservation,
 } from './platform-k3d-managed-install.harness';
@@ -64,7 +62,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
   }, fixtureTimeoutMs);
 
   it(
-    'allocates a domain, completes DNS-01 HTTPS, bootstraps the owner, and accepts a fresh login',
+    'allocates a domain through shared Ingress, bootstraps the owner, and accepts a fresh login',
     async (): Promise<void> => {
       const suffix: string = randomUUID().replaceAll('-', '').slice(0, 12);
       const ownerEmail: string = `managed-e2e-${suffix}@compartment.test`;
@@ -76,7 +74,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       );
 
       expect(result.adminEmail).toBe(ownerEmail);
-      expect(result.compartmentUrl).toBe(`https://console.${managedInstallBaseDomain}`);
+      expect(result.compartmentUrl).toBe(`http://console.${managedInstallBaseDomain}`);
       expect(result.organization.slug).toBe(organizationSlug);
 
       const installedIdentity: WhoAmICommandResponse = await installerCli.runJson(
@@ -101,10 +99,8 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
         publicIp: managedInstallPublicIpv4,
         requestedLabelSource: organizationSlug,
       });
-      expect(broker.txtWrites[0]?.name).toBe(`_acme-challenge.${managedInstallBaseDomain}.`);
-      expect(broker.txtDeletes).toContainEqual(broker.txtWrites[0]);
-      expect(await readManagedInstallCertificateSubjectAltName()).toContain(`DNS:*.${managedInstallBaseDomain}`);
-      await probeManagedInstallConsole();
+      expect(broker.txtWrites).toEqual([]);
+      expect(broker.txtDeletes).toEqual([]);
       managedInstallCompleted = true;
     },
     installTimeoutMs,

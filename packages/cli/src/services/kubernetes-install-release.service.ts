@@ -8,6 +8,7 @@ import type {
   HelmReleaseSummary,
   KubernetesInstallDeploymentInput,
   KubernetesInstallDomainMode,
+  KubernetesIngressEndpoint,
   KubernetesInstallTlsMode,
   KubernetesPublicProtocol,
 } from './kubernetes-install.service.types';
@@ -94,6 +95,7 @@ function requireDeployedHelmRelease(release: HelmReleaseSummary): void {
 function parseExistingKubernetesInstall(output: string): ExistingKubernetesInstall {
   const value: HelmJsonObject = parseJsonWith(helmJsonObjectSchema, output);
   const platform: JsonValue | undefined = value.platform;
+  const ingress: JsonValue | undefined = value.ingress;
   const secrets: JsonValue | undefined = value.secrets;
   return {
     acmeEmail: readOptionalPlatformText(platform, 'acmeEmail'),
@@ -102,6 +104,8 @@ function parseExistingKubernetesInstall(output: string): ExistingKubernetesInsta
     domainMode: readExistingDomainMode(platform),
     installToken: readExistingInstallToken(secrets),
     installationId: readOptionalPlatformText(platform, 'installationId'),
+    ingressClassName: readRequiredText(ingress, 'className', 'ingress.className'),
+    ingressEndpoint: readIngressEndpoint(ingress),
     managedDomainBrokerToken: readOptionalSecretText(secrets, 'managedDomainBrokerToken'),
     publicIngressIpv4: readOptionalPlatformText(platform, 'publicIngressIpv4'),
     publicIngressIpv6: readOptionalPlatformText(platform, 'publicIngressIpv6'),
@@ -109,6 +113,27 @@ function parseExistingKubernetesInstall(output: string): ExistingKubernetesInsta
     stage: readExistingInstallStage(platform),
     tlsMode: readExistingTlsMode(platform),
   };
+}
+
+function readIngressEndpoint(ingress: JsonValue | undefined): KubernetesIngressEndpoint | null {
+  const endpoint: JsonValue | undefined = isHelmJsonObject(ingress) ? ingress.endpoint : undefined;
+  const type: JsonValue | undefined = isHelmJsonObject(endpoint) ? endpoint.type : undefined;
+  const value: JsonValue | undefined = isHelmJsonObject(endpoint) ? endpoint.value : undefined;
+  if ((type === undefined || type === '') && (value === undefined || value === '')) {
+    return null;
+  }
+  if ((type === 'A' || type === 'AAAA' || type === 'hostname') && typeof value === 'string' && value !== '') {
+    return { type, value };
+  }
+  throw new Error('The existing Helm release has no recognized ingress.endpoint.');
+}
+
+function readRequiredText(section: JsonValue | undefined, fieldName: string, qualifiedName: string): string {
+  const value: JsonValue | undefined = isHelmJsonObject(section) ? section[fieldName] : undefined;
+  if (typeof value === 'string' && value.trim() !== '') {
+    return value.trim();
+  }
+  throw new Error(`The existing Helm release has no ${qualifiedName}.`);
 }
 
 function readExistingDomainMode(platform: JsonValue | undefined): KubernetesInstallDomainMode {

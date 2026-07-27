@@ -114,7 +114,6 @@ async function executeLegacyKubernetesInstallCommand(
     { ...dependencies, io: { ...dependencies.io, stderr: writePreflightOutput } },
     target,
     false,
-    false,
   );
   try {
     await executeChecklistInstall(dependencies, options, checklist);

@@ -770,17 +770,8 @@ tests:
           path: spec.ports
           content:
             name: http
-            port: 80
+            port: 8080
             targetPort: http
-          any: true
-        template: caddy.yaml
-        documentIndex: 0
-      - contains:
-          path: spec.ports
-          content:
-            name: https
-            port: 443
-            targetPort: https
           any: true
         template: caddy.yaml
         documentIndex: 0
@@ -800,14 +791,6 @@ tests:
           any: true
         template: caddy.yaml
         documentIndex: 1
-      - contains:
-          path: spec.template.spec.containers[0].ports
-          content:
-            name: https
-            containerPort: 8443
-          any: true
-        template: caddy.yaml
-        documentIndex: 1
       - equal:
           path: data.COMPARTMENT_PUBLIC_HTTP_PORT
           value: '80'
@@ -819,10 +802,6 @@ tests:
       - equal:
           path: data.COMPARTMENT_CADDY_HTTP_PORT
           value: '8080'
-        template: configmap.yaml
-      - equal:
-          path: data.COMPARTMENT_CADDY_HTTPS_PORT
-          value: '8443'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_PUBLIC_INGRESS_IPV4
@@ -864,7 +843,7 @@ tests:
         template: api.yaml
         documentIndex: 1
       - hasDocuments:
-          count: 4
+          count: 3
         template: pvc.yaml
       - equal:
           path: spec.template.spec.volumes[?(@.name == "snapshots")].emptyDir
@@ -1322,17 +1301,11 @@ tests:
       - notFailedTemplate: {}
       - equal:
           path: spec.type
-          value: NodePort
+          value: ClusterIP
         template: caddy.yaml
         documentIndex: 0
-      - equal:
+      - notExists:
           path: spec.ports[0].nodePort
-          value: 30080
-        template: caddy.yaml
-        documentIndex: 0
-      - equal:
-          path: spec.ports[1].nodePort
-          value: 30443
         template: caddy.yaml
         documentIndex: 0
       - hasDocuments:
@@ -1454,7 +1427,18 @@ tests:
           any: true
         template: api.yaml
         documentIndex: 1
-      - contains: *brokerTokenEnv
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_ACME_ISSUER
+          any: true
         template: caddy.yaml
         documentIndex: 1
       - notContains:
@@ -1473,7 +1457,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: &managedDomainChecksum 8dc546e5c913911eead60709fcb1f9d6521384b71ea7afa1cb6fb927f42d8220
+          value: &managedDomainChecksum a45708b1069b848edb43bf4eb09cd6d10c97a0c3a1da1a06ad92348552b65fe4
         template: api.yaml
         documentIndex: 1
       - equal:
@@ -1488,7 +1472,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: &stableConfigChecksum 5577ae5f1b0da20845dac495d0d5674ba977102713d2ea443d44de9027f3ced0
+          value: &stableConfigChecksum f686a0e0632ce0f785a58b00760163c7729bcb24d2bf428e507ca16a5cbc08e4
         template: worker.yaml
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
@@ -1521,7 +1505,7 @@ tests:
           path: spec.template.metadata.annotations["checksum/domain-config"]
         template: project-provisioner.yaml
 
-  - it: mounts one existing custom certificate read-only in API and Caddy
+  - it: mounts one existing custom certificate read-only in API only
     set:
       platform: &customCertPlatform
         startupStage: full
@@ -1564,32 +1548,11 @@ tests:
             path: privkey.pem
         template: api.yaml
         documentIndex: 1
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
             name: tls
-            mountPath: /etc/compartment/tls
-            readOnly: true
           any: true
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.spec.volumes[?(@.name == "tls")].secret.secretName
-          value: operator-tls
-        template: caddy.yaml
-        documentIndex: 1
-      - contains:
-          path: spec.template.spec.volumes[?(@.name == "tls")].secret.items
-          content:
-            key: tls.crt
-            path: fullchain.pem
-        template: caddy.yaml
-        documentIndex: 1
-      - contains:
-          path: spec.template.spec.volumes[?(@.name == "tls")].secret.items
-          content:
-            key: tls.key
-            path: privkey.pem
         template: caddy.yaml
         documentIndex: 1
       - equal:
@@ -1726,11 +1689,6 @@ tests:
           value: pending-operator-tls
         template: api.yaml
         documentIndex: 1
-      - equal:
-          path: spec.template.spec.volumes[?(@.name == "tls")].secret.secretName
-          value: active-operator-tls
-        template: caddy.yaml
-        documentIndex: 1
       - notExists:
           path: spec.template.spec.volumes[?(@.secret.secretName == "pending-operator-tls")]
         template: caddy.yaml
@@ -1767,7 +1725,7 @@ tests:
         template: project-provisioner.yaml
       - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: &activeDomainChecksum 9665b34c0821a1ad73a2a563a795b154e2a9306358487e3d7e0cea679fed8f52
+          value: &activeDomainChecksum 9712572d36362582f3dcf80df7f8aa094a769f8c887d52e65da28e944a2bc2b4
         template: api.yaml
         documentIndex: 1
       - equal:
@@ -1800,7 +1758,7 @@ tests:
         template: project-provisioner.yaml
       - equal:
           path: spec.template.metadata.annotations["checksum/install-state"]
-          value: &activeInstallStateChecksum a784661c62476787910e1cd3c93d53abe909e86525b408aaf277c6b167c84a80
+          value: &activeInstallStateChecksum 8d9eb598d8b0da4307b3e7be8c2459f130081e46b2df1fd90d73d49c78a8ecd9
         template: caddy.yaml
         documentIndex: 1
       - equal:
@@ -2077,17 +2035,10 @@ tests:
           value: compartment-compartment-custom-tls
         template: api.yaml
         documentIndex: 1
-      - equal:
-          path: spec.template.spec.volumes[?(@.name == "tls")].secret.secretName
-          value: compartment-compartment-custom-tls
-        template: caddy.yaml
-        documentIndex: 1
-      - contains:
+      - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
             name: tls
-            mountPath: /etc/compartment/tls
-            readOnly: true
           any: true
         template: caddy.yaml
         documentIndex: 1

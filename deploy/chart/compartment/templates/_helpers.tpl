@@ -47,6 +47,18 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
   valuesSection: platform
   valueKey: baseDomain
   policy: domain
+- secretKey: ingress-class-name
+  valuesSection: ingress
+  valueKey: className
+  policy: stable
+- secretKey: ingress-endpoint-type
+  valuesSection: ingressEndpoint
+  valueKey: type
+  policy: stable
+- secretKey: ingress-endpoint-value
+  valuesSection: ingressEndpoint
+  valueKey: value
+  policy: stable
 - secretKey: public-ingress-ipv4
   valuesSection: platform
   valueKey: publicIngressIpv4
@@ -97,14 +109,15 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- if and $existing $existing.data -}}
 {{- $data = $existing.data -}}
 {{- end -}}
-{{- $effective := dict "platform" (deepCopy .Values.platform) "customTls" (deepCopy .Values.customTls) "secrets" (deepCopy .Values.secrets) -}}
+{{- $effective := dict "platform" (deepCopy .Values.platform) "customTls" (deepCopy .Values.customTls) "secrets" (deepCopy .Values.secrets) "ingress" (dict "className" .Values.ingress.className) "ingressEndpoint" (deepCopy .Values.ingress.endpoint) -}}
 {{- $persisted := deepCopy $effective -}}
+{{- $incomingSections := dict "platform" .Values.platform "customTls" .Values.customTls "secrets" .Values.secrets "ingress" .Values.ingress "ingressEndpoint" .Values.ingress.endpoint -}}
 {{- $retainedGeneration := int (default "0" (dig "domain-generation" "" $data | b64dec)) -}}
 {{- $incomingGeneration := int .Values.platform.domainGeneration -}}
 {{- $useRetainedDomain := and (not (get . "compartmentSharedChecksum")) (le $incomingGeneration $retainedGeneration) -}}
 {{- $useIncomingPersistedDomain := or (empty $data) (and .Values.platform.domainCommit (gt $incomingGeneration $retainedGeneration)) -}}
 {{- range $field := include "compartment.installStateFields" . | fromYamlArray -}}
-{{- $incomingValue := get (get $.Values $field.valuesSection) $field.valueKey -}}
+{{- $incomingValue := get (get $incomingSections $field.valuesSection) $field.valueKey -}}
 {{- $encodedRetainedValue := get $data $field.secretKey -}}
 {{- $allowEmpty := default false $field.allowEmpty -}}
 {{- $hasRetainedValue := and (hasKey $data $field.secretKey) (or $allowEmpty (not (empty $encodedRetainedValue))) -}}
@@ -145,15 +158,6 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- fail "platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured" -}}
 {{- end -}}
 {{- if not (or (eq $effective.platform.baseDomain "localhost") (hasSuffix ".localhost" $effective.platform.baseDomain)) -}}
-{{- if and (empty $effective.platform.publicIngressIpv4) (empty $effective.platform.publicIngressIpv6) -}}
-{{- fail "platform.publicIngressIpv4 or platform.publicIngressIpv6 is required for a public installation" -}}
-{{- end -}}
-{{- if ne $effective.platform.publicProtocol "https" -}}
-{{- fail "platform.publicProtocol must be https for a public installation" -}}
-{{- end -}}
-{{- if or (ne (int .Values.service.caddy.httpPort) 80) (ne (int .Values.service.caddy.httpsPort) 443) -}}
-{{- fail "public Caddy Service ports must be 80 and 443" -}}
-{{- end -}}
 {{- end -}}
 {{- if or (eq $effective.platform.tlsMode "managed") (eq $effective.platform.tlsMode "custom-cert") -}}
 {{- if ne .Values.platform.acmeIssuer "acme" -}}
