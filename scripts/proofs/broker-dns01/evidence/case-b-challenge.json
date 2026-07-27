@@ -1,0 +1,53 @@
+{
+  "apiVersion": "acme.cert-manager.io/v1",
+  "kind": "Challenge",
+  "metadata": {
+    "creationTimestamp": "2026-07-27T15:09:13Z",
+    "finalizers": ["acme.cert-manager.io/finalizer"],
+    "generation": 1,
+    "name": "wildcard-z1-forged-1-144380146-396031032",
+    "namespace": "proof",
+    "ownerReferences": [
+      {
+        "apiVersion": "acme.cert-manager.io/v1",
+        "blockOwnerDeletion": true,
+        "controller": true,
+        "kind": "Order",
+        "name": "wildcard-z1-forged-1-144380146",
+        "uid": "1093c50d-f5ba-4078-9962-dc7b65256021"
+      }
+    ],
+    "resourceVersion": "1037",
+    "uid": "0e90d130-e031-4215-963f-97491fc6b4f7"
+  },
+  "spec": {
+    "authorizationURL": "https://pebble.proof.svc.cluster.local:14000/authZ/453j_g4t1zEtwF_RLYE5yvHsT_RMh-i8adX8mW9d64Y",
+    "dnsName": "forged.z1.proof.test",
+    "issuerRef": {
+      "name": "forged-z1-issuer"
+    },
+    "key": "[redacted ACME key]",
+    "solver": {
+      "dns01": {
+        "webhook": {
+          "config": {
+            "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+            "brokerURL": "http://broker.proof.svc.cluster.local:3000"
+          },
+          "groupName": "dns01.proof.compartment.test",
+          "solverName": "managed-domain-broker"
+        }
+      }
+    },
+    "token": "[redacted ACME token]",
+    "type": "DNS-01",
+    "url": "https://pebble.proof.svc.cluster.local:14000/chalZ/wG1oG6VJTBHg_jxwSF4JyLvokR7Wk3M9A9gopjaVof8",
+    "wildcard": true
+  },
+  "status": {
+    "presented": false,
+    "processing": true,
+    "reason": "managed-domain broker POST http://broker.proof.svc.cluster.local:3000/allocations/72dd9154-aaf7-46bb-aa26-5e1a10128b31/challenges returned 403: {\"error\":\"token is not authorized for this allocation\"}",
+    "state": "pending"
+  }
+}

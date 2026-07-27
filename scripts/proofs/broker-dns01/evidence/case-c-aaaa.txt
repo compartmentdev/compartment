@@ -1,0 +1,10 @@
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 4944
+;; flags: qr rd; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: ac9768b3ced79342 (echoed)
+;; ANSWER SECTION:
+aaaa.z1.proof.test.	0	IN	AAAA	2001:db8::1

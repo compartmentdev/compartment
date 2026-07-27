@@ -1,0 +1,50 @@
+[
+  {
+    "Question": {
+      "Name": "_acme-challenge.z1.proof.test.",
+      "Qtype": 5,
+      "Qclass": 1
+    },
+    "UserAgent": ""
+  },
+  {
+    "Question": {
+      "Name": "_acme-challenge.z1.proof.test.",
+      "Qtype": 16,
+      "Qclass": 1
+    },
+    "UserAgent": ""
+  },
+  {
+    "Question": {
+      "Name": "_acme-challenge.z1.proof.test.",
+      "Qtype": 16,
+      "Qclass": 1
+    },
+    "UserAgent": ""
+  },
+  {
+    "Question": {
+      "Name": "_acme-challenge.z1.proof.test.",
+      "Qtype": 16,
+      "Qclass": 1
+    },
+    "UserAgent": ""
+  },
+  {
+    "Question": {
+      "Name": "_acme-challenge.z1.proof.test.",
+      "Qtype": 16,
+      "Qclass": 1
+    },
+    "UserAgent": ""
+  },
+  {
+    "Question": {
+      "Name": "_acme-challenge.z1.proof.test.",
+      "Qtype": 16,
+      "Qclass": 1
+    },
+    "UserAgent": ""
+  }
+]

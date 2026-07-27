@@ -1,0 +1,30 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"cert-manager.io/v1","kind":"Certificate","metadata":{"annotations":{},"name":"wildcard-z1-replay","namespace":"proof"},"spec":{"dnsNames":["*.z1.proof.test"],"issuerRef":{"name":"z1-issuer"},"secretName":"wildcard-z1-replay-tls"}}
+  creationTimestamp: '2026-07-27T15:09:56Z'
+  generation: 1
+  name: wildcard-z1-replay
+  namespace: proof
+  resourceVersion: '1153'
+  uid: 0ed00384-86cd-43c4-8ae4-de3b2d2066f5
+spec:
+  dnsNames:
+    - '*.z1.proof.test'
+  issuerRef:
+    name: z1-issuer
+  secretName: wildcard-z1-replay-tls
+status:
+  conditions:
+    - lastTransitionTime: '2026-07-27T15:11:02Z'
+      message: Certificate is up to date and has not expired
+      observedGeneration: 1
+      reason: Ready
+      status: 'True'
+      type: Ready
+  notAfter: '2026-10-25T15:10:59Z'
+  notBefore: '2026-07-27T15:11:00Z'
+  renewalTime: '2026-09-25T15:10:59Z'
+  revision: 1

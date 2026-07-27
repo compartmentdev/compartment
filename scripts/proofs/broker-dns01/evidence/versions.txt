@@ -1,0 +1,9 @@
+k3d version v5.8.3
+k3s version v1.31.5-k3s1 (default)
+Client Version: v1.33.2
+Kustomize Version: v5.6.0
+cert-manager images: quay.io/jetstack/cert-manager-controller:v1.21.0 quay.io/jetstack/cert-manager-cainjector:v1.21.0 quay.io/jetstack/cert-manager-webhook:v1.21.0
+Client Version: v1.33.2
+Kustomize Version: v5.6.0
+Server Version: v1.33.2+k3s1
+Docker server 29.5.0

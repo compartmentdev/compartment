@@ -1,0 +1,10 @@
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 26994
+;; flags: qr rd; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: adcb33aa7c0f0a7b (echoed)
+;; ANSWER SECTION:
+hostname.z1.proof.test.	0	IN	CNAME	lb.example.com.
