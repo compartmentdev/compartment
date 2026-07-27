@@ -7,6 +7,10 @@ const dnsNamespaceLabels: Readonly<Record<string, string>> = { 'kubernetes.io/me
 const dnsPodLabels: Readonly<Record<string, string>> = { 'k8s-app': 'kube-dns' };
 const linkLocalCidr: string = ['169', '254', '0', '0/16'].join('.');
 const metadataServiceCidr: string = ['169', '254', '169', '254/32'].join('.');
+const privateClassACidr: string = ['10', '0', '0', '0/8'].join('.');
+const privateClassBCidr: string = ['172', '16', '0', '0/12'].join('.');
+const privateClassCCidr: string = ['192', '168', '0', '0/16'].join('.');
+const privateNetworkCidrs: readonly string[] = [privateClassACidr, privateClassBCidr, privateClassCCidr];
 
 export function projectNetworkPolicyManifests(
   namespace: string,
@@ -87,7 +91,13 @@ function dnsEgressRule(): object {
 }
 
 function internetEgressRule(projection: ProjectNetworkPolicyProjection): object {
-  const except: string[] = [metadataServiceCidr, linkLocalCidr, projection.podCidr, projection.serviceCidr];
+  const except: string[] = [
+    metadataServiceCidr,
+    linkLocalCidr,
+    ...privateNetworkCidrs,
+    projection.podCidr,
+    projection.serviceCidr,
+  ];
   return { to: [{ ipBlock: { cidr: '0.0.0.0/0', except } }] };
 }
 

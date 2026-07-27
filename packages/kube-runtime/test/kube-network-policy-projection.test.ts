@@ -12,12 +12,36 @@ interface NetworkPolicySpec {
 
 interface NetworkPolicyRule {
   ports?: NetworkPolicyPort[] | undefined;
+  to?: NetworkPolicyPeer[] | undefined;
 }
 
 interface NetworkPolicyPort {
   port: number;
   protocol: 'TCP' | 'UDP';
 }
+
+interface NetworkPolicyPeer {
+  ipBlock?: NetworkPolicyIpBlock | undefined;
+  namespaceSelector?: NetworkPolicySelector | undefined;
+  podSelector?: NetworkPolicySelector | undefined;
+}
+
+interface NetworkPolicyIpBlock {
+  cidr: string;
+  except?: string[] | undefined;
+}
+
+interface NetworkPolicySelector {
+  matchLabels?: Record<string, string> | undefined;
+}
+
+const linkLocalCidr: string = ['169', '254', '0', '0/16'].join('.');
+const metadataServiceCidr: string = ['169', '254', '169', '254/32'].join('.');
+const podCidr: string = ['10', '42', '0', '0/16'].join('.');
+const privateClassACidr: string = ['10', '0', '0', '0/8'].join('.');
+const privateClassBCidr: string = ['172', '16', '0', '0/12'].join('.');
+const privateClassCCidr: string = ['192', '168', '0', '0/16'].join('.');
+const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
 
 describe('project NetworkPolicy projection', (): void => {
   it('renders every declared application and resource port in stable order', (): void => {
@@ -49,6 +73,70 @@ describe('project NetworkPolicy projection', (): void => {
     expect(readRulePorts(manifests, 'application-egress', 'egress')[0]).toEqual([53, 53]);
     expect(readRules(manifests, 'product-job-egress', 'egress')).toHaveLength(2);
   });
+
+  it.each(['application-egress', 'product-job-egress'] satisfies KubeNetworkPolicyKind[])(
+    'blocks RFC1918 networks from %s while preserving DNS and public internet egress',
+    (policySuffix: KubeNetworkPolicyKind): void => {
+      const manifests: KubeManifest[] = projectNetworkPolicyManifests(
+        'cpt-project',
+        'project',
+        'project',
+        projection([8080], [5432]),
+      );
+      const rules: NetworkPolicyRule[] = readRules(manifests, policySuffix, 'egress');
+      const dnsRule: NetworkPolicyRule | undefined = rules.find(
+        (rule: NetworkPolicyRule): boolean =>
+          rule.ports?.some((port: NetworkPolicyPort): boolean => port.port === 53) === true,
+      );
+      const internetRule: NetworkPolicyRule | undefined = rules.find(
+        (rule: NetworkPolicyRule): boolean => rule.to?.[0]?.ipBlock?.cidr === '0.0.0.0/0',
+      );
+
+      expect(dnsRule).toMatchObject({
+        ports: [
+          { port: 53, protocol: 'UDP' },
+          { port: 53, protocol: 'TCP' },
+        ],
+        to: [
+          {
+            namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'kube-system' } },
+            podSelector: { matchLabels: { 'k8s-app': 'kube-dns' } },
+          },
+        ],
+      });
+      expect(internetRule?.to?.[0]?.ipBlock).toEqual({
+        cidr: '0.0.0.0/0',
+        except: [
+          metadataServiceCidr,
+          linkLocalCidr,
+          privateClassACidr,
+          privateClassBCidr,
+          privateClassCCidr,
+          podCidr,
+          serviceCidr,
+        ],
+      });
+    },
+  );
+
+  it('preserves application and product-job egress to managed resources', (): void => {
+    const manifests: KubeManifest[] = projectNetworkPolicyManifests(
+      'cpt-project',
+      'project',
+      'project',
+      projection([8080], [6379, 5432]),
+    );
+
+    for (const policySuffix of ['application-egress', 'product-job-egress'] satisfies KubeNetworkPolicyKind[]) {
+      expect(readRules(manifests, policySuffix, 'egress')[0]).toEqual({
+        ports: [
+          { port: 5432, protocol: 'TCP' },
+          { port: 6379, protocol: 'TCP' },
+        ],
+        to: [{ podSelector: { matchLabels: { app: 'resource' } } }],
+      });
+    }
+  });
 });
 
 function projection(applicationPorts: number[], resourcePorts: number[]): ProjectNetworkPolicyProjection {
@@ -57,10 +145,10 @@ function projection(applicationPorts: number[], resourcePorts: number[]): Projec
     applicationPorts,
     edgeNamespaceName: 'edge',
     edgePodLabels: { app: 'edge' },
-    podCidr: ['10', '42', '0', '0/16'].join('.'),
+    podCidr,
     resourcePodLabels: { app: 'resource' },
     resourcePorts,
-    serviceCidr: ['10', '43', '0', '0/16'].join('.'),
+    serviceCidr,
   };
 }
 
