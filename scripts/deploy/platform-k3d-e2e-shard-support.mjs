@@ -48,6 +48,7 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     COMPARTMENT_E2E_REGISTRY_NAME: baseEnv.COMPARTMENT_E2E_REGISTRY_NAME ?? `${clusterName}-registry`,
     COMPARTMENT_E2E_REGISTRY_PORT: baseEnv.COMPARTMENT_E2E_REGISTRY_PORT ?? (15_500 + portOffset).toString(),
     COMPARTMENT_E2E_SHARD: shardName,
+    COMPARTMENT_CLI_BUNDLED_COSIGN_PATH: 'scripts/deploy/fixtures/cosign-k3d-e2e.mjs',
     COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E: '1',
   };
   readPlatformK3dEnvironment(environment);

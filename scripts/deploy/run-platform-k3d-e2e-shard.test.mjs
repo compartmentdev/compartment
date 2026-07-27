@@ -55,6 +55,7 @@ describe('platform k3d e2e shard runner', () => {
       COMPARTMENT_E2E_DIAGNOSTICS_PATH: '.compartment/platform-k3d-diagnostics-user-flow',
       COMPARTMENT_E2E_KUBE_CONTEXT: 'k3d-custom-e2e',
       COMPARTMENT_E2E_REGISTRY_NAME: 'custom-e2e-registry',
+      COMPARTMENT_CLI_BUNDLED_COSIGN_PATH: 'scripts/deploy/fixtures/cosign-k3d-e2e.mjs',
     });
   });
 

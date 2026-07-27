@@ -80,10 +80,11 @@ describe.sequential('install preflight warnings', (): void => {
       .mockResolvedValueOnce({ exitCode: 1, stderr: 'forbidden', stdout: '' });
     const capture: CliCommandCapture = createCliCapture({ isTTY: true });
 
-    const exitCode: number = await runCli(['install'], capture.io);
+    await expect(runInstallPreflightChecklist(dependencies(capture), target(), true, false)).rejects.toThrow(
+      'Cannot inspect Kubernetes storage classes.',
+    );
     const stderr: string = readCliStderr(capture);
 
-    expect(exitCode).toBe(1);
     expect(countOccurrences(stderr, 'Cannot inspect Kubernetes storage classes.')).toBe(1);
     expect(stderr).toContain('✗ storage class:');
   });

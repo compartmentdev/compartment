@@ -66,6 +66,8 @@ const platformImageTag = 'e2e';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const kubernetesReadinessTimeoutSeconds = 240;
 const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
+const certManagerManifestUrl =
+  'https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml';
 const pebbleImageRef =
   'ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199';
 const archiveLoadLockDirectory = join(tmpdir(), 'compartment-platform-k3d-image-load.lock');
@@ -409,6 +411,31 @@ async function createCluster() {
       '--registry-use',
       registryClusterHost,
       '--wait',
+    ],
+    repositoryRoot,
+  );
+  await runCommandAsync(
+    'kubectl',
+    ['--context', contextName, 'wait', 'node', '--all', '--for=condition=Ready', '--timeout=2m'],
+    repositoryRoot,
+  );
+  await runCommandAsync(
+    'kubectl',
+    ['--context', contextName, 'apply', '--validate=false', '--filename', certManagerManifestUrl],
+    repositoryRoot,
+  );
+  await runCommandAsync(
+    'kubectl',
+    [
+      '--context',
+      contextName,
+      '--namespace',
+      'cert-manager',
+      'wait',
+      'deployment',
+      '--all',
+      '--for=condition=Available',
+      '--timeout=5m',
     ],
     repositoryRoot,
   );

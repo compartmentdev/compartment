@@ -15,25 +15,32 @@ Related guides:
 Usage: compartment install [options]
 
 Options:
-  --dev                       Install against the local repo dev API
-  --api-url <url>             Public Console URL for the Kubernetes installation
-  --base-domain <domain>      Base domain configured for the Kubernetes
-                              installation
-  --managed-domain            Allocate a managed installation domain (default
-                              when --base-domain is omitted)
-  --broker-url <url>          Managed-domain broker URL
-  --values <path>             Operator values file for the Compartment Helm
-                              chart
-  --chart <path>              Compartment Helm chart path for a source CLI build
-  --kube-context <name>       Kubernetes context for Helm
-  --namespace <name>          Kubernetes namespace; defaults to compartment
-  --release-name <name>       Helm release name; defaults to compartment
-  --skip-registry-mirror      Do not automatically configure the local k3s
-                              registry mirror
-  --email <email>             First admin email
-  --organization <name>       First organization name
+  --dev                         Install against the local repo dev API
+  --api-url <url>               Public Console URL for the Kubernetes
+                                installation
+  --base-domain <domain>        Base domain configured for the Kubernetes
+                                installation
+  --managed-domain              Allocate a managed installation domain (default
+                                when --base-domain is omitted)
+  --broker-url <url>            Managed-domain broker URL
+  --values <path>               Operator values file for the Compartment Helm
+                                chart
+  --chart <path>                Compartment Helm chart path for a source CLI
+                                build
+  --kube-context <name>         Kubernetes context for Helm
+  --namespace <name>            Kubernetes namespace; defaults to compartment
+  --release-name <name>         Helm release name; defaults to compartment
+  --skip-registry-mirror        Do not automatically configure the local k3s
+                                registry mirror
+  --email <email>               First admin email
+  --admin-password <password>   First admin password (automation only)
+  --organization <name>         First organization name
   --organization-slug <slug>
-  --remote <name>             Remote name for the saved CLI session
-  --output <format>           text or json (default: "text")
-  -h, --help                  display help for command
+  --remote <name>               Remote name for the saved CLI session
+  --output <format>             text or json (default: "text")
+  --ingress-class <name>        IngressClass used for public Compartment hosts
+  --storage-class <name>        StorageClass used for persistent platform data
+  --ingress-endpoint <address>  Explicit ingress address when status is not
+                                published
+  -h, --help                    display help for command
 ```
