@@ -4,7 +4,6 @@ import type { CliInstallResult } from '../../install.types';
 import { installDev, installKubernetesOwner } from '../../install';
 import { runObservableInstallStep } from '../../services/kubernetes-install-progress.service';
 import { deployAndWaitForKubernetesInstall } from '../../services/kubernetes-install.service';
-import type { KubernetesInstallPreflightResult } from '../../services/kubernetes-install-preflight.service.types';
 import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallDeploymentResult,
@@ -21,9 +20,7 @@ import { persistDevInstallSession, persistInstallSession } from './install.comma
 import type {
   InstallCommandOptions,
   InstallPreflightChecklistResult,
-  InstallWizardResolution,
   KubernetesInstallTargetOptions,
-  PreparedInstallCommandInput,
   PreparedKubernetesInstallCommandOptions,
   PreparedKubernetesInstallResult,
   ResolvedInstallIdentityPrompts,
@@ -34,15 +31,10 @@ import {
   resolveKubernetesInstallCommandOptions,
   resolveKubernetesInstallTargetOptions,
 } from './install.command.validation';
-import {
-  materializeInstallWizardValues,
-  removeInstallWizardValues,
-  type MaterializedInstallWizardValues,
-} from './install.command.values';
-import { resolveInstallWizard } from './install.command.wizard';
+import { executeCanonicalKubernetesInstallCommand } from './install.command.kubernetes';
 
 export function registerInstallCommand(program: Command, dependencies: CliCommandDependencies): void {
-  program
+  const command: Command = program
     .command('install')
     .option('--dev', 'Install against the local repo dev API')
     .option('--api-url <url>', 'Public Console URL for the Kubernetes installation')
@@ -56,13 +48,21 @@ export function registerInstallCommand(program: Command, dependencies: CliComman
     .option('--release-name <name>', 'Helm release name; defaults to compartment')
     .option('--skip-registry-mirror', 'Do not automatically configure the local k3s registry mirror')
     .option('--email <email>', 'First admin email')
+    .option('--admin-password <password>', 'First admin password (automation only)')
     .option('--organization <name>', 'First organization name')
     .option('--organization-slug <slug>')
     .option('--remote <name>', 'Remote name for the saved CLI session')
-    .option('--output <format>', 'text or json', 'text')
-    .action(
-      async (options: InstallCommandOptions): Promise<void> => await executeInstallCommand(dependencies, options),
-    );
+    .option('--output <format>', 'text or json', 'text');
+  addCanonicalInstallOptions(command).action(
+    async (options: InstallCommandOptions): Promise<void> => await executeInstallCommand(dependencies, options),
+  );
+}
+
+function addCanonicalInstallOptions(command: Command): Command {
+  return command
+    .option('--ingress-class <name>', 'IngressClass used for public Compartment hosts')
+    .option('--storage-class <name>', 'StorageClass used for persistent platform data')
+    .option('--ingress-endpoint <address>', 'Explicit ingress address when status is not published');
 }
 
 async function executeInstallCommand(
@@ -93,18 +93,28 @@ async function executeKubernetesInstallCommand(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
 ): Promise<void> {
+  if (options.values === undefined) {
+    await executeCanonicalKubernetesInstallCommand(dependencies, options);
+    return;
+  }
+  await executeLegacyKubernetesInstallCommand(dependencies, options);
+}
+
+async function executeLegacyKubernetesInstallCommand(
+  dependencies: CliCommandDependencies,
+  options: InstallCommandOptions,
+): Promise<void> {
   const target: KubernetesInstallTargetOptions = resolveKubernetesInstallTargetOptions(options);
-  const guidedInstall: boolean = options.values === undefined && hasInteractiveInput(dependencies);
   const writePreflightOutput: (value: string) => void = (value: string): void => {
-    if (guidedInstall || !value.startsWith('✓ ')) {
+    if (!value.startsWith('✓ ')) {
       dependencies.io.stderr(value);
     }
   };
   const checklist: InstallPreflightChecklistResult = await runInstallPreflightChecklist(
     { ...dependencies, io: { ...dependencies.io, stderr: writePreflightOutput } },
     target,
-    guidedInstall,
-    guidedInstall,
+    false,
+    false,
   );
   try {
     await executeChecklistInstall(dependencies, options, checklist);
@@ -118,23 +128,13 @@ async function executeChecklistInstall(
   options: InstallCommandOptions,
   checklist: InstallPreflightChecklistResult,
 ): Promise<void> {
-  const prepared: PreparedInstallCommandInput = await resolveGuidedInstallInput(
+  const prepared: PreparedKubernetesInstallCommandOptions = { ...options, values: options.values! };
+  const completed: PreparedKubernetesInstallResult = await executePreparedKubernetesInstall(
     dependencies,
-    options,
-    checklist.preflight,
+    prepared,
+    checklist.kubeconfig.path,
   );
-  try {
-    const completed: PreparedKubernetesInstallResult = await executePreparedKubernetesInstall(
-      dependencies,
-      prepared.options,
-      checklist.kubeconfig.path,
-    );
-    await completePreparedKubernetesInstall(dependencies, options, completed);
-  } finally {
-    if (prepared.material !== null) {
-      await removeInstallWizardValues(prepared.material);
-    }
-  }
+  await completePreparedKubernetesInstall(dependencies, options, completed);
 }
 
 async function completePreparedKubernetesInstall(
@@ -156,43 +156,6 @@ async function removeMaterializedKubeconfig(checklist: InstallPreflightChecklist
   if (checklist.kubeconfig.materializedDirectory !== undefined) {
     await rm(checklist.kubeconfig.materializedDirectory, { force: true, recursive: true });
   }
-}
-
-async function resolveGuidedInstallInput(
-  dependencies: CliCommandDependencies,
-  options: InstallCommandOptions,
-  preflight: KubernetesInstallPreflightResult,
-): Promise<PreparedInstallCommandInput> {
-  if (options.values !== undefined) {
-    return { material: null, options: { ...options, values: options.values } };
-  }
-  assertInteractiveInstall(dependencies);
-  const wizard: InstallWizardResolution = await resolveInstallWizard(dependencies.io, preflight.storageClass);
-  const material: MaterializedInstallWizardValues = await materializeInstallWizardValues(wizard.values);
-  return {
-    material,
-    options: {
-      ...options,
-      ...(wizard.answers.baseDomain === undefined ? {} : { baseDomain: wizard.answers.baseDomain }),
-      managedDomain: wizard.answers.domainMode === 'managed',
-      values: material.path,
-    },
-  };
-}
-
-function assertInteractiveInstall(dependencies: CliCommandDependencies): void {
-  if (hasInteractiveInput(dependencies)) {
-    return;
-  }
-  throw new Error(
-    '--values is required when running non-interactively. A minimal values file:\n' +
-      'storage:\n  storageClass: local-path\nplatform:\n  logLevel: info\n' +
-      'Or run `compartment install` from an interactive terminal for the guided setup.',
-  );
-}
-
-function hasInteractiveInput(dependencies: CliCommandDependencies): boolean {
-  return (dependencies.io.stdin as { isTTY?: boolean | undefined }).isTTY === true;
 }
 
 async function executePreparedKubernetesInstall(

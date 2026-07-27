@@ -20,11 +20,14 @@ export function assertDevInstallOptions(options: InstallCommandOptions): void {
     'baseDomain',
     'brokerUrl',
     'chart',
+    'ingressClass',
+    'ingressEndpoint',
     'kubeContext',
     'managedDomain',
     'namespace',
     'releaseName',
     'skipRegistryMirror',
+    'storageClass',
     'values',
   ];
   const configuredOption: keyof InstallCommandOptions | undefined = productionOptions.find(

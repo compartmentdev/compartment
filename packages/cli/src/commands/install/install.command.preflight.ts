@@ -37,7 +37,7 @@ export async function runInstallPreflightChecklist(
   }
 }
 
-async function resolvePreflightKubeconfig(
+export async function resolvePreflightKubeconfig(
   dependencies: CliCommandDependencies,
   contextName: string | undefined,
 ): Promise<ResolvedKubernetesKubeconfig> {

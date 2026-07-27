@@ -4,6 +4,9 @@ This document defines the supported production install and operator contract for
 Kubernetes is the only production runtime. The release CLI owns install orchestration and image verification; the Helm
 chart owns installation-time Kubernetes resources.
 
+For existing-cluster prerequisites and the bare-VM test sequence, see
+[Existing Kubernetes installation prerequisites](../existing-kubernetes-install.md).
+
 For a fresh dedicated k3s node, disable its default Traefik ingress during installation so Compartment's Caddy
 LoadBalancer can use ports 80 and 443:
 

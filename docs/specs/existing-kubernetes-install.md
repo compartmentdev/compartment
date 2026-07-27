@@ -136,7 +136,14 @@ The operator must provide:
 - installed and ready cert-manager CRDs and controllers;
 - a usable StorageClass;
 - a CNI that enforces the NetworkPolicy features used by Compartment;
-- working cluster DNS and node access to the registries that contain signed Compartment platform images.
+- working cluster DNS and node access to the registries that contain signed Compartment platform images;
+- node resolvers that return the private A record for the Compartment registry zone; resolvers with DNS-rebinding or
+  public-to-private answer protection require an operator allowlist such as dnsmasq `rebind-domain-ok`;
+- kube-proxy-based Service routing on every node. Kube-proxy-less Cilium is not supported because node-side
+  container runtimes cannot reliably reach a registry `ClusterIP` in the proved topology.
+
+The DNS and Service-routing requirements are recorded prerequisites, not installer detection. See the
+[private registry node-pull proof](../proofs/registry-node-pull.md) for the evidence and rejected topology.
 
 The installer performs non-persistent preflight checks for:
 
@@ -174,6 +181,9 @@ the customer CNI actually enforcing them. Namespace, RBAC, Secret, and storage i
 independently of that omitted installer check.
 
 ### Existing-cluster bare-VM test quickstart
+
+The maintained operator procedure is
+[Existing Kubernetes installation prerequisites and bare-VM quickstart](../existing-kubernetes-install.md).
 
 For a clean test VM, the existing-cluster prerequisite sequence is:
 
