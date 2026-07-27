@@ -124,7 +124,7 @@ jobs:
       - name: Register local control-plane host
         run: |
           echo '127.0.0.1 console.compartment.localhost' | sudo tee -a /etc/hosts >/dev/null
-          echo '127.0.0.1 console.managed.compartment.test managed-domain-broker' | sudo tee -a /etc/hosts >/dev/null
+          echo '127.0.0.1 console.managed.compartment.localhost managed-domain-broker' | sudo tee -a /etc/hosts >/dev/null
 
       - name: Restore self-hosted image cache
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
@@ -146,7 +146,7 @@ jobs:
       - name: Run isolated k3d e2e shard
         id: run-shard
         env:
-          NO_PROXY: console.managed.compartment.test,managed-domain-broker,127.0.0.1,localhost
+          NO_PROXY: console.managed.compartment.localhost,managed-domain-broker,127.0.0.1,localhost
         run: node ./scripts/deploy/run-platform-k3d-e2e-shard.mjs "${{ matrix.shard }}"
 
       - name: Ensure shard cleanup

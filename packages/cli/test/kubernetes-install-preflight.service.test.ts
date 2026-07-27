@@ -3,15 +3,13 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, it, vi, type MockedFunction } from 'vitest';
 import { runCommand } from '../src/command-runner';
+import type { CommandResult } from '../src/command-runner.types';
 import { buildHelmCommand, buildKubectlCommand } from '../src/services/kubernetes-command.support';
 import { resolveKubernetesInstallKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service';
 import type { ResolvedKubernetesKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service.types';
 import { runKubernetesInstallPreflight } from '../src/services/kubernetes-install-preflight.service';
 import type { KubernetesInstallDeploymentInput } from '../src/services/kubernetes-install.service.types';
-import type {
-  KubernetesInstallPreflightInput,
-  KubernetesInstallPreflightResult,
-} from '../src/services/kubernetes-install-preflight.service.types';
+import type { KubernetesInstallPreflightInput } from '../src/services/kubernetes-install-preflight.service.types';
 
 interface FileSystemPromisesModule {
   readFile: typeof readFile;
@@ -225,118 +223,35 @@ describe('Kubernetes install cluster preflight', (): void => {
     expect(buildKubectlCommand(target, ['get', 'service'])).toContain('/tmp/k3s.yaml');
   });
 
-  it('fails fast when klipper owns a foreign LoadBalancer ingress port', async (): Promise<void> => {
-    mockForeignIngressService();
-    mockedRunCommand.mockResolvedValueOnce({
-      exitCode: 0,
-      stderr: '',
-      stdout: '{"items":[{"metadata":{"name":"svclb-traefik-abcd"}}]}',
-    });
-
-    const result: Promise<KubernetesInstallPreflightResult> = runKubernetesInstallPreflight(preflightInput());
-
-    await expect(result).rejects.toThrow(
-      "Ports 80/443 are already taken by Service kube-system/traefik — the platform's Caddy LoadBalancer will never get an address.",
-    );
-    await expect(result).rejects.toThrow(
-      /default k3s Traefik ingress.*Disable it:.*delete helmchart traefik traefik-crd/su,
-    );
-    const daemonSetCommand: readonly string[] | undefined = mockedRunCommand.mock.calls[2]?.[0];
-    expect(mockedRunCommand).toHaveBeenCalledTimes(3);
-    expect(daemonSetCommand).toContain('--all-namespaces');
-    expect(daemonSetCommand).not.toContain('storageclass');
-  });
-
-  it('does not recommend deleting a non-Traefik ingress that owns klipper ports', async (): Promise<void> => {
-    mockForeignIngressService('ingress-nginx-controller', 'ingress-nginx');
-    mockedRunCommand.mockResolvedValueOnce({
-      exitCode: 0,
-      stderr: '',
-      stdout: '{"items":[{"metadata":{"name":"svclb-ingress-nginx-abcd"}}]}',
-    });
-
-    const result: Promise<KubernetesInstallPreflightResult> = runKubernetesInstallPreflight(preflightInput());
-
-    await expect(result).rejects.toThrow('Compartment ships its own ingress (Caddy)');
-    await expect(result).rejects.toThrow('service.caddy.type=ClusterIP or NodePort');
-    await expect(result).rejects.not.toThrow(/delete|remove|disable/iu);
-  });
-
-  it('returns a warning when a cloud LoadBalancer can receive a separate address', async (): Promise<void> => {
-    mockForeignIngressService();
-    mockedRunCommand
-      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' })
-      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' });
-
-    await expect(runKubernetesInstallPreflight(preflightInput())).resolves.toEqual({
-      ingressWarning: { name: 'traefik', namespace: 'kube-system' },
-      storageClass: '',
-    });
-  });
-
-  it('ignores ClusterIP services and the target release Caddy service', async (): Promise<void> => {
-    mockedRunCommand
-      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' })
-      .mockResolvedValueOnce({
+  it('passes when Traefik occupies host ports 80 and 443 because host ports are not preflight concerns', async (): Promise<void> => {
+    const traefikServices: string =
+      '{"items":[{"metadata":{"name":"traefik","namespace":"kube-system"},"spec":{"type":"LoadBalancer","ports":[{"port":80},{"port":443}]}}]}';
+    mockedRunCommand.mockImplementation(async (command: readonly string[]): Promise<CommandResult> => {
+      const renderedCommand: string = command.join(' ');
+      if (renderedCommand.includes('get services')) {
+        return await Promise.resolve({ exitCode: 0, stderr: '', stdout: traefikServices });
+      }
+      return await Promise.resolve({
         exitCode: 0,
         stderr: '',
-        stdout: JSON.stringify({
-          items: [
-            { metadata: { name: 'web', namespace: 'default' }, spec: { ports: [{ port: 80 }], type: 'ClusterIP' } },
-            {
-              metadata: {
-                labels: {
-                  'app.kubernetes.io/component': 'caddy',
-                  'app.kubernetes.io/instance': 'compartment',
-                },
-                name: 'compartment-caddy',
-                namespace: 'compartment',
-              },
-              spec: { ports: [{ port: 443 }], type: 'LoadBalancer' },
-            },
-          ],
-        }),
-      })
-      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' });
+        stdout: renderedCommand.includes('get storageclass') ? '{"items":[]}' : '{}',
+      });
+    });
 
     await expect(runKubernetesInstallPreflight(preflightInput())).resolves.toEqual({ storageClass: '' });
-  });
-
-  it('treats matching release labels in another namespace as a conflict', async (): Promise<void> => {
-    mockedRunCommand
-      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' })
-      .mockResolvedValueOnce({
-        exitCode: 0,
-        stderr: '',
-        stdout: JSON.stringify({
-          items: [
-            {
-              metadata: {
-                labels: {
-                  'app.kubernetes.io/component': 'caddy',
-                  'app.kubernetes.io/instance': 'compartment',
-                },
-                name: 'compartment-caddy',
-                namespace: 'other',
-              },
-              spec: { ports: [{ port: 443 }], type: 'LoadBalancer' },
-            },
-          ],
-        }),
-      })
-      .mockResolvedValueOnce({
-        exitCode: 0,
-        stderr: '',
-        stdout: '{"items":[{"metadata":{"name":"svclb-other-abcd"}}]}',
-      });
-
-    await expect(runKubernetesInstallPreflight(preflightInput())).rejects.toThrow('Service other/compartment-caddy');
+    expect(mockedRunCommand).toHaveBeenCalledTimes(2);
+    const commands: string = mockedRunCommand.mock.calls
+      .map((call: [command: readonly string[], env?: NodeJS.ProcessEnv | undefined]): string => call[0].join(' '))
+      .join('\n');
+    expect(commands).not.toContain('services');
+    expect(commands).not.toContain('daemonsets');
+    expect(commands).not.toContain('80');
+    expect(commands).not.toContain('443');
   });
 
   it('passes the selected kubeconfig to every kubectl check and detects local-path', async (): Promise<void> => {
     mockedRunCommand
       .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' })
-      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' })
       .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[{"metadata":{"name":"local-path"}}]}' });
 
     await expect(runKubernetesInstallPreflight(preflightInput())).resolves.toEqual({ storageClass: 'local-path' });
@@ -347,14 +262,12 @@ describe('Kubernetes install cluster preflight', (): void => {
   });
 
   it('skips storage-class discovery for the advanced values path', async (): Promise<void> => {
-    mockedRunCommand
-      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' })
-      .mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{"items":[]}' });
+    mockedRunCommand.mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' });
 
     await expect(runKubernetesInstallPreflight({ ...preflightInput(), detectStorageClass: false })).resolves.toEqual({
       storageClass: '',
     });
-    expect(mockedRunCommand).toHaveBeenCalledTimes(2);
+    expect(mockedRunCommand).toHaveBeenCalledTimes(1);
   });
 
   it('reports a missing kubectl executable separately', async (): Promise<void> => {
@@ -366,21 +279,6 @@ describe('Kubernetes install cluster preflight', (): void => {
   });
 });
 
-function mockForeignIngressService(name: string = 'traefik', namespace: string = 'kube-system'): void {
-  mockedRunCommand.mockResolvedValueOnce({ exitCode: 0, stderr: '', stdout: '{}' }).mockResolvedValueOnce({
-    exitCode: 0,
-    stderr: '',
-    stdout: JSON.stringify({
-      items: [
-        {
-          metadata: { name, namespace },
-          spec: { ports: [{ port: 80 }], type: 'LoadBalancer' },
-        },
-      ],
-    }),
-  });
-}
-
 function preflightInput(): KubernetesInstallPreflightInput {
   const resolvedKubeconfig: ResolvedKubernetesKubeconfig = {
     clusterServer: 'https://127.0.0.1:6443',
@@ -388,7 +286,7 @@ function preflightInput(): KubernetesInstallPreflightInput {
     label: 'k3s',
     path: '/tmp/k3s.yaml',
   };
-  return { detectStorageClass: true, namespace: 'compartment', releaseName: 'compartment', resolvedKubeconfig };
+  return { detectStorageClass: true, resolvedKubeconfig };
 }
 
 function usableKubeconfig(server: string): string {

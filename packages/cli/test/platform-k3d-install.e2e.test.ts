@@ -432,7 +432,7 @@ async function expectForwardedMetadataSpoofingRejected(): Promise<void> {
       'create forwarded metadata Caddy Service',
     );
     await expectSuccessfulKubectl(
-      ['create', 'ingress', ingressName, '--class=traefik', `--rule=${testHost}/*=${caddyName}:8080`],
+      ['create', 'ingress', ingressName, '--class=traefik', `--rule=${testHost}/=${caddyName}:8080`],
       'create forwarded metadata test Ingress',
     );
     await expectSuccessfulKubectl(
@@ -441,7 +441,9 @@ async function expectForwardedMetadataSpoofingRejected(): Promise<void> {
     );
 
     const metadata: ForwardedMetadataEcho = await readForwardedMetadataEcho(testHost);
-    expect(metadata.headers.host).toBe(testHost);
+    const expectedUpstreamHost: URL = new URL(platformApiUrl);
+    expectedUpstreamHost.hostname = testHost;
+    expect(metadata.headers.host).toBe(expectedUpstreamHost.host);
     expect(metadata.headers['x-forwarded-host']).toBe(testHost);
     expect(metadata.headers['x-forwarded-proto']).toBe('http');
     expect(metadata.headers['x-forwarded-for']).not.toContain('203.0.113.77');
@@ -474,7 +476,7 @@ async function readDeploymentImage(deploymentName: string): Promise<string> {
 
 async function readForwardedMetadataEcho(host: string): Promise<ForwardedMetadataEcho> {
   const url: URL = new URL(platformApiUrl);
-  url.hostname = '127.0.0.1';
+  url.hostname = host;
   url.pathname = '/';
   const deadline: number = Date.now() + 60_000;
   for (;;) {
@@ -482,7 +484,6 @@ async function readForwardedMetadataEcho(host: string): Promise<ForwardedMetadat
       const response: Response = await fetch(url, {
         headers: {
           Forwarded: 'for=203.0.113.77;host=attacker.example;proto=https',
-          Host: host,
           'X-Forwarded-For': '203.0.113.77',
           'X-Forwarded-Host': 'attacker.example',
           'X-Forwarded-Proto': 'https',

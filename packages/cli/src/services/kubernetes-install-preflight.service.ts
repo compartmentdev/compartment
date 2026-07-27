@@ -2,12 +2,8 @@ import type { JsonValue } from '@compartment/utils';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import type {
-  KubernetesIngressPortConflict,
   KubernetesInstallPreflightInput,
   KubernetesInstallPreflightResult,
-  KubernetesPreflightServiceItem,
-  KubernetesPreflightServiceList,
-  KubernetesServicePort,
   KubernetesStorageClassItem,
   KubernetesStorageClassList,
 } from './kubernetes-install-preflight.service.types';
@@ -15,9 +11,9 @@ import type {
 const requestTimeout: string = '3s';
 
 export class KubernetesInstallPreflightError extends Error {
-  readonly check: 'cluster' | 'ingress ports' | 'storage class';
+  readonly check: 'cluster' | 'storage class';
 
-  constructor(check: 'cluster' | 'ingress ports' | 'storage class', message: string) {
+  constructor(check: 'cluster' | 'storage class', message: string) {
     super(message);
     this.check = check;
   }
@@ -27,62 +23,15 @@ export async function runKubernetesInstallPreflight(
   input: KubernetesInstallPreflightInput,
 ): Promise<KubernetesInstallPreflightResult> {
   await assertClusterReachable(input);
-  const conflict: KubernetesIngressPortConflict | null = await readIngressPortConflict(input);
-  if (conflict !== null) {
-    return await handleIngressPortConflict(input, conflict);
-  }
   return { storageClass: input.detectStorageClass ? await readDetectedStorageClass(input) : '' };
-}
-
-async function readIngressPortConflict(
-  input: KubernetesInstallPreflightInput,
-): Promise<KubernetesIngressPortConflict | null> {
-  const services: KubernetesPreflightServiceList = await readClusterJson<KubernetesPreflightServiceList>(
-    buildKubectlCommand(input, ['get', 'services', '--all-namespaces', '--output', 'json']),
-    'ingress ports',
-    'services',
-  );
-  return findIngressPortConflict(services.items, input.releaseName, input.namespace);
-}
-
-async function handleIngressPortConflict(
-  input: KubernetesInstallPreflightInput,
-  conflict: KubernetesIngressPortConflict,
-): Promise<KubernetesInstallPreflightResult> {
-  if (await isKlipperEnvironment(input)) {
-    throw new KubernetesInstallPreflightError('ingress ports', buildIngressConflictMessage(conflict));
-  }
-  const storageClass: string = input.detectStorageClass ? await readDetectedStorageClass(input) : '';
-  return { ingressWarning: conflict, storageClass };
 }
 
 async function readDetectedStorageClass(input: KubernetesInstallPreflightInput): Promise<string> {
   const storageClasses: KubernetesStorageClassList = await readClusterJson<KubernetesStorageClassList>(
     buildKubectlCommand(input, ['get', 'storageclass', '--output', 'json']),
-    'storage class',
     'storage classes',
   );
   return detectStorageClass(storageClasses);
-}
-
-function findIngressPortConflict(
-  services: readonly KubernetesPreflightServiceItem[],
-  releaseName: string,
-  namespace: string,
-): KubernetesIngressPortConflict | null {
-  const service: KubernetesPreflightServiceItem | undefined = services.find(
-    (candidate: KubernetesPreflightServiceItem): boolean =>
-      candidate.spec?.type === 'LoadBalancer' &&
-      !isReleaseCaddyService(candidate, releaseName, namespace) &&
-      (candidate.spec.ports ?? []).some(
-        (port: KubernetesServicePort): boolean => port.port === 80 || port.port === 443,
-      ),
-  );
-  const name: string | undefined = service?.metadata?.name;
-  if (service === undefined || name === undefined) {
-    return null;
-  }
-  return { name, namespace: service.metadata?.namespace ?? 'default' };
 }
 
 async function assertClusterReachable(input: KubernetesInstallPreflightInput): Promise<void> {
@@ -98,39 +47,11 @@ async function assertClusterReachable(input: KubernetesInstallPreflightInput): P
   }
 }
 
-async function isKlipperEnvironment(input: KubernetesInstallPreflightInput): Promise<boolean> {
-  const result: CommandResult = await runCommand(
-    buildKubectlCommand(input, ['get', 'daemonsets', '--all-namespaces', '--output', 'json']),
-  );
-  if (result.exitCode !== 0) {
-    return false;
-  }
-  try {
-    const value: JsonValue = JSON.parse(result.stdout) as JsonValue;
-    if (!isObject(value) || !Array.isArray(value.items)) {
-      return false;
-    }
-    return value.items.some(
-      (daemonSet: JsonValue): boolean =>
-        isObject(daemonSet) &&
-        isObject(daemonSet.metadata) &&
-        typeof daemonSet.metadata.name === 'string' &&
-        daemonSet.metadata.name.startsWith('svclb-'),
-    );
-  } catch {
-    return false;
-  }
-}
-
-async function readClusterJson<T>(
-  command: string[],
-  check: 'ingress ports' | 'storage class',
-  subject: string,
-): Promise<T> {
+async function readClusterJson<T>(command: string[], subject: string): Promise<T> {
   const result: CommandResult = await runCommand(command);
   if (result.exitCode !== 0) {
     throw new KubernetesInstallPreflightError(
-      check,
+      'storage class',
       `Cannot inspect Kubernetes ${subject}. Verify your cluster access and retry install.`,
     );
   }
@@ -142,7 +63,7 @@ async function readClusterJson<T>(
   } catch {
     // The shared error below is stable for malformed kubectl output.
   }
-  throw new KubernetesInstallPreflightError(check, `Kubernetes returned an invalid ${subject} response.`);
+  throw new KubernetesInstallPreflightError('storage class', `Kubernetes returned an invalid ${subject} response.`);
 }
 
 function buildKubectlCommand(input: KubernetesInstallPreflightInput, args: readonly string[]): string[] {
@@ -157,30 +78,10 @@ function buildKubectlCommand(input: KubernetesInstallPreflightInput, args: reado
   ];
 }
 
-function isReleaseCaddyService(
-  service: KubernetesPreflightServiceItem,
-  releaseName: string,
-  namespace: string,
-): boolean {
-  return (
-    service.metadata?.namespace === namespace &&
-    service.metadata.labels?.['app.kubernetes.io/instance'] === releaseName &&
-    service.metadata.labels['app.kubernetes.io/component'] === 'caddy'
-  );
-}
-
 function detectStorageClass(list: KubernetesStorageClassList): string {
   return list.items.some((item: KubernetesStorageClassItem): boolean => item.metadata?.name === 'local-path')
     ? 'local-path'
     : '';
-}
-
-function buildIngressConflictMessage(conflict: KubernetesIngressPortConflict): string {
-  const prefix: string = `Ports 80/443 are already taken by Service ${conflict.namespace}/${conflict.name} — the platform's Caddy LoadBalancer will never get an address.`;
-  if (conflict.namespace === 'kube-system' && conflict.name === 'traefik') {
-    return `${prefix} This is the default k3s Traefik ingress. Disable it: printf 'disable:\\n  - traefik\\n' >/etc/rancher/k3s/config.yaml && systemctl restart k3s && kubectl -n kube-system delete helmchart traefik traefik-crd. Then retry install.`;
-  }
-  return `${prefix} Compartment ships its own ingress (Caddy). On a dedicated cluster, free ports 80/443. On a shared cluster, Compartment must use service.caddy.type=ClusterIP or NodePort and route through your existing ingress; the guided installer does not automate this topology yet. See the install documentation.`;
 }
 
 function isObject(value: JsonValue | undefined): value is Record<string, JsonValue> {

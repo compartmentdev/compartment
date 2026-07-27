@@ -28,7 +28,7 @@ pnpm dev
 ## Local k3d E2E
 
 Install `k3d`, `kubectl`, and Helm alongside the prerequisites above. For the managed-install shard, map
-`console.managed.compartment.test` and `managed-domain-broker` to `127.0.0.1` in `/etc/hosts`.
+`console.managed.compartment.localhost` and `managed-domain-broker` to `127.0.0.1` in `/etc/hosts`.
 
 Run one isolated shard at a time:
 

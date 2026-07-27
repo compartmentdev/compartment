@@ -21,8 +21,8 @@ const managedBrokerServicePort: number = 19_000;
 const managedHttpPort: string = process.env.COMPARTMENT_E2E_HTTP_PORT ?? '18080';
 const managedBrokerHostPort: number = Number(process.env.COMPARTMENT_E2E_MANAGED_BROKER_PORT ?? '19000');
 
-export const managedInstallApiUrl: string = `http://console.managed.compartment.test:${managedHttpPort}`;
-export const managedInstallBaseDomain: string = 'managed.compartment.test';
+export const managedInstallApiUrl: string = `http://console.managed.compartment.localhost:${managedHttpPort}`;
+export const managedInstallBaseDomain: string = 'managed.compartment.localhost';
 export const managedInstallBrokerUrl: string = `http://managed-domain-broker:${managedBrokerServicePort.toString()}`;
 export const managedInstallCertificateAuthorityPath: string = resolve(
   repositoryRoot,

@@ -58,6 +58,9 @@ const consoleHost = `console.${platformBaseDomain}`;
 const serverNodeName = `k3d-${clusterName}-server-0`;
 const builderName = `${clusterName}-builder`;
 const imageCacheLockOwnerToken = `e2e-${clusterName}`;
+const pebbleCaContainerName = `${clusterName}-pebble-ca`;
+const shouldExtractPebbleCa =
+  process.env.COMPARTMENT_E2E_SHARD === undefined || process.env.COMPARTMENT_E2E_SHARD === 'managed-install';
 const registryConfigDirectory = join(dirname(platformValuesPath), 'registry-config');
 const platformImageTag = 'e2e';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
@@ -340,6 +343,9 @@ async function upPlatform(command) {
     for (const statePath of [platformValuesPath, managedPlatformValuesPath, pebbleCaPath, pebbleRootPath]) {
       mkdirSync(dirname(statePath), { recursive: true });
     }
+    if (shouldExtractPebbleCa) {
+      extractPebbleManagementCertificateAuthority();
+    }
     const preparedImages = await settlePlatformK3dStartup(createCluster(), prepareAndPushPlatformImages(command));
     writeFileSync(platformValuesPath, renderPlatformK3dValues(preparedImages.imageDigestsByServiceName), {
       mode: 0o600,
@@ -360,6 +366,22 @@ async function upPlatform(command) {
   }
 
   process.stdout.write(`context: ${contextName}\nvalues: ${platformValuesPath}\nSTATUS=ok\n`);
+}
+
+function extractPebbleManagementCertificateAuthority() {
+  let containerReference;
+  try {
+    containerReference = captureCommand(
+      'docker',
+      ['create', '--name', pebbleCaContainerName, pebbleImageRef],
+      repositoryRoot,
+    ).trim();
+    runCommand('docker', ['cp', `${containerReference}:/test/certs/pebble.minica.pem`, pebbleCaPath], repositoryRoot);
+  } finally {
+    if (containerReference !== undefined && containerReference !== '') {
+      runCommand('docker', ['rm', '--force', containerReference], repositoryRoot);
+    }
+  }
 }
 
 async function createCluster() {
@@ -604,6 +626,7 @@ function cleanResidualDockerResources(cleanupErrors) {
     `k3d-${clusterName}-serverlb`,
     `k3d-${registryName}`,
     `buildx_buildkit_${builderName}0`,
+    pebbleCaContainerName,
   ]) {
     if (dockerResourceExists('container', containerName)) {
       runCleanupStep(cleanupErrors, `container ${containerName}`, () => {
