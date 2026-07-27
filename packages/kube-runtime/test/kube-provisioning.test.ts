@@ -25,6 +25,9 @@ interface RbacRule {
 const linkLocalCidr: string = ['169', '254', '0', '0/16'].join('.');
 const metadataServiceCidr: string = ['169', '254', '169', '254/32'].join('.');
 const podCidr: string = ['10', '42', '0', '0/16'].join('.');
+const privateClassACidr: string = ['10', '0', '0', '0/8'].join('.');
+const privateClassBCidr: string = ['172', '16', '0', '0/12'].join('.');
+const privateClassCCidr: string = ['192', '168', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
 
 type RbacManifest = KubeManifest & {
@@ -187,7 +190,15 @@ describe('project namespace bootstrap provisioning', (): void => {
                 {
                   ipBlock: {
                     cidr: '0.0.0.0/0',
-                    except: [metadataServiceCidr, linkLocalCidr, podCidr, serviceCidr],
+                    except: [
+                      metadataServiceCidr,
+                      linkLocalCidr,
+                      privateClassACidr,
+                      privateClassBCidr,
+                      privateClassCCidr,
+                      podCidr,
+                      serviceCidr,
+                    ],
                   },
                 },
               ],
@@ -220,7 +231,15 @@ describe('project namespace bootstrap provisioning', (): void => {
                 {
                   ipBlock: {
                     cidr: '0.0.0.0/0',
-                    except: [metadataServiceCidr, linkLocalCidr, podCidr, serviceCidr],
+                    except: [
+                      metadataServiceCidr,
+                      linkLocalCidr,
+                      privateClassACidr,
+                      privateClassBCidr,
+                      privateClassCCidr,
+                      podCidr,
+                      serviceCidr,
+                    ],
                   },
                 },
               ],
