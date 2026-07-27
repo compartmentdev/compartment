@@ -1,0 +1,4 @@
+CASE A PASS: wildcard Certificate Ready=True through broker webhook.
+CASE B PASS: cross-allocation challenge and target writes denied; forged Certificate not Ready.
+CASE C PASS: A, AAAA, and hostname target types preserved in DNS.
+CASE D PASS: desired targets and active challenge replayed; second Order issued.

@@ -1,0 +1,172 @@
+{
+  "allocations": [
+    {
+      "id": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "installationId": "proof-installation-z1",
+      "requestedLabel": "z1",
+      "zone": "z1.proof.test",
+      "targets": [
+        {
+          "type": "A",
+          "value": "1.2.3.4"
+        },
+        {
+          "type": "AAAA",
+          "value": "2001:db8::1"
+        },
+        {
+          "type": "hostname",
+          "value": "lb.example.com"
+        }
+      ],
+      "challenges": [
+        {
+          "name": "_acme-challenge.replay.z1.proof.test",
+          "value": "active-through-restart"
+        }
+      ]
+    },
+    {
+      "id": "4bd247db-ccf8-4da1-a2e7-952395bb7f93",
+      "installationId": "proof-installation-z2",
+      "requestedLabel": "z2",
+      "zone": "z2.proof.test",
+      "targets": [],
+      "challenges": []
+    }
+  ],
+  "audit": [
+    {
+      "at": "2026-07-27T15:07:08.756Z",
+      "event": "desired_state_replayed",
+      "reason": "startup",
+      "allocationCount": 0,
+      "challengeCount": 0,
+      "targetCount": 0
+    },
+    {
+      "at": "2026-07-27T15:07:57.638Z",
+      "event": "allocation_reserved",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "zone": "z1.proof.test"
+    },
+    {
+      "at": "2026-07-27T15:07:57.648Z",
+      "event": "allocation_reserved",
+      "allocationId": "4bd247db-ccf8-4da1-a2e7-952395bb7f93",
+      "zone": "z2.proof.test"
+    },
+    {
+      "at": "2026-07-27T15:08:04.674Z",
+      "event": "challenge_presented",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "name": "_acme-challenge.z1.proof.test",
+      "value": "QtVSHm9QKThr7Cc1-f1HQiY6lzvYOL_u7nTz1p5i5IU"
+    },
+    {
+      "at": "2026-07-27T15:09:07.696Z",
+      "event": "challenge_cleaned",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "name": "_acme-challenge.z1.proof.test",
+      "value": "QtVSHm9QKThr7Cc1-f1HQiY6lzvYOL_u7nTz1p5i5IU"
+    },
+    {
+      "at": "2026-07-27T15:09:07.947Z",
+      "event": "authority_denied",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "reason": "allocation_token_mismatch",
+      "suppliedBearer": true
+    },
+    {
+      "at": "2026-07-27T15:09:13.689Z",
+      "event": "authority_denied",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "reason": "allocation_token_mismatch",
+      "suppliedBearer": true
+    },
+    {
+      "at": "2026-07-27T15:09:13.696Z",
+      "event": "authority_denied",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "reason": "allocation_token_mismatch",
+      "suppliedBearer": true
+    },
+    {
+      "at": "2026-07-27T15:09:18.699Z",
+      "event": "authority_denied",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "reason": "allocation_token_mismatch",
+      "suppliedBearer": true
+    },
+    {
+      "at": "2026-07-27T15:09:38.706Z",
+      "event": "authority_denied",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "reason": "allocation_token_mismatch",
+      "suppliedBearer": true
+    },
+    {
+      "at": "2026-07-27T15:09:53.409Z",
+      "event": "authority_denied",
+      "allocationId": "4bd247db-ccf8-4da1-a2e7-952395bb7f93",
+      "reason": "allocation_token_mismatch",
+      "suppliedBearer": true
+    },
+    {
+      "at": "2026-07-27T15:09:53.481Z",
+      "event": "targets_bound",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "targets": [
+        {
+          "type": "A",
+          "value": "1.2.3.4"
+        },
+        {
+          "type": "AAAA",
+          "value": "2001:db8::1"
+        },
+        {
+          "type": "hostname",
+          "value": "lb.example.com"
+        }
+      ]
+    },
+    {
+      "at": "2026-07-27T15:09:53.599Z",
+      "event": "challenge_presented",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "name": "_acme-challenge.replay.z1.proof.test",
+      "value": "active-through-restart"
+    },
+    {
+      "at": "2026-07-27T15:09:54.744Z",
+      "event": "desired_state_replayed",
+      "reason": "startup",
+      "allocationCount": 2,
+      "challengeCount": 1,
+      "targetCount": 3
+    },
+    {
+      "at": "2026-07-27T15:09:56.716Z",
+      "event": "challenge_presented",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "name": "_acme-challenge.z1.proof.test",
+      "value": "2ZK1WVZC-v2WtZPRanjGK3j0yFirm5ugxFZ1156ripk"
+    },
+    {
+      "at": "2026-07-27T15:10:18.714Z",
+      "event": "authority_denied",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "reason": "allocation_token_mismatch",
+      "suppliedBearer": true
+    },
+    {
+      "at": "2026-07-27T15:11:00.693Z",
+      "event": "challenge_cleaned",
+      "allocationId": "72dd9154-aaf7-46bb-aa26-5e1a10128b31",
+      "name": "_acme-challenge.z1.proof.test",
+      "value": "2ZK1WVZC-v2WtZPRanjGK3j0yFirm5ugxFZ1156ripk"
+    }
+  ],
+  "replayCount": 2
+}

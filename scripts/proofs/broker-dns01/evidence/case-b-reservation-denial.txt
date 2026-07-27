@@ -1,0 +1,2 @@
+{"error":"reservation authorization is required"}
+HTTP 401

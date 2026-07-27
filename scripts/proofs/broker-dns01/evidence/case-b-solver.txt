@@ -1,0 +1,15 @@
+I0727 15:07:56.874156       1 handler.go:304] Adding GroupVersion dns01.proof.compartment.test v1alpha1 to ResourceManager
+I0727 15:07:56.879519       1 requestheader_controller.go:180] Starting RequestHeaderAuthRequestController
+I0727 15:07:56.879574       1 shared_informer.go:402] "Waiting for caches to sync"
+I0727 15:07:56.879597       1 configmap_cafile_content.go:205] "Starting controller" name="client-ca::kube-system::extension-apiserver-authentication::requestheader-client-ca-file"
+I0727 15:07:56.879619       1 shared_informer.go:402] "Waiting for caches to sync"
+I0727 15:07:56.879696       1 configmap_cafile_content.go:205] "Starting controller" name="client-ca::kube-system::extension-apiserver-authentication::client-ca-file"
+I0727 15:07:56.879712       1 shared_informer.go:402] "Waiting for caches to sync"
+I0727 15:07:56.879886       1 dynamic_serving_content.go:135] "Starting controller" name="serving-cert::/tls/tls.crt::/tls/tls.key"
+I0727 15:07:56.880047       1 secure_serving.go:214] Serving securely on [::]:8443
+I0727 15:07:56.880106       1 tlsconfig.go:243] "Starting DynamicServingCertificateController"
+I0727 15:07:56.980529       1 shared_informer.go:409] "Caches are synced"
+I0727 15:07:56.980529       1 shared_informer.go:409] "Caches are synced"
+I0727 15:07:56.980530       1 shared_informer.go:409] "Caches are synced"
+broker_dns01 method=POST allocation=72dd9154-aaf7-46bb-aa26-5e1a10128b31 fqdn=_acme-challenge.z1.proof.test. status=201
+broker_dns01 method=DELETE allocation=72dd9154-aaf7-46bb-aa26-5e1a10128b31 fqdn=_acme-challenge.z1.proof.test. status=204
