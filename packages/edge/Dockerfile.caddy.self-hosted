@@ -5,7 +5,7 @@ ARG COMPARTMENT_CADDY_RUNTIME_IMAGE=alpine:3.22
 
 FROM ${COMPARTMENT_CADDY_BUILDER_IMAGE} AS builder
 
-RUN xcaddy build v2.11.4
+RUN xcaddy build v2.11.4 --with google.golang.org/grpc@v1.82.1
 
 FROM ${COMPARTMENT_CADDY_RUNTIME_IMAGE}
 
