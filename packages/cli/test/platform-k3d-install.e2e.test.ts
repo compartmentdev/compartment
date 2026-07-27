@@ -52,6 +52,10 @@ interface StartupWorkload {
   readonly containerName: string;
 }
 
+interface ForwardedMetadataEcho {
+  readonly headers: Record<string, string | string[] | undefined>;
+}
+
 describe.sequential('production Kubernetes install', (): void => {
   if (process.env[platformModeEnvName] !== 'k3d') {
     it(`requires ${platformModeEnvName}=k3d`, (): void => {
@@ -130,6 +134,7 @@ describe.sequential('production Kubernetes install', (): void => {
       expect(reset.email).toBe(ownerEmail);
       expect(reset.resetToken).not.toBe('');
 
+      await expectForwardedMetadataSpoofingRejected();
       await expectRetainedDomainGenerationProtection();
       await expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade();
     },
@@ -333,7 +338,7 @@ async function expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade(): Promise<voi
       '--output=jsonpath={.spec.template.spec.volumes[?(@.name=="tls")].secret.secretName}',
     ]);
     expectSuccessfulCommand(caddyTlsSecret, 'read retained Caddy TLS mount after an ordinary upgrade');
-    expect(caddyTlsSecret.stdout).toBe(secretName);
+    expect(caddyTlsSecret.stdout).toBe('');
   } finally {
     const clearIdentity: SelfHostedUserSetupCommandResult = await runKubectl([
       'patch',
@@ -374,6 +379,133 @@ async function expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade(): Promise<voi
     expectSuccessfulCommand(removedCaddyMount, 'verify removal of the Caddy TLS mount');
     expect(removedCaddyMount.stdout).toBe('');
   }
+}
+
+async function expectForwardedMetadataSpoofingRejected(): Promise<void> {
+  const echoName: string = 'forwarded-metadata-echo';
+  const caddyName: string = 'forwarded-metadata-caddy';
+  const ingressName: string = 'forwarded-metadata-ingress';
+  const testBaseDomain: string = 'forwarded.compartment.localhost';
+  const testHost: string = `console.${testBaseDomain}`;
+  const apiImage: string = await readDeploymentImage('compartment-compartment-api');
+  const caddyImage: string = await readDeploymentImage('compartment-compartment-caddy');
+  const echoProgram: string =
+    "require('node:http').createServer((request,response)=>{response.setHeader('content-type','application/json');response.end(JSON.stringify({headers:request.headers}));}).listen(3999,'0.0.0.0')";
+  try {
+    await expectSuccessfulKubectl(
+      [
+        'run',
+        echoName,
+        `--image=${apiImage}`,
+        '--port=3999',
+        '--labels=app.kubernetes.io/name=forwarded-metadata-echo',
+        '--command',
+        '--',
+        'node',
+        '-e',
+        echoProgram,
+      ],
+      'create forwarded metadata echo Pod',
+    );
+    await expectSuccessfulKubectl(
+      ['expose', 'pod', echoName, `--name=${echoName}`, '--port=3999', '--target-port=3999'],
+      'create forwarded metadata echo Service',
+    );
+    await expectSuccessfulKubectl(
+      [
+        'run',
+        caddyName,
+        `--image=${caddyImage}`,
+        '--port=8080',
+        `--labels=app.kubernetes.io/name=compartment,app.kubernetes.io/instance=compartment,app.kubernetes.io/component=caddy,compartment.dev/test=${caddyName}`,
+        `--env=COMPARTMENT_BASE_DOMAIN=${testBaseDomain}`,
+        `--env=COMPARTMENT_API_INTERNAL_HOST=${echoName}`,
+        '--env=COMPARTMENT_API_PORT=3999',
+        '--env=COMPARTMENT_CADDY_HTTP_PORT=8080',
+        '--env=COMPARTMENT_EDGE_INTERNAL_HOST=unused-edge',
+        '--env=COMPARTMENT_EDGE_PORT=39081',
+      ],
+      'create forwarded metadata Caddy Pod',
+    );
+    await expectSuccessfulKubectl(
+      ['expose', 'pod', caddyName, `--name=${caddyName}`, '--port=8080', '--target-port=8080'],
+      'create forwarded metadata Caddy Service',
+    );
+    await expectSuccessfulKubectl(
+      ['create', 'ingress', ingressName, '--class=traefik', `--rule=${testHost}/*=${caddyName}:8080`],
+      'create forwarded metadata test Ingress',
+    );
+    await expectSuccessfulKubectl(
+      ['wait', `pod/${echoName}`, `pod/${caddyName}`, '--for=condition=Ready', '--timeout=4m'],
+      'wait for forwarded metadata test Pods',
+    );
+
+    const metadata: ForwardedMetadataEcho = await readForwardedMetadataEcho(testHost);
+    expect(metadata.headers.host).toBe(testHost);
+    expect(metadata.headers['x-forwarded-host']).toBe(testHost);
+    expect(metadata.headers['x-forwarded-proto']).toBe('http');
+    expect(metadata.headers['x-forwarded-for']).not.toContain('203.0.113.77');
+    expect(metadata.headers.forwarded).toBeUndefined();
+  } finally {
+    await runKubectl([
+      'delete',
+      `ingress/${ingressName}`,
+      `service/${caddyName}`,
+      `service/${echoName}`,
+      `pod/${caddyName}`,
+      `pod/${echoName}`,
+      '--ignore-not-found',
+      '--wait=true',
+      '--timeout=4m',
+    ]);
+  }
+}
+
+async function readDeploymentImage(deploymentName: string): Promise<string> {
+  const result: SelfHostedUserSetupCommandResult = await runKubectl([
+    'get',
+    `deployment/${deploymentName}`,
+    '--output=jsonpath={.spec.template.spec.containers[0].image}',
+  ]);
+  expectSuccessfulCommand(result, `read ${deploymentName} image`);
+  expect(result.stdout.trim()).not.toBe('');
+  return result.stdout.trim();
+}
+
+async function readForwardedMetadataEcho(host: string): Promise<ForwardedMetadataEcho> {
+  const url: URL = new URL(platformApiUrl);
+  url.hostname = '127.0.0.1';
+  url.pathname = '/';
+  const deadline: number = Date.now() + 60_000;
+  for (;;) {
+    try {
+      const response: Response = await fetch(url, {
+        headers: {
+          Forwarded: 'for=203.0.113.77;host=attacker.example;proto=https',
+          Host: host,
+          'X-Forwarded-For': '203.0.113.77',
+          'X-Forwarded-Host': 'attacker.example',
+          'X-Forwarded-Proto': 'https',
+        },
+        redirect: 'manual',
+      });
+      if (response.ok) {
+        return (await response.json()) as ForwardedMetadataEcho;
+      }
+    } catch {
+      // The Ingress route can lag Pod readiness briefly.
+    }
+    if (Date.now() >= deadline) {
+      throw new Error('Timed out waiting for the forwarded metadata test route.');
+    }
+    await new Promise<void>((resolveDelay: () => void): void => {
+      setTimeout(resolveDelay, 500);
+    });
+  }
+}
+
+async function expectSuccessfulKubectl(args: readonly string[], description: string): Promise<void> {
+  expectSuccessfulCommand(await runKubectl(args), description);
 }
 
 async function expectSuccessfulOrdinaryHelmUpgrade(description: string): Promise<void> {

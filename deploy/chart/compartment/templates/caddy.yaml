@@ -7,22 +7,13 @@ metadata:
     {{- include "compartment.labels" . | nindent 4 }}
     app.kubernetes.io/component: caddy
 spec:
-  type: {{ .Values.service.caddy.type }}
+  type: ClusterIP
   selector:
     {{- include "compartment.componentLabels" (dict "root" . "component" "caddy") | nindent 4 }}
   ports:
     - name: http
-      port: {{ .Values.service.caddy.httpPort }}
+      port: {{ .Values.ports.http }}
       targetPort: http
-      {{- if and (or (eq $.Values.service.caddy.type "NodePort") (eq $.Values.service.caddy.type "LoadBalancer")) .Values.service.caddy.httpNodePort }}
-      nodePort: {{ .Values.service.caddy.httpNodePort }}
-      {{- end }}
-    - name: https
-      port: {{ .Values.service.caddy.httpsPort }}
-      targetPort: https
-      {{- if and (or (eq $.Values.service.caddy.type "NodePort") (eq $.Values.service.caddy.type "LoadBalancer")) .Values.service.caddy.httpsNodePort }}
-      nodePort: {{ .Values.service.caddy.httpsNodePort }}
-      {{- end }}
 ---
 {{- if eq $installState.effective.platform.startupStage "full" }}
 apiVersion: apps/v1
@@ -72,49 +63,32 @@ spec:
           command:
             - /bin/sh
             - -ec
-            - exec /work/caddy run --config "/etc/caddy/Caddyfile.${COMPARTMENT_CADDY_TLS_MODE}" --adapter caddyfile
+            - exec /work/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
           securityContext:
             {{- include "compartment.containerSecurityContext" . | nindent 12 }}
             runAsUser: 1000
             runAsGroup: 1000
           resources:
             {{- toYaml .Values.resources.caddy | nindent 12 }}
-          envFrom:
-            - configMapRef:
-                name: {{ include "compartment.fullname" . }}
           env:
-            - name: COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN
-              valueFrom:
-                secretKeyRef: {name: {{ include "compartment.installStateSecretName" . }}, key: managed-domain-broker-token}
+            - {name: COMPARTMENT_API_INTERNAL_HOST, value: {{ printf "%s-api" (include "compartment.fullname" .) | quote }}}
+            - {name: COMPARTMENT_API_PORT, value: {{ .Values.ports.api | quote }}}
+            - {name: COMPARTMENT_BASE_DOMAIN, value: {{ $installState.effective.platform.baseDomain | quote }}}
+            - {name: COMPARTMENT_CADDY_HTTP_PORT, value: {{ .Values.ports.http | quote }}}
+            - {name: COMPARTMENT_EDGE_INTERNAL_HOST, value: {{ printf "%s-edge" (include "compartment.fullname" .) | quote }}}
+            - {name: COMPARTMENT_EDGE_PORT, value: {{ .Values.ports.edge | quote }}}
           ports:
             - {name: http, containerPort: {{ .Values.ports.http }}}
-            - {name: https, containerPort: {{ .Values.ports.https }}}
           readinessProbe:
             tcpSocket: {port: http}
             periodSeconds: 2
           volumeMounts:
             - {name: executable, mountPath: /work, readOnly: true}
-            - {name: data, mountPath: /data}
             - {name: config, mountPath: /config}
-            {{- if eq $installState.effective.platform.tlsMode "custom-cert" }}
-            - {name: tls, mountPath: /etc/compartment/tls, readOnly: true}
-            {{- end }}
             - {name: tmp, mountPath: /tmp}
       volumes:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - {name: executable, emptyDir: {}}
-        - name: data
-          persistentVolumeClaim:
-            claimName: {{ include "compartment.fullname" . }}-caddy
         - {name: config, emptyDir: {}}
-        {{- if eq $installState.effective.platform.tlsMode "custom-cert" }}
-        - name: tls
-          secret:
-            secretName: {{ include "compartment.customTlsSecretName" . }}
-            defaultMode: 0440
-            items:
-              - {key: tls.crt, path: fullchain.pem}
-              - {key: tls.key, path: privkey.pem}
-        {{- end }}
         - {name: tmp, emptyDir: {}}
 {{- end }}

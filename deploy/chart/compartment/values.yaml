@@ -59,15 +59,17 @@ ports:
   registry: 5000
   buildkit: 1234
   http: 8080
-  https: 8443
 
-service:
-  caddy:
-    type: LoadBalancer
-    httpPort: 80
-    httpsPort: 443
-    httpNodePort: null
-    httpsNodePort: null
+ingress:
+  className: traefik
+  controller:
+    namespace: kube-system
+    podSelector:
+      - key: app.kubernetes.io/name
+        value: traefik
+  endpoint:
+    type: ''
+    value: ''
 
 storage:
   storageClass: ''
@@ -75,7 +77,6 @@ storage:
   registry: 2Gi
   buildkit: 8Gi
   edgeSnapshots: 1Gi
-  caddy: 1Gi
   api: 1Gi
 
 platform:

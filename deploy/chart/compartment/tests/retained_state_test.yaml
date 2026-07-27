@@ -22,6 +22,9 @@ kubernetesProvider:
       data:
         startup-stage: ZnVsbA==
         installation-id: cmV0YWluZWQtaW5zdGFsbA==
+        ingress-class-name: aW5ncmVzcy1uZ2lueA==
+        ingress-endpoint-type: aG9zdG5hbWU=
+        ingress-endpoint-value: bGIuZXhhbXBsZS5jb20=
         public-ingress-ipv4: OC44LjguOA==
         public-ingress-ipv6: MjAwMTo0ODYwOjQ4NjA6Ojg4ODg=
         acme-email: cmV0YWluZWRAZXhhbXBsZS5jb20=
@@ -78,6 +81,14 @@ kubernetesProvider:
         tls-mode: bWFuYWdlZA==
         active-custom-tls-secret: ''
         operator-custom-tls-secret: ''
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: endpoint-empty-install-state
+        namespace: default
+      data:
+        ingress-endpoint-type: ''
+        ingress-endpoint-value: ''
 tests:
   - it: resolves every consumer from the retained Secret without mutating Values
     set:
@@ -117,6 +128,18 @@ tests:
       - equal:
           path: stringData.installation-id
           value: retained-install
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.ingress-class-name
+          value: ingress-nginx
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.ingress-endpoint-type
+          value: hostname
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.ingress-endpoint-value
+          value: lb.example.com
         template: install-state-secret.yaml
       - equal:
           path: stringData.domain-generation
@@ -247,4 +270,96 @@ tests:
       - equal:
           path: stringData.base-domain
           value: resumed.example.test
+        template: install-state-secret.yaml
+
+  - it: persists a typed A ingress endpoint
+    release:
+      name: endpoint-a
+      namespace: default
+      upgrade: true
+    set:
+      ingress:
+        className: traefik
+        endpoint:
+          type: A
+          value: 8.8.8.8
+    asserts:
+      - equal:
+          path: stringData.ingress-endpoint-type
+          value: A
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.ingress-endpoint-value
+          value: 8.8.8.8
+        template: install-state-secret.yaml
+
+  - it: persists a typed AAAA ingress endpoint
+    release:
+      name: endpoint-aaaa
+      namespace: default
+      upgrade: true
+    set:
+      ingress:
+        className: traefik
+        endpoint:
+          type: AAAA
+          value: 2001:4860:4860::8888
+    asserts:
+      - equal:
+          path: stringData.ingress-endpoint-type
+          value: AAAA
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.ingress-endpoint-value
+          value: 2001:4860:4860::8888
+        template: install-state-secret.yaml
+
+  - it: persists a hostname ingress endpoint without projection to an IP
+    release:
+      name: endpoint-hostname
+      namespace: default
+      upgrade: true
+    set:
+      ingress:
+        className: traefik
+        endpoint:
+          type: hostname
+          value: lb.example.com
+    asserts:
+      - equal:
+          path: stringData.ingress-endpoint-type
+          value: hostname
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.ingress-endpoint-value
+          value: lb.example.com
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.public-ingress-ipv4
+          value: ''
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.public-ingress-ipv6
+          value: ''
+        template: install-state-secret.yaml
+
+  - it: replaces an empty retained endpoint with the first observed hostname
+    release:
+      name: endpoint-empty
+      namespace: default
+      upgrade: true
+    set:
+      ingress:
+        className: traefik
+        endpoint:
+          type: hostname
+          value: ingress.example.com
+    asserts:
+      - equal:
+          path: stringData.ingress-endpoint-type
+          value: hostname
+        template: install-state-secret.yaml
+      - equal:
+          path: stringData.ingress-endpoint-value
+          value: ingress.example.com
         template: install-state-secret.yaml

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -30,7 +30,11 @@ function main() {
   const errors = [];
 
   for (const file of listTrackedFiles()) {
-    const buffer = readFileSync(join(repoRoot, file));
+    const path = join(repoRoot, file);
+    if (!existsSync(path)) {
+      continue;
+    }
+    const buffer = readFileSync(path);
     if (buffer.includes(0)) {
       continue;
     }

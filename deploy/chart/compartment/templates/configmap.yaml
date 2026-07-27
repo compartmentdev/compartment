@@ -21,15 +21,14 @@ data:
   COMPARTMENT_BASE_DOMAIN: {{ $installState.effective.platform.baseDomain | quote }}
   COMPARTMENT_CADDY_TLS_MODE: {{ $installState.effective.platform.tlsMode | quote }}
   COMPARTMENT_CADDY_HTTP_PORT: {{ .Values.ports.http | quote }}
-  COMPARTMENT_CADDY_HTTPS_PORT: {{ .Values.ports.https | quote }}
   COMPARTMENT_EDGE_BIND_HOST: "0.0.0.0"
   COMPARTMENT_EDGE_INTERNAL_HOST: {{ printf "%s-edge" (include "compartment.fullname" .) | quote }}
   COMPARTMENT_EDGE_PORT: {{ .Values.ports.edge | quote }}
   COMPARTMENT_ENV: self-hosted
   COMPARTMENT_LOG_LEVEL: {{ .Values.platform.logLevel | quote }}
   COMPARTMENT_PUBLIC_PROTOCOL: {{ $installState.effective.platform.publicProtocol | quote }}
-  COMPARTMENT_PUBLIC_HTTP_PORT: {{ .Values.service.caddy.httpPort | quote }}
-  COMPARTMENT_PUBLIC_HTTPS_PORT: {{ .Values.service.caddy.httpsPort | quote }}
+  COMPARTMENT_PUBLIC_HTTP_PORT: "80"
+  COMPARTMENT_PUBLIC_HTTPS_PORT: "443"
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: {{ .Values.platform.trustedOutboundHosts | quote }}
   COMPARTMENT_WORKER_POLL_INTERVAL_MS: {{ .Values.platform.workerPollIntervalMs | quote }}
   BUILDKIT_ADDR: {{ printf "tcp://%s-buildkit.%s.svc:%v" (include "compartment.fullname" .) .Values.buildkit.namespace .Values.ports.buildkit | quote }}

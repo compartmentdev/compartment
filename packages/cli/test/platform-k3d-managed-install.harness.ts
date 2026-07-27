@@ -3,7 +3,6 @@ import { readFile, writeFile } from 'node:fs/promises';
 import type { ClientRequest, IncomingMessage } from 'node:http';
 import { get } from 'node:https';
 import { resolve } from 'node:path';
-import { connect, type TLSSocket } from 'node:tls';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
   expectSuccessfulCommand,
@@ -19,10 +18,10 @@ const managedAcmeManagementPort: number = Number(process.env.COMPARTMENT_E2E_MAN
 const managedAcmeManagementTimeoutMs: number = 30_000;
 const managedBrokerServicePort: number = 19_000;
 
-const managedHttpsPort: string = process.env.COMPARTMENT_E2E_HTTPS_PORT ?? '18443';
+const managedHttpPort: string = process.env.COMPARTMENT_E2E_HTTP_PORT ?? '18080';
 const managedBrokerHostPort: number = Number(process.env.COMPARTMENT_E2E_MANAGED_BROKER_PORT ?? '19000');
 
-export const managedInstallApiUrl: string = `https://console.managed.compartment.test:${managedHttpsPort}`;
+export const managedInstallApiUrl: string = `http://console.managed.compartment.test:${managedHttpPort}`;
 export const managedInstallBaseDomain: string = 'managed.compartment.test';
 export const managedInstallBrokerUrl: string = `http://managed-domain-broker:${managedBrokerServicePort.toString()}`;
 export const managedInstallCertificateAuthorityPath: string = resolve(
@@ -117,67 +116,6 @@ export async function cleanupManagedInstallFixture(): Promise<void> {
   ]);
 }
 
-export async function readManagedInstallCertificateSubjectAltName(): Promise<string> {
-  const ca: Buffer = await readFile(managedInstallCertificateAuthorityPath);
-  return await new Promise<string>(
-    (resolveSubjectAltName: (subjectAltName: string) => void, rejectSubjectAltName: (error: Error) => void): void => {
-      const socket: TLSSocket = connect(
-        {
-          ca,
-          host: '127.0.0.1',
-          port: Number(managedHttpsPort),
-          rejectUnauthorized: true,
-          servername: `console.${managedInstallBaseDomain}`,
-        },
-        (): void => {
-          const certificate: X509Certificate | undefined = socket.getPeerX509Certificate();
-          socket.end();
-          if (certificate === undefined) {
-            rejectSubjectAltName(new Error('Managed HTTPS endpoint did not provide a peer certificate.'));
-            return;
-          }
-          const subjectAltName: string | undefined = certificate.subjectAltName;
-          if (subjectAltName === undefined) {
-            rejectSubjectAltName(new Error('Managed HTTPS certificate did not contain subject alternative names.'));
-            return;
-          }
-          resolveSubjectAltName(subjectAltName);
-        },
-      );
-      socket.once('error', rejectSubjectAltName);
-    },
-  );
-}
-
-export async function probeManagedInstallConsole(): Promise<void> {
-  const ca: Buffer = await readFile(managedInstallCertificateAuthorityPath);
-  await new Promise<void>((resolveProbe: () => void, rejectProbe: (error: Error) => void): void => {
-    const request: ClientRequest = get(
-      {
-        ca,
-        headers: { host: `console.${managedInstallBaseDomain}:${managedHttpsPort}` },
-        host: '127.0.0.1',
-        path: '/',
-        port: Number(managedHttpsPort),
-        rejectUnauthorized: true,
-        servername: `console.${managedInstallBaseDomain}`,
-      },
-      (response: IncomingMessage): void => {
-        response.resume();
-        if ((response.statusCode ?? 500) >= 400) {
-          rejectProbe(new Error(`Managed console probe returned HTTP ${response.statusCode ?? 'unknown'}.`));
-          return;
-        }
-        resolveProbe();
-      },
-    );
-    request.setTimeout(5_000, (): void => {
-      request.destroy(new Error('Managed console probe timed out.'));
-    });
-    request.once('error', rejectProbe);
-  });
-}
-
 async function writeManagedInstallCertificateAuthority(): Promise<void> {
   const managementCa: Buffer = await readFile(
     resolve(repositoryRoot, process.env.COMPARTMENT_E2E_PEBBLE_CA_PATH ?? '.compartment/pebble.minica.pem'),
@@ -244,16 +182,12 @@ export async function waitForManagedDomainBrokerObservation(): Promise<ManagedDo
     const response: Response = await fetch(`http://127.0.0.1:${managedBrokerHostPort.toString()}/__test/state`);
     if (response.ok) {
       const observation: ManagedDomainBrokerObservation = (await response.json()) as ManagedDomainBrokerObservation;
-      if (
-        observation.allocations.length === 1 &&
-        observation.txtWrites.length > 0 &&
-        observation.txtDeletes.length > 0
-      ) {
+      if (observation.allocations.length === 1) {
         return observation;
       }
     }
     if (Date.now() >= deadline) {
-      throw new Error('Timed out waiting for managed-domain allocation and DNS-01 cleanup.');
+      throw new Error('Timed out waiting for managed-domain allocation.');
     }
     await delay(500);
   }

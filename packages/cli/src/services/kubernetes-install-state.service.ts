@@ -1,17 +1,18 @@
-import { arch, platform, release } from 'node:os';
-import type {
-  ManagedDomainAllocationMetadata,
-  ManagedDomainAllocationOsMetadata,
-  ManagedDomainAllocationResponse,
-} from '@compartment/contracts';
-import { readCliVersion } from '../cli-build-info';
+import type { ManagedDomainAllocationResponse } from '@compartment/contracts';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
-import { resolveKubernetesPublicIngress } from './kubernetes-install-ingress.service';
+import { readManagedDomainPublicIp, resolveKubernetesPublicIngress } from './kubernetes-install-ingress.service';
+import {
+  buildManagedDomainAllocationMetadata,
+  readExistingManagedAllocation,
+  requireManagedBrokerUrl,
+  requireManagedDomainRequestedLabelSource,
+} from './kubernetes-install-managed-state.support';
 import { runObservableInstallStep } from './kubernetes-install-progress.service';
 import { allocateInstallManagedDomain } from './managed-domain.service';
 import type {
   ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
+  KubernetesInstallIngressValues,
   KubernetesInstallPlatformValues,
   KubernetesInstallSecretValues,
   KubernetesInstallState,
@@ -44,7 +45,7 @@ export function buildInitialInstallValues(
     domainMode: input.domainMode,
     installationId,
     managedDomainBrokerUrl: input.brokerUrl ?? '',
-    ...(input.domainMode === 'managed' ? { publicProtocol: 'https', tlsMode: 'managed' } : {}),
+    ...(input.domainMode === 'managed' ? { publicProtocol: 'http', tlsMode: 'managed' } : {}),
   };
   return buildInstallValues(platformValues, installToken, '');
 }
@@ -68,6 +69,10 @@ export function buildResolvedInstallValues(
     },
     installToken,
     state.managedDomainBrokerToken,
+    {
+      className: state.ingressClassName,
+      endpoint: state.ingressEndpoint ?? { type: '', value: '' },
+    },
   );
 }
 
@@ -90,6 +95,10 @@ export function buildResumableFoundationValues(
     },
     installToken,
     state.managedDomainBrokerToken,
+    {
+      className: state.ingressClassName,
+      endpoint: state.ingressEndpoint ?? { type: '', value: '' },
+    },
   );
 }
 
@@ -97,8 +106,10 @@ function buildInstallValues(
   platformValues: KubernetesInstallPlatformValues,
   installToken: string,
   managedDomainBrokerToken: string,
+  ingress?: KubernetesInstallIngressValues,
 ): KubernetesInstallSecretValues {
   return {
+    ...(ingress === undefined ? {} : { ingress }),
     platform: platformValues,
     secrets: { installToken, managedDomainBrokerToken },
   };
@@ -133,8 +144,7 @@ async function requestManagedDomainAllocation(
       brokerUrl,
       installationId: foundationInstall.installationId,
       metadata: buildManagedDomainAllocationMetadata(),
-      publicIp:
-        publicIngress.publicIngressIpv4 !== '' ? publicIngress.publicIngressIpv4 : publicIngress.publicIngressIpv6,
+      publicIp: readManagedDomainPublicIp(publicIngress),
       requestedLabelSource: requireManagedDomainRequestedLabelSource(input.managedDomainRequestedLabelSource),
     },
     input.progress,
@@ -156,7 +166,7 @@ function buildManagedInstallState(
     installationId: foundationInstall.installationId,
     managedDomainBrokerToken: allocation.acmeDnsToken,
     ...publicIngress,
-    publicProtocol: 'https',
+    publicProtocol: 'http',
     tlsMode: 'managed',
   };
 }
@@ -187,13 +197,15 @@ async function resolveInstallPublicIngress(
 ): Promise<KubernetesPublicIngress> {
   if (input.domainMode === 'custom' && isReservedKubernetesInstallLocalhostDomain(input.baseDomain)) {
     return {
+      ingressClassName: foundationInstall.ingressClassName,
+      ingressEndpoint: foundationInstall.ingressEndpoint,
       publicIngressIpv4: foundationInstall.publicIngressIpv4,
       publicIngressIpv6: foundationInstall.publicIngressIpv6,
     };
   }
   return await runObservableInstallStep(
     input.progress,
-    'Waiting for public LoadBalancer address',
+    'Waiting for Ingress endpoint',
     async (): Promise<KubernetesPublicIngress> => await discoverKubernetesPublicIngress(input, foundationInstall),
     readPublicIngressAddress,
   );
@@ -207,46 +219,14 @@ async function discoverKubernetesPublicIngress(
     kubeconfigPath: input.kubeconfigPath,
     kubeContext: input.kubeContext,
     namespace: input.namespace,
-    publicIngressIpv4: foundationInstall.publicIngressIpv4,
-    publicIngressIpv6: foundationInstall.publicIngressIpv6,
+    configuredEndpoint: foundationInstall.ingressEndpoint,
+    ingressClassName: foundationInstall.ingressClassName,
     releaseName: input.releaseName,
   });
 }
 
 function readPublicIngressAddress(ingress: KubernetesPublicIngress): string | undefined {
-  if (ingress.publicIngressIpv4 !== '') {
-    return ingress.publicIngressIpv4;
-  }
-  return ingress.publicIngressIpv6 === '' ? undefined : ingress.publicIngressIpv6;
-}
-
-function readExistingManagedAllocation(
-  existingInstall: ExistingKubernetesInstall,
-): ManagedDomainAllocationResponse | null {
-  if (existingInstall.baseDomain === '' && existingInstall.managedDomainBrokerToken === '') {
-    return null;
-  }
-  if (existingInstall.baseDomain !== '' && existingInstall.managedDomainBrokerToken !== '') {
-    return {
-      acmeDnsToken: existingInstall.managedDomainBrokerToken,
-      baseDomain: existingInstall.baseDomain,
-    };
-  }
-  throw new Error('The existing managed-domain install has incomplete allocation state.');
-}
-
-function requireManagedBrokerUrl(brokerUrl: string | undefined): string {
-  if (brokerUrl !== undefined) {
-    return brokerUrl;
-  }
-  throw new Error('Managed domain install requires a broker URL.');
-}
-
-function requireManagedDomainRequestedLabelSource(value: string | undefined): string {
-  if (value !== undefined && value !== '') {
-    return value;
-  }
-  throw new Error('Managed domain install requires an organization label source.');
+  return ingress.ingressEndpoint?.value;
 }
 
 function requireCustomBaseDomain(baseDomain: string | undefined): string {
@@ -254,14 +234,4 @@ function requireCustomBaseDomain(baseDomain: string | undefined): string {
     return baseDomain;
   }
   throw new Error('Custom-domain install requires --base-domain.');
-}
-
-function buildManagedDomainAllocationMetadata(): ManagedDomainAllocationMetadata {
-  const cliVersion: string = readCliVersion();
-  const os: ManagedDomainAllocationOsMetadata = { arch: arch(), platform: platform(), release: release() };
-  return {
-    cliVersion,
-    os,
-    runtimeVersion: cliVersion,
-  };
 }

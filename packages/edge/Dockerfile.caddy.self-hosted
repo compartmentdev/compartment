@@ -1,20 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
-ARG COMPARTMENT_CADDY_BUILDER_IMAGE=caddy:2.11.4-builder
+ARG COMPARTMENT_CADDY_BASE_IMAGE=caddy:2.11.4-alpine
 ARG COMPARTMENT_CADDY_RUNTIME_IMAGE=alpine:3.22
 
-FROM ${COMPARTMENT_CADDY_BUILDER_IMAGE} AS builder
-
-WORKDIR /src
-
-COPY packages/edge/caddy-dns-compartment-broker ./packages/edge/caddy-dns-compartment-broker
-
-RUN xcaddy build v2.11.4 \
-    --with github.com/compartmentdev/compartment/packages/edge/caddy-dns-compartment-broker=./packages/edge/caddy-dns-compartment-broker \
-    --replace github.com/go-jose/go-jose/v3=github.com/go-jose/go-jose/v3@v3.0.5 \
-    --replace golang.org/x/crypto=golang.org/x/crypto@v0.52.0 \
-    --replace golang.org/x/net=golang.org/x/net@v0.55.0 \
-    --replace google.golang.org/grpc=google.golang.org/grpc@v1.82.1
+FROM ${COMPARTMENT_CADDY_BASE_IMAGE} AS caddy
 
 FROM ${COMPARTMENT_CADDY_RUNTIME_IMAGE}
 
@@ -27,14 +16,9 @@ RUN apk upgrade --no-cache \
   && apk add --no-cache ca-certificates libcap mailcap \
   && mkdir -p /config /data
 
-COPY --from=builder /src/caddy /usr/bin/caddy
+COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
 RUN setcap cap_net_bind_service=+ep /usr/bin/caddy
-COPY packages/edge/Caddyfile.custom-cert /etc/caddy/Caddyfile.custom-cert
-COPY packages/edge/Caddyfile.custom-http /etc/caddy/Caddyfile.custom-http
-COPY packages/edge/Caddyfile.internal /etc/caddy/Caddyfile.internal
-COPY packages/edge/Caddyfile.managed /etc/caddy/Caddyfile.managed
-COPY --chmod=755 packages/edge/caddy-entrypoint.sh /usr/bin/compartment-caddy-entrypoint
+COPY packages/edge/Caddyfile /etc/caddy/Caddyfile
 
-VOLUME /data /config
-
-ENTRYPOINT ["/usr/bin/compartment-caddy-entrypoint"]
+ENTRYPOINT ["/usr/bin/caddy"]
+CMD ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

@@ -3,7 +3,6 @@
 {{- $claims := dict "postgres" .Values.storage.postgres "registry" .Values.storage.registry -}}
 {{- if eq $installState.effective.platform.startupStage "full" -}}
 {{- $_ := set $claims "api" .Values.storage.api -}}
-{{- $_ := set $claims "caddy" .Values.storage.caddy -}}
 {{- if .Values.edge.snapshots.enabled -}}
 {{- $_ := set $claims "edge-snapshots" .Values.storage.edgeSnapshots -}}
 {{- end -}}

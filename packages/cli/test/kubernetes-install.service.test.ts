@@ -1,11 +1,9 @@
 import { readFile, stat, writeFile } from 'node:fs/promises';
-import type { LookupAddress } from 'node:dns';
 import type { ManagedDomainAllocationRequest } from '@compartment/contracts';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { CommandResult } from '../src/command-runner.types';
 import { createCommandProgress } from '../src/commands/command.progress';
 import { deployAndWaitForKubernetesInstall } from '../src/services/kubernetes-install.service';
-import { resolveKubernetesPublicIngress } from '../src/services/kubernetes-install-ingress.service';
 import { runKubernetesHelmInstallStage } from '../src/services/kubernetes-install-helm.service';
 import { waitForPublicControlPlane } from '../src/services/kubernetes-install-public.service';
 import type { KubernetesInstallProgressReporter } from '../src/services/kubernetes-install-progress.types';
@@ -15,18 +13,13 @@ import type {
   KubernetesInstallDeploymentResult,
   KubernetesInstallSecretValues,
   KubernetesInstallState,
-  KubernetesPublicIngress,
-  KubernetesPublicIngressResolutionInput,
 } from '../src/services/kubernetes-install.service.types';
 import type { CommandProgress } from '../src/commands/command.progress.types';
 import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
 type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
 type RunCommandCall = [command: readonly string[]];
-type LookupHostname = (hostname: string, options: { all: true; verbatim: true }) => Promise<LookupAddress[]>;
-
 interface KubernetesInstallServiceMocks {
-  lookup: Mock<LookupHostname>;
   runCommand: Mock<RunCommand>;
   writeVerifiedImages: Mock<(input: ImageTrustWriteInput) => Promise<void>>;
 }
@@ -46,7 +39,6 @@ interface InstallHarnessState {
 
 const mocks: KubernetesInstallServiceMocks = vi.hoisted(
   (): KubernetesInstallServiceMocks => ({
-    lookup: vi.fn<LookupHostname>(),
     runCommand: vi.fn<RunCommand>(),
     writeVerifiedImages: vi.fn(async (input: ImageTrustWriteInput): Promise<void> => {
       await writeFile(input.outputPath, JSON.stringify({ images: {} }), { mode: 0o600 });
@@ -63,7 +55,6 @@ vi.mock('../src/command-runner', (): object => ({
 vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
   writeVerifiedKubernetesInstallImageValues: mocks.writeVerifiedImages,
 }));
-vi.mock('node:dns/promises', (): object => ({ lookup: mocks.lookup }));
 
 const managedDeploymentInput: KubernetesInstallDeploymentInput = {
   acmeEmail: 'admin@example.com',
@@ -79,7 +70,6 @@ const managedDeploymentInput: KubernetesInstallDeploymentInput = {
 describe('Kubernetes install deployment', (): void => {
   afterEach((): void => {
     mocks.runCommand.mockReset();
-    mocks.lookup.mockReset();
     mocks.writeVerifiedImages.mockClear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -94,7 +84,7 @@ describe('Kubernetes install deployment', (): void => {
     const result: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(managedDeploymentInput);
 
     expect(result).toMatchObject({
-      apiUrl: 'https://console.acme.compartment.run',
+      apiUrl: 'http://console.acme.compartment.run',
       baseDomain: 'acme.compartment.run',
     });
     expect(result.installToken).toMatch(/^[\da-f]{64}$/u);
@@ -117,6 +107,7 @@ describe('Kubernetes install deployment', (): void => {
         baseDomain: 'acme.compartment.run',
         publicIngressIpv4: detectedPublicIpv4,
         publicIngressIpv6: '',
+        publicProtocol: 'http',
         tlsMode: 'managed',
       },
       secrets: { managedDomainBrokerToken: 'acme-token' },
@@ -297,7 +288,7 @@ describe('Kubernetes install deployment', (): void => {
       expect.stringMatching(/^Inspecting existing installation.* \u2713 /u),
       expect.stringMatching(/^Preparing Helm chart and verifying images.* \u2713 /u),
       expect.stringMatching(/^Installing foundation \(postgres, registry\).* \u2713 /u),
-      expect.stringMatching(/^Waiting for public LoadBalancer address.* \u2713 .*8\.8\.8\.8/u),
+      expect.stringMatching(/^Waiting for Ingress endpoint.* \u2713 .*8\.8\.8\.8/u),
       expect.stringMatching(/^Requesting managed domain.* \u2713 /u),
       expect.stringMatching(/^Saving installation configuration.* \u2713 /u),
       expect.stringMatching(/^Waiting for platform pods \(api, worker, caddy\).* \u2713 /u),
@@ -375,7 +366,7 @@ describe('Kubernetes install deployment', (): void => {
     );
   });
 
-  it('reapplies operator ingress values when a retained foundation has no address', async (): Promise<void> => {
+  it('observes Ingress status when a retained foundation has no endpoint', async (): Promise<void> => {
     const releaseValues: string = managedInstallValuesWithoutIngress();
     const state: InstallHarnessState = createInstallHarnessState(releaseValues);
     mocks.runCommand.mockImplementation(createInstallCommandHandler(state, configuredPublicIpv4));
@@ -392,8 +383,11 @@ describe('Kubernetes install deployment', (): void => {
     await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).resolves.toMatchObject({
       baseDomain: 'acme.compartment.run',
     });
-    expect(state.events).toEqual(['helm:foundation', 'helm:foundation', 'helm:full']);
-    expect(readResolvedInstallValues(state).platform.publicIngressIpv4).toBe(configuredPublicIpv4);
+    expect(state.events).toEqual(['helm:foundation', 'kubectl:ingress', 'helm:foundation', 'helm:full']);
+    expect(readResolvedInstallValues(state)).toMatchObject({
+      ingress: { endpoint: { type: 'A', value: detectedPublicIpv4 } },
+      platform: { publicIngressIpv4: detectedPublicIpv4 },
+    });
   });
 
   it('resumes owner bootstrap without rendering an existing full release', async (): Promise<void> => {
@@ -558,7 +552,7 @@ describe('Kubernetes install deployment', (): void => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).rejects.toThrow(
-      'platform.publicIngressIpv4 must be empty or a public IPv4 address',
+      'ingress.endpoint must contain a public A or AAAA address, or a valid hostname',
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -648,71 +642,6 @@ describe('Kubernetes Helm install timeout diagnostics', (): void => {
   });
 });
 
-describe('Kubernetes public ingress discovery', (): void => {
-  afterEach((): void => {
-    mocks.runCommand.mockReset();
-    mocks.lookup.mockReset();
-    vi.useRealTimers();
-  });
-
-  it('retries a LoadBalancer hostname while its DNS record propagates', async (): Promise<void> => {
-    vi.useFakeTimers();
-    mocks.runCommand.mockResolvedValue(successfulCommandResult(loadBalancerHostnameServiceList()));
-    mocks.lookup
-      .mockRejectedValueOnce(new Error('DNS record is not ready'))
-      .mockResolvedValueOnce([{ address: detectedPublicIpv4, family: 4 }]);
-
-    const resolution: Promise<{ publicIngressIpv4: string; publicIngressIpv6: string }> =
-      resolveKubernetesPublicIngress({
-        namespace: 'compartment',
-        publicIngressIpv4: '',
-        publicIngressIpv6: '',
-        releaseName: 'compartment',
-      });
-    await vi.advanceTimersByTimeAsync(2_000);
-
-    await expect(resolution).resolves.toEqual({ publicIngressIpv4: detectedPublicIpv4, publicIngressIpv6: '' });
-    expect(mocks.lookup).toHaveBeenCalledTimes(2);
-  });
-
-  it('times out LoadBalancer discovery with a cause and operator advice', async (): Promise<void> => {
-    vi.useFakeTimers();
-    mocks.runCommand.mockResolvedValue(successfulCommandResult(loadBalancerAddressList([])));
-    const resolution: Promise<KubernetesPublicIngress> = resolveKubernetesPublicIngress({
-      namespace: 'compartment',
-      publicIngressIpv4: '',
-      publicIngressIpv6: '',
-      releaseName: 'compartment',
-    });
-    const failure: Promise<void> = expect(resolution).rejects.toThrow(
-      'No public LoadBalancer address after 300s. Check that ports 80/443 are free and that the cluster has a LoadBalancer provider, then re-run install to resume.',
-    );
-    await vi.advanceTimersByTimeAsync(300_000);
-    await failure;
-  });
-
-  it('selects a deterministic address from reordered LoadBalancer ingress', async (): Promise<void> => {
-    const firstAddress: string = [8, 8, 8, 8].join('.');
-    const secondAddress: string = [8, 8, 4, 4].join('.');
-    mocks.runCommand
-      .mockResolvedValueOnce(successfulCommandResult(loadBalancerAddressList([firstAddress, secondAddress])))
-      .mockResolvedValueOnce(successfulCommandResult(loadBalancerAddressList([secondAddress, firstAddress])));
-    const input: KubernetesPublicIngressResolutionInput = {
-      namespace: 'compartment',
-      publicIngressIpv4: '',
-      publicIngressIpv6: '',
-      releaseName: 'compartment',
-    };
-
-    await expect(resolveKubernetesPublicIngress(input)).resolves.toMatchObject({
-      publicIngressIpv4: secondAddress,
-    });
-    await expect(resolveKubernetesPublicIngress(input)).resolves.toMatchObject({
-      publicIngressIpv4: secondAddress,
-    });
-  });
-});
-
 describe('Kubernetes public control-plane readiness', (): void => {
   afterEach((): void => {
     vi.useRealTimers();
@@ -797,7 +726,7 @@ function createInstallCommandHandler(
         return successfulCommandResult(retainedInstallStateSecretList(state.retainedState));
       }
       state.events.push('kubectl:ingress');
-      return successfulCommandResult(loadBalancerServiceList());
+      return successfulCommandResult(ingressAddressList([detectedPublicIpv4]));
     }
     if (command[1] === 'list') {
       return successfulCommandResult(state.releaseValues === null ? '[]' : deployedReleaseList());
@@ -842,6 +771,11 @@ async function handleHelmUpgrade(
 
 function mergeReleaseValues(values: KubernetesInstallSecretValues, stage: string, configuredIpv4: string): string {
   return JSON.stringify({
+    ingress:
+      values.ingress ??
+      (configuredIpv4 === ''
+        ? { className: 'traefik', endpoint: { type: '', value: '' } }
+        : { className: 'traefik', endpoint: { type: 'A', value: configuredIpv4 } }),
     platform: {
       ...values.platform,
       publicIngressIpv4: values.platform.publicIngressIpv4 ?? configuredIpv4,
@@ -935,6 +869,10 @@ function readOptionValueFromEnd(command: readonly string[], option: string, occu
 
 function existingInstallValues(stage: 'foundation' | 'full', domainMode: 'custom' | 'managed'): string {
   return JSON.stringify({
+    ingress: {
+      className: 'traefik',
+      endpoint: { type: 'A', value: detectedPublicIpv4 },
+    },
     platform: {
       acmeEmail: 'admin@example.com',
       baseDomain: domainMode === 'managed' ? 'acme.compartment.run' : 'apps.example.com',
@@ -960,11 +898,16 @@ function managedInstallValuesWithoutIngress(): string {
   ) as KubernetesInstallSecretValues;
   values.platform.publicIngressIpv4 = '';
   values.platform.publicIngressIpv6 = '';
+  values.ingress = { className: 'traefik', endpoint: { type: '', value: '' } };
   return JSON.stringify(values);
 }
 
 function legacyCustomInstallValues(stage: 'foundation' | 'full'): string {
   return JSON.stringify({
+    ingress: {
+      className: 'traefik',
+      endpoint: { type: 'A', value: detectedPublicIpv4 },
+    },
     platform: {
       acmeEmail: '',
       baseDomain: 'apps.example.com',
@@ -980,6 +923,10 @@ function legacyCustomInstallValues(stage: 'foundation' | 'full'): string {
 
 function existingLocalhostInstallValues(): string {
   return JSON.stringify({
+    ingress: {
+      className: 'traefik',
+      endpoint: { type: '', value: '' },
+    },
     platform: {
       acmeEmail: 'admin@example.com',
       baseDomain: 'compartment.localhost',
@@ -1006,6 +953,14 @@ function readRetainedState(releaseValues: string): KubernetesInstallState {
     brokerUrl: values.platform.managedDomainBrokerUrl,
     domainMode: values.platform.domainMode,
     installationId: values.platform.installationId,
+    ingressClassName: values.ingress?.className ?? 'traefik',
+    ingressEndpoint:
+      values.ingress === undefined || values.ingress.endpoint.type === ''
+        ? null
+        : {
+            type: values.ingress.endpoint.type,
+            value: values.ingress.endpoint.value,
+          },
     managedDomainBrokerToken: values.secrets.managedDomainBrokerToken,
     publicIngressIpv4: values.platform.publicIngressIpv4 ?? '',
     publicIngressIpv6: values.platform.publicIngressIpv6 ?? '',
@@ -1026,6 +981,9 @@ function retainedInstallStateSecretList(state: KubernetesInstallState | null): s
           'base-domain': encodeSecretValue(state.baseDomain),
           'domain-mode': encodeSecretValue(state.domainMode),
           'installation-id': encodeSecretValue(state.installationId),
+          'ingress-class-name': encodeSecretValue(state.ingressClassName),
+          'ingress-endpoint-type': encodeSecretValue(state.ingressEndpoint?.type ?? ''),
+          'ingress-endpoint-value': encodeSecretValue(state.ingressEndpoint?.value ?? ''),
           'managed-domain-broker-token': encodeSecretValue(state.managedDomainBrokerToken),
           'managed-domain-broker-url': encodeSecretValue(state.brokerUrl),
           'public-ingress-ipv4': encodeSecretValue(state.publicIngressIpv4),
@@ -1042,28 +1000,10 @@ function encodeSecretValue(value: string): string {
   return Buffer.from(value).toString('base64');
 }
 
-function loadBalancerServiceList(): string {
-  return JSON.stringify({
-    items: [{ spec: { type: 'LoadBalancer' }, status: { loadBalancer: { ingress: [{ ip: detectedPublicIpv4 }] } } }],
-  });
-}
-
-function loadBalancerHostnameServiceList(): string {
+function ingressAddressList(addresses: readonly string[]): string {
   return JSON.stringify({
     items: [
       {
-        spec: { type: 'LoadBalancer' },
-        status: { loadBalancer: { ingress: [{ hostname: 'ingress.example.com' }] } },
-      },
-    ],
-  });
-}
-
-function loadBalancerAddressList(addresses: readonly string[]): string {
-  return JSON.stringify({
-    items: [
-      {
-        spec: { type: 'LoadBalancer' },
         status: { loadBalancer: { ingress: addresses.map((ip: string): { ip: string } => ({ ip })) } },
       },
     ],

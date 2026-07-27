@@ -57,18 +57,32 @@ tests:
       - failedTemplate:
           errorMessage: platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured
 
-  - it: requires an ingress address for a public installation
+  - it: rejects an endpoint type that does not match its value
     set:
-      platform:
-        startupStage: full
-        installationId: test-public
-        baseDomain: apps.example.com
-        publicProtocol: https
-        publicIngressIpv4: ''
-        publicIngressIpv6: ''
+      ingress:
+        endpoint:
+          type: A
+          value: ingress.example.com
     asserts:
       - failedTemplate:
-          errorMessage: platform.publicIngressIpv4 or platform.publicIngressIpv6 is required for a public installation
+          errorPattern: ingress.endpoint.value.*ipv4
+
+  - it: rejects removed public Caddy Service options
+    set:
+      service:
+        caddy:
+          type: LoadBalancer
+    asserts:
+      - failedTemplate:
+          errorPattern: service.*additional properties.*caddy
+
+  - it: rejects the removed Caddy HTTPS port
+    set:
+      ports:
+        https: 8443
+    asserts:
+      - failedTemplate:
+          errorPattern: ports.*additional properties.*https
 
   - it: rejects malformed IPv4 syntax through the values schema
     set:

@@ -7,7 +7,7 @@ import { buildHelmCommand, buildKubectlCommand } from '../src/services/kubernete
 import { resolveKubernetesInstallKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service';
 import type { ResolvedKubernetesKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service.types';
 import { runKubernetesInstallPreflight } from '../src/services/kubernetes-install-preflight.service';
-import type { KubernetesPublicIngressResolutionInput } from '../src/services/kubernetes-install.service.types';
+import type { KubernetesInstallDeploymentInput } from '../src/services/kubernetes-install.service.types';
 import type {
   KubernetesInstallPreflightInput,
   KubernetesInstallPreflightResult,
@@ -204,12 +204,13 @@ describe('Kubernetes install kubeconfig resolution', (): void => {
 
 describe('Kubernetes install cluster preflight', (): void => {
   it('propagates the selected kubeconfig to Helm and later kubectl commands', (): void => {
-    const target: KubernetesPublicIngressResolutionInput = {
+    const target: Pick<
+      KubernetesInstallDeploymentInput,
+      'kubeconfigPath' | 'kubeContext' | 'namespace' | 'releaseName'
+    > = {
       kubeconfigPath: '/tmp/k3s.yaml',
       kubeContext: 'default',
       namespace: 'compartment',
-      publicIngressIpv4: '',
-      publicIngressIpv6: '',
       releaseName: 'compartment',
     };
 

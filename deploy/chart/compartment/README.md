@@ -24,9 +24,9 @@ compartment install \
 ```
 
 The command prompts for the owner email, organization, and password. Without `--base-domain`, it creates the
-foundation release, waits for the Caddy LoadBalancer address, allocates a managed domain, persists the installation
-identity, domain allocation, and ingress addresses in a retained Kubernetes Secret, and renders the full release with
-managed DNS-01 TLS. Source checkouts do not contain an embedded chart; pass `--chart
+foundation release, observes the selected Ingress status, allocates a managed domain, persists the installation
+identity, domain allocation, ingress class, and typed endpoint in a retained Kubernetes Secret, and renders the full
+release. Source checkouts do not contain an embedded chart; pass `--chart
 ./deploy/chart/compartment` when running a source-built CLI.
 
 Retry the command with the same release coordinates when it stops before confirming owner creation. It resumes a
@@ -52,8 +52,9 @@ helm upgrade --install compartment ./deploy/chart/compartment \
 
 At minimum, decide and persist these values:
 
-- `service.caddy.type` and the external ingress or load-balancer configuration; the default is a LoadBalancer on
-  external ports 80 and 443 with Caddy listening internally on 8080 and 8443;
+- `ingress.className` plus `ingress.controller.namespace` and `ingress.controller.podSelector` for the
+  customer-provided Ingress Controller and, when that controller does not publish status, an explicit
+  `ingress.endpoint` typed as `A`, `AAAA`, or `hostname`;
 - `storage.storageClass` and the PVC sizes under `storage`;
 - verified digests for the four platform images;
 - matching digests when overriding any bundled PostgreSQL, registry, BuildKit, kubectl, or Vector repository or tag;
@@ -66,24 +67,17 @@ login also has `source`, `account`, and `sourceAccount` scopes, while activation
 `subject`, and `sourceSubject` scopes. Those scoped controls add a `cooldown`. The values in `values.yaml` preserve the
 default protection policy; change them only when your traffic and incident-response requirements justify it.
 
-Managed TLS uses typed `platform.acmeIssuer`, `platform.acmeCaUrl`, `platform.acmeEmail`, and
-`platform.managedDomainBrokerUrl` values. The chart owns the ACME issuer and CA defaults; the CLI supplies the owner
-email and broker credential. At runtime the token is held by the retained install-state Secret and projected into API
-and Caddy with individual Secret references, never a ConfigMap. Helm also stores supplied secret values in its
-Kubernetes release revision Secrets, so restrict access to both resource classes. A full public render requires its
-base domain, installation ID, ingress address, HTTPS protocol, ACME settings, and external 80/443 ports; the values
-schema rejects malformed IP, URL, and email syntax. The CLI also rejects private or reserved ingress addresses. Direct
-Helm recovery bypasses that routability check, so the operator must verify that supplied ingress addresses are public.
+The retained managed-domain and custom-certificate values remain available to the API during the staged domain
+lifecycle migration. Caddy no longer reads those credentials or certificates: it has one internal HTTP listener
+behind the selected Ingress. Public TLS ownership moves to the Ingress layer in Phase 3. Helm stores supplied secret
+values in its Kubernetes release revision Secrets, so restrict access to both release Secrets and the retained
+install-state Secret.
 
-For an operator-owned base domain, pass `--base-domain`. Set `platform.publicIngressIpv4` or
-`platform.publicIngressIpv6` when the Service is not a LoadBalancer. For Caddy-managed custom certificates, create a
-Kubernetes TLS Secret containing `tls.crt` and `tls.key`, then set `platform.tlsMode=custom-cert` and
-`customTls.existingSecret=<name>`. Set `platform.acmeEmail` as well; Caddy uses it when issuing on-demand certificates
-for tenant custom domains that are not covered by the platform certificate. The same Secret is mounted read-only in
-API and Caddy. The chart can also create the Secret from `customTls.certificate` and `customTls.privateKey`, but do not
-commit private key material to a values file. Inline material is also retained in Helm release revision Secrets;
-prefer `customTls.existingSecret`. After rotating an existing Secret in place, change `platform.rolloutMarker` to
-restart API and Caddy so Caddy reloads the certificate.
+For an operator-owned base domain, pass `--base-domain`. The chart creates one host-scoped Ingress containing the exact
+`console.<baseDomain>` rule and the canonical `*.<baseDomain>` application rule. It never creates a hostless rule,
+controller-specific annotation, or default backend. The Caddy Service is always ClusterIP and exposes only its
+internal HTTP port. A NetworkPolicy admits that port only from Pods matching the configured controller namespace and
+labels; update both controller fields when the selected IngressClass is not the default k3s Traefik installation.
 
 The `<release>-install-state` Secret and registry-auth Service have Helm's `keep` resource policy. An uninstall
 followed by reinstall with the same namespace and release name reuses the installation ID, managed-domain allocation,
@@ -91,8 +85,9 @@ and registry ClusterIP. Keep the namespace and registry-auth Service during this
 intentionally abandon only the install identity, uninstall the release and delete the Secret selected by both
 `app.kubernetes.io/instance=<release>` and `app.kubernetes.io/component=install-state` before reinstalling.
 
-The chart's Caddy Service is the only public entrypoint. It never routes `/internal/*`. Point both
-`console.<baseDomain>` and `*.<baseDomain>` at that entrypoint.
+The customer Ingress Controller is the public entrypoint. It routes only the two installation host families to Caddy;
+Caddy preserves the public control-plane allowlist, sends every application request through Edge authorization, and
+never exposes `/internal/*`, health, operator, registry, or BuildKit routes.
 
 ## System-domain operations
 
@@ -114,7 +109,9 @@ compartment system domain activate --values compartment-values.yaml
 
 For `custom-cert`, run `attach-cert --cert-file <path> --key-file <path> --values <path>` before verification. The CLI
 stores the PEM files in a Kubernetes TLS Secret and mounts the pending operation path in API. Activation mounts the
-active certificate in API and Caddy, finalizes the private API operation, and then commits the retained generation.
+active certificate in API, finalizes the private API operation, and then commits the retained generation. Caddy never
+mounts that Secret after the shared-Ingress cutover; moving these retained system-domain operations to Ingress TLS is
+the Phase 3 migration.
 The first Helm update switches runtime resources while retained install state remains on the previous generation. If
 API activation then fails, fix the reported condition and rerun `activate`; the idempotent retry repairs the Helm
 release and retained state. Domain generation prevents an older Helm render from replacing the active domain. The
@@ -122,8 +119,9 @@ chart keeps the first managed allocation in the same Secret so
 `system domain reset-managed --values <path>` can restore it.
 
 `set` and `verify` do not roll workloads. `attach-cert` rolls API to mount pending certificate material; `activate` and
-`reset-managed` roll API, Edge, and Caddy. Worker and project-provisioner pods remain running. If Helm or readiness
-fails, rerun the command after fixing the cluster condition.
+`reset-managed` currently roll API, Edge, and Caddy through their shared domain-generation checksum even though Caddy
+no longer consumes certificate material. Worker and project-provisioner pods remain running. If Helm or readiness fails,
+rerun the command after fixing the cluster condition.
 
 Use `compartment system issue-password-reset --email <email>` to recover an eligible local-password account, including
 the owner. The CLI reaches the private

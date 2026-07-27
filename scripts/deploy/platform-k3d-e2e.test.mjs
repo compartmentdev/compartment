@@ -5,11 +5,12 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildPlatformK3dClusterCreateArgs,
   isConsoleReadyStatus,
-  parseDockerImageCommand,
   parseK3dClusterNames,
   parseLoadedImageRefs,
   readPlatformK3dCommand,
+  readPlatformK3dCertManagerManifestUrl,
   readPlatformK3dEnvironment,
   renderK3dRegistryConfig,
   renderManagedPlatformK3dValues,
@@ -29,6 +30,19 @@ import {
 } from './platform-k3d-e2e-support.mjs';
 
 describe('platform k3d e2e command boundary', () => {
+  it('routes public ports through the k3d load balancer with Traefik enabled', () => {
+    const args = buildPlatformK3dClusterCreateArgs();
+
+    expect(args).toContain('127.0.0.1:18080:80@loadbalancer');
+    expect(args).toContain('127.0.0.1:18443:443@loadbalancer');
+    expect(args.join(' ')).not.toContain('disable=traefik');
+    expect(args.join(' ')).not.toContain('30080@server');
+    expect(args.join(' ')).not.toContain('30443@server');
+    expect(readPlatformK3dCertManagerManifestUrl()).toBe(
+      'https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml',
+    );
+  });
+
   it('removes container-owned anonymous volumes during cleanup', () => {
     expect(buildDockerContainerRemovalArgs('managed-caddy-build')).toEqual([
       'container',
@@ -37,16 +51,6 @@ describe('platform k3d e2e command boundary', () => {
       '--volumes',
       'managed-caddy-build',
     ]);
-  });
-
-  it('preserves validated source image runtime commands for managed Caddy commits', () => {
-    expect(parseDockerImageCommand('["/usr/bin/entrypoint"]', 'entrypoint')).toEqual(['/usr/bin/entrypoint']);
-    expect(parseDockerImageCommand('["caddy","run"]', 'command')).toEqual(['caddy', 'run']);
-    expect(parseDockerImageCommand('null', 'command', true)).toEqual([]);
-    expect(() => parseDockerImageCommand('null', 'entrypoint')).toThrow(
-      'Expected entrypoint to be a non-empty JSON command array.',
-    );
-    expect(() => parseDockerImageCommand('{', 'command')).toThrow('Expected command to be a JSON command array.');
   });
 
   it('accepts the up action with built images by default', () => {
@@ -272,11 +276,9 @@ describe('platform k3d e2e command boundary', () => {
 
     expect(values).toContain('baseDomain: compartment.localhost');
     expect(values).toContain('publicProtocol: http');
-    expect(values).toContain('type: NodePort');
-    expect(values).toContain('httpPort: 80');
-    expect(values).toContain('httpsPort: 443');
-    expect(values).toContain('httpNodePort: 30080');
-    expect(values).toContain('httpsNodePort: 30443');
+    expect(values).toContain('className: traefik');
+    expect(values).not.toContain('NodePort');
+    expect(values).not.toContain('service:');
     expect(values).toContain('namespace: compartment-build');
     expect(values).toContain('repository: k3d-compartment-e2e-registry:15500/compartment-api');
     expect(values).toContain(`digest: sha256:${'a'.repeat(64)}`);
@@ -284,21 +286,20 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).not.toContain('startupStage:');
   });
 
-  it('writes isolated managed-install values with the ACME fixture and verified digests', () => {
-    const values = renderManagedPlatformK3dValues(
-      {
-        api: `sha256:${'a'.repeat(64)}`,
-        caddy: `sha256:${'d'.repeat(64)}`,
-        edge: `sha256:${'c'.repeat(64)}`,
-        worker: `sha256:${'b'.repeat(64)}`,
-      },
-      `sha256:${'e'.repeat(64)}`,
-    );
+  it('writes isolated managed-install values with a typed ingress endpoint and verified digests', () => {
+    const values = renderManagedPlatformK3dValues({
+      api: `sha256:${'a'.repeat(64)}`,
+      caddy: `sha256:${'d'.repeat(64)}`,
+      edge: `sha256:${'c'.repeat(64)}`,
+      worker: `sha256:${'b'.repeat(64)}`,
+    });
 
-    expect(values).toContain('acmeCaUrl: https://pebble:14000/dir');
+    expect(values).toContain('className: traefik');
+    expect(values).toContain('type: A');
+    expect(values).toContain('value: 8.8.4.4');
     expect(values).toContain('publicIngressIpv4: 8.8.4.4');
     expect(values).toContain('namespace: compartment-managed-e2e-build');
-    expect(values).toContain(`digest: sha256:${'e'.repeat(64)}`);
+    expect(values).toContain(`digest: sha256:${'d'.repeat(64)}`);
     expect(values).not.toContain('compartment.localhost');
     expect(values).not.toContain('custom-http');
   });
