@@ -25,7 +25,6 @@ Commands:
                                   rollout
   update [options]                Verify and update the Kubernetes platform
                                   images
-  registry-mirror                 Manage the local k3s registry mirror
   help [command]                  display help for command
 ```
 
@@ -36,4 +35,3 @@ Commands:
 - [compartment system status](/reference/generated/cli/system/status/)
 - [compartment system restart](/reference/generated/cli/system/restart/)
 - [compartment system update](/reference/generated/cli/system/update/)
-- [compartment system registry-mirror](/reference/generated/cli/system/registry-mirror/)

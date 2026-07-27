@@ -1,8 +1,7 @@
 import { hasText } from './text';
 
 interface SelfHostedGeneratedSecretEnvironment {
-  readonly COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD?: string | undefined;
-  readonly COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD?: string | undefined;
+  readonly COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY?: string | undefined;
   readonly COMPARTMENT_DATABASE_URL?: string | undefined;
   readonly COMPARTMENT_EDGE_TOKEN?: string | undefined;
   readonly COMPARTMENT_ENV?: string | undefined;
@@ -19,8 +18,7 @@ interface SelfHostedGeneratedSecretEnvironmentValidationOptions {
 }
 
 type GeneratedSecretVariableName =
-  | 'COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD'
-  | 'COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD'
+  | 'COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY'
   | 'COMPARTMENT_EDGE_TOKEN'
   | 'COMPARTMENT_INSTALL_TOKEN'
   | 'COMPARTMENT_POSTGRES_PASSWORD'
@@ -28,8 +26,7 @@ type GeneratedSecretVariableName =
   | 'COMPARTMENT_SYSTEM_TOKEN';
 
 const generatedSecretVariableNames: readonly GeneratedSecretVariableName[] = [
-  'COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD',
-  'COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD',
+  'COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY',
   'COMPARTMENT_EDGE_TOKEN',
   'COMPARTMENT_INSTALL_TOKEN',
   'COMPARTMENT_POSTGRES_PASSWORD',
@@ -37,8 +34,7 @@ const generatedSecretVariableNames: readonly GeneratedSecretVariableName[] = [
   'COMPARTMENT_SYSTEM_TOKEN',
 ];
 const artifactRegistryGeneratedSecretVariableNames: ReadonlySet<GeneratedSecretVariableName> = new Set([
-  'COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD',
-  'COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD',
+  'COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY',
 ]);
 const generatedSecretHexPattern: RegExp = /^[0-9a-fA-F]{48,}$/u;
 const generatedSecret64HexPattern: RegExp = /^[0-9a-fA-F]{64}$/u;

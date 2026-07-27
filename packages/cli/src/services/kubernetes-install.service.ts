@@ -23,6 +23,7 @@ import {
 } from './kubernetes-install-runtime.support';
 import { mergeRetainedKubernetesInstallState } from './kubernetes-install-retained-state.service';
 import { buildResolvedInstallValues, resolveKubernetesInstallState } from './kubernetes-install-state.service';
+import { verifyKubernetesInstallRegistryNodePull } from './kubernetes-install-registry-verification.service';
 import type {
   ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
@@ -114,6 +115,11 @@ async function deployResolvedKubernetesInstall(
     'Waiting for platform pods (api, worker, caddy)',
     async (): Promise<string> => await deployFullKubernetesInstall(input, material, state),
   );
+  await runObservableInstallStep(
+    input.progress,
+    'Verifying private registry pull on every node',
+    async (): Promise<void> => await verifyKubernetesInstallRegistryNodePull(input),
+  );
   return await finishKubernetesInstall(apiUrl, installToken, state.baseDomain, input.domainMode, input.progress);
 }
 
@@ -168,6 +174,7 @@ async function resumeKubernetesOwnerBootstrap(
   existingInstall: ExistingKubernetesInstall,
 ): Promise<KubernetesInstallDeploymentResult> {
   const baseDomain: string = requireExistingBaseDomain(existingInstall);
+  await verifyKubernetesInstallRegistryNodePull(input);
   return await finishKubernetesInstall(
     resolveKubernetesInstallControlPlaneUrl(input.apiUrl, baseDomain, existingInstall.publicProtocol),
     requireExistingInstallToken(existingInstall),
@@ -189,5 +196,6 @@ async function adoptExistingKubernetesInstall(
   const state: KubernetesInstallState = await resolveKubernetesInstallState(input, foundationInstall);
   const apiUrl: string = resolveKubernetesInstallControlPlaneUrl(input.apiUrl, state.baseDomain, state.publicProtocol);
   await materializeAdoptedKubernetesInstall(input, installToken, state);
+  await verifyKubernetesInstallRegistryNodePull(input);
   return await finishKubernetesInstall(apiUrl, installToken, state.baseDomain, input.domainMode, input.progress);
 }

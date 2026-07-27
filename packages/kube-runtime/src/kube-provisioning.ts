@@ -1,4 +1,4 @@
-import { kubeNamespaceName } from './kube-naming';
+import { kubeNamespaceName, kubeSecretName } from './kube-naming';
 import { projectLimitRangeManifest } from './kube-limit-range-projection';
 import { projectNetworkPolicyManifests } from './kube-network-policy-projection';
 import { registryPullSecretManifest } from './kube-secret-projection';
@@ -28,10 +28,21 @@ export function projectNamespaceProvisioningBundle(row: ProjectNamespaceProvisio
         namespaceId: row.namespaceId,
         secretId: row.registryPullCredentials.secretId,
       }),
+      applicationServiceAccountManifest(namespace, row.registryPullCredentials.secretId),
       projectLimitRangeManifest(namespace, row.namespaceId, row.projectId),
       ...projectNetworkPolicyManifests(namespace, row.namespaceId, row.projectId, row.networkPolicy),
       roleBindingManifest(controllerName, namespace, [row.workerServiceAccount]),
     ],
+  };
+}
+
+function applicationServiceAccountManifest(namespace: string, imagePullSecretId: string): KubeManifest {
+  return {
+    apiVersion: 'v1',
+    automountServiceAccountToken: false,
+    imagePullSecrets: [{ name: kubeSecretName(imagePullSecretId) }],
+    kind: 'ServiceAccount',
+    metadata: { name: namespace, namespace },
   };
 }
 

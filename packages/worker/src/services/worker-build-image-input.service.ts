@@ -1,4 +1,4 @@
-import { type WorkerClaimedDeployment } from '@compartment/contracts';
+import { buildCompartmentArtifactImageRepository, type WorkerClaimedDeployment } from '@compartment/contracts';
 import {
   type DockerBuildImageInput,
   type DockerProgressLine,
@@ -7,6 +7,8 @@ import {
 import type { CompartmentRequester } from '@compartment/sdk';
 import { readWorkerArtifactRegistryInternalHost } from '../worker-artifact-registry';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
+import { issueBuildPushCredential } from '../registry-credentials';
+import type { RegistryCredential } from '../registry-credentials.types';
 import { appendDeploymentLogLineSafely, buildDeploymentEventContext } from './worker-deployment-event.service';
 import type { WorkerDeploymentEventContext } from './worker-deployment-event.types';
 import type { PreparedWorkerSource } from './worker-source.service.types';
@@ -60,20 +62,30 @@ export function buildDockerImageInput(input: BuildDockerImageInputRequest): Dock
     labels: buildReleaseImageLabels(input.deployment),
     onProgressLine: createBuildProgressReporter(buildDeploymentEventContext(input.request, input.deployment)),
     packer: input.preparedSource.packer,
-    pushImageInsecureRegistry: input.artifactRegistry.mode === 'bundled',
+    pushImageInsecureRegistry: new URL(input.artifactRegistry.internalUrl).protocol === 'http:',
     pushImageTag: input.pushImageTag,
-    pushRegistryCredentials: buildPushRegistryCredentials(input.artifactRegistry),
+    pushRegistryCredentials: buildPushRegistryCredentials(input.artifactRegistry, input.deployment),
     ...(input.preparedSource.runtimeAptPackages.length > 0
       ? { runtimeAptPackages: input.preparedSource.runtimeAptPackages }
       : {}),
   });
 }
 
-function buildPushRegistryCredentials(artifactRegistry: WorkerArtifactRegistryConfig): DockerRegistryCredentials {
+function buildPushRegistryCredentials(
+  artifactRegistry: WorkerArtifactRegistryConfig,
+  deployment: WorkerClaimedDeployment,
+): DockerRegistryCredentials {
+  const repository: string = buildCompartmentArtifactImageRepository(deployment.projectId, deployment.service.id);
+  const credential: RegistryCredential = issueBuildPushCredential(
+    artifactRegistry.credentialSigningKey,
+    deployment.projectId,
+    repository,
+    deployment.artifact.id,
+  );
   return {
-    password: artifactRegistry.writeCredentials.password,
+    password: credential.password,
     serverAddress: readWorkerArtifactRegistryInternalHost(artifactRegistry),
-    username: artifactRegistry.writeCredentials.username,
+    username: credential.username,
   };
 }
 

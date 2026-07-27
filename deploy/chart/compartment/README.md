@@ -132,14 +132,34 @@ All system-domain commands and password recovery require access to get the API D
 the `pods/exec` subresource. Only `attach-cert`, `activate`, and `reset-managed` also require Helm upgrade permissions
 for the chart resources.
 
-## Node registry prerequisite
+## Private registry endpoint
 
-Application image references use the bundled registry host
-`<release-fullname>-registry-auth.<namespace>.svc:5000`. Kubernetes nodes do not resolve Service DNS through cluster
-DNS when their container runtime pulls images. Configure every node's container runtime with a mirror or equivalent
-route to the bundled registry before deploying applications. This node-level configuration is outside Helm's scope.
+Set `registry.hostname` to a name that resolves from every node to the retained registry-auth Service ClusterIP.
+Set `registry.issuerRef` to the existing cert-manager Issuer or ClusterIssuer owned by the installation TLS setup.
+The chart creates only the Certificate reference; it does not create the issuer or DNS-01 solver.
 
-The k3d e2e harness configures its k3s `registries.yaml` explicitly; use the corresponding mechanism for your
-Kubernetes distribution. If you delete the namespace or retained registry-auth Service, update every node's mirror
-with the newly allocated Service IP and restart the container runtime before deploying applications. For k3s, edit
-`/etc/rancher/k3s/registries.yaml` and restart k3s.
+Node resolvers and upstream corporate DNS must permit the registry zone to return a private ClusterIP A record.
+Resolvers with rebinding protection require an explicit zone allowlist. Kube-proxy-less Cilium is unsupported until
+its container-runtime host-to-ClusterIP path is reproducibly validated. No container-runtime endpoint configuration
+or private CA installation is used.
+
+The registry PVC, credential-signing Secret, and Service carry Helm keep annotations. New deploys and rescheduling are
+unavailable while the single-replica registry or its PVC is unavailable; already running Pods continue.
+
+Registry recovery is fix-forward:
+
+1. Stop new builds. Record the retained Service ClusterIP with
+   `kubectl -n <namespace> get service <release>-compartment-registry-auth -o jsonpath='{.spec.clusterIP}'`.
+2. For a Pod-only failure, delete the registry Pod and wait for its Deployment to become Available. For a volume
+   attachment failure, inspect PVC/PV events and fence a lost node before detaching or reattaching the volume.
+3. Create an application-consistent snapshot with the storage provider while registry writes are stopped. Restore it
+   into a replacement PVC only after preserving the failed volume for rollback.
+4. Wait for the registry and registry-auth Deployments. Authenticate through the private hostname and fetch a known
+   manifest by its recorded `sha256` digest; a tag-only check is not an integrity check.
+5. Confirm the retained Service still has the recorded ClusterIP, then rerun `compartment install` with the same
+   context, namespace, release, and values. Installation remains incomplete until its temporary image starts on every
+   eligible node. Resume builds only after that gate succeeds.
+
+The disposable k3d E2E uses a local test issuer and adds its CA to k3d node trust. This models a certificate chain to
+an already trusted public Web-PKI root; production references the T3-owned issuer with `registry.issuerRef` and never
+installs a private CA or changes node container-runtime configuration.

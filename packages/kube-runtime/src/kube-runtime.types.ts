@@ -26,6 +26,7 @@ export type KubeManifestKind =
 
 interface KubeManifestBase extends KubernetesObject {
   automountServiceAccountToken?: false | undefined;
+  imagePullSecrets?: KubeLocalObjectReference[] | undefined;
   roleRef?: KubeRoleReference | undefined;
   spec?: object | undefined;
   status?: object | undefined;

@@ -115,13 +115,13 @@ describe('buildReleaseImageFromSource', (): void => {
         createClaimedDeployment({
           artifact: {
             id: 'art_123',
-            imageRef: `registry.example/web@sha256:${'a'.repeat(64)}`,
+            imageRef: `127.0.0.1:5517/projects/prj_123/services/svc_123@sha256:${'a'.repeat(64)}`,
             sourceDigest: 'sha256:source',
           },
         }),
         createArtifactRegistryConfig(),
       ),
-    ).resolves.toBe(`registry.example/web@sha256:${'a'.repeat(64)}`);
+    ).resolves.toBe(`127.0.0.1:5517/projects/prj_123/services/svc_123@sha256:${'a'.repeat(64)}`);
 
     expect(mocks.prepareServiceDirectory).not.toHaveBeenCalled();
     expect(mocks.buildDockerImage).not.toHaveBeenCalled();
@@ -159,7 +159,7 @@ describe('buildReleaseImageFromSource', (): void => {
       serviceRelativePath: 'apps/web',
     });
     mocks.buildDockerImage.mockResolvedValueOnce({
-      imageRef: `127.0.0.1:5517/compartment/projects/prj_123/services/svc_123@sha256:${'b'.repeat(64)}`,
+      imageRef: `127.0.0.1:5517/projects/prj_123/services/svc_123@sha256:${'b'.repeat(64)}`,
       pushed: true,
     });
 
@@ -179,7 +179,7 @@ describe('buildReleaseImageFromSource', (): void => {
         }),
         createArtifactRegistryConfig(),
       ),
-    ).resolves.toBe(`127.0.0.1:5517/compartment/projects/prj_123/services/svc_123@sha256:${'b'.repeat(64)}`);
+    ).resolves.toBe(`127.0.0.1:5517/projects/prj_123/services/svc_123@sha256:${'b'.repeat(64)}`);
 
     expect(getArtifactSourceArchiveSpy).toHaveBeenCalledWith('art_123');
     expect(mocks.prepareServiceDirectory).toHaveBeenCalled();
@@ -187,9 +187,9 @@ describe('buildReleaseImageFromSource', (): void => {
       expect.objectContaining({
         contextDirectory: '/tmp/source',
         dockerfilePath: 'apps/web/Dockerfile',
-        imageTag: '127.0.0.1:5517/compartment/projects/prj_123/services/svc_123:art_123',
+        imageTag: '127.0.0.1:5517/projects/prj_123/services/svc_123:art_123',
         pushImageInsecureRegistry: true,
-        pushImageTag: 'registry:5000/compartment/projects/prj_123/services/svc_123:art_123',
+        pushImageTag: 'registry:5000/projects/prj_123/services/svc_123:art_123',
       }),
     );
   });
@@ -227,17 +227,17 @@ describe('buildReleaseImageFromSource', (): void => {
             sourceDigest: 'sha256:source',
           },
         }),
-        createArtifactRegistryConfig('external'),
+        createArtifactRegistryConfig(),
       ),
     ).rejects.toThrow(
-      'Expected source image build for "127.0.0.1:5517/compartment/projects/prj_123/services/svc_123:art_123" to return a digest-pinned BuildKit push result.',
+      'Expected source image build for "127.0.0.1:5517/projects/prj_123/services/svc_123:art_123" to return a digest-pinned BuildKit push result.',
     );
 
     expect(mocks.buildDockerImage).toHaveBeenCalledWith(
       expect.objectContaining({
-        imageTag: '127.0.0.1:5517/compartment/projects/prj_123/services/svc_123:art_123',
-        pushImageInsecureRegistry: false,
-        pushImageTag: 'registry:5000/compartment/projects/prj_123/services/svc_123:art_123',
+        imageTag: '127.0.0.1:5517/projects/prj_123/services/svc_123:art_123',
+        pushImageInsecureRegistry: true,
+        pushImageTag: 'registry:5000/projects/prj_123/services/svc_123:art_123',
       }),
     );
   });
@@ -321,19 +321,12 @@ describe('buildReleaseImageFromSource', (): void => {
   });
 });
 
-function createArtifactRegistryConfig(mode: 'bundled' | 'external' = 'bundled'): WorkerArtifactRegistryConfig {
+function createArtifactRegistryConfig(): WorkerArtifactRegistryConfig {
   return {
     address: '127.0.0.1:5517',
+    credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
+    internalAddress: 'registry:5000',
     internalUrl: 'http://registry:5000',
-    mode,
-    readCredentials: {
-      password: 'read-password',
-      username: 'reader',
-    },
-    writeCredentials: {
-      password: 'write-password',
-      username: 'writer',
-    },
   };
 }
 

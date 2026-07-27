@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { assertSelfHostedGeneratedSecretEnvironment } from '../src/self-hosted-generated-secret-environment';
 
 interface SelfHostedGeneratedSecretEnvironmentFixture {
-  readonly COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD?: string | undefined;
-  readonly COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD?: string | undefined;
+  readonly COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY?: string | undefined;
   readonly COMPARTMENT_DATABASE_URL?: string | undefined;
   readonly COMPARTMENT_EDGE_TOKEN?: string | undefined;
   readonly COMPARTMENT_ENV?: string | undefined;
@@ -39,18 +38,17 @@ describe('assertSelfHostedGeneratedSecretEnvironment', (): void => {
     expect((): void =>
       assertSelfHostedGeneratedSecretEnvironment(
         createSelfHostedEnvironment({
-          COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: undefined,
+          COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: undefined,
         }),
       ),
-    ).toThrow('The self-hosted environment is missing COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD.');
+    ).toThrow('The self-hosted environment is missing COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY.');
   });
 
   it('allows service-scoped self-hosted API environments without registry credentials', (): void => {
     expect((): void =>
       assertSelfHostedGeneratedSecretEnvironment(
         createSelfHostedEnvironment({
-          COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: undefined,
-          COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD: undefined,
+          COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: undefined,
         }),
         { requireArtifactRegistrySecrets: false },
       ),
@@ -104,8 +102,7 @@ function createSelfHostedEnvironment(
   overrides: SelfHostedGeneratedSecretEnvironmentOverrides = {},
 ): SelfHostedGeneratedSecretEnvironmentFixture {
   return {
-    COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: generated24ByteSecret,
-    COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD: generated24ByteSecret,
+    COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: generated24ByteSecret,
     COMPARTMENT_DATABASE_URL: `postgresql://postgres:${generated24ByteSecret}@postgres:5432/compartment`,
     COMPARTMENT_EDGE_TOKEN: generated24ByteSecret,
     COMPARTMENT_ENV: 'self-hosted',

@@ -30,8 +30,6 @@ Options:
   --kube-context <name>         Kubernetes context for Helm
   --namespace <name>            Kubernetes namespace; defaults to compartment
   --release-name <name>         Helm release name; defaults to compartment
-  --skip-registry-mirror        Do not automatically configure the local k3s
-                                registry mirror
   --email <email>               First admin email
   --admin-password <password>   First admin password (automation only)
   --organization <name>         First organization name

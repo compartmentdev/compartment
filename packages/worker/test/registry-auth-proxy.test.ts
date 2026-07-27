@@ -4,6 +4,18 @@ import { createConnection, type AddressInfo, type Socket } from 'node:net';
 import { resolve as resolvePath } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { rewriteRegistryLocationHeader } from '../src/registry-auth-proxy-location';
+import { issueBuildPushCredential, issueProjectPullCredential } from '../src/registry-credentials';
+import type { RegistryCredential } from '../src/registry-credentials.types';
+
+const signingKey: string = 'registry-signing-key-with-at-least-32-characters';
+const projectRepository: string = 'projects/prj_123/services/svc_123';
+const pullCredential: RegistryCredential = issueProjectPullCredential(signingKey, 'prj_123');
+const pushCredential: RegistryCredential = issueBuildPushCredential(
+  signingKey,
+  'prj_123',
+  projectRepository,
+  'art_123',
+);
 
 interface RegistryTargetCall {
   authorization: string | undefined;
@@ -66,20 +78,24 @@ describe('registry auth proxy', (): void => {
     const proxyUrl: string = `http://127.0.0.1:${proxyPort.toString()}`;
     const targetHost: string = new URL(readServerUrl(targetServer)).host;
 
-    await expect(readStatus(`${proxyUrl}/v2/repo/manifests/latest`)).resolves.toBe(401);
-    await expect(readStatus(`${proxyUrl}/v2/repo/manifests/latest`, { method: 'PUT' })).resolves.toBe(401);
+    await expect(readStatus(`${proxyUrl}/v2/${projectRepository}/manifests/art_123`)).resolves.toBe(401);
     await expect(
-      readStatus(`${proxyUrl}/v2/repo/manifests/latest`, {
+      readStatus(`${proxyUrl}/v2/projects/prj_other/services/svc_123/manifests/art_123`, {
         headers: {
-          authorization: basicAuthorizationHeader('reader', 'read-password'),
+          authorization: credentialAuthorizationHeader(pullCredential),
         },
+      }),
+    ).resolves.toBe(403);
+    await expect(
+      readStatus(`${proxyUrl}/v2/${projectRepository}/manifests/art_123`, {
+        headers: { authorization: credentialAuthorizationHeader(pullCredential) },
       }),
     ).resolves.toBe(200);
     await expect(
       readRawHttpResponse(proxyPort, [
-        'GET /v2/repo/manifests/latest HTTP/1.1',
+        `GET /v2/${projectRepository}/manifests/art_123 HTTP/1.1`,
         'Host: untrusted.registry-client.test',
-        `Authorization: ${basicAuthorizationHeader('reader', 'read-password')}`,
+        `Authorization: ${credentialAuthorizationHeader(pullCredential)}`,
         'Connection: close',
       ]),
     ).resolves.toMatchObject({
@@ -87,40 +103,40 @@ describe('registry auth proxy', (): void => {
       statusCode: 200,
     });
     await expect(
-      readStatus(`${proxyUrl}/v2/repo/manifests/sha256:abc`, {
+      readStatus(`${proxyUrl}/v2/${projectRepository}/manifests/art_123`, {
         headers: {
-          authorization: basicAuthorizationHeader('reader', 'read-password'),
+          authorization: credentialAuthorizationHeader(pullCredential),
         },
-        method: 'DELETE',
+        method: 'PUT',
       }),
-    ).resolves.toBe(401);
+    ).resolves.toBe(403);
     await expect(
-      readStatus(`${proxyUrl}/v2/repo/manifests/sha256:abc`, {
+      readStatus(`${proxyUrl}/v2/${projectRepository}/manifests/art_123`, {
         headers: {
-          authorization: basicAuthorizationHeader('writer', 'write-password'),
+          authorization: credentialAuthorizationHeader(pushCredential),
         },
-        method: 'DELETE',
+        method: 'PUT',
       }),
-    ).resolves.toBe(202);
+    ).resolves.toBe(200);
 
     expect(targetCalls).toEqual([
       {
         authorization: undefined,
         host: targetHost,
         method: 'GET',
-        url: '/v2/repo/manifests/latest',
+        url: `/v2/${projectRepository}/manifests/art_123`,
       },
       {
         authorization: undefined,
         host: targetHost,
         method: 'GET',
-        url: '/v2/repo/manifests/latest',
+        url: `/v2/${projectRepository}/manifests/art_123`,
       },
       {
         authorization: undefined,
         host: targetHost,
-        method: 'DELETE',
-        url: '/v2/repo/manifests/sha256:abc',
+        method: 'PUT',
+        url: `/v2/${projectRepository}/manifests/art_123`,
       },
     ]);
   });
@@ -159,7 +175,7 @@ describe('registry auth proxy', (): void => {
     processes.push(proxyProcess);
     const internalUrl: string = readServerUrl(internalServer);
     const internalPort: number = readServerPort(internalServer);
-    const authorization: string = basicAuthorizationHeader('reader', 'read-password');
+    const authorization: string = credentialAuthorizationHeader(pullCredential);
 
     await expect(
       readRawHttpResponse(proxyPort, [
@@ -200,7 +216,7 @@ describe('registry auth proxy', (): void => {
   });
 
   it('applies strict registry-owned Location policy to proxied responses', async (): Promise<void> => {
-    const uploadPath: string = '/v2/repo/blobs/uploads/upload-id';
+    const uploadPath: string = `/v2/${projectRepository}/blobs/uploads/upload-id`;
     const locationPolicyCases: RegistryLocationPolicyCase[] = [
       {
         createLocation: (targetUrl: string): string => `${targetUrl}${uploadPath}`,
@@ -254,9 +270,9 @@ describe('registry auth proxy', (): void => {
       targetLocation = locationPolicyCase.createLocation(targetUrl);
 
       await expect(
-        readFetchResponse(`${proxyUrl}/v2/repo/blobs/uploads/`, {
+        readFetchResponse(`${proxyUrl}/v2/${projectRepository}/blobs/uploads/`, {
           headers: {
-            authorization: basicAuthorizationHeader('writer', 'write-password'),
+            authorization: credentialAuthorizationHeader(pushCredential),
           },
           method: 'POST',
           redirect: 'manual',
@@ -312,12 +328,9 @@ function createProxyEnvironment(targetUrl: string, proxyPort: number): NodeJS.Pr
   return {
     ...process.env,
     COMPARTMENT_ARTIFACT_REGISTRY_PROXY_BIND_HOST: '127.0.0.1',
+    COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: signingKey,
     COMPARTMENT_ARTIFACT_REGISTRY_PROXY_PORT: proxyPort.toString(),
     COMPARTMENT_ARTIFACT_REGISTRY_PROXY_TARGET_URL: targetUrl,
-    COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: 'read-password',
-    COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: 'reader',
-    COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD: 'write-password',
-    COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME: 'writer',
   };
 }
 
@@ -396,8 +409,8 @@ async function readRawHttpResponseText(port: number, requestLines: string[]): Pr
   });
 }
 
-function basicAuthorizationHeader(username: string, password: string): string {
-  return `Basic ${Buffer.from(`${username}:${password}`, 'utf8').toString('base64')}`;
+function credentialAuthorizationHeader(credential: RegistryCredential): string {
+  return `Basic ${Buffer.from(`${credential.username}:${credential.password}`, 'utf8').toString('base64')}`;
 }
 
 async function listen(server: Server): Promise<Server> {

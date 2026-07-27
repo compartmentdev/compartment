@@ -21,6 +21,7 @@ type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
 type RunCommandCall = [command: readonly string[]];
 interface KubernetesInstallServiceMocks {
   runCommand: Mock<RunCommand>;
+  verifyRegistryNodePull: Mock<(input: KubernetesInstallDeploymentInput) => Promise<void>>;
   writeVerifiedImages: Mock<(input: ImageTrustWriteInput) => Promise<void>>;
 }
 
@@ -40,6 +41,7 @@ interface InstallHarnessState {
 const mocks: KubernetesInstallServiceMocks = vi.hoisted(
   (): KubernetesInstallServiceMocks => ({
     runCommand: vi.fn<RunCommand>(),
+    verifyRegistryNodePull: vi.fn(async (): Promise<void> => await Promise.resolve()),
     writeVerifiedImages: vi.fn(async (input: ImageTrustWriteInput): Promise<void> => {
       await writeFile(input.outputPath, JSON.stringify({ images: {} }), { mode: 0o600 });
     }),
@@ -54,6 +56,9 @@ vi.mock('../src/command-runner', (): object => ({
 }));
 vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
   writeVerifiedKubernetesInstallImageValues: mocks.writeVerifiedImages,
+}));
+vi.mock('../src/services/kubernetes-install-registry-verification.service', (): object => ({
+  verifyKubernetesInstallRegistryNodePull: mocks.verifyRegistryNodePull,
 }));
 
 const managedDeploymentInput: KubernetesInstallDeploymentInput = {
@@ -70,6 +75,7 @@ const managedDeploymentInput: KubernetesInstallDeploymentInput = {
 describe('Kubernetes install deployment', (): void => {
   afterEach((): void => {
     mocks.runCommand.mockReset();
+    mocks.verifyRegistryNodePull.mockClear();
     mocks.writeVerifiedImages.mockClear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -292,9 +298,20 @@ describe('Kubernetes install deployment', (): void => {
       expect.stringMatching(/^Requesting managed domain.* \u2713 /u),
       expect.stringMatching(/^Saving installation configuration.* \u2713 /u),
       expect.stringMatching(/^Waiting for platform pods \(api, worker, caddy\).* \u2713 /u),
+      expect.stringMatching(/^Verifying private registry pull on every node.* \u2713 /u),
       expect.stringMatching(/^Issuing TLS certificate \(ACME\).* \u2713 /u),
     ]);
     expect(readCliStderr(capture)).not.toContain('\u001B');
+  });
+
+  it('does not complete when the every-node registry pull gate fails', async (): Promise<void> => {
+    const state: InstallHarnessState = createInstallHarnessState();
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
+    stubManagedInstallFetch(state.events, []);
+    mocks.verifyRegistryNodePull.mockRejectedValueOnce(new Error('node pull failed'));
+
+    await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).rejects.toThrow('node pull failed');
+    expect(mocks.verifyRegistryNodePull).toHaveBeenCalledOnce();
   });
 
   it('resumes persisted managed allocation state without calling the broker again', async (): Promise<void> => {

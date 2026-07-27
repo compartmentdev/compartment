@@ -78,13 +78,38 @@
     "ports": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["api", "edge", "registry", "buildkit", "http"],
+      "required": ["api", "edge", "registry", "registryInternal", "buildkit", "http"],
       "properties": {
         "api": { "$ref": "#/definitions/tcpPort" },
         "edge": { "$ref": "#/definitions/tcpPort" },
         "registry": { "$ref": "#/definitions/tcpPort" },
+        "registryInternal": { "$ref": "#/definitions/tcpPort" },
         "buildkit": { "$ref": "#/definitions/tcpPort" },
         "http": { "$ref": "#/definitions/tcpPort" }
+      }
+    },
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clusterIP", "hostname", "issuerRef"],
+      "properties": {
+        "clusterIP": {
+          "oneOf": [{ "const": "" }, { "type": "string", "format": "ipv4" }]
+        },
+        "hostname": {
+          "type": "string",
+          "pattern": "^$|^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$"
+        },
+        "issuerRef": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["group", "kind", "name"],
+          "properties": {
+            "group": { "const": "cert-manager.io" },
+            "kind": { "type": "string", "enum": ["Issuer", "ClusterIssuer"] },
+            "name": { "type": "string" }
+          }
+        }
       }
     },
     "platform": {
@@ -159,7 +184,10 @@
       "type": "object",
       "properties": {
         "installToken": { "type": "string" },
-        "managedDomainBrokerToken": { "type": "string" }
+        "managedDomainBrokerToken": { "type": "string" },
+        "registryCredentialSigningKey": {
+          "oneOf": [{ "const": "" }, { "type": "string", "minLength": 32 }]
+        }
       }
     },
     "customTls": {

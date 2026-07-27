@@ -107,17 +107,10 @@ spec:
               mountPath: /run/user/1000
             - name: tmp
               mountPath: /tmp
-            - name: registry-auth
-              mountPath: /home/user/.docker/config.json
-              subPath: .dockerconfigjson
-              readOnly: true
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "compartment.fullname" . }}-buildkit
-        - name: registry-auth
-          secret:
-            secretName: {{ include "compartment.fullname" . }}-registry-client
         - name: run
           emptyDir: {}
         - name: rootless-tmp

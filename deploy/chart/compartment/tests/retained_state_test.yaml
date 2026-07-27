@@ -2,6 +2,8 @@
 suite: retained install state resolution
 templates:
   - templates/*.yaml
+values:
+  - registry-values.yaml
 release:
   name: compartment
   namespace: default
@@ -104,7 +106,7 @@ tests:
         acmeEmail: incoming@example.com
       secrets:
         managedDomainBrokerToken: incoming-token
-        registryWritePassword: test-registry-write-password
+        registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
         productLogIngestToken: test-product-log-token
     asserts:
       - containsDocument:
@@ -174,7 +176,7 @@ tests:
         operatorCertificate: incoming-certificate
         operatorPrivateKey: incoming-private-key
       secrets: &requiredFullSecrets
-        registryWritePassword: test-registry-write-password
+        registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
         productLogIngestToken: test-product-log-token
     asserts:
       - equal:

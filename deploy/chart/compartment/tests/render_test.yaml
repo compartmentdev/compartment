@@ -2,6 +2,8 @@
 suite: chart render scenarios
 templates:
   - templates/*.yaml
+values:
+  - registry-values.yaml
 release:
   name: compartment
   namespace: default
@@ -13,8 +15,7 @@ tests:
       secrets: &stableSecrets
         installToken: test-install-token
         postgresPassword: test-postgres-password
-        registryReadPassword: test-registry-read-password
-        registryWritePassword: test-registry-write-password
+        registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
         edgeToken: test-edge-token
         productLogIngestToken: test-product-log-token
         runtimeControlToken: test-runtime-control-token
@@ -105,11 +106,11 @@ tests:
           count: 0
         template: project-provisioner-rbac.yaml
       - hasDocuments:
-          count: 0
+          count: 1
         template: registry-auth.yaml
-      - hasDocuments:
-          count: 0
-        template: registry-client-secret.yaml
+      - isKind:
+          of: Service
+        template: registry-auth.yaml
       - hasDocuments:
           count: 0
         template: registry-network-policy.yaml
@@ -160,6 +161,11 @@ tests:
 
   - it: renders a full public installation with public ingress and workloads
     set:
+      registry:
+        clusterIP: 10.43.250.250
+        hostname: registry.apps.example.com
+        issuerRef:
+          name: platform-issuer
       platform:
         startupStage: full
         installationId: test-install
@@ -185,6 +191,26 @@ tests:
           value: default
         template: registry-auth.yaml
         documentIndex: 0
+      - equal:
+          path: spec.clusterIP
+          value: 10.43.250.250
+        template: registry-auth.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.ports[0].port
+          value: 443
+        template: registry-auth.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.dnsNames[0]
+          value: registry.apps.example.com
+        template: registry-auth.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.issuerRef.name
+          value: platform-issuer
+        template: registry-auth.yaml
+        documentIndex: 1
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
@@ -355,7 +381,7 @@ tests:
               resources: [jobs]
               verbs: [get, list, watch, create, update, patch, delete]
             - apiGroups: ['']
-              resources: [services, secrets, persistentvolumeclaims]
+              resources: [services, secrets, serviceaccounts, persistentvolumeclaims]
               verbs: [get, list, watch, create, update, patch, delete]
             - apiGroups: ['']
               resources: [limitranges]
@@ -569,6 +595,7 @@ tests:
             resources:
               - services
               - secrets
+              - serviceaccounts
               - persistentvolumeclaims
             verbs:
               - get
@@ -753,7 +780,7 @@ tests:
         template: worker.yaml
       - equal:
           path: spec.ingress[0].ports[0].port
-          value: 5000
+          value: 5001
         template: registry-network-policy.yaml
         documentIndex: 1
       - equal:
@@ -813,16 +840,12 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_ARTIFACT_REGISTRY_HOST
-          value: compartment-compartment-registry-auth.default.svc
+          value: registry.apps.example.com
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL
-          value: http://compartment-compartment-registry-auth.default.svc:5000
+          value: http://compartment-compartment-registry-auth:5001
         template: configmap.yaml
-      - matchRegex:
-          path: stringData[".dockerconfigjson"]
-          pattern: '"compartment-compartment-registry-auth\.default\.svc:5000"'
-        template: registry-client-secret.yaml
       - contains:
           path: spec.template.spec.containers[0].env
           content:
@@ -1270,7 +1293,7 @@ tests:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
         template: registry-auth.yaml
-        documentIndex: 1
+        documentIndex: 2
       - equal:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/compartmentdev/compartment-edge@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -1457,7 +1480,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: &managedDomainChecksum a45708b1069b848edb43bf4eb09cd6d10c97a0c3a1da1a06ad92348552b65fe4
+          value: &managedDomainChecksum 51f3d7523b9be577fb69b5173633a609d7bb490241386c9788aa9e12a2085c76
         template: api.yaml
         documentIndex: 1
       - equal:
@@ -1472,7 +1495,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: &stableConfigChecksum f686a0e0632ce0f785a58b00760163c7729bcb24d2bf428e507ca16a5cbc08e4
+          value: &stableConfigChecksum 15fe2385afd9bfd275c97702a4a3891f0a8699bb06e1f582e31cfc6d0bca1eb3
         template: worker.yaml
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
@@ -1725,7 +1748,7 @@ tests:
         template: project-provisioner.yaml
       - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: &activeDomainChecksum 9712572d36362582f3dcf80df7f8aa094a769f8c887d52e65da28e944a2bc2b4
+          value: &activeDomainChecksum d2de339d6da2947bbad4bbb47408ddc4d87182ba713815ca8c3a408a7ae75ca0
         template: api.yaml
         documentIndex: 1
       - equal:
@@ -1778,7 +1801,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.template.metadata.annotations["checksum/secret"]
-          value: &stableSecretChecksum 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
+          value: &stableSecretChecksum 9d951c5349103654edd47a3941e7aafdaa8f5c075396cae5416f67786f1171a3
         template: caddy.yaml
         documentIndex: 1
       - equal:

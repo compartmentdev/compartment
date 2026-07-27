@@ -1,5 +1,5 @@
 export function buildCompartmentArtifactImageRepository(projectId: string, serviceId: string): string {
-  return `compartment/projects/${projectId}/services/${serviceId}`;
+  return `projects/${projectId}/services/${serviceId}`;
 }
 
 export function buildCompartmentArtifactImageTag(

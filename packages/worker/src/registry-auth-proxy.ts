@@ -7,56 +7,51 @@ import {
   type Server,
   type ServerResponse,
 } from 'node:http';
-import { timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { createServer as createHttpsServer } from 'node:https';
 import type { Duplex } from 'node:stream';
 import { z } from 'zod';
 import {
   sendBadRequest,
+  sendForbidden,
   sendUnauthorized,
   writeRawBadRequest,
   writeRawUnauthorized,
 } from './registry-auth-proxy-responses';
 import { rewriteRegistryLocationHeader } from './registry-auth-proxy-location';
-
-interface RegistryAuthCredentials {
-  password: string;
-  username: string;
-}
+import { authorizeRegistryRequest, verifyRegistryCredential } from './registry-credentials';
+import type { RegistryCredentialPayload } from './registry-credentials.types';
 
 interface RegistryAuthProxyConfig {
   bindHost: string;
+  credentialSigningKey: string;
+  internalPort?: number | undefined;
   port: number;
-  readCredentials: RegistryAuthCredentials;
   targetUrl: URL;
-  writeCredentials: RegistryAuthCredentials;
+  tlsCertificateFile?: string | undefined;
+  tlsPrivateKeyFile?: string | undefined;
 }
 
 interface RegistryAuthProxyEnvironment {
   COMPARTMENT_ARTIFACT_REGISTRY_PROXY_BIND_HOST: string;
+  COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: string;
+  COMPARTMENT_ARTIFACT_REGISTRY_PROXY_INTERNAL_PORT?: number | undefined;
   COMPARTMENT_ARTIFACT_REGISTRY_PROXY_PORT: number;
   COMPARTMENT_ARTIFACT_REGISTRY_PROXY_TARGET_URL: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME: string;
-}
-
-interface ParsedBasicAuthorization {
-  password: string;
-  username: string;
+  COMPARTMENT_ARTIFACT_REGISTRY_TLS_CERTIFICATE_FILE?: string | undefined;
+  COMPARTMENT_ARTIFACT_REGISTRY_TLS_PRIVATE_KEY_FILE?: string | undefined;
 }
 
 const registryAuthProxyEnvironmentSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_ARTIFACT_REGISTRY_PROXY_BIND_HOST: z.string().min(1),
+  COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: z.string().min(32),
+  COMPARTMENT_ARTIFACT_REGISTRY_PROXY_INTERNAL_PORT: z.coerce.number().int().positive().optional(),
   COMPARTMENT_ARTIFACT_REGISTRY_PROXY_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_ARTIFACT_REGISTRY_PROXY_TARGET_URL: z.string().url(),
-  COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: z.string().min(1),
-  COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: z.string().min(1),
-  COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD: z.string().min(1),
-  COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME: z.string().min(1),
+  COMPARTMENT_ARTIFACT_REGISTRY_TLS_CERTIFICATE_FILE: z.string().min(1).optional(),
+  COMPARTMENT_ARTIFACT_REGISTRY_TLS_PRIVATE_KEY_FILE: z.string().min(1).optional(),
 });
 
-const writeMethods: ReadonlySet<string> = new Set<string>(['DELETE', 'PATCH', 'POST', 'PUT']);
 const hopByHopHeaderNames: ReadonlySet<string> = new Set<string>([
   'connection',
   'keep-alive',
@@ -77,33 +72,55 @@ function readRegistryAuthProxyConfig(env: NodeJS.ProcessEnv): RegistryAuthProxyC
   const parsed: RegistryAuthProxyEnvironment = registryAuthProxyEnvironmentSchema.parse(
     env,
   ) as RegistryAuthProxyEnvironment;
+  if (
+    parsed.COMPARTMENT_ARTIFACT_REGISTRY_PROXY_INTERNAL_PORT !== undefined &&
+    (parsed.COMPARTMENT_ARTIFACT_REGISTRY_TLS_CERTIFICATE_FILE === undefined ||
+      parsed.COMPARTMENT_ARTIFACT_REGISTRY_TLS_PRIVATE_KEY_FILE === undefined)
+  ) {
+    throw new Error('Registry external TLS certificate and private key files are required.');
+  }
 
   return {
     bindHost: parsed.COMPARTMENT_ARTIFACT_REGISTRY_PROXY_BIND_HOST,
+    credentialSigningKey: parsed.COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY,
+    internalPort: parsed.COMPARTMENT_ARTIFACT_REGISTRY_PROXY_INTERNAL_PORT,
     port: parsed.COMPARTMENT_ARTIFACT_REGISTRY_PROXY_PORT,
-    readCredentials: {
-      password: parsed.COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD,
-      username: parsed.COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME,
-    },
     targetUrl: new URL(parsed.COMPARTMENT_ARTIFACT_REGISTRY_PROXY_TARGET_URL),
-    writeCredentials: {
-      password: parsed.COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD,
-      username: parsed.COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME,
-    },
+    tlsCertificateFile: parsed.COMPARTMENT_ARTIFACT_REGISTRY_TLS_CERTIFICATE_FILE,
+    tlsPrivateKeyFile: parsed.COMPARTMENT_ARTIFACT_REGISTRY_TLS_PRIVATE_KEY_FILE,
   };
 }
 
 async function listen(config: RegistryAuthProxyConfig): Promise<void> {
-  const server: Server = createRegistryAuthProxyServer(config);
+  await listenServer(createRegistryAuthProxyServer(config, true), config.port, config.bindHost);
+  if (config.internalPort !== undefined) {
+    await listenServer(createRegistryAuthProxyServer(config, false), config.internalPort, config.bindHost);
+  }
+}
+
+async function listenServer(server: Server, port: number, host: string): Promise<void> {
   await new Promise<void>((resolve: () => void): void => {
-    server.listen(config.port, config.bindHost, resolve);
+    server.listen(port, host, resolve);
   });
 }
 
-function createRegistryAuthProxyServer(config: RegistryAuthProxyConfig): Server {
-  const server: Server = createServer((request: IncomingMessage, response: ServerResponse): void => {
+function createRegistryAuthProxyServer(config: RegistryAuthProxyConfig, enableTls: boolean): Server {
+  const requestHandler: (request: IncomingMessage, response: ServerResponse) => void = (
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): void => {
     handleRegistryAuthProxyRequest(config, request, response);
-  });
+  };
+  const server: Server =
+    enableTls && config.tlsCertificateFile !== undefined && config.tlsPrivateKeyFile !== undefined
+      ? createHttpsServer(
+          {
+            cert: readFileSync(config.tlsCertificateFile),
+            key: readFileSync(config.tlsPrivateKeyFile),
+          },
+          requestHandler,
+        )
+      : createServer(requestHandler);
 
   server.on('connect', (request: IncomingMessage, socket: Duplex): void => {
     handleRegistryAuthProxyConnect(config, request, socket);
@@ -117,14 +134,21 @@ function handleRegistryAuthProxyRequest(
   clientRequest: IncomingMessage,
   clientResponse: ServerResponse,
 ): void {
-  if (!isAuthorizedRegistryRequest(config, clientRequest)) {
+  const credential: RegistryCredentialPayload | null = verifyRegistryCredential(
+    config.credentialSigningKey,
+    clientRequest.headers.authorization,
+  );
+  if (credential === null) {
     sendUnauthorized(clientResponse);
     return;
   }
-
   const requestTarget: string | null = parseOriginFormRequestTarget(clientRequest.url);
   if (requestTarget === null) {
     sendBadRequest(clientResponse);
+    return;
+  }
+  if (authorizeRegistryRequest(credential, clientRequest.method, requestTarget) === null) {
+    sendForbidden(clientResponse);
     return;
   }
 
@@ -136,59 +160,12 @@ function handleRegistryAuthProxyConnect(
   clientRequest: IncomingMessage,
   clientSocket: Duplex,
 ): void {
-  if (!isAuthorizedRegistryRequest(config, clientRequest)) {
+  if (verifyRegistryCredential(config.credentialSigningKey, clientRequest.headers.authorization) === null) {
     writeRawUnauthorized(clientSocket);
     return;
   }
 
   writeRawBadRequest(clientSocket);
-}
-
-function isAuthorizedRegistryRequest(config: RegistryAuthProxyConfig, request: IncomingMessage): boolean {
-  const authorization: ParsedBasicAuthorization | null = parseBasicAuthorization(request.headers.authorization);
-  if (authorization === null) {
-    return false;
-  }
-
-  if (matchesCredentials(authorization, config.writeCredentials)) {
-    return true;
-  }
-
-  return !isWriteMethod(request.method) && matchesCredentials(authorization, config.readCredentials);
-}
-
-function parseBasicAuthorization(header: string | undefined): ParsedBasicAuthorization | null {
-  const prefix: string = 'Basic ';
-  if (header?.startsWith(prefix) !== true) {
-    return null;
-  }
-
-  const decoded: string = Buffer.from(header.slice(prefix.length), 'base64').toString('utf8');
-  const separatorIndex: number = decoded.indexOf(':');
-  if (separatorIndex <= 0) {
-    return null;
-  }
-
-  return {
-    password: decoded.slice(separatorIndex + 1),
-    username: decoded.slice(0, separatorIndex),
-  };
-}
-
-function matchesCredentials(candidate: ParsedBasicAuthorization, expected: RegistryAuthCredentials): boolean {
-  return (
-    timingSafeEquals(candidate.username, expected.username) && timingSafeEquals(candidate.password, expected.password)
-  );
-}
-
-function timingSafeEquals(left: string, right: string): boolean {
-  const leftBuffer: Buffer = Buffer.from(left);
-  const rightBuffer: Buffer = Buffer.from(right);
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function isWriteMethod(method: string | undefined): boolean {
-  return method !== undefined && writeMethods.has(method.toUpperCase());
 }
 
 function parseOriginFormRequestTarget(requestTarget: string | undefined): string | null {

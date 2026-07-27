@@ -44,7 +44,7 @@ spec:
             matchLabels:
               {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit") | nindent 14 }}
       ports:
-        - {protocol: TCP, port: {{ .Values.ports.registry }}}
+        - {protocol: TCP, port: {{ .Values.ports.registryInternal }}}
     # Intentionally omits `from`: cluster nodes need direct :5000 access for kubelet image pulls; see the chart README.
     - ports:
         - {protocol: TCP, port: {{ .Values.ports.registry }}}

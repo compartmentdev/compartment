@@ -32,19 +32,13 @@ Helm stages:
    for `full`.
 2. The CLI resolves the public ingress and install domain, persists that state, and applies `full`. It then waits for
    HTTPS, calls the one-time `/v1/install` boundary, creates the first owner, and saves the owner session.
-3. The CLI reads the actual retained registry-auth Service name and ClusterIP and configures the required local k3s
-   registry mirror before the first application deploy when it can do so safely. The apply command uses the CLI's
-   YAML-aware merge, atomically writes the node config, and restarts k3s. The chart cannot mutate node-level
-   container-runtime configuration.
+3. The CLI binds the registry hostname to the retained registry-auth Service ClusterIP, waits for the referenced
+   cert-manager issuer to produce a public-trust TLS certificate, and verifies an authenticated pull on every eligible
+   node before completing installation.
 
-For an unambiguous `KUBECONFIG=/etc/rancher/k3s/k3s.yaml` on the local node, a root CLI process with write access to
-`/etc/rancher/k3s` and an available `systemctl` can apply the mirror. Interactive installs ask one short `Y/n`
-question before printing any multi-node instructions; non-interactive installs apply automatically unless
-`--skip-registry-mirror` is set. The merge changes only the installed registry host entry and preserves other mirrors.
-The CLI restarts k3s and verifies that the written endpoint contains the Service's current ClusterIP. It prints compact
-numbered instructions when the operator declines, automatic local setup is unavailable, or the cluster has additional
-nodes, and after a local apply or verification failure. Every other k3s node must have the same CLI version available
-and run the rendered apply command separately.
+Node resolvers and upstream corporate DNS must allow the registry zone to return a private ClusterIP A record.
+Resolvers with DNS-rebinding protection require an explicit zone allowlist. Kube-proxy-less Cilium is not supported
+by this endpoint mechanism. The installer never mutates the node container runtime.
 
 The default mode is a managed domain. When `--base-domain` is omitted, the CLI waits for a public LoadBalancer address,
 requests an allocation from `https://broker.compartment.run`, and configures managed DNS-01 TLS. The broker credential
@@ -68,8 +62,8 @@ verification, so an operator using it must supply already verified `images.*.dig
 
 The `<release>-install-state` Secret retains the installation ID, install token, domain allocation, ingress addresses,
 domain generation, and TLS identity. Helm keeps it and the registry-auth Service across upgrades and
-uninstall/reinstall with the same namespace and release name. Retaining the Service preserves its ClusterIP and keeps
-node-level registry mirrors valid. A retry with the same release coordinates and domain selection resumes the saved
+uninstall/reinstall with the same namespace and release name. Retaining the Service preserves its ClusterIP and the
+registry hostname binding. A retry with the same release coordinates and domain selection resumes the saved
 foundation or full release and does not allocate a second managed domain. The supported reinstall path keeps the
 namespace and registry-auth Service.
 
@@ -78,9 +72,8 @@ The `/v1/install` endpoint is available only before the first owner is created. 
 identity, uninstall the release and explicitly delete the retained Secret before reinstalling.
 
 Deleting the namespace or retained registry-auth Service is a destructive reset that allows Kubernetes to allocate a
-different ClusterIP. A subsequent install renders the new endpoint and reapplies the owned mirror idempotently when
-the local-k3s safety conditions hold. Otherwise, update every node from the rendered instructions before the first
-application deployment. Other distributions require the equivalent container-runtime mirror update and restart.
+different ClusterIP. A subsequent install must bind the registry hostname to the new address and repeat the
+every-node pull acceptance before application deployment can resume.
 
 ## Install domain operations
 

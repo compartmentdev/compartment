@@ -32,7 +32,7 @@ rules:
     resources: ["jobs"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
-    resources: ["services", "secrets", "persistentvolumeclaims"]
+    resources: ["services", "secrets", "serviceaccounts", "persistentvolumeclaims"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
     resources: ["limitranges"]

@@ -16,6 +16,10 @@ metadata:
   labels:
     {{- include "compartment.labels" $root | nindent 4 }}
     app.kubernetes.io/component: {{ $name }}
+  {{- if eq $name "registry" }}
+  annotations:
+    {{- include "compartment.retainedResourceAnnotations" $root | nindent 4 }}
+  {{- end }}
 spec:
   accessModes:
     - ReadWriteOnce

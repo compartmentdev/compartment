@@ -1,0 +1,5 @@
+registry:
+  hostname: registry.test.example
+  issuerRef:
+    kind: ClusterIssuer
+    name: registry-test-issuer

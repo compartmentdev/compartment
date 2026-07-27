@@ -100,7 +100,7 @@ async function runRetainedInstallStateGate() {
       '--set',
       'platform.installationId=replacement-attempt',
       '--set',
-      'secrets.registryWritePassword=reinstalled-registry-password',
+      'secrets.registryCredentialSigningKey=reinstalled-registry-signing-key-with-at-least-32-characters',
       '--set',
       'secrets.productLogIngestToken=reinstalled-product-log-token',
       '--set',
