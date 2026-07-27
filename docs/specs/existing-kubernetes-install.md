@@ -715,7 +715,7 @@ fix-forward procedure. Product rollback compatibility is not required for this u
 - Create automatic push and pull credentials during project provisioning.
 - Project `imagePullSecrets` through `kube-runtime`.
 - Add registry push/pull installation acceptance.
-- Delete node mirror configuration and k3s restart behavior.
+- Delete node mirror configuration and the systemctl-driven k3s restart flow.
 
 ### Phase 5: complete project and organization isolation
 
