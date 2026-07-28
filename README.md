@@ -9,7 +9,7 @@
 <h1 align="center">Compartment</h1>
 
 <p align="center">
-  Self-hosted deployment infrastructure for internal tools, private apps, and public services.
+  Self-hosted infrastructure for deploying and operating small software: apps, scripts, agents, and workflows.
 </p>
 
 <p align="center">
