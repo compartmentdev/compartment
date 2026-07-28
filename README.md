@@ -33,7 +33,7 @@
 
 ## What Is Compartment?
 
-Compartment is a self-hosted deployment system for small software on infrastructure your team controls. Small software means **apps, scripts, agents, and workflows** built for a particular person, workflow, or team. Compartment provides the runtime, URLs, access model, deployment history, and operations surface needed to deploy and operate them consistently.
+Compartment is a self-hosted deployment system for small software on infrastructure your team controls. Small software means apps, scripts, agents, and workflows built for a particular person, workflow, or team. Compartment provides the runtime, URLs, access model, deployment history, and operations surface needed to deploy and operate them consistently.
 
 The project is CLI-first and repository-first. Add a `compartment.yml`, deploy from a checkout or connected Git repository, and run the result through a self-hosted control plane. If a project can build into a container image with Docker or [Railpack](https://railpack.com/), it can usually run on Compartment.
 
