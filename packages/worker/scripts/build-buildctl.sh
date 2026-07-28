@@ -11,7 +11,8 @@ export GOFLAGS=-mod=mod
 go get \
   github.com/containerd/containerd/v2@v2.2.5 \
   golang.org/x/crypto@v0.53.0 \
-  golang.org/x/net@v0.55.0
+  golang.org/x/net@v0.55.0 \
+  golang.org/x/text@v0.40.0
 go mod tidy
 mkdir -p /out
 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/buildctl ./cmd/buildctl
