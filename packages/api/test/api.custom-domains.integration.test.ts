@@ -381,17 +381,19 @@ describe('Phase 0 API integration custom domains', (): void => {
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
       dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
       const verifyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken);
-      expect(verifyPayload.domain.status).toBe('ready');
-      expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).toHaveBeenCalledTimes(1);
+      expect(verifyPayload.domain.status).toBe('reconciling');
+      expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).not.toHaveBeenCalled();
 
       expect(await listCustomDomains(installPayload.sessionToken)).toHaveLength(1);
-      expect((await showCustomDomain(installPayload.sessionToken)).domain.status).toBe('ready');
+      expect((await showCustomDomain(installPayload.sessionToken)).domain.status).toBe('reconciling');
       expect(await removeCustomDomain(installPayload.sessionToken)).toEqual({
         host: 'app.customer.example.com',
         removed: true,
       });
-      expect(await db.select().from(deploymentCustomDomains)).toHaveLength(0);
-      expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).toHaveBeenCalledTimes(2);
+      expect(await db.select().from(deploymentCustomDomains)).toEqual([
+        expect.objectContaining({ deletionReady: true, reconcileState: 'deleting' }),
+      ]);
+      expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).toHaveBeenCalledOnce();
     } finally {
       configureApiRuntime({ config: defaultApiConfig, db });
     }
@@ -413,8 +415,8 @@ describe('Phase 0 API integration custom domains', (): void => {
         'beta-dev',
       );
 
-      expect(crossOrganizationResponse.statusCode).toBe(404);
-      expect(errorResponseSchema.parse(crossOrganizationResponse.json()).error.code).toBe('custom_domain_not_found');
+      expect(crossOrganizationResponse.statusCode).toBe(409);
+      expect(errorResponseSchema.parse(crossOrganizationResponse.json()).error.code).toBe('custom_domain_collision');
       expect(await db.select().from(deploymentCustomDomains)).toHaveLength(1);
     } finally {
       configureApiRuntime({ config: defaultApiConfig, db });
@@ -450,7 +452,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       dnsPromiseMocks.resolve6.mockResolvedValue([publicIngressConfig.publicIngressIpv6!]);
 
       const verifyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken, host);
-      expect(verifyPayload.domain.status).toBe('ready');
+      expect(verifyPayload.domain.status).toBe('reconciling');
       await expect(removeCustomDomain(installPayload.sessionToken, host)).resolves.toEqual({
         host,
         removed: true,
@@ -486,7 +488,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       dnsPromiseMocks.resolveCname.mockResolvedValue([`smoke-web.${customCertApiConfig.baseDomain}.`]);
 
       const verifyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken, host);
-      expect(verifyPayload.domain.status).toBe('ready');
+      expect(verifyPayload.domain.status).toBe('reconciling');
       await expect(removeCustomDomain(installPayload.sessionToken, host)).resolves.toEqual({
         host,
         removed: true,
@@ -520,7 +522,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       dnsPromiseMocks.resolve6.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
       const verifyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken, host);
-      expect(verifyPayload.domain.status).toBe('ready');
+      expect(verifyPayload.domain.status).toBe('reconciling');
       await expect(removeCustomDomain(installPayload.sessionToken, host)).resolves.toEqual({
         host,
         removed: true,
@@ -545,7 +547,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
 
       const readyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken, host);
-      expect(readyPayload.domain.status).toBe('ready');
+      expect(readyPayload.domain.status).toBe('reconciling');
 
       await db.update(deployments).set({ isActive: false }).where(eq(deployments.isActive, true));
 
@@ -556,13 +558,13 @@ describe('Phase 0 API integration custom domains', (): void => {
         expect.objectContaining({
           canonicalRouteHost: `smoke-web.${managedApiConfig.baseDomain}`,
           host,
-          status: 'ready',
+          status: 'reconciling',
         }),
       ]);
       expect(shownDomain.domain).toMatchObject({
         canonicalRouteHost: `smoke-web.${managedApiConfig.baseDomain}`,
         host,
-        status: 'ready',
+        status: 'reconciling',
       });
     } finally {
       configureApiRuntime({ config: defaultApiConfig, db });
@@ -596,7 +598,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       expect(listCustomDomainsResponseSchema.parse(listResponse.json()).domains).toEqual([
         expect.objectContaining({
           host,
-          status: 'ready',
+          status: 'reconciling',
         }),
       ]);
 
@@ -608,7 +610,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       expect(showResponse.statusCode).toBe(200);
       expect(customDomainResponseSchema.parse(showResponse.json()).domain).toMatchObject({
         host,
-        status: 'ready',
+        status: 'reconciling',
       });
 
       const addResponse: LightMyRequestResponse = await app.inject({
@@ -734,7 +736,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       expect(verifyResponse.statusCode).toBe(200);
       expect(verifyCustomDomainResponseSchema.parse(verifyResponse.json()).domain).toMatchObject({
         host,
-        status: 'ready',
+        status: 'reconciling',
       });
 
       const removeResponse: LightMyRequestResponse = await app.inject({
@@ -752,7 +754,7 @@ describe('Phase 0 API integration custom domains', (): void => {
     }
   });
 
-  it('keeps verified custom app domain removal retryable when edge sync fails', async (): Promise<void> => {
+  it('keeps active custom app domain removal retryable when edge sync fails', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
@@ -765,7 +767,11 @@ describe('Phase 0 API integration custom domains', (): void => {
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
       dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
       const readyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken);
-      expect(readyPayload.domain.status).toBe('ready');
+      expect(readyPayload.domain.status).toBe('reconciling');
+      await db
+        .update(deploymentCustomDomains)
+        .set({ edgeRoutingEnabled: true, reconcileState: 'active' })
+        .where(eq(deploymentCustomDomains.host, defaultCustomDomainHost));
       appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockClear();
 
       appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockRejectedValueOnce(createEdgeStateUpdateFailedError());
@@ -776,13 +782,21 @@ describe('Phase 0 API integration custom domains', (): void => {
       });
       expect(failedRemoveResponse.statusCode).toBe(502);
       expect(errorResponseSchema.parse(failedRemoveResponse.json()).error.code).toBe('edge_state_update_failed');
-      expect(await db.select().from(deploymentCustomDomains)).toHaveLength(1);
+      expect(await db.select().from(deploymentCustomDomains)).toEqual([
+        expect.objectContaining({
+          deletionReady: false,
+          edgeRoutingEnabled: false,
+          reconcileState: 'deleting',
+        }),
+      ]);
 
       await expect(removeCustomDomain(installPayload.sessionToken)).resolves.toEqual({
         host: 'app.customer.example.com',
         removed: true,
       });
-      expect(await db.select().from(deploymentCustomDomains)).toHaveLength(0);
+      expect(await db.select().from(deploymentCustomDomains)).toEqual([
+        expect.objectContaining({ deletionReady: true, reconcileState: 'deleting' }),
+      ]);
       expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).toHaveBeenCalledTimes(2);
     } finally {
       configureApiRuntime({ config: defaultApiConfig, db });
@@ -824,7 +838,7 @@ describe('Phase 0 API integration custom domains', (): void => {
     }
   });
 
-  it('syncs edge state when a ready custom app domain becomes invalid', async (): Promise<void> => {
+  it('disables Edge when an active custom app domain becomes invalid', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
@@ -837,8 +851,9 @@ describe('Phase 0 API integration custom domains', (): void => {
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
       dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
       const readyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken);
-      expect(readyPayload.domain.status).toBe('ready');
+      expect(readyPayload.domain.status).toBe('reconciling');
       expect(readyPayload.domain.verifiedAt).not.toBeNull();
+      await db.update(deploymentCustomDomains).set({ edgeRoutingEnabled: true, reconcileState: 'active' });
       appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockClear();
 
       dnsPromiseMocks.resolveTxt.mockResolvedValue([['wrong-verification-token']]);
@@ -852,13 +867,13 @@ describe('Phase 0 API integration custom domains', (): void => {
         status: 'failed',
         verifiedAt: readyPayload.domain.verifiedAt,
       });
-      expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).toHaveBeenCalledTimes(1);
+      expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).toHaveBeenCalledOnce();
     } finally {
       configureApiRuntime({ config: defaultApiConfig, db });
     }
   });
 
-  it('retries edge sync when invalidating an ever-verified custom app domain', async (): Promise<void> => {
+  it('persists repeat invalid verification without attempting Edge activation', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
     const managedApiConfig: ApiConfig = createManagedApiConfig();
@@ -871,20 +886,11 @@ describe('Phase 0 API integration custom domains', (): void => {
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
       dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
       const readyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken);
-      expect(readyPayload.domain.status).toBe('ready');
+      expect(readyPayload.domain.status).toBe('reconciling');
       appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockClear();
 
       dnsPromiseMocks.resolveTxt.mockResolvedValue([['wrong-verification-token']]);
       dnsPromiseMocks.resolve4.mockRejectedValue(new Error('No A record.'));
-      appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockRejectedValueOnce(createEdgeStateUpdateFailedError());
-      const failedSyncResponse: LightMyRequestResponse = await app.inject({
-        method: 'POST',
-        url: '/v1/domains/app.customer.example.com/verify',
-        headers: buildOrganizationAuthorizationHeaders(installPayload.sessionToken),
-      });
-      expect(failedSyncResponse.statusCode).toBe(502);
-      expect(errorResponseSchema.parse(failedSyncResponse.json()).error.code).toBe('edge_state_update_failed');
-
       const retryPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken);
 
       expect(retryPayload.domain).toMatchObject({
@@ -893,7 +899,7 @@ describe('Phase 0 API integration custom domains', (): void => {
         status: 'failed',
         verifiedAt: readyPayload.domain.verifiedAt,
       });
-      expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).toHaveBeenCalledTimes(2);
+      expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).not.toHaveBeenCalled();
     } finally {
       configureApiRuntime({ config: defaultApiConfig, db });
     }

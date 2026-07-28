@@ -1,18 +1,21 @@
-import type { CustomDomainCheckStatus } from '@compartment/contracts';
-import { and, asc, eq, type QueryPromise, type SQL } from 'drizzle-orm';
+import type { CustomDomainCheckStatus, CustomDomainState } from '@compartment/contracts';
+import { and, asc, eq, ne, type QueryPromise, type SQL } from 'drizzle-orm';
 import type { SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import { deploymentCustomDomains, environments, organizations, projectServices, projects } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type {
   CustomDomainRow,
-  DeleteCustomDomainInput,
   InsertCustomDomainInput,
   ListCustomDomainsInput,
   UpdateCustomDomainCheckInput,
 } from './custom-domains.query.types';
 
-interface PersistedCustomDomainRow extends Omit<CustomDomainRow, 'ownershipStatus' | 'routingStatus'> {
+interface PersistedCustomDomainRow extends Omit<
+  CustomDomainRow,
+  'ownershipStatus' | 'reconcileState' | 'routingStatus'
+> {
   ownershipStatus: string;
+  reconcileState: string;
   routingStatus: string;
 }
 
@@ -27,6 +30,8 @@ type CustomDomainLookupQuery = QueryPromise<PersistedCustomDomainRow[]> & {
 
 interface CustomDomainSelection extends SelectedFields {
   createdAt: typeof deploymentCustomDomains.createdAt;
+  desiredGeneration: typeof deploymentCustomDomains.desiredGeneration;
+  edgeRoutingEnabled: typeof deploymentCustomDomains.edgeRoutingEnabled;
   environmentId: typeof environments.id;
   environmentName: typeof environments.name;
   failureMessage: typeof deploymentCustomDomains.failureMessage;
@@ -35,9 +40,16 @@ interface CustomDomainSelection extends SelectedFields {
   lastCheckedAt: typeof deploymentCustomDomains.lastCheckedAt;
   organizationId: typeof organizations.id;
   ownershipStatus: typeof deploymentCustomDomains.ownershipStatus;
+  observedCertificatePresent: typeof deploymentCustomDomains.observedCertificatePresent;
+  observedCertificateReady: typeof deploymentCustomDomains.observedCertificateReady;
+  observedGeneration: typeof deploymentCustomDomains.observedGeneration;
+  observedIngressPresent: typeof deploymentCustomDomains.observedIngressPresent;
   projectId: typeof projects.id;
   projectName: typeof projects.name;
   routingStatus: typeof deploymentCustomDomains.routingStatus;
+  reconcileLeaseExpiresAt: typeof deploymentCustomDomains.reconcileLeaseExpiresAt;
+  reconcileLeaseId: typeof deploymentCustomDomains.reconcileLeaseId;
+  reconcileState: typeof deploymentCustomDomains.reconcileState;
   serviceId: typeof projectServices.id;
   serviceName: typeof projectServices.name;
   updatedAt: typeof deploymentCustomDomains.updatedAt;
@@ -47,6 +59,8 @@ interface CustomDomainSelection extends SelectedFields {
 
 const customDomainSelection: CustomDomainSelection = {
   createdAt: deploymentCustomDomains.createdAt,
+  desiredGeneration: deploymentCustomDomains.desiredGeneration,
+  edgeRoutingEnabled: deploymentCustomDomains.edgeRoutingEnabled,
   environmentId: environments.id,
   environmentName: environments.name,
   failureMessage: deploymentCustomDomains.failureMessage,
@@ -55,9 +69,16 @@ const customDomainSelection: CustomDomainSelection = {
   lastCheckedAt: deploymentCustomDomains.lastCheckedAt,
   organizationId: organizations.id,
   ownershipStatus: deploymentCustomDomains.ownershipStatus,
+  observedCertificatePresent: deploymentCustomDomains.observedCertificatePresent,
+  observedCertificateReady: deploymentCustomDomains.observedCertificateReady,
+  observedGeneration: deploymentCustomDomains.observedGeneration,
+  observedIngressPresent: deploymentCustomDomains.observedIngressPresent,
   projectId: projects.id,
   projectName: projects.name,
   routingStatus: deploymentCustomDomains.routingStatus,
+  reconcileLeaseExpiresAt: deploymentCustomDomains.reconcileLeaseExpiresAt,
+  reconcileLeaseId: deploymentCustomDomains.reconcileLeaseId,
+  reconcileState: deploymentCustomDomains.reconcileState,
   serviceId: projectServices.id,
   serviceName: projectServices.name,
   updatedAt: deploymentCustomDomains.updatedAt,
@@ -90,6 +111,13 @@ export async function findCustomDomainForOrganization(
   return rows[0] === undefined ? undefined : toCustomDomainRow(rows[0]);
 }
 
+export async function findCustomDomainByHost(host: string): Promise<CustomDomainRow | undefined> {
+  const rows: PersistedCustomDomainRow[] = await createCustomDomainLookupQuery()
+    .where(eq(deploymentCustomDomains.host, host))
+    .limit(1);
+  return rows[0] === undefined ? undefined : toCustomDomainRow(rows[0]);
+}
+
 export async function listCustomDomains(input: ListCustomDomainsInput): Promise<CustomDomainRow[]> {
   const rows: PersistedCustomDomainRow[] = await createCustomDomainLookupQuery()
     .where(buildCustomDomainListPredicate(input))
@@ -105,17 +133,29 @@ export async function updateCustomDomainCheck(input: UpdateCustomDomainCheckInpu
       failureMessage: input.failureMessage,
       lastCheckedAt: input.lastCheckedAt,
       ownershipStatus: input.ownershipStatus,
+      desiredGeneration: input.desiredGeneration,
+      edgeRoutingEnabled: false,
+      observedCertificatePresent: false,
+      observedCertificateReady: false,
+      observedGeneration: 0,
+      observedIngressPresent: false,
+      reconcileLeaseExpiresAt: null,
+      reconcileLeaseId: null,
+      reconcileState: input.reconcileState,
       routingStatus: input.routingStatus,
       updatedAt: input.updatedAt,
       verifiedAt: input.verifiedAt,
     })
-    .where(and(eq(deploymentCustomDomains.id, input.id), eq(deploymentCustomDomains.host, input.host)));
+    .where(buildMutableCustomDomainPredicate(input));
 }
 
-export async function deleteCustomDomain(input: DeleteCustomDomainInput): Promise<void> {
-  await getApiDatabase()
-    .delete(deploymentCustomDomains)
-    .where(and(eq(deploymentCustomDomains.id, input.id), eq(deploymentCustomDomains.host, input.host)));
+function buildMutableCustomDomainPredicate(input: UpdateCustomDomainCheckInput): SQL {
+  return and(
+    eq(deploymentCustomDomains.id, input.id),
+    eq(deploymentCustomDomains.host, input.host),
+    eq(deploymentCustomDomains.desiredGeneration, input.desiredGeneration - 1),
+    ne(deploymentCustomDomains.reconcileState, 'deleting'),
+  )!;
 }
 
 function createCustomDomainLookupQuery(): CustomDomainLookupQuery {
@@ -147,6 +187,7 @@ function toCustomDomainRow(row: PersistedCustomDomainRow): CustomDomainRow {
   return {
     ...row,
     ownershipStatus: row.ownershipStatus as CustomDomainCheckStatus,
+    reconcileState: row.reconcileState as CustomDomainState,
     routingStatus: row.routingStatus as CustomDomainCheckStatus,
   };
 }

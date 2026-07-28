@@ -82,5 +82,6 @@ function buildVerifiedCustomDomainPredicate(): SQL {
     eq(deployments.isActive, true),
     eq(deploymentCustomDomains.ownershipStatus, 'valid'),
     eq(deploymentCustomDomains.routingStatus, 'valid'),
+    eq(deploymentCustomDomains.edgeRoutingEnabled, true),
   )!;
 }

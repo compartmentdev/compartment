@@ -1,4 +1,4 @@
-import type { CustomDomainCheckStatus } from '@compartment/contracts';
+import type { CustomDomainCheckStatus, CustomDomainState } from '@compartment/contracts';
 
 export interface CustomDomainRow {
   createdAt: Date;
@@ -10,6 +10,15 @@ export interface CustomDomainRow {
   lastCheckedAt: Date | null;
   organizationId: string;
   ownershipStatus: CustomDomainCheckStatus;
+  reconcileState: CustomDomainState;
+  desiredGeneration: number;
+  edgeRoutingEnabled: boolean;
+  observedGeneration: number;
+  observedIngressPresent: boolean;
+  observedCertificatePresent: boolean;
+  observedCertificateReady: boolean;
+  reconcileLeaseExpiresAt: Date | null;
+  reconcileLeaseId: string | null;
   projectId: string;
   projectName: string;
   routingStatus: CustomDomainCheckStatus;
@@ -43,12 +52,9 @@ export interface UpdateCustomDomainCheckInput {
   id: string;
   lastCheckedAt: Date | null;
   ownershipStatus: CustomDomainCheckStatus;
+  reconcileState: CustomDomainState;
+  desiredGeneration: number;
   routingStatus: CustomDomainCheckStatus;
   updatedAt: Date;
   verifiedAt: Date | null;
-}
-
-export interface DeleteCustomDomainInput {
-  host: string;
-  id: string;
 }

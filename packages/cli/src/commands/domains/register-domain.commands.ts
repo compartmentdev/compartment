@@ -150,7 +150,7 @@ async function executeVerifyDomainCommand(
   );
 
   renderOutput(dependencies.io, options.output, response, createCustomDomainVerifyMessage(response));
-  if (response.domain.status !== 'ready') {
+  if (response.domain.status !== 'reconciling' && response.domain.status !== 'active') {
     throw new Error(response.domain.failureMessage ?? 'Custom domain verification failed.');
   }
 }

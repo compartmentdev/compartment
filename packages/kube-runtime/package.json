@@ -26,6 +26,7 @@
     "test": "vitest run --config ../../vitest.config.mts"
   },
   "dependencies": {
+    "@compartment/contracts": "workspace:*",
     "@compartment/utils": "workspace:*",
     "@kubernetes/client-node": "^1.4.0"
   },

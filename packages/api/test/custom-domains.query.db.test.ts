@@ -14,8 +14,21 @@ import {
   projectServices,
 } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
-import { deleteCustomDomain, updateCustomDomainCheck } from '../src/queries/custom-domains.query';
+import { updateCustomDomainCheck } from '../src/queries/custom-domains.query';
+import { beginCustomDomainDeletion, markCustomDomainDeletionReady } from '../src/queries/custom-domain-deletion.query';
+import {
+  activateCustomDomainReconcileRow,
+  claimCustomDomainReconcileRow,
+  enableCustomDomainEdgeRouting,
+  observeCustomDomainReconcileRow,
+  settleDeletedCustomDomain,
+} from '../src/queries/custom-domain-reconcile.query';
+import type {
+  ClaimedCustomDomainReconcileRow,
+  CustomDomainDeletionTransition,
+} from '../src/queries/custom-domain-reconcile.query.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
+import { isUniqueConstraintError } from '../src/queries/query-error';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const customDomainsQueryDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'custom_domains_query');
@@ -65,11 +78,13 @@ describe('custom domain db queries', (): void => {
     await insertCustomDomain('cdom_old');
 
     await updateCustomDomainCheck({
+      desiredGeneration: 2,
       failureMessage: null,
       host: 'app.customer.example.com',
       id: 'cdom_recreated',
       lastCheckedAt: new Date('2026-04-23T10:00:00.000Z'),
       ownershipStatus: 'valid',
+      reconcileState: 'reconciling',
       routingStatus: 'valid',
       updatedAt: new Date('2026-04-23T10:00:00.000Z'),
       verifiedAt: new Date('2026-04-23T10:00:00.000Z'),
@@ -80,13 +95,108 @@ describe('custom domain db queries', (): void => {
       routingStatus: 'pending',
     });
 
-    await deleteCustomDomain({
-      host: 'app.customer.example.com',
-      id: 'cdom_recreated',
-    });
+    await expect(beginCustomDomainDeletion('cdom_recreated')).resolves.toBeNull();
     expect(await readStoredCustomDomain()).toMatchObject({
       id: 'cdom_old',
     });
+  });
+
+  it('claims once, releases an incomplete observation without livelock, and activates only a ready generation', async (): Promise<void> => {
+    await createQueryTestScope();
+    await insertCustomDomain('cdom_reconcile', 'reconciling');
+
+    const first: ClaimedCustomDomainReconcileRow | null = await claimCustomDomainReconcileRow();
+    expect(first).toMatchObject({ domainId: 'cdom_reconcile', operation: 'reconcile' });
+    expect(await claimCustomDomainReconcileRow()).toBeNull();
+
+    await observeCustomDomainReconcileRow({
+      certificatePresent: true,
+      certificateReady: false,
+      ingressPresent: true,
+      leaseId: first!.leaseId,
+      observedGeneration: 1,
+      releaseLease: true,
+    });
+    expect(await activateCustomDomainReconcileRow(first!.leaseId, 1)).toBe(false);
+
+    expect(await claimCustomDomainReconcileRow()).toBeNull();
+    await expireCustomDomainLease();
+    const retry: ClaimedCustomDomainReconcileRow | null = await claimCustomDomainReconcileRow();
+    expect(retry).not.toBeNull();
+    await observeCustomDomainReconcileRow({
+      certificatePresent: true,
+      certificateReady: true,
+      ingressPresent: true,
+      leaseId: retry!.leaseId,
+      observedGeneration: 1,
+      releaseLease: false,
+    });
+    expect(await enableCustomDomainEdgeRouting(retry!.leaseId, 1)).toBe(true);
+    expect(await activateCustomDomainReconcileRow(retry!.leaseId, 1)).toBe(true);
+    expect(await readStoredCustomDomain()).toMatchObject({
+      edgeRoutingEnabled: true,
+      observedGeneration: 1,
+      reconcileState: 'active',
+    });
+  });
+
+  it('does not settle deletion until exact reads confirm both resources absent', async (): Promise<void> => {
+    await createQueryTestScope();
+    await insertCustomDomain('cdom_delete', 'deleting', true);
+    const claim: ClaimedCustomDomainReconcileRow | null = await claimCustomDomainReconcileRow();
+
+    await observeCustomDomainReconcileRow({
+      certificatePresent: false,
+      certificateReady: false,
+      ingressPresent: true,
+      leaseId: claim!.leaseId,
+      observedGeneration: 1,
+      releaseLease: true,
+    });
+    expect(await settleDeletedCustomDomain(claim!.leaseId, 1)).toBe(false);
+    expect(await readStoredCustomDomain()).toBeDefined();
+
+    expect(await claimCustomDomainReconcileRow()).toBeNull();
+    await expireCustomDomainLease();
+    const retry: ClaimedCustomDomainReconcileRow | null = await claimCustomDomainReconcileRow();
+    await observeCustomDomainReconcileRow({
+      certificatePresent: false,
+      certificateReady: false,
+      ingressPresent: false,
+      leaseId: retry!.leaseId,
+      observedGeneration: 1,
+      releaseLease: false,
+    });
+    expect(await settleDeletedCustomDomain(retry!.leaseId, 1)).toBe(true);
+    expect(await readStoredCustomDomain()).toBeUndefined();
+  });
+
+  it('does not expose deletion work until durable Edge shutdown is acknowledged', async (): Promise<void> => {
+    await createQueryTestScope();
+    await insertCustomDomain('cdom_edge_gate', 'pending');
+
+    const transition: CustomDomainDeletionTransition | null = await beginCustomDomainDeletion('cdom_edge_gate');
+
+    expect(transition).toMatchObject({ deletionGeneration: 2, previousState: 'pending' });
+    expect(await claimCustomDomainReconcileRow()).toBeNull();
+    expect(await markCustomDomainDeletionReady('cdom_edge_gate', 2)).toBe(true);
+    expect(await claimCustomDomainReconcileRow()).toMatchObject({
+      desiredGeneration: 2,
+      operation: 'delete',
+    });
+  });
+
+  it('enforces global hostname uniqueness at the database boundary', async (): Promise<void> => {
+    await createQueryTestScope();
+    await insertCustomDomain('cdom_first');
+
+    let collision: Error | null = null;
+    try {
+      await insertCustomDomain('cdom_second');
+    } catch (error) {
+      collision = error as Error;
+    }
+    expect(isUniqueConstraintError(collision ?? undefined)).toBe(true);
   });
 });
 
@@ -123,18 +233,28 @@ async function createQueryTestScope(): Promise<void> {
   });
 }
 
-async function insertCustomDomain(id: string): Promise<void> {
+async function insertCustomDomain(
+  id: string,
+  reconcileState: 'deleting' | 'pending' | 'reconciling' = 'pending',
+  deletionReady: boolean = false,
+): Promise<void> {
   await db.insert(deploymentCustomDomains).values({
     createdByPrincipalId: 'prn_custom_domains',
+    deletionReady,
     environmentId: 'env_custom_domains',
     host: 'app.customer.example.com',
     id,
     ownershipStatus: 'pending',
+    reconcileState,
     projectServiceId: 'svc_custom_domains',
     routingStatus: 'pending',
     updatedAt: new Date('2026-04-23T09:00:00.000Z'),
     verificationTokenHash: 'hash',
   });
+}
+
+async function expireCustomDomainLease(): Promise<void> {
+  await db.update(deploymentCustomDomains).set({ reconcileLeaseExpiresAt: new Date('2000-01-01T00:00:00.000Z') });
 }
 
 async function readStoredCustomDomain(): Promise<typeof deploymentCustomDomains.$inferSelect | undefined> {

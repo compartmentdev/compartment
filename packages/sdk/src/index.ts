@@ -163,3 +163,9 @@ export {
   completeProjectProvisioningV2,
 } from './services/worker-project-provisioning.service';
 export { acknowledgeResourceReconcile, claimResourceReconcile } from './services/worker-resource-reconcile.service';
+export {
+  claimCustomDomainReconcile,
+  completeCustomDomainReconcile,
+  failCustomDomainReconcile,
+  observeCustomDomainReconcile,
+} from './services/worker-custom-domain-reconcile.service';

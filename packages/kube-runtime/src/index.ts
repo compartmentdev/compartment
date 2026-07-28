@@ -1,6 +1,11 @@
 export { createKubeRuntimeFromEnvironment, createSelfCleaningKubeRuntimeFromEnvironment } from './kube-runtime-factory';
 export { KubeRuntime } from './kube-runtime';
 export { kubeApplicationIdentityName, kubeNamespaceName, kubeResourceVolumeName } from './kube-naming';
+export { observeCustomDomainProjection, projectCustomDomainManifests } from './kube-custom-domain-projection';
+export type {
+  CustomDomainProjectionObservation,
+  CustomDomainProjectionRow,
+} from './kube-custom-domain-projection.types';
 export { projectApplicationManifests } from './kube-projections';
 export { projectNetworkPolicyManifests } from './kube-network-policy-projection';
 export {

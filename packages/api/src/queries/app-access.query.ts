@@ -182,6 +182,7 @@ function buildCustomAppAccessSessionOrganizationHostWhere(organizationId: string
     where ${deployments.isActive} = true
       and ${deploymentCustomDomains.ownershipStatus} = 'valid'
       and ${deploymentCustomDomains.routingStatus} = 'valid'
+      and ${deploymentCustomDomains.edgeRoutingEnabled} = true
       and ${projects.organizationId} = ${organizationId}
       and ${appAccessSessions.host} = ${deploymentCustomDomains.host}
   )`;

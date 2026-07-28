@@ -4,6 +4,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
+      "@compartment/contracts": ["../contracts/src/index.ts"],
       "@compartment/utils": ["../utils/src/index.ts"]
     }
   },

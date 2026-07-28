@@ -177,7 +177,7 @@ describe.sequential('compartment domain commands', (): void => {
     const projectDirectory: string = await createProjectDirectory(tempRoot, 'smoke-web');
     const fetchMock: Mock<typeof fetch> = vi.fn<typeof fetch>().mockResolvedValue(
       createJsonResponse({
-        domains: [createCustomDomainSummary('ready', null)],
+        domains: [createCustomDomainSummary('active', null)],
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
@@ -186,7 +186,7 @@ describe.sequential('compartment domain commands', (): void => {
     const result: CliCommandResult = await runCliCommand(['domain', 'list']);
 
     expectCliSuccess(result);
-    expect(readCliStdout(result.capture)).toContain('app.customer.example.com (ready)');
+    expect(readCliStdout(result.capture)).toContain('app.customer.example.com (active)');
     expect(readCliStdout(result.capture)).toContain('Project: smoke-web');
     expect(readCliStdout(result.capture)).toContain('Canonical route: smoke-web.example.test');
   });
@@ -194,7 +194,7 @@ describe.sequential('compartment domain commands', (): void => {
   it('shows a domain as json output', async (): Promise<void> => {
     const fetchMock: Mock<typeof fetch> = vi.fn<typeof fetch>().mockResolvedValue(
       createJsonResponse({
-        domain: createCustomDomainSummary('ready', null),
+        domain: createCustomDomainSummary('active', null),
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
@@ -211,7 +211,7 @@ describe.sequential('compartment domain commands', (): void => {
     expect(JSON.parse(readCliStdout(result.capture))).toMatchObject({
       domain: {
         host: 'app.customer.example.com',
-        status: 'ready',
+        status: 'active',
       },
     });
     expect(readRequestUrl(fetchMock)).toContain('/v1/domains/app.customer.example.com');
@@ -220,7 +220,7 @@ describe.sequential('compartment domain commands', (): void => {
   it('shows a domain as text output', async (): Promise<void> => {
     const fetchMock: Mock<typeof fetch> = vi.fn<typeof fetch>().mockResolvedValue(
       createJsonResponse({
-        domain: createCustomDomainSummary('ready', null),
+        domain: createCustomDomainSummary('active', null),
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
@@ -228,7 +228,7 @@ describe.sequential('compartment domain commands', (): void => {
     const result: CliCommandResult = await runCliCommand(['domain', 'show', 'app.customer.example.com']);
 
     expectCliSuccess(result);
-    expect(readCliStdout(result.capture)).toContain('app.customer.example.com (ready)');
+    expect(readCliStdout(result.capture)).toContain('app.customer.example.com (active)');
     expect(readCliStdout(result.capture)).toContain('Ownership: valid');
     expect(readCliStdout(result.capture)).toContain('Routing: valid');
   });
@@ -319,10 +319,10 @@ describe.sequential('compartment domain commands', (): void => {
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
         createJsonResponse({
-          domain: createCustomDomainSummary('ready', null),
+          domain: createCustomDomainSummary('active', null),
         }),
       )
-      .mockResolvedValueOnce(createJsonResponse(createVerifyCustomDomainResponse('ready', null)))
+      .mockResolvedValueOnce(createJsonResponse(createVerifyCustomDomainResponse('reconciling', null)))
       .mockResolvedValueOnce(
         createJsonResponse({
           host: 'app.customer.example.com',
@@ -575,12 +575,12 @@ function createCustomDomainSummary(status: CustomDomainState, failureMessage: st
     serviceName: 'web',
     status,
     updatedAt: '2026-04-23T00:00:00.000Z',
-    verifiedAt: status === 'ready' ? '2026-04-23T00:01:00.000Z' : null,
+    verifiedAt: status === 'active' || status === 'reconciling' ? '2026-04-23T00:01:00.000Z' : null,
   };
 }
 
 function readOwnershipStatus(status: CustomDomainState): CustomDomainCheckStatus {
-  if (status === 'ready') {
+  if (status === 'active' || status === 'reconciling') {
     return 'valid';
   }
   if (status === 'failed') {
@@ -591,7 +591,7 @@ function readOwnershipStatus(status: CustomDomainState): CustomDomainCheckStatus
 }
 
 function readRoutingStatus(status: CustomDomainState): CustomDomainCheckStatus {
-  if (status === 'ready') {
+  if (status === 'active' || status === 'reconciling') {
     return 'valid';
   }
   if (status === 'failed') {

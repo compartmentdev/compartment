@@ -1,5 +1,6 @@
 import { createKubeRuntimeFromEnvironment, type KubeRuntime } from '@compartment/kube-runtime';
 import {
+  claimCustomDomainReconcile,
   claimDeploymentReconcile,
   claimProductJob,
   claimResourceReconcile,
@@ -7,19 +8,21 @@ import {
   type CompartmentRequester,
 } from '@compartment/sdk';
 import type {
+  WorkerClaimCustomDomainReconcileResponse,
   WorkerClaimDeploymentReconcileResponse,
   WorkerClaimProductJobResponse,
   WorkerClaimResourceReconcileResponse,
   ProductJobClass,
 } from '@compartment/contracts';
 import type { Logger } from 'pino';
-import type { WorkerConfig } from './config';
+import type { WorkerConfig, WorkerCustomDomainConfig } from './config';
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
 import { cleanupWorkerArtifacts } from './services/worker-artifact-cleanup.service';
 import { executeProductJob, finalizeRecoveredProductJob } from './services/worker-product-job.service';
 import { reconcileDeploymentTarget } from './services/worker-deployment-reconcile.service';
 import { executeResourceReconcile } from './services/worker-resource-reconcile.service';
 import { collectAndPublishPodMetrics } from './services/worker-pod-metrics.service';
+import { executeCustomDomainReconcile } from './services/worker-custom-domain-reconcile.service';
 
 const controllerRequestTimeoutMs: number = 15_000;
 
@@ -106,6 +109,23 @@ class PodMetricsReconcileArea implements KubeControllerHost {
   }
 }
 
+class CustomDomainReconcileArea implements KubeControllerHost {
+  public constructor(
+    private readonly request: CompartmentRequester,
+    private readonly runtime: KubeRuntime,
+    private readonly config: WorkerCustomDomainConfig,
+  ) {}
+
+  public async reconcile(): Promise<boolean> {
+    const claimed: WorkerClaimCustomDomainReconcileResponse = await claimCustomDomainReconcile(this.request);
+    if (claimed.target === null) {
+      return false;
+    }
+    await executeCustomDomainReconcile(this.request, this.runtime, claimed, this.config);
+    return true;
+  }
+}
+
 export function createKubeControllerHosts(config: WorkerConfig, logger: Logger): KubeControllerHost[] {
   if (!isKubeRuntimeConfigured()) {
     throw new Error('Kubernetes worker requires KUBERNETES_SERVICE_HOST or KUBECONFIG.');
@@ -120,6 +140,7 @@ export function createKubeControllerHosts(config: WorkerConfig, logger: Logger):
     new PodMetricsReconcileArea(request, runtime, logger),
     new DeploymentReconcileArea(request, runtime, config.artifactRegistry),
     new ResourceReconcileArea(request, runtime),
+    new CustomDomainReconcileArea(request, runtime, config.customDomains),
   ];
 }
 

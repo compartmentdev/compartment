@@ -1,7 +1,7 @@
 import type { ApiConfig } from '../config';
 import { createCustomDomainCollisionError, createCustomDomainNotFoundError } from '../errors/api-business-error';
 import { hashToken } from '../lib/tokens';
-import { findCustomDomainForOrganization, insertCustomDomain } from '../queries/custom-domains.query';
+import { findCustomDomainByHost, insertCustomDomain } from '../queries/custom-domains.query';
 import type { CustomDomainRow, InsertCustomDomainInput } from '../queries/custom-domains.query.types';
 import { isUniqueConstraintError } from '../queries/query-error';
 import { buildCompartmentDomainOwnershipValue } from './domain-ownership-dns.service';
@@ -31,7 +31,7 @@ export async function insertCustomDomainForTarget(
       throw error;
     }
 
-    await throwIfCustomDomainAssignedToOrganization(target.organizationId, pendingDomain.host);
+    await throwIfCustomDomainAssigned(pendingDomain.host);
     throw createCustomDomainNotFoundError();
   }
 }
@@ -63,8 +63,8 @@ function buildInsertCustomDomainInput(
   };
 }
 
-export async function throwIfCustomDomainAssignedToOrganization(organizationId: string, host: string): Promise<void> {
-  const existingDomain: CustomDomainRow | undefined = await findCustomDomainForOrganization(organizationId, host);
+export async function throwIfCustomDomainAssigned(host: string): Promise<void> {
+  const existingDomain: CustomDomainRow | undefined = await findCustomDomainByHost(host);
   if (existingDomain !== undefined) {
     throw createCustomDomainCollisionError(`Custom domain ${host} is already assigned.`);
   }

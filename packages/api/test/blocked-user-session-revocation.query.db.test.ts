@@ -254,6 +254,7 @@ async function createDeployment(input: CreateDeploymentInput): Promise<void> {
   });
   if (input.host !== undefined) {
     await db.insert(deploymentCustomDomains).values({
+      edgeRoutingEnabled: true,
       environmentId: `env_${input.prefix}`,
       host: input.host,
       id: `dcd_${input.prefix}`,

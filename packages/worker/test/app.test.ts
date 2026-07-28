@@ -132,6 +132,12 @@ function createWorkerConfig(): WorkerConfig {
     apiUrl: 'http://127.0.0.1:9443',
     artifactRegistry: createArtifactRegistryConfig(),
     buildKitAddress: 'tcp://builder:1234',
+    customDomains: {
+      caddyServiceName: 'compartment-caddy',
+      ingressClassName: 'traefik',
+      issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
+      namespace: 'compartment',
+    },
     logLevel: 'silent',
     pollIntervalMs: 10,
     runtimeControlToken: 'worker-secret',

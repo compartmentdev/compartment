@@ -241,6 +241,24 @@ tests:
             name: COMPARTMENT_KUBE_SERVICE_CIDR
             value: 10.43.0.0/16
         template: worker.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_CADDY_SERVICE_NAME
+            value: compartment-compartment-caddy
+        template: worker.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_INGRESS_CLASS_NAME
+            value: traefik
+        template: worker.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_TLS_ISSUER_NAME
+            value: compartment-platform
+        template: worker.yaml
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
@@ -254,7 +272,7 @@ tests:
           any: true
         template: caddy.yaml
       - hasDocuments:
-          count: 4
+          count: 6
         template: api-migrate-rbac.yaml
       - isKind:
           of: ServiceAccount
@@ -269,6 +287,39 @@ tests:
           of: RoleBinding
         template: api-migrate-rbac.yaml
         documentIndex: 3
+      - isKind:
+          of: Role
+        template: api-migrate-rbac.yaml
+        documentIndex: 4
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-custom-domain-controller
+        template: api-migrate-rbac.yaml
+        documentIndex: 4
+      - isKind:
+          of: RoleBinding
+        template: api-migrate-rbac.yaml
+        documentIndex: 5
+      - equal:
+          path: subjects[0].name
+          value: compartment-compartment-worker
+        template: api-migrate-rbac.yaml
+        documentIndex: 5
+      - contains:
+          path: rules
+          content:
+            apiGroups:
+              - networking.k8s.io
+            resources:
+              - ingresses
+            verbs:
+              - get
+              - create
+              - update
+              - patch
+              - delete
+        template: api-migrate-rbac.yaml
+        documentIndex: 4
       - hasDocuments:
           count: 5
         template: product-log-agent.yaml

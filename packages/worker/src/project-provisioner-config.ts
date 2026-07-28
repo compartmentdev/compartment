@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readWorkerConfig, type WorkerConfig } from './config';
+import { readWorkerProcessConfig, type WorkerProcessConfig } from './config';
 import {
   projectProvisioningEnvironmentSchema,
   type ProjectProvisioningEnvironment,
@@ -18,7 +18,7 @@ const projectProvisionerEnvironmentSchema: z.ZodType<ProjectProvisionerEnvironme
   );
 
 export function readProjectProvisionerConfig(env: NodeJS.ProcessEnv = process.env): ProjectProvisionerConfig {
-  const worker: WorkerConfig = readWorkerConfig(env);
+  const worker: WorkerProcessConfig = readWorkerProcessConfig(env);
   const parsed: ProjectProvisionerEnvironment = projectProvisionerEnvironmentSchema.parse(env);
   return {
     apiUrl: worker.apiUrl,
