@@ -1,11 +1,14 @@
-import type { DomainIssuerReference } from '@compartment/contracts';
+export interface KubeIssuerReference {
+  kind: 'ClusterIssuer' | 'Issuer';
+  name: string;
+}
 
 export interface CustomDomainProjectionRow {
   caddyServiceName: string;
   domainId: string;
   host: string;
   ingressClassName: string;
-  issuerRef: DomainIssuerReference;
+  issuerRef: KubeIssuerReference;
   namespace: string;
 }
 

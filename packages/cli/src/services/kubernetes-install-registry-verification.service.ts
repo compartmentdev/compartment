@@ -1,3 +1,4 @@
+import type { RegistryInstallVerificationOutput } from '@compartment/contracts';
 import { runCommandWithInput, runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
@@ -6,7 +7,6 @@ import type {
   KubernetesNodeList,
   KubernetesNodeListItem,
   KubernetesNodeStatusCondition,
-  RegistryInstallVerificationOutput,
 } from './kubernetes-install-registry-verification.service.types';
 
 const verificationTimeoutMs: number = 5 * 60_000;

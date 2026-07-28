@@ -20,23 +20,5 @@ spec:
       secretName: {{ default (printf "%s-wildcard-tls" (include "compartment.fullname" .)) $operatorTlsSecret }}
 {{- end }}
   rules:
-    - host: {{ printf "console.%s" $baseDomain | quote }}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "compartment.fullname" . }}-caddy
-                port:
-                  name: http
-    - host: {{ printf "*.%s" $baseDomain | quote }}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "compartment.fullname" . }}-caddy
-                port:
-                  name: http
+    {{- include "compartment.caddyIngressRule" (dict "root" . "host" (printf "console.%s" $baseDomain)) | nindent 4 }}
+    {{- include "compartment.caddyIngressRule" (dict "root" . "host" (printf "*.%s" $baseDomain)) | nindent 4 }}

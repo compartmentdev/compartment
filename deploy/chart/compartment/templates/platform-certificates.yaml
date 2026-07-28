@@ -1,33 +1,22 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- if and (eq $installState.effective.platform.startupStage "full") (eq $installState.effective.platform.publicProtocol "https") (ne $installState.effective.platform.tlsMode "secret") (empty .Values.tls.existingSecret) -}}
 {{- $baseDomain := $installState.effective.platform.baseDomain -}}
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: {{ include "compartment.fullname" . }}-console
-  labels:
-    {{- include "compartment.labels" . | nindent 4 }}
-    app.kubernetes.io/component: platform-tls
-spec:
-  secretName: {{ include "compartment.fullname" . }}-console-tls
-  issuerRef:
-    name: {{ .Values.tls.issuerRef.name | quote }}
-    kind: {{ .Values.tls.issuerRef.kind | quote }}
-  dnsNames:
-    - {{ printf "console.%s" $baseDomain | quote }}
+{{- $fullname := include "compartment.fullname" . -}}
+{{- include "compartment.certManagerCertificate" (dict
+  "root" .
+  "name" (printf "%s-console" $fullname)
+  "component" "platform-tls"
+  "secretName" (printf "%s-console-tls" $fullname)
+  "issuerRef" .Values.tls.issuerRef
+  "host" (printf "console.%s" $baseDomain)
+) }}
 ---
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: {{ include "compartment.fullname" . }}-wildcard
-  labels:
-    {{- include "compartment.labels" . | nindent 4 }}
-    app.kubernetes.io/component: platform-tls
-spec:
-  secretName: {{ include "compartment.fullname" . }}-wildcard-tls
-  issuerRef:
-    name: {{ .Values.tls.issuerRef.name | quote }}
-    kind: {{ .Values.tls.issuerRef.kind | quote }}
-  dnsNames:
-    - {{ printf "*.%s" $baseDomain | quote }}
+{{- include "compartment.certManagerCertificate" (dict
+  "root" .
+  "name" (printf "%s-wildcard" $fullname)
+  "component" "platform-tls"
+  "secretName" (printf "%s-wildcard-tls" $fullname)
+  "issuerRef" .Values.tls.issuerRef
+  "host" (printf "*.%s" $baseDomain)
+) }}
 {{- end }}

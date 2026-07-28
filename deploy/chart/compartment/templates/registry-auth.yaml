@@ -22,20 +22,14 @@ spec:
       targetPort: http-internal
 {{- if and (eq $installState.effective.platform.startupStage "full") (not (empty .Values.registry.hostname)) (not (empty .Values.registry.issuerRef.name)) }}
 ---
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: {{ include "compartment.fullname" . }}-registry
-  labels:
-    {{- include "compartment.labels" . | nindent 4 }}
-spec:
-  dnsNames:
-    - {{ .Values.registry.hostname | quote }}
-  issuerRef:
-    group: {{ .Values.registry.issuerRef.group | quote }}
-    kind: {{ .Values.registry.issuerRef.kind | quote }}
-    name: {{ .Values.registry.issuerRef.name | quote }}
-  secretName: {{ include "compartment.fullname" . }}-registry-tls
+{{- $fullname := include "compartment.fullname" . -}}
+{{- include "compartment.certManagerCertificate" (dict
+  "root" .
+  "name" (printf "%s-registry" $fullname)
+  "secretName" (printf "%s-registry-tls" $fullname)
+  "issuerRef" .Values.registry.issuerRef
+  "host" .Values.registry.hostname
+) }}
 {{- end }}
 {{- if eq $installState.effective.platform.startupStage "full" }}
 ---
