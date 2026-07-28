@@ -29,13 +29,15 @@ kubernetesProvider:
         public-ingress-ipv6: MjAwMTo0ODYwOjQ4NjA6Ojg4ODg=
         acme-email: cmV0YWluZWRAZXhhbXBsZS5jb20=
         managed-domain-broker-url: aHR0cHM6Ly9yZXRhaW5lZC1icm9rZXIuZXhhbXBsZQ==
+        managed-domain-allocation-id: YWxsb2NhdGlvbi1tYW5hZ2Vk
         managed-domain-broker-token: YnJva2VyLXRva2Vu
         domain-generation: Nw==
         domain-mode: bWFuYWdlZA==
         base-domain: cmV0YWluZWQuZXhhbXBsZS5jb20=
         managed-base-domain: bWFuYWdlZC5leGFtcGxlLmNvbQ==
+        managed-issuer-ref-json: eyJraW5kIjoiSXNzdWVyIiwibmFtZSI6ImNvbXBhcnRtZW50LXBsYXRmb3JtIn0=
         public-protocol: aHR0cHM=
-        tls-mode: bWFuYWdlZA==
+        tls-mode: YnJva2VyLWRuczAx
         active-custom-tls-secret: cmV0YWluZWQtdGxz
         operator-custom-tls-secret: b3BlcmF0b3ItdGxz
     - apiVersion: v1
@@ -57,7 +59,7 @@ kubernetesProvider:
         domain-mode: Y3VzdG9t
         base-domain: cmV0YWluZWQubG9jYWxob3N0
         public-protocol: aHR0cA==
-        tls-mode: Y3VzdG9tLWh0dHA=
+        tls-mode: aXNzdWVy
         active-custom-tls-secret: ''
         operator-custom-tls-secret: ''
     - apiVersion: v1
@@ -78,7 +80,7 @@ kubernetesProvider:
         base-domain: ''
         managed-base-domain: ''
         public-protocol: aHR0cHM=
-        tls-mode: bWFuYWdlZA==
+        tls-mode: YnJva2VyLWRuczAx
         active-custom-tls-secret: ''
         operator-custom-tls-secret: ''
     - apiVersion: v1
@@ -99,7 +101,7 @@ tests:
         domainMode: custom
         baseDomain: incoming.localhost
         publicProtocol: http
-        tlsMode: custom-http
+        tlsMode: issuer
         publicIngressIpv4: 1.1.1.1
         acmeEmail: incoming@example.com
       secrets:
@@ -153,6 +155,10 @@ tests:
           path: stringData.managed-domain-broker-token
           value: broker-token
         template: install-state-secret.yaml
+      - equal:
+          path: stringData.managed-issuer-ref-json
+          value: '{"kind":"Issuer","name":"compartment-platform"}'
+        template: install-state-secret.yaml
 
   - it: preserves explicitly empty retained custom TLS names
     release:
@@ -167,7 +173,7 @@ tests:
         domainMode: custom
         baseDomain: incoming.localhost
         publicProtocol: http
-        tlsMode: custom-http
+        tlsMode: issuer
       customTls: &incomingCustomTls
         existingSecret: incoming-active-tls
         operatorSecretName: incoming-operator-tls
@@ -222,7 +228,7 @@ tests:
         domainMode: managed
         baseDomain: ''
         publicProtocol: https
-        tlsMode: managed
+        tlsMode: broker-dns01
         acmeEmail: retained@example.test
         managedDomainBrokerUrl: https://broker.example.test
       secrets:
@@ -251,7 +257,7 @@ tests:
         domainMode: managed
         baseDomain: resumed.example.test
         publicProtocol: https
-        tlsMode: managed
+        tlsMode: broker-dns01
         publicIngressIpv4: 8.8.4.4
         acmeEmail: retained@example.test
         managedDomainBrokerUrl: https://broker.example.test

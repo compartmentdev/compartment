@@ -198,8 +198,8 @@ function buildCustomExternalDomainSetRequest(
     expectedSetupVersion,
     hostPlan: {
       baseDomain,
-      caddyMode: 'custom-http',
       domainKind: 'custom',
+      issuerRef: { kind: 'Issuer', name: 'customer-issuer' },
       publicScheme: 'https',
       tlsMode: 'external',
     },
@@ -210,7 +210,7 @@ function createCustomHttpApiConfig(): ApiConfig {
   return {
     ...defaultApiConfig,
     baseDomain: 'customer.example.com',
-    caddyTlsMode: 'custom-http',
+    tlsMode: 'issuer',
     controlPlaneHost: 'console.customer.example.com',
     publicProtocol: 'https',
     auditRetentionDays: 90,

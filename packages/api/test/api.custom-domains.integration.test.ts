@@ -145,8 +145,8 @@ function buildCustomExternalDomainSetRequest(
     expectedSetupVersion,
     hostPlan: {
       baseDomain,
-      caddyMode: 'custom-http',
       domainKind: 'custom',
+      issuerRef: { kind: 'Issuer', name: 'customer-issuer' },
       publicScheme: 'https',
       tlsMode: 'external',
     },
@@ -157,7 +157,7 @@ function createCustomCertificateApiConfig(): ApiConfig {
   return {
     ...defaultApiConfig,
     baseDomain: 'customer.example.com',
-    caddyTlsMode: 'custom-cert',
+    tlsMode: 'secret',
     controlPlaneHost: 'console.customer.example.com',
     publicProtocol: 'https',
     auditRetentionDays: 90,
@@ -173,7 +173,7 @@ function createManagedApiConfig(): ApiConfig {
   return {
     ...defaultApiConfig,
     baseDomain: '4h8z9k2m1p7q.app.compartment.run',
-    caddyTlsMode: 'managed',
+    tlsMode: 'broker-dns01',
     controlPlaneHost: 'console.4h8z9k2m1p7q.app.compartment.run',
     publicProtocol: 'https',
     auditRetentionDays: 90,
@@ -203,8 +203,7 @@ process.env.COMPARTMENT_SESSION_SECRET = process.env.COMPARTMENT_SESSION_SECRET 
 process.env.COMPARTMENT_ENV = 'dev';
 process.env.COMPARTMENT_INSTALL_TOKEN = 'test-install-token';
 process.env.COMPARTMENT_BASE_DOMAIN = 'localhost';
-process.env.COMPARTMENT_CADDY_TLS_MODE = 'internal';
-process.env.COMPARTMENT_CUSTOM_TLS_DIR = testCustomTlsDirectory;
+process.env.COMPARTMENT_TLS_MODE = 'internal';
 process.env.COMPARTMENT_PUBLIC_PROTOCOL = 'http';
 process.env.COMPARTMENT_PUBLIC_HTTP_PORT = '80';
 process.env.COMPARTMENT_PUBLIC_HTTPS_PORT = '443';

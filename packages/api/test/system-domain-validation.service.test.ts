@@ -9,7 +9,6 @@ describe('system domain validation service', (): void => {
   it('allows runtime managed plans with a shared baseDomain contract', (): void => {
     const hostPlan: DomainHostPlan = normalizeAndValidateRuntimeDomainHostPlan({
       baseDomain: 'example.compartment.run',
-      caddyMode: 'managed',
       domainKind: 'managed',
       publicScheme: 'https',
       tlsMode: 'broker-dns01',
@@ -21,7 +20,6 @@ describe('system domain validation service', (): void => {
   it('allows runtime custom internal mode for explicit base-domain installs', (): void => {
     const hostPlan: DomainHostPlan = normalizeAndValidateRuntimeDomainHostPlan({
       baseDomain: 'customer.example.com',
-      caddyMode: 'internal',
       domainKind: 'custom',
       publicScheme: 'http',
       tlsMode: 'internal',
@@ -33,7 +31,6 @@ describe('system domain validation service', (): void => {
   it('allows runtime HTTPS local internal mode for secure browser cookies', (): void => {
     const hostPlan: DomainHostPlan = normalizeAndValidateRuntimeDomainHostPlan({
       baseDomain: '127.0.0.1.sslip.io',
-      caddyMode: 'internal',
       domainKind: 'local',
       publicScheme: 'https',
       tlsMode: 'internal',
@@ -45,21 +42,18 @@ describe('system domain validation service', (): void => {
   it('keeps runtime HTTP host plans readable', (): void => {
     const localHostPlan: DomainHostPlan = normalizeAndValidateRuntimeDomainHostPlan({
       baseDomain: '127.0.0.1.sslip.io',
-      caddyMode: 'internal',
       domainKind: 'local',
       publicScheme: 'http',
       tlsMode: 'internal',
     });
     const customHttpHostPlan: DomainHostPlan = normalizeAndValidateRuntimeDomainHostPlan({
       baseDomain: 'customer.example.com',
-      caddyMode: 'custom-http',
       domainKind: 'custom',
       publicScheme: 'http',
       tlsMode: 'external',
     });
     const localCustomHttpHostPlan: DomainHostPlan = normalizeAndValidateRuntimeDomainHostPlan({
       baseDomain: 'console.compartment.localhost',
-      caddyMode: 'custom-http',
       domainKind: 'local',
       publicScheme: 'http',
       tlsMode: 'external',
@@ -76,7 +70,6 @@ describe('system domain validation service', (): void => {
         normalizeAndValidatePendingDomainHostPlan(
           {
             baseDomain: 'customer.example.com',
-            caddyMode: 'managed',
             domainKind: 'custom',
             publicScheme: 'https',
             tlsMode: 'broker-dns01',
@@ -90,7 +83,6 @@ describe('system domain validation service', (): void => {
         normalizeAndValidatePendingDomainHostPlan(
           {
             baseDomain: 'customer.example.com',
-            caddyMode: 'custom-http',
             domainKind: 'custom',
             publicScheme: 'http',
             tlsMode: 'external',
@@ -106,7 +98,6 @@ describe('system domain validation service', (): void => {
         normalizeAndValidatePendingDomainHostPlan(
           {
             baseDomain: 'example.compartment.run',
-            caddyMode: 'managed',
             domainKind: 'managed',
             publicScheme: 'https',
             tlsMode: 'broker-dns01',
@@ -120,7 +111,6 @@ describe('system domain validation service', (): void => {
         normalizeAndValidatePendingDomainHostPlan(
           {
             baseDomain: 'localhost',
-            caddyMode: 'internal',
             domainKind: 'local',
             publicScheme: 'http',
             tlsMode: 'internal',
@@ -134,7 +124,6 @@ describe('system domain validation service', (): void => {
     const hostPlan: DomainHostPlan = normalizeAndValidatePendingDomainHostPlan(
       {
         baseDomain: 'customer.example.com',
-        caddyMode: 'custom-cert',
         domainKind: 'custom',
         publicScheme: 'https',
         tlsMode: 'custom-cert',
@@ -151,8 +140,8 @@ describe('system domain validation service', (): void => {
         normalizeAndValidatePendingDomainHostPlan(
           {
             baseDomain: 'customer.current.example.com',
-            caddyMode: 'custom-http',
             domainKind: 'custom',
+            issuerRef: { kind: 'Issuer', name: 'customer-issuer' },
             publicScheme: 'https',
             tlsMode: 'external',
           },
@@ -167,8 +156,8 @@ describe('system domain validation service', (): void => {
         normalizeAndValidatePendingDomainHostPlan(
           {
             baseDomain: 'example.com',
-            caddyMode: 'custom-http',
             domainKind: 'custom',
+            issuerRef: { kind: 'Issuer', name: 'customer-issuer' },
             publicScheme: 'https',
             tlsMode: 'external',
           },

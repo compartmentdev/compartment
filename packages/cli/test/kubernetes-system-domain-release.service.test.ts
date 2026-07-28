@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
+import type { DomainHostPlan } from '@compartment/contracts';
 import type { CommandResult } from '../src/command-runner.types';
 import type {
   KubernetesDomainCertificateInput,
@@ -50,6 +51,17 @@ vi.mock('../src/services/kubernetes-system-domain-release-values.service', (): o
 vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
   writeVerifiedKubernetesReleaseImageValues: mocks.writeVerifiedImages,
 }));
+vi.mock('../src/services/kubernetes-system-domain-certificate.service', (): object => ({
+  validateKubernetesSystemDomainCertificate: (): object => ({
+    dnsNames: ['console.apps.example.com', '*.apps.example.com'],
+    expiresAt: '2030-01-01T00:00:00.000Z',
+    fingerprintSha256: 'AA:BB',
+    issuedAt: '2025-01-01T00:00:00.000Z',
+    issuer: 'Test CA',
+    serialNumber: '01',
+    subject: 'apps.example.com',
+  }),
+}));
 
 describe('Kubernetes system-domain release material', (): void => {
   afterEach((): void => {
@@ -63,8 +75,22 @@ describe('Kubernetes system-domain release material', (): void => {
     const directory: string = await mkdtemp(resolve(tmpdir(), 'compartment-domain-test-'));
     try {
       const input: KubernetesDomainCertificateInput = await createCertificateInput(directory);
-      const first: StagedKubernetesDomainCertificate = await stageKubernetesDomainCertificate(input, 'domop_123');
-      const second: StagedKubernetesDomainCertificate = await stageKubernetesDomainCertificate(input, 'domop_456');
+      const hostPlan: DomainHostPlan = {
+        baseDomain: 'apps.example.com',
+        domainKind: 'custom' as const,
+        publicScheme: 'https' as const,
+        tlsMode: 'custom-cert' as const,
+      };
+      const first: StagedKubernetesDomainCertificate = await stageKubernetesDomainCertificate(
+        input,
+        'domop_123',
+        hostPlan,
+      );
+      const second: StagedKubernetesDomainCertificate = await stageKubernetesDomainCertificate(
+        input,
+        'domop_456',
+        hostPlan,
+      );
 
       expect(first.secretName).not.toBe(second.secretName);
       expect(first.certificate).toBe('certificate-bytes');
@@ -89,7 +115,6 @@ describe('Kubernetes system-domain release material', (): void => {
         target,
         {
           baseDomain: 'apps.example.com',
-          caddyMode: 'custom-cert',
           domainKind: 'custom',
           publicScheme: 'https',
           tlsMode: 'custom-cert',
@@ -103,7 +128,7 @@ describe('Kubernetes system-domain release material', (): void => {
         customTls: {
           pendingOperationId: 'domop_123',
         },
-        platform: { baseDomain: 'apps.example.com', domainCommit: false, domainGeneration: 7, tlsMode: 'custom-cert' },
+        platform: { baseDomain: 'apps.example.com', domainCommit: false, domainGeneration: 7, tlsMode: 'secret' },
       });
       expect(renderedValues.customTls.existingSecret).toMatch(/^domain-tls-/u);
       expect(renderedValues.customTls.operatorSecretName).toBeUndefined();
@@ -128,7 +153,6 @@ describe('Kubernetes system-domain release material', (): void => {
         target,
         {
           baseDomain: 'apps.example.com',
-          caddyMode: 'custom-http',
           domainKind: 'custom',
           publicScheme: 'https',
           tlsMode: 'external',
@@ -139,7 +163,7 @@ describe('Kubernetes system-domain release material', (): void => {
 
       expect(requireHelmValues(helmValues)).toMatchObject({
         customTls: { existingSecret: '' },
-        platform: { domainCommit: false, tlsMode: 'custom-http' },
+        platform: { domainCommit: false, tlsMode: 'issuer' },
       });
       expect(requireHelmValues(helmValues).customTls.pendingOperationId).toBeUndefined();
       expect(requireHelmValues(helmValues).customTls.operatorSecretName).toBeUndefined();
@@ -163,7 +187,6 @@ describe('Kubernetes system-domain release material', (): void => {
         target,
         {
           baseDomain: 'apps.example.com',
-          caddyMode: 'custom-cert',
           domainKind: 'custom',
           publicScheme: 'https',
           tlsMode: 'custom-cert',
@@ -196,7 +219,6 @@ describe('Kubernetes system-domain release material', (): void => {
           target,
           {
             baseDomain: 'apps.example.com',
-            caddyMode: 'custom-http',
             domainKind: 'custom',
             publicScheme: 'https',
             tlsMode: 'external',

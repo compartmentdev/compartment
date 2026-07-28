@@ -48,9 +48,8 @@ const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'blo
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
-  caddyTlsMode: 'internal',
+  tlsMode: 'internal',
   controlPlaneHost: 'compartment.localhost',
-  customTlsDirectory: '/etc/compartment/tls',
   databaseUrl,
   edgeToken: 'test-edge-token',
   edgeUrl: 'http://127.0.0.1:9081',

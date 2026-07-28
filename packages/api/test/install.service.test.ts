@@ -91,8 +91,7 @@ const installInput: InstallServiceInput = {
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',
-  caddyTlsMode: 'internal',
-  customTlsDirectory: '/etc/compartment/tls',
+  tlsMode: 'internal',
   controlPlaneHost: 'console.localhost',
   databaseUrl: 'postgresql://127.0.0.1:5432/compartment_test',
   edgeToken: 'test-edge-token',

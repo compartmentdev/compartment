@@ -20,13 +20,15 @@ import {
   managedInstallCertificateAuthorityPath,
   managedInstallKubeContext,
   managedInstallNamespace,
-  managedInstallPublicIpv4,
   managedInstallReleaseName,
   managedInstallValuesPath,
   prepareManagedInstallFixture,
   waitForManagedDomainBrokerObservation,
+  type ManagedDomainAuditObservation,
   type ManagedDomainBrokerObservation,
 } from './platform-k3d-managed-install.harness';
+
+process.env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN = 'managed-install-reservation-token';
 
 const platformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
 const ciEnvironmentName: string = 'CI';
@@ -36,6 +38,7 @@ const installTimeoutMs: number = 50 * 60_000;
 const fixtureTimeoutMs: number = 10 * 60_000;
 const tempRootDirectory: string = readSocketSafeTempRootDirectory('pk3m-', 'system-api.sock');
 const createdDirectories: string[] = [];
+const managedIngressIpv4: string = [8, 8, 4, 4].join('.');
 let managedInstallCompleted: boolean = false;
 
 describe.sequential('production managed-domain Kubernetes install', (): void => {
@@ -74,7 +77,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       );
 
       expect(result.adminEmail).toBe(ownerEmail);
-      expect(result.compartmentUrl).toBe(`http://console.${managedInstallBaseDomain}`);
+      expect(result.compartmentUrl).toBe(`https://console.${managedInstallBaseDomain}`);
       expect(result.organization.slug).toBe(organizationSlug);
 
       const installedIdentity: WhoAmICommandResponse = await installerCli.runJson(
@@ -96,11 +99,15 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
 
       const broker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerObservation();
       expect(broker.allocations[0]).toMatchObject({
-        publicIp: managedInstallPublicIpv4,
         requestedLabelSource: organizationSlug,
+        targets: [{ type: 'A', value: managedIngressIpv4 }],
       });
-      expect(broker.txtWrites).toEqual([]);
-      expect(broker.txtDeletes).toEqual([]);
+      expect(
+        broker.audit.some((event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_presented'),
+      ).toBe(true);
+      expect(
+        broker.audit.some((event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned'),
+      ).toBe(true);
       managedInstallCompleted = true;
     },
     installTimeoutMs,

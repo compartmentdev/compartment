@@ -22,8 +22,7 @@ const customDomainsQueryDatabaseUrl: string = deriveProcessScopedDatabaseUrl(tes
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
-  caddyTlsMode: 'internal',
-  customTlsDirectory: '/etc/compartment/tls',
+  tlsMode: 'internal',
   controlPlaneHost: 'compartment.localhost',
   databaseUrl: customDomainsQueryDatabaseUrl,
   edgeToken: 'test-edge-token',

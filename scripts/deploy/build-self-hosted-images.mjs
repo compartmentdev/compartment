@@ -51,6 +51,18 @@ function buildSelfHostedImageBuildPlan(imageRefsByServiceName, env, builderName)
   return [
     {
       args: [
+        '--build-arg',
+        `COMPARTMENT_GO_BUILD_IMAGE=${readBaseImage(env, 'COMPARTMENT_GO_BUILD_IMAGE')}`,
+        '--tag',
+        readRequiredImageRef(imageRefsByServiceName, 'dns01-solver'),
+        '--file',
+        'packages/managed-domain-dns01-solver/Dockerfile',
+        '.',
+      ],
+      name: 'dns01-solver',
+    },
+    {
+      args: [
         ...nodeArgs,
         '--tag',
         readRequiredImageRef(imageRefsByServiceName, 'api'),

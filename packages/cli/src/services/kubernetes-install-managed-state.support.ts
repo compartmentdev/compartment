@@ -2,21 +2,30 @@ import { arch, platform, release } from 'node:os';
 import type {
   ManagedDomainAllocationMetadata,
   ManagedDomainAllocationOsMetadata,
-  ManagedDomainAllocationResponse,
+  ManagedDomainReservationResponse,
 } from '@compartment/contracts';
 import { readCliVersion } from '../cli-build-info';
 import type { ExistingKubernetesInstall } from './kubernetes-install.service.types';
 
 export function readExistingManagedAllocation(
   existingInstall: ExistingKubernetesInstall,
-): ManagedDomainAllocationResponse | null {
-  if (existingInstall.baseDomain === '' && existingInstall.managedDomainBrokerToken === '') {
+): ManagedDomainReservationResponse | null {
+  if (
+    existingInstall.baseDomain === '' &&
+    existingInstall.managedDomainAllocationId === '' &&
+    existingInstall.managedDomainBrokerToken === ''
+  ) {
     return null;
   }
-  if (existingInstall.baseDomain !== '' && existingInstall.managedDomainBrokerToken !== '') {
+  if (
+    existingInstall.baseDomain !== '' &&
+    existingInstall.managedDomainAllocationId !== '' &&
+    existingInstall.managedDomainBrokerToken !== ''
+  ) {
     return {
-      acmeDnsToken: existingInstall.managedDomainBrokerToken,
+      allocationId: existingInstall.managedDomainAllocationId,
       baseDomain: existingInstall.baseDomain,
+      scopedToken: existingInstall.managedDomainBrokerToken,
     };
   }
   throw new Error('The existing managed-domain install has incomplete allocation state.');

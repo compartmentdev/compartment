@@ -34,6 +34,8 @@ vi.mock('../src/command-runner', (): object => ({
 const digestByImageName: Readonly<Record<string, string>> = Object.freeze({
   api: `sha256:${'a'.repeat(64)}`,
   caddy: `sha256:${'d'.repeat(64)}`,
+  dns01Solver: `sha256:${'e'.repeat(64)}`,
+  'dns01-solver': `sha256:${'e'.repeat(64)}`,
   edge: `sha256:${'c'.repeat(64)}`,
   worker: `sha256:${'b'.repeat(64)}`,
 });
@@ -56,6 +58,7 @@ describe('Kubernetes platform image trust', (): void => {
           images: {
             api: { digest: '', tag: '0.9.2' },
             caddy: { digest: '', tag: '0.9.2' },
+            dns01Solver: { digest: '', tag: '0.9.2' },
             edge: { digest: '', tag: '0.9.2' },
             worker: { digest: '', tag: '0.9.2' },
           },
@@ -81,6 +84,7 @@ describe('Kubernetes platform image trust', (): void => {
         images: {
           api: { digest: digestByImageName.api },
           caddy: { digest: digestByImageName.caddy },
+          dns01Solver: { digest: digestByImageName.dns01Solver },
           edge: { digest: digestByImageName.edge },
           worker: { digest: digestByImageName.worker },
         },
@@ -88,7 +92,7 @@ describe('Kubernetes platform image trust', (): void => {
       const cosignCalls: RunCommandCall[] = mocks.runCommand.mock.calls.filter(
         (call: RunCommandCall): boolean => call[0][1] === 'verify',
       );
-      expect(cosignCalls).toHaveLength(4);
+      expect(cosignCalls).toHaveLength(5);
       expect(cosignCalls[0]?.[0]).toContain('registry.example/compartment-api:sha-release');
       expect(cosignCalls[1]?.[0].at(-1)).toBe('ghcr.io/compartmentdev/compartment-worker:0.9.2');
       expect(cosignCalls[0]?.[0]).toEqual(
@@ -258,6 +262,7 @@ describe('Kubernetes platform image trust', (): void => {
         images: {
           api: { digest: digestByImageName.api },
           caddy: { digest: digestByImageName.caddy },
+          dns01Solver: { digest: digestByImageName.dns01Solver },
           edge: { digest: digestByImageName.edge },
           worker: { digest: digestByImageName.worker },
         },
@@ -285,7 +290,7 @@ function createVerificationHandler(): RunCommand {
       return await Promise.resolve(successfulResult(chartImageValues()));
     }
     const imageRef: string | undefined = command.at(-1);
-    const imageName: string | undefined = imageRef?.match(/compartment-(api|worker|edge|caddy)/u)?.[1];
+    const imageName: string | undefined = imageRef?.match(/compartment-(api|worker|edge|caddy|dns01-solver)/u)?.[1];
     const digest: string | undefined = imageName === undefined ? undefined : digestByImageName[imageName];
     if (digest === undefined) {
       throw new Error(`Unexpected verification command: ${command.join(' ')}`);
@@ -351,6 +356,7 @@ function chartImageValues(): string {
   worker: { repository: ghcr.io/compartmentdev/compartment-worker, tag: latest, digest: '' }
   edge: { repository: ghcr.io/compartmentdev/compartment-edge, tag: latest, digest: '' }
   caddy: { repository: ghcr.io/compartmentdev/compartment-caddy, tag: latest, digest: '' }
+  dns01Solver: { repository: ghcr.io/compartmentdev/compartment-dns01-solver, tag: latest, digest: '' }
 `;
 }
 
@@ -363,6 +369,11 @@ function releaseImageValues(): object {
         tag: 'old',
       },
       caddy: { digest: '', repository: 'ghcr.io/compartmentdev/compartment-caddy', tag: 'latest' },
+      dns01Solver: {
+        digest: '',
+        repository: 'ghcr.io/compartmentdev/compartment-dns01-solver',
+        tag: 'latest',
+      },
       edge: { digest: '', repository: 'ghcr.io/compartmentdev/compartment-edge', tag: 'latest' },
       worker: { digest: '', repository: 'ghcr.io/compartmentdev/compartment-worker', tag: 'latest' },
     },

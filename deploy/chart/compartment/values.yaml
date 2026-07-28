@@ -22,6 +22,11 @@ images:
     tag: latest
     digest: ''
     pullPolicy: IfNotPresent
+  dns01Solver:
+    repository: ghcr.io/compartmentdev/compartment-dns01-solver
+    tag: latest
+    digest: ''
+    pullPolicy: IfNotPresent
   postgres:
     repository: postgres
     tag: '16'
@@ -70,6 +75,20 @@ ingress:
   endpoint:
     type: ''
     value: ''
+  targetsJson: '[]'
+
+tls:
+  issuerRef:
+    name: compartment-platform
+    kind: Issuer
+  existingSecret: ''
+  acme:
+    environment: production
+    productionUrl: https://acme-v02.api.letsencrypt.org/directory
+    stagingUrl: https://acme-staging-v02.api.letsencrypt.org/directory
+    skipTlsVerify: false
+  solver:
+    groupName: dns01.compartment.dev
 
 storage:
   storageClass: ''
@@ -84,10 +103,11 @@ platform:
   domainGeneration: 0
   domainCommit: true
   installationId: ''
+  managedDomainAllocationId: ''
   domainMode: custom
   baseDomain: localhost
   publicProtocol: http
-  tlsMode: custom-http
+  tlsMode: issuer
   publicIngressIpv4: ''
   publicIngressIpv6: ''
   acmeIssuer: acme

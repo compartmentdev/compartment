@@ -32,9 +32,8 @@ const organizationUsersListQueryDatabaseUrl: string = deriveProcessScopedDatabas
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
-  caddyTlsMode: 'internal',
+  tlsMode: 'internal',
   controlPlaneHost: 'compartment.localhost',
-  customTlsDirectory: '/etc/compartment/tls',
   databaseUrl: organizationUsersListQueryDatabaseUrl,
   edgeToken: 'test-edge-token',
   edgeUrl: 'http://127.0.0.1:9081',

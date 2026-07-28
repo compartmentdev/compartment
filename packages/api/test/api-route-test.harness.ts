@@ -61,7 +61,7 @@ export function applyApiRouteTestEnv({
   process.env.COMPARTMENT_ENV = 'dev';
   process.env.COMPARTMENT_INSTALL_TOKEN = 'test-install-token';
   process.env.COMPARTMENT_LOG_LEVEL = logLevel;
-  process.env.COMPARTMENT_CADDY_TLS_MODE = 'internal';
+  process.env.COMPARTMENT_TLS_MODE = 'internal';
   process.env.COMPARTMENT_PUBLIC_HTTP_PORT = String(publicHttpPort);
   process.env.COMPARTMENT_PUBLIC_HTTPS_PORT = String(publicHttpsPort);
   process.env.COMPARTMENT_PUBLIC_PROTOCOL = publicProtocol;

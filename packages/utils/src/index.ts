@@ -22,10 +22,6 @@ export { isSafeRelativePath, sanitizeSafeRelativePath } from './safe-relative-pa
 export { quoteShellArgumentWhenNeeded } from './shell-argument';
 export { assertSelfHostedGeneratedSecretEnvironment } from './self-hosted-generated-secret-environment';
 export {
-  buildPendingSystemDomainCertificatePaths,
-  type PendingSystemDomainCertificatePaths,
-} from './system-domain-certificate-paths';
-export {
   validateSymlinkFreeFileSystemDirectory,
   validateSymlinkFreeFileSystemEntry,
   validateSymlinkFreeFileSystemWriteTarget,
@@ -33,7 +29,7 @@ export {
   type ValidatedFileSystemEntry,
   type ValidatedFileSystemWriteTarget,
 } from './file-system-boundary';
-export { isMissingFileSystemEntryError, isPathWithinDirectory, readRequiredAbsolutePath } from './file-system-path';
+export { isMissingFileSystemEntryError, isPathWithinDirectory } from './file-system-path';
 export {
   assertValidUnixSocketPath,
   prepareUnixSocketPath,

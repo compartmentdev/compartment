@@ -41,10 +41,10 @@ await writeFile(process.argv[outputIndex + 1], '');
 
     await expect(
       Promise.all(
-        ['api', 'caddy', 'edge', 'worker'].map((service) =>
+        ['api', 'caddy', 'dns01-solver', 'edge', 'worker'].map((service) =>
           readFile(join(workspace, '.compartment', 'self-hosted-image-cache', `${service}.tar`)),
         ),
       ),
-    ).resolves.toHaveLength(4);
+    ).resolves.toHaveLength(5);
   });
 });

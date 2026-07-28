@@ -20,6 +20,13 @@
   ],
   "ignoreBinaries": ["astro", "dotenv"],
   "ignoreDependencies": ["dotenv-cli"],
+  "ignoreIssues": {
+    // These broker request schemas are public contract validators for broker implementations outside this workspace.
+    "packages/contracts/src/contracts/managed-domain.contract.ts": ["exports"],
+    // DNS-01 presentation and replay are public SDK operations consumed by the solver and external broker clients.
+    "packages/sdk/src/index.ts": ["exports"],
+    "packages/sdk/src/services/managed-domain.service.ts": ["exports"],
+  },
   "ignoreWorkspaces": ["packages/test-support", "packages/eslint-config", "packages/eslint-plugin"],
   "workspaces": {
     "packages/api": {

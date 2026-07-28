@@ -29,6 +29,16 @@ import {
   withPlatformK3dProcessLock,
 } from './platform-k3d-e2e-support.mjs';
 
+function createTestImageDigests() {
+  return {
+    api: `sha256:${'a'.repeat(64)}`,
+    caddy: `sha256:${'d'.repeat(64)}`,
+    'dns01-solver': `sha256:${'e'.repeat(64)}`,
+    edge: `sha256:${'c'.repeat(64)}`,
+    worker: `sha256:${'b'.repeat(64)}`,
+  };
+}
+
 describe('platform k3d e2e command boundary', () => {
   it('routes public ports through the k3d load balancer with Traefik enabled', () => {
     const args = buildPlatformK3dClusterCreateArgs();
@@ -267,12 +277,7 @@ describe('platform k3d e2e command boundary', () => {
   });
 
   it('writes the operator values consumed by the production install command', () => {
-    const values = renderPlatformK3dValues({
-      api: `sha256:${'a'.repeat(64)}`,
-      caddy: `sha256:${'d'.repeat(64)}`,
-      edge: `sha256:${'c'.repeat(64)}`,
-      worker: `sha256:${'b'.repeat(64)}`,
-    });
+    const values = renderPlatformK3dValues(createTestImageDigests());
 
     expect(values).toContain('baseDomain: compartment.localhost');
     expect(values).toContain('publicProtocol: http');
@@ -287,17 +292,13 @@ describe('platform k3d e2e command boundary', () => {
   });
 
   it('writes isolated managed-install values with a typed ingress endpoint and verified digests', () => {
-    const values = renderManagedPlatformK3dValues({
-      api: `sha256:${'a'.repeat(64)}`,
-      caddy: `sha256:${'d'.repeat(64)}`,
-      edge: `sha256:${'c'.repeat(64)}`,
-      worker: `sha256:${'b'.repeat(64)}`,
-    });
+    const values = renderManagedPlatformK3dValues(createTestImageDigests());
 
     expect(values).toContain('className: traefik');
     expect(values).toContain('type: A');
     expect(values).toContain('value: 8.8.4.4');
     expect(values).toContain('publicIngressIpv4: 8.8.4.4');
+    expect(values).toContain('stagingUrl: https://pebble.compartment-managed-e2e.svc.cluster.local:14000/dir');
     expect(values).toContain('namespace: compartment-managed-e2e-build');
     expect(values).toContain(`digest: sha256:${'d'.repeat(64)}`);
     expect(values).not.toContain('compartment.localhost');

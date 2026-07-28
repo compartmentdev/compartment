@@ -12,7 +12,6 @@ function buildRuntimeDomainHostPlan(config: ApiConfig): DomainHostPlan {
 
   return {
     baseDomain: config.baseDomain,
-    caddyMode: config.caddyTlsMode,
     domainKind,
     publicScheme: config.publicProtocol,
     tlsMode: readRuntimeTlsMode(config),
@@ -20,7 +19,7 @@ function buildRuntimeDomainHostPlan(config: ApiConfig): DomainHostPlan {
 }
 
 function readRuntimeDomainKind(config: ApiConfig): DomainKind {
-  if (config.caddyTlsMode === 'managed') {
+  if (config.tlsMode === 'broker-dns01') {
     return 'managed';
   }
   if (isLocalBaseDomain(config.baseDomain)) {
@@ -31,14 +30,14 @@ function readRuntimeDomainKind(config: ApiConfig): DomainKind {
 }
 
 function readRuntimeTlsMode(config: ApiConfig): DomainTlsMode {
-  switch (config.caddyTlsMode) {
-    case 'custom-cert':
+  switch (config.tlsMode) {
+    case 'secret':
       return 'custom-cert';
-    case 'custom-http':
+    case 'issuer':
       return 'external';
     case 'internal':
       return 'internal';
-    case 'managed':
+    case 'broker-dns01':
       return 'broker-dns01';
   }
 }

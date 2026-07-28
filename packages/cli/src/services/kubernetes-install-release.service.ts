@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildHelmCommand, buildHelmGetValuesCommand, readCommandOutput } from './kubernetes-command.support';
+import { parseKubernetesIngressTargetsJson } from './kubernetes-install-ingress-targets.service';
 import type {
   ExistingKubernetesInstall,
   HelmReleaseSummary,
@@ -106,6 +107,8 @@ function parseExistingKubernetesInstall(output: string): ExistingKubernetesInsta
     installationId: readOptionalPlatformText(platform, 'installationId'),
     ingressClassName: readRequiredText(ingress, 'className', 'ingress.className'),
     ingressEndpoint: readIngressEndpoint(ingress),
+    ingressTargets: readIngressTargets(ingress),
+    managedDomainAllocationId: readOptionalPlatformText(platform, 'managedDomainAllocationId'),
     managedDomainBrokerToken: readOptionalSecretText(secrets, 'managedDomainBrokerToken'),
     publicIngressIpv4: readOptionalPlatformText(platform, 'publicIngressIpv4'),
     publicIngressIpv6: readOptionalPlatformText(platform, 'publicIngressIpv6'),
@@ -113,6 +116,15 @@ function parseExistingKubernetesInstall(output: string): ExistingKubernetesInsta
     stage: readExistingInstallStage(platform),
     tlsMode: readExistingTlsMode(platform),
   };
+}
+
+function readIngressTargets(ingress: JsonValue | undefined): KubernetesIngressEndpoint[] {
+  const targetsJson: JsonValue | undefined = isHelmJsonObject(ingress) ? ingress.targetsJson : undefined;
+  if (typeof targetsJson !== 'string' || targetsJson === '') {
+    const endpoint: KubernetesIngressEndpoint | null = readIngressEndpoint(ingress);
+    return endpoint === null ? [] : [endpoint];
+  }
+  return parseKubernetesIngressTargetsJson(targetsJson, 'The existing Helm release');
 }
 
 function readIngressEndpoint(ingress: JsonValue | undefined): KubernetesIngressEndpoint | null {
@@ -165,7 +177,7 @@ function readExistingPublicProtocol(platform: JsonValue | undefined): Kubernetes
 
 function readExistingTlsMode(platform: JsonValue | undefined): KubernetesInstallTlsMode {
   const tlsMode: JsonValue | undefined = isHelmJsonObject(platform) ? platform.tlsMode : undefined;
-  if (tlsMode === 'custom-cert' || tlsMode === 'custom-http' || tlsMode === 'internal' || tlsMode === 'managed') {
+  if (tlsMode === 'broker-dns01' || tlsMode === 'issuer' || tlsMode === 'internal' || tlsMode === 'secret') {
     return tlsMode;
   }
   throw new Error('The existing Helm release has no recognized platform.tlsMode.');

@@ -49,8 +49,7 @@ const variablesMasterKey: Buffer = parseVariablesMasterKey('11'.repeat(32));
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',
-  caddyTlsMode: 'internal',
-  customTlsDirectory: '/etc/compartment/tls',
+  tlsMode: 'internal',
   controlPlaneHost: 'console.localhost',
   databaseUrl: variablesDbDatabaseUrl,
   edgeToken: 'test-edge-token',

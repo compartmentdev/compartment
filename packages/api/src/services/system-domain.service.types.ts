@@ -41,7 +41,9 @@ export interface VersionedSystemDomainMutationInput {
   idempotencyKey: string;
 }
 
-export type AttachSystemDomainCertificateInput = VersionedSystemDomainMutationInput;
+export interface AttachSystemDomainCertificateInput extends VersionedSystemDomainMutationInput {
+  certificate: SystemDomainCertificate;
+}
 
 export interface SystemDomainMutationResult {
   setupVersion: number;

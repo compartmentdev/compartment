@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
   compartmentSystemDomainActivatePathname,
   compartmentSystemDomainAttachCertificatePathname,
@@ -7,8 +6,6 @@ import {
   compartmentSystemDomainStatusPathname,
   compartmentSystemDomainStatusRefreshPathname,
   compartmentSystemDomainVerifyPathname,
-  systemDomainMutationResponseSchema,
-  systemDomainStatusResponseSchema,
   type DomainHostPlan,
   type SystemDomainAttachCertificateRequest,
   type SystemDomainMutationResponse,
@@ -17,7 +14,6 @@ import {
   type SystemDomainStatusResponse,
   type SystemDomainVersionedRequest,
 } from '@compartment/contracts';
-import type { JsonValue } from '@compartment/utils';
 import { readRetainedManagedKubernetesDomainState } from './kubernetes-install-retained-state.service';
 import {
   applyKubernetesDomainRelease,
@@ -34,6 +30,12 @@ import type {
 } from './kubernetes-operator.service.types';
 import type { RetainedManagedDomainState } from './kubernetes-install.service.types';
 import { requestKubernetesSystemApi } from './kubernetes-system-api.service';
+import { waitForKubernetesSystemDomainReadiness } from './kubernetes-system-domain-readiness.service';
+import {
+  buildSystemDomainIdempotencyKey,
+  parseSystemDomainMutation,
+  parseSystemDomainStatus,
+} from './kubernetes-system-domain-request.service';
 
 export async function getKubernetesSystemDomainStatus(
   target: KubernetesOperatorTarget,
@@ -62,14 +64,11 @@ export async function attachKubernetesSystemDomainCertificate(
   const status: SystemDomainStatusResponse = await readSystemDomainStatus(input);
   const expectedVersion: number = resolveExpectedVersion(input.expectedSetupVersion, status.setupVersion);
   const pending: SystemDomainPendingOperation = requirePendingCustomCertificate(status);
-  const staged: StagedKubernetesDomainCertificate = await stageKubernetesDomainCertificate(input, pending.operationId);
-  await applyKubernetesDomainRelease(input, {
-    pendingCertificate: staged.certificate,
-    pendingOperationId: pending.operationId,
-    pendingPrivateKey: staged.privateKey,
-    pendingTlsSecretName: staged.secretName,
-  });
-  const body: SystemDomainAttachCertificateRequest = { expectedSetupVersion: expectedVersion };
+  const staged: StagedKubernetesDomainCertificate = await stagePendingKubernetesCertificate(input, pending);
+  const body: SystemDomainAttachCertificateRequest = {
+    certificate: { metadata: staged.metadata, secretName: staged.secretName },
+    expectedSetupVersion: expectedVersion,
+  };
   return await postDomainMutation(
     input,
     compartmentSystemDomainAttachCertificatePathname,
@@ -79,13 +78,38 @@ export async function attachKubernetesSystemDomainCertificate(
   );
 }
 
+async function stagePendingKubernetesCertificate(
+  input: KubernetesDomainCertificateInput,
+  pending: SystemDomainPendingOperation,
+): Promise<StagedKubernetesDomainCertificate> {
+  const staged: StagedKubernetesDomainCertificate = await stageKubernetesDomainCertificate(
+    input,
+    pending.operationId,
+    pending.hostPlan,
+  );
+  await applyKubernetesDomainRelease(input, {
+    pendingCertificate: staged.certificate,
+    pendingOperationId: pending.operationId,
+    pendingPrivateKey: staged.privateKey,
+    pendingTlsSecretName: staged.secretName,
+  });
+  return staged;
+}
+
 export async function verifyKubernetesSystemDomain(
   input: KubernetesDomainVersionedInput,
 ): Promise<SystemDomainMutationResponse> {
   const status: SystemDomainStatusResponse = await readSystemDomainStatus(input);
   const expectedVersion: number = resolveExpectedVersion(input.expectedSetupVersion, status.setupVersion);
   const body: SystemDomainVersionedRequest = { expectedSetupVersion: expectedVersion };
-  return await postDomainMutation(input, compartmentSystemDomainVerifyPathname, expectedVersion, body);
+  const result: SystemDomainMutationResponse = await postDomainMutation(
+    input,
+    compartmentSystemDomainVerifyPathname,
+    expectedVersion,
+    body,
+  );
+  assertSystemDomainVerificationConverged(result);
+  return result;
 }
 
 export async function activateKubernetesSystemDomain(
@@ -94,6 +118,7 @@ export async function activateKubernetesSystemDomain(
   const status: SystemDomainStatusResponse = await readSystemDomainStatus(input);
   const expectedVersion: number = resolveExpectedVersion(input.expectedSetupVersion, status.setupVersion);
   if (status.pending === null) {
+    await waitForKubernetesSystemDomainReadiness(input, status.active);
     await commitActiveKubernetesDomainRelease(input, status.active, status.setupVersion);
     return { operationId: 'domain-active-runtime-apply', setupVersion: status.setupVersion, status };
   }
@@ -107,6 +132,7 @@ async function activatePendingKubernetesSystemDomain(
   const verified: SystemDomainMutationResponse = await verifyPendingKubernetesSystemDomain(input, expectedVersion);
   const pending: SystemDomainPendingOperation = requireVerifiedPending(verified.status);
   await applyRuntimeKubernetesDomainRelease(input, pending.hostPlan, verified.setupVersion, pending.operationId);
+  await waitForKubernetesSystemDomainReadiness(input, pending.hostPlan, pending.operationId);
   const activated: SystemDomainMutationResponse = await postDomainMutation(
     input,
     compartmentSystemDomainActivatePathname,
@@ -126,9 +152,25 @@ async function verifyPendingKubernetesSystemDomain(
   input: KubernetesDomainVersionedInput,
   expectedVersion: number,
 ): Promise<SystemDomainMutationResponse> {
-  return await postDomainMutation(input, compartmentSystemDomainVerifyPathname, expectedVersion, {
-    expectedSetupVersion: expectedVersion,
-  });
+  const result: SystemDomainMutationResponse = await postDomainMutation(
+    input,
+    compartmentSystemDomainVerifyPathname,
+    expectedVersion,
+    {
+      expectedSetupVersion: expectedVersion,
+    },
+  );
+  assertSystemDomainVerificationConverged(result);
+  return result;
+}
+
+function assertSystemDomainVerificationConverged(result: SystemDomainMutationResponse): void {
+  const pending: SystemDomainPendingOperation | null = result.status.pending;
+  if (pending === null || pending.status === 'verified') {
+    return;
+  }
+  const failure: string = pending.failureMessage ?? 'DNS ownership or routing is still pending.';
+  throw new Error(`System-domain verification did not converge: ${failure}`);
 }
 
 export async function resetManagedKubernetesSystemDomain(
@@ -139,12 +181,13 @@ export async function resetManagedKubernetesSystemDomain(
   const managed: RetainedManagedDomainState = await readRetainedManagedKubernetesDomainState(input);
   const hostPlan: DomainHostPlan = {
     baseDomain: managed.baseDomain,
-    caddyMode: 'managed',
     domainKind: 'managed',
+    issuerRef: managed.issuerRef,
     publicScheme: managed.publicProtocol,
     tlsMode: 'broker-dns01',
   };
   await applyRuntimeKubernetesDomainRelease(input, hostPlan, expectedVersion + 1);
+  await waitForKubernetesSystemDomainReadiness(input, hostPlan);
   const reset: SystemDomainMutationResponse = await postDomainMutation(
     input,
     compartmentSystemDomainResetManagedPathname,
@@ -174,7 +217,7 @@ async function postDomainMutation(
     target,
     {
       body,
-      idempotencyKey: buildIdempotencyKey(path, version, body, seed),
+      idempotencyKey: buildSystemDomainIdempotencyKey(path, version, body, seed),
       method: 'POST',
       path,
     },
@@ -185,8 +228,8 @@ async function postDomainMutation(
 function buildCustomDomainHostPlan(input: KubernetesDomainSetInput): DomainHostPlan {
   return {
     baseDomain: input.baseDomain,
-    caddyMode: input.tlsMode === 'custom-cert' ? 'custom-cert' : 'custom-http',
     domainKind: 'custom',
+    ...(input.issuerRef === undefined ? {} : { issuerRef: input.issuerRef }),
     publicScheme: 'https',
     tlsMode: input.tlsMode,
   };
@@ -214,25 +257,4 @@ function resolveExpectedVersion(expected: number | undefined, current: number): 
   throw new Error(
     `Expected system-domain setup version ${expected.toString()}, but the current version is ${current.toString()}.`,
   );
-}
-
-function buildIdempotencyKey(
-  path: string,
-  version: number,
-  body: SystemDomainSetRequest | SystemDomainAttachCertificateRequest | SystemDomainVersionedRequest,
-  seed?: string,
-): string {
-  const hash: string = createHash('sha256')
-    .update(JSON.stringify({ body, path, ...(seed === undefined ? {} : { seed }), version }))
-    .digest('hex')
-    .slice(0, 24);
-  return `domain-${version.toString()}-${hash}`;
-}
-
-function parseSystemDomainStatus(value: JsonValue | null): SystemDomainStatusResponse {
-  return systemDomainStatusResponseSchema.parse(value);
-}
-
-function parseSystemDomainMutation(value: JsonValue | null): SystemDomainMutationResponse {
-  return systemDomainMutationResponseSchema.parse(value);
 }

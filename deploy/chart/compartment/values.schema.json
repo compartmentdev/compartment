@@ -8,13 +8,14 @@
         "api": { "$ref": "#/definitions/platformImage" },
         "worker": { "$ref": "#/definitions/platformImage" },
         "edge": { "$ref": "#/definitions/platformImage" },
-        "caddy": { "$ref": "#/definitions/platformImage" }
+        "caddy": { "$ref": "#/definitions/platformImage" },
+        "dns01Solver": { "$ref": "#/definitions/platformImage" }
       }
     },
     "ingress": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["className", "controller", "endpoint"],
+      "required": ["className", "controller", "endpoint", "targetsJson"],
       "properties": {
         "className": { "type": "string", "minLength": 1 },
         "controller": {
@@ -72,6 +73,47 @@
               }
             }
           ]
+        },
+        "targetsJson": { "type": "string", "pattern": "^\\[" }
+      }
+    },
+    "tls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issuerRef", "existingSecret", "acme", "solver"],
+      "properties": {
+        "issuerRef": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "kind"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "kind": { "type": "string", "enum": ["Issuer", "ClusterIssuer"] }
+          }
+        },
+        "existingSecret": { "type": "string" },
+        "acme": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["environment", "productionUrl", "stagingUrl", "skipTlsVerify"],
+          "properties": {
+            "environment": { "type": "string", "enum": ["staging", "production"] },
+            "productionUrl": { "type": "string", "pattern": "^https://" },
+            "stagingUrl": { "type": "string", "pattern": "^https://" },
+            "skipTlsVerify": { "type": "boolean" }
+          }
+        },
+        "solver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["groupName"],
+          "properties": {
+            "groupName": {
+              "type": "string",
+              "maxLength": 120,
+              "pattern": "^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:\\.[a-z0-9](?:[-a-z0-9]*[a-z0-9])?)+$"
+            }
+          }
         }
       }
     },
@@ -94,6 +136,7 @@
         "domainGeneration",
         "domainCommit",
         "installationId",
+        "managedDomainAllocationId",
         "domainMode",
         "baseDomain",
         "publicProtocol",
@@ -110,10 +153,11 @@
         "domainGeneration": { "type": "integer", "minimum": 0 },
         "domainCommit": { "type": "boolean" },
         "installationId": { "type": "string" },
+        "managedDomainAllocationId": { "type": "string" },
         "domainMode": { "type": "string", "enum": ["custom", "managed"] },
         "baseDomain": { "type": "string" },
         "publicProtocol": { "type": "string", "enum": ["http", "https"] },
-        "tlsMode": { "type": "string", "enum": ["custom-cert", "custom-http", "internal", "managed"] },
+        "tlsMode": { "type": "string", "enum": ["broker-dns01", "internal", "issuer", "secret"] },
         "publicIngressIpv4": {
           "oneOf": [{ "const": "" }, { "type": "string", "format": "ipv4" }]
         },
@@ -237,6 +281,30 @@
       "properties": { "edgeSnapshots": { "type": "string", "minLength": 1 } }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "required": ["platform"],
+        "properties": {
+          "platform": {
+            "required": ["domainMode"],
+            "properties": { "domainMode": { "const": "managed" } }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "tls": {
+            "properties": {
+              "issuerRef": {
+                "properties": { "kind": { "const": "Issuer" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "definitions": {
     "tcpPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
     "platformImage": {

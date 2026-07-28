@@ -13,6 +13,7 @@ import type {
   KubernetesDomainVersionedInput,
   KubernetesOperatorTarget,
 } from '../../services/kubernetes-operator.service.types';
+import { readKubernetesTlsIssuerReference } from '../../services/kubernetes-install-tls.service';
 import { withResolvedKubernetesOperatorTarget } from '../../services/kubernetes-operator-target.service';
 import type { CliCommandDependencies } from '../command.types';
 import {
@@ -88,7 +89,7 @@ function registerDomainStatusCommand(program: Command, dependencies: CliCommandD
 }
 
 function registerDomainSetCommand(program: Command, dependencies: CliCommandDependencies): void {
-  addKubernetesOperatorTargetOptions(
+  addKubernetesOperatorReleaseOptions(
     program
       .command('set')
       .description('Stage a custom system domain and print required DNS records')
@@ -103,11 +104,21 @@ function registerDomainSetCommand(program: Command, dependencies: CliCommandDepe
         await setKubernetesSystemDomain({
           ...target,
           baseDomain,
+          ...(tlsMode === 'external'
+            ? { issuerRef: await readKubernetesTlsIssuerReference(requireValuesPath(target.valuesPath)) }
+            : {}),
           tlsMode,
         }),
     );
     renderOutput(dependencies.io, options.output, result, createSystemDomainMutationMessage(result));
   });
+}
+
+function requireValuesPath(value: string | undefined): string {
+  if (value === undefined || value.trim() === '') {
+    throw new Error('--values is required when staging an issuer-managed system domain.');
+  }
+  return value;
 }
 
 function registerDomainAttachCertificateCommand(program: Command, dependencies: CliCommandDependencies): void {

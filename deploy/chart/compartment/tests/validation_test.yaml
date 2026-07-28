@@ -13,7 +13,7 @@ tests:
         domainMode: managed
         baseDomain: managed.compartment.run
         publicProtocol: https
-        tlsMode: managed
+        tlsMode: broker-dns01
         publicIngressIpv4: 8.8.4.4
         acmeEmail: admin@example.com
     asserts:
@@ -29,7 +29,22 @@ tests:
         managedDomainBrokerToken: broker-token
     asserts:
       - failedTemplate:
-          errorMessage: platform.domainMode must be managed when platform.tlsMode is managed
+          errorMessage: platform.domainMode must be managed when platform.tlsMode is broker-dns01
+
+  - it: rejects a ClusterIssuer reference for managed TLS
+    set:
+      platform:
+        <<: *managedPlatform
+        managedDomainAllocationId: allocation-1
+      secrets:
+        managedDomainBrokerToken: broker-token
+      tls:
+        issuerRef:
+          name: customer-wide
+          kind: ClusterIssuer
+    asserts:
+      - failedTemplate:
+          errorPattern: tls.issuerRef.kind.*Issuer
 
   - it: requires a managed broker URL
     set:
@@ -49,7 +64,7 @@ tests:
         installationId: test-custom-broker
         baseDomain: compartment.localhost
         publicProtocol: http
-        tlsMode: custom-http
+        tlsMode: issuer
         managedDomainBrokerUrl: ''
       secrets:
         managedDomainBrokerToken: retained-token
@@ -172,7 +187,7 @@ tests:
         installationId: test-custom
         baseDomain: apps.example.com
         publicProtocol: https
-        tlsMode: custom-cert
+        tlsMode: secret
         publicIngressIpv4: 8.8.8.8
         acmeEmail: ''
       customTls:
@@ -188,7 +203,7 @@ tests:
         installationId: test-custom
         baseDomain: apps.example.com
         publicProtocol: https
-        tlsMode: custom-cert
+        tlsMode: secret
         publicIngressIpv4: 8.8.8.8
         acmeEmail: admin@example.com
     asserts:

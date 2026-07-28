@@ -103,15 +103,6 @@ export {
   installResponseSchema,
 } from './contracts/install.contract';
 export {
-  managedDomainAllocationPathname,
-  managedDomainAllocationResponseSchema,
-  managedDomainRequestedLabelSourceMaxLength,
-  type ManagedDomainAllocationMetadata,
-  type ManagedDomainAllocationOsMetadata,
-  type ManagedDomainAllocationRequest,
-  type ManagedDomainAllocationResponse,
-} from './contracts/managed-domain.contract';
-export {
   compartmentSkillInstallRequestedTargetSchema,
   compartmentSkillInstallResultSchema,
   compartmentSkillInstallRequestedTargetValues,

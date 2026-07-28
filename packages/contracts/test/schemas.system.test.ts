@@ -104,7 +104,6 @@ describe('contract schemas system and domain', (): void => {
     const result: SystemDomainStatusResponse = systemDomainStatusResponseSchema.parse({
       active: {
         baseDomain: 'customer.example.com',
-        caddyMode: 'custom-http',
         domainKind: 'custom',
         publicScheme: 'http',
         tlsMode: 'external',
@@ -122,7 +121,6 @@ describe('contract schemas system and domain', (): void => {
         failureMessage: null,
         hostPlan: {
           baseDomain: 'next.example.com',
-          caddyMode: 'custom-http',
           domainKind: 'custom',
           publicScheme: 'https',
           tlsMode: 'external',
@@ -158,7 +156,6 @@ describe('contract schemas system and domain', (): void => {
       expectedSetupVersion: 1,
       hostPlan: {
         baseDomain: 'customer.example.com',
-        caddyMode: 'custom-http',
         domainKind: 'custom',
         publicScheme: 'http',
         tlsMode: 'external',
@@ -170,6 +167,18 @@ describe('contract schemas system and domain', (): void => {
 
   it('accepts a valid system domain attach certificate request', (): void => {
     const result: SystemDomainAttachCertificateRequest = systemDomainAttachCertificateRequestSchema.parse({
+      certificate: {
+        metadata: {
+          dnsNames: ['console.customer.example.com', '*.customer.example.com'],
+          expiresAt: '2026-07-01T00:00:00.000Z',
+          fingerprintSha256: 'AA:BB:CC',
+          issuedAt: '2026-04-01T00:00:00.000Z',
+          issuer: 'CN=Example CA',
+          serialNumber: '01',
+          subject: 'CN=console.customer.example.com',
+        },
+        secretName: 'domain-tls-operation',
+      },
       expectedSetupVersion: 1,
     });
 
@@ -213,7 +222,6 @@ describe('contract schemas system and domain', (): void => {
       status: {
         active: {
           baseDomain: 'localhost',
-          caddyMode: 'internal',
           domainKind: 'local',
           publicScheme: 'http',
           tlsMode: 'internal',

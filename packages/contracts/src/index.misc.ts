@@ -64,6 +64,7 @@ export {
 export {
   type DomainCertificateMetadata,
   type DomainHostPlan,
+  type DomainIssuerReference,
   type DomainKind,
   type DomainTlsMode,
   type SystemDomainAttachCertificateRequest,
@@ -128,3 +129,4 @@ export {
   updateOrganizationAuthSettingsRequestSchema,
 } from './contracts/organization-auth.contract';
 export { findOrganizationBySlug } from './organizations';
+export * from './contracts/managed-domain.contract';

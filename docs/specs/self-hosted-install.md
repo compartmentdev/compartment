@@ -48,15 +48,16 @@ and run the rendered apply command separately.
 
 The default mode is a managed domain. When `--base-domain` is omitted, the CLI waits for a public LoadBalancer address,
 requests an allocation from `https://broker.compartment.run`, and configures managed DNS-01 TLS. The broker credential
-is scoped to that allocation. API and Caddy read it from the retained Secret; it is never stored in a ConfigMap.
+is scoped to that allocation. The CLI requires `COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN` for the owner-authorized
+reservation, then stores only the returned allocation token in the retained Secret. The DNS-01 solver reads that token;
+certificate private keys remain in cert-manager-managed Kubernetes Secrets.
 
 An operator-owned base domain is selected with `--base-domain`. The operator must point `console.<baseDomain>` and
-`*.<baseDomain>` at the public entrypoint and choose one TLS topology in the values file:
+`*.<baseDomain>` at the public entrypoint and choose one Ingress TLS source in the values file:
 
-- `custom-cert`: Caddy terminates TLS with an existing Kubernetes TLS Secret. The Secret is mounted read-only in API
-  and Caddy. `platform.acmeEmail` remains required for on-demand tenant-domain certificates.
-- `custom-http`: an external load balancer terminates public HTTPS and reaches the Caddy HTTP origin. The operator owns
-  that load-balancer topology and must provide the explicit public ingress address.
+- `tls.existingSecret` references an operator-owned Kubernetes TLS Secret for Ingress.
+- `tls.issuerRef` references an existing namespaced `Issuer` or operator-owned `ClusterIssuer`; Compartment creates the
+  exact console and wildcard Certificates without creating a customer-wide ClusterIssuer.
 
 The reserved `*.localhost` HTTP path exists only for repository and k3d development. It is not a production install
 mode. `install --dev` initializes an already-running repository development API and does not install the Helm release.
@@ -89,12 +90,14 @@ not expose a system endpoint through Caddy.
 
 The operator flow is:
 
-1. `system domain set` stages an operator-owned domain and prints the required address and ownership TXT records.
+1. `system domain set --values <path>` stages an operator-owned domain and its exact Issuer reference, then prints the
+   required address and ownership TXT records.
 2. `system domain verify` proves DNS ownership and that traffic resolves directly to the release ingress.
-3. For `custom-cert`, `system domain attach-cert` creates the operation-specific Kubernetes TLS Secret and mounts it
-   only in API while the change is pending.
-4. `system domain activate` applies the runtime domain, waits for API, Edge, and Caddy, finalizes the API operation, and
-   commits the retained domain generation. Worker and project-provisioner do not roll for a domain change.
+3. For `custom-cert`, `system domain attach-cert` validates the PEM pair locally and creates an operation-specific
+   Kubernetes TLS Secret for Ingress; the API stores only the Secret name and certificate metadata.
+4. `system domain activate` applies the runtime domain, waits for Ingress and Certificate readiness, finalizes the API
+   operation, and commits the retained domain generation. Worker and project-provisioner do not roll for a domain
+   change.
 
 The operations are retryable. The retained generation prevents an older Helm render from replacing active domain
 state. A release that started with a managed allocation keeps it while an operator domain is active;
