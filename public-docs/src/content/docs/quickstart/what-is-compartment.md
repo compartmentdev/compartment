@@ -1,34 +1,34 @@
 ---
 title: What Is Compartment
-description: What Compartment is, what it runs, and how teams use it.
+description: How Compartment deploys and operates small software on infrastructure you control.
 ---
 
-Compartment is a self-hosted application deployment system for teams that want to ship internal, private, or public web apps without building their own platform stack.
+Compartment is a self-hosted deployment system for small software on infrastructure your team controls.
 
-It is designed for the case where application code already exists, often from a normal product team or from AI coding agents, and you need a controlled place to install the runtime, deploy the app, expose it on a stable URL, and manage access.
+Small software means apps, scripts, agents, and workflows built for a particular person, workflow, or team. Compartment gives these projects a consistent deployment and operations model: runtimes, deployment history, logs, access control, and stable URLs for services that expose web traffic.
+
+Use Compartment when the code already exists in a repository and can be built into a container image. Compartment provides the operating layer around that code without prescribing how it was created.
 
 ## What it consists of
 
 Compartment has two user-facing parts:
 
-- the `compartment` CLI, which you use to install the system, log in, deploy, inspect, and operate it;
-- the system itself, which exposes a browser control plane at `console.<baseDomain>` and hosts deployed apps under the install base domain.
+- the `compartment` CLI, which you use to install the system, log in, deploy, inspect, and operate projects;
+- the self-hosted system, which exposes a browser control plane at `console.<baseDomain>` and runs deployed services on your infrastructure.
 
 ## What it can run
 
-Compartment hosts the apps and websites you want to run on your own infrastructure.
+Compartment runs services declared in `compartment.yml`. A service can expose HTTP traffic or run as a background process.
 
-If an app can build into a container image and run inside Docker, it can usually fit the Compartment model.
-
-Internal tools are a common use case, but they are not the only one. Public apps can also fit well when the deployment model is convenient for your team. For example, this docs site and the Compartment public website are hosted with Compartment.
+If a project can build into a container image using a Dockerfile or [Railpack](https://railpack.com/) and run inside Docker, it can usually fit the Compartment model.
 
 Typical examples include:
 
-- internal tools and back-office apps;
-- admin panels and support tools;
-- private APIs and dashboards;
-- public apps and websites;
-- AI-generated apps that still need a secure runtime and access model.
+- internal tools, dashboards, and admin panels;
+- shared APIs and data utilities;
+- agents, scrapers, and background workers;
+- automation services and scheduled workers;
+- public apps and websites when the same deployment model fits.
 
 ## Working with AI agents
 
@@ -42,19 +42,19 @@ That does not limit you to an agent-only workflow. You can still use a standard 
 
 The common workflow is:
 
-1. install one Compartment runtime on a server;
-2. install the CLI on developer or operator machines;
-3. log into the control plane from the CLI or browser;
-4. add `compartment.yml` to a repository;
-5. choose a deploy path:
-   direct CLI deploy from a local checkout, or connect the repository through Git for a branch-driven flow;
-6. manage URLs, variables, users, and roles as the app grows.
+1. install one Compartment system on your infrastructure;
+2. install the CLI on developer or operator machines and log in;
+3. add `compartment.yml` to a repository;
+4. deploy from a local checkout or connect the repository through Git;
+5. inspect the deployment with `status`, `logs`, and `inspect`;
+6. share web services through their assigned URLs or operate background services without a public route;
+7. manage environments, domains, variables, users, and roles as the project grows.
 
 ## Core terms
 
 - `install`: one Compartment runtime with one base domain and one control plane.
 - `organization`: the collaboration boundary for users, roles, and projects.
-- `project`: the app identity derived from `compartment.yml`.
+- `project`: the canonical application identity derived from `compartment.yml`.
 - `environment`: the target runtime environment, such as `production` or `staging`.
 - `service`: one deployable unit inside the project.
 - `deployment`: one rollout attempt for one service.

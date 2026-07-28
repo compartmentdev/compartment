@@ -9,7 +9,7 @@
 <h1 align="center">Compartment</h1>
 
 <p align="center">
-  Self-hosted deployment infrastructure for internal tools, private apps, and public services.
+  Self-hosted infrastructure for deploying and operating small software: apps, scripts, agents, and workflows.
 </p>
 
 <p align="center">
@@ -33,19 +33,19 @@
 
 ## What Is Compartment?
 
-Compartment is a self-hosted deployment system for teams that need a controlled place to run software on their own infrastructure. It provides the runtime, URLs, access model, deployment history, and operations surface around applications that already live in normal repositories.
+Compartment is a self-hosted deployment system for small software on infrastructure your team controls. Small software means apps, scripts, agents, and workflows built for a particular person, workflow, or team. Compartment provides the runtime, URLs, access model, deployment history, and operations surface needed to deploy and operate them consistently.
 
-The project is CLI-first and repository-first. Add a `compartment.yml`, deploy from a checkout or connected Git repository, and run the result through a self-hosted control plane. If an app can build into a container image with Docker or [Railpack](https://railpack.com/), it can usually fit the Compartment model.
+The project is CLI-first and repository-first. Add a `compartment.yml`, deploy from a checkout or connected Git repository, and run the result through a self-hosted control plane. If a project can build into a container image with Docker or [Railpack](https://railpack.com/), it can usually run on Compartment.
 
 ## Why Teams Use It
 
-Teams use Compartment when software that started as a script, internal app, worker, or AI-generated tool becomes useful enough that it needs a stable place to run.
+Teams use Compartment when small software moves from a developer’s machine into regular team use. It then needs reliable deployment, controlled access, and ongoing operations, but rarely justifies a separate infrastructure setup for every project.
 
-- Share team software without ad hoc links, manual handoffs, or unclear ownership.
-- Keep runtime control on infrastructure the team owns, without turning sustained compute or traffic into managed-platform spend.
-- Govern access with SSO, RBAC, roles, and audit logs instead of informal permission paths.
-- Run tools close to private services, data stores, and internal APIs while keeping workloads isolated.
-- Move from repository code to a working app without building a custom platform stack first.
+- Deploy different kinds of small software through one CLI- and repository-based workflow.
+- Share software through stable URLs instead of development servers, temporary tunnels, or manual handoffs.
+- Keep runtime control on infrastructure the team owns, including for sustained or compute-intensive workloads.
+- Apply SSO, RBAC, roles, and audit logs without implementing an access model inside every project.
+- Run workloads close to private services, data stores, and internal APIs while keeping them isolated.
 
 ## Quickstart
 
