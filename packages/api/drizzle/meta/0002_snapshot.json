@@ -1,5 +1,5 @@
 {
-  "id": "45118b2b-1799-44d8-a58a-3cc143a6ad3c",
+  "id": "07e5f39d-774f-4d82-9f25-dbeba13c344f",
   "prevId": "44e65a00-7e38-4262-be7a-ba678b364ed5",
   "version": "7",
   "dialect": "postgresql",
@@ -2286,6 +2286,12 @@
         },
         "pending_domain_kind": {
           "name": "pending_domain_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pending_issuer_ref_json": {
+          "name": "pending_issuer_ref_json",
           "type": "text",
           "primaryKey": false,
           "notNull": false
