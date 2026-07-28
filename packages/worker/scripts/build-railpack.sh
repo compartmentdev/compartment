@@ -11,6 +11,7 @@ go get \
   github.com/containerd/containerd/v2@v2.2.5 \
   golang.org/x/crypto@v0.53.0 \
   golang.org/x/net@v0.55.0 \
+  golang.org/x/text@v0.40.0 \
   go.opentelemetry.io/otel@v1.43.0 \
   go.opentelemetry.io/otel/exporters/otlp/otlptrace@v1.43.0 \
   go.opentelemetry.io/otel/metric@v1.43.0 \
