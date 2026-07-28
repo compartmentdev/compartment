@@ -39,13 +39,13 @@ The project is CLI-first and repository-first. Add a `compartment.yml`, deploy f
 
 ## Why Teams Use It
 
-Teams use Compartment when software that started as a script, internal app, worker, or AI-generated tool becomes useful enough that it needs a stable place to run.
+Teams use Compartment when small software moves from a developer’s machine into regular team use. It then needs reliable deployment, controlled access, and ongoing operations, but rarely justifies a separate infrastructure setup for every project.
 
-- Share team software without ad hoc links, manual handoffs, or unclear ownership.
-- Keep runtime control on infrastructure the team owns, without turning sustained compute or traffic into managed-platform spend.
-- Govern access with SSO, RBAC, roles, and audit logs instead of informal permission paths.
-- Run tools close to private services, data stores, and internal APIs while keeping workloads isolated.
-- Move from repository code to a working app without building a custom platform stack first.
+- Deploy different kinds of small software through one CLI- and repository-based workflow.
+- Share software through stable URLs instead of development servers, temporary tunnels, or manual handoffs.
+- Keep runtime control on infrastructure the team owns, including for sustained or compute-intensive workloads.
+- Apply SSO, RBAC, roles, and audit logs without implementing an access model inside every project.
+- Run workloads close to private services, data stores, and internal APIs while keeping them isolated.
 
 ## Quickstart
 
