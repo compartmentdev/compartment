@@ -36,3 +36,11 @@ export function kubeNetworkPolicyName(namespaceId: string, policy: KubeNetworkPo
 export function kubeLimitRangeName(namespaceId: string): string {
   return immutableKubeName('limits', namespaceId);
 }
+
+export function kubeCustomDomainName(domainId: string): string {
+  return immutableKubeName('domain', domainId);
+}
+
+export function kubeCustomDomainTlsSecretName(domainId: string): string {
+  return immutableKubeName('domain-tls', domainId);
+}

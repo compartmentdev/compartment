@@ -3,7 +3,9 @@ import { hasText } from '@compartment/utils';
 import { readApiPublicIngressConfig, type ApiConfig } from '../config';
 import { createActiveDeploymentNotFoundError } from '../errors/api-business-error';
 import { createId } from '../lib/tokens';
-import { deleteCustomDomain, listCustomDomains as listCustomDomainRows } from '../queries/custom-domains.query';
+import { listCustomDomains as listCustomDomainRows } from '../queries/custom-domains.query';
+import { beginCustomDomainDeletion, markCustomDomainDeletionReady } from '../queries/custom-domain-deletion.query';
+import type { CustomDomainDeletionTransition } from '../queries/custom-domain-reconcile.query.types';
 import type { CustomDomainRow } from '../queries/custom-domains.query.types';
 import { findActiveDeploymentRouteByOwner } from '../queries/deployment-routes.query';
 import type { DeploymentRouteLookupRow } from '../queries/deployment-routes.query.types';
@@ -18,10 +20,8 @@ import {
 } from './project-scope.service';
 import type { ResolvedProjectScope } from './project-scope.service.types';
 import { readRuntimeDomainHostPlan } from './system-domain-runtime.service';
-import {
-  persistCustomDomainVerificationResult,
-  syncEdgeBeforeCustomDomainRemoval,
-} from './custom-domain-edge-state.service';
+import { persistCustomDomainVerificationResult } from './custom-domain-edge-state.service';
+import { synchronizeEdgeAppAccessState } from './app-access-edge.service';
 import { verifyCustomDomainDns } from './custom-domain-dns.service';
 import type { CustomDomainDnsVerificationResult } from './custom-domain-dns.service.types';
 import {
@@ -38,7 +38,7 @@ import {
 } from './custom-domain.service.helpers';
 import {
   insertCustomDomainForTarget,
-  throwIfCustomDomainAssignedToOrganization,
+  throwIfCustomDomainAssigned,
   type CustomDomainInsertTarget,
   type PendingCustomDomainInsert,
 } from './custom-domain-registration.service';
@@ -75,7 +75,7 @@ export async function addCustomDomain(input: AddCustomDomainInput): Promise<Cust
     host,
     now: new Date(),
   };
-  await throwIfCustomDomainAssignedToOrganization(target.organizationId, host);
+  await throwIfCustomDomainAssigned(host);
   await insertCustomDomainForTarget(toCustomDomainInsertTarget(target), pendingDomain, config);
 
   return await readCustomDomainResult(target.organizationId, host, config);
@@ -123,6 +123,9 @@ export async function verifyCustomDomain(input: CustomDomainHostInput): Promise<
   const row: CustomDomainRow = await requireCustomDomainForOrganization(organizationId, host);
   await requireVisibleCustomDomainPermission(input.principalId, organizationId, row.environmentId, 'domain.write');
   await verifyAndPersistCustomDomain(row, host, config);
+  if (row.edgeRoutingEnabled) {
+    await synchronizeEdgeAppAccessState();
+  }
 
   return await readCustomDomainResult(organizationId, host, config);
 }
@@ -133,13 +136,21 @@ export async function removeCustomDomain(input: CustomDomainHostInput): Promise<
   const organizationId: string = await resolveOrganizationId(input);
   const row: CustomDomainRow = await requireCustomDomainForOrganization(organizationId, host);
   await requireVisibleCustomDomainPermission(input.principalId, organizationId, row.environmentId, 'domain.write');
-  await syncEdgeBeforeCustomDomainRemoval(row, host);
-  await deleteCustomDomain({ host, id: row.id });
+  await beginRemovalAndDisableEdge(row);
 
   return {
     host,
     removed: true,
   };
+}
+
+async function beginRemovalAndDisableEdge(row: CustomDomainRow): Promise<void> {
+  const transition: CustomDomainDeletionTransition | null = await beginCustomDomainDeletion(row.id);
+  if (transition === null) {
+    return;
+  }
+  await synchronizeEdgeAppAccessState();
+  await markCustomDomainDeletionReady(row.id, transition.deletionGeneration);
 }
 
 async function resolveCustomDomainTarget(

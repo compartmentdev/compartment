@@ -296,6 +296,7 @@ async function insertCustomDomain(input: {
 }): Promise<void> {
   await db.insert(deploymentCustomDomains).values({
     createdByPrincipalId: 'prn_custom_routes',
+    edgeRoutingEnabled: input.ownershipStatus === 'valid' && input.routingStatus === 'valid',
     environmentId: input.environmentId ?? 'env_custom_routes',
     host: input.host,
     id: input.id,

@@ -35,6 +35,13 @@ vi.mock('../src/services/app-access-state.service', (): { readAppAccessState: Mo
   readAppAccessState: mocks.readAppAccessState,
 }));
 
+vi.mock('../src/services/resource-operation-lock.service', (): object => ({
+  withResourceOperationLocks: async <Result>(
+    _resourceIds: string[],
+    operation: () => Promise<Result>,
+  ): Promise<Result> => await operation(),
+}));
+
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',

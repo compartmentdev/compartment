@@ -129,6 +129,16 @@ interface DeploymentCustomDomainsColumnBuilders {
   verificationTokenHash: RequiredTextBuilder<'verification_token_hash'>;
   ownershipStatus: RequiredEnumTextBuilder<'ownership_status', ['pending', 'valid', 'invalid']>;
   routingStatus: RequiredEnumTextBuilder<'routing_status', ['pending', 'valid', 'invalid']>;
+  reconcileState: DefaultEnumTextBuilder<'reconcile_state', ['pending', 'reconciling', 'active', 'failed', 'deleting']>;
+  desiredGeneration: DefaultIntegerBuilder<'desired_generation'>;
+  observedGeneration: DefaultIntegerBuilder<'observed_generation'>;
+  observedIngressPresent: DefaultBooleanBuilder<'observed_ingress_present'>;
+  observedCertificatePresent: DefaultBooleanBuilder<'observed_certificate_present'>;
+  observedCertificateReady: DefaultBooleanBuilder<'observed_certificate_ready'>;
+  edgeRoutingEnabled: DefaultBooleanBuilder<'edge_routing_enabled'>;
+  deletionReady: DefaultBooleanBuilder<'deletion_ready'>;
+  reconcileLeaseId: OptionalTextBuilder<'reconcile_lease_id'>;
+  reconcileLeaseExpiresAt: OptionalTimestampBuilder<'reconcile_lease_expires_at'>;
   lastCheckedAt: OptionalTimestampBuilder<'last_checked_at'>;
   verifiedAt: OptionalTimestampBuilder<'verified_at'>;
   failureMessage: OptionalTextBuilder<'failure_message'>;

@@ -1,4 +1,13 @@
-import { boolean, index, pgTable, text, timestamp, type PgTableExtraConfig, unique } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  type PgTableExtraConfig,
+  unique,
+} from 'drizzle-orm/pg-core';
 import { defaultApplicationPorts, defaultAppRouteAccessMode } from '@compartment/contracts';
 import { organizations, principals } from './schema-core';
 import { environments, operations, projectServices, projects } from './schema-platform';
@@ -199,6 +208,20 @@ export const deploymentCustomDomains: DeploySchemaTypes.DeploymentCustomDomainsT
     verificationTokenHash: text('verification_token_hash').notNull(),
     ownershipStatus: text('ownership_status', { enum: ['pending', 'valid', 'invalid'] }).notNull(),
     routingStatus: text('routing_status', { enum: ['pending', 'valid', 'invalid'] }).notNull(),
+    reconcileState: text('reconcile_state', {
+      enum: ['pending', 'reconciling', 'active', 'failed', 'deleting'],
+    })
+      .default('pending')
+      .notNull(),
+    desiredGeneration: integer('desired_generation').default(1).notNull(),
+    observedGeneration: integer('observed_generation').default(0).notNull(),
+    observedIngressPresent: boolean('observed_ingress_present').default(false).notNull(),
+    observedCertificatePresent: boolean('observed_certificate_present').default(false).notNull(),
+    observedCertificateReady: boolean('observed_certificate_ready').default(false).notNull(),
+    edgeRoutingEnabled: boolean('edge_routing_enabled').default(false).notNull(),
+    deletionReady: boolean('deletion_ready').default(false).notNull(),
+    reconcileLeaseId: text('reconcile_lease_id'),
+    reconcileLeaseExpiresAt: timestamp('reconcile_lease_expires_at', { withTimezone: true }),
     lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
     verifiedAt: timestamp('verified_at', { withTimezone: true }),
     failureMessage: text('failure_message'),

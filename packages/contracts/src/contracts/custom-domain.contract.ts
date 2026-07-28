@@ -8,10 +8,16 @@ import {
 } from './domain-dns-record.contract';
 import type { ContractSchema } from './schema.types';
 
-const customDomainStateValues: readonly ['pending', 'ready', 'failed'] = ['pending', 'ready', 'failed'];
+const customDomainStateValues: readonly ['pending', 'reconciling', 'active', 'failed', 'deleting'] = [
+  'pending',
+  'reconciling',
+  'active',
+  'failed',
+  'deleting',
+];
 const customDomainCheckStatusValues: readonly ['pending', 'valid', 'invalid'] = ['pending', 'valid', 'invalid'];
 
-export type CustomDomainState = 'pending' | 'ready' | 'failed';
+export type CustomDomainState = 'pending' | 'reconciling' | 'active' | 'failed' | 'deleting';
 export type CustomDomainCheckStatus = 'pending' | 'valid' | 'invalid';
 export type CustomDomainDnsRecordPurpose = DomainDnsRecordPurpose;
 export type CustomDomainDnsRecordType = DomainDnsRecordType;

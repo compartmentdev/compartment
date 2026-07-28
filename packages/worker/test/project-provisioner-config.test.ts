@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest';
+import { readProjectProvisionerConfig } from '../src/project-provisioner-config';
+import type { ProjectProvisionerConfig } from '../src/project-provisioner.types';
+
+const podCidr: string = ['10', '42', '0', '0/16'].join('.');
+const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
+
+describe('readProjectProvisionerConfig', (): void => {
+  it('starts without worker controller-only custom-domain configuration', (): void => {
+    const config: ProjectProvisionerConfig = readProjectProvisionerConfig(projectProvisionerEnvironment());
+
+    expect(config).toEqual({
+      apiUrl: 'http://compartment-api:39444',
+      artifactRegistry: {
+        address: 'registry.compartment.localhost:443',
+        credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
+        internalAddress: 'compartment-registry:5000',
+        internalUrl: 'http://compartment-registry:5000',
+      },
+      edgeNamespace: 'compartment',
+      image: 'registry.internal/compartment-worker@sha256:worker',
+      logLevel: 'info',
+      platformNamespace: 'compartment',
+      podCidr,
+      pollIntervalMs: 1000,
+      provisioningNamespace: 'compartment-project-provisioning',
+      runtimeControlToken: 'runtime-control-token',
+      serviceCidr,
+      workerServiceAccountName: 'compartment-worker',
+    });
+  });
+});
+
+function projectProvisionerEnvironment(): NodeJS.ProcessEnv {
+  return {
+    COMPARTMENT_API_INTERNAL_HOST: 'compartment-api',
+    COMPARTMENT_API_PORT: '39444',
+    COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: 'registry-signing-key-with-at-least-32-characters',
+    COMPARTMENT_ARTIFACT_REGISTRY_HOST: 'registry.compartment.localhost',
+    COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST: 'compartment-registry:5000',
+    COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: 'http://compartment-registry:5000',
+    COMPARTMENT_ARTIFACT_REGISTRY_PORT: '443',
+    COMPARTMENT_EDGE_NAMESPACE: 'compartment',
+    COMPARTMENT_KUBE_POD_CIDR: podCidr,
+    COMPARTMENT_KUBE_SERVICE_CIDR: serviceCidr,
+    COMPARTMENT_LOG_LEVEL: 'info',
+    COMPARTMENT_PLATFORM_NAMESPACE: 'compartment',
+    COMPARTMENT_PROJECT_PROVISIONER_IMAGE: 'registry.internal/compartment-worker@sha256:worker',
+    COMPARTMENT_PROVISIONING_NAMESPACE: 'compartment-project-provisioning',
+    COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
+    COMPARTMENT_WORKER_POLL_INTERVAL_MS: '1000',
+    COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME: 'compartment-worker',
+  };
+}

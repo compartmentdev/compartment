@@ -1,12 +1,8 @@
 import { createHash } from 'node:crypto';
 import { compareKubeKey } from './kube-key-order';
 import { kubeNamespaceName, kubeSecretName } from './kube-naming';
-import type {
-  KubeManifest,
-  KubeSecretEnvVariable,
-  RegistryPullSecretProjectionRow,
-  SecretProjectionRow,
-} from './kube-runtime.types';
+import type { KubeManifest, KubeSecretEnvVariable } from './kube-runtime.types';
+import type { RegistryPullSecretProjectionRow, SecretProjectionRow } from './kube-secret-projection.types';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
 

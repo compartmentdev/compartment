@@ -14,6 +14,8 @@ export type KubeManifestKind =
   | 'ClusterRoleBinding'
   | 'CronJob'
   | 'Deployment'
+  | 'Certificate'
+  | 'Ingress'
   | 'Job'
   | 'LimitRange'
   | 'Namespace'
@@ -52,10 +54,12 @@ export interface KubeServiceManifest extends KubeManifestBase {
 
 export interface KubeNonWorkloadManifest extends KubeManifestBase {
   kind:
+    | 'Certificate'
     | 'ClusterRole'
     | 'ClusterRoleBinding'
     | 'ConfigMap'
     | 'CronJob'
+    | 'Ingress'
     | 'LimitRange'
     | 'Namespace'
     | 'NetworkPolicy'
@@ -277,16 +281,4 @@ export interface KubePersistedJobResult {
   logs: string;
   podName: string | null;
   status: 'succeeded' | 'failed' | 'timed-out';
-}
-
-export interface RegistryPullSecretProjectionRow {
-  dockerConfigJson: string;
-  namespaceId: string;
-  secretId: string;
-}
-export interface SecretProjectionRow {
-  data: Readonly<Record<string, string>>;
-  deploymentId: string;
-  namespaceId: string;
-  secretId: string;
 }

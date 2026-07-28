@@ -13,6 +13,12 @@ describe('readWorkerConfig', (): void => {
       internalUrl: 'https://registry.apps.example.com',
     });
     expect(config.buildKitAddress).toBe('tcp://builder:1234');
+    expect(config.customDomains).toEqual({
+      caddyServiceName: 'compartment-caddy',
+      ingressClassName: 'traefik',
+      issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
+      namespace: 'compartment',
+    });
     expect(config.pollIntervalMs).toBe(1000);
     expect(config.runtimeControlToken).toBe('runtime-control-token');
   });
@@ -29,6 +35,12 @@ describe('readWorkerConfig', (): void => {
   it('rejects missing registry signing material instead of restoring global credentials', (): void => {
     const environment: NodeJS.ProcessEnv = validEnvironment();
     delete environment.COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY;
+    expect((): WorkerConfig => readWorkerConfig(environment)).toThrow();
+  });
+
+  it('requires custom-domain configuration for the worker controller', (): void => {
+    const environment: NodeJS.ProcessEnv = validEnvironment();
+    delete environment.COMPARTMENT_CADDY_SERVICE_NAME;
     expect((): WorkerConfig => readWorkerConfig(environment)).toThrow();
   });
 
@@ -55,6 +67,11 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: 'https://registry.apps.example.com',
     COMPARTMENT_ARTIFACT_REGISTRY_PORT: '443',
     COMPARTMENT_LOG_LEVEL: 'info',
+    COMPARTMENT_CADDY_SERVICE_NAME: 'compartment-caddy',
+    COMPARTMENT_INGRESS_CLASS_NAME: 'traefik',
+    COMPARTMENT_TLS_ISSUER_KIND: 'Issuer',
+    COMPARTMENT_TLS_ISSUER_NAME: 'compartment-platform',
+    COMPARTMENT_PLATFORM_NAMESPACE: 'compartment',
     COMPARTMENT_WORKER_POLL_INTERVAL_MS: '1000',
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
     COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: 'github.enterprise.example, idp.example.com:8443, idp.example.com:443',

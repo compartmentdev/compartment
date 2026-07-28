@@ -12,14 +12,17 @@ import { getApiConfig } from '../runtime/runtime-access';
 import { readAppAccessState } from './app-access-state.service';
 import type { EdgeRequestError } from './app-access-edge.service.types';
 import { fetchEdgeInternalHttp } from './outbound-http.service';
+import { withResourceOperationLocks } from './resource-operation-lock.service';
 
 const edgeRequestAttemptCount: number = 10;
 const edgeRequestRetryDelayMs: number = 500;
 
 export async function synchronizeEdgeAppAccessState(): Promise<void> {
-  const payload: AppAccessStateResponse = buildAppAccessStateResponse(await readAppAccessState());
+  await withResourceOperationLocks(['edge-app-access-state'], async (): Promise<void> => {
+    const payload: AppAccessStateResponse = buildAppAccessStateResponse(await readAppAccessState());
 
-  await sendEdgeRequest(compartmentInternalAppAccessStatePathname, 'PUT', payload);
+    await sendEdgeRequest(compartmentInternalAppAccessStatePathname, 'PUT', payload);
+  });
 }
 
 export async function invalidateEdgeAppAccessSessions(authSessionId: string): Promise<void> {

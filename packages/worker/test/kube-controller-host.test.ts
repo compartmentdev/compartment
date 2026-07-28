@@ -4,6 +4,7 @@ import { createKubeControllerHosts, type KubeControllerHost } from '../src/kube-
 import type { WorkerConfig } from '../src/config';
 
 const claimDeployment: Mock = vi.hoisted((): Mock => vi.fn());
+const claimCustomDomain: Mock = vi.hoisted((): Mock => vi.fn());
 const claimProductJob: Mock = vi.hoisted((): Mock => vi.fn());
 const claimResource: Mock = vi.hoisted((): Mock => vi.fn());
 const executeResource: Mock = vi.hoisted((): Mock => vi.fn());
@@ -13,6 +14,7 @@ vi.mock('@compartment/kube-runtime', (): object => ({
   createKubeRuntimeFromEnvironment: vi.fn((): object => ({})),
 }));
 vi.mock('@compartment/sdk', (): object => ({
+  claimCustomDomainReconcile: claimCustomDomain,
   claimDeploymentReconcile: claimDeployment,
   claimProductJob,
   claimResourceReconcile: claimResource,
@@ -30,6 +32,9 @@ vi.mock('../src/services/worker-resource-reconcile.service', (): object => ({
   executeResourceReconcile: executeResource,
 }));
 vi.mock('../src/services/worker-pod-metrics.service', (): object => ({ collectAndPublishPodMetrics: vi.fn() }));
+vi.mock('../src/services/worker-custom-domain-reconcile.service', (): object => ({
+  executeCustomDomainReconcile: vi.fn(),
+}));
 
 const originalKubeServiceHost: string | undefined = process.env.KUBERNETES_SERVICE_HOST;
 const originalKubeconfig: string | undefined = process.env.KUBECONFIG;
@@ -39,6 +44,7 @@ describe('createKubeControllerHosts', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
     claimDeployment.mockResolvedValue({ target: null });
+    claimCustomDomain.mockResolvedValue({ leaseId: null, target: null });
     claimProductJob.mockResolvedValue({ job: null, result: null });
     claimResource.mockResolvedValue({ intent: null });
     reconcileDeployment.mockResolvedValue([]);
@@ -74,11 +80,32 @@ describe('createKubeControllerHosts', (): void => {
       hosts.map(async (host: KubeControllerHost): Promise<boolean> => await host.reconcile()),
     );
 
-    expect(results).toEqual([true, true, true]);
+    expect(results).toEqual([true, true, true, false]);
     expect(claimResource).toHaveBeenCalledOnce();
     expect(executeResource).toHaveBeenCalledOnce();
     expect(claimProductJob).toHaveBeenCalledWith(expect.anything(), { jobClass: 'release' });
     expect(claimProductJob).toHaveBeenCalledWith(expect.anything(), { jobClass: 'resource-operation' });
+  });
+
+  it('starts every controller when the custom-domain reconcile queue is empty', async (): Promise<void> => {
+    process.env.KUBECONFIG = '/tmp/kubeconfig';
+
+    const hosts: KubeControllerHost[] = createKubeControllerHosts(
+      {
+        artifactRegistry: {},
+        customDomains: {
+          caddyServiceName: 'compartment-caddy',
+          ingressClassName: 'traefik',
+          issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
+          namespace: 'compartment',
+        },
+      } as WorkerConfig,
+      logger,
+    );
+
+    expect(hosts).toHaveLength(4);
+    await expect(hosts[3]!.reconcile()).resolves.toBe(false);
+    expect(claimCustomDomain).toHaveBeenCalledOnce();
   });
 
   it('keeps release recovery reachable after a deployment reconcile failure', async (): Promise<void> => {

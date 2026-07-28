@@ -27,6 +27,7 @@ import { registerDeploymentReconcileRoutes } from './deployment-reconcile.routes
 import { registerResourceReconcileRoutes } from './resource-reconcile.routes';
 import { registerPostClaimProjectProvisioningRoute } from './post-claim-project-provisioning.route';
 import { registerPostCompleteProjectProvisioningRoute } from './post-complete-project-provisioning.route';
+import { registerCustomDomainReconcileRoutes } from './custom-domain-reconcile.routes';
 
 type RegisterInternalRoutesDone = (err?: Error) => void;
 interface InternalApiRoutesOptions extends FastifyPluginOptions {
@@ -91,6 +92,7 @@ function registerWorkerOperationRoutes(app: ApiApp): void {
   registerPostRunNextScheduledResourceOperationRoute(app);
   registerProductJobRoutes(app);
   registerResourceReconcileRoutes(app);
+  registerCustomDomainReconcileRoutes(app);
 }
 
 function registerGitSourceResolutionWorkerRoutes(app: ApiApp, sourceArchiveMaxBytes: number): void {

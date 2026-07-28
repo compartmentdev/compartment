@@ -28,6 +28,13 @@ export interface DomainIssuerReference {
   name: string;
 }
 
+const domainIssuerReferenceSchema: ContractSchema<DomainIssuerReference> = z
+  .object({
+    kind: z.enum(['Issuer', 'ClusterIssuer']),
+    name: z.string().min(1),
+  })
+  .strict();
+
 export interface DomainHostPlan {
   baseDomain: string;
   domainKind: DomainKind;
@@ -107,13 +114,7 @@ export const domainHostPlanSchema: ContractSchema<DomainHostPlan> = z
   .object({
     baseDomain: z.string().min(1),
     domainKind: domainKindSchema,
-    issuerRef: z
-      .object({
-        kind: z.enum(['Issuer', 'ClusterIssuer']),
-        name: z.string().min(1),
-      })
-      .strict()
-      .optional(),
+    issuerRef: domainIssuerReferenceSchema.optional(),
     publicScheme: domainPublicSchemeSchema,
     tlsMode: domainTlsModeSchema,
   })

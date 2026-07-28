@@ -86,14 +86,7 @@ function toCustomDomainServiceDomainWithCanonicalHost(
 }
 
 function readCustomDomainState(row: CustomDomainRow): CustomDomainServiceState {
-  if (row.ownershipStatus === 'valid' && row.routingStatus === 'valid') {
-    return 'ready';
-  }
-  if (row.ownershipStatus === 'invalid' || row.routingStatus === 'invalid') {
-    return 'failed';
-  }
-
-  return 'pending';
+  return row.reconcileState;
 }
 
 function buildCustomDomainDnsConfig(config: ApiConfig): CustomDomainDnsConfig {

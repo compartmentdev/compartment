@@ -32,6 +32,8 @@ Custom-domain verification checks two things:
 
 Custom domains are supported only when the active install can terminate TLS locally for the custom host.
 
+After verification succeeds, the status moves through `reconciling` while Compartment provisions the exact-host ingress and certificate. The domain becomes `active` only after the certificate is ready and Edge routing is enabled. Removal is also asynchronous: `deleting` first disables Edge routing, then removes the ingress and certificate before releasing the hostname for reuse. A `failed` status keeps the domain inactive and records the verification or reconciliation failure.
+
 Automation note: custom-domain create, verify, list, and delete flows return only the documented fields. Build automation against the published contract instead of depending on extra response properties.
 
 Next steps:
