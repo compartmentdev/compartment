@@ -200,6 +200,7 @@ runs:
         push_dockerhub_image compartment-caddy packages/edge/Dockerfile.caddy.self-hosted "${caddy_args[@]}"
         push_dockerhub_image compartment-edge packages/edge/Dockerfile.self-hosted "${node_args[@]}"
         push_dockerhub_image compartment-worker packages/worker/Dockerfile.self-hosted "${worker_args[@]}"
+        push_dockerhub_image compartment-dns01-solver packages/managed-domain-dns01-solver/Dockerfile "${worker_args[@]}"
 
         mapfile -t self_hosted_services < <(node ./scripts/deploy/list-self-hosted-runtime-image-artifacts.mjs)
 
