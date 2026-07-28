@@ -54,7 +54,7 @@ The common workflow is:
 
 - `install`: one Compartment runtime with one base domain and one control plane.
 - `organization`: the collaboration boundary for users, roles, and projects.
-- `project`: the deployment identity defined by `compartment.yml`.
+- `project`: the canonical application identity derived from `compartment.yml`.
 - `environment`: the target runtime environment, such as `production` or `staging`.
 - `service`: one deployable unit inside the project.
 - `deployment`: one rollout attempt for one service.
