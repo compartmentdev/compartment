@@ -1,6 +1,6 @@
 ---
 name: develop-a-feature
-description: Implement repo changes by starting with a required preflight subagent, then editing the smallest owning surface on one canonical path and running only diff-triggered checks.
+description: Implement repo changes by starting with a required preflight subagent, then editing the smallest owning surface on one canonical path and leaving regular validation to the commit hook.
 ---
 
 # Develop a Feature
@@ -25,5 +25,5 @@ Use for implementation work in this repo.
 6. Change the smallest owning surface. Do not add fallback branches, compatibility glue, silent env defaults, public/internal URL mixing, export drift, or test-only seams.
 7. Update tests in the same diff. Prefer behavior, boundary, integration, or e2e coverage. Delete or rewrite plumbing-mirror tests instead of shaping production code around them.
 8. Invoke `$public-docs-maintenance` only when `AGENTS.md` says public docs are required. Leave `public-docs/` alone for internal-only changes; regenerate generated reference only when its source changed.
-9. Run the validation matrix from preflight: owning-package `pnpm lint`, `pnpm typecheck`, and `pnpm test` when applicable, plus only the diff-triggered special checks. Do not manually run repo-wide `pnpm check`, `pnpm check:unused`, `pnpm check:unused:runtime`, or `pnpm check:ci` unless the task explicitly requires them.
+9. Do not run owning-package or root-script lint, typecheck, build, test, or duplicate checks during feature work; leave them to the pre-commit hook. Run only the diff-triggered special checks that the hook does not cover.
 10. Close out with the entry file to read first, checks run, remaining unrun validation, and the user-visible verification flow.
