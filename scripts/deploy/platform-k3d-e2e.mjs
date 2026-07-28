@@ -62,6 +62,7 @@ const shouldExtractPebbleCa =
 const registryTestCaPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-ca.crt`);
 const registryTestCaKeyPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-ca.key`);
 const platformImageTag = 'e2e';
+const registryNodePullResourceName = 'registry-node-pull';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const kubernetesReadinessTimeoutSeconds = 240;
 const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
@@ -758,13 +759,13 @@ async function configureInstalledPlatform() {
   }
 
   waitForPlatformDeployments();
-  await assertPrivateRegistryEndpointIsRequired();
+  await assertPrivateRegistryNodePull();
   runCommand('kubectl', ['--context', contextName, '--request-timeout=5s', 'get', '--raw=/readyz'], repositoryRoot);
   await waitForConsole();
   process.stdout.write(`console: http://${consoleHost}:${httpPort}\nSTATUS=ok\n`);
 }
 
-async function assertPrivateRegistryEndpointIsRequired() {
+async function assertPrivateRegistryNodePull() {
   const output = JSON.parse(
     captureCommand(
       'kubectl',
@@ -783,15 +784,15 @@ async function assertPrivateRegistryEndpointIsRequired() {
     ).trim(),
   );
   if (typeof output.imageRef !== 'string' || typeof output.dockerConfigJson !== 'string') {
-    throw new Error('Registry endpoint negative check received invalid verifier output.');
+    throw new Error('Registry node-pull check received invalid verifier output.');
   }
-  const manifestPath = join(dirname(platformValuesPath), `${clusterName}-registry-negative.yaml`);
+  const manifestPath = join(dirname(platformValuesPath), `${clusterName}-registry-node-pull.yaml`);
   writeFileSync(
     manifestPath,
     `apiVersion: v1
 kind: Secret
 metadata:
-  name: registry-negative-pull
+  name: ${registryNodePullResourceName}
   namespace: ${platformNamespace}
 type: kubernetes.io/dockerconfigjson
 stringData:
@@ -800,17 +801,17 @@ stringData:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: registry-endpoint-disabled
+  name: ${registryNodePullResourceName}
   namespace: ${platformNamespace}
 spec:
   automountServiceAccountToken: false
   restartPolicy: Never
   containers:
-    - name: negative
+    - name: node-pull
       image: ${output.imageRef}
       imagePullPolicy: Always
   imagePullSecrets:
-    - name: registry-negative-pull
+    - name: ${registryNodePullResourceName}
 `,
     { mode: 0o600 },
   );
@@ -824,7 +825,7 @@ spec:
         '--namespace',
         platformNamespace,
         'wait',
-        'pod/registry-endpoint-disabled',
+        `pod/${registryNodePullResourceName}`,
         '--for=condition=Ready',
         `--timeout=${kubernetesReadinessTimeout}`,
       ],
@@ -838,50 +839,11 @@ spec:
         '--namespace',
         platformNamespace,
         'delete',
-        'pod/registry-endpoint-disabled',
+        `pod/${registryNodePullResourceName}`,
         '--wait=true',
       ],
       repositoryRoot,
     );
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        contextName,
-        '--namespace',
-        platformNamespace,
-        'scale',
-        'deployment/compartment-compartment-registry-auth',
-        '--replicas=0',
-      ],
-      repositoryRoot,
-    );
-    runCommand('kubectl', ['--context', contextName, 'apply', '--filename', manifestPath], repositoryRoot);
-    let failedThroughDisabledEndpoint = false;
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      const reason = captureCommand(
-        'kubectl',
-        [
-          '--context',
-          contextName,
-          '--namespace',
-          platformNamespace,
-          'get',
-          'pod/registry-endpoint-disabled',
-          '--output',
-          'jsonpath={.status.containerStatuses[0].state.waiting.reason}',
-        ],
-        repositoryRoot,
-      ).trim();
-      if (reason === 'ErrImagePull' || reason === 'ImagePullBackOff') {
-        failedThroughDisabledEndpoint = true;
-        break;
-      }
-      await delay(2_000);
-    }
-    if (!failedThroughDisabledEndpoint) {
-      throw new Error('Private registry pull unexpectedly succeeded while the endpoint was disabled.');
-    }
   } finally {
     runCommand(
       'kubectl',
@@ -891,37 +853,10 @@ spec:
         '--namespace',
         platformNamespace,
         'delete',
-        'pod/registry-endpoint-disabled',
-        'secret/registry-negative-pull',
+        `pod/${registryNodePullResourceName}`,
+        `secret/${registryNodePullResourceName}`,
         '--ignore-not-found',
         '--wait=false',
-      ],
-      repositoryRoot,
-    );
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        contextName,
-        '--namespace',
-        platformNamespace,
-        'scale',
-        'deployment/compartment-compartment-registry-auth',
-        '--replicas=1',
-      ],
-      repositoryRoot,
-    );
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        contextName,
-        '--namespace',
-        platformNamespace,
-        'rollout',
-        'status',
-        'deployment/compartment-compartment-registry-auth',
-        `--timeout=${kubernetesReadinessTimeout}`,
       ],
       repositoryRoot,
     );

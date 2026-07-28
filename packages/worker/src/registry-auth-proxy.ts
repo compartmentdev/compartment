@@ -19,7 +19,8 @@ import {
   writeRawUnauthorized,
 } from './registry-auth-proxy-responses';
 import { rewriteRegistryLocationHeader } from './registry-auth-proxy-location';
-import { authorizeRegistryRequest, verifyRegistryCredential } from './registry-credentials';
+import { resolveAuthorizedRegistryRequestTarget } from './registry-auth-proxy-request';
+import { verifyRegistryCredential } from './registry-credentials';
 import type { RegistryCredentialPayload } from './registry-credentials.types';
 
 interface RegistryAuthProxyConfig {
@@ -147,12 +148,26 @@ function handleRegistryAuthProxyRequest(
     sendBadRequest(clientResponse);
     return;
   }
-  if (authorizeRegistryRequest(credential, clientRequest.method, requestTarget) === null) {
+  proxyAuthorizedRegistryRequest(config, credential, requestTarget, clientRequest, clientResponse);
+}
+
+function proxyAuthorizedRegistryRequest(
+  config: RegistryAuthProxyConfig,
+  credential: RegistryCredentialPayload,
+  requestTarget: string,
+  clientRequest: IncomingMessage,
+  clientResponse: ServerResponse,
+): void {
+  const authorizedTarget: string | null = resolveAuthorizedRegistryRequestTarget(
+    credential,
+    clientRequest.method,
+    requestTarget,
+  );
+  if (authorizedTarget === null) {
     sendForbidden(clientResponse);
     return;
   }
-
-  proxyRegistryRequest(config, requestTarget, clientRequest, clientResponse);
+  proxyRegistryRequest(config, authorizedTarget, clientRequest, clientResponse);
 }
 
 function handleRegistryAuthProxyConnect(

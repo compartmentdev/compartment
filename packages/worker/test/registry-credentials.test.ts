@@ -25,12 +25,37 @@ describe('project-scoped registry credentials', (): void => {
     expect(authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/art_123`)).toBeNull();
   });
 
-  it('rejects writes outside the active build intent', (): void => {
+  it('allows an active build to write its tag and digest-addressed manifests in the exact repository', (): void => {
     const credential: RegistryCredentialPayload = authenticate(
       issueBuildPushCredential(signingKey, 'prj_123', repository, 'art_123', 100),
     );
 
+    expect(authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/art_123`, 101)).not.toBeNull();
+    expect(
+      authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/sha256:${'a'.repeat(64)}`, 101),
+    ).not.toBeNull();
+  });
+
+  it('rejects writes outside the active build intent', (): void => {
+    const credential: RegistryCredentialPayload = authenticate(
+      issueBuildPushCredential(signingKey, 'prj_123', repository, 'art_123', 100),
+    );
+    const digest: string = `sha256:${'a'.repeat(64)}`;
+
     expect(authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/art_other`, 101)).toBeNull();
+    expect(authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/sha256:abc`, 101)).toBeNull();
+    expect(authorizeRegistryRequest(credential, 'POST', `/v2/${repository}/manifests/${digest}`, 101)).toBeNull();
+    expect(authorizeRegistryRequest(credential, 'PATCH', `/v2/${repository}/manifests/${digest}`, 101)).toBeNull();
+    expect(authorizeRegistryRequest(credential, 'DELETE', `/v2/${repository}/manifests/${digest}`, 101)).toBeNull();
+    expect(
+      authorizeRegistryRequest(credential, 'PUT', `/v2/projects/prj_123/services/svc_other/manifests/${digest}`, 101),
+    ).toBeNull();
+    expect(
+      authorizeRegistryRequest(credential, 'PUT', `/v2/projects/prj_456/services/svc_other/manifests/${digest}`, 101),
+    ).toBeNull();
+    expect(
+      authorizeRegistryRequest(credential, 'GET', '/v2/projects/prj_123/services/svc_other/manifests/art_123', 101),
+    ).toBeNull();
     expect(
       authorizeRegistryRequest(
         credential,
@@ -39,7 +64,16 @@ describe('project-scoped registry credentials', (): void => {
         101,
       ),
     ).toBeNull();
+    expect(
+      authorizeRegistryRequest(
+        credential,
+        'POST',
+        `/v2/${repository}/blobs/uploads/?mount=sha256:abc&from=projects/prj_123/services/svc_other`,
+        101,
+      ),
+    ).toBeNull();
     expect(authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/art_123`, 3_701)).toBeNull();
+    expect(authorizeRegistryRequest(credential, 'PUT', `/v2/${repository}/manifests/${digest}`, 3_701)).toBeNull();
     expect(authorizeRegistryRequest(credential, 'GET', `/v2/${repository}/manifests/art_123`, 3_701)).toBeNull();
     expect(
       authorizeRegistryRequest(credential, 'DELETE', `/v2/${repository}/blobs/sha256:${'a'.repeat(64)}`, 101),

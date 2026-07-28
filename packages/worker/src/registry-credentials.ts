@@ -4,11 +4,11 @@ import type {
   RegistryCredentialPayload,
   RegistryRequestAuthorization,
 } from './registry-credentials.types';
+import { isManifestDigest, isManifestReference } from './registry-manifest-reference';
 
 const credentialUsernamePrefix: string = 'compartment-v1-';
 const immutableIdPattern: RegExp = /^[A-Za-z0-9][A-Za-z0-9_-]*$/u;
 const projectIdPattern: RegExp = /^prj_[A-Za-z0-9_-]+$/u;
-const manifestReferencePattern: RegExp = /^(?:[A-Za-z0-9][A-Za-z0-9_-]*|sha256:[a-f0-9]{64})$/u;
 const repositoryPattern: RegExp = /^projects\/(prj_[A-Za-z0-9_-]+)\/services\/(svc_[A-Za-z0-9_-]+)$/u;
 const registryRequestPattern: RegExp =
   /^\/v2\/(projects\/prj_[A-Za-z0-9_-]+\/services\/svc_[A-Za-z0-9_-]+)\/(?:blobs|manifests|tags)\//u;
@@ -28,7 +28,7 @@ export function issueBuildPushCredential(
   nowSeconds: number = Math.floor(Date.now() / 1000),
 ): RegistryCredential {
   assertProjectId(projectId);
-  if (!manifestReferencePattern.test(tag)) {
+  if (!isManifestReference(tag)) {
     throw new Error('tag must be an immutable build reference.');
   }
   assertProjectRepository(repository, projectId);
@@ -50,7 +50,7 @@ export function issueCleanupCredential(
   nowSeconds: number = Math.floor(Date.now() / 1000),
 ): RegistryCredential {
   assertProjectId(projectId);
-  if (!/^sha256:[a-f0-9]{64}$/u.test(digest)) {
+  if (!isManifestDigest(digest)) {
     throw new Error('Cleanup credentials require an immutable manifest digest.');
   }
   assertProjectRepository(repository, projectId);
@@ -90,6 +90,9 @@ function authorizeRepositoryRequest(
   repository: string,
   nowSeconds: number,
 ): RegistryRequestAuthorization | null {
+  if (credential.access === 'push' && credential.repository !== repository) {
+    return null;
+  }
   if (!isWriteMethod(method)) {
     return credential.access === 'cleanup' ? null : { credential, repository };
   }
@@ -171,7 +174,7 @@ function isCredentialPayload(value: Partial<RegistryCredentialPayload> | null): 
     repositoryPattern.test(value.repository) &&
     value.repository.startsWith(`projects/${value.projectId}/`) &&
     typeof value.tag === 'string' &&
-    manifestReferencePattern.test(value.tag) &&
+    isManifestReference(value.tag) &&
     typeof value.expiresAt === 'number' &&
     Number.isSafeInteger(value.expiresAt)
   );
@@ -243,7 +246,8 @@ function writeMatchesBuildIntent(
     return false;
   }
   if (requestUrl.pathname.startsWith(manifestPrefix)) {
-    return requestUrl.pathname === `${manifestPrefix}${credential.tag}`;
+    const reference: string = requestUrl.pathname.slice(manifestPrefix.length);
+    return method?.toUpperCase() === 'PUT' && (reference === credential.tag || isManifestDigest(reference));
   }
   const mountedFrom: string | null = requestUrl.searchParams.get('from');
   return mountedFrom === null || mountedFrom === credential.repository;

@@ -340,6 +340,11 @@ tests:
       - hasDocuments:
           count: 3
         template: buildkit-network-policy.yaml
+      - equal:
+          path: spec.egress[2].ports[0].port
+          value: 5001
+        template: buildkit-network-policy.yaml
+        documentIndex: 1
       - hasDocuments:
           count: 10
         template: project-provisioner-rbac.yaml
@@ -843,8 +848,12 @@ tests:
           value: registry.apps.example.com
         template: configmap.yaml
       - equal:
+          path: data.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST
+          value: compartment-compartment-registry-auth.default.svc:5001
+        template: configmap.yaml
+      - equal:
           path: data.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL
-          value: http://compartment-compartment-registry-auth:5001
+          value: http://compartment-compartment-registry-auth.default.svc:5001
         template: configmap.yaml
       - contains:
           path: spec.template.spec.containers[0].env
@@ -1480,7 +1489,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: &managedDomainChecksum 51f3d7523b9be577fb69b5173633a609d7bb490241386c9788aa9e12a2085c76
+          value: &managedDomainChecksum 44fd011ceda7b995fab1079317265260b27b246b10ed9e140244eb00075286c2
         template: api.yaml
         documentIndex: 1
       - equal:
@@ -1495,7 +1504,7 @@ tests:
         documentIndex: 1
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
-          value: &stableConfigChecksum 15fe2385afd9bfd275c97702a4a3891f0a8699bb06e1f582e31cfc6d0bca1eb3
+          value: &stableConfigChecksum ae882c3ffa72dc553613f5e6238cde5c7a56949eab5948c69e16b1df1e32cc21
         template: worker.yaml
       - equal:
           path: spec.template.metadata.annotations["checksum/config"]
@@ -1748,7 +1757,7 @@ tests:
         template: project-provisioner.yaml
       - equal:
           path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: &activeDomainChecksum d2de339d6da2947bbad4bbb47408ddc4d87182ba713815ca8c3a408a7ae75ca0
+          value: &activeDomainChecksum 223d692d1bd1090960432f7fe1037c01a0647ea1c18ab8387adeae57b3ebd7c5
         template: api.yaml
         documentIndex: 1
       - equal:

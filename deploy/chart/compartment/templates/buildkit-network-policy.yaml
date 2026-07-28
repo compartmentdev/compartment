@@ -66,7 +66,7 @@ spec:
             matchLabels:
               {{- include "compartment.componentLabels" (dict "root" . "component" "registry-auth") | nindent 14 }}
       ports:
-        - {port: {{ .Values.ports.registry }}, protocol: TCP}
+        - {port: {{ .Values.ports.registryInternal }}, protocol: TCP}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

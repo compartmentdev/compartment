@@ -10,6 +10,10 @@
 {{- end }}
 {{- end }}
 
+{{- define "compartment.registryAuthHost" -}}
+{{- printf "%s-registry-auth.%s.svc" (include "compartment.fullname" .) .Release.Namespace -}}
+{{- end }}
+
 {{- define "compartment.retainedResourceAnnotations" -}}
 helm.sh/resource-policy: keep
 meta.helm.sh/release-name: {{ .Release.Name | quote }}

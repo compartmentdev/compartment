@@ -12,9 +12,9 @@ data:
   COMPARTMENT_API_PORT: {{ .Values.ports.api | quote }}
   COMPARTMENT_ARTIFACT_REGISTRY_HOST: {{ .Values.registry.hostname | quote }}
   COMPARTMENT_ARTIFACT_REGISTRY_PORT: "443"
-  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST: {{ printf "%s-registry-auth:%v" (include "compartment.fullname" .) .Values.ports.registryInternal | quote }}
+  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST: {{ printf "%s:%v" (include "compartment.registryAuthHost" .) .Values.ports.registryInternal | quote }}
   COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_PORT: {{ .Values.ports.registryInternal | quote }}
-  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: {{ printf "http://%s-registry-auth:%v" (include "compartment.fullname" .) .Values.ports.registryInternal | quote }}
+  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: {{ printf "http://%s:%v" (include "compartment.registryAuthHost" .) .Values.ports.registryInternal | quote }}
   COMPARTMENT_BASE_DOMAIN: {{ $installState.effective.platform.baseDomain | quote }}
   COMPARTMENT_CADDY_TLS_MODE: {{ $installState.effective.platform.tlsMode | quote }}
   COMPARTMENT_CADDY_HTTP_PORT: {{ .Values.ports.http | quote }}

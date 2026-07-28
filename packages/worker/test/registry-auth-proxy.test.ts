@@ -87,6 +87,26 @@ describe('registry auth proxy', (): void => {
       }),
     ).resolves.toBe(403);
     await expect(
+      readStatus(
+        `${proxyUrl}/v2/projects/prj_other/services/svc_other/blobs/uploads/?mount=sha256%3Aabc&from=${encodeURIComponent(projectRepository)}`,
+        {
+          headers: { authorization: credentialAuthorizationHeader(pushCredential) },
+          method: 'POST',
+        },
+      ),
+    ).resolves.toBe(403);
+    await expect(
+      readRawHttpResponse(proxyPort, [
+        'POST /v2/projects/prj_other/services/svc_other/blobs/uploads/../../../../../prj_123/services/svc_123/blobs/uploads/?mount=sha256%3Aabc&from=projects%2Fprj_other%2Fservices%2Fsvc_other HTTP/1.1',
+        'Host: untrusted.registry-client.test',
+        `Authorization: ${credentialAuthorizationHeader(pushCredential)}`,
+        'Content-Length: 0',
+        'Connection: close',
+      ]),
+    ).resolves.toMatchObject({
+      statusCode: 403,
+    });
+    await expect(
       readStatus(`${proxyUrl}/v2/${projectRepository}/manifests/art_123`, {
         headers: { authorization: credentialAuthorizationHeader(pullCredential) },
       }),
@@ -118,6 +138,15 @@ describe('registry auth proxy', (): void => {
         method: 'PUT',
       }),
     ).resolves.toBe(200);
+    await expect(
+      readStatus(
+        `${proxyUrl}/v2/${projectRepository}/blobs/uploads/?mount=sha256%3Aabc&from=projects%2Fprj_other%2Fservices%2Fsvc_other`,
+        {
+          headers: { authorization: credentialAuthorizationHeader(pushCredential) },
+          method: 'POST',
+        },
+      ),
+    ).resolves.toBe(200);
 
     expect(targetCalls).toEqual([
       {
@@ -137,6 +166,12 @@ describe('registry auth proxy', (): void => {
         host: targetHost,
         method: 'PUT',
         url: `/v2/${projectRepository}/manifests/art_123`,
+      },
+      {
+        authorization: undefined,
+        host: targetHost,
+        method: 'POST',
+        url: `/v2/${projectRepository}/blobs/uploads/`,
       },
     ]);
   });
