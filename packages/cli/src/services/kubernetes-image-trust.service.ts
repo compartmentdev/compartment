@@ -64,13 +64,7 @@ async function writeVerifiedPlatformImageValues(
 ): Promise<void> {
   const effectiveImages: KubernetesPlatformImageValues = readEffectivePlatformImages(baseValues, overrideValues);
   const verifiedDigests: Map<string, string> = new Map<string, string>();
-  const verifiedImages: Record<KubernetesPlatformImageName, KubernetesVerifiedImageValue> = {
-    api: { digest: '' },
-    caddy: { digest: '' },
-    edge: { digest: '' },
-    worker: { digest: '' },
-  };
-
+  const verifiedImages: Record<KubernetesPlatformImageName, KubernetesVerifiedImageValue> = createEmptyVerifiedImages();
   for (const imageName of kubernetesPlatformImageNames) {
     const resolvedImage: ResolvedKubernetesPlatformImage = resolvePlatformImage(effectiveImages[imageName], imageName);
     let digest: string | undefined = verifiedDigests.get(resolvedImage.imageRef);
@@ -80,9 +74,18 @@ async function writeVerifiedPlatformImageValues(
     }
     verifiedImages[imageName] = { digest };
   }
-
   const values: KubernetesVerifiedPlatformImageValues = { images: verifiedImages };
   await writeKubernetesInstallValues(outputPath, values);
+}
+
+function createEmptyVerifiedImages(): Record<KubernetesPlatformImageName, KubernetesVerifiedImageValue> {
+  return {
+    api: { digest: '' },
+    caddy: { digest: '' },
+    dns01Solver: { digest: '' },
+    edge: { digest: '' },
+    worker: { digest: '' },
+  };
 }
 
 function readEffectivePlatformImages(
@@ -92,6 +95,7 @@ function readEffectivePlatformImages(
   return {
     api: readEffectiveImage(baseValues, overrideValues, 'api'),
     caddy: readEffectiveImage(baseValues, overrideValues, 'caddy'),
+    dns01Solver: readEffectiveImage(baseValues, overrideValues, 'dns01Solver'),
     edge: readEffectiveImage(baseValues, overrideValues, 'edge'),
     worker: readEffectiveImage(baseValues, overrideValues, 'worker'),
   };

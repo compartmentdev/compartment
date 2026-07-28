@@ -72,8 +72,7 @@ const deploymentAuthorizationDatabaseUrl: string = deriveProcessScopedDatabaseUr
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',
-  caddyTlsMode: 'internal',
-  customTlsDirectory: '/etc/compartment/tls',
+  tlsMode: 'internal',
   controlPlaneHost: 'console.localhost',
   databaseUrl: deploymentAuthorizationDatabaseUrl,
   edgeToken: 'test-edge-token',

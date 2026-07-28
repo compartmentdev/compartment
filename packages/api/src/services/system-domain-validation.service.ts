@@ -30,7 +30,6 @@ function assertSupportedRuntimeDomainMatrix(hostPlan: DomainHostPlan): void {
   if (
     hostPlan.tlsMode === 'internal' &&
     hostPlan.publicScheme === 'http' &&
-    hostPlan.caddyMode === 'internal' &&
     (hostPlan.domainKind === 'custom' || hostPlan.domainKind === 'local')
   ) {
     return;
@@ -39,8 +38,7 @@ function assertSupportedRuntimeDomainMatrix(hostPlan: DomainHostPlan): void {
   if (
     (hostPlan.domainKind === 'custom' || hostPlan.domainKind === 'local') &&
     hostPlan.tlsMode === 'external' &&
-    hostPlan.publicScheme === 'http' &&
-    hostPlan.caddyMode === 'custom-http'
+    hostPlan.publicScheme === 'http'
   ) {
     return;
   }
@@ -53,7 +51,7 @@ function assertSupportedPendingDomainMatrix(hostPlan: DomainHostPlan): void {
     hostPlan.domainKind === 'custom' &&
     hostPlan.tlsMode === 'external' &&
     hostPlan.publicScheme === 'https' &&
-    hostPlan.caddyMode === 'custom-http'
+    hostPlan.issuerRef !== undefined
   ) {
     return;
   }
@@ -61,22 +59,22 @@ function assertSupportedPendingDomainMatrix(hostPlan: DomainHostPlan): void {
     hostPlan.domainKind === 'custom' &&
     hostPlan.tlsMode === 'custom-cert' &&
     hostPlan.publicScheme === 'https' &&
-    hostPlan.caddyMode === 'custom-cert'
+    hostPlan.issuerRef === undefined
   ) {
     return;
   }
 
-  const key: string = [hostPlan.domainKind, hostPlan.tlsMode, hostPlan.publicScheme, hostPlan.caddyMode].join('/');
+  const key: string = [hostPlan.domainKind, hostPlan.tlsMode, hostPlan.publicScheme].join('/');
   throw createInvalidDomainHostPlanError(`Unsupported pending domain/TLS combination: ${key}.`);
 }
 
 function assertSupportedDomainMatrix(hostPlan: DomainHostPlan): void {
-  const key: string = [hostPlan.domainKind, hostPlan.tlsMode, hostPlan.publicScheme, hostPlan.caddyMode].join('/');
+  const key: string = [hostPlan.domainKind, hostPlan.tlsMode, hostPlan.publicScheme].join('/');
   const supportedKeys: Set<string> = new Set<string>([
-    'managed/broker-dns01/https/managed',
-    'custom/custom-cert/https/custom-cert',
-    'custom/external/https/custom-http',
-    'local/internal/https/internal',
+    'managed/broker-dns01/https',
+    'custom/custom-cert/https',
+    'custom/external/https',
+    'local/internal/https',
   ]);
 
   if (!supportedKeys.has(key)) {

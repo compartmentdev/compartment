@@ -57,8 +57,7 @@ const variableGroupsDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDat
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',
-  caddyTlsMode: 'internal',
-  customTlsDirectory: '/etc/compartment/tls',
+  tlsMode: 'internal',
   controlPlaneHost: 'console.localhost',
   databaseUrl: variableGroupsDatabaseUrl,
   edgeToken: 'test-edge-token',

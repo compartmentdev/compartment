@@ -70,8 +70,8 @@ function buildStageSystemDomainPendingInput(
     expectedSetupVersion: input.expectedSetupVersion,
     operationId,
     pendingBaseDomain: hostPlan.baseDomain,
-    pendingCaddyMode: hostPlan.caddyMode,
     pendingDomainKind: hostPlan.domainKind,
+    pendingIssuerRefJson: hostPlan.issuerRef === undefined ? null : JSON.stringify(hostPlan.issuerRef),
     pendingPublicScheme: hostPlan.publicScheme,
     pendingRequiredDnsRecordsJson: JSON.stringify(
       buildRequiredSystemDomainDnsRecords({

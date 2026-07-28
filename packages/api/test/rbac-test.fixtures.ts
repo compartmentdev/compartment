@@ -270,9 +270,8 @@ function createRbacApiConfig(databaseUrl: string, scope: string): ApiConfig {
   return {
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',
-    caddyTlsMode: 'internal',
+    tlsMode: 'internal',
     controlPlaneHost: 'console.localhost',
-    customTlsDirectory: '/etc/compartment/tls',
     databaseUrl,
     edgeToken: 'test-edge-token',
     edgeUrl: 'http://127.0.0.1:9081',

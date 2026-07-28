@@ -1,1 +1,1 @@
-export type KubernetesPlatformImageName = 'api' | 'caddy' | 'edge' | 'worker';
+export type KubernetesPlatformImageName = 'api' | 'caddy' | 'dns01Solver' | 'edge' | 'worker';

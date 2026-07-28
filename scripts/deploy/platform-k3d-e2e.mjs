@@ -235,18 +235,18 @@ export function isConsoleReadyStatus(status) {
 }
 
 export function renderPlatformK3dValues(imageDigestsByServiceName) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: custom-http\nbuildkit:\n  namespace: ${platformNamespace}-build\nedge:\n  snapshots:\n    enabled: true\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\nedge:\n  snapshots:\n    enabled: true\n`;
 }
 
 export function renderManagedPlatformK3dValues(imageDigestsByServiceName) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  publicIngressIpv4: 8.8.4.4\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nplatform:\n  publicIngressIpv4: 8.8.4.4\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
 }
 
 function renderPlatformImageValues(imageDigestsByServiceName) {
   const imageValues = platformK3dServiceNames
     .map(
       (serviceName) =>
-        `  ${serviceName}:\n    repository: ${registryClusterHost}/compartment-${serviceName}\n    tag: ${platformImageTag}\n    digest: ${readRequiredPlatformImageDigest(imageDigestsByServiceName, serviceName)}`,
+        `  ${serviceName === 'dns01-solver' ? 'dns01Solver' : serviceName}:\n    repository: ${registryClusterHost}/compartment-${serviceName}\n    tag: ${platformImageTag}\n    digest: ${readRequiredPlatformImageDigest(imageDigestsByServiceName, serviceName)}`,
     )
     .join('\n');
   return `images:\n${imageValues}\n`;

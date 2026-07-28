@@ -8,14 +8,6 @@ export function isPathWithinDirectory(directory: string, targetPath: string): bo
   );
 }
 
-export function readRequiredAbsolutePath(value: string, variableName: string): string {
-  if (isAbsolute(value)) {
-    return value;
-  }
-
-  throw new Error(`${variableName} must be an absolute path.`);
-}
-
 export function isMissingFileSystemEntryError(error: Error): error is NodeJS.ErrnoException {
   return 'code' in error && error.code === 'ENOENT';
 }

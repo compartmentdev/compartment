@@ -101,8 +101,7 @@ describe('custom domain validation service', (): void => {
     const unsupportedRuntimeConfig: ApiConfig = {
       ...createApiConfig(),
       baseDomain: 'customer.example.com',
-      caddyTlsMode: 'custom-http',
-      customTlsDirectory: '/etc/compartment/tls',
+      tlsMode: 'issuer',
     };
     configureValidationRuntime(unsupportedRuntimeConfig);
     expect((): void =>
@@ -118,8 +117,7 @@ describe('custom domain validation service', (): void => {
     const customCertConfig: ApiConfig = {
       ...createApiConfig(),
       baseDomain: 'customer.example.com',
-      caddyTlsMode: 'custom-cert',
-      customTlsDirectory: '/etc/compartment/tls',
+      tlsMode: 'secret',
       controlPlaneHost: 'console.customer.example.com',
     };
     configureValidationRuntime(customCertConfig);
@@ -140,8 +138,7 @@ function createApiConfig(): ApiConfig {
   return {
     baseDomain: 'example.compartment.run',
     bindHost: '127.0.0.1',
-    caddyTlsMode: 'managed',
-    customTlsDirectory: '/etc/compartment/tls',
+    tlsMode: 'broker-dns01',
     controlPlaneHost: 'console.example.compartment.run',
     databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_test',
     edgeToken: 'edge-token',

@@ -10,12 +10,6 @@ const domainTlsModeValues: readonly ['broker-dns01', 'custom-cert', 'external', 
   'internal',
 ];
 const domainPublicSchemeValues: readonly ['http', 'https'] = ['http', 'https'];
-const domainCaddyModeValues: readonly ['managed', 'custom-cert', 'custom-http', 'internal'] = [
-  'managed',
-  'custom-cert',
-  'custom-http',
-  'internal',
-];
 const systemDomainPendingStatusValues: readonly ['pending_dns', 'pending_cert', 'verified'] = [
   'pending_dns',
   'pending_cert',
@@ -26,14 +20,18 @@ const systemDomainHealthStatusValues: readonly ['unknown', 'ok', 'unhealthy'] = 
 export type DomainKind = 'managed' | 'custom' | 'local';
 export type DomainTlsMode = 'broker-dns01' | 'custom-cert' | 'external' | 'internal';
 export type DomainPublicScheme = 'http' | 'https';
-export type DomainCaddyMode = 'managed' | 'custom-cert' | 'custom-http' | 'internal';
 export type SystemDomainPendingStatus = 'pending_dns' | 'pending_cert' | 'verified';
 export type SystemDomainHealthStatus = 'unknown' | 'ok' | 'unhealthy';
 
+export interface DomainIssuerReference {
+  kind: 'Issuer' | 'ClusterIssuer';
+  name: string;
+}
+
 export interface DomainHostPlan {
   baseDomain: string;
-  caddyMode: DomainCaddyMode;
   domainKind: DomainKind;
+  issuerRef?: DomainIssuerReference | undefined;
   publicScheme: DomainPublicScheme;
   tlsMode: DomainTlsMode;
 }
@@ -49,9 +47,8 @@ export interface DomainCertificateMetadata {
 }
 
 export interface SystemDomainCertificate {
-  certificatePath: string;
   metadata: DomainCertificateMetadata;
-  privateKeyPath: string;
+  secretName: string;
 }
 
 export interface SystemDomainHealth {
@@ -84,6 +81,7 @@ export interface SystemDomainSetRequest {
 }
 
 export interface SystemDomainAttachCertificateRequest {
+  certificate: SystemDomainCertificate;
   expectedSetupVersion: number;
 }
 
@@ -100,7 +98,6 @@ export interface SystemDomainMutationResponse {
 const domainKindSchema: ContractSchema<DomainKind> = z.enum(domainKindValues);
 const domainTlsModeSchema: ContractSchema<DomainTlsMode> = z.enum(domainTlsModeValues);
 const domainPublicSchemeSchema: ContractSchema<DomainPublicScheme> = z.enum(domainPublicSchemeValues);
-const domainCaddyModeSchema: ContractSchema<DomainCaddyMode> = z.enum(domainCaddyModeValues);
 export const systemDomainPendingStatusSchema: ContractSchema<SystemDomainPendingStatus> = z.enum(
   systemDomainPendingStatusValues,
 );
@@ -109,8 +106,14 @@ const systemDomainHealthStatusSchema: ContractSchema<SystemDomainHealthStatus> =
 export const domainHostPlanSchema: ContractSchema<DomainHostPlan> = z
   .object({
     baseDomain: z.string().min(1),
-    caddyMode: domainCaddyModeSchema,
     domainKind: domainKindSchema,
+    issuerRef: z
+      .object({
+        kind: z.enum(['Issuer', 'ClusterIssuer']),
+        name: z.string().min(1),
+      })
+      .strict()
+      .optional(),
     publicScheme: domainPublicSchemeSchema,
     tlsMode: domainTlsModeSchema,
   })
@@ -130,9 +133,12 @@ const domainCertificateMetadataSchema: ContractSchema<DomainCertificateMetadata>
 
 export const systemDomainCertificateSchema: ContractSchema<SystemDomainCertificate> = z
   .object({
-    certificatePath: z.string().min(1),
     metadata: domainCertificateMetadataSchema,
-    privateKeyPath: z.string().min(1),
+    secretName: z
+      .string()
+      .min(1)
+      .max(253)
+      .regex(/^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/u),
   })
   .strict();
 
@@ -175,6 +181,7 @@ export const systemDomainSetRequestSchema: ContractSchema<SystemDomainSetRequest
 
 export const systemDomainAttachCertificateRequestSchema: ContractSchema<SystemDomainAttachCertificateRequest> = z
   .object({
+    certificate: systemDomainCertificateSchema,
     expectedSetupVersion: z.number().int().nonnegative(),
   })
   .strict();

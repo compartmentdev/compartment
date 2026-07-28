@@ -318,20 +318,27 @@ async function expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade(): Promise<voi
           'active-custom-tls-secret': secretName,
           'operator-custom-tls-secret': secretName,
           'public-protocol': 'https',
-          'tls-mode': 'custom-cert',
+          'tls-mode': 'secret',
         },
       }),
     ]);
     expectSuccessfulCommand(retainIdentity, 'retain operator TLS identity');
 
     await expectSuccessfulOrdinaryHelmUpgrade('apply retained operator TLS state');
+    const ingressTlsSecrets: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      'ingress/compartment-compartment',
+      '--output=jsonpath={.spec.tls[0].secretName},{.spec.tls[1].secretName}',
+    ]);
+    expectSuccessfulCommand(ingressTlsSecrets, 'read retained Ingress TLS Secrets after an ordinary upgrade');
+    expect(ingressTlsSecrets.stdout).toBe(`${secretName},${secretName}`);
     const apiTlsSecret: SelfHostedUserSetupCommandResult = await runKubectl([
       'get',
       'deployment/compartment-compartment-api',
       '--output=jsonpath={.spec.template.spec.volumes[?(@.name=="active-tls")].secret.secretName}',
     ]);
     expectSuccessfulCommand(apiTlsSecret, 'read retained API TLS mount after an ordinary upgrade');
-    expect(apiTlsSecret.stdout).toBe(secretName);
+    expect(apiTlsSecret.stdout).toBe('');
     const caddyTlsSecret: SelfHostedUserSetupCommandResult = await runKubectl([
       'get',
       'deployment/compartment-compartment-caddy',
@@ -350,7 +357,7 @@ async function expectRetainedOperatorTlsIdentityOnOrdinaryUpgrade(): Promise<voi
           'active-custom-tls-secret': '',
           'operator-custom-tls-secret': '',
           'public-protocol': 'http',
-          'tls-mode': 'custom-http',
+          'tls-mode': 'issuer',
         },
       }),
     ]);

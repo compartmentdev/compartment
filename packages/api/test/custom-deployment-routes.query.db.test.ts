@@ -34,8 +34,7 @@ const customDeploymentRoutesDatabaseUrl: string = deriveProcessScopedDatabaseUrl
 const apiConfig: ApiConfig = {
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
-  caddyTlsMode: 'internal',
-  customTlsDirectory: '/etc/compartment/tls',
+  tlsMode: 'internal',
   controlPlaneHost: 'compartment.localhost',
   databaseUrl: customDeploymentRoutesDatabaseUrl,
   edgeToken: 'test-edge-token',

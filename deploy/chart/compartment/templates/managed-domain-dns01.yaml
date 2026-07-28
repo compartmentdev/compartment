@@ -1,0 +1,224 @@
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if and (eq $installState.effective.platform.startupStage "full") (eq $installState.effective.platform.domainMode "managed") -}}
+{{- $name := printf "%s-dns01" (include "compartment.fullname" .) -}}
+{{- $groupName := include "compartment.managedDomainDns01GroupName" . -}}
+{{- $clusterName := printf "%s-%s" $name (.Release.Namespace | sha256sum | trunc 8) -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: managed-domain-dns01
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $name }}
+rules:
+  - apiGroups: ['']
+    resources: [secrets]
+    resourceNames: [{{ include "compartment.installStateSecretName" . | quote }}]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $clusterName }}-authentication-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $clusterName }}-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $clusterName }}-solver
+rules:
+  - apiGroups: [{{ $groupName | quote }}]
+    resources: ['*']
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $clusterName }}-solver
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $clusterName }}-solver
+subjects:
+  - kind: ServiceAccount
+    name: cert-manager
+    namespace: cert-manager
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $name }}-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $name }}-ca
+spec:
+  secretName: {{ $name }}-ca
+  isCA: true
+  commonName: {{ $name }}-ca
+  issuerRef:
+    name: {{ $name }}-selfsigned
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $name }}-ca
+spec:
+  ca:
+    secretName: {{ $name }}-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $name }}-tls
+spec:
+  secretName: {{ $name }}-tls
+  issuerRef:
+    name: {{ $name }}-ca
+  dnsNames:
+    - {{ $name }}
+    - {{ printf "%s.%s" $name .Release.Namespace }}
+    - {{ printf "%s.%s.svc" $name .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: managed-domain-dns01
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" . "component" "managed-domain-dns01") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "compartment.componentLabels" (dict "root" . "component" "managed-domain-dns01") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      containers:
+        - name: solver
+          image: {{ include "compartment.image" .Values.images.dns01Solver }}
+          imagePullPolicy: {{ .Values.images.dns01Solver.pullPolicy }}
+          args:
+            - --tls-cert-file=/tls/tls.crt
+            - --tls-private-key-file=/tls/tls.key
+            - --secure-port=8443
+          env:
+            - name: GROUP_NAME
+              value: {{ $groupName | quote }}
+            - name: BROKER_URL
+              value: {{ $installState.effective.platform.managedDomainBrokerUrl | quote }}
+            - name: ALLOCATION_ID
+              value: {{ $installState.effective.platform.managedDomainAllocationId | quote }}
+            - name: TOKEN_SECRET_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: TOKEN_SECRET_NAME
+              value: {{ include "compartment.installStateSecretName" . | quote }}
+            - name: TOKEN_SECRET_KEY
+              value: managed-domain-broker-token
+          ports:
+            - { name: https, containerPort: 8443 }
+          readinessProbe:
+            httpGet: { scheme: HTTPS, path: /healthz, port: https }
+            periodSeconds: 5
+            failureThreshold: 30
+          securityContext:
+            {{- include "compartment.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - { name: tls, mountPath: /tls, readOnly: true }
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ $name }}-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+spec:
+  selector:
+    {{- include "compartment.componentLabels" (dict "root" . "component" "managed-domain-dns01") | nindent 4 }}
+  ports:
+    - { name: https, port: 443, targetPort: https }
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: {{ printf "v1alpha1.%s" $groupName }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ printf "%s/%s-tls" .Release.Namespace $name | quote }}
+spec:
+  group: {{ $groupName | quote }}
+  groupPriorityMinimum: 1000
+  versionPriority: 15
+  service:
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+  version: v1alpha1
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.tls.issuerRef.name | quote }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: platform-tls
+spec:
+  acme:
+    email: {{ $installState.effective.platform.acmeEmail | quote }}
+    server: {{ ternary .Values.tls.acme.stagingUrl .Values.tls.acme.productionUrl (eq .Values.tls.acme.environment "staging") | quote }}
+    skipTLSVerify: {{ .Values.tls.acme.skipTlsVerify }}
+    privateKeySecretRef:
+      name: {{ include "compartment.fullname" . }}-acme-account
+    solvers:
+      - dns01:
+          webhook:
+            groupName: {{ $groupName | quote }}
+            solverName: managed-domain-broker
+            config: {}
+{{- end }}

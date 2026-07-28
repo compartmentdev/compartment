@@ -161,13 +161,12 @@ interface SystemDomainSetupStateColumnBuilders {
   pendingStatus: OptionalTextBuilder<'pending_status'>;
   pendingOperationId: OptionalTextBuilder<'pending_operation_id'>;
   pendingDomainKind: OptionalTextBuilder<'pending_domain_kind'>;
+  pendingIssuerRefJson: OptionalTextBuilder<'pending_issuer_ref_json'>;
   pendingTlsMode: OptionalTextBuilder<'pending_tls_mode'>;
   pendingPublicScheme: OptionalTextBuilder<'pending_public_scheme'>;
-  pendingCaddyMode: OptionalTextBuilder<'pending_caddy_mode'>;
   pendingBaseDomain: OptionalTextBuilder<'pending_base_domain'>;
   pendingCertificateMetadataJson: OptionalTextBuilder<'pending_certificate_metadata_json'>;
-  pendingCertificatePath: OptionalTextBuilder<'pending_certificate_path'>;
-  pendingPrivateKeyPath: OptionalTextBuilder<'pending_private_key_path'>;
+  pendingTlsSecretName: OptionalTextBuilder<'pending_tls_secret_name'>;
   pendingRequiredDnsRecordsJson: OptionalTextBuilder<'pending_required_dns_records_json'>;
   pendingFailureCode: OptionalTextBuilder<'pending_failure_code'>;
   pendingFailureMessage: OptionalTextBuilder<'pending_failure_message'>;

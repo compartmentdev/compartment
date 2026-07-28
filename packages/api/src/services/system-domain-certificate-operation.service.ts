@@ -1,4 +1,5 @@
 import {
+  domainCertificateMetadataCoversHostPlan,
   isCustomCertificateDomainHostPlan,
   type DomainHostPlan,
   type SystemDomainCertificate,
@@ -9,7 +10,6 @@ import { attachSystemDomainPendingCertificateWithExecutor } from '../queries/sys
 import type { SystemDomainPendingCertificateInput } from '../queries/system-domain-operation.query.types';
 import type { SystemDomainMutationQueryResult, SystemDomainTransaction } from '../queries/system-domain.query.types';
 import { runIdempotentSystemDomainMutation } from './system-domain-idempotent-mutation.service';
-import { readPendingSystemDomainCertificate } from './system-domain-pending-certificate.service';
 import { requirePendingSystemDomainState, type PendingSystemDomainState } from './system-domain-pending-state.service';
 import { readRuntimeDomainHostPlan } from './system-domain-runtime.service';
 import { createSystemDomainMutationResult } from './system-domain-status.mapper';
@@ -35,10 +35,7 @@ async function attachPendingCertificate(
   const pendingOperationId: string = pendingState.operationId;
   assertPendingCustomCertOperation(pendingHostPlan);
   assertPendingCertificateAttachReady(pendingState.status);
-  const certificate: SystemDomainCertificate = await readValidatedPendingCertificate(
-    pendingOperationId,
-    pendingHostPlan,
-  );
+  const certificate: SystemDomainCertificate = readValidatedPendingCertificate(input.certificate, pendingHostPlan);
 
   const mutationResult: SystemDomainMutationQueryResult | null = await attachSystemDomainPendingCertificateWithExecutor(
     tx,
@@ -60,6 +57,7 @@ function buildPendingCertificateInput(
     expectedSetupVersion: input.expectedSetupVersion,
     operationId: pendingOperationId,
     pendingCertificateMetadataJson: JSON.stringify(certificate.metadata),
+    pendingTlsSecretName: certificate.secretName,
   };
 }
 
@@ -75,13 +73,12 @@ function assertPendingCertificateAttachReady(status: SystemDomainPendingStatus):
   }
 }
 
-async function readValidatedPendingCertificate(
-  operationId: string,
+function readValidatedPendingCertificate(
+  certificate: SystemDomainCertificate,
   hostPlan: DomainHostPlan,
-): Promise<SystemDomainCertificate> {
-  try {
-    return await readPendingSystemDomainCertificate(operationId, hostPlan);
-  } catch (error) {
-    throw createDomainOperationUnavailableError((error as Error).message);
+): SystemDomainCertificate {
+  if (!domainCertificateMetadataCoversHostPlan(certificate.metadata, hostPlan)) {
+    throw createDomainOperationUnavailableError('The staged TLS Secret certificate does not cover the pending domain.');
   }
+  return certificate;
 }

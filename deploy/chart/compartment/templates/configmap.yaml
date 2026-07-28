@@ -16,7 +16,7 @@ data:
   COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_PORT: {{ .Values.ports.registryInternal | quote }}
   COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: {{ printf "http://%s:%v" (include "compartment.registryAuthHost" .) .Values.ports.registryInternal | quote }}
   COMPARTMENT_BASE_DOMAIN: {{ $installState.effective.platform.baseDomain | quote }}
-  COMPARTMENT_CADDY_TLS_MODE: {{ $installState.effective.platform.tlsMode | quote }}
+  COMPARTMENT_TLS_MODE: {{ $installState.effective.platform.tlsMode }}
   COMPARTMENT_CADDY_HTTP_PORT: {{ .Values.ports.http | quote }}
   COMPARTMENT_EDGE_BIND_HOST: "0.0.0.0"
   COMPARTMENT_EDGE_INTERNAL_HOST: {{ printf "%s-edge" (include "compartment.fullname" .) | quote }}
@@ -31,9 +31,6 @@ data:
   COMPARTMENT_WORKER_POLL_INTERVAL_MS: {{ .Values.platform.workerPollIntervalMs | quote }}
   BUILDKIT_ADDR: {{ printf "tcp://%s-buildkit.%s.svc:%v" (include "compartment.fullname" .) .Values.buildkit.namespace .Values.ports.buildkit | quote }}
   COMPARTMENT_SYSTEM_API_SOCKET: /var/run/compartment/api/system-api.sock
-  COMPARTMENT_CUSTOM_TLS_DIR: /etc/compartment/tls
-  COMPARTMENT_CUSTOM_TLS_CERT_FILE: /etc/compartment/tls/fullchain.pem
-  COMPARTMENT_CUSTOM_TLS_KEY_FILE: /etc/compartment/tls/privkey.pem
   COMPARTMENT_ACME_ISSUER: {{ .Values.platform.acmeIssuer | quote }}
   COMPARTMENT_ACME_CA_URL: {{ .Values.platform.acmeCaUrl | quote }}
   COMPARTMENT_ACME_EMAIL: {{ $installState.effective.platform.acmeEmail | quote }}

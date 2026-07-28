@@ -5,6 +5,7 @@ import {
   resolveKubernetesInstallControlPlaneUrl,
 } from '../kubernetes-install-domain';
 import { materializeAdoptedKubernetesInstall } from './kubernetes-install-adoption.service';
+import { waitForKubernetesPlatformCertificates } from './kubernetes-install-certificate.service';
 import { installObservableKubernetesFoundation } from './kubernetes-install-foundation.service';
 import {
   createKubernetesInstallMaterializedDirectory,
@@ -24,6 +25,7 @@ import {
 import { mergeRetainedKubernetesInstallState } from './kubernetes-install-retained-state.service';
 import { buildResolvedInstallValues, resolveKubernetesInstallState } from './kubernetes-install-state.service';
 import { verifyKubernetesInstallRegistryNodePull } from './kubernetes-install-registry-verification.service';
+import { usesOperatorOwnedKubernetesTlsSecret } from './kubernetes-install-tls.service';
 import type {
   ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
@@ -166,6 +168,7 @@ async function deployFullKubernetesInstall(
     material.imageTrustValuesPath,
     'full',
   );
+  await waitForRequiredKubernetesPlatformCertificates(input, state);
   return apiUrl;
 }
 
@@ -174,6 +177,7 @@ async function resumeKubernetesOwnerBootstrap(
   existingInstall: ExistingKubernetesInstall,
 ): Promise<KubernetesInstallDeploymentResult> {
   const baseDomain: string = requireExistingBaseDomain(existingInstall);
+  await waitForRequiredKubernetesPlatformCertificates(input, existingInstall);
   await verifyKubernetesInstallRegistryNodePull(input);
   return await finishKubernetesInstall(
     resolveKubernetesInstallControlPlaneUrl(input.apiUrl, baseDomain, existingInstall.publicProtocol),
@@ -181,6 +185,22 @@ async function resumeKubernetesOwnerBootstrap(
     baseDomain,
     input.domainMode,
     input.progress,
+  );
+}
+
+async function waitForRequiredKubernetesPlatformCertificates(
+  input: KubernetesInstallDeploymentInput,
+  state: KubernetesInstallState,
+): Promise<void> {
+  const usesOperatorTlsSecret: boolean =
+    state.domainMode === 'custom' && (await usesOperatorOwnedKubernetesTlsSecret(input.valuesPath));
+  if (state.publicProtocol !== 'https' || usesOperatorTlsSecret) {
+    return;
+  }
+  await runObservableInstallStep(
+    input.progress,
+    'Waiting for platform Certificates',
+    async (): Promise<void> => await waitForKubernetesPlatformCertificates(input),
   );
 }
 

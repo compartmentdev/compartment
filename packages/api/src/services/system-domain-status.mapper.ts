@@ -11,15 +11,10 @@ import {
   type SystemDomainCertificate,
   type SystemDomainStatusResponse,
 } from '@compartment/contracts';
-import {
-  buildPendingSystemDomainCertificatePaths,
-  type JsonValue,
-  type PendingSystemDomainCertificatePaths,
-} from '@compartment/utils';
+import type { JsonValue } from '@compartment/utils';
 import { z } from 'zod';
 import { readApiPublicIngressConfig, type ApiPublicIngressConfig } from '../config';
 import type { SystemDomainMutationQueryResult, SystemDomainSetupStateRow } from '../queries/system-domain.query.types';
-import { getApiConfig } from '../runtime/runtime-access';
 import { buildRequiredSystemDomainDnsRecords } from './system-domain-dns-proof.service';
 import type {
   SystemDomainHealthResult,
@@ -90,18 +85,13 @@ function mapPendingDomainOperation(setupState: SystemDomainSetupStateRow): Syste
 }
 
 function readPendingCertificate(setupState: SystemDomainSetupStateRow): SystemDomainCertificate | null {
-  if (setupState.pendingCertificateMetadataJson === null || setupState.pendingOperationId === null) {
+  if (setupState.pendingCertificateMetadataJson === null || setupState.pendingTlsSecretName === null) {
     return null;
   }
-  const paths: PendingSystemDomainCertificatePaths = buildPendingSystemDomainCertificatePaths(
-    getApiConfig().customTlsDirectory,
-    setupState.pendingOperationId,
-  );
 
   return systemDomainCertificateSchema.parse({
-    certificatePath: paths.certificatePath,
     metadata: readPendingCertificateMetadataJson(setupState.pendingCertificateMetadataJson),
-    privateKeyPath: paths.privateKeyPath,
+    secretName: setupState.pendingTlsSecretName,
   });
 }
 
@@ -112,8 +102,10 @@ function readPendingCertificateMetadataJson(value: string): JsonValue {
 export function readPendingDomainHostPlan(setupState: SystemDomainSetupStateRow): DomainHostPlan {
   return domainHostPlanSchema.parse({
     baseDomain: requirePendingText(setupState.pendingBaseDomain),
-    caddyMode: requirePendingText(setupState.pendingCaddyMode),
     domainKind: requirePendingText(setupState.pendingDomainKind),
+    ...(setupState.pendingIssuerRefJson === null
+      ? {}
+      : { issuerRef: JSON.parse(setupState.pendingIssuerRefJson) as JsonValue }),
     publicScheme: requirePendingText(setupState.pendingPublicScheme),
     tlsMode: requirePendingText(setupState.pendingTlsMode),
   });

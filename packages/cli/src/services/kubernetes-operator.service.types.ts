@@ -1,4 +1,4 @@
-import type { DomainHostPlan } from '@compartment/contracts';
+import type { DomainCertificateMetadata, DomainHostPlan, DomainIssuerReference } from '@compartment/contracts';
 
 export interface KubernetesOperatorTarget {
   chartPath?: string | undefined;
@@ -37,6 +37,7 @@ export interface KubernetesResourceMetadata {
 
 export interface KubernetesDomainSetInput extends KubernetesOperatorTarget {
   baseDomain: string;
+  issuerRef?: DomainIssuerReference | undefined;
   tlsMode: 'custom-cert' | 'external';
 }
 
@@ -66,8 +67,12 @@ export interface KubernetesDomainReleaseUpdate {
 export interface KubernetesDomainHelmValues {
   customTls: KubernetesDomainHelmTlsValues;
   platform?: KubernetesDomainHelmPlatformValues | undefined;
+  tls?: KubernetesDomainHelmIssuerValues | undefined;
 }
 
+export interface KubernetesDomainHelmIssuerValues {
+  issuerRef: DomainIssuerReference;
+}
 export interface KubernetesDomainHelmTlsValues {
   existingSecret?: string | undefined;
   operatorCertificate?: string | undefined;
@@ -85,12 +90,13 @@ export interface KubernetesDomainHelmPlatformValues {
   domainGeneration: number;
   domainMode: 'custom' | 'managed';
   publicProtocol: 'http' | 'https';
-  tlsMode: 'custom-cert' | 'custom-http' | 'internal' | 'managed';
+  tlsMode: 'broker-dns01' | 'internal' | 'issuer' | 'secret';
 }
 
 export interface StagedKubernetesDomainCertificate {
   certificate: string;
   fingerprint: string;
+  metadata: DomainCertificateMetadata;
   privateKey: string;
   secretName: string;
 }

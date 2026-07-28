@@ -76,6 +76,7 @@ describe('Kubernetes install Helm material', (): void => {
         images: {
           api: { digest: '', tag: '0.9.2' },
           caddy: { digest: '', tag: '0.9.2' },
+          dns01Solver: { digest: '', tag: '0.9.2' },
           edge: { digest: '', tag: '0.9.2' },
           worker: { digest: '', tag: '0.9.2' },
         },

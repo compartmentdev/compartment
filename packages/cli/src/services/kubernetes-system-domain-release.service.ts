@@ -1,13 +1,11 @@
 import { createHash } from 'node:crypto';
-import { readFile, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { DomainHostPlan } from '@compartment/contracts';
-import { immutableKubeName } from '@compartment/utils';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { buildHelmUpgradeCommand, readCommandOutput } from './kubernetes-command.support';
+import { readCommandOutput } from './kubernetes-command.support';
 import {
-  buildKubernetesHelmValuesArgs,
   createKubernetesInstallMaterializedDirectory,
   resolveKubernetesChartPath,
   writeKubernetesInstallValues,
@@ -22,12 +20,19 @@ import type {
   StagedKubernetesDomainCertificate,
 } from './kubernetes-operator.service.types';
 import { readPendingKubernetesDomainTlsSecretName } from './kubernetes-system-domain-release-values.service';
-
-const helmDomainTimeout: string = '10m';
+import { validateKubernetesSystemDomainCertificate } from './kubernetes-system-domain-certificate.service';
+import { mapDomainTlsModeToPlatformTlsMode } from './kubernetes-domain-tls-mode.service';
+import {
+  buildDomainHelmCommand,
+  buildDomainTlsSecretName,
+  readRequiredPemFile,
+  requireOperatorValuesPath,
+} from './kubernetes-system-domain-release.support';
 
 export async function stageKubernetesDomainCertificate(
   input: KubernetesDomainCertificateInput,
   operationId: string,
+  hostPlan: DomainHostPlan,
 ): Promise<StagedKubernetesDomainCertificate> {
   const certificate: string = await readRequiredPemFile(input.certificateFile, 'certificate');
   const privateKey: string = await readRequiredPemFile(input.privateKeyFile, 'private key');
@@ -35,6 +40,7 @@ export async function stageKubernetesDomainCertificate(
   return {
     certificate,
     fingerprint: createHash('sha256').update(certificate).update('\0').update(privateKey).digest('hex'),
+    metadata: validateKubernetesSystemDomainCertificate(certificate, privateKey, hostPlan),
     privateKey,
     secretName,
   };
@@ -189,6 +195,7 @@ function buildDomainHelmValues(values: KubernetesDomainReleaseUpdate): Kubernete
       : buildDomainHelmPlatformValues(values.hostPlan, values.domainGeneration, values.domainCommit);
   return {
     ...(platformValues === undefined ? {} : { platform: platformValues }),
+    ...(values.hostPlan?.issuerRef === undefined ? {} : { tls: { issuerRef: values.hostPlan.issuerRef } }),
     customTls: {
       ...(values.customTlsSecretName === undefined ? {} : { existingSecret: values.customTlsSecretName }),
       ...(values.operatorCertificate === undefined ? {} : { operatorCertificate: values.operatorCertificate }),
@@ -216,42 +223,6 @@ function buildDomainHelmPlatformValues(
     domainGeneration,
     domainMode: hostPlan.domainKind === 'managed' ? 'managed' : 'custom',
     publicProtocol: hostPlan.publicScheme,
-    tlsMode: hostPlan.caddyMode,
+    tlsMode: mapDomainTlsModeToPlatformTlsMode(hostPlan.tlsMode),
   };
-}
-
-function buildDomainHelmCommand(
-  target: KubernetesOperatorTarget,
-  chartPath: string,
-  operatorValuesPath: string,
-  domainValuesPath: string,
-  imageTrustValuesPath: string,
-): string[] {
-  return buildHelmUpgradeCommand(target, target.releaseName, chartPath, [
-    '--reuse-values',
-    ...buildKubernetesHelmValuesArgs([operatorValuesPath, domainValuesPath, imageTrustValuesPath]),
-    '--rollback-on-failure',
-    '--wait',
-    '--timeout',
-    helmDomainTimeout,
-  ]);
-}
-
-function buildDomainTlsSecretName(releaseName: string, operationId: string): string {
-  return immutableKubeName('domain-tls', `${releaseName}:${operationId}`);
-}
-
-async function readRequiredPemFile(path: string, label: string): Promise<string> {
-  const contents: string = await readFile(resolve(path), 'utf8');
-  if (contents.trim() === '') {
-    throw new Error(`The ${label} file is empty.`);
-  }
-  return contents;
-}
-
-function requireOperatorValuesPath(value: string | undefined): string {
-  if (value === undefined || value.trim() === '') {
-    throw new Error('--values is required for a system-domain command that changes Kubernetes resources.');
-  }
-  return value;
 }

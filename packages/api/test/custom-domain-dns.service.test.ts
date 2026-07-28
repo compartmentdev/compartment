@@ -273,7 +273,6 @@ function createIpv4OnlyDnsConfig(): CustomDomainDnsConfig {
 function createManagedHostPlan(): DomainHostPlan {
   return {
     baseDomain: 'example.compartment.run',
-    caddyMode: 'managed',
     domainKind: 'managed',
     publicScheme: 'https',
     tlsMode: 'broker-dns01',
@@ -283,7 +282,6 @@ function createManagedHostPlan(): DomainHostPlan {
 function createCustomCertHostPlan(): DomainHostPlan {
   return {
     baseDomain: 'customer.example.com',
-    caddyMode: 'custom-cert',
     domainKind: 'custom',
     publicScheme: 'https',
     tlsMode: 'custom-cert',

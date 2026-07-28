@@ -6,14 +6,13 @@ export const defaultSystemDomainSetupStateId: string = 'system-domain-setup';
 interface ClearedSystemDomainPendingValues {
   setupVersion: SQL;
   pendingBaseDomain: null;
-  pendingCaddyMode: null;
   pendingCertificateMetadataJson: null;
-  pendingCertificatePath: null;
+  pendingTlsSecretName: null;
   pendingDomainKind: null;
+  pendingIssuerRefJson: null;
   pendingFailureCode: null;
   pendingFailureMessage: null;
   pendingOperationId: null;
-  pendingPrivateKeyPath: null;
   pendingPublicScheme: null;
   pendingRequiredDnsRecordsJson: null;
   pendingStatus: null;
@@ -25,14 +24,13 @@ export function buildClearedSystemDomainPendingValues(): ClearedSystemDomainPend
   return {
     setupVersion: buildNextSystemDomainSetupVersion(),
     pendingBaseDomain: null,
-    pendingCaddyMode: null,
     pendingCertificateMetadataJson: null,
-    pendingCertificatePath: null,
+    pendingTlsSecretName: null,
     pendingDomainKind: null,
+    pendingIssuerRefJson: null,
     pendingFailureCode: null,
     pendingFailureMessage: null,
     pendingOperationId: null,
-    pendingPrivateKeyPath: null,
     pendingPublicScheme: null,
     pendingRequiredDnsRecordsJson: null,
     pendingStatus: null,

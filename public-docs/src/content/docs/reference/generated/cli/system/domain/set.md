@@ -19,5 +19,7 @@ Options:
   --namespace <name>      Kubernetes namespace; defaults to compartment
   --release-name <name>   Helm release name; defaults to compartment
   --output <format>       text or json (default: "text")
+  --values <path>         Operator values file for the Compartment Helm chart
+  --chart <path>          Compartment Helm chart path for a source CLI build
   -h, --help              display help for command
 ```

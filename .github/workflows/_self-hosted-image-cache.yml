@@ -83,13 +83,14 @@ jobs:
           mkdir -p ./.compartment/self-hosted-image-cache
           docker save "ghcr.io/compartmentdev/compartment-api:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/api.tar
           docker save "ghcr.io/compartmentdev/compartment-caddy:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/caddy.tar
+          docker save "ghcr.io/compartmentdev/compartment-dns01-solver:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/dns01-solver.tar
           docker save "ghcr.io/compartmentdev/compartment-edge:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/edge.tar
           docker save "ghcr.io/compartmentdev/compartment-worker:sha-${{ github.sha }}" --output ./.compartment/self-hosted-image-cache/worker.tar
 
       - name: Load cached self-hosted images
         if: steps.self-hosted-image-cache.outputs.cache-hit == 'true'
         run: |
-          for service in api caddy edge worker; do
+          for service in api caddy dns01-solver edge worker; do
             docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
           done
 

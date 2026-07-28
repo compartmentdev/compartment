@@ -177,6 +177,7 @@ async function handleSystemDomainAttachCertificateRequest(
     'invalid_system_domain_attach_certificate_request',
   );
   const result: SystemDomainMutationResult = await attachSystemDomainPendingCertificate({
+    certificate: requestBody.certificate,
     expectedSetupVersion: requestBody.expectedSetupVersion,
     idempotencyKey: readRequiredIdempotencyKey(request),
   });

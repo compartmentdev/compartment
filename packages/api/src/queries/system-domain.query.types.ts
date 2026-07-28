@@ -5,14 +5,13 @@ export interface SystemDomainSetupStateRow {
   setupVersion: number;
   id: string;
   pendingBaseDomain: string | null;
-  pendingCaddyMode: string | null;
   pendingCertificateMetadataJson: string | null;
-  pendingCertificatePath: string | null;
+  pendingTlsSecretName: string | null;
   pendingDomainKind: string | null;
+  pendingIssuerRefJson: string | null;
   pendingFailureCode: string | null;
   pendingFailureMessage: string | null;
   pendingOperationId: string | null;
-  pendingPrivateKeyPath: string | null;
   pendingPublicScheme: string | null;
   pendingRequiredDnsRecordsJson: string | null;
   pendingStatus: string | null;
@@ -39,8 +38,8 @@ export interface StageSystemDomainPendingInput {
   expectedSetupVersion: number;
   operationId: string;
   pendingBaseDomain: string;
-  pendingCaddyMode: string;
   pendingDomainKind: string;
+  pendingIssuerRefJson: string | null;
   pendingPublicScheme: string;
   pendingRequiredDnsRecordsJson: string;
   pendingTlsMode: string;
