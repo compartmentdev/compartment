@@ -12,7 +12,6 @@ import type { CliCommandDependencies } from '../command.types';
 import { createCommandProgress } from '../command.progress';
 import type { CommandProgress } from '../command.progress.types';
 import { buildOwnerInstallInput, resolveInstallIdentityPrompts } from './install.command.identity';
-import { finishDiscoveredInstallRegistryMirrorSetup } from './install.command.registry-mirror';
 import { readManagedDomainRequestedLabelSource } from './install.command.managed-domain';
 import { runInstallPreflightChecklist } from './install.command.preflight';
 import { renderInstallResult } from './install.command.result';
@@ -46,7 +45,6 @@ export function registerInstallCommand(program: Command, dependencies: CliComman
     .option('--kube-context <name>', 'Kubernetes context for Helm')
     .option('--namespace <name>', 'Kubernetes namespace; defaults to compartment')
     .option('--release-name <name>', 'Helm release name; defaults to compartment')
-    .option('--skip-registry-mirror', 'Do not automatically configure the local k3s registry mirror')
     .option('--email <email>', 'First admin email')
     .option('--admin-password <password>', 'First admin password (automation only)')
     .option('--organization <name>', 'First organization name')
@@ -141,12 +139,6 @@ async function completePreparedKubernetesInstall(
   options: InstallCommandOptions,
   completed: PreparedKubernetesInstallResult,
 ): Promise<void> {
-  await finishDiscoveredInstallRegistryMirrorSetup(
-    dependencies.io,
-    completed.installOptions,
-    options.skipRegistryMirror === true,
-    options.values !== undefined,
-  );
   await persistInstallSession(completed.result, options.remote);
   renderInstallResult(dependencies.io, options.output, completed.result, false);
 }

@@ -44,12 +44,9 @@ spec:
             - configMapRef:
                 name: {{ include "compartment.fullname" . }}
           env:
-            - name: COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY
               valueFrom:
-                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: registry-read-password}
-            - name: COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD
-              valueFrom:
-                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: registry-write-password}
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}-registry-credentials, key: registry-credential-signing-key}
             - name: COMPARTMENT_RUNTIME_CONTROL_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: runtime-control-token}

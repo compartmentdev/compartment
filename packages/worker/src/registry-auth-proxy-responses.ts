@@ -5,6 +5,8 @@ const registryUnauthorizedResponseBody: string =
   '{"error":"registry_unauthorized","message":"Registry credentials are required."}\n';
 const registryBadRequestResponseBody: string =
   '{"error":"registry_bad_request","message":"Invalid registry proxy request."}\n';
+const registryForbiddenResponseBody: string =
+  '{"error":"registry_forbidden","message":"Registry credential does not authorize this operation."}\n';
 
 export function sendUnauthorized(response: ServerResponse): void {
   response.writeHead(401, {
@@ -21,6 +23,14 @@ export function sendBadRequest(response: ServerResponse): void {
     'Content-Type': 'application/json',
   });
   response.end(registryBadRequestResponseBody);
+}
+
+export function sendForbidden(response: ServerResponse): void {
+  response.writeHead(403, {
+    'Content-Length': Buffer.byteLength(registryForbiddenResponseBody).toString(),
+    'Content-Type': 'application/json',
+  });
+  response.end(registryForbiddenResponseBody);
 }
 
 export function writeRawUnauthorized(socket: Duplex): void {

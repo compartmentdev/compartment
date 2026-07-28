@@ -1,5 +1,10 @@
 import type { CommandResult } from '../src/command-runner.types';
 import type { KubernetesInstallProgressReporter } from '../src/services/kubernetes-install-progress.types';
+import type {
+  KubernetesInstallDeploymentInput,
+  KubernetesInstallSecretValues,
+  KubernetesInstallState,
+} from '../src/services/kubernetes-install.service.types';
 import type { Mock } from 'vitest';
 
 export interface ImageTrustWriteInput {
@@ -9,7 +14,17 @@ export interface ImageTrustWriteInput {
 export interface KubernetesInstallServiceMocks {
   runCommand: Mock<RunCommand>;
   usesOperatorTlsSecret: Mock<(valuesPath: string) => Promise<boolean>>;
+  verifyRegistryNodePull: Mock<(input: KubernetesInstallDeploymentInput) => Promise<void>>;
   writeVerifiedImages: Mock<(input: ImageTrustWriteInput) => Promise<void>>;
+}
+
+export interface InstallHarnessState {
+  events: string[];
+  installValueModes: number[];
+  installValuePaths: string[];
+  installValues: KubernetesInstallSecretValues[];
+  releaseValues: string | null;
+  retainedState: KubernetesInstallState | null;
 }
 
 export type RunCommandCall = [command: readonly string[]];

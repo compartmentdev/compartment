@@ -141,16 +141,9 @@ function createWorkerConfig(): WorkerConfig {
 function createArtifactRegistryConfig(): WorkerArtifactRegistryConfig {
   return {
     address: '127.0.0.1:5517',
+    credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
+    internalAddress: 'registry:5000',
     internalUrl: 'http://registry:5000',
-    mode: 'bundled',
-    readCredentials: {
-      password: 'read-password',
-      username: 'reader',
-    },
-    writeCredentials: {
-      password: 'write-password',
-      username: 'writer',
-    },
   };
 }
 

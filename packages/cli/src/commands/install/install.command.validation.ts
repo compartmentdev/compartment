@@ -26,7 +26,6 @@ export function assertDevInstallOptions(options: InstallCommandOptions): void {
     'managedDomain',
     'namespace',
     'releaseName',
-    'skipRegistryMirror',
     'storageClass',
     'values',
   ];

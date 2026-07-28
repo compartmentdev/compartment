@@ -1,5 +1,4 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
-{{- if eq $installState.effective.platform.startupStage "full" }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -9,12 +8,36 @@ metadata:
   annotations:
     {{- include "compartment.retainedResourceAnnotations" . | nindent 4 }}
 spec:
+  {{- if not (empty .Values.registry.clusterIP) }}
+  clusterIP: {{ .Values.registry.clusterIP | quote }}
+  {{- end }}
   selector:
     {{- include "compartment.componentLabels" (dict "root" . "component" "registry-auth") | nindent 4 }}
   ports:
-    - name: http
-      port: {{ .Values.ports.registry }}
-      targetPort: http
+    - name: https
+      port: 443
+      targetPort: https
+    - name: http-internal
+      port: {{ .Values.ports.registryInternal }}
+      targetPort: http-internal
+{{- if and (eq $installState.effective.platform.startupStage "full") (not (empty .Values.registry.hostname)) (not (empty .Values.registry.issuerRef.name)) }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "compartment.fullname" . }}-registry
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+spec:
+  dnsNames:
+    - {{ .Values.registry.hostname | quote }}
+  issuerRef:
+    group: {{ .Values.registry.issuerRef.group | quote }}
+    kind: {{ .Values.registry.issuerRef.kind | quote }}
+    name: {{ .Values.registry.issuerRef.name | quote }}
+  secretName: {{ include "compartment.fullname" . }}-registry-tls
+{{- end }}
+{{- if eq $installState.effective.platform.startupStage "full" }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -56,40 +79,39 @@ spec:
               value: "0.0.0.0"
             - name: COMPARTMENT_ARTIFACT_REGISTRY_PROXY_PORT
               value: {{ .Values.ports.registry | quote }}
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_PROXY_INTERNAL_PORT
+              value: {{ .Values.ports.registryInternal | quote }}
             - name: COMPARTMENT_ARTIFACT_REGISTRY_PROXY_TARGET_URL
               value: {{ printf "http://%s-registry:%v" (include "compartment.fullname" .) .Values.ports.registry | quote }}
-            - name: COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ include "compartment.fullname" . }}
-                  key: COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME
-            - name: COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "compartment.fullname" . }}
-                  key: registry-read-password
-            - name: COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ include "compartment.fullname" . }}
-                  key: COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME
-            - name: COMPARTMENT_ARTIFACT_REGISTRY_WRITE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "compartment.fullname" . }}
-                  key: registry-write-password
+                  name: {{ include "compartment.fullname" . }}-registry-credentials
+                  key: registry-credential-signing-key
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_TLS_CERTIFICATE_FILE
+              value: /tls/tls.crt
+            - name: COMPARTMENT_ARTIFACT_REGISTRY_TLS_PRIVATE_KEY_FILE
+              value: /tls/tls.key
           ports:
-            - name: http
+            - name: https
               containerPort: {{ .Values.ports.registry }}
+            - name: http-internal
+              containerPort: {{ .Values.ports.registryInternal }}
           readinessProbe:
             tcpSocket:
-              port: http
+              port: https
             periodSeconds: 2
           volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
+        - name: tls
+          secret:
+            secretName: {{ include "compartment.fullname" . }}-registry-tls
         - name: tmp
           emptyDir: {}
 {{- end }}

@@ -41,7 +41,7 @@ export async function buildReleaseImageFromSource(
   const eventContext: WorkerDeploymentEventContext = buildDeploymentEventContext(request, deployment);
   await appendClaimedDeploymentEvent(eventContext);
 
-  const existingImageRef: string | null = readReusableArtifactImageRef(deployment);
+  const existingImageRef: string | null = readReusableArtifactImageRef(deployment, artifactRegistry);
   if (existingImageRef !== null) {
     return existingImageRef;
   }
@@ -136,13 +136,19 @@ function buildReleaseImageTag(deployment: WorkerClaimedDeployment, artifactRegis
   );
 }
 
-function buildReleaseImageRepository(deployment: WorkerClaimedDeployment): string {
-  return buildCompartmentArtifactImageRepository(deployment.projectId, deployment.service.id);
+function readReusableArtifactImageRef(
+  deployment: WorkerClaimedDeployment,
+  artifactRegistry: WorkerArtifactRegistryConfig,
+): string | null {
+  const imageRef: string | null = deployment.artifact.imageRef;
+  const expectedRepository: string = `${artifactRegistry.address}/${buildReleaseImageRepository(deployment)}`;
+  return imageRef !== null && imageRef.startsWith(`${expectedRepository}@sha256:`) && isDigestPinnedImageRef(imageRef)
+    ? imageRef
+    : null;
 }
 
-function readReusableArtifactImageRef(deployment: WorkerClaimedDeployment): string | null {
-  const imageRef: string | null = deployment.artifact.imageRef;
-  return imageRef !== null && isDigestPinnedImageRef(imageRef) ? imageRef : null;
+function buildReleaseImageRepository(deployment: WorkerClaimedDeployment): string {
+  return buildCompartmentArtifactImageRepository(deployment.projectId, deployment.service.id);
 }
 
 function isDigestPinnedImageRef(imageRef: string): boolean {

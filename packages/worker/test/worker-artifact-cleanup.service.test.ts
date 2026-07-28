@@ -4,6 +4,7 @@ import type { fetchWorkerArtifactRegistryInternalHttp } from '../src/services/wo
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 
 type FetchWorkerArtifactRegistryInternalHttp = typeof fetchWorkerArtifactRegistryInternalHttp;
+type FetchRegistryCall = [artifactRegistry: WorkerArtifactRegistryConfig, path: string, init?: RequestInit | undefined];
 
 const fetchRegistry: Mock<FetchWorkerArtifactRegistryInternalHttp> = vi.hoisted(
   (): Mock<FetchWorkerArtifactRegistryInternalHttp> => vi.fn<FetchWorkerArtifactRegistryInternalHttp>(),
@@ -27,20 +28,17 @@ describe('worker artifact cleanup', (): void => {
       [
         {
           artifactId: 'art_old',
-          imageRef: 'registry.example/compartment/projects/prj/services/svc@sha256:abc',
+          imageRef: `registry.example/projects/prj_123/services/svc_123@sha256:${'a'.repeat(64)}`,
         },
       ],
       registry,
     );
 
-    expect(fetchRegistry).toHaveBeenCalledWith(
-      registry,
-      '/v2/compartment/projects/prj/services/svc/manifests/sha256:abc',
-      {
-        headers: { Authorization: `Basic ${Buffer.from('writer:write-password').toString('base64')}` },
-        method: 'DELETE',
-      },
-    );
+    const call: FetchRegistryCall | undefined = fetchRegistry.mock.calls[0];
+    expect(call?.[0]).toBe(registry);
+    expect(call?.[1]).toBe(`/v2/projects/prj_123/services/svc_123/manifests/sha256:${'a'.repeat(64)}`);
+    expect(call?.[2]?.method).toBe('DELETE');
+    expect(new Headers(call?.[2]?.headers).get('Authorization')).toMatch(/^Basic [A-Za-z0-9+/=]+$/u);
   });
 
   it('keeps registry cleanup best-effort after the durable retention mark', async (): Promise<void> => {
@@ -64,9 +62,8 @@ describe('worker artifact cleanup', (): void => {
 function registryConfig(): WorkerArtifactRegistryConfig {
   return {
     address: 'registry.example',
+    credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
+    internalAddress: 'registry-internal.example',
     internalUrl: 'https://registry-internal.example',
-    mode: 'external',
-    readCredentials: { password: 'read-password', username: 'reader' },
-    writeCredentials: { password: 'write-password', username: 'writer' },
   };
 }

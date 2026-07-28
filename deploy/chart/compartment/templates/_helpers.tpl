@@ -166,6 +166,8 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- if eq $effective.platform.startupStage "full" -}}
 {{- $_ := required "platform.installationId is required for a full installation" $effective.platform.installationId -}}
 {{- $_ = required "platform.baseDomain is required for a full installation" $effective.platform.baseDomain -}}
+{{- $_ = required "registry.hostname is required for a full installation" .Values.registry.hostname -}}
+{{- $_ = required "registry.issuerRef.name is required for a full installation" .Values.registry.issuerRef.name -}}
 {{- if and (not (empty $effective.secrets.managedDomainBrokerToken)) (empty $effective.platform.managedDomainBrokerUrl) -}}
 {{- fail "platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured" -}}
 {{- end -}}

@@ -12,7 +12,6 @@ import {
   readPlatformK3dCommand,
   readPlatformK3dCertManagerManifestUrl,
   readPlatformK3dEnvironment,
-  renderK3dRegistryConfig,
   renderManagedPlatformK3dValues,
   renderPlatformK3dValues,
 } from './platform-k3d-e2e.mjs';
@@ -265,17 +264,6 @@ describe('platform k3d e2e command boundary', () => {
     expect(isConsoleReadyStatus(503)).toBe(false);
   });
 
-  it('maps the bundled registry authority to its node-reachable Service IP', () => {
-    const config = renderK3dRegistryConfig('compartment-compartment-registry-auth.compartment.svc:5000', '10.43.12.34');
-
-    expect(config).toBe(`mirrors:
-  "compartment-compartment-registry-auth.compartment.svc:5000":
-    endpoint:
-      - "http://10.43.12.34:5000"
-`);
-    expect(config).not.toContain('cluster.local');
-  });
-
   it('writes the operator values consumed by the production install command', () => {
     const values = renderPlatformK3dValues(createTestImageDigests());
 
@@ -285,6 +273,9 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).not.toContain('NodePort');
     expect(values).not.toContain('service:');
     expect(values).toContain('namespace: compartment-build');
+    expect(values).toContain('clusterIP: 10.43.250.250');
+    expect(values).toContain('hostname: 10-43-250-250.sslip.io');
+    expect(values).toContain('name: compartment-registry-test-issuer');
     expect(values).toContain('repository: k3d-compartment-e2e-registry:15500/compartment-api');
     expect(values).toContain(`digest: sha256:${'a'.repeat(64)}`);
     expect(values).not.toContain('ports:\n  http: 18080');
@@ -303,14 +294,5 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain(`digest: sha256:${'d'.repeat(64)}`);
     expect(values).not.toContain('compartment.localhost');
     expect(values).not.toContain('custom-http');
-  });
-
-  it('rejects an unusable bundled registry Service address', () => {
-    expect(() => renderK3dRegistryConfig('', '10.43.12.34')).toThrow('Bundled registry host is required');
-    for (const clusterIp of ['', 'None', 'registry.compartment.svc', '2001:db8::1']) {
-      expect(() =>
-        renderK3dRegistryConfig('compartment-compartment-registry-auth.compartment.svc:5000', clusterIp),
-      ).toThrow('must have an IPv4 clusterIP');
-    }
   });
 });

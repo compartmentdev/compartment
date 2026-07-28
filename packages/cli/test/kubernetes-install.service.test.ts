@@ -22,6 +22,7 @@ import {
   encodeSecretValue,
   helmReleaseList,
   type ImageTrustWriteInput,
+  type InstallHarnessState,
   type KubernetesInstallServiceMocks,
   ingressAddressList,
   readyControlPlaneResponse,
@@ -31,18 +32,10 @@ import {
 } from './kubernetes-install.service.test-support';
 
 type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
-interface InstallHarnessState {
-  events: string[];
-  installValueModes: number[];
-  installValuePaths: string[];
-  installValues: KubernetesInstallSecretValues[];
-  releaseValues: string | null;
-  retainedState: KubernetesInstallState | null;
-}
-
 const mocks: KubernetesInstallServiceMocks = vi.hoisted(
   (): KubernetesInstallServiceMocks => ({
     runCommand: vi.fn<RunCommand>(),
+    verifyRegistryNodePull: vi.fn(async (): Promise<void> => await Promise.resolve()),
     usesOperatorTlsSecret: vi.fn(async (): Promise<boolean> => await Promise.resolve(false)),
     writeVerifiedImages: vi.fn(async (input: ImageTrustWriteInput): Promise<void> => {
       await writeFile(input.outputPath, JSON.stringify({ images: {} }), { mode: 0o600 });
@@ -59,6 +52,9 @@ vi.mock('../src/command-runner', (): object => ({
 }));
 vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
   writeVerifiedKubernetesInstallImageValues: mocks.writeVerifiedImages,
+}));
+vi.mock('../src/services/kubernetes-install-registry-verification.service', (): object => ({
+  verifyKubernetesInstallRegistryNodePull: mocks.verifyRegistryNodePull,
 }));
 vi.mock('../src/services/kubernetes-install-tls.service', (): object => ({
   usesOperatorOwnedKubernetesTlsSecret: mocks.usesOperatorTlsSecret,
@@ -78,6 +74,7 @@ const managedDeploymentInput: KubernetesInstallDeploymentInput = {
 describe('Kubernetes install deployment', (): void => {
   afterEach((): void => {
     mocks.runCommand.mockReset();
+    mocks.verifyRegistryNodePull.mockClear();
     mocks.usesOperatorTlsSecret.mockReset();
     mocks.usesOperatorTlsSecret.mockResolvedValue(false);
     mocks.writeVerifiedImages.mockClear();
@@ -306,6 +303,7 @@ describe('Kubernetes install deployment', (): void => {
       expect.stringMatching(/^Saving installation configuration.* \u2713 /u),
       expect.stringMatching(/^Waiting for platform Certificates.* \u2713 /u),
       expect.stringMatching(/^Waiting for platform pods \(api, worker, caddy\).* \u2713 /u),
+      expect.stringMatching(/^Verifying private registry pull on every node.* \u2713 /u),
       expect.stringMatching(/^Issuing TLS certificate \(ACME\).* \u2713 /u),
     ]);
     expect(readCliStderr(capture)).not.toContain('\u001B');

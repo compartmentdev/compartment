@@ -62,6 +62,7 @@ ports:
   api: 39444
   edge: 39081
   registry: 5000
+  registryInternal: 5001
   buildkit: 1234
   http: 8080
 
@@ -174,8 +175,12 @@ edge:
     mountPath: /var/lib/compartment/snapshots
 
 registry:
-  readUsername: compartment-reader
-  writeUsername: compartment-writer
+  clusterIP: ''
+  hostname: ''
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: ''
 
 productLogs:
   enabled: true
@@ -184,8 +189,7 @@ productLogs:
 secrets:
   installToken: ''
   postgresPassword: ''
-  registryReadPassword: ''
-  registryWritePassword: ''
+  registryCredentialSigningKey: ''
   edgeToken: ''
   productLogIngestToken: ''
   runtimeControlToken: ''

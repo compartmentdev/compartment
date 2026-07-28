@@ -1,6 +1,9 @@
+import { Buffer } from 'node:buffer';
 import { z } from 'zod';
 import type { ProjectProvisioningTargetV2 } from '@compartment/contracts';
 import type { ProjectProvisionerConfig } from './project-provisioner.types';
+import { issueProjectPullCredential } from './registry-credentials';
+import type { RegistryCredential } from './registry-credentials.types';
 
 export interface ProjectProvisioningEnvironment {
   COMPARTMENT_EDGE_NAMESPACE: string;
@@ -23,8 +26,7 @@ export const projectProvisioningEnvironmentSchema: z.ZodType<ProjectProvisioning
 export interface ProjectProvisionerJobEnvironment extends ProjectProvisioningEnvironment {
   COMPARTMENT_ARTIFACT_REGISTRY_HOST: string;
   COMPARTMENT_ARTIFACT_REGISTRY_PORT: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: string;
-  COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: string;
+  COMPARTMENT_ARTIFACT_REGISTRY_PULL_DOCKER_CONFIG_JSON: string;
   COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: string;
   COMPARTMENT_PROJECT_ID: string;
 }
@@ -34,8 +36,7 @@ export const projectProvisionerJobEnvironmentSchema: z.ZodType<ProjectProvisione
     z.object({
       COMPARTMENT_ARTIFACT_REGISTRY_HOST: z.string().min(1),
       COMPARTMENT_ARTIFACT_REGISTRY_PORT: z.string().regex(/^[1-9]\d*$/u),
-      COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: z.string().min(1),
-      COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: z.string().min(1),
+      COMPARTMENT_ARTIFACT_REGISTRY_PULL_DOCKER_CONFIG_JSON: z.string().min(1),
       COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: z.string().min(1),
       COMPARTMENT_PROJECT_ID: z.string().min(1),
     }),
@@ -47,11 +48,14 @@ export function projectProvisionerJobEnvironment(
   bootstrapServiceAccountName: string,
 ): ProjectProvisionerJobEnvironment {
   const registryUrl: URL = new URL(`http://${config.artifactRegistry.address}`);
+  const pullCredential: RegistryCredential = issueProjectPullCredential(
+    config.artifactRegistry.credentialSigningKey,
+    target.projectId,
+  );
   return {
     COMPARTMENT_ARTIFACT_REGISTRY_HOST: registryUrl.hostname,
     COMPARTMENT_ARTIFACT_REGISTRY_PORT: registryUrl.port,
-    COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD: config.artifactRegistry.readCredentials.password,
-    COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: config.artifactRegistry.readCredentials.username,
+    COMPARTMENT_ARTIFACT_REGISTRY_PULL_DOCKER_CONFIG_JSON: buildDockerConfig(registryUrl, pullCredential),
     COMPARTMENT_BOOTSTRAP_SERVICE_ACCOUNT_NAME: bootstrapServiceAccountName,
     COMPARTMENT_EDGE_NAMESPACE: config.edgeNamespace,
     COMPARTMENT_KUBE_POD_CIDR: config.podCidr,
@@ -61,4 +65,14 @@ export function projectProvisionerJobEnvironment(
     COMPARTMENT_PROVISIONING_NAMESPACE: config.provisioningNamespace,
     COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME: config.workerServiceAccountName,
   };
+}
+
+function buildDockerConfig(registryUrl: URL, credential: RegistryCredential): string {
+  const authority: string = `${registryUrl.hostname}:${registryUrl.port}`;
+  const auth: string = Buffer.from(`${credential.username}:${credential.password}`).toString('base64');
+  return JSON.stringify({
+    auths: {
+      [authority]: { auth, password: credential.password, username: credential.username },
+    },
+  });
 }

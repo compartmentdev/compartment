@@ -1,6 +1,5 @@
 import { mkdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { get } from 'node:http';
-import { isIP } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -51,18 +50,19 @@ const {
 const contextName = `k3d-${clusterName}`;
 const registryClusterHost = `k3d-${registryName}:${registryHostPort}`;
 const registryPushHost = `localhost:${registryHostPort}`;
-const bundledRegistryPort = 5000;
-const bundledRegistryHost = `compartment-compartment-registry-auth.${platformNamespace}.svc:${bundledRegistryPort}`;
+const bundledRegistryClusterIp = '10.43.250.250';
+const bundledRegistryHostname = '10-43-250-250.sslip.io';
 const platformBaseDomain = 'compartment.localhost';
 const consoleHost = `console.${platformBaseDomain}`;
-const serverNodeName = `k3d-${clusterName}-server-0`;
 const builderName = `${clusterName}-builder`;
 const imageCacheLockOwnerToken = `e2e-${clusterName}`;
 const pebbleCaContainerName = `${clusterName}-pebble-ca`;
 const shouldExtractPebbleCa =
   process.env.COMPARTMENT_E2E_SHARD === undefined || process.env.COMPARTMENT_E2E_SHARD === 'managed-install';
-const registryConfigDirectory = join(dirname(platformValuesPath), 'registry-config');
+const registryTestCaPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-ca.crt`);
+const registryTestCaKeyPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-ca.key`);
 const platformImageTag = 'e2e';
+const registryNodePullResourceName = 'registry-node-pull';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const kubernetesReadinessTimeoutSeconds = 240;
 const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
@@ -234,23 +234,12 @@ export function isConsoleReadyStatus(status) {
   return status === 302;
 }
 
-export function renderK3dRegistryConfig(registryHost, serviceClusterIp) {
-  if (registryHost.trim() === '') {
-    throw new Error('Bundled registry host is required.');
-  }
-  if (isIP(serviceClusterIp) !== 4) {
-    throw new Error(`Bundled registry Service must have an IPv4 clusterIP, received: ${serviceClusterIp}`);
-  }
-
-  return `mirrors:\n  "${registryHost}":\n    endpoint:\n      - "http://${serviceClusterIp}:${bundledRegistryPort}"\n`;
-}
-
 export function renderPlatformK3dValues(imageDigestsByServiceName) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\nedge:\n  snapshots:\n    enabled: true\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\nedge:\n  snapshots:\n    enabled: true\n`;
 }
 
 export function renderManagedPlatformK3dValues(imageDigestsByServiceName) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\ntls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nplatform:\n  publicIngressIpv4: 8.8.4.4\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nplatform:\n  publicIngressIpv4: 8.8.4.4\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
 }
 
 function renderPlatformImageValues(imageDigestsByServiceName) {
@@ -402,6 +391,88 @@ async function createCluster() {
       'deployment',
       '--all',
       '--for=condition=Available',
+      `--timeout=${kubernetesReadinessTimeout}`,
+    ],
+    repositoryRoot,
+  );
+  installRegistryTestIssuerAndNodeTrust();
+}
+
+function installRegistryTestIssuerAndNodeTrust() {
+  runCommand(
+    'openssl',
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-days',
+      '2',
+      '-keyout',
+      registryTestCaKeyPath,
+      '-out',
+      registryTestCaPath,
+      '-subj',
+      '/CN=Compartment k3d registry test CA',
+    ],
+    repositoryRoot,
+  );
+  runCommand(
+    'kubectl',
+    [
+      '--context',
+      contextName,
+      '--namespace',
+      'cert-manager',
+      'create',
+      'secret',
+      'tls',
+      'compartment-registry-test-ca',
+      `--cert=${registryTestCaPath}`,
+      `--key=${registryTestCaKeyPath}`,
+    ],
+    repositoryRoot,
+  );
+  const issuerPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-issuer.yaml`);
+  writeFileSync(
+    issuerPath,
+    'apiVersion: cert-manager.io/v1\nkind: ClusterIssuer\nmetadata:\n  name: compartment-registry-test-issuer\nspec:\n  ca:\n    secretName: compartment-registry-test-ca\n',
+    { mode: 0o600 },
+  );
+  runCommand('kubectl', ['--context', contextName, 'apply', '--filename', issuerPath], repositoryRoot);
+  rmSync(issuerPath, { force: true });
+
+  const nodeNames = captureCommand(
+    'docker',
+    ['ps', '--filter', 'label=app=k3d', '--filter', `label=k3d.cluster=${clusterName}`, '--format', '{{.Names}}'],
+    repositoryRoot,
+  )
+    .split('\n')
+    .map((name) => name.trim())
+    .filter((name) => /-(?:server|agent)-[0-9]+$/u.test(name));
+  for (const nodeName of nodeNames) {
+    runCommand(
+      'docker',
+      ['cp', registryTestCaPath, `${nodeName}:/tmp/compartment-registry-test-ca.crt`],
+      repositoryRoot,
+    );
+    runCommand(
+      'docker',
+      ['exec', nodeName, 'sh', '-c', 'cat /tmp/compartment-registry-test-ca.crt >>/etc/ssl/certs/ca-certificates.crt'],
+      repositoryRoot,
+    );
+    runCommand('docker', ['restart', nodeName], repositoryRoot);
+  }
+  runCommand(
+    'kubectl',
+    [
+      '--context',
+      contextName,
+      'wait',
+      'nodes',
+      '--all',
+      '--for=condition=Ready',
       `--timeout=${kubernetesReadinessTimeout}`,
     ],
     repositoryRoot,
@@ -581,17 +652,14 @@ function cleanPlatformResources() {
 }
 
 function cleanPlatformState(cleanupErrors) {
-  for (const temporaryStateDirectory of [registryConfigDirectory]) {
-    runCleanupStep(cleanupErrors, `state directory ${temporaryStateDirectory}`, () => {
-      rmSync(temporaryStateDirectory, { force: true, recursive: true });
-    });
-  }
   const statePaths = [
     platformValuesPath,
     managedPlatformValuesPath,
     pebbleCaPath,
     pebbleRootPath,
     platformOwnerEnvironmentPath,
+    registryTestCaKeyPath,
+    registryTestCaPath,
   ];
   for (const statePath of statePaths) {
     runCleanupStep(cleanupErrors, `state file ${statePath}`, () => rmSync(statePath, { force: true }));
@@ -690,11 +758,110 @@ async function configureInstalledPlatform() {
     throw new Error(`k3d cluster ${clusterName} does not exist; run pnpm platform:e2e:up first.`);
   }
 
-  await configureK3dRegistryMirror();
   waitForPlatformDeployments();
+  await assertPrivateRegistryNodePull();
   runCommand('kubectl', ['--context', contextName, '--request-timeout=5s', 'get', '--raw=/readyz'], repositoryRoot);
   await waitForConsole();
   process.stdout.write(`console: http://${consoleHost}:${httpPort}\nSTATUS=ok\n`);
+}
+
+async function assertPrivateRegistryNodePull() {
+  const output = JSON.parse(
+    captureCommand(
+      'kubectl',
+      [
+        '--context',
+        contextName,
+        '--namespace',
+        platformNamespace,
+        'exec',
+        'deployment/compartment-compartment-worker',
+        '--',
+        'node',
+        'dist/registry-install-verifier.js',
+      ],
+      repositoryRoot,
+    ).trim(),
+  );
+  if (typeof output.imageRef !== 'string' || typeof output.dockerConfigJson !== 'string') {
+    throw new Error('Registry node-pull check received invalid verifier output.');
+  }
+  const manifestPath = join(dirname(platformValuesPath), `${clusterName}-registry-node-pull.yaml`);
+  writeFileSync(
+    manifestPath,
+    `apiVersion: v1
+kind: Secret
+metadata:
+  name: ${registryNodePullResourceName}
+  namespace: ${platformNamespace}
+type: kubernetes.io/dockerconfigjson
+stringData:
+  .dockerconfigjson: ${JSON.stringify(output.dockerConfigJson)}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${registryNodePullResourceName}
+  namespace: ${platformNamespace}
+spec:
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  containers:
+    - name: node-pull
+      image: ${output.imageRef}
+      imagePullPolicy: Always
+  imagePullSecrets:
+    - name: ${registryNodePullResourceName}
+`,
+    { mode: 0o600 },
+  );
+  try {
+    runCommand('kubectl', ['--context', contextName, 'apply', '--filename', manifestPath], repositoryRoot);
+    runCommand(
+      'kubectl',
+      [
+        '--context',
+        contextName,
+        '--namespace',
+        platformNamespace,
+        'wait',
+        `pod/${registryNodePullResourceName}`,
+        '--for=condition=Ready',
+        `--timeout=${kubernetesReadinessTimeout}`,
+      ],
+      repositoryRoot,
+    );
+    runCommand(
+      'kubectl',
+      [
+        '--context',
+        contextName,
+        '--namespace',
+        platformNamespace,
+        'delete',
+        `pod/${registryNodePullResourceName}`,
+        '--wait=true',
+      ],
+      repositoryRoot,
+    );
+  } finally {
+    runCommand(
+      'kubectl',
+      [
+        '--context',
+        contextName,
+        '--namespace',
+        platformNamespace,
+        'delete',
+        `pod/${registryNodePullResourceName}`,
+        `secret/${registryNodePullResourceName}`,
+        '--ignore-not-found',
+        '--wait=false',
+      ],
+      repositoryRoot,
+    );
+    rmSync(manifestPath, { force: true });
+  }
 }
 
 function waitForPlatformDeployments() {
@@ -715,66 +882,6 @@ function waitForPlatformDeployments() {
       repositoryRoot,
     );
   }
-}
-
-async function configureK3dRegistryMirror() {
-  const serviceClusterIp = captureCommand(
-    'kubectl',
-    [
-      '--context',
-      contextName,
-      '--namespace',
-      platformNamespace,
-      'get',
-      'service/compartment-compartment-registry-auth',
-      '--output',
-      'jsonpath={.spec.clusterIP}',
-    ],
-    repositoryRoot,
-  ).trim();
-  rmSync(registryConfigDirectory, { force: true, recursive: true });
-  mkdirSync(registryConfigDirectory, { recursive: true });
-  const configDirectory = registryConfigDirectory;
-  const configPath = join(configDirectory, 'registries.yaml');
-
-  try {
-    writeFileSync(configPath, renderK3dRegistryConfig(bundledRegistryHost, serviceClusterIp), { mode: 0o600 });
-    runCommand('docker', ['exec', serverNodeName, 'mkdir', '-p', '/etc/rancher/k3s'], repositoryRoot);
-    runCommand('docker', ['cp', configPath, `${serverNodeName}:/etc/rancher/k3s/registries.yaml`], repositoryRoot);
-    runCommand('docker', ['restart', serverNodeName], repositoryRoot);
-  } finally {
-    rmSync(configDirectory, { force: true, recursive: true });
-  }
-
-  await waitForK3dApiAfterRestart();
-  runCommand(
-    'kubectl',
-    [
-      '--context',
-      contextName,
-      'wait',
-      `node/${serverNodeName}`,
-      '--for=condition=Ready',
-      `--timeout=${kubernetesReadinessTimeout}`,
-    ],
-    repositoryRoot,
-  );
-}
-
-async function waitForK3dApiAfterRestart() {
-  for (let attempt = 0; attempt < kubernetesReadinessTimeoutSeconds; attempt += 1) {
-    try {
-      captureCommand(
-        'kubectl',
-        ['--context', contextName, '--request-timeout=2s', 'get', `node/${serverNodeName}`, '--output', 'name'],
-        repositoryRoot,
-      );
-      return;
-    } catch {
-      await delay(1_000);
-    }
-  }
-  throw new Error(`Kubernetes API did not recover after restarting ${serverNodeName}.`);
 }
 
 async function waitForConsole() {
@@ -813,7 +920,7 @@ async function readConsoleStatus() {
 }
 
 function assertRequiredTools() {
-  for (const tool of ['docker', 'k3d', 'kubectl', 'helm']) {
+  for (const tool of ['docker', 'k3d', 'kubectl', 'helm', 'openssl']) {
     assertTool(tool);
   }
 }

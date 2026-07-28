@@ -2,6 +2,8 @@
 suite: install value validation
 templates:
   - templates/configmap.yaml
+values:
+  - registry-values.yaml
 release:
   name: compartment
 tests:

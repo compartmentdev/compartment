@@ -11,6 +11,12 @@ const release = 'restore2-state';
 const projectProvisioningNamespace = `${release}-compartment-project-provisioning`;
 const secretName = `${release}-install-state`;
 const registryAuthServiceName = `${release}-compartment-registry-auth`;
+const registryHelmArgs = [
+  '--set',
+  'registry.hostname=registry.retained.example.test',
+  '--set',
+  'registry.issuerRef.name=retained-registry-issuer',
+];
 
 function helm(args) {
   runCommand('helm', [...args, '--kube-context', context], repositoryRoot);
@@ -83,6 +89,7 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
+      ...registryHelmArgs,
     ]);
     const registryClusterIp = readServiceClusterIp();
     helm(['uninstall', release, '--namespace', namespace]);
@@ -102,13 +109,14 @@ async function runRetainedInstallStateGate() {
       '--set',
       'platform.installationId=replacement-attempt',
       '--set',
-      'secrets.registryWritePassword=reinstalled-registry-password',
+      'secrets.registryCredentialSigningKey=reinstalled-registry-signing-key-with-at-least-32-characters',
       '--set',
       'secrets.productLogIngestToken=reinstalled-product-log-token',
       '--set',
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
+      ...registryHelmArgs,
     ]);
     const installationId = readSecretValue('installation-id');
     const allocationId = readSecretValue('managed-domain-allocation-id');

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import { projectApplicationManifests, type KubeManifest } from '../src';
 import type { ApplicationProjectionRow } from '../src/kube-application-projection.types';
-import { kubeApplicationName, kubeSecretName } from '../src/kube-naming';
+import { kubeApplicationName, kubeNamespaceName, kubeSecretName } from '../src/kube-naming';
 import { projectSecretManifest } from '../src/kube-secret-projection';
 import type { KubeSecretEnvVariable } from '../src/kube-runtime.types';
 
@@ -11,7 +11,7 @@ interface DeploymentSpec {
   progressDeadlineSeconds: number;
   template: {
     metadata: { annotations: Record<string, string>; labels: Record<string, string> };
-    spec: { automountServiceAccountToken: false; containers: DeploymentContainer[] };
+    spec: { automountServiceAccountToken: false; containers: DeploymentContainer[]; serviceAccountName: string };
   };
 }
 
@@ -19,6 +19,11 @@ interface DeploymentContainer {
   args?: string[] | undefined;
   env: KubeSecretEnvVariable[];
   readinessProbe?: { httpGet?: { path: string; port: string } | undefined } | undefined;
+  volumeMounts?: DeploymentVolumeMount[] | undefined;
+}
+
+interface DeploymentVolumeMount {
+  name: string;
 }
 
 describe('Kubernetes manifest projection goldens', (): void => {
@@ -79,6 +84,16 @@ describe('Kubernetes manifest projection goldens', (): void => {
 
     expect(Object.keys(secret.stringData ?? {})).toEqual(['GENERATED_PLAIN', 'GENERATED_SENSITIVE']);
     expect(spec.template.spec.automountServiceAccountToken).toBe(false);
+    expect(spec.template.spec.serviceAccountName).toBe(kubeNamespaceName(row.namespaceId));
+    expect(
+      spec.template.spec.containers.every(
+        (container: DeploymentContainer): boolean =>
+          container.volumeMounts === undefined ||
+          container.volumeMounts.every(
+            (mount: DeploymentVolumeMount): boolean => mount.name !== kubeSecretName(row.imagePullSecretId),
+          ),
+      ),
+    ).toBe(true);
     expect(
       spec.template.spec.containers.flatMap((container: DeploymentContainer): KubeSecretEnvVariable[] => container.env),
     ).toEqual([

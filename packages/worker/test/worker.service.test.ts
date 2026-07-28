@@ -287,10 +287,9 @@ describe('runWorkerIteration', (): void => {
 
 const artifactRegistry: WorkerArtifactRegistryConfig = {
   address: 'registry.example',
+  credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
+  internalAddress: 'registry:5000',
   internalUrl: 'http://registry:5000',
-  mode: 'bundled',
-  readCredentials: { password: 'read-password', username: 'reader' },
-  writeCredentials: { password: 'write-password', username: 'writer' },
 };
 
 function createClaimedDeployment(): WorkerClaimedDeployment {

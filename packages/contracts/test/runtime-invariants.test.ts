@@ -36,9 +36,9 @@ describe('runtime invariants', (): void => {
   it('builds canonical artifact image repository and tag values', (): void => {
     const imageRepository: string = buildCompartmentArtifactImageRepository('prj_123', 'svc_123');
 
-    expect(imageRepository).toBe('compartment/projects/prj_123/services/svc_123');
+    expect(imageRepository).toBe('projects/prj_123/services/svc_123');
     expect(buildCompartmentArtifactImageTag('127.0.0.1:5517', imageRepository, 'art_123')).toBe(
-      '127.0.0.1:5517/compartment/projects/prj_123/services/svc_123:art_123',
+      '127.0.0.1:5517/projects/prj_123/services/svc_123:art_123',
     );
   });
 

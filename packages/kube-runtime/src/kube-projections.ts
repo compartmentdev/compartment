@@ -95,6 +95,7 @@ function deploymentSpec(
     automountServiceAccountToken: false,
     containers: [applicationContainer(row)],
     imagePullSecrets: [{ name: kubeSecretName(row.imagePullSecretId) }],
+    serviceAccountName: kubeNamespaceName(row.namespaceId),
     terminationGracePeriodSeconds: row.terminationGracePeriodSeconds ?? minimumTerminationGracePeriodSeconds,
   };
   return {

@@ -125,6 +125,7 @@ spec:
             timeoutSeconds: 1
       imagePullSecrets:
         - name: secret-pull-01jz-6be17b2de1a41fc5
+      serviceAccountName: cpt-prj-01jz-243118a73be1a00d
       terminationGracePeriodSeconds: 45
 ---
 apiVersion: v1

@@ -495,11 +495,10 @@ function config(): ProjectProvisionerConfig {
   return {
     apiUrl: 'http://api.compartment.svc:3000',
     artifactRegistry: {
-      address: 'registry.compartment.svc:5000',
-      internalUrl: 'http://registry.compartment.svc:5000',
-      mode: 'bundled',
-      readCredentials: { password: 'read-password', username: 'read-user' },
-      writeCredentials: { password: 'write-password', username: 'write-user' },
+      address: 'registry.apps.example.com:443',
+      credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
+      internalAddress: 'registry.apps.example.com:443',
+      internalUrl: 'https://registry.apps.example.com',
     },
     edgeNamespace: 'compartment',
     image: 'ghcr.io/compartmentdev/compartment-worker:test',

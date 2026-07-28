@@ -10,14 +10,11 @@ data:
   COMPARTMENT_API_BIND_HOST: "0.0.0.0"
   COMPARTMENT_API_INTERNAL_HOST: {{ printf "%s-api" (include "compartment.fullname" .) | quote }}
   COMPARTMENT_API_PORT: {{ .Values.ports.api | quote }}
-  COMPARTMENT_ARTIFACT_REGISTRY_HOST: {{ include "compartment.registryAuthHost" . | quote }}
-  COMPARTMENT_ARTIFACT_REGISTRY_PORT: {{ .Values.ports.registry | quote }}
-  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST: {{ include "compartment.registryAuthHost" . | quote }}
-  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_PORT: {{ .Values.ports.registry | quote }}
-  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: {{ printf "http://%s:%v" (include "compartment.registryAuthHost" .) .Values.ports.registry | quote }}
-  COMPARTMENT_ARTIFACT_REGISTRY_MODE: bundled
-  COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME: {{ .Values.registry.readUsername | quote }}
-  COMPARTMENT_ARTIFACT_REGISTRY_WRITE_USERNAME: {{ .Values.registry.writeUsername | quote }}
+  COMPARTMENT_ARTIFACT_REGISTRY_HOST: {{ .Values.registry.hostname | quote }}
+  COMPARTMENT_ARTIFACT_REGISTRY_PORT: "443"
+  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST: {{ printf "%s:%v" (include "compartment.registryAuthHost" .) .Values.ports.registryInternal | quote }}
+  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_PORT: {{ .Values.ports.registryInternal | quote }}
+  COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL: {{ printf "http://%s:%v" (include "compartment.registryAuthHost" .) .Values.ports.registryInternal | quote }}
   COMPARTMENT_BASE_DOMAIN: {{ $installState.effective.platform.baseDomain | quote }}
   COMPARTMENT_TLS_MODE: {{ $installState.effective.platform.tlsMode }}
   COMPARTMENT_CADDY_HTTP_PORT: {{ .Values.ports.http | quote }}
@@ -25,6 +22,7 @@ data:
   COMPARTMENT_EDGE_INTERNAL_HOST: {{ printf "%s-edge" (include "compartment.fullname" .) | quote }}
   COMPARTMENT_EDGE_PORT: {{ .Values.ports.edge | quote }}
   COMPARTMENT_ENV: self-hosted
+  COMPARTMENT_INSTALLATION_ID: {{ $installState.effective.platform.installationId | quote }}
   COMPARTMENT_LOG_LEVEL: {{ .Values.platform.logLevel | quote }}
   COMPARTMENT_PUBLIC_PROTOCOL: {{ $installState.effective.platform.publicProtocol | quote }}
   COMPARTMENT_PUBLIC_HTTP_PORT: "80"

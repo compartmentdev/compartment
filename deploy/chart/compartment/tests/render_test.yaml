@@ -2,6 +2,8 @@
 suite: chart render scenarios
 templates:
   - templates/*.yaml
+values:
+  - registry-values.yaml
 release:
   name: compartment
   namespace: default
@@ -13,8 +15,7 @@ tests:
       secrets: &stableSecrets
         installToken: test-install-token
         postgresPassword: test-postgres-password
-        registryReadPassword: test-registry-read-password
-        registryWritePassword: test-registry-write-password
+        registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
         edgeToken: test-edge-token
         productLogIngestToken: test-product-log-token
         runtimeControlToken: test-runtime-control-token
@@ -105,11 +106,11 @@ tests:
           count: 0
         template: project-provisioner-rbac.yaml
       - hasDocuments:
-          count: 0
+          count: 1
         template: registry-auth.yaml
-      - hasDocuments:
-          count: 0
-        template: registry-client-secret.yaml
+      - isKind:
+          of: Service
+        template: registry-auth.yaml
       - hasDocuments:
           count: 0
         template: registry-network-policy.yaml
@@ -160,6 +161,11 @@ tests:
 
   - it: renders a full public installation with public ingress and workloads
     set:
+      registry:
+        clusterIP: 10.43.250.250
+        hostname: registry.apps.example.com
+        issuerRef:
+          name: platform-issuer
       platform:
         startupStage: full
         installationId: test-install
@@ -185,6 +191,26 @@ tests:
           value: default
         template: registry-auth.yaml
         documentIndex: 0
+      - equal:
+          path: spec.clusterIP
+          value: 10.43.250.250
+        template: registry-auth.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.ports[0].port
+          value: 443
+        template: registry-auth.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.dnsNames[0]
+          value: registry.apps.example.com
+        template: registry-auth.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.issuerRef.name
+          value: platform-issuer
+        template: registry-auth.yaml
+        documentIndex: 1
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment
@@ -314,6 +340,11 @@ tests:
       - hasDocuments:
           count: 3
         template: buildkit-network-policy.yaml
+      - equal:
+          path: spec.egress[2].ports[0].port
+          value: 5001
+        template: buildkit-network-policy.yaml
+        documentIndex: 1
       - hasDocuments:
           count: 10
         template: project-provisioner-rbac.yaml
@@ -355,7 +386,7 @@ tests:
               resources: [jobs]
               verbs: [get, list, watch, create, update, patch, delete]
             - apiGroups: ['']
-              resources: [services, secrets, persistentvolumeclaims]
+              resources: [services, secrets, serviceaccounts, persistentvolumeclaims]
               verbs: [get, list, watch, create, update, patch, delete]
             - apiGroups: ['']
               resources: [limitranges]
@@ -569,6 +600,7 @@ tests:
             resources:
               - services
               - secrets
+              - serviceaccounts
               - persistentvolumeclaims
             verbs:
               - get
@@ -753,7 +785,7 @@ tests:
         template: worker.yaml
       - equal:
           path: spec.ingress[0].ports[0].port
-          value: 5000
+          value: 5001
         template: registry-network-policy.yaml
         documentIndex: 1
       - equal:
@@ -813,16 +845,16 @@ tests:
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_ARTIFACT_REGISTRY_HOST
-          value: compartment-compartment-registry-auth.default.svc
+          value: registry.apps.example.com
+        template: configmap.yaml
+      - equal:
+          path: data.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST
+          value: compartment-compartment-registry-auth.default.svc:5001
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_URL
-          value: http://compartment-compartment-registry-auth.default.svc:5000
+          value: http://compartment-compartment-registry-auth.default.svc:5001
         template: configmap.yaml
-      - matchRegex:
-          path: stringData[".dockerconfigjson"]
-          pattern: '"compartment-compartment-registry-auth\.default\.svc:5000"'
-        template: registry-client-secret.yaml
       - contains:
           path: spec.template.spec.containers[0].env
           content:
@@ -1270,7 +1302,7 @@ tests:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/compartmentdev/compartment-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
         template: registry-auth.yaml
-        documentIndex: 1
+        documentIndex: 2
       - equal:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/compartmentdev/compartment-edge@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc

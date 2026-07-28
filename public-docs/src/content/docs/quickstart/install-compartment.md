@@ -161,22 +161,27 @@ Kubernetes TLS Secrets. Helm also
 records supplied secret values in its Kubernetes release revision Secrets, so restrict access to Helm and platform
 Secrets.
 
-After the platform and first owner are ready, the CLI reads the installed registry-auth Service using its actual
-ClusterIP. Complete the required node-level registry mirror setup before the first application deploy. The chart
-cannot change container-runtime configuration on Kubernetes nodes.
+The private registry hostname resolves from every node to the retained cluster-only registry Service. Set
+`registry.hostname` and reference the installation's existing cert-manager issuer with `registry.issuerRef`.
+Resolvers with DNS-rebinding protection must allow the registry zone to return private addresses. Kube-proxy-less
+Cilium is not supported. Installation completes only after the signed acceptance image pulls and starts on every
+eligible node; no node container-runtime configuration is written.
 
-When the CLI is running as root on the local k3s node with an unambiguous
-`KUBECONFIG=/etc/rancher/k3s/k3s.yaml` and `systemctl` is available, it merges only the installed Compartment mirror
-into `/etc/rancher/k3s/registries.yaml` and restarts k3s automatically when the config changes. It preserves other
-registry mirrors. A declarative `--values` install applies it automatically and logs the action; a guided install asks
-one short confirmation question first, with a default of yes. It prints the multi-node steps only when you decline,
-when local automatic setup is unavailable, when the cluster has additional nodes, or after a local apply or
-verification failure.
-Pass `--skip-registry-mirror` to decline automatic application. Automatic application configures only the local node;
-make the same Compartment CLI version available and run the printed apply command on every other k3s node in the
-cluster. The command exits unsuccessfully if k3s does not restart or the written endpoint fails its post-check. If any
-safety condition is not met, use the printed instructions on every k3s node. Other Kubernetes distributions require
-the equivalent container-runtime mirror or route.
+### Recover the bundled registry
+
+If the registry Pod or volume fails, pause builds first; running application Pods are unaffected, but new deploys and
+rescheduling are unavailable. Record the registry-auth Service ClusterIP, inspect Pod and PVC events, and fence a lost
+node before reattaching its volume. Keep the failed volume until recovery is verified.
+
+Restore an application-consistent storage snapshot to the retained or replacement PVC, wait for the registry and
+registry-auth Deployments, and authenticate through `registry.hostname`. Fetch a known manifest by its recorded
+`sha256` digest to verify integrity. Confirm the Service retained the recorded ClusterIP, then rerun
+`compartment install` with the same context, namespace, release name, and values. The rerun repeats the pull on every
+eligible node; do not resume builds until it passes.
+
+The k3d product test uses a local issuer and installs its test CA only into disposable k3d nodes. That is equivalent to
+production nodes already trusting the public Web-PKI root used by the T3-owned issuer. Production does not install a
+private CA or write container-runtime registry configuration.
 
 Use `--kube-context`, `--namespace`, or `--release-name` when the defaults are not appropriate. Pass
 `--broker-url <url>` only for a managed-domain broker override. A CLI built directly from a source checkout has no
@@ -227,7 +232,7 @@ install`.
 
 The install-state Secret and registry-auth Service have Helm's `keep` policy. An uninstall followed by reinstall with
 the same namespace and release name retains the installation ID, domain allocation, ingress addresses, and registry
-ClusterIP, so an existing node registry mirror remains valid. Keep the namespace and registry-auth Service during this
+ClusterIP, so the registry hostname binding remains valid. Keep the namespace and registry-auth Service during this
 supported reinstall path. To intentionally abandon only the install identity, uninstall the release and delete the
 Secret selected by both `app.kubernetes.io/instance=<release>` and
 `app.kubernetes.io/component=install-state` before reinstalling. The next managed install requests a new allocation.
@@ -246,8 +251,8 @@ test "$(kubectl --namespace compartment get service "$registry_service" --output
 ```
 
 If you delete the namespace or retained registry-auth Service, reinstall can allocate a different ClusterIP. The CLI
-renders the new endpoint after reinstall and idempotently updates the same mirror key when local-k3s auto-application
-is available. Otherwise, apply the newly printed instructions on every node before deploying an application.
+must bind the registry hostname to that address and repeat the every-node pull acceptance before deploying an
+application.
 
 Verify the Helm release and platform workload readiness before inviting more users:
 

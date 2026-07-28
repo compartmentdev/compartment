@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer';
 import {
   createSelfCleaningKubeRuntimeFromEnvironment,
   projectNamespaceProvisioningBundle,
@@ -30,7 +29,7 @@ function projectProvisioningRow(environment: ProjectProvisionerJobEnvironment): 
     networkPolicy: projectNetworkPolicy(environment, { applicationPorts: [], resourcePorts: [] }),
     projectId: environment.COMPARTMENT_PROJECT_ID,
     registryPullCredentials: {
-      dockerConfigJson: registryDockerConfig(environment),
+      dockerConfigJson: environment.COMPARTMENT_ARTIFACT_REGISTRY_PULL_DOCKER_CONFIG_JSON,
       secretId: environment.COMPARTMENT_PROJECT_ID,
     },
     workerServiceAccount: {
@@ -38,14 +37,6 @@ function projectProvisioningRow(environment: ProjectProvisionerJobEnvironment): 
       namespace: environment.COMPARTMENT_PLATFORM_NAMESPACE,
     },
   };
-}
-
-function registryDockerConfig(environment: ProjectProvisionerJobEnvironment): string {
-  const authority: string = `${environment.COMPARTMENT_ARTIFACT_REGISTRY_HOST}:${environment.COMPARTMENT_ARTIFACT_REGISTRY_PORT}`;
-  const auth: string = Buffer.from(
-    `${environment.COMPARTMENT_ARTIFACT_REGISTRY_READ_USERNAME}:${environment.COMPARTMENT_ARTIFACT_REGISTRY_READ_PASSWORD}`,
-  ).toString('base64');
-  return JSON.stringify({ auths: { [authority]: { auth } } });
 }
 
 void main();

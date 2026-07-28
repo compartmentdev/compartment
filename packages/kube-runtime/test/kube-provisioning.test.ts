@@ -66,6 +66,7 @@ describe('project namespace bootstrap provisioning', (): void => {
     const binding: KubeManifest = created[1]!;
     expect(bundle.objects.map((manifest: KubeManifest): string => manifest.kind)).toEqual([
       'Secret',
+      'ServiceAccount',
       'LimitRange',
       'NetworkPolicy',
       'NetworkPolicy',
@@ -114,6 +115,15 @@ describe('project namespace bootstrap provisioning', (): void => {
       },
       stringData: { '.dockerconfigjson': '{"auths":{"registry.example":{"auth":"generated"}}}' },
       type: 'kubernetes.io/dockerconfigjson',
+    });
+    expect(bundle.objects[1]).toMatchObject({
+      automountServiceAccountToken: false,
+      imagePullSecrets: [{ name: kubeSecretName('pull-prj-01jz') }],
+      kind: 'ServiceAccount',
+      metadata: {
+        name: kubeNamespaceName('prj-01jz'),
+        namespace: kubeNamespaceName('prj-01jz'),
+      },
     });
   });
 

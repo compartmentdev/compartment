@@ -191,7 +191,7 @@ export async function promptVisibleText(io: CliIo, label: string, defaultValue?:
   return value;
 }
 
-export async function promptYesNoChoice(io: CliIo, label: string, defaultValue: boolean): Promise<boolean> {
+async function promptYesNoChoice(io: CliIo, label: string, defaultValue: boolean): Promise<boolean> {
   for (;;) {
     const answer: string = (await readPromptLine(io, label)).trim().toLowerCase();
     if (answer === '') {
