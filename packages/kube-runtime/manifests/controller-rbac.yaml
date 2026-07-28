@@ -13,7 +13,7 @@ rules:
     resources: ['services', 'secrets', 'serviceaccounts', 'persistentvolumeclaims']
     verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
   - apiGroups: ['']
-    resources: ['limitranges']
+    resources: ['limitranges', 'resourcequotas']
     verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
   - apiGroups: ['']
     resources: ['pods']

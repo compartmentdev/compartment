@@ -51,6 +51,7 @@ export interface UpdateCustomDomainCheckInput {
   host: string;
   id: string;
   lastCheckedAt: Date | null;
+  organizationId: string;
   ownershipStatus: CustomDomainCheckStatus;
   reconcileState: CustomDomainState;
   desiredGeneration: number;

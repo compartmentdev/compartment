@@ -26,6 +26,7 @@ describe('worker project provisioning service', (): void => {
     await claimProjectProvisioningV2(request);
     await completeProjectProvisioningV2(request, {
       action: 'provision',
+      isolationVersion: 1,
       leaseId: 'kpl_1',
       projectId: 'prj_1',
       status: 'succeeded',

@@ -26,6 +26,11 @@ export interface ResourceVolumeProjection {
   volumeHandle: string;
 }
 
+export interface ResourceContainerInvocation {
+  args?: string[] | undefined;
+  command?: string[] | undefined;
+}
+
 export interface ObservedResourceClaim {
   bound: boolean;
   claimName: string;

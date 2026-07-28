@@ -3,7 +3,7 @@ import { createGitSourceConflictError } from '../../errors/api-business-error';
 import { createId } from '../../lib/tokens';
 import {
   createOrGetProjectWithExecutor,
-  findProjectByIdWithExecutor,
+  findProjectByOrganizationAndIdWithExecutor,
   lockProjectMutationWithExecutor,
 } from '../../queries/projects.query';
 import type { ProjectRow } from '../../queries/projects.query.types';
@@ -79,7 +79,12 @@ async function requireAvailableProject(
   now: Date,
 ): Promise<ProjectRow> {
   const project: ProjectRow = await resolveConnectProject(transaction, organizationId, projectName, now);
-  const lockedProject: ProjectRow = await readLockedAvailableProject(transaction, project.id, projectName);
+  const lockedProject: ProjectRow = await readLockedAvailableProject(
+    transaction,
+    organizationId,
+    project.id,
+    projectName,
+  );
   const activeBinding: SourceBindingRow | undefined = await findActiveBindingByProjectIdWithExecutor(
     transaction,
     lockedProject.id,
@@ -167,11 +172,16 @@ async function resolveConnectProject(
 
 async function readLockedAvailableProject(
   transaction: SourceMutationTransaction,
+  organizationId: string,
   projectId: string,
   projectName: string,
 ): Promise<ProjectRow> {
-  await lockProjectMutationWithExecutor(transaction, projectId);
-  const lockedProject: ProjectRow | undefined = await findProjectByIdWithExecutor(transaction, projectId);
+  await lockProjectMutationWithExecutor(transaction, organizationId, projectId);
+  const lockedProject: ProjectRow | undefined = await findProjectByOrganizationAndIdWithExecutor(
+    transaction,
+    organizationId,
+    projectId,
+  );
   if (!hasActiveProjectState(lockedProject)) {
     throw createArchivedProjectConflictError(projectName);
   }

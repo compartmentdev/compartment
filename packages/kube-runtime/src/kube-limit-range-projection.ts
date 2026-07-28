@@ -9,7 +9,7 @@ export function projectLimitRangeManifest(namespace: string, namespaceId: string
   const spec: KubeLimitRangeSpec = {
     limits: [
       {
-        default: { ...projectContainerDefaultLimit },
+        _default: { ...projectContainerDefaultLimit },
         defaultRequest: { ...projectContainerDefaultRequest },
         type: 'Container',
       },

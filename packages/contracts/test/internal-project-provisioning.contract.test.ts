@@ -8,13 +8,20 @@ describe('project provisioning contracts', (): void => {
   it('accepts one leased project target or an empty claim', (): void => {
     expect(
       workerClaimProjectProvisioningV2ResponseSchema.safeParse({
-        target: { action: 'teardown', leaseId: 'kpl_1', namespaceId: 'prj_1', projectId: 'prj_1' },
+        target: {
+          action: 'teardown',
+          isolationVersion: 1,
+          leaseId: 'kpl_1',
+          namespaceId: 'prj_1',
+          projectId: 'prj_1',
+        },
       }).success,
     ).toBe(true);
   });
 
   it('keeps cleanup inside the ordinary provisioning lease', (): void => {
-    const base: { leaseId: string; namespaceId: string; projectId: string } = {
+    const base: { isolationVersion: number; leaseId: string; namespaceId: string; projectId: string } = {
+      isolationVersion: 1,
       leaseId: 'kpl_1',
       namespaceId: 'prj_1',
       projectId: 'prj_1',
@@ -42,7 +49,8 @@ describe('project provisioning contracts', (): void => {
   });
 
   it('requires a message only for failed completion', (): void => {
-    const base: { leaseId: string; projectId: string } = {
+    const base: { isolationVersion: number; leaseId: string; projectId: string } = {
+      isolationVersion: 1,
       leaseId: 'kpl_1',
       projectId: 'prj_1',
     };

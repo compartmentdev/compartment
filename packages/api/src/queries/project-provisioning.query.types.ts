@@ -17,6 +17,7 @@ export type ProjectKubeProvisioningState =
 export interface CompleteProjectProvisioningInput {
   action: ProjectProvisioningAction;
   failureMessage: string | null;
+  isolationVersion: number;
   leaseId: string;
   projectId: string;
   status: ProjectProvisioningCompletionStatus;

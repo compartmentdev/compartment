@@ -29,6 +29,13 @@
       "when": 1785239564368,
       "tag": "0003_thick_gravity",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785261363115,
+      "tag": "0004_mixed_slyde",
+      "breakpoints": true
     }
   ]
 }

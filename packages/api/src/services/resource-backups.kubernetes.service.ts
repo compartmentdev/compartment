@@ -79,6 +79,7 @@ export async function deleteKubernetesBackupArtifact(input: KubernetesBackupArti
     operationId: createId('resource_retention'),
     projectId: input.context.project.id,
     resourceIds: [input.resource.id],
+    runtimeIdentity: 'project',
     timeoutMs: 30_000,
     volumeMounts: buildVolumeMounts(input.resource, input.backup.id, 'cleanup'),
   };
@@ -134,6 +135,7 @@ function buildVerifierIntent(
     operationId: `${input.operationId}-artifact-verify`,
     projectId: input.context.project.id,
     resourceIds: [input.resource.id],
+    runtimeIdentity: 'project',
     timeoutMs: 30_000,
     volumeMounts: buildVolumeMounts(input.resource, input.backupId, 'restore'),
   };
@@ -180,6 +182,7 @@ function buildProductJobIntent(input: KubernetesResourceOperationInput): Resourc
     operationId: input.operationId,
     projectId: input.context.project.id,
     resourceIds: readOperationResourceIds(input),
+    runtimeIdentity: 'resource',
     timeoutMs: input.operationContext.intent.readiness?.timeoutMs ?? 30_000,
     volumeMounts: buildVolumeMounts(input.volumeResource ?? input.resource, input.backupId, input.operationKind),
   };

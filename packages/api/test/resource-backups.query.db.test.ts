@@ -823,6 +823,7 @@ describe('resource backup queries', (): void => {
         operationId: 'job_fenced_by_reconcile',
         projectId: 'prj_internal_tools',
         resourceIds: ['res_postgres'],
+        runtimeIdentity: 'resource',
         timeoutMs: 30_000,
         volumeMounts: [
           {
@@ -1054,6 +1055,7 @@ describe('resource backup queries', (): void => {
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: null,
+        isolationVersion: target?.isolationVersion ?? 1,
         leaseId: 'stale-lease',
         projectId: project.id,
         status: 'succeeded',
@@ -1063,6 +1065,7 @@ describe('resource backup queries', (): void => {
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: null,
+        isolationVersion: target?.isolationVersion ?? 1,
         leaseId: target!.leaseId,
         projectId: project.id,
         status: 'succeeded',
@@ -1093,6 +1096,7 @@ describe('resource backup queries', (): void => {
         completeProjectProvisioning({
           action: 'provision',
           failureMessage: `provisioning attempt ${attempt} failed`,
+          isolationVersion: claimed?.isolationVersion ?? 1,
           leaseId: claimed?.leaseId ?? '',
           projectId: 'prj_internal_tools',
           status: 'failed',
@@ -1214,6 +1218,7 @@ describe('resource backup queries', (): void => {
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: null,
+        isolationVersion: 1,
         leaseId: 'expired-cleanup-lease',
         projectId: 'prj_internal_tools',
         status: 'running',
@@ -1225,6 +1230,7 @@ describe('resource backup queries', (): void => {
       completeProjectProvisioning({
         action: 'provision',
         failureMessage: null,
+        isolationVersion: reclaimed?.isolationVersion ?? 1,
         leaseId: reclaimed?.leaseId ?? '',
         projectId: 'prj_internal_tools',
         status: 'running',
@@ -1426,6 +1432,7 @@ function resourceOperationProductJobIntent(operationId: string): ProductJobInten
     operationId,
     projectId: 'prj_internal_tools',
     resourceIds: ['res_postgres'],
+    runtimeIdentity: 'resource',
     timeoutMs: 30_000,
   };
 }

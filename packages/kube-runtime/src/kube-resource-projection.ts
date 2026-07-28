@@ -1,6 +1,7 @@
 import type {
   ExpectedResourceClaim,
   ObservedResourceClaim,
+  ResourceContainerInvocation,
   ResourceProjectionRow,
   ResourceVolumeProjection,
 } from './kube-resource-projection.types';
@@ -16,8 +17,17 @@ import type {
 } from './kube-runtime.types';
 import { kubeNamespaceName, kubeResourceName, kubeResourceVolumeName, kubeSecretName } from './kube-naming';
 import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
+import {
+  isPostgresResourceImage,
+  resourcePodSecurityContext,
+  restrictedContainerSecurityContext,
+} from './kube-security-context';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
+const postgresDataDirectorySelector: string =
+  'if [ -f /var/lib/postgresql/data/PG_VERSION ]; then export PGDATA=/var/lib/postgresql/data; ' +
+  'else export PGDATA=/var/lib/postgresql/data/pgdata; fi; exec docker-entrypoint.sh "$@"';
+const postgresDataMountPath: string = '/var/lib/postgresql/data';
 const resourceBackupVolumeHandle: string = 'backup-artifacts';
 
 /** Ordinary reconcile bundle. PVC creation is deliberately not representable here. */
@@ -78,6 +88,8 @@ function resourcePodTemplate(row: ResourceProjectionRow, labels: Record<string, 
     spec: {
       automountServiceAccountToken: false,
       containers: [resourceContainer(row)],
+      securityContext: resourcePodSecurityContext(row.image),
+      serviceAccountName: kubeNamespaceName(row.namespaceId),
       terminationGracePeriodSeconds: 60,
       volumes: row.volumes.map(
         (volume: ResourceVolumeProjection): KubePodVolume => ({
@@ -91,10 +103,11 @@ function resourcePodTemplate(row: ResourceProjectionRow, labels: Record<string, 
 
 function resourceContainer(row: ResourceProjectionRow): KubeProjectedContainer {
   return {
-    ...(row.command.length === 0 ? {} : { args: row.command }),
+    ...resourceContainerInvocation(row),
     env: secretEnvironment(row.env, kubeSecretName(row.secretId)),
     image: row.image,
     name: 'resource',
+    securityContext: restrictedContainerSecurityContext(),
     ...(row.ports.length === 0 ? {} : { ports: row.ports.map(resourceContainerPort) }),
     ...(row.readiness === null ? {} : { readinessProbe: resourceReadinessProbe(row.readiness.port) }),
     volumeMounts: row.volumes.map(
@@ -103,6 +116,24 @@ function resourceContainer(row: ResourceProjectionRow): KubeProjectedContainer {
         name: kubeResourceVolumeName(row.resourceId, volume.volumeHandle),
       }),
     ),
+  };
+}
+
+function resourceContainerInvocation(row: ResourceProjectionRow): ResourceContainerInvocation {
+  const selectPostgresDataDirectory: boolean =
+    isPostgresResourceImage(row.image) &&
+    row.env.PGDATA === undefined &&
+    row.volumes.some((volume: ResourceVolumeProjection): boolean => volume.mountPath === postgresDataMountPath);
+  if (!selectPostgresDataDirectory) {
+    return row.command.length === 0 ? {} : { args: row.command };
+  }
+  return {
+    args: [
+      postgresDataDirectorySelector,
+      'compartment-postgres',
+      ...(row.command.length === 0 ? ['postgres'] : row.command),
+    ],
+    command: ['/bin/sh', '-c'],
   };
 }
 

@@ -75,6 +75,7 @@ function productJobIntentValues(
     podName: null,
     projectId: input.intent.projectId,
     resourceIdsJson: JSON.stringify(input.intent.jobClass === 'resource-operation' ? input.intent.resourceIds : []),
+    runtimeIdentity: input.intent.jobClass === 'resource-operation' ? input.intent.runtimeIdentity : 'project',
     status: canceled?.status ?? 'queued',
     timeoutMs: input.intent.timeoutMs,
     volumeMountsJson: JSON.stringify(input.intent.volumeMounts ?? []),

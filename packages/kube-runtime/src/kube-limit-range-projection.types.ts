@@ -4,7 +4,7 @@ export interface KubeLimitRangeResources {
 }
 
 export interface KubeLimitRangeItem {
-  default: KubeLimitRangeResources;
+  _default: KubeLimitRangeResources;
   defaultRequest: KubeLimitRangeResources;
   type: 'Container';
 }

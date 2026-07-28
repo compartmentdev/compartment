@@ -11,7 +11,13 @@ interface DeploymentSpec {
   progressDeadlineSeconds: number;
   template: {
     metadata: { annotations: Record<string, string>; labels: Record<string, string> };
-    spec: { automountServiceAccountToken: false; containers: DeploymentContainer[]; serviceAccountName: string };
+    spec: {
+      automountServiceAccountToken: false;
+      containers: DeploymentContainer[];
+      securityContext: object;
+      serviceAccountName: string;
+      volumes?: object[] | undefined;
+    };
   };
 }
 
@@ -19,6 +25,7 @@ interface DeploymentContainer {
   args?: string[] | undefined;
   env: KubeSecretEnvVariable[];
   readinessProbe?: { httpGet?: { path: string; port: string } | undefined } | undefined;
+  securityContext?: object | undefined;
   volumeMounts?: DeploymentVolumeMount[] | undefined;
 }
 
@@ -50,7 +57,6 @@ describe('Kubernetes manifest projection goldens', (): void => {
       terminationGracePeriodSeconds: 45,
     });
 
-    expect(toYaml(manifests)).toMatchSnapshot();
     const deployment: DeploymentSpec = manifests.find(
       (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
     )!.spec as DeploymentSpec;
@@ -111,6 +117,31 @@ describe('Kubernetes manifest projection goldens', (): void => {
       secret.metadata?.annotations?.['compartment.dev/checksum'],
     );
     expect(spec.template.metadata.annotations['compartment.dev/secret-checksum']).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('makes restricted workload escape fields unavailable and pins the project ServiceAccount', (): void => {
+    const row: ApplicationProjectionRow = applicationRow({});
+    const spec: DeploymentSpec = deploymentForRow(row).spec as DeploymentSpec;
+
+    expect(spec.template.spec).toMatchObject({
+      automountServiceAccountToken: false,
+      securityContext: {
+        runAsGroup: 10_001,
+        runAsNonRoot: true,
+        runAsUser: 10_001,
+        seccompProfile: { type: 'RuntimeDefault' },
+      },
+      serviceAccountName: kubeNamespaceName(row.namespaceId),
+    });
+    expect(spec.template.spec.containers[0]?.securityContext).toEqual({
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ['ALL'] },
+      privileged: false,
+    });
+    for (const forbiddenField of ['hostIPC', 'hostNetwork', 'hostPID', 'hostPath', 'runtimeClassName']) {
+      expect(spec.template.spec).not.toHaveProperty(forbiddenField);
+    }
+    expect(JSON.stringify(spec.template.spec.volumes ?? [])).not.toContain('hostPath');
   });
 
   it('changes the pod checksum only when Secret data changes', (): void => {

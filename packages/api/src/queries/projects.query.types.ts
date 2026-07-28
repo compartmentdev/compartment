@@ -25,12 +25,14 @@ export interface CreateProjectInput {
 
 export interface RenameProjectInput {
   name: string;
+  organizationId: string;
   projectId: string;
   updatedAt: Date;
 }
 
 export interface SetProjectArchivedAtInput {
   archivedAt: Date | null;
+  organizationId: string;
   projectId: string;
   updatedAt: Date;
 }

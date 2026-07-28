@@ -1014,6 +1014,7 @@ async function deleteArchivedProject(sessionToken: string): Promise<LightMyReque
   await completeProjectProvisioning({
     action: 'teardown',
     failureMessage: null,
+    isolationVersion: teardown.isolationVersion,
     leaseId: teardown.leaseId,
     projectId: teardown.projectId,
     status: 'succeeded',

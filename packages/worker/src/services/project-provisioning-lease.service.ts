@@ -22,6 +22,7 @@ export async function assertProjectProvisioningLease(
   try {
     lease = await completeProjectProvisioningV2(request, {
       action: target.action,
+      isolationVersion: target.isolationVersion,
       leaseId: target.leaseId,
       projectId: target.projectId,
       status: 'running',

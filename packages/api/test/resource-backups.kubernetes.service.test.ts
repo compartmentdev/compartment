@@ -104,6 +104,7 @@ describe('Kubernetes resource backup operations', (): void => {
       env: { COMPARTMENT_BACKUP_DIR: '/backups/rbak_test' },
       jobClass: 'resource-operation',
       operationId: 'op_backup',
+      runtimeIdentity: 'resource',
     });
     expect(intent?.volumeMounts).toEqual([
       expect.objectContaining({ expectedClaimUid: 'uid-backup', mountPath: '/backups', name: 'backup-artifacts' }),
@@ -199,6 +200,7 @@ describe('Kubernetes resource backup operations', (): void => {
       checksum,
       sizeBytes: 42,
     });
+    expect(createIntent.mock.calls[0]?.[0]).toMatchObject({ runtimeIdentity: 'project' });
     readResult.mockResolvedValue(terminalResult('missing'));
     await expect(summarizeKubernetesBackupArtifact(verifierInput())).rejects.toThrow('exactly one');
   });
@@ -248,6 +250,7 @@ describe('Kubernetes resource backup operations', (): void => {
     expect(restoreIntent?.env.COMPARTMENT_RESOURCE_NAME).toBe('postgres-copy');
     expect(restoreIntent?.env.COMPARTMENT_RESOURCE_HOST).toContain('resource-res-postgres-copy');
     expect(restoreIntent?.resourceIds).toEqual([targetResource.id, artifactResource.id]);
+    expect(restoreIntent?.runtimeIdentity).toBe('resource');
     expect(restoreIntent?.volumeMounts).toEqual([
       expect.objectContaining({ expectedClaimUid: 'uid-backup', resourceId: artifactResource.id }),
     ]);
@@ -284,6 +287,7 @@ describe('Kubernetes resource backup operations', (): void => {
     expect(intent?.command[3]).toBe('/backups/rbak_test');
     expect(intent?.jobClass).toBe('resource-operation');
     expect(intent?.operationId).toMatch(/^resource_retention_/u);
+    expect(intent?.runtimeIdentity).toBe('project');
     expect(intent?.volumeMounts).toEqual([
       expect.objectContaining({ expectedClaimUid: 'uid-backup', mountPath: '/backups' }),
     ]);

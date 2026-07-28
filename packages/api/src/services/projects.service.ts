@@ -2,18 +2,12 @@ import type { ExistingProjectRemoteState } from '@compartment/contracts';
 import {
   createProjectDeleteBlockedError,
   createProjectDeleteRequiresArchiveError,
-  createProjectGitSourceBoundError,
   createProjectLifecycleNotAvailableError,
   createProjectNameTakenError,
 } from '../errors/api-business-error';
-import { hasBlockingProjectDeployments } from '../queries/deployments.query';
 import { getApiDatabase } from '../runtime/runtime-access';
-import {
-  findProjectByIdWithExecutor,
-  lockProjectMutationWithExecutor,
-  renameProjectWithExecutor,
-  setProjectArchivedAtWithExecutor,
-} from '../queries/projects.query';
+import { hasBlockingProjectDeployments } from '../queries/deployments.query';
+import { setProjectArchivedAtWithExecutor } from '../queries/projects.query';
 import {
   activateProjectTeardownWithTransaction,
   lockProjectTeardownStateWithTransaction,
@@ -33,9 +27,20 @@ import {
 } from '../queries/source.query';
 import { requireVisibleProjectSummary } from './project-visibility.service';
 import { cleanupArchivedProjectRuntime } from './project-runtime-cleanup.service';
-import { resolveActiveProjectScope, resolveRequiredProjectScope } from './project-scope.service';
+import { resolveActiveProjectScope } from './project-scope.service';
 import type { ResolvedProjectScope } from './project-scope.service.types';
 import { cleanupPreparedProjectRuntime } from './project-teardown-preparation.service';
+import {
+  ensureArchivedProject,
+  projectArchiveMutation,
+  renameAuthorizedProject,
+  requireArchivableProject,
+  requireLockedProject,
+  requireMutableProject,
+  requireProjectOrganizationContext,
+  resolveActiveProjectMutationScope,
+  resolveProjectMutationScope,
+} from './project-mutation-scope.service';
 import type {
   ProjectDeletePreparation,
   ProjectDeleteResult,
@@ -46,23 +51,19 @@ import type {
 import { excludeGitSourceProjectBindingWithinTransaction } from './git-source/git-source-exclusion.service';
 
 export async function renameProjectForPrincipal(input: RenameProjectServiceInput): Promise<ProjectRow> {
-  const projectScope: ProjectRow = (
-    await resolveActiveProjectScope(input.principalId, input.organizationSlug, input.projectName, {
-      permission: 'project.settings.write',
-    })
-  ).project;
-  if (projectScope.name === input.nextProjectName) {
-    return projectScope;
+  const projectScope: ResolvedProjectScope = await resolveActiveProjectMutationScope(input, 'project.settings.write');
+  if (projectScope.project.name === input.nextProjectName) {
+    return projectScope.project;
   }
 
   try {
     return await getApiDatabase().transaction(async (transaction: ProjectsMutationTransaction): Promise<ProjectRow> => {
-      const project: ProjectRow = await requireMutableProject(transaction, projectScope.id);
-      return await renameProjectWithExecutor(transaction, {
-        name: input.nextProjectName,
-        projectId: project.id,
-        updatedAt: new Date(),
-      });
+      return await renameAuthorizedProject(
+        transaction,
+        projectScope.organization.id,
+        projectScope.project.id,
+        input.nextProjectName,
+      );
     });
   } catch (error) {
     const mutationError: Error | undefined = error instanceof Error ? error : undefined;
@@ -71,16 +72,20 @@ export async function renameProjectForPrincipal(input: RenameProjectServiceInput
 }
 
 export async function archiveProjectForPrincipal(input: ProjectScopeInput): Promise<ProjectRow> {
-  const projectScope: ProjectRow = (
-    await resolveRequiredProjectScope(input.principalId, input.organizationSlug, input.projectName, {
-      permission: 'project.archive',
-    })
-  ).project;
+  const projectScope: ResolvedProjectScope = await resolveProjectMutationScope(input, 'project.archive');
   const archivedProject: ProjectRow = await getApiDatabase().transaction(
     async (transaction: ProjectsMutationTransaction): Promise<ProjectRow> => {
-      const project: ProjectRow = await requireArchivableProject(transaction, projectScope.id);
+      const project: ProjectRow = await requireArchivableProject(
+        transaction,
+        projectScope.organization.id,
+        projectScope.project.id,
+      );
       await excludeGitSourceProjectBindingWithinTransaction(transaction, project.id, input.principalId, new Date());
-      const persistedArchivedProject: ProjectRow = await ensureArchivedProject(transaction, project);
+      const persistedArchivedProject: ProjectRow = await ensureArchivedProject(
+        transaction,
+        projectScope.organization.id,
+        project,
+      );
       await cancelProjectProductJobsForArchive(transaction, project.id, new Date());
       await cancelResourceReconcileRunsForProjectArchive(transaction, project.id, new Date());
       return persistedArchivedProject;
@@ -91,42 +96,45 @@ export async function archiveProjectForPrincipal(input: ProjectScopeInput): Prom
 }
 
 export async function unarchiveProjectForPrincipal(input: ProjectScopeInput): Promise<ProjectRow> {
-  const projectScope: ProjectRow = (
-    await resolveRequiredProjectScope(input.principalId, input.organizationSlug, input.projectName, {
-      permission: 'project.archive',
-    })
-  ).project;
-  if (projectScope.archivedAt === null) {
-    return projectScope;
+  const projectScope: ResolvedProjectScope = await resolveProjectMutationScope(input, 'project.archive');
+  if (projectScope.project.archivedAt === null) {
+    return projectScope.project;
   }
 
   return await getApiDatabase().transaction(async (transaction: ProjectsMutationTransaction): Promise<ProjectRow> => {
+    await requireProjectOrganizationContext(transaction, projectScope.organization.id, projectScope.project.id);
     const teardown: ProjectTeardownObservation | null = await lockProjectTeardownStateWithTransaction(
       transaction,
-      projectScope.id,
+      projectScope.project.id,
     );
-    const project: ProjectRow = await requireLockedProject(transaction, projectScope.id);
+    const project: ProjectRow = await requireLockedProject(
+      transaction,
+      projectScope.organization.id,
+      projectScope.project.id,
+    );
     if (teardown !== null) {
       throw createProjectLifecycleNotAvailableError();
     }
-    return await setProjectArchivedAtWithExecutor(transaction, {
-      archivedAt: null,
-      projectId: project.id,
-      updatedAt: new Date(),
-    });
+    return await setProjectArchivedAtWithExecutor(
+      transaction,
+      projectArchiveMutation(projectScope.organization.id, project, null),
+    );
   });
 }
 
 export async function deleteProjectForPrincipal(input: ProjectScopeInput): Promise<ProjectDeleteResult> {
-  const projectScope: ProjectRow = (
-    await resolveRequiredProjectScope(input.principalId, input.organizationSlug, input.projectName, {
-      permission: 'project.delete',
-    })
-  ).project;
-  const preparation: ProjectDeletePreparation = await prepareProjectRuntimeCleanupBeforeDelete(projectScope.id);
+  const projectScope: ResolvedProjectScope = await resolveProjectMutationScope(input, 'project.delete');
+  const preparation: ProjectDeletePreparation = await prepareProjectRuntimeCleanupBeforeDelete(
+    projectScope.organization.id,
+    projectScope.project.id,
+  );
   if (preparation.preparationLeaseId !== null) {
     await cleanupPreparedProjectRuntime(preparation.project, preparation.preparationLeaseId);
-    await activateProjectTeardownAfterRuntimeCleanup(preparation.project.id, preparation.preparationLeaseId);
+    await activateProjectTeardownAfterRuntimeCleanup(
+      projectScope.organization.id,
+      preparation.project.id,
+      preparation.preparationLeaseId,
+    );
   }
   return {
     projectName: preparation.project.name,
@@ -150,30 +158,18 @@ export async function getActiveProjectForPrincipal(input: ProjectScopeInput): Pr
   };
 }
 
-async function ensureArchivedProject(
-  transaction: ProjectsMutationTransaction,
-  project: ProjectRow,
-): Promise<ProjectRow> {
-  if (project.archivedAt !== null) {
-    return project;
-  }
-
-  const now: Date = new Date();
-  return await setProjectArchivedAtWithExecutor(transaction, {
-    archivedAt: now,
-    projectId: project.id,
-    updatedAt: now,
-  });
-}
-
-async function prepareProjectRuntimeCleanupBeforeDelete(projectId: string): Promise<ProjectDeletePreparation> {
+async function prepareProjectRuntimeCleanupBeforeDelete(
+  organizationId: string,
+  projectId: string,
+): Promise<ProjectDeletePreparation> {
   return await getApiDatabase().transaction(
     async (transaction: ProjectsMutationTransaction): Promise<ProjectDeletePreparation> => {
+      await requireLockedProject(transaction, organizationId, projectId);
       const teardown: ProjectTeardownPreparationResult = await prepareProjectTeardownWithTransaction(
         transaction,
         projectId,
       );
-      const project: ProjectRow = await requireDeletableProject(transaction, projectId);
+      const project: ProjectRow = await requireArchivedDeletableProject(transaction, organizationId, projectId);
       return {
         preparationLeaseId: teardown.preparationLeaseId,
         project,
@@ -184,53 +180,28 @@ async function prepareProjectRuntimeCleanupBeforeDelete(projectId: string): Prom
 }
 
 async function activateProjectTeardownAfterRuntimeCleanup(
+  organizationId: string,
   projectId: string,
   preparationLeaseId: string,
 ): Promise<void> {
   await getApiDatabase().transaction(async (transaction: ProjectsMutationTransaction): Promise<void> => {
     await activateProjectTeardownWithTransaction(transaction, projectId, preparationLeaseId);
-    await requireDeletableProject(transaction, projectId);
+    await requireArchivedDeletableProject(transaction, organizationId, projectId);
   });
 }
 
-async function requireDeletableProject(
+async function requireArchivedDeletableProject(
   transaction: ProjectsMutationTransaction,
+  organizationId: string,
   projectId: string,
 ): Promise<ProjectRow> {
-  const project: ProjectRow = await requireMutableProject(transaction, projectId);
+  const project: ProjectRow = await requireMutableProject(transaction, organizationId, projectId);
   if (project.archivedAt === null) {
     throw createProjectDeleteRequiresArchiveError();
   }
   if (await hasBlockingProjectDeployments(transaction, project.id)) {
     throw createProjectDeleteBlockedError();
   }
-
-  return project;
-}
-
-async function requireMutableProject(transaction: ProjectsMutationTransaction, projectId: string): Promise<ProjectRow> {
-  const project: ProjectRow = await requireLockedProject(transaction, projectId);
-  if ((await findActiveBindingByProjectIdWithExecutor(transaction, projectId)) !== undefined) {
-    throw createProjectGitSourceBoundError();
-  }
-
-  return project;
-}
-
-async function requireArchivableProject(
-  transaction: ProjectsMutationTransaction,
-  projectId: string,
-): Promise<ProjectRow> {
-  return await requireLockedProject(transaction, projectId);
-}
-
-async function requireLockedProject(transaction: ProjectsMutationTransaction, projectId: string): Promise<ProjectRow> {
-  await lockProjectMutationWithExecutor(transaction, projectId);
-  const project: ProjectRow | undefined = await findProjectByIdWithExecutor(transaction, projectId);
-  if (project === undefined) {
-    throw new Error('Project mutation failed.');
-  }
-
   return project;
 }
 

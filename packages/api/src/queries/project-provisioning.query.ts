@@ -7,6 +7,7 @@ import { claimSelectedRow } from './claim-row.query.shared';
 import type { DeploymentTransaction } from './deployments.query.types';
 import {
   projectProvisioningAttemptLimit,
+  projectIsolationVersion,
   projectProvisioningLeaseDuration,
   projectProvisioningRetryDelayMs,
   projectTeardownTerminalFailure,
@@ -91,6 +92,12 @@ async function selectClaimableRow(
 
 function provisioningClaimableCondition(now: Date, action: ProjectProvisioningAction | 'any'): SQL | undefined {
   return or(
+    action === 'teardown'
+      ? undefined
+      : and(
+          eq(projectKubeProvisioning.state, 'succeeded'),
+          lt(projectKubeProvisioning.isolationVersion, projectIsolationVersion),
+        ),
     claimableStateCondition(action, 'pending'),
     claimableFailedCondition(action, now),
     claimableExpiredRunningCondition(action, now),
@@ -161,10 +168,7 @@ async function leaseProjectProvisioning(
   await transaction
     .update(projectKubeProvisioning)
     .set({
-      attempts:
-        row.state === 'running' || row.state === 'teardown_running'
-          ? row.attempts
-          : sql`${projectKubeProvisioning.attempts} + 1`,
+      attempts: nextProvisioningAttempts(row),
       failureMessage: null,
       leaseExpiresAt: new Date(now.getTime() + projectProvisioningLeaseDuration(action)),
       leaseId,
@@ -172,7 +176,25 @@ async function leaseProjectProvisioning(
       updatedAt: now,
     })
     .where(eq(projectKubeProvisioning.projectId, row.projectId));
-  return { action, leaseId, namespaceId: row.projectId, projectId: row.projectId };
+  return projectProvisioningClaim(action, leaseId, row.projectId);
+}
+
+function nextProvisioningAttempts(row: typeof projectKubeProvisioning.$inferSelect): SQL {
+  if (row.state === 'succeeded') {
+    return sql`1`;
+  }
+  if (row.state === 'running' || row.state === 'teardown_running') {
+    return sql`${row.attempts}`;
+  }
+  return sql`${projectKubeProvisioning.attempts} + 1`;
+}
+
+function projectProvisioningClaim(
+  action: ProjectProvisioningAction,
+  leaseId: string,
+  projectId: string,
+): ProjectProvisioningClaimRow {
+  return { action, isolationVersion: projectIsolationVersion, leaseId, namespaceId: projectId, projectId };
 }
 
 function readProjectProvisioningAction(state: ProjectKubeProvisioningState): ProjectProvisioningAction {

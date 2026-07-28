@@ -83,6 +83,7 @@ describe('custom domain db queries', (): void => {
       host: 'app.customer.example.com',
       id: 'cdom_recreated',
       lastCheckedAt: new Date('2026-04-23T10:00:00.000Z'),
+      organizationId: 'org_custom_domains',
       ownershipStatus: 'valid',
       reconcileState: 'reconciling',
       routingStatus: 'valid',
@@ -197,6 +198,35 @@ describe('custom domain db queries', (): void => {
       collision = error as Error;
     }
     expect(isUniqueConstraintError(collision ?? undefined)).toBe(true);
+  });
+
+  it('fails closed when another organization targets a known domain row', async (): Promise<void> => {
+    await createQueryTestScope();
+    await db.insert(organizations).values({
+      id: 'org_other',
+      name: 'Other Org',
+      slug: 'other-org',
+    });
+    await insertCustomDomain('cdom_owned');
+
+    await updateCustomDomainCheck({
+      desiredGeneration: 2,
+      failureMessage: null,
+      host: 'app.customer.example.com',
+      id: 'cdom_owned',
+      lastCheckedAt: new Date('2026-04-23T10:00:00.000Z'),
+      organizationId: 'org_other',
+      ownershipStatus: 'valid',
+      reconcileState: 'reconciling',
+      routingStatus: 'valid',
+      updatedAt: new Date('2026-04-23T10:00:00.000Z'),
+      verifiedAt: new Date('2026-04-23T10:00:00.000Z'),
+    });
+
+    expect(await readStoredCustomDomain()).toMatchObject({
+      ownershipStatus: 'pending',
+      routingStatus: 'pending',
+    });
   });
 });
 

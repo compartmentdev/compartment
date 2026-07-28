@@ -1,6 +1,7 @@
 import type { ProjectProvisioningAction } from '@compartment/contracts';
 
 export const projectProvisioningAttemptLimit: number = 3;
+export const projectIsolationVersion: number = 1;
 export const projectProvisioningLeaseDurationMs: number = 7 * 60_000;
 export const projectProvisioningRetryDelayMs: number = 10_000;
 const projectTeardownLeaseDurationMs: number = 45_000;

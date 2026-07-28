@@ -13,7 +13,7 @@ import {
   type ProjectNamespaceProvisioningRow,
   type ProjectProvisioningAuthorityInput,
 } from '../src';
-import { kubeLimitRangeName, kubeSecretName } from '../src/kube-naming';
+import { kubeLimitRangeName, kubeResourceQuotaName, kubeSecretName } from '../src/kube-naming';
 
 interface RbacRule {
   apiGroups: string[];
@@ -65,9 +65,11 @@ describe('project namespace bootstrap provisioning', (): void => {
     const namespace: KubeManifest = created[0]!;
     const binding: KubeManifest = created[1]!;
     expect(bundle.objects.map((manifest: KubeManifest): string => manifest.kind)).toEqual([
+      'Namespace',
       'Secret',
       'ServiceAccount',
       'LimitRange',
+      'ResourceQuota',
       'NetworkPolicy',
       'NetworkPolicy',
       'NetworkPolicy',
@@ -106,7 +108,7 @@ describe('project namespace bootstrap provisioning', (): void => {
         metadata: { name: 'compartment-project-bootstrap' },
       },
     ]);
-    expect(bundle.objects[0]).toMatchObject({
+    expect(bundle.objects[1]).toMatchObject({
       kind: 'Secret',
       metadata: {
         labels: { 'compartment.dev/namespace-id': 'prj-01jz' },
@@ -116,7 +118,7 @@ describe('project namespace bootstrap provisioning', (): void => {
       stringData: { '.dockerconfigjson': '{"auths":{"registry.example":{"auth":"generated"}}}' },
       type: 'kubernetes.io/dockerconfigjson',
     });
-    expect(bundle.objects[1]).toMatchObject({
+    expect(bundle.objects[2]).toMatchObject({
       automountServiceAccountToken: false,
       imagePullSecrets: [{ name: kubeSecretName('pull-prj-01jz') }],
       kind: 'ServiceAccount',
@@ -127,7 +129,7 @@ describe('project namespace bootstrap provisioning', (): void => {
     });
   });
 
-  it('projects container defaults into the namespace lifecycle', (): void => {
+  it('projects restricted Pod Security and compute, storage, and object quotas into the namespace lifecycle', (): void => {
     const namespaceId: string = 'prj-01jz';
     const namespaceName: string = kubeNamespaceName(namespaceId);
     const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow(namespaceId));
@@ -137,8 +139,16 @@ describe('project namespace bootstrap provisioning', (): void => {
     const limitRange: KubeManifest = bundle.objects.find(
       (manifest: KubeManifest): boolean => manifest.kind === 'LimitRange',
     )!;
+    const resourceQuota: KubeManifest = bundle.objects.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'ResourceQuota',
+    )!;
 
     expect(namespace.metadata?.name).toBe(namespaceName);
+    expect(namespace.metadata?.labels).toMatchObject({
+      'pod-security.kubernetes.io/audit': 'restricted',
+      'pod-security.kubernetes.io/enforce': 'restricted',
+      'pod-security.kubernetes.io/warn': 'restricted',
+    });
     expect(limitRange).toEqual({
       apiVersion: 'v1',
       kind: 'LimitRange',
@@ -154,11 +164,42 @@ describe('project namespace bootstrap provisioning', (): void => {
       spec: {
         limits: [
           {
-            default: { cpu: '1', memory: '1Gi' },
+            _default: { cpu: '1', memory: '1Gi' },
             defaultRequest: { cpu: '50m', memory: '128Mi' },
             type: 'Container',
           },
         ],
+      },
+    });
+    expect(resourceQuota).toEqual({
+      apiVersion: 'v1',
+      kind: 'ResourceQuota',
+      metadata: {
+        labels: {
+          'app.kubernetes.io/managed-by': 'compartment',
+          'compartment.dev/namespace-id': namespaceId,
+          'compartment.dev/project-id': namespaceId,
+        },
+        name: kubeResourceQuotaName(namespaceId),
+        namespace: namespaceName,
+      },
+      spec: {
+        hard: {
+          'count/configmaps': '100',
+          'count/deployments.apps': '50',
+          'count/jobs.batch': '100',
+          'count/networkpolicies.networking.k8s.io': '20',
+          'count/persistentvolumeclaims': '20',
+          'count/secrets': '100',
+          'count/serviceaccounts': '10',
+          'count/services': '50',
+          'limits.cpu': '20',
+          'limits.memory': '20Gi',
+          pods: '50',
+          'requests.cpu': '10',
+          'requests.memory': '10Gi',
+          'requests.storage': '100Gi',
+        },
       },
     });
     expect(projectNamespaceDeleteTarget(namespaceId)).toEqual({
@@ -308,7 +349,7 @@ describe('project namespace bootstrap provisioning', (): void => {
       resources: ['clusterroles'],
       verbs: ['bind'],
     });
-    expect(ruleFor(rules, 'namespaces')).toMatchObject({ verbs: ['get', 'create'] });
+    expect(ruleFor(rules, 'namespaces')).toMatchObject({ verbs: ['get', 'create', 'update', 'patch'] });
     expect(ruleFor(rules, 'rolebindings')).toMatchObject({ verbs: ['create'] });
     expect(ruleFor(rules, 'serviceaccounts')).toBeUndefined();
     expect(ruleFor(rules, 'roles')).toBeUndefined();
@@ -329,6 +370,17 @@ describe('project namespace bootstrap provisioning', (): void => {
     expect(rules.some((rule: RbacRule): boolean => rule.verbs.includes('escalate'))).toBe(false);
   });
 
+  it('grants Kubernetes roles only to explicit component ServiceAccounts', (): void => {
+    const bundle: ApplyBundle = projectNamespaceProvisioningBundle(provisioningRow('prj-rbac'));
+    const bindings: KubeManifest[] = [...(bundle.createBeforeApply ?? []), ...bundle.objects].filter(
+      (manifest: KubeManifest): boolean => manifest.kind === 'RoleBinding' || manifest.kind === 'ClusterRoleBinding',
+    );
+
+    expect(bindings).not.toHaveLength(0);
+    expect(bindings.every((binding: KubeManifest): boolean => (binding.subjects?.length ?? 0) > 0)).toBe(true);
+    expect(JSON.stringify(bindings)).not.toMatch(/"kind":"(?:User|Group)"/u);
+  });
+
   it('keeps controller authority namespaced by RoleBinding and excludes cluster provisioning', (): void => {
     const controller: RbacManifest = manifests('controller-rbac.yaml')[0]!;
     const rules: RbacRule[] = controller.rules ?? [];
@@ -340,6 +392,7 @@ describe('project namespace bootstrap provisioning', (): void => {
       'secrets',
       'persistentvolumeclaims',
       'limitranges',
+      'resourcequotas',
       'networkpolicies',
     ]) {
       expect(ruleFor(rules, resource)?.verbs).toEqual(['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']);

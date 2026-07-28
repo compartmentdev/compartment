@@ -15,6 +15,7 @@ export async function persistCustomDomainVerificationResult(
     host,
     id: row.id,
     lastCheckedAt: now,
+    organizationId: row.organizationId,
     ownershipStatus: result.ownershipStatus,
     reconcileState: isVerifiedCustomDomainResult(result) ? 'reconciling' : 'failed',
     routingStatus: result.routingStatus,
