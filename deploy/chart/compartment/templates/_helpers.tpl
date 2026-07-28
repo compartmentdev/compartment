@@ -251,6 +251,41 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
+{{- define "compartment.certManagerCertificate" -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "compartment.labels" .root | nindent 4 }}
+    {{- with .component }}
+    app.kubernetes.io/component: {{ . }}
+    {{- end }}
+spec:
+  secretName: {{ .secretName }}
+  issuerRef:
+    {{- with .issuerRef.group }}
+    group: {{ . | quote }}
+    {{- end }}
+    kind: {{ .issuerRef.kind | quote }}
+    name: {{ .issuerRef.name | quote }}
+  dnsNames:
+    - {{ .host | quote }}
+{{- end }}
+
+{{- define "compartment.caddyIngressRule" -}}
+- host: {{ .host | quote }}
+  http:
+    paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ include "compartment.fullname" .root }}-caddy
+            port:
+              name: http
+{{- end }}
+
 {{- define "compartment.image" -}}
 {{- if .digest -}}
 {{- printf "%s@%s" .repository .digest -}}

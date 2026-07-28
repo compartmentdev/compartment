@@ -1,3 +1,8 @@
+export interface RegistryInstallVerificationOutput {
+  dockerConfigJson: string;
+  imageRef: string;
+}
+
 export function buildCompartmentArtifactImageRepository(projectId: string, serviceId: string): string {
   return `projects/${projectId}/services/${serviceId}`;
 }

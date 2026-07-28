@@ -3,20 +3,21 @@ import { createHmac } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildCompartmentArtifactImageRepository, buildCompartmentArtifactImageTag } from '@compartment/contracts';
+import {
+  buildCompartmentArtifactImageRepository,
+  buildCompartmentArtifactImageTag,
+  type RegistryInstallVerificationOutput,
+} from '@compartment/contracts';
 import { buildDockerImage, type DockerBuildImageInput, type DockerBuildImageResult } from '@compartment/docker';
-import { readWorkerConfig, type WorkerConfig } from './config';
+import { readWorkerBuildConfig, type WorkerBuildConfig } from './config';
 import { issueBuildPushCredential, issueProjectPullCredential } from './registry-credentials';
 import type { RegistryCredential } from './registry-credentials.types';
-import type {
-  RegistryInstallVerificationOutput,
-  RegistryVerificationBuildContext,
-} from './registry-install-verifier.types';
+import type { RegistryVerificationBuildContext } from './registry-install-verifier.types';
 
 const verificationServiceId: string = 'svc_registry_acceptance';
 
 async function main(): Promise<void> {
-  const config: WorkerConfig = readWorkerConfig();
+  const config: WorkerBuildConfig = readWorkerBuildConfig();
   const installationId: string = readInstallationId(process.env.COMPARTMENT_INSTALLATION_ID);
   const verificationProjectId: string = buildVerificationProjectId(installationId);
   const artifactId: string = `acceptance_${Date.now().toString()}`;
@@ -25,7 +26,7 @@ async function main(): Promise<void> {
 }
 
 async function buildVerificationImage(
-  config: WorkerConfig,
+  config: WorkerBuildConfig,
   installationId: string,
   artifactId: string,
 ): Promise<DockerBuildImageResult> {
@@ -42,7 +43,7 @@ async function buildVerificationImage(
 }
 
 async function prepareVerificationBuild(
-  config: WorkerConfig,
+  config: WorkerBuildConfig,
   installationId: string,
   artifactId: string,
 ): Promise<RegistryVerificationBuildContext> {
@@ -66,12 +67,12 @@ async function prepareVerificationBuild(
   };
 }
 
-function buildNodeImageTag(config: WorkerConfig, repository: string, artifactId: string): string {
+function buildNodeImageTag(config: WorkerBuildConfig, repository: string, artifactId: string): string {
   return buildCompartmentArtifactImageTag(config.artifactRegistry.address, repository, artifactId);
 }
 
 function buildPushCredential(
-  config: WorkerConfig,
+  config: WorkerBuildConfig,
   installationId: string,
   repository: string,
   artifactId: string,
@@ -80,7 +81,7 @@ function buildPushCredential(
 }
 
 function buildVerificationImageInput(
-  config: WorkerConfig,
+  config: WorkerBuildConfig,
   contextDirectory: string,
   dockerfilePath: string,
   imageTag: string,
@@ -105,16 +106,16 @@ function buildVerificationImageInput(
   };
 }
 
-function createAcceptanceSignature(config: WorkerConfig, imageTag: string): string {
+function createAcceptanceSignature(config: WorkerBuildConfig, imageTag: string): string {
   return createHmac('sha256', config.artifactRegistry.credentialSigningKey).update(imageTag).digest('base64url');
 }
 
-function buildPushImageTag(config: WorkerConfig, repository: string, artifactId: string): string {
+function buildPushImageTag(config: WorkerBuildConfig, repository: string, artifactId: string): string {
   return buildCompartmentArtifactImageTag(config.artifactRegistry.internalAddress, repository, artifactId);
 }
 
 function buildVerificationOutput(
-  config: WorkerConfig,
+  config: WorkerBuildConfig,
   installationId: string,
   imageRef: string,
 ): RegistryInstallVerificationOutput {

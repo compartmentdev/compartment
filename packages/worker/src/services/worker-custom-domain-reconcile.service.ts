@@ -144,7 +144,6 @@ function buildProjection(
     ...config,
     domainId: target.domainId,
     host: target.host,
-    issuerRef: config.issuerRef,
   };
 }
 

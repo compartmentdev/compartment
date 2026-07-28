@@ -3,7 +3,7 @@ import {
   buildInternalHttpUrl,
   parseOptionalTrustedOutboundHostList,
 } from '@compartment/utils';
-import type { DomainIssuerReference } from '@compartment/contracts';
+import type { KubeIssuerReference } from '@compartment/kube-runtime';
 import { z } from 'zod';
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
 
@@ -21,8 +21,11 @@ interface WorkerProcessConfigEnvironment {
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS?: string | undefined;
 }
 
-interface WorkerConfigEnvironment extends WorkerProcessConfigEnvironment {
+interface WorkerBuildConfigEnvironment extends WorkerProcessConfigEnvironment {
   BUILDKIT_ADDR: string;
+}
+
+interface WorkerConfigEnvironment extends WorkerBuildConfigEnvironment {
   COMPARTMENT_CADDY_SERVICE_NAME: string;
   COMPARTMENT_INGRESS_CLASS_NAME: string;
   COMPARTMENT_TLS_ISSUER_KIND: 'Issuer' | 'ClusterIssuer';
@@ -34,7 +37,7 @@ interface WorkerTrustedOutboundHostsEnvironment {
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS?: string | undefined;
 }
 
-const workerProcessConfigSchema: z.ZodTypeAny = z.object({
+const workerProcessConfigSchema: z.ZodType<WorkerProcessConfigEnvironment> = z.object({
   COMPARTMENT_API_INTERNAL_HOST: z.string().min(1),
   COMPARTMENT_API_PORT: z.coerce.number().int().positive(),
   COMPARTMENT_ARTIFACT_REGISTRY_HOST: z.string().min(1),
@@ -48,9 +51,14 @@ const workerProcessConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: z.string().optional(),
 });
 
-const workerConfigSchema: z.ZodTypeAny = workerProcessConfigSchema.and(
+const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerProcessConfigSchema.and(
   z.object({
     BUILDKIT_ADDR: z.string().trim().min(1),
+  }),
+);
+
+const workerConfigSchema: z.ZodType<WorkerConfigEnvironment> = workerBuildConfigSchema.and(
+  z.object({
     COMPARTMENT_CADDY_SERVICE_NAME: z.string().min(1),
     COMPARTMENT_INGRESS_CLASS_NAME: z.string().min(1),
     COMPARTMENT_TLS_ISSUER_KIND: z.enum(['Issuer', 'ClusterIssuer']),
@@ -67,31 +75,39 @@ export interface WorkerProcessConfig {
   runtimeControlToken: string;
 }
 
-export interface WorkerConfig extends WorkerProcessConfig {
+export interface WorkerBuildConfig extends WorkerProcessConfig {
   buildKitAddress: string;
+}
+
+export interface WorkerConfig extends WorkerBuildConfig {
   customDomains: WorkerCustomDomainConfig;
 }
 
 export interface WorkerCustomDomainConfig {
   caddyServiceName: string;
   ingressClassName: string;
-  issuerRef: DomainIssuerReference;
+  issuerRef: KubeIssuerReference;
   namespace: string;
 }
 
 export function readWorkerProcessConfig(env: NodeJS.ProcessEnv = process.env): WorkerProcessConfig {
-  const parsed: WorkerProcessConfigEnvironment = workerProcessConfigSchema.parse(env) as WorkerProcessConfigEnvironment;
+  const parsed: WorkerProcessConfigEnvironment = workerProcessConfigSchema.parse(env);
   readWorkerTrustedOutboundHosts(parsed);
   return buildWorkerProcessConfig(parsed);
 }
 
+export function readWorkerBuildConfig(env: NodeJS.ProcessEnv = process.env): WorkerBuildConfig {
+  const parsed: WorkerBuildConfigEnvironment = workerBuildConfigSchema.parse(env);
+  readWorkerTrustedOutboundHosts(parsed);
+  return buildWorkerBuildConfig(parsed);
+}
+
 export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
-  const parsed: WorkerConfigEnvironment = workerConfigSchema.parse(env) as WorkerConfigEnvironment;
+  const parsed: WorkerConfigEnvironment = workerConfigSchema.parse(env);
   readWorkerTrustedOutboundHosts(parsed);
 
   return {
-    ...buildWorkerProcessConfig(parsed),
-    buildKitAddress: parsed.BUILDKIT_ADDR,
+    ...buildWorkerBuildConfig(parsed),
     customDomains: {
       caddyServiceName: parsed.COMPARTMENT_CADDY_SERVICE_NAME,
       ingressClassName: parsed.COMPARTMENT_INGRESS_CLASS_NAME,
@@ -101,6 +117,13 @@ export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
       },
       namespace: parsed.COMPARTMENT_PLATFORM_NAMESPACE,
     },
+  };
+}
+
+function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBuildConfig {
+  return {
+    ...buildWorkerProcessConfig(parsed),
+    buildKitAddress: parsed.BUILDKIT_ADDR,
   };
 }
 

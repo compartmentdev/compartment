@@ -24,8 +24,3 @@ export interface KubernetesNodeStatusCondition {
   status?: string | undefined;
   type?: string | undefined;
 }
-
-export interface RegistryInstallVerificationOutput {
-  dockerConfigJson: string;
-  imageRef: string;
-}

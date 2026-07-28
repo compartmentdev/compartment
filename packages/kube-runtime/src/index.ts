@@ -5,6 +5,7 @@ export { observeCustomDomainProjection, projectCustomDomainManifests } from './k
 export type {
   CustomDomainProjectionObservation,
   CustomDomainProjectionRow,
+  KubeIssuerReference,
 } from './kube-custom-domain-projection.types';
 export { projectApplicationManifests } from './kube-projections';
 export { projectNetworkPolicyManifests } from './kube-network-policy-projection';

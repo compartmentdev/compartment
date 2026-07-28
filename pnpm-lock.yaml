@@ -381,9 +381,6 @@ importers:
 
   packages/kube-runtime:
     dependencies:
-      '@compartment/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       '@compartment/utils':
         specifier: workspace:*
         version: link:../utils

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readWorkerConfig, type WorkerConfig } from '../src/config';
+import { readWorkerBuildConfig, readWorkerConfig, type WorkerBuildConfig, type WorkerConfig } from '../src/config';
 
 describe('readWorkerConfig', (): void => {
   it('reads the private node-pull and internal registry endpoints', (): void => {
@@ -42,6 +42,18 @@ describe('readWorkerConfig', (): void => {
     const environment: NodeJS.ProcessEnv = validEnvironment();
     delete environment.COMPARTMENT_CADDY_SERVICE_NAME;
     expect((): WorkerConfig => readWorkerConfig(environment)).toThrow();
+  });
+
+  it('does not require custom-domain configuration for build-only processes', (): void => {
+    const environment: NodeJS.ProcessEnv = validEnvironment();
+    delete environment.COMPARTMENT_CADDY_SERVICE_NAME;
+    delete environment.COMPARTMENT_INGRESS_CLASS_NAME;
+    delete environment.COMPARTMENT_TLS_ISSUER_KIND;
+    delete environment.COMPARTMENT_TLS_ISSUER_NAME;
+    delete environment.COMPARTMENT_PLATFORM_NAMESPACE;
+
+    const config: WorkerBuildConfig = readWorkerBuildConfig(environment);
+    expect(config).toMatchObject({ buildKitAddress: 'tcp://builder:1234' });
   });
 
   it('rejects missing required runtime env values instead of silently falling back', (): void => {
