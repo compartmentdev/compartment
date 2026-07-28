@@ -440,7 +440,7 @@ tests:
               resources: [services, secrets, serviceaccounts, persistentvolumeclaims]
               verbs: [get, list, watch, create, update, patch, delete]
             - apiGroups: ['']
-              resources: [limitranges]
+              resources: [limitranges, resourcequotas]
               verbs: [get, list, watch, create, update, patch, delete]
             - apiGroups: ['']
               resources: [pods]
@@ -461,7 +461,7 @@ tests:
           value:
             - apiGroups: ['']
               resources: [namespaces]
-              verbs: [get, create]
+              verbs: [get, create, update, patch]
             - apiGroups: [rbac.authorization.k8s.io]
               resources: [rolebindings]
               verbs: [create]
@@ -560,7 +560,7 @@ tests:
         documentIndex: 8
       - matchRegex:
           path: spec.validations[0].expression
-          pattern: request\.operation == 'CREATE'
+          pattern: request\.operation == 'DELETE'
         template: project-provisioner-rbac.yaml
         documentIndex: 8
       - matchRegex:
@@ -571,6 +571,11 @@ tests:
       - matchRegex:
           path: spec.validations[0].expression
           pattern: compartment\.dev/project-id
+        template: project-provisioner-rbac.yaml
+        documentIndex: 8
+      - matchRegex:
+          path: spec.validations[0].expression
+          pattern: pod-security\.kubernetes\.io/enforce
         template: project-provisioner-rbac.yaml
         documentIndex: 8
       - matchRegex:

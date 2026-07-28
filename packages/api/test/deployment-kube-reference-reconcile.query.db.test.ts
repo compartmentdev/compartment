@@ -378,6 +378,7 @@ describe('deployment Kubernetes transition persistence', (): void => {
       await completeProjectProvisioning({
         action: 'provision',
         failureMessage: `namespace provisioning attempt ${attempt} failed`,
+        isolationVersion: claimed?.isolationVersion ?? 1,
         leaseId: claimed?.leaseId ?? '',
         projectId: 'prj_kube',
         status: 'failed',

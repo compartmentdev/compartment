@@ -14,6 +14,7 @@ import {
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import type { DeploymentReconcilePair, DeploymentReconcileRow } from './deployment-reconcile.query.types';
+import { projectIsolationVersion } from './project-provisioning-policy';
 
 const replacementDeployments: BuildAliasTable<typeof deployments, 'replacement_deployments'> = alias(
   deployments,
@@ -127,6 +128,7 @@ function candidateFilter(tx: DeploymentTransaction): SQL | undefined {
       eq(deploymentKubeReferences.state, 'stopping'),
       and(
         eq(projectKubeProvisioning.state, 'succeeded'),
+        eq(projectKubeProvisioning.isolationVersion, projectIsolationVersion),
         or(
           and(eq(deploymentKubeReferences.state, 'desired'), eq(deployments.status, 'running')),
           and(

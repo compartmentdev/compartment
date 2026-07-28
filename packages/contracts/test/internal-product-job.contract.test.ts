@@ -54,6 +54,7 @@ describe('internal product Job mounts', (): void => {
       operationId: 'operation-1',
       projectId: 'prj-1',
       resourceIds: ['res-1'],
+      runtimeIdentity: 'resource',
       timeoutMs: 30_000,
       volumeMounts: [
         {
@@ -67,6 +68,7 @@ describe('internal product Job mounts', (): void => {
       ],
     };
     expect(productJobIntentSchema.safeParse(input).success).toBe(true);
+    expect(productJobIntentSchema.safeParse({ ...input, runtimeIdentity: undefined }).success).toBe(false);
     expect(productJobIntentSchema.safeParse({ ...input, volumeMounts: [{ hostPath: '/tmp' }] }).success).toBe(false);
   });
 

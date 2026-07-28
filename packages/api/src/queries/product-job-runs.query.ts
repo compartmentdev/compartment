@@ -3,6 +3,7 @@ import type {
   ProductJobClass,
   ProductJobIntent,
   ProductJobVolumeMount,
+  ResourceOperationProductJobIntent,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
 import type { Database } from '../db/client';
@@ -127,6 +128,7 @@ const claimableProductJobSelection: ProductJobRunSelection = {
   image: productJobRuns.image,
   imagePullSecretId: productJobRuns.imagePullSecretId,
   jobClass: productJobRuns.jobClass,
+  runtimeIdentity: productJobRuns.runtimeIdentity,
   jobName: productJobRuns.jobName,
   logs: productJobRuns.logs,
   namespace: productJobRuns.namespace,
@@ -220,12 +222,20 @@ function buildProductJobIntent(row: ProductJobRunRow): ProductJobIntent {
         imagePullSecretId: requireReleaseImagePullSecretId(row),
         jobClass: 'release',
       }
-    : {
-        ...spec,
-        jobClass: 'resource-operation',
-        operationId: row.identityId,
-        resourceIds: JSON.parse(row.resourceIdsJson) as string[],
-      };
+    : buildResourceOperationProductJobIntent(row, spec);
+}
+
+function buildResourceOperationProductJobIntent(
+  row: ProductJobRunRow,
+  spec: ProductJobCommonSpec,
+): ResourceOperationProductJobIntent {
+  return {
+    ...spec,
+    jobClass: 'resource-operation',
+    operationId: row.identityId,
+    resourceIds: JSON.parse(row.resourceIdsJson) as string[],
+    runtimeIdentity: row.runtimeIdentity,
+  };
 }
 
 function productJobTimeoutMs(row: ProductJobRunRow): number {

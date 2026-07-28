@@ -1,11 +1,17 @@
 import type { Pool } from 'pg';
+import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '@compartment/test-support';
 import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { organizations, projectKubeProvisioning, projects } from '../src/db/schema';
 import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
-import type { ProjectKubeProvisioningState } from '../src/queries/project-provisioning.query.types';
+import type {
+  ProjectKubeProvisioningState,
+  ProjectProvisioningClaimRow,
+} from '../src/queries/project-provisioning.query.types';
+import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
+import { claimPendingProjectProvisioning } from '../src/queries/project-provisioning.query';
 import { readPodMetricNamespaceScope } from '../src/services/pod-metrics-namespace.service';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
@@ -59,6 +65,68 @@ describe('Pod metric namespace scope', (): void => {
     await seedProject('prj_teardown', 'teardown_pending');
 
     await expect(readPodMetricNamespaceScope()).resolves.toEqual({ namespaceIds: ['prj_a', 'prj_z'] });
+  });
+
+  it('reclaims pre-isolation succeeded projects and rejects stale-generation completion', async (): Promise<void> => {
+    await db.insert(organizations).values({ id: 'org_upgrade', name: 'Upgrade', slug: 'upgrade' });
+    await db.insert(projects).values({ id: 'prj_upgrade', name: 'upgrade', organizationId: 'org_upgrade' });
+    await db
+      .insert(projectKubeProvisioning)
+      .values({ isolationVersion: 0, projectId: 'prj_upgrade', state: 'succeeded' });
+
+    const target: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
+    expect(target).toMatchObject({ isolationVersion: 1, projectId: 'prj_upgrade' });
+    await expect(
+      completeProjectProvisioning({
+        action: 'provision',
+        failureMessage: null,
+        isolationVersion: 0,
+        leaseId: target?.leaseId ?? '',
+        projectId: 'prj_upgrade',
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      completeProjectProvisioning({
+        action: 'provision',
+        failureMessage: null,
+        isolationVersion: target?.isolationVersion ?? 1,
+        leaseId: target?.leaseId ?? '',
+        projectId: 'prj_upgrade',
+        status: 'succeeded',
+      }),
+    ).resolves.toBe(true);
+
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toBeNull();
+  });
+
+  it('starts isolation-upgrade retry accounting in the new generation', async (): Promise<void> => {
+    await db.insert(organizations).values({ id: 'org_retry', name: 'Retry', slug: 'retry' });
+    await db.insert(projects).values({ id: 'prj_retry', name: 'retry', organizationId: 'org_retry' });
+    await db
+      .insert(projectKubeProvisioning)
+      .values({ attempts: 3, isolationVersion: 0, projectId: 'prj_retry', state: 'succeeded' });
+
+    const first: ProjectProvisioningClaimRow | null = await claimPendingProjectProvisioning('provision');
+    await expect(
+      completeProjectProvisioning({
+        action: 'provision',
+        failureMessage: 'retry upgrade',
+        isolationVersion: first?.isolationVersion ?? 1,
+        leaseId: first?.leaseId ?? '',
+        projectId: 'prj_retry',
+        status: 'failed',
+      }),
+    ).resolves.toBe(true);
+    await db
+      .update(projectKubeProvisioning)
+      .set({ updatedAt: new Date(0) })
+      .where(eq(projectKubeProvisioning.projectId, 'prj_retry'));
+
+    await expect(claimPendingProjectProvisioning('provision')).resolves.toMatchObject({
+      isolationVersion: 1,
+      projectId: 'prj_retry',
+    });
   });
 });
 

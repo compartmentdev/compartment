@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ContractSchema } from './schema.types';
 
 export type ProductJobClass = 'release' | 'resource-operation';
+export type ProductJobRuntimeIdentity = 'project' | 'resource';
 export type ProductJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'timed-out';
 
 interface ProductJobSpec {
@@ -34,6 +35,7 @@ export interface ResourceOperationProductJobIntent extends ProductJobSpec {
   jobClass: 'resource-operation';
   operationId: string;
   resourceIds: string[];
+  runtimeIdentity: ProductJobRuntimeIdentity;
 }
 
 export type ProductJobIntent = ReleaseProductJobIntent | ResourceOperationProductJobIntent;
@@ -125,6 +127,7 @@ export const productJobIntentSchema: ContractSchema<ProductJobIntent> = z.discri
       jobClass: z.literal('resource-operation'),
       operationId: z.string().min(1),
       resourceIds: z.array(z.string().min(1)).min(1),
+      runtimeIdentity: z.enum(['project', 'resource']),
     })
     .strict(),
 ]);

@@ -1,6 +1,7 @@
 import { kubeNamespaceName, kubeSecretName } from './kube-naming';
 import { projectLimitRangeManifest } from './kube-limit-range-projection';
 import { projectNetworkPolicyManifests } from './kube-network-policy-projection';
+import { projectResourceQuotaManifest } from './kube-resource-quota-projection';
 import { registryPullSecretManifest } from './kube-secret-projection';
 import type { ProjectNamespaceProvisioningRow, ProjectProvisioningServiceAccount } from './kube-provisioning.types';
 import type { ApplyBundle, KubeManifest } from './kube-runtime.types';
@@ -16,13 +17,15 @@ interface ProjectProvisioningBindingSubject {
 
 export function projectNamespaceProvisioningBundle(row: ProjectNamespaceProvisioningRow): ApplyBundle {
   const namespace: string = kubeNamespaceName(row.namespaceId);
+  const projectNamespace: KubeManifest = namespaceManifest(row, namespace);
   return {
     createBeforeApply: [
-      namespaceManifest(row, namespace),
+      projectNamespace,
       roleBindingManifest(bootstrapBindingName, namespace, [row.bootstrapServiceAccount, row.workerServiceAccount]),
     ],
     deleteAfterApply: bootstrapCleanupManifests(namespace),
     objects: [
+      projectNamespace,
       registryPullSecretManifest({
         dockerConfigJson: row.registryPullCredentials.dockerConfigJson,
         namespaceId: row.namespaceId,
@@ -30,6 +33,7 @@ export function projectNamespaceProvisioningBundle(row: ProjectNamespaceProvisio
       }),
       applicationServiceAccountManifest(namespace, row.registryPullCredentials.secretId),
       projectLimitRangeManifest(namespace, row.namespaceId, row.projectId),
+      projectResourceQuotaManifest(namespace, row.namespaceId, row.projectId),
       ...projectNetworkPolicyManifests(namespace, row.namespaceId, row.projectId, row.networkPolicy),
       roleBindingManifest(controllerName, namespace, [row.workerServiceAccount]),
     ],
@@ -63,6 +67,12 @@ function namespaceManifest(row: ProjectNamespaceProvisioningRow, namespace: stri
         'app.kubernetes.io/managed-by': 'compartment',
         'compartment.dev/namespace-id': row.namespaceId,
         'compartment.dev/project-id': row.projectId,
+        'pod-security.kubernetes.io/audit': 'restricted',
+        'pod-security.kubernetes.io/audit-version': 'latest',
+        'pod-security.kubernetes.io/enforce': 'restricted',
+        'pod-security.kubernetes.io/enforce-version': 'latest',
+        'pod-security.kubernetes.io/warn': 'restricted',
+        'pod-security.kubernetes.io/warn-version': 'latest',
       },
       name: namespace,
     },

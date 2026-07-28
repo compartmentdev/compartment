@@ -16,6 +16,7 @@ import type {
 } from './kube-runtime.types';
 import { kubeApplicationIdentityName, kubeApplicationName, kubeNamespaceName, kubeSecretName } from './kube-naming';
 import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
+import { projectPodSecurityContext, restrictedContainerSecurityContext } from './kube-security-context';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
 
@@ -91,13 +92,6 @@ function deploymentSpec(
   row: ApplicationProjectionRow,
   context: ApplicationProjectionContext,
 ): KubeDeploymentManifestSpec {
-  const podSpec: KubeProjectedPodSpec = {
-    automountServiceAccountToken: false,
-    containers: [applicationContainer(row)],
-    imagePullSecrets: [{ name: kubeSecretName(row.imagePullSecretId) }],
-    serviceAccountName: kubeNamespaceName(row.namespaceId),
-    terminationGracePeriodSeconds: row.terminationGracePeriodSeconds ?? minimumTerminationGracePeriodSeconds,
-  };
   return {
     progressDeadlineSeconds: progressDeadlineSeconds(row.readiness),
     replicas: row.replicas,
@@ -108,8 +102,19 @@ function deploymentSpec(
         annotations: { ...context.annotations, 'compartment.dev/secret-checksum': secretChecksum(row.env) },
         labels: { ...context.workloadLabels, 'compartment.dev/deployment-id': row.deploymentId },
       },
-      spec: podSpec,
+      spec: applicationPodSpec(row),
     },
+  };
+}
+
+function applicationPodSpec(row: ApplicationProjectionRow): KubeProjectedPodSpec {
+  return {
+    automountServiceAccountToken: false,
+    containers: [applicationContainer(row)],
+    imagePullSecrets: [{ name: kubeSecretName(row.imagePullSecretId) }],
+    securityContext: projectPodSecurityContext(),
+    serviceAccountName: kubeNamespaceName(row.namespaceId),
+    terminationGracePeriodSeconds: row.terminationGracePeriodSeconds ?? minimumTerminationGracePeriodSeconds,
   };
 }
 
@@ -121,6 +126,7 @@ function applicationContainer(row: ApplicationProjectionRow): KubeProjectedConta
     image: row.image,
     lifecycle: { preStop: { exec: { command: ['sh', '-c', 'sleep 3'] } } },
     name: kubeApplicationName(row.deploymentId),
+    securityContext: restrictedContainerSecurityContext(),
     ports: row.containerPorts.map(
       (containerPort: number, index: number): KubeContainerPort => ({
         containerPort,

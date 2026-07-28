@@ -35,7 +35,7 @@ rules:
     resources: ["services", "secrets", "serviceaccounts", "persistentvolumeclaims"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
-    resources: ["limitranges"]
+    resources: ["limitranges", "resourcequotas"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: [""]
     resources: ["pods"]
@@ -59,7 +59,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
-    verbs: ["get", "create"]
+    verbs: ["get", "create", "update", "patch"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["rolebindings"]
     verbs: ["create"]
@@ -166,7 +166,7 @@ spec:
     resourceRules:
       - apiGroups: [""]
         apiVersions: ["v1"]
-        operations: ["CREATE", "DELETE"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
         resources: ["namespaces"]
         scope: Cluster
       - apiGroups: ["rbac.authorization.k8s.io"]
@@ -183,7 +183,7 @@ spec:
     - name: provisioning-identity
       expression: {{ printf "request.userInfo.username.startsWith('system:serviceaccount:%s:cpt-') || request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner'" (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
   validations:
-    - expression: {{ printf "request.resource.resource != 'namespaces' || (request.operation == 'CREATE' ? request.userInfo.username == 'system:serviceaccount:%s:' + object.metadata.name : request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner' && request.name.startsWith('cpt-') && 'app.kubernetes.io/managed-by' in oldObject.metadata.labels && oldObject.metadata.labels['app.kubernetes.io/managed-by'] == 'compartment' && 'compartment.dev/namespace-id' in oldObject.metadata.labels && 'compartment.dev/project-id' in oldObject.metadata.labels && oldObject.metadata.labels['compartment.dev/namespace-id'] == oldObject.metadata.labels['compartment.dev/project-id'])" (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
+    - expression: {{ printf "request.resource.resource != 'namespaces' || (request.operation == 'DELETE' ? request.userInfo.username == 'system:serviceaccount:%s:%s-project-provisioner' && request.name.startsWith('cpt-') && 'app.kubernetes.io/managed-by' in oldObject.metadata.labels && oldObject.metadata.labels['app.kubernetes.io/managed-by'] == 'compartment' && 'compartment.dev/namespace-id' in oldObject.metadata.labels && 'compartment.dev/project-id' in oldObject.metadata.labels && oldObject.metadata.labels['compartment.dev/namespace-id'] == oldObject.metadata.labels['compartment.dev/project-id'] : request.userInfo.username == 'system:serviceaccount:%s:' + object.metadata.name && object.metadata.name.startsWith('cpt-') && object.metadata.labels['app.kubernetes.io/managed-by'] == 'compartment' && object.metadata.labels['compartment.dev/namespace-id'] == object.metadata.labels['compartment.dev/project-id'] && object.metadata.labels['pod-security.kubernetes.io/enforce'] == 'restricted' && object.metadata.labels['pod-security.kubernetes.io/audit'] == 'restricted' && object.metadata.labels['pod-security.kubernetes.io/warn'] == 'restricted')" .Release.Namespace (include "compartment.fullname" .) (include "compartment.projectProvisioningNamespace" .) | quote }}
       message: Project bootstrap authority is restricted to its encoded target namespace.
     - expression: {{ printf "request.resource.resource != 'rolebindings' || (request.userInfo.username.startsWith('system:serviceaccount:%s:cpt-') && request.userInfo.username == 'system:serviceaccount:%s:' + request.namespace && (request.operation == 'DELETE' ? request.name == 'compartment-project-bootstrap' : object.roleRef.apiGroup == 'rbac.authorization.k8s.io' && object.roleRef.kind == 'ClusterRole' && object.roleRef.name == 'compartment-controller' && (object.metadata.name == 'compartment-project-bootstrap' ? object.subjects.size() == 2 && object.subjects.exists(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && request.userInfo.username == 'system:serviceaccount:' + subject.namespace + ':' + subject.name) && object.subjects.exists(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && subject.name == '%s-worker') : object.metadata.name == 'compartment-controller' && object.subjects.size() == 1 && object.subjects.all(subject, subject.kind == 'ServiceAccount' && subject.namespace == '%s' && subject.name == '%s-worker'))))" (include "compartment.projectProvisioningNamespace" .) (include "compartment.projectProvisioningNamespace" .) (include "compartment.projectProvisioningNamespace" .) .Release.Namespace (include "compartment.fullname" .) .Release.Namespace (include "compartment.fullname" .) | quote }}
       message: Project bootstrap authority may manage only canonical controller RoleBindings.

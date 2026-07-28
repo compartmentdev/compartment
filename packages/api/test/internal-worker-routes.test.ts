@@ -202,6 +202,7 @@ describe('internal worker routes', (): void => {
         method: 'POST',
         payload: {
           action: 'provision',
+          isolationVersion: 1,
           leaseId: 'kpl_123',
           projectId: 'prj_123',
           status: 'succeeded',
@@ -214,6 +215,7 @@ describe('internal worker routes', (): void => {
       expect(workerCompleteProjectProvisioningResponseSchema.parse(response.json())).toEqual({ applied: true });
       expect(mocks.acknowledgeProjectProvisioningV2).toHaveBeenCalledWith({
         action: 'provision',
+        isolationVersion: 1,
         leaseId: 'kpl_123',
         projectId: 'prj_123',
         status: 'succeeded',
@@ -239,6 +241,7 @@ describe('internal worker routes', (): void => {
         method: 'POST',
         payload: {
           action: 'teardown',
+          isolationVersion: 1,
           leaseId: 'kpl_terminal',
           message: 'namespace still terminating',
           projectId: 'prj_terminal',

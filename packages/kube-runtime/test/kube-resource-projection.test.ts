@@ -8,16 +8,20 @@ import {
   projectResourceBootstrapClaims,
   projectResourceManifests,
   resourcePodsFullyTerminated,
+  type KubeDeploymentManifest,
   type KubeManifest,
   type ResourceProjectionRow,
 } from '../src';
+import { kubeNamespaceName } from '../src/kube-naming';
+import type { KubeProjectedContainer } from '../src/kube-runtime.types';
+import { secretChecksum } from '../src/kube-secret-projection';
 
 const row: ResourceProjectionRow = {
   command: ['postgres', '-c', 'shared_buffers=256MB'],
   deleteData: false,
   environmentId: 'env-01jz',
   env: { POSTGRES_PASSWORD: 'generated' },
-  image: 'postgres@sha256:abc',
+  image: 'docker.io/library/postgres:16-alpine@sha256:abc',
   namespaceId: 'prj-01jz',
   operation: 'reconcile',
   ports: [5432, 9187],
@@ -77,6 +81,127 @@ describe('resource projection and fencing', (): void => {
     );
   });
 
+  it('pins resource Pods to the project identity and the restricted security profile', (): void => {
+    const deployment: KubeManifest = projectResourceManifests(row).find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+    )!;
+
+    expect(deployment.spec).toMatchObject({
+      template: {
+        spec: {
+          automountServiceAccountToken: false,
+          containers: [
+            {
+              securityContext: {
+                allowPrivilegeEscalation: false,
+                capabilities: { drop: ['ALL'] },
+                privileged: false,
+              },
+            },
+          ],
+          securityContext: {
+            fsGroup: 70,
+            fsGroupChangePolicy: 'Always',
+            runAsGroup: 70,
+            runAsNonRoot: true,
+            runAsUser: 70,
+            seccompProfile: { type: 'RuntimeDefault' },
+          },
+          serviceAccountName: kubeNamespaceName(row.namespaceId),
+        },
+      },
+    });
+    for (const forbiddenField of ['hostIPC', 'hostNetwork', 'hostPID', 'hostPath', 'runtimeClassName']) {
+      expect(deployment.spec).not.toHaveProperty(`template.spec.${forbiddenField}`);
+    }
+    expect(deployment.spec).not.toHaveProperty('template.spec.volumes.0.hostPath');
+  });
+
+  it('assigns a numeric non-root runtime identity to generic resources', (): void => {
+    const deployment: KubeManifest = projectResourceManifests({
+      ...row,
+      image: 'registry.example/acme/postgres:16-alpine',
+    }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.fsGroup', 10_001);
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsUser', 10_001);
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsGroup', 10_001);
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsNonRoot', true);
+    expect(deployment.spec).not.toHaveProperty('template.spec.containers.0.command');
+  });
+
+  it('preserves the official Debian PostgreSQL runtime identity', (): void => {
+    const deployment: KubeManifest = projectResourceManifests({
+      ...row,
+      image: 'docker.io/library/postgres:16@sha256:def',
+    }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.fsGroup', 999);
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsUser', 999);
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsGroup', 999);
+  });
+
+  it('assigns the generic identity to variant-ambiguous PostgreSQL digests', (): void => {
+    const deployment: KubeManifest = projectResourceManifests({
+      ...row,
+      image: 'postgres@sha256:def',
+    }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.fsGroup', 10_001);
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsUser', 10_001);
+    expect(deployment.spec).not.toHaveProperty('template.spec.containers.0.command');
+  });
+
+  it('recognizes the official PostgreSQL Alpine shorthand identity', (): void => {
+    const deployment: KubeManifest = projectResourceManifests({
+      ...row,
+      image: 'postgres:alpine3.22',
+    }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.fsGroup', 70);
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsUser', 70);
+    expect(deployment.spec).toHaveProperty('template.spec.securityContext.runAsGroup', 70);
+  });
+
+  it('selects an upgrade-safe writable PostgreSQL data directory at startup', (): void => {
+    const manifests: KubeManifest[] = projectResourceManifests(row);
+    const secret: KubeManifest = manifests.find((manifest: KubeManifest): boolean => manifest.kind === 'Secret')!;
+    const deployment: KubeManifest = manifests.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+    )!;
+
+    expect(secret.stringData).not.toHaveProperty('PGDATA');
+    expect((deployment as KubeDeploymentManifest).spec!.template.spec.containers[0]).toMatchObject({
+      args: [
+        expect.stringContaining('[ -f /var/lib/postgresql/data/PG_VERSION ]'),
+        'compartment-postgres',
+        ...row.command,
+      ],
+      command: ['/bin/sh', '-c'],
+    });
+  });
+
+  it('preserves an explicit PostgreSQL data directory and its rollout checksum', (): void => {
+    const env: Readonly<Record<string, string>> = {
+      ...row.env,
+      PGDATA: '/var/lib/postgresql/data/custom',
+    };
+    const manifests: KubeManifest[] = projectResourceManifests({ ...row, env });
+    const secret: KubeManifest = manifests.find((manifest: KubeManifest): boolean => manifest.kind === 'Secret')!;
+    const deployment: KubeDeploymentManifest = manifests.find(
+      (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
+    ) as KubeDeploymentManifest;
+    const container: KubeProjectedContainer = deployment.spec!.template.spec.containers[0]!;
+
+    expect(secret.stringData).toHaveProperty('PGDATA', env.PGDATA);
+    expect(deployment.spec!.template.metadata.annotations).toHaveProperty(
+      'compartment.dev/secret-checksum',
+      secretChecksum(env),
+    );
+    expect(container).not.toHaveProperty('command');
+    expect(container.args).toEqual(row.command);
+  });
+
   it('requires actual pod absence, including terminating pods', (): void => {
     expect(resourcePodsFullyTerminated([{ deletionTimestamp: '2026-07-12T00:00:00Z' }])).toBe(false);
     expect(resourcePodsFullyTerminated([])).toBe(true);
@@ -88,7 +213,6 @@ describe('resource projection and fencing', (): void => {
       .map((manifest: KubeManifest): string => stringify(manifest, { sortMapEntries: true }).trim())
       .join('\n---\n')
       .replaceAll(/[a-f0-9]{64}/g, '<sha256>');
-    expect(yaml).toMatchSnapshot();
     expect(yaml).toContain('type: Recreate');
     expect(yaml).toContain('replicas: 1');
   });
@@ -106,7 +230,6 @@ describe('resource projection and fencing', (): void => {
         spec: {
           containers: [
             {
-              args: row.command,
               ports: [
                 { containerPort: 5432, name: 'tcp-5432', protocol: 'TCP' },
                 { containerPort: 9187, name: 'tcp-9187', protocol: 'TCP' },
@@ -117,6 +240,9 @@ describe('resource projection and fencing', (): void => {
         },
       },
     });
+    expect(
+      (deployment as KubeDeploymentManifest).spec!.template.spec.containers[0]!.args?.slice(-row.command.length),
+    ).toEqual(row.command);
     expect(service.spec).toMatchObject({
       clusterIP: 'None',
       ports: [

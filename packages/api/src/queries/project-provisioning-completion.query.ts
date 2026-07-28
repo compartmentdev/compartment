@@ -1,10 +1,11 @@
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, or, type SQL } from 'drizzle-orm';
 import type { ProjectProvisioningAction } from '@compartment/contracts';
 import { projectKubeProvisioning } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type { DeploymentTransaction } from './deployments.query.types';
 import {
   projectProvisioningAttemptLimit,
+  projectIsolationVersion,
   projectProvisioningLeaseDuration,
   projectProvisioningTerminalFailure,
   projectTeardownTerminalFailure,
@@ -23,6 +24,9 @@ interface CompletedProjectProvisioningRow {
 }
 
 export async function completeProjectProvisioning(input: CompleteProjectProvisioningInput): Promise<boolean> {
+  if (input.isolationVersion !== projectIsolationVersion) {
+    return false;
+  }
   return await getApiDatabase().transaction(
     async (transaction: DeploymentTransaction): Promise<boolean> =>
       await completeProjectProvisioningWithTransaction(transaction, input),
@@ -121,6 +125,7 @@ async function renewProjectProvisioningLease(
         eq(projectKubeProvisioning.leaseId, input.leaseId),
         eq(projectKubeProvisioning.state, runningState(input.action)),
         gt(projectKubeProvisioning.leaseExpiresAt, now),
+        provisioningVersionCondition(input),
       ),
     )
     .returning({ projectId: projectKubeProvisioning.projectId });
@@ -138,6 +143,7 @@ async function persistProjectProvisioningCompletion(
       leaseExpiresAt: null,
       leaseId: null,
       state: completedState(input.action, input.status),
+      isolationVersion: completionIsolationVersion(input),
       updatedAt: new Date(),
     })
     .where(
@@ -145,10 +151,28 @@ async function persistProjectProvisioningCompletion(
         eq(projectKubeProvisioning.projectId, input.projectId),
         eq(projectKubeProvisioning.leaseId, input.leaseId),
         eq(projectKubeProvisioning.state, runningState(input.action)),
+        provisioningVersionCondition(input),
       ),
     )
     .returning({ attempts: projectKubeProvisioning.attempts, projectId: projectKubeProvisioning.projectId });
   return rows[0];
+}
+
+function provisioningVersionCondition(input: CompleteProjectProvisioningInput): SQL | undefined {
+  return input.action === 'teardown'
+    ? undefined
+    : or(
+        eq(projectKubeProvisioning.isolationVersion, input.isolationVersion - 1),
+        eq(projectKubeProvisioning.isolationVersion, input.isolationVersion),
+      );
+}
+
+function completionIsolationVersion(
+  input: CompleteProjectProvisioningInput,
+): number | typeof projectKubeProvisioning.isolationVersion {
+  return input.action === 'provision' && input.status === 'succeeded'
+    ? input.isolationVersion
+    : projectKubeProvisioning.isolationVersion;
 }
 
 function runningState(action: ProjectProvisioningAction): 'running' | 'teardown_running' {

@@ -12,6 +12,7 @@ import type {
   RequiredBigIntNumberBuilder,
   RequiredEnumTextBuilder,
   RequiredIntegerBuilder,
+  RuntimeDefaultIntegerBuilder,
   RequiredTimestampBuilder,
   RequiredTextBuilder,
 } from './schema.shared.types';
@@ -43,6 +44,7 @@ export type DeploymentKubeReferencesExtraConfigColumns = PgExtraConfigColumnsOf<
 interface ProductJobRunsColumnBuilders {
   id: PrimaryTextBuilder<'id'>;
   jobClass: RequiredEnumTextBuilder<'job_class', ['release', 'resource-operation']>;
+  runtimeIdentity: DefaultEnumTextBuilder<'runtime_identity', ['project', 'resource']>;
   identityId: RequiredTextBuilder<'identity_id'>;
   image: RequiredTextBuilder<'image'>;
   imagePullSecretId: OptionalTextBuilder<'image_pull_secret_id'>;
@@ -116,6 +118,7 @@ interface ProjectKubeProvisioningColumnBuilders {
   leaseExpiresAt: OptionalTimestampBuilder<'lease_expires_at'>;
   failureMessage: OptionalTextBuilder<'failure_message'>;
   attempts: DefaultIntegerBuilder<'attempts'>;
+  isolationVersion: RuntimeDefaultIntegerBuilder<'isolation_version'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;
 }

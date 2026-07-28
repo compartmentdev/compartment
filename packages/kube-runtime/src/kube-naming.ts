@@ -44,3 +44,7 @@ export function kubeCustomDomainName(domainId: string): string {
 export function kubeCustomDomainTlsSecretName(domainId: string): string {
   return immutableKubeName('domain-tls', domainId);
 }
+
+export function kubeResourceQuotaName(namespaceId: string): string {
+  return immutableKubeName('quota', namespaceId);
+}

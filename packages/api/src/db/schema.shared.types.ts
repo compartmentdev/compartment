@@ -4,6 +4,7 @@ import type {
   ColumnBuilderBase,
   ColumnBuilderBaseConfig,
   HasDefault,
+  HasRuntimeDefault,
   IsPrimaryKey,
   NotNull,
 } from 'drizzle-orm/column-builder';
@@ -59,6 +60,9 @@ export type DefaultTimestampBuilder<TName extends string> = NotNull<HasDefault<P
 export type OptionalIntegerBuilder<TName extends string> = PgIntegerBuilderInitial<TName>;
 export type RequiredIntegerBuilder<TName extends string> = NotNull<PgIntegerBuilderInitial<TName>>;
 export type DefaultIntegerBuilder<TName extends string> = NotNull<HasDefault<PgIntegerBuilderInitial<TName>>>;
+export type RuntimeDefaultIntegerBuilder<TName extends string> = NotNull<
+  HasRuntimeDefault<HasDefault<PgIntegerBuilderInitial<TName>>>
+>;
 export type RequiredBigIntNumberBuilder<TName extends string> = NotNull<PgBigInt53BuilderInitial<TName>>;
 export type RequiredBooleanBuilder<TName extends string> = NotNull<PgBooleanBuilderInitial<TName>>;
 export type DefaultBooleanBuilder<TName extends string> = NotNull<HasDefault<PgBooleanBuilderInitial<TName>>>;

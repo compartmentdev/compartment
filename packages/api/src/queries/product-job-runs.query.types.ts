@@ -1,6 +1,7 @@
 import type {
   ProductJobClass,
   ProductJobIntent,
+  ProductJobRuntimeIdentity,
   ProductJobStatus,
   ProductJobVolumeMount,
   WorkerPersistProductJobResultRequest,
@@ -17,6 +18,7 @@ export interface ProductJobRunRow {
   image: string;
   imagePullSecretId: string | null;
   jobClass: ProductJobClass;
+  runtimeIdentity: ProductJobRuntimeIdentity;
   jobName: string | null;
   logs: string | null;
   namespace: string;

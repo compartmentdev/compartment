@@ -25,6 +25,7 @@ import { lockProjectResourceForReconcile } from './resource-reconcile-lock.query
 import { resourceReconcileLeaseDurationMs } from './resource-reconcile-policy';
 import { toProjectResourceRow } from './resources.query';
 import { lockResourceRuntimeClaims } from './resource-runtime-claim-lock.query';
+import { projectIsolationVersion } from './project-provisioning-policy';
 
 export { acknowledgeResourceReconcileRun } from './resource-reconcile-acknowledgement.query';
 const resourceReconcileSettlementSelection: ResourceReconcileSettlementSelection = {
@@ -125,6 +126,7 @@ async function lockNextClaimableResourceReconcileRun(
     .where(
       and(
         eq(projectKubeProvisioning.state, 'succeeded'),
+        eq(projectKubeProvisioning.isolationVersion, projectIsolationVersion),
         claimableResourceProjectCondition(),
         claimableResourceReconcileCondition(),
       ),

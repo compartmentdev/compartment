@@ -156,7 +156,13 @@ function projectProvisioningRequest(
   target: ProjectProvisioningTargetV2,
   completion: ProjectProvisioningResult,
 ): WorkerCompleteProjectProvisioningV2Request {
-  return { ...completion, action: target.action, leaseId: target.leaseId, projectId: target.projectId };
+  return {
+    ...completion,
+    action: target.action,
+    isolationVersion: target.isolationVersion,
+    leaseId: target.leaseId,
+    projectId: target.projectId,
+  };
 }
 
 async function cleanupProjectProvisioningAuthority(

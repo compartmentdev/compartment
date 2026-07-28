@@ -23,6 +23,7 @@ export async function acknowledgeProjectProvisioningV2(
   const applied: boolean = await completeProjectProvisioning({
     action: input.action,
     failureMessage: input.message ?? null,
+    isolationVersion: input.isolationVersion,
     leaseId: input.leaseId,
     projectId: input.projectId,
     status: input.status,

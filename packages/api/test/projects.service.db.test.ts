@@ -161,6 +161,29 @@ describe('projects service', (): void => {
     ]);
   });
 
+  it('fails closed when an authorized organization context targets another organization project id', async (): Promise<void> => {
+    mocks.resolveActiveProjectScope.mockResolvedValue(
+      createResolvedProjectScope({
+        archivedAt: null,
+        organizationId: 'org_other',
+        projectId: 'prj_billing',
+        projectName: 'billing',
+      }),
+    );
+
+    await expect(
+      renameProjectForPrincipal({
+        nextProjectName: 'cross-org-rename',
+        organizationSlug: 'other',
+        principalId: 'prn_git_sources',
+        projectName: 'billing',
+      }),
+    ).rejects.toThrow('Project mutation failed.');
+    expect(await db.select().from(projects).where(eq(projects.id, 'prj_billing'))).toMatchObject([
+      { name: 'billing', organizationId: 'org_git_sources' },
+    ]);
+  });
+
   it('deletes archived projects after disconnecting their git source', async (): Promise<void> => {
     await expect(
       deleteProjectForPrincipal({
@@ -176,6 +199,7 @@ describe('projects service', (): void => {
     await completeProjectProvisioning({
       action: 'teardown',
       failureMessage: null,
+      isolationVersion: teardown.isolationVersion,
       leaseId: teardown.leaseId,
       projectId: teardown.projectId,
       status: 'succeeded',
@@ -206,6 +230,7 @@ describe('projects service', (): void => {
       await completeProjectProvisioning({
         action: 'teardown',
         failureMessage: 'namespace deletion stopped making progress',
+        isolationVersion: teardown.isolationVersion,
         leaseId: teardown.leaseId,
         projectId: teardown.projectId,
         status: 'failed',
@@ -781,6 +806,7 @@ async function seedDeleteScope(): Promise<void> {
 function createResolvedProjectScope(
   options: {
     archivedAt?: Date | null;
+    organizationId?: string;
     projectId?: string;
     projectName?: string;
   } = {},
@@ -803,7 +829,7 @@ function createResolvedProjectScope(
       scopeType: 'organization' as const,
     },
     organization: {
-      id: 'org_git_sources',
+      id: options.organizationId ?? 'org_git_sources',
       name: 'Git Sources Org',
       slug: 'acme-dev',
     },
@@ -812,7 +838,7 @@ function createResolvedProjectScope(
       createdAt: new Date('2026-04-28T11:00:00.000Z'),
       id: options.projectId ?? 'prj_billing',
       name: options.projectName ?? 'billing',
-      organizationId: 'org_git_sources',
+      organizationId: options.organizationId ?? 'org_git_sources',
       updatedAt: new Date('2026-04-28T12:00:00.000Z'),
     },
   };

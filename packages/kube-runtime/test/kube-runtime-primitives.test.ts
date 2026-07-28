@@ -12,6 +12,7 @@ import {
 } from '../src';
 import { kubeJobName, kubeSecretName } from '../src/kube-naming';
 import type {
+  KubeJobManifest,
   KubeObservationHealth,
   KubeObservationListener,
   KubeObservedManifest,
@@ -264,11 +265,42 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(projectedSpec.template.spec.containers[0]?.securityContext).toEqual({
       allowPrivilegeEscalation: false,
       capabilities: { drop: ['ALL'] },
+      privileged: false,
     });
     expect(projectedSpec.template.spec.serviceAccountName).toBe('compartment-project-bootstrap');
     expect(projectedSpec.template.spec.volumes[0]?.projected?.sources[0]).toMatchObject({
       serviceAccountToken: { expirationSeconds: 600, path: 'token' },
     });
+  });
+
+  it('projects project Jobs with a dedicated ServiceAccount and no Kubernetes API credential', async (): Promise<void> => {
+    const spec: KubeJobSpec = {
+      ...jobSpec('release'),
+      securityProfile: 'project-restricted',
+      serviceAccountName: 'cpt-prj-01jz',
+    };
+    const jobName: string = kubeJobName(spec.id);
+    createObservationMock.mockResolvedValue(terminalObservation(jobName, true, 0, vi.fn()));
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    await runtime.runJob(spec);
+
+    const projected: KubeJobManifest = objectApi.patches.find(
+      ([manifest]: KubePatchInvocation): boolean => manifest.kind === 'Job',
+    )?.[0] as KubeJobManifest;
+    expect(projected.spec?.template.spec).toMatchObject({
+      automountServiceAccountToken: false,
+      securityContext: {
+        runAsGroup: 10_001,
+        runAsNonRoot: true,
+        runAsUser: 10_001,
+        seccompProfile: { type: 'RuntimeDefault' },
+      },
+      serviceAccountName: 'cpt-prj-01jz',
+    });
+    expect(projected.spec?.template.spec.volumes ?? []).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'kube-api-access' })]),
+    );
   });
 
   it('projects a shared filesystem group for Jobs that mount resource volumes', async (): Promise<void> => {
@@ -371,11 +403,27 @@ describe('KubeRuntime Job primitive', (): void => {
   it('removes bootstrap authority after applying the namespace-local controller binding', async (): Promise<void> => {
     objectApi.conflicts.add('Namespace');
     objectApi.useStatusCodeConflict = true;
+    objectApi.readOverrides.set('Namespace', {
+      apiVersion: 'v1',
+      kind: 'Namespace',
+      metadata: {
+        labels: {
+          'app.kubernetes.io/managed-by': 'compartment',
+          'compartment.dev/namespace-id': 'prj-01jz',
+          'compartment.dev/project-id': 'prj-01jz',
+        },
+        name: kubeNamespaceName('prj-01jz'),
+      },
+    });
     const runtime: KubeRuntime = new KubeRuntime(
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
       { makeApiClient: (): PrimitiveCoreApi => coreApi } as never,
     );
     await runtime.apply(projectNamespaceProvisioningBundle(provisioningRow('prj-01jz')));
+    expect(
+      objectApi.patches.find(([object]: KubePatchInvocation): boolean => object.kind === 'Namespace')?.[0].metadata
+        ?.labels,
+    ).toMatchObject({ 'pod-security.kubernetes.io/enforce': 'restricted' });
     expect(objectApi.deletes).toMatchObject([{ kind: 'RoleBinding' }, { kind: 'ClusterRoleBinding' }]);
     expect(objectApi.events.at(-1)).toBe('delete:ClusterRoleBinding');
   });

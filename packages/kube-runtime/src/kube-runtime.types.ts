@@ -5,8 +5,10 @@ import type {
   KubeReadinessProbe,
 } from './kube-application-projection.types';
 import type { KubeJobVolumeMount, KubePodVolume, KubeVolumeMount } from './kube-volume.types';
+import type { KubeContainerSecurityContext, KubePodSecurityContext } from './kube-security-context.types';
 
 export type { KubeJobVolumeMount, KubePodVolume, KubeVolumeMount } from './kube-volume.types';
+export type { ApplyBundle } from './kube-apply-bundle.types';
 
 export type KubeManifestKind =
   | 'ConfigMap'
@@ -21,6 +23,7 @@ export type KubeManifestKind =
   | 'Namespace'
   | 'NetworkPolicy'
   | 'PersistentVolumeClaim'
+  | 'ResourceQuota'
   | 'RoleBinding'
   | 'Secret'
   | 'Service'
@@ -64,6 +67,7 @@ export interface KubeNonWorkloadManifest extends KubeManifestBase {
     | 'Namespace'
     | 'NetworkPolicy'
     | 'PersistentVolumeClaim'
+    | 'ResourceQuota'
     | 'RoleBinding'
     | 'Secret'
     | 'ServiceAccount';
@@ -114,7 +118,7 @@ export interface KubeProjectedContainer {
   ports?: KubeContainerPort[] | undefined;
   readinessProbe?: KubeReadinessProbe | undefined;
   resources?: object | undefined;
-  securityContext?: object | undefined;
+  securityContext?: KubeContainerSecurityContext | undefined;
   volumeMounts?: KubeVolumeMount[] | undefined;
 }
 
@@ -124,7 +128,7 @@ export interface KubeProjectedPodSpec {
   imagePullSecrets?: KubeLocalObjectReference[] | undefined;
   restartPolicy?: 'Never' | 'OnFailure' | undefined;
   serviceAccountName?: string | undefined;
-  securityContext?: object | undefined;
+  securityContext?: KubePodSecurityContext | undefined;
   terminationGracePeriodSeconds?: number | undefined;
   volumes?: KubePodVolume[] | undefined;
 }
@@ -184,13 +188,6 @@ export interface KubeJobManifestSpec {
   backoffLimit: number;
   template: KubePodTemplate;
   ttlSecondsAfterFinished?: number | undefined;
-}
-
-export interface ApplyBundle {
-  createBeforeApply?: KubeManifest[] | undefined;
-  deleteAfterApply?: KubeManifest[] | undefined;
-  objects: KubeManifest[];
-  force?: boolean | undefined;
 }
 
 export interface ObserveLabels {
@@ -257,7 +254,7 @@ export interface KubeJobSpec {
   jobClass: 'release' | 'operation';
   labels: Readonly<Record<string, string>>;
   namespace: string;
-  securityProfile?: 'restricted' | undefined;
+  securityProfile?: 'project-restricted' | 'resource-restricted' | 'restricted' | undefined;
   serviceAccountName?: string | undefined;
   serviceAccountTokenExpirationSeconds?: number | undefined;
   timeoutMs: number;

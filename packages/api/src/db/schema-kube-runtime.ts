@@ -44,6 +44,9 @@ export const productJobRuns: KubeRuntimeSchemaTypes.ProductJobRunsTable = pgTabl
   {
     id: text('id').primaryKey(),
     jobClass: text('job_class', { enum: ['release', 'resource-operation'] }).notNull(),
+    runtimeIdentity: text('runtime_identity', { enum: ['project', 'resource'] })
+      .default('resource')
+      .notNull(),
     identityId: text('identity_id').notNull(),
     image: text('image').notNull(),
     imagePullSecretId: text('image_pull_secret_id'),
@@ -149,6 +152,10 @@ export const projectKubeProvisioning: KubeRuntimeSchemaTypes.ProjectKubeProvisio
     leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
     failureMessage: text('failure_message'),
     attempts: integer('attempts').default(0).notNull(),
+    isolationVersion: integer('isolation_version')
+      .default(0)
+      .$defaultFn((): number => 1)
+      .notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

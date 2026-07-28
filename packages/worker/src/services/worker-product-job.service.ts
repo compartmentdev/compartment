@@ -207,6 +207,11 @@ function buildKubeJobSpec(intent: ProductJobIntent, identityId: string): KubeJob
     jobClass: intent.jobClass === 'release' ? 'release' : 'operation',
     labels: { 'compartment.dev/job-class': intent.jobClass },
     namespace: intent.namespace,
+    securityProfile:
+      intent.jobClass === 'release' || intent.runtimeIdentity === 'project'
+        ? 'project-restricted'
+        : 'resource-restricted',
+    serviceAccountName: intent.namespace,
     timeoutMs: intent.timeoutMs,
     volumeMounts: intent.volumeMounts,
   };

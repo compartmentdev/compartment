@@ -72,6 +72,31 @@ export function findDegradedProductDeployments(rawDeployments) {
   });
 }
 
+export function createLoadPodOverrides(containerName) {
+  return {
+    spec: {
+      containers: [
+        {
+          command: ['node', '-e', loadProgram],
+          image: loadPodImage,
+          name: containerName,
+          securityContext: {
+            allowPrivilegeEscalation: false,
+            capabilities: { drop: ['ALL'] },
+            privileged: false,
+          },
+        },
+      ],
+      securityContext: {
+        runAsGroup: 10_001,
+        runAsNonRoot: true,
+        runAsUser: 10_001,
+        seccompProfile: { type: 'RuntimeDefault' },
+      },
+    },
+  };
+}
+
 async function runPlatformK3dProductLogGate() {
   let originalQuota;
   let loadTarget;
@@ -171,9 +196,7 @@ async function startLoadPods() {
     throw new Error('No ready product deployment is available for the product-log buffer gate.');
   }
   const podNames = Array.from({ length: loadPodCount }, (_, index) => `p7-buffer-load-${index}`);
-  const overrides = JSON.stringify({
-    spec: { containers: [{ command: ['node', '-e', loadProgram], image: loadPodImage, name: containerName }] },
-  });
+  const overrides = JSON.stringify(createLoadPodOverrides(containerName));
   for (const podName of podNames) {
     runCommand(
       'kubectl',

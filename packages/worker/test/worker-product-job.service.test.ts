@@ -4,7 +4,7 @@ import type {
   WorkerPersistProductJobIntentResponse,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
-import type { KubeJobResult, KubeObservedManifest, KubeRuntime } from '@compartment/kube-runtime';
+import type { KubeJobResult, KubeJobSpec, KubeObservedManifest, KubeRuntime } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { executeProductJob } from '../src/services/worker-product-job.service';
@@ -116,6 +116,38 @@ describe('executeProductJob', (): void => {
     expect((result.finalize as Mock).mock.calls).toHaveLength(1);
     expect(durable).toBe(true);
   });
+
+  it.each([releaseIntent(), resourceOperationIntent(), projectResourceOperationIntent()])(
+    'pins project Job Pods to the tokenless project ServiceAccount and restricted profile',
+    async (intent: ProductJobIntent): Promise<void> => {
+      const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
+      if (intent.jobClass === 'resource-operation') {
+        runtime.read = vi.fn(
+          async (): Promise<KubeObservedManifest> =>
+            await Promise.resolve({
+              apiVersion: 'v1',
+              kind: 'PersistentVolumeClaim',
+              metadata: { name: 'backup-artifacts', uid: 'uid-backup' },
+              status: { phase: 'Bound' },
+            }),
+        );
+      }
+
+      await executeProductJob(requester(), runtime, intent);
+
+      expect(runtime.runJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          securityProfile:
+            intent.jobClass === 'release' || intent.runtimeIdentity === 'project'
+              ? 'project-restricted'
+              : 'resource-restricted',
+          serviceAccountName: intent.namespace,
+        }),
+      );
+      const projected: KubeJobSpec | undefined = runtime.runJob.mock.calls[0]?.[0] as KubeJobSpec | undefined;
+      expect(projected?.serviceAccountTokenExpirationSeconds).toBeUndefined();
+    },
+  );
 
   it('leaves a transient Kubernetes failure non-terminal', async (): Promise<void> => {
     const runtime: KubeRuntime & { runJob: Mock } = runtimeWithSequence([new Error('observation startup unavailable')]);
@@ -253,6 +285,7 @@ function resourceOperationIntent(): ProductJobIntent {
     operationId: 'operation-1',
     projectId: 'prj-01jz',
     resourceIds: ['res-1'],
+    runtimeIdentity: 'resource',
     timeoutMs: 30_000,
     volumeMounts: [
       {
@@ -264,6 +297,14 @@ function resourceOperationIntent(): ProductJobIntent {
       },
     ],
   };
+}
+
+function projectResourceOperationIntent(): ProductJobIntent {
+  const intent: ProductJobIntent = resourceOperationIntent();
+  if (intent.jobClass === 'release') {
+    throw new Error('Expected a resource-operation Product Job intent.');
+  }
+  return { ...intent, runtimeIdentity: 'project' };
 }
 
 function successResult(): KubeJobResult {

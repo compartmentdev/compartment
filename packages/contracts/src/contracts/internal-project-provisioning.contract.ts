@@ -5,6 +5,7 @@ export type ProjectProvisioningAction = 'provision' | 'teardown';
 
 export interface ProjectProvisioningTargetV2 {
   action: ProjectProvisioningAction;
+  isolationVersion: number;
   leaseId: string;
   namespaceId: string;
   projectId: string;
@@ -12,6 +13,7 @@ export interface ProjectProvisioningTargetV2 {
 
 export interface WorkerCompleteProjectProvisioningV2Request {
   action: ProjectProvisioningAction;
+  isolationVersion: number;
   leaseId: string;
   message?: string | undefined;
   projectId: string;
@@ -32,6 +34,7 @@ export const workerCompleteProjectProvisioningV2Pathname: string = '/internal/ku
 const projectProvisioningTargetV2Schema: ContractSchema<ProjectProvisioningTargetV2> = z
   .object({
     action: z.enum(['provision', 'teardown']),
+    isolationVersion: z.number().int().nonnegative(),
     leaseId: z.string().min(1),
     namespaceId: z.string().min(1),
     projectId: z.string().min(1),
@@ -45,6 +48,7 @@ export const workerCompleteProjectProvisioningV2RequestSchema: ContractSchema<Wo
   z
     .object({
       action: z.enum(['provision', 'teardown']),
+      isolationVersion: z.number().int().nonnegative(),
       leaseId: z.string().min(1),
       message: z.string().min(1).optional(),
       projectId: z.string().min(1),

@@ -13,6 +13,13 @@ import type {
 import { compareKubeKey } from './kube-key-order';
 import { kubeSecretName } from './kube-naming';
 import { secretChecksum } from './kube-secret-projection';
+import type { KubePodSecurityContext } from './kube-security-context.types';
+import {
+  projectPodSecurityContext,
+  projectVolumeSecurityContext,
+  resourcePodSecurityContext,
+  restrictedContainerSecurityContext,
+} from './kube-security-context';
 
 export function kubeFinalizedJobManifest(
   spec: KubeJobSpec,
@@ -63,19 +70,17 @@ function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobMani
   };
 }
 
-function jobPodSecurityContext(spec: KubeJobSpec): object | undefined {
-  const volumeGroupContext: object =
-    spec.volumeMounts === undefined || spec.volumeMounts.length === 0
-      ? {}
-      : { fsGroup: 10_001, fsGroupChangePolicy: 'Always' };
+function jobPodSecurityContext(spec: KubeJobSpec): KubePodSecurityContext | undefined {
+  const volumeGroupContext: KubePodSecurityContext =
+    spec.volumeMounts === undefined || spec.volumeMounts.length === 0 ? {} : projectVolumeSecurityContext();
   if (spec.securityProfile === 'restricted') {
-    return {
-      ...volumeGroupContext,
-      runAsGroup: 10_001,
-      runAsNonRoot: true,
-      runAsUser: 10_001,
-      seccompProfile: { type: 'RuntimeDefault' },
-    };
+    return { ...volumeGroupContext, ...projectPodSecurityContext() };
+  }
+  if (spec.securityProfile === 'project-restricted') {
+    return { ...volumeGroupContext, ...projectPodSecurityContext() };
+  }
+  if (spec.securityProfile === 'resource-restricted') {
+    return { ...volumeGroupContext, ...resourcePodSecurityContext(spec.image) };
   }
   return Object.keys(volumeGroupContext).length === 0 ? undefined : volumeGroupContext;
 }
@@ -96,8 +101,10 @@ function jobContainer(spec: KubeJobSpec): KubeProjectedContainer {
     image: spec.image,
     name: 'job',
     securityContext:
-      spec.securityProfile === 'restricted'
-        ? { allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] } }
+      spec.securityProfile === 'restricted' ||
+      spec.securityProfile === 'project-restricted' ||
+      spec.securityProfile === 'resource-restricted'
+        ? restrictedContainerSecurityContext()
         : undefined,
     volumeMounts: kubeJobVolumeMounts(spec),
   };
@@ -119,11 +126,11 @@ function kubeJobVolumes(spec: KubeJobSpec): KubePodVolume[] {
 }
 
 function kubeApiAccessVolume(spec: KubeJobSpec): KubePodVolume | null {
-  if (spec.serviceAccountName === undefined && spec.serviceAccountTokenExpirationSeconds === undefined) {
+  if (spec.serviceAccountTokenExpirationSeconds === undefined) {
     return null;
   }
-  if (spec.serviceAccountName === undefined || spec.serviceAccountTokenExpirationSeconds === undefined) {
-    throw new Error('Kubernetes Job service account name and token expiration must be configured together.');
+  if (spec.serviceAccountName === undefined) {
+    throw new Error('Kubernetes Job token projection requires a service account name.');
   }
   return projectedKubeApiAccessVolume(spec.serviceAccountTokenExpirationSeconds);
 }
@@ -156,7 +163,7 @@ function kubeJobVolumeMounts(spec: KubeJobSpec): KubeVolumeMount[] {
         ...(mount.subPath === undefined ? {} : { subPath: mount.subPath }),
       }),
     ) ?? [];
-  return spec.serviceAccountName === undefined
+  return spec.serviceAccountTokenExpirationSeconds === undefined
     ? mounts
     : [
         ...mounts,

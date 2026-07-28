@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { parseDeploymentReferences } from './collect-platform-k3d-e2e-diagnostics.mjs';
 import {
+  createLoadPodOverrides,
   findDegradedProductDeployments,
   parseNonNegativeInteger,
   parseProductLogBufferBytes,
@@ -67,5 +68,21 @@ vector_buffer_max_byte_size{component_id="product_store",buffer_type="disk"} 268
       'unavailable-resource',
       'unavailable-app',
     ]);
+  });
+
+  it('projects restricted Pod Security for product-log load Pods', () => {
+    const overrides = createLoadPodOverrides('app-deployment');
+
+    expect(overrides.spec.securityContext).toEqual({
+      runAsGroup: 10_001,
+      runAsNonRoot: true,
+      runAsUser: 10_001,
+      seccompProfile: { type: 'RuntimeDefault' },
+    });
+    expect(overrides.spec.containers[0].securityContext).toEqual({
+      allowPrivilegeEscalation: false,
+      capabilities: { drop: ['ALL'] },
+      privileged: false,
+    });
   });
 });

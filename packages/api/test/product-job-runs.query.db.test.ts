@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import type {
   ProductJobIntent,
+  ResourceOperationProductJobIntent,
   ResourceReconcileIntent,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
@@ -389,6 +390,7 @@ describe('product Job persistence', (): void => {
       operationId: 'op_backup',
       projectId: 'prj-job',
       resourceIds: ['res-db'],
+      runtimeIdentity: 'resource',
       timeoutMs: 30_000,
       volumeMounts: [
         {
@@ -404,7 +406,19 @@ describe('product Job persistence', (): void => {
     await persistProductJobIntent({ identityId: 'op_backup', intent });
 
     await expect(claimProductJob('resource-operation')).resolves.toMatchObject({
-      intent: { volumeMounts: intent.volumeMounts },
+      intent: { runtimeIdentity: 'resource', volumeMounts: intent.volumeMounts },
+    });
+  });
+
+  it('persists the project runtime identity for platform resource operations', async (): Promise<void> => {
+    const intent: ProductJobIntent = {
+      ...resourceOperationIntent('op_platform'),
+      runtimeIdentity: 'project',
+    };
+    await persistProductJobIntent({ identityId: 'op_platform', intent });
+
+    await expect(claimProductJob('resource-operation')).resolves.toMatchObject({
+      intent: { operationId: 'op_platform', runtimeIdentity: 'project' },
     });
   });
 
@@ -589,7 +603,7 @@ function releaseIntent(): ProductJobIntent {
   };
 }
 
-function resourceOperationIntent(operationId: string = 'op_backup'): ProductJobIntent {
+function resourceOperationIntent(operationId: string = 'op_backup'): ResourceOperationProductJobIntent {
   return {
     command: ['bin/backup'],
     env: {},
@@ -599,6 +613,7 @@ function resourceOperationIntent(operationId: string = 'op_backup'): ProductJobI
     operationId,
     projectId: 'prj-job',
     resourceIds: ['res-db'],
+    runtimeIdentity: 'resource',
     timeoutMs: 30_000,
   };
 }

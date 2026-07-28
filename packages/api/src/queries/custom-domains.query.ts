@@ -1,5 +1,5 @@
 import type { CustomDomainCheckStatus, CustomDomainState } from '@compartment/contracts';
-import { and, asc, eq, ne, type QueryPromise, type SQL } from 'drizzle-orm';
+import { and, asc, eq, exists, ne, type QueryPromise, type SQL } from 'drizzle-orm';
 import type { SelectedFields } from 'drizzle-orm/pg-core/query-builders/select.types';
 import { deploymentCustomDomains, environments, organizations, projectServices, projects } from '../db/schema';
 import { getApiDatabase } from '../runtime/runtime-access';
@@ -155,7 +155,20 @@ function buildMutableCustomDomainPredicate(input: UpdateCustomDomainCheckInput):
     eq(deploymentCustomDomains.host, input.host),
     eq(deploymentCustomDomains.desiredGeneration, input.desiredGeneration - 1),
     ne(deploymentCustomDomains.reconcileState, 'deleting'),
+    buildCustomDomainOrganizationPredicate(input.organizationId),
   )!;
+}
+
+function buildCustomDomainOrganizationPredicate(organizationId: string): SQL {
+  return exists(
+    getApiDatabase()
+      .select({ id: environments.id })
+      .from(environments)
+      .innerJoin(projects, eq(environments.projectId, projects.id))
+      .where(
+        and(eq(environments.id, deploymentCustomDomains.environmentId), eq(projects.organizationId, organizationId)),
+      ),
+  );
 }
 
 function createCustomDomainLookupQuery(): CustomDomainLookupQuery {

@@ -107,7 +107,7 @@ export async function renameProjectWithExecutor(
       name: input.name,
       updatedAt: input.updatedAt,
     })
-    .where(eq(projects.id, input.projectId))
+    .where(and(eq(projects.id, input.projectId), eq(projects.organizationId, input.organizationId)))
     .returning();
 
   return requirePersistedRow(project, 'project');
@@ -123,17 +123,22 @@ export async function setProjectArchivedAtWithExecutor(
       archivedAt: input.archivedAt,
       updatedAt: input.updatedAt,
     })
-    .where(eq(projects.id, input.projectId))
+    .where(and(eq(projects.id, input.projectId), eq(projects.organizationId, input.organizationId)))
     .returning();
 
   return requirePersistedRow(project, 'project');
 }
 
-export async function findProjectByIdWithExecutor(
+export async function findProjectByOrganizationAndIdWithExecutor(
   executor: Pick<Database, 'select'>,
+  organizationId: string,
   projectId: string,
 ): Promise<ProjectRow | undefined> {
-  const rows: ProjectRow[] = await executor.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+  const rows: ProjectRow[] = await executor
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
+    .limit(1);
   return rows[0];
 }
 
@@ -150,9 +155,16 @@ export async function deleteArchivedProjectWithExecutor(
 
 export async function lockProjectMutationWithExecutor(
   executor: ProjectsMutationTransaction,
+  organizationId: string,
   projectId: string,
 ): Promise<void> {
-  await executor.execute(sql`select ${projects.id} from ${projects} where ${projects.id} = ${projectId} for update`);
+  await executor.execute(sql`
+    select ${projects.id}
+    from ${projects}
+    where ${projects.id} = ${projectId}
+      and ${projects.organizationId} = ${organizationId}
+    for update
+  `);
 }
 
 function requirePersistedRow<TRow>(row: TRow | undefined, label: string): TRow {

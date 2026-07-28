@@ -66,7 +66,7 @@ function validateExistingProvisioningObject(existing: KubeManifest, desired: Kub
 
 function hasSameProvisioningFields(existing: KubeManifest, desired: KubeManifest): boolean {
   if (desired.kind === 'Namespace') {
-    return hasDesiredLabels(existing, desired);
+    return hasCanonicalNamespaceLabels(existing, desired);
   }
   if (desired.kind === 'ServiceAccount') {
     return existing.automountServiceAccountToken === false;
@@ -96,8 +96,13 @@ function hasSameSubjects(existing: KubeManifest, desired: KubeManifest): boolean
   );
 }
 
-function hasDesiredLabels(existing: KubeManifest, desired: KubeManifest): boolean {
-  return Object.entries(desired.metadata?.labels ?? {}).every(
-    ([key, value]: [string, string]): boolean => existing.metadata?.labels?.[key] === value,
+function hasCanonicalNamespaceLabels(existing: KubeManifest, desired: KubeManifest): boolean {
+  const identityLabels: string[] = [
+    'app.kubernetes.io/managed-by',
+    'compartment.dev/namespace-id',
+    'compartment.dev/project-id',
+  ];
+  return identityLabels.every(
+    (key: string): boolean => existing.metadata?.labels?.[key] === desired.metadata?.labels?.[key],
   );
 }
