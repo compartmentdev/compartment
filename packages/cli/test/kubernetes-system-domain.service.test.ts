@@ -43,6 +43,7 @@ interface DomainServiceMocks {
   requestSystemApi: Mock<RequestSystemApi>;
   readRetainedManagedState: Mock<() => Promise<RetainedManagedDomainState>>;
   stageCertificate: Mock<StageDomainCertificate>;
+  waitForReadiness: Mock<ApplyDomainRelease>;
 }
 
 const mocks: DomainServiceMocks = vi.hoisted(
@@ -53,6 +54,7 @@ const mocks: DomainServiceMocks = vi.hoisted(
     requestSystemApi: vi.fn<RequestSystemApi>(),
     readRetainedManagedState: vi.fn<() => Promise<RetainedManagedDomainState>>(),
     stageCertificate: vi.fn<StageDomainCertificate>(),
+    waitForReadiness: vi.fn<ApplyDomainRelease>(),
   }),
 );
 
@@ -69,6 +71,9 @@ vi.mock('../src/services/kubernetes-system-domain-release.service', (): object =
 vi.mock('../src/services/kubernetes-install-retained-state.service', (): object => ({
   readRetainedManagedKubernetesDomainState: mocks.readRetainedManagedState,
 }));
+vi.mock('../src/services/kubernetes-system-domain-readiness.service', (): object => ({
+  waitForKubernetesSystemDomainReadiness: mocks.waitForReadiness,
+}));
 
 const target: KubernetesOperatorTarget = {
   chartPath: '/tmp/chart',
@@ -78,7 +83,6 @@ const target: KubernetesOperatorTarget = {
 };
 const customHostPlan: DomainHostPlan = {
   baseDomain: 'apps.example.com',
-  caddyMode: 'custom-http',
   domainKind: 'custom',
   publicScheme: 'https',
   tlsMode: 'external',
@@ -92,6 +96,7 @@ describe('Kubernetes system-domain activation', (): void => {
     mocks.requestSystemApi.mockReset();
     mocks.readRetainedManagedState.mockReset();
     mocks.stageCertificate.mockReset();
+    mocks.waitForReadiness.mockReset();
   });
 
   it('rolls out the verified domain before finalizing activation in the database', async (): Promise<void> => {
@@ -129,6 +134,24 @@ describe('Kubernetes system-domain activation', (): void => {
 
     expect(events).toEqual(['api:/internal/system/domain/status', 'api:/internal/system/domain/verify']);
     expect(mocks.commitActiveRelease).not.toHaveBeenCalled();
+  });
+
+  it('waits for the active runtime before committing an activation retry with no pending operation', async (): Promise<void> => {
+    const status: SystemDomainStatusResponse = activeStatus();
+    mocks.requestSystemApi.mockImplementation(
+      async <TResponse>(
+        _requestTarget: KubernetesOperatorTarget,
+        _request: KubernetesSystemApiRequest,
+        parse: (value: JsonValue | null) => TResponse,
+      ): Promise<TResponse> => await Promise.resolve(parse(toJsonValue(status))),
+    );
+
+    await activateKubernetesSystemDomain(target);
+
+    expect(mocks.waitForReadiness).toHaveBeenCalledWith(target, status.active);
+    expect(mocks.waitForReadiness.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.commitActiveRelease.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('leaves the pending release mounted when the private activation request fails', async (): Promise<void> => {
@@ -181,8 +204,26 @@ describe('Kubernetes system-domain activation', (): void => {
     );
   });
 
+  it('fails verify while DNS ownership or routing is pending', async (): Promise<void> => {
+    const handler: RequestSystemApi = async <TResponse>(
+      _target: KubernetesOperatorTarget,
+      request: KubernetesSystemApiRequest,
+      parse: (value: JsonValue | null) => TResponse,
+    ): Promise<TResponse> => {
+      if (request.method === 'GET') {
+        return await Promise.resolve(parse(toJsonValue(pendingStatus())));
+      }
+      return await Promise.resolve(parse(toJsonValue(mutationResponse(2, pendingStatus()))));
+    };
+    mocks.requestSystemApi.mockImplementation(handler);
+
+    await expect(verifyKubernetesSystemDomain({ ...target, expectedSetupVersion: 2 })).rejects.toThrow(
+      'System-domain verification did not converge',
+    );
+  });
+
   it('stages and mounts certificate material before attaching it through the private API', async (): Promise<void> => {
-    const certificateHostPlan: DomainHostPlan = { ...customHostPlan, caddyMode: 'custom-cert', tlsMode: 'custom-cert' };
+    const certificateHostPlan: DomainHostPlan = { ...customHostPlan, tlsMode: 'custom-cert' };
     const status: SystemDomainStatusResponse = {
       ...pendingStatus(),
       pending: { ...pendingStatus().pending!, hostPlan: certificateHostPlan },
@@ -190,6 +231,15 @@ describe('Kubernetes system-domain activation', (): void => {
     mocks.stageCertificate.mockResolvedValue({
       certificate: 'certificate',
       fingerprint: 'fingerprint',
+      metadata: {
+        dnsNames: ['console.customer.example.com', '*.customer.example.com'],
+        expiresAt: '2030-01-01T00:00:00.000Z',
+        fingerprintSha256: 'AA:BB',
+        issuedAt: '2025-01-01T00:00:00.000Z',
+        issuer: 'Test CA',
+        serialNumber: '01',
+        subject: 'customer.example.com',
+      },
       privateKey: 'private-key',
       secretName: 'domain-tls-domop-123',
     });
@@ -222,7 +272,21 @@ describe('Kubernetes system-domain activation', (): void => {
     expect(mocks.requestSystemApi).toHaveBeenLastCalledWith(
       expect.objectContaining(target),
       expect.objectContaining({
-        body: { expectedSetupVersion: 2 },
+        body: {
+          certificate: {
+            metadata: {
+              dnsNames: ['console.customer.example.com', '*.customer.example.com'],
+              expiresAt: '2030-01-01T00:00:00.000Z',
+              fingerprintSha256: 'AA:BB',
+              issuedAt: '2025-01-01T00:00:00.000Z',
+              issuer: 'Test CA',
+              serialNumber: '01',
+              subject: 'customer.example.com',
+            },
+            secretName: 'domain-tls-domop-123',
+          },
+          expectedSetupVersion: 2,
+        },
         method: 'POST',
         path: '/internal/system/domain/attach-cert',
       }),
@@ -234,18 +298,20 @@ describe('Kubernetes system-domain activation', (): void => {
     const events: string[] = [];
     const managedHostPlan: DomainHostPlan = {
       baseDomain: 'managed.compartment.run',
-      caddyMode: 'managed',
       domainKind: 'managed',
+      issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
       publicScheme: 'https',
       tlsMode: 'broker-dns01',
     };
     mocks.readRetainedManagedState.mockResolvedValue({
       acmeEmail: 'admin@example.com',
+      allocationId: 'allocation-1',
       baseDomain: managedHostPlan.baseDomain,
       brokerToken: 'token',
       brokerUrl: 'https://broker.compartment.run',
+      issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
       publicProtocol: 'https',
-      tlsMode: 'managed',
+      tlsMode: 'broker-dns01',
     });
     mocks.requestSystemApi.mockImplementation(
       async <TResponse>(
@@ -270,16 +336,22 @@ describe('Kubernetes system-domain activation', (): void => {
       events.push('helm:domain-commit');
       await Promise.resolve();
     });
+    mocks.waitForReadiness.mockImplementation(async (): Promise<void> => {
+      events.push('kubernetes:domain-ready');
+      await Promise.resolve();
+    });
 
     await resetManagedKubernetesSystemDomain(target);
 
     expect(events).toEqual([
       'api:/internal/system/domain/status',
       'helm:domain-rollout',
+      'kubernetes:domain-ready',
       'api:/internal/system/domain/reset-managed',
       'helm:domain-commit',
     ]);
     expect(mocks.applyRuntimeRelease).toHaveBeenCalledWith(target, managedHostPlan, 3);
+    expect(mocks.waitForReadiness).toHaveBeenCalledWith(target, managedHostPlan);
     expect(mocks.commitActiveRelease).toHaveBeenCalledWith(target, managedHostPlan, 3);
   });
 });
@@ -317,7 +389,6 @@ function buildStatus(setupVersion: number, operationStatus: 'pending_dns' | 'ver
   return {
     active: {
       baseDomain: 'managed.compartment.run',
-      caddyMode: 'managed',
       domainKind: 'managed',
       publicScheme: 'https',
       tlsMode: 'broker-dns01',

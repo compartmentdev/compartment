@@ -13,6 +13,7 @@ export interface SystemDomainPendingCertificateInput {
   expectedSetupVersion: number;
   operationId: string;
   pendingCertificateMetadataJson: string;
+  pendingTlsSecretName: string;
 }
 
 export interface VerifiedSystemDomainPendingInput {

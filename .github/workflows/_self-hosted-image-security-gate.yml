@@ -69,7 +69,7 @@ jobs:
       - name: Load self-hosted images from cache
         timeout-minutes: 5
         run: |
-          for service in api caddy edge worker; do
+          for service in api caddy dns01-solver edge worker; do
             docker load --input "./.compartment/self-hosted-image-cache/${service}.tar"
           done
 

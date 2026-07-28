@@ -152,10 +152,12 @@ compartment install \
 The password must contain at least eight characters. Supply it from your CI or secret-management system and avoid
 persisting it in shell history or committed files.
 
-In the managed-domain example above, the command creates the foundation release, detects the Caddy LoadBalancer
-public IP, allocates a domain through `https://broker.compartment.run`, persists the installation ID, domain
-allocation, and ingress addresses in a retained Kubernetes Secret, then completes the chart with managed DNS-01 TLS.
-At runtime the broker credential is read from that Secret only by API and Caddy, never from a ConfigMap. Helm also
+In the managed-domain example above, export the broker-issued
+`COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN`. The command creates the foundation release, observes every typed shared
+Ingress target, reserves an allocation through `https://broker.compartment.run`, binds the targets, and persists the
+installation ID, allocation, and targets in a retained Kubernetes Secret. It then completes the chart with
+cert-manager DNS-01 TLS. Only the DNS-01 solver reads the allocation token; certificate private keys remain in
+Kubernetes TLS Secrets. Helm also
 records supplied secret values in its Kubernetes release revision Secrets, so restrict access to Helm and platform
 Secrets.
 
@@ -179,7 +181,7 @@ the equivalent container-runtime mirror or route.
 Use `--kube-context`, `--namespace`, or `--release-name` when the defaults are not appropriate. Pass
 `--broker-url <url>` only for a managed-domain broker override. A CLI built directly from a source checkout has no
 embedded chart; pass `--chart ./deploy/chart/compartment` in that case. Source builds retain the chart and operator
-image tags, so set all four `images.*.tag` values explicitly when you need a pinned source install.
+image tags, so set all five `images.*.tag` values explicitly when you need a pinned source install.
 
 You can install the CLI and immediately start the same interactive platform install:
 
@@ -198,12 +200,12 @@ reinstall with the same release coordinates reuses the retained install-state Se
 pending release, repair or remove that release before retrying. After the owner was created, use `compartment login
 --api-url <console-url>` instead of rerunning the one-time install endpoint.
 
-For your own base domain, point `console.<baseDomain>` and `*.<baseDomain>` to the Caddy LoadBalancer, then pass
+For your own base domain, point `console.<baseDomain>` and `*.<baseDomain>` to the shared Ingress endpoint, then pass
 `--base-domain <baseDomain>`. The installer derives the Console URL; `--api-url` remains available when you need to
 state it explicitly. If the Caddy Service is not a LoadBalancer, set `platform.publicIngressIpv4` or
 `platform.publicIngressIpv6` in the operator values file.
 
-To terminate TLS in Caddy with your certificate, create a TLS Secret in the release namespace and select it:
+To use an operator-owned certificate, create a TLS Secret in the release namespace and select it:
 
 ```bash
 kubectl create namespace compartment --dry-run=client --output yaml \
@@ -214,22 +216,14 @@ kubectl --namespace compartment create secret tls compartment-public-tls \
 ```
 
 ```yaml
-platform:
-  tlsMode: custom-cert
-  # The CLI replaces this with the first owner's email.
-  acmeEmail: admin@example.com
-
-customTls:
+tls:
   existingSecret: compartment-public-tls
 ```
 
-The chart mounts that one Secret read-only in both API and Caddy at the canonical certificate and key paths. The ACME
-email is used for on-demand tenant certificates outside the platform certificate. For an external TLS terminator, use
-`platform.tlsMode: custom-http`, set the explicit public ingress address, and configure the Caddy Service topology
-required by that load balancer. Select the TLS mode and create any referenced Secret before running `compartment
-install`. If certificate and key material are supplied inline instead, Helm retains them in its release revision
-Secrets; `customTls.existingSecret` is preferred. When rotating an existing Secret in place, change
-`platform.rolloutMarker` so API and Caddy restart and Caddy reloads the certificate.
+Ingress references the Secret directly; neither API nor Caddy mounts it. Alternatively, set `tls.issuerRef` to an
+existing `Issuer` or operator-owned `ClusterIssuer`. Compartment creates exact console and wildcard Certificates but
+never creates an implicit customer-wide ClusterIssuer. Select the Secret or Issuer before running `compartment
+install`.
 
 The install-state Secret and registry-auth Service have Helm's `keep` policy. An uninstall followed by reinstall with
 the same namespace and release name retains the installation ID, domain allocation, ingress addresses, and registry
@@ -329,6 +323,7 @@ Stage a custom domain after you point `console.<baseDomain>` and `*.<baseDomain>
 compartment system domain set \
   --base-domain apps.example.com \
   --tls external \
+  --values compartment-values.yaml \
   --namespace compartment \
   --release-name compartment
 ```
@@ -342,7 +337,7 @@ compartment system domain verify \
   --release-name compartment
 ```
 
-Use `--tls custom-cert` when Caddy terminates TLS. Attach the certificate before verification:
+Use `--tls custom-cert` to keep the public `attach-cert` workflow. Attach the certificate before verification:
 
 ```bash
 compartment system domain attach-cert \
@@ -353,10 +348,10 @@ compartment system domain attach-cert \
   --release-name compartment
 ```
 
-The chart stores the certificate and key in an operation-specific Kubernetes TLS Secret; it never places them in a
-ConfigMap. Helm also retains those supplied values in its Kubernetes release revision Secrets. Publish the DNS records
-printed by `set` and wait for propagation before verification. Activate the verified domain with the same operator
-values and matching chart:
+The CLI validates the pair locally and stores it in an operation-specific Kubernetes TLS Secret consumed by Ingress.
+The API retains only the Secret name and certificate metadata; API, Caddy, and the managed-domain broker never receive
+the private key. Publish the DNS records printed by `set` and wait for propagation before verification. Activate the
+verified domain with the same operator values and matching chart:
 
 ```bash
 compartment system domain activate \
@@ -365,9 +360,9 @@ compartment system domain activate \
   --release-name compartment
 ```
 
-Activation rolls API, Edge, and Caddy, waits for them, records the activation, and only then commits the retained
-domain generation. Worker and project-provisioner pods keep running. If the command stops, rerun it. The generation
-check prevents older domain values from replacing the retained active state.
+Activation applies the new Ingress TLS path, waits for Ingress publication and Certificate readiness when applicable,
+records the activation, and only then commits the retained domain generation. If the command stops, rerun it. The
+generation check prevents older domain values from replacing the retained active state.
 
 Before `attach-cert`, `activate`, or `reset-managed` changes the Helm release, the CLI re-verifies the effective API,
 Worker, Edge, and Caddy images and stops the rollout if any image fails the signing policy.

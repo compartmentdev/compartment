@@ -1,0 +1,138 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: platform TLS ownership
+templates:
+  - templates/ingress.yaml
+  - templates/managed-domain-dns01.yaml
+  - templates/platform-certificates.yaml
+release:
+  name: compartment
+  namespace: platform
+tests:
+  - it: references an operator Issuer without creating a ClusterIssuer
+    set:
+      platform:
+        startupStage: full
+        publicProtocol: https
+        domainMode: custom
+        baseDomain: apps.example.com
+        tlsMode: issuer
+      tls:
+        issuerRef:
+          name: customer-platform
+          kind: ClusterIssuer
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: managed-domain-dns01.yaml
+      - hasDocuments:
+          count: 2
+        template: platform-certificates.yaml
+      - isKind:
+          of: Certificate
+        template: platform-certificates.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.issuerRef
+          value:
+            name: customer-platform
+            kind: ClusterIssuer
+        template: platform-certificates.yaml
+        documentIndex: 0
+
+  - it: references an operator TLS Secret without creating Certificates or issuers
+    set:
+      platform:
+        startupStage: full
+        publicProtocol: https
+        domainMode: custom
+        baseDomain: apps.example.com
+      tls:
+        existingSecret: operator-platform-tls
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: managed-domain-dns01.yaml
+      - hasDocuments:
+          count: 0
+        template: platform-certificates.yaml
+      - equal:
+          path: spec.tls[0].secretName
+          value: operator-platform-tls
+        template: ingress.yaml
+      - equal:
+          path: spec.tls[1].secretName
+          value: operator-platform-tls
+        template: ingress.yaml
+
+  - it: creates namespaced managed Issuer and exact plus wildcard Certificates
+    set:
+      platform:
+        startupStage: full
+        publicProtocol: https
+        domainMode: managed
+        baseDomain: managed.example.com
+        acmeEmail: admin@example.com
+        managedDomainAllocationId: allocation-1
+      secrets:
+        managedDomainBrokerToken: allocation-token
+    asserts:
+      - hasDocuments:
+          count: 2
+        template: platform-certificates.yaml
+      - isKind:
+          of: Issuer
+        template: managed-domain-dns01.yaml
+        documentIndex: 14
+      - equal:
+          path: spec.dnsNames[0]
+          value: console.managed.example.com
+        template: platform-certificates.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.dnsNames[0]
+          value: '*.managed.example.com'
+        template: platform-certificates.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.group
+          value: compartment-compartment.platform.dns01.compartment.dev
+        template: managed-domain-dns01.yaml
+        documentIndex: 13
+      - equal:
+          path: spec.acme.solvers[0].dns01.webhook.groupName
+          value: compartment-compartment.platform.dns01.compartment.dev
+        template: managed-domain-dns01.yaml
+        documentIndex: 14
+      - equal:
+          path: spec.acme.solvers[0].dns01.webhook.config
+          value: {}
+        template: managed-domain-dns01.yaml
+        documentIndex: 14
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: BROKER_URL
+            value: https://broker.compartment.run
+        template: managed-domain-dns01.yaml
+        documentIndex: 11
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ALLOCATION_ID
+            value: allocation-1
+        template: managed-domain-dns01.yaml
+        documentIndex: 11
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TOKEN_SECRET_NAMESPACE
+            value: platform
+        template: managed-domain-dns01.yaml
+        documentIndex: 11
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: TOKEN_SECRET_NAME
+            value: compartment-install-state
+        template: managed-domain-dns01.yaml
+        documentIndex: 11

@@ -63,9 +63,11 @@ async function runRetainedInstallStateGate() {
       '--set',
       'platform.acmeEmail=retained@example.test',
       '--set',
-      'platform.tlsMode=managed',
+      'platform.tlsMode=broker-dns01',
       '--set',
       'platform.managedDomainBrokerUrl=https://broker.example.test',
+      '--set',
+      'platform.managedDomainAllocationId=retained-allocation',
       '--set',
       'secrets.managedDomainBrokerToken=retained-token',
     ]);
@@ -109,6 +111,7 @@ async function runRetainedInstallStateGate() {
       'productLogs.enabled=false',
     ]);
     const installationId = readSecretValue('installation-id');
+    const allocationId = readSecretValue('managed-domain-allocation-id');
     const brokerUrl = readSecretValue('managed-domain-broker-url');
     const reinstalledRegistryClusterIp = readServiceClusterIp();
     kubectl(['--namespace', namespace, 'get', 'deployment', `${release}-compartment-registry-auth`]);
@@ -123,6 +126,7 @@ async function runRetainedInstallStateGate() {
     ]);
     if (
       installationId !== 'retained-installation' ||
+      allocationId !== 'retained-allocation' ||
       brokerUrl !== 'https://broker.example.test' ||
       runtimeBrokerUrl !== 'https://broker.example.test' ||
       reinstalledRegistryClusterIp !== registryClusterIp

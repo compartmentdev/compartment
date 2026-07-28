@@ -30,7 +30,7 @@ describe('readApiConfig', (): void => {
       rotateSize: '64M',
     });
     expect(config.bindHost).toBe('127.0.0.1');
-    expect(config.caddyTlsMode).toBe('internal');
+    expect(config.tlsMode).toBe('internal');
     expect(config.controlPlaneHost).toBe('console.localhost');
     expect(config.edgeToken).toBe('edge-secret');
     expect(config.edgeUrl).toBe('http://127.0.0.1:9081');
@@ -40,7 +40,6 @@ describe('readApiConfig', (): void => {
     expect(config.publicHttpPort).toBe(9080);
     expect(config.publicHttpsPort).toBe(9444);
     expect(config.productLogIngestToken).toBeNull();
-    expect(config.customTlsDirectory).toBe('/etc/compartment/tls');
     expect(config.sessionTtlMs).toBe(7 * 24 * 60 * 60 * 1000);
     expect(config.sourceArchiveDirectory).toBe('.compartment/source-archives');
     expect(config.sourceArchiveMaxBytes).toBe(104_857_600);
@@ -61,7 +60,7 @@ describe('readApiConfig', (): void => {
     expect((): ApiConfig => {
       return readApiConfig({
         COMPARTMENT_BASE_DOMAIN: 'localhost',
-        COMPARTMENT_CADDY_TLS_MODE: 'internal',
+        COMPARTMENT_TLS_MODE: 'internal',
         COMPARTMENT_DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_dev',
         COMPARTMENT_EDGE_PORT: '9081',
         COMPARTMENT_LOG_LEVEL: 'info',
@@ -127,12 +126,12 @@ describe('readApiConfig', (): void => {
       (): ApiConfig =>
         readApiConfig(
           createApiConfigEnv({
-            COMPARTMENT_CADDY_TLS_MODE: 'managed',
+            COMPARTMENT_TLS_MODE: 'broker-dns01',
             COMPARTMENT_PUBLIC_PROTOCOL: 'https',
           }),
         ),
     ).toThrow(
-      'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL and COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN are required when COMPARTMENT_CADDY_TLS_MODE is managed.',
+      'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL and COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN are required when COMPARTMENT_TLS_MODE is broker-dns01.',
     );
   });
 
@@ -302,12 +301,6 @@ describe('readApiConfig', (): void => {
     ).toThrow();
   });
 
-  it('rejects a relative custom TLS directory', (): void => {
-    expect((): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_CUSTOM_TLS_DIR: 'tls' }))).toThrow(
-      'COMPARTMENT_CUSTOM_TLS_DIR must be an absolute path.',
-    );
-  });
-
   it('rejects a system API socket path directly under a shared temp root', (): void => {
     expect((): ApiConfig => {
       return readApiConfig(createApiConfigEnv({ COMPARTMENT_SYSTEM_API_SOCKET: join(tmpdir(), 'system-api.sock') }));
@@ -331,8 +324,7 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES: '100',
     COMPARTMENT_API_PORT: '9443',
     COMPARTMENT_BASE_DOMAIN: 'localhost',
-    COMPARTMENT_CADDY_TLS_MODE: 'internal',
-    COMPARTMENT_CUSTOM_TLS_DIR: '/etc/compartment/tls',
+    COMPARTMENT_TLS_MODE: 'internal',
     COMPARTMENT_DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_dev',
     COMPARTMENT_EDGE_INTERNAL_HOST: '127.0.0.1',
     COMPARTMENT_EDGE_PORT: '9081',

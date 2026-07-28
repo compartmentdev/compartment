@@ -45,7 +45,7 @@ export function assertRuntimeSupportsCustomDomains(
     assertManagedRuntimeHasPublicIngress(publicIngressConfig);
     return;
   }
-  if (hostPlan.domainKind === 'custom' && hostPlan.caddyMode === 'custom-cert') {
+  if (hostPlan.domainKind === 'custom' && hostPlan.tlsMode === 'custom-cert') {
     return;
   }
 

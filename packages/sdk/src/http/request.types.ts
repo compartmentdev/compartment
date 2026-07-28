@@ -1,6 +1,6 @@
 import type { ZodType } from 'zod';
 
-export type CompartmentRequestMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
+export type CompartmentRequestMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
 
 export interface CompartmentRequestOptions<TResult, TBody> {
   body?: TBody | undefined;

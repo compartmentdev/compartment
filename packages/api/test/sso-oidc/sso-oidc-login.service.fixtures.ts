@@ -6,9 +6,8 @@ export function createSsoOidcApiConfig(): ApiConfig {
   return {
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',
-    caddyTlsMode: 'internal',
+    tlsMode: 'internal',
     controlPlaneHost: 'compartment.localhost',
-    customTlsDirectory: '/etc/compartment/tls',
     databaseUrl: 'postgresql://localhost/compartment_test',
     edgeToken: 'edge-token',
     edgeUrl: 'http://edge.local',

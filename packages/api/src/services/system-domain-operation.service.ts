@@ -20,7 +20,6 @@ import type { DomainCheckResult } from './system-domain-check.service.types';
 import { verifySystemDomainDnsProof } from './system-domain-dns-proof.service';
 import { synchronizeEdgeAfterDomainActivation } from './system-domain-health.service';
 import { runIdempotentSystemDomainMutation } from './system-domain-idempotent-mutation.service';
-import { readPendingSystemDomainCertificate } from './system-domain-pending-certificate.service';
 import { requirePendingSystemDomainState, type PendingSystemDomainState } from './system-domain-pending-state.service';
 import { readRuntimeDomainHostPlan } from './system-domain-runtime.service';
 import { createSystemDomainMutationResult } from './system-domain-status.mapper';
@@ -114,7 +113,7 @@ function buildPendingStatusUpdateInput(
 async function readPendingValidatedOperationState(tx: SystemDomainTransaction): Promise<PendingSystemDomainState> {
   const pendingState: PendingSystemDomainState = await requirePendingSystemDomainState(tx);
   assertPendingSupportedOperation(pendingState.hostPlan);
-  await assertPendingCertificateReady(pendingState.setupState, pendingState.hostPlan, pendingState.operationId);
+  assertPendingCertificateReady(pendingState.setupState, pendingState.hostPlan);
 
   return pendingState;
 }
@@ -142,11 +141,7 @@ function assertPendingVerificationReady(status: SystemDomainPendingStatus, hostP
   }
 }
 
-async function assertPendingCertificateReady(
-  setupState: SystemDomainSetupStateRow,
-  hostPlan: DomainHostPlan,
-  operationId: string,
-): Promise<void> {
+function assertPendingCertificateReady(setupState: SystemDomainSetupStateRow, hostPlan: DomainHostPlan): void {
   if (!isCustomCertificateDomainHostPlan(hostPlan)) {
     return;
   }
@@ -154,10 +149,8 @@ async function assertPendingCertificateReady(
     throw createDomainOperationUnavailableError('Attach a certificate before verifying this domain.');
   }
 
-  try {
-    await readPendingSystemDomainCertificate(operationId, hostPlan);
-  } catch (error) {
-    throw createDomainOperationUnavailableError((error as Error).message);
+  if (setupState.pendingTlsSecretName === null) {
+    throw createDomainOperationUnavailableError('Attach a Kubernetes TLS Secret before verifying this domain.');
   }
 }
 

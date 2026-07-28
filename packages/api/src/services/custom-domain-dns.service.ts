@@ -60,7 +60,7 @@ function buildRoutingDnsRecords(input: CustomDomainDnsInput): CustomDomainDnsRec
   if (input.hostPlan.domainKind === 'managed') {
     return buildPublicIpRoutingRecords(input);
   }
-  if (input.hostPlan.domainKind === 'custom' && input.hostPlan.caddyMode === 'custom-cert') {
+  if (input.hostPlan.domainKind === 'custom' && input.hostPlan.tlsMode === 'custom-cert') {
     return buildCustomCertRoutingRecords(input);
   }
 
@@ -117,7 +117,7 @@ async function verifyRoutingRecords(input: CustomDomainDnsVerificationInput): Pr
   if (input.hostPlan.domainKind === 'managed') {
     return await verifyPublicIpRoutingRecords(input);
   }
-  if (input.hostPlan.domainKind === 'custom' && input.hostPlan.caddyMode === 'custom-cert') {
+  if (input.hostPlan.domainKind === 'custom' && input.hostPlan.tlsMode === 'custom-cert') {
     return await verifyCustomCertRoutingRecords(input);
   }
 

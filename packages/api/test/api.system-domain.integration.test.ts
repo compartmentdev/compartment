@@ -13,14 +13,9 @@ import {
   type SystemDomainSetRequest,
   type SystemDomainStatusResponse,
 } from '@compartment/contracts';
-import { buildPendingSystemDomainCertificatePaths, type PendingSystemDomainCertificatePaths } from '@compartment/utils';
 import type { LightMyRequestResponse } from 'fastify';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
 import type { Pool } from 'pg';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   deriveProcessScopedDatabaseUrl,
   ensureDatabaseExists,
@@ -142,8 +137,8 @@ function buildCustomExternalDomainSetRequest(
     expectedSetupVersion,
     hostPlan: {
       baseDomain,
-      caddyMode: 'custom-http',
       domainKind: 'custom',
+      issuerRef: { kind: 'Issuer', name: 'customer-issuer' },
       publicScheme: 'https',
       tlsMode: 'external',
     },
@@ -155,7 +150,6 @@ function buildCustomCertificateDomainSetRequest(expectedSetupVersion: number): S
     expectedSetupVersion,
     hostPlan: {
       baseDomain: 'customer.example.com',
-      caddyMode: 'custom-cert',
       domainKind: 'custom',
       publicScheme: 'https',
       tlsMode: 'custom-cert',
@@ -165,6 +159,10 @@ function buildCustomCertificateDomainSetRequest(expectedSetupVersion: number): S
 
 function buildCustomCertificateAttachRequest(expectedSetupVersion: number): SystemDomainAttachCertificateRequest {
   return {
+    certificate: {
+      metadata: buildStoredPendingCertificateMetadata(),
+      secretName: 'domain-tls-operation',
+    },
     expectedSetupVersion,
   };
 }
@@ -182,27 +180,11 @@ function buildStoredPendingCertificateMetadata(): DomainCertificateMetadata {
   };
 }
 
-async function writePendingCertificateFixture(
-  operationId: string,
-  overrides: { certificatePem?: string; privateKeyPem?: string } = {},
-): Promise<void> {
-  const pendingPaths: PendingSystemDomainCertificatePaths = readPendingCertificateFixturePaths(operationId);
-  const tlsDirectory: string = resolve(pendingPaths.certificatePath, '..');
-
-  await mkdir(tlsDirectory, { recursive: true });
-  await writeFile(pendingPaths.certificatePath, overrides.certificatePem ?? testPendingCertificatePem, 'utf8');
-  await writeFile(pendingPaths.privateKeyPath, overrides.privateKeyPem ?? testPendingPrivateKeyPem, 'utf8');
-}
-
-function readPendingCertificateFixturePaths(operationId: string): PendingSystemDomainCertificatePaths {
-  return buildPendingSystemDomainCertificatePaths(defaultApiConfig.customTlsDirectory, operationId);
-}
-
 function createCustomHttpApiConfig(): ApiConfig {
   return {
     ...defaultApiConfig,
     baseDomain: 'customer.example.com',
-    caddyTlsMode: 'custom-http',
+    tlsMode: 'issuer',
     controlPlaneHost: 'console.customer.example.com',
     publicProtocol: 'https',
     auditRetentionDays: 90,
@@ -218,7 +200,7 @@ function createCustomCertificateApiConfig(): ApiConfig {
   return {
     ...defaultApiConfig,
     baseDomain: 'customer.example.com',
-    caddyTlsMode: 'custom-cert',
+    tlsMode: 'secret',
     controlPlaneHost: 'console.customer.example.com',
     publicProtocol: 'https',
     auditRetentionDays: 90,
@@ -234,7 +216,7 @@ function createManagedApiConfig(): ApiConfig {
   return {
     ...defaultApiConfig,
     baseDomain: '4h8z9k2m1p7q.app.compartment.run',
-    caddyTlsMode: 'managed',
+    tlsMode: 'broker-dns01',
     controlPlaneHost: 'console.4h8z9k2m1p7q.app.compartment.run',
     publicProtocol: 'https',
     auditRetentionDays: 90,
@@ -246,71 +228,17 @@ function createManagedApiConfig(): ApiConfig {
   };
 }
 
-const testPendingCertificatePem: string = `-----BEGIN CERTIFICATE-----
-MIIDZjCCAk6gAwIBAgIUeaX6aBQs5yygbi9OPeTePEuuVlYwDQYJKoZIhvcNAQEL
-BQAwITEfMB0GA1UEAwwWKi5jdXN0b21lci5leGFtcGxlLmNvbTAeFw0yMDAxMDEw
-MDAwMDBaFw0zNjAxMDEwMDAwMDBaMCExHzAdBgNVBAMMFiouY3VzdG9tZXIuZXhh
-bXBsZS5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCPjBkYO2Ug
-ktjaZ8e45CW6dVg3jFv8UMavbDWP/RRIUEqB9jD/G3dTZOwlkopXTFVPn3UUFQ5c
-CLTg24iagLWqu1QFiDdlfauTUZPqaISF5UWfUWaraap3cnQPsip+i5TcQx5akni7
-ZZLr+5bu1t0G+cwfDy5WkPDXgojxCL/HzUP5lXvr/sm40m4sqdsXvPW/9sltLjEH
-Rz16EFgMchTMff8kmrfdoD1PJJcZytk3N43qgGMRUhBt0U16kf/+igdO7tb9vIWf
-9ISAx8RQEj+cQfWGiLi0zGZDrp79ApDxvLJlHWvjS4KgyokR35ZVjgWj/DBpjSvV
-zlICJvRE0sa9AgMBAAGjgZUwgZIwHQYDVR0OBBYEFFpwzIVWPE0n5Ro3RgQMLSu3
-W5hZMB8GA1UdIwQYMBaAFFpwzIVWPE0n5Ro3RgQMLSu3W5hZMA8GA1UdEwEB/wQF
-MAMBAf8wPwYDVR0RBDgwNoIWKi5jdXN0b21lci5leGFtcGxlLmNvbYIcY29uc29s
-ZS5jdXN0b21lci5leGFtcGxlLmNvbTANBgkqhkiG9w0BAQsFAAOCAQEAAgfK0N8n
-aENeDBWAbm774S/X/MvLT6l/a1fhOy45CBe4eKLO2RNRt3L9wG1fZgi2IcQ5Xfif
-J6orBT+WdbexVoq1RXEMnCKDk6lIINv/s2px2ArXT6yWl324c8H+Yf0JG9v/qJE1
-25KD9la+/B3i6T+gH39HgOOr3ahp6VnbSZ2CNSnjgJQjj6CzO9XPbJdGB3bFFwuN
-VDnEuxLSUl/tT9tjQB+fNsoa7aW8fbuRcwOEMCP9DFDD+5iKIc7K9qmgI6f6CAYV
-9UPWVqnn1hYIwEG9rYxcCIc/Xs9AfxFcsSY7qsepbx12bSQC9fUP5EL8kg5Leip3
-L7RAHor0FFHL5w==
------END CERTIFICATE-----
-`;
-const testPendingPrivateKeyPem: string = `-----BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCPjBkYO2Ugktja
-Z8e45CW6dVg3jFv8UMavbDWP/RRIUEqB9jD/G3dTZOwlkopXTFVPn3UUFQ5cCLTg
-24iagLWqu1QFiDdlfauTUZPqaISF5UWfUWaraap3cnQPsip+i5TcQx5akni7ZZLr
-+5bu1t0G+cwfDy5WkPDXgojxCL/HzUP5lXvr/sm40m4sqdsXvPW/9sltLjEHRz16
-EFgMchTMff8kmrfdoD1PJJcZytk3N43qgGMRUhBt0U16kf/+igdO7tb9vIWf9ISA
-x8RQEj+cQfWGiLi0zGZDrp79ApDxvLJlHWvjS4KgyokR35ZVjgWj/DBpjSvVzlIC
-JvRE0sa9AgMBAAECggEAMsoLBvvc6A2NFJmrnMt8XeCu+dh7o2ahJehPe0a8Kmne
-MuV8qIZ7TdJji1eyAvlLJgTxU82vavjZpsWGK8RmgqYNMHflwc8ZKeKvRzz7xrQ8
-UgZnITcdzW19iyAq0ONqJBTLZJh2hzeFKGG4IYF8ar9vbX3dk1ttG5NgCIhj8rky
-Jwhz0RfNLv1NI488nGaKnjN5nATivhLZJ7c/4RakOXzGvbGsZ3TjbPkkgQ8O+jCZ
-Bv+4X+T+HIGykcuDzuCa46AEu6ZvsDl2z1QxjaYX1gZADpqBC87uCZH3kg9lo2KN
-5mAOyD5CGoWml5wsa7tYxMBa3XGdorgcy2xosHX4sQKBgQDEPjGCZyET6IuSx9hj
-dq0kbY0ypKpxhNWoWhgVTScmp4MSgC52zlF4yQFmtfpY8cquLzGuMG/Ce57AZhBm
-BeKMefyqaLt0e2x7pru/fEuCCe8YEshB44tu4kXeyfWtH5BWzcRqw4KNSvMUHipe
-+/HR3qbSMHIHQi7cdg/KyWcLLwKBgQC7QhimK6peyTpQXb+UjvcZNRxamQOmvzD7
-29NCK17VD0lDWMVY8DRIlppoJAHIualAGE1BlDSvs5RgnaWH1sdBjYGEHMN4USpK
-uxnrdWieFWn7eNifupl9AWdTNdgIZklQJK9IIaDVnohw4BHoygB8XrxPoVH04RsS
-DuGjT+Sh0wKBgQC6c4jgqBGCc9CgreXHYstQsBGWi2Mxpg7F/IujOYG4NTHQkx8S
-XCaGRxxgtQfeGCUE5+wg3v5gXsnPbWmpNXAxHfnVAtsP6fCBb0I0xeiL7dpQGhBQ
-odwphyzxZxtX2IRwJOK4uXdBvXNEqwCA7ImuaAhB7it5AAW8CyQn/ME9mwKBgHrp
-epZv6OdIfA9OSbbwVD7mfpL1BtGHg1Z9xuAS6a891l/vP7IOELNorzcWE1m2i+J3
-URZvelmtrQHx2DoefzGG+XFHFALAe9sLjorfyOiis6sNelr1t1O2/SRAHmn9Abgq
-LCdTc2dkJLi6Suca2FDKOh6mi84Jh6RFwlNY2IBjAoGBAJE3GyaAIqS6l8MsxvcO
-7BsSD+BswxQqz9ezjMge2fU3ejLDPRGKwMdbt0eHCxNapjfWIISakYa2HZ4+yVuF
-1NUVt2+hOccmCYFdgLdUzdn87PcR1ynghOrxAXPrQXwA1I0gl0Gw1ZYm3U7WIOg7
-DseN3Yi5o8Sy6/8VkiFu7TYK
------END PRIVATE KEY-----
-`;
-
 const { testDatabaseUrl } = readDatabaseTestMode();
 const apiIntegrationDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
   testDatabaseUrl,
   'api_integration_system_domain',
 );
 process.env.COMPARTMENT_DATABASE_URL = apiIntegrationDatabaseUrl;
-const testCustomTlsDirectory: string = resolve(tmpdir(), 'compartment-api-integration-system-domain-tls');
 process.env.COMPARTMENT_SESSION_SECRET = process.env.COMPARTMENT_SESSION_SECRET ?? 'test-secret';
 process.env.COMPARTMENT_ENV = 'dev';
 process.env.COMPARTMENT_INSTALL_TOKEN = 'test-install-token';
 process.env.COMPARTMENT_BASE_DOMAIN = 'localhost';
-process.env.COMPARTMENT_CADDY_TLS_MODE = 'internal';
-process.env.COMPARTMENT_CUSTOM_TLS_DIR = testCustomTlsDirectory;
+process.env.COMPARTMENT_TLS_MODE = 'internal';
 process.env.COMPARTMENT_PUBLIC_PROTOCOL = 'http';
 process.env.COMPARTMENT_PUBLIC_HTTP_PORT = '80';
 process.env.COMPARTMENT_PUBLIC_HTTPS_PORT = '443';
@@ -380,8 +308,6 @@ describe('Phase 0 API integration system domain', (): void => {
     dnsPromiseMocks.resolveTxt.mockReset();
     dnsPromiseMocks.resolveTxt.mockRejectedValue(new Error('No TXT record.'));
     outboundHttpServiceMocks.fetchSystemDomainProbeHttp.mockReset();
-    await rm(testCustomTlsDirectory, { force: true, recursive: true });
-    await mkdir(testCustomTlsDirectory, { recursive: true });
     await resetDatabase(apiIntegrationDatabaseUrl);
     await runApiMigrations(apiIntegrationDatabaseUrl);
     pool = createDatabasePool(apiIntegrationDatabaseUrl);
@@ -401,9 +327,6 @@ describe('Phase 0 API integration system domain', (): void => {
     }
     configureApiRuntimeWithPublicIngress(defaultApiConfig);
     hasInitializedApiIntegrationRuntime = true;
-  });
-  afterAll(async (): Promise<void> => {
-    await rm(testCustomTlsDirectory, { force: true, recursive: true });
   });
   afterEach(async (): Promise<void> => {
     vi.unstubAllGlobals();
@@ -472,7 +395,6 @@ describe('Phase 0 API integration system domain', (): void => {
     const payload: SystemDomainStatusResponse = systemDomainStatusResponseSchema.parse(statusResponse.json());
     expect(payload.active).toEqual({
       baseDomain: 'localhost',
-      caddyMode: 'internal',
       domainKind: 'local',
       publicScheme: 'http',
       tlsMode: 'internal',
@@ -685,7 +607,6 @@ describe('Phase 0 API integration system domain', (): void => {
     expect(activatePayload.status.pending).toBeNull();
     expect(activatePayload.status.active).toEqual({
       baseDomain: 'customer.example.com',
-      caddyMode: 'custom-http',
       domainKind: 'custom',
       publicScheme: 'https',
       tlsMode: 'external',
@@ -736,8 +657,6 @@ describe('Phase 0 API integration system domain', (): void => {
     expect(verifyWithoutCertResponse.statusCode).toBe(409);
     expect(errorResponseSchema.parse(verifyWithoutCertResponse.json()).error.code).toBe('domain_operation_unavailable');
 
-    await writePendingCertificateFixture(setPayload.operationId);
-
     const attachResponse: LightMyRequestResponse = await systemApp.inject({
       method: 'POST',
       url: '/internal/system/domain/attach-cert',
@@ -747,19 +666,13 @@ describe('Phase 0 API integration system domain', (): void => {
     expect(attachResponse.statusCode).toBe(200);
     const attachPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(attachResponse.json());
     expect(attachPayload.status.pending?.status).toBe('pending_cert');
-    expect(attachPayload.status.pending?.certificate?.certificatePath).toBe(
-      readPendingCertificateFixturePaths(setPayload.operationId).certificatePath,
-    );
-    expect(attachPayload.status.pending?.certificate?.privateKeyPath).toBe(
-      readPendingCertificateFixturePaths(setPayload.operationId).privateKeyPath,
-    );
+    expect(attachPayload.status.pending?.certificate?.secretName).toBe('domain-tls-operation');
     expect(attachPayload.status.pending?.certificate?.metadata.dnsNames).toEqual([
       '*.customer.example.com',
       'console.customer.example.com',
     ]);
     const [storedPendingSetupState]: SystemDomainSetupStateRecord[] = await db.select().from(systemDomainSetupState);
-    expect(storedPendingSetupState?.pendingCertificatePath).toBeNull();
-    expect(storedPendingSetupState?.pendingPrivateKeyPath).toBeNull();
+    expect(storedPendingSetupState?.pendingTlsSecretName).toBe('domain-tls-operation');
 
     const verifyResponse: LightMyRequestResponse = await systemApp.inject({
       method: 'POST',
@@ -785,7 +698,6 @@ describe('Phase 0 API integration system domain', (): void => {
     expect(activatePayload.status.pending).toBeNull();
     expect(activatePayload.status.active).toEqual({
       baseDomain: 'customer.example.com',
-      caddyMode: 'custom-cert',
       domainKind: 'custom',
       publicScheme: 'https',
       tlsMode: 'custom-cert',
@@ -804,8 +716,7 @@ describe('Phase 0 API integration system domain', (): void => {
       payload: buildCustomCertificateDomainSetRequest(0),
     });
     expect(setResponse.statusCode).toBe(200);
-    const setPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(setResponse.json());
-    await writePendingCertificateFixture(setPayload.operationId);
+    systemDomainMutationResponseSchema.parse(setResponse.json());
 
     const attachResponse: LightMyRequestResponse = await systemApp.inject({
       method: 'POST',
@@ -825,163 +736,6 @@ describe('Phase 0 API integration system domain', (): void => {
     expect(errorResponseSchema.parse(attachResponse.json()).error.code).toBe(
       'invalid_system_domain_attach_certificate_request',
     );
-  });
-
-  it('returns canonical pending certificate paths even when stored values are poisoned', async (): Promise<void> => {
-    await installCompartment(app);
-    configureApiRuntimeWithPublicIngress(defaultApiConfig, createManagedPublicIngressConfig());
-
-    const setResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/set',
-      headers: buildSystemMutationHeaders('domain-custom-cert-poisoned-set'),
-      payload: buildCustomCertificateDomainSetRequest(0),
-    });
-    expect(setResponse.statusCode).toBe(200);
-    const setPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(setResponse.json());
-
-    await db
-      .update(systemDomainSetupState)
-      .set({
-        pendingCertificateMetadataJson: JSON.stringify(buildStoredPendingCertificateMetadata()),
-        pendingCertificatePath: '/etc/compartment/tls/domop_123/fullchain.pem\nINJECTED=value',
-        pendingPrivateKeyPath: '/etc/compartment/tls/domop_123/privkey.pem\nSECOND=value',
-        pendingStatus: 'pending_cert',
-      })
-      .where(eq(systemDomainSetupState.pendingOperationId, setPayload.operationId));
-
-    const statusResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'GET',
-      url: '/internal/system/domain/status',
-      headers: buildSystemAuthorizationHeaders(),
-    });
-    expect(statusResponse.statusCode).toBe(200);
-    const statusPayload: SystemDomainStatusResponse = systemDomainStatusResponseSchema.parse(statusResponse.json());
-    expect(statusPayload.pending?.certificate?.certificatePath).toBe(
-      readPendingCertificateFixturePaths(setPayload.operationId).certificatePath,
-    );
-    expect(statusPayload.pending?.certificate?.privateKeyPath).toBe(
-      readPendingCertificateFixturePaths(setPayload.operationId).privateKeyPath,
-    );
-  });
-
-  it('returns a business error when the staged certificate files are missing or malformed', async (): Promise<void> => {
-    await installCompartment(app);
-    configureApiRuntimeWithPublicIngress(defaultApiConfig, createManagedPublicIngressConfig());
-
-    const setResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/set',
-      headers: buildSystemMutationHeaders('domain-custom-cert-invalid-set'),
-      payload: buildCustomCertificateDomainSetRequest(0),
-    });
-    expect(setResponse.statusCode).toBe(200);
-    const setPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(setResponse.json());
-
-    const missingFilesAttachResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/attach-cert',
-      headers: buildSystemMutationHeaders('domain-custom-cert-invalid-missing'),
-      payload: buildCustomCertificateAttachRequest(1),
-    });
-    expect(missingFilesAttachResponse.statusCode).toBe(409);
-    expect(errorResponseSchema.parse(missingFilesAttachResponse.json()).error.code).toBe(
-      'domain_operation_unavailable',
-    );
-
-    await writePendingCertificateFixture(setPayload.operationId, {
-      certificatePem: 'not a certificate',
-      privateKeyPem: testPendingPrivateKeyPem,
-    });
-    const malformedAttachResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/attach-cert',
-      headers: buildSystemMutationHeaders('domain-custom-cert-invalid-malformed'),
-      payload: buildCustomCertificateAttachRequest(1),
-    });
-    expect(malformedAttachResponse.statusCode).toBe(409);
-    expect(errorResponseSchema.parse(malformedAttachResponse.json()).error.code).toBe('domain_operation_unavailable');
-  });
-
-  it('revalidates staged certificate files when verify runs after attach', async (): Promise<void> => {
-    await installCompartment(app);
-    configureApiRuntimeWithPublicIngress(defaultApiConfig, createManagedPublicIngressConfig());
-
-    const setResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/set',
-      headers: buildSystemMutationHeaders('domain-custom-cert-verify-revalidation-set'),
-      payload: buildCustomCertificateDomainSetRequest(0),
-    });
-    expect(setResponse.statusCode).toBe(200);
-    const setPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(setResponse.json());
-
-    await writePendingCertificateFixture(setPayload.operationId);
-    const attachResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/attach-cert',
-      headers: buildSystemMutationHeaders('domain-custom-cert-verify-revalidation-attach'),
-      payload: buildCustomCertificateAttachRequest(1),
-    });
-    expect(attachResponse.statusCode).toBe(200);
-
-    await rm(readPendingCertificateFixturePaths(setPayload.operationId).certificatePath, { force: true });
-    const verifyResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/verify',
-      headers: buildSystemMutationHeaders('domain-custom-cert-verify-revalidation-verify'),
-      payload: { expectedSetupVersion: 2 },
-    });
-
-    expect(verifyResponse.statusCode).toBe(409);
-    expect(errorResponseSchema.parse(verifyResponse.json()).error.code).toBe('domain_operation_unavailable');
-  });
-
-  it('revalidates staged certificate files when activate runs after verify', async (): Promise<void> => {
-    await installCompartment(app);
-    configureApiRuntimeWithPublicIngress(defaultApiConfig, createManagedPublicIngressConfig());
-
-    const setResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/set',
-      headers: buildSystemMutationHeaders('domain-custom-cert-activate-revalidation-set'),
-      payload: buildCustomCertificateDomainSetRequest(0),
-    });
-    expect(setResponse.statusCode).toBe(200);
-    const setPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(setResponse.json());
-
-    await writePendingCertificateFixture(setPayload.operationId);
-    const attachResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/attach-cert',
-      headers: buildSystemMutationHeaders('domain-custom-cert-activate-revalidation-attach'),
-      payload: buildCustomCertificateAttachRequest(1),
-    });
-    expect(attachResponse.statusCode).toBe(200);
-
-    const verifyResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/verify',
-      headers: buildSystemMutationHeaders('domain-custom-cert-activate-revalidation-verify'),
-      payload: { expectedSetupVersion: 2 },
-    });
-    expect(verifyResponse.statusCode).toBe(200);
-
-    await writeFile(
-      readPendingCertificateFixturePaths(setPayload.operationId).privateKeyPath,
-      'not a private key',
-      'utf8',
-    );
-    configureApiRuntime({ config: createCustomCertificateApiConfig(), db });
-    const activateResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/activate',
-      headers: buildSystemMutationHeaders('domain-custom-cert-activate-revalidation-activate'),
-      payload: { expectedSetupVersion: 3 },
-    });
-
-    expect(activateResponse.statusCode).toBe(409);
-    expect(errorResponseSchema.parse(activateResponse.json()).error.code).toBe('domain_operation_unavailable');
   });
 
   it('keeps activation durable when edge sync fails and marks domain health unhealthy', async (): Promise<void> => {
@@ -1053,7 +807,6 @@ describe('Phase 0 API integration system domain', (): void => {
     expect(resetPayload.status.pending).toBeNull();
     expect(resetPayload.status.active).toEqual({
       baseDomain: '4h8z9k2m1p7q.app.compartment.run',
-      caddyMode: 'managed',
       domainKind: 'managed',
       publicScheme: 'https',
       tlsMode: 'broker-dns01',

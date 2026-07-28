@@ -101,12 +101,7 @@ function createNoopSystemDomainMutationResult(
 }
 
 function assertActiveManagedHostPlan(hostPlan: DomainHostPlan): void {
-  if (
-    hostPlan.domainKind === 'managed' &&
-    hostPlan.tlsMode === 'broker-dns01' &&
-    hostPlan.publicScheme === 'https' &&
-    hostPlan.caddyMode === 'managed'
-  ) {
+  if (hostPlan.domainKind === 'managed' && hostPlan.tlsMode === 'broker-dns01' && hostPlan.publicScheme === 'https') {
     return;
   }
 

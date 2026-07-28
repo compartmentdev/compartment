@@ -140,8 +140,9 @@ spec:
           command: ['node', '/fixture/broker.mjs']
           env:
             - { name: MANAGED_DOMAIN_BASE_DOMAIN, value: managed.compartment.localhost }
-            - { name: MANAGED_DOMAIN_BROKER_TOKEN, value: managed-e2e-broker-token }
             - { name: MANAGED_DOMAIN_CHALLENGE_SERVER_URL, value: 'http://challtestsrv:8055' }
+            - { name: MANAGED_DOMAIN_RESERVATION_TOKEN, value: managed-install-reservation-token }
+            - { name: MANAGED_DOMAIN_STATE_PATH, value: /state/broker.json }
           ports:
             - { name: http, containerPort: 3000 }
           readinessProbe:
@@ -150,10 +151,24 @@ spec:
             failureThreshold: 30
           volumeMounts:
             - { name: fixture, mountPath: /fixture, readOnly: true }
+            - { name: state, mountPath: /state }
       volumes:
         - name: fixture
           configMap:
             name: managed-domain-broker-fixture
+        - name: state
+          persistentVolumeClaim:
+            claimName: managed-domain-broker-state
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: managed-domain-broker-state
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 64Mi
 ---
 apiVersion: v1
 kind: Service

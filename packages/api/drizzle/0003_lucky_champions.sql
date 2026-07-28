@@ -1,0 +1,1 @@
+ALTER TABLE "system_domain_setup_state" ADD COLUMN "pending_issuer_ref_json" text;

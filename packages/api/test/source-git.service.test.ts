@@ -471,9 +471,8 @@ function createApiConfig(): ApiConfig {
   return {
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',
-    caddyTlsMode: 'internal',
+    tlsMode: 'internal',
     controlPlaneHost: 'console.localhost',
-    customTlsDirectory: '/tmp/compartment-tls',
     databaseUrl: 'postgres://localhost/compartment',
     edgeToken: 'edge-token',
     edgeUrl: 'http://127.0.0.1:9081',

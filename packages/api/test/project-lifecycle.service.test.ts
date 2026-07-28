@@ -253,8 +253,7 @@ function mockLifecycleContext(deployments: DeploymentJoinedRow[], activeDeployme
   mocks.getApiConfig.mockReturnValue({
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',
-    caddyTlsMode: 'internal',
-    customTlsDirectory: '/etc/compartment/tls',
+    tlsMode: 'internal',
     controlPlaneHost: 'console.localhost',
     databaseUrl: 'postgresql://postgres:postgres@127.0.0.1:5432/compartment_test',
     edgeToken: 'edge-token',

@@ -15,6 +15,20 @@
       "when": 1784909278511,
       "tag": "0001_concerned_ben_urich",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785192511380,
+      "tag": "0002_secret_mystique",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785192715407,
+      "tag": "0003_lucky_champions",
+      "breakpoints": true
     }
   ]
 }

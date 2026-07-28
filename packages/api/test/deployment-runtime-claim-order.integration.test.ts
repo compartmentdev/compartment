@@ -61,8 +61,7 @@ const deploymentRuntimeMovementTimeoutMs: number = 20_000;
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',
-  caddyTlsMode: 'internal',
-  customTlsDirectory: '/etc/compartment/tls',
+  tlsMode: 'internal',
   controlPlaneHost: 'console.localhost',
   databaseUrl: runtimeMovementDatabaseUrl,
   edgeToken: 'test-edge-token',

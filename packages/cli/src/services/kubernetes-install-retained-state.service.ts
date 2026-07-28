@@ -1,8 +1,10 @@
+import type { DomainIssuerReference } from '@compartment/contracts';
 import { parseJsonWith } from '@compartment/utils';
 import { z } from 'zod';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
+import { parseKubernetesIngressTargetsJson } from './kubernetes-install-ingress-targets.service';
 import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallDomainMode,
@@ -23,6 +25,12 @@ const kubernetesSecretListSchema: z.ZodType<KubernetesSecretList> = z
   })
   .passthrough();
 const kubernetesInspectionTimeoutMs: number = 30_000;
+const domainIssuerReferenceSchema: z.ZodType<DomainIssuerReference> = z
+  .object({
+    kind: z.enum(['Issuer', 'ClusterIssuer']),
+    name: z.string().min(1),
+  })
+  .strict();
 
 export async function readRetainedKubernetesInstallState(
   input: KubernetesInstallDeploymentInput,
@@ -55,20 +63,26 @@ export async function readRetainedManagedKubernetesDomainState(
     throw new Error('Expected exactly one retained install-state Secret for the Helm release.');
   }
   const state: RetainedManagedDomainState = buildRetainedManagedDomainState(data);
-  if (state.baseDomain === '' || state.brokerUrl === '' || state.brokerToken === '' || state.acmeEmail === '') {
+  assertCompleteRetainedManagedDomain(state);
+  return state;
+}
+
+function assertCompleteRetainedManagedDomain(state: RetainedManagedDomainState): void {
+  if ([state.allocationId, state.baseDomain, state.brokerUrl, state.brokerToken, state.acmeEmail].includes('')) {
     throw new Error('This installation has no retained managed domain to restore.');
   }
-  return state;
 }
 
 function buildRetainedManagedDomainState(data: Record<string, string>): RetainedManagedDomainState {
   return {
     acmeEmail: readSecretText(data, 'acme-email'),
+    allocationId: readSecretText(data, 'managed-domain-allocation-id'),
     baseDomain: readSecretText(data, 'managed-base-domain').toLowerCase(),
     brokerToken: readSecretText(data, 'managed-domain-broker-token'),
     brokerUrl: readSecretText(data, 'managed-domain-broker-url'),
+    issuerRef: parseJsonWith(domainIssuerReferenceSchema, readRequiredSecretText(data, 'managed-issuer-ref-json')),
     publicProtocol: 'https',
-    tlsMode: 'managed',
+    tlsMode: 'broker-dns01',
   };
 }
 
@@ -88,22 +102,40 @@ export function mergeRetainedKubernetesInstallState(
   if (existingInstall === null || retainedState === null) {
     return existingInstall;
   }
-  return {
+  const merged: ExistingKubernetesInstall = {
     ...retainedState,
-    acmeEmail: preferRetainedText(retainedState.acmeEmail, existingInstall.acmeEmail),
-    baseDomain: preferRetainedText(retainedState.baseDomain, existingInstall.baseDomain),
-    brokerUrl: preferRetainedText(retainedState.brokerUrl, existingInstall.brokerUrl),
     installToken: existingInstall.installToken,
-    ingressClassName: preferRetainedText(retainedState.ingressClassName, existingInstall.ingressClassName),
-    ingressEndpoint: retainedState.ingressEndpoint ?? existingInstall.ingressEndpoint,
-    managedDomainBrokerToken: preferRetainedText(
-      retainedState.managedDomainBrokerToken,
-      existingInstall.managedDomainBrokerToken,
-    ),
-    publicIngressIpv4: preferRetainedText(retainedState.publicIngressIpv4, existingInstall.publicIngressIpv4),
-    publicIngressIpv6: preferRetainedText(retainedState.publicIngressIpv6, existingInstall.publicIngressIpv6),
     stage: existingInstall.stage,
   };
+  mergeRetainedIdentityFields(merged, existingInstall);
+  mergeRetainedIngressFields(merged, existingInstall);
+  mergeRetainedBrokerFields(merged, existingInstall);
+  return merged;
+}
+
+function mergeRetainedIdentityFields(merged: ExistingKubernetesInstall, current: ExistingKubernetesInstall): void {
+  merged.acmeEmail = preferRetainedText(merged.acmeEmail, current.acmeEmail);
+  merged.baseDomain = preferRetainedText(merged.baseDomain, current.baseDomain);
+  merged.publicIngressIpv4 = preferRetainedText(merged.publicIngressIpv4, current.publicIngressIpv4);
+  merged.publicIngressIpv6 = preferRetainedText(merged.publicIngressIpv6, current.publicIngressIpv6);
+}
+
+function mergeRetainedIngressFields(merged: ExistingKubernetesInstall, current: ExistingKubernetesInstall): void {
+  merged.ingressClassName = preferRetainedText(merged.ingressClassName, current.ingressClassName);
+  merged.ingressEndpoint ??= current.ingressEndpoint;
+  merged.ingressTargets = merged.ingressTargets.length > 0 ? merged.ingressTargets : current.ingressTargets;
+}
+
+function mergeRetainedBrokerFields(merged: ExistingKubernetesInstall, current: ExistingKubernetesInstall): void {
+  merged.brokerUrl = preferRetainedText(merged.brokerUrl, current.brokerUrl);
+  merged.managedDomainAllocationId = preferRetainedText(
+    merged.managedDomainAllocationId,
+    current.managedDomainAllocationId,
+  );
+  merged.managedDomainBrokerToken = preferRetainedText(
+    merged.managedDomainBrokerToken,
+    current.managedDomainBrokerToken,
+  );
 }
 
 function preferRetainedText(retainedValue: string, currentValue: string): string {
@@ -155,12 +187,23 @@ function parseRetainedStateSecret(data: Record<string, string>): RetainedKuberne
     installationId: readRequiredSecretText(data, 'installation-id'),
     ingressClassName: readRequiredSecretText(data, 'ingress-class-name'),
     ingressEndpoint: readIngressEndpoint(data),
+    ingressTargets: readIngressTargets(data),
+    managedDomainAllocationId: readSecretText(data, 'managed-domain-allocation-id'),
     managedDomainBrokerToken: readSecretText(data, 'managed-domain-broker-token'),
     publicIngressIpv4: readSecretText(data, 'public-ingress-ipv4'),
     publicIngressIpv6: readSecretText(data, 'public-ingress-ipv6'),
     publicProtocol: readPublicProtocol(data),
     tlsMode: readTlsMode(data),
   };
+}
+
+function readIngressTargets(data: Record<string, string>): KubernetesIngressEndpoint[] {
+  const encoded: string = readSecretText(data, 'ingress-targets-json');
+  if (encoded === '') {
+    const endpoint: KubernetesIngressEndpoint | null = readIngressEndpoint(data);
+    return endpoint === null ? [] : [endpoint];
+  }
+  return parseKubernetesIngressTargetsJson(encoded, 'The retained install-state Secret');
 }
 
 function readIngressEndpoint(data: Record<string, string>): KubernetesIngressEndpoint | null {
@@ -193,7 +236,7 @@ function readPublicProtocol(data: Record<string, string>): KubernetesPublicProto
 
 function readTlsMode(data: Record<string, string>): KubernetesInstallTlsMode {
   const value: string = readSecretText(data, 'tls-mode');
-  if (value === 'custom-cert' || value === 'custom-http' || value === 'internal' || value === 'managed') {
+  if (value === 'broker-dns01' || value === 'internal' || value === 'issuer' || value === 'secret') {
     return value;
   }
   throw new Error('The retained install-state Secret has no recognized TLS mode.');

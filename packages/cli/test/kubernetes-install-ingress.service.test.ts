@@ -31,6 +31,7 @@ describe('Kubernetes Ingress endpoint observation', (): void => {
     await expect(resolveKubernetesPublicIngress(createResolutionInput())).resolves.toEqual({
       ingressClassName: 'traefik',
       ingressEndpoint: { type: 'hostname', value: 'ingress.example.com' },
+      ingressTargets: [{ type: 'hostname', value: 'ingress.example.com' }],
       publicIngressIpv4: '',
       publicIngressIpv6: '',
     });

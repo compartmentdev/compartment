@@ -1,5 +1,6 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- $baseDomain := default (printf "pending.%s.invalid" .Release.Name) $installState.effective.platform.baseDomain -}}
+{{- $operatorTlsSecret := default $installState.effective.customTls.existingSecret .Values.tls.existingSecret -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -9,6 +10,15 @@ metadata:
     app.kubernetes.io/component: ingress
 spec:
   ingressClassName: {{ $installState.effective.ingress.className | quote }}
+{{- if and (eq $installState.effective.platform.startupStage "full") (eq $installState.effective.platform.publicProtocol "https") }}
+  tls:
+    - hosts:
+        - {{ printf "console.%s" $baseDomain | quote }}
+      secretName: {{ default (printf "%s-console-tls" (include "compartment.fullname" .)) $operatorTlsSecret }}
+    - hosts:
+        - {{ printf "*.%s" $baseDomain | quote }}
+      secretName: {{ default (printf "%s-wildcard-tls" (include "compartment.fullname" .)) $operatorTlsSecret }}
+{{- end }}
   rules:
     - host: {{ printf "console.%s" $baseDomain | quote }}
       http:

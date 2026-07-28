@@ -59,9 +59,8 @@ const authThrottleDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatab
 const apiConfig: ApiConfig = {
   bindHost: '127.0.0.1',
   baseDomain: 'localhost',
-  caddyTlsMode: 'internal',
+  tlsMode: 'internal',
   controlPlaneHost: 'console.localhost',
-  customTlsDirectory: '/etc/compartment/tls',
   databaseUrl: authThrottleDatabaseUrl,
   edgeToken: 'test-edge-token',
   edgeUrl: 'http://127.0.0.1:9081',

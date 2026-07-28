@@ -23,16 +23,11 @@ export function domainCertificateMetadataCoversHostPlan(
 }
 
 export function isCustomCertificateDomainHostPlan(hostPlan: DomainHostPlan): boolean {
-  return (
-    hostPlan.domainKind === 'custom' &&
-    hostPlan.tlsMode === 'custom-cert' &&
-    hostPlan.publicScheme === 'https' &&
-    hostPlan.caddyMode === 'custom-cert'
-  );
+  return hostPlan.domainKind === 'custom' && hostPlan.tlsMode === 'custom-cert' && hostPlan.publicScheme === 'https';
 }
 
 export function isCustomHttpDomainHostPlan(hostPlan: DomainHostPlan): boolean {
-  return hostPlan.domainKind === 'custom' && hostPlan.tlsMode === 'external' && hostPlan.caddyMode === 'custom-http';
+  return hostPlan.domainKind === 'custom' && hostPlan.tlsMode === 'external';
 }
 
 export function buildControlPlaneHost(baseDomain: string): string {

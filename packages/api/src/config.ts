@@ -3,7 +3,6 @@ import {
   assertSelfHostedGeneratedSecretEnvironment,
   buildInternalHttpUrl,
   parseOptionalTrustedOutboundHostList,
-  readRequiredAbsolutePath,
 } from '@compartment/utils';
 import { z } from 'zod';
 import {
@@ -27,8 +26,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_API_PORT: z.coerce.number().int().positive(),
   ...auditFileSinkConfigEnvSchema,
   COMPARTMENT_BASE_DOMAIN: z.string().min(1),
-  COMPARTMENT_CADDY_TLS_MODE: z.enum(['managed', 'internal', 'custom-http', 'custom-cert']),
-  COMPARTMENT_CUSTOM_TLS_DIR: z.string().min(1),
+  COMPARTMENT_TLS_MODE: z.enum(['broker-dns01', 'internal', 'issuer', 'secret']),
   COMPARTMENT_DATABASE_URL: z.string().min(1),
   COMPARTMENT_EDGE_INTERNAL_HOST: z.string().min(1),
   COMPARTMENT_EDGE_PORT: z.coerce.number().int().positive(),
@@ -64,9 +62,8 @@ export interface ApiConfig {
   auditFileSink: AuditFileSinkConfig;
   baseDomain: string;
   bindHost: string;
-  caddyTlsMode: 'managed' | 'internal' | 'custom-http' | 'custom-cert';
+  tlsMode: 'broker-dns01' | 'internal' | 'issuer' | 'secret';
   controlPlaneHost: string;
-  customTlsDirectory: string;
   databaseUrl: string;
   edgeToken: string;
   edgeUrl: string;
@@ -100,7 +97,7 @@ type ApiCoreConfig = Pick<
   ApiConfig,
   'bindHost' | 'databaseUrl' | 'edgeToken' | 'logLevel' | 'port' | 'sessionSecret' | 'sessionTtlMs'
 >;
-type ApiHostConfig = Pick<ApiConfig, 'baseDomain' | 'caddyTlsMode' | 'controlPlaneHost' | 'edgeUrl'>;
+type ApiHostConfig = Pick<ApiConfig, 'baseDomain' | 'tlsMode' | 'controlPlaneHost' | 'edgeUrl'>;
 type ApiIntegrationConfig = Pick<
   ApiConfig,
   'managedDomainBrokerToken' | 'managedDomainBrokerUrl' | 'trustedOutboundHosts'
@@ -109,7 +106,6 @@ type ApiPublicConfig = Pick<ApiConfig, 'publicProtocol' | 'publicHttpPort' | 'pu
 type ApiRuntimeConfig = Pick<
   ApiConfig,
   | 'auditFileSink'
-  | 'customTlsDirectory'
   | 'auditRetentionDays'
   | 'auditRetentionCleanupBatchSize'
   | 'auditRetentionCleanupCron'
@@ -148,7 +144,7 @@ function readApiHostConfig(parsed: ApiConfigEnv): ApiHostConfig {
 
   return {
     baseDomain,
-    caddyTlsMode: parsed.COMPARTMENT_CADDY_TLS_MODE,
+    tlsMode: parsed.COMPARTMENT_TLS_MODE,
     controlPlaneHost: buildControlPlaneHost(baseDomain),
     edgeUrl: buildInternalHttpUrl(parsed.COMPARTMENT_EDGE_INTERNAL_HOST, parsed.COMPARTMENT_EDGE_PORT),
   };
@@ -167,9 +163,9 @@ function readApiIntegrationConfig(parsed: ApiConfigEnv): ApiIntegrationConfig {
       'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL and COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN must be configured together.',
     );
   }
-  if (parsed.COMPARTMENT_CADDY_TLS_MODE === 'managed' && managedDomainBrokerUrl === null) {
+  if (parsed.COMPARTMENT_TLS_MODE === 'broker-dns01' && managedDomainBrokerUrl === null) {
     throw new Error(
-      'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL and COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN are required when COMPARTMENT_CADDY_TLS_MODE is managed.',
+      'COMPARTMENT_MANAGED_DOMAIN_BROKER_URL and COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN are required when COMPARTMENT_TLS_MODE is broker-dns01.',
     );
   }
 
@@ -217,7 +213,6 @@ function readApiRuntimeConfig(parsed: ApiConfigEnv): ApiRuntimeConfig {
     ),
     auditRetentionCleanupMaxBatches: parsed.COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES,
     auditRetentionDays: parsed.COMPARTMENT_AUDIT_RETENTION_DAYS,
-    customTlsDirectory: readRequiredAbsolutePath(parsed.COMPARTMENT_CUSTOM_TLS_DIR, 'COMPARTMENT_CUSTOM_TLS_DIR'),
     rollbackRetentionLimit: parseOptionalPositiveInt(
       parsed.COMPARTMENT_ROLLBACK_RETENTION_LIMIT,
       'COMPARTMENT_ROLLBACK_RETENTION_LIMIT',

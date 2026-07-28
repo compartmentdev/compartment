@@ -208,6 +208,7 @@ describe('scanSelfHostedImages', () => {
       const expectedImageRefs = [
         'localhost:5000/custom/compartment-api:from-tag',
         'localhost:5000/custom/compartment-caddy:from-tag',
+        'localhost:5000/custom/compartment-dns01-solver:from-tag',
         'localhost:5000/custom/compartment-edge:from-tag',
         'localhost:5000/custom/compartment-worker:from-tag',
       ];
@@ -417,7 +418,7 @@ describe('secureSelfHostedImages', () => {
       process.env.GITHUB_WORKFLOW = 'Publish Self-Hosted Images (Main)';
       delete process.env.GITHUB_WORKFLOW_REF;
 
-      const digestRefs = ['api', 'caddy', 'edge', 'worker'].map(
+      const digestRefs = ['api', 'caddy', 'dns01-solver', 'edge', 'worker'].map(
         (serviceName, index) =>
           `ghcr.io/compartmentdev/compartment-${serviceName}@sha256:${String.fromCharCode(97 + index).repeat(64)}`,
       );
@@ -466,7 +467,7 @@ describe('secureSelfHostedImages', () => {
         (entry) => entry.file === 'docker',
       );
       const mainImageDigestRef = `ghcr.io/compartmentdev/compartment-api@sha256:${'a'.repeat(64)}`;
-      const workerDigestRef = `ghcr.io/compartmentdev/compartment-worker@sha256:${'d'.repeat(64)}`;
+      const workerDigestRef = `ghcr.io/compartmentdev/compartment-worker@sha256:${'e'.repeat(64)}`;
       const expectedBundleFormatFlag = selfHostedRuntimeImageSignaturePolicy.cosignBundleFormatFlag;
 
       expect(hasCosignCall(cosignCalls, ['sign', '--yes', expectedBundleFormatFlag, mainImageDigestRef])).toBe(true);
@@ -553,7 +554,7 @@ import { appendFileSync } from 'node:fs';
 appendFileSync(process.env.COMMAND_ARGS_LOG, JSON.stringify({ file: 'docker', args: process.argv.slice(2) }) + '\\n');
 const imageRef = process.argv.at(-1) ?? '';
 const service = imageRef.match(/compartment-([a-z-]+):/)?.[1] ?? 'api';
-const digestByService = { api: '${'a'.repeat(64)}', caddy: '${'b'.repeat(64)}', edge: '${'c'.repeat(64)}', worker: '${'d'.repeat(64)}' };
+const digestByService = { api: '${'a'.repeat(64)}', caddy: '${'b'.repeat(64)}', 'dns01-solver': '${'e'.repeat(64)}', edge: '${'c'.repeat(64)}', worker: '${'d'.repeat(64)}' };
 process.stdout.write('sha256:' + digestByService[service]);
 `;
 }
@@ -582,6 +583,7 @@ function renderExpectedScannedImageRefs() {
   return [
     'ghcr.io/compartmentdev/compartment-api:sha-test',
     'ghcr.io/compartmentdev/compartment-caddy:sha-test',
+    'ghcr.io/compartmentdev/compartment-dns01-solver:sha-test',
     'ghcr.io/compartmentdev/compartment-edge:sha-test',
     'ghcr.io/compartmentdev/compartment-worker:sha-test',
   ];

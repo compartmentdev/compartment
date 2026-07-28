@@ -25,6 +25,7 @@ interface SystemDomainPendingStatusUpdateValues {
 interface SystemDomainPendingCertificateValues {
   setupVersion: SQL;
   pendingCertificateMetadataJson: string;
+  pendingTlsSecretName: string;
   pendingFailureCode: null;
   pendingFailureMessage: null;
   pendingStatus: 'pending_cert';
@@ -88,6 +89,7 @@ function buildSystemDomainPendingCertificateValues(
   return {
     setupVersion: buildNextSystemDomainSetupVersion(),
     pendingCertificateMetadataJson: input.pendingCertificateMetadataJson,
+    pendingTlsSecretName: input.pendingTlsSecretName,
     pendingFailureCode: null,
     pendingFailureMessage: null,
     pendingStatus: 'pending_cert',

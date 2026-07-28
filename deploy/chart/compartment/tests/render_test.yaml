@@ -124,7 +124,7 @@ tests:
         installationId: test-third-party-digests
         baseDomain: compartment.localhost
         publicProtocol: http
-        tlsMode: custom-http
+        tlsMode: issuer
       secrets: *stableSecrets
     asserts:
       - matchRegex:
@@ -1155,7 +1155,7 @@ tests:
         installationId: test-local
         baseDomain: compartment.localhost
         publicProtocol: http
-        tlsMode: custom-http
+        tlsMode: issuer
       secrets: *stableSecrets
     asserts:
       - notFailedTemplate: {}
@@ -1168,8 +1168,8 @@ tests:
           value: http
         template: configmap.yaml
       - equal:
-          path: data.COMPARTMENT_CADDY_TLS_MODE
-          value: custom-http
+          path: data.COMPARTMENT_TLS_MODE
+          value: issuer
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL
@@ -1187,7 +1187,7 @@ tests:
         installationId: test-custom-broker
         baseDomain: compartment.localhost
         publicProtocol: http
-        tlsMode: custom-http
+        tlsMode: issuer
         managedDomainBrokerUrl: https://broker.example.test
       secrets:
         <<: *stableSecrets
@@ -1221,7 +1221,7 @@ tests:
         installationId: test-digests
         baseDomain: compartment.localhost
         publicProtocol: http
-        tlsMode: custom-http
+        tlsMode: issuer
       images:
         api:
           digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -1353,7 +1353,7 @@ tests:
         template: edge.yaml
         documentIndex: 1
 
-  - it: wires managed DNS and managed TLS through retained install state
+  - it: wires managed DNS and TLS state without Caddy certificate mounts
     set:
       platform: &managedPlatform
         startupStage: full
@@ -1361,86 +1361,19 @@ tests:
         domainMode: managed
         baseDomain: managed.compartment.run
         publicProtocol: https
-        tlsMode: managed
+        tlsMode: broker-dns01
+        managedDomainAllocationId: allocation-managed
         publicIngressIpv4: 8.8.4.4
         acmeEmail: admin@example.com
-      images:
-        api:
-          digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-        worker:
-          digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-        edge:
-          digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-        caddy:
-          digest: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
       secrets:
         <<: *stableSecrets
         managedDomainBrokerToken: broker-token
     asserts:
       - notFailedTemplate: {}
       - equal:
-          path: data.COMPARTMENT_CADDY_TLS_MODE
-          value: managed
+          path: data.COMPARTMENT_TLS_MODE
+          value: broker-dns01
         template: configmap.yaml
-      - equal:
-          path: data.COMPARTMENT_ACME_ISSUER
-          value: acme
-        template: configmap.yaml
-      - equal:
-          path: data.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL
-          value: https://broker.compartment.run
-        template: configmap.yaml
-      - notExists:
-          path: data.COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN
-        template: configmap.yaml
-      - equal:
-          path: stringData.managed-domain-broker-token
-          value: broker-token
-        template: install-state-secret.yaml
-      - equal:
-          path: stringData.managed-base-domain
-          value: managed.compartment.run
-        template: install-state-secret.yaml
-      - equal:
-          path: stringData.startup-stage
-          value: full
-        template: install-state-secret.yaml
-      - equal:
-          path: stringData.domain-generation
-          value: '0'
-        template: install-state-secret.yaml
-      - equal:
-          path: metadata.annotations["helm.sh/resource-policy"]
-          value: keep
-        template: install-state-secret.yaml
-      - notExists:
-          path: stringData.managed-domain-broker-token
-        template: secret.yaml
-      - contains: &brokerTokenEnv
-          path: spec.template.spec.containers[0].env
-          content:
-            name: COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: compartment-install-state
-                key: managed-domain-broker-token
-          any: true
-        template: api.yaml
-        documentIndex: 1
-      - notContains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: COMPARTMENT_MANAGED_DOMAIN_BROKER_TOKEN
-          any: true
-        template: caddy.yaml
-        documentIndex: 1
-      - notContains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: COMPARTMENT_ACME_ISSUER
-          any: true
-        template: caddy.yaml
-        documentIndex: 1
       - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
@@ -1448,71 +1381,15 @@ tests:
           any: true
         template: api.yaml
         documentIndex: 1
-      - notContains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: tls
-          any: true
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: &managedDomainChecksum a45708b1069b848edb43bf4eb09cd6d10c97a0c3a1da1a06ad92348552b65fe4
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: *managedDomainChecksum
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: *managedDomainChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: &stableConfigChecksum f686a0e0632ce0f785a58b00760163c7729bcb24d2bf428e507ca16a5cbc08e4
-        template: worker.yaml
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: *stableConfigChecksum
-        template: project-provisioner.yaml
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
-          value: &stableRolloutMarker ''
-        template: worker.yaml
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
-          value: *stableRolloutMarker
-        template: project-provisioner.yaml
-      - isNotEmpty:
-          path: spec.template.metadata.annotations["checksum/pending-tls"]
-        template: api.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/pending-tls"]
-        template: caddy.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/pending-tls"]
-        template: edge.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-        template: worker.yaml
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-        template: project-provisioner.yaml
 
-  - it: mounts one existing custom certificate read-only in API only
+  - it: keeps an existing operator TLS Secret out of API mounts
     set:
       platform: &customCertPlatform
         startupStage: full
         installationId: test-custom
         baseDomain: apps.example.com
         publicProtocol: https
-        tlsMode: custom-cert
+        tlsMode: secret
         publicIngressIpv4: 8.8.8.8
         acmeEmail: admin@example.com
       customTls:
@@ -1520,51 +1397,15 @@ tests:
       secrets: *stableSecrets
     asserts:
       - notFailedTemplate: {}
-      - contains: &apiActiveTlsMount
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: active-tls
-            mountPath: /etc/compartment/tls
-            readOnly: true
-          any: true
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.secretName
-          value: operator-tls
-        template: api.yaml
-        documentIndex: 1
-      - contains:
-          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.items
-          content:
-            key: tls.crt
-            path: fullchain.pem
-        template: api.yaml
-        documentIndex: 1
-      - contains:
-          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.items
-          content:
-            key: tls.key
-            path: privkey.pem
-        template: api.yaml
-        documentIndex: 1
       - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
-            name: tls
+            name: active-tls
           any: true
-        template: caddy.yaml
+        template: api.yaml
         documentIndex: 1
-      - equal:
-          path: data.COMPARTMENT_CUSTOM_TLS_CERT_FILE
-          value: /etc/compartment/tls/fullchain.pem
-        template: configmap.yaml
-      - equal:
-          path: data.COMPARTMENT_CUSTOM_TLS_KEY_FILE
-          value: /etc/compartment/tls/privkey.pem
-        template: configmap.yaml
 
-  - it: mounts pending custom certificate material only in API
+  - it: writes pending certificate material only to an operation TLS Secret
     set:
       platform:
         <<: *managedPlatform
@@ -1583,281 +1424,10 @@ tests:
           path: metadata.name
           value: operator-tls
         template: custom-tls-secret.yaml
-        documentIndex: 0
       - equal:
           path: stringData["tls.crt"]
           value: test-certificate
         template: custom-tls-secret.yaml
-        documentIndex: 0
-      - equal:
-          path: stringData["tls.key"]
-          value: test-private-key
-        template: custom-tls-secret.yaml
-        documentIndex: 0
-      - contains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: pending-tls
-            mountPath: /etc/compartment/tls/domop_123
-            readOnly: true
-          any: true
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.spec.volumes[?(@.name == "pending-tls")].secret.secretName
-          value: operator-tls
-        template: api.yaml
-        documentIndex: 1
-      - contains:
-          path: spec.template.spec.volumes[?(@.name == "pending-tls")].secret.items
-          content:
-            key: tls.crt
-            path: fullchain.pem
-        template: api.yaml
-        documentIndex: 1
-      - contains:
-          path: spec.template.spec.volumes[?(@.name == "pending-tls")].secret.items
-          content:
-            key: tls.key
-            path: privkey.pem
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
-          value: domop_123
-        template: api.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.spec.volumes[?(@.secret.secretName == "operator-tls")]
-        template: caddy.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
-        template: caddy.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
-        template: edge.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
-        template: worker.yaml
-      - notExists:
-          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
-        template: project-provisioner.yaml
-
-  - it: keeps Caddy on the active certificate while API stages a rotation
-    set:
-      platform:
-        <<: *customCertPlatform
-        installationId: test-managed
-        publicIngressIpv4: 8.8.4.4
-      customTls:
-        existingSecret: active-operator-tls
-        operatorSecretName: active-operator-tls
-        operatorCertificate: active-certificate
-        operatorPrivateKey: active-private-key
-        pendingSecretName: pending-operator-tls
-        pendingCertificate: pending-certificate
-        pendingPrivateKey: pending-private-key
-        pendingOperationId: domop_456
-      secrets:
-        <<: *stableSecrets
-        managedDomainBrokerToken: broker-token
-    asserts:
-      - notFailedTemplate: {}
-      - hasDocuments:
-          count: 2
-        template: custom-tls-secret.yaml
-      - equal:
-          path: stringData["tls.crt"]
-          value: active-certificate
-        template: custom-tls-secret.yaml
-        documentIndex: 0
-      - equal:
-          path: stringData["tls.crt"]
-          value: pending-certificate
-        template: custom-tls-secret.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.secretName
-          value: active-operator-tls
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.spec.volumes[?(@.name == "pending-tls")].secret.secretName
-          value: pending-operator-tls
-        template: api.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.spec.volumes[?(@.secret.secretName == "pending-operator-tls")]
-        template: caddy.yaml
-        documentIndex: 1
-      - isNotEmpty:
-          path: spec.template.metadata.annotations["checksum/pending-tls"]
-        template: api.yaml
-        documentIndex: 1
-      - notEqual:
-          path: spec.template.metadata.annotations["checksum/pending-tls"]
-          value: &activeTlsChecksum 194302e3961cf4cb57d7a56028779479d45378519aaa7624273743ae23d78c8d
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: *activeTlsChecksum
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: *activeTlsChecksum
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: *activeTlsChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-        template: worker.yaml
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-        template: project-provisioner.yaml
-      - equal:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: &activeDomainChecksum 9712572d36362582f3dcf80df7f8aa094a769f8c887d52e65da28e944a2bc2b4
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: *activeDomainChecksum
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: *activeDomainChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: *stableConfigChecksum
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: *stableConfigChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: *stableConfigChecksum
-        template: worker.yaml
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: *stableConfigChecksum
-        template: project-provisioner.yaml
-      - equal:
-          path: spec.template.metadata.annotations["checksum/install-state"]
-          value: &activeInstallStateChecksum 8d9eb598d8b0da4307b3e7be8c2459f130081e46b2df1fd90d73d49c78a8ecd9
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/install-state"]
-          value: *activeInstallStateChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/domain-generation"]
-          value: &activeDomainGeneration '0'
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/domain-generation"]
-          value: *activeDomainGeneration
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/secret"]
-          value: &stableSecretChecksum 249947cf9160249bc9d472bcac9b3fd9d53aeae5e58a04263a0545a9b18cbdab
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/secret"]
-          value: *stableSecretChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/secret"]
-          value: *stableSecretChecksum
-        template: worker.yaml
-      - equal:
-          path: spec.template.metadata.annotations["checksum/secret"]
-          value: *stableSecretChecksum
-        template: project-provisioner.yaml
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
-          value: *stableRolloutMarker
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
-          value: *stableRolloutMarker
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
-          value: *stableRolloutMarker
-        template: worker.yaml
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
-          value: *stableRolloutMarker
-        template: project-provisioner.yaml
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/pending-tls"]
-        template: caddy.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/pending-tls"]
-        template: edge.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-        template: worker.yaml
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-        template: project-provisioner.yaml
-
-  - it: renders the active certificate without pending rotation state
-    set:
-      platform:
-        <<: *customCertPlatform
-        installationId: test-managed
-        publicIngressIpv4: 8.8.4.4
-      customTls:
-        existingSecret: active-operator-tls
-        operatorSecretName: active-operator-tls
-        operatorCertificate: active-certificate
-        operatorPrivateKey: active-private-key
-      secrets:
-        <<: *stableSecrets
-        managedDomainBrokerToken: broker-token
-    asserts:
-      - notFailedTemplate: {}
-      - hasDocuments:
-          count: 1
-        template: custom-tls-secret.yaml
-      - equal:
-          path: metadata.name
-          value: active-operator-tls
-        template: custom-tls-secret.yaml
-      - contains: *apiActiveTlsMount
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.secretName
-          value: active-operator-tls
-        template: api.yaml
-        documentIndex: 1
       - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
@@ -1865,141 +1435,6 @@ tests:
           any: true
         template: api.yaml
         documentIndex: 1
-      - notContains:
-          path: spec.template.spec.volumes
-          content:
-            name: pending-tls
-          any: true
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/pending-tls"]
-          value: *activeTlsChecksum
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: *activeTlsChecksum
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: *activeTlsChecksum
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: *activeTlsChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: *activeDomainChecksum
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: *activeDomainChecksum
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-          value: *activeDomainChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: *stableConfigChecksum
-        template: worker.yaml
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: *stableConfigChecksum
-        template: project-provisioner.yaml
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: *stableConfigChecksum
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/config"]
-          value: *stableConfigChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/install-state"]
-          value: *activeInstallStateChecksum
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/install-state"]
-          value: *activeInstallStateChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/domain-generation"]
-          value: *activeDomainGeneration
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/domain-generation"]
-          value: *activeDomainGeneration
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/secret"]
-          value: *stableSecretChecksum
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/secret"]
-          value: *stableSecretChecksum
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/secret"]
-          value: *stableSecretChecksum
-        template: worker.yaml
-      - equal:
-          path: spec.template.metadata.annotations["checksum/secret"]
-          value: *stableSecretChecksum
-        template: project-provisioner.yaml
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
-          value: *stableRolloutMarker
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
-          value: *stableRolloutMarker
-        template: edge.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
-          value: *stableRolloutMarker
-        template: worker.yaml
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/rollout-marker"]
-          value: *stableRolloutMarker
-        template: project-provisioner.yaml
-      - equal:
-          path: spec.template.metadata.annotations["compartment.dev/pending-domain-operation"]
-          value: ''
-        template: api.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/pending-tls"]
-        template: caddy.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/pending-tls"]
-        template: edge.yaml
-        documentIndex: 1
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-        template: worker.yaml
-      - notExists:
-          path: spec.template.metadata.annotations["checksum/domain-config"]
-        template: project-provisioner.yaml
 
   - it: renders inline custom certificate material into the shared TLS Secret
     set:
@@ -2030,11 +1465,6 @@ tests:
           path: stringData["tls.key"]
           value: test-private-key
         template: custom-tls-secret.yaml
-      - equal:
-          path: spec.template.spec.volumes[?(@.name == "active-tls")].secret.secretName
-          value: compartment-compartment-custom-tls
-        template: api.yaml
-        documentIndex: 1
       - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:

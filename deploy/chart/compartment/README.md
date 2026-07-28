@@ -1,5 +1,28 @@
 # Compartment Helm chart
 
+## Platform TLS
+
+Managed-domain installs create the namespaced Issuer named by
+`tls.issuerRef.name` (default `compartment-platform`) and use the bundled
+managed-domain DNS-01 webhook. The webhook reads only the allocation-scoped
+broker token from the retained install-state Secret; certificate private keys
+remain in cert-manager-managed Kubernetes Secrets. Its broker URL, allocation
+ID, and token Secret reference are fixed by the Deployment rather than accepted
+from Issuer webhook configuration. The registered webhook API group is derived
+from the release name and namespace plus `tls.solver.groupName`, keeping release
+registrations distinct.
+
+Operator-owned domains never create a ClusterIssuer. Set
+`tls.issuerRef.name` and `tls.issuerRef.kind` to an existing `Issuer` or
+`ClusterIssuer`, or set `tls.existingSecret` to an existing
+`kubernetes.io/tls` Secret. The `tls.issuerRef` surface is also the stable
+reference for additional platform Certificates, including the Phase 4
+registry-hostname Certificate.
+
+`tls.acme.environment` selects `staging` or `production`; the corresponding
+ACME directory URLs are independently configurable for test CAs and the live
+staging gate.
+
 ## Requirements
 
 - Kubernetes 1.30.0 or newer. The chart uses the stable `admissionregistration.k8s.io/v1`
@@ -67,9 +90,9 @@ login also has `source`, `account`, and `sourceAccount` scopes, while activation
 `subject`, and `sourceSubject` scopes. Those scoped controls add a `cooldown`. The values in `values.yaml` preserve the
 default protection policy; change them only when your traffic and incident-response requirements justify it.
 
-The retained managed-domain and custom-certificate values remain available to the API during the staged domain
-lifecycle migration. Caddy no longer reads those credentials or certificates: it has one internal HTTP listener
-behind the selected Ingress. Public TLS ownership moves to the Ingress layer in Phase 3. Helm stores supplied secret
+The retained managed-domain allocation and operation-scoped TLS Secret references remain available during staged
+domain changes. API and Caddy never mount those certificates: Caddy has one internal HTTP listener behind the selected
+Ingress, and the Ingress layer owns public TLS. Helm stores supplied secret
 values in its Kubernetes release revision Secrets, so restrict access to both release Secrets and the retained
 install-state Secret.
 
@@ -96,7 +119,7 @@ channel and applies the matching Helm release update:
 
 ```bash
 compartment system domain status
-compartment system domain set --base-domain apps.example.com --tls external
+compartment system domain set --base-domain apps.example.com --tls external --values compartment-values.yaml
 ```
 
 Publish every DNS record printed by `set`, including its operation-specific ownership TXT record, and wait for DNS
@@ -108,20 +131,19 @@ compartment system domain activate --values compartment-values.yaml
 ```
 
 For `custom-cert`, run `attach-cert --cert-file <path> --key-file <path> --values <path>` before verification. The CLI
-stores the PEM files in a Kubernetes TLS Secret and mounts the pending operation path in API. Activation mounts the
-active certificate in API, finalizes the private API operation, and then commits the retained generation. Caddy never
-mounts that Secret after the shared-Ingress cutover; moving these retained system-domain operations to Ingress TLS is
-the Phase 3 migration.
+validates the PEM pair locally and writes an operation-scoped Kubernetes TLS Secret. The private API retains only the
+Secret name and public certificate metadata. Activation waits for the Ingress TLS path, finalizes the private API
+operation, and then commits the retained generation. Neither API nor Caddy mounts certificate material.
 The first Helm update switches runtime resources while retained install state remains on the previous generation. If
 API activation then fails, fix the reported condition and rerun `activate`; the idempotent retry repairs the Helm
 release and retained state. Domain generation prevents an older Helm render from replacing the active domain. The
 chart keeps the first managed allocation in the same Secret so
 `system domain reset-managed --values <path>` can restore it.
 
-`set` and `verify` do not roll workloads. `attach-cert` rolls API to mount pending certificate material; `activate` and
-`reset-managed` currently roll API, Edge, and Caddy through their shared domain-generation checksum even though Caddy
-no longer consumes certificate material. Worker and project-provisioner pods remain running. If Helm or readiness fails,
-rerun the command after fixing the cluster condition.
+`set` records the exact Issuer reference from the operator values file, while `verify` does not roll workloads.
+`attach-cert` creates only the pending TLS Secret; `activate` and `reset-managed` roll the shared domain generation and
+wait for Ingress and Certificate readiness before committing it. Worker and project-provisioner pods remain running.
+If Helm or readiness fails, rerun the command after fixing the cluster condition.
 
 Use `compartment system issue-password-reset --email <email>` to recover an eligible local-password account, including
 the owner. The CLI reaches the private

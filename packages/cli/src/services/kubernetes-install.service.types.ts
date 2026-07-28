@@ -1,3 +1,4 @@
+import type { DomainIssuerReference } from '@compartment/contracts';
 import type { KubernetesInstallProgressReporter } from './kubernetes-install-progress.types';
 
 export interface KubernetesInstallDeploymentInput {
@@ -49,6 +50,8 @@ export interface KubernetesInstallState {
   installationId: string;
   ingressClassName: string;
   ingressEndpoint: KubernetesIngressEndpoint | null;
+  ingressTargets: KubernetesIngressEndpoint[];
+  managedDomainAllocationId: string;
   managedDomainBrokerToken: string;
   publicIngressIpv4: string;
   publicIngressIpv6: string;
@@ -58,11 +61,13 @@ export interface KubernetesInstallState {
 
 export interface RetainedManagedDomainState {
   acmeEmail: string;
+  allocationId: string;
   baseDomain: string;
   brokerUrl: string;
   brokerToken: string;
+  issuerRef: DomainIssuerReference;
   publicProtocol: 'https';
-  tlsMode: 'managed';
+  tlsMode: 'broker-dns01';
 }
 
 export interface KubernetesInstallSecretValues {
@@ -74,6 +79,7 @@ export interface KubernetesInstallSecretValues {
 export interface KubernetesInstallIngressValues {
   className: string;
   endpoint: KubernetesIngressEndpointValues;
+  targetsJson: string;
 }
 
 export interface KubernetesIngressEndpointValues {
@@ -92,6 +98,7 @@ export interface KubernetesInstallPlatformValues {
   domainGeneration: number;
   domainMode: KubernetesInstallDomainMode;
   installationId: string;
+  managedDomainAllocationId?: string | undefined;
   managedDomainBrokerUrl: string;
   publicIngressIpv4?: string | undefined;
   publicIngressIpv6?: string | undefined;
@@ -107,6 +114,7 @@ export interface KubernetesInstallSecretValueFields {
 export interface KubernetesPublicIngress {
   ingressClassName: string;
   ingressEndpoint: KubernetesIngressEndpoint | null;
+  ingressTargets: KubernetesIngressEndpoint[];
   publicIngressIpv4: string;
   publicIngressIpv6: string;
 }
@@ -184,6 +192,6 @@ export interface PublicControlPlaneObservation {
 
 export type KubernetesInstallStage = 'foundation' | 'full';
 export type KubernetesInstallDomainMode = 'custom' | 'managed';
-export type KubernetesInstallTlsMode = 'custom-cert' | 'custom-http' | 'internal' | 'managed';
+export type KubernetesInstallTlsMode = 'broker-dns01' | 'internal' | 'issuer' | 'secret';
 export type KubernetesIngressEndpointType = 'A' | 'AAAA' | 'hostname';
 export type KubernetesPublicProtocol = 'http' | 'https';

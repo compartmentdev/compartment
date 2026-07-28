@@ -2,6 +2,7 @@ import { X509Certificate } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import type { ClientRequest, IncomingMessage } from 'node:http';
 import { get } from 'node:https';
+import { isIP } from 'node:net';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
@@ -18,11 +19,10 @@ const managedAcmeManagementPort: number = Number(process.env.COMPARTMENT_E2E_MAN
 const managedAcmeManagementTimeoutMs: number = 30_000;
 const managedBrokerServicePort: number = 19_000;
 
-const managedHttpPort: string = process.env.COMPARTMENT_E2E_HTTP_PORT ?? '18080';
 const managedBrokerHostPort: number = Number(process.env.COMPARTMENT_E2E_MANAGED_BROKER_PORT ?? '19000');
 
-export const managedInstallApiUrl: string = `http://console.managed.compartment.localhost:${managedHttpPort}`;
-export const managedInstallBaseDomain: string = 'managed.compartment.localhost';
+export const managedInstallApiUrl: string = `https://console.managed-platform-e2e.managed.compartment.localhost:${process.env.COMPARTMENT_E2E_HTTPS_PORT ?? '18443'}`;
+export const managedInstallBaseDomain: string = 'managed-platform-e2e.managed.compartment.localhost';
 export const managedInstallBrokerUrl: string = `http://managed-domain-broker:${managedBrokerServicePort.toString()}`;
 export const managedInstallCertificateAuthorityPath: string = resolve(
   repositoryRoot,
@@ -32,26 +32,30 @@ export const managedInstallKubeContext: string = process.env.COMPARTMENT_E2E_KUB
 export const managedInstallNamespace: string =
   process.env.COMPARTMENT_E2E_MANAGED_NAMESPACE ?? 'compartment-managed-e2e';
 const managedBuildNamespace: string = `${managedInstallNamespace}-build`;
-export const managedInstallPublicIpv4: string = ['8', '8', '4', '4'].join('.');
 export const managedInstallReleaseName: string = 'managed-e2e';
 export const managedInstallValuesPath: string =
   process.env.COMPARTMENT_E2E_MANAGED_VALUES_PATH ?? '.compartment/platform-k3d-managed-e2e-values.yaml';
 
 interface ManagedDomainAllocationObservation {
+  readonly allocationId: string;
   readonly installationId: string;
-  readonly publicIp: string;
   readonly requestedLabelSource: string;
+  readonly targets: readonly ManagedDomainTargetObservation[];
 }
 
 export interface ManagedDomainBrokerObservation {
   readonly allocations: readonly ManagedDomainAllocationObservation[];
-  readonly txtDeletes: readonly ManagedDomainTxtObservation[];
-  readonly txtWrites: readonly ManagedDomainTxtObservation[];
+  readonly audit: readonly ManagedDomainAuditObservation[];
+  readonly replayCount: number;
 }
 
-interface ManagedDomainTxtObservation {
-  readonly name: string;
+interface ManagedDomainTargetObservation {
+  readonly type: 'A' | 'AAAA' | 'hostname';
   readonly value: string;
+}
+
+export interface ManagedDomainAuditObservation {
+  readonly event: string;
 }
 
 export async function prepareManagedInstallFixture(): Promise<void> {
@@ -75,6 +79,7 @@ export async function prepareManagedInstallFixture(): Promise<void> {
     ['--namespace', managedInstallNamespace, 'apply', '--filename', resolve(fixtureDirectory, 'manifests.yaml')],
     'apply managed install fixtures',
   );
+  await configureCertManagerRecursiveDns();
   await expectSuccessfulKubectl(
     [
       '--namespace',
@@ -88,6 +93,49 @@ export async function prepareManagedInstallFixture(): Promise<void> {
     'wait for managed install fixtures',
   );
   await writeManagedInstallCertificateAuthority();
+}
+
+async function configureCertManagerRecursiveDns(): Promise<void> {
+  const dnsService: SelfHostedUserSetupCommandResult = await runKubectl([
+    '--namespace',
+    managedInstallNamespace,
+    'get',
+    'service/managed-dns-public-resolvers',
+    '--output',
+    'jsonpath={.spec.clusterIP}',
+  ]);
+  expectSuccessfulCommand(dnsService, 'read managed install DNS service address');
+  const dnsServiceIp: string = dnsService.stdout.trim();
+  if (isIP(dnsServiceIp) === 0) {
+    throw new Error(`Managed install DNS service returned an invalid clusterIP: ${dnsServiceIp}`);
+  }
+  await expectSuccessfulKubectl(
+    [
+      '--namespace',
+      'cert-manager',
+      'patch',
+      'deployment/cert-manager',
+      '--type=json',
+      '--patch',
+      JSON.stringify([
+        {
+          op: 'add',
+          path: '/spec/template/spec/containers/0/args/-',
+          value: '--dns01-recursive-nameservers-only',
+        },
+        {
+          op: 'add',
+          path: '/spec/template/spec/containers/0/args/-',
+          value: `--dns01-recursive-nameservers=${dnsServiceIp}:53`,
+        },
+      ]),
+    ],
+    'configure cert-manager recursive DNS',
+  );
+  await expectSuccessfulKubectl(
+    ['--namespace', 'cert-manager', 'rollout', 'status', 'deployment/cert-manager', '--timeout=4m'],
+    'wait for cert-manager recursive DNS rollout',
+  );
 }
 
 export async function cleanupManagedInstallFixture(): Promise<void> {

@@ -22,14 +22,14 @@ export async function resolveKubernetesPublicIngress(
   input: KubernetesPublicIngressResolutionInput,
 ): Promise<KubernetesPublicIngress> {
   if (input.configuredEndpoint !== null) {
-    return buildPublicIngress(input.ingressClassName, validateIngressEndpoint(input.configuredEndpoint));
+    return buildPublicIngress(input.ingressClassName, [validateIngressEndpoint(input.configuredEndpoint)]);
   }
 
   const deadline: number = Date.now() + ingressWaitTimeoutMs;
   for (;;) {
-    const endpoint: KubernetesIngressEndpoint | null = await observeIngressEndpoint(input, deadline);
-    if (endpoint !== null) {
-      return buildPublicIngress(input.ingressClassName, endpoint);
+    const endpoints: KubernetesIngressEndpoint[] = await observeIngressEndpoints(input, deadline);
+    if (endpoints.length > 0) {
+      return buildPublicIngress(input.ingressClassName, endpoints);
     }
     const delayMs: number = Math.min(ingressPollIntervalMs, Math.max(0, deadline - Date.now()));
     if (delayMs > 0) {
@@ -38,22 +38,10 @@ export async function resolveKubernetesPublicIngress(
   }
 }
 
-export function readManagedDomainPublicIp(publicIngress: KubernetesPublicIngress): string {
-  if (publicIngress.publicIngressIpv4 !== '') {
-    return publicIngress.publicIngressIpv4;
-  }
-  if (publicIngress.publicIngressIpv6 !== '') {
-    return publicIngress.publicIngressIpv6;
-  }
-  throw new Error(
-    'Managed-domain allocation requires an A or AAAA ingress endpoint until the Phase 3 broker target contract is available.',
-  );
-}
-
-async function observeIngressEndpoint(
+async function observeIngressEndpoints(
   input: KubernetesPublicIngressResolutionInput,
   deadline: number,
-): Promise<KubernetesIngressEndpoint | null> {
+): Promise<KubernetesIngressEndpoint[]> {
   const remainingMs: number = deadline - Date.now();
   if (remainingMs <= 0) {
     throw new Error(
@@ -64,7 +52,7 @@ async function observeIngressEndpoint(
     input,
     Math.min(ingressInspectionTimeoutMs, remainingMs),
   );
-  return readObservedEndpoint(ingress.status?.loadBalancer?.ingress ?? []);
+  return readObservedEndpoints(ingress.status?.loadBalancer?.ingress ?? []);
 }
 
 async function readInstallationIngress(
@@ -114,7 +102,7 @@ function parseIngressList(output: string): KubernetesIngressList {
   throw new Error('kubectl returned an invalid Ingress response.');
 }
 
-function readObservedEndpoint(addresses: readonly KubernetesIngressAddress[]): KubernetesIngressEndpoint | null {
+function readObservedEndpoints(addresses: readonly KubernetesIngressAddress[]): KubernetesIngressEndpoint[] {
   const endpoints: KubernetesIngressEndpoint[] = addresses
     .flatMap((address: KubernetesIngressAddress): KubernetesIngressEndpoint[] => {
       if (address.ip !== undefined) {
@@ -128,7 +116,10 @@ function readObservedEndpoint(addresses: readonly KubernetesIngressAddress[]): K
     })
     .filter((endpoint: KubernetesIngressEndpoint): boolean => endpoint.value !== '')
     .sort(compareEndpoints);
-  return endpoints[0] ?? null;
+  return endpoints.filter(
+    (endpoint: KubernetesIngressEndpoint, index: number): boolean =>
+      index === 0 || endpoint.type !== endpoints[index - 1]?.type || endpoint.value !== endpoints[index - 1]?.value,
+  );
 }
 
 function validateIngressEndpoint(endpoint: KubernetesIngressEndpoint): KubernetesIngressEndpoint {
@@ -164,12 +155,19 @@ function compareEndpoints(left: KubernetesIngressEndpoint, right: KubernetesIngr
 
 function buildPublicIngress(
   ingressClassName: string,
-  ingressEndpoint: KubernetesIngressEndpoint,
+  ingressTargets: KubernetesIngressEndpoint[],
 ): KubernetesPublicIngress {
+  const ingressEndpoint: KubernetesIngressEndpoint | undefined = ingressTargets[0];
+  if (ingressEndpoint === undefined) {
+    throw new Error('At least one public Ingress target is required.');
+  }
   return {
     ingressClassName,
     ingressEndpoint,
-    publicIngressIpv4: ingressEndpoint.type === 'A' ? ingressEndpoint.value : '',
-    publicIngressIpv6: ingressEndpoint.type === 'AAAA' ? ingressEndpoint.value : '',
+    ingressTargets,
+    publicIngressIpv4:
+      ingressTargets.find((target: KubernetesIngressEndpoint): boolean => target.type === 'A')?.value ?? '',
+    publicIngressIpv6:
+      ingressTargets.find((target: KubernetesIngressEndpoint): boolean => target.type === 'AAAA')?.value ?? '',
   };
 }

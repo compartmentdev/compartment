@@ -102,12 +102,6 @@ spec:
           volumeMounts:
             - {name: data, mountPath: /var/lib/compartment}
             - {name: runtime, mountPath: /var/run/compartment}
-            {{- if eq $installState.effective.platform.tlsMode "custom-cert" }}
-            - {name: active-tls, mountPath: /etc/compartment/tls, readOnly: true}
-            {{- end }}
-            {{- if not (empty .Values.customTls.pendingOperationId) }}
-            - {name: pending-tls, mountPath: {{ printf "/etc/compartment/tls/%s" .Values.customTls.pendingOperationId | quote }}, readOnly: true}
-            {{- end }}
             - {name: tmp, mountPath: /tmp}
       volumes:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
@@ -115,23 +109,5 @@ spec:
           persistentVolumeClaim:
             claimName: {{ include "compartment.fullname" . }}-api
         - {name: runtime, emptyDir: {}}
-        {{- if eq $installState.effective.platform.tlsMode "custom-cert" }}
-        - name: active-tls
-          secret:
-            secretName: {{ include "compartment.customTlsSecretName" . }}
-            defaultMode: 0440
-            items:
-              - {key: tls.crt, path: fullchain.pem}
-              - {key: tls.key, path: privkey.pem}
-        {{- end }}
-        {{- if not (empty .Values.customTls.pendingOperationId) }}
-        - name: pending-tls
-          secret:
-            secretName: {{ .Values.customTls.pendingSecretName }}
-            defaultMode: 0440
-            items:
-              - {key: tls.crt, path: fullchain.pem}
-              - {key: tls.key, path: privkey.pem}
-        {{- end }}
         - {name: tmp, emptyDir: {}}
 {{- end }}
