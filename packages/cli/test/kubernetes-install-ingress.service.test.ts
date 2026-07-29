@@ -32,8 +32,6 @@ describe('Kubernetes Ingress endpoint observation', (): void => {
       ingressClassName: 'traefik',
       ingressEndpoint: { type: 'hostname', value: 'ingress.example.com' },
       ingressTargets: [{ type: 'hostname', value: 'ingress.example.com' }],
-      publicIngressIpv4: '',
-      publicIngressIpv6: '',
     });
   });
 
@@ -42,15 +40,11 @@ describe('Kubernetes Ingress endpoint observation', (): void => {
       resolveKubernetesPublicIngress(createResolutionInput({ type: 'A', value: publicIpv4 })),
     ).resolves.toMatchObject({
       ingressEndpoint: { type: 'A', value: publicIpv4 },
-      publicIngressIpv4: publicIpv4,
-      publicIngressIpv6: '',
     });
     await expect(
       resolveKubernetesPublicIngress(createResolutionInput({ type: 'AAAA', value: publicIpv6 })),
     ).resolves.toMatchObject({
       ingressEndpoint: { type: 'AAAA', value: publicIpv6 },
-      publicIngressIpv4: '',
-      publicIngressIpv6: publicIpv6,
     });
     expect(runCommand).not.toHaveBeenCalled();
   });

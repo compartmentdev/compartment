@@ -69,16 +69,6 @@ export function readSystemDomainBaseDomain(value: string): string {
   return normalized;
 }
 
-export function readSystemDomainTlsMode(value: string | undefined): 'custom-cert' | 'external' {
-  if (value === undefined || value === 'external') {
-    return 'external';
-  }
-  if (value === 'custom-cert') {
-    return value;
-  }
-  throw new Error('Expected --tls to be external or custom-cert.');
-}
-
 export function resolveKubernetesSystemUpdateVersion(value: string | undefined): string {
   if (value !== undefined) {
     return readSystemUpdateImageTag(value);

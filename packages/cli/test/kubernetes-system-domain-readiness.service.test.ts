@@ -31,24 +31,6 @@ describe('Kubernetes system-domain readiness', (): void => {
       waitForKubernetesSystemDomainReadiness({ namespace: 'compartment', releaseName: 'compartment' }, issuerHostPlan),
     ).rejects.toThrow('The retained domain generation was not committed');
   });
-
-  it('does not commit a custom certificate unless the operation Secret is referenced and exists', async (): Promise<void> => {
-    const customCertificateHostPlan: DomainHostPlan = { ...issuerHostPlan, tlsMode: 'custom-cert' };
-    runCommand.mockResolvedValueOnce({
-      exitCode: 0,
-      stderr: '',
-      stdout: readyIngressList('apps.example.com', 'wrong-secret'),
-    });
-
-    await expect(
-      waitForKubernetesSystemDomainReadiness(
-        { namespace: 'compartment', releaseName: 'compartment' },
-        customCertificateHostPlan,
-        'domop_expected',
-      ),
-    ).rejects.toThrow('Ingress TLS Secret reference did not converge');
-    expect(runCommand).toHaveBeenCalledTimes(1);
-  });
 });
 
 function readyIngressList(baseDomain: string, secretName: string = 'compartment-console-tls'): string {

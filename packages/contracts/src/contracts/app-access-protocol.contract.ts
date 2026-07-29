@@ -28,7 +28,6 @@ export const compartmentInternalAppAccessLogoutPathname: string = '/internal/app
 export const compartmentInternalAppAccessSessionsRevokePathname: string = '/internal/app-access/sessions/revoke';
 export const compartmentInternalAppAccessStatePathname: string = '/internal/app-access/state';
 export const compartmentIngressAuthorizePathname: string = '/internal/ingress/authorize';
-export const compartmentOnDemandTlsAskPathname: string = '/internal/tls/ask';
 export const compartmentAccessModeHeaderName: string = 'X-Compartment-Access-Mode';
 export const compartmentOrganizationIdHeaderName: string = 'X-Compartment-Organization-Id';
 export const compartmentOrganizationSlugHeaderName: string = 'X-Compartment-Organization-Slug';

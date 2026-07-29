@@ -48,10 +48,6 @@ export function requireExistingBaseDomain(existingInstall: ExistingKubernetesIns
   throw new Error('The existing full Helm release has no resolved base domain.');
 }
 
-export function readInstallationId(existingInstall: ExistingKubernetesInstall | null): string | null {
-  return existingInstall !== null && existingInstall.installationId !== '' ? existingInstall.installationId : null;
-}
-
 export function createInstallToken(): string {
   return randomBytes(installTokenByteLength).toString('hex');
 }

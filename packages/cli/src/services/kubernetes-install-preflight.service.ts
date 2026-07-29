@@ -10,7 +10,7 @@ import type {
 
 const requestTimeout: string = '3s';
 
-export class KubernetesInstallPreflightError extends Error {
+class KubernetesInstallPreflightError extends Error {
   readonly check: 'cluster' | 'storage class';
 
   constructor(check: 'cluster' | 'storage class', message: string) {

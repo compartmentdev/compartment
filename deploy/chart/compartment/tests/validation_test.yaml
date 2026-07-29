@@ -16,7 +16,6 @@ tests:
         baseDomain: managed.compartment.run
         publicProtocol: https
         tlsMode: broker-dns01
-        publicIngressIpv4: 8.8.4.4
         acmeEmail: admin@example.com
     asserts:
       - failedTemplate:
@@ -101,14 +100,6 @@ tests:
       - failedTemplate:
           errorPattern: ports.*additional properties.*https
 
-  - it: rejects malformed IPv4 syntax through the values schema
-    set:
-      platform:
-        publicIngressIpv4: not-an-ip
-    asserts:
-      - failedTemplate:
-          errorPattern: publicIngressIpv4.*ipv4
-
   - it: rejects a non-HTTPS ACME URL through the values schema
     set:
       platform:
@@ -181,36 +172,6 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: authThrottle/login/route.*additional properties
-
-  - it: requires an ACME email for custom certificate TLS
-    set:
-      platform:
-        startupStage: full
-        installationId: test-custom
-        baseDomain: apps.example.com
-        publicProtocol: https
-        tlsMode: secret
-        publicIngressIpv4: 8.8.8.8
-        acmeEmail: ''
-      customTls:
-        existingSecret: operator-tls
-    asserts:
-      - failedTemplate:
-          errorMessage: platform.acmeEmail is required for public TLS
-
-  - it: requires custom certificate material
-    set:
-      platform:
-        startupStage: full
-        installationId: test-custom
-        baseDomain: apps.example.com
-        publicProtocol: https
-        tlsMode: secret
-        publicIngressIpv4: 8.8.8.8
-        acmeEmail: admin@example.com
-    asserts:
-      - failedTemplate:
-          errorMessage: customTls.certificate or customTls.existingSecret is required for custom-cert TLS
 
   - it: rejects a mutable platform image digest through the values schema
     set:

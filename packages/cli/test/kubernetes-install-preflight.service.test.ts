@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, it, vi, type MockedFunction } from 'vitest';
 import { runCommand } from '../src/command-runner';
-import type { CommandResult } from '../src/command-runner.types';
 import { buildHelmCommand, buildKubectlCommand } from '../src/services/kubernetes-command.support';
 import { resolveKubernetesInstallKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service';
 import type { ResolvedKubernetesKubeconfig } from '../src/services/kubernetes-install-kubeconfig.service.types';
@@ -51,7 +50,7 @@ describe('Kubernetes install kubeconfig resolution', (): void => {
     await writeFile(join(homeDirectory, '.kube', 'config'), 'clusters: null\ncurrent-context: ""\n');
 
     await expect(resolveKubernetesInstallKubeconfig({ env: {}, homeDirectory, k3sPath })).rejects.toThrow(
-      /No usable kubeconfig found.*\$KUBECONFIG.*~\/\.kube\/config \(no current context\).*missing-k3s\.yaml \(not found\).*point KUBECONFIG.*--disable traefik/su,
+      /No usable kubeconfig found.*\$KUBECONFIG.*~\/\.kube\/config \(no current context\).*missing-k3s\.yaml \(not found\).*point KUBECONFIG.*keep its Ingress Controller enabled/su,
     );
   });
 
@@ -221,32 +220,6 @@ describe('Kubernetes install cluster preflight', (): void => {
       'default',
     ]);
     expect(buildKubectlCommand(target, ['get', 'service'])).toContain('/tmp/k3s.yaml');
-  });
-
-  it('passes when Traefik occupies host ports 80 and 443 because host ports are not preflight concerns', async (): Promise<void> => {
-    const traefikServices: string =
-      '{"items":[{"metadata":{"name":"traefik","namespace":"kube-system"},"spec":{"type":"LoadBalancer","ports":[{"port":80},{"port":443}]}}]}';
-    mockedRunCommand.mockImplementation(async (command: readonly string[]): Promise<CommandResult> => {
-      const renderedCommand: string = command.join(' ');
-      if (renderedCommand.includes('get services')) {
-        return await Promise.resolve({ exitCode: 0, stderr: '', stdout: traefikServices });
-      }
-      return await Promise.resolve({
-        exitCode: 0,
-        stderr: '',
-        stdout: renderedCommand.includes('get storageclass') ? '{"items":[]}' : '{}',
-      });
-    });
-
-    await expect(runKubernetesInstallPreflight(preflightInput())).resolves.toEqual({ storageClass: '' });
-    expect(mockedRunCommand).toHaveBeenCalledTimes(2);
-    const commands: string = mockedRunCommand.mock.calls
-      .map((call: [command: readonly string[], env?: NodeJS.ProcessEnv | undefined]): string => call[0].join(' '))
-      .join('\n');
-    expect(commands).not.toContain('services');
-    expect(commands).not.toContain('daemonsets');
-    expect(commands).not.toContain('80');
-    expect(commands).not.toContain('443');
   });
 
   it('passes the selected kubeconfig to every kubectl check and detects local-path', async (): Promise<void> => {

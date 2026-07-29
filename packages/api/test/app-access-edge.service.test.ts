@@ -82,7 +82,6 @@ describe('app access edge service', (): void => {
     mocks.readAppAccessState.mockResolvedValue({
       compartmentUrl: 'http://console.localhost:9080',
       grants: [],
-      onDemandTlsHosts: [],
       routes: [],
     });
   });

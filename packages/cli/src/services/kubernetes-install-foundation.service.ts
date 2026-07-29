@@ -46,15 +46,14 @@ async function ensureKubernetesFoundation(
   installToken: string,
   installationId: string,
 ): Promise<void> {
-  if (existingRelease === null && retainedState === null) {
+  if (retainedState === null) {
+    if (existingRelease !== null) {
+      throw new Error('Cannot resume a Helm release without canonical retained install state.');
+    }
     await deployInitialFoundation(input, material, installToken, installationId);
     return;
   }
-  const existingState: KubernetesInstallState | null = retainedState ?? existingRelease;
-  if (existingState === null) {
-    throw new Error('Expected an existing foundation release or retained install state.');
-  }
-  await deployResumableFoundation(input, material, installToken, installationId, existingState);
+  await deployResumableFoundation(input, material, installToken, installationId, retainedState);
 }
 
 async function deployResumableFoundation(

@@ -1,7 +1,6 @@
 import {
   buildFastifyResponseSchemas,
   compartmentSystemDomainActivatePathname,
-  compartmentSystemDomainAttachCertificatePathname,
   compartmentSystemDomainResetManagedPathname,
   compartmentSystemDomainSetPathname,
   compartmentSystemDomainStatusPathname,
@@ -9,11 +8,9 @@ import {
   compartmentSystemDomainVerifyPathname,
   type FastifyResponseSchemas,
   systemDomainMutationResponseSchema,
-  systemDomainAttachCertificateRequestSchema,
   systemDomainSetRequestSchema,
   systemDomainStatusResponseSchema,
   systemDomainVersionedRequestSchema,
-  type SystemDomainAttachCertificateRequest,
   type SystemDomainSetRequest,
   type SystemDomainVersionedRequest,
 } from '@compartment/contracts';
@@ -25,7 +22,6 @@ import type { ApiRateLimitRouteOptions } from '../../http/rate-limit.types';
 import { parseRequestValue } from '../../http/validation';
 import { activateSystemDomainPending, verifySystemDomainPending } from '../../services/system-domain-operation.service';
 import { resetSystemDomainManaged } from '../../services/system-domain-managed-reset.service';
-import { attachSystemDomainPendingCertificate } from '../../services/system-domain-certificate-operation.service';
 import { refreshSystemDomainStatus } from '../../services/system-domain-health.service';
 import { readSystemDomainStatus, stageSystemDomain } from '../../services/system-domain.service';
 import type {
@@ -97,7 +93,6 @@ export function registerSystemDomainRoutes(app: ApiApp): void {
     registerSystemDomainStatusRoute(app);
     registerSystemDomainStatusRefreshRoute(app);
     registerSystemDomainSetRoute(app);
-    registerSystemDomainAttachCertificateRoute(app);
     registerSystemDomainVersionedMutationRoutes(app);
   });
 }
@@ -116,14 +111,6 @@ function registerSystemDomainStatusRefreshRoute(app: ApiApp): void {
 
 function registerSystemDomainSetRoute(app: ApiApp): void {
   app.post(compartmentSystemDomainSetPathname, systemDomainMutationRouteOptions, handleSystemDomainSetRequest);
-}
-
-function registerSystemDomainAttachCertificateRoute(app: ApiApp): void {
-  app.post(
-    compartmentSystemDomainAttachCertificatePathname,
-    systemDomainMutationRouteOptions,
-    handleSystemDomainAttachCertificateRequest,
-  );
 }
 
 function registerSystemDomainVersionedMutationRoutes(app: ApiApp): void {
@@ -161,24 +148,6 @@ async function handleSystemDomainSetRequest(request: FastifyRequest, reply: Fast
   const result: SystemDomainMutationResult = await stageSystemDomain({
     expectedSetupVersion: requestBody.expectedSetupVersion,
     hostPlan: requestBody.hostPlan,
-    idempotencyKey: readRequiredIdempotencyKey(request),
-  });
-
-  return await reply.send(buildSystemDomainMutationResponse(result));
-}
-
-async function handleSystemDomainAttachCertificateRequest(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<FastifyReply> {
-  const requestBody: SystemDomainAttachCertificateRequest = parseRequestValue(
-    systemDomainAttachCertificateRequestSchema,
-    request.body,
-    'invalid_system_domain_attach_certificate_request',
-  );
-  const result: SystemDomainMutationResult = await attachSystemDomainPendingCertificate({
-    certificate: requestBody.certificate,
-    expectedSetupVersion: requestBody.expectedSetupVersion,
     idempotencyKey: readRequiredIdempotencyKey(request),
   });
 

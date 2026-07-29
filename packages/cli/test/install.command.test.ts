@@ -1,12 +1,9 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { runCli } from '../src/app';
-import type {
-  InstallPreflightChecklistResult,
-  ResolvedInstallIdentityPrompts,
-} from '../src/commands/install/install.command.types';
+import type { ResolvedInstallIdentityPrompts } from '../src/commands/install/install.command.types';
 import type { CliInstallResult } from '../src/install.types';
 import type { KubernetesInstallDeploymentResult } from '../src/services/kubernetes-install.service.types';
-import { createCliCapture, readCliStderr, readCliStdout, type CliCommandCapture } from './cli-test.harness';
+import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-test.harness';
 
 type DeployInstall = () => Promise<KubernetesInstallDeploymentResult>;
 type InstallOwner = () => Promise<CliInstallResult>;
@@ -43,20 +40,6 @@ vi.mock('../src/commands/install/install.command.identity', (): object => ({
     organizationName: prompts.organizationName,
   }),
   resolveInstallIdentityPrompts: mocks.resolveIdentity,
-}));
-vi.mock('../src/commands/install/install.command.preflight', (): object => ({
-  runInstallPreflightChecklist: vi.fn(
-    async (): Promise<InstallPreflightChecklistResult> =>
-      await Promise.resolve({
-        kubeconfig: {
-          clusterServer: 'https://127.0.0.1:6443',
-          contextName: 'default',
-          materializedDirectory: undefined,
-          path: '/tmp/kubeconfig',
-        },
-        preflight: { storageClass: 'local-path' },
-      }),
-  ),
 }));
 vi.mock('../src/commands/install/install.command.session', (): object => ({
   persistDevInstallSession: vi.fn(),
@@ -123,13 +106,13 @@ describe('install command boundary', (): void => {
     expect(readCliStderr(capture)).toContain("unknown option '--local-runtime'");
   });
 
-  it('completes a declarative Kubernetes install without node mutation', async (): Promise<void> => {
+  it('rejects the removed operator-values install path', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 
     const exitCode: number = await runCli(['install', '--values', 'compartment-values.yaml'], capture.io);
 
-    expect(exitCode).toBe(0);
-    expect(readCliStdout(capture)).toContain('Installed Compartment at https://console.apps.example.com');
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toContain("unknown option '--values'");
   });
 });
 

@@ -298,7 +298,7 @@ async function challengeRequest(path, body) {
 }
 
 function assertReservationRequest(body) {
-  if (!isRecord(body) || !hasText(body.installationId) || !hasText(body.requestedLabelSource) || 'publicIp' in body) {
+  if (!isRecord(body) || !hasText(body.installationId) || !hasText(body.requestedLabelSource)) {
     throw new Error('Invalid managed-domain reservation request.');
   }
 }

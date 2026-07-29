@@ -3,7 +3,6 @@ import type { Command } from 'commander';
 import { renderOutput } from '../../output/render';
 import {
   activateKubernetesSystemDomain,
-  attachKubernetesSystemDomainCertificate,
   getKubernetesSystemDomainStatus,
   resetManagedKubernetesSystemDomain,
   setKubernetesSystemDomain,
@@ -20,7 +19,6 @@ import {
   addKubernetesOperatorReleaseOptions,
   addKubernetesOperatorTargetOptions,
   readSystemDomainBaseDomain,
-  readSystemDomainTlsMode,
   resolveKubernetesOperatorTarget,
   resolveSystemDomainVersionedCommand,
   systemDomainExpectedVersionDescription,
@@ -29,7 +27,6 @@ import { createSystemDomainMutationMessage, createSystemDomainStatusMessage } fr
 import type {
   KubernetesOperatorCommandOptions,
   ResolvedSystemDomainVersionedCommand,
-  SystemDomainAttachCertificateCommandOptions,
   SystemDomainSetCommandOptions,
   SystemDomainVersionedCommandOptions,
 } from './system.command.types';
@@ -41,7 +38,6 @@ export function registerDomainSystemCommands(program: Command, dependencies: Cli
   const domain: Command = program.command('domain').description('System-domain lifecycle for a Kubernetes install');
   registerDomainStatusCommand(domain, dependencies);
   registerDomainSetCommand(domain, dependencies);
-  registerDomainAttachCertificateCommand(domain, dependencies);
   registerDomainLifecycleMutationCommands(domain, dependencies);
 }
 
@@ -93,21 +89,16 @@ function registerDomainSetCommand(program: Command, dependencies: CliCommandDepe
     program
       .command('set')
       .description('Stage a custom system domain and print required DNS records')
-      .requiredOption('--base-domain <domain>', 'Public base domain')
-      .option('--tls <mode>', 'external or custom-cert', 'external'),
+      .requiredOption('--base-domain <domain>', 'Public base domain'),
   ).action(async (options: SystemDomainSetCommandOptions): Promise<void> => {
     const baseDomain: string = readSystemDomainBaseDomain(options.baseDomain);
-    const tlsMode: 'custom-cert' | 'external' = readSystemDomainTlsMode(options.tls);
     const result: SystemDomainMutationResponse = await withResolvedKubernetesOperatorTarget(
       resolveKubernetesOperatorTarget(options),
       async (target: KubernetesOperatorTarget): Promise<SystemDomainMutationResponse> =>
         await setKubernetesSystemDomain({
           ...target,
           baseDomain,
-          ...(tlsMode === 'external'
-            ? { issuerRef: await readKubernetesTlsIssuerReference(requireValuesPath(target.valuesPath)) }
-            : {}),
-          tlsMode,
+          issuerRef: await readKubernetesTlsIssuerReference(requireValuesPath(target.valuesPath)),
         }),
     );
     renderOutput(dependencies.io, options.output, result, createSystemDomainMutationMessage(result));
@@ -119,32 +110,6 @@ function requireValuesPath(value: string | undefined): string {
     throw new Error('--values is required when staging an issuer-managed system domain.');
   }
   return value;
-}
-
-function registerDomainAttachCertificateCommand(program: Command, dependencies: CliCommandDependencies): void {
-  addKubernetesOperatorReleaseOptions(
-    program
-      .command('attach-cert')
-      .description('Stage a TLS Secret and validate it against the pending domain')
-      .requiredOption('--cert-file <path>', 'Full-chain PEM certificate file')
-      .requiredOption('--key-file <path>', 'Private-key PEM file')
-      .option('--expected-version <version>', systemDomainExpectedVersionDescription),
-  ).action(async (options: SystemDomainAttachCertificateCommandOptions): Promise<void> => {
-    const resolved: ResolvedSystemDomainVersionedCommand = resolveSystemDomainVersionedCommand(options);
-    const result: SystemDomainMutationResponse = await withResolvedKubernetesOperatorTarget(
-      resolveKubernetesOperatorTarget(options),
-      async (target: KubernetesOperatorTarget): Promise<SystemDomainMutationResponse> =>
-        await attachKubernetesSystemDomainCertificate({
-          ...target,
-          ...(resolved.expectedSetupVersion === undefined
-            ? {}
-            : { expectedSetupVersion: resolved.expectedSetupVersion }),
-          certificateFile: options.certFile,
-          privateKeyFile: options.keyFile,
-        }),
-    );
-    renderOutput(dependencies.io, options.output, result, createSystemDomainMutationMessage(result));
-  });
 }
 
 function registerDomainMutationCommand(

@@ -35,7 +35,7 @@ vi.mock(
 );
 
 describe('custom domain DNS service', (): void => {
-  it('builds public IP routing records for managed installs', (): void => {
+  it('builds canonical routing records for managed installs', (): void => {
     expect(
       buildCustomDomainDnsRecords({
         canonicalRouteHost: 'billing.example.compartment.run',
@@ -57,25 +57,16 @@ describe('custom domain DNS service', (): void => {
         groupId: 'routing',
         name: 'app.example.com',
         purpose: 'routing',
-        recordType: 'A',
+        recordType: 'CNAME',
         required: true,
-        value: '203.0.113.10',
-      },
-      {
-        groupId: 'routing',
-        name: 'app.example.com',
-        purpose: 'routing',
-        recordType: 'AAAA',
-        required: true,
-        value: '2001:db8::10',
+        value: 'billing.example.compartment.run',
       },
     ]);
   });
 
-  it('validates managed ownership and public IP routing DNS', async (): Promise<void> => {
+  it('validates managed ownership and canonical routing DNS', async (): Promise<void> => {
     mocks.resolveTxt.mockResolvedValue([[buildCompartmentDomainOwnershipValue('cdom_123')]]);
-    mocks.resolve4.mockResolvedValue(['203.0.113.10']);
-    mocks.resolve6.mockResolvedValue(['2001:db8::10']);
+    mocks.resolveCname.mockResolvedValue(['billing.example.compartment.run.']);
 
     await expect(
       verifyCustomDomainDns({
@@ -93,11 +84,9 @@ describe('custom domain DNS service', (): void => {
     });
   });
 
-  it('rejects managed routing through CNAME chains', async (): Promise<void> => {
+  it('rejects managed routing through a different CNAME', async (): Promise<void> => {
     mocks.resolveTxt.mockResolvedValue([[buildCompartmentDomainOwnershipValue('cdom_123')]]);
-    mocks.resolveCname.mockResolvedValue(['billing.example.compartment.run.']);
-    mocks.resolve4.mockResolvedValue(['203.0.113.10']);
-    mocks.resolve6.mockResolvedValue(['2001:db8::10']);
+    mocks.resolveCname.mockResolvedValue(['other.example.compartment.run.']);
 
     await expect(
       verifyCustomDomainDns({
@@ -113,32 +102,9 @@ describe('custom domain DNS service', (): void => {
       ownershipStatus: 'valid',
       routingStatus: 'invalid',
     });
-    expect(mocks.resolve4).not.toHaveBeenCalled();
-    expect(mocks.resolve6).not.toHaveBeenCalled();
   });
 
-  it('rejects managed routing with stray address records', async (): Promise<void> => {
-    mocks.resolveTxt.mockResolvedValue([[buildCompartmentDomainOwnershipValue('cdom_123')]]);
-    mocks.resolve4.mockResolvedValue(['203.0.113.10']);
-    mocks.resolve6.mockResolvedValue(['2001:db8::99']);
-
-    await expect(
-      verifyCustomDomainDns({
-        canonicalRouteHost: 'billing.example.compartment.run',
-        config: createIpv4OnlyDnsConfig(),
-        domainId: 'cdom_123',
-        host: 'app.example.com',
-        hostPlan: createManagedHostPlan(),
-        verificationTokenHash: hashToken(buildCompartmentDomainOwnershipValue('cdom_123'), 'test-session-secret'),
-      }),
-    ).resolves.toEqual({
-      failureMessage: 'Routing DNS records are not valid yet.',
-      ownershipStatus: 'valid',
-      routingStatus: 'invalid',
-    });
-  });
-
-  it('validates custom-cert subdomain routing with CNAME', async (): Promise<void> => {
+  it('validates issuer-backed subdomain routing with CNAME', async (): Promise<void> => {
     mocks.resolveTxt.mockResolvedValue([[buildCompartmentDomainOwnershipValue('cdom_123')]]);
     mocks.resolveCname.mockResolvedValue(['billing.customer.example.com.']);
 
@@ -148,7 +114,7 @@ describe('custom domain DNS service', (): void => {
         config: createDnsConfig(),
         domainId: 'cdom_123',
         host: 'app.example.com',
-        hostPlan: createCustomCertHostPlan(),
+        hostPlan: createOperatorHostPlan(),
         verificationTokenHash: hashToken(buildCompartmentDomainOwnershipValue('cdom_123'), 'test-session-secret'),
       }),
     ).resolves.toMatchObject({
@@ -157,7 +123,7 @@ describe('custom domain DNS service', (): void => {
     });
   });
 
-  it('validates custom-cert public-suffix apex routing with flattened addresses', async (): Promise<void> => {
+  it('validates issuer-backed public-suffix apex routing with flattened addresses', async (): Promise<void> => {
     mocks.resolveTxt.mockResolvedValue([[buildCompartmentDomainOwnershipValue('cdom_123')]]);
     mocks.resolveCname.mockResolvedValue([]);
     mocks.resolve4.mockResolvedValue(['203.0.113.10']);
@@ -169,7 +135,7 @@ describe('custom domain DNS service', (): void => {
         config: createDnsConfig(),
         domainId: 'cdom_123',
         host: 'example.co.uk',
-        hostPlan: createCustomCertHostPlan(),
+        hostPlan: createOperatorHostPlan(),
         verificationTokenHash: hashToken(buildCompartmentDomainOwnershipValue('cdom_123'), 'test-session-secret'),
       }),
     ).resolves.toMatchObject({
@@ -178,7 +144,7 @@ describe('custom domain DNS service', (): void => {
     });
   });
 
-  it('rejects custom-cert public-suffix apex routing with stray flattened addresses', async (): Promise<void> => {
+  it('rejects issuer-backed public-suffix apex routing with stray flattened addresses', async (): Promise<void> => {
     mocks.resolveTxt.mockResolvedValue([[buildCompartmentDomainOwnershipValue('cdom_123')]]);
     mocks.resolveCname.mockResolvedValue([]);
     mocks.resolve4.mockImplementation(
@@ -193,7 +159,7 @@ describe('custom domain DNS service', (): void => {
         config: createDnsConfig(),
         domainId: 'cdom_123',
         host: 'example.co.uk',
-        hostPlan: createCustomCertHostPlan(),
+        hostPlan: createOperatorHostPlan(),
         verificationTokenHash: hashToken(buildCompartmentDomainOwnershipValue('cdom_123'), 'test-session-secret'),
       }),
     ).resolves.toMatchObject({
@@ -202,7 +168,7 @@ describe('custom domain DNS service', (): void => {
     });
   });
 
-  it('rejects custom-cert public-suffix apex routing with CNAME', async (): Promise<void> => {
+  it('rejects issuer-backed public-suffix apex routing with CNAME', async (): Promise<void> => {
     mocks.resolveTxt.mockResolvedValue([[buildCompartmentDomainOwnershipValue('cdom_123')]]);
     mocks.resolveCname.mockResolvedValue(['billing.customer.example.com.']);
     mocks.resolve4.mockResolvedValue(['203.0.113.10']);
@@ -214,7 +180,7 @@ describe('custom domain DNS service', (): void => {
         config: createDnsConfig(),
         domainId: 'cdom_123',
         host: 'example.co.uk',
-        hostPlan: createCustomCertHostPlan(),
+        hostPlan: createOperatorHostPlan(),
         verificationTokenHash: hashToken(buildCompartmentDomainOwnershipValue('cdom_123'), 'test-session-secret'),
       }),
     ).resolves.toMatchObject({
@@ -225,14 +191,14 @@ describe('custom domain DNS service', (): void => {
     expect(mocks.resolve6).not.toHaveBeenCalled();
   });
 
-  it('builds provider-neutral apex routing guidance for custom-cert apex hosts', (): void => {
+  it('builds provider-neutral apex routing guidance for issuer-backed apex hosts', (): void => {
     expect(
       buildCustomDomainDnsRecords({
         canonicalRouteHost: 'billing.customer.example.com',
         config: createDnsConfig(),
         domainId: 'cdom_123',
         host: 'example.co.uk',
-        hostPlan: createCustomCertHostPlan(),
+        hostPlan: createOperatorHostPlan(),
       }),
     ).toEqual([
       {
@@ -257,16 +223,11 @@ describe('custom domain DNS service', (): void => {
 
 function createDnsConfig(): CustomDomainDnsConfig {
   return {
-    publicIngressIpv4: '203.0.113.10',
-    publicIngressIpv6: '2001:db8::10',
+    targets: [
+      { type: 'A', value: '203.0.113.10' },
+      { type: 'AAAA', value: '2001:db8::10' },
+    ],
     sessionSecret: 'test-session-secret',
-  };
-}
-
-function createIpv4OnlyDnsConfig(): CustomDomainDnsConfig {
-  return {
-    ...createDnsConfig(),
-    publicIngressIpv6: null,
   };
 }
 
@@ -279,11 +240,11 @@ function createManagedHostPlan(): DomainHostPlan {
   };
 }
 
-function createCustomCertHostPlan(): DomainHostPlan {
+function createOperatorHostPlan(): DomainHostPlan {
   return {
     baseDomain: 'customer.example.com',
     domainKind: 'custom',
     publicScheme: 'https',
-    tlsMode: 'custom-cert',
+    tlsMode: 'external',
   };
 }

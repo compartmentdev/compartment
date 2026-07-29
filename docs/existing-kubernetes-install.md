@@ -13,9 +13,7 @@ Nodes must resolve the private A record for the Compartment registry zone. If a 
 public names that resolve to private addresses, the operator must allowlist that registry zone. For dnsmasq, configure
 `rebind-domain-ok` for the exact zone; use the equivalent scoped allowlist for other resolvers.
 
-Kube-proxy-based Service routing is required on every node. Kube-proxy-less Cilium is not supported. The
-[registry node-pull proof](./proofs/registry-node-pull.md) records why this is a prerequisite rather than an installer
-probe.
+Kube-proxy-based Service routing is required on every node. Kube-proxy-less Cilium is not supported.
 
 The installer checks API reachability and version, required APIs and permissions, release ownership, IngressClass and
 StorageClass selection, cert-manager APIs and readiness, Certificate admission by server-side dry-run, Ingress host

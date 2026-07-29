@@ -5,6 +5,7 @@ import {
   type DomainDnsRecord,
   type DomainDnsRecordPurpose,
   type DomainDnsRecordType,
+  type ManagedDomainTarget,
 } from '@compartment/contracts';
 import type { ApiPublicIngressConfig } from '../config';
 import {
@@ -70,11 +71,8 @@ function buildDirectRoutingDnsRecords(
 ): DomainDnsRecord[] {
   const records: DomainDnsRecord[] = [];
   for (const host of [buildControlPlaneHost(baseDomain), buildDomainWildcardHost(baseDomain)]) {
-    if (publicIngressConfig.publicIngressIpv4 !== null) {
-      records.push(buildRoutingDnsRecord(host, 'A', publicIngressConfig.publicIngressIpv4));
-    }
-    if (publicIngressConfig.publicIngressIpv6 !== null) {
-      records.push(buildRoutingDnsRecord(host, 'AAAA', publicIngressConfig.publicIngressIpv6));
+    for (const target of publicIngressConfig.targets) {
+      records.push(buildRoutingDnsRecord(host, target.type === 'hostname' ? 'CNAME' : target.type, target.value));
     }
   }
 
@@ -122,6 +120,12 @@ async function verifyDirectAddressBinding(
   publicIngressConfig: ApiPublicIngressConfig,
 ): Promise<DomainCheckFailure | null> {
   const answers: DirectDomainBindingAnswers = await resolveDirectDomainBindingAnswers(host);
+  const hostnameTargets: ManagedDomainTarget[] = publicIngressConfig.targets.filter(
+    (target: ManagedDomainTarget): boolean => target.type === 'hostname',
+  );
+  if (hostnameTargets.length > 0) {
+    return verifyHostnameBinding(host, answers.cnameRecords, hostnameTargets);
+  }
   if (answers.cnameRecords.length > 0) {
     return createIndirectBindingFailure(host);
   }
@@ -134,6 +138,19 @@ async function verifyDirectAddressBinding(
   }
 
   return createInvalidBindingFailure(host);
+}
+
+function verifyHostnameBinding(
+  host: string,
+  cnameRecords: string[],
+  hostnameTargets: ManagedDomainTarget[],
+): DomainCheckFailure | null {
+  const expectedHostnames: Set<string> = new Set<string>(
+    hostnameTargets.map((target: ManagedDomainTarget): string => target.value),
+  );
+  return cnameRecords.some((record: string): boolean => expectedHostnames.has(record))
+    ? null
+    : createInvalidBindingFailure(host);
 }
 
 function findUnsafeResolvedAddress(ipv4Records: string[], ipv6Records: string[]): string | undefined {
@@ -162,12 +179,12 @@ function createInvalidBindingFailure(host: string): DomainCheckFailure {
 }
 
 function verifyPublicIngressConfigured(publicIngressConfig: ApiPublicIngressConfig): DomainCheckFailure | null {
-  if (publicIngressConfig.publicIngressIpv4 !== null || publicIngressConfig.publicIngressIpv6 !== null) {
+  if (publicIngressConfig.targets.length > 0) {
     return null;
   }
 
   return {
     code: 'dns_binding_invalid',
-    message: 'System domain verification requires COMPARTMENT_PUBLIC_INGRESS_IPV4 or COMPARTMENT_PUBLIC_INGRESS_IPV6.',
+    message: 'System domain verification requires at least one public ingress target.',
   };
 }

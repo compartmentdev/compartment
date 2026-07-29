@@ -6,8 +6,6 @@ export const defaultSystemDomainSetupStateId: string = 'system-domain-setup';
 interface ClearedSystemDomainPendingValues {
   setupVersion: SQL;
   pendingBaseDomain: null;
-  pendingCertificateMetadataJson: null;
-  pendingTlsSecretName: null;
   pendingDomainKind: null;
   pendingIssuerRefJson: null;
   pendingFailureCode: null;
@@ -24,8 +22,6 @@ export function buildClearedSystemDomainPendingValues(): ClearedSystemDomainPend
   return {
     setupVersion: buildNextSystemDomainSetupVersion(),
     pendingBaseDomain: null,
-    pendingCertificateMetadataJson: null,
-    pendingTlsSecretName: null,
     pendingDomainKind: null,
     pendingIssuerRefJson: null,
     pendingFailureCode: null,

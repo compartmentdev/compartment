@@ -69,7 +69,6 @@ export interface AppAccessSessionState {
 }
 
 export interface AppAccessStateSnapshot {
-  onDemandTlsHosts: string[];
   grants: AppAccessGrantState[];
   compartmentUrl: string;
   routes: AppAccessRouteState[];
@@ -169,7 +168,6 @@ export const appAccessSessionStateSchema: ContractSchema<AppAccessSessionState> 
 
 const appAccessStateSnapshotSchema: ContractSchema<AppAccessStateSnapshot> = z
   .object({
-    onDemandTlsHosts: z.array(z.string().min(1)),
     grants: z.array(appAccessGrantStateSchema),
     compartmentUrl: z.string().url(),
     routes: z.array(appAccessRouteStateSchema),

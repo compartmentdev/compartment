@@ -1,6 +1,6 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- $baseDomain := default (printf "pending.%s.invalid" .Release.Name) $installState.effective.platform.baseDomain -}}
-{{- $operatorTlsSecret := default $installState.effective.customTls.existingSecret .Values.tls.existingSecret -}}
+{{- $operatorTlsSecret := .Values.tls.existingSecret -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

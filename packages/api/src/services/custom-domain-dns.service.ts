@@ -11,12 +11,7 @@ import {
   buildCompartmentDomainOwnershipValue,
 } from './domain-ownership-dns.service';
 import { resolveCnameRecords, resolveTxtValues } from './domain-dns-resolution.service';
-import {
-  hasFlattenedAddressMatch,
-  matchesPublicIngressAddressBinding,
-  resolveDirectDomainAddressAnswers,
-  type DirectDomainAddressAnswers,
-} from './domain-dns-binding.service';
+import { hasFlattenedAddressMatch } from './domain-dns-binding.service';
 import type {
   CustomDomainDnsInput,
   CustomDomainDnsRecordInstruction,
@@ -57,29 +52,17 @@ function buildOwnershipDnsRecord(input: CustomDomainDnsInput): CustomDomainDnsRe
 }
 
 function buildRoutingDnsRecords(input: CustomDomainDnsInput): CustomDomainDnsRecordInstruction[] {
-  if (input.hostPlan.domainKind === 'managed') {
-    return buildPublicIpRoutingRecords(input);
-  }
-  if (input.hostPlan.domainKind === 'custom' && input.hostPlan.tlsMode === 'custom-cert') {
-    return buildCustomCertRoutingRecords(input);
+  if (
+    input.hostPlan.domainKind === 'managed' ||
+    (input.hostPlan.domainKind === 'custom' && input.hostPlan.tlsMode === 'external')
+  ) {
+    return buildCanonicalHostRoutingRecords(input);
   }
 
   return [];
 }
 
-function buildPublicIpRoutingRecords(input: CustomDomainDnsInput): CustomDomainDnsRecordInstruction[] {
-  const records: CustomDomainDnsRecordInstruction[] = [];
-  if (input.config.publicIngressIpv4 !== null) {
-    records.push(buildRoutingDnsRecord(input.host, 'A', input.config.publicIngressIpv4, true));
-  }
-  if (input.config.publicIngressIpv6 !== null) {
-    records.push(buildRoutingDnsRecord(input.host, 'AAAA', input.config.publicIngressIpv6, true));
-  }
-
-  return records;
-}
-
-function buildCustomCertRoutingRecords(input: CustomDomainDnsInput): CustomDomainDnsRecordInstruction[] {
+function buildCanonicalHostRoutingRecords(input: CustomDomainDnsInput): CustomDomainDnsRecordInstruction[] {
   if (!isApexHost(input.host)) {
     return [buildRoutingDnsRecord(input.host, 'CNAME', input.canonicalRouteHost, true)];
   }
@@ -114,29 +97,19 @@ async function verifyOwnershipRecord(input: CustomDomainDnsVerificationInput): P
 }
 
 async function verifyRoutingRecords(input: CustomDomainDnsVerificationInput): Promise<'invalid' | 'valid'> {
-  if (input.hostPlan.domainKind === 'managed') {
-    return await verifyPublicIpRoutingRecords(input);
-  }
-  if (input.hostPlan.domainKind === 'custom' && input.hostPlan.tlsMode === 'custom-cert') {
-    return await verifyCustomCertRoutingRecords(input);
+  if (
+    input.hostPlan.domainKind === 'managed' ||
+    (input.hostPlan.domainKind === 'custom' && input.hostPlan.tlsMode === 'external')
+  ) {
+    return await verifyCanonicalHostRoutingRecords(input);
   }
 
   return 'invalid';
 }
 
-async function verifyPublicIpRoutingRecords(input: CustomDomainDnsVerificationInput): Promise<'invalid' | 'valid'> {
-  if (input.config.publicIngressIpv4 === null && input.config.publicIngressIpv6 === null) {
-    return 'invalid';
-  }
-  if ((await resolveCnameRecords(input.host)).length > 0) {
-    return 'invalid';
-  }
-
-  const answers: DirectDomainAddressAnswers = await resolveDirectDomainAddressAnswers(input.host);
-  return matchesPublicIngressAddressBinding(input.config, answers) ? 'valid' : 'invalid';
-}
-
-async function verifyCustomCertRoutingRecords(input: CustomDomainDnsVerificationInput): Promise<'invalid' | 'valid'> {
+async function verifyCanonicalHostRoutingRecords(
+  input: CustomDomainDnsVerificationInput,
+): Promise<'invalid' | 'valid'> {
   if (isApexHost(input.host)) {
     if ((await resolveCnameRecords(input.host)).length > 0) {
       return 'invalid';

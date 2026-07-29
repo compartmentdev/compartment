@@ -86,7 +86,6 @@ export function createAppAccessSnapshot(
     accessMode?: AppRouteAccessMode | undefined;
     host?: string | undefined;
     grants?: AppAccessGrantState[] | undefined;
-    onDemandTlsHosts?: string[] | undefined;
     compartmentUrl?: string | undefined;
     proxyRoutes?: AppAccessProxyRouteState[] | undefined;
     routeScopeId?: string | undefined;
@@ -100,7 +99,6 @@ export function createAppAccessSnapshot(
   const routeScopeId: string = input.routeScopeId ?? createRouteScopeId(routeScopeType);
 
   return {
-    onDemandTlsHosts: input.onDemandTlsHosts ?? [],
     grants: input.grants ?? [
       {
         principalId: 'prn_123',

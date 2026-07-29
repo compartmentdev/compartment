@@ -48,9 +48,9 @@ import {
   createApiIntegrationApps,
   createApiIntegrationTestContext,
   cleanupApiIntegrationRuntime,
-  cleanupApiIntegrationTlsDirectory,
+  cleanupApiIntegrationTempDirectory,
   configureApiRuntimeWithPublicIngress,
-  resetApiIntegrationTlsDirectory,
+  resetApiIntegrationTempDirectory,
 } from './api-app-test.harness';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
 
@@ -114,7 +114,7 @@ vi.mock(
 const {
   apiConfig: defaultApiConfig,
   databaseUrl: apiIntegrationDatabaseUrl,
-  testCustomTlsDirectory,
+  testTempDirectory,
 } = createApiIntegrationTestContext('api_integration_source_archive', 'api-integration-source-archive');
 let pool!: Pool;
 let db!: Database;
@@ -138,7 +138,7 @@ describe('Phase 0 API integration source archive', (): void => {
     dnsPromiseMocks.resolveCname.mockRejectedValue(new Error('No CNAME record.'));
     dnsPromiseMocks.resolveTxt.mockReset();
     dnsPromiseMocks.resolveTxt.mockRejectedValue(new Error('No TXT record.'));
-    await resetApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await resetApiIntegrationTempDirectory(testTempDirectory);
     pool = createDatabasePool(apiIntegrationDatabaseUrl);
     db = createDatabase(pool);
     ({ app, systemApp } = await createApiIntegrationApps(defaultApiConfig, db, pool));
@@ -146,7 +146,7 @@ describe('Phase 0 API integration source archive', (): void => {
     hasInitializedApiIntegrationRuntime = true;
   });
   afterAll(async (): Promise<void> => {
-    await cleanupApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await cleanupApiIntegrationTempDirectory(testTempDirectory);
   });
   afterEach(async (): Promise<void> => {
     vi.unstubAllGlobals();
@@ -601,7 +601,7 @@ describe('Phase 0 API integration source archive', (): void => {
     expect(deployResponse.statusCode).toBe(200);
     const claimedDeployment: WorkerClaimedDeployment = requireClaimedDeployment(await claimNextQueuedDeployment(app));
     const sourceUploadArchivePath: string = resolveSourceUploadArchivePath(sourceUpload.id);
-    const outsideArchivePath: string = join(testCustomTlsDirectory, `${sourceUpload.id}-outside.tgz`);
+    const outsideArchivePath: string = join(testTempDirectory, `${sourceUpload.id}-outside.tgz`);
     await writeFile(outsideArchivePath, 'outside archive');
     await rm(sourceUploadArchivePath, { force: true });
     await symlink(outsideArchivePath, sourceUploadArchivePath);

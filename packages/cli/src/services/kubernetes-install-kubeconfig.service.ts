@@ -230,7 +230,7 @@ function buildMissingKubeconfigMessage(
   }
   return configured
     ? `${prefix}${checkedMessage} Fix the configured path or context; no fallback kubeconfig was used.`
-    : `${prefix}${checkedMessage} If you have a cluster, point KUBECONFIG at it. If not, install one first (e.g. k3s: curl -sfL https://get.k3s.io | sh -s - --disable traefik).`;
+    : `${prefix}${checkedMessage} If you have a cluster, point KUBECONFIG at it. If not, install one first and keep its Ingress Controller enabled.`;
 }
 
 function formatCheckedCandidate(candidate: KubernetesKubeconfigCandidate, reason: string): string {

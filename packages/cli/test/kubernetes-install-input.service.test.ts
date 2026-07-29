@@ -171,15 +171,6 @@ describe('canonical Kubernetes install input', (): void => {
       ),
     ).toThrow('--ingress-endpoint must be an IP address or DNS hostname.');
   });
-
-  it('has no existingCluster discriminator in the runtime contract', (): void => {
-    const input: KubernetesInstallInput = resolveCanonicalKubernetesInstallInput(
-      nonInteractiveValues(),
-      kubeconfigPath,
-    ).input;
-
-    expect(Object.hasOwn(input, 'existingCluster')).toBe(false);
-  });
 });
 
 function nonInteractiveValues(): KubernetesInstallInputValues {

@@ -1,7 +1,6 @@
 import type {
   DomainDnsRecord,
   DomainHostPlan,
-  SystemDomainCertificate,
   SystemDomainHealthStatus,
   SystemDomainPendingStatus,
 } from '@compartment/contracts';
@@ -14,7 +13,6 @@ export interface SystemDomainHealthResult {
 }
 
 export interface SystemDomainPendingResult {
-  certificate: SystemDomainCertificate | null;
   failureCode: string | null;
   failureMessage: string | null;
   hostPlan: DomainHostPlan;
@@ -39,10 +37,6 @@ export interface StageSystemDomainInput {
 export interface VersionedSystemDomainMutationInput {
   expectedSetupVersion: number;
   idempotencyKey: string;
-}
-
-export interface AttachSystemDomainCertificateInput extends VersionedSystemDomainMutationInput {
-  certificate: SystemDomainCertificate;
 }
 
 export interface SystemDomainMutationResult {

@@ -29,11 +29,11 @@ import {
 } from './api-integration.harness';
 import {
   cleanupApiIntegrationRuntime,
-  cleanupApiIntegrationTlsDirectory,
+  cleanupApiIntegrationTempDirectory,
   configureApiRuntimeWithPublicIngress,
   createApiIntegrationApps,
   createApiIntegrationTestContext,
-  resetApiIntegrationTlsDirectory,
+  resetApiIntegrationTempDirectory,
 } from './api-app-test.harness';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
 
@@ -108,7 +108,7 @@ vi.mock(
 const {
   apiConfig: defaultApiConfig,
   databaseUrl: apiIntegrationDatabaseUrl,
-  testCustomTlsDirectory,
+  testTempDirectory,
 } = createApiIntegrationTestContext(
   'api_integration_source_upload_ownership',
   'api-integration-source-upload-ownership',
@@ -124,7 +124,7 @@ describe('API source upload ownership integration', (): void => {
 
   beforeEach(async (): Promise<void> => {
     resetExternalServiceMocks();
-    await resetApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await resetApiIntegrationTempDirectory(testTempDirectory);
     pool = createDatabasePool(apiIntegrationDatabaseUrl);
     db = createDatabase(pool);
     ({ app, systemApp } = await createApiIntegrationApps(defaultApiConfig, db, pool));
@@ -133,7 +133,7 @@ describe('API source upload ownership integration', (): void => {
   });
 
   afterAll(async (): Promise<void> => {
-    await cleanupApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await cleanupApiIntegrationTempDirectory(testTempDirectory);
   });
 
   afterEach(async (): Promise<void> => {

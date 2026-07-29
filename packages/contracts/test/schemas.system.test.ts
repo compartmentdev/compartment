@@ -15,12 +15,10 @@ import {
   type InstallResponse,
   type ProjectLifecycleRequest,
   type ProjectLifecycleResponse,
-  type SystemDomainAttachCertificateRequest,
   type SystemDomainMutationResponse,
   type SystemDomainSetRequest,
   type SystemDomainStatusResponse,
   type SystemDomainVersionedRequest,
-  systemDomainAttachCertificateRequestSchema,
   systemDomainMutationResponseSchema,
   systemDomainSetRequestSchema,
   systemDomainStatusResponseSchema,
@@ -116,7 +114,6 @@ describe('contract schemas system and domain', (): void => {
       },
       setupVersion: 1,
       pending: {
-        certificate: null,
         failureCode: null,
         failureMessage: null,
         hostPlan: {
@@ -163,48 +160,6 @@ describe('contract schemas system and domain', (): void => {
     });
 
     expect(result.expectedSetupVersion).toBe(1);
-  });
-
-  it('accepts a valid system domain attach certificate request', (): void => {
-    const result: SystemDomainAttachCertificateRequest = systemDomainAttachCertificateRequestSchema.parse({
-      certificate: {
-        metadata: {
-          dnsNames: ['console.customer.example.com', '*.customer.example.com'],
-          expiresAt: '2026-07-01T00:00:00.000Z',
-          fingerprintSha256: 'AA:BB:CC',
-          issuedAt: '2026-04-01T00:00:00.000Z',
-          issuer: 'CN=Example CA',
-          serialNumber: '01',
-          subject: 'CN=console.customer.example.com',
-        },
-        secretName: 'domain-tls-operation',
-      },
-      expectedSetupVersion: 1,
-    });
-
-    expect(result.expectedSetupVersion).toBe(1);
-  });
-
-  it('rejects legacy certificate fields on the system domain attach certificate request', (): void => {
-    expect(
-      (): SystemDomainAttachCertificateRequest =>
-        systemDomainAttachCertificateRequestSchema.parse({
-          certificate: {
-            certificatePath: '/etc/compartment/tls/domop_123/fullchain.pem',
-            metadata: {
-              dnsNames: ['console.customer.example.com', '*.customer.example.com'],
-              expiresAt: '2026-07-01T00:00:00.000Z',
-              fingerprintSha256: 'AA:BB:CC',
-              issuedAt: '2026-04-01T00:00:00.000Z',
-              issuer: 'CN=Example CA',
-              serialNumber: '01',
-              subject: 'CN=console.customer.example.com',
-            },
-            privateKeyPath: '/etc/compartment/tls/domop_123/privkey.pem',
-          },
-          expectedSetupVersion: 1,
-        }),
-    ).toThrow();
   });
 
   it('accepts a valid system domain versioned request', (): void => {

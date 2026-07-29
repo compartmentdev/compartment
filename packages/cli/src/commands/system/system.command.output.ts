@@ -55,9 +55,6 @@ function createPendingDomainLines(pending: SystemDomainPendingOperation): string
   if (pending.failureMessage !== null) {
     lines.push(`Last verify error: ${pending.failureMessage}`);
   }
-  if (pending.certificate !== null) {
-    lines.push(`Certificate expires at ${pending.certificate.metadata.expiresAt}.`);
-  }
   return lines;
 }
 

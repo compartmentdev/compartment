@@ -1,6 +1,5 @@
 import {
-  isCustomCertificateDomainHostPlan,
-  isCustomHttpDomainHostPlan,
+  isOperatorManagedDomainHostPlan,
   type DomainHostPlan,
   type SystemDomainPendingStatus,
 } from '@compartment/contracts';
@@ -11,11 +10,7 @@ import {
   updateSystemDomainPendingStatusWithExecutor,
 } from '../queries/system-domain-operation.query';
 import type { SystemDomainPendingStatusUpdateInput } from '../queries/system-domain-operation.query.types';
-import type {
-  SystemDomainMutationQueryResult,
-  SystemDomainSetupStateRow,
-  SystemDomainTransaction,
-} from '../queries/system-domain.query.types';
+import type { SystemDomainMutationQueryResult, SystemDomainTransaction } from '../queries/system-domain.query.types';
 import type { DomainCheckResult } from './system-domain-check.service.types';
 import { verifySystemDomainDnsProof } from './system-domain-dns-proof.service';
 import { synchronizeEdgeAfterDomainActivation } from './system-domain-health.service';
@@ -77,7 +72,7 @@ async function updatePendingVerificationStatus(
   const pendingState: PendingSystemDomainState = await readPendingValidatedOperationState(tx);
   const pendingHostPlan: DomainHostPlan = pendingState.hostPlan;
   const pendingOperationId: string = pendingState.operationId;
-  assertPendingVerificationReady(pendingState.status, pendingHostPlan);
+  assertPendingVerificationReady(pendingState.status);
 
   const checkResult: DomainCheckResult = await verifySystemDomainDnsProof({
     pendingBaseDomain: pendingHostPlan.baseDomain,
@@ -86,7 +81,7 @@ async function updatePendingVerificationStatus(
   });
   const mutationResult: SystemDomainMutationQueryResult | null = await updateSystemDomainPendingStatusWithExecutor(
     tx,
-    buildPendingStatusUpdateInput(input, pendingOperationId, pendingHostPlan, checkResult),
+    buildPendingStatusUpdateInput(input, pendingOperationId, checkResult),
   );
   if (mutationResult === null) {
     throw createDomainVersionConflictError();
@@ -98,7 +93,6 @@ async function updatePendingVerificationStatus(
 function buildPendingStatusUpdateInput(
   input: VersionedSystemDomainMutationInput,
   pendingOperationId: string,
-  hostPlan: DomainHostPlan,
   checkResult: DomainCheckResult,
 ): SystemDomainPendingStatusUpdateInput {
   return {
@@ -106,20 +100,19 @@ function buildPendingStatusUpdateInput(
     failureCode: checkResult.failure?.code ?? null,
     failureMessage: checkResult.failure?.message ?? null,
     operationId: pendingOperationId,
-    pendingStatus: checkResult.failure === null ? 'verified' : readPendingVerificationStep(hostPlan),
+    pendingStatus: checkResult.failure === null ? 'verified' : readPendingVerificationStep(),
   };
 }
 
 async function readPendingValidatedOperationState(tx: SystemDomainTransaction): Promise<PendingSystemDomainState> {
   const pendingState: PendingSystemDomainState = await requirePendingSystemDomainState(tx);
   assertPendingSupportedOperation(pendingState.hostPlan);
-  assertPendingCertificateReady(pendingState.setupState, pendingState.hostPlan);
 
   return pendingState;
 }
 
 function assertPendingSupportedOperation(hostPlan: DomainHostPlan): void {
-  if (isCustomHttpDomainHostPlan(hostPlan) || isCustomCertificateDomainHostPlan(hostPlan)) {
+  if (isOperatorManagedDomainHostPlan(hostPlan)) {
     return;
   }
 
@@ -132,8 +125,8 @@ function assertPendingVerified(status: SystemDomainPendingStatus): void {
   }
 }
 
-function assertPendingVerificationReady(status: SystemDomainPendingStatus, hostPlan: DomainHostPlan): void {
-  const requiredStatus: SystemDomainPendingStatus = readPendingVerificationStep(hostPlan);
+function assertPendingVerificationReady(status: SystemDomainPendingStatus): void {
+  const requiredStatus: SystemDomainPendingStatus = readPendingVerificationStep();
   if (status !== requiredStatus && status !== 'verified') {
     throw createDomainOperationUnavailableError(
       `The pending domain must be in ${requiredStatus} or verified before this step.`,
@@ -141,21 +134,8 @@ function assertPendingVerificationReady(status: SystemDomainPendingStatus, hostP
   }
 }
 
-function assertPendingCertificateReady(setupState: SystemDomainSetupStateRow, hostPlan: DomainHostPlan): void {
-  if (!isCustomCertificateDomainHostPlan(hostPlan)) {
-    return;
-  }
-  if (setupState.pendingCertificateMetadataJson === null) {
-    throw createDomainOperationUnavailableError('Attach a certificate before verifying this domain.');
-  }
-
-  if (setupState.pendingTlsSecretName === null) {
-    throw createDomainOperationUnavailableError('Attach a Kubernetes TLS Secret before verifying this domain.');
-  }
-}
-
-function readPendingVerificationStep(hostPlan: DomainHostPlan): SystemDomainPendingStatus {
-  return isCustomCertificateDomainHostPlan(hostPlan) ? 'pending_cert' : 'pending_dns';
+function readPendingVerificationStep(): SystemDomainPendingStatus {
+  return 'pending_dns';
 }
 
 async function assertPendingDnsProofStillValid(

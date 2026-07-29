@@ -27,8 +27,7 @@ kubernetesProvider:
         ingress-class-name: aW5ncmVzcy1uZ2lueA==
         ingress-endpoint-type: aG9zdG5hbWU=
         ingress-endpoint-value: bGIuZXhhbXBsZS5jb20=
-        public-ingress-ipv4: OC44LjguOA==
-        public-ingress-ipv6: MjAwMTo0ODYwOjQ4NjA6Ojg4ODg=
+        ingress-targets-json: W3sidHlwZSI6Imhvc3RuYW1lIiwidmFsdWUiOiJsYi5leGFtcGxlLmNvbSJ9XQ==
         acme-email: cmV0YWluZWRAZXhhbXBsZS5jb20=
         managed-domain-broker-url: aHR0cHM6Ly9yZXRhaW5lZC1icm9rZXIuZXhhbXBsZQ==
         managed-domain-allocation-id: YWxsb2NhdGlvbi1tYW5hZ2Vk
@@ -40,8 +39,6 @@ kubernetesProvider:
         managed-issuer-ref-json: eyJraW5kIjoiSXNzdWVyIiwibmFtZSI6ImNvbXBhcnRtZW50LXBsYXRmb3JtIn0=
         public-protocol: aHR0cHM=
         tls-mode: YnJva2VyLWRuczAx
-        active-custom-tls-secret: cmV0YWluZWQtdGxz
-        operator-custom-tls-secret: b3BlcmF0b3ItdGxz
     - apiVersion: v1
       kind: Secret
       metadata:
@@ -62,8 +59,6 @@ kubernetesProvider:
         base-domain: cmV0YWluZWQubG9jYWxob3N0
         public-protocol: aHR0cA==
         tls-mode: aXNzdWVy
-        active-custom-tls-secret: ''
-        operator-custom-tls-secret: ''
     - apiVersion: v1
       kind: Secret
       metadata:
@@ -72,8 +67,6 @@ kubernetesProvider:
       data:
         startup-stage: Zm91bmRhdGlvbg==
         installation-id: cmV0YWluZWQtaW50ZXJydXB0ZWQ=
-        public-ingress-ipv4: ''
-        public-ingress-ipv6: ''
         acme-email: cmV0YWluZWRAZXhhbXBsZS50ZXN0
         managed-domain-broker-url: aHR0cHM6Ly9icm9rZXIuZXhhbXBsZS50ZXN0
         managed-domain-broker-token: ''
@@ -83,8 +76,6 @@ kubernetesProvider:
         managed-base-domain: ''
         public-protocol: aHR0cHM=
         tls-mode: YnJva2VyLWRuczAx
-        active-custom-tls-secret: ''
-        operator-custom-tls-secret: ''
     - apiVersion: v1
       kind: Secret
       metadata:
@@ -93,6 +84,13 @@ kubernetesProvider:
       data:
         ingress-endpoint-type: ''
         ingress-endpoint-value: ''
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: targets-empty-install-state
+        namespace: default
+      data:
+        ingress-targets-json: W10=
 tests:
   - it: resolves every consumer from the retained Secret without mutating Values
     set:
@@ -104,7 +102,6 @@ tests:
         baseDomain: incoming.localhost
         publicProtocol: http
         tlsMode: issuer
-        publicIngressIpv4: 1.1.1.1
         acmeEmail: incoming@example.com
       secrets:
         managedDomainBrokerToken: incoming-token
@@ -126,8 +123,8 @@ tests:
           value: https://retained-broker.example
         template: configmap.yaml
       - equal:
-          path: data.COMPARTMENT_PUBLIC_INGRESS_IPV4
-          value: 8.8.8.8
+          path: data.COMPARTMENT_INGRESS_TARGETS_JSON
+          value: '[{"type":"hostname","value":"lb.example.com"}]'
         template: configmap.yaml
       - equal:
           path: stringData.installation-id
@@ -150,71 +147,12 @@ tests:
           value: '7'
         template: install-state-secret.yaml
       - equal:
-          path: stringData.active-custom-tls-secret
-          value: retained-tls
-        template: install-state-secret.yaml
-      - equal:
           path: stringData.managed-domain-broker-token
           value: broker-token
         template: install-state-secret.yaml
       - equal:
           path: stringData.managed-issuer-ref-json
           value: '{"kind":"Issuer","name":"compartment-platform"}'
-        template: install-state-secret.yaml
-
-  - it: preserves explicitly empty retained custom TLS names
-    release:
-      name: empty
-      namespace: default
-      upgrade: true
-    set:
-      platform: &emptyRetainedPlatform
-        startupStage: foundation
-        installationId: test-empty-retained
-        domainGeneration: 0
-        domainMode: custom
-        baseDomain: incoming.localhost
-        publicProtocol: http
-        tlsMode: issuer
-      customTls: &incomingCustomTls
-        existingSecret: incoming-active-tls
-        operatorSecretName: incoming-operator-tls
-        operatorCertificate: incoming-certificate
-        operatorPrivateKey: incoming-private-key
-      secrets: &requiredFullSecrets
-        registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
-        productLogIngestToken: test-product-log-token
-    asserts:
-      - equal:
-          path: stringData.active-custom-tls-secret
-          value: ''
-        template: install-state-secret.yaml
-      - equal:
-          path: stringData.operator-custom-tls-secret
-          value: ''
-        template: install-state-secret.yaml
-
-  - it: persists newer uncommitted custom TLS names over empty retained values
-    release:
-      name: empty
-      namespace: default
-      upgrade: true
-    set:
-      platform:
-        <<: *emptyRetainedPlatform
-        installationId: test-newer-uncommitted
-        domainGeneration: 8
-        domainCommit: false
-      customTls: *incomingCustomTls
-      secrets: *requiredFullSecrets
-    asserts:
-      - equal:
-          path: stringData.active-custom-tls-secret
-          value: incoming-active-tls
-        template: install-state-secret.yaml
-      - equal:
-          path: stringData.operator-custom-tls-secret
-          value: incoming-operator-tls
         template: install-state-secret.yaml
 
   - it: resumes the foundation stage after an interrupted install with an empty domain
@@ -260,7 +198,6 @@ tests:
         baseDomain: resumed.example.test
         publicProtocol: https
         tlsMode: broker-dns01
-        publicIngressIpv4: 8.8.4.4
         acmeEmail: retained@example.test
         managedDomainBrokerUrl: https://broker.example.test
       secrets:
@@ -299,6 +236,24 @@ tests:
       - equal:
           path: stringData.ingress-endpoint-value
           value: 8.8.8.8
+        template: install-state-secret.yaml
+
+  - it: replaces deferred empty retained ingress targets after discovery
+    release:
+      name: targets-empty
+      namespace: default
+      upgrade: true
+    set:
+      ingress:
+        targetsJson: '[{"type":"A","value":"8.8.8.8"}]'
+    asserts:
+      - equal:
+          path: data.COMPARTMENT_INGRESS_TARGETS_JSON
+          value: '[{"type":"A","value":"8.8.8.8"}]'
+        template: configmap.yaml
+      - equal:
+          path: stringData.ingress-targets-json
+          value: '[{"type":"A","value":"8.8.8.8"}]'
         template: install-state-secret.yaml
 
   - it: persists a typed AAAA ingress endpoint
@@ -341,14 +296,6 @@ tests:
       - equal:
           path: stringData.ingress-endpoint-value
           value: lb.example.com
-        template: install-state-secret.yaml
-      - equal:
-          path: stringData.public-ingress-ipv4
-          value: ''
-        template: install-state-secret.yaml
-      - equal:
-          path: stringData.public-ingress-ipv6
-          value: ''
         template: install-state-secret.yaml
 
   - it: replaces an empty retained endpoint with the first observed hostname

@@ -68,11 +68,6 @@ ports:
 
 ingress:
   className: traefik
-  controller:
-    namespace: kube-system
-    podSelector:
-      - key: app.kubernetes.io/name
-        value: traefik
   endpoint:
     type: ''
     value: ''
@@ -109,8 +104,6 @@ platform:
   baseDomain: localhost
   publicProtocol: http
   tlsMode: issuer
-  publicIngressIpv4: ''
-  publicIngressIpv6: ''
   acmeIssuer: acme
   acmeCaUrl: https://acme.zerossl.com/v2/DV90
   acmeEmail: ''
@@ -197,18 +190,6 @@ secrets:
   systemToken: ''
   variablesMasterKey: ''
   managedDomainBrokerToken: ''
-
-customTls:
-  existingSecret: ''
-  pendingOperationId: ''
-  certificate: ''
-  privateKey: ''
-  operatorSecretName: ''
-  operatorCertificate: ''
-  operatorPrivateKey: ''
-  pendingSecretName: ''
-  pendingCertificate: ''
-  pendingPrivateKey: ''
 
 podSecurityContext:
   seccompProfile:

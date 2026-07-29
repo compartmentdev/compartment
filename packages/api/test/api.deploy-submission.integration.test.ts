@@ -81,9 +81,9 @@ import {
   createApiIntegrationApps,
   createApiIntegrationTestContext,
   cleanupApiIntegrationRuntime,
-  cleanupApiIntegrationTlsDirectory,
+  cleanupApiIntegrationTempDirectory,
   configureApiRuntimeWithPublicIngress,
-  resetApiIntegrationTlsDirectory,
+  resetApiIntegrationTempDirectory,
 } from './api-app-test.harness';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
 
@@ -152,7 +152,7 @@ interface CreateOrganizationMemberOidcSessionInput {
 const {
   apiConfig: baseApiConfig,
   databaseUrl: apiIntegrationDatabaseUrl,
-  testCustomTlsDirectory,
+  testTempDirectory,
 } = createApiIntegrationTestContext('api_integration_deploy_submission', 'api-integration-deploy-submission');
 const defaultApiConfig: ApiConfig = {
   ...baseApiConfig,
@@ -180,7 +180,7 @@ describe('Phase 0 API integration deploy submission', (): void => {
     dnsPromiseMocks.resolveCname.mockRejectedValue(new Error('No CNAME record.'));
     dnsPromiseMocks.resolveTxt.mockReset();
     dnsPromiseMocks.resolveTxt.mockRejectedValue(new Error('No TXT record.'));
-    await resetApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await resetApiIntegrationTempDirectory(testTempDirectory);
     pool = createDatabasePool(apiIntegrationDatabaseUrl);
     db = createDatabase(pool);
     ({ app, systemApp } = await createApiIntegrationApps(defaultApiConfig, db, pool));
@@ -188,7 +188,7 @@ describe('Phase 0 API integration deploy submission', (): void => {
     hasInitializedApiIntegrationRuntime = true;
   });
   afterAll(async (): Promise<void> => {
-    await cleanupApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await cleanupApiIntegrationTempDirectory(testTempDirectory);
   });
   afterEach(async (): Promise<void> => {
     vi.unstubAllGlobals();

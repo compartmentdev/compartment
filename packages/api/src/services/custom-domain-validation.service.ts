@@ -45,11 +45,11 @@ export function assertRuntimeSupportsCustomDomains(
     assertManagedRuntimeHasPublicIngress(publicIngressConfig);
     return;
   }
-  if (hostPlan.domainKind === 'custom' && hostPlan.tlsMode === 'custom-cert') {
+  if (hostPlan.domainKind === 'custom' && hostPlan.tlsMode === 'external') {
     return;
   }
 
-  throw createInvalidCustomDomainError('Custom app domains require a managed or custom-cert system domain.');
+  throw createInvalidCustomDomainError('Custom app domains require a managed or issuer-backed system domain.');
 }
 
 function isValidCustomDomainHost(host: string): boolean {
@@ -82,9 +82,9 @@ function isRegistrableCustomDomainHost(host: string): boolean {
 }
 
 function assertManagedRuntimeHasPublicIngress(publicIngressConfig: ApiPublicIngressConfig): void {
-  if (publicIngressConfig.publicIngressIpv4 !== null || publicIngressConfig.publicIngressIpv6 !== null) {
+  if (publicIngressConfig.targets.length > 0) {
     return;
   }
 
-  throw createInvalidCustomDomainError('Managed custom app domains require a public ingress IPv4 or IPv6 address.');
+  throw createInvalidCustomDomainError('Managed custom app domains require a public ingress target.');
 }

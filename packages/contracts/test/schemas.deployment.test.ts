@@ -116,7 +116,6 @@ describe('contract schemas deployment and app access', (): void => {
     const result: AppAccessStateResponse = appAccessStateResponseSchema.parse({
       state: {
         grants: [],
-        onDemandTlsHosts: [],
         compartmentUrl: 'http://console.example.com',
         routes: [
           {
@@ -172,7 +171,6 @@ describe('contract schemas deployment and app access', (): void => {
       appAccessStateResponseSchema.safeParse({
         state: {
           grants: [],
-          onDemandTlsHosts: [],
           compartmentUrl: 'http://console.example.com',
           routes: [
             {
@@ -295,7 +293,6 @@ describe('contract schemas deployment and app access', (): void => {
       appAccessStateResponseSchema.safeParse({
         state: {
           grants: [],
-          onDemandTlsHosts: [],
           compartmentUrl: 'http://console.example.com',
           routes: [
             {

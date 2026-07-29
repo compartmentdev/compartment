@@ -165,8 +165,6 @@ interface SystemDomainSetupStateColumnBuilders {
   pendingTlsMode: OptionalTextBuilder<'pending_tls_mode'>;
   pendingPublicScheme: OptionalTextBuilder<'pending_public_scheme'>;
   pendingBaseDomain: OptionalTextBuilder<'pending_base_domain'>;
-  pendingCertificateMetadataJson: OptionalTextBuilder<'pending_certificate_metadata_json'>;
-  pendingTlsSecretName: OptionalTextBuilder<'pending_tls_secret_name'>;
   pendingRequiredDnsRecordsJson: OptionalTextBuilder<'pending_required_dns_records_json'>;
   pendingFailureCode: OptionalTextBuilder<'pending_failure_code'>;
   pendingFailureMessage: OptionalTextBuilder<'pending_failure_message'>;

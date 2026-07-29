@@ -11,16 +11,10 @@ export interface KubernetesOperatorCommandOptions {
 
 export interface SystemDomainSetCommandOptions extends KubernetesOperatorCommandOptions {
   baseDomain: string;
-  tls?: string | undefined;
 }
 
 export interface SystemDomainVersionedCommandOptions extends KubernetesOperatorCommandOptions {
   expectedVersion?: string | undefined;
-}
-
-export interface SystemDomainAttachCertificateCommandOptions extends SystemDomainVersionedCommandOptions {
-  certFile: string;
-  keyFile: string;
 }
 
 export interface IssuePasswordResetCommandOptions extends KubernetesOperatorCommandOptions {

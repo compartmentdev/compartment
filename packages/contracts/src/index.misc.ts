@@ -63,13 +63,10 @@ export {
   domainDnsRecordSchema,
 } from './contracts/domain-dns-record.contract';
 export {
-  type DomainCertificateMetadata,
   type DomainHostPlan,
   type DomainIssuerReference,
   type DomainKind,
   type DomainTlsMode,
-  type SystemDomainAttachCertificateRequest,
-  type SystemDomainCertificate,
   type SystemDomainHealthStatus,
   type SystemDomainMutationResponse,
   type SystemDomainPendingOperation,
@@ -78,8 +75,6 @@ export {
   type SystemDomainStatusResponse,
   type SystemDomainVersionedRequest,
   domainHostPlanSchema,
-  systemDomainAttachCertificateRequestSchema,
-  systemDomainCertificateSchema,
   systemDomainMutationResponseSchema,
   systemDomainPendingStatusSchema,
   systemDomainSetRequestSchema,
@@ -90,11 +85,8 @@ export {
   buildControlPlaneHost,
   buildDomainProbeHost,
   buildDomainWildcardHost,
-  buildRequiredDomainCertificateDnsNames,
   controlPlaneSubdomainLabel,
-  domainCertificateMetadataCoversHostPlan,
-  isCustomCertificateDomainHostPlan,
-  isCustomHttpDomainHostPlan,
+  isOperatorManagedDomainHostPlan,
 } from './contracts/system-domain-helpers.contract';
 export {
   buildDisabledSsoOidcProvisioningPolicy,

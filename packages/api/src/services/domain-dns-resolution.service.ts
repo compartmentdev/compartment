@@ -24,11 +24,3 @@ export async function resolveAddressRecords(host: string, version: 4 | 6): Promi
     return [];
   }
 }
-
-export function matchesExpectedAddresses(expectedAddress: string | null, records: string[]): boolean {
-  if (expectedAddress === null) {
-    return records.length === 0;
-  }
-
-  return records.length > 0 && records.every((record: string): boolean => record === expectedAddress);
-}

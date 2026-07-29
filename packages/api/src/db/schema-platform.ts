@@ -15,8 +15,6 @@ export const systemDomainSetupState: CoreSchemaTypes.SystemDomainSetupStateTable
     pendingTlsMode: text('pending_tls_mode'),
     pendingPublicScheme: text('pending_public_scheme'),
     pendingBaseDomain: text('pending_base_domain'),
-    pendingCertificateMetadataJson: text('pending_certificate_metadata_json'),
-    pendingTlsSecretName: text('pending_tls_secret_name'),
     pendingRequiredDnsRecordsJson: text('pending_required_dns_records_json'),
     pendingFailureCode: text('pending_failure_code'),
     pendingFailureMessage: text('pending_failure_message'),

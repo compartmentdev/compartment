@@ -6,9 +6,7 @@ import {
   type DomainDnsRecord,
   type DomainDnsRecordPurpose,
   type DomainDnsRecordType,
-  type DomainCertificateMetadata,
   type InstallResponse,
-  type SystemDomainAttachCertificateRequest,
   type SystemDomainMutationResponse,
   type SystemDomainSetRequest,
   type SystemDomainStatusResponse,
@@ -145,62 +143,11 @@ function buildCustomExternalDomainSetRequest(
   };
 }
 
-function buildCustomCertificateDomainSetRequest(expectedSetupVersion: number): SystemDomainSetRequest {
-  return {
-    expectedSetupVersion,
-    hostPlan: {
-      baseDomain: 'customer.example.com',
-      domainKind: 'custom',
-      publicScheme: 'https',
-      tlsMode: 'custom-cert',
-    },
-  };
-}
-
-function buildCustomCertificateAttachRequest(expectedSetupVersion: number): SystemDomainAttachCertificateRequest {
-  return {
-    certificate: {
-      metadata: buildStoredPendingCertificateMetadata(),
-      secretName: 'domain-tls-operation',
-    },
-    expectedSetupVersion,
-  };
-}
-
-function buildStoredPendingCertificateMetadata(): DomainCertificateMetadata {
-  return {
-    dnsNames: ['*.customer.example.com', 'console.customer.example.com'],
-    expiresAt: '2036-01-01T00:00:00.000Z',
-    fingerprintSha256:
-      'A8:37:27:37:39:FE:45:8A:DB:29:E6:78:F1:DE:4A:6F:16:5B:C5:41:48:7A:0A:A4:CE:9A:80:F1:54:B7:0A:43',
-    issuedAt: '2020-01-01T00:00:00.000Z',
-    issuer: 'CN=*.customer.example.com',
-    serialNumber: '79A5FA68142CE72CA06E2F4E3DE4DE3C4BAE5656',
-    subject: 'CN=*.customer.example.com',
-  };
-}
-
 function createCustomHttpApiConfig(): ApiConfig {
   return {
     ...defaultApiConfig,
     baseDomain: 'customer.example.com',
     tlsMode: 'issuer',
-    controlPlaneHost: 'console.customer.example.com',
-    publicProtocol: 'https',
-    auditRetentionDays: 90,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    auditFileSink: defaultAuditFileSinkConfig,
-    rollbackRetentionLimit: null,
-  };
-}
-
-function createCustomCertificateApiConfig(): ApiConfig {
-  return {
-    ...defaultApiConfig,
-    baseDomain: 'customer.example.com',
-    tlsMode: 'secret',
     controlPlaneHost: 'console.customer.example.com',
     publicProtocol: 'https',
     auditRetentionDays: 90,
@@ -242,8 +189,7 @@ process.env.COMPARTMENT_TLS_MODE = 'internal';
 process.env.COMPARTMENT_PUBLIC_PROTOCOL = 'http';
 process.env.COMPARTMENT_PUBLIC_HTTP_PORT = '80';
 process.env.COMPARTMENT_PUBLIC_HTTPS_PORT = '443';
-process.env.COMPARTMENT_PUBLIC_INGRESS_IPV4 = '';
-process.env.COMPARTMENT_PUBLIC_INGRESS_IPV6 = '';
+process.env.COMPARTMENT_INGRESS_TARGETS_JSON = '[]';
 process.env.COMPARTMENT_POSTGRES_PASSWORD = 'postgres';
 process.env.COMPARTMENT_EDGE_TOKEN = 'test-edge-token';
 process.env.COMPARTMENT_SYSTEM_API_SOCKET = '/tmp/compartment/api-integration-system-domain/system-api.sock';
@@ -410,10 +356,6 @@ describe('Phase 0 API integration system domain', (): void => {
         url: '/internal/system/domain/set',
       },
       {
-        payload: buildCustomCertificateAttachRequest(0),
-        url: '/internal/system/domain/attach-cert',
-      },
-      {
         payload: { expectedSetupVersion: 0 },
         url: '/internal/system/domain/verify',
       },
@@ -549,8 +491,7 @@ describe('Phase 0 API integration system domain', (): void => {
     expect(setResponse.statusCode).toBe(200);
 
     configureApiRuntimeWithPublicIngress(defaultApiConfig, {
-      publicIngressIpv4: alternatePublicIpv4Address,
-      publicIngressIpv6: null,
+      targets: [{ type: 'A', value: alternatePublicIpv4Address }],
     });
     const statusResponse: LightMyRequestResponse = await systemApp.inject({
       method: 'GET',
@@ -566,7 +507,7 @@ describe('Phase 0 API integration system domain', (): void => {
     expect(routingRecord?.value).toBe(alternatePublicIpv4Address);
   });
 
-  it('verifies DNS, activates custom HTTP domain state, and syncs edge', async (): Promise<void> => {
+  it('verifies DNS, activates issuer-managed domain state, and syncs edge', async (): Promise<void> => {
     await installCompartment(app);
     configureApiRuntimeWithPublicIngress(defaultApiConfig, createManagedPublicIngressConfig());
     appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockClear();
@@ -574,7 +515,7 @@ describe('Phase 0 API integration system domain', (): void => {
     const setResponse: LightMyRequestResponse = await systemApp.inject({
       method: 'POST',
       url: '/internal/system/domain/set',
-      headers: buildSystemMutationHeaders('domain-custom-http-set'),
+      headers: buildSystemMutationHeaders('domain-issuer-set'),
       payload: buildCustomExternalDomainSetRequest(0),
     });
     expect(setResponse.statusCode).toBe(200);
@@ -585,7 +526,7 @@ describe('Phase 0 API integration system domain', (): void => {
     const verifyResponse: LightMyRequestResponse = await systemApp.inject({
       method: 'POST',
       url: '/internal/system/domain/verify',
-      headers: buildSystemMutationHeaders('domain-custom-http-verify'),
+      headers: buildSystemMutationHeaders('domain-issuer-verify'),
       payload: { expectedSetupVersion: 1 },
     });
     expect(verifyResponse.statusCode).toBe(200);
@@ -597,7 +538,7 @@ describe('Phase 0 API integration system domain', (): void => {
     const activateResponse: LightMyRequestResponse = await systemApp.inject({
       method: 'POST',
       url: '/internal/system/domain/activate',
-      headers: buildSystemMutationHeaders('domain-custom-http-activate'),
+      headers: buildSystemMutationHeaders('domain-issuer-activate'),
       payload: { expectedSetupVersion: 2 },
     });
     expect(activateResponse.statusCode).toBe(200);
@@ -626,115 +567,6 @@ describe('Phase 0 API integration system domain', (): void => {
     expect(outboundHttpServiceMocks.fetchSystemDomainProbeHttp).toHaveBeenCalledWith(
       'https://console.customer.example.com/_compartment/domain/probe/active',
       expect.any(Object),
-    );
-  });
-
-  it('attaches a provided certificate before verifying and activating custom HTTPS domain state', async (): Promise<void> => {
-    await installCompartment(app);
-    configureApiRuntimeWithPublicIngress(defaultApiConfig, createManagedPublicIngressConfig());
-    appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockClear();
-
-    const setResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/set',
-      headers: buildSystemMutationHeaders('domain-custom-cert-set'),
-      payload: buildCustomCertificateDomainSetRequest(0),
-    });
-    expect(setResponse.statusCode).toBe(200);
-    const setPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(setResponse.json());
-    expect(setPayload.status.pending?.status).toBe('pending_dns');
-    expect(setPayload.status.pending?.certificate).toBeNull();
-    dnsPromiseMocks.resolveTxt.mockResolvedValue([
-      [requireSystemDomainDnsRecord(setPayload, 'ownership', 'TXT').value],
-    ]);
-
-    const verifyWithoutCertResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/verify',
-      headers: buildSystemMutationHeaders('domain-custom-cert-verify-without-cert'),
-      payload: { expectedSetupVersion: 1 },
-    });
-    expect(verifyWithoutCertResponse.statusCode).toBe(409);
-    expect(errorResponseSchema.parse(verifyWithoutCertResponse.json()).error.code).toBe('domain_operation_unavailable');
-
-    const attachResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/attach-cert',
-      headers: buildSystemMutationHeaders('domain-custom-cert-attach'),
-      payload: buildCustomCertificateAttachRequest(1),
-    });
-    expect(attachResponse.statusCode).toBe(200);
-    const attachPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(attachResponse.json());
-    expect(attachPayload.status.pending?.status).toBe('pending_cert');
-    expect(attachPayload.status.pending?.certificate?.secretName).toBe('domain-tls-operation');
-    expect(attachPayload.status.pending?.certificate?.metadata.dnsNames).toEqual([
-      '*.customer.example.com',
-      'console.customer.example.com',
-    ]);
-    const [storedPendingSetupState]: SystemDomainSetupStateRecord[] = await db.select().from(systemDomainSetupState);
-    expect(storedPendingSetupState?.pendingTlsSecretName).toBe('domain-tls-operation');
-
-    const verifyResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/verify',
-      headers: buildSystemMutationHeaders('domain-custom-cert-verify'),
-      payload: { expectedSetupVersion: 2 },
-    });
-    expect(verifyResponse.statusCode).toBe(200);
-    const verifyPayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(verifyResponse.json());
-    expect(verifyPayload.status.pending?.status).toBe('verified');
-
-    configureApiRuntime({ config: createCustomCertificateApiConfig(), db });
-    const activateResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/activate',
-      headers: buildSystemMutationHeaders('domain-custom-cert-activate'),
-      payload: { expectedSetupVersion: 3 },
-    });
-    expect(activateResponse.statusCode).toBe(200);
-    const activatePayload: SystemDomainMutationResponse = systemDomainMutationResponseSchema.parse(
-      activateResponse.json(),
-    );
-    expect(activatePayload.status.pending).toBeNull();
-    expect(activatePayload.status.active).toEqual({
-      baseDomain: 'customer.example.com',
-      domainKind: 'custom',
-      publicScheme: 'https',
-      tlsMode: 'custom-cert',
-    });
-    expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).toHaveBeenCalledTimes(1);
-  });
-
-  it('rejects legacy attach-cert payload fields after the contract is narrowed', async (): Promise<void> => {
-    await installCompartment(app);
-    configureApiRuntimeWithPublicIngress(defaultApiConfig, createManagedPublicIngressConfig());
-
-    const setResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/set',
-      headers: buildSystemMutationHeaders('domain-custom-cert-legacy-set'),
-      payload: buildCustomCertificateDomainSetRequest(0),
-    });
-    expect(setResponse.statusCode).toBe(200);
-    systemDomainMutationResponseSchema.parse(setResponse.json());
-
-    const attachResponse: LightMyRequestResponse = await systemApp.inject({
-      method: 'POST',
-      url: '/internal/system/domain/attach-cert',
-      headers: buildSystemMutationHeaders('domain-custom-cert-legacy-attach'),
-      payload: {
-        certificate: {
-          certificatePath: '/etc/compartment/tls/domop_123/fullchain.pem',
-          metadata: buildStoredPendingCertificateMetadata(),
-          privateKeyPath: '/etc/compartment/tls/domop_123/privkey.pem',
-        },
-        expectedSetupVersion: 1,
-      },
-    });
-
-    expect(attachResponse.statusCode).toBe(400);
-    expect(errorResponseSchema.parse(attachResponse.json()).error.code).toBe(
-      'invalid_system_domain_attach_certificate_request',
     );
   });
 
@@ -828,8 +660,7 @@ function configureApiRuntimeWithPublicIngress(
   config: ApiConfig,
   publicIngressConfig: ApiPublicIngressConfig = createEmptyPublicIngressConfig(),
 ): void {
-  process.env.COMPARTMENT_PUBLIC_INGRESS_IPV4 = publicIngressConfig.publicIngressIpv4 ?? '';
-  process.env.COMPARTMENT_PUBLIC_INGRESS_IPV6 = publicIngressConfig.publicIngressIpv6 ?? '';
+  process.env.COMPARTMENT_INGRESS_TARGETS_JSON = JSON.stringify(publicIngressConfig.targets);
   configureApiRuntime({ config, db });
 }
 

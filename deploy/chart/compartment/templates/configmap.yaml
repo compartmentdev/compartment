@@ -35,8 +35,7 @@ data:
   COMPARTMENT_ACME_CA_URL: {{ .Values.platform.acmeCaUrl | quote }}
   COMPARTMENT_ACME_EMAIL: {{ $installState.effective.platform.acmeEmail | quote }}
   COMPARTMENT_MANAGED_DOMAIN_BROKER_URL: {{ ternary $installState.effective.platform.managedDomainBrokerUrl "" (not (empty $installState.effective.secrets.managedDomainBrokerToken)) | quote }}
-  COMPARTMENT_PUBLIC_INGRESS_IPV4: {{ $installState.effective.platform.publicIngressIpv4 | quote }}
-  COMPARTMENT_PUBLIC_INGRESS_IPV6: {{ $installState.effective.platform.publicIngressIpv6 | quote }}
+  COMPARTMENT_INGRESS_TARGETS_JSON: {{ $installState.effective.ingress.targetsJson | quote }}
   COMPARTMENT_SOURCE_ARCHIVE_DIR: /var/lib/compartment/source-archives
   COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES: {{ .Values.platform.sourceArchiveMaxBytes | quote }}
   COMPARTMENT_AUDIT_RETENTION_DAYS: {{ .Values.platform.auditRetentionDays | quote }}

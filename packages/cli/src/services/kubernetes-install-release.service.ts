@@ -110,8 +110,6 @@ function parseExistingKubernetesInstall(output: string): ExistingKubernetesInsta
     ingressTargets: readIngressTargets(ingress),
     managedDomainAllocationId: readOptionalPlatformText(platform, 'managedDomainAllocationId'),
     managedDomainBrokerToken: readOptionalSecretText(secrets, 'managedDomainBrokerToken'),
-    publicIngressIpv4: readOptionalPlatformText(platform, 'publicIngressIpv4'),
-    publicIngressIpv6: readOptionalPlatformText(platform, 'publicIngressIpv6'),
     publicProtocol: readExistingPublicProtocol(platform),
     stage: readExistingInstallStage(platform),
     tlsMode: readExistingTlsMode(platform),
@@ -177,7 +175,7 @@ function readExistingPublicProtocol(platform: JsonValue | undefined): Kubernetes
 
 function readExistingTlsMode(platform: JsonValue | undefined): KubernetesInstallTlsMode {
   const tlsMode: JsonValue | undefined = isHelmJsonObject(platform) ? platform.tlsMode : undefined;
-  if (tlsMode === 'broker-dns01' || tlsMode === 'issuer' || tlsMode === 'internal' || tlsMode === 'secret') {
+  if (tlsMode === 'broker-dns01' || tlsMode === 'issuer' || tlsMode === 'internal') {
     return tlsMode;
   }
   throw new Error('The existing Helm release has no recognized platform.tlsMode.');

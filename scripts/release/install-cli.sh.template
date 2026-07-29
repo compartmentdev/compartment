@@ -138,6 +138,10 @@ if [ "$init_install" = "1" ]; then
     printf 'Use --onboarding-session only with --init-login.\n' >&2
     exit 1
   fi
+  if [ -n "$install_values_path" ]; then
+    printf 'Use --values only with --init-update.\n' >&2
+    exit 1
+  fi
 elif [ "$init_update" = "1" ]; then
   if [ -z "$install_values_path" ]; then
     printf 'Expected --values <path> with --init-update.\n' >&2
@@ -450,20 +454,16 @@ format_init_install_command() {
   format_install_path="$1"
   format_install_api_url="$2"
   format_install_base_domain="$3"
-  format_install_values_path="$4"
-  format_install_email="$5"
-  format_install_organization="$6"
-  format_install_organization_slug="$7"
-  format_install_kube_context="$8"
-  format_install_namespace="$9"
+  format_install_email="$4"
+  format_install_organization="$5"
+  format_install_organization_slug="$6"
+  format_install_kube_context="$7"
+  format_install_namespace="$8"
+  format_install_release_name="$9"
   shift 9
-  format_install_release_name="$1"
-  format_install_chart_path="$2"
-  format_install_remote="$3"
+  format_install_chart_path="$1"
+  format_install_remote="$2"
   format_install_command="$(printf '"%s" install' "$format_install_path")"
-  if [ -n "$format_install_values_path" ]; then
-    format_install_command="${format_install_command} --values $(quote_shell_argument "$format_install_values_path")"
-  fi
 
   if [ -n "$format_install_api_url" ]; then
     format_install_command="${format_install_command} --api-url $(quote_shell_argument "$format_install_api_url")"
@@ -503,17 +503,16 @@ run_init_install() {
   init_install_path="$1"
   init_install_api_url="$2"
   init_install_base_domain="$3"
-  init_install_values_path="$4"
-  init_install_email="$5"
-  init_install_organization="$6"
-  init_install_organization_slug="$7"
-  init_install_kube_context="$8"
-  init_install_namespace="$9"
+  init_install_email="$4"
+  init_install_organization="$5"
+  init_install_organization_slug="$6"
+  init_install_kube_context="$7"
+  init_install_namespace="$8"
+  init_install_release_name="$9"
   shift 9
-  init_install_release_name="$1"
-  init_install_chart_path="$2"
-  init_install_remote="$3"
-  init_install_command="$(format_init_install_command "$init_install_path" "$init_install_api_url" "$init_install_base_domain" "$init_install_values_path" "$init_install_email" "$init_install_organization" "$init_install_organization_slug" "$init_install_kube_context" "$init_install_namespace" "$init_install_release_name" "$init_install_chart_path" "$init_install_remote")"
+  init_install_chart_path="$1"
+  init_install_remote="$2"
+  init_install_command="$(format_init_install_command "$init_install_path" "$init_install_api_url" "$init_install_base_domain" "$init_install_email" "$init_install_organization" "$init_install_organization_slug" "$init_install_kube_context" "$init_install_namespace" "$init_install_release_name" "$init_install_chart_path" "$init_install_remote")"
 
   if ! can_use_installer_terminal; then
     printf 'Requested `--init-install`, but no terminal is available for owner setup. Run `%s` from an interactive shell.\n' "$init_install_command" >&2
@@ -521,9 +520,6 @@ run_init_install() {
   fi
 
   set -- install
-  if [ -n "$init_install_values_path" ]; then
-    set -- "$@" --values "$init_install_values_path"
-  fi
   if [ -n "$init_install_api_url" ]; then
     set -- "$@" --api-url "$init_install_api_url"
   fi
@@ -918,7 +914,7 @@ printf 'Installed compartment to %s\n' "$install_path"
 ensure_bin_directory_on_path "$bin_dir"
 
 if [ "$init_install" = "1" ]; then
-  run_init_install "$install_path" "$init_api_url" "$install_base_domain" "$install_values_path" "$init_email" "$init_organization" "$init_organization_slug" "$install_kube_context" "$install_namespace" "$install_release_name" "$install_chart_path" "$install_remote"
+  run_init_install "$install_path" "$init_api_url" "$install_base_domain" "$init_email" "$init_organization" "$init_organization_slug" "$install_kube_context" "$install_namespace" "$install_release_name" "$install_chart_path" "$install_remote"
   exit 0
 fi
 

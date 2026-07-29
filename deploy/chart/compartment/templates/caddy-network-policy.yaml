@@ -11,13 +11,8 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.ingress.controller.namespace | quote }}
-          podSelector:
-            matchLabels:
-              {{- range .Values.ingress.controller.podSelector }}
-              {{ .key | quote }}: {{ .value | quote }}
-              {{- end }}
+        # IngressClass does not expose controller Pod identity. Exact class, host, and path selection is enforced
+        # by the Ingress resources and Caddy's public route allowlist.
+        - namespaceSelector: {}
       ports:
         - {protocol: TCP, port: {{ .Values.ports.http }}}

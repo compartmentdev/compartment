@@ -194,7 +194,7 @@ describe('buildReleaseImageFromSource', (): void => {
     );
   });
 
-  it('rejects an unpinned result and keeps external registry pushes secure', async (): Promise<void> => {
+  it('rejects an unpinned result and keeps node-facing registry pushes secure', async (): Promise<void> => {
     const getArtifactSourceArchiveSpy: Mock<(artifactId: string) => Promise<Buffer>> = vi
       .fn<(artifactId: string) => Promise<Buffer>>()
       .mockResolvedValueOnce(Buffer.from('test'));

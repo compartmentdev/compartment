@@ -110,8 +110,6 @@ describe('Kubernetes install deployment', (): void => {
     expect(readResolvedInstallValues(state)).toMatchObject({
       platform: {
         baseDomain: 'acme.compartment.run',
-        publicIngressIpv4: detectedPublicIpv4,
-        publicIngressIpv6: '',
         managedDomainAllocationId: 'allocation-1',
         publicProtocol: 'https',
         tlsMode: 'broker-dns01',
@@ -404,7 +402,6 @@ describe('Kubernetes install deployment', (): void => {
     ]);
     expect(readResolvedInstallValues(state)).toMatchObject({
       ingress: { endpoint: { type: 'A', value: detectedPublicIpv4 } },
-      platform: { publicIngressIpv4: detectedPublicIpv4 },
     });
   });
 
@@ -453,43 +450,9 @@ describe('Kubernetes install deployment', (): void => {
     expect(state.events.filter((event: string): boolean => event === 'kubectl:certificate')).toHaveLength(2);
   });
 
-  it('adopts a Kubernetes release created before retained install state existed', async (): Promise<void> => {
-    const state: InstallHarnessState = createInstallHarnessState(legacyCustomInstallValues('full'), null);
+  it('rejects a preview release without canonical retained install state', async (): Promise<void> => {
+    const state: InstallHarnessState = createInstallHarnessState(existingInstallValues('full', 'custom'), null);
     mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
-    );
-    const progressEvents: string[] = [];
-    const customInput: KubernetesInstallDeploymentInput = {
-      ...managedDeploymentInput,
-      apiUrl: 'https://console.apps.example.com',
-      baseDomain: 'apps.example.com',
-      brokerUrl: undefined,
-      domainMode: 'custom',
-      managedDomainRequestedLabelSource: undefined,
-      progress: new RecordingProgressReporter(progressEvents),
-    };
-
-    await expect(deployAndWaitForKubernetesInstall(customInput)).resolves.toEqual({
-      apiUrl: 'https://console.apps.example.com',
-      baseDomain: 'apps.example.com',
-      installToken: 'existing-install-token',
-    });
-    expect(readHelmStages()).toEqual(['full']);
-    expect(readResolvedInstallValues(state).platform.installationId).toMatch(/^[\da-f-]{36}$/u);
-    expect(state.retainedState?.baseDomain).toBe('apps.example.com');
-    expect(progressEvents).toContainEqual(expect.stringMatching(/^Preparing Helm chart and verifying images/u));
-    expect(progressEvents).toContainEqual(expect.stringMatching(/^Waiting for platform pods \(api, worker, caddy\)/u));
-  });
-
-  it('materializes resumable state for a legacy foundation release', async (): Promise<void> => {
-    const state: InstallHarnessState = createInstallHarnessState(legacyCustomInstallValues('foundation'), null);
-    mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
-    );
     const customInput: KubernetesInstallDeploymentInput = {
       ...managedDeploymentInput,
       apiUrl: 'https://console.apps.example.com',
@@ -499,14 +462,10 @@ describe('Kubernetes install deployment', (): void => {
       managedDomainRequestedLabelSource: undefined,
     };
 
-    await expect(deployAndWaitForKubernetesInstall(customInput)).resolves.toMatchObject({
-      baseDomain: 'apps.example.com',
-    });
-    expect(readHelmStages()).toEqual(['foundation', 'foundation', 'full']);
-    expect(state.installValues[0]?.platform.installationId).toMatch(/^[\da-f-]{36}$/u);
-    expect(readResolvedInstallValues(state).platform.installationId).toBe(
-      state.installValues[0]?.platform.installationId,
+    await expect(deployAndWaitForKubernetesInstall(customInput)).rejects.toThrow(
+      'The existing Helm release has no canonical retained install state.',
     );
+    expect(readHelmStages()).toEqual([]);
   });
 
   it('derives an HTTP Console URL for a retained localhost installation', async (): Promise<void> => {
@@ -551,7 +510,7 @@ describe('Kubernetes install deployment', (): void => {
       baseDomain: 'apps.example.com',
     });
     expect(state.events).toEqual(['helm:foundation', 'helm:foundation', 'helm:full']);
-    expect(readResolvedInstallValues(state).platform.publicIngressIpv4).toBe(configuredPublicIpv4);
+    expect(readResolvedInstallValues(state).ingress?.targetsJson).toContain(configuredPublicIpv4);
     expect(mocks.usesOperatorTlsSecret).toHaveBeenCalledWith(customInput.valuesPath);
   });
 
@@ -832,8 +791,6 @@ function mergeReleaseValues(values: KubernetesInstallSecretValues, stage: string
         : { className: 'traefik', endpoint: { type: 'A', value: configuredIpv4 } }),
     platform: {
       ...values.platform,
-      publicIngressIpv4: values.platform.publicIngressIpv4 ?? configuredIpv4,
-      publicIngressIpv6: values.platform.publicIngressIpv6 ?? '',
       publicProtocol: values.platform.publicProtocol ?? 'http',
       startupStage: stage,
       tlsMode: values.platform.tlsMode ?? 'issuer',
@@ -958,8 +915,6 @@ function existingInstallValues(stage: 'foundation' | 'full', domainMode: 'custom
       installationId: 'installation-123',
       managedDomainAllocationId: domainMode === 'managed' ? 'allocation-1' : '',
       managedDomainBrokerUrl: domainMode === 'managed' ? 'https://broker.compartment.run' : '',
-      publicIngressIpv4: detectedPublicIpv4,
-      publicIngressIpv6: '',
       publicProtocol: 'https',
       startupStage: stage,
       tlsMode: domainMode === 'managed' ? 'broker-dns01' : 'issuer',
@@ -975,29 +930,8 @@ function managedInstallValuesWithoutIngress(): string {
   const values: KubernetesInstallSecretValues = JSON.parse(
     existingInstallValues('foundation', 'managed'),
   ) as KubernetesInstallSecretValues;
-  values.platform.publicIngressIpv4 = '';
-  values.platform.publicIngressIpv6 = '';
   values.ingress = { className: 'traefik', endpoint: { type: '', value: '' }, targetsJson: '[]' };
   return JSON.stringify(values);
-}
-
-function legacyCustomInstallValues(stage: 'foundation' | 'full'): string {
-  return JSON.stringify({
-    ingress: {
-      className: 'traefik',
-      endpoint: { type: 'A', value: detectedPublicIpv4 },
-    },
-    platform: {
-      acmeEmail: '',
-      baseDomain: 'apps.example.com',
-      publicIngressIpv4: detectedPublicIpv4,
-      publicIngressIpv6: '',
-      publicProtocol: 'https',
-      startupStage: stage,
-      tlsMode: 'issuer',
-    },
-    secrets: { installToken: 'existing-install-token' },
-  });
 }
 
 function existingLocalhostInstallValues(): string {
@@ -1005,6 +939,7 @@ function existingLocalhostInstallValues(): string {
     ingress: {
       className: 'traefik',
       endpoint: { type: '', value: '' },
+      targetsJson: '[]',
     },
     platform: {
       acmeEmail: 'admin@example.com',
@@ -1012,8 +947,6 @@ function existingLocalhostInstallValues(): string {
       domainMode: 'custom',
       installationId: 'installation-localhost',
       managedDomainBrokerUrl: '',
-      publicIngressIpv4: '',
-      publicIngressIpv6: '',
       publicProtocol: 'http',
       startupStage: 'full',
       tlsMode: 'issuer',
@@ -1046,8 +979,6 @@ function readRetainedState(releaseValues: string): KubernetesInstallState {
         : (JSON.parse(values.ingress.targetsJson) as KubernetesIngressEndpoint[]),
     managedDomainAllocationId: values.platform.managedDomainAllocationId ?? '',
     managedDomainBrokerToken: values.secrets.managedDomainBrokerToken,
-    publicIngressIpv4: values.platform.publicIngressIpv4 ?? '',
-    publicIngressIpv6: values.platform.publicIngressIpv6 ?? '',
     publicProtocol: values.platform.publicProtocol ?? 'http',
     tlsMode: values.platform.tlsMode ?? 'issuer',
   };
@@ -1072,8 +1003,6 @@ function retainedInstallStateSecretList(state: KubernetesInstallState | null): s
           'managed-domain-allocation-id': encodeSecretValue(state.managedDomainAllocationId),
           'managed-domain-broker-token': encodeSecretValue(state.managedDomainBrokerToken),
           'managed-domain-broker-url': encodeSecretValue(state.brokerUrl),
-          'public-ingress-ipv4': encodeSecretValue(state.publicIngressIpv4),
-          'public-ingress-ipv6': encodeSecretValue(state.publicIngressIpv6),
           'public-protocol': encodeSecretValue(state.publicProtocol),
           'tls-mode': encodeSecretValue(state.tlsMode),
         },

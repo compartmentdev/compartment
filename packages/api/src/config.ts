@@ -26,7 +26,7 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_API_PORT: z.coerce.number().int().positive(),
   ...auditFileSinkConfigEnvSchema,
   COMPARTMENT_BASE_DOMAIN: z.string().min(1),
-  COMPARTMENT_TLS_MODE: z.enum(['broker-dns01', 'internal', 'issuer', 'secret']),
+  COMPARTMENT_TLS_MODE: z.enum(['broker-dns01', 'internal', 'issuer']),
   COMPARTMENT_DATABASE_URL: z.string().min(1),
   COMPARTMENT_EDGE_INTERNAL_HOST: z.string().min(1),
   COMPARTMENT_EDGE_PORT: z.coerce.number().int().positive(),
@@ -62,7 +62,7 @@ export interface ApiConfig {
   auditFileSink: AuditFileSinkConfig;
   baseDomain: string;
   bindHost: string;
-  tlsMode: 'broker-dns01' | 'internal' | 'issuer' | 'secret';
+  tlsMode: 'broker-dns01' | 'internal' | 'issuer';
   controlPlaneHost: string;
   databaseUrl: string;
   edgeToken: string;

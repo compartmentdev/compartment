@@ -90,12 +90,11 @@ describe('custom domain validation service', (): void => {
     );
 
     const missingIngressConfig: ApiPublicIngressConfig = {
-      publicIngressIpv4: null,
-      publicIngressIpv6: null,
+      targets: [],
     };
     configureValidationRuntime(createApiConfig());
     expect((): void => assertRuntimeSupportsCustomDomains(createApiConfig(), missingIngressConfig)).toThrow(
-      'Managed custom app domains require a public ingress IPv4 or IPv6 address.',
+      'Managed custom app domains require a public ingress target.',
     );
 
     const unsupportedRuntimeConfig: ApiConfig = {
@@ -106,23 +105,23 @@ describe('custom domain validation service', (): void => {
     configureValidationRuntime(unsupportedRuntimeConfig);
     expect((): void =>
       assertRuntimeSupportsCustomDomains(unsupportedRuntimeConfig, createPublicIngressConfig()),
-    ).toThrow('Custom app domains require a managed or custom-cert system domain.');
+    ).not.toThrow();
   });
 
-  it('allows supported managed and custom-cert runtime plans', (): void => {
+  it('allows supported managed and issuer-backed runtime plans', (): void => {
     const managedConfig: ApiConfig = createApiConfig();
     configureValidationRuntime(managedConfig);
     expect((): void => assertRuntimeSupportsCustomDomains(managedConfig, createPublicIngressConfig())).not.toThrow();
 
-    const customCertConfig: ApiConfig = {
+    const operatorConfig: ApiConfig = {
       ...createApiConfig(),
       baseDomain: 'customer.example.com',
-      tlsMode: 'secret',
+      tlsMode: 'issuer',
       controlPlaneHost: 'console.customer.example.com',
     };
-    configureValidationRuntime(customCertConfig);
+    configureValidationRuntime(operatorConfig);
     expect((): void =>
-      assertRuntimeSupportsCustomDomains(customCertConfig, createEmptyPublicIngressConfig()),
+      assertRuntimeSupportsCustomDomains(operatorConfig, createEmptyPublicIngressConfig()),
     ).not.toThrow();
   });
 });
@@ -169,14 +168,13 @@ function createApiConfig(): ApiConfig {
 
 function createPublicIngressConfig(): ApiPublicIngressConfig {
   return {
-    publicIngressIpv4: '203.0.113.10',
-    publicIngressIpv6: '2001:db8::10',
+    targets: [
+      { type: 'A', value: '203.0.113.10' },
+      { type: 'AAAA', value: '2001:db8::10' },
+    ],
   };
 }
 
 function createEmptyPublicIngressConfig(): ApiPublicIngressConfig {
-  return {
-    publicIngressIpv4: null,
-    publicIngressIpv6: null,
-  };
+  return { targets: [] };
 }

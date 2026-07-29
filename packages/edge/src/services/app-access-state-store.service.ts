@@ -13,14 +13,12 @@ export function createEdgeAppAccessStateStore(): EdgeAppAccessStateStore {
 class InMemoryEdgeAppAccessStateStore implements EdgeAppAccessStateStore {
   #compartmentUrl: string | null = null;
   readonly #grantsByPrincipal: Map<string, AppAccessGrantState[]> = new Map<string, AppAccessGrantState[]>();
-  readonly #onDemandTlsHosts: Set<string> = new Set<string>();
   readonly #routesByHost: Map<string, AppAccessRouteState> = new Map<string, AppAccessRouteState>();
   readonly #sessionsByToken: Map<string, EdgeAppAccessSessionEntry> = new Map<string, EdgeAppAccessSessionEntry>();
 
   clearSnapshot(): void {
     this.#compartmentUrl = null;
     this.#grantsByPrincipal.clear();
-    this.#onDemandTlsHosts.clear();
     this.#routesByHost.clear();
     this.#sessionsByToken.clear();
   }
@@ -45,10 +43,6 @@ class InMemoryEdgeAppAccessStateStore implements EdgeAppAccessStateStore {
     return this.#sessionsByToken.get(token) ?? null;
   }
 
-  hasOnDemandTlsHost(host: string): boolean {
-    return this.#onDemandTlsHosts.has(host);
-  }
-
   replaceSnapshot(snapshot: AppAccessStateSnapshot): void {
     this.#compartmentUrl = snapshot.compartmentUrl;
     this.#grantsByPrincipal.clear();
@@ -60,11 +54,6 @@ class InMemoryEdgeAppAccessStateStore implements EdgeAppAccessStateStore {
     this.#routesByHost.clear();
     for (const route of snapshot.routes) {
       this.#routesByHost.set(route.host, route);
-    }
-
-    this.#onDemandTlsHosts.clear();
-    for (const host of snapshot.onDemandTlsHosts) {
-      this.#onDemandTlsHosts.add(host);
     }
   }
 

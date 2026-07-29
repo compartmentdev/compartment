@@ -25,7 +25,6 @@ describe('edge Caddyfile', (): void => {
     expect(renderedCaddyfile).not.toContain('https://');
     expect(renderedCaddyfile).not.toContain('on_demand');
     expect(renderedCaddyfile).not.toContain('issuer');
-    expect(renderedCaddyfile).not.toContain('COMPARTMENT_CADDY_HTTPS_PORT');
     expect(renderedCaddyfile).not.toContain('COMPARTMENT_MANAGED_DOMAIN_BROKER');
   });
 

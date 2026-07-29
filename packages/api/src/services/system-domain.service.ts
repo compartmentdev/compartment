@@ -84,15 +84,10 @@ function buildStageSystemDomainPendingInput(
   };
 }
 
-function assertPublicIngressConfigured(publicIngressConfig: {
-  publicIngressIpv4: string | null;
-  publicIngressIpv6: string | null;
-}): void {
-  if (publicIngressConfig.publicIngressIpv4 !== null || publicIngressConfig.publicIngressIpv6 !== null) {
+function assertPublicIngressConfigured(publicIngressConfig: ApiPublicIngressConfig): void {
+  if (publicIngressConfig.targets.length > 0) {
     return;
   }
 
-  throw createInvalidDomainHostPlanError(
-    'Custom system domains require COMPARTMENT_PUBLIC_INGRESS_IPV4 or COMPARTMENT_PUBLIC_INGRESS_IPV6.',
-  );
+  throw createInvalidDomainHostPlanError('Custom system domains require at least one public ingress target.');
 }
