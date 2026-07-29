@@ -1,4 +1,4 @@
-import { readFile, rm } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
@@ -45,10 +45,6 @@ export async function materializeInstallWizardValues(
   const path: string = join(directory, 'values.json');
   await writeKubernetesInstallValues(path, values);
   return { directory, path };
-}
-
-export async function removeInstallWizardValues(material: MaterializedInstallWizardValues): Promise<void> {
-  await rm(material.directory, { force: true, recursive: true });
 }
 
 export async function readOperatorInstallInputValues(valuesPath: string): Promise<OperatorInstallInputValues> {

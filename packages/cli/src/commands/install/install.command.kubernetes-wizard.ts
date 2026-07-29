@@ -16,6 +16,7 @@ import type {
   KubernetesStorageClassChoice,
   ReadKubernetesInstallResourceInventory,
 } from './install.command.kubernetes-wizard.types';
+import { assertMutuallyExclusiveKubernetesInstallDomains } from './install.command.input';
 import { normalizeInstallBaseDomain } from './install.command.validation';
 import { assertManagedDomainOnboardingAvailable } from '../../services/managed-domain-reservation-token.service';
 
@@ -179,7 +180,7 @@ async function resolveDomain(
   io: CliIo,
   options: InstallCommandOptions,
 ): Promise<Pick<InstallCommandOptions, 'baseDomain' | 'managedDomain'>> {
-  assertDomainFlags(options);
+  assertMutuallyExclusiveKubernetesInstallDomains(options);
   if (options.managedDomain === true) {
     return resolveManagedDomain();
   }
@@ -200,12 +201,6 @@ async function resolveDomain(
 function resolveManagedDomain(): Pick<InstallCommandOptions, 'managedDomain'> {
   assertManagedDomainOnboardingAvailable();
   return { managedDomain: true };
-}
-
-function assertDomainFlags(options: InstallCommandOptions): void {
-  if (options.managedDomain === true && options.baseDomain !== undefined) {
-    throw new Error('--managed-domain cannot be combined with --base-domain.');
-  }
 }
 
 async function selectChoice<T>(
