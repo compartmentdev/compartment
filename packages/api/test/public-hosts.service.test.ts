@@ -164,6 +164,20 @@ describe('public hosts service', (): void => {
     ).toBe('app.example.com');
   });
 
+  it('does not allocate the private registry hostname to an app route', (): void => {
+    const host: string = buildCanonicalRouteHost({
+      baseDomain: 'example.com',
+      environmentName: 'production',
+      existingHosts: [],
+      includeServiceLabel: false,
+      organizationId: 'org_alpha',
+      projectName: 'registry',
+      serviceName: 'web',
+    });
+
+    expect(host).toMatch(/^registry-[a-f0-9]{6}\.example\.com$/u);
+  });
+
   it('includes configured public ports in compartment and route URLs', (): void => {
     const customPublicIngressPorts: PublicIngressPortConfig = {
       publicProtocol: 'http',

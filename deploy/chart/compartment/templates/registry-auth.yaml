@@ -1,4 +1,6 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- $registry := $installState.effective.registry -}}
+{{- $registryIssuerRef := $installState.effective.registryIssuerRef -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -20,15 +22,15 @@ spec:
     - name: http-internal
       port: {{ .Values.ports.registryInternal }}
       targetPort: http-internal
-{{- if and (eq $installState.effective.platform.startupStage "full") (not (empty .Values.registry.hostname)) (not (empty .Values.registry.issuerRef.name)) }}
+{{- if and (eq $installState.effective.platform.startupStage "full") (not (empty $registry.hostname)) (not (empty $registryIssuerRef.name)) }}
 ---
 {{- $fullname := include "compartment.fullname" . -}}
 {{- include "compartment.certManagerCertificate" (dict
   "root" .
   "name" (printf "%s-registry" $fullname)
   "secretName" (printf "%s-registry-tls" $fullname)
-  "issuerRef" .Values.registry.issuerRef
-  "host" .Values.registry.hostname
+  "issuerRef" $registryIssuerRef
+  "host" $registry.hostname
 ) }}
 {{- end }}
 {{- if eq $installState.effective.platform.startupStage "full" }}

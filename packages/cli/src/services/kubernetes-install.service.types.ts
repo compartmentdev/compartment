@@ -1,7 +1,11 @@
 import type { DomainIssuerReference } from '@compartment/contracts';
 import type { KubernetesInstallProgressReporter } from './kubernetes-install-progress.types';
+import type {
+  KubernetesInstallRegistryConfiguration,
+  KubernetesInstallRegistryIssuerReference,
+} from './kubernetes-install-registry.service.types';
 
-export interface KubernetesInstallDeploymentInput {
+export interface KubernetesInstallDeploymentInput extends KubernetesInstallRegistryConfiguration {
   acmeEmail: string;
   apiUrl?: string | undefined;
   baseDomain?: string | undefined;
@@ -54,6 +58,8 @@ export interface KubernetesInstallState {
   managedDomainAllocationId: string;
   managedDomainBrokerToken: string;
   publicProtocol: KubernetesPublicProtocol;
+  registryHostname: string;
+  registryIssuerRef: KubernetesInstallRegistryIssuerReference;
   tlsMode: KubernetesInstallTlsMode;
 }
 
@@ -71,7 +77,13 @@ export interface RetainedManagedDomainState {
 export interface KubernetesInstallSecretValues {
   ingress?: KubernetesInstallIngressValues | undefined;
   platform: KubernetesInstallPlatformValues;
+  registry: KubernetesInstallRegistryValues;
   secrets: KubernetesInstallSecretValueFields;
+}
+
+export interface KubernetesInstallRegistryValues {
+  hostname: string;
+  issuerRef: KubernetesInstallRegistryIssuerReference;
 }
 
 export interface KubernetesInstallIngressValues {

@@ -134,6 +134,10 @@ function mergeRetainedBrokerFields(merged: ExistingKubernetesInstall, current: E
     merged.managedDomainBrokerToken,
     current.managedDomainBrokerToken,
   );
+  merged.registryHostname = preferRetainedText(merged.registryHostname, current.registryHostname);
+  if (merged.registryIssuerRef.name === '') {
+    merged.registryIssuerRef = current.registryIssuerRef;
+  }
 }
 
 function preferRetainedText(retainedValue: string, currentValue: string): string {
@@ -189,8 +193,25 @@ function parseRetainedStateSecret(data: Record<string, string>): RetainedKuberne
     managedDomainAllocationId: readSecretText(data, 'managed-domain-allocation-id'),
     managedDomainBrokerToken: readSecretText(data, 'managed-domain-broker-token'),
     publicProtocol: readPublicProtocol(data),
+    registryHostname: readSecretText(data, 'registry-hostname').toLowerCase(),
+    registryIssuerRef: {
+      group: 'cert-manager.io',
+      kind: readRegistryIssuerKind(data),
+      name: readSecretText(data, 'registry-issuer-ref-name'),
+    },
     tlsMode: readTlsMode(data),
   };
+}
+
+function readRegistryIssuerKind(data: Record<string, string>): 'Issuer' | 'ClusterIssuer' {
+  const value: string = readSecretText(data, 'registry-issuer-ref-kind');
+  if (value === '') {
+    return 'Issuer';
+  }
+  if (value === 'Issuer' || value === 'ClusterIssuer') {
+    return value;
+  }
+  throw new Error('The retained install-state Secret has no recognized registry issuer kind.');
 }
 
 function readIngressTargets(data: Record<string, string>): KubernetesIngressEndpoint[] {

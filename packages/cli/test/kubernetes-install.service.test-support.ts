@@ -24,6 +24,7 @@ export interface InstallHarnessState {
   installValuePaths: string[];
   installValues: KubernetesInstallSecretValues[];
   releaseValues: string | null;
+  retainedSecretOutput: string | null;
   retainedState: KubernetesInstallState | null;
 }
 
@@ -40,8 +41,45 @@ export function ingressAddressList(addresses: readonly string[]): string {
   });
 }
 
-export function encodeSecretValue(value: string): string {
+function encodeSecretValue(value: string): string {
   return Buffer.from(value).toString('base64');
+}
+
+export function retainedInstallStateSecretList(
+  state: KubernetesInstallState | null,
+  includeRegistry: boolean = true,
+): string {
+  if (state === null) {
+    return JSON.stringify({ items: [] });
+  }
+  return JSON.stringify({
+    items: [
+      {
+        data: {
+          'acme-email': encodeSecretValue(state.acmeEmail),
+          'base-domain': encodeSecretValue(state.baseDomain),
+          'domain-mode': encodeSecretValue(state.domainMode),
+          'installation-id': encodeSecretValue(state.installationId),
+          'ingress-class-name': encodeSecretValue(state.ingressClassName),
+          'ingress-endpoint-type': encodeSecretValue(state.ingressEndpoint?.type ?? ''),
+          'ingress-endpoint-value': encodeSecretValue(state.ingressEndpoint?.value ?? ''),
+          'ingress-targets-json': encodeSecretValue(JSON.stringify(state.ingressTargets)),
+          'managed-domain-allocation-id': encodeSecretValue(state.managedDomainAllocationId),
+          'managed-domain-broker-token': encodeSecretValue(state.managedDomainBrokerToken),
+          'managed-domain-broker-url': encodeSecretValue(state.brokerUrl),
+          'public-protocol': encodeSecretValue(state.publicProtocol),
+          ...(includeRegistry
+            ? {
+                'registry-hostname': encodeSecretValue(state.registryHostname),
+                'registry-issuer-ref-kind': encodeSecretValue(state.registryIssuerRef.kind),
+                'registry-issuer-ref-name': encodeSecretValue(state.registryIssuerRef.name),
+              }
+            : {}),
+          'tls-mode': encodeSecretValue(state.tlsMode),
+        },
+      },
+    ],
+  });
 }
 
 export function deployedReleaseList(): string {

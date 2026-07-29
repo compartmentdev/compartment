@@ -159,7 +159,7 @@ tests:
         template: product-log-agent.yaml
         documentIndex: 4
 
-  - it: renders a full public installation with public ingress and workloads
+  - it: renders an operator-domain installation with the derived private registry hostname
     set:
       registry:
         clusterIP: 10.43.250.250
@@ -210,6 +210,19 @@ tests:
           value: platform-issuer
         template: registry-auth.yaml
         documentIndex: 1
+      - equal:
+          path: spec.rules[0].host
+          value: console.apps.example.com
+        template: ingress.yaml
+      - equal:
+          path: spec.rules[1].host
+          value: '*.apps.example.com'
+        template: ingress.yaml
+      - notContains:
+          path: spec.rules
+          content:
+            host: registry.apps.example.com
+          template: ingress.yaml
       - containsDocument:
           apiVersion: apps/v1
           kind: Deployment

@@ -61,8 +61,9 @@ Pin verified image digests when using this path.
 
 ## Registry and workload isolation
 
-The registry is a private ClusterIP workload. Set `registry.hostname` to an operator-provided hostname resolvable from
-every node and `registry.issuerRef` to the trusted cert-manager issuer used for that endpoint. The chart never changes
+The registry is a private ClusterIP workload. For an operator-owned base domain, the CLI derives
+`registry.<base-domain>` and uses `registry.issuerRef` when explicitly set, otherwise the platform `tls.issuerRef`.
+The hostname must resolve from every node to the retained registry Service. The chart never changes
 container-runtime configuration or node trust.
 
 Project provisioning creates repository-scoped credentials and project-scoped image pull Secrets. NetworkPolicy

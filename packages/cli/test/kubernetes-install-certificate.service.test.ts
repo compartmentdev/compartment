@@ -26,6 +26,8 @@ describe('Kubernetes platform Certificate readiness', (): void => {
         acmeEmail: 'admin@example.com',
         domainMode: 'managed',
         namespace: 'compartment',
+        registryHostname: 'registry.example.test',
+        registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'platform-issuer' },
         releaseName: 'compartment',
         valuesPath: 'values.yaml',
       }),

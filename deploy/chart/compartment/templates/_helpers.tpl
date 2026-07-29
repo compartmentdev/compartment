@@ -86,6 +86,18 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
   valuesSection: platform
   valueKey: tlsMode
   policy: domain
+- secretKey: registry-hostname
+  valuesSection: registry
+  valueKey: hostname
+  policy: stable
+- secretKey: registry-issuer-ref-kind
+  valuesSection: registryIssuerRef
+  valueKey: kind
+  policy: stable
+- secretKey: registry-issuer-ref-name
+  valuesSection: registryIssuerRef
+  valueKey: name
+  policy: stable
 {{- end }}
 
 {{- define "compartment.persistedSecretValue" -}}
@@ -98,9 +110,9 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- if and $existing $existing.data -}}
 {{- $data = $existing.data -}}
 {{- end -}}
-{{- $effective := dict "platform" (deepCopy .Values.platform) "secrets" (deepCopy .Values.secrets) "ingress" (dict "className" .Values.ingress.className "targetsJson" .Values.ingress.targetsJson) "ingressEndpoint" (deepCopy .Values.ingress.endpoint) -}}
+{{- $effective := dict "platform" (deepCopy .Values.platform) "secrets" (deepCopy .Values.secrets) "ingress" (dict "className" .Values.ingress.className "targetsJson" .Values.ingress.targetsJson) "ingressEndpoint" (deepCopy .Values.ingress.endpoint) "registry" (dict "hostname" .Values.registry.hostname) "registryIssuerRef" (deepCopy .Values.registry.issuerRef) -}}
 {{- $persisted := deepCopy $effective -}}
-{{- $incomingSections := dict "platform" .Values.platform "secrets" .Values.secrets "ingress" .Values.ingress "ingressEndpoint" .Values.ingress.endpoint -}}
+{{- $incomingSections := dict "platform" .Values.platform "secrets" .Values.secrets "ingress" .Values.ingress "ingressEndpoint" .Values.ingress.endpoint "registry" .Values.registry "registryIssuerRef" .Values.registry.issuerRef -}}
 {{- $retainedGeneration := int (default "0" (dig "domain-generation" "" $data | b64dec)) -}}
 {{- $incomingGeneration := int .Values.platform.domainGeneration -}}
 {{- $useRetainedDomain := and (not (get . "compartmentSharedChecksum")) (le $incomingGeneration $retainedGeneration) -}}
@@ -144,8 +156,8 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- if eq $effective.platform.startupStage "full" -}}
 {{- $_ := required "platform.installationId is required for a full installation" $effective.platform.installationId -}}
 {{- $_ = required "platform.baseDomain is required for a full installation" $effective.platform.baseDomain -}}
-{{- $_ = required "registry.hostname is required for a full installation" .Values.registry.hostname -}}
-{{- $_ = required "registry.issuerRef.name is required for a full installation" .Values.registry.issuerRef.name -}}
+{{- $_ = required "registry.hostname is required for a full installation" $effective.registry.hostname -}}
+{{- $_ = required "registry.issuerRef.name is required for a full installation" $effective.registryIssuerRef.name -}}
 {{- if and (not (empty $effective.secrets.managedDomainBrokerToken)) (empty $effective.platform.managedDomainBrokerUrl) -}}
 {{- fail "platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured" -}}
 {{- end -}}

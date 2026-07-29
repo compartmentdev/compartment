@@ -85,6 +85,7 @@ export {
   buildControlPlaneHost,
   buildDomainProbeHost,
   buildDomainWildcardHost,
+  buildPrivateRegistryHost,
   controlPlaneSubdomainLabel,
   isOperatorManagedDomainHostPlan,
 } from './contracts/system-domain-helpers.contract';

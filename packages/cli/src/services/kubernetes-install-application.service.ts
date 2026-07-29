@@ -1,25 +1,38 @@
 import { rm } from 'node:fs/promises';
+import type { DomainIssuerReference } from '@compartment/contracts';
 import { installKubernetesOwner } from '../install';
 import type { CliInstallResult } from '../install.types';
 import { runKubernetesExistingClusterPreflight } from './kubernetes-existing-cluster-preflight.service';
+import {
+  assertOperatorRegistryIssuer,
+  assertOperatorTlsSecret,
+} from './kubernetes-existing-cluster-preflight.cert-manager';
 import { createKubernetesInstallMaterializedDirectory } from './kubernetes-install-helm.service';
 import { prepareKubernetesInstallHelmMaterial } from './kubernetes-install-material.service';
 import { readManagedDomainRequestedLabelSource } from './managed-domain-label.service';
 import { runObservableInstallStep } from './kubernetes-install-progress.service';
+import { resolveKubernetesInstallRegistryConfiguration } from './kubernetes-install-registry.service';
+import type { KubernetesInstallRegistryConfiguration } from './kubernetes-install-registry.service.types';
 import { deployAndWaitForKubernetesInstall } from './kubernetes-install.service';
 import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallDeploymentResult,
+  KubernetesInstallDomainMode,
 } from './kubernetes-install.service.types';
 import type {
   KubernetesInstallApplicationInput,
   KubernetesInstallApplicationResult,
 } from './kubernetes-install-input.service.types';
+import {
+  readKubernetesTlsIssuerReference,
+  readOperatorOwnedKubernetesTlsSecretName,
+  usesOperatorOwnedKubernetesTlsSecret,
+} from './kubernetes-install-tls.service';
 
 export async function installIntoKubernetes(
   input: KubernetesInstallApplicationInput,
 ): Promise<KubernetesInstallApplicationResult> {
-  const deploymentInput: KubernetesInstallDeploymentInput = buildDeploymentInput(input);
+  const deploymentInput: KubernetesInstallDeploymentInput = await buildDeploymentInput(input);
   await runCanonicalPreflight(input, deploymentInput);
   const deployment: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(deploymentInput);
   return { install: await createOwner(input, deployment) };
@@ -34,8 +47,27 @@ async function runCanonicalPreflight(
       apiHosts: readExpectedIngressHosts(input),
       install: input,
     });
+    await verifyOperatorCertificateSources(deploymentInput);
     await verifyInstallImages(deploymentInput);
   });
+}
+
+async function verifyOperatorCertificateSources(input: KubernetesInstallDeploymentInput): Promise<void> {
+  if (input.domainMode !== 'custom') {
+    return;
+  }
+  await assertOperatorRegistryIssuer(input);
+  if (await usesOperatorOwnedKubernetesTlsSecret(input.valuesPath)) {
+    await assertOperatorTlsSecret(input, await readOperatorOwnedKubernetesTlsSecretName(input.valuesPath));
+    return;
+  }
+  const platformIssuer: DomainIssuerReference = await readKubernetesTlsIssuerReference(input.valuesPath);
+  if (platformIssuer.kind !== input.registryIssuerRef.kind || platformIssuer.name !== input.registryIssuerRef.name) {
+    await assertOperatorRegistryIssuer({
+      ...input,
+      registryIssuerRef: { group: 'cert-manager.io', ...platformIssuer },
+    });
+  }
 }
 
 async function verifyInstallImages(input: KubernetesInstallDeploymentInput): Promise<void> {
@@ -47,26 +79,39 @@ async function verifyInstallImages(input: KubernetesInstallDeploymentInput): Pro
   }
 }
 
-function buildDeploymentInput(input: KubernetesInstallApplicationInput): KubernetesInstallDeploymentInput {
+async function buildDeploymentInput(
+  input: KubernetesInstallApplicationInput,
+): Promise<KubernetesInstallDeploymentInput> {
+  const domainMode: KubernetesInstallDomainMode = input.domain.mode === 'managed' ? 'managed' : 'custom';
+  const registry: KubernetesInstallRegistryConfiguration = await resolveKubernetesInstallRegistryConfiguration({
+    ...(input.domain.mode === 'operator' ? { baseDomain: input.domain.baseDomain } : {}),
+    domainMode,
+    valuesPath: input.valuesPath,
+  });
+  return buildResolvedDeploymentInput(input, domainMode, registry);
+}
+
+function buildResolvedDeploymentInput(
+  input: KubernetesInstallApplicationInput,
+  domainMode: KubernetesInstallDomainMode,
+  registry: KubernetesInstallRegistryConfiguration,
+): KubernetesInstallDeploymentInput {
   return {
     acmeEmail: input.owner.email,
     ...(input.apiUrl === undefined ? {} : { apiUrl: input.apiUrl }),
     ...(input.domain.mode === 'operator' ? { baseDomain: input.domain.baseDomain } : {}),
     ...(input.brokerUrl === undefined ? {} : { brokerUrl: input.brokerUrl }),
     ...(input.chartPath === undefined ? {} : { chartPath: input.chartPath }),
-    domainMode: input.domain.mode === 'managed' ? 'managed' : 'custom',
+    domainMode,
     kubeconfigPath: input.kubeconfigPath,
     kubeContext: input.kubeContext,
-    ...(input.domain.mode === 'managed'
-      ? {
-          managedDomainRequestedLabelSource: readManagedDomainRequestedLabelSource(
-            input.owner.organizationName,
-            input.organizationSlug,
-          ),
-        }
-      : {}),
+    managedDomainRequestedLabelSource:
+      input.domain.mode === 'managed'
+        ? readManagedDomainRequestedLabelSource(input.owner.organizationName, input.organizationSlug)
+        : undefined,
     namespace: input.namespace,
     progress: input.progress,
+    ...registry,
     releaseName: input.releaseName,
     valuesPath: input.valuesPath,
   };
@@ -94,5 +139,5 @@ function readExpectedIngressHosts(input: KubernetesInstallApplicationInput): str
   if (input.domain.mode === 'managed') {
     return [];
   }
-  return [`console.${input.domain.baseDomain}`];
+  return [`console.${input.domain.baseDomain}`, `*.${input.domain.baseDomain}`];
 }
