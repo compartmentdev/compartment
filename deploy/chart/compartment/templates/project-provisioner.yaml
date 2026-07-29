@@ -21,6 +21,8 @@ spec:
       annotations:
         {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
     spec:
+      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+      {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
       serviceAccountName: {{ include "compartment.fullname" . }}-project-provisioner
       automountServiceAccountToken: false
       securityContext:
@@ -53,6 +55,9 @@ spec:
             - {name: COMPARTMENT_EDGE_NAMESPACE, value: {{ .Release.Namespace | quote }}}
             - {name: COMPARTMENT_KUBE_POD_CIDR, value: {{ .Values.buildkit.podCidr | quote }}}
             - {name: COMPARTMENT_KUBE_SERVICE_CIDR, value: {{ .Values.buildkit.serviceCidr | quote }}}
+            {{- with include "compartment.tenantSchedulingJson" . }}
+            - {name: COMPARTMENT_KUBE_TENANT_SCHEDULING, value: {{ . | quote }}}
+            {{- end }}
             - {name: COMPARTMENT_PLATFORM_NAMESPACE, value: {{ .Release.Namespace | quote }}}
             - {name: COMPARTMENT_PROVISIONING_NAMESPACE, value: {{ include "compartment.projectProvisioningNamespace" . | quote }}}
             - {name: COMPARTMENT_PROJECT_PROVISIONER_IMAGE, value: {{ include "compartment.image" .Values.images.worker | quote }}}

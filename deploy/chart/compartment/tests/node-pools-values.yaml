@@ -1,0 +1,18 @@
+platform:
+  startupStage: full
+  installationId: node-pools-test
+  baseDomain: compartment.localhost
+  publicProtocol: http
+  tlsMode: issuer
+
+secrets:
+  installToken: test-install-token
+  postgresPassword: test-postgres-password
+  registryCredentialSigningKey: test-registry-signing-key-with-at-least-32-characters
+  edgeToken: test-edge-token
+  productLogIngestToken: test-product-log-token
+  runtimeControlToken: test-runtime-control-token
+  sessionSecret: test-session-secret
+  systemToken: test-system-token
+  variablesMasterKey: test-variables-master-key
+  managedDomainBrokerToken: ''

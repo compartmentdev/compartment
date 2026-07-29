@@ -1,3 +1,4 @@
+import type { KubeWorkloadScheduling } from '@compartment/kube-runtime';
 import { z } from 'zod';
 import { readWorkerProcessConfig, type WorkerProcessConfig } from './config';
 import {
@@ -5,8 +6,10 @@ import {
   type ProjectProvisioningEnvironment,
 } from './project-provisioning-environment';
 import type { ProjectProvisionerConfig } from './project-provisioner.types';
+import { readTenantWorkloadScheduling } from './tenant-workload-scheduling';
 
 interface ProjectProvisionerEnvironment extends ProjectProvisioningEnvironment {
+  COMPARTMENT_KUBE_TENANT_SCHEDULING?: string | undefined;
   COMPARTMENT_PROJECT_PROVISIONER_IMAGE: string;
 }
 
@@ -14,12 +17,16 @@ const projectProvisionerEnvironmentSchema: z.ZodType<ProjectProvisionerEnvironme
   projectProvisioningEnvironmentSchema.and(
     z.object({
       COMPARTMENT_PROJECT_PROVISIONER_IMAGE: z.string().min(1),
+      COMPARTMENT_KUBE_TENANT_SCHEDULING: z.string().min(1).optional(),
     }),
   );
 
 export function readProjectProvisionerConfig(env: NodeJS.ProcessEnv = process.env): ProjectProvisionerConfig {
   const worker: WorkerProcessConfig = readWorkerProcessConfig(env);
   const parsed: ProjectProvisionerEnvironment = projectProvisionerEnvironmentSchema.parse(env);
+  const tenantScheduling: KubeWorkloadScheduling | undefined = readTenantWorkloadScheduling(
+    parsed.COMPARTMENT_KUBE_TENANT_SCHEDULING,
+  );
   return {
     apiUrl: worker.apiUrl,
     artifactRegistry: worker.artifactRegistry,
@@ -32,6 +39,7 @@ export function readProjectProvisionerConfig(env: NodeJS.ProcessEnv = process.en
     pollIntervalMs: worker.pollIntervalMs,
     runtimeControlToken: worker.runtimeControlToken,
     serviceCidr: parsed.COMPARTMENT_KUBE_SERVICE_CIDR,
+    ...(tenantScheduling === undefined ? {} : { tenantScheduling }),
     workerServiceAccountName: parsed.COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME,
   };
 }

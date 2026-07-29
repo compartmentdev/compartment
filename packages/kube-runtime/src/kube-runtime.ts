@@ -3,7 +3,13 @@ import { createKubeObservation } from './kube-observation';
 import { readKubePodMetrics } from './kube-pod-metrics';
 import type { KubePodMetricCollection, ObservePodMetrics } from './kube-pod-metrics.types';
 import { waitForTerminalJob, type TerminalJob } from './kube-job';
-import { kubeFinalizedJobManifest, kubeJobManifest, kubeJobSecretManifest } from './kube-job-projection';
+import { createOrJoinKubeJob } from './kube-job-reconciliation';
+import {
+  kubeFinalizedJobManifest,
+  kubeJobIdentity,
+  kubeJobSecretManifest,
+  recoveredJobSpec,
+} from './kube-job-projection';
 import { kubeJobName } from './kube-naming';
 import type { TerminalJobResult } from './kube-runtime-job-result.types';
 import { createOrValidate } from './kube-provisioning-validation';
@@ -16,7 +22,6 @@ import {
   isJobTimeoutError,
   jobObservationInput,
   readObjectIgnoringNotFound,
-  readHttpStatusCode,
   startJobDeadline,
   type JobDeadline,
 } from './kube-runtime-operations';
@@ -130,29 +135,27 @@ export class KubeRuntime {
   public async runJob(spec: KubeJobSpec, persistedResult?: KubePersistedJobResult): Promise<KubeJobResult> {
     const jobName: string = kubeJobName(spec.id);
     const labels: Record<string, string> = { ...spec.labels, 'compartment.dev/job-id': jobName };
-    const jobExists: boolean =
-      (await this.read({
-        apiVersion: 'batch/v1',
-        kind: 'Job',
-        metadata: { name: jobName, namespace: spec.namespace },
-      })) !== null;
+    const observedJob: KubeObservedManifest | null = await this.read(kubeJobIdentity(spec, jobName));
     if (persistedResult !== undefined) {
-      return this.buildCapturedJobResult(spec, jobName, labels, persistedResult, jobExists);
+      return this.captureJob(
+        recoveredJobSpec(spec, observedJob),
+        jobName,
+        labels,
+        persistedResult,
+        observedJob !== null,
+      );
     }
-    if (!jobExists) {
-      try {
-        await this.apply({ objects: [kubeJobSecretManifest(spec, labels), kubeJobManifest(spec, jobName, labels)] });
-      } catch (error) {
-        if (!(error instanceof Error && readHttpStatusCode(error) === 409)) {
-          throw error;
-        }
-      }
-    }
-    const terminalResult: TerminalJobResult = await this.completeJob(spec, jobName);
-    return this.buildCapturedJobResult(spec, jobName, labels, terminalResult, true);
+    const joinedJob: KubeObservedManifest | null = await createOrJoinKubeJob(this, spec, jobName, labels, observedJob);
+    return this.captureJob(
+      recoveredJobSpec(spec, joinedJob),
+      jobName,
+      labels,
+      await this.completeJob(spec, jobName),
+      true,
+    );
   }
 
-  private buildCapturedJobResult(
+  private captureJob(
     spec: KubeJobSpec,
     jobName: string,
     labels: Record<string, string>,

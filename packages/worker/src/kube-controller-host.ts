@@ -1,4 +1,8 @@
-import { createKubeRuntimeFromEnvironment, type KubeRuntime } from '@compartment/kube-runtime';
+import {
+  createKubeRuntimeFromEnvironment,
+  type KubeRuntime,
+  type KubeWorkloadScheduling,
+} from '@compartment/kube-runtime';
 import {
   claimCustomDomainReconcile,
   claimDeploymentReconcile,
@@ -35,6 +39,7 @@ class DeploymentReconcileArea implements KubeControllerHost {
     private readonly request: CompartmentRequester,
     private readonly runtime: KubeRuntime,
     private readonly artifactRegistry: WorkerArtifactRegistryConfig,
+    private readonly scheduling: KubeWorkloadScheduling | undefined,
   ) {}
 
   public async reconcile(): Promise<boolean> {
@@ -47,7 +52,7 @@ class DeploymentReconcileArea implements KubeControllerHost {
     }
     let recoveredRelease: boolean;
     try {
-      recoveredRelease = await reconcileProductJob(this.request, this.runtime, 'release');
+      recoveredRelease = await reconcileProductJob(this.request, this.runtime, 'release', this.scheduling);
     } catch (releaseError) {
       throwCombinedControllerErrors(
         deploymentError,
@@ -66,7 +71,7 @@ class DeploymentReconcileArea implements KubeControllerHost {
       return false;
     }
     await cleanupWorkerArtifacts(
-      await reconcileDeploymentTarget(this.request, this.runtime, claimed.target),
+      await reconcileDeploymentTarget(this.request, this.runtime, claimed.target, this.scheduling),
       this.artifactRegistry,
     );
     return claimed.target.state !== 'active' && claimed.target.state !== 'stopped';
@@ -77,16 +82,17 @@ class ResourceReconcileArea implements KubeControllerHost {
   public constructor(
     private readonly request: CompartmentRequester,
     private readonly runtime: KubeRuntime,
+    private readonly scheduling: KubeWorkloadScheduling | undefined,
   ) {}
 
   public async reconcile(): Promise<boolean> {
     const claimed: WorkerClaimResourceReconcileResponse = await claimResourceReconcile(this.request);
     let reconciled: boolean = false;
     if (claimed.intent !== null) {
-      await executeResourceReconcile(this.request, this.runtime, claimed);
+      await executeResourceReconcile(this.request, this.runtime, claimed, this.scheduling);
       reconciled = true;
     }
-    return (await reconcileProductJob(this.request, this.runtime, 'resource-operation')) || reconciled;
+    return (await reconcileProductJob(this.request, this.runtime, 'resource-operation', this.scheduling)) || reconciled;
   }
 }
 
@@ -138,8 +144,8 @@ export function createKubeControllerHosts(config: WorkerConfig, logger: Logger):
   const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
   return [
     new PodMetricsReconcileArea(request, runtime, logger),
-    new DeploymentReconcileArea(request, runtime, config.artifactRegistry),
-    new ResourceReconcileArea(request, runtime),
+    new DeploymentReconcileArea(request, runtime, config.artifactRegistry, config.tenantScheduling),
+    new ResourceReconcileArea(request, runtime, config.tenantScheduling),
     new CustomDomainReconcileArea(request, runtime, config.customDomains),
   ];
 }
@@ -148,15 +154,16 @@ async function reconcileProductJob(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   jobClass: ProductJobClass,
+  scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<boolean> {
   const claimed: WorkerClaimProductJobResponse = await claimProductJob(request, { jobClass });
   if (claimed.job === null) {
     return false;
   }
   if (claimed.result === null) {
-    await executeProductJob(request, runtime, claimed.job);
+    await executeProductJob(request, runtime, claimed.job, scheduling);
   } else {
-    await finalizeRecoveredProductJob(request, runtime, claimed.job, claimed.result);
+    await finalizeRecoveredProductJob(request, runtime, claimed.job, claimed.result, scheduling);
   }
   return true;
 }

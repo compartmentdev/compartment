@@ -3,9 +3,10 @@ import {
   buildInternalHttpUrl,
   parseOptionalTrustedOutboundHostList,
 } from '@compartment/utils';
-import type { KubeIssuerReference } from '@compartment/kube-runtime';
+import type { KubeIssuerReference, KubeWorkloadScheduling } from '@compartment/kube-runtime';
 import { z } from 'zod';
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
+import { readTenantWorkloadScheduling } from './tenant-workload-scheduling';
 
 interface WorkerProcessConfigEnvironment {
   COMPARTMENT_API_INTERNAL_HOST: string;
@@ -31,6 +32,7 @@ interface WorkerConfigEnvironment extends WorkerBuildConfigEnvironment {
   COMPARTMENT_TLS_ISSUER_KIND: 'Issuer' | 'ClusterIssuer';
   COMPARTMENT_TLS_ISSUER_NAME: string;
   COMPARTMENT_PLATFORM_NAMESPACE: string;
+  COMPARTMENT_KUBE_TENANT_SCHEDULING?: string | undefined;
 }
 
 interface WorkerTrustedOutboundHostsEnvironment {
@@ -64,6 +66,7 @@ const workerConfigSchema: z.ZodType<WorkerConfigEnvironment> = workerBuildConfig
     COMPARTMENT_TLS_ISSUER_KIND: z.enum(['Issuer', 'ClusterIssuer']),
     COMPARTMENT_TLS_ISSUER_NAME: z.string().min(1),
     COMPARTMENT_PLATFORM_NAMESPACE: z.string().min(1),
+    COMPARTMENT_KUBE_TENANT_SCHEDULING: z.string().min(1).optional(),
   }),
 );
 
@@ -81,6 +84,7 @@ export interface WorkerBuildConfig extends WorkerProcessConfig {
 
 export interface WorkerConfig extends WorkerBuildConfig {
   customDomains: WorkerCustomDomainConfig;
+  tenantScheduling?: KubeWorkloadScheduling | undefined;
 }
 
 export interface WorkerCustomDomainConfig {
@@ -105,6 +109,9 @@ export function readWorkerBuildConfig(env: NodeJS.ProcessEnv = process.env): Wor
 export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
   const parsed: WorkerConfigEnvironment = workerConfigSchema.parse(env);
   readWorkerTrustedOutboundHosts(parsed);
+  const tenantScheduling: KubeWorkloadScheduling | undefined = readTenantWorkloadScheduling(
+    parsed.COMPARTMENT_KUBE_TENANT_SCHEDULING,
+  );
 
   return {
     ...buildWorkerBuildConfig(parsed),
@@ -117,6 +124,7 @@ export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
       },
       namespace: parsed.COMPARTMENT_PLATFORM_NAMESPACE,
     },
+    ...(tenantScheduling === undefined ? {} : { tenantScheduling }),
   };
 }
 

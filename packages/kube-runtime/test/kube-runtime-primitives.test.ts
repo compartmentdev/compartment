@@ -11,6 +11,7 @@ import {
   type ProjectNamespaceProvisioningRow,
 } from '../src';
 import { kubeJobName, kubeSecretName } from '../src/kube-naming';
+import { kubeJobManifest } from '../src/kube-job-projection';
 import type {
   KubeJobManifest,
   KubeObservationHealth,
@@ -122,6 +123,9 @@ class PrimitiveObjectApi {
     if (this.patchError !== null && input[0].kind === this.patchErrorKind) {
       const error: Error = this.patchError;
       this.patchError = null;
+      if (input[0].kind === 'Job') {
+        this.jobExists = true;
+      }
       throw error;
     }
     return await Promise.resolve(input[0]);
@@ -345,18 +349,111 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(objectApi.patches).toHaveLength(0);
   });
 
-  it('joins after a concurrent deterministic-name collision instead of replacing the Job', async (): Promise<void> => {
-    const spec: KubeJobSpec = jobSpec('release');
-    const jobName: string = kubeJobName(spec.id);
-    objectApi.patchError = Object.assign(new Error('already exists'), { statusCode: 409 });
-    objectApi.patchErrorKind = 'Job';
+  it('preserves an existing Job scheduling policy while finalizing a recovered result', async (): Promise<void> => {
+    const originalSpec: KubeJobSpec = {
+      ...jobSpec('release'),
+      scheduling: {
+        nodeSelector: { 'compartment.dev/node-pool': 'tenant-a' },
+        tolerations: [{ effect: 'NoSchedule', key: 'tenant-a', operator: 'Exists' }],
+      },
+    };
+    const currentSpec: KubeJobSpec = {
+      ...originalSpec,
+      scheduling: {
+        nodeSelector: { 'compartment.dev/node-pool': 'tenant-b' },
+        tolerations: [{ effect: 'NoSchedule', key: 'tenant-b', operator: 'Exists' }],
+      },
+    };
+    const jobName: string = kubeJobName(originalSpec.id);
+    objectApi.jobExists = true;
+    objectApi.readOverrides.set('Job', kubeJobManifest(originalSpec, jobName, {}));
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    const result: KubeJobResult = await runtime.runJob(currentSpec, {
+      completedAt: new Date('2026-07-29T10:00:00.000Z'),
+      exitCode: 0,
+      jobName,
+      logs: 'complete',
+      podName: `${jobName}-pod`,
+      status: 'succeeded',
+    });
+    await result.finalize();
+
+    const finalized: KubeJobManifest = objectApi.patches.at(-1)![0] as KubeJobManifest;
+    expect(finalized.spec?.template.spec).toMatchObject({
+      nodeSelector: { 'compartment.dev/node-pool': 'tenant-a' },
+      priorityClassName: 'compartment-tenant',
+      tolerations: [{ effect: 'NoSchedule', key: 'tenant-a', operator: 'Exists' }],
+    });
+  });
+
+  it('preserves an existing Job scheduling policy after rejoining before result persistence', async (): Promise<void> => {
+    const originalSpec: KubeJobSpec = {
+      ...jobSpec('release'),
+      scheduling: {
+        nodeSelector: { 'compartment.dev/node-pool': 'tenant-a' },
+        tolerations: [{ effect: 'NoSchedule', key: 'tenant-a', operator: 'Exists' }],
+      },
+    };
+    const currentSpec: KubeJobSpec = {
+      ...originalSpec,
+      scheduling: {
+        nodeSelector: { 'compartment.dev/node-pool': 'tenant-b' },
+        tolerations: [{ effect: 'NoSchedule', key: 'tenant-b', operator: 'Exists' }],
+      },
+    };
+    const jobName: string = kubeJobName(originalSpec.id);
+    objectApi.jobExists = true;
+    objectApi.readOverrides.set('Job', kubeJobManifest(originalSpec, jobName, {}));
     createObservationMock.mockResolvedValue(terminalObservation(jobName, true, 0, vi.fn()));
     const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
 
-    const result: KubeJobResult = await runtime.runJob(spec);
+    const result: KubeJobResult = await runtime.runJob(currentSpec);
+    await result.finalize();
+
+    const finalized: KubeJobManifest = objectApi.patches.at(-1)![0] as KubeJobManifest;
+    expect(finalized.spec?.template.spec).toMatchObject({
+      nodeSelector: { 'compartment.dev/node-pool': 'tenant-a' },
+      priorityClassName: 'compartment-tenant',
+      tolerations: [{ effect: 'NoSchedule', key: 'tenant-a', operator: 'Exists' }],
+    });
+  });
+
+  it('joins after a concurrent deterministic-name collision instead of replacing the Job', async (): Promise<void> => {
+    const winningSpec: KubeJobSpec = {
+      ...jobSpec('release'),
+      scheduling: {
+        nodeSelector: { 'compartment.dev/node-pool': 'tenant-a' },
+        tolerations: [{ effect: 'NoSchedule', key: 'tenant-a', operator: 'Exists' }],
+      },
+    };
+    const currentSpec: KubeJobSpec = {
+      ...winningSpec,
+      scheduling: {
+        nodeSelector: { 'compartment.dev/node-pool': 'tenant-b' },
+        tolerations: [{ effect: 'NoSchedule', key: 'tenant-b', operator: 'Exists' }],
+      },
+    };
+    const jobName: string = kubeJobName(winningSpec.id);
+    objectApi.patchError = Object.assign(new Error('already exists'), { statusCode: 409 });
+    objectApi.patchErrorKind = 'Job';
+    objectApi.readOverrides.set('Job', kubeJobManifest(winningSpec, jobName, {}));
+    createObservationMock.mockResolvedValue(terminalObservation(jobName, true, 0, vi.fn()));
+    const runtime: KubeRuntime = new KubeRuntime({ makeApiClient: (): PrimitiveCoreApi => coreApi } as never);
+
+    const result: KubeJobResult = await runtime.runJob(currentSpec);
+    await result.finalize();
 
     expect(result).toMatchObject({ jobName, status: 'succeeded' });
-    expect(objectApi.patches.filter(([object]: KubePatchInvocation): boolean => object.kind === 'Job')).toHaveLength(1);
+    const jobPatches: KubeManifest[] = objectApi.patches
+      .filter(([object]: KubePatchInvocation): boolean => object.kind === 'Job')
+      .map(([object]: KubePatchInvocation): KubeManifest => object);
+    expect(jobPatches).toHaveLength(2);
+    expect((jobPatches.at(-1) as KubeJobManifest).spec?.template.spec).toMatchObject({
+      nodeSelector: { 'compartment.dev/node-pool': 'tenant-a' },
+      priorityClassName: 'compartment-tenant',
+      tolerations: [{ effect: 'NoSchedule', key: 'tenant-a', operator: 'Exists' }],
+    });
   });
 
   it('rejoins the same Job after the worker is killed between creation and terminal observation', async (): Promise<void> => {

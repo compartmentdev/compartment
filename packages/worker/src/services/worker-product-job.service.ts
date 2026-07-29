@@ -15,6 +15,7 @@ import {
   type KubeObservedManifest,
   type KubePersistedJobResult,
   type KubeRuntime,
+  type KubeWorkloadScheduling,
   type ObservedResourceClaim,
 } from '@compartment/kube-runtime';
 import {
@@ -23,6 +24,7 @@ import {
   persistProductJobResult,
   type CompartmentRequester,
 } from '@compartment/sdk';
+import { tenantJobSpec } from '../tenant-workload-projections';
 
 class ProductJobFailedError extends Error {
   public constructor(
@@ -57,13 +59,14 @@ export async function executeProductJob(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   intent: ProductJobIntent,
+  scheduling?: KubeWorkloadScheduling,
 ): Promise<WorkerPersistProductJobResultRequest> {
   const persisted: WorkerPersistProductJobIntentResponse = await persistProductJobIntent(request, intent);
   const identityId: string = readProductJobIdentity(intent);
   if (persisted.result !== null) {
     throwProductJobFailure(persisted.result);
   }
-  const jobResult: KubeJobResult = await runProductJobWithDurableFailure(request, runtime, intent, identityId);
+  const jobResult: KubeJobResult = await runFencedProductJob(request, runtime, intent, identityId, scheduling);
   const result: WorkerPersistProductJobResultRequest = buildProductJobResult(intent, identityId, jobResult);
   await persistProductJobResult(request, result);
   await jobResult.finalize();
@@ -81,11 +84,12 @@ function throwProductJobFailure(result: WorkerPersistProductJobResultRequest): n
   throw new ProductJobFailedError(result.jobClass, result.identityId, result.status);
 }
 
-async function runProductJobWithDurableFailure(
+async function runFencedProductJob(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   intent: ProductJobIntent,
   identityId: string,
+  scheduling?: KubeWorkloadScheduling,
 ): Promise<KubeJobResult> {
   if (intent.volumeMounts !== undefined && intent.volumeMounts.length > 0) {
     const observedClaims: ObservedResourceClaim[] = await readMountedClaims(runtime, intent);
@@ -96,7 +100,7 @@ async function runProductJobWithDurableFailure(
       await persistProductJobFencingFailure(request, intent, identityId, failure);
     }
   }
-  return await runtime.runJob(buildKubeJobSpec(intent, identityId));
+  return await runtime.runJob(tenantJobSpec(buildKubeJobSpec(intent, identityId), scheduling));
 }
 
 async function persistProductJobFencingFailure(
@@ -167,15 +171,19 @@ export async function finalizeRecoveredProductJob(
   runtime: KubeRuntime,
   intent: ProductJobIntent,
   persisted: WorkerPersistProductJobResultRequest,
+  scheduling?: KubeWorkloadScheduling,
 ): Promise<void> {
-  const jobResult: KubeJobResult = await runtime.runJob(buildKubeJobSpec(intent, persisted.identityId), {
-    completedAt: new Date(persisted.completedAt),
-    exitCode: persisted.exitCode,
-    jobName: persisted.jobName,
-    logs: persisted.logs,
-    podName: persisted.podName,
-    status: persisted.status,
-  } satisfies KubePersistedJobResult);
+  const jobResult: KubeJobResult = await runtime.runJob(
+    tenantJobSpec(buildKubeJobSpec(intent, persisted.identityId), scheduling),
+    {
+      completedAt: new Date(persisted.completedAt),
+      exitCode: persisted.exitCode,
+      jobName: persisted.jobName,
+      logs: persisted.logs,
+      podName: persisted.podName,
+      status: persisted.status,
+    } satisfies KubePersistedJobResult,
+  );
   await jobResult.finalize();
   await finalizeProductJob(request, { identityId: persisted.identityId, jobClass: persisted.jobClass });
 }

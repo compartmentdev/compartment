@@ -144,6 +144,17 @@ postgres:
   database: compartment
   username: postgres
 
+nodePools:
+  system:
+    nodeSelector: {}
+    tolerations: []
+  build:
+    nodeSelector: {}
+    tolerations: []
+  tenant:
+    nodeSelector: {}
+    tolerations: []
+
 buildkit:
   enabled: true
   namespace: compartment-build

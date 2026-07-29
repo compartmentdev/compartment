@@ -22,6 +22,7 @@ import {
   resourcePodSecurityContext,
   restrictedContainerSecurityContext,
 } from './kube-security-context';
+import { projectTenantScheduling } from './kube-workload-scheduling';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
 const postgresDataDirectorySelector: string =
@@ -88,6 +89,7 @@ function resourcePodTemplate(row: ResourceProjectionRow, labels: Record<string, 
     spec: {
       automountServiceAccountToken: false,
       containers: [resourceContainer(row)],
+      ...projectTenantScheduling(row.scheduling),
       securityContext: resourcePodSecurityContext(row.image),
       serviceAccountName: kubeNamespaceName(row.namespaceId),
       terminationGracePeriodSeconds: 60,

@@ -54,6 +54,8 @@ spec:
       annotations:
         {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
     spec:
+      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+      {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
       {{- include "compartment.waiterPodSpec" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}

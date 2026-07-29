@@ -1,3 +1,5 @@
+import type { KubeWorkloadScheduling } from './kube-workload-scheduling.types';
+
 export interface ResourceProjectionRow {
   command: string[];
   deleteData: boolean;
@@ -10,6 +12,7 @@ export interface ResourceProjectionRow {
   readiness: ResourceReadinessProjection | null;
   replicas: 0 | 1;
   resourceId: string;
+  scheduling?: KubeWorkloadScheduling | undefined;
   secretId: string;
   volumes: ResourceVolumeProjection[];
 }

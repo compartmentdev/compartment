@@ -21,6 +21,8 @@ spec:
       annotations:
         {{- include "compartment.rolloutAnnotations" . | nindent 8 }}
     spec:
+      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+      {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
       serviceAccountName: {{ include "compartment.fullname" . }}-worker
       automountServiceAccountToken: false
       securityContext:
@@ -57,6 +59,9 @@ spec:
             - {name: COMPARTMENT_TLS_ISSUER_NAME, value: {{ .Values.tls.issuerRef.name | quote }}}
             - {name: COMPARTMENT_KUBE_POD_CIDR, value: {{ .Values.buildkit.podCidr | quote }}}
             - {name: COMPARTMENT_KUBE_SERVICE_CIDR, value: {{ .Values.buildkit.serviceCidr | quote }}}
+            {{- with include "compartment.tenantSchedulingJson" . }}
+            - {name: COMPARTMENT_KUBE_TENANT_SCHEDULING, value: {{ . | quote }}}
+            {{- end }}
             - name: DOCKER_CONFIG
               value: /tmp/.docker
             - name: TMPDIR

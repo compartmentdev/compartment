@@ -75,6 +75,11 @@ tests:
         managedDomainAllocationId: allocation-1
       secrets:
         managedDomainBrokerToken: allocation-token
+      nodePools:
+        system:
+          nodeSelector: { compartment.dev/node-pool: system }
+          tolerations:
+            - { key: compartment.dev/node-pool, operator: Exists, effect: NoSchedule }
     asserts:
       - hasDocuments:
           count: 2
@@ -108,6 +113,22 @@ tests:
           value: {}
         template: managed-domain-dns01.yaml
         documentIndex: 14
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: compartment-platform
+        template: managed-domain-dns01.yaml
+        documentIndex: 11
+      - equal:
+          path: spec.template.spec.nodeSelector
+          value: { compartment.dev/node-pool: system }
+        template: managed-domain-dns01.yaml
+        documentIndex: 11
+      - equal:
+          path: spec.template.spec.tolerations
+          value:
+            - { key: compartment.dev/node-pool, operator: Exists, effect: NoSchedule }
+        template: managed-domain-dns01.yaml
+        documentIndex: 11
       - contains:
           path: spec.template.spec.containers[0].env
           content:

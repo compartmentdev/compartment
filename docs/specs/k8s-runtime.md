@@ -106,6 +106,11 @@ termination grace period, a 3-second `preStop`, and the documented readiness
 probe timings. Failed rollout recovery reapplies the saved active manifest by
 SSA; it does not use `kubectl rollout undo`.
 
+Tenant node-pool scheduling is installation-owned and opt-in. When configured, application and resource Deployments
+plus product and provisioning Jobs project the tenant selector, tolerations, and `compartment-tenant` PriorityClass.
+When it is absent, all three Pod fields are omitted so existing server-side-apply ownership remains unchanged.
+Platform and build scheduling remains owned by the Helm chart.
+
 Network isolation follows the T2 evidence. Application Pods and product Jobs
 carrying `compartment.dev/job-class` receive resource, kube-dns, and external
 egress; resource ingress admits those two workload classes only. Secret

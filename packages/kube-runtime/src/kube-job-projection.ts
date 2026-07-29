@@ -4,6 +4,7 @@ import type {
   KubeJobSpec,
   KubeJobVolumeMount,
   KubeManifest,
+  KubeObservedManifest,
   KubePodVolume,
   KubeProjectedContainer,
   KubeProjectedPodSpec,
@@ -20,6 +21,7 @@ import {
   resourcePodSecurityContext,
   restrictedContainerSecurityContext,
 } from './kube-security-context';
+import { projectTenantScheduling, tenantPriorityClassName } from './kube-workload-scheduling';
 
 export function kubeFinalizedJobManifest(
   spec: KubeJobSpec,
@@ -39,6 +41,10 @@ export function kubeJobManifest(spec: KubeJobSpec, jobName: string, labels: Reco
   };
 }
 
+export function kubeJobIdentity(spec: KubeJobSpec, jobName: string): KubeJobManifest {
+  return { apiVersion: 'batch/v1', kind: 'Job', metadata: { name: jobName, namespace: spec.namespace } };
+}
+
 export function kubeJobSecretManifest(spec: KubeJobSpec, labels: Record<string, string>): KubeManifest {
   return {
     apiVersion: 'v1',
@@ -49,12 +55,31 @@ export function kubeJobSecretManifest(spec: KubeJobSpec, labels: Record<string, 
   };
 }
 
+export function recoveredJobSpec(spec: KubeJobSpec, observed: KubeObservedManifest | null): KubeJobSpec {
+  if (observed === null) {
+    return spec;
+  }
+  const finalizationSpec: KubeJobSpec = { ...spec };
+  delete finalizationSpec.scheduling;
+  if (observed.kind !== 'Job' || observed.spec?.template.spec.priorityClassName !== tenantPriorityClassName) {
+    return finalizationSpec;
+  }
+  return {
+    ...finalizationSpec,
+    scheduling: {
+      nodeSelector: observed.spec.template.spec.nodeSelector ?? {},
+      tolerations: observed.spec.template.spec.tolerations ?? [],
+    },
+  };
+}
+
 function jobSpec(spec: KubeJobSpec, labels: Record<string, string>): KubeJobManifestSpec {
   const podSpec: KubeProjectedPodSpec = {
     automountServiceAccountToken: false,
     containers: [jobContainer(spec)],
     imagePullSecrets:
       spec.imagePullSecretId === undefined ? undefined : [{ name: kubeSecretName(spec.imagePullSecretId) }],
+    ...projectTenantScheduling(spec.scheduling),
     restartPolicy: 'Never',
     securityContext: jobPodSecurityContext(spec),
     serviceAccountName: spec.serviceAccountName,

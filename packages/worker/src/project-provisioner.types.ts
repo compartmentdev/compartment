@@ -1,4 +1,5 @@
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
+import type { KubeWorkloadScheduling } from '@compartment/kube-runtime';
 
 export interface ProjectProvisionerConfig {
   apiUrl: string;
@@ -12,5 +13,6 @@ export interface ProjectProvisionerConfig {
   provisioningNamespace: string;
   runtimeControlToken: string;
   serviceCidr: string;
+  tenantScheduling?: KubeWorkloadScheduling | undefined;
   workerServiceAccountName: string;
 }

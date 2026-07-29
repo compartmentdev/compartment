@@ -1,0 +1,17 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ include "compartment.platformPriorityClassName" . }}
+value: 1000000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: Compartment platform workloads that can preempt lower-priority tenant workloads.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ include "compartment.tenantPriorityClassName" . }}
+value: 0
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: Compartment tenant workloads that may be preempted by platform workloads.

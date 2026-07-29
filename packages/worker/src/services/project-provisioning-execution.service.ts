@@ -249,6 +249,7 @@ function projectProvisioningJob(
     jobClass: 'operation',
     labels: { 'compartment.dev/project-id': target.projectId, 'compartment.dev/job-class': 'project-provisioning' },
     namespace: authority.namespace,
+    scheduling: config.tenantScheduling,
     securityProfile: 'restricted',
     serviceAccountName: authority.serviceAccountName,
     serviceAccountTokenExpirationSeconds: bootstrapTokenExpirationSeconds,

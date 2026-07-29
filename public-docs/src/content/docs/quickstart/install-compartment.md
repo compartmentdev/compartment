@@ -35,6 +35,31 @@ Before installation, also provide:
 The installer does not install or disable an ingress controller, reserve node ports, or change node container-runtime
 configuration.
 
+Optional Helm values can assign platform, build, and tenant workloads to separately labeled and tainted nodes through
+`nodePools.system`, `nodePools.build`, and `nodePools.tenant`. Leave all three pools empty for single-node clusters.
+When pools are enabled, a pending platform Pod can preempt lower-priority tenant Pods that are eligible for the same
+node. Priority does not guarantee availability during node failure or kubelet node-pressure eviction.
+
+Label and taint nodes before enabling a pool, then create `compartment-values.yaml` with matching values:
+
+```yaml
+nodePools:
+  system:
+    nodeSelector: { compartment.dev/node-pool: system }
+    tolerations:
+      - { key: compartment.dev/node-pool, operator: Equal, value: system, effect: NoSchedule }
+  build:
+    nodeSelector: {}
+    tolerations: []
+  tenant:
+    nodeSelector: { compartment.dev/node-pool: tenant }
+    tolerations:
+      - { key: compartment.dev/node-pool, operator: Equal, value: tenant, effect: NoSchedule }
+```
+
+An empty build pool uses the system pool. Pass the file to `compartment install` with `--values
+compartment-values.yaml`.
+
 ## Run the installer
 
 Interactive installation discovers the cluster choices and prompts when more than one valid option exists:
@@ -52,7 +77,8 @@ compartment install \
   --namespace compartment \
   --release-name compartment \
   --ingress-class nginx \
-  --storage-class fast
+  --storage-class fast \
+  --values compartment-values.yaml
 ```
 
 Use `--ingress-endpoint` only when the selected controller does not publish an address in Ingress status. It accepts

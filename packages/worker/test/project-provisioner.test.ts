@@ -6,6 +6,7 @@ import {
   type KubeJobResult,
   type KubeJobSpec,
   type KubeManifest,
+  type KubeWorkloadScheduling,
 } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import pino, { type Logger } from 'pino';
@@ -74,6 +75,29 @@ describe('project provisioning execution', (): void => {
       namespace: 'compartment-project-provisioning',
       securityProfile: 'restricted',
       serviceAccountName: kubeNamespaceName('prj_1'),
+    });
+  });
+
+  it('adds configured tenant scheduling to project provisioning Jobs', async (): Promise<void> => {
+    const apply: Mock = vi.fn<() => Promise<KubeManifest[]>>().mockResolvedValue([]);
+    const runJob: Mock = vi.fn(async (): Promise<KubeJobResult> => await Promise.resolve(succeededJob(vi.fn())));
+
+    await executeProjectProvisioning(
+      requester(true, true),
+      runtimeStub(apply, runJob),
+      config({
+        nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+        tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Exists' }],
+      }),
+      target,
+      loggerStub(),
+    );
+
+    expect(runJob.mock.calls[0]?.[0]).toMatchObject({
+      scheduling: {
+        nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+        tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Exists' }],
+      },
     });
   });
 
@@ -495,7 +519,7 @@ const target: ProjectProvisioningTargetV2 = {
 };
 const podCidr: string = ['10', '42', '0', '0/16'].join('.');
 const serviceCidr: string = ['10', '43', '0', '0/16'].join('.');
-function config(): ProjectProvisionerConfig {
+function config(tenantScheduling?: KubeWorkloadScheduling): ProjectProvisionerConfig {
   return {
     apiUrl: 'http://api.compartment.svc:3000',
     artifactRegistry: {
@@ -513,6 +537,7 @@ function config(): ProjectProvisionerConfig {
     provisioningNamespace: 'compartment-project-provisioning',
     runtimeControlToken: 'runtime-token',
     serviceCidr,
+    ...(tenantScheduling === undefined ? {} : { tenantScheduling }),
     workerServiceAccountName: 'compartment-worker',
   };
 }
