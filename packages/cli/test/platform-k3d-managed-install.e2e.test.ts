@@ -72,7 +72,7 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       const ownerPassword: string = `ManagedE2e-${randomBytes(24).toString('base64url')}!`;
       const installerCli: SelfHostedUserSetupCli = await createFreshCli(ownerPassword);
       const result: InstallResponse = await installerCli.runJson(
-        `install --api-url ${managedInstallApiUrl} --broker-url ${managedInstallBrokerUrl} --values ${managedInstallValuesPath} --kube-context ${managedInstallKubeContext} --namespace ${managedInstallNamespace} --release-name ${managedInstallReleaseName} --email ${ownerEmail} --organization "${organizationName}" --organization-slug ${organizationSlug}`,
+        `install --api-url ${managedInstallApiUrl} --managed-domain --broker-url ${managedInstallBrokerUrl} --values ${managedInstallValuesPath} --kube-context ${managedInstallKubeContext} --namespace ${managedInstallNamespace} --release-name ${managedInstallReleaseName} --email ${ownerEmail} --organization "${organizationName}" --organization-slug ${organizationSlug}`,
         installResponseSchema,
       );
 
