@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  buildCertManagerReadinessWaitCommands,
   buildPlatformK3dClusterCreateArgs,
   isConsoleReadyStatus,
   isTransientKubernetesApiFailure,
@@ -123,6 +124,33 @@ describe('platform k3d e2e command boundary', () => {
         stdout: '',
       }),
     ).toBe(true);
+  });
+
+  it('waits for cert-manager deployments and a populated webhook endpoint', () => {
+    expect(buildCertManagerReadinessWaitCommands(90)).toEqual([
+      [
+        '--context',
+        'k3d-compartment-e2e',
+        '--namespace',
+        'cert-manager',
+        'wait',
+        'deployment/cert-manager',
+        'deployment/cert-manager-webhook',
+        'deployment/cert-manager-cainjector',
+        '--for=condition=Available',
+        '--timeout=90s',
+      ],
+      [
+        '--context',
+        'k3d-compartment-e2e',
+        '--namespace',
+        'cert-manager',
+        'wait',
+        'endpoints/cert-manager-webhook',
+        '--for=jsonpath={.subsets[0].addresses[0].ip}',
+        '--timeout=90s',
+      ],
+    ]);
   });
 
   it('removes container-owned anonymous volumes during cleanup', () => {

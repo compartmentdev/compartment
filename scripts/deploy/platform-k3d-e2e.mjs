@@ -339,25 +339,35 @@ async function createCluster() {
     ],
     repositoryRoot,
   );
-  const certManagerWaitTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
-  await runKubectlWithTransientApiRetry(
-    [
-      '--context',
-      contextName,
-      '--namespace',
-      'cert-manager',
-      'wait',
-      'deployment',
-      '--all',
-      '--for=condition=Available',
-      `--timeout=${String(certManagerWaitTimeoutSeconds)}s`,
-    ],
-    {
-      deadline: prerequisiteSetupDeadline,
-    },
-  );
+  await waitForCertManager(prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
   reportPrerequisiteSetupCost(performance.now() - prerequisiteSetupStartedAt);
   await installRegistryTestIssuerAndNodeTrust();
+}
+
+async function waitForCertManager(prerequisiteSetupStartedAt, prerequisiteSetupDeadline) {
+  for (const commandArgs of buildCertManagerReadinessWaitCommands(
+    readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt),
+  )) {
+    const timeoutIndex = commandArgs.findIndex((arg) => arg.startsWith('--timeout='));
+    commandArgs[timeoutIndex] = `--timeout=${String(readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt))}s`;
+    await runKubectlWithTransientApiRetry(commandArgs, { deadline: prerequisiteSetupDeadline });
+  }
+}
+
+export function buildCertManagerReadinessWaitCommands(timeoutSeconds) {
+  const commonArgs = ['--context', contextName, '--namespace', 'cert-manager', 'wait'];
+  const timeoutArg = `--timeout=${String(timeoutSeconds)}s`;
+  return [
+    [
+      ...commonArgs,
+      'deployment/cert-manager',
+      'deployment/cert-manager-webhook',
+      'deployment/cert-manager-cainjector',
+      '--for=condition=Available',
+      timeoutArg,
+    ],
+    [...commonArgs, 'endpoints/cert-manager-webhook', '--for=jsonpath={.subsets[0].addresses[0].ip}', timeoutArg],
+  ];
 }
 
 async function installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetupDeadline) {

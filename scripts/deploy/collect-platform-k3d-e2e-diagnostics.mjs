@@ -22,6 +22,28 @@ export function parseDeploymentReferences(output) {
     });
 }
 
+export function parseUnreadyDeploymentReferences(output) {
+  return JSON.parse(output)
+    .items.filter((deployment) => {
+      const desiredReplicas = deployment.spec?.replicas ?? 1;
+      return desiredReplicas > 0 && (deployment.status?.availableReplicas ?? 0) < desiredReplicas;
+    })
+    .map((deployment) => ({
+      name: deployment.metadata.name,
+      namespace: deployment.metadata.namespace,
+    }));
+}
+
+export function parseUnreadyPodReferences(output) {
+  return JSON.parse(output)
+    .items.filter(
+      (pod) =>
+        pod.status?.phase !== 'Succeeded' &&
+        !pod.status?.conditions?.some((condition) => condition.type === 'Ready' && condition.status === 'True'),
+    )
+    .map((pod) => ({ name: pod.metadata.name, namespace: pod.metadata.namespace }));
+}
+
 function collectPlatformK3dDiagnostics(outputDirectory) {
   if (outputDirectory === undefined || outputDirectory.trim() === '') {
     throw new Error('Usage: node ./scripts/deploy/collect-platform-k3d-e2e-diagnostics.mjs <output-dir>');
@@ -72,7 +94,9 @@ function collectPlatformK3dDiagnostics(outputDirectory) {
     '--sort-by=.lastTimestamp',
   ]);
 
-  for (const deployment of readDeploymentReferences()) {
+  const unreadyDeployments = readUnreadyDeploymentReferences();
+  const unreadyPods = readUnreadyPodReferences();
+  for (const deployment of unreadyDeployments) {
     capture(outputDirectory, `describe-${deployment.namespace}-${deployment.name}`, 'kubectl', [
       '--context',
       context,
@@ -82,33 +106,51 @@ function collectPlatformK3dDiagnostics(outputDirectory) {
       'deployment',
       deployment.name,
     ]);
-    capture(outputDirectory, `logs-${deployment.namespace}-${deployment.name}`, 'kubectl', [
+  }
+  for (const pod of unreadyPods) {
+    capture(outputDirectory, `describe-pod-${pod.namespace}-${pod.name}`, 'kubectl', [
       '--context',
       context,
       '--namespace',
-      deployment.namespace,
+      pod.namespace,
+      'describe',
+      'pod',
+      pod.name,
+    ]);
+    capture(outputDirectory, `logs-pod-${pod.namespace}-${pod.name}`, 'kubectl', [
+      '--context',
+      context,
+      '--namespace',
+      pod.namespace,
       'logs',
-      `deployment/${deployment.name}`,
-      '--all-containers',
-      '--tail=500',
+      `pod/${pod.name}`,
+      '--all-containers=true',
+      '--prefix=true',
+      '--tail=100',
     ]);
   }
 }
 
-function readDeploymentReferences() {
+function readUnreadyDeploymentReferences() {
   try {
-    return parseDeploymentReferences(
+    return parseUnreadyDeploymentReferences(
       captureCommand(
         'kubectl',
-        [
-          '--context',
-          context,
-          'get',
-          'deployments',
-          '--all-namespaces',
-          '-o',
-          'jsonpath={range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{"\\n"}{end}',
-        ],
+        ['--context', context, 'get', 'deployments', '--all-namespaces', '-o', 'json'],
+        repositoryRoot,
+      ),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function readUnreadyPodReferences() {
+  try {
+    return parseUnreadyPodReferences(
+      captureCommand(
+        'kubectl',
+        ['--context', context, 'get', 'pods', '--all-namespaces', '-o', 'json'],
         repositoryRoot,
       ),
     );
@@ -121,7 +163,9 @@ function capture(outputDirectory, name, file, args) {
   const result = captureCommandResult(file, args, repositoryRoot);
   const command = `+ ${[file, ...args].join(' ')}\n`;
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
-  writeFileSync(`${outputDirectory}/${name}.log`, `${command}${output}`, 'utf8');
+  const diagnostic = `${command}${output}`;
+  writeFileSync(`${outputDirectory}/${name}.log`, diagnostic, 'utf8');
+  process.stderr.write(`\n===== k3d e2e diagnostic: ${name} =====\n${diagnostic}`);
 }
 
 runMain(import.meta.url, process.argv[1], async () => {
