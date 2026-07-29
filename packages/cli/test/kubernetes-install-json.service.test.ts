@@ -16,6 +16,8 @@ const input: KubernetesInstallDeploymentInput = {
   acmeEmail: 'owner@example.com',
   domainMode: 'custom',
   namespace: 'compartment',
+  registryHostname: 'registry.example.test',
+  registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'platform-issuer' },
   releaseName: 'compartment',
   valuesPath: '/tmp/values.yaml',
 };

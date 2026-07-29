@@ -142,6 +142,8 @@ function installInput(directory: string, valuesPath: string): KubernetesInstallD
     chartPath: resolve(directory, 'chart'),
     domainMode: 'custom',
     namespace: 'compartment',
+    registryHostname: 'registry.compartment.localhost',
+    registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'platform-issuer' },
     releaseName: 'compartment',
     valuesPath,
   };

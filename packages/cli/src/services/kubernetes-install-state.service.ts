@@ -1,4 +1,5 @@
-import type { ManagedDomainReservationResponse } from '@compartment/contracts';
+import { buildPrivateRegistryHost, type ManagedDomainReservationResponse } from '@compartment/contracts';
+import { isValidDnsHostname } from '@compartment/utils';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 import { resolveInstallPublicIngress } from './kubernetes-install-state-ingress.service';
 import {
@@ -48,14 +49,16 @@ export function buildInitialInstallValues(
     managedDomainBrokerUrl: input.brokerUrl ?? '',
     ...(input.domainMode === 'managed' ? { publicProtocol: 'http', tlsMode: 'broker-dns01' } : {}),
   };
-  return buildInstallValues(platformValues, installToken, '');
+  return buildInstallValues(input, platformValues, installToken, '');
 }
 
 export function buildResolvedInstallValues(
   state: KubernetesInstallState,
   installToken: string,
 ): KubernetesInstallSecretValues {
+  assertCompleteRegistryState(state);
   return buildInstallValues(
+    state,
     {
       acmeEmail: state.acmeEmail,
       baseDomain: state.baseDomain,
@@ -78,6 +81,7 @@ export function buildResumableFoundationValues(
   installToken: string,
 ): KubernetesInstallSecretValues {
   return buildInstallValues(
+    state,
     {
       acmeEmail: state.acmeEmail,
       baseDomain: state.baseDomain,
@@ -104,6 +108,7 @@ function buildInstallIngressValues(state: KubernetesInstallState): KubernetesIns
 }
 
 function buildInstallValues(
+  registry: Pick<KubernetesInstallState, 'registryHostname' | 'registryIssuerRef'>,
   platformValues: KubernetesInstallPlatformValues,
   installToken: string,
   managedDomainBrokerToken: string,
@@ -112,6 +117,7 @@ function buildInstallValues(
   return {
     ...(ingress === undefined ? {} : { ingress }),
     platform: platformValues,
+    registry: { hostname: registry.registryHostname, issuerRef: registry.registryIssuerRef },
     secrets: { installToken, managedDomainBrokerToken },
   };
 }
@@ -188,8 +194,18 @@ function buildManagedInstallState(
     managedDomainBrokerToken: allocation.scopedToken,
     ...publicIngress,
     publicProtocol: 'https',
+    registryHostname: resolveManagedRegistryHostname(input.registryHostname, allocation.baseDomain),
+    registryIssuerRef: input.registryIssuerRef,
     tlsMode: 'broker-dns01',
   };
+}
+
+function resolveManagedRegistryHostname(configuredHostname: string, baseDomain: string): string {
+  const hostname: string = configuredHostname !== '' ? configuredHostname : buildPrivateRegistryHost(baseDomain);
+  if (!isValidDnsHostname(hostname)) {
+    throw new Error(`The managed-domain allocation cannot form a valid private registry hostname: ${hostname}.`);
+  }
+  return hostname;
 }
 
 function resolveCustomInstallState(
@@ -209,8 +225,21 @@ function resolveCustomInstallState(
     publicProtocol: isReservedKubernetesInstallLocalhostDomain(input.baseDomain)
       ? foundationInstall.publicProtocol
       : 'https',
+    registryHostname: input.registryHostname,
+    registryIssuerRef: input.registryIssuerRef,
     tlsMode: foundationInstall.tlsMode,
   };
+}
+
+function assertCompleteRegistryState(
+  state: Pick<KubernetesInstallState, 'registryHostname' | 'registryIssuerRef'>,
+): void {
+  if (state.registryHostname === '') {
+    throw new Error('Cannot start the full Helm installation without a resolved private registry hostname.');
+  }
+  if (state.registryIssuerRef.name === '') {
+    throw new Error('Cannot start the full Helm installation without a private registry TLS issuer.');
+  }
 }
 
 function requireCustomBaseDomain(baseDomain: string | undefined): string {

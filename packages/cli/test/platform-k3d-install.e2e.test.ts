@@ -87,6 +87,7 @@ describe.sequential('production Kubernetes install', (): void => {
       );
 
       await expectCleanControllerStartup();
+      await expectOperatorRegistryInstallValues();
       await expectIngressControllerCompatibility();
       await expectRegistryPodRecovery();
       expect(result.adminEmail).toBe(ownerEmail);
@@ -152,6 +153,41 @@ async function createFreshCli(adminPassword?: string): Promise<SelfHostedUserSet
     env.COMPARTMENT_ADMIN_PASSWORD = adminPassword;
   }
   return new SelfHostedUserSetupCli(env, installTimeoutMs);
+}
+
+async function expectOperatorRegistryInstallValues(): Promise<void> {
+  const expectedHostname: string = `registry.${platformBaseDomain}`;
+  const configuredHostname: SelfHostedUserSetupCommandResult = await runKubectl([
+    'get',
+    'configmap/compartment-compartment',
+    '--output=jsonpath={.data.COMPARTMENT_ARTIFACT_REGISTRY_HOST}',
+  ]);
+  expectSuccessfulCommand(configuredHostname, 'read the worker registry hostname');
+  expect(configuredHostname.stdout).toBe(expectedHostname);
+
+  const retainedHostname: SelfHostedUserSetupCommandResult = await runKubectl([
+    'get',
+    'secret/compartment-install-state',
+    '--output=jsonpath={.data.registry-hostname}',
+  ]);
+  expectSuccessfulCommand(retainedHostname, 'read the retained registry hostname');
+  expect(Buffer.from(retainedHostname.stdout, 'base64').toString('utf8')).toBe(expectedHostname);
+
+  const certificateHostname: SelfHostedUserSetupCommandResult = await runKubectl([
+    'get',
+    'certificate/compartment-compartment-registry',
+    '--output=jsonpath={.spec.dnsNames[0]}',
+  ]);
+  expectSuccessfulCommand(certificateHostname, 'read the registry Certificate hostname');
+  expect(certificateHostname.stdout).toBe(expectedHostname);
+
+  const ingressHosts: SelfHostedUserSetupCommandResult = await runKubectl([
+    'get',
+    'ingress/compartment-compartment',
+    '--output=jsonpath={.spec.rules[*].host}',
+  ]);
+  expectSuccessfulCommand(ingressHosts, 'read public Ingress hosts');
+  expect(ingressHosts.stdout.split(' ')).not.toContain(expectedHostname);
 }
 
 async function expectCleanControllerStartup(): Promise<void> {

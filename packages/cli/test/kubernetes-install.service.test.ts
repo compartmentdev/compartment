@@ -5,11 +5,13 @@ import type { CommandResult } from '../src/command-runner.types';
 import { createCommandProgress } from '../src/commands/command.progress';
 import { deployAndWaitForKubernetesInstall } from '../src/services/kubernetes-install.service';
 import { runKubernetesHelmInstallStage } from '../src/services/kubernetes-install-helm.service';
+import { buildResolvedInstallValues } from '../src/services/kubernetes-install-state.service';
 import { waitForPublicControlPlane } from '../src/services/kubernetes-install-public.service';
 import { readRetainedKubernetesInstallState } from '../src/services/kubernetes-install-retained-state.service';
 import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallDeploymentResult,
+  KubernetesInstallRegistryValues,
   KubernetesInstallSecretValues,
   KubernetesInstallState,
   KubernetesIngressEndpoint,
@@ -19,7 +21,6 @@ import { createCliCapture, readCliStderr, type CliCommandCapture } from './cli-t
 import {
   createFetchConnectionError,
   deployedReleaseList,
-  encodeSecretValue,
   helmReleaseList,
   type ImageTrustWriteInput,
   type InstallHarnessState,
@@ -27,6 +28,7 @@ import {
   ingressAddressList,
   readyControlPlaneResponse,
   RecordingProgressReporter,
+  retainedInstallStateSecretList,
   type RunCommandCall,
   successfulCommandResult,
 } from './kubernetes-install.service.test-support';
@@ -67,6 +69,8 @@ const managedDeploymentInput: KubernetesInstallDeploymentInput = {
   domainMode: 'managed',
   managedDomainRequestedLabelSource: 'Acme Dev',
   namespace: 'compartment',
+  registryHostname: 'registry.acme.compartment.run',
+  registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
   releaseName: 'compartment',
   valuesPath: '/tmp/compartment-values.yaml',
 };
@@ -80,6 +84,18 @@ describe('Kubernetes install deployment', (): void => {
     mocks.writeVerifiedImages.mockClear();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('rejects incomplete registry values before starting a full Helm install', (): void => {
+    const state: KubernetesInstallState = {
+      ...readRetainedState(existingInstallValues('foundation', 'custom')),
+      registryHostname: '',
+    };
+
+    expect((): KubernetesInstallSecretValues => buildResolvedInstallValues(state, 'install-token')).toThrow(
+      'Cannot start the full Helm installation without a resolved private registry hostname.',
+    );
+    expect(mocks.runCommand).not.toHaveBeenCalled();
   });
 
   it('allocates a managed domain from the LoadBalancer address before the final Helm render', async (): Promise<void> => {
@@ -326,6 +342,50 @@ describe('Kubernetes install deployment', (): void => {
     expect(state.events).toEqual(['helm:foundation', 'helm:foundation', 'helm:full', 'kubectl:certificate']);
   });
 
+  it('backfills registry identity while resuming a legacy operator foundation release', async (): Promise<void> => {
+    const releaseValues: string = legacyOperatorFoundationValues();
+    const retainedState: KubernetesInstallState = {
+      ...readRetainedState(existingInstallValues('foundation', 'custom')),
+      registryHostname: '',
+      registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: '' },
+    };
+    const state: InstallHarnessState = createInstallHarnessState(releaseValues, retainedState);
+    state.retainedSecretOutput = retainedInstallStateSecretList(retainedState, false);
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state, configuredPublicIpv4));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
+    );
+    const customInput: KubernetesInstallDeploymentInput = {
+      ...managedDeploymentInput,
+      apiUrl: 'https://console.apps.example.com',
+      baseDomain: 'apps.example.com',
+      brokerUrl: undefined,
+      domainMode: 'custom',
+      managedDomainRequestedLabelSource: undefined,
+      registryHostname: 'registry.apps.example.com',
+      registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
+    };
+
+    await expect(deployAndWaitForKubernetesInstall(customInput)).resolves.toMatchObject({
+      baseDomain: 'apps.example.com',
+      installToken: 'existing-install-token',
+    });
+    expect(readHelmStages()).toEqual(['foundation', 'foundation', 'full']);
+    expect(state.installValues[0]).toMatchObject({
+      platform: { installationId: 'installation-123' },
+      registry: {
+        hostname: 'registry.apps.example.com',
+        issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
+      },
+      secrets: { installToken: 'existing-install-token' },
+    });
+    expect(state.retainedState).toMatchObject({
+      registryHostname: 'registry.apps.example.com',
+      registryIssuerRef: { kind: 'Issuer', name: 'compartment-platform' },
+    });
+  });
+
   it('reuses retained allocation state after the Helm release was removed', async (): Promise<void> => {
     const retainedState: KubernetesInstallState = readRetainedState(existingInstallValues('full', 'managed'));
     const state: InstallHarnessState = createInstallHarnessState(null, retainedState);
@@ -460,6 +520,8 @@ describe('Kubernetes install deployment', (): void => {
       brokerUrl: undefined,
       domainMode: 'custom',
       managedDomainRequestedLabelSource: undefined,
+      registryHostname: 'registry.apps.example.com',
+      registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'customer-platform' },
     };
 
     await expect(deployAndWaitForKubernetesInstall(customInput)).rejects.toThrow(
@@ -504,6 +566,8 @@ describe('Kubernetes install deployment', (): void => {
       brokerUrl: undefined,
       domainMode: 'custom',
       managedDomainRequestedLabelSource: undefined,
+      registryHostname: 'registry.apps.example.com',
+      registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'customer-platform' },
     };
 
     await expect(deployAndWaitForKubernetesInstall(customInput)).resolves.toMatchObject({
@@ -511,6 +575,17 @@ describe('Kubernetes install deployment', (): void => {
     });
     expect(state.events).toEqual(['helm:foundation', 'helm:foundation', 'helm:full']);
     expect(readResolvedInstallValues(state).ingress?.targetsJson).toContain(configuredPublicIpv4);
+    expect(readResolvedInstallValues(state)).toMatchObject({
+      platform: {
+        baseDomain: 'apps.example.com',
+        domainMode: 'custom',
+        publicProtocol: 'https',
+      },
+      registry: {
+        hostname: 'registry.apps.example.com',
+        issuerRef: { kind: 'Issuer', name: 'customer-platform' },
+      },
+    });
     expect(mocks.usesOperatorTlsSecret).toHaveBeenCalledWith(customInput.valuesPath);
   });
 
@@ -716,6 +791,7 @@ function createInstallHarnessState(
     installValuePaths: [],
     installValues: [],
     releaseValues,
+    retainedSecretOutput: null,
     retainedState:
       retainedState === undefined && releaseValues !== null
         ? readRetainedState(releaseValues)
@@ -732,7 +808,9 @@ function createInstallCommandHandler(
   return async (command: readonly string[]): Promise<CommandResult> => {
     if (command[0] === 'kubectl') {
       if (command.includes('secret')) {
-        return successfulCommandResult(retainedInstallStateSecretList(state.retainedState));
+        return successfulCommandResult(
+          state.retainedSecretOutput ?? retainedInstallStateSecretList(state.retainedState),
+        );
       }
       if (command.includes('certificates.cert-manager.io')) {
         state.events.push('kubectl:certificate');
@@ -779,6 +857,7 @@ async function handleHelmUpgrade(
   }
   state.releaseValues = mergeReleaseValues(values, stage, configuredIpv4);
   state.retainedState = readRetainedState(state.releaseValues);
+  state.retainedSecretOutput = null;
   return successfulCommandResult('');
 }
 
@@ -795,6 +874,7 @@ function mergeReleaseValues(values: KubernetesInstallSecretValues, stage: string
       startupStage: stage,
       tlsMode: values.platform.tlsMode ?? 'issuer',
     },
+    registry: values.registry,
     secrets: values.secrets,
   });
 }
@@ -919,11 +999,23 @@ function existingInstallValues(stage: 'foundation' | 'full', domainMode: 'custom
       startupStage: stage,
       tlsMode: domainMode === 'managed' ? 'broker-dns01' : 'issuer',
     },
+    registry: {
+      hostname: `registry.${domainMode === 'managed' ? 'acme.compartment.run' : 'apps.example.com'}`,
+      issuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
+    },
     secrets: {
       installToken: 'existing-install-token',
       managedDomainBrokerToken: domainMode === 'managed' ? 'allocation-token' : '',
     },
   });
+}
+
+function legacyOperatorFoundationValues(): string {
+  const values: KubernetesInstallSecretValues & { registry?: KubernetesInstallRegistryValues } = JSON.parse(
+    existingInstallValues('foundation', 'custom'),
+  ) as KubernetesInstallSecretValues;
+  Reflect.deleteProperty(values, 'registry');
+  return JSON.stringify(values);
 }
 
 function managedInstallValuesWithoutIngress(): string {
@@ -950,6 +1042,10 @@ function existingLocalhostInstallValues(): string {
       publicProtocol: 'http',
       startupStage: 'full',
       tlsMode: 'issuer',
+    },
+    registry: {
+      hostname: 'registry.compartment.localhost',
+      issuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
     },
     secrets: { installToken: 'existing-install-token', managedDomainBrokerToken: '' },
   });
@@ -980,33 +1076,8 @@ function readRetainedState(releaseValues: string): KubernetesInstallState {
     managedDomainAllocationId: values.platform.managedDomainAllocationId ?? '',
     managedDomainBrokerToken: values.secrets.managedDomainBrokerToken,
     publicProtocol: values.platform.publicProtocol ?? 'http',
+    registryHostname: values.registry.hostname,
+    registryIssuerRef: values.registry.issuerRef,
     tlsMode: values.platform.tlsMode ?? 'issuer',
   };
-}
-
-function retainedInstallStateSecretList(state: KubernetesInstallState | null): string {
-  if (state === null) {
-    return JSON.stringify({ items: [] });
-  }
-  return JSON.stringify({
-    items: [
-      {
-        data: {
-          'acme-email': encodeSecretValue(state.acmeEmail),
-          'base-domain': encodeSecretValue(state.baseDomain),
-          'domain-mode': encodeSecretValue(state.domainMode),
-          'installation-id': encodeSecretValue(state.installationId),
-          'ingress-class-name': encodeSecretValue(state.ingressClassName),
-          'ingress-endpoint-type': encodeSecretValue(state.ingressEndpoint?.type ?? ''),
-          'ingress-endpoint-value': encodeSecretValue(state.ingressEndpoint?.value ?? ''),
-          'ingress-targets-json': encodeSecretValue(JSON.stringify(state.ingressTargets)),
-          'managed-domain-allocation-id': encodeSecretValue(state.managedDomainAllocationId),
-          'managed-domain-broker-token': encodeSecretValue(state.managedDomainBrokerToken),
-          'managed-domain-broker-url': encodeSecretValue(state.brokerUrl),
-          'public-protocol': encodeSecretValue(state.publicProtocol),
-          'tls-mode': encodeSecretValue(state.tlsMode),
-        },
-      },
-    ],
-  });
 }

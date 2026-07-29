@@ -40,6 +40,17 @@ export async function usesOperatorOwnedKubernetesTlsSecret(valuesPath: string): 
   return (values.tls?.existingSecret ?? '').trim() !== '';
 }
 
+export async function readOperatorOwnedKubernetesTlsSecretName(valuesPath: string): Promise<string> {
+  const values: KubernetesInstallTlsValues = kubernetesInstallTlsValuesSchema.parse(
+    parse(await readFile(valuesPath, 'utf8')) ?? {},
+  );
+  const secretName: string = (values.tls?.existingSecret ?? '').trim();
+  if (secretName === '') {
+    throw new Error('tls.existingSecret is required in --values for operator-owned TLS.');
+  }
+  return secretName;
+}
+
 export async function readKubernetesTlsIssuerReference(valuesPath: string): Promise<KubernetesInstallIssuerReference> {
   const values: KubernetesInstallTlsValues = kubernetesInstallTlsValuesSchema.parse(
     parse(await readFile(valuesPath, 'utf8')) ?? {},

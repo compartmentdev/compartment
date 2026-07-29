@@ -1,8 +1,11 @@
 import { runCommand, runCommandWithInput } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
+import { buildKubectlCommand } from './kubernetes-command.support';
 import { assertApiResources } from './kubernetes-existing-cluster-preflight.cluster';
 import { requiredCertManagerApis } from './kubernetes-existing-cluster-preflight.requirements';
 import type { KubernetesInstallInput } from './kubernetes-install-input.service.types';
+import type { KubernetesInstallDeploymentInput } from './kubernetes-install.service.types';
+import type { KubernetesInstallRegistryIssuerReference } from './kubernetes-install-registry.service.types';
 import type {
   KubernetesDeployment,
   KubernetesObjectList,
@@ -30,6 +33,56 @@ export async function assertCertManager(input: KubernetesInstallInput): Promise<
     assertComponentReady(deployments.items, component, webhookService);
   }
   await assertCertificateDryRun(input);
+}
+
+export async function assertOperatorRegistryIssuer(
+  input: Pick<KubernetesInstallDeploymentInput, 'kubeconfigPath' | 'kubeContext' | 'namespace' | 'registryIssuerRef'>,
+): Promise<void> {
+  const issuer: KubernetesInstallRegistryIssuerReference = input.registryIssuerRef;
+  const resource: string =
+    issuer.kind === 'ClusterIssuer' ? 'clusterissuers.cert-manager.io' : 'issuers.cert-manager.io';
+  const command: string[] = ['get', resource, issuer.name];
+  if (issuer.kind === 'Issuer') {
+    command.push('--namespace', input.namespace);
+  }
+  command.push('-o=name');
+  const result: CommandResult = await runCommand(buildKubectlCommand(input, ['--request-timeout=5s', ...command]));
+  if (result.exitCode !== 0) {
+    throw new KubernetesExistingClusterPreflightError(
+      'cert-manager',
+      `Private registry ${issuer.kind} ${issuer.name} is not available${issuer.kind === 'Issuer' ? ` in namespace ${input.namespace}` : ''}: ${readCommandFailure(result)}. Configure registry.issuerRef or tls.issuerRef with an existing cert-manager issuer before retrying.`,
+    );
+  }
+}
+
+export async function assertOperatorTlsSecret(
+  input: Pick<KubernetesInstallDeploymentInput, 'kubeconfigPath' | 'kubeContext' | 'namespace'>,
+  secretName: string,
+): Promise<void> {
+  const result: CommandResult = await runCommand(
+    buildKubectlCommand(input, [
+      '--request-timeout=5s',
+      'get',
+      'secret',
+      secretName,
+      '--namespace',
+      input.namespace,
+      '-o=jsonpath={.type}',
+    ]),
+  );
+  if (result.exitCode !== 0 || result.stdout.trim() !== 'kubernetes.io/tls') {
+    throw unavailableOperatorTlsSecret(input.namespace, secretName, result);
+  }
+}
+
+function unavailableOperatorTlsSecret(namespace: string, secretName: string, result: CommandResult): Error {
+  const secretType: string = result.stdout.trim();
+  const detail: string =
+    result.exitCode === 0 ? `Secret type is ${secretType !== '' ? secretType : '<empty>'}` : readCommandFailure(result);
+  return new KubernetesExistingClusterPreflightError(
+    'cert-manager',
+    `Operator TLS Secret ${namespace}/${secretName} is not an available kubernetes.io/tls Secret: ${detail}.`,
+  );
 }
 
 async function readWebhookService(input: KubernetesInstallInput): Promise<KubernetesWebhookServiceReference> {

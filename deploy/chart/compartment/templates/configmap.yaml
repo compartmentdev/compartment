@@ -10,7 +10,7 @@ data:
   COMPARTMENT_API_BIND_HOST: "0.0.0.0"
   COMPARTMENT_API_INTERNAL_HOST: {{ printf "%s-api" (include "compartment.fullname" .) | quote }}
   COMPARTMENT_API_PORT: {{ .Values.ports.api | quote }}
-  COMPARTMENT_ARTIFACT_REGISTRY_HOST: {{ .Values.registry.hostname | quote }}
+  COMPARTMENT_ARTIFACT_REGISTRY_HOST: {{ $installState.effective.registry.hostname | quote }}
   COMPARTMENT_ARTIFACT_REGISTRY_PORT: "443"
   COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_HOST: {{ printf "%s:%v" (include "compartment.registryAuthHost" .) .Values.ports.registryInternal | quote }}
   COMPARTMENT_ARTIFACT_REGISTRY_INTERNAL_PORT: {{ .Values.ports.registryInternal | quote }}

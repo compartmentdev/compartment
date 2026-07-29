@@ -63,7 +63,13 @@ async function deployResumableFoundation(
   installationId: string,
   existingState: KubernetesInstallState,
 ): Promise<void> {
-  const state: KubernetesInstallState = { ...existingState, installationId };
+  const state: KubernetesInstallState = {
+    ...existingState,
+    installationId,
+    registryHostname: existingState.registryHostname !== '' ? existingState.registryHostname : input.registryHostname,
+    registryIssuerRef:
+      existingState.registryIssuerRef.name === '' ? input.registryIssuerRef : existingState.registryIssuerRef,
+  };
   await writeKubernetesInstallValues(material.installValuesPath, buildResumableFoundationValues(state, installToken));
   await runFoundationHelmInstall(input, material);
 }

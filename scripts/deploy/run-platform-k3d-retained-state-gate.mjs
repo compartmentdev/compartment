@@ -116,11 +116,12 @@ async function runRetainedInstallStateGate() {
       `buildkit.namespace=${buildNamespace}`,
       '--set',
       'productLogs.enabled=false',
-      ...registryHelmArgs,
     ]);
     const installationId = readSecretValue('installation-id');
     const allocationId = readSecretValue('managed-domain-allocation-id');
     const brokerUrl = readSecretValue('managed-domain-broker-url');
+    const registryHostname = readSecretValue('registry-hostname');
+    const registryIssuerName = readSecretValue('registry-issuer-ref-name');
     const reinstalledRegistryClusterIp = readServiceClusterIp();
     kubectl(['--namespace', namespace, 'get', 'deployment', `${release}-compartment-registry-auth`]);
     const runtimeBrokerUrl = captureKubectl([
@@ -136,6 +137,8 @@ async function runRetainedInstallStateGate() {
       installationId !== 'retained-installation' ||
       allocationId !== 'retained-allocation' ||
       brokerUrl !== 'https://broker.example.test' ||
+      registryHostname !== 'registry.retained.example.test' ||
+      registryIssuerName !== 'retained-registry-issuer' ||
       runtimeBrokerUrl !== 'https://broker.example.test' ||
       reinstalledRegistryClusterIp !== registryClusterIp
     ) {

@@ -4,6 +4,7 @@ import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildHelmCommand, buildHelmGetValuesCommand, readCommandOutput } from './kubernetes-command.support';
 import { parseKubernetesIngressTargetsJson } from './kubernetes-install-ingress-targets.service';
+import type { KubernetesInstallRegistryIssuerReference } from './kubernetes-install-registry.service.types';
 import type {
   ExistingKubernetesInstall,
   HelmReleaseSummary,
@@ -96,6 +97,7 @@ function requireDeployedHelmRelease(release: HelmReleaseSummary): void {
 function parseExistingKubernetesInstall(output: string): ExistingKubernetesInstall {
   const value: HelmJsonObject = parseJsonWith(helmJsonObjectSchema, output);
   const platform: JsonValue | undefined = value.platform;
+  const registry: JsonValue | undefined = value.registry;
   const ingress: JsonValue | undefined = value.ingress;
   const secrets: JsonValue | undefined = value.secrets;
   return {
@@ -111,9 +113,26 @@ function parseExistingKubernetesInstall(output: string): ExistingKubernetesInsta
     managedDomainAllocationId: readOptionalPlatformText(platform, 'managedDomainAllocationId'),
     managedDomainBrokerToken: readOptionalSecretText(secrets, 'managedDomainBrokerToken'),
     publicProtocol: readExistingPublicProtocol(platform),
+    registryHostname: readOptionalText(registry, 'hostname').toLowerCase(),
+    registryIssuerRef: readExistingRegistryIssuerRef(registry),
     stage: readExistingInstallStage(platform),
     tlsMode: readExistingTlsMode(platform),
   };
+}
+
+function readExistingRegistryIssuerRef(registry: JsonValue | undefined): KubernetesInstallRegistryIssuerReference {
+  const issuerRef: JsonValue | undefined = isHelmJsonObject(registry) ? registry.issuerRef : undefined;
+  const kind: JsonValue | undefined = isHelmJsonObject(issuerRef) ? issuerRef.kind : undefined;
+  const name: JsonValue | undefined = isHelmJsonObject(issuerRef) ? issuerRef.name : undefined;
+  if ((kind === 'Issuer' || kind === 'ClusterIssuer') && typeof name === 'string' && name.trim() !== '') {
+    return { group: 'cert-manager.io', kind, name: name.trim() };
+  }
+  return { group: 'cert-manager.io', kind: 'Issuer', name: '' };
+}
+
+function readOptionalText(section: JsonValue | undefined, fieldName: string): string {
+  const value: JsonValue | undefined = isHelmJsonObject(section) ? section[fieldName] : undefined;
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function readIngressTargets(ingress: JsonValue | undefined): KubernetesIngressEndpoint[] {

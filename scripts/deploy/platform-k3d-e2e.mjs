@@ -245,7 +245,7 @@ export function isConsoleReadyStatus(status) {
 }
 
 export function renderPlatformK3dValues(imageDigestsByServiceName) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: ${ingressClassName}\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\nedge:\n  snapshots:\n    enabled: true\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: ${ingressClassName}\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\nedge:\n  snapshots:\n    enabled: true\n`;
 }
 
 export function renderManagedPlatformK3dValues(imageDigestsByServiceName) {
@@ -518,6 +518,11 @@ async function installRegistryTestIssuerAndNodeTrust() {
       repositoryRoot,
     );
     runCommand('docker', ['restart', nodeName], repositoryRoot);
+    runCommand(
+      'docker',
+      ['exec', nodeName, 'sh', '-c', `echo '${bundledRegistryClusterIp} registry.${platformBaseDomain}' >>/etc/hosts`],
+      repositoryRoot,
+    );
   }
   await runKubectlWithTransientApiRetry([
     '--context',
