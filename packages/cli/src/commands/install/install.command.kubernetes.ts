@@ -31,7 +31,6 @@ import type { InstallCommandOptions } from './install.command.types';
 import {
   materializeInstallWizardValues,
   readOperatorInstallInputValues,
-  removeInstallWizardValues,
   type MaterializedInstallWizardValues,
   type OperatorInstallInputValues,
 } from './install.command.values';
@@ -182,7 +181,7 @@ async function cleanCanonicalMaterial(
   kubeconfig: ResolvedKubernetesKubeconfig,
 ): Promise<void> {
   if (material !== undefined) {
-    await removeInstallWizardValues(material);
+    await rm(material.directory, { force: true, recursive: true });
   }
   if (kubeconfig.materializedDirectory !== undefined) {
     await rm(kubeconfig.materializedDirectory, { force: true, recursive: true });

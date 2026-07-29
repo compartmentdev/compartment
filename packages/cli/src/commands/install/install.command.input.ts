@@ -96,11 +96,17 @@ function assertOwnerValues(values: RequiredKubernetesInstallInputValues): void {
 export function assertCanonicalKubernetesInstallDomainChoice(
   values: Pick<KubernetesInstallInputValues, 'baseDomain' | 'managedDomain'>,
 ): void {
-  if (values.managedDomain === true && values.baseDomain !== undefined) {
-    throw new Error('--managed-domain cannot be combined with --base-domain.');
-  }
+  assertMutuallyExclusiveKubernetesInstallDomains(values);
   if (values.managedDomain !== true && values.baseDomain === undefined) {
     throw new Error('Missing required install input: --managed-domain or --base-domain.');
+  }
+}
+
+export function assertMutuallyExclusiveKubernetesInstallDomains(
+  values: Pick<KubernetesInstallInputValues, 'baseDomain' | 'managedDomain'>,
+): void {
+  if (values.managedDomain === true && values.baseDomain !== undefined) {
+    throw new Error('--managed-domain cannot be combined with --base-domain.');
   }
 }
 
