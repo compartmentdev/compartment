@@ -22,11 +22,19 @@ export async function resolveInstallIdentityPrompts(
 }
 
 async function resolveInstallAdminPassword(dependencies: CliIoCommandDependencies): Promise<string> {
-  const configuredPassword: string | undefined = process.env[adminPasswordEnvName];
+  const configuredPassword: string | undefined = readConfiguredInstallAdminPassword();
   if (configuredPassword === undefined) {
     return await promptNewPassword(dependencies.io);
   }
 
+  return configuredPassword;
+}
+
+export function readConfiguredInstallAdminPassword(): string | undefined {
+  const configuredPassword: string | undefined = process.env[adminPasswordEnvName];
+  if (configuredPassword === undefined) {
+    return undefined;
+  }
   const validationError: string | undefined = validatePassword(configuredPassword);
   if (validationError !== undefined) {
     throw new Error(`${adminPasswordEnvName}: ${validationError}`);

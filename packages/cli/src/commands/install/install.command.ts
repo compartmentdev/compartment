@@ -17,6 +17,7 @@ export function registerInstallCommand(program: Command, dependencies: CliComman
     .option('--base-domain <domain>', 'Base domain configured for the Kubernetes installation')
     .option('--managed-domain', 'Allocate a managed installation domain (default when --base-domain is omitted)')
     .option('--broker-url <url>', 'Managed-domain broker URL')
+    .option('--values <path>', 'Operator values file for the Compartment Helm chart')
     .option('--chart <path>', 'Compartment Helm chart path for a source CLI build')
     .option('--kube-context <name>', 'Kubernetes context for Helm')
     .option('--namespace <name>', 'Kubernetes namespace; defaults to compartment')

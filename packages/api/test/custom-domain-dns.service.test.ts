@@ -35,7 +35,7 @@ vi.mock(
 );
 
 describe('custom domain DNS service', (): void => {
-  it('builds canonical routing records for managed installs', (): void => {
+  it('builds typed ingress-target routing records for managed installs', (): void => {
     expect(
       buildCustomDomainDnsRecords({
         canonicalRouteHost: 'billing.example.compartment.run',
@@ -57,16 +57,26 @@ describe('custom domain DNS service', (): void => {
         groupId: 'routing',
         name: 'app.example.com',
         purpose: 'routing',
-        recordType: 'CNAME',
+        recordType: 'A',
         required: true,
-        value: 'billing.example.compartment.run',
+        value: '203.0.113.10',
+      },
+      {
+        groupId: 'routing',
+        name: 'app.example.com',
+        purpose: 'routing',
+        recordType: 'AAAA',
+        required: true,
+        value: '2001:db8::10',
       },
     ]);
   });
 
-  it('validates managed ownership and canonical routing DNS', async (): Promise<void> => {
+  it('validates managed ownership and typed ingress-target routing DNS', async (): Promise<void> => {
     mocks.resolveTxt.mockResolvedValue([[buildCompartmentDomainOwnershipValue('cdom_123')]]);
-    mocks.resolveCname.mockResolvedValue(['billing.example.compartment.run.']);
+    mocks.resolveCname.mockResolvedValue([]);
+    mocks.resolve4.mockResolvedValue(['203.0.113.10']);
+    mocks.resolve6.mockResolvedValue(['2001:db8::10']);
 
     await expect(
       verifyCustomDomainDns({
@@ -84,9 +94,11 @@ describe('custom domain DNS service', (): void => {
     });
   });
 
-  it('rejects managed routing through a different CNAME', async (): Promise<void> => {
+  it('rejects managed routing through a different ingress target', async (): Promise<void> => {
     mocks.resolveTxt.mockResolvedValue([[buildCompartmentDomainOwnershipValue('cdom_123')]]);
-    mocks.resolveCname.mockResolvedValue(['other.example.compartment.run.']);
+    mocks.resolveCname.mockResolvedValue([]);
+    mocks.resolve4.mockResolvedValue(['203.0.113.99']);
+    mocks.resolve6.mockResolvedValue(['2001:db8::10']);
 
     await expect(
       verifyCustomDomainDns({

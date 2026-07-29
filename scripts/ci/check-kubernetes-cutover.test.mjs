@@ -11,6 +11,7 @@ import {
 } from './check-kubernetes-cutover.mjs';
 
 const temporaryDirectories = [];
+const renderLines = (lines) => lines.join('\n');
 const guardedRuntimeTerms = [
   'node|SocketPath',
   'container|Id',
@@ -99,6 +100,13 @@ describe('Kubernetes cutover gate', () => {
       `packages/api/drizzle/meta/0005_snapshot.json: contains forbidden runtime term ${removedField}`,
     ]);
     expect(findContentViolations('packages/api/drizzle/0005_cutover.sql', removedField)).toEqual([]);
+  });
+
+  it('allows the canonical Caddy builder terms only in the self-hosted Caddy Dockerfile', () => {
+    const contents = renderLines([['COMPARTMENT', 'CADDY', 'BUILDER', 'IMAGE'].join('_'), ['x', 'caddy'].join('')]);
+
+    expect(findContentViolations('packages/edge/Dockerfile.caddy.self-hosted', contents)).toEqual([]);
+    expect(findContentViolations('packages/edge/legacy.txt', contents)).toHaveLength(2);
   });
 
   it('rejects the removed legacy restart policy everywhere', () => {

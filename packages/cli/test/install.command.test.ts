@@ -39,6 +39,7 @@ vi.mock('../src/commands/install/install.command.identity', (): object => ({
     adminPassword: prompts.adminPassword,
     organizationName: prompts.organizationName,
   }),
+  readConfiguredInstallAdminPassword: (): undefined => undefined,
   resolveInstallIdentityPrompts: mocks.resolveIdentity,
 }));
 vi.mock('../src/commands/install/install.command.session', (): object => ({
@@ -106,13 +107,13 @@ describe('install command boundary', (): void => {
     expect(readCliStderr(capture)).toContain("unknown option '--local-runtime'");
   });
 
-  it('rejects the removed operator-values install path', async (): Promise<void> => {
+  it('keeps the operator-values path on the Kubernetes install boundary', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 
-    const exitCode: number = await runCli(['install', '--values', 'compartment-values.yaml'], capture.io);
+    const exitCode: number = await runCli(['install', '--dev', '--values', 'compartment-values.yaml'], capture.io);
 
     expect(exitCode).toBe(1);
-    expect(readCliStderr(capture)).toContain("unknown option '--values'");
+    expect(readCliStderr(capture)).toContain('--dev cannot be combined with --values.');
   });
 });
 

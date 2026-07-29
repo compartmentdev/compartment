@@ -14,6 +14,7 @@ export function assertDevInstallOptions(options: InstallCommandOptions): void {
     'namespace',
     'releaseName',
     'storageClass',
+    'values',
   ];
   const configuredOption: keyof InstallCommandOptions | undefined = productionOptions.find(
     (optionName: keyof InstallCommandOptions): boolean => options[optionName] !== undefined,

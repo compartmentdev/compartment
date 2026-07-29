@@ -2,6 +2,7 @@ import type {
   CustomDomainCheckStatus,
   CustomDomainDnsRecordPurpose,
   CustomDomainDnsRecordType,
+  ManagedDomainTarget,
 } from '@compartment/contracts';
 import { normalizeDnsHostname } from '@compartment/utils';
 import { getDomain } from 'tldts';
@@ -11,7 +12,12 @@ import {
   buildCompartmentDomainOwnershipValue,
 } from './domain-ownership-dns.service';
 import { resolveCnameRecords, resolveTxtValues } from './domain-dns-resolution.service';
-import { hasFlattenedAddressMatch } from './domain-dns-binding.service';
+import {
+  hasFlattenedAddressMatch,
+  matchesPublicIngressAddressBinding,
+  resolveDirectDomainBindingAnswers,
+  type DirectDomainBindingAnswers,
+} from './domain-dns-binding.service';
 import type {
   CustomDomainDnsInput,
   CustomDomainDnsRecordInstruction,
@@ -52,10 +58,13 @@ function buildOwnershipDnsRecord(input: CustomDomainDnsInput): CustomDomainDnsRe
 }
 
 function buildRoutingDnsRecords(input: CustomDomainDnsInput): CustomDomainDnsRecordInstruction[] {
-  if (
-    input.hostPlan.domainKind === 'managed' ||
-    (input.hostPlan.domainKind === 'custom' && input.hostPlan.tlsMode === 'external')
-  ) {
+  if (input.hostPlan.domainKind === 'managed') {
+    return input.config.targets.map(
+      (target: ManagedDomainTarget): CustomDomainDnsRecordInstruction =>
+        buildRoutingDnsRecord(input.host, target.type === 'hostname' ? 'CNAME' : target.type, target.value, true),
+    );
+  }
+  if (input.hostPlan.domainKind === 'custom' && input.hostPlan.tlsMode === 'external') {
     return buildCanonicalHostRoutingRecords(input);
   }
 
@@ -97,14 +106,36 @@ async function verifyOwnershipRecord(input: CustomDomainDnsVerificationInput): P
 }
 
 async function verifyRoutingRecords(input: CustomDomainDnsVerificationInput): Promise<'invalid' | 'valid'> {
-  if (
-    input.hostPlan.domainKind === 'managed' ||
-    (input.hostPlan.domainKind === 'custom' && input.hostPlan.tlsMode === 'external')
-  ) {
+  if (input.hostPlan.domainKind === 'managed') {
+    return await verifyManagedTargetRoutingRecords(input);
+  }
+  if (input.hostPlan.domainKind === 'custom' && input.hostPlan.tlsMode === 'external') {
     return await verifyCanonicalHostRoutingRecords(input);
   }
 
   return 'invalid';
+}
+
+async function verifyManagedTargetRoutingRecords(
+  input: CustomDomainDnsVerificationInput,
+): Promise<'invalid' | 'valid'> {
+  const answers: DirectDomainBindingAnswers = await resolveDirectDomainBindingAnswers(input.host);
+  const hostnameTargets: ManagedDomainTarget[] = input.config.targets.filter(
+    (target: ManagedDomainTarget): boolean => target.type === 'hostname',
+  );
+  if (hostnameTargets.length > 0) {
+    const expectedHostnames: Set<string> = new Set<string>(
+      hostnameTargets.map((target: ManagedDomainTarget): string => target.value),
+    );
+    return answers.cnameRecords.some((record: string): boolean => expectedHostnames.has(normalizeDnsHostname(record)))
+      ? 'valid'
+      : 'invalid';
+  }
+  if (input.config.targets.length === 0 || answers.cnameRecords.length > 0) {
+    return 'invalid';
+  }
+
+  return matchesPublicIngressAddressBinding(input.config, answers) ? 'valid' : 'invalid';
 }
 
 async function verifyCanonicalHostRoutingRecords(

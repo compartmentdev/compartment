@@ -96,6 +96,11 @@ const forbiddenPathPrefixes = [
 const migrationSnapshotPath = 'packages/api/drizzle/meta/0000_snapshot.json';
 const currentMigrationSnapshotPath = 'packages/api/drizzle/meta/0005_snapshot.json';
 const canonicalRemovalSpecificationPath = 'docs/specs/existing-kubernetes-install.md';
+const canonicalCaddyDockerfilePath = 'packages/edge/Dockerfile.caddy.self-hosted';
+const canonicalCaddyBuildTerms = new Set([
+  ['COMPARTMENT', 'CADDY', 'BUILDER', 'IMAGE'].join('_'),
+  ['x', 'caddy'].join(''),
+]);
 const forbiddenMigrationSnapshotTerms = [
   ['public.', 'nodes'].join(''),
   ['node', 'id'].join('_'),
@@ -168,10 +173,14 @@ export function findMigrationSnapshotViolations(path, contents) {
 }
 
 export function findContentViolations(path, contents) {
-  const terms =
+  const guardedTerms =
     path.startsWith('packages/api/drizzle/') && path !== currentMigrationSnapshotPath
       ? forbiddenRuntimeTerms
       : [...forbiddenRuntimeTerms, ...forbiddenRemovedTopologyTerms];
+  const terms =
+    path === canonicalCaddyDockerfilePath
+      ? guardedTerms.filter((term) => !canonicalCaddyBuildTerms.has(term))
+      : guardedTerms;
   return terms.flatMap((term) => (contents.includes(term) ? [`${path}: contains forbidden runtime term ${term}`] : []));
 }
 

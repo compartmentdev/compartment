@@ -375,8 +375,8 @@ describe('Phase 0 API integration custom domains', (): void => {
       });
       expect(ownershipRecord.recordType).toBe('TXT');
       expect(routingRecord).toMatchObject({
-        recordType: 'CNAME',
-        value: `smoke-web.${managedApiConfig.baseDomain}`,
+        recordType: 'A',
+        value: readIngressTarget(publicIngressConfig, 'A'),
       });
       expect(canonicalLocalRouteHost).toBe('smoke-web.localhost');
 
@@ -385,7 +385,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       expect(errorResponseSchema.parse(duplicateResponse.json()).error.code).toBe('custom_domain_collision');
 
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolveCname.mockResolvedValue([`smoke-web.${managedApiConfig.baseDomain}`]);
+      dnsPromiseMocks.resolve4.mockResolvedValue([readIngressTarget(publicIngressConfig, 'A')]);
       const verifyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken);
       expect(verifyPayload.domain.status).toBe('reconciling');
       expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).not.toHaveBeenCalled();
@@ -444,13 +444,18 @@ describe('Phase 0 API integration custom domains', (): void => {
 
       expect(routingRecords).toEqual([
         expect.objectContaining({
-          recordType: 'CNAME',
-          value: `smoke-web.${managedApiConfig.baseDomain}`,
+          recordType: 'A',
+          value: readIngressTarget(publicIngressConfig, 'A'),
+        }),
+        expect.objectContaining({
+          recordType: 'AAAA',
+          value: readIngressTarget(publicIngressConfig, 'AAAA'),
         }),
       ]);
 
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolveCname.mockResolvedValue([`smoke-web.${managedApiConfig.baseDomain}`]);
+      dnsPromiseMocks.resolve4.mockResolvedValue([readIngressTarget(publicIngressConfig, 'A')]);
+      dnsPromiseMocks.resolve6.mockResolvedValue([readIngressTarget(publicIngressConfig, 'AAAA')]);
 
       const verifyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken, host);
       expect(verifyPayload.domain.status).toBe('reconciling');

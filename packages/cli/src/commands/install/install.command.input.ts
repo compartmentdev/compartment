@@ -74,7 +74,7 @@ function readRequiredValues(values: KubernetesInstallInputValues): RequiredKuber
     organizationName: requireInput(values.organization, '--organization'),
     password: requireInput(values.password, '--admin-password'),
     releaseName: values.releaseName ?? defaultReleaseName,
-    storageClass: requireInput(values.storageClass, '--storage-class'),
+    storageClass: values.storageClass ?? '',
   };
 }
 
@@ -82,7 +82,9 @@ function assertKubernetesNames(values: RequiredKubernetesInstallInputValues): vo
   assertName(values.namespace, '--namespace', 63, kubernetesLabelPattern);
   assertName(values.releaseName, '--release-name', 53, helmReleaseNamePattern);
   assertKubernetesName(values.ingressClass, '--ingress-class');
-  assertKubernetesName(values.storageClass, '--storage-class');
+  if (values.storageClass !== '') {
+    assertKubernetesName(values.storageClass, '--storage-class');
+  }
 }
 
 function assertOwnerValues(values: RequiredKubernetesInstallInputValues): void {

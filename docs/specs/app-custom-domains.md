@@ -12,9 +12,10 @@ Application custom domains use the shared Kubernetes ingress and cert-manager co
 
 ## Routing
 
-Subdomains use a CNAME to the canonical application route. Apex domains use the DNS provider's supported alias or
-flattening record to that same route. Compartment never creates a hostless rule, controller-specific annotation, or
-separate public Service.
+Managed installs route custom domains directly to the retained typed public ingress targets. Issuer-backed installs
+use a CNAME to the canonical application route for subdomains and the DNS provider's supported alias or flattening
+record to that same route for apex domains. Compartment never creates a hostless rule, controller-specific annotation,
+or separate public Service.
 
 Only verified domains become active. Deletion removes the active route first, then finalizes state after the ingress
 projection no longer contains the host.

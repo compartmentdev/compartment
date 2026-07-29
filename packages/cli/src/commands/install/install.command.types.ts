@@ -19,6 +19,7 @@ export interface InstallCommandOptions {
   releaseName?: string | undefined;
   remote?: string | undefined;
   storageClass?: string | undefined;
+  values?: string | undefined;
 }
 
 export interface ResolvedInstallIdentityPrompts {
