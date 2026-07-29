@@ -290,7 +290,7 @@ describe('app access state service', (): void => {
     expect(firstRoute.accessMode).toBe('public');
   });
 
-  it('includes verified custom domains as app routes and on-demand TLS hosts', async (): Promise<void> => {
+  it('includes verified custom domains as app routes', async (): Promise<void> => {
     mocks.listActiveDeploymentRoutes.mockResolvedValue([
       createDeploymentRouteLookupRow({
         host: 'billing.localhost',
@@ -306,7 +306,6 @@ describe('app access state service', (): void => {
 
     const state: AppAccessStateSnapshot = await readRequiredAppAccessState();
 
-    expect(state.onDemandTlsHosts).toEqual(['app.example.com']);
     expect(state.routes.map((route: AppAccessRouteState): string => route.host)).toEqual([
       'billing.localhost',
       'app.example.com',

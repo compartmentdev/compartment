@@ -41,7 +41,6 @@ k3d cluster create "$cluster_name" \
   --agents 0 \
   --servers 1 \
   --image rancher/k3s@sha256:d8f05b9043d136c3fb01d6cf677caaef304568b8c99bdd359b86d3d7286de1df \
-  --k3s-arg '--disable=traefik@server:0' \
   --port "$dns_port:30053/udp@server:0" \
   --port "$dns_port:30053/tcp@server:0" \
   --port '19090:30090@server:0' \

@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { DomainHostPlan } from '@compartment/contracts';
 import { runCommand } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { readCommandOutput } from './kubernetes-command.support';
+import { mapDomainTlsModeToPlatformTlsMode } from './kubernetes-domain-tls-mode.service';
 import {
   createKubernetesInstallMaterializedDirectory,
   resolveKubernetesChartPath,
@@ -12,53 +12,22 @@ import {
 } from './kubernetes-install-helm.service';
 import { writeVerifiedKubernetesReleaseImageValues } from './kubernetes-image-trust.service';
 import type {
-  KubernetesDomainCertificateInput,
   KubernetesDomainHelmPlatformValues,
   KubernetesDomainHelmValues,
   KubernetesDomainReleaseUpdate,
   KubernetesOperatorTarget,
-  StagedKubernetesDomainCertificate,
 } from './kubernetes-operator.service.types';
-import { readPendingKubernetesDomainTlsSecretName } from './kubernetes-system-domain-release-values.service';
-import { validateKubernetesSystemDomainCertificate } from './kubernetes-system-domain-certificate.service';
-import { mapDomainTlsModeToPlatformTlsMode } from './kubernetes-domain-tls-mode.service';
-import {
-  buildDomainHelmCommand,
-  buildDomainTlsSecretName,
-  readRequiredPemFile,
-  requireOperatorValuesPath,
-} from './kubernetes-system-domain-release.support';
-
-export async function stageKubernetesDomainCertificate(
-  input: KubernetesDomainCertificateInput,
-  operationId: string,
-  hostPlan: DomainHostPlan,
-): Promise<StagedKubernetesDomainCertificate> {
-  const certificate: string = await readRequiredPemFile(input.certificateFile, 'certificate');
-  const privateKey: string = await readRequiredPemFile(input.privateKeyFile, 'private key');
-  const secretName: string = buildDomainTlsSecretName(input.releaseName, operationId);
-  return {
-    certificate,
-    fingerprint: createHash('sha256').update(certificate).update('\0').update(privateKey).digest('hex'),
-    metadata: validateKubernetesSystemDomainCertificate(certificate, privateKey, hostPlan),
-    privateKey,
-    secretName,
-  };
-}
+import { buildDomainHelmCommand, requireOperatorValuesPath } from './kubernetes-system-domain-release.support';
 
 export async function applyRuntimeKubernetesDomainRelease(
   target: KubernetesOperatorTarget,
   hostPlan: DomainHostPlan,
   domainGeneration: number,
-  operationId?: string,
 ): Promise<void> {
-  const customTlsSecretName: string | undefined = resolveActiveTlsSecretName(target.releaseName, hostPlan, operationId);
   await applyKubernetesDomainRelease(target, {
-    ...buildRuntimeTlsReleaseUpdate(hostPlan, customTlsSecretName),
     domainCommit: false,
     domainGeneration,
     hostPlan,
-    ...(operationId === undefined || hostPlan.tlsMode !== 'custom-cert' ? {} : { pendingOperationId: operationId }),
   });
 }
 
@@ -66,90 +35,15 @@ export async function commitActiveKubernetesDomainRelease(
   target: KubernetesOperatorTarget,
   hostPlan: DomainHostPlan,
   domainGeneration: number,
-  operationId?: string,
 ): Promise<void> {
-  const customTlsSecretName: string | undefined = await resolveCommitTlsSecretName(target, hostPlan, operationId);
   await applyKubernetesDomainRelease(target, {
-    ...buildCommittedTlsReleaseUpdate(hostPlan, customTlsSecretName),
     domainCommit: true,
     domainGeneration,
     hostPlan,
-    pendingOperationId: '',
   });
 }
 
-function buildRuntimeTlsReleaseUpdate(
-  hostPlan: DomainHostPlan,
-  customTlsSecretName: string | undefined,
-): KubernetesDomainReleaseUpdate {
-  if (hostPlan.tlsMode !== 'custom-cert') {
-    return { customTlsSecretName: '' };
-  }
-  if (customTlsSecretName === undefined) {
-    return {};
-  }
-  return { customTlsSecretName };
-}
-
-function buildCommittedTlsReleaseUpdate(
-  hostPlan: DomainHostPlan,
-  customTlsSecretName: string | undefined,
-): KubernetesDomainReleaseUpdate {
-  if (hostPlan.tlsMode !== 'custom-cert') {
-    return clearedOperatorTlsReleaseUpdate();
-  }
-  if (customTlsSecretName === undefined) {
-    return { pendingCertificate: '', pendingOperationId: '', pendingPrivateKey: '', pendingTlsSecretName: '' };
-  }
-  return {
-    customTlsSecretName,
-    operatorCertificate: '',
-    operatorPrivateKey: '',
-    operatorTlsSecretName: customTlsSecretName,
-    pendingCertificate: '',
-    pendingOperationId: '',
-    pendingPrivateKey: '',
-    pendingTlsSecretName: '',
-  };
-}
-
-function clearedOperatorTlsReleaseUpdate(): KubernetesDomainReleaseUpdate {
-  return {
-    customTlsSecretName: '',
-    operatorCertificate: '',
-    operatorPrivateKey: '',
-    operatorTlsSecretName: '',
-    pendingCertificate: '',
-    pendingOperationId: '',
-    pendingPrivateKey: '',
-    pendingTlsSecretName: '',
-  };
-}
-
-async function resolveCommitTlsSecretName(
-  target: KubernetesOperatorTarget,
-  hostPlan: DomainHostPlan,
-  operationId: string | undefined,
-): Promise<string | undefined> {
-  const operationSecretName: string | undefined = resolveActiveTlsSecretName(target.releaseName, hostPlan, operationId);
-  if (operationSecretName !== undefined || hostPlan.tlsMode !== 'custom-cert') {
-    return operationSecretName;
-  }
-  return await readPendingKubernetesDomainTlsSecretName(target);
-}
-
-function resolveActiveTlsSecretName(
-  releaseName: string,
-  hostPlan: DomainHostPlan,
-  operationId: string | undefined,
-): string | undefined {
-  if (hostPlan.tlsMode !== 'custom-cert') {
-    return '';
-  }
-  return operationId === undefined ? undefined : buildDomainTlsSecretName(releaseName, operationId);
-}
-
-export async function applyKubernetesDomainRelease(
+async function applyKubernetesDomainRelease(
   target: KubernetesOperatorTarget,
   values: KubernetesDomainReleaseUpdate,
 ): Promise<void> {
@@ -196,16 +90,6 @@ function buildDomainHelmValues(values: KubernetesDomainReleaseUpdate): Kubernete
   return {
     ...(platformValues === undefined ? {} : { platform: platformValues }),
     ...(values.hostPlan?.issuerRef === undefined ? {} : { tls: { issuerRef: values.hostPlan.issuerRef } }),
-    customTls: {
-      ...(values.customTlsSecretName === undefined ? {} : { existingSecret: values.customTlsSecretName }),
-      ...(values.operatorCertificate === undefined ? {} : { operatorCertificate: values.operatorCertificate }),
-      ...(values.operatorPrivateKey === undefined ? {} : { operatorPrivateKey: values.operatorPrivateKey }),
-      ...(values.operatorTlsSecretName === undefined ? {} : { operatorSecretName: values.operatorTlsSecretName }),
-      ...(values.pendingCertificate === undefined ? {} : { pendingCertificate: values.pendingCertificate }),
-      ...(values.pendingOperationId === undefined ? {} : { pendingOperationId: values.pendingOperationId }),
-      ...(values.pendingPrivateKey === undefined ? {} : { pendingPrivateKey: values.pendingPrivateKey }),
-      ...(values.pendingTlsSecretName === undefined ? {} : { pendingSecretName: values.pendingTlsSecretName }),
-    },
   };
 }
 

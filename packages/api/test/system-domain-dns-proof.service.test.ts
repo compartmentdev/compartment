@@ -19,7 +19,9 @@ interface DnsMocks {
 
 const publicIpv4Address: string = buildIpv4Address([8, 8, 8, 8]);
 const mismatchedPublicIpv4Address: string = buildIpv4Address([1, 1, 1, 1]);
+const secondaryPublicIpv4Address: string = buildIpv4Address([8, 8, 4, 4]);
 const publicIpv6Address: string = buildIpv6Address(['2606', '4700', '4700', '0', '0', '0', '0', '1111']);
+const publicIngressHostname: string = 'lb.example.net';
 
 const mocks: DnsMocks = vi.hoisted(
   (): DnsMocks => ({
@@ -111,6 +113,45 @@ describe('system domain dns proof service', (): void => {
     ).resolves.toEqual({
       failure: null,
     });
+  });
+
+  it('verifies every address published by a multi-address ingress', async (): Promise<void> => {
+    mocks.resolve4.mockResolvedValue([secondaryPublicIpv4Address, publicIpv4Address]);
+
+    await expect(
+      verifySystemDomainDnsProof({
+        pendingBaseDomain: 'customer.example.com',
+        pendingOperationId: 'domop_123',
+        publicIngressConfig: createMultiAddressIngressConfig(),
+      }),
+    ).resolves.toEqual({ failure: null });
+  });
+
+  it('builds and verifies hostname ingress routing records', async (): Promise<void> => {
+    const ingressConfig: ApiPublicIngressConfig = createHostnameIngressConfig();
+    expect(
+      buildRequiredSystemDomainDnsRecords({
+        pendingBaseDomain: 'customer.example.com',
+        pendingOperationId: 'domop_123',
+        publicIngressConfig: ingressConfig,
+      }).filter((record: DomainDnsRecord): boolean => record.groupId === 'routing'),
+    ).toEqual([
+      expect.objectContaining({
+        name: 'console.customer.example.com',
+        recordType: 'CNAME',
+        value: publicIngressHostname,
+      }),
+      expect.objectContaining({ name: '*.customer.example.com', recordType: 'CNAME', value: publicIngressHostname }),
+    ]);
+    mocks.resolveCname.mockResolvedValue([publicIngressHostname]);
+
+    await expect(
+      verifySystemDomainDnsProof({
+        pendingBaseDomain: 'customer.example.com',
+        pendingOperationId: 'domop_123',
+        publicIngressConfig: ingressConfig,
+      }),
+    ).resolves.toEqual({ failure: null });
   });
 
   it('rejects missing ownership TXT', async (): Promise<void> => {
@@ -210,39 +251,44 @@ describe('system domain dns proof service', (): void => {
     ).resolves.toEqual({
       failure: {
         code: 'dns_binding_invalid',
-        message:
-          'System domain verification requires COMPARTMENT_PUBLIC_INGRESS_IPV4 or COMPARTMENT_PUBLIC_INGRESS_IPV6.',
+        message: 'System domain verification requires at least one public ingress target.',
       },
     });
   });
 });
 
 function createIpv4OnlyIngressConfig(): ApiPublicIngressConfig {
-  return {
-    publicIngressIpv4: publicIpv4Address,
-    publicIngressIpv6: null,
-  };
+  return { targets: [{ type: 'A', value: publicIpv4Address }] };
 }
 
 function createDualStackIngressConfig(): ApiPublicIngressConfig {
   return {
-    publicIngressIpv4: publicIpv4Address,
-    publicIngressIpv6: publicIpv6Address,
+    targets: [
+      { type: 'A', value: publicIpv4Address },
+      { type: 'AAAA', value: publicIpv6Address },
+    ],
   };
+}
+
+function createMultiAddressIngressConfig(): ApiPublicIngressConfig {
+  return {
+    targets: [
+      { type: 'A', value: publicIpv4Address },
+      { type: 'A', value: secondaryPublicIpv4Address },
+    ],
+  };
+}
+
+function createHostnameIngressConfig(): ApiPublicIngressConfig {
+  return { targets: [{ type: 'hostname', value: publicIngressHostname }] };
 }
 
 function createIpv6OnlyIngressConfig(): ApiPublicIngressConfig {
-  return {
-    publicIngressIpv4: null,
-    publicIngressIpv6: publicIpv6Address,
-  };
+  return { targets: [{ type: 'AAAA', value: publicIpv6Address }] };
 }
 
 function createEmptyIngressConfig(): ApiPublicIngressConfig {
-  return {
-    publicIngressIpv4: null,
-    publicIngressIpv6: null,
-  };
+  return { targets: [] };
 }
 
 function buildIpv4Address(octets: readonly [number, number, number, number]): string {

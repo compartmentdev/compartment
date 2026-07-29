@@ -832,7 +832,7 @@ describe('api auth reset and logout routes', (): void => {
     });
   });
 
-  it('accepts the configured public HTTPS origin for browser cookie auth behind custom-http TLS', async (): Promise<void> => {
+  it('accepts the configured public HTTPS origin behind issuer-managed TLS', async (): Promise<void> => {
     applyApiRouteTestEnv({
       baseDomain: 'example.com',
       publicHttpsPort: 443,

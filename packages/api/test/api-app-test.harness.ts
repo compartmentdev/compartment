@@ -17,7 +17,7 @@ interface ApiAppPair {
 interface ApiIntegrationTestContext {
   apiConfig: ApiConfig;
   databaseUrl: string;
-  testCustomTlsDirectory: string;
+  testTempDirectory: string;
 }
 
 export const publicIpv4Address: string = buildIpv4Address([8, 8, 8, 8]);
@@ -26,17 +26,11 @@ export const mismatchedPublicIpv4Address: string = buildIpv4Address([1, 1, 1, 1]
 export const publicIpv6Address: string = buildIpv6Address(['2606', '4700', '4700', '0', '0', '0', '0', '1111']);
 
 export function createManagedPublicIngressConfig(): ApiPublicIngressConfig {
-  return {
-    publicIngressIpv4: publicIpv4Address,
-    publicIngressIpv6: null,
-  };
+  return { targets: [{ type: 'A', value: publicIpv4Address }] };
 }
 
 export function createEmptyPublicIngressConfig(): ApiPublicIngressConfig {
-  return {
-    publicIngressIpv4: null,
-    publicIngressIpv6: null,
-  };
+  return { targets: [] };
 }
 
 export function configureApiRuntimeWithPublicIngress(
@@ -44,15 +38,14 @@ export function configureApiRuntimeWithPublicIngress(
   db: Database,
   publicIngressConfig: ApiPublicIngressConfig = createEmptyPublicIngressConfig(),
 ): void {
-  process.env.COMPARTMENT_PUBLIC_INGRESS_IPV4 = publicIngressConfig.publicIngressIpv4 ?? '';
-  process.env.COMPARTMENT_PUBLIC_INGRESS_IPV6 = publicIngressConfig.publicIngressIpv6 ?? '';
+  process.env.COMPARTMENT_INGRESS_TARGETS_JSON = JSON.stringify(publicIngressConfig.targets);
   configureApiRuntime({ config, db });
 }
 
 export function createApiIntegrationTestContext(databaseName: string, runtimeSlug: string): ApiIntegrationTestContext {
   const { testDatabaseUrl } = readDatabaseTestMode();
   const databaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, databaseName);
-  const testCustomTlsDirectory: string = resolve(tmpdir(), `compartment-${runtimeSlug}-tls`);
+  const testTempDirectory: string = resolve(tmpdir(), `compartment-${runtimeSlug}-temp`);
 
   process.env.COMPARTMENT_DATABASE_URL = databaseUrl;
   process.env.COMPARTMENT_SESSION_SECRET = process.env.COMPARTMENT_SESSION_SECRET ?? 'test-secret';
@@ -63,8 +56,7 @@ export function createApiIntegrationTestContext(databaseName: string, runtimeSlu
   process.env.COMPARTMENT_PUBLIC_PROTOCOL = 'http';
   process.env.COMPARTMENT_PUBLIC_HTTP_PORT = '80';
   process.env.COMPARTMENT_PUBLIC_HTTPS_PORT = '443';
-  process.env.COMPARTMENT_PUBLIC_INGRESS_IPV4 = '';
-  process.env.COMPARTMENT_PUBLIC_INGRESS_IPV6 = '';
+  process.env.COMPARTMENT_INGRESS_TARGETS_JSON = '[]';
   process.env.COMPARTMENT_POSTGRES_PASSWORD = 'postgres';
   process.env.COMPARTMENT_EDGE_TOKEN = 'test-edge-token';
   process.env.COMPARTMENT_SYSTEM_API_SOCKET = `/tmp/compartment/${runtimeSlug}/system-api.sock`;
@@ -108,17 +100,17 @@ export function createApiIntegrationTestContext(databaseName: string, runtimeSlu
   return {
     apiConfig: readApiConfig(),
     databaseUrl,
-    testCustomTlsDirectory,
+    testTempDirectory,
   };
 }
 
-export async function resetApiIntegrationTlsDirectory(testCustomTlsDirectory: string): Promise<void> {
-  await rm(testCustomTlsDirectory, { force: true, recursive: true });
-  await mkdir(testCustomTlsDirectory, { recursive: true });
+export async function resetApiIntegrationTempDirectory(testTempDirectory: string): Promise<void> {
+  await rm(testTempDirectory, { force: true, recursive: true });
+  await mkdir(testTempDirectory, { recursive: true });
 }
 
-export async function cleanupApiIntegrationTlsDirectory(testCustomTlsDirectory: string): Promise<void> {
-  await rm(testCustomTlsDirectory, { force: true, recursive: true });
+export async function cleanupApiIntegrationTempDirectory(testTempDirectory: string): Promise<void> {
+  await rm(testTempDirectory, { force: true, recursive: true });
 }
 
 export async function createApiIntegrationApps(config: ApiConfig, db: Database, pool: Pool): Promise<ApiAppPair> {

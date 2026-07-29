@@ -4,7 +4,7 @@ export interface ApiConfigEnv extends AuditFileSinkConfigEnv {
   COMPARTMENT_API_BIND_HOST: string;
   COMPARTMENT_API_PORT: number;
   COMPARTMENT_BASE_DOMAIN: string;
-  COMPARTMENT_TLS_MODE: 'broker-dns01' | 'internal' | 'issuer' | 'secret';
+  COMPARTMENT_TLS_MODE: 'broker-dns01' | 'internal' | 'issuer';
   COMPARTMENT_DATABASE_URL: string;
   COMPARTMENT_EDGE_INTERNAL_HOST: string;
   COMPARTMENT_EDGE_PORT: number;

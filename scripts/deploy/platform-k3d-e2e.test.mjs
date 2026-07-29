@@ -24,7 +24,6 @@ import {
   runPlatformK3dCleanupSequence,
   settlePlatformK3dStartup,
   shouldCleanPlatformSourceCacheImage,
-  shouldCleanLegacyPlatformResources,
   withPlatformK3dProcessLock,
 } from './platform-k3d-e2e-support.mjs';
 
@@ -160,8 +159,6 @@ describe('platform k3d e2e command boundary', () => {
     expect(shouldCleanPlatformSourceCacheImage(cacheImageRef, '2026-07-18T00:00:00.000Z', Date.UTC(2026, 6, 18))).toBe(
       false,
     );
-    expect(shouldCleanLegacyPlatformResources(environment)).toBe(true);
-    expect(shouldCleanLegacyPlatformResources(readPlatformK3dEnvironment({}))).toBe(false);
   });
 
   it('keeps every cleanup stage and continues after an individual failure', () => {
@@ -288,11 +285,10 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain('className: traefik');
     expect(values).toContain('type: A');
     expect(values).toContain('value: 8.8.4.4');
-    expect(values).toContain('publicIngressIpv4: 8.8.4.4');
+    expect(values).toContain('targetsJson:');
     expect(values).toContain('stagingUrl: https://pebble.compartment-managed-e2e.svc.cluster.local:14000/dir');
     expect(values).toContain('namespace: compartment-managed-e2e-build');
     expect(values).toContain(`digest: sha256:${'d'.repeat(64)}`);
     expect(values).not.toContain('compartment.localhost');
-    expect(values).not.toContain('custom-http');
   });
 });

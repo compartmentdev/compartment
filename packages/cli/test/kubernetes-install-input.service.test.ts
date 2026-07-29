@@ -45,7 +45,6 @@ describe('canonical Kubernetes install input', (): void => {
   it.each([
     ['--kube-context', { kubeContext: undefined }],
     ['--ingress-class', { ingressClass: undefined }],
-    ['--storage-class', { storageClass: undefined }],
     ['--email', { email: undefined }],
     ['--organization', { organization: undefined }],
     ['--admin-password', { password: undefined }],
@@ -57,6 +56,13 @@ describe('canonical Kubernetes install input', (): void => {
       ).toThrow(`Missing required install input: ${field}.`);
     },
   );
+
+  it('uses the cluster default storage class when no override is configured', (): void => {
+    expect(
+      resolveCanonicalKubernetesInstallInput({ ...nonInteractiveValues(), storageClass: undefined }, kubeconfigPath)
+        .input.storageClass,
+    ).toBe('');
+  });
 
   it('requires exactly one domain source', (): void => {
     expect((): object =>
@@ -170,15 +176,6 @@ describe('canonical Kubernetes install input', (): void => {
         kubeconfigPath,
       ),
     ).toThrow('--ingress-endpoint must be an IP address or DNS hostname.');
-  });
-
-  it('has no existingCluster discriminator in the runtime contract', (): void => {
-    const input: KubernetesInstallInput = resolveCanonicalKubernetesInstallInput(
-      nonInteractiveValues(),
-      kubeconfigPath,
-    ).input;
-
-    expect(Object.hasOwn(input, 'existingCluster')).toBe(false);
   });
 });
 

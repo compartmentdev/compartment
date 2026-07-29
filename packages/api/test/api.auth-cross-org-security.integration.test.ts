@@ -22,11 +22,11 @@ import { createOrganizationScopedToken } from '../src/services/scoped-token.serv
 import { buildSystemAuthorizationHeaders, installCompartment } from './api-integration.harness';
 import {
   cleanupApiIntegrationRuntime,
-  cleanupApiIntegrationTlsDirectory,
+  cleanupApiIntegrationTempDirectory,
   configureApiRuntimeWithPublicIngress,
   createApiIntegrationApps,
   createApiIntegrationTestContext,
-  resetApiIntegrationTlsDirectory,
+  resetApiIntegrationTempDirectory,
 } from './api-app-test.harness';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
 
@@ -101,7 +101,7 @@ vi.mock(
 const {
   apiConfig: defaultApiConfig,
   databaseUrl: apiIntegrationDatabaseUrl,
-  testCustomTlsDirectory,
+  testTempDirectory,
 } = createApiIntegrationTestContext('api_integration_auth_cross_org_security', 'api-integration-auth-cross-org');
 let pool!: Pool;
 let db!: Database;
@@ -125,7 +125,7 @@ describe('Phase 0 API integration cross-org auth security', (): void => {
     dnsPromiseMocks.resolveCname.mockRejectedValue(new Error('No CNAME record.'));
     dnsPromiseMocks.resolveTxt.mockReset();
     dnsPromiseMocks.resolveTxt.mockRejectedValue(new Error('No TXT record.'));
-    await resetApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await resetApiIntegrationTempDirectory(testTempDirectory);
     pool = createDatabasePool(apiIntegrationDatabaseUrl);
     db = createDatabase(pool);
     ({ app, systemApp } = await createApiIntegrationApps(defaultApiConfig, db, pool));
@@ -134,7 +134,7 @@ describe('Phase 0 API integration cross-org auth security', (): void => {
   });
 
   afterAll(async (): Promise<void> => {
-    await cleanupApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await cleanupApiIntegrationTempDirectory(testTempDirectory);
   });
 
   afterEach(async (): Promise<void> => {

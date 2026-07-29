@@ -1,14 +1,11 @@
 import {
   domainDnsRecordSchema,
   domainHostPlanSchema,
-  isCustomCertificateDomainHostPlan,
-  isCustomHttpDomainHostPlan,
-  systemDomainCertificateSchema,
+  isOperatorManagedDomainHostPlan,
   systemDomainPendingStatusSchema,
   systemDomainStatusResponseSchema,
   type DomainDnsRecord,
   type DomainHostPlan,
-  type SystemDomainCertificate,
   type SystemDomainStatusResponse,
 } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
@@ -74,7 +71,6 @@ function mapPendingDomainOperation(setupState: SystemDomainSetupStateRow): Syste
   const hostPlan: DomainHostPlan = readPendingDomainHostPlan(setupState);
 
   return {
-    certificate: readPendingCertificate(setupState),
     failureCode: setupState.pendingFailureCode,
     failureMessage: setupState.pendingFailureMessage,
     hostPlan,
@@ -82,21 +78,6 @@ function mapPendingDomainOperation(setupState: SystemDomainSetupStateRow): Syste
     requiredDnsRecords: readPendingRequiredDnsRecords(setupState, hostPlan),
     status: systemDomainPendingStatusSchema.parse(setupState.pendingStatus),
   };
-}
-
-function readPendingCertificate(setupState: SystemDomainSetupStateRow): SystemDomainCertificate | null {
-  if (setupState.pendingCertificateMetadataJson === null || setupState.pendingTlsSecretName === null) {
-    return null;
-  }
-
-  return systemDomainCertificateSchema.parse({
-    metadata: readPendingCertificateMetadataJson(setupState.pendingCertificateMetadataJson),
-    secretName: setupState.pendingTlsSecretName,
-  });
-}
-
-function readPendingCertificateMetadataJson(value: string): JsonValue {
-  return JSON.parse(value) as JsonValue;
 }
 
 export function readPendingDomainHostPlan(setupState: SystemDomainSetupStateRow): DomainHostPlan {
@@ -155,11 +136,11 @@ function readStoredPendingRequiredDnsRecords(setupState: SystemDomainSetupStateR
 }
 
 function isCustomPendingHostPlan(hostPlan: DomainHostPlan): boolean {
-  return isCustomHttpDomainHostPlan(hostPlan) || isCustomCertificateDomainHostPlan(hostPlan);
+  return isOperatorManagedDomainHostPlan(hostPlan);
 }
 
 function hasConfiguredPublicIngress(publicIngressConfig: ApiPublicIngressConfig): boolean {
-  return publicIngressConfig.publicIngressIpv4 !== null || publicIngressConfig.publicIngressIpv6 !== null;
+  return publicIngressConfig.targets.length > 0;
 }
 
 function requirePendingText(value: string | null): string {

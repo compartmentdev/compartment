@@ -5,8 +5,6 @@ export interface SystemDomainSetupStateRow {
   setupVersion: number;
   id: string;
   pendingBaseDomain: string | null;
-  pendingCertificateMetadataJson: string | null;
-  pendingTlsSecretName: string | null;
   pendingDomainKind: string | null;
   pendingIssuerRefJson: string | null;
   pendingFailureCode: string | null;

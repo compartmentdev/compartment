@@ -233,7 +233,6 @@ export function buildCompartmentVariableGroupPathname(variableGroupName: string)
 export const compartmentSystemDomainStatusPathname: string = '/internal/system/domain/status';
 export const compartmentSystemDomainStatusRefreshPathname: string = '/internal/system/domain/status/refresh';
 export const compartmentSystemDomainSetPathname: string = '/internal/system/domain/set';
-export const compartmentSystemDomainAttachCertificatePathname: string = '/internal/system/domain/attach-cert';
 export const compartmentSystemDomainVerifyPathname: string = '/internal/system/domain/verify';
 export const compartmentSystemDomainActivatePathname: string = '/internal/system/domain/activate';
 export const compartmentSystemDomainResetManagedPathname: string = '/internal/system/domain/reset-managed';

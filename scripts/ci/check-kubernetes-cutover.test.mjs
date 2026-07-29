@@ -11,6 +11,7 @@ import {
 } from './check-kubernetes-cutover.mjs';
 
 const temporaryDirectories = [];
+const renderLines = (lines) => lines.join('\n');
 const guardedRuntimeTerms = [
   'node|SocketPath',
   'container|Id',
@@ -51,6 +52,34 @@ const guardedRuntimeTerms = [
   'restart |behavior',
   'Bootstrapped self-hosted |runtime',
   'Updated self-hosted |runtime',
+  'registry|-mirror',
+  'skip|-registry|-mirror',
+  'registries|.|yaml',
+  'custom|-cert',
+  'custom|-http',
+  'on|-demand',
+  'attach|-cert',
+  'ports|.|https',
+  'existing|Cluster',
+  'custom|Tls',
+  'custom|-tls',
+  'pending|_caddy|_mode',
+  'pending|_certificate|_metadata|_json',
+  'pending|_certificate|_path',
+  'pending|_private|_key|_path',
+  'pending|_tls|_secret|_name',
+  'active|-custom|-tls|-secret',
+  'operator|-custom|-tls|-secret',
+  'COMPARTMENT|PUBLIC|INGRESS|IPV4',
+  'COMPARTMENT|PUBLIC|INGRESS|IPV6',
+  'COMPARTMENT|CADDY|HTTPS|PORT',
+  'COMPARTMENT|CUSTOM|TLS',
+  'COMPARTMENT|CADDY|BUILDER|IMAGE',
+  'caddy|-dns-compartment-broker',
+  'x|caddy',
+  'public|Ingress|Ipv4',
+  'public|Ingress|Ipv6',
+  '--disable |traefik',
 ].map((term) => term.replaceAll('|', term.startsWith('COMPARTMENT') ? '_' : ''));
 
 afterEach(async () => {
@@ -59,9 +88,25 @@ afterEach(async () => {
 
 describe('Kubernetes cutover gate', () => {
   it.each(guardedRuntimeTerms)('rejects legacy runtime term %s', (term) => {
-    expect(findContentViolations('fixture.txt', term)).toEqual([
+    expect(findContentViolations('fixture.txt', term)).toContain(
       `fixture.txt: contains forbidden runtime term ${term}`,
+    );
+  });
+
+  it('rejects removed topology fields in the current migration snapshot', () => {
+    const removedField = ['pending', '_tls', '_secret', '_name'].join('');
+
+    expect(findContentViolations('packages/api/drizzle/meta/0005_snapshot.json', removedField)).toEqual([
+      `packages/api/drizzle/meta/0005_snapshot.json: contains forbidden runtime term ${removedField}`,
     ]);
+    expect(findContentViolations('packages/api/drizzle/0005_cutover.sql', removedField)).toEqual([]);
+  });
+
+  it('allows the canonical Caddy builder terms only in the self-hosted Caddy Dockerfile', () => {
+    const contents = renderLines([['COMPARTMENT', 'CADDY', 'BUILDER', 'IMAGE'].join('_'), ['x', 'caddy'].join('')]);
+
+    expect(findContentViolations('packages/edge/Dockerfile.caddy.self-hosted', contents)).toEqual([]);
+    expect(findContentViolations('packages/edge/legacy.txt', contents)).toHaveLength(2);
   });
 
   it('rejects the removed legacy restart policy everywhere', () => {

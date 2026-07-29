@@ -84,27 +84,6 @@ export const managedDomainTargetSchema: ContractSchema<ManagedDomainTarget> = z.
     .strict(),
 ]);
 
-export const managedDomainReservationRequestSchema: ContractSchema<ManagedDomainReservationRequest> = z
-  .object({
-    installationId: z.string().min(1),
-    metadata: z
-      .object({
-        cliVersion: z.string().min(1),
-        os: z
-          .object({
-            arch: z.string().min(1),
-            platform: z.string().min(1),
-            release: z.string().min(1),
-          })
-          .strict(),
-        runtimeVersion: z.string().min(1),
-      })
-      .strict()
-      .optional(),
-    requestedLabelSource: z.string().min(1).max(managedDomainRequestedLabelSourceMaxLength),
-  })
-  .strict();
-
 export const managedDomainReservationResponseSchema: ContractSchema<ManagedDomainReservationResponse> = z
   .object({
     allocationId: z.string().min(1),

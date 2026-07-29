@@ -1,407 +1,90 @@
 ---
 title: Install Compartment
-description: Install the Kubernetes platform or CLI, connect to a control plane, or seed a repository development environment.
+description: Install Compartment into an existing Kubernetes cluster.
 ---
 
 ## Install the CLI
-
-Install the CLI with the public bootstrapper:
 
 ```bash
 curl -fsSL https://compartment.dev/install.sh | sh
 ```
 
-To install the current Kubernetes branch CLI, select its channel:
+## Prepare the cluster
+
+Compartment installs into an existing Kubernetes cluster. Before installation, provide:
+
+- Kubernetes 1.30 or newer;
+- an enabled Ingress Controller and one IngressClass;
+- cert-manager and an Issuer or ClusterIssuer for operator-owned domains;
+- NetworkPolicy enforcement;
+- a persistent storage class;
+- credentials permitted to install the Helm release and its cluster-scoped policy resources.
+
+The installer does not install or disable an ingress controller, reserve node ports, or change node container-runtime
+configuration.
+
+## Run the installer
+
+Interactive installation discovers the cluster choices and prompts when more than one valid option exists:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/compartmentdev/compartment/kubernetes/install.sh | sh -s -- --channel kubernetes
+compartment install --kubeconfig ./kubeconfig --kube-context production
 ```
 
-This raw GitHub URL is temporary until the Kubernetes branch replaces the public `compartment.dev` installer.
-The bootstrapper resolves the branch head to an immutable OCI artifact, verifies its keyless signature against the
-Kubernetes publish workflow identity, and only then downloads the CLI. An unsigned artifact or a signature from
-another identity stops the install. This CLI includes the matching Helm chart.
-
-For a verified install from an immutable stable release, use GitHub CLI 2.81.0 or newer:
-
-```bash
-gh release verify --repo compartmentdev/compartment
-gh release download --repo compartmentdev/compartment --pattern install.sh --clobber
-gh release verify-asset --repo compartmentdev/compartment ./install.sh
-sh ./install.sh
-```
-
-## Connect to a control plane
-
-Log in with the Console URL supplied by your Compartment operator:
-
-```bash
-compartment login --api-url https://console.example.com --organization acme-dev
-```
-
-Pass `--email <email>` to prefill the browser login form. Name the remote when one machine connects to multiple control planes:
-
-```bash
-compartment login --remote prod-eu --api-url https://console.example.com
-```
-
-The public bootstrapper can install the CLI and immediately start the login flow:
-
-```bash
-curl -fsSL https://compartment.dev/install.sh | sh -s -- --init-login --api-url https://console.example.com
-```
-
-## Install the platform on Kubernetes
-
-The production platform is a Helm release. It requires Kubernetes 1.30 or newer, Helm 4.x, a default or explicitly
-selected `ReadWriteOnce` storage class, and nodes that can pull application images from the bundled registry. The
-selected Kubernetes context must be allowed to manage the chart's Namespaces, ClusterRoles, ClusterRoleBinding,
-ValidatingAdmissionPolicy, and ValidatingAdmissionPolicyBinding as well as namespaced resources.
-The machine running the CLI must also reach every configured platform-image registry and the Sigstore trust services
-used by cosign.
-
-Readiness probes use HTTP traffic from kubelet. If your CNI filters node-originated probe traffic, allow node or
-kubelet traffic to the configured probe ports or platform workloads can remain unready.
-
-The default install uses a Kubernetes LoadBalancer Service on public ports 80 and 443. Its internal Caddy ports remain
-8080 and 8443. Start the guided install from an interactive terminal:
-
-```bash
-compartment install
-```
-
-Before asking for configuration or owner credentials, the CLI selects a usable kubeconfig, checks cluster access,
-and checks whether another LoadBalancer Service exposes port 80 or 443. When `KUBECONFIG` is set, all paths in it
-are merged and treated as authoritative; an invalid explicit value fails instead of falling back to another cluster.
-Otherwise, the CLI tries a usable `~/.kube/config` with the explicit `--kube-context` or its current context and
-cluster, then the readable k3s config at
-`/etc/rancher/k3s/k3s.yaml`. The wizard then asks only
-for managed or custom domain setup, the storage class, and the first owner's email, organization, and password. It
-prefers `local-path` when the cluster provides that storage class. For `custom-cert`, create the Kubernetes TLS Secret
-first; the wizard asks for its existing name.
-
-k3s with klipper assigns LoadBalancer ports through shared node host ports. Install a fresh dedicated k3s node without
-its default Traefik ingress:
-
-```bash
-curl -sfL https://get.k3s.io | sh -s - --disable traefik
-```
-
-If the default `kube-system/traefik` already holds port 80 or 443, disable and remove it before retrying Compartment:
-
-```bash
-printf 'disable:\n  - traefik\n' >/etc/rancher/k3s/config.yaml
-systemctl restart k3s
-kubectl -n kube-system delete helmchart traefik traefik-crd
-```
-
-Do not remove a different existing ingress. On a dedicated cluster, free ports 80 and 443 for Compartment's Caddy
-ingress. On a shared cluster, Compartment must use `service.caddy.type` set to `ClusterIP` or `NodePort`, an explicit
-`platform.publicIngressIpv4` or `platform.publicIngressIpv6`, and routing through your existing ingress. The guided
-installer does not automate this topology yet and its klipper preflight will stop at the port conflict; do not delete
-the foreign ingress to make the check pass.
-
-On clusters where LoadBalancer Services receive separate addresses, such as managed cloud load balancers or MetalLB,
-another ingress LoadBalancer produces a warning instead. The guided wizard asks you to confirm that you want to
-continue. An install using `--values` prints the warning and continues without adding a prompt.
-
-For CI or advanced operator configuration, create a values file with your storage and image decisions and pass it
-with `--values`. Non-interactive installs require this file. The CLI supplies managed-domain, ingress, ACME email, and
-one-time install values; the chart supplies the ACME issuer and CA defaults:
-
-```yaml
-storage:
-  storageClass: fast-rwo
-```
-
-Optionally set `platform.rollbackRetentionLimit` to a positive integer for the install-wide rollback-image limit
-inherited by organizations without an override. Its empty default retains rollback images indefinitely. Tune login,
-account activation, and password-reset throttles under `platform.authThrottle.{login,activation,passwordReset}`. Each
-flow exposes a route `window` and `limit`; source and account or subject scopes also expose a `cooldown`. Keep the chart
-defaults unless your traffic and incident-response requirements call for different protection.
-
-The release CLI defaults all four `images.*.tag` values to its packaged platform version. Explicit tags in your
-operator values file take precedence. Before Helm changes the release, the CLI verifies all four platform images
-against Compartment's GitHub Actions signing identity, resolves each tag to its immutable digest, and deploys only
-those digests. An unsigned image or an image signed by another identity stops the install before activation.
-The chart also pins its bundled PostgreSQL, registry, BuildKit, kubectl, and Vector images by digest. When you override
-one of those third-party image repositories or tags, set its matching `images.<name>.digest` too; a nonempty digest
-takes precedence over the tag.
-Supply the values under `secrets` through your normal secret-management workflow instead of committing them. Install
-with the release CLI, which uses its bundled matching chart, waits for the public Console endpoint, creates the first
-owner, and saves the owner session:
+For automation, provide the selections explicitly:
 
 ```bash
 compartment install \
-  --values compartment-values.yaml
-```
-
-With `--values`, the configuration wizard is skipped but the same preflight checks and existing owner prompts still
-run. For a non-interactive install, pass `--email` and `--organization`, and provide the first owner password through
-`COMPARTMENT_ADMIN_PASSWORD`:
-
-```bash
-: "${COMPARTMENT_ADMIN_PASSWORD:?Load it from your secret manager first}"
-export COMPARTMENT_ADMIN_PASSWORD
-compartment install \
-  --values compartment-values.yaml \
-  --email admin@example.com \
-  --organization 'Acme Dev'
-```
-
-The password must contain at least eight characters. Supply it from your CI or secret-management system and avoid
-persisting it in shell history or committed files.
-
-In the managed-domain example above, export the broker-issued
-`COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN`. The command creates the foundation release, observes every typed shared
-Ingress target, reserves an allocation through `https://broker.compartment.run`, binds the targets, and persists the
-installation ID, allocation, and targets in a retained Kubernetes Secret. It then completes the chart with
-cert-manager DNS-01 TLS. Only the DNS-01 solver reads the allocation token; certificate private keys remain in
-Kubernetes TLS Secrets. Helm also
-records supplied secret values in its Kubernetes release revision Secrets, so restrict access to Helm and platform
-Secrets.
-
-The private registry hostname resolves from every node to the retained cluster-only registry Service. Set
-`registry.hostname` and reference the installation's existing cert-manager issuer with `registry.issuerRef`.
-Resolvers with DNS-rebinding protection must allow the registry zone to return private addresses. Kube-proxy-less
-Cilium is not supported. Installation completes only after the signed acceptance image pulls and starts on every
-eligible node; no node container-runtime configuration is written.
-
-### Recover the bundled registry
-
-If the registry Pod or volume fails, pause builds first; running application Pods are unaffected, but new deploys and
-rescheduling are unavailable. Record the registry-auth Service ClusterIP, inspect Pod and PVC events, and fence a lost
-node before reattaching its volume. Keep the failed volume until recovery is verified.
-
-Restore an application-consistent storage snapshot to the retained or replacement PVC, wait for the registry and
-registry-auth Deployments, and authenticate through `registry.hostname`. Fetch a known manifest by its recorded
-`sha256` digest to verify integrity. Confirm the Service retained the recorded ClusterIP, then rerun
-`compartment install` with the same context, namespace, release name, and values. The rerun repeats the pull on every
-eligible node; do not resume builds until it passes.
-
-The k3d product test uses a local issuer and installs its test CA only into disposable k3d nodes. That is equivalent to
-production nodes already trusting the public Web-PKI root used by the T3-owned issuer. Production does not install a
-private CA or write container-runtime registry configuration.
-
-Use `--kube-context`, `--namespace`, or `--release-name` when the defaults are not appropriate. Pass
-`--broker-url <url>` only for a managed-domain broker override. A CLI built directly from a source checkout has no
-embedded chart; pass `--chart ./deploy/chart/compartment` in that case. Source builds retain the chart and operator
-image tags, so set all five `images.*.tag` values explicitly when you need a pinned source install.
-
-You can install the CLI and immediately start the same interactive platform install:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/compartmentdev/compartment/kubernetes/install.sh | sh -s -- \
-  --channel kubernetes \
-  --init-install
-```
-
-This starts the same guided install as `compartment install`. Add `--values compartment-values.yaml` for the
-declarative path. This raw GitHub URL is temporary until the Kubernetes branch replaces the public installer.
-
-If the command stops before confirming owner creation, rerun it with the same release name, namespace, domain mode,
-and values. For managed domains, omit `--base-domain` again. A deployed release resumes its saved allocation; a
-reinstall with the same release coordinates reuses the retained install-state Secret. If Helm reports a failed or
-pending release, repair or remove that release before retrying. After the owner was created, use `compartment login
---api-url <console-url>` instead of rerunning the one-time install endpoint.
-
-For your own base domain, point `console.<baseDomain>` and `*.<baseDomain>` to the shared Ingress endpoint, then pass
-`--base-domain <baseDomain>`. The installer derives the Console URL; `--api-url` remains available when you need to
-state it explicitly. If the Caddy Service is not a LoadBalancer, set `platform.publicIngressIpv4` or
-`platform.publicIngressIpv6` in the operator values file.
-
-To use an operator-owned certificate, create a TLS Secret in the release namespace and select it:
-
-```bash
-kubectl create namespace compartment --dry-run=client --output yaml \
-  | kubectl apply --filename -
-kubectl --namespace compartment create secret tls compartment-public-tls \
-  --cert fullchain.pem \
-  --key privkey.pem
-```
-
-```yaml
-tls:
-  existingSecret: compartment-public-tls
-```
-
-Ingress references the Secret directly; neither API nor Caddy mounts it. Alternatively, set `tls.issuerRef` to an
-existing `Issuer` or operator-owned `ClusterIssuer`. Compartment creates exact console and wildcard Certificates but
-never creates an implicit customer-wide ClusterIssuer. Select the Secret or Issuer before running `compartment
-install`.
-
-The install-state Secret and registry-auth Service have Helm's `keep` policy. An uninstall followed by reinstall with
-the same namespace and release name retains the installation ID, domain allocation, ingress addresses, and registry
-ClusterIP, so the registry hostname binding remains valid. Keep the namespace and registry-auth Service during this
-supported reinstall path. To intentionally abandon only the install identity, uninstall the release and delete the
-Secret selected by both `app.kubernetes.io/instance=<release>` and
-`app.kubernetes.io/component=install-state` before reinstalling. The next managed install requests a new allocation.
-
-For a same-release reinstall, record the registry address, uninstall without deleting the namespace, and confirm that
-Helm retained the Service. Rerun the same Compartment install command with the same namespace, release name, and values,
-then repeat the final check before deploying applications:
-
-```bash
-registry_service=compartment-compartment-registry-auth
-registry_ip="$(kubectl --namespace compartment get service "$registry_service" --output jsonpath='{.spec.clusterIP}')"
-helm uninstall compartment --namespace compartment
-test "$(kubectl --namespace compartment get service "$registry_service" --output jsonpath='{.spec.clusterIP}')" = "$registry_ip"
-# Rerun the same compartment install command here.
-test "$(kubectl --namespace compartment get service "$registry_service" --output jsonpath='{.spec.clusterIP}')" = "$registry_ip"
-```
-
-If you delete the namespace or retained registry-auth Service, reinstall can allocate a different ClusterIP. The CLI
-must bind the registry hostname to that address and repeat the every-node pull acceptance before deploying an
-application.
-
-Verify the Helm release and platform workload readiness before inviting more users:
-
-```bash
-compartment system status \
+  --kubeconfig ./kubeconfig \
+  --kube-context production \
   --namespace compartment \
-  --release-name compartment
+  --release-name compartment \
+  --ingress-class nginx \
+  --storage-class fast
 ```
 
-The chart does not publish `/internal/*`; only the documented control-plane and application paths pass through Caddy.
+Use `--ingress-endpoint` only when the selected controller does not publish an address in Ingress status. It accepts
+one IPv4 address, IPv6 address, or DNS hostname.
 
-See the generated [`compartment install` reference](/reference/generated/cli/install/) for the complete option list.
+The preflight checks APIs, cert-manager, ingress, storage, Helm ownership, namespace policy labels, and permissions.
+Installation stops with remediation instructions when the existing cluster does not satisfy those requirements.
 
-## Maintain the Kubernetes platform
+The command installs the matching bundled chart, creates the first owner, and saves the CLI session. If it stops
+before owner creation, repair the reported cluster or Helm condition and retry with the same release coordinates.
 
-Check the Helm release state and the readiness of its Deployments and DaemonSets:
+## Public routing and TLS
+
+The existing Ingress Controller owns public ports and TLS termination. Compartment creates exact console and
+application host rules. It does not create catch-all routes or expose internal, health, registry, build, or operator
+endpoints.
+
+For an operator-owned system domain, set `tls.issuerRef` in the values file and run:
 
 ```bash
-compartment system status --namespace compartment --release-name compartment
+compartment system domain set --base-domain apps.example.com --values compartment-values.yaml
+compartment system domain verify
+compartment system domain activate --values compartment-values.yaml
 ```
 
-Restart the API, Worker, Edge, Caddy, Project Provisioner, and Registry Auth Deployments and wait for their rollouts.
-This leaves PostgreSQL, the stateful registry, and BuildKit running:
+Publish every DNS and ownership record printed by `set`. The activation waits for the selected Ingress and
+cert-manager Certificate to become ready.
+
+An existing `kubernetes.io/tls` Secret may be referenced with `tls.existingSecret` when required by the ingress
+contract. Compartment does not create or copy operator certificate material.
+
+## Registry and builds
+
+The bundled registry is private. Every project receives repository-scoped registry credentials and its own image pull
+Secret. Nodes resolve the operator-provided private registry hostname through cluster infrastructure; Compartment
+does not edit node files or restart node services.
+
+Dockerfile and Railpack builds continue to use BuildKit and produce OCI images. Project NetworkPolicies preserve
+tenant isolation and the configured RFC1918 egress policy.
+
+## Connect to an existing control plane
 
 ```bash
-compartment system restart --namespace compartment --release-name compartment
+compartment login --api-url https://api.example.com
 ```
 
-Update with a release CLI and its matching bundled chart. Supply the same operator values file used for installation:
-
-```bash
-compartment system update \
-  --values compartment-values.yaml \
-  --namespace compartment \
-  --release-name compartment
-```
-
-The release CLI selects its packaged platform version. Before Helm activates it, the CLI verifies the new API, Worker,
-Edge, and Caddy image signatures against Compartment's signing identity and resolves their immutable digests. An
-unsigned image or a different signing identity stops the update before Helm changes the release. A source CLI build
-requires both `--version <image-tag>` and `--chart ./deploy/chart/compartment`.
-
-The public bootstrapper can download the selected release CLI and immediately run the same verified update:
-
-```bash
-curl -fsSL https://compartment.dev/install.sh | sh -s -- \
-  --channel kubernetes \
-  --init-update \
-  --values compartment-values.yaml
-```
-
-Use `--channel kubernetes` to stay on the Kubernetes line. This channel always resolves the current Kubernetes branch
-HEAD and does not support version pinning; the installer rejects combining it with `--version`. Use
-`--version <release>` or `--channel main` only when you intend to switch to that release line. The operator needs normal
-Helm update permissions, permission to list the release's Deployments and DaemonSets for status, and permission to
-restart and watch the API, Worker, Edge, Caddy, Project Provisioner, and Registry Auth Deployments.
-
-See the generated [`compartment system` reference](/reference/generated/cli/system/) for all lifecycle command options.
-
-## Change the system domain
-
-Use `compartment system domain` with the Helm release coordinates. Start by checking the active and pending state:
-
-```bash
-compartment system domain status \
-  --namespace compartment \
-  --release-name compartment
-```
-
-Stage a custom domain after you point `console.<baseDomain>` and `*.<baseDomain>` at the public load balancer:
-
-```bash
-compartment system domain set \
-  --base-domain apps.example.com \
-  --tls external \
-  --values compartment-values.yaml \
-  --namespace compartment \
-  --release-name compartment
-```
-
-Publish every DNS record printed by `set`, including the operation-specific ownership TXT record, and wait for DNS
-propagation. Then verify the pending domain:
-
-```bash
-compartment system domain verify \
-  --namespace compartment \
-  --release-name compartment
-```
-
-Use `--tls custom-cert` to keep the public `attach-cert` workflow. Attach the certificate before verification:
-
-```bash
-compartment system domain attach-cert \
-  --cert-file fullchain.pem \
-  --key-file privkey.pem \
-  --values compartment-values.yaml \
-  --namespace compartment \
-  --release-name compartment
-```
-
-The CLI validates the pair locally and stores it in an operation-specific Kubernetes TLS Secret consumed by Ingress.
-The API retains only the Secret name and certificate metadata; API, Caddy, and the managed-domain broker never receive
-the private key. Publish the DNS records printed by `set` and wait for propagation before verification. Activate the
-verified domain with the same operator values and matching chart:
-
-```bash
-compartment system domain activate \
-  --values compartment-values.yaml \
-  --namespace compartment \
-  --release-name compartment
-```
-
-Activation applies the new Ingress TLS path, waits for Ingress publication and Certificate readiness when applicable,
-records the activation, and only then commits the retained domain generation. If the command stops, rerun it. The
-generation check prevents older domain values from replacing the retained active state.
-
-Before `attach-cert`, `activate`, or `reset-managed` changes the Helm release, the CLI re-verifies the effective API,
-Worker, Edge, and Caddy images and stops the rollout if any image fails the signing policy.
-
-An installation that started with a managed domain retains that allocation when you activate a custom domain. Restore
-it with:
-
-```bash
-compartment system domain reset-managed \
-  --values compartment-values.yaml \
-  --namespace compartment \
-  --release-name compartment
-```
-
-Pass `--chart ./deploy/chart/compartment` to domain commands that change Kubernetes resources when you use a CLI built
-from source. `--kube-context`, `--namespace`, and `--release-name` select another release. The system commands use the
-operator's Kubernetes access and do not publish a recovery endpoint through Caddy. Every system-domain command and
-password recovery needs permission to get the API Deployment, list its Pods, and create the `pods/exec` subresource.
-Only `attach-cert`, `activate`, and `reset-managed` additionally need the normal Helm upgrade permissions for the
-chart's resources.
-
-See the generated [`compartment system domain` reference](/reference/generated/cli/system/domain/) for command options.
-If the owner is locked out, follow [Troubleshoot Access](/manage-access/troubleshoot-access/#a-local-password-user-is-locked-out)
-for the private operator password-reset flow.
-
-## Repository development
-
-`install --dev` seeds the local development API started from this repository and creates the first admin session:
-
-```bash
-compartment install --dev --remote local-dev
-```
-
-Next steps:
-
-- Read [Login, Activation, and the Control Plane](/manage-access/login-activation-and-the-control-plane/).
-- Continue to [First Deploy](/quickstart/first-deploy/).
+Use `compartment system status` to inspect the authenticated control plane and current organization.

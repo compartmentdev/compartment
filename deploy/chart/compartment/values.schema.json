@@ -15,30 +15,9 @@
     "ingress": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["className", "controller", "endpoint", "targetsJson"],
+      "required": ["className", "endpoint", "targetsJson"],
       "properties": {
         "className": { "type": "string", "minLength": 1 },
-        "controller": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["namespace", "podSelector"],
-          "properties": {
-            "namespace": { "type": "string", "minLength": 1 },
-            "podSelector": {
-              "type": "array",
-              "minItems": 1,
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["key", "value"],
-                "properties": {
-                  "key": { "type": "string", "minLength": 1 },
-                  "value": { "type": "string", "minLength": 1 }
-                }
-              }
-            }
-          }
-        },
         "endpoint": {
           "type": "object",
           "additionalProperties": false,
@@ -166,8 +145,6 @@
         "baseDomain",
         "publicProtocol",
         "tlsMode",
-        "publicIngressIpv4",
-        "publicIngressIpv6",
         "acmeIssuer",
         "acmeCaUrl",
         "acmeEmail",
@@ -182,13 +159,7 @@
         "domainMode": { "type": "string", "enum": ["custom", "managed"] },
         "baseDomain": { "type": "string" },
         "publicProtocol": { "type": "string", "enum": ["http", "https"] },
-        "tlsMode": { "type": "string", "enum": ["broker-dns01", "internal", "issuer", "secret"] },
-        "publicIngressIpv4": {
-          "oneOf": [{ "const": "" }, { "type": "string", "format": "ipv4" }]
-        },
-        "publicIngressIpv6": {
-          "oneOf": [{ "const": "" }, { "type": "string", "format": "ipv6" }]
-        },
+        "tlsMode": { "type": "string", "enum": ["broker-dns01", "internal", "issuer"] },
         "acmeIssuer": { "type": "string", "enum": ["acme"] },
         "acmeCaUrl": { "type": "string", "pattern": "^https://[^/?#@]+(/[^?#]*)?$" },
         "acmeEmail": {
@@ -232,33 +203,6 @@
         "registryCredentialSigningKey": {
           "oneOf": [{ "const": "" }, { "type": "string", "minLength": 32 }]
         }
-      }
-    },
-    "customTls": {
-      "type": "object",
-      "required": [
-        "existingSecret",
-        "pendingOperationId",
-        "certificate",
-        "privateKey",
-        "operatorSecretName",
-        "operatorCertificate",
-        "operatorPrivateKey",
-        "pendingSecretName",
-        "pendingCertificate",
-        "pendingPrivateKey"
-      ],
-      "properties": {
-        "existingSecret": { "type": "string" },
-        "pendingOperationId": { "type": "string", "pattern": "^[a-zA-Z0-9_-]*$" },
-        "certificate": { "type": "string" },
-        "privateKey": { "type": "string" },
-        "operatorSecretName": { "type": "string", "pattern": "^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$|^$" },
-        "operatorCertificate": { "type": "string" },
-        "operatorPrivateKey": { "type": "string" },
-        "pendingSecretName": { "type": "string", "pattern": "^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$|^$" },
-        "pendingCertificate": { "type": "string" },
-        "pendingPrivateKey": { "type": "string" }
       }
     },
     "service": {

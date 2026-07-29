@@ -165,9 +165,5 @@ function buildPublicIngress(
     ingressClassName,
     ingressEndpoint,
     ingressTargets,
-    publicIngressIpv4:
-      ingressTargets.find((target: KubernetesIngressEndpoint): boolean => target.type === 'A')?.value ?? '',
-    publicIngressIpv6:
-      ingressTargets.find((target: KubernetesIngressEndpoint): boolean => target.type === 'AAAA')?.value ?? '',
   };
 }

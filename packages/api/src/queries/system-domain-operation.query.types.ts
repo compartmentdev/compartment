@@ -9,13 +9,6 @@ export interface SystemDomainPendingStatusUpdateInput {
   pendingStatus: SystemDomainPendingStatus;
 }
 
-export interface SystemDomainPendingCertificateInput {
-  expectedSetupVersion: number;
-  operationId: string;
-  pendingCertificateMetadataJson: string;
-  pendingTlsSecretName: string;
-}
-
 export interface VerifiedSystemDomainPendingInput {
   expectedSetupVersion: number;
   operationId: string;

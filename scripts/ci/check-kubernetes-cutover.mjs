@@ -51,15 +51,56 @@ const forbiddenRuntimeTerms = [
   ['runtime ', 'verifier'].join(''),
 ];
 
+const forbiddenRemovedTopologyTerms = [
+  ['registry', '-mirror'].join(''),
+  ['skip', '-registry', '-mirror'].join(''),
+  ['registries', '.', 'yaml'].join(''),
+  ['custom', '-cert'].join(''),
+  ['custom', '-http'].join(''),
+  ['on', '-demand'].join(''),
+  ['attach', '-cert'].join(''),
+  ['ports', '.', 'https'].join(''),
+  ['existing', 'Cluster'].join(''),
+  ['custom', 'Tls'].join(''),
+  ['custom', '-tls'].join(''),
+  ['pending', '_caddy', '_mode'].join(''),
+  ['pending', '_certificate', '_metadata', '_json'].join(''),
+  ['pending', '_certificate', '_path'].join(''),
+  ['pending', '_private', '_key', '_path'].join(''),
+  ['pending', '_tls', '_secret', '_name'].join(''),
+  ['active', '-custom', '-tls', '-secret'].join(''),
+  ['operator', '-custom', '-tls', '-secret'].join(''),
+  ['COMPARTMENT', 'PUBLIC', 'INGRESS', 'IPV4'].join('_'),
+  ['COMPARTMENT', 'PUBLIC', 'INGRESS', 'IPV6'].join('_'),
+  ['COMPARTMENT', 'CADDY', 'HTTPS', 'PORT'].join('_'),
+  ['COMPARTMENT', 'CUSTOM', 'TLS'].join('_'),
+  ['COMPARTMENT', 'CADDY', 'BUILDER', 'IMAGE'].join('_'),
+  ['caddy', '-dns-compartment-broker'].join(''),
+  ['x', 'caddy'].join(''),
+  ['public', 'Ingress', 'Ipv4'].join(''),
+  ['public', 'Ingress', 'Ipv6'].join(''),
+  ['--disable ', 'traefik'].join(''),
+  ['execute', 'Legacy', 'Kubernetes', 'Install', 'Command'].join(''),
+  ['materialize', 'Adopted', 'Kubernetes', 'Install'].join(''),
+];
+
 const forbiddenPathPrefixes = [
   ['.github/workflows/', '_system-user-flow-e2e.yml'].join(''),
   ['docker', '-compose.self-hosted'].join(''),
   ['packages/', 'node/'].join(''),
   ['packages/cli/src/', 'docker-'].join(''),
   ['packages/cli/src/', ['node', 'agent'].join('-')].join(''),
+  ['packages/cli/src/services/', ['kubernetes', 'install', 'adoption.service.ts'].join('-')].join(''),
 ];
 
 const migrationSnapshotPath = 'packages/api/drizzle/meta/0000_snapshot.json';
+const currentMigrationSnapshotPath = 'packages/api/drizzle/meta/0005_snapshot.json';
+const canonicalRemovalSpecificationPath = 'docs/specs/existing-kubernetes-install.md';
+const canonicalCaddyDockerfilePath = 'packages/edge/Dockerfile.caddy.self-hosted';
+const canonicalCaddyBuildTerms = new Set([
+  ['COMPARTMENT', 'CADDY', 'BUILDER', 'IMAGE'].join('_'),
+  ['x', 'caddy'].join(''),
+]);
 const forbiddenMigrationSnapshotTerms = [
   ['public.', 'nodes'].join(''),
   ['node', 'id'].join('_'),
@@ -115,6 +156,9 @@ function withoutGitRepositoryEnvironment() {
 }
 
 function findFileViolations(repositoryRoot, path) {
+  if (path === canonicalRemovalSpecificationPath) {
+    return [];
+  }
   const contents = readFileSync(join(repositoryRoot, path), 'utf8');
   return [...findContentViolations(path, contents), ...findMigrationSnapshotViolations(path, contents)];
 }
@@ -129,9 +173,15 @@ export function findMigrationSnapshotViolations(path, contents) {
 }
 
 export function findContentViolations(path, contents) {
-  return forbiddenRuntimeTerms.flatMap((term) =>
-    contents.includes(term) ? [`${path}: contains forbidden runtime term ${term}`] : [],
-  );
+  const guardedTerms =
+    path.startsWith('packages/api/drizzle/') && path !== currentMigrationSnapshotPath
+      ? forbiddenRuntimeTerms
+      : [...forbiddenRuntimeTerms, ...forbiddenRemovedTopologyTerms];
+  const terms =
+    path === canonicalCaddyDockerfilePath
+      ? guardedTerms.filter((term) => !canonicalCaddyBuildTerms.has(term))
+      : guardedTerms;
+  return terms.flatMap((term) => (contents.includes(term) ? [`${path}: contains forbidden runtime term ${term}`] : []));
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {

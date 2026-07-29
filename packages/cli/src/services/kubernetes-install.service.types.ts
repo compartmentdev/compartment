@@ -53,8 +53,6 @@ export interface KubernetesInstallState {
   ingressTargets: KubernetesIngressEndpoint[];
   managedDomainAllocationId: string;
   managedDomainBrokerToken: string;
-  publicIngressIpv4: string;
-  publicIngressIpv6: string;
   publicProtocol: KubernetesPublicProtocol;
   tlsMode: KubernetesInstallTlsMode;
 }
@@ -100,8 +98,6 @@ export interface KubernetesInstallPlatformValues {
   installationId: string;
   managedDomainAllocationId?: string | undefined;
   managedDomainBrokerUrl: string;
-  publicIngressIpv4?: string | undefined;
-  publicIngressIpv6?: string | undefined;
   publicProtocol?: KubernetesPublicProtocol | undefined;
   tlsMode?: KubernetesInstallTlsMode | undefined;
 }
@@ -115,8 +111,6 @@ export interface KubernetesPublicIngress {
   ingressClassName: string;
   ingressEndpoint: KubernetesIngressEndpoint | null;
   ingressTargets: KubernetesIngressEndpoint[];
-  publicIngressIpv4: string;
-  publicIngressIpv6: string;
 }
 
 export interface KubernetesPublicIngressResolutionInput {
@@ -192,6 +186,6 @@ export interface PublicControlPlaneObservation {
 
 export type KubernetesInstallStage = 'foundation' | 'full';
 export type KubernetesInstallDomainMode = 'custom' | 'managed';
-export type KubernetesInstallTlsMode = 'broker-dns01' | 'internal' | 'issuer' | 'secret';
+export type KubernetesInstallTlsMode = 'broker-dns01' | 'internal' | 'issuer';
 export type KubernetesIngressEndpointType = 'A' | 'AAAA' | 'hostname';
 export type KubernetesPublicProtocol = 'http' | 'https';

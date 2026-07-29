@@ -171,7 +171,6 @@ tests:
         installationId: test-install
         baseDomain: apps.example.com
         publicProtocol: https
-        publicIngressIpv4: 8.8.8.8
         managedDomainBrokerUrl: ''
       secrets: *stableSecrets
     asserts:
@@ -892,8 +891,8 @@ tests:
           value: '8080'
         template: configmap.yaml
       - equal:
-          path: data.COMPARTMENT_PUBLIC_INGRESS_IPV4
-          value: 8.8.8.8
+          path: data.COMPARTMENT_INGRESS_TARGETS_JSON
+          value: '[]'
         template: configmap.yaml
       - equal:
           path: data.COMPARTMENT_BASE_DOMAIN
@@ -1410,7 +1409,6 @@ tests:
         installationId: test-install
         baseDomain: apps.example.com
         publicProtocol: https
-        publicIngressIpv4: 8.8.8.8
       edge:
         snapshots:
           enabled: true
@@ -1451,7 +1449,6 @@ tests:
         publicProtocol: https
         tlsMode: broker-dns01
         managedDomainAllocationId: allocation-managed
-        publicIngressIpv4: 8.8.4.4
         acmeEmail: admin@example.com
       secrets:
         <<: *stableSecrets
@@ -1468,142 +1465,6 @@ tests:
             name: active-tls
           any: true
         template: api.yaml
-        documentIndex: 1
-
-  - it: keeps an existing operator TLS Secret out of API mounts
-    set:
-      platform: &customCertPlatform
-        startupStage: full
-        installationId: test-custom
-        baseDomain: apps.example.com
-        publicProtocol: https
-        tlsMode: secret
-        publicIngressIpv4: 8.8.8.8
-        acmeEmail: admin@example.com
-      customTls:
-        existingSecret: operator-tls
-      secrets: *stableSecrets
-    asserts:
-      - notFailedTemplate: {}
-      - notContains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: active-tls
-          any: true
-        template: api.yaml
-        documentIndex: 1
-
-  - it: writes pending certificate material only to an operation TLS Secret
-    set:
-      platform:
-        <<: *managedPlatform
-        installationId: test-pending
-      customTls:
-        pendingSecretName: operator-tls
-        pendingCertificate: test-certificate
-        pendingPrivateKey: test-private-key
-        pendingOperationId: domop_123
-      secrets:
-        <<: *stableSecrets
-        managedDomainBrokerToken: broker-token
-    asserts:
-      - notFailedTemplate: {}
-      - equal:
-          path: metadata.name
-          value: operator-tls
-        template: custom-tls-secret.yaml
-      - equal:
-          path: stringData["tls.crt"]
-          value: test-certificate
-        template: custom-tls-secret.yaml
-      - notContains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: pending-tls
-          any: true
-        template: api.yaml
-        documentIndex: 1
-
-  - it: renders inline custom certificate material into the shared TLS Secret
-    set:
-      platform:
-        <<: *customCertPlatform
-        installationId: test-inline-custom
-      customTls:
-        certificate: test-certificate
-        privateKey: test-private-key
-      secrets: *stableSecrets
-    asserts:
-      - notFailedTemplate: {}
-      - hasDocuments:
-          count: 1
-        template: custom-tls-secret.yaml
-      - isKind:
-          of: Secret
-        template: custom-tls-secret.yaml
-      - equal:
-          path: metadata.name
-          value: compartment-compartment-custom-tls
-        template: custom-tls-secret.yaml
-      - equal:
-          path: stringData["tls.crt"]
-          value: test-certificate
-        template: custom-tls-secret.yaml
-      - equal:
-          path: stringData["tls.key"]
-          value: test-private-key
-        template: custom-tls-secret.yaml
-      - notContains:
-          path: spec.template.spec.containers[0].volumeMounts
-          content:
-            name: tls
-          any: true
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: &inlineCustomTlsChecksum 93a40ad1a15ccd918acf6fa268ab3d823407d9e4a9019d0023955252676aef0a
-        template: caddy.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: *inlineCustomTlsChecksum
-        template: api.yaml
-        documentIndex: 1
-
-  - it: rolls the inline custom certificate checksum with rotated material
-    set:
-      platform:
-        <<: *customCertPlatform
-        installationId: test-inline-custom
-      customTls:
-        certificate: rotated-certificate
-        privateKey: test-private-key
-      secrets: *stableSecrets
-    asserts:
-      - notFailedTemplate: {}
-      - equal:
-          path: stringData["tls.crt"]
-          value: rotated-certificate
-        template: custom-tls-secret.yaml
-      - equal:
-          path: stringData["tls.key"]
-          value: test-private-key
-        template: custom-tls-secret.yaml
-      - equal:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: &rotatedInlineCustomTlsChecksum 288f3b22359f08203dec498e138ef7a169bb9fc224a4b5bef85ad13fe1b9401c
-        template: api.yaml
-        documentIndex: 1
-      - notEqual:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: *inlineCustomTlsChecksum
-        template: api.yaml
-        documentIndex: 1
-      - equal:
-          path: spec.template.metadata.annotations["checksum/custom-tls"]
-          value: *rotatedInlineCustomTlsChecksum
-        template: caddy.yaml
         documentIndex: 1
 
   - it: applies fullname override without renaming retained install state

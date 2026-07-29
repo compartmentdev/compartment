@@ -19,7 +19,6 @@ import {
   runPlatformK3dCleanupStep,
   settlePlatformK3dStartup,
   shouldCleanPlatformSourceCacheImage,
-  shouldCleanLegacyPlatformResources,
   withPlatformK3dProcessLock,
 } from './platform-k3d-e2e-support.mjs';
 import {
@@ -71,7 +70,6 @@ const certManagerManifestUrl =
 const pebbleImageRef =
   'ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199';
 const archiveLoadLockDirectory = join(tmpdir(), 'compartment-platform-k3d-image-load.lock');
-const legacyCleanupLockDirectory = join(tmpdir(), 'compartment-platform-k3d-legacy-cleanup.lock');
 const builtImageRefsByServiceName = Object.freeze(
   Object.fromEntries(
     platformK3dServiceNames.map((serviceName) => [
@@ -239,7 +237,7 @@ export function renderPlatformK3dValues(imageDigestsByServiceName) {
 }
 
 export function renderManagedPlatformK3dValues(imageDigestsByServiceName) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nplatform:\n  publicIngressIpv4: 8.8.4.4\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
 }
 
 function renderPlatformImageValues(imageDigestsByServiceName) {
@@ -252,79 +250,9 @@ function renderPlatformImageValues(imageDigestsByServiceName) {
   return `images:\n${imageValues}\n`;
 }
 
-async function cleanLegacyPlatformResources() {
-  if (!shouldCleanLegacyPlatformResources(platformEnvironment)) {
-    return;
-  }
-  await withPlatformK3dProcessLock(legacyCleanupLockDirectory, cleanLegacyPlatformResourcesUnlocked);
-}
-
-function cleanLegacyPlatformResourcesUnlocked() {
-  const cleanupErrors = [];
-  const legacyClusterName = 'compartment-e2e';
-  const legacyRegistryName = 'compartment-e2e-registry';
-  runCleanupStep(cleanupErrors, 'legacy cluster', () => {
-    const clusterNames = parseK3dClusterNames(
-      captureCommand('k3d', ['cluster', 'list', '--no-headers'], repositoryRoot),
-    );
-    if (clusterNames.includes(legacyClusterName)) {
-      runCommand('k3d', ['cluster', 'delete', legacyClusterName], repositoryRoot);
-    }
-  });
-  runCleanupStep(cleanupErrors, 'legacy registry', () => {
-    const registryNames = parseK3dClusterNames(
-      captureCommand('k3d', ['registry', 'list', '--no-headers'], repositoryRoot),
-    );
-    if (registryNames.includes(`k3d-${legacyRegistryName}`)) {
-      runCommand('k3d', ['registry', 'delete', `k3d-${legacyRegistryName}`], repositoryRoot);
-    }
-  });
-  for (const containerName of [
-    `k3d-${legacyClusterName}-server-0`,
-    `k3d-${legacyClusterName}-serverlb`,
-    `k3d-${legacyRegistryName}`,
-  ]) {
-    if (dockerResourceExists('container', containerName)) {
-      runCleanupStep(cleanupErrors, `legacy container ${containerName}`, () => {
-        runCommand('docker', buildDockerContainerRemovalArgs(containerName), repositoryRoot);
-      });
-    }
-  }
-  if (dockerResourceExists('network', `k3d-${legacyClusterName}`)) {
-    runCleanupStep(cleanupErrors, 'legacy network', () => {
-      runCommand('docker', ['network', 'rm', `k3d-${legacyClusterName}`], repositoryRoot);
-    });
-  }
-  let legacyVolumeNames = [];
-  runCleanupStep(cleanupErrors, 'legacy volume inventory', () => {
-    legacyVolumeNames = captureCommand('docker', ['volume', 'ls', '--format', '{{.Name}}'], repositoryRoot)
-      .split('\n')
-      .map((name) => name.trim())
-      .filter((name) => [`k3d-${legacyClusterName}`, `k3d-${legacyClusterName}-images`].includes(name));
-  });
-  for (const volumeName of legacyVolumeNames) {
-    runCleanupStep(cleanupErrors, `legacy volume ${volumeName}`, () => {
-      runCommand('docker', ['volume', 'rm', '--force', volumeName], repositoryRoot);
-    });
-  }
-  for (const legacyStatePath of [
-    '.compartment/platform-k3d-e2e-values.yaml',
-    '.compartment/platform-k3d-managed-e2e-values.yaml',
-    '.compartment/platform-k3d-e2e-owner.env',
-    '.compartment/pebble.minica.pem',
-    '.compartment/pebble.root.pem',
-  ]) {
-    rmSync(resolve(repositoryRoot, legacyStatePath), { force: true });
-  }
-  if (cleanupErrors.length > 0) {
-    throw new AggregateError(cleanupErrors, 'Unable to fully clean legacy platform k3d resources.');
-  }
-}
-
 async function upPlatform(command) {
   assertRequiredTools();
   try {
-    await cleanLegacyPlatformResources();
     await withPlatformK3dProcessLock(archiveLoadLockDirectory, async () => cleanHistoricalPlatformSourceImages());
     cleanPlatformResources();
     recreateRegistry();

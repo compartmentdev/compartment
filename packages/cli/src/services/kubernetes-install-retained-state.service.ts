@@ -116,8 +116,6 @@ export function mergeRetainedKubernetesInstallState(
 function mergeRetainedIdentityFields(merged: ExistingKubernetesInstall, current: ExistingKubernetesInstall): void {
   merged.acmeEmail = preferRetainedText(merged.acmeEmail, current.acmeEmail);
   merged.baseDomain = preferRetainedText(merged.baseDomain, current.baseDomain);
-  merged.publicIngressIpv4 = preferRetainedText(merged.publicIngressIpv4, current.publicIngressIpv4);
-  merged.publicIngressIpv6 = preferRetainedText(merged.publicIngressIpv6, current.publicIngressIpv6);
 }
 
 function mergeRetainedIngressFields(merged: ExistingKubernetesInstall, current: ExistingKubernetesInstall): void {
@@ -190,8 +188,6 @@ function parseRetainedStateSecret(data: Record<string, string>): RetainedKuberne
     ingressTargets: readIngressTargets(data),
     managedDomainAllocationId: readSecretText(data, 'managed-domain-allocation-id'),
     managedDomainBrokerToken: readSecretText(data, 'managed-domain-broker-token'),
-    publicIngressIpv4: readSecretText(data, 'public-ingress-ipv4'),
-    publicIngressIpv6: readSecretText(data, 'public-ingress-ipv6'),
     publicProtocol: readPublicProtocol(data),
     tlsMode: readTlsMode(data),
   };
@@ -236,7 +232,7 @@ function readPublicProtocol(data: Record<string, string>): KubernetesPublicProto
 
 function readTlsMode(data: Record<string, string>): KubernetesInstallTlsMode {
   const value: string = readSecretText(data, 'tls-mode');
-  if (value === 'broker-dns01' || value === 'internal' || value === 'issuer' || value === 'secret') {
+  if (value === 'broker-dns01' || value === 'internal' || value === 'issuer') {
     return value;
   }
   throw new Error('The retained install-state Secret has no recognized TLS mode.');

@@ -18,6 +18,7 @@ import {
   type DeploymentSummary,
   type DeployResponse,
   type InstallResponse,
+  type ManagedDomainTarget,
   type SystemDomainMutationResponse,
   type SystemDomainSetRequest,
   type RemoveCustomDomainResponse,
@@ -153,22 +154,6 @@ function buildCustomExternalDomainSetRequest(
   };
 }
 
-function createCustomCertificateApiConfig(): ApiConfig {
-  return {
-    ...defaultApiConfig,
-    baseDomain: 'customer.example.com',
-    tlsMode: 'secret',
-    controlPlaneHost: 'console.customer.example.com',
-    publicProtocol: 'https',
-    auditRetentionDays: 90,
-    auditRetentionCleanupBatchSize: 1000,
-    auditRetentionCleanupCron: '0 3 * * *',
-    auditRetentionCleanupMaxBatches: 100,
-    auditFileSink: defaultAuditFileSinkConfig,
-    rollbackRetentionLimit: null,
-  };
-}
-
 function createManagedApiConfig(): ApiConfig {
   return {
     ...defaultApiConfig,
@@ -185,11 +170,33 @@ function createManagedApiConfig(): ApiConfig {
   };
 }
 
+function createOperatorApiConfig(): ApiConfig {
+  return {
+    ...defaultApiConfig,
+    baseDomain: 'customer.example.com',
+    tlsMode: 'issuer',
+    controlPlaneHost: 'console.customer.example.com',
+    publicProtocol: 'https',
+  };
+}
+
 function createManagedDualStackPublicIngressConfig(): ApiPublicIngressConfig {
   return {
-    publicIngressIpv4: publicIpv4Address,
-    publicIngressIpv6: publicIpv6Address,
+    targets: [
+      { type: 'A', value: publicIpv4Address },
+      { type: 'AAAA', value: publicIpv6Address },
+    ],
   };
+}
+
+function readIngressTarget(config: ApiPublicIngressConfig, type: 'A' | 'AAAA'): string {
+  const target: string | undefined = config.targets.find(
+    (candidate: ManagedDomainTarget): boolean => candidate.type === type,
+  )?.value;
+  if (target === undefined) {
+    throw new Error(`Missing ${type} ingress target.`);
+  }
+  return target;
 }
 
 const { testDatabaseUrl } = readDatabaseTestMode();
@@ -198,7 +205,7 @@ const apiIntegrationDatabaseUrl: string = deriveProcessScopedDatabaseUrl(
   'api_integration_custom_domains',
 );
 process.env.COMPARTMENT_DATABASE_URL = apiIntegrationDatabaseUrl;
-const testCustomTlsDirectory: string = resolve(tmpdir(), 'compartment-api-integration-custom-domains-tls');
+const testTempDirectory: string = resolve(tmpdir(), 'compartment-api-integration-custom-domains-temp');
 process.env.COMPARTMENT_SESSION_SECRET = process.env.COMPARTMENT_SESSION_SECRET ?? 'test-secret';
 process.env.COMPARTMENT_ENV = 'dev';
 process.env.COMPARTMENT_INSTALL_TOKEN = 'test-install-token';
@@ -207,8 +214,7 @@ process.env.COMPARTMENT_TLS_MODE = 'internal';
 process.env.COMPARTMENT_PUBLIC_PROTOCOL = 'http';
 process.env.COMPARTMENT_PUBLIC_HTTP_PORT = '80';
 process.env.COMPARTMENT_PUBLIC_HTTPS_PORT = '443';
-process.env.COMPARTMENT_PUBLIC_INGRESS_IPV4 = '';
-process.env.COMPARTMENT_PUBLIC_INGRESS_IPV6 = '';
+process.env.COMPARTMENT_INGRESS_TARGETS_JSON = '[]';
 process.env.COMPARTMENT_POSTGRES_PASSWORD = 'postgres';
 process.env.COMPARTMENT_EDGE_TOKEN = 'test-edge-token';
 process.env.COMPARTMENT_SYSTEM_API_SOCKET = '/tmp/compartment/api-integration-custom-domains/system-api.sock';
@@ -272,8 +278,8 @@ describe('Phase 0 API integration custom domains', (): void => {
     dnsPromiseMocks.resolveCname.mockRejectedValue(new Error('No CNAME record.'));
     dnsPromiseMocks.resolveTxt.mockReset();
     dnsPromiseMocks.resolveTxt.mockRejectedValue(new Error('No TXT record.'));
-    await rm(testCustomTlsDirectory, { force: true, recursive: true });
-    await mkdir(testCustomTlsDirectory, { recursive: true });
+    await rm(testTempDirectory, { force: true, recursive: true });
+    await mkdir(testTempDirectory, { recursive: true });
     await resetDatabase(apiIntegrationDatabaseUrl);
     await runApiMigrations(apiIntegrationDatabaseUrl);
     pool = createDatabasePool(apiIntegrationDatabaseUrl);
@@ -295,7 +301,7 @@ describe('Phase 0 API integration custom domains', (): void => {
     hasInitializedApiIntegrationRuntime = true;
   });
   afterAll(async (): Promise<void> => {
-    await rm(testCustomTlsDirectory, { force: true, recursive: true });
+    await rm(testTempDirectory, { force: true, recursive: true });
   });
   afterEach(async (): Promise<void> => {
     vi.unstubAllGlobals();
@@ -370,7 +376,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       expect(ownershipRecord.recordType).toBe('TXT');
       expect(routingRecord).toMatchObject({
         recordType: 'A',
-        value: publicIngressConfig.publicIngressIpv4,
+        value: readIngressTarget(publicIngressConfig, 'A'),
       });
       expect(canonicalLocalRouteHost).toBe('smoke-web.localhost');
 
@@ -379,7 +385,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       expect(errorResponseSchema.parse(duplicateResponse.json()).error.code).toBe('custom_domain_collision');
 
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
+      dnsPromiseMocks.resolve4.mockResolvedValue([readIngressTarget(publicIngressConfig, 'A')]);
       const verifyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken);
       expect(verifyPayload.domain.status).toBe('reconciling');
       expect(appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState).not.toHaveBeenCalled();
@@ -439,17 +445,17 @@ describe('Phase 0 API integration custom domains', (): void => {
       expect(routingRecords).toEqual([
         expect.objectContaining({
           recordType: 'A',
-          value: publicIngressConfig.publicIngressIpv4,
+          value: readIngressTarget(publicIngressConfig, 'A'),
         }),
         expect.objectContaining({
           recordType: 'AAAA',
-          value: publicIngressConfig.publicIngressIpv6,
+          value: readIngressTarget(publicIngressConfig, 'AAAA'),
         }),
       ]);
 
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
-      dnsPromiseMocks.resolve6.mockResolvedValue([publicIngressConfig.publicIngressIpv6!]);
+      dnsPromiseMocks.resolve4.mockResolvedValue([readIngressTarget(publicIngressConfig, 'A')]);
+      dnsPromiseMocks.resolve6.mockResolvedValue([readIngressTarget(publicIngressConfig, 'AAAA')]);
 
       const verifyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken, host);
       expect(verifyPayload.domain.status).toBe('reconciling');
@@ -462,11 +468,11 @@ describe('Phase 0 API integration custom domains', (): void => {
     }
   });
 
-  it('persists and verifies custom-cert subdomain custom app domains through the protected API', async (): Promise<void> => {
+  it('persists and verifies issuer-backed subdomain custom app domains through the protected API', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
-    const customCertApiConfig: ApiConfig = createCustomCertificateApiConfig();
-    configureApiRuntime({ config: customCertApiConfig, db });
+    const operatorApiConfig: ApiConfig = createOperatorApiConfig();
+    configureApiRuntime({ config: operatorApiConfig, db });
 
     try {
       const host: string = 'app.public.example.com';
@@ -475,17 +481,17 @@ describe('Phase 0 API integration custom domains', (): void => {
       const routingRecord: CustomDomainDnsRecord = requireCustomDomainDnsRecord(createPayload, 'routing');
 
       expect(createPayload.domain).toMatchObject({
-        canonicalRouteHost: `smoke-web.${customCertApiConfig.baseDomain}`,
+        canonicalRouteHost: `smoke-web.${operatorApiConfig.baseDomain}`,
         host,
         status: 'pending',
       });
       expect(routingRecord).toMatchObject({
         recordType: 'CNAME',
-        value: `smoke-web.${customCertApiConfig.baseDomain}`,
+        value: `smoke-web.${operatorApiConfig.baseDomain}`,
       });
 
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolveCname.mockResolvedValue([`smoke-web.${customCertApiConfig.baseDomain}.`]);
+      dnsPromiseMocks.resolveCname.mockResolvedValue([`smoke-web.${operatorApiConfig.baseDomain}.`]);
 
       const verifyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken, host);
       expect(verifyPayload.domain.status).toBe('reconciling');
@@ -498,11 +504,11 @@ describe('Phase 0 API integration custom domains', (): void => {
     }
   });
 
-  it('persists and verifies custom-cert apex custom app domains through the protected API', async (): Promise<void> => {
+  it('persists and verifies issuer-backed apex custom app domains through the protected API', async (): Promise<void> => {
     const installPayload: InstallResponse = await installCompartment(app);
     await deployAndCompleteSmokeWeb(installPayload.sessionToken);
-    const customCertApiConfig: ApiConfig = createCustomCertificateApiConfig();
-    configureApiRuntime({ config: customCertApiConfig, db });
+    const operatorApiConfig: ApiConfig = createOperatorApiConfig();
+    configureApiRuntime({ config: operatorApiConfig, db });
 
     try {
       const host: string = 'example.co.uk';
@@ -513,7 +519,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       expect(routingRecord).toMatchObject({
         recordType: 'APEX_ALIAS',
         required: false,
-        value: `smoke-web.${customCertApiConfig.baseDomain}`,
+        value: `smoke-web.${operatorApiConfig.baseDomain}`,
       });
 
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
@@ -544,7 +550,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       const createPayload: CreateCustomDomainResponse = await createCustomDomain(installPayload.sessionToken, host);
       const ownershipRecord: CustomDomainDnsRecord = requireCustomDomainDnsRecord(createPayload, 'ownership');
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
+      dnsPromiseMocks.resolve4.mockResolvedValue([readIngressTarget(publicIngressConfig, 'A')]);
 
       const readyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken, host);
       expect(readyPayload.domain.status).toBe('reconciling');
@@ -583,7 +589,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       const createPayload: CreateCustomDomainResponse = await createCustomDomain(installPayload.sessionToken, host);
       const ownershipRecord: CustomDomainDnsRecord = requireCustomDomainDnsRecord(createPayload, 'ownership');
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
+      dnsPromiseMocks.resolve4.mockResolvedValue([readIngressTarget(publicIngressConfig, 'A')]);
       await verifyCustomDomain(installPayload.sessionToken, host);
 
       const readonlySessionToken: string = await createOrganizationMemberSession(installPayload, 'readonly');
@@ -658,7 +664,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       const createPayload: CreateCustomDomainResponse = await createCustomDomain(installPayload.sessionToken, host);
       const ownershipRecord: CustomDomainDnsRecord = requireCustomDomainDnsRecord(createPayload, 'ownership');
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
+      dnsPromiseMocks.resolve4.mockResolvedValue([readIngressTarget(publicIngressConfig, 'A')]);
       await verifyCustomDomain(installPayload.sessionToken, host);
 
       const viewerSessionToken: string = await createOrganizationMemberSession(installPayload, 'viewer');
@@ -726,7 +732,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       const createPayload: CreateCustomDomainResponse = createCustomDomainResponseSchema.parse(createResponse.json());
       const ownershipRecord: CustomDomainDnsRecord = requireCustomDomainDnsRecord(createPayload, 'ownership');
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
+      dnsPromiseMocks.resolve4.mockResolvedValue([readIngressTarget(publicIngressConfig, 'A')]);
 
       const verifyResponse: LightMyRequestResponse = await app.inject({
         method: 'POST',
@@ -765,7 +771,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       const createPayload: CreateCustomDomainResponse = await createCustomDomain(installPayload.sessionToken);
       const ownershipRecord: CustomDomainDnsRecord = requireCustomDomainDnsRecord(createPayload, 'ownership');
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
+      dnsPromiseMocks.resolve4.mockResolvedValue([readIngressTarget(publicIngressConfig, 'A')]);
       const readyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken);
       expect(readyPayload.domain.status).toBe('reconciling');
       await db
@@ -849,7 +855,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       const createPayload: CreateCustomDomainResponse = await createCustomDomain(installPayload.sessionToken);
       const ownershipRecord: CustomDomainDnsRecord = requireCustomDomainDnsRecord(createPayload, 'ownership');
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
+      dnsPromiseMocks.resolve4.mockResolvedValue([readIngressTarget(publicIngressConfig, 'A')]);
       const readyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken);
       expect(readyPayload.domain.status).toBe('reconciling');
       expect(readyPayload.domain.verifiedAt).not.toBeNull();
@@ -884,7 +890,7 @@ describe('Phase 0 API integration custom domains', (): void => {
       const createPayload: CreateCustomDomainResponse = await createCustomDomain(installPayload.sessionToken);
       const ownershipRecord: CustomDomainDnsRecord = requireCustomDomainDnsRecord(createPayload, 'ownership');
       dnsPromiseMocks.resolveTxt.mockResolvedValue([[ownershipRecord.value]]);
-      dnsPromiseMocks.resolve4.mockResolvedValue([publicIngressConfig.publicIngressIpv4!]);
+      dnsPromiseMocks.resolve4.mockResolvedValue([readIngressTarget(publicIngressConfig, 'A')]);
       const readyPayload: VerifyCustomDomainResponse = await verifyCustomDomain(installPayload.sessionToken);
       expect(readyPayload.domain.status).toBe('reconciling');
       appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockClear();
@@ -1042,8 +1048,7 @@ function configureApiRuntimeWithPublicIngress(
   config: ApiConfig,
   publicIngressConfig: ApiPublicIngressConfig = createEmptyPublicIngressConfig(),
 ): void {
-  process.env.COMPARTMENT_PUBLIC_INGRESS_IPV4 = publicIngressConfig.publicIngressIpv4 ?? '';
-  process.env.COMPARTMENT_PUBLIC_INGRESS_IPV6 = publicIngressConfig.publicIngressIpv6 ?? '';
+  process.env.COMPARTMENT_INGRESS_TARGETS_JSON = JSON.stringify(publicIngressConfig.targets);
   configureApiRuntime({ config, db });
 }
 

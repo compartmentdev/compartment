@@ -55,10 +55,6 @@ export function isRunOwnedImageRef(imageRef, environment) {
   );
 }
 
-export function shouldCleanLegacyPlatformResources(environment) {
-  return environment.clusterName !== 'compartment-e2e';
-}
-
 export function shouldCleanPlatformSourceCacheImage(imageRef, createdAt, now = Date.now()) {
   const createdAtMilliseconds = Date.parse(createdAt);
   return (

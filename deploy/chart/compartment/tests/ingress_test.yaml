@@ -72,14 +72,7 @@ tests:
           value: RELEASE-NAME-compartment-caddy
         template: ingress.yaml
 
-  - it: accepts Caddy traffic only from the selected ingress controller pods
-    set:
-      ingress:
-        controller:
-          namespace: ingress-system
-          podSelector:
-            - key: app.kubernetes.io/component
-              value: controller
+  - it: accepts Caddy traffic from an existing cluster ingress controller
     asserts:
       - equal:
           path: spec.podSelector.matchLabels
@@ -92,12 +85,7 @@ tests:
           path: spec.ingress
           value:
             - from:
-                - namespaceSelector:
-                    matchLabels:
-                      kubernetes.io/metadata.name: ingress-system
-                  podSelector:
-                    matchLabels:
-                      app.kubernetes.io/component: controller
+                - namespaceSelector: {}
               ports:
                 - protocol: TCP
                   port: 8080

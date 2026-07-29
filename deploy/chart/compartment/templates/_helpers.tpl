@@ -24,11 +24,6 @@ meta.helm.sh/release-name: {{ .Release.Name | quote }}
 meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- end }}
 
-{{- define "compartment.customTlsSecretName" -}}
-{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
-{{- default (printf "%s-custom-tls" (include "compartment.fullname" .)) $installState.effective.customTls.existingSecret -}}
-{{- end }}
-
 {{- define "compartment.installStateSecretName" -}}
 {{- $candidate := printf "%s-install-state" .Release.Name -}}
 {{- if le (len $candidate) 63 -}}
@@ -66,15 +61,7 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 - secretKey: ingress-targets-json
   valuesSection: ingress
   valueKey: targetsJson
-  policy: stable
-- secretKey: public-ingress-ipv4
-  valuesSection: platform
-  valueKey: publicIngressIpv4
-  policy: stable
-- secretKey: public-ingress-ipv6
-  valuesSection: platform
-  valueKey: publicIngressIpv6
-  policy: stable
+  policy: deferred
 - secretKey: acme-email
   valuesSection: platform
   valueKey: acmeEmail
@@ -99,16 +86,6 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
   valuesSection: platform
   valueKey: tlsMode
   policy: domain
-- secretKey: active-custom-tls-secret
-  valuesSection: customTls
-  valueKey: existingSecret
-  policy: domain
-  allowEmpty: true
-- secretKey: operator-custom-tls-secret
-  valuesSection: customTls
-  valueKey: operatorSecretName
-  policy: domain
-  allowEmpty: true
 {{- end }}
 
 {{- define "compartment.persistedSecretValue" -}}
@@ -121,9 +98,9 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- if and $existing $existing.data -}}
 {{- $data = $existing.data -}}
 {{- end -}}
-{{- $effective := dict "platform" (deepCopy .Values.platform) "customTls" (deepCopy .Values.customTls) "secrets" (deepCopy .Values.secrets) "ingress" (dict "className" .Values.ingress.className "targetsJson" .Values.ingress.targetsJson) "ingressEndpoint" (deepCopy .Values.ingress.endpoint) -}}
+{{- $effective := dict "platform" (deepCopy .Values.platform) "secrets" (deepCopy .Values.secrets) "ingress" (dict "className" .Values.ingress.className "targetsJson" .Values.ingress.targetsJson) "ingressEndpoint" (deepCopy .Values.ingress.endpoint) -}}
 {{- $persisted := deepCopy $effective -}}
-{{- $incomingSections := dict "platform" .Values.platform "customTls" .Values.customTls "secrets" .Values.secrets "ingress" .Values.ingress "ingressEndpoint" .Values.ingress.endpoint -}}
+{{- $incomingSections := dict "platform" .Values.platform "secrets" .Values.secrets "ingress" .Values.ingress "ingressEndpoint" .Values.ingress.endpoint -}}
 {{- $retainedGeneration := int (default "0" (dig "domain-generation" "" $data | b64dec)) -}}
 {{- $incomingGeneration := int .Values.platform.domainGeneration -}}
 {{- $useRetainedDomain := and (not (get . "compartmentSharedChecksum")) (le $incomingGeneration $retainedGeneration) -}}
@@ -135,14 +112,15 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- $hasRetainedValue := and (hasKey $data $field.secretKey) (or $allowEmpty (not (empty $encodedRetainedValue))) -}}
 {{- $hasPersistedRetainedValue := and (hasKey $data $field.secretKey) (or (not (empty $encodedRetainedValue)) (and $allowEmpty $useRetainedDomain)) -}}
 {{- $retainedValue := $encodedRetainedValue | b64dec -}}
-{{- if $hasRetainedValue -}}
-{{- if or (eq $field.policy "stable") $useRetainedDomain -}}
+{{- $useRetainedValue := and $hasRetainedValue (not (and (eq $field.policy "deferred") (eq $retainedValue "[]"))) -}}
+{{- if $useRetainedValue -}}
+{{- if or (eq $field.policy "stable") (eq $field.policy "deferred") $useRetainedDomain -}}
 {{- $_ := set (get $effective $field.valuesSection) $field.valueKey $retainedValue -}}
 {{- end -}}
 {{- end -}}
 {{- if and (eq $field.policy "domain") (not $useIncomingPersistedDomain) -}}
 {{- $_ := set (get $persisted $field.valuesSection) $field.valueKey (ternary $retainedValue $incomingValue $hasPersistedRetainedValue) -}}
-{{- else if and (eq $field.policy "stable") $hasRetainedValue -}}
+{{- else if and (or (eq $field.policy "stable") (eq $field.policy "deferred")) $useRetainedValue -}}
 {{- $_ := set (get $persisted $field.valuesSection) $field.valueKey $retainedValue -}}
 {{- end -}}
 {{- end -}}
@@ -171,9 +149,7 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- if and (not (empty $effective.secrets.managedDomainBrokerToken)) (empty $effective.platform.managedDomainBrokerUrl) -}}
 {{- fail "platform.managedDomainBrokerUrl is required when secrets.managedDomainBrokerToken is configured" -}}
 {{- end -}}
-{{- if not (or (eq $effective.platform.baseDomain "localhost") (hasSuffix ".localhost" $effective.platform.baseDomain)) -}}
-{{- end -}}
-{{- if or (eq $effective.platform.tlsMode "broker-dns01") (eq $effective.platform.tlsMode "secret") -}}
+{{- if eq $effective.platform.tlsMode "broker-dns01" -}}
 {{- if ne .Values.platform.acmeIssuer "acme" -}}
 {{- fail "platform.acmeIssuer must be acme for public TLS" -}}
 {{- end -}}
@@ -192,40 +168,6 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- fail "secrets.managedDomainBrokerToken is required for managed TLS" -}}
 {{- end -}}
 {{- $_ = required "platform.managedDomainAllocationId is required for managed TLS" $effective.platform.managedDomainAllocationId -}}
-{{- end -}}
-{{- if and (eq $effective.platform.tlsMode "secret") (empty $effective.customTls.existingSecret) -}}
-{{- $customSecretName := include "compartment.customTlsSecretName" . -}}
-{{- $existingCustomSecret := lookup "v1" "Secret" .Release.Namespace $customSecretName -}}
-{{- $existingCertificate := "" -}}
-{{- $existingPrivateKey := "" -}}
-{{- if and $existingCustomSecret $existingCustomSecret.data -}}
-{{- $existingCertificate = dig "tls.crt" "" $existingCustomSecret.data -}}
-{{- $existingPrivateKey = dig "tls.key" "" $existingCustomSecret.data -}}
-{{- end -}}
-{{- if and (empty .Values.customTls.certificate) (empty $existingCertificate) -}}
-{{- fail "customTls.certificate or customTls.existingSecret is required for custom-cert TLS" -}}
-{{- end -}}
-{{- if and (empty .Values.customTls.privateKey) (empty $existingPrivateKey) -}}
-{{- fail "customTls.privateKey or customTls.existingSecret is required for custom-cert TLS" -}}
-{{- end -}}
-{{- end -}}
-{{- if not (empty $effective.customTls.operatorSecretName) -}}
-{{- $operatorSecret := lookup "v1" "Secret" .Release.Namespace $effective.customTls.operatorSecretName -}}
-{{- $operatorCertificate := dig "data" "tls.crt" "" $operatorSecret -}}
-{{- $operatorPrivateKey := dig "data" "tls.key" "" $operatorSecret -}}
-{{- if and (empty .Values.customTls.operatorCertificate) (empty $operatorCertificate) -}}
-{{- fail "customTls.operatorCertificate or an existing operator Secret is required with customTls.operatorSecretName" -}}
-{{- end -}}
-{{- if and (empty .Values.customTls.operatorPrivateKey) (empty $operatorPrivateKey) -}}
-{{- fail "customTls.operatorPrivateKey or an existing operator Secret is required with customTls.operatorSecretName" -}}
-{{- end -}}
-{{- end -}}
-{{- if not (empty .Values.customTls.pendingSecretName) -}}
-{{- $_ := required "customTls.pendingCertificate is required with customTls.pendingSecretName" .Values.customTls.pendingCertificate -}}
-{{- $_ = required "customTls.pendingPrivateKey is required with customTls.pendingSecretName" .Values.customTls.pendingPrivateKey -}}
-{{- end -}}
-{{- if and (not (empty .Values.customTls.pendingOperationId)) (empty .Values.customTls.pendingSecretName) -}}
-{{- fail "customTls.pendingSecretName is required for a pending domain operation" -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
@@ -319,7 +261,6 @@ runAsNonRoot: true
 {{- $_ = set $sharedPlatform "domainMode" "custom" -}}
 {{- $_ = set $sharedPlatform "publicProtocol" "https" -}}
 {{- $_ = set $sharedPlatform "tlsMode" "issuer" -}}
-{{- $_ = set $sharedValues "customTls" (dict "certificate" "" "existingSecret" "" "operatorCertificate" "" "operatorPrivateKey" "" "operatorSecretName" "" "pendingCertificate" "" "pendingOperationId" "" "pendingPrivateKey" "" "pendingSecretName" "" "privateKey" "") -}}
 checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $sharedContext | sha256sum }}
 checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
 compartment.dev/rollout-marker: {{ .Values.platform.rolloutMarker | quote }}
@@ -328,22 +269,13 @@ compartment.dev/rollout-marker: {{ .Values.platform.rolloutMarker | quote }}
 {{- define "compartment.domainRolloutAnnotations" -}}
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- include "compartment.rolloutAnnotations" . }}
-{{ $activeTlsContext := deepCopy . -}}
-{{- $activeTlsValues := get (get $activeTlsContext "Values") "customTls" -}}
-{{- $_ := set $activeTlsValues "pendingCertificate" "" -}}
-{{- $_ = set $activeTlsValues "pendingOperationId" "" -}}
-{{- $_ = set $activeTlsValues "pendingPrivateKey" "" -}}
-{{- $_ = set $activeTlsValues "pendingSecretName" "" -}}
 checksum/domain-config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
 checksum/install-state: {{ include (print $.Template.BasePath "/install-state-secret.yaml") . | sha256sum }}
-checksum/custom-tls: {{ include (print $.Template.BasePath "/custom-tls-secret.yaml") $activeTlsContext | sha256sum }}
 compartment.dev/domain-generation: {{ $installState.effective.platform.domainGeneration | quote }}
 {{- end }}
 
 {{- define "compartment.apiDomainRolloutAnnotations" -}}
 {{- include "compartment.domainRolloutAnnotations" . }}
-checksum/pending-tls: {{ include (print $.Template.BasePath "/custom-tls-secret.yaml") . | sha256sum }}
-compartment.dev/pending-domain-operation: {{ .Values.customTls.pendingOperationId | quote }}
 {{- end }}
 
 {{- define "compartment.waiterPodSpec" -}}

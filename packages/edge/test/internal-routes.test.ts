@@ -123,42 +123,4 @@ describe('edge internal routes', (): void => {
       await app.close();
     }
   });
-
-  it('allows Caddy on-demand TLS only for verified custom hosts from the snapshot', async (): Promise<void> => {
-    const { app } = createEdgeTestApp({
-      snapshot: createAppAccessSnapshot({
-        onDemandTlsHosts: ['app.example.com'],
-      }),
-    });
-
-    try {
-      const allowedResponse: LightMyRequestResponse = await app.inject({
-        method: 'GET',
-        url: '/internal/tls/ask?domain=app.example.com',
-        headers: {
-          host: '127.0.0.1:9081',
-        },
-      });
-      const deniedResponse: LightMyRequestResponse = await app.inject({
-        method: 'GET',
-        url: '/internal/tls/ask?domain=unknown.example.com',
-        headers: {
-          host: '127.0.0.1:9081',
-        },
-      });
-      const publicHostResponse: LightMyRequestResponse = await app.inject({
-        method: 'GET',
-        url: '/internal/tls/ask?domain=app.example.com',
-        headers: {
-          host: 'app.example.com',
-        },
-      });
-
-      expect(allowedResponse.statusCode).toBe(200);
-      expect(deniedResponse.statusCode).toBe(404);
-      expect(publicHostResponse.statusCode).toBe(404);
-    } finally {
-      await app.close();
-    }
-  });
 });

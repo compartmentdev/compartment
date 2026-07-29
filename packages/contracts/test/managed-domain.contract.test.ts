@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   managedDomainDns01ChallengeRequestSchema,
   managedDomainReservationResponseSchema,
-  managedDomainReservationRequestSchema,
   managedDomainTargetBindingRequestSchema,
   managedDomainTargetBindingResponseSchema,
   type ManagedDomainReservationResponse,
@@ -37,18 +36,11 @@ describe('managed-domain broker contracts', (): void => {
     expect(response.targets[2]).toEqual({ type: 'hostname', value: 'shared-lb.example.com' });
   });
 
-  it('rejects flattened hostname and legacy publicIp forms', (): void => {
+  it('rejects an IP address encoded as a hostname target', (): void => {
     expect(
       managedDomainTargetBindingResponseSchema.safeParse({
         allocationId: 'allocation-1',
         targets: [{ type: 'hostname', value: ipv4 }],
-      }).success,
-    ).toBe(false);
-    expect(
-      managedDomainReservationRequestSchema.safeParse({
-        installationId: 'installation-1',
-        publicIp: ipv4,
-        requestedLabelSource: 'Acme',
       }).success,
     ).toBe(false);
   });

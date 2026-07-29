@@ -55,7 +55,6 @@ describe('managed-domain broker service', (): void => {
     await replayManagedDomainDesiredState(request, 'allocation-1', 'allocation-token');
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://broker.compartment.run/v1/managed-domains/allocations');
-    expect(fetchMock.mock.calls[0]?.[1].body).not.toContain('publicIp');
     const reservationHeaders: Headers = fetchMock.mock.calls[0]?.[1].headers as Headers;
     expect(reservationHeaders.get('Authorization')).toBe('Bearer reservation-token');
     expect(fetchMock.mock.calls[1]?.[0]).toBe(

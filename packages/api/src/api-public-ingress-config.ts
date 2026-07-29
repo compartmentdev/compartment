@@ -1,46 +1,33 @@
-import { isIP } from 'node:net';
+import { managedDomainTargetSchema, type ManagedDomainTarget } from '@compartment/contracts';
 import { z } from 'zod';
 
 interface ApiPublicIngressConfigEnv {
-  COMPARTMENT_PUBLIC_INGRESS_IPV4: string;
-  COMPARTMENT_PUBLIC_INGRESS_IPV6: string;
+  COMPARTMENT_INGRESS_TARGETS_JSON: string;
 }
 
 export interface ApiPublicIngressConfig {
-  publicIngressIpv4: string | null;
-  publicIngressIpv6: string | null;
+  targets: ManagedDomainTarget[];
 }
 
-const apiPublicIngressConfigSchema: z.ZodTypeAny = z.object({
-  COMPARTMENT_PUBLIC_INGRESS_IPV4: z.string(),
-  COMPARTMENT_PUBLIC_INGRESS_IPV6: z.string(),
+const apiPublicIngressConfigSchema: z.ZodType<ApiPublicIngressConfigEnv> = z.object({
+  COMPARTMENT_INGRESS_TARGETS_JSON: z.string().min(1),
 });
+const ingressTargetsSchema: z.ZodType<ManagedDomainTarget[]> = z
+  .array(managedDomainTargetSchema)
+  .superRefine((targets: ManagedDomainTarget[], context: z.RefinementCtx): void => {
+    const hasHostname: boolean = targets.some((target: ManagedDomainTarget): boolean => target.type === 'hostname');
+    const hasAddress: boolean = targets.some((target: ManagedDomainTarget): boolean => target.type !== 'hostname');
+    if (hasHostname && hasAddress) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Ingress targets must contain either hostnames or addresses, not both.',
+      });
+    }
+  });
 
 export function readApiPublicIngressConfig(env: NodeJS.ProcessEnv = process.env): ApiPublicIngressConfig {
-  const parsed: ApiPublicIngressConfigEnv = apiPublicIngressConfigSchema.parse(env) as ApiPublicIngressConfigEnv;
-
+  const parsed: ApiPublicIngressConfigEnv = apiPublicIngressConfigSchema.parse(env);
   return {
-    publicIngressIpv4: parsePublicIngressIp(
-      parsed.COMPARTMENT_PUBLIC_INGRESS_IPV4,
-      4,
-      'COMPARTMENT_PUBLIC_INGRESS_IPV4',
-    ),
-    publicIngressIpv6: parsePublicIngressIp(
-      parsed.COMPARTMENT_PUBLIC_INGRESS_IPV6,
-      6,
-      'COMPARTMENT_PUBLIC_INGRESS_IPV6',
-    ),
+    targets: ingressTargetsSchema.parse(JSON.parse(parsed.COMPARTMENT_INGRESS_TARGETS_JSON)),
   };
-}
-
-function parsePublicIngressIp(value: string, version: 4 | 6, variableName: string): string | null {
-  const normalizedValue: string = value.trim();
-  if (normalizedValue === '') {
-    return null;
-  }
-  if (isIP(normalizedValue) !== version) {
-    throw new Error(`${variableName} must be empty or a valid IPv${version} address.`);
-  }
-
-  return normalizedValue;
 }

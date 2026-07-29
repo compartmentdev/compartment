@@ -120,18 +120,19 @@ describe('system domain validation service', (): void => {
     ).toThrow('Unsupported pending domain/TLS combination');
   });
 
-  it('allows custom certificate host plans for pending domain operations', (): void => {
+  it('allows issuer-backed host plans for pending domain operations', (): void => {
     const hostPlan: DomainHostPlan = normalizeAndValidatePendingDomainHostPlan(
       {
         baseDomain: 'customer.example.com',
         domainKind: 'custom',
+        issuerRef: { kind: 'Issuer', name: 'customer-issuer' },
         publicScheme: 'https',
-        tlsMode: 'custom-cert',
+        tlsMode: 'external',
       },
       'localhost',
     );
 
-    expect(hostPlan.tlsMode).toBe('custom-cert');
+    expect(hostPlan.tlsMode).toBe('external');
   });
 
   it('rejects custom base domains that overlap the active baseDomain', (): void => {

@@ -1,119 +1,72 @@
-# Self-Hosted Kubernetes Install
+# Self-hosted Kubernetes installation
 
-This document defines the supported production install and operator contract for a self-hosted Compartment release.
-Kubernetes is the only production runtime. The release CLI owns install orchestration and image verification; the Helm
-chart owns installation-time Kubernetes resources.
+Compartment installs into an existing Kubernetes cluster. The cluster must already provide an Ingress Controller,
+default-deny-compatible NetworkPolicy enforcement, persistent storage, and cert-manager. The installer discovers or
+accepts one canonical IngressClass, storage class, and public ingress endpoint; it does not install, disable, or mutate
+cluster infrastructure.
 
-For existing-cluster prerequisites and the bare-VM test sequence, see
-[Existing Kubernetes installation prerequisites](../existing-kubernetes-install.md).
+## Install contract
 
-For a fresh dedicated k3s node, disable its default Traefik ingress during installation so Compartment's Caddy
-LoadBalancer can use ports 80 and 443:
+Run `compartment install` with a kubeconfig whose current context is the intended cluster. Interactive installation
+prompts for any required value that cannot be selected unambiguously. Automation supplies the same inputs explicitly:
 
 ```bash
-curl -sfL https://get.k3s.io | sh -s - --disable traefik
+compartment install \
+  --kubeconfig ./kubeconfig \
+  --kube-context production \
+  --namespace compartment \
+  --release-name compartment \
+  --ingress-class nginx \
+  --storage-class fast
 ```
 
-Only the default `kube-system/traefik` should receive the disable/remove guidance. If another Service owns the ports,
-do not remove it: free 80 and 443 on a dedicated cluster. A shared-cluster topology requires
-`service.caddy.type=ClusterIP` or `NodePort`, an explicit `platform.publicIngressIpv4` or
-`platform.publicIngressIpv6`, and routing through the existing ingress. The guided installer does not automate this
-mode yet and its klipper preflight still stops at the conflict.
+Use `--ingress-endpoint` only when the selected controller does not publish an address in Ingress status. The value
+must be one IPv4 address, IPv6 address, or DNS hostname.
 
-## Install modes
+Preflight is read-only except for server-side dry-run validation. It verifies the context, APIs, cert-manager,
+IngressClass, storage class, Helm ownership, namespace policy labels, and required access. Installation creates only
+release-owned or explicitly retained resources in the selected namespace and supporting tenant namespaces.
 
-`compartment install` is the guided production entrypoint. `compartment install --values <path>` is the declarative
-entrypoint for CI and advanced operator configuration. Both use the bundled matching chart, verify the effective API,
-Worker, Edge, and Caddy images against the published signing policy, resolve them to immutable digests, and apply two
-Helm stages:
+## Public routing and TLS
 
-1. `foundation` creates the public Caddy Service, generated install secrets, storage, and the retained install-state
-   Secret. PostgreSQL and the registry start here; API, Worker, Edge, Caddy, and the remaining platform workloads wait
-   for `full`.
-2. The CLI resolves the public ingress and install domain, persists that state, and applies `full`. It then waits for
-   HTTPS, calls the one-time `/v1/install` boundary, creates the first owner, and saves the owner session.
-3. The CLI binds the registry hostname to the retained registry-auth Service ClusterIP, waits for the referenced
-   cert-manager issuer to produce a public-trust TLS certificate, and verifies an authenticated pull on every eligible
-   node before completing installation.
+The existing Ingress Controller is the only public entrypoint. The chart renders exact console and application host
+rules with no catch-all rule, default backend, or controller-specific annotation. Its Caddy Service is ClusterIP-only
+and exposes one internal HTTP port. A NetworkPolicy permits ingress to that port from cluster ingress sources.
 
-Node resolvers and upstream corporate DNS must allow the registry zone to return a private ClusterIP A record.
-Resolvers with DNS-rebinding protection require an explicit zone allowlist. Kube-proxy-less Cilium is not supported
-by this endpoint mechanism. The installer never mutates the node container runtime.
+Public TLS is owned by the existing Ingress and cert-manager path. `tls.issuerRef` identifies an existing Issuer or
+ClusterIssuer. `tls.existingSecret` may reference an operator-provisioned Secret when the selected Ingress contract
+requires one; Compartment does not create, copy, or mount operator certificate material.
 
-The default mode is a managed domain. When `--base-domain` is omitted, the CLI waits for a public LoadBalancer address,
-requests an allocation from `https://broker.compartment.run`, and configures managed DNS-01 TLS. The broker credential
-is scoped to that allocation. The CLI requires `COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN` for the owner-authorized
-reservation, then stores only the returned allocation token in the retained Secret. The DNS-01 solver reads that token;
-certificate private keys remain in cert-manager-managed Kubernetes Secrets.
+For an operator-owned system domain:
 
-An operator-owned base domain is selected with `--base-domain`. The operator must point `console.<baseDomain>` and
-`*.<baseDomain>` at the public entrypoint and choose one Ingress TLS source in the values file:
+```bash
+compartment system domain set --base-domain apps.example.com --values compartment-values.yaml
+compartment system domain verify
+compartment system domain activate --values compartment-values.yaml
+```
 
-- `tls.existingSecret` references an operator-owned Kubernetes TLS Secret for Ingress.
-- `tls.issuerRef` references an existing namespaced `Issuer` or operator-owned `ClusterIssuer`; Compartment creates the
-  exact console and wildcard Certificates without creating a customer-wide ClusterIssuer.
+Publish every DNS and ownership record printed by `set`. The operation records the exact issuer reference from the
+values file, verifies DNS and Certificate readiness, and commits one retained domain generation. Use
+`compartment system domain reset-managed --values compartment-values.yaml` to restore the retained managed allocation.
 
-The reserved `*.localhost` HTTP path exists only for repository and k3d development. It is not a production install
-mode. `install --dev` initializes an already-running repository development API and does not install the Helm release.
+## Registry and builds
 
-Direct `helm upgrade --install` is a low-level recovery path, not the normal install. It bypasses CLI image signature
-verification, so an operator using it must supply already verified `images.*.digest` values.
+The bundled registry remains a private workload service. Project provisioning creates repository-scoped credentials
+and a project-scoped image pull Secret; workloads never share an installation-wide pull identity.
 
-## Install identity and retries
+Nodes reach the registry through an operator-provided private hostname and trusted certificate. Compartment does not
+change container-runtime configuration, write node files, restart node services, install private certificate
+authorities, or provide an external-registry fallback.
 
-The `<release>-install-state` Secret retains the installation ID, install token, domain allocation, ingress addresses,
-domain generation, and TLS identity. Helm keeps it and the registry-auth Service across upgrades and
-uninstall/reinstall with the same namespace and release name. Retaining the Service preserves its ClusterIP and the
-registry hostname binding. A retry with the same release coordinates and domain selection resumes the saved
-foundation or full release and does not allocate a second managed domain. The supported reinstall path keeps the
-namespace and registry-auth Service.
+Dockerfile, Railpack, BuildKit, and OCI build behavior remains unchanged. NetworkPolicy projections retain tenant
+isolation and the explicit RFC1918 egress policy.
 
-The `/v1/install` endpoint is available only before the first owner is created. After bootstrap, use
-`compartment login --api-url <console-url>` to recover a local CLI session. To intentionally abandon an install
-identity, uninstall the release and explicitly delete the retained Secret before reinstalling.
+## Recovery
 
-Deleting the namespace or retained registry-auth Service is a destructive reset that allows Kubernetes to allocate a
-different ClusterIP. A subsequent install must bind the registry hostname to the new address and repeat the
-every-node pull acceptance before application deployment can resume.
+Retry `compartment install` with the same release coordinates when it stops before owner creation. It resumes the
+existing foundation or full release. Repair failed or pending Helm releases before retrying. Once the owner exists,
+use `compartment login` to recover the local session.
 
-## Install domain operations
-
-`compartment system domain` changes the whole-install domain through the API pod's private operator channel. It does
-not expose a system endpoint through Caddy.
-
-The operator flow is:
-
-1. `system domain set --values <path>` stages an operator-owned domain and its exact Issuer reference, then prints the
-   required address and ownership TXT records.
-2. `system domain verify` proves DNS ownership and that traffic resolves directly to the release ingress.
-3. For `custom-cert`, `system domain attach-cert` validates the PEM pair locally and creates an operation-specific
-   Kubernetes TLS Secret for Ingress; the API stores only the Secret name and certificate metadata.
-4. `system domain activate` applies the runtime domain, waits for Ingress and Certificate readiness, finalizes the API
-   operation, and commits the retained domain generation. Worker and project-provisioner do not roll for a domain
-   change.
-
-The operations are retryable. The retained generation prevents an older Helm render from replacing active domain
-state. A release that started with a managed allocation keeps it while an operator domain is active;
-`system domain reset-managed` restores that original allocation without requesting a new one.
-
-See [Managed Platform Domains](./managed-platform-domains.md) for the durable domain ownership and broker invariants.
-
-## Operator recovery and trust
-
-`compartment system issue-password-reset --email <email>` issues a private one-time reset for an eligible existing
-single-organization local-password account, including the owner. It uses `kubectl exec` into the API pod and prints a
-secret token and expiry. It does not activate invited users or create credentials for SSO-only accounts.
-
-All system-domain commands and password recovery require permission to get the API Deployment, list its Pods, and
-create `pods/exec` in the release namespace. `attach-cert`, `activate`, and `reset-managed` also require the Helm
-permissions needed to update the release.
-
-Every CLI-owned Helm activation verifies the effective platform images again and passes only immutable digests to the
-chart. The publication, signature identity, SBOM, and provenance contract is defined in
-[Self-Hosted Image Publishing](./self-hosted-image-publishing.md).
-
-The chart never exposes `/internal/*`, the private operator channel, install tokens, registry services, BuildKit, or
-control-plane health routes through public ingress.
-
-Readiness probes are HTTP requests from kubelet. On CNI implementations that filter node-originated probe traffic,
-operators must allow node or kubelet traffic to the configured probe ports or the workloads can remain unready.
+The retained install-state Secret and registry resources use Helm keep policy. An uninstall followed by reinstall
+with the same namespace and release name reuses that retained identity. Deleting retained resources is an explicit,
+operator-owned abandonment action.

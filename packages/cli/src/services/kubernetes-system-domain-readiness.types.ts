@@ -9,16 +9,10 @@ export interface KubernetesSystemDomainIngress {
 
 export interface KubernetesSystemDomainIngressSpec {
   rules?: KubernetesSystemDomainIngressRule[] | undefined;
-  tls?: KubernetesSystemDomainIngressTls[] | undefined;
 }
 
 export interface KubernetesSystemDomainIngressRule {
   host?: string | undefined;
-}
-
-export interface KubernetesSystemDomainIngressTls {
-  hosts?: string[] | undefined;
-  secretName?: string | undefined;
 }
 
 export interface KubernetesSystemDomainIngressStatus {

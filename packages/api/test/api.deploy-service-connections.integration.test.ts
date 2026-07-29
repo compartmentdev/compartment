@@ -29,11 +29,11 @@ import {
 } from './api-integration.harness';
 import {
   cleanupApiIntegrationRuntime,
-  cleanupApiIntegrationTlsDirectory,
+  cleanupApiIntegrationTempDirectory,
   configureApiRuntimeWithPublicIngress,
   createApiIntegrationApps,
   createApiIntegrationTestContext,
-  resetApiIntegrationTlsDirectory,
+  resetApiIntegrationTempDirectory,
 } from './api-app-test.harness';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
 
@@ -76,7 +76,7 @@ vi.mock(
 const {
   apiConfig: defaultApiConfig,
   databaseUrl: apiIntegrationDatabaseUrl,
-  testCustomTlsDirectory,
+  testTempDirectory,
 } = createApiIntegrationTestContext(
   'api_integration_deploy_service_connections',
   'api-integration-deploy-service-connections',
@@ -95,7 +95,7 @@ describe('API deploy descriptor service connections integration', (): void => {
     appAccessEdgeServiceMocks.invalidateEdgeAppAccessSessions.mockResolvedValue(undefined);
     appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockReset();
     appAccessEdgeServiceMocks.synchronizeEdgeAppAccessState.mockResolvedValue(undefined);
-    await resetApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await resetApiIntegrationTempDirectory(testTempDirectory);
     pool = createDatabasePool(apiIntegrationDatabaseUrl);
     db = createDatabase(pool);
     ({ app, systemApp } = await createApiIntegrationApps(defaultApiConfig, db, pool));
@@ -104,7 +104,7 @@ describe('API deploy descriptor service connections integration', (): void => {
   });
 
   afterAll(async (): Promise<void> => {
-    await cleanupApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await cleanupApiIntegrationTempDirectory(testTempDirectory);
   });
 
   afterEach(async (): Promise<void> => {

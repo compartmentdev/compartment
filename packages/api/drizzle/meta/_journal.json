@@ -36,6 +36,13 @@
       "when": 1785261363115,
       "tag": "0004_mixed_slyde",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785281013566,
+      "tag": "0005_bright_cardiac",
+      "breakpoints": true
     }
   ]
 }

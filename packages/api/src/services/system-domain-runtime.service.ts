@@ -31,8 +31,6 @@ function readRuntimeDomainKind(config: ApiConfig): DomainKind {
 
 function readRuntimeTlsMode(config: ApiConfig): DomainTlsMode {
   switch (config.tlsMode) {
-    case 'secret':
-      return 'custom-cert';
     case 'issuer':
       return 'external';
     case 'internal':

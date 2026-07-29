@@ -3,12 +3,10 @@ import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
 import type { KubernetesOperatorTarget } from './kubernetes-operator.service.types';
-import { buildDomainTlsSecretName } from './kubernetes-system-domain-release.support';
 import type {
   KubernetesSystemDomainIngress,
   KubernetesSystemDomainIngressList,
   KubernetesSystemDomainIngressRule,
-  KubernetesSystemDomainIngressTls,
 } from './kubernetes-system-domain-readiness.types';
 
 const domainReadinessTimeoutMs: number = 10 * 60_000;
@@ -16,13 +14,8 @@ const domainReadinessTimeoutMs: number = 10 * 60_000;
 export async function waitForKubernetesSystemDomainReadiness(
   target: KubernetesOperatorTarget,
   hostPlan: DomainHostPlan,
-  operationId?: string,
 ): Promise<void> {
-  const ingress: KubernetesSystemDomainIngress = await readPublishedIngress(target, hostPlan);
-  if (hostPlan.tlsMode === 'custom-cert') {
-    await assertCustomCertificateSecretReady(target, hostPlan, ingress, operationId);
-    return;
-  }
+  await readPublishedIngress(target, hostPlan);
   await assertCertificateReady(target);
 }
 
@@ -60,45 +53,6 @@ function requirePublishedIngress(result: CommandResult, hostPlan: DomainHostPlan
     throw readinessError('Ingress hosts or endpoint did not converge', result);
   }
   return ingress;
-}
-
-async function assertCustomCertificateSecretReady(
-  target: KubernetesOperatorTarget,
-  hostPlan: DomainHostPlan,
-  ingress: KubernetesSystemDomainIngress,
-  operationId: string | undefined,
-): Promise<void> {
-  const expectedSecret: string | undefined =
-    operationId === undefined ? undefined : buildDomainTlsSecretName(target.releaseName, operationId);
-  const requiredHosts: string[] = [`console.${hostPlan.baseDomain}`, `*.${hostPlan.baseDomain}`];
-  const tlsEntries: KubernetesSystemDomainIngressTls[] = ingress.spec?.tls ?? [];
-  const secretName: string = requireSharedTlsSecret(requiredHosts, tlsEntries, expectedSecret);
-  const result: CommandResult = await runCommandWithTimeout(
-    buildKubectlCommand(target, ['get', 'secret', secretName, '--output', 'name']),
-    domainReadinessTimeoutMs,
-  );
-  if (result.exitCode !== 0 || result.stdout.trim() === '') {
-    throw readinessError('Ingress TLS Secret does not exist', result);
-  }
-}
-
-function requireSharedTlsSecret(
-  requiredHosts: string[],
-  tlsEntries: KubernetesSystemDomainIngressTls[],
-  expectedSecret: string | undefined,
-): string {
-  const matchingSecrets: string[] = requiredHosts.map((host: string): string => {
-    const entry: KubernetesSystemDomainIngressTls | undefined = tlsEntries.find(
-      (candidate: KubernetesSystemDomainIngressTls): boolean => candidate.hosts?.includes(host) === true,
-    );
-    return entry?.secretName ?? '';
-  });
-  const secretName: string = matchingSecrets[0] ?? '';
-  const mismatched: boolean = matchingSecrets.some((candidate: string): boolean => candidate !== secretName);
-  if (secretName === '' || mismatched || (expectedSecret !== undefined && secretName !== expectedSecret)) {
-    throw readinessError('Ingress TLS Secret reference did not converge', { exitCode: 1, stderr: '', stdout: '' });
-  }
-  return secretName;
 }
 
 async function assertCertificateReady(target: KubernetesOperatorTarget): Promise<void> {

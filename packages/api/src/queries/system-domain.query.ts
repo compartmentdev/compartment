@@ -27,8 +27,6 @@ type SystemDomainSetupStateLookupExecutor = Pick<Database, 'select'>;
 interface StageSystemDomainPendingValues {
   setupVersion: SQL;
   pendingBaseDomain: string;
-  pendingCertificateMetadataJson: null;
-  pendingTlsSecretName: null;
   pendingDomainKind: string;
   pendingIssuerRefJson: string | null;
   pendingFailureCode: null;
@@ -143,8 +141,6 @@ function buildStageSystemDomainPendingValues(input: StageSystemDomainPendingInpu
   return {
     setupVersion: buildNextSystemDomainSetupVersion(),
     pendingBaseDomain: input.pendingBaseDomain,
-    pendingCertificateMetadataJson: null,
-    pendingTlsSecretName: null,
     pendingDomainKind: input.pendingDomainKind,
     pendingIssuerRefJson: input.pendingIssuerRefJson,
     pendingFailureCode: null,

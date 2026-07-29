@@ -14,7 +14,6 @@ Stage a custom system domain and print required DNS records
 
 Options:
   --base-domain <domain>  Public base domain
-  --tls <mode>            external or custom-cert (default: "external")
   --kube-context <name>   Kubernetes context
   --namespace <name>      Kubernetes namespace; defaults to compartment
   --release-name <name>   Helm release name; defaults to compartment

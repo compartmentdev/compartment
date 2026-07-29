@@ -40,7 +40,6 @@ export async function readAppAccessState(): Promise<AppAccessStateSnapshot | nul
   return {
     grants: await readGrantStates(),
     compartmentUrl: buildRuntimePublicSettings(config).compartmentUrl,
-    onDemandTlsHosts: readOnDemandTlsHosts(routeStateContext.customRoutes),
     routes: routeStateContext.routes,
   };
 }
@@ -109,10 +108,6 @@ async function readGrantStates(): Promise<AppAccessGrantState[]> {
   }
 
   return [...groupedPermissions.values()];
-}
-
-function readOnDemandTlsHosts(customRoutes: DeploymentRouteLookupRow[]): string[] {
-  return customRoutes.map((route: DeploymentRouteLookupRow): string => route.host);
 }
 
 async function listActiveAppAccessRouteProxyTargetRoutes(

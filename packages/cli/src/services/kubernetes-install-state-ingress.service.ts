@@ -16,8 +16,6 @@ export async function resolveInstallPublicIngress(
       ingressClassName: foundationInstall.ingressClassName,
       ingressEndpoint: foundationInstall.ingressEndpoint,
       ingressTargets: foundationInstall.ingressTargets,
-      publicIngressIpv4: foundationInstall.publicIngressIpv4,
-      publicIngressIpv6: foundationInstall.publicIngressIpv6,
     };
   }
   return await runObservableInstallStep(

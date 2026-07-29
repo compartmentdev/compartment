@@ -79,9 +79,9 @@ import {
   mismatchedPublicIpv4Address,
   publicIpv4Address,
   cleanupApiIntegrationRuntime,
-  cleanupApiIntegrationTlsDirectory,
+  cleanupApiIntegrationTempDirectory,
   configureApiRuntimeWithPublicIngress,
-  resetApiIntegrationTlsDirectory,
+  resetApiIntegrationTempDirectory,
 } from './api-app-test.harness';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
@@ -225,7 +225,7 @@ function createCustomHttpApiConfig(): ApiConfig {
 const {
   apiConfig: defaultApiConfig,
   databaseUrl: apiIntegrationDatabaseUrl,
-  testCustomTlsDirectory,
+  testTempDirectory,
 } = createApiIntegrationTestContext('api_integration_install_auth', 'api-integration-install-auth');
 let pool!: Pool;
 let db!: Database;
@@ -250,7 +250,7 @@ describe('Phase 0 API integration install auth', (): void => {
     dnsPromiseMocks.resolveTxt.mockReset();
     dnsPromiseMocks.resolveTxt.mockRejectedValue(new Error('No TXT record.'));
     outboundHttpServiceMocks.fetchSystemDomainProbeHttp.mockReset();
-    await resetApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await resetApiIntegrationTempDirectory(testTempDirectory);
     pool = createDatabasePool(apiIntegrationDatabaseUrl);
     db = createDatabase(pool);
     ({ app, systemApp } = await createApiIntegrationApps(defaultApiConfig, db, pool));
@@ -258,7 +258,7 @@ describe('Phase 0 API integration install auth', (): void => {
     hasInitializedApiIntegrationRuntime = true;
   });
   afterAll(async (): Promise<void> => {
-    await cleanupApiIntegrationTlsDirectory(testCustomTlsDirectory);
+    await cleanupApiIntegrationTempDirectory(testTempDirectory);
   });
   afterEach(async (): Promise<void> => {
     vi.unstubAllGlobals();
@@ -381,7 +381,7 @@ describe('Phase 0 API integration install auth', (): void => {
     expect(verifyPayload.status.pending?.status).toBe('pending_dns');
     expect(verifyPayload.status.pending?.failureCode).toBe('dns_binding_invalid');
     expect(verifyPayload.status.pending?.failureMessage).toBe(
-      'System domain verification requires COMPARTMENT_PUBLIC_INGRESS_IPV4 or COMPARTMENT_PUBLIC_INGRESS_IPV6.',
+      'System domain verification requires at least one public ingress target.',
     );
   });
 

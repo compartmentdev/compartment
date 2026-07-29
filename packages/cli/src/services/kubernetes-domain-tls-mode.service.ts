@@ -5,8 +5,6 @@ export function mapDomainTlsModeToPlatformTlsMode(tlsMode: DomainTlsMode): Kuber
   switch (tlsMode) {
     case 'broker-dns01':
       return 'broker-dns01';
-    case 'custom-cert':
-      return 'secret';
     case 'external':
       return 'issuer';
     case 'internal':

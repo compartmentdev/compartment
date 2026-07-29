@@ -4,7 +4,6 @@ import {
   assertMatchingKubernetesInstallDomain,
   resolveKubernetesInstallControlPlaneUrl,
 } from '../kubernetes-install-domain';
-import { materializeAdoptedKubernetesInstall } from './kubernetes-install-adoption.service';
 import { waitForKubernetesPlatformCertificates } from './kubernetes-install-certificate.service';
 import { installObservableKubernetesFoundation } from './kubernetes-install-foundation.service';
 import {
@@ -18,7 +17,6 @@ import { runObservableInstallStep } from './kubernetes-install-progress.service'
 import {
   createInstallToken,
   finishKubernetesInstall,
-  readInstallationId,
   requireExistingBaseDomain,
   requireExistingInstallToken,
 } from './kubernetes-install-runtime.support';
@@ -41,18 +39,21 @@ export async function deployAndWaitForKubernetesInstall(
 ): Promise<KubernetesInstallDeploymentResult> {
   const inspection: KubernetesInstallInspection = await inspectKubernetesInstall(input);
   const { existingInstall, retainedState }: KubernetesInstallInspection = inspection;
+  if (existingInstall !== null && retainedState === null) {
+    throw new Error(
+      'The existing Helm release has no canonical retained install state. Remove that preview release before installing.',
+    );
+  }
   const effectiveInstall: ExistingKubernetesInstall | null = mergeRetainedKubernetesInstallState(
     existingInstall,
     retainedState,
   );
-  const matchingState: KubernetesInstallState | null = retainedState ?? effectiveInstall;
+  const matchingState: KubernetesInstallState | null = effectiveInstall;
   if (matchingState !== null) {
     assertMatchingKubernetesInstallDomain(input, matchingState);
   }
   if (existingInstall?.stage === 'full' && effectiveInstall !== null) {
-    return retainedState === null
-      ? await adoptExistingKubernetesInstall(input, effectiveInstall)
-      : await resumeKubernetesOwnerBootstrap(input, effectiveInstall);
+    return await resumeKubernetesOwnerBootstrap(input, effectiveInstall);
   }
   return await deployKubernetesInstall(input, existingInstall, effectiveInstall, retainedState);
 }
@@ -64,7 +65,7 @@ async function deployKubernetesInstall(
   retainedState: RetainedKubernetesInstallState | null,
 ): Promise<KubernetesInstallDeploymentResult> {
   const installToken: string = existingInstall?.installToken ?? createInstallToken();
-  const installationId: string = retainedState?.installationId ?? readInstallationId(existingInstall) ?? randomUUID();
+  const installationId: string = retainedState?.installationId ?? randomUUID();
   const materializedDirectory: string = await createKubernetesInstallMaterializedDirectory();
   try {
     return await deployMaterializedKubernetesInstall(
@@ -202,20 +203,4 @@ async function waitForRequiredKubernetesPlatformCertificates(
     'Waiting for platform Certificates',
     async (): Promise<void> => await waitForKubernetesPlatformCertificates(input),
   );
-}
-
-async function adoptExistingKubernetesInstall(
-  input: KubernetesInstallDeploymentInput,
-  existingInstall: ExistingKubernetesInstall,
-): Promise<KubernetesInstallDeploymentResult> {
-  const installToken: string = requireExistingInstallToken(existingInstall);
-  const foundationInstall: ExistingKubernetesInstall = {
-    ...existingInstall,
-    installationId: readInstallationId(existingInstall) ?? randomUUID(),
-  };
-  const state: KubernetesInstallState = await resolveKubernetesInstallState(input, foundationInstall);
-  const apiUrl: string = resolveKubernetesInstallControlPlaneUrl(input.apiUrl, state.baseDomain, state.publicProtocol);
-  await materializeAdoptedKubernetesInstall(input, installToken, state);
-  await verifyKubernetesInstallRegistryNodePull(input);
-  return await finishKubernetesInstall(apiUrl, installToken, state.baseDomain, input.domainMode, input.progress);
 }

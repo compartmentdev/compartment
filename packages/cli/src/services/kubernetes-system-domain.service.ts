@@ -1,13 +1,11 @@
 import {
   compartmentSystemDomainActivatePathname,
-  compartmentSystemDomainAttachCertificatePathname,
   compartmentSystemDomainResetManagedPathname,
   compartmentSystemDomainSetPathname,
   compartmentSystemDomainStatusPathname,
   compartmentSystemDomainStatusRefreshPathname,
   compartmentSystemDomainVerifyPathname,
   type DomainHostPlan,
-  type SystemDomainAttachCertificateRequest,
   type SystemDomainMutationResponse,
   type SystemDomainPendingOperation,
   type SystemDomainSetRequest,
@@ -16,17 +14,13 @@ import {
 } from '@compartment/contracts';
 import { readRetainedManagedKubernetesDomainState } from './kubernetes-install-retained-state.service';
 import {
-  applyKubernetesDomainRelease,
   applyRuntimeKubernetesDomainRelease,
   commitActiveKubernetesDomainRelease,
-  stageKubernetesDomainCertificate,
 } from './kubernetes-system-domain-release.service';
 import type {
-  KubernetesDomainCertificateInput,
   KubernetesDomainSetInput,
   KubernetesDomainVersionedInput,
   KubernetesOperatorTarget,
-  StagedKubernetesDomainCertificate,
 } from './kubernetes-operator.service.types';
 import type { RetainedManagedDomainState } from './kubernetes-install.service.types';
 import { requestKubernetesSystemApi } from './kubernetes-system-api.service';
@@ -56,44 +50,6 @@ export async function setKubernetesSystemDomain(
     hostPlan: buildCustomDomainHostPlan(input),
   };
   return await postDomainMutation(input, compartmentSystemDomainSetPathname, status.setupVersion, body);
-}
-
-export async function attachKubernetesSystemDomainCertificate(
-  input: KubernetesDomainCertificateInput,
-): Promise<SystemDomainMutationResponse> {
-  const status: SystemDomainStatusResponse = await readSystemDomainStatus(input);
-  const expectedVersion: number = resolveExpectedVersion(input.expectedSetupVersion, status.setupVersion);
-  const pending: SystemDomainPendingOperation = requirePendingCustomCertificate(status);
-  const staged: StagedKubernetesDomainCertificate = await stagePendingKubernetesCertificate(input, pending);
-  const body: SystemDomainAttachCertificateRequest = {
-    certificate: { metadata: staged.metadata, secretName: staged.secretName },
-    expectedSetupVersion: expectedVersion,
-  };
-  return await postDomainMutation(
-    input,
-    compartmentSystemDomainAttachCertificatePathname,
-    expectedVersion,
-    body,
-    staged.fingerprint,
-  );
-}
-
-async function stagePendingKubernetesCertificate(
-  input: KubernetesDomainCertificateInput,
-  pending: SystemDomainPendingOperation,
-): Promise<StagedKubernetesDomainCertificate> {
-  const staged: StagedKubernetesDomainCertificate = await stageKubernetesDomainCertificate(
-    input,
-    pending.operationId,
-    pending.hostPlan,
-  );
-  await applyKubernetesDomainRelease(input, {
-    pendingCertificate: staged.certificate,
-    pendingOperationId: pending.operationId,
-    pendingPrivateKey: staged.privateKey,
-    pendingTlsSecretName: staged.secretName,
-  });
-  return staged;
 }
 
 export async function verifyKubernetesSystemDomain(
@@ -131,20 +87,15 @@ async function activatePendingKubernetesSystemDomain(
 ): Promise<SystemDomainMutationResponse> {
   const verified: SystemDomainMutationResponse = await verifyPendingKubernetesSystemDomain(input, expectedVersion);
   const pending: SystemDomainPendingOperation = requireVerifiedPending(verified.status);
-  await applyRuntimeKubernetesDomainRelease(input, pending.hostPlan, verified.setupVersion, pending.operationId);
-  await waitForKubernetesSystemDomainReadiness(input, pending.hostPlan, pending.operationId);
+  await applyRuntimeKubernetesDomainRelease(input, pending.hostPlan, verified.setupVersion);
+  await waitForKubernetesSystemDomainReadiness(input, pending.hostPlan);
   const activated: SystemDomainMutationResponse = await postDomainMutation(
     input,
     compartmentSystemDomainActivatePathname,
     verified.setupVersion,
     { expectedSetupVersion: verified.setupVersion },
   );
-  await commitActiveKubernetesDomainRelease(
-    input,
-    activated.status.active,
-    activated.setupVersion,
-    pending.operationId,
-  );
+  await commitActiveKubernetesDomainRelease(input, activated.status.active, activated.setupVersion);
   return activated;
 }
 
@@ -210,14 +161,13 @@ async function postDomainMutation(
   target: KubernetesOperatorTarget,
   path: string,
   version: number,
-  body: SystemDomainSetRequest | SystemDomainAttachCertificateRequest | SystemDomainVersionedRequest,
-  seed?: string,
+  body: SystemDomainSetRequest | SystemDomainVersionedRequest,
 ): Promise<SystemDomainMutationResponse> {
   return await requestKubernetesSystemApi(
     target,
     {
       body,
-      idempotencyKey: buildSystemDomainIdempotencyKey(path, version, body, seed),
+      idempotencyKey: buildSystemDomainIdempotencyKey(path, version, body),
       method: 'POST',
       path,
     },
@@ -229,18 +179,10 @@ function buildCustomDomainHostPlan(input: KubernetesDomainSetInput): DomainHostP
   return {
     baseDomain: input.baseDomain,
     domainKind: 'custom',
-    ...(input.issuerRef === undefined ? {} : { issuerRef: input.issuerRef }),
+    issuerRef: input.issuerRef,
     publicScheme: 'https',
-    tlsMode: input.tlsMode,
+    tlsMode: 'external',
   };
-}
-
-function requirePendingCustomCertificate(status: SystemDomainStatusResponse): SystemDomainPendingOperation {
-  const pending: SystemDomainPendingOperation | null = status.pending;
-  if (pending?.hostPlan.tlsMode !== 'custom-cert') {
-    throw new Error('No pending custom-certificate domain operation was found.');
-  }
-  return pending;
 }
 
 function requireVerifiedPending(status: SystemDomainStatusResponse): SystemDomainPendingOperation {

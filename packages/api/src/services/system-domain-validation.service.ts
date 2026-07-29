@@ -55,15 +55,6 @@ function assertSupportedPendingDomainMatrix(hostPlan: DomainHostPlan): void {
   ) {
     return;
   }
-  if (
-    hostPlan.domainKind === 'custom' &&
-    hostPlan.tlsMode === 'custom-cert' &&
-    hostPlan.publicScheme === 'https' &&
-    hostPlan.issuerRef === undefined
-  ) {
-    return;
-  }
-
   const key: string = [hostPlan.domainKind, hostPlan.tlsMode, hostPlan.publicScheme].join('/');
   throw createInvalidDomainHostPlanError(`Unsupported pending domain/TLS combination: ${key}.`);
 }
@@ -72,7 +63,6 @@ function assertSupportedDomainMatrix(hostPlan: DomainHostPlan): void {
   const key: string = [hostPlan.domainKind, hostPlan.tlsMode, hostPlan.publicScheme].join('/');
   const supportedKeys: Set<string> = new Set<string>([
     'managed/broker-dns01/https',
-    'custom/custom-cert/https',
     'custom/external/https',
     'local/internal/https',
   ]);
