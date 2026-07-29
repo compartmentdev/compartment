@@ -21,21 +21,32 @@ describe('parseGitNameStatus', () => {
 });
 
 describe('findDrizzleMigrationCountValidationErrors', () => {
+  it('allows only the one-time Kubernetes acceptance resquash', () => {
+    expect(findDrizzleMigrationCountValidationErrors(buildKubernetesAcceptanceResquashChanges())).toEqual([]);
+  });
+
   it('allows only the one-time Kubernetes retention resquash', () => {
     expect(findDrizzleMigrationCountValidationErrors(buildKubernetesRetentionResquashChanges())).toEqual([]);
   });
 
   it.each([
-    ['another initial path', (changes) => (changes[0].path = 'packages/api/drizzle/0000_other.sql')],
-    ['an added initial migration', (changes) => (changes[0].status = 'A')],
-    ['another deleted path', (changes) => (changes[1].path = 'packages/api/drizzle/0001_other.sql')],
-    ['a modified follow-up migration', (changes) => (changes[1].status = 'M')],
-    ['an extra migration', (changes) => changes.push({ path: 'packages/api/drizzle/0002_extra.sql', status: 'A' })],
-  ])('rejects the Kubernetes retention resquash exemption with %s', (_name, mutateChanges) => {
-    const migrationChanges = buildKubernetesRetentionResquashChanges();
-    mutateChanges(migrationChanges);
+    ['acceptance', buildKubernetesAcceptanceResquashChanges, 'packages/api/drizzle/0006_extra.sql'],
+    ['retention', buildKubernetesRetentionResquashChanges, 'packages/api/drizzle/0002_extra.sql'],
+  ])('rejects mutations of the one-time Kubernetes %s resquash', (_name, buildChanges, extraMigrationPath) => {
+    const mutations = [
+      (changes) => (changes[0].path = 'packages/api/drizzle/0000_other.sql'),
+      (changes) => (changes[0].status = 'A'),
+      (changes) => (changes[1].path = 'packages/api/drizzle/0001_other.sql'),
+      (changes) => (changes[1].status = 'M'),
+      (changes) => changes.push({ path: extraMigrationPath, status: 'A' }),
+    ];
 
-    expect(findDrizzleMigrationCountValidationErrors(migrationChanges)).not.toEqual([]);
+    for (const mutateChanges of mutations) {
+      const migrationChanges = buildChanges();
+      mutateChanges(migrationChanges);
+
+      expect(findDrizzleMigrationCountValidationErrors(migrationChanges)).not.toEqual([]);
+    }
   });
 
   it('allows the one-time docker cutover migration reset', () => {
@@ -144,6 +155,25 @@ function buildKubernetesRetentionResquashChanges() {
       path: 'packages/api/drizzle/0001_living_spirit.sql',
       status: 'D',
     },
+  ];
+}
+
+function buildKubernetesAcceptanceResquashChanges() {
+  return [
+    {
+      path: 'packages/api/drizzle/0000_initial.sql',
+      status: 'M',
+    },
+    ...[
+      '0001_concerned_ben_urich.sql',
+      '0002_thankful_krista_starr.sql',
+      '0003_thick_gravity.sql',
+      '0004_mixed_slyde.sql',
+      '0005_bright_cardiac.sql',
+    ].map((fileName) => ({
+      path: `packages/api/drizzle/${fileName}`,
+      status: 'D',
+    })),
   ];
 }
 

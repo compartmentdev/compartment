@@ -164,6 +164,55 @@ export async function cleanupManagedInstallFixture(): Promise<void> {
   ]);
 }
 
+export async function renewManagedInstallConsoleCertificate(): Promise<void> {
+  const certificateName: string = `${managedInstallReleaseName}-compartment-console`;
+  const secretName: string = `${certificateName}-tls`;
+  const originalSerialNumber: string = await readManagedInstallCertificateSerialNumber(secretName);
+  await expectSuccessfulKubectl(
+    ['--namespace', managedInstallNamespace, 'delete', `secret/${secretName}`, '--wait=true'],
+    'remove the managed console TLS Secret to trigger renewal',
+  );
+  await expectSuccessfulKubectl(
+    [
+      '--namespace',
+      managedInstallNamespace,
+      'wait',
+      `certificate/${certificateName}`,
+      '--for=condition=Ready',
+      '--timeout=4m',
+    ],
+    'wait for managed console certificate renewal',
+  );
+
+  const deadline: number = Date.now() + kubernetesTimeoutMs;
+  for (;;) {
+    try {
+      const renewedSerialNumber: string = await readManagedInstallCertificateSerialNumber(secretName);
+      if (renewedSerialNumber !== originalSerialNumber) {
+        return;
+      }
+    } catch {
+      // cert-manager replaces the Secret asynchronously.
+    }
+    if (Date.now() >= deadline) {
+      throw new Error('Managed console certificate renewal did not replace the certificate before the timeout.');
+    }
+    await delay(500);
+  }
+}
+
+async function readManagedInstallCertificateSerialNumber(secretName: string): Promise<string> {
+  const certificate: SelfHostedUserSetupCommandResult = await runKubectl([
+    '--namespace',
+    managedInstallNamespace,
+    'get',
+    `secret/${secretName}`,
+    '--output=jsonpath={.data.tls\\.crt}',
+  ]);
+  expectSuccessfulCommand(certificate, `read certificate from ${secretName}`);
+  return new X509Certificate(Buffer.from(certificate.stdout, 'base64')).serialNumber;
+}
+
 async function writeManagedInstallCertificateAuthority(): Promise<void> {
   const managementCa: Buffer = await readFile(
     resolve(repositoryRoot, process.env.COMPARTMENT_E2E_PEBBLE_CA_PATH ?? '.compartment/pebble.minica.pem'),

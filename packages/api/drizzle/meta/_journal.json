@@ -5,43 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1783948017382,
+      "when": 1785301596023,
       "tag": "0000_initial",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1784909278511,
-      "tag": "0001_concerned_ben_urich",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1785223501177,
-      "tag": "0002_thankful_krista_starr",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1785239564368,
-      "tag": "0003_thick_gravity",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1785261363115,
-      "tag": "0004_mixed_slyde",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1785281013566,
-      "tag": "0005_bright_cardiac",
       "breakpoints": true
     }
   ]

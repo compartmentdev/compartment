@@ -18,6 +18,46 @@ describe('readPackageRootFromDrizzleJournalPath', () => {
 });
 
 describe('findDrizzleJournalDiffValidationErrors', () => {
+  it('allows only the one-time Kubernetes acceptance resquash', () => {
+    expect(
+      findDrizzleJournalDiffValidationErrors(
+        'packages/api/drizzle/meta/_journal.json',
+        buildKubernetesAcceptanceResquashBaseJournal(),
+        buildKubernetesAcceptanceResquashHeadJournal(),
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ['another package journal', 'packages/audit/drizzle/meta/_journal.json', () => {}, () => {}],
+    [
+      'changed base migration',
+      'packages/api/drizzle/meta/_journal.json',
+      (journal) => (journal.entries[5].tag = '0005_other'),
+      () => {},
+    ],
+    [
+      'changed head timestamp',
+      'packages/api/drizzle/meta/_journal.json',
+      () => {},
+      (journal) => (journal.entries[0].when += 1),
+    ],
+    [
+      'retained a transitional entry',
+      'packages/api/drizzle/meta/_journal.json',
+      () => {},
+      (journal) =>
+        journal.entries.push({ breakpoints: true, idx: 1, tag: '0001_extra', version: '7', when: 1785301596024 }),
+    ],
+  ])('rejects the Kubernetes acceptance resquash exemption for %s', (_name, journalPath, mutateBase, mutateHead) => {
+    const baseJournal = buildKubernetesAcceptanceResquashBaseJournal();
+    const headJournal = buildKubernetesAcceptanceResquashHeadJournal();
+    mutateBase(baseJournal);
+    mutateHead(headJournal);
+
+    expect(findDrizzleJournalDiffValidationErrors(journalPath, baseJournal, headJournal)).not.toEqual([]);
+  });
+
   it('allows only the one-time Kubernetes retention resquash', () => {
     expect(
       findDrizzleJournalDiffValidationErrors(
@@ -238,6 +278,29 @@ describe('findDrizzleJournalDiffValidationErrors', () => {
 
 function buildD16BaseJournal() {
   return buildD16Journal(1779700755038);
+}
+
+function buildKubernetesAcceptanceResquashBaseJournal() {
+  return {
+    dialect: 'postgresql',
+    entries: [
+      { breakpoints: true, idx: 0, tag: '0000_initial', version: '7', when: 1783948017382 },
+      { breakpoints: true, idx: 1, tag: '0001_concerned_ben_urich', version: '7', when: 1784909278511 },
+      { breakpoints: true, idx: 2, tag: '0002_thankful_krista_starr', version: '7', when: 1785223501177 },
+      { breakpoints: true, idx: 3, tag: '0003_thick_gravity', version: '7', when: 1785239564368 },
+      { breakpoints: true, idx: 4, tag: '0004_mixed_slyde', version: '7', when: 1785261363115 },
+      { breakpoints: true, idx: 5, tag: '0005_bright_cardiac', version: '7', when: 1785281013566 },
+    ],
+    version: '7',
+  };
+}
+
+function buildKubernetesAcceptanceResquashHeadJournal() {
+  return {
+    dialect: 'postgresql',
+    entries: [{ breakpoints: true, idx: 0, tag: '0000_initial', version: '7', when: 1785301596023 }],
+    version: '7',
+  };
 }
 
 function buildKubernetesRetentionResquashBaseJournal() {

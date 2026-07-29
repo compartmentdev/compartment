@@ -2,18 +2,21 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildPlatformK3dClusterCreateArgs,
   isConsoleReadyStatus,
+  isTransientKubernetesApiFailure,
   parseK3dClusterNames,
   parseLoadedImageRefs,
   readPlatformK3dCommand,
   readPlatformK3dCertManagerManifestUrl,
+  readPlatformK3dIngressNginxManifestUrl,
   readPlatformK3dEnvironment,
   renderManagedPlatformK3dValues,
   renderPlatformK3dValues,
+  runKubectlWithTransientApiRetry,
 } from './platform-k3d-e2e.mjs';
 import {
   buildDockerContainerRemovalArgs,
@@ -45,10 +48,81 @@ describe('platform k3d e2e command boundary', () => {
     expect(args).toContain('127.0.0.1:18443:443@loadbalancer');
     expect(args.join(' ')).not.toContain('disable=traefik');
     expect(args.join(' ')).not.toContain('30080@server');
+    expect(args).toContain('rancher/k3s:v1.33.2-k3s1');
+    expect(args).toContain('120s');
     expect(args.join(' ')).not.toContain('30443@server');
     expect(readPlatformK3dCertManagerManifestUrl()).toBe(
       'https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml',
     );
+    expect(readPlatformK3dIngressNginxManifestUrl()).toBe(
+      'https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.13.3/deploy/static/provider/baremetal/deploy.yaml',
+    );
+  });
+
+  it('retries only transient Kubernetes API availability failures', async () => {
+    const waits = [];
+    const commandRunner = vi
+      .fn()
+      .mockReturnValueOnce({
+        status: 1,
+        stderr: 'Error from server (ServiceUnavailable): unable to handle request (get nodes)',
+        stdout: '',
+      })
+      .mockReturnValueOnce({
+        status: 1,
+        stderr: 'The connection to the server 127.0.0.1:6443 was refused',
+        stdout: '',
+      })
+      .mockReturnValue({ status: 0, stderr: '', stdout: 'ok' });
+
+    await runKubectlWithTransientApiRetry(['wait', 'nodes'], {
+      commandRunner,
+      wait: async (milliseconds) => waits.push(milliseconds),
+    });
+
+    expect(commandRunner).toHaveBeenCalledTimes(3);
+    expect(waits).toEqual([1_000, 2_000]);
+    expect(
+      isTransientKubernetesApiFailure({
+        status: 1,
+        stderr: 'timed out waiting for the condition',
+        stdout: '',
+      }),
+    ).toBe(false);
+    expect(isTransientKubernetesApiFailure({ status: 1, stderr: 'not ready', stdout: '' })).toBe(false);
+    expect(isTransientKubernetesApiFailure({ status: 1, stderr: 'not ready', stdout: '' }, true)).toBe(true);
+    expect(
+      isTransientKubernetesApiFailure({
+        status: 1,
+        stderr: 'Error from server (NotFound): deployments.apps "traefik" not found',
+        stdout: '',
+      }),
+    ).toBe(false);
+    expect(
+      isTransientKubernetesApiFailure(
+        {
+          status: 1,
+          stderr: 'Error from server (NotFound): deployments.apps "traefik" not found',
+          stdout: '',
+        },
+        false,
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      isTransientKubernetesApiFailure({
+        status: 1,
+        stderr: 'failed calling webhook "validate.example": dial tcp 10.43.0.7:443: connect: connection refused',
+        stdout: '',
+      }),
+    ).toBe(false);
+    expect(
+      isTransientKubernetesApiFailure({
+        status: 1,
+        stderr: 'Get "https://127.0.0.1:6443/api": dial tcp 127.0.0.1:6443: connect: connection refused',
+        stdout: '',
+      }),
+    ).toBe(true);
   });
 
   it('removes container-owned anonymous volumes during cleanup', () => {

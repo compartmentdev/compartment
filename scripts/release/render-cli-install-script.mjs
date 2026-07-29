@@ -6,6 +6,7 @@ import { readRepositoryRoot } from '../lib/repository-root.mjs';
 
 const releaseRepositoryPlaceholder = '__COMPARTMENT_RELEASES_REPOSITORY__';
 const defaultReleaseVersionPlaceholder = '__COMPARTMENT_DEFAULT_RELEASE_VERSION__';
+const defaultChannelPlaceholder = '__COMPARTMENT_DEFAULT_CHANNEL__';
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
 const releaseRepositoryPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/u;
 
@@ -15,7 +16,8 @@ async function main() {
   const templateText = await readFile(templatePath, 'utf8');
   const renderedText = templateText
     .replaceAll(releaseRepositoryPlaceholder, options.releaseRepository)
-    .replaceAll(defaultReleaseVersionPlaceholder, options.defaultReleaseVersion);
+    .replaceAll(defaultReleaseVersionPlaceholder, options.defaultReleaseVersion)
+    .replaceAll(defaultChannelPlaceholder, options.defaultChannel);
 
   await mkdir(dirname(options.outputPath), { recursive: true });
   await writeFile(options.outputPath, renderedText, 'utf8');
@@ -61,6 +63,7 @@ function readInstallerRenderOptions(args, repositoryRoot) {
     outputPath !== ''
   ) {
     return {
+      defaultChannel: defaultReleaseVersion === '' ? 'kubernetes' : 'latest',
       defaultReleaseVersion,
       releaseRepository,
       outputPath,

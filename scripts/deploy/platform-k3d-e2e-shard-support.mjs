@@ -34,6 +34,7 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     COMPARTMENT_E2E_DIAGNOSTICS_PATH: `.compartment/platform-k3d-diagnostics-${shardName}`,
     COMPARTMENT_E2E_HTTP_PORT: httpPort,
     COMPARTMENT_E2E_HTTPS_PORT: baseEnv.COMPARTMENT_E2E_HTTPS_PORT ?? (18_443 + portOffset).toString(),
+    COMPARTMENT_E2E_INGRESS_CLASS: shardName === 'build-matrix-b' ? 'nginx' : 'traefik',
     COMPARTMENT_E2E_KUBE_CONTEXT: `k3d-${clusterName}`,
     COMPARTMENT_E2E_MANAGED_ACME_PORT: baseEnv.COMPARTMENT_E2E_MANAGED_ACME_PORT ?? (19_500 + portOffset).toString(),
     COMPARTMENT_E2E_MANAGED_BROKER_PORT: (19_000 + portOffset).toString(),

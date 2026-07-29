@@ -2,6 +2,7 @@ import { mkdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { get } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { buildSelfHostedImages } from './build-self-hosted-images.mjs';
@@ -58,6 +59,8 @@ const imageCacheLockOwnerToken = `e2e-${clusterName}`;
 const pebbleCaContainerName = `${clusterName}-pebble-ca`;
 const shouldExtractPebbleCa =
   process.env.COMPARTMENT_E2E_SHARD === undefined || process.env.COMPARTMENT_E2E_SHARD === 'managed-install';
+const isIngressNginxShard = process.env.COMPARTMENT_E2E_SHARD === 'build-matrix-b';
+const ingressClassName = isIngressNginxShard ? 'nginx' : 'traefik';
 const registryTestCaPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-ca.crt`);
 const registryTestCaKeyPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-ca.key`);
 const platformImageTag = 'e2e';
@@ -65,8 +68,17 @@ const registryNodePullResourceName = 'registry-node-pull';
 const imageDigestPattern = /^sha256:[a-f0-9]{64}$/u;
 const kubernetesReadinessTimeoutSeconds = 240;
 const kubernetesReadinessTimeout = `${kubernetesReadinessTimeoutSeconds}s`;
+const prerequisiteSetupBudgetMs = 120_000;
+const transientKubernetesApiMaxAttempts = 6;
+const transientKubernetesApiInitialDelayMs = 1_000;
+const transientKubernetesApiMaxDelayMs = 16_000;
 const certManagerManifestUrl =
   'https://github.com/cert-manager/cert-manager/releases/download/v1.21.0/cert-manager.yaml';
+const ingressNginxManifestUrl =
+  'https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.13.3/deploy/static/provider/baremetal/deploy.yaml';
+const k3sImageRef = 'rancher/k3s:v1.33.2-k3s1';
+const ingressNginxHttpNodePort = 30_080;
+const ingressNginxHttpsNodePort = 30_443;
 const pebbleImageRef =
   'ghcr.io/letsencrypt/pebble@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199';
 const archiveLoadLockDirectory = join(tmpdir(), 'compartment-platform-k3d-image-load.lock');
@@ -233,7 +245,7 @@ export function isConsoleReadyStatus(status) {
 }
 
 export function renderPlatformK3dValues(imageDigestsByServiceName) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\nedge:\n  snapshots:\n    enabled: true\n`;
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: ${ingressClassName}\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\nedge:\n  snapshots:\n    enabled: true\n`;
 }
 
 export function renderManagedPlatformK3dValues(imageDigestsByServiceName) {
@@ -302,14 +314,33 @@ function extractPebbleManagementCertificateAuthority() {
 }
 
 async function createCluster() {
+  const prerequisiteSetupStartedAt = performance.now();
+  const prerequisiteSetupDeadline = prerequisiteSetupStartedAt + prerequisiteSetupBudgetMs;
   await runCommandAsync('k3d', buildPlatformK3dClusterCreateArgs(), repositoryRoot);
+  await runKubectlWithTransientApiRetry(['--context', contextName, '--request-timeout=5s', 'get', '--raw=/readyz'], {
+    deadline: prerequisiteSetupDeadline,
+  });
+  if (isIngressNginxShard) {
+    await installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
+  } else {
+    await waitForIngressController('kube-system', 'traefik', prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
+  }
+  const certManagerApplyTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
   runCommand(
     'kubectl',
-    ['--context', contextName, 'apply', '--server-side', '--filename', certManagerManifestUrl],
+    [
+      '--context',
+      contextName,
+      `--request-timeout=${String(certManagerApplyTimeoutSeconds)}s`,
+      'apply',
+      '--server-side',
+      '--filename',
+      certManagerManifestUrl,
+    ],
     repositoryRoot,
   );
-  runCommand(
-    'kubectl',
+  const certManagerWaitTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
+  await runKubectlWithTransientApiRetry(
     [
       '--context',
       contextName,
@@ -319,14 +350,104 @@ async function createCluster() {
       'deployment',
       '--all',
       '--for=condition=Available',
-      `--timeout=${kubernetesReadinessTimeout}`,
+      `--timeout=${String(certManagerWaitTimeoutSeconds)}s`,
+    ],
+    {
+      deadline: prerequisiteSetupDeadline,
+    },
+  );
+  reportPrerequisiteSetupCost(performance.now() - prerequisiteSetupStartedAt);
+  await installRegistryTestIssuerAndNodeTrust();
+}
+
+async function installIngressNginx(prerequisiteSetupStartedAt, prerequisiteSetupDeadline) {
+  const applyTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
+  runCommand(
+    'kubectl',
+    [
+      '--context',
+      contextName,
+      `--request-timeout=${String(applyTimeoutSeconds)}s`,
+      'apply',
+      '--filename',
+      ingressNginxManifestUrl,
     ],
     repositoryRoot,
   );
-  installRegistryTestIssuerAndNodeTrust();
+  runCommand(
+    'kubectl',
+    [
+      '--context',
+      contextName,
+      '--namespace',
+      'ingress-nginx',
+      'patch',
+      'service',
+      'ingress-nginx-controller',
+      '--type=merge',
+      '--patch',
+      JSON.stringify({
+        spec: {
+          ports: [
+            { name: 'http', nodePort: ingressNginxHttpNodePort, port: 80, protocol: 'TCP', targetPort: 'http' },
+            { name: 'https', nodePort: ingressNginxHttpsNodePort, port: 443, protocol: 'TCP', targetPort: 'https' },
+          ],
+        },
+      }),
+    ],
+    repositoryRoot,
+  );
+  await waitForIngressController(
+    'ingress-nginx',
+    'ingress-nginx-controller',
+    prerequisiteSetupStartedAt,
+    prerequisiteSetupDeadline,
+  );
 }
 
-function installRegistryTestIssuerAndNodeTrust() {
+async function waitForIngressController(
+  namespace,
+  deploymentName,
+  prerequisiteSetupStartedAt,
+  prerequisiteSetupDeadline,
+) {
+  const waitTimeoutSeconds = readPrerequisiteWaitTimeoutSeconds(prerequisiteSetupStartedAt);
+  await runKubectlWithTransientApiRetry(
+    [
+      '--context',
+      contextName,
+      '--namespace',
+      namespace,
+      'wait',
+      `deployment/${deploymentName}`,
+      '--for=condition=Available',
+      `--timeout=${String(waitTimeoutSeconds)}s`,
+    ],
+    { allowResourceNotFound: true, deadline: prerequisiteSetupDeadline },
+  );
+}
+
+function readPrerequisiteWaitTimeoutSeconds(startedAt) {
+  const remainingMs = prerequisiteSetupBudgetMs - (performance.now() - startedAt);
+  if (remainingMs <= 0) {
+    reportPrerequisiteSetupCost(performance.now() - startedAt);
+  }
+  return Math.max(1, Math.floor(remainingMs / 1_000));
+}
+
+function reportPrerequisiteSetupCost(elapsedMs) {
+  const roundedElapsedMs = Math.ceil(elapsedMs);
+  process.stdout.write(
+    `prerequisite setup: ingress controller + cert-manager ${String(roundedElapsedMs)}ms (budget ${String(prerequisiteSetupBudgetMs)}ms)\n`,
+  );
+  if (roundedElapsedMs > prerequisiteSetupBudgetMs) {
+    throw new Error(
+      `Ingress controller and cert-manager setup exceeded the ${String(prerequisiteSetupBudgetMs)}ms shard budget.`,
+    );
+  }
+}
+
+async function installRegistryTestIssuerAndNodeTrust() {
   runCommand(
     'openssl',
     [
@@ -346,22 +467,18 @@ function installRegistryTestIssuerAndNodeTrust() {
     ],
     repositoryRoot,
   );
-  runCommand(
-    'kubectl',
-    [
-      '--context',
-      contextName,
-      '--namespace',
-      'cert-manager',
-      'create',
-      'secret',
-      'tls',
-      'compartment-registry-test-ca',
-      `--cert=${registryTestCaPath}`,
-      `--key=${registryTestCaKeyPath}`,
-    ],
-    repositoryRoot,
-  );
+  await runKubectlWithTransientApiRetry([
+    '--context',
+    contextName,
+    '--namespace',
+    'cert-manager',
+    'create',
+    'secret',
+    'tls',
+    'compartment-registry-test-ca',
+    `--cert=${registryTestCaPath}`,
+    `--key=${registryTestCaKeyPath}`,
+  ]);
   const issuerPath = join(dirname(platformValuesPath), `${clusterName}-registry-test-issuer.yaml`);
   writeFileSync(
     issuerPath,
@@ -392,42 +509,111 @@ function installRegistryTestIssuerAndNodeTrust() {
     );
     runCommand('docker', ['restart', nodeName], repositoryRoot);
   }
-  runCommand(
-    'kubectl',
-    [
-      '--context',
-      contextName,
-      'wait',
-      'nodes',
-      '--all',
-      '--for=condition=Ready',
-      `--timeout=${kubernetesReadinessTimeout}`,
-    ],
-    repositoryRoot,
+  await runKubectlWithTransientApiRetry([
+    '--context',
+    contextName,
+    'wait',
+    'nodes',
+    '--all',
+    '--for=condition=Ready',
+    `--timeout=${kubernetesReadinessTimeout}`,
+  ]);
+}
+
+export async function runKubectlWithTransientApiRetry(args, options = {}) {
+  const commandRunner =
+    options.commandRunner ?? ((commandArgs) => captureCommandResult('kubectl', commandArgs, repositoryRoot));
+  const wait = options.wait ?? delay;
+  let lastResult;
+
+  for (let attempt = 1; attempt <= transientKubernetesApiMaxAttempts; attempt += 1) {
+    lastResult = commandRunner(args);
+    if (lastResult.status === 0) {
+      return;
+    }
+    const allowNotReady = args.includes('--raw=/readyz');
+    if (
+      !isTransientKubernetesApiFailure(lastResult, allowNotReady, options.allowResourceNotFound === true) ||
+      attempt === transientKubernetesApiMaxAttempts
+    ) {
+      if (lastResult.stderr !== '') {
+        process.stderr.write(lastResult.stderr);
+      }
+      throw lastResult.error ?? new Error(`Command failed: kubectl ${args.join(' ')}`);
+    }
+
+    const retryDelayMs = Math.min(
+      transientKubernetesApiInitialDelayMs * 2 ** (attempt - 1),
+      transientKubernetesApiMaxDelayMs,
+    );
+    const remainingDelayMs =
+      typeof options.deadline === 'number' ? Math.max(0, options.deadline - performance.now()) : retryDelayMs;
+    if (remainingDelayMs === 0) {
+      throw new Error('Kubernetes API did not become ready within the prerequisite setup budget.');
+    }
+    const boundedRetryDelayMs = Math.min(retryDelayMs, remainingDelayMs);
+    process.stderr.write(
+      `Kubernetes API is not ready (attempt ${String(attempt)}/${String(transientKubernetesApiMaxAttempts)}); retrying in ${String(Math.ceil(boundedRetryDelayMs))}ms.\n`,
+    );
+    await wait(boundedRetryDelayMs);
+  }
+
+  throw lastResult?.error ?? new Error(`Command failed after Kubernetes API retry: kubectl ${args.join(' ')}`);
+}
+
+export function isTransientKubernetesApiFailure(result, allowNotReady = false, allowResourceNotFound = false) {
+  const output = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.toLowerCase();
+  if (output.includes('failed calling webhook') || output.includes('admission webhook')) {
+    return false;
+  }
+  return (
+    output.includes('serviceunavailable') ||
+    output.includes('service unavailable') ||
+    output.includes('unable to connect to the server') ||
+    /the connection to the server .* was refused/u.test(output) ||
+    /get "?https?:\/\/[^"]+"?: dial tcp [^\s]+: connect: connection refused/u.test(output) ||
+    output.includes('the server is currently unable to handle the request') ||
+    (allowNotReady && output.includes('not ready')) ||
+    (allowResourceNotFound && output.includes('error from server (notfound)'))
   );
 }
 
 export function buildPlatformK3dClusterCreateArgs() {
+  const publicPortArgs = isIngressNginxShard
+    ? [
+        '--agents',
+        '1',
+        '--port',
+        `127.0.0.1:${httpPort}:${String(ingressNginxHttpNodePort)}@agent:0`,
+        '--port',
+        `127.0.0.1:${httpsPort}:${String(ingressNginxHttpsNodePort)}@agent:0`,
+      ]
+    : ['--port', `127.0.0.1:${httpPort}:80@loadbalancer`, '--port', `127.0.0.1:${httpsPort}:443@loadbalancer`];
   return [
     'cluster',
     'create',
     clusterName,
-    '--port',
-    `127.0.0.1:${httpPort}:80@loadbalancer`,
-    '--port',
-    `127.0.0.1:${httpsPort}:443@loadbalancer`,
+    '--image',
+    k3sImageRef,
+    ...publicPortArgs,
     '--port',
     `127.0.0.1:${managedBrokerPort}:30900@server:0`,
     '--port',
     `127.0.0.1:${managedAcmeManagementPort}:31500@server:0`,
     '--registry-use',
     registryClusterHost,
+    '--timeout',
+    `${String(Math.floor(prerequisiteSetupBudgetMs / 1_000))}s`,
     '--wait',
   ];
 }
 
 export function readPlatformK3dCertManagerManifestUrl() {
   return certManagerManifestUrl;
+}
+
+export function readPlatformK3dIngressNginxManifestUrl() {
+  return ingressNginxManifestUrl;
 }
 
 async function prepareAndPushPlatformImages(command) {

@@ -23,6 +23,7 @@ import {
   managedInstallReleaseName,
   managedInstallValuesPath,
   prepareManagedInstallFixture,
+  renewManagedInstallConsoleCertificate,
   waitForManagedDomainBrokerObservation,
   type ManagedDomainAuditObservation,
   type ManagedDomainBrokerObservation,
@@ -108,6 +109,18 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       expect(
         broker.audit.some((event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned'),
       ).toBe(true);
+      await renewManagedInstallConsoleCertificate();
+      const renewedBroker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerObservation();
+      expect(
+        renewedBroker.audit.filter(
+          (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_presented',
+        ).length,
+      ).toBeGreaterThanOrEqual(2);
+      expect(
+        renewedBroker.audit.filter(
+          (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned',
+        ).length,
+      ).toBeGreaterThanOrEqual(2);
       managedInstallCompleted = true;
     },
     installTimeoutMs,

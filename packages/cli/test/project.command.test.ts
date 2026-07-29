@@ -75,6 +75,19 @@ describe.sequential('compartment project commands', (): void => {
     expect(payload.remoteState).toBe('not_created');
   });
 
+  it('prints descriptor schema failures as message-only stderr', async (): Promise<void> => {
+    const projectDirectory: string = await createProjectDirectory(tempRoot, 'smoke-web');
+    await writeFile(join(projectDirectory, 'compartment.yml'), 'name: 42\nservices:\n  web: .\n');
+    process.chdir(projectDirectory);
+
+    const result: CliCommandResult = await runCliCommand(['project', 'show']);
+    const stderr: string = result.capture.stderr.join('');
+
+    expect(result.exitCode).toBe(1);
+    expect(stderr).toContain('compartment.yml: name: Expected string, received number');
+    expect(stderr).not.toMatch(/ZodError|"code"|at parse/u);
+  });
+
   it('deletes a remote project in json mode without changing compartment.yml', async (): Promise<void> => {
     const projectDirectory: string = await createProjectDirectory(tempRoot, 'smoke-web');
     const descriptorPath: string = join(projectDirectory, 'compartment.yml');

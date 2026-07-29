@@ -49,6 +49,9 @@ describe('self-hosted publish workflows', () => {
     const anonymousPullStep = publishJob.steps.find((step) => step.name === 'Verify anonymous CLI artifact pulls');
     const signStep = publishJob.steps.find((step) => step.name === 'Sign and verify CLI artifact');
     const promoteStep = publishJob.steps.find((step) => step.name === 'Promote mutable kubernetes CLI tag');
+    const publicInstallerStep = publishJob.steps.find(
+      (step) => step.name === 'Verify supported public installer handoff',
+    );
 
     expect(buildJob.strategy.matrix.include).toEqual([
       { artifact_name: 'compartment-darwin-arm64.tar.gz', runner: 'macos-14' },
@@ -80,6 +83,14 @@ describe('self-hosted publish workflows', () => {
     );
     expect(promoteStep.run).toContain('git/ref/heads/kubernetes');
     expect(promoteStep.run).toContain('${CLI_REPOSITORY}:kubernetes');
+    expect(promoteStep.id).toBe('promote-kubernetes-cli');
+    expect(promoteStep.run).toContain('echo \'promoted=false\' >> "$GITHUB_OUTPUT"');
+    expect(promoteStep.run).toContain('echo \'promoted=true\' >> "$GITHUB_OUTPUT"');
+    expect(publishJob.steps.indexOf(publicInstallerStep)).toBeGreaterThan(publishJob.steps.indexOf(promoteStep));
+    expect(publicInstallerStep.if).toBe("steps.promote-kubernetes-cli.outputs.promoted == 'true'");
+    expect(publicInstallerStep.run).toContain('https://compartment.dev/install.sh');
+    expect(publicInstallerStep.run).toContain('! grep --ignore-case --quiet');
+    expect(publicInstallerStep.run).toContain('cmp --silent install.sh ./.compartment/public-install.sh');
   });
 
   it('publishes, signs, and verifies both registries through one channel action', async () => {

@@ -70,3 +70,30 @@ use `compartment login` to recover the local session.
 The retained install-state Secret and registry resources use Helm keep policy. An uninstall followed by reinstall
 with the same namespace and release name reuses that retained identity. Deleting retained resources is an explicit,
 operator-owned abandonment action.
+
+### Registry recovery
+
+The registry is a single `Recreate` Deployment backed by one retained `ReadWriteOnce` PVC. Existing running
+application Pods are unaffected by a registry outage, but builds, new deployments, and rescheduling an image that is
+not cached on the target node remain unavailable until recovery completes.
+
+For an ordinary Pod failure, keep the PVC and restart the Deployment:
+
+```bash
+kubectl --context <context> --namespace <namespace> \
+  rollout restart deployment/<release>-compartment-registry
+kubectl --context <context> --namespace <namespace> \
+  rollout status deployment/<release>-compartment-registry --timeout=10m
+```
+
+The release gate performs this restart on the two-node ingress-nginx shard and verifies that the PVC UID and the
+previously pushed acceptance repository remain unchanged. For a PVC attachment or node failure, first stop new deploy
+and build activity. Restore the failed node or use the storage provider's documented detach/reattach procedure. If
+the volume cannot be reattached, restore the latest registry backup or VolumeSnapshot into a replacement PVC with the
+same `<release>-compartment-registry` name, access mode, StorageClass, and ownership before restarting the Deployment.
+Do not delete the retained source PVC until the restored registry has passed integrity checks.
+
+After recovery, require the Deployment to be Available, confirm `/v2/` readiness through the registry-auth path, and
+deploy a known project revision so its repository-scoped pull Secret performs a fresh pull on every eligible node.
+Keep builds and deploys paused if any manifest or blob is missing; return to the last verified backup instead of
+running garbage collection on a damaged store.
