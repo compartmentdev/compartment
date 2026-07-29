@@ -28,10 +28,14 @@ import {
   readOperatorOwnedKubernetesTlsSecretName,
   usesOperatorOwnedKubernetesTlsSecret,
 } from './kubernetes-install-tls.service';
+import { assertManagedDomainOnboardingAvailable } from './managed-domain-reservation-token.service';
 
 export async function installIntoKubernetes(
   input: KubernetesInstallApplicationInput,
 ): Promise<KubernetesInstallApplicationResult> {
+  if (input.domain.mode === 'managed') {
+    assertManagedDomainOnboardingAvailable();
+  }
   const deploymentInput: KubernetesInstallDeploymentInput = await buildDeploymentInput(input);
   await runCanonicalPreflight(input, deploymentInput);
   const deployment: KubernetesInstallDeploymentResult = await deployAndWaitForKubernetesInstall(deploymentInput);

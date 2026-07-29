@@ -5,11 +5,13 @@ import { waitForCliVerificationUrl } from './self-hosted-user-setup-browser-logi
 import {
   expectFailedCommand,
   expectSuccessfulCommand,
+  runBuiltCliInteractiveCommandLine,
   runBuiltCliInteractiveJsonCommandLine,
   runBuiltCliJsonCommandLine,
   splitCliCommandLine,
   startBuiltCliCommandLine,
   type SelfHostedUserSetupCommandResult,
+  type SelfHostedUserSetupCliCommandLineInput,
   type SelfHostedUserSetupJsonParser,
   type SelfHostedUserSetupCliJsonCommandLineInput,
   type SelfHostedUserSetupRunningCommand,
@@ -126,13 +128,17 @@ export class SelfHostedUserSetupCli {
     command: string,
     options: SelfHostedUserSetupCliRunOptions = {},
   ): Promise<SelfHostedUserSetupCommandResult> {
-    const result: SelfHostedUserSetupCommandResult = await startBuiltCliCommandLine({
+    const input: SelfHostedUserSetupCliCommandLineInput = {
       command,
       cwd: options.cwd,
       env: this.#env,
       input: options.input,
       timeoutMs: this.#timeoutMs,
-    }).result;
+    };
+    const result: SelfHostedUserSetupCommandResult =
+      options.interactive === true
+        ? await runBuiltCliInteractiveCommandLine(input)
+        : await startBuiltCliCommandLine(input).result;
 
     expectFailedCommand(result, command);
     return result;

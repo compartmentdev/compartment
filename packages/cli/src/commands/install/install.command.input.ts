@@ -23,7 +23,7 @@ export function resolveCanonicalKubernetesInstallInput(
   values: KubernetesInstallInputValues,
   kubeconfigPath: string,
 ): ResolvedKubernetesInstallInput {
-  assertDomainChoice(values);
+  assertCanonicalKubernetesInstallDomainChoice(values);
   const required: RequiredKubernetesInstallInputValues = readRequiredValues(values);
   assertKubernetesNames(required);
   assertOwnerValues(required);
@@ -93,7 +93,9 @@ function assertOwnerValues(values: RequiredKubernetesInstallInputValues): void {
   assertValidatedOwnerField('--admin-password', values.password, validatePassword);
 }
 
-function assertDomainChoice(values: KubernetesInstallInputValues): void {
+export function assertCanonicalKubernetesInstallDomainChoice(
+  values: Pick<KubernetesInstallInputValues, 'baseDomain' | 'managedDomain'>,
+): void {
   if (values.managedDomain === true && values.baseDomain !== undefined) {
     throw new Error('--managed-domain cannot be combined with --base-domain.');
   }
