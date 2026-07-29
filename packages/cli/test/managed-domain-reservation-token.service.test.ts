@@ -45,4 +45,12 @@ describe('managed-domain onboarding authorization', (): void => {
       }),
     ).toBe('reservation-token');
   });
+
+  it('allows managed-domain onboarding when authorization is available', (): void => {
+    expect((): void =>
+      assertManagedDomainOnboardingAvailable({
+        COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN: 'reservation-token',
+      }),
+    ).not.toThrow();
+  });
 });
