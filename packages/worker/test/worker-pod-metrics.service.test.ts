@@ -62,7 +62,10 @@ describe('Pod metric publication isolation', (): void => {
       | CapturedPodMetricsRequest
       | undefined;
     expect(publishInput?.body).toMatchObject({
-      pods: [{ namespace: kubeNamespaceName('prj_1'), podName: 'pod-a' }],
+      pods: [
+        { deploymentId: 'dep-a', kind: 'application', namespace: kubeNamespaceName('prj_1'), podName: 'pod-a' },
+        { kind: 'resource', namespace: kubeNamespaceName('prj_1'), podName: 'resource-pod', resourceId: 'res-a' },
+      ],
       state: 'available',
     });
   });
@@ -192,7 +195,7 @@ class PartialMetricsRuntime implements PodMetricsRuntime {
   public async observePodMetrics(input: ObservePodMetrics): Promise<KubePodMetricCollection> {
     return await Promise.resolve({
       failures: [{ namespace: input.namespaces[1]!, reason: this.error }],
-      observations: [podObservation(input.namespaces[0]!)],
+      observations: [podObservation(input.namespaces[0]!), resourcePodObservation(input.namespaces[0]!)],
       persistentGaps: [],
       successfulNamespaceCount: 1,
       transientGaps: [],
@@ -231,10 +234,21 @@ class FailedNamespaceCollectionRuntime implements PodMetricsRuntime {
 function podObservation(namespace: string): KubePodMetricObservation {
   return {
     containers: [{ cpu: '125m', memory: '64Mi' }],
-    deploymentId: 'dep-a',
     namespace,
     observedAt: new Date('2026-07-13T12:00:00.000Z'),
     podName: 'pod-a',
     podUid: 'pod-uid-a',
+    workload: { deploymentId: 'dep-a', kind: 'application' },
+  };
+}
+
+function resourcePodObservation(namespace: string): KubePodMetricObservation {
+  return {
+    containers: [{ cpu: '250m', memory: '128Mi' }],
+    namespace,
+    observedAt: new Date('2026-07-13T12:00:00.000Z'),
+    podName: 'resource-pod',
+    podUid: 'resource-pod-uid',
+    workload: { kind: 'resource', resourceId: 'res-a' },
   };
 }

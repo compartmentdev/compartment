@@ -18,6 +18,7 @@ interface WorkerProcessConfigEnvironment {
   COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: string;
   COMPARTMENT_LOG_LEVEL: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   COMPARTMENT_WORKER_POLL_INTERVAL_MS: number;
+  COMPARTMENT_USAGE_METERING_INTERVAL_MS: number;
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: string;
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS?: string | undefined;
 }
@@ -49,6 +50,7 @@ const workerProcessConfigSchema: z.ZodType<WorkerProcessConfigEnvironment> = z.o
   COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: z.string().min(32),
   COMPARTMENT_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
   COMPARTMENT_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().positive(),
+  COMPARTMENT_USAGE_METERING_INTERVAL_MS: z.coerce.number().int().positive(),
   COMPARTMENT_RUNTIME_CONTROL_TOKEN: z.string().min(1),
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: z.string().optional(),
 });
@@ -85,6 +87,7 @@ export interface WorkerBuildConfig extends WorkerProcessConfig {
 export interface WorkerConfig extends WorkerBuildConfig {
   customDomains: WorkerCustomDomainConfig;
   tenantScheduling?: KubeWorkloadScheduling | undefined;
+  usageMeteringIntervalMs: number;
 }
 
 export interface WorkerCustomDomainConfig {
@@ -125,6 +128,7 @@ export function readWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
       namespace: parsed.COMPARTMENT_PLATFORM_NAMESPACE,
     },
     ...(tenantScheduling === undefined ? {} : { tenantScheduling }),
+    usageMeteringIntervalMs: parsed.COMPARTMENT_USAGE_METERING_INTERVAL_MS,
   };
 }
 

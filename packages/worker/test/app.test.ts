@@ -141,6 +141,7 @@ function createWorkerConfig(): WorkerConfig {
     logLevel: 'silent',
     pollIntervalMs: 10,
     runtimeControlToken: 'worker-secret',
+    usageMeteringIntervalMs: 60_000,
   };
 }
 

@@ -183,12 +183,12 @@ async function publishSnapshotIgnoringFailure(
 function toWorkerPodMetric(observation: KubePodMetricObservation): WorkerPodResourceMetric {
   return {
     cpuMillicores: sumUsage(observation, 'cpu'),
-    deploymentId: observation.deploymentId,
     memoryBytes: Math.round(sumUsage(observation, 'memory')),
     namespace: observation.namespace,
     observedAt: observation.observedAt.toISOString(),
     podName: observation.podName,
     podUid: observation.podUid,
+    ...observation.workload,
   };
 }
 

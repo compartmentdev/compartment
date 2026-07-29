@@ -29,6 +29,7 @@ data:
   COMPARTMENT_PUBLIC_HTTPS_PORT: "443"
   COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: {{ .Values.platform.trustedOutboundHosts | quote }}
   COMPARTMENT_WORKER_POLL_INTERVAL_MS: {{ .Values.platform.workerPollIntervalMs | quote }}
+  COMPARTMENT_USAGE_METERING_INTERVAL_MS: {{ .Values.platform.usageMeteringIntervalMs | quote }}
   BUILDKIT_ADDR: {{ printf "tcp://%s-buildkit.%s.svc:%v" (include "compartment.fullname" .) .Values.buildkit.namespace .Values.ports.buildkit | quote }}
   COMPARTMENT_SYSTEM_API_SOCKET: /var/run/compartment/api/system-api.sock
   COMPARTMENT_ACME_ISSUER: {{ .Values.platform.acmeIssuer | quote }}
@@ -39,6 +40,7 @@ data:
   COMPARTMENT_SOURCE_ARCHIVE_DIR: /var/lib/compartment/source-archives
   COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES: {{ .Values.platform.sourceArchiveMaxBytes | quote }}
   COMPARTMENT_AUDIT_RETENTION_DAYS: {{ .Values.platform.auditRetentionDays | quote }}
+  COMPARTMENT_USAGE_RETENTION_DAYS: {{ .Values.platform.usageRetentionDays | quote }}
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_CRON: {{ .Values.platform.auditCleanupCron | quote }}
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE: {{ .Values.platform.auditCleanupBatchSize | quote }}
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES: {{ .Values.platform.auditCleanupMaxBatches | quote }}

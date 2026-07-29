@@ -169,6 +169,8 @@
         "managedDomainBrokerUrl": {
           "oneOf": [{ "const": "" }, { "type": "string", "pattern": "^https?://[^/?#@]+/?$" }]
         },
+        "usageMeteringIntervalMs": { "type": "integer", "minimum": 1 },
+        "usageRetentionDays": { "type": "integer", "minimum": 1 },
         "rollbackRetentionLimit": {
           "description": "Maximum retained rollback images inherited by organizations. Leave empty for indefinite retention.",
           "oneOf": [{ "const": "" }, { "type": "integer", "minimum": 1 }]

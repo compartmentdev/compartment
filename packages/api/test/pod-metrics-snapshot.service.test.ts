@@ -14,16 +14,16 @@ describe('Pod metrics snapshots', (): void => {
     vi.useRealTimers();
   });
 
-  it('filters metrics by requested deployment and marks old samples stale', (): void => {
+  it('filters metrics by requested deployment and uses the configured freshness window', (): void => {
     vi.useFakeTimers();
     vi.setSystemTime('2026-07-13T12:01:00.000Z');
     publishPodMetricsSnapshot(snapshot());
 
-    const result: DeploymentMetricsSnapshot = readPodMetricsSnapshot([deployment('dep-a', 'web')]);
+    const result: DeploymentMetricsSnapshot = readPodMetricsSnapshot([deployment('dep-a', 'web')], 120_000);
     expect(result).toEqual({
       observedAt: '2026-07-13T12:00:00.000Z',
       pods: [expect.objectContaining({ deploymentId: 'dep-a', serviceName: 'web' })],
-      state: 'stale',
+      state: 'available',
     });
     expect(deploymentMetricsSnapshotSchema.safeParse(result).success).toBe(true);
   });
@@ -44,6 +44,7 @@ function pod(deploymentId: string, podName: string, podUid: string): WorkerPodRe
   return {
     cpuMillicores: 125,
     deploymentId,
+    kind: 'application',
     memoryBytes: 67_108_864,
     namespace: 'cpt-project',
     observedAt: '2026-07-13T12:00:00.000Z',

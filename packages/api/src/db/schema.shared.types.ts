@@ -64,6 +64,7 @@ export type RuntimeDefaultIntegerBuilder<TName extends string> = NotNull<
   HasRuntimeDefault<HasDefault<PgIntegerBuilderInitial<TName>>>
 >;
 export type RequiredBigIntNumberBuilder<TName extends string> = NotNull<PgBigInt53BuilderInitial<TName>>;
+export type DefaultBigIntNumberBuilder<TName extends string> = NotNull<HasDefault<PgBigInt53BuilderInitial<TName>>>;
 export type RequiredBooleanBuilder<TName extends string> = NotNull<PgBooleanBuilderInitial<TName>>;
 export type DefaultBooleanBuilder<TName extends string> = NotNull<HasDefault<PgBooleanBuilderInitial<TName>>>;
 

@@ -13,6 +13,10 @@ export interface BrowserAuthTokenFlowCleanupJobData {
   requestedBy: 'schedule';
 }
 
+export interface UsageRetentionCleanupJobData {
+  requestedBy: 'schedule';
+}
+
 export interface StartApiJobsInput {
   config: ApiConfig;
   logger: FastifyBaseLogger;

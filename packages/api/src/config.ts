@@ -46,6 +46,8 @@ const apiConfigSchema: z.ZodTypeAny = z.object({
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE: z.coerce.number().int().positive(),
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_CRON: z.string().min(1),
   COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES: z.coerce.number().int().positive(),
+  COMPARTMENT_USAGE_RETENTION_DAYS: z.coerce.number().int().positive(),
+  COMPARTMENT_USAGE_METERING_INTERVAL_MS: z.coerce.number().int().positive(),
   COMPARTMENT_ROLLBACK_RETENTION_LIMIT: z.string(),
   COMPARTMENT_SOURCE_ARCHIVE_DIR: z.string().min(1),
   COMPARTMENT_SOURCE_ARCHIVE_MAX_BYTES: z.coerce.number().int().positive(),
@@ -90,6 +92,8 @@ export interface ApiConfig {
   systemToken: string;
   variablesMasterKey: Buffer;
   runtimeControlToken: string;
+  usageMeteringIntervalMs: number;
+  usageRetentionDays: number;
   workerImageRef?: string | null;
 }
 
@@ -114,6 +118,8 @@ type ApiRuntimeConfig = Pick<
   | 'sourceArchiveDirectory'
   | 'sourceArchiveMaxBytes'
   | 'workerImageRef'
+  | 'usageMeteringIntervalMs'
+  | 'usageRetentionDays'
 >;
 type ApiSecretConfig = Pick<
   ApiConfig,
@@ -213,6 +219,8 @@ function readApiRuntimeConfig(parsed: ApiConfigEnv): ApiRuntimeConfig {
     ),
     auditRetentionCleanupMaxBatches: parsed.COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES,
     auditRetentionDays: parsed.COMPARTMENT_AUDIT_RETENTION_DAYS,
+    usageMeteringIntervalMs: parsed.COMPARTMENT_USAGE_METERING_INTERVAL_MS,
+    usageRetentionDays: parsed.COMPARTMENT_USAGE_RETENTION_DAYS,
     rollbackRetentionLimit: parseOptionalPositiveInt(
       parsed.COMPARTMENT_ROLLBACK_RETENTION_LIMIT,
       'COMPARTMENT_ROLLBACK_RETENTION_LIMIT',

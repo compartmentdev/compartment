@@ -32,13 +32,25 @@ export interface KubeContainerMetricUsage {
   memory: string;
 }
 
+export interface KubeApplicationPodMetricWorkload {
+  deploymentId: string;
+  kind: 'application';
+}
+
+export interface KubeResourcePodMetricWorkload {
+  kind: 'resource';
+  resourceId: string;
+}
+
+export type KubePodMetricWorkload = KubeApplicationPodMetricWorkload | KubeResourcePodMetricWorkload;
+
 export interface KubePodMetricObservation {
   containers: KubeContainerMetricUsage[];
-  deploymentId: string;
   namespace: string;
   observedAt: Date;
   podName: string;
   podUid: string;
+  workload: KubePodMetricWorkload;
 }
 
 export interface KubePodMetricNamespaceFailure {

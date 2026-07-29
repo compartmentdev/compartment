@@ -20,6 +20,8 @@ export function createSsoOidcApiConfig(): ApiConfig {
     auditRetentionCleanupBatchSize: 1000,
     auditRetentionCleanupCron: '0 3 * * *',
     auditRetentionCleanupMaxBatches: 100,
+    usageMeteringIntervalMs: 60_000,
+    usageRetentionDays: 400,
     auditFileSink: defaultAuditFileSinkConfig,
     rollbackRetentionLimit: null,
     runtimeControlToken: 'runtime-control-token',

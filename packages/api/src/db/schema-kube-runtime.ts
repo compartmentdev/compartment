@@ -63,6 +63,7 @@ export const productJobRuns: KubeRuntimeSchemaTypes.ProductJobRunsTable = pgTabl
     podName: text('pod_name'),
     logs: text('logs'),
     completedAt: timestamp('completed_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
     finalizedAt: timestamp('finalized_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -71,6 +72,86 @@ export const productJobRuns: KubeRuntimeSchemaTypes.ProductJobRunsTable = pgTabl
     identityIndex: uniqueIndex('product_job_runs_class_identity_idx').on(table.jobClass, table.identityId),
     statusIndex: index('product_job_runs_status_created_at_idx').on(table.status, table.createdAt),
     projectStatusIndex: index('product_job_runs_project_status_idx').on(table.projectId, table.status),
+  }),
+);
+
+export const workloadUsageHourly: KubeRuntimeSchemaTypes.WorkloadUsageHourlyTable = pgTable(
+  'workload_usage_hourly',
+  {
+    organizationId: text('organization_id').notNull(),
+    projectId: text('project_id').notNull(),
+    environmentId: text('environment_id').notNull(),
+    serviceId: text('service_id'),
+    resourceId: text('resource_id'),
+    hourBucket: timestamp('hour_bucket', { withTimezone: true }).notNull(),
+    cpuMillicoreSeconds: bigint('cpu_millicore_seconds', { mode: 'number' }).default(0).notNull(),
+    memoryByteSeconds: bigint('memory_byte_seconds', { mode: 'number' }).default(0).notNull(),
+    sampleCount: integer('sample_count').default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table: KubeRuntimeSchemaTypes.WorkloadUsageHourlyExtraConfigColumns): PgTableExtraConfig => ({
+    ownerCheck: check(
+      'workload_usage_hourly_owner_check',
+      sql`num_nonnulls(${table.serviceId}, ${table.resourceId}) = 1`,
+    ),
+    applicationBucketUnique: uniqueIndex('workload_usage_hourly_application_bucket_idx')
+      .on(table.organizationId, table.projectId, table.environmentId, table.serviceId, table.hourBucket)
+      .where(sql`${table.serviceId} is not null`),
+    resourceBucketUnique: uniqueIndex('workload_usage_hourly_resource_bucket_idx')
+      .on(table.organizationId, table.projectId, table.environmentId, table.resourceId, table.hourBucket)
+      .where(sql`${table.resourceId} is not null`),
+    retentionIndex: index('workload_usage_hourly_bucket_idx').on(table.hourBucket),
+  }),
+);
+
+export const workloadUsageCheckpoints: KubeRuntimeSchemaTypes.WorkloadUsageCheckpointsTable = pgTable(
+  'workload_usage_checkpoints',
+  {
+    podUid: text('pod_uid').primaryKey(),
+    observedAt: timestamp('observed_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table: KubeRuntimeSchemaTypes.WorkloadUsageCheckpointsExtraConfigColumns): PgTableExtraConfig => ({
+    retentionIndex: index('workload_usage_checkpoints_updated_at_idx').on(table.updatedAt),
+  }),
+);
+
+export const jobUsageHourly: KubeRuntimeSchemaTypes.JobUsageHourlyTable = pgTable(
+  'job_usage_hourly',
+  {
+    organizationId: text('organization_id').notNull(),
+    projectId: text('project_id').notNull(),
+    environmentId: text('environment_id').notNull(),
+    serviceId: text('service_id').notNull(),
+    hourBucket: timestamp('hour_bucket', { withTimezone: true }).notNull(),
+    jobClass: text('job_class', { enum: ['build', 'release'] }).notNull(),
+    durationSeconds: bigint('duration_seconds', { mode: 'number' }).default(0).notNull(),
+    jobCount: integer('job_count').default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table: KubeRuntimeSchemaTypes.JobUsageHourlyExtraConfigColumns): PgTableExtraConfig => ({
+    bucketUnique: uniqueIndex('job_usage_hourly_bucket_idx').on(
+      table.organizationId,
+      table.projectId,
+      table.environmentId,
+      table.serviceId,
+      table.hourBucket,
+      table.jobClass,
+    ),
+    retentionIndex: index('job_usage_hourly_retention_idx').on(table.hourBucket),
+  }),
+);
+
+export const jobUsageCheckpoints: KubeRuntimeSchemaTypes.JobUsageCheckpointsTable = pgTable(
+  'job_usage_checkpoints',
+  {
+    sourceKey: text('source_key').primaryKey(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table: KubeRuntimeSchemaTypes.JobUsageCheckpointsExtraConfigColumns): PgTableExtraConfig => ({
+    retentionIndex: index('job_usage_checkpoints_created_at_idx').on(table.createdAt),
   }),
 );
 

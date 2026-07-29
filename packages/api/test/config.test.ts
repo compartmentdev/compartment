@@ -22,6 +22,8 @@ describe('readApiConfig', (): void => {
     expect(config.auditRetentionCleanupBatchSize).toBe(1000);
     expect(config.auditRetentionCleanupCron).toBe('0 3 * * *');
     expect(config.auditRetentionCleanupMaxBatches).toBe(100);
+    expect(config.usageMeteringIntervalMs).toBe(60_000);
+    expect(config.usageRetentionDays).toBe(400);
     expect(config.auditFileSink).toEqual({
       directory: resolve('.compartment/audit-logs'),
       enabled: false,
@@ -319,6 +321,8 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_AUDIT_FILE_SINK_ROTATE_INTERVAL: '1d',
     COMPARTMENT_AUDIT_FILE_SINK_ROTATE_SIZE: '64M',
     COMPARTMENT_AUDIT_RETENTION_DAYS: '90',
+    COMPARTMENT_USAGE_METERING_INTERVAL_MS: '60000',
+    COMPARTMENT_USAGE_RETENTION_DAYS: '400',
     COMPARTMENT_AUDIT_RETENTION_CLEANUP_BATCH_SIZE: '1000',
     COMPARTMENT_AUDIT_RETENTION_CLEANUP_CRON: '0 3 * * *',
     COMPARTMENT_AUDIT_RETENTION_CLEANUP_MAX_BATCHES: '100',

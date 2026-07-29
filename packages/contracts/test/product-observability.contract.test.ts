@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   productLogIngestRequestSchema,
   type ProductLogIngestEvent,
+  type WorkerApplicationPodMetric,
   workerListPodMetricNamespacesResponseSchema,
   workerPublishPodMetricsRequestSchema,
 } from '../src';
@@ -40,6 +41,27 @@ describe('product observability contracts', (): void => {
         state: 'available',
       }).success,
     ).toBe(false);
+  });
+
+  it('accepts application and resource workload identities', (): void => {
+    const baseMetric: Omit<WorkerApplicationPodMetric, 'deploymentId' | 'kind'> = {
+      cpuMillicores: 1,
+      memoryBytes: 1,
+      namespace: 'cpt',
+      observedAt: '2026-07-12T10:00:00.000Z',
+      podName: 'pod',
+      podUid: '11111111-1111-4111-8111-111111111111',
+    };
+    expect(
+      workerPublishPodMetricsRequestSchema.safeParse({
+        observedAt: baseMetric.observedAt,
+        pods: [
+          { ...baseMetric, deploymentId: 'dep_1', kind: 'application' },
+          { ...baseMetric, kind: 'resource', resourceId: 'res_1' },
+        ],
+        state: 'available',
+      }).success,
+    ).toBe(true);
   });
 
   it('requires explicit project namespace identifiers for metrics collection', (): void => {

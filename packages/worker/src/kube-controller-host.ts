@@ -103,13 +103,14 @@ class PodMetricsReconcileArea implements KubeControllerHost {
     private readonly request: CompartmentRequester,
     private readonly runtime: KubeRuntime,
     private readonly logger: Logger,
+    private readonly intervalMs: number,
   ) {}
 
   public async reconcile(): Promise<boolean> {
     if (Date.now() < this.nextCollectionAt) {
       return false;
     }
-    this.nextCollectionAt = Date.now() + 10_000;
+    this.nextCollectionAt = Date.now() + this.intervalMs;
     await collectAndPublishPodMetrics(this.request, this.runtime, this.logger);
     return true;
   }
@@ -143,7 +144,7 @@ export function createKubeControllerHosts(config: WorkerConfig, logger: Logger):
   });
   const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
   return [
-    new PodMetricsReconcileArea(request, runtime, logger),
+    new PodMetricsReconcileArea(request, runtime, logger, config.usageMeteringIntervalMs),
     new DeploymentReconcileArea(request, runtime, config.artifactRegistry, config.tenantScheduling),
     new ResourceReconcileArea(request, runtime, config.tenantScheduling),
     new CustomDomainReconcileArea(request, runtime, config.customDomains),

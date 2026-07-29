@@ -111,6 +111,8 @@ platform:
   logLevel: info
   trustedOutboundHosts: ''
   workerPollIntervalMs: 1000
+  usageMeteringIntervalMs: 60000
+  usageRetentionDays: 400
   auditRetentionDays: 90
   auditCleanupCron: '0 3 * * *'
   auditCleanupBatchSize: 1000

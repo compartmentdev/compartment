@@ -8,15 +8,16 @@ import type {
   KubePodMetricListResult,
   KubePodMetricNamespaceFailure,
   KubePodMetricObservation,
+  KubePodMetricWorkload,
   KubePodMetricsReader,
   ObservePodMetrics,
 } from './kube-pod-metrics.types';
 
 interface PodMetricIdentity {
-  deploymentId: string;
   namespace: string;
   podName: string;
   podUid: string;
+  workload: KubePodMetricWorkload;
 }
 
 interface NamespacePodMetricSnapshot {
@@ -199,7 +200,8 @@ function indexMetricsByPod(metrics: PodMetric[]): Map<string, PodMetric> {
 
 function isObservableProductPod(pod: V1Pod): boolean {
   return (
-    pod.metadata?.labels?.['compartment.dev/deployment-id'] !== undefined &&
+    (pod.metadata?.labels?.['compartment.dev/deployment-id'] !== undefined ||
+      pod.metadata?.labels?.['compartment.dev/resource-id'] !== undefined) &&
     pod.status?.phase !== 'Succeeded' &&
     pod.status?.phase !== 'Failed'
   );
@@ -217,11 +219,11 @@ function toPodMetricObservation(pod: V1Pod, metricByPod: ReadonlyMap<string, Pod
   return [
     {
       containers: readContainerUsage(metric.containers),
-      deploymentId: identity.deploymentId,
       namespace: identity.namespace,
       observedAt: new Date(metric.timestamp),
       podName: identity.podName,
       podUid: identity.podUid,
+      workload: identity.workload,
     },
   ];
 }
@@ -237,12 +239,17 @@ function readContainerUsage(containers: ContainerMetric[]): KubeContainerMetricU
 
 function readPodMetricIdentity(pod: V1Pod): PodMetricIdentity | null {
   const deploymentId: string | undefined = pod.metadata?.labels?.['compartment.dev/deployment-id'];
+  const resourceId: string | undefined = pod.metadata?.labels?.['compartment.dev/resource-id'];
   const namespace: string | undefined = pod.metadata?.namespace;
   const podName: string | undefined = pod.metadata?.name;
   const podUid: string | undefined = pod.metadata?.uid;
-  return deploymentId === undefined || namespace === undefined || podName === undefined || podUid === undefined
-    ? null
-    : { deploymentId, namespace, podName, podUid };
+  if (namespace === undefined || podName === undefined || podUid === undefined) {
+    return null;
+  }
+  if (deploymentId !== undefined) {
+    return { namespace, podName, podUid, workload: { deploymentId, kind: 'application' } };
+  }
+  return resourceId === undefined ? null : { namespace, podName, podUid, workload: { kind: 'resource', resourceId } };
 }
 
 function podMetricKey(namespace: string, podName: string): string {

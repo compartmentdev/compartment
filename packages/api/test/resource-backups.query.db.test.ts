@@ -48,11 +48,8 @@ import {
 import { readResourceReconcileRunWaitState } from '../src/queries/resource-reconcile-wait.query';
 import { finalizeProjectResourceDeletion } from '../src/queries/resource-reconcile-deletion.query';
 import { cancelResourceReconcileRunsForProjectArchive } from '../src/queries/resource-reconcile-project.query';
-import {
-  claimProductJob,
-  persistProductJobFinalized,
-  persistProductJobResult,
-} from '../src/queries/product-job-runs.query';
+import { claimProductJob, persistProductJobFinalized } from '../src/queries/product-job-runs.query';
+import { persistProductJobResult } from '../src/queries/product-job-result.query';
 import { persistProductJobIntent } from '../src/queries/product-job-intent.query';
 import { completeProjectProvisioning } from '../src/queries/project-provisioning-completion.query';
 import { claimPendingProjectProvisioning } from '../src/queries/project-provisioning.query';
@@ -89,6 +86,8 @@ const apiConfig: ApiConfig = {
   auditRetentionCleanupBatchSize: 1000,
   auditRetentionCleanupCron: '0 3 * * *',
   auditRetentionCleanupMaxBatches: 100,
+  usageMeteringIntervalMs: 60_000,
+  usageRetentionDays: 400,
   auditFileSink: defaultAuditFileSinkConfig,
   rollbackRetentionLimit: null,
   runtimeControlToken: 'test-runtime-control-token',
