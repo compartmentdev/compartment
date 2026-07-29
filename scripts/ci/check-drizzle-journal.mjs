@@ -43,6 +43,34 @@ const KUBERNETES_RETENTION_RESQUASH_HEAD_JOURNAL = {
   entries: [{ idx: 0, version: '7', when: 1783948017382, tag: '0000_initial', breakpoints: true }],
 };
 
+// One-time exemption for replacing the complete transitional Kubernetes history
+// with the Phase 8 reinstall-only final-state baseline.
+const KUBERNETES_ACCEPTANCE_RESQUASH_BASE_JOURNAL = {
+  version: '7',
+  dialect: 'postgresql',
+  entries: [
+    { idx: 0, version: '7', when: 1783948017382, tag: '0000_initial', breakpoints: true },
+    { idx: 1, version: '7', when: 1784909278511, tag: '0001_concerned_ben_urich', breakpoints: true },
+    { idx: 2, version: '7', when: 1785223501177, tag: '0002_thankful_krista_starr', breakpoints: true },
+    { idx: 3, version: '7', when: 1785239564368, tag: '0003_thick_gravity', breakpoints: true },
+    { idx: 4, version: '7', when: 1785261363115, tag: '0004_mixed_slyde', breakpoints: true },
+    { idx: 5, version: '7', when: 1785281013566, tag: '0005_bright_cardiac', breakpoints: true },
+  ],
+};
+const KUBERNETES_ACCEPTANCE_RESQUASH_HEAD_JOURNAL = {
+  version: '7',
+  dialect: 'postgresql',
+  entries: [{ idx: 0, version: '7', when: 1785301596023, tag: '0000_initial', breakpoints: true }],
+};
+
+function isApprovedKubernetesAcceptanceResquash(journalPath, baseJournal, headJournal) {
+  return (
+    journalPath === DOCKER_CUTOVER_SQUASH_JOURNAL_PATH &&
+    isDeepStrictEqual(baseJournal, KUBERNETES_ACCEPTANCE_RESQUASH_BASE_JOURNAL) &&
+    isDeepStrictEqual(headJournal, KUBERNETES_ACCEPTANCE_RESQUASH_HEAD_JOURNAL)
+  );
+}
+
 function isApprovedKubernetesRetentionResquash(journalPath, baseJournal, headJournal) {
   return (
     journalPath === DOCKER_CUTOVER_SQUASH_JOURNAL_PATH &&
@@ -113,6 +141,10 @@ export function isApprovedDockerCutoverJournalSquash(journalPath, baseJournal, h
 
 export function findDrizzleJournalDiffValidationErrors(journalPath, baseJournal, headJournal) {
   const validationErrors = [];
+
+  if (isApprovedKubernetesAcceptanceResquash(journalPath, baseJournal, headJournal)) {
+    return validationErrors;
+  }
 
   if (isApprovedKubernetesRetentionResquash(journalPath, baseJournal, headJournal)) {
     return validationErrors;

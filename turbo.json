@@ -5,6 +5,7 @@
     "eslint.duplicates.config.mjs",
     "lint-staged.config.mjs",
     "prettier.config.mjs",
+    "scripts/build/clean-package-build-outputs.mjs",
     "tsconfig.base.json",
     "tsconfig.build.base.json",
     "vitest.config.mts",

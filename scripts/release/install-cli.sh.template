@@ -8,9 +8,10 @@ cosign_version="2.6.1"
 oras_version="1.3.3"
 kubernetes_cli_certificate_identity="https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes"
 kubernetes_cli_certificate_oidc_issuer="https://token.actions.githubusercontent.com"
-channel="latest"
+channel="__COMPARTMENT_DEFAULT_CHANNEL__"
 version="__COMPARTMENT_DEFAULT_RELEASE_VERSION__"
 version_argument="0"
+channel_argument="0"
 bin_dir=""
 init_install="0"
 init_update="0"
@@ -32,6 +33,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --channel)
       channel="$2"
+      channel_argument="1"
       if [ "$version_argument" = "0" ]; then
         version=""
       fi
@@ -40,6 +42,9 @@ while [ "$#" -gt 0 ]; do
     --version)
       version="$2"
       version_argument="1"
+      if [ "$channel_argument" = "0" ]; then
+        channel="latest"
+      fi
       shift 2
       ;;
     --bin-dir)
@@ -113,7 +118,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ "$version_argument" = "1" ] && [ "$channel" != "latest" ]; then
+if [ "$version_argument" = "1" ] && [ "$channel_argument" = "1" ]; then
   printf 'Choose either --version or --channel, not both.\n' >&2
   exit 1
 fi

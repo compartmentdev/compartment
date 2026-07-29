@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseDeploymentReferences } from './collect-platform-k3d-e2e-diagnostics.mjs';
+import {
+  parseDeploymentReferences,
+  parseUnreadyDeploymentReferences,
+  parseUnreadyPodReferences,
+} from './collect-platform-k3d-e2e-diagnostics.mjs';
 import {
   createLoadPodOverrides,
   findDegradedProductDeployments,
@@ -16,6 +20,49 @@ describe('platform k3d diagnostics and product-log gates', () => {
       { name: 'app', namespace: 'cpt-project' },
     ]);
     expect(() => parseDeploymentReferences('missing-namespace')).toThrow('Invalid Kubernetes deployment reference');
+  });
+
+  it('selects only unavailable deployments and unready pods for detailed diagnostics', () => {
+    expect(
+      parseUnreadyDeploymentReferences(
+        JSON.stringify({
+          items: [
+            {
+              metadata: { name: 'console', namespace: 'compartment' },
+              spec: { replicas: 1 },
+              status: { availableReplicas: 0 },
+            },
+            {
+              metadata: { name: 'api', namespace: 'compartment' },
+              spec: { replicas: 1 },
+              status: { availableReplicas: 1 },
+            },
+            {
+              metadata: { name: 'stopped', namespace: 'cpt-app' },
+              spec: { replicas: 0 },
+              status: {},
+            },
+          ],
+        }),
+      ),
+    ).toEqual([{ name: 'console', namespace: 'compartment' }]);
+    expect(
+      parseUnreadyPodReferences(
+        JSON.stringify({
+          items: [
+            {
+              metadata: { name: 'console-broken', namespace: 'compartment' },
+              status: { conditions: [{ status: 'False', type: 'Ready' }], phase: 'Running' },
+            },
+            {
+              metadata: { name: 'api-ready', namespace: 'compartment' },
+              status: { conditions: [{ status: 'True', type: 'Ready' }], phase: 'Running' },
+            },
+            { metadata: { name: 'completed-job', namespace: 'cpt-app' }, status: { phase: 'Succeeded' } },
+          ],
+        }),
+      ),
+    ).toEqual([{ name: 'console-broken', namespace: 'compartment' }]);
   });
 
   it('accepts only non-negative integer command output', () => {

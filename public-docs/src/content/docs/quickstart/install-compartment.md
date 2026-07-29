@@ -9,13 +9,25 @@ description: Install Compartment into an existing Kubernetes cluster.
 curl -fsSL https://compartment.dev/install.sh | sh
 ```
 
+This is the supported self-hosted installation channel. The bootstrap resolves an immutable CLI artifact for the
+current Kubernetes release line and verifies its Cosign workflow identity and commit before installing it. No channel
+flag, raw repository URL, or separate bootstrap step is required.
+
 ## Prepare the cluster
 
-Compartment installs into an existing Kubernetes cluster. Before installation, provide:
+Compartment installs into an existing Kubernetes cluster. The initial supported release matrix is:
 
-- Kubernetes 1.30 or newer;
-- an enabled Ingress Controller and one IngressClass;
-- cert-manager and an Issuer or ClusterIssuer for operator-owned domains;
+| Kubernetes distribution | Topology                 | Ingress Controller                                               | cert-manager |
+| ----------------------- | ------------------------ | ---------------------------------------------------------------- | ------------ |
+| k3s v1.33.2+k3s1        | one server               | bundled Traefik v3.3.6                                           | v1.21.0      |
+| k3s v1.33.2+k3s1        | one server and one agent | ingress-nginx controller v1.13.3, with Traefik v3.3.6 coexisting | v1.21.0      |
+
+Versions or controllers outside this exact matrix are not supported until they are added to the release gate. The
+CLI can preflight Kubernetes 1.30+ clusters, but a successful preflight does not expand the supported matrix.
+
+Before installation, also provide:
+
+- an Issuer or ClusterIssuer for operator-owned domains;
 - NetworkPolicy enforcement;
 - a persistent storage class;
 - credentials permitted to install the Helm release and its cluster-scoped policy resources.
@@ -80,6 +92,31 @@ does not edit node files or restart node services.
 
 Dockerfile and Railpack builds continue to use BuildKit and produce OCI images. Project NetworkPolicies preserve
 tenant isolation and the configured RFC1918 egress policy.
+
+Kubernetes cluster administrators and anyone able to escape a container remain outside the tenant-isolation boundary.
+Namespaces and NetworkPolicies do not provide VM-level isolation.
+
+### Recover the bundled registry
+
+The registry is a single Pod with a retained `ReadWriteOnce` PVC. Running application Pods continue during a registry
+outage, but builds, new deployments, and uncached image pulls do not. For a Pod failure, preserve the PVC and restart
+the Deployment:
+
+```bash
+kubectl --context <context> --namespace <namespace> \
+  rollout restart deployment/<release>-compartment-registry
+kubectl --context <context> --namespace <namespace> \
+  rollout status deployment/<release>-compartment-registry --timeout=10m
+```
+
+For a PVC attachment or node loss, pause build and deploy activity, then restore the node or follow the storage
+provider's detach/reattach procedure. If reattachment is impossible, restore a verified registry backup or
+VolumeSnapshot into a replacement PVC with the same `<release>-compartment-registry` name, StorageClass, access mode,
+and ownership. Do not delete the retained source PVC until the replacement passes integrity checks.
+
+After recovery, verify the registry Deployment is Available and deploy a known revision to force a repository-scoped
+fresh pull on every eligible node. If a manifest or blob is missing, keep builds paused and restore the last verified
+backup; do not run garbage collection against a damaged store.
 
 ## Connect to an existing control plane
 

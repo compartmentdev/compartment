@@ -66,6 +66,11 @@ describe('platform k3d e2e shard runner', () => {
     expect(environment.COMPARTMENT_E2E_MANAGED_BROKER_PORT).toBe('19000');
   });
 
+  it('assigns pinned ingress-nginx and multi-node coverage to build-matrix-b', () => {
+    expect(buildPlatformK3dShardEnvironment('build-matrix-b', {}).COMPARTMENT_E2E_INGRESS_CLASS).toBe('nginx');
+    expect(buildPlatformK3dShardEnvironment('user-flow', {}).COMPARTMENT_E2E_INGRESS_CLASS).toBe('traefik');
+  });
+
   it('rejects unknown or extra shard arguments', () => {
     expect(readPlatformK3dShard(['user-flow'])).toBe('user-flow');
     expect(() => readPlatformK3dShard([])).toThrow('Usage:');

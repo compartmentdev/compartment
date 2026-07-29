@@ -1,5 +1,5 @@
 {
-  "id": "2813ac7d-e1c9-4f8e-b389-51c91553db4a",
+  "id": "19469fa3-a8f3-49bb-bef5-0472fd0e8429",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2290,6 +2290,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "pending_issuer_ref_json": {
+          "name": "pending_issuer_ref_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "pending_tls_mode": {
           "name": "pending_tls_mode",
           "type": "text",
@@ -2302,32 +2308,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "pending_caddy_mode": {
-          "name": "pending_caddy_mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "pending_base_domain": {
           "name": "pending_base_domain",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pending_certificate_metadata_json": {
-          "name": "pending_certificate_metadata_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pending_certificate_path": {
-          "name": "pending_certificate_path",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pending_private_key_path": {
-          "name": "pending_private_key_path",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -2752,6 +2734,74 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "reconcile_state": {
+          "name": "reconcile_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "desired_generation": {
+          "name": "desired_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "observed_generation": {
+          "name": "observed_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "observed_ingress_present": {
+          "name": "observed_ingress_present",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "observed_certificate_present": {
+          "name": "observed_certificate_present",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "observed_certificate_ready": {
+          "name": "observed_certificate_ready",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "edge_routing_enabled": {
+          "name": "edge_routing_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "deletion_ready": {
+          "name": "deletion_ready",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "reconcile_lease_id": {
+          "name": "reconcile_lease_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reconcile_lease_expires_at": {
+          "name": "reconcile_lease_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "last_checked_at": {
           "name": "last_checked_at",
@@ -3339,6 +3389,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "resolved_ports_json": {
+          "name": "resolved_ports_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[3000]'"
         },
         "resolved_readiness_json": {
           "name": "resolved_readiness_json",
@@ -3933,6 +3990,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "runtime_identity": {
+          "name": "runtime_identity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'resource'"
+        },
         "identity_id": {
           "name": "identity_id",
           "type": "text",
@@ -4187,6 +4251,13 @@
         },
         "attempts": {
           "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "isolation_version": {
+          "name": "isolation_version",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,

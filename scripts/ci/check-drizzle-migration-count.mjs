@@ -21,6 +21,33 @@ const DOCKER_CUTOVER_SQUASH_DELETED_PATHS = [
 const KUBERNETES_RETENTION_RESQUASH_REWRITTEN_PATH = 'packages/api/drizzle/0000_initial.sql';
 const KUBERNETES_RETENTION_RESQUASH_DELETED_PATH = 'packages/api/drizzle/0001_living_spirit.sql';
 
+// One-time exemption for the Phase 8 reinstall-only final-state baseline. The
+// preceding Kubernetes migrations intentionally recorded transitional topology;
+// fresh installs must now materialize only the supported final architecture.
+const KUBERNETES_ACCEPTANCE_RESQUASH_REWRITTEN_PATH = 'packages/api/drizzle/0000_initial.sql';
+const KUBERNETES_ACCEPTANCE_RESQUASH_DELETED_PATHS = [
+  'packages/api/drizzle/0001_concerned_ben_urich.sql',
+  'packages/api/drizzle/0002_thankful_krista_starr.sql',
+  'packages/api/drizzle/0003_thick_gravity.sql',
+  'packages/api/drizzle/0004_mixed_slyde.sql',
+  'packages/api/drizzle/0005_bright_cardiac.sql',
+];
+
+function isApprovedKubernetesAcceptanceResquash(migrationChanges) {
+  return (
+    migrationChanges.length === KUBERNETES_ACCEPTANCE_RESQUASH_DELETED_PATHS.length + 1 &&
+    migrationChanges.some(
+      (migrationChange) =>
+        migrationChange.path === KUBERNETES_ACCEPTANCE_RESQUASH_REWRITTEN_PATH && migrationChange.status === 'M',
+    ) &&
+    KUBERNETES_ACCEPTANCE_RESQUASH_DELETED_PATHS.every((deletedPath) =>
+      migrationChanges.some(
+        (migrationChange) => migrationChange.path === deletedPath && migrationChange.status === 'D',
+      ),
+    )
+  );
+}
+
 function isApprovedKubernetesRetentionResquash(migrationChanges) {
   return (
     migrationChanges.length === 2 &&
@@ -62,6 +89,10 @@ export function findDrizzleMigrationCountValidationErrors(migrationChanges) {
   }
 
   if (isApprovedKubernetesRetentionResquash(migrationChanges)) {
+    return [];
+  }
+
+  if (isApprovedKubernetesAcceptanceResquash(migrationChanges)) {
     return [];
   }
 

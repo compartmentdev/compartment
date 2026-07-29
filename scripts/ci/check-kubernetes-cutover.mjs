@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { extname, join, relative } from 'node:path';
 
 import { readRepositoryRoot } from '../lib/repository-root.mjs';
 
@@ -93,10 +93,16 @@ const forbiddenPathPrefixes = [
   ['packages/cli/src/services/', ['kubernetes', 'install', 'adoption.service.ts'].join('-')].join(''),
 ];
 
-const migrationSnapshotPath = 'packages/api/drizzle/meta/0000_snapshot.json';
-const currentMigrationSnapshotPath = 'packages/api/drizzle/meta/0005_snapshot.json';
 const canonicalRemovalSpecificationPath = 'docs/specs/existing-kubernetes-install.md';
 const canonicalCaddyDockerfilePath = 'packages/edge/Dockerfile.caddy.self-hosted';
+const publicInstallerPath = 'install.sh';
+const publicInstallerRequiredTerms = [
+  ['channel=', '"kubernetes"'].join(''),
+  ['"', '$cosign_command', '" verify'].join(''),
+  ['--certificate-', 'identity'].join(''),
+  ['--certificate-', 'oidc-issuer'].join(''),
+  ['--certificate-', 'github-workflow-sha'].join(''),
+];
 const canonicalCaddyBuildTerms = new Set([
   ['COMPARTMENT', 'CADDY', 'BUILDER', 'IMAGE'].join('_'),
   ['x', 'caddy'].join(''),
@@ -142,13 +148,45 @@ export function findPathViolations(path) {
 }
 
 export function listRepositoryPaths(repositoryRoot) {
-  return execFileSync('git', ['ls-files', '-co', '--exclude-standard', '-z'], {
+  const repositoryPaths = execFileSync('git', ['ls-files', '-co', '--exclude-standard', '-z'], {
     cwd: repositoryRoot,
     encoding: 'utf8',
     env: withoutGitRepositoryEnvironment(),
   })
     .split('\0')
     .filter((path) => path !== '');
+
+  return [...new Set([...repositoryPaths, ...listGeneratedArtifactPaths(repositoryRoot)])];
+}
+
+function listGeneratedArtifactPaths(repositoryRoot) {
+  const packagesRoot = join(repositoryRoot, 'packages');
+  const generatedRoots = [
+    ...(existsSync(packagesRoot)
+      ? readdirSync(packagesRoot, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => join(packagesRoot, entry.name, 'dist'))
+      : []),
+    join(repositoryRoot, '.compartment', 'release-assets'),
+  ];
+
+  return generatedRoots.flatMap((root) => listTextArtifactPaths(repositoryRoot, root));
+}
+
+function listTextArtifactPaths(repositoryRoot, root) {
+  if (!existsSync(root)) {
+    return [];
+  }
+
+  return readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && isTextArtifact(entry.name))
+    .map((entry) => relative(repositoryRoot, join(entry.parentPath, entry.name)));
+}
+
+function isTextArtifact(fileName) {
+  return new Set(['.cjs', '.html', '.js', '.json', '.md', '.mjs', '.sh', '.txt', '.yaml', '.yml']).has(
+    extname(fileName),
+  );
 }
 
 function withoutGitRepositoryEnvironment() {
@@ -160,11 +198,29 @@ function findFileViolations(repositoryRoot, path) {
     return [];
   }
   const contents = readFileSync(join(repositoryRoot, path), 'utf8');
-  return [...findContentViolations(path, contents), ...findMigrationSnapshotViolations(path, contents)];
+  return [
+    ...findContentViolations(path, contents),
+    ...findMigrationSnapshotViolations(path, contents),
+    ...findPublicInstallerViolations(path, contents),
+  ];
+}
+
+export function findPublicInstallerViolations(path, contents) {
+  if (path !== publicInstallerPath) {
+    return [];
+  }
+
+  const violations = publicInstallerRequiredTerms.flatMap((term) =>
+    contents.includes(term) ? [] : [`${path}: public Kubernetes installer is missing required trust term ${term}`],
+  );
+  if (contents.includes(['raw.', 'githubusercontent.com'].join(''))) {
+    violations.push(`${path}: public installer must not resolve through a raw branch URL`);
+  }
+  return violations;
 }
 
 export function findMigrationSnapshotViolations(path, contents) {
-  if (path !== migrationSnapshotPath) {
+  if (!/^packages\/[^/]+\/drizzle\/meta\/\d+_snapshot\.json$/u.test(path)) {
     return [];
   }
   return forbiddenMigrationSnapshotTerms.flatMap((term) =>
@@ -173,10 +229,7 @@ export function findMigrationSnapshotViolations(path, contents) {
 }
 
 export function findContentViolations(path, contents) {
-  const guardedTerms =
-    path.startsWith('packages/api/drizzle/') && path !== currentMigrationSnapshotPath
-      ? forbiddenRuntimeTerms
-      : [...forbiddenRuntimeTerms, ...forbiddenRemovedTopologyTerms];
+  const guardedTerms = [...forbiddenRuntimeTerms, ...forbiddenRemovedTopologyTerms];
   const terms =
     path === canonicalCaddyDockerfilePath
       ? guardedTerms.filter((term) => !canonicalCaddyBuildTerms.has(term))

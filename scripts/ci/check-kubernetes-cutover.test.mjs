@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -7,6 +7,7 @@ import {
   findContentViolations,
   findMigrationSnapshotViolations,
   findPathViolations,
+  findPublicInstallerViolations,
   listRepositoryPaths,
 } from './check-kubernetes-cutover.mjs';
 
@@ -93,13 +94,15 @@ describe('Kubernetes cutover gate', () => {
     );
   });
 
-  it('rejects removed topology fields in the current migration snapshot', () => {
+  it('rejects removed topology fields in every migration artifact', () => {
     const removedField = ['pending', '_tls', '_secret', '_name'].join('');
 
     expect(findContentViolations('packages/api/drizzle/meta/0005_snapshot.json', removedField)).toEqual([
       `packages/api/drizzle/meta/0005_snapshot.json: contains forbidden runtime term ${removedField}`,
     ]);
-    expect(findContentViolations('packages/api/drizzle/0005_cutover.sql', removedField)).toEqual([]);
+    expect(findContentViolations('packages/api/drizzle/0005_cutover.sql', removedField)).toEqual([
+      `packages/api/drizzle/0005_cutover.sql: contains forbidden runtime term ${removedField}`,
+    ]);
   });
 
   it('allows the canonical Caddy builder terms only in the self-hosted Caddy Dockerfile', () => {
@@ -160,5 +163,39 @@ describe('Kubernetes cutover gate', () => {
     await writeFile(join(repository, 'untracked.txt'), 'untracked', 'utf8');
 
     expect(listRepositoryPaths(repository).sort()).toEqual(['tracked.txt', 'untracked.txt']);
+  });
+
+  it('includes ignored generated package artifacts in the repository scan', async () => {
+    const repository = await mkdtemp(join(tmpdir(), 'compartment-cutover-artifacts-'));
+    const gitEnvironment = Object.fromEntries(
+      Object.entries(process.env).filter(([variableName]) => !variableName.startsWith('GIT_')),
+    );
+    temporaryDirectories.push(repository);
+    execFileSync('git', ['init', '--quiet'], { cwd: repository, env: gitEnvironment });
+    await writeFile(join(repository, '.gitignore'), 'packages/*/dist/\n', 'utf8');
+    await mkdir(join(repository, 'packages', 'cli', 'dist'), { recursive: true });
+    await writeFile(join(repository, 'packages', 'cli', 'dist', 'installer.js'), 'generated', 'utf8');
+    execFileSync('git', ['add', '.gitignore'], { cwd: repository, env: gitEnvironment });
+
+    expect(listRepositoryPaths(repository)).toContain('packages/cli/dist/installer.js');
+  });
+
+  it('requires the public bootstrap to default to the signed Kubernetes artifact', () => {
+    const validInstaller = renderLines([
+      ['channel=', '"kubernetes"'].join(''),
+      ['"', '$cosign_command', '" verify'].join(''),
+      ['--certificate-', 'identity'].join(''),
+      ['--certificate-', 'oidc-issuer'].join(''),
+      ['--certificate-', 'github-workflow-sha'].join(''),
+    ]);
+
+    expect(findPublicInstallerViolations('install.sh', validInstaller)).toEqual([]);
+    expect(findPublicInstallerViolations('install.sh', 'channel="latest"')).toHaveLength(5);
+    expect(
+      findPublicInstallerViolations(
+        'install.sh',
+        `${validInstaller}\nhttps://${['raw.', 'githubusercontent.com'].join('')}/owner/repo/main/install.sh`,
+      ),
+    ).toContain('install.sh: public installer must not resolve through a raw branch URL');
   });
 });

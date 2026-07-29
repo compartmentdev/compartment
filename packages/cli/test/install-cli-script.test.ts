@@ -127,11 +127,11 @@ describe('render-cli-install-script', (): void => {
     ]);
   });
 
-  it('verifies and installs the immutable CLI artifact resolved from the kubernetes branch head', async (): Promise<void> => {
+  it('defaults the public installer to the signed immutable CLI artifact from the kubernetes branch head', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-      args: ['--channel', 'kubernetes'],
+      args: [],
       pathEntries: [binDirectory],
     });
 

@@ -56,6 +56,8 @@ curl -fsSL https://compartment.dev/install.sh | sh
 compartment login --api-url https://console.example.com --organization acme-dev
 ```
 
+The public bootstrap installs the signed, supported existing-Kubernetes release line by default.
+
 Prepare an application repository:
 
 ```bash
