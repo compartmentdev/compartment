@@ -272,6 +272,7 @@ async function upPlatform(command) {
     for (const statePath of [platformValuesPath, managedPlatformValuesPath, pebbleCaPath, pebbleRootPath]) {
       mkdirSync(dirname(statePath), { recursive: true });
     }
+    createRegistryTestCertificateAuthority();
     if (shouldExtractPebbleCa) {
       extractPebbleManagementCertificateAuthority();
     }
@@ -313,6 +314,28 @@ function extractPebbleManagementCertificateAuthority() {
   }
 }
 
+function createRegistryTestCertificateAuthority() {
+  runCommand(
+    'openssl',
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-days',
+      '2',
+      '-keyout',
+      registryTestCaKeyPath,
+      '-out',
+      registryTestCaPath,
+      '-subj',
+      '/CN=Compartment k3d registry test CA',
+    ],
+    repositoryRoot,
+  );
+}
+
 async function createCluster() {
   const prerequisiteSetupStartedAt = performance.now();
   const prerequisiteSetupDeadline = prerequisiteSetupStartedAt + prerequisiteSetupBudgetMs;
@@ -341,7 +364,7 @@ async function createCluster() {
   );
   await waitForCertManager(prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
   reportPrerequisiteSetupCost(performance.now() - prerequisiteSetupStartedAt);
-  await installRegistryTestIssuerAndNodeTrust();
+  await installRegistryTestIssuer();
 }
 
 async function waitForCertManager(prerequisiteSetupStartedAt, prerequisiteSetupDeadline) {
@@ -457,26 +480,7 @@ function reportPrerequisiteSetupCost(elapsedMs) {
   }
 }
 
-async function installRegistryTestIssuerAndNodeTrust() {
-  runCommand(
-    'openssl',
-    [
-      'req',
-      '-x509',
-      '-newkey',
-      'rsa:2048',
-      '-nodes',
-      '-days',
-      '2',
-      '-keyout',
-      registryTestCaKeyPath,
-      '-out',
-      registryTestCaPath,
-      '-subj',
-      '/CN=Compartment k3d registry test CA',
-    ],
-    repositoryRoot,
-  );
+async function installRegistryTestIssuer() {
   await runKubectlWithTransientApiRetry([
     '--context',
     contextName,
@@ -497,54 +501,6 @@ async function installRegistryTestIssuerAndNodeTrust() {
   );
   runCommand('kubectl', ['--context', contextName, 'apply', '--filename', issuerPath], repositoryRoot);
   rmSync(issuerPath, { force: true });
-
-  const nodeNames = captureCommand(
-    'docker',
-    ['ps', '--filter', 'label=app=k3d', '--filter', `label=k3d.cluster=${clusterName}`, '--format', '{{.Names}}'],
-    repositoryRoot,
-  )
-    .split('\n')
-    .map((name) => name.trim())
-    .filter((name) => /-(?:server|agent)-[0-9]+$/u.test(name));
-  for (const nodeName of nodeNames) {
-    runCommand(
-      'docker',
-      ['cp', registryTestCaPath, `${nodeName}:/tmp/compartment-registry-test-ca.crt`],
-      repositoryRoot,
-    );
-    runCommand(
-      'docker',
-      ['exec', nodeName, 'sh', '-c', 'cat /tmp/compartment-registry-test-ca.crt >>/etc/ssl/certs/ca-certificates.crt'],
-      repositoryRoot,
-    );
-    runCommand('docker', ['restart', nodeName], repositoryRoot);
-    runCommand(
-      'docker',
-      ['exec', nodeName, 'sh', '-c', `echo '${bundledRegistryClusterIp} registry.${platformBaseDomain}' >>/etc/hosts`],
-      repositoryRoot,
-    );
-  }
-  await runKubectlWithTransientApiRetry([
-    '--context',
-    contextName,
-    'wait',
-    'nodes',
-    '--all',
-    '--for=condition=Ready',
-    `--timeout=${kubernetesReadinessTimeout}`,
-  ]);
-  await waitForRestartedClusterPrerequisites();
-}
-
-async function waitForRestartedClusterPrerequisites() {
-  const recoveryStartedAt = performance.now();
-  const recoveryDeadline = recoveryStartedAt + prerequisiteSetupBudgetMs;
-  if (isIngressNginxShard) {
-    await waitForIngressController('ingress-nginx', 'ingress-nginx-controller', recoveryStartedAt, recoveryDeadline);
-  } else {
-    await waitForIngressController('kube-system', 'traefik', recoveryStartedAt, recoveryDeadline);
-  }
-  await waitForCertManager(recoveryStartedAt, recoveryDeadline);
 }
 
 export async function runKubectlWithTransientApiRetry(args, options = {}) {
@@ -629,6 +585,10 @@ export function buildPlatformK3dClusterCreateArgs() {
     `127.0.0.1:${managedAcmeManagementPort}:31500@server:0`,
     '--registry-use',
     registryClusterHost,
+    '--volume',
+    `${registryTestCaPath}:/etc/ssl/certs/compartment-registry-test-ca.crt@server:*;agent:*`,
+    '--host-alias',
+    `${bundledRegistryClusterIp}:registry.${platformBaseDomain}`,
     '--timeout',
     `${String(Math.floor(prerequisiteSetupBudgetMs / 1_000))}s`,
     '--wait',

@@ -50,6 +50,14 @@ describe('platform k3d e2e command boundary', () => {
     expect(args.join(' ')).not.toContain('disable=traefik');
     expect(args.join(' ')).not.toContain('30080@server');
     expect(args).toContain('rancher/k3s:v1.33.2-k3s1');
+    expect(
+      args.some((arg) =>
+        arg.endsWith(
+          '/.compartment/compartment-e2e-registry-test-ca.crt:/etc/ssl/certs/compartment-registry-test-ca.crt@server:*;agent:*',
+        ),
+      ),
+    ).toBe(true);
+    expect(args).toContain('10.43.250.250:registry.compartment.localhost');
     expect(args).toContain('120s');
     expect(args.join(' ')).not.toContain('30443@server');
     expect(readPlatformK3dCertManagerManifestUrl()).toBe(
