@@ -128,9 +128,9 @@ Namespaces and NetworkPolicies do not provide VM-level isolation.
 
 ### Recover the bundled registry
 
-The registry is a single Pod with a retained `ReadWriteOnce` PVC. Running application Pods continue during a registry
-outage, but builds, new deployments, and uncached image pulls do not. For a Pod failure, preserve the PVC and restart
-the Deployment:
+With the default PVC backend, the registry is a single Pod with a retained `ReadWriteOnce` PVC. Running application
+Pods continue during a registry outage, but builds, new deployments, and uncached image pulls do not. For a Pod
+failure, preserve the configured storage and restart the Deployment:
 
 ```bash
 kubectl --context <context> --namespace <namespace> \
@@ -139,8 +139,8 @@ kubectl --context <context> --namespace <namespace> \
   rollout status deployment/<release>-compartment-registry --timeout=10m
 ```
 
-For a PVC attachment or node loss, pause build and deploy activity, then restore the node or follow the storage
-provider's detach/reattach procedure. If reattachment is impossible, restore a verified registry backup or
+For a default-backend PVC attachment or node loss, pause build and deploy activity, then restore the node or follow
+the storage provider's detach/reattach procedure. If reattachment is impossible, restore a verified registry backup or
 VolumeSnapshot into a replacement PVC with the same `<release>-compartment-registry` name, StorageClass, access mode,
 and ownership. Do not delete the retained source PVC until the replacement passes integrity checks.
 

@@ -14,6 +14,10 @@
 {{- printf "%s-registry-auth.%s.svc" (include "compartment.fullname" .) .Release.Namespace -}}
 {{- end }}
 
+{{- define "compartment.registryStorageBackend" -}}
+{{- dig "storage" "backend" "pvc" .Values.registry -}}
+{{- end }}
+
 {{- define "compartment.managedDomainDns01GroupName" -}}
 {{- printf "%s.%s.%s" (include "compartment.fullname" .) .Release.Namespace .Values.tls.solver.groupName | lower -}}
 {{- end }}

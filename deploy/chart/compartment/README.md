@@ -105,6 +105,12 @@ The registry is a private ClusterIP workload. For an operator-owned base domain,
 The hostname must resolve from every node to the retained registry Service. The chart never changes
 container-runtime configuration or node trust.
 
+Registry storage defaults to the retained PVC backend. Set `registry.storage.backend: s3` with the bucket, region,
+optional regional endpoint, and path-style setting under `registry.storage.s3` to use S3-compatible object storage.
+Set `registry.storage.s3.existingSecret` to a Secret in the release namespace containing `accessKey` and `secretKey`.
+Populate the bucket before switching backends; the chart does not migrate blobs. The S3 backend leaves any retained
+registry PVC unmounted and does not create one for new installations.
+
 Project provisioning creates repository-scoped credentials and project-scoped image pull Secrets. NetworkPolicy
 projections retain tenant isolation and the configured RFC1918 egress policy. Dockerfile, Railpack, BuildKit, and OCI
 image behavior is unchanged.

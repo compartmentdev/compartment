@@ -130,6 +130,45 @@
             "kind": { "type": "string", "enum": ["Issuer", "ClusterIssuer"] },
             "name": { "type": "string" }
           }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["backend", "s3"],
+          "properties": {
+            "backend": { "type": "string", "enum": ["pvc", "s3"] },
+            "s3": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["bucket", "region", "regionEndpoint", "forcePathStyle", "existingSecret"],
+              "properties": {
+                "bucket": { "type": "string" },
+                "region": { "type": "string" },
+                "regionEndpoint": { "type": "string" },
+                "forcePathStyle": { "type": "boolean" },
+                "existingSecret": { "type": "string" }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "required": ["backend"],
+                "properties": { "backend": { "const": "s3" } }
+              },
+              "then": {
+                "properties": {
+                  "s3": {
+                    "properties": {
+                      "bucket": { "minLength": 1 },
+                      "region": { "minLength": 1 },
+                      "existingSecret": { "minLength": 1 }
+                    }
+                  }
+                }
+              }
+            }
+          ]
         }
       }
     },

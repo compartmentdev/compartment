@@ -1,0 +1,162 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: registry storage backends
+templates:
+  - templates/pvc.yaml
+  - templates/registry.yaml
+values:
+  - registry-values.yaml
+release:
+  name: compartment
+  namespace: default
+tests:
+  - it: keeps the PVC backend as the default
+    asserts:
+      - hasDocuments:
+          count: 2
+        template: pvc.yaml
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-registry
+        template: pvc.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: data
+            mountPath: /var/lib/registry
+        template: registry.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: data
+            persistentVolumeClaim:
+              claimName: compartment-compartment-registry
+        template: registry.yaml
+        documentIndex: 1
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_STORAGE
+            value: s3
+        template: registry.yaml
+        documentIndex: 1
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_STORAGE_S3_ACCESSKEY
+        template: registry.yaml
+        documentIndex: 1
+
+  - it: keeps the PVC backend for legacy reused values
+    set:
+      registry:
+        storage: null
+    asserts:
+      - hasDocuments:
+          count: 2
+        template: pvc.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: data
+            mountPath: /var/lib/registry
+        template: registry.yaml
+        documentIndex: 1
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_STORAGE
+            value: s3
+        template: registry.yaml
+        documentIndex: 1
+
+  - it: configures S3 without a registry PVC or data volume
+    set:
+      registry:
+        storage:
+          backend: s3
+          s3:
+            bucket: registry-bucket
+            region: eu-central-1
+            regionEndpoint: https://s3.example.com
+            forcePathStyle: true
+            existingSecret: registry-s3-credentials
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: pvc.yaml
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-postgres
+        template: pvc.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: data
+            mountPath: /var/lib/registry
+        template: registry.yaml
+        documentIndex: 1
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: data
+            persistentVolumeClaim:
+              claimName: compartment-compartment-registry
+        template: registry.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_STORAGE
+            value: s3
+        template: registry.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_STORAGE_S3_BUCKET
+            value: registry-bucket
+        template: registry.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_STORAGE_S3_REGION
+            value: eu-central-1
+        template: registry.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_STORAGE_S3_REGIONENDPOINT
+            value: https://s3.example.com
+        template: registry.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_STORAGE_S3_FORCEPATHSTYLE
+            value: 'true'
+        template: registry.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_STORAGE_S3_ACCESSKEY
+            valueFrom:
+              secretKeyRef:
+                name: registry-s3-credentials
+                key: accessKey
+        template: registry.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_STORAGE_S3_SECRETKEY
+            valueFrom:
+              secretKeyRef:
+                name: registry-s3-credentials
+                key: secretKey
+        template: registry.yaml
+        documentIndex: 1
