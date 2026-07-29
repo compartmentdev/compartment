@@ -528,6 +528,18 @@ async function installRegistryTestIssuerAndNodeTrust() {
     '--for=condition=Ready',
     `--timeout=${kubernetesReadinessTimeout}`,
   ]);
+  await waitForRestartedClusterPrerequisites();
+}
+
+async function waitForRestartedClusterPrerequisites() {
+  const recoveryStartedAt = performance.now();
+  const recoveryDeadline = recoveryStartedAt + prerequisiteSetupBudgetMs;
+  if (isIngressNginxShard) {
+    await waitForIngressController('ingress-nginx', 'ingress-nginx-controller', recoveryStartedAt, recoveryDeadline);
+  } else {
+    await waitForIngressController('kube-system', 'traefik', recoveryStartedAt, recoveryDeadline);
+  }
+  await waitForCertManager(recoveryStartedAt, recoveryDeadline);
 }
 
 export async function runKubectlWithTransientApiRetry(args, options = {}) {
