@@ -1,16 +1,29 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { resolveCanonicalKubernetesInstallInput } from '../src/commands/install/install.command.input';
 import { resolveCanonicalKubernetesInstallWizard } from '../src/commands/install/install.command.kubernetes-wizard';
 import type { InstallCommandOptions } from '../src/commands/install/install.command.types';
 import type { KubernetesInstallInputValues } from '../src/commands/install/install.command.input.types';
-import type { KubernetesInstallWizardResult } from '../src/commands/install/install.command.kubernetes-wizard.types';
+import type {
+  KubernetesInstallWizardResult,
+  ReadKubernetesInstallResourceInventory,
+} from '../src/commands/install/install.command.kubernetes-wizard.types';
 import type { KubernetesInstallInput } from '../src/services/kubernetes-install-input.service.types';
+import type { KubernetesInstallResourceInventory } from '../src/services/kubernetes-install-inventory.service.types';
 import { createCliCapture, type CliCommandCapture } from './cli-test.harness';
 
 const kubeconfigPath: string = '/tmp/kubeconfig';
 const valuesPath: string = '/tmp/values.yaml';
+const managedDomainReservationTokenEnvironmentName: string = 'COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN';
 
 describe('canonical Kubernetes install input', (): void => {
+  beforeEach((): void => {
+    process.env[managedDomainReservationTokenEnvironmentName] = 'test-reservation-token';
+  });
+
+  afterEach((): void => {
+    delete process.env[managedDomainReservationTokenEnvironmentName];
+  });
+
   it('produces the same validated input from interactive answers and flags', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
     capture.stdin.end('\n\n\nowner@example.com\nAcme\ny\n');
@@ -97,6 +110,58 @@ describe('canonical Kubernetes install input', (): void => {
           }),
       ),
     ).rejects.toThrow('--managed-domain cannot be combined with --base-domain.');
+  });
+
+  it('stops at managed-domain selection without onboarding authorization', async (): Promise<void> => {
+    delete process.env[managedDomainReservationTokenEnvironmentName];
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('\n\n\n');
+    const readResources: Mock<ReadKubernetesInstallResourceInventory> = vi.fn(
+      async (): Promise<KubernetesInstallResourceInventory> => {
+        return await Promise.resolve({
+          ingressClasses: ['nginx'],
+          storageClasses: [{ default: true, name: 'fast' }],
+        });
+      },
+    );
+
+    await expect(
+      resolveCanonicalKubernetesInstallWizard(
+        capture.io,
+        { adminPassword: 'correct horse battery staple', output: 'text' },
+        { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
+        readResources,
+      ),
+    ).rejects.toThrow('Managed Compartment domains require onboarding through the public installer.');
+
+    expect(capture.stderr.join('')).toContain('Domain:');
+    expect(capture.stderr.join('')).not.toContain('Email');
+    expect(capture.stderr.join('')).not.toContain('Installation review:');
+    expect(readResources).toHaveBeenCalledOnce();
+  });
+
+  it('keeps operator-owned domain selection available without onboarding authorization', async (): Promise<void> => {
+    delete process.env[managedDomainReservationTokenEnvironmentName];
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('1\ny\n2\napps.example.com\ny\n');
+
+    const wizard: KubernetesInstallWizardResult = await resolveCanonicalKubernetesInstallWizard(
+      capture.io,
+      {
+        adminPassword: 'correct horse battery staple',
+        email: 'owner@example.com',
+        organization: 'Acme',
+        output: 'text',
+      },
+      { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
+      async (): Promise<{ ingressClasses: string[]; storageClasses: { default: boolean; name: string }[] }> =>
+        await Promise.resolve({
+          ingressClasses: ['nginx'],
+          storageClasses: [{ default: true, name: 'fast' }],
+        }),
+    );
+
+    expect(wizard.input).toMatchObject({ baseDomain: 'apps.example.com' });
   });
 
   it('discovers ingress and storage from the context selected by the operator', async (): Promise<void> => {

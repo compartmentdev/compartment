@@ -9,7 +9,11 @@ import {
 } from '@compartment/contracts';
 import { readSocketSafeTempRootDirectory } from '@compartment/test-support';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { assertBuiltCliAvailable } from './self-hosted-user-setup-command.harness';
+import {
+  assertBuiltCliAvailable,
+  runCommand,
+  type SelfHostedUserSetupCommandResult,
+} from './self-hosted-user-setup-command.harness';
 import { buildSelfHostedUserSetupClientEnv } from './self-hosted-user-setup-client-env.harness';
 import { SelfHostedUserSetupCli } from './self-hosted-user-setup-cli.harness';
 import {
@@ -40,6 +44,7 @@ const fixtureTimeoutMs: number = 10 * 60_000;
 const tempRootDirectory: string = readSocketSafeTempRootDirectory('pk3m-', 'system-api.sock');
 const createdDirectories: string[] = [];
 const managedIngressIpv4: string = [8, 8, 4, 4].join('.');
+const commandTimeoutMs: number = 30_000;
 let managedInstallCompleted: boolean = false;
 
 describe.sequential('production managed-domain Kubernetes install', (): void => {
@@ -64,6 +69,37 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
         .map(async (directory: string): Promise<void> => await rm(directory, { force: true, recursive: true })),
     );
   }, fixtureTimeoutMs);
+
+  it('fails at interactive managed-domain selection without creating a namespace or Helm release', async (): Promise<void> => {
+    const suffix: string = randomUUID().replaceAll('-', '').slice(0, 8);
+    const namespace: string = `${managedInstallNamespace}-unauthorized-${suffix}`;
+    const releaseName: string = `unauthorized-${suffix}`;
+    const homeDirectory: string = await createTemporaryDirectory();
+    const env: NodeJS.ProcessEnv = buildSelfHostedUserSetupClientEnv(homeDirectory);
+    delete env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN;
+    const installerCli: SelfHostedUserSetupCli = new SelfHostedUserSetupCli(env, commandTimeoutMs);
+
+    const failure: SelfHostedUserSetupCommandResult = await installerCli.runFailure(
+      `install --kube-context ${managedInstallKubeContext} --namespace ${namespace} --release-name ${releaseName}`,
+      { input: 'y\n1\n', interactive: true },
+    );
+
+    const output: string = `${failure.stdout}\n${failure.stderr}`;
+    expect(output).toContain('Managed Compartment domains require onboarding through the public installer.');
+    expect(output).not.toContain('Admin email');
+    expect(output).not.toContain('Installation review:');
+    expect(output).not.toContain('COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN');
+    const namespaceLookup: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: ['kubectl', '--context', managedInstallKubeContext, 'get', `namespace/${namespace}`],
+      timeoutMs: commandTimeoutMs,
+    });
+    const releaseLookup: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: ['helm', '--kube-context', managedInstallKubeContext, 'status', releaseName, '--namespace', namespace],
+      timeoutMs: commandTimeoutMs,
+    });
+    expect(namespaceLookup.exitCode).not.toBe(0);
+    expect(releaseLookup.exitCode).not.toBe(0);
+  });
 
   it(
     'allocates a domain through shared Ingress, bootstraps the owner, and accepts a fresh login',
@@ -128,12 +164,17 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
 });
 
 async function createFreshCli(adminPassword?: string): Promise<SelfHostedUserSetupCli> {
-  const homeDirectory: string = await mkdtemp(join(tempRootDirectory, 'client-'));
-  createdDirectories.push(homeDirectory);
+  const homeDirectory: string = await createTemporaryDirectory();
   const env: NodeJS.ProcessEnv = buildSelfHostedUserSetupClientEnv(homeDirectory);
   env.NODE_EXTRA_CA_CERTS = managedInstallCertificateAuthorityPath;
   if (adminPassword !== undefined) {
     env.COMPARTMENT_ADMIN_PASSWORD = adminPassword;
   }
   return new SelfHostedUserSetupCli(env, installTimeoutMs);
+}
+
+async function createTemporaryDirectory(): Promise<string> {
+  const directory: string = await mkdtemp(join(tempRootDirectory, 'client-'));
+  createdDirectories.push(directory);
+  return directory;
 }

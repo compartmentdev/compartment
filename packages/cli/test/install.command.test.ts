@@ -49,6 +49,7 @@ vi.mock('../src/commands/install/install.command.session', (): object => ({
 
 describe('install command boundary', (): void => {
   beforeEach((): void => {
+    delete process.env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN;
     mocks.deployInstall.mockReset().mockResolvedValue(createDeploymentResult());
     mocks.installOwner.mockReset().mockResolvedValue(createInstallResult());
     mocks.persistSession.mockReset().mockResolvedValue(undefined);
@@ -66,6 +67,33 @@ describe('install command boundary', (): void => {
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('Missing required install input: --managed-domain or --base-domain.');
+  });
+
+  it('fails fast with onboarding guidance for non-interactive managed-domain installs', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+
+    const exitCode: number = await runCli(['install', '--managed-domain', '--output', 'json'], capture.io);
+
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toContain(
+      'Managed Compartment domains require onboarding through the public installer.',
+    );
+    expect(readCliStderr(capture)).toContain('curl -fsSL https://compartment.dev/install.sh | sh -s -- --init-install');
+    expect(readCliStderr(capture)).not.toContain('COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN');
+    expect(mocks.deployInstall).not.toHaveBeenCalled();
+  });
+
+  it('reports conflicting domain flags before managed-domain onboarding availability', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+
+    const exitCode: number = await runCli(
+      ['install', '--managed-domain', '--base-domain', 'apps.example.com'],
+      capture.io,
+    );
+
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toContain('--managed-domain cannot be combined with --base-domain.');
+    expect(readCliStderr(capture)).not.toContain('public installer');
   });
 
   it('keeps Kubernetes deployment options out of the dev install path', async (): Promise<void> => {

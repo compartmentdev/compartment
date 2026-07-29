@@ -17,7 +17,10 @@ import type { ResolvedKubernetesKubeconfig } from '../../services/kubernetes-ins
 import type { CliCommandDependencies } from '../command.types';
 import { createCommandProgress } from '../command.progress';
 import type { CommandProgress } from '../command.progress.types';
-import { resolveCanonicalKubernetesInstallInput } from './install.command.input';
+import {
+  assertCanonicalKubernetesInstallDomainChoice,
+  resolveCanonicalKubernetesInstallInput,
+} from './install.command.input';
 import type { KubernetesInstallInputValues } from './install.command.input.types';
 import { readConfiguredInstallAdminPassword } from './install.command.identity';
 import { resolveCanonicalKubernetesInstallWizard } from './install.command.kubernetes-wizard';
@@ -32,6 +35,7 @@ import {
   type MaterializedInstallWizardValues,
   type OperatorInstallInputValues,
 } from './install.command.values';
+import { assertManagedDomainOnboardingAvailable } from '../../services/managed-domain-reservation-token.service';
 
 interface ResolvedInstallValuesPath {
   material?: MaterializedInstallWizardValues | undefined;
@@ -57,6 +61,7 @@ async function readBoundaryValues(
   if (hasInteractiveInput(dependencies) && options.values === undefined) {
     return undefined;
   }
+  assertNonInteractiveDomainAvailable(options);
   const operatorValues: OperatorInstallInputValues | undefined =
     options.values === undefined ? undefined : await readOperatorInstallInputValues(options.values);
   const values: Omit<KubernetesInstallInputValues, 'valuesPath'> = {
@@ -70,6 +75,13 @@ async function readBoundaryValues(
   };
   resolveCanonicalKubernetesInstallInput({ ...values, valuesPath: '<pending>' }, '<pending>');
   return values;
+}
+
+function assertNonInteractiveDomainAvailable(options: InstallCommandOptions): void {
+  assertCanonicalKubernetesInstallDomainChoice(options);
+  if (options.managedDomain === true) {
+    assertManagedDomainOnboardingAvailable();
+  }
 }
 
 async function executeWithKubeconfig(

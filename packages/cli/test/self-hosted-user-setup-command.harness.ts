@@ -34,7 +34,7 @@ interface SelfHostedUserSetupCliCommandInput {
   readonly timeoutMs: number;
 }
 
-interface SelfHostedUserSetupCliCommandLineInput {
+export interface SelfHostedUserSetupCliCommandLineInput {
   readonly command: string;
   readonly cwd?: string | undefined;
   readonly env?: NodeJS.ProcessEnv | undefined;
@@ -108,6 +108,16 @@ async function runBuiltCliCommandLine(
   return await runBuiltCliCommand({
     ...input,
     argv: splitCliCommandLine(input.command),
+  });
+}
+
+export async function runBuiltCliInteractiveCommandLine(
+  input: SelfHostedUserSetupCliCommandLineInput,
+): Promise<SelfHostedUserSetupCommandResult> {
+  return await runCommand({
+    ...input,
+    argv: buildPseudoTerminalArgv(splitCliCommandLine(input.command)),
+    promptedInput: true,
   });
 }
 
@@ -223,7 +233,7 @@ function writePromptedInput(
   inputLines: readonly string[],
   writtenCount: number,
 ): number {
-  const promptCount: number = countSecretPrompts(output);
+  const promptCount: number = countInteractivePrompts(output);
   let nextWrittenCount: number = writtenCount;
   while (nextWrittenCount < promptCount && nextWrittenCount < inputLines.length) {
     child.stdin?.write(`${inputLines[nextWrittenCount] ?? ''}\n`);
@@ -232,8 +242,8 @@ function writePromptedInput(
   return nextWrittenCount;
 }
 
-function countSecretPrompts(output: string): number {
-  return [...output.matchAll(/Password: |Confirm password: /gu)].length;
+function countInteractivePrompts(output: string): number {
+  return [...output.matchAll(/(?:Password|Confirm password): |\[[^\]\r\n]+\]: /gu)].length;
 }
 
 function resolveCommandCwd(input: SelfHostedUserSetupCommandInput): string {

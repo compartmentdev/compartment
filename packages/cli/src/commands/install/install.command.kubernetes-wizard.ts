@@ -17,6 +17,7 @@ import type {
   ReadKubernetesInstallResourceInventory,
 } from './install.command.kubernetes-wizard.types';
 import { normalizeInstallBaseDomain } from './install.command.validation';
+import { assertManagedDomainOnboardingAvailable } from '../../services/managed-domain-reservation-token.service';
 
 export async function resolveCanonicalKubernetesInstallWizard(
   io: CliIo,
@@ -180,7 +181,7 @@ async function resolveDomain(
 ): Promise<Pick<InstallCommandOptions, 'baseDomain' | 'managedDomain'>> {
   assertDomainFlags(options);
   if (options.managedDomain === true) {
-    return { managedDomain: true };
+    return resolveManagedDomain();
   }
   if (options.baseDomain !== undefined) {
     return { baseDomain: normalizeInstallBaseDomain(options.baseDomain) };
@@ -188,12 +189,17 @@ async function resolveDomain(
   io.stderr('Domain:\n  1. Managed Compartment domain [default]\n  2. Operator-owned base domain\n');
   const mode: string = await promptVisibleText(io, 'Domain', '1');
   if (mode === '1') {
-    return { managedDomain: true };
+    return resolveManagedDomain();
   }
   if (mode !== '2') {
     throw new Error('Domain selection must be 1 or 2.');
   }
   return { baseDomain: normalizeInstallBaseDomain(await promptVisibleText(io, 'Base domain')) };
+}
+
+function resolveManagedDomain(): Pick<InstallCommandOptions, 'managedDomain'> {
+  assertManagedDomainOnboardingAvailable();
+  return { managedDomain: true };
 }
 
 function assertDomainFlags(options: InstallCommandOptions): void {
