@@ -3,6 +3,8 @@ export const auditRetentionCleanupScheduleKey: string = 'default';
 export const auditRetentionCleanupDeleteAfterSeconds: number = 86_400;
 export const auditRetentionCleanupExpireInSeconds: number = 3_600;
 export const auditRetentionCleanupScheduleSingletonSeconds: number = 86_400;
+export const usageRetentionCleanupJobName: string = 'usage.retention.cleanup';
+export const usageRetentionCleanupScheduleKey: string = 'default';
 
 export const browserAuthTokenFlowCleanupJobName: string = 'browser_auth_token_flow.cleanup';
 export const browserAuthTokenFlowCleanupScheduleKey: string = 'default';

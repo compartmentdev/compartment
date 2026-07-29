@@ -652,6 +652,7 @@ describe('Phase 0 API integration deployment status', (): void => {
         {
           cpuMillicores: 100,
           deploymentId: firstDeployment.id,
+          kind: 'application',
           memoryBytes: 64 * 1024 * 1024,
           namespace: 'cpt-smoke-web',
           observedAt: new Date().toISOString(),
@@ -661,6 +662,7 @@ describe('Phase 0 API integration deployment status', (): void => {
         {
           cpuMillicores: 200,
           deploymentId: replacement.id,
+          kind: 'application',
           memoryBytes: 128 * 1024 * 1024,
           namespace: 'cpt-smoke-web',
           observedAt: new Date().toISOString(),

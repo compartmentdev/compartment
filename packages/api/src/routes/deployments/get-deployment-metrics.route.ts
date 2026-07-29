@@ -5,6 +5,7 @@ import {
   type DeploymentMetricsSnapshot,
 } from '@compartment/contracts';
 import type { ApiApp } from '../../app.types';
+import { getApiConfig } from '../../runtime/runtime-access';
 import { getDeploymentStatusSummary } from '../../services/deployment-status.service';
 import { readPodMetricsSnapshot } from '../../services/pod-metrics-snapshot.service';
 import { registerDeploymentQueryRoute } from './deployment-query-route';
@@ -14,7 +15,10 @@ export function registerGetDeploymentMetricsRoute(app: ApiApp): void {
   registerDeploymentQueryRoute({
     app,
     buildResponse: (result: DeploymentStatusLookupResult): DeploymentMetricsSnapshot =>
-      readPodMetricsSnapshot([...result.activeDeployments, ...result.deployments]),
+      readPodMetricsSnapshot(
+        [...result.activeDeployments, ...result.deployments],
+        getApiConfig().usageMeteringIntervalMs * 2,
+      ),
     currentOrganizationPermission: undefined,
     invalidQueryErrorCode: 'invalid_deployment_metrics_query',
     loadSummary: getDeploymentStatusSummary,

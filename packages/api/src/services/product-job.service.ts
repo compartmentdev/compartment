@@ -4,11 +4,8 @@ import type {
   WorkerFinalizeProductJobRequest,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
-import {
-  claimProductJob,
-  persistProductJobFinalized,
-  persistProductJobResult,
-} from '../queries/product-job-runs.query';
+import { claimProductJob, persistProductJobFinalized } from '../queries/product-job-runs.query';
+import { persistProductJobResult } from '../queries/product-job-result.query';
 import { persistProductJobIntent } from '../queries/product-job-intent.query';
 import type { ClaimedProductJobQueryResult } from '../queries/product-job-runs.query.types';
 import type { ClaimedProductJobResult } from './product-job.service.types';

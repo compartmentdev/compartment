@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, asc, eq, type SQL } from 'drizzle-orm';
 import type {
   ProductJobClass,
   ProductJobIntent,
@@ -13,7 +13,6 @@ import { getApiDatabase } from '../runtime/runtime-access';
 import { claimSelectedRow } from './claim-row.query.shared';
 import type {
   ClaimedProductJobQueryResult,
-  PersistProductJobResultInput,
   ProductJobCommonSpec,
   ProductJobResourceFenceResult,
   ProductJobRunRow,
@@ -70,7 +69,7 @@ async function claimLockedProductJob(
 async function markProductJobRunning(transaction: ApiDatabaseTransaction, row: ProductJobRunRow): Promise<void> {
   await transaction
     .update(productJobRuns)
-    .set({ status: 'running', updatedAt: new Date() })
+    .set({ startedAt: new Date(), status: 'running', updatedAt: new Date() })
     .where(
       and(
         eq(productJobRuns.jobClass, row.jobClass),
@@ -136,6 +135,7 @@ const claimableProductJobSelection: ProductJobRunSelection = {
   projectId: productJobRuns.projectId,
   resourceIdsJson: productJobRuns.resourceIdsJson,
   status: productJobRuns.status,
+  startedAt: productJobRuns.startedAt,
   timeoutMs: productJobRuns.timeoutMs,
   updatedAt: productJobRuns.updatedAt,
   volumeMountsJson: productJobRuns.volumeMountsJson,
@@ -174,27 +174,6 @@ function buildPersistedProductJobResult(row: ProductJobResultRow): WorkerPersist
     podName: row.podName,
     status: row.status,
   };
-}
-
-export async function persistProductJobResult(input: PersistProductJobResultInput): Promise<void> {
-  await getApiDatabase()
-    .update(productJobRuns)
-    .set({
-      completedAt: new Date(input.completedAt),
-      exitCode: input.exitCode,
-      jobName: input.jobName,
-      logs: input.logs,
-      podName: input.podName,
-      status: input.status,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(productJobRuns.jobClass, input.jobClass),
-        eq(productJobRuns.identityId, input.identityId),
-        inArray(productJobRuns.status, ['queued', 'running']),
-      ),
-    );
 }
 
 export async function persistProductJobFinalized(jobClass: ProductJobClass, identityId: string): Promise<void> {

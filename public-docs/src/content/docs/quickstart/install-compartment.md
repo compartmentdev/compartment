@@ -60,6 +60,10 @@ nodePools:
 An empty build pool uses the system pool. Pass the file to `compartment install` with `--values
 compartment-values.yaml`.
 
+Compartment samples tenant CPU and memory usage every 60 seconds and retains hourly aggregates for 400 days by
+default. Use `platform.usageMeteringIntervalMs` and `platform.usageRetentionDays` to tune collection overhead and
+database retention. Missed samples are not reconstructed, and longer retention uses more database storage.
+
 ## Run the installer
 
 Interactive installation discovers the cluster choices and prompts when more than one valid option exists:

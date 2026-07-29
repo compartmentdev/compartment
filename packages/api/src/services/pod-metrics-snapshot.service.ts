@@ -6,14 +6,16 @@ import type {
 } from '@compartment/contracts';
 import type { DeploymentSummaryInput } from './presenter.types';
 
-const staleAfterMs: number = 30_000;
 let currentSnapshot: WorkerPublishPodMetricsRequest | null = null;
 
 export function publishPodMetricsSnapshot(input: WorkerPublishPodMetricsRequest): void {
   currentSnapshot = input;
 }
 
-export function readPodMetricsSnapshot(deployments: DeploymentSummaryInput[]): DeploymentMetricsSnapshot {
+export function readPodMetricsSnapshot(
+  deployments: DeploymentSummaryInput[],
+  staleAfterMs: number,
+): DeploymentMetricsSnapshot {
   const snapshot: WorkerPublishPodMetricsRequest | null = currentSnapshot;
   if (snapshot === null || snapshot.state === 'unavailable') {
     return { observedAt: snapshot?.observedAt ?? null, pods: [], state: 'unavailable' };
@@ -24,13 +26,36 @@ export function readPodMetricsSnapshot(deployments: DeploymentSummaryInput[]): D
       deployment,
     ]),
   );
-  const pods: PodResourceMetric[] = snapshot.pods.flatMap((pod: WorkerPodResourceMetric): PodResourceMetric[] => {
-    const deployment: DeploymentSummaryInput | undefined = deploymentById.get(pod.deploymentId);
-    return deployment === undefined ? [] : [{ ...pod, serviceName: deployment.service.name }];
-  });
+  const pods: PodResourceMetric[] = snapshot.pods.flatMap((pod: WorkerPodResourceMetric): PodResourceMetric[] =>
+    toDeploymentPodMetric(pod, deploymentById),
+  );
   return {
     observedAt: snapshot.observedAt,
     pods,
     state: Date.now() - Date.parse(snapshot.observedAt) > staleAfterMs ? 'stale' : 'available',
   };
+}
+
+function toDeploymentPodMetric(
+  pod: WorkerPodResourceMetric,
+  deploymentById: ReadonlyMap<string, DeploymentSummaryInput>,
+): PodResourceMetric[] {
+  if (pod.kind === 'resource') {
+    return [];
+  }
+  const deployment: DeploymentSummaryInput | undefined = deploymentById.get(pod.deploymentId);
+  return deployment === undefined
+    ? []
+    : [
+        {
+          cpuMillicores: pod.cpuMillicores,
+          deploymentId: pod.deploymentId,
+          memoryBytes: pod.memoryBytes,
+          namespace: pod.namespace,
+          observedAt: pod.observedAt,
+          podName: pod.podName,
+          podUid: pod.podUid,
+          serviceName: deployment.service.name,
+        },
+      ];
 }

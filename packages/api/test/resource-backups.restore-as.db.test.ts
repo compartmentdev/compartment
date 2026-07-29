@@ -26,11 +26,8 @@ import {
   completeResourceBackupWithExecutor,
   createResourceBackupWithExecutor,
 } from '../src/queries/resource-backups.query';
-import {
-  claimProductJob,
-  persistProductJobFinalized,
-  persistProductJobResult,
-} from '../src/queries/product-job-runs.query';
+import { claimProductJob, persistProductJobFinalized } from '../src/queries/product-job-runs.query';
+import { persistProductJobResult } from '../src/queries/product-job-result.query';
 import type { ClaimedProductJobQueryResult } from '../src/queries/product-job-runs.query.types';
 import {
   acknowledgeResourceReconcileRun,
@@ -326,6 +323,8 @@ function buildApiConfig(url: string): ApiConfig {
     auditRetentionCleanupBatchSize: 1_000,
     auditRetentionCleanupCron: '0 3 * * *',
     auditRetentionCleanupMaxBatches: 100,
+    usageMeteringIntervalMs: 60_000,
+    usageRetentionDays: 400,
     auditRetentionDays: 90,
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',

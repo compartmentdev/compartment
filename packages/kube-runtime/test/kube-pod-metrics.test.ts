@@ -34,7 +34,7 @@ describe('Kubernetes Pod metrics observation', (): void => {
   it('joins metrics-server samples to product Pods by namespace and name', async (): Promise<void> => {
     const coreApi: StubCoreApi = new StubCoreApi([
       productPod('pod-a', 'pod-uid-a'),
-      productPod('pod-b', 'pod-uid-b'),
+      resourcePod('pod-b', 'pod-uid-b'),
       productPod('pod-c', 'pod-uid-c', 'Running', 'cpt-project-two'),
     ]);
     const metricsApi: StubMetricsApi = new StubMetricsApi([
@@ -54,15 +54,16 @@ describe('Kubernetes Pod metrics observation', (): void => {
       observations: [
         {
           containers: [{ cpu: '125m', memory: '64Mi' }],
-          deploymentId: 'dep-a',
           namespace: 'cpt-project',
           podName: 'pod-a',
           podUid: 'pod-uid-a',
+          workload: { deploymentId: 'dep-a', kind: 'application' },
         },
         {
           namespace: 'cpt-project',
           podName: 'pod-b',
           podUid: 'pod-uid-b',
+          workload: { kind: 'resource', resourceId: 'res-a' },
         },
         {
           namespace: 'cpt-project-two',
@@ -150,9 +151,9 @@ describe('Kubernetes Pod metrics observation', (): void => {
     ).resolves.toMatchObject({
       observations: [
         {
-          deploymentId: 'dep-a',
           podName: 'pod-a',
           podUid: 'pod-uid-a',
+          workload: { deploymentId: 'dep-a', kind: 'application' },
         },
       ],
     });
@@ -194,9 +195,9 @@ describe('Kubernetes Pod metrics observation', (): void => {
     ).resolves.toMatchObject({
       observations: [
         {
-          deploymentId: 'dep-a',
           podName: 'pod-a',
           podUid: 'pod-uid-a',
+          workload: { deploymentId: 'dep-a', kind: 'application' },
         },
       ],
     });
@@ -291,6 +292,17 @@ function releaseJobPod(name: string, uid: string): V1Pod {
     metadata: {
       ...pod.metadata,
       ownerReferences: [{ apiVersion: 'batch/v1', kind: 'Job', name, uid: 'job-uid-a' }],
+    },
+  };
+}
+
+function resourcePod(name: string, uid: string): V1Pod {
+  const pod: V1Pod = productPod(name, uid);
+  return {
+    ...pod,
+    metadata: {
+      ...pod.metadata,
+      labels: { 'app.kubernetes.io/managed-by': 'compartment', 'compartment.dev/resource-id': 'res-a' },
     },
   };
 }

@@ -26,6 +26,7 @@ export interface ProductJobRunRow {
   projectId: string;
   resourceIdsJson: string;
   status: ProductJobStatus;
+  startedAt: Date | null;
   timeoutMs: number;
   updatedAt: Date;
   volumeMountsJson: string;

@@ -7,7 +7,7 @@ import {
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiApp } from '../../app.types';
 import { parseRequestValue } from '../../http/validation';
-import { publishPodMetricsSnapshot } from '../../services/pod-metrics-snapshot.service';
+import { publishMeteredPodMetrics } from '../../services/usage-metering.service';
 
 export function registerPostPodMetricsRoute(app: ApiApp): void {
   app.post(
@@ -19,7 +19,7 @@ export function registerPostPodMetricsRoute(app: ApiApp): void {
         request.body,
         'invalid_worker_pod_metrics_request',
       );
-      publishPodMetricsSnapshot(input);
+      await publishMeteredPodMetrics(input);
       return await reply.send(workerPublishPodMetricsRequestSchema.parse(input));
     },
   );

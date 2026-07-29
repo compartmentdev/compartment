@@ -1,11 +1,30 @@
 import { z } from 'zod';
+import { podMetricBaseShape } from './pod-metric-schema.shared';
 import type { ContractSchema } from './schema.types';
-import { podMetricSampleSchema, type PodMetricSample } from './deployment-metrics.contract';
 
 export const workerPublishPodMetricsPathname: string = '/internal/kubernetes/pod-metrics';
 export const workerListPodMetricNamespacesPathname: string = '/internal/kubernetes/pod-metric-namespaces';
 
-export type WorkerPodResourceMetric = PodMetricSample;
+interface WorkerPodMetricBase {
+  cpuMillicores: number;
+  memoryBytes: number;
+  namespace: string;
+  observedAt: string;
+  podName: string;
+  podUid: string;
+}
+
+export interface WorkerApplicationPodMetric extends WorkerPodMetricBase {
+  deploymentId: string;
+  kind: 'application';
+}
+
+export interface WorkerResourcePodMetric extends WorkerPodMetricBase {
+  kind: 'resource';
+  resourceId: string;
+}
+
+export type WorkerPodResourceMetric = WorkerApplicationPodMetric | WorkerResourcePodMetric;
 
 export interface WorkerPublishPodMetricsRequest {
   observedAt: string;
@@ -17,7 +36,10 @@ export interface WorkerListPodMetricNamespacesResponse {
   namespaceIds: string[];
 }
 
-const workerPodResourceMetricSchema: ContractSchema<WorkerPodResourceMetric> = podMetricSampleSchema;
+const workerPodResourceMetricSchema: ContractSchema<WorkerPodResourceMetric> = z.discriminatedUnion('kind', [
+  z.object({ ...podMetricBaseShape, deploymentId: z.string().min(1), kind: z.literal('application') }).strict(),
+  z.object({ ...podMetricBaseShape, kind: z.literal('resource'), resourceId: z.string().min(1) }).strict(),
+]);
 
 export const workerPublishPodMetricsRequestSchema: ContractSchema<WorkerPublishPodMetricsRequest> = z
   .object({

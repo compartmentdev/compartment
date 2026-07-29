@@ -64,6 +64,7 @@ function projectProvisionerEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_PROVISIONING_NAMESPACE: 'compartment-project-provisioning',
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
     COMPARTMENT_WORKER_POLL_INTERVAL_MS: '1000',
+    COMPARTMENT_USAGE_METERING_INTERVAL_MS: '60000',
     COMPARTMENT_WORKER_SERVICE_ACCOUNT_NAME: 'compartment-worker',
   };
 }

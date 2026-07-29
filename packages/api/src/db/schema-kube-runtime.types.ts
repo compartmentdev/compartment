@@ -3,6 +3,7 @@ import type {
   DefaultEnumTextBuilder,
   DefaultTextBuilder,
   DefaultIntegerBuilder,
+  DefaultBigIntNumberBuilder,
   OptionalIntegerBuilder,
   OptionalTextBuilder,
   OptionalTimestampBuilder,
@@ -61,6 +62,7 @@ interface ProductJobRunsColumnBuilders {
   podName: OptionalTextBuilder<'pod_name'>;
   logs: OptionalTextBuilder<'logs'>;
   completedAt: OptionalTimestampBuilder<'completed_at'>;
+  startedAt: OptionalTimestampBuilder<'started_at'>;
   finalizedAt: OptionalTimestampBuilder<'finalized_at'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;
@@ -68,6 +70,68 @@ interface ProductJobRunsColumnBuilders {
 
 export type ProductJobRunsTable = PgTableOf<'product_job_runs', ProductJobRunsColumnBuilders>;
 export type ProductJobRunsExtraConfigColumns = PgExtraConfigColumnsOf<'product_job_runs', ProductJobRunsColumnBuilders>;
+
+interface WorkloadUsageHourlyColumnBuilders {
+  organizationId: RequiredTextBuilder<'organization_id'>;
+  projectId: RequiredTextBuilder<'project_id'>;
+  environmentId: RequiredTextBuilder<'environment_id'>;
+  serviceId: OptionalTextBuilder<'service_id'>;
+  resourceId: OptionalTextBuilder<'resource_id'>;
+  hourBucket: RequiredTimestampBuilder<'hour_bucket'>;
+  cpuMillicoreSeconds: DefaultBigIntNumberBuilder<'cpu_millicore_seconds'>;
+  memoryByteSeconds: DefaultBigIntNumberBuilder<'memory_byte_seconds'>;
+  sampleCount: DefaultIntegerBuilder<'sample_count'>;
+  createdAt: DefaultTimestampBuilder<'created_at'>;
+  updatedAt: DefaultTimestampBuilder<'updated_at'>;
+}
+
+export type WorkloadUsageHourlyTable = PgTableOf<'workload_usage_hourly', WorkloadUsageHourlyColumnBuilders>;
+export type WorkloadUsageHourlyExtraConfigColumns = PgExtraConfigColumnsOf<
+  'workload_usage_hourly',
+  WorkloadUsageHourlyColumnBuilders
+>;
+
+interface WorkloadUsageCheckpointsColumnBuilders {
+  podUid: PrimaryTextBuilder<'pod_uid'>;
+  observedAt: RequiredTimestampBuilder<'observed_at'>;
+  updatedAt: DefaultTimestampBuilder<'updated_at'>;
+}
+
+export type WorkloadUsageCheckpointsTable = PgTableOf<
+  'workload_usage_checkpoints',
+  WorkloadUsageCheckpointsColumnBuilders
+>;
+export type WorkloadUsageCheckpointsExtraConfigColumns = PgExtraConfigColumnsOf<
+  'workload_usage_checkpoints',
+  WorkloadUsageCheckpointsColumnBuilders
+>;
+
+interface JobUsageHourlyColumnBuilders {
+  organizationId: RequiredTextBuilder<'organization_id'>;
+  projectId: RequiredTextBuilder<'project_id'>;
+  environmentId: RequiredTextBuilder<'environment_id'>;
+  serviceId: RequiredTextBuilder<'service_id'>;
+  hourBucket: RequiredTimestampBuilder<'hour_bucket'>;
+  jobClass: RequiredEnumTextBuilder<'job_class', ['build', 'release']>;
+  durationSeconds: DefaultBigIntNumberBuilder<'duration_seconds'>;
+  jobCount: DefaultIntegerBuilder<'job_count'>;
+  createdAt: DefaultTimestampBuilder<'created_at'>;
+  updatedAt: DefaultTimestampBuilder<'updated_at'>;
+}
+
+export type JobUsageHourlyTable = PgTableOf<'job_usage_hourly', JobUsageHourlyColumnBuilders>;
+export type JobUsageHourlyExtraConfigColumns = PgExtraConfigColumnsOf<'job_usage_hourly', JobUsageHourlyColumnBuilders>;
+
+interface JobUsageCheckpointsColumnBuilders {
+  sourceKey: PrimaryTextBuilder<'source_key'>;
+  createdAt: DefaultTimestampBuilder<'created_at'>;
+}
+
+export type JobUsageCheckpointsTable = PgTableOf<'job_usage_checkpoints', JobUsageCheckpointsColumnBuilders>;
+export type JobUsageCheckpointsExtraConfigColumns = PgExtraConfigColumnsOf<
+  'job_usage_checkpoints',
+  JobUsageCheckpointsColumnBuilders
+>;
 
 interface DeploymentProductLogsColumnBuilders {
   deploymentId: OptionalTextBuilder<'deployment_id'>;

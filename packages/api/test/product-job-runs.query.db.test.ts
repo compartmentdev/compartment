@@ -20,6 +20,7 @@ import {
   environments,
   operations,
   organizations,
+  jobUsageHourly,
   productJobRuns,
   projectKubeProvisioning,
   projectResources,
@@ -31,9 +32,9 @@ import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import {
   claimProductJob,
   persistProductJobFinalized,
-  persistProductJobResult,
   readProductJobResult,
 } from '../src/queries/product-job-runs.query';
+import { persistProductJobResult } from '../src/queries/product-job-result.query';
 import { persistProductJobIntent } from '../src/queries/product-job-intent.query';
 import { expireProductJobWait, readProductJobQueueWaitState } from '../src/queries/product-job-wait.query';
 import type { ProductJobQueueWaitState } from '../src/queries/product-job-wait.query.types';
@@ -126,6 +127,15 @@ describe('product Job persistence', (): void => {
       jobClass: 'release',
     });
     expect(initialClaim.persistedResult).toBeNull();
+    const [claimedRow] = await db
+      .select({ startedAt: productJobRuns.startedAt })
+      .from(productJobRuns)
+      .where(eq(productJobRuns.identityId, 'dep_job'));
+    expect(claimedRow?.startedAt).toBeInstanceOf(Date);
+    await db
+      .update(productJobRuns)
+      .set({ startedAt: new Date('2026-07-12T11:59:00.000Z') })
+      .where(eq(productJobRuns.identityId, 'dep_job'));
     const terminalResult: WorkerPersistProductJobResultRequest = {
       completedAt: '2026-07-12T12:00:00.000Z',
       exitCode: null,
@@ -148,6 +158,7 @@ describe('product Job persistence', (): void => {
       podName: null,
       status: 'timed-out',
     });
+    expect(await db.select().from(jobUsageHourly)).toMatchObject([{ durationSeconds: 60, jobCount: 1 }]);
     const cleanupClaim: ClaimedProductJobQueryResult = await claimProductJob('release');
     expect(cleanupClaim.intent).toMatchObject({ deploymentId: 'dep_job', jobClass: 'release' });
     expect(cleanupClaim.persistedResult).toEqual(terminalResult);
@@ -642,6 +653,8 @@ function buildApiConfig(url: string): ApiConfig {
     auditRetentionCleanupBatchSize: 1_000,
     auditRetentionCleanupCron: '0 3 * * *',
     auditRetentionCleanupMaxBatches: 100,
+    usageMeteringIntervalMs: 60_000,
+    usageRetentionDays: 400,
     auditRetentionDays: 90,
     baseDomain: 'localhost',
     bindHost: '127.0.0.1',

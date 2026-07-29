@@ -20,6 +20,8 @@ const apiConfig: ApiConfig = {
   auditRetentionCleanupBatchSize: 1000,
   auditRetentionCleanupCron: '0 3 * * *',
   auditRetentionCleanupMaxBatches: 100,
+  usageMeteringIntervalMs: 60_000,
+  usageRetentionDays: 400,
   auditFileSink: defaultAuditFileSinkConfig,
   baseDomain: 'localhost',
   bindHost: '127.0.0.1',
@@ -101,6 +103,8 @@ describe('audit jobs services', (): void => {
         ...apiConfig,
         auditRetentionCleanupBatchSize: 1,
         auditRetentionCleanupMaxBatches: 1,
+        usageMeteringIntervalMs: 60_000,
+        usageRetentionDays: 400,
       },
       db,
     });

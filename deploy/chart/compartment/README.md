@@ -108,3 +108,9 @@ container-runtime configuration or node trust.
 Project provisioning creates repository-scoped credentials and project-scoped image pull Secrets. NetworkPolicy
 projections retain tenant isolation and the configured RFC1918 egress policy. Dockerfile, Railpack, BuildKit, and OCI
 image behavior is unchanged.
+
+## Usage metering
+
+The platform samples tenant CPU and memory usage every 60 seconds and retains hourly aggregates for 400 days by
+default. Set `platform.usageMeteringIntervalMs` and `platform.usageRetentionDays` to tune collection overhead and
+database retention. Missed samples are not reconstructed, and a longer retention window uses more database storage.

@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type {
   DeploymentLogStream,
   DeploymentRunLogLevel,
@@ -6,6 +6,7 @@ import type {
   DeploymentRunStepStatus,
 } from '@compartment/contracts';
 import { deploymentRunEvents } from '../db/schema';
+import type { ApiDatabaseTransaction } from '../db/client.types';
 import { getApiDatabase } from '../runtime/runtime-access';
 import type {
   AppendDeploymentRunEventInput,
@@ -13,9 +14,57 @@ import type {
   DeploymentRunEventRow,
   PersistedDeploymentRunEventRow,
 } from './deployment-run-events.query.types';
+import { recordJobUsage } from './job-usage.query';
 
 export async function appendDeploymentRunEvent(input: AppendDeploymentRunEventInput): Promise<void> {
-  await appendDeploymentRunEventWithExecutor(getApiDatabase(), input);
+  await getApiDatabase().transaction(async (tx: ApiDatabaseTransaction): Promise<void> => {
+    await appendDeploymentRunEventWithExecutor(tx, input);
+    await recordBuildUsage(tx, input);
+  });
+}
+
+async function recordBuildUsage(tx: ApiDatabaseTransaction, input: AppendDeploymentRunEventInput): Promise<void> {
+  if (!isTerminalBuildEvent(input)) {
+    return;
+  }
+  const startedAt: Date | null = await readBuildStartedAt(tx, input.deploymentId);
+  if (startedAt === null) {
+    return;
+  }
+  await recordJobUsage(tx, {
+    completedAt: input.createdAt,
+    deploymentId: input.deploymentId,
+    jobClass: 'build',
+    sourceKey: `build:${input.deploymentId}`,
+    startedAt,
+  });
+}
+
+function isTerminalBuildEvent(
+  input: AppendDeploymentRunEventInput,
+): input is AppendDeploymentRunEventInput & { deploymentId: string } {
+  return (
+    input.deploymentId !== null &&
+    input.deploymentId !== undefined &&
+    input.stepKey === 'building_image' &&
+    (input.status === 'succeeded' || input.status === 'failed')
+  );
+}
+
+async function readBuildStartedAt(tx: ApiDatabaseTransaction, deploymentId: string): Promise<Date | null> {
+  const [started] = await tx
+    .select({ createdAt: deploymentRunEvents.createdAt })
+    .from(deploymentRunEvents)
+    .where(
+      and(
+        eq(deploymentRunEvents.deploymentId, deploymentId),
+        eq(deploymentRunEvents.stepKey, 'building_image'),
+        eq(deploymentRunEvents.status, 'running'),
+      ),
+    )
+    .orderBy(desc(deploymentRunEvents.createdAt))
+    .limit(1);
+  return started?.createdAt ?? null;
 }
 
 async function appendDeploymentRunEventWithExecutor(

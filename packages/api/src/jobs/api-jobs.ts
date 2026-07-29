@@ -2,6 +2,8 @@ import { PgBoss, type ScheduleOptions } from 'pg-boss';
 import { runAuditRetentionCleanup } from '../services/audit-retention-cleanup.service';
 import type { AuditRetentionCleanupResult } from '../services/audit-retention-cleanup.service.types';
 import { runBrowserAuthTokenFlowCleanup } from '../services/browser-auth-token-flow-cleanup.service';
+import { runUsageRetentionCleanup } from '../services/usage-retention.service';
+import type { UsageRetentionCleanupResult } from '../services/usage-retention.service.types';
 import type { BrowserAuthTokenFlowCleanupResult } from '../services/browser-auth-token-flow-cleanup.service.types';
 import {
   auditRetentionCleanupDeleteAfterSeconds,
@@ -15,11 +17,14 @@ import {
   browserAuthTokenFlowCleanupJobName,
   browserAuthTokenFlowCleanupScheduleKey,
   browserAuthTokenFlowCleanupScheduleSingletonSeconds,
+  usageRetentionCleanupJobName,
+  usageRetentionCleanupScheduleKey,
 } from './audit-jobs.constants';
 import type {
   ApiJobsRuntime,
   AuditRetentionCleanupJobData,
   BrowserAuthTokenFlowCleanupJobData,
+  UsageRetentionCleanupJobData,
   StartApiJobsInput,
 } from './api-jobs.types';
 
@@ -46,6 +51,7 @@ export async function startApiJobs(input: StartApiJobsInput): Promise<ApiJobsRun
   await registerApiJobWorkers(boss);
   await scheduleAuditRetentionCleanup(boss, input.config.auditRetentionCleanupCron);
   await scheduleBrowserAuthTokenFlowCleanup(boss);
+  await scheduleUsageRetentionCleanup(boss, input.config.auditRetentionCleanupCron);
 
   return new PgBossApiJobsRuntime(boss);
 }
@@ -73,6 +79,13 @@ async function createApiJobQueues(boss: PgBoss): Promise<void> {
     retryDelay: 300,
     retryLimit: 1,
   });
+  await boss.createQueue(usageRetentionCleanupJobName, {
+    deleteAfterSeconds: auditRetentionCleanupDeleteAfterSeconds,
+    expireInSeconds: auditRetentionCleanupExpireInSeconds,
+    policy: 'singleton',
+    retryDelay: 300,
+    retryLimit: 1,
+  });
 }
 
 async function registerApiJobWorkers(boss: PgBoss): Promise<void> {
@@ -85,6 +98,26 @@ async function registerApiJobWorkers(boss: PgBoss): Promise<void> {
     browserAuthTokenFlowCleanupJobName,
     { localConcurrency: 1, pollingIntervalSeconds: 60 },
     async (): Promise<BrowserAuthTokenFlowCleanupResult> => await runBrowserAuthTokenFlowCleanup(),
+  );
+  await boss.work<UsageRetentionCleanupJobData, UsageRetentionCleanupResult>(
+    usageRetentionCleanupJobName,
+    { localConcurrency: 1, pollingIntervalSeconds: 60 },
+    async (): Promise<UsageRetentionCleanupResult> => await runUsageRetentionCleanup(),
+  );
+}
+
+async function scheduleUsageRetentionCleanup(boss: PgBoss, cron: string): Promise<void> {
+  const options: LocalCronScheduleOptions = {
+    key: usageRetentionCleanupScheduleKey,
+    singletonKey: usageRetentionCleanupScheduleKey,
+    singletonSeconds: auditRetentionCleanupScheduleSingletonSeconds,
+    tz: null,
+  };
+  await boss.schedule(
+    usageRetentionCleanupJobName,
+    cron,
+    { requestedBy: 'schedule' } satisfies UsageRetentionCleanupJobData,
+    options as ScheduleOptions,
   );
 }
 

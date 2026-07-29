@@ -21,6 +21,7 @@ describe('readWorkerConfig', (): void => {
     });
     expect(config.pollIntervalMs).toBe(1000);
     expect(config.runtimeControlToken).toBe('runtime-control-token');
+    expect(config.usageMeteringIntervalMs).toBe(60_000);
     expect(config).not.toHaveProperty('tenantScheduling');
   });
 
@@ -82,6 +83,7 @@ describe('readWorkerConfig', (): void => {
         COMPARTMENT_API_PORT: '9443',
         COMPARTMENT_LOG_LEVEL: 'info',
         COMPARTMENT_WORKER_POLL_INTERVAL_MS: '1000',
+        COMPARTMENT_USAGE_METERING_INTERVAL_MS: '60000',
         COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
       });
     }).toThrow();
@@ -110,6 +112,7 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_TLS_ISSUER_NAME: 'compartment-platform',
     COMPARTMENT_PLATFORM_NAMESPACE: 'compartment',
     COMPARTMENT_WORKER_POLL_INTERVAL_MS: '1000',
+    COMPARTMENT_USAGE_METERING_INTERVAL_MS: '60000',
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',
     COMPARTMENT_TRUSTED_OUTBOUND_HOSTS: 'github.enterprise.example, idp.example.com:8443, idp.example.com:443',
   };
