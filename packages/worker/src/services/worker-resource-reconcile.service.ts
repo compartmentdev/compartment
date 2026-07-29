@@ -7,6 +7,7 @@ import {
   type KubeManifest,
   type KubeObservation,
   type KubeRuntime,
+  type KubeWorkloadScheduling,
   type ObservedResourceClaim,
   type ResourceProjectionRow,
 } from '@compartment/kube-runtime';
@@ -26,14 +27,16 @@ import type {
   ManagedResourceUpdatePlan,
 } from './worker-resource-reconcile.service.types';
 import { applyProjectNetworkPolicies, applyResourceNetworkPolicy } from './worker-network-policy.service';
+import { tenantResourceRow } from '../tenant-workload-projections';
 
 export async function executeResourceReconcile(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   claimed: WorkerClaimResourceReconcileResponse,
+  scheduling?: KubeWorkloadScheduling,
 ): Promise<void> {
   const complete: CompleteResourceReconcileClaim = requireCompleteClaim(claimed);
-  const row: ResourceProjectionRow = complete.intent;
+  const row: ResourceProjectionRow = tenantResourceRow(complete.intent, scheduling);
   const observation: KubeObservation = await runtime.observe({
     labels: { 'compartment.dev/resource-id': row.resourceId },
     namespace: kubeNamespaceName(row.namespaceId),

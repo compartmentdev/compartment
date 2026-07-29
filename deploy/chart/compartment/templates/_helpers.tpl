@@ -248,6 +248,40 @@ spec:
 {{- end -}}
 {{- end }}
 
+{{- define "compartment.platformPriorityClassName" -}}
+compartment-platform
+{{- end }}
+
+{{- define "compartment.tenantPriorityClassName" -}}
+compartment-tenant
+{{- end }}
+
+{{- define "compartment.nodePool" -}}
+{{- with .nodeSelector }}
+nodeSelector:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .tolerations }}
+tolerations:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{- define "compartment.buildNodePool" -}}
+{{- $pool := .Values.nodePools.build -}}
+{{- if and (empty $pool.nodeSelector) (empty $pool.tolerations) -}}
+{{- $pool = .Values.nodePools.system -}}
+{{- end -}}
+{{- include "compartment.nodePool" $pool -}}
+{{- end }}
+
+{{- define "compartment.tenantSchedulingJson" -}}
+{{- $pool := .Values.nodePools.tenant -}}
+{{- if or (not (empty $pool.nodeSelector)) (not (empty $pool.tolerations)) -}}
+{{- dict "nodeSelector" $pool.nodeSelector "tolerations" $pool.tolerations | toJson -}}
+{{- end -}}
+{{- end }}
+
 {{- define "compartment.storageClass" -}}
 {{- if .Values.storage.storageClass }}
 storageClassName: {{ .Values.storage.storageClass | quote }}

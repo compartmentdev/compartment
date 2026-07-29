@@ -139,6 +139,8 @@ spec:
       labels:
         {{- include "compartment.componentLabels" (dict "root" . "component" "managed-domain-dns01") | nindent 8 }}
     spec:
+      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+      {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
       serviceAccountName: {{ $name }}
       containers:
         - name: solver

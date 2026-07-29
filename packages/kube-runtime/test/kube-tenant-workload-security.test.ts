@@ -9,6 +9,7 @@ import type {
   KubeProjectedPodSpec,
 } from '../src/kube-runtime.types';
 import type { ResourceProjectionRow } from '../src/kube-resource-projection.types';
+import type { KubeWorkloadScheduling } from '../src/kube-workload-scheduling.types';
 
 interface TenantPodProjection {
   expectedRuntimeUserId: number;
@@ -53,24 +54,53 @@ describe('tenant workload restricted Pod Security', (): void => {
       }
     }
   });
+
+  it('projects configured tenant scheduling for application, resource, and Job Pods', (): void => {
+    for (const podSpec of [
+      applicationPodSpec(tenantScheduling),
+      resourcePodSpec(undefined, tenantScheduling),
+      releaseJobPodSpec(tenantScheduling),
+    ]) {
+      expect(podSpec.nodeSelector).toEqual({ 'compartment.dev/node-pool': 'tenant' });
+      expect(podSpec.priorityClassName).toBe('compartment-tenant');
+      expect(podSpec.tolerations).toEqual([
+        { effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'tenant' },
+      ]);
+    }
+  });
+
+  it('omits tenant scheduling fields when no pool is configured', (): void => {
+    for (const podSpec of [applicationPodSpec(), resourcePodSpec(), releaseJobPodSpec()]) {
+      expect(podSpec).not.toHaveProperty('nodeSelector');
+      expect(podSpec).not.toHaveProperty('priorityClassName');
+      expect(podSpec).not.toHaveProperty('tolerations');
+    }
+  });
 });
 
-function applicationPodSpec(): KubeProjectedPodSpec {
-  const deployment: KubeManifest = projectApplicationManifests(applicationRow()).find(
-    (manifest: KubeManifest): boolean => manifest.kind === 'Deployment',
-  )!;
-  return (deployment as KubeDeploymentManifest).spec!.template.spec;
-}
+const tenantScheduling: KubeWorkloadScheduling = {
+  nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+  tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'tenant' }],
+};
 
-function resourcePodSpec(image?: string): KubeProjectedPodSpec {
-  const deployment: KubeManifest = projectResourceManifests({
-    ...resourceRow(),
-    ...(image === undefined ? {} : { image }),
+function applicationPodSpec(scheduling?: KubeWorkloadScheduling): KubeProjectedPodSpec {
+  const deployment: KubeManifest = projectApplicationManifests({
+    ...applicationRow(),
+    ...(scheduling === undefined ? {} : { scheduling }),
   }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
   return (deployment as KubeDeploymentManifest).spec!.template.spec;
 }
 
-function releaseJobPodSpec(): KubeProjectedPodSpec {
+function resourcePodSpec(image?: string, scheduling?: KubeWorkloadScheduling): KubeProjectedPodSpec {
+  const deployment: KubeManifest = projectResourceManifests({
+    ...resourceRow(),
+    ...(image === undefined ? {} : { image }),
+    ...(scheduling === undefined ? {} : { scheduling }),
+  }).find((manifest: KubeManifest): boolean => manifest.kind === 'Deployment')!;
+  return (deployment as KubeDeploymentManifest).spec!.template.spec;
+}
+
+function releaseJobPodSpec(scheduling?: KubeWorkloadScheduling): KubeProjectedPodSpec {
   const spec: KubeJobSpec = {
     command: ['node'],
     env: {},
@@ -80,6 +110,7 @@ function releaseJobPodSpec(): KubeProjectedPodSpec {
     labels: {},
     namespace: 'project',
     securityProfile: 'project-restricted',
+    ...(scheduling === undefined ? {} : { scheduling }),
     timeoutMs: 60_000,
   };
   const job: KubeJobManifest = kubeJobManifest(spec, 'release', {});

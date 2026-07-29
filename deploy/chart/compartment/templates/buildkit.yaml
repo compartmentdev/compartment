@@ -59,6 +59,8 @@ spec:
       labels:
         {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit") | nindent 8 }}
     spec:
+      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+      {{- include "compartment.buildNodePool" . | nindent 6 }}
       automountServiceAccountToken: false
       securityContext:
         seccompProfile:
@@ -134,6 +136,8 @@ spec:
           labels:
             {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit-prune") | nindent 12 }}
         spec:
+          priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+          {{- include "compartment.buildNodePool" . | nindent 10 }}
           automountServiceAccountToken: false
           restartPolicy: OnFailure
           securityContext:

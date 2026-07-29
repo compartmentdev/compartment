@@ -29,6 +29,21 @@ describe('readProjectProvisionerConfig', (): void => {
       workerServiceAccountName: 'compartment-worker',
     });
   });
+
+  it('parses tenant scheduling for provisioning Jobs', (): void => {
+    const config: ProjectProvisionerConfig = readProjectProvisionerConfig({
+      ...projectProvisionerEnvironment(),
+      COMPARTMENT_KUBE_TENANT_SCHEDULING: JSON.stringify({
+        nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+        tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Exists' }],
+      }),
+    });
+
+    expect(config.tenantScheduling).toEqual({
+      nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+      tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Exists' }],
+    });
+  });
 });
 
 function projectProvisionerEnvironment(): NodeJS.ProcessEnv {

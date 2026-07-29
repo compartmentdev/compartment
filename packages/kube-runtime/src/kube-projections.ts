@@ -17,6 +17,7 @@ import type {
 import { kubeApplicationIdentityName, kubeApplicationName, kubeNamespaceName, kubeSecretName } from './kube-naming';
 import { projectSecretManifest, secretChecksum, secretEnvironment } from './kube-secret-projection';
 import { projectPodSecurityContext, restrictedContainerSecurityContext } from './kube-security-context';
+import { projectTenantScheduling } from './kube-workload-scheduling';
 
 const managedByLabel: Readonly<Record<string, string>> = { 'app.kubernetes.io/managed-by': 'compartment' };
 
@@ -112,6 +113,7 @@ function applicationPodSpec(row: ApplicationProjectionRow): KubeProjectedPodSpec
     automountServiceAccountToken: false,
     containers: [applicationContainer(row)],
     imagePullSecrets: [{ name: kubeSecretName(row.imagePullSecretId) }],
+    ...projectTenantScheduling(row.scheduling),
     securityContext: projectPodSecurityContext(),
     serviceAccountName: kubeNamespaceName(row.namespaceId),
     terminationGracePeriodSeconds: row.terminationGracePeriodSeconds ?? minimumTerminationGracePeriodSeconds,

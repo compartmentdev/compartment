@@ -1,3 +1,5 @@
+import type { KubeWorkloadScheduling } from './kube-workload-scheduling.types';
+
 export interface KubeContainerLifecycle {
   preStop: KubeExecLifecycleHandler;
 }
@@ -57,6 +59,7 @@ export interface ApplicationProjectionRow {
   readiness: ApplicationReadinessConfig | null;
   replicas: number;
   runCommand: string | null;
+  scheduling?: KubeWorkloadScheduling | undefined;
   serviceId: string;
   serviceName: string;
   secretId: string;

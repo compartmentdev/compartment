@@ -15,6 +15,45 @@ existing-cluster preflight before applying it.
 
 The chart does not install or disable cluster infrastructure and does not mutate nodes.
 
+## Node pools and workload priority
+
+`nodePools.system` schedules platform components, `nodePools.build` schedules BuildKit and its prune Job, and
+`nodePools.tenant` schedules application, resource, product, and provisioning workloads. An empty pool adds no
+selector or toleration. An empty build pool falls back to the system pool.
+
+Label and taint the nodes before enabling a pool:
+
+```bash
+kubectl label node platform-1 compartment.dev/node-pool=system
+kubectl taint node platform-1 compartment.dev/node-pool=system:NoSchedule
+kubectl label node builder-1 compartment.dev/node-pool=build
+kubectl taint node builder-1 compartment.dev/node-pool=build:NoSchedule
+kubectl label node tenant-1 compartment.dev/node-pool=tenant
+kubectl taint node tenant-1 compartment.dev/node-pool=tenant:NoSchedule
+```
+
+Then configure the matching selectors and tolerations:
+
+```yaml
+nodePools:
+  system:
+    nodeSelector: { compartment.dev/node-pool: system }
+    tolerations:
+      - { key: compartment.dev/node-pool, operator: Equal, value: system, effect: NoSchedule }
+  build:
+    nodeSelector: { compartment.dev/node-pool: build }
+    tolerations:
+      - { key: compartment.dev/node-pool, operator: Equal, value: build, effect: NoSchedule }
+  tenant:
+    nodeSelector: { compartment.dev/node-pool: tenant }
+    tolerations:
+      - { key: compartment.dev/node-pool, operator: Equal, value: tenant, effect: NoSchedule }
+```
+
+Platform and BuildKit Pods use the higher `compartment-platform` PriorityClass. Configured tenant workloads use
+`compartment-tenant`, allowing a pending platform Pod to preempt lower-priority tenant Pods when both are eligible for
+the same node. Priority does not guarantee availability during node failure or kubelet node-pressure eviction.
+
 ## Public ingress
 
 Set `ingress.className` to the selected existing IngressClass. When that controller does not publish Ingress status,

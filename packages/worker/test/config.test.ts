@@ -21,6 +21,26 @@ describe('readWorkerConfig', (): void => {
     });
     expect(config.pollIntervalMs).toBe(1000);
     expect(config.runtimeControlToken).toBe('runtime-control-token');
+    expect(config).not.toHaveProperty('tenantScheduling');
+  });
+
+  it('parses optional tenant scheduling and rejects malformed configuration', (): void => {
+    const config: WorkerConfig = readWorkerConfig({
+      ...validEnvironment(),
+      COMPARTMENT_KUBE_TENANT_SCHEDULING: tenantSchedulingJson,
+    });
+
+    expect(config.tenantScheduling).toEqual({
+      nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+      tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'tenant' }],
+    });
+    expect(
+      (): WorkerConfig =>
+        readWorkerConfig({
+          ...validEnvironment(),
+          COMPARTMENT_KUBE_TENANT_SCHEDULING: '{"nodeSelector":',
+        }),
+    ).toThrow();
   });
 
   it('rejects unsafe worker trusted outbound host entries', (): void => {
@@ -66,6 +86,11 @@ describe('readWorkerConfig', (): void => {
       });
     }).toThrow();
   });
+});
+
+const tenantSchedulingJson: string = JSON.stringify({
+  nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+  tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'tenant' }],
 });
 
 function validEnvironment(): NodeJS.ProcessEnv {

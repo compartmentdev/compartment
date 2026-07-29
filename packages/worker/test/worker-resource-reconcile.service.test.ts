@@ -421,9 +421,12 @@ describe('worker resource reconcile lifecycle', (): void => {
       }
       return await Promise.resolve(applied);
     });
-    await expect(executeResourceReconcile(requester(), runtime(apply, observation), claim(null))).rejects.toThrow(
-      'new image failed',
-    );
+    await expect(
+      executeResourceReconcile(requester(), runtime(apply, observation), claim(null), {
+        nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+        tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Exists' }],
+      }),
+    ).rejects.toThrow('new image failed');
     const stopped: KubeManifest | undefined = bundles[0]?.objects.find(
       (object: KubeManifest): boolean => object.kind === 'Deployment',
     );
@@ -434,6 +437,18 @@ describe('worker resource reconcile lifecycle', (): void => {
     expect(rollbackJson).not.toContain('resourceVersion');
     expect(rollbackJson).not.toContain('managedFields');
     expect(rollbackJson).not.toContain('"status"');
+    const rollbackDeployment: KubeManifest | undefined = bundles[3]?.objects.find(
+      (object: KubeManifest): boolean => object.kind === 'Deployment',
+    );
+    expect(rollbackDeployment?.spec).toMatchObject({
+      template: {
+        spec: {
+          nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+          priorityClassName: 'compartment-tenant',
+          tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Exists' }],
+        },
+      },
+    });
     expect(mocks.acknowledge).toHaveBeenNthCalledWith(
       2,
       expect.anything(),

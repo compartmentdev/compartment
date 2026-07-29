@@ -6,6 +6,7 @@ import type {
 } from './kube-application-projection.types';
 import type { KubeJobVolumeMount, KubePodVolume, KubeVolumeMount } from './kube-volume.types';
 import type { KubeContainerSecurityContext, KubePodSecurityContext } from './kube-security-context.types';
+import type { KubeToleration, KubeWorkloadScheduling } from './kube-workload-scheduling.types';
 
 export type { KubeJobVolumeMount, KubePodVolume, KubeVolumeMount } from './kube-volume.types';
 export type { ApplyBundle } from './kube-apply-bundle.types';
@@ -126,10 +127,13 @@ export interface KubeProjectedPodSpec {
   automountServiceAccountToken: false;
   containers: KubeProjectedContainer[];
   imagePullSecrets?: KubeLocalObjectReference[] | undefined;
+  nodeSelector?: Readonly<Record<string, string>> | undefined;
+  priorityClassName?: string | undefined;
   restartPolicy?: 'Never' | 'OnFailure' | undefined;
   serviceAccountName?: string | undefined;
   securityContext?: KubePodSecurityContext | undefined;
   terminationGracePeriodSeconds?: number | undefined;
+  tolerations?: readonly KubeToleration[] | undefined;
   volumes?: KubePodVolume[] | undefined;
 }
 
@@ -254,6 +258,7 @@ export interface KubeJobSpec {
   jobClass: 'release' | 'operation';
   labels: Readonly<Record<string, string>>;
   namespace: string;
+  scheduling?: KubeWorkloadScheduling | undefined;
   securityProfile?: 'project-restricted' | 'resource-restricted' | 'restricted' | undefined;
   serviceAccountName?: string | undefined;
   serviceAccountTokenExpirationSeconds?: number | undefined;

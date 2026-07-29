@@ -167,6 +167,8 @@ spec:
         prometheus.io/port: '9598'
         prometheus.io/scrape: 'true'
     spec:
+      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
+      {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
       automountServiceAccountToken: false
       serviceAccountName: {{ $name }}
       terminationGracePeriodSeconds: 30

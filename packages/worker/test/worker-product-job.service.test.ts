@@ -117,6 +117,22 @@ describe('executeProductJob', (): void => {
     expect(durable).toBe(true);
   });
 
+  it('adds configured tenant scheduling to product Jobs', async (): Promise<void> => {
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult(successResult());
+
+    await executeProductJob(requester(), runtime, releaseIntent(), {
+      nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+      tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Exists' }],
+    });
+
+    expect(runtime.runJob.mock.calls[0]?.[0]).toMatchObject({
+      scheduling: {
+        nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+        tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Exists' }],
+      },
+    });
+  });
+
   it.each([releaseIntent(), resourceOperationIntent(), projectResourceOperationIntent()])(
     'pins project Job Pods to the tokenless project ServiceAccount and restricted profile',
     async (intent: ProductJobIntent): Promise<void> => {
