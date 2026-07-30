@@ -136,15 +136,23 @@ describe('executeProductJob', (): void => {
   it('redacts projected tenant secret values before persisting Job logs', async (): Promise<void> => {
     const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult({
       ...successResult(),
-      logs: 'connecting to postgres://internal\n',
+      logs: 'dockerfile connecting to postgres://internal on port 8080\n',
     });
 
-    const result: WorkerPersistProductJobResultRequest = await executeProductJob(requester(), runtime, releaseIntent());
+    const result: WorkerPersistProductJobResultRequest = await executeProductJob(
+      requester(),
+      runtime,
+      releaseIntent({
+        COMPARTMENT_SERVICE: 'dockerfile',
+        DATABASE_URL: 'postgres://internal',
+        PORT: '8080',
+      }),
+    );
 
-    expect(result.logs).toBe('connecting to [REDACTED]\n');
+    expect(result.logs).toBe('dockerfile connecting to [REDACTED] on port 8080\n');
     expect(mocks.persistResult).toHaveBeenCalledWith(
       expect.any(Function),
-      expect.objectContaining({ logs: 'connecting to [REDACTED]\n' }),
+      expect.objectContaining({ logs: 'dockerfile connecting to [REDACTED] on port 8080\n' }),
     );
   });
 
@@ -308,11 +316,13 @@ describe('executeProductJob', (): void => {
   });
 });
 
-function releaseIntent(): ProductJobIntent {
+function releaseIntent(
+  environment: Readonly<Record<string, string>> = { DATABASE_URL: 'postgres://internal' },
+): ProductJobIntent {
   return {
     command: ['bin/release'],
     deploymentId: 'dep-01jz',
-    env: encryptTestTenantEnvironment({ DATABASE_URL: 'postgres://internal' }),
+    env: encryptTestTenantEnvironment(environment),
     image: 'registry.example/release@sha256:abc',
     imagePullSecretId: 'pull-01jz',
     jobClass: 'release',

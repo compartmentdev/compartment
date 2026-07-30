@@ -3,6 +3,12 @@ import { createAes256GcmKeyId, decryptAes256GcmEnvelope } from '@compartment/uti
 import type { TenantSecretsKeyring } from './tenant-secret-environment.types';
 
 const tenantSecretKeyIdNamespace: string = 'tenant-kek';
+const platformRuntimeEnvironmentKeys: ReadonlySet<string> = new Set([
+  'COMPARTMENT_ENVIRONMENT',
+  'COMPARTMENT_PROJECT',
+  'COMPARTMENT_SERVICE',
+  'PORT',
+]);
 
 export function decryptTenantSecretEnvironment(
   environment: TenantSecretEnvironment,
@@ -17,8 +23,9 @@ export function decryptTenantSecretEnvironment(
 }
 
 export function redactTenantSecretValues(logs: string, environment: Record<string, string>): string {
-  return Object.values(environment).reduce(
-    (redacted: string, value: string): string => (value === '' ? redacted : redacted.replaceAll(value, '[REDACTED]')),
+  return Object.entries(environment).reduce(
+    (redacted: string, [keyName, value]: [string, string]): string =>
+      value === '' || platformRuntimeEnvironmentKeys.has(keyName) ? redacted : redacted.replaceAll(value, '[REDACTED]'),
     logs,
   );
 }
