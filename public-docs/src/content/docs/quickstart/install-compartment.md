@@ -110,8 +110,10 @@ covers application and stateful resource Pods plus product and provisioning Jobs
 BuildKit keep the node default runtime; use the build pool to isolate build execution.
 
 Compartment samples tenant CPU and memory usage every 60 seconds and retains hourly aggregates for 400 days by
-default. Use `platform.usageMeteringIntervalMs` and `platform.usageRetentionDays` to tune collection overhead and
-database retention. Missed samples are not reconstructed, and longer retention uses more database storage.
+default. The metering interval also controls hosted application traffic flushes. Use
+`platform.usageMeteringIntervalMs` and `platform.usageRetentionDays` to tune collection overhead and database
+retention. Missed samples and unflushed edge traffic are not reconstructed, and longer retention uses more database
+storage.
 
 ## Run the installer
 

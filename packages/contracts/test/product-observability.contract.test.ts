@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  edgePublishTrafficMetricsRequestSchema,
   productLogIngestRequestSchema,
+  type EdgePublishTrafficMetricsRequest,
+  type EdgeTrafficMetric,
   type ProductLogIngestEvent,
   type WorkerApplicationPodMetric,
   workerListPodMetricNamespacesResponseSchema,
@@ -69,5 +72,35 @@ describe('product observability contracts', (): void => {
       namespaceIds: ['prj_1'],
     });
     expect(workerListPodMetricNamespacesResponseSchema.safeParse({ namespaceIds: [''] }).success).toBe(false);
+  });
+
+  it('accepts bounded edge traffic batches and rejects unsafe counters', (): void => {
+    const metric: EdgeTrafficMetric = {
+      observedAt: '2026-07-12T10:00:00.000Z',
+      requestBytes: 120,
+      requestCount: 1,
+      responseBytes: 240,
+      status4xxCount: 0,
+      status5xxCount: 0,
+      upstreamHost: 'app-env-service.cpt-project.svc',
+    };
+    const batch: EdgePublishTrafficMetricsRequest = {
+      batchId: 'source:1',
+      metrics: [metric],
+      sourceId: 'source',
+    };
+    expect(edgePublishTrafficMetricsRequestSchema.safeParse(batch).success).toBe(true);
+    expect(
+      edgePublishTrafficMetricsRequestSchema.safeParse({
+        ...batch,
+        metrics: [{ ...metric, requestBytes: Number.MAX_SAFE_INTEGER + 1 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      edgePublishTrafficMetricsRequestSchema.safeParse({
+        ...batch,
+        metrics: Array.from({ length: 10_001 }, (): EdgeTrafficMetric => metric),
+      }).success,
+    ).toBe(false);
   });
 });

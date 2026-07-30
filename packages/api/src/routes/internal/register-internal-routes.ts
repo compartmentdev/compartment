@@ -23,6 +23,7 @@ import { registerPostRunNextScheduledResourceOperationRoute } from './post-run-n
 import { registerPostUploadGitSourceResolutionTaskArchiveRoute } from './post-upload-git-source-resolution-task-archive.route';
 import { registerPostProductLogsRoute } from './post-product-logs.route';
 import { registerPostPodMetricsRoute } from './post-pod-metrics.route';
+import { registerPostEdgeTrafficMetricsRoute } from './post-edge-traffic-metrics.route';
 import { registerProductJobRoutes } from './product-job.routes';
 import { registerDeploymentReconcileRoutes } from './deployment-reconcile.routes';
 import { registerResourceReconcileRoutes } from './resource-reconcile.routes';
@@ -66,6 +67,7 @@ function registerEdgeInternalRoutes(
   registerPostAppAccessExchangeRoute(app);
   registerPostAppAccessLogoutRoute(app);
   registerPostAppAccessSessionResolveRoute(app);
+  registerPostEdgeTrafficMetricsRoute(app);
   done();
 }
 

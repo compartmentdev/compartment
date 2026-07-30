@@ -88,6 +88,10 @@ spec:
             - {name: COMPARTMENT_EDGE_CLIENT_BURST, value: {{ .Values.platform.edgeTrafficLimits.client.burst | quote }}}
             - {name: COMPARTMENT_EDGE_INTERNAL_HOST, value: {{ printf "%s-edge" (include "compartment.fullname" .) | quote }}}
             - {name: COMPARTMENT_EDGE_PORT, value: {{ .Values.ports.edge | quote }}}
+            - name: COMPARTMENT_EDGE_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: edge-token}
+            - {name: COMPARTMENT_USAGE_METERING_INTERVAL_MS, value: {{ .Values.platform.usageMeteringIntervalMs | quote }}}
           ports:
             - {name: http, containerPort: {{ .Values.ports.http }}}
           readinessProbe:

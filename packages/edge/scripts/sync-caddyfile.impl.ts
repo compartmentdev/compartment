@@ -119,6 +119,13 @@ ${renderIngressAuthorizeResponseHeaders()}
 		@compartment_proxy_path header_regexp compartment_proxy_path ${compartmentProxyPathHeaderName} ^/.*$
 		rewrite @compartment_proxy_path {header.${compartmentProxyPathHeaderName}}
 
+		compartment_traffic_meter {
+			api_url http://{$COMPARTMENT_API_INTERNAL_HOST}:{$COMPARTMENT_API_PORT}
+			edge_token {$COMPARTMENT_EDGE_TOKEN}
+			flush_interval_ms {$COMPARTMENT_USAGE_METERING_INTERVAL_MS}
+			max_pending_batches 60
+		}
+
 		reverse_proxy {header.${compartmentUpstreamHostHeaderName}}:{header.${compartmentUpstreamPortHeaderName}} {
 ${indentBlock(readCaddyPlatformAppCookieStripDirectives().join('\n'), '\t\t\t')}
 			header_up X-Forwarded-Host {host}

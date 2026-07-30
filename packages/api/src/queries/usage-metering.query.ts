@@ -22,6 +22,7 @@ import type {
   UsageCheckpoint,
   UsageOwner,
 } from './usage-metering.query.types';
+import { deleteEdgeTrafficReceiptBatch } from './edge-traffic-metering.query';
 
 export async function recordPodUsage(input: RecordPodUsageInput): Promise<void> {
   await getApiDatabase().transaction(async (tx: ApiDatabaseTransaction): Promise<void> => {
@@ -156,6 +157,7 @@ export async function deleteExpiredUsageBatch(input: DeleteExpiredUsageBatchInpu
     deleteJobUsageBatch(database, input),
     deleteWorkloadCheckpointBatch(database, input),
     deleteJobCheckpointBatch(database, input),
+    deleteEdgeTrafficReceiptBatch(database, input),
   ]);
   return deleted.reduce((total: number, count: number): number => total + count, 0);
 }

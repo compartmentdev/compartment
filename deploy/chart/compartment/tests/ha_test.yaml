@@ -15,6 +15,7 @@ tests:
         startupStage: full
         installationId: test-ha
         baseDomain: apps.example.com
+        usageMeteringIntervalMs: 45000
     asserts:
       - equal:
           path: spec.replicas
@@ -59,6 +60,23 @@ tests:
       - equal:
           path: spec.template.spec.topologySpreadConstraints[0].maxSkew
           value: 1
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_USAGE_METERING_INTERVAL_MS
+            value: '45000'
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_EDGE_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: compartment-compartment
+                key: edge-token
         template: caddy.yaml
         documentIndex: 1
       - hasDocuments:

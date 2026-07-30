@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { splitJobIntoHours, splitUsageIntoHours } from '../src/queries/usage-aggregation.support';
+import { readUsageHourBucket, splitJobIntoHours, splitUsageIntoHours } from '../src/queries/usage-aggregation.support';
 
 describe('usage aggregation', (): void => {
+  it('buckets traffic at the exact UTC hour boundary', (): void => {
+    expect(readUsageHourBucket(new Date('2026-07-29T12:59:59.999Z'))).toEqual(new Date('2026-07-29T12:00:00.000Z'));
+    expect(readUsageHourBucket(new Date('2026-07-29T13:00:00.000Z'))).toEqual(new Date('2026-07-29T13:00:00.000Z'));
+  });
   it('keeps a sample interval in its UTC hour bucket', (): void => {
     expect(
       splitUsageIntoHours({

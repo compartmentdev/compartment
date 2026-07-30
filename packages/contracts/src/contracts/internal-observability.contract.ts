@@ -4,6 +4,27 @@ import type { ContractSchema } from './schema.types';
 
 export const workerPublishPodMetricsPathname: string = '/internal/kubernetes/pod-metrics';
 export const workerListPodMetricNamespacesPathname: string = '/internal/kubernetes/pod-metric-namespaces';
+export const edgePublishTrafficMetricsPathname: string = '/internal/edge/traffic-metrics';
+
+export interface EdgeTrafficMetric {
+  observedAt: string;
+  requestBytes: number;
+  requestCount: number;
+  responseBytes: number;
+  status4xxCount: number;
+  status5xxCount: number;
+  upstreamHost: string;
+}
+
+export interface EdgePublishTrafficMetricsRequest {
+  batchId: string;
+  metrics: EdgeTrafficMetric[];
+  sourceId: string;
+}
+
+export interface EdgePublishTrafficMetricsResponse {
+  status: 'accepted' | 'duplicate';
+}
 
 interface WorkerPodMetricBase {
   cpuMillicores: number;
@@ -51,4 +72,30 @@ export const workerPublishPodMetricsRequestSchema: ContractSchema<WorkerPublishP
 
 export const workerListPodMetricNamespacesResponseSchema: ContractSchema<WorkerListPodMetricNamespacesResponse> = z
   .object({ namespaceIds: z.array(z.string().min(1)).max(10_000) })
+  .strict();
+
+const trafficCounterSchema: z.ZodNumber = z.number().int().nonnegative().safe();
+
+const edgeTrafficMetricSchema: ContractSchema<EdgeTrafficMetric> = z
+  .object({
+    observedAt: z.string().datetime(),
+    requestBytes: trafficCounterSchema,
+    requestCount: trafficCounterSchema,
+    responseBytes: trafficCounterSchema,
+    status4xxCount: trafficCounterSchema,
+    status5xxCount: trafficCounterSchema,
+    upstreamHost: z.string().min(1),
+  })
+  .strict();
+
+export const edgePublishTrafficMetricsRequestSchema: ContractSchema<EdgePublishTrafficMetricsRequest> = z
+  .object({
+    batchId: z.string().min(1).max(200),
+    metrics: z.array(edgeTrafficMetricSchema).min(1).max(10_000),
+    sourceId: z.string().min(1).max(100),
+  })
+  .strict();
+
+export const edgePublishTrafficMetricsResponseSchema: ContractSchema<EdgePublishTrafficMetricsResponse> = z
+  .object({ status: z.enum(['accepted', 'duplicate']) })
   .strict();
