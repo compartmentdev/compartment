@@ -22,6 +22,17 @@ import {
   readExpectedOrasPlatform,
   writeExecutableScript,
 } from './install-cli-script-test.fixtures';
+import type {
+  ExecFileFailure,
+  ExecFileSuccess,
+  InstallerFixture,
+  InstallerProcessResult,
+  InstallerRunOptions,
+  InstallerScriptResult,
+  InstallerSignatureOutcome,
+  PublishedFallbackOutcome,
+  ShellProfileCase,
+} from './install-cli-script-test.types';
 
 const defaultPath: string = process.env.PATH ?? '/usr/bin:/bin';
 const execFile: (
@@ -36,70 +47,6 @@ const repositoryRoot: string = resolve(__dirname, '../../..');
 const renderInstallerScriptPath: string = resolve(repositoryRoot, 'scripts/release/render-cli-install-script.mjs');
 const sourceInstallerScriptPath: string = resolve(repositoryRoot, 'install.sh');
 const temporaryDirectories: string[] = [];
-
-interface InstallerFixture {
-  artifactName: string;
-  checksumsPath: string;
-  tarballPath: string;
-}
-
-type InstallerSignatureOutcome = 'foreign-identity' | 'unsigned' | 'valid' | 'wrong-workflow-sha';
-type OrasResolveOutcome = 'missing' | 'unavailable' | 'valid';
-type PublishedFallbackOutcome = 'lookup-missing' | 'resolve-missing' | 'signature-invalid' | 'valid';
-
-interface InstallerScriptResult {
-  cosignInvocations: string[];
-  exitCode: number | string;
-  installerTerminalOutput: string;
-  stderr: string;
-  stdout: string;
-  compartmentInvocations: string[];
-  orasInvocations: string[];
-  sudoInvocations: string[];
-  urlLog: string[];
-}
-
-interface InstallerRunOptions {
-  acceptPathUpdate?: boolean | undefined;
-  allowFailure?: boolean | undefined;
-  args: string[];
-  archName?: string | undefined;
-  binDir?: string | undefined;
-  defaultVersion?: string | undefined;
-  installerTerminalPath?: string | undefined;
-  installerTerminalOutputPath?: string | undefined;
-  osName?: string | undefined;
-  orasResolveOutcome?: OrasResolveOutcome | undefined;
-  pathEntries?: string[] | undefined;
-  publishedFallbackOutcome?: PublishedFallbackOutcome | undefined;
-  shell?: string | undefined;
-  signatureOutcome?: InstallerSignatureOutcome | undefined;
-  toolVersionMode?: 'compatible' | 'incompatible' | undefined;
-}
-
-interface InstallerProcessResult {
-  exitCode: number | string;
-  stderr: string;
-  stdout: string;
-}
-
-interface ExecFileSuccess {
-  stderr: string;
-  stdout: string;
-}
-
-interface ExecFileFailure extends Error {
-  code?: number | string | undefined;
-  stderr?: Buffer | string | undefined;
-  stdout?: Buffer | string | undefined;
-}
-
-interface ShellProfileCase {
-  command: (temporaryDirectory: string) => string;
-  osName?: string | undefined;
-  profile: (temporaryDirectory: string) => string;
-  shell: string;
-}
 
 describe('render-cli-install-script', (): void => {
   afterEach(async (): Promise<void> => {
@@ -237,7 +184,7 @@ describe('render-cli-install-script', (): void => {
       `Images for ${expectedKubernetesReleaseTag} are still publishing. Install the latest fully published kubernetes build with:`,
     );
     expect(result.stderr).toContain(
-      `curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel kubernetes --version ${expectedPublishedKubernetesReleaseTag}`,
+      `curl -fsSL https://raw.githubusercontent.com/example/compartment/kubernetes/install.sh | sh -s -- --channel kubernetes --version ${expectedPublishedKubernetesReleaseTag}`,
     );
     expect(result.stderr).not.toContain('Error response from registry');
     expect(result.orasInvocations).toEqual([
@@ -252,6 +199,30 @@ describe('render-cli-install-script', (): void => {
       `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedPublishedKubernetesCommitSha} ${expectedPublishedCliDigestRef}`,
     ]);
     expect(result.compartmentInvocations).toEqual([]);
+  });
+
+  it('reports an unpublished explicit Kubernetes pin without claiming fallback discovery failed', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      allowFailure: true,
+      args: ['--channel', 'kubernetes', '--version', expectedKubernetesReleaseTag],
+      orasResolveOutcome: 'missing',
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      `Kubernetes CLI image tag ${expectedKubernetesReleaseTag} was not found in the registry. Check that the build was published and that the version is not mistyped.`,
+    );
+    expect(result.stderr).toContain('To install the current kubernetes channel tip instead, omit --version:');
+    expect(result.stderr).toContain(
+      'curl -fsSL https://raw.githubusercontent.com/example/compartment/kubernetes/install.sh | sh -s -- --channel kubernetes',
+    );
+    expect(result.stderr).not.toContain('fallback automatically');
+    expect(result.stderr).not.toContain(`--version ${expectedKubernetesReleaseTag}`);
+    expect(result.urlLog).toEqual([]);
+    expect(result.orasInvocations).toEqual([
+      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}`,
+    ]);
   });
 
   it.each([
@@ -275,7 +246,7 @@ describe('render-cli-install-script', (): void => {
         'https://github.com/example/compartment/actions/workflows/publish-self-hosted-kubernetes.yml',
       );
       expect(result.stderr).toContain(
-        'curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel kubernetes --version sha-COMMIT_SHA',
+        'curl -fsSL https://raw.githubusercontent.com/example/compartment/kubernetes/install.sh | sh -s -- --channel kubernetes --version sha-COMMIT_SHA',
       );
       expect(result.stderr).not.toContain('sha-<');
       expect(result.compartmentInvocations).toEqual([]);
