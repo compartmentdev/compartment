@@ -52,6 +52,13 @@ export function buildKubernetesReleaseSelector(releaseName: string): string {
   return `app.kubernetes.io/instance=${releaseName}`;
 }
 
+export function formatKubernetesCommandFailure(message: string, result: CommandResult): string {
+  const output: string = readCommandOutput(result);
+  const status: string =
+    result.exitCode === 124 ? 'command timed out' : `command exited with status ${result.exitCode.toString()}`;
+  return `${message} (${status}): ${output === '' ? 'the command produced no diagnostics' : output}`;
+}
+
 export function readCommandOutput(result: CommandResult): string {
   return [result.stderr.trim(), result.stdout.trim()].filter((value: string): boolean => value !== '').join('\n');
 }

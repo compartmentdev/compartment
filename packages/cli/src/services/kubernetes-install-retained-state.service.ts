@@ -3,7 +3,7 @@ import { parseJsonWith } from '@compartment/utils';
 import { z } from 'zod';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
+import { buildKubectlCommand, formatKubernetesCommandFailure, readCommandOutput } from './kubernetes-command.support';
 import { parseKubernetesIngressTargetsJson } from './kubernetes-install-ingress-targets.service';
 import type {
   KubernetesInstallDeploymentInput,
@@ -92,9 +92,8 @@ function createRetainedStateInspectionError(result: CommandResult): Error {
     ? new Error(
         `Timed out after 30s inspecting retained Kubernetes install state. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.${output === '' ? '' : `\n${output}`}`,
       )
-    : new Error(`Failed to inspect retained Kubernetes install state: ${output}`);
+    : new Error(formatKubernetesCommandFailure('Failed to inspect retained Kubernetes install state', result));
 }
-
 export function mergeRetainedKubernetesInstallState(
   existingInstall: ExistingKubernetesInstall | null,
   retainedState: RetainedKubernetesInstallState | null,
@@ -268,6 +267,7 @@ function readRequiredSecretText(data: Record<string, string>, key: string): stri
 }
 
 function readSecretText(data: Record<string, string>, key: string): string {
-  const encodedValue: string | undefined = data[key];
-  return encodedValue === undefined ? '' : Buffer.from(encodedValue, 'base64').toString('utf8').trim();
+  return Buffer.from(data[key] ?? '', 'base64')
+    .toString('utf8')
+    .trim();
 }

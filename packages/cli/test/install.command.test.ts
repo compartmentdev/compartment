@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { runCli } from '../src/app';
 import type { ResolvedInstallIdentityPrompts } from '../src/commands/install/install.command.types';
@@ -142,6 +145,42 @@ describe('install command boundary', (): void => {
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('--dev cannot be combined with --values.');
+  });
+
+  it('renders all incomplete operator values issues without Zod internals at the CLI boundary', async (): Promise<void> => {
+    const directory: string = await mkdtemp(resolve(tmpdir(), 'compartment-install-command-values-'));
+    try {
+      const valuesPath: string = resolve(directory, 'values.yaml');
+      await writeFile(valuesPath, 'tls:\n  existingSecret: platform-tls\n');
+      const capture: CliCommandCapture = createCliCapture();
+
+      const exitCode: number = await runCli(
+        [
+          'install',
+          '--base-domain',
+          'apps.example.com',
+          '--email',
+          'owner@example.com',
+          '--organization',
+          'Acme',
+          '--admin-password',
+          'correct horse battery staple',
+          '--kube-context',
+          'production',
+          '--values',
+          valuesPath,
+        ],
+        capture.io,
+      );
+
+      const stderr: string = readCliStderr(capture);
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain(`${valuesPath}: ingress: is required and must define className`);
+      expect(stderr).toContain(`${valuesPath}: registry.issuerRef: is required when tls.existingSecret is used`);
+      expect(stderr).not.toMatch(/ZodError|"code"|"expected"|"received"|at parse/u);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 });
 

@@ -143,7 +143,7 @@ describe('canonical Kubernetes install input', (): void => {
   it('keeps operator-owned domain selection available without onboarding authorization', async (): Promise<void> => {
     delete process.env[managedDomainReservationTokenEnvironmentName];
     const capture: CliCommandCapture = createCliCapture();
-    capture.stdin.end('1\ny\n2\napps.example.com\ny\n');
+    capture.stdin.end('1\ny\n2\napps.example.com\n1\nClusterIssuer\nletsencrypt-production\ny\n');
 
     const wizard: KubernetesInstallWizardResult = await resolveCanonicalKubernetesInstallWizard(
       capture.io,
@@ -162,6 +162,92 @@ describe('canonical Kubernetes install input', (): void => {
     );
 
     expect(wizard.input).toMatchObject({ baseDomain: 'apps.example.com' });
+    expect(wizard.values).toMatchObject({
+      ingress: { className: 'nginx' },
+      storage: { storageClass: 'fast' },
+      tls: { issuerRef: { kind: 'ClusterIssuer', name: 'letsencrypt-production' } },
+    });
+    expect(capture.stderr.join('')).toContain('TLS: ClusterIssuer/letsencrypt-production');
+  });
+
+  it('collects both certificate sources needed when operator platform TLS uses an existing Secret', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('1\ny\n2\napps.example.com\n2\nplatform-tls\nIssuer\nregistry-issuer\ny\n');
+
+    const wizard: KubernetesInstallWizardResult = await resolveCanonicalKubernetesInstallWizard(
+      capture.io,
+      {
+        adminPassword: 'correct horse battery staple',
+        email: 'owner@example.com',
+        organization: 'Acme',
+        output: 'text',
+      },
+      { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
+      async (): Promise<{ ingressClasses: string[]; storageClasses: { default: boolean; name: string }[] }> =>
+        await Promise.resolve({
+          ingressClasses: ['nginx'],
+          storageClasses: [{ default: true, name: 'fast' }],
+        }),
+    );
+
+    expect(wizard.values).toMatchObject({
+      registry: { issuerRef: { kind: 'Issuer', name: 'registry-issuer' } },
+      tls: { existingSecret: 'platform-tls' },
+    });
+  });
+
+  it('does not prompt for public TLS on a reserved localhost operator domain', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('1\ny\n2\ncompartment.localhost\ny\n');
+
+    const wizard: KubernetesInstallWizardResult = await resolveCanonicalKubernetesInstallWizard(
+      capture.io,
+      {
+        adminPassword: 'correct horse battery staple',
+        email: 'owner@example.com',
+        organization: 'Acme',
+        output: 'text',
+      },
+      { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
+      async (): Promise<KubernetesInstallResourceInventory> =>
+        await Promise.resolve({
+          ingressClasses: ['traefik'],
+          storageClasses: [{ default: true, name: 'local-path' }],
+        }),
+    );
+
+    expect(wizard.values).not.toHaveProperty('tls');
+    expect(capture.stderr.join('')).not.toContain('TLS for the operator-owned domain:');
+    expect(capture.stderr.join('')).toContain('TLS: not required for reserved localhost domains');
+  });
+
+  it('stops before owner prompts with a complete values example when the operator declines TLS setup', async (): Promise<void> => {
+    const capture: CliCommandCapture = createCliCapture();
+    capture.stdin.end('1\ny\n2\napps.example.com\n3\n');
+
+    const failure: Error = await readWizardFailure(
+      resolveCanonicalKubernetesInstallWizard(
+        capture.io,
+        { adminPassword: 'correct horse battery staple', output: 'text' },
+        { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
+        async (): Promise<{ ingressClasses: string[]; storageClasses: { default: boolean; name: string }[] }> =>
+          await Promise.resolve({
+            ingressClasses: ['nginx'],
+            storageClasses: [{ default: true, name: 'fast' }],
+          }),
+      ),
+    );
+    expect(failure.message).toContain('Operator-owned domain installation stopped before owner setup.');
+    expect(failure.message).toContain('ingress:\n  className: nginx');
+    expect(failure.message).toContain('tls:\n  issuerRef:');
+    expect(failure.message).toContain('storage:\n  storageClass: fast');
+    expect(failure.message).toContain('--base-domain apps.example.com');
+    expect(failure.message).toContain('--kube-context production');
+    expect(failure.message).toContain('--values compartment-values.yaml');
+
+    const output: string = capture.stderr.join('');
+    expect(output).not.toContain('Email');
+    expect(output).not.toContain('Installation review:');
   });
 
   it('discovers ingress and storage from the context selected by the operator', async (): Promise<void> => {
@@ -257,4 +343,13 @@ function nonInteractiveValues(): KubernetesInstallInputValues {
     storageClass: 'fast',
     valuesPath,
   };
+}
+
+async function readWizardFailure(promise: Promise<KubernetesInstallWizardResult>): Promise<Error> {
+  try {
+    await promise;
+  } catch (error) {
+    return error instanceof Error ? error : new Error('Expected the Kubernetes install wizard to fail.');
+  }
+  throw new Error('Expected the Kubernetes install wizard to fail.');
 }

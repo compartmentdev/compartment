@@ -29,6 +29,7 @@ import {
   usesOperatorOwnedKubernetesTlsSecret,
 } from './kubernetes-install-tls.service';
 import { assertManagedDomainOnboardingAvailable } from './managed-domain-reservation-token.service';
+import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 
 export async function installIntoKubernetes(
   input: KubernetesInstallApplicationInput,
@@ -61,6 +62,9 @@ async function verifyOperatorCertificateSources(input: KubernetesInstallDeployme
     return;
   }
   await assertOperatorRegistryIssuer(input);
+  if (isReservedKubernetesInstallLocalhostDomain(input.baseDomain)) {
+    return;
+  }
   if (await usesOperatorOwnedKubernetesTlsSecret(input.valuesPath)) {
     await assertOperatorTlsSecret(input, await readOperatorOwnedKubernetesTlsSecretName(input.valuesPath));
     return;

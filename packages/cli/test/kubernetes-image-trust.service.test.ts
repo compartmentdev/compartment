@@ -46,6 +46,28 @@ describe('Kubernetes platform image trust', (): void => {
     vi.unstubAllEnvs();
   });
 
+  it('reports the chart path and Helm failure detail when chart values cannot be read', async (): Promise<void> => {
+    const directory: string = await createTemporaryDirectory();
+    try {
+      const chartPath: string = resolve(directory, 'compartment-chart.tgz');
+      const operatorValuesPath: string = resolve(directory, 'values.yaml');
+      await writeFile(operatorValuesPath, '{}');
+      mocks.runCommand.mockResolvedValue({ exitCode: 1, stderr: 'archive has an invalid header', stdout: '' });
+
+      await expect(
+        writeVerifiedKubernetesInstallImageValues({
+          chartPath,
+          overrideValuesPaths: [operatorValuesPath],
+          outputPath: resolve(directory, 'verified.json'),
+        }),
+      ).rejects.toThrow(
+        `Failed to read Helm chart values from "${chartPath}" before platform image verification.\narchive has an invalid header`,
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it('pins packaged defaults while preserving later operator image overrides', async (): Promise<void> => {
     const directory: string = await createTemporaryDirectory();
     try {

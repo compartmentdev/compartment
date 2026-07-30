@@ -1,7 +1,7 @@
 import type { RegistryInstallVerificationOutput } from '@compartment/contracts';
 import { runCommandWithInput, runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
+import { buildKubectlCommand, formatKubernetesCommandFailure } from './kubernetes-command.support';
 import type { KubernetesInstallDeploymentInput } from './kubernetes-install.service.types';
 import type {
   KubernetesNodeList,
@@ -46,7 +46,7 @@ async function pushRegistryAcceptanceImage(
     verificationTimeoutMs,
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Registry acceptance image push failed: ${readCommandOutput(result)}`);
+    throw new Error(formatKubernetesCommandFailure('Registry acceptance image push failed', result));
   }
   try {
     const output: Partial<RegistryInstallVerificationOutput> | null = JSON.parse(
@@ -73,7 +73,7 @@ async function readEligibleNodeNames(input: KubernetesInstallDeploymentInput): P
     30_000,
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Registry node inventory failed: ${readCommandOutput(result)}`);
+    throw new Error(formatKubernetesCommandFailure('Registry node inventory failed', result));
   }
   try {
     const nodes: KubernetesNodeList = JSON.parse(result.stdout) as KubernetesNodeList;
@@ -146,14 +146,14 @@ async function waitForVerificationPod(
     verificationTimeoutMs,
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Registry node pull failed on ${nodeName}: ${readCommandOutput(result)}`);
+    throw new Error(formatKubernetesCommandFailure(`Registry node pull failed on ${nodeName}`, result));
   }
 }
 
 async function runRequiredInputCommand(command: string[], manifest: string, message: string): Promise<void> {
   const result: CommandResult = await runCommandWithInput(command, manifest);
   if (result.exitCode !== 0) {
-    throw new Error(`${message}: ${readCommandOutput(result)}`);
+    throw new Error(formatKubernetesCommandFailure(message, result));
   }
 }
 
@@ -169,6 +169,6 @@ async function deleteVerificationObjects(input: KubernetesInstallDeploymentInput
     30_000,
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Registry acceptance cleanup failed: ${readCommandOutput(result)}`);
+    throw new Error(formatKubernetesCommandFailure('Registry acceptance cleanup failed', result));
   }
 }
