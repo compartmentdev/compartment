@@ -92,6 +92,7 @@ export async function assertRetainedIdentity(input: KubernetesInstallInput): Pro
     result,
     'retained identity',
     'Cannot inspect retained installation identity.',
+    { includeStdout: false },
   );
   assertExactHelmOwnership(
     secret.metadata,

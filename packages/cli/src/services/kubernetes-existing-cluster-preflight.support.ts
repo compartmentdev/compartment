@@ -1,6 +1,6 @@
 import type { JsonValue } from '@compartment/utils';
 import type { CommandResult } from '../command-runner.types';
-import { readCommandOutput } from './kubernetes-command.support';
+import { readCommandDiagnostics, type CommandDiagnosticsOptions } from './kubernetes-command.support';
 import type { KubernetesInstallInput } from './kubernetes-install-input.service.types';
 import type {
   KubernetesExistingClusterPreflightCheck,
@@ -56,9 +56,13 @@ export function readPreflightObject<T>(
   result: CommandResult,
   check: KubernetesExistingClusterPreflightCheck,
   message: string,
+  diagnosticsOptions: CommandDiagnosticsOptions = { includeStdout: true },
 ): T {
   if (result.exitCode !== 0) {
-    throw new KubernetesExistingClusterPreflightError(check, `${message} ${readCommandFailure(result)}`);
+    throw new KubernetesExistingClusterPreflightError(
+      check,
+      `${message} ${readCommandFailure(result, diagnosticsOptions)}`,
+    );
   }
   return parsePreflightJson(result.stdout, check, message);
 }
@@ -89,7 +93,13 @@ export function isPreflightNotFound(result: CommandResult): boolean {
   return result.exitCode !== 0 && /notfound|not found/iu.test(result.stderr);
 }
 
-export function readCommandFailure(result: CommandResult): string {
-  const output: string = readCommandOutput(result);
+export function readCommandFailure(
+  result: CommandResult,
+  diagnosticsOptions: CommandDiagnosticsOptions = { includeStdout: true },
+): string {
+  const output: string =
+    diagnosticsOptions.includeStdout && result.stderr.trim() === ''
+      ? readCommandDiagnostics(result, diagnosticsOptions)
+      : readCommandDiagnostics(result, { includeStdout: false });
   return (output === '' ? `command exited ${String(result.exitCode)}` : output).replace(/\s+/gu, ' ');
 }

@@ -90,6 +90,8 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
   for (const suite of suites) {
     if (suite === 'managed-install') {
       await runCliE2eSuite(env, 'test/platform-k3d-managed-install.e2e.test.ts', signal);
+    } else if (suite === 'public-operator-install') {
+      await runCliE2eSuite(env, 'test/platform-k3d-public-operator-install.e2e.test.ts', signal);
     } else if (suite === 'retained-state') {
       await runInterruptibleCommand(process.execPath, [retainedStateGateScript], env, signal);
     } else if (suite === 'install') {

@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { CommandResult } from '../src/command-runner.types';
 import { readExistingKubernetesInstall } from '../src/services/kubernetes-install-release.service';
 import { readRetainedKubernetesInstallState } from '../src/services/kubernetes-install-retained-state.service';
-import type { KubernetesInstallDeploymentInput } from '../src/services/kubernetes-install.service.types';
+import type {
+  ExistingKubernetesInstall,
+  KubernetesInstallDeploymentInput,
+  RetainedKubernetesInstallState,
+} from '../src/services/kubernetes-install.service.types';
 
 type RunCommandWithTimeout = (command: readonly string[], timeoutMs: number) => Promise<CommandResult>;
 
@@ -40,6 +44,21 @@ describe('existing Kubernetes install JSON', (): void => {
 
     await expect(readExistingKubernetesInstall(input)).rejects.toThrow();
   });
+
+  it('does not expose partial sensitive Helm values in lookup failures', async (): Promise<void> => {
+    const encodedSecret: string = Buffer.from('install-token').toString('base64');
+    runCommandWithTimeout
+      .mockResolvedValueOnce(successfulCommand(JSON.stringify([{ name: 'compartment', status: 'deployed' }])))
+      .mockResolvedValueOnce({
+        exitCode: 1,
+        stderr: 'Kubernetes API request failed',
+        stdout: JSON.stringify({ secrets: { installToken: encodedSecret } }),
+      });
+
+    const inspection: Promise<ExistingKubernetesInstall | null> = readExistingKubernetesInstall(input);
+    await expect(inspection).rejects.toThrow('Kubernetes API request failed');
+    await expect(inspection).rejects.not.toThrow(encodedSecret);
+  });
 });
 
 describe('retained Kubernetes install state JSON', (): void => {
@@ -61,6 +80,20 @@ describe('retained Kubernetes install state JSON', (): void => {
       await expect(readRetainedKubernetesInstallState(input)).rejects.toThrow();
     },
   );
+
+  it('does not expose a partial retained Secret payload in failures', async (): Promise<void> => {
+    const encodedSecret: string = Buffer.from('managed-domain-broker-token').toString('base64');
+    runCommandWithTimeout.mockResolvedValue({
+      exitCode: 1,
+      stderr: 'Error from server (Forbidden)',
+      stdout: JSON.stringify({ items: [{ data: { 'managed-domain-broker-token': encodedSecret } }] }),
+    });
+
+    const inspection: Promise<RetainedKubernetesInstallState | null> = readRetainedKubernetesInstallState(input);
+    await expect(inspection).rejects.toThrow('Error from server (Forbidden)');
+    await expect(inspection).rejects.not.toThrow(encodedSecret);
+    await expect(inspection).rejects.not.toThrow('managed-domain-broker-token');
+  });
 });
 
 function successfulCommand(stdout: string): CommandResult {

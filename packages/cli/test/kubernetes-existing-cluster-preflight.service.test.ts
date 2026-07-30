@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi, type MockedFunction } from 'vitest';
 import { runCommand, runCommandWithInput } from '../src/command-runner';
 import type { CommandResult } from '../src/command-runner.types';
+import { assertRetainedIdentity } from '../src/services/kubernetes-existing-cluster-preflight.resources';
 import { runKubernetesExistingClusterPreflight } from '../src/services/kubernetes-existing-cluster-preflight.service';
 import type { KubernetesExistingClusterPreflightInput } from '../src/services/kubernetes-existing-cluster-preflight.service.types';
 
@@ -36,6 +37,20 @@ afterEach((): void => {
 });
 
 describe('existing Kubernetes non-persistent preflight', (): void => {
+  it('does not expose a partial retained identity Secret in preflight failures', async (): Promise<void> => {
+    const encodedSecret: string = Buffer.from('install-token').toString('base64');
+    mockedRunCommand.mockResolvedValue({
+      exitCode: 1,
+      stderr: 'Error from server (Forbidden)',
+      stdout: JSON.stringify({ data: { 'install-token': encodedSecret } }),
+    });
+
+    const inspection: Promise<void> = assertRetainedIdentity(preflightInput().install);
+    await expect(inspection).rejects.toThrow('Error from server (Forbidden)');
+    await expect(inspection).rejects.not.toThrow(encodedSecret);
+    await expect(inspection).rejects.not.toThrow('install-token');
+  });
+
   it('reports the exact missing cert-manager API and pinned install instruction', async (): Promise<void> => {
     const fixture: PreflightFixture = passingFixture();
     fixture.rawResources.set('/apis/cert-manager.io/v1', ['certificaterequests', 'issuers', 'clusterissuers']);

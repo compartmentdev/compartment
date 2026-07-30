@@ -3,7 +3,7 @@ import { parseJsonWith, type JsonValue } from '@compartment/utils';
 import { z } from 'zod';
 import { runCommand, runCommandWithInput } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
+import { buildKubectlCommand, formatKubernetesCommandFailure, readCommandOutput } from './kubernetes-command.support';
 import type {
   KubernetesOperatorTarget,
   KubernetesResourceList,
@@ -36,7 +36,9 @@ export async function requestKubernetesSystemApi<TResponse>(
     JSON.stringify(request),
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Private system API request failed: ${readCommandOutput(result)}`);
+    throw new Error(
+      formatKubernetesCommandFailure('Private system API request failed', result, { includeStdout: false }),
+    );
   }
   const envelope: KubernetesSystemApiResponseEnvelope = parseResponseEnvelope(result.stdout);
   const value: JsonValue | null = envelope.body === '' ? null : (JSON.parse(envelope.body) as JsonValue);

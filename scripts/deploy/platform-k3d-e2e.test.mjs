@@ -16,6 +16,7 @@ import {
   readPlatformK3dIngressNginxManifestUrl,
   readPlatformK3dEnvironment,
   renderManagedPlatformK3dValues,
+  renderPublicOperatorPlatformK3dValues,
   renderPlatformK3dValues,
   runKubectlWithTransientApiRetry,
 } from './platform-k3d-e2e.mjs';
@@ -58,6 +59,7 @@ describe('platform k3d e2e command boundary', () => {
       ),
     ).toBe(true);
     expect(args).toContain('10.43.250.250:registry.compartment.localhost');
+    expect(args).toContain('10.43.250.250:registry.apps.example.test');
     expect(args).toContain('120s');
     expect(args.join(' ')).not.toContain('30443@server');
     expect(readPlatformK3dCertManagerManifestUrl()).toBe(
@@ -407,5 +409,16 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).toContain('namespace: compartment-managed-e2e-build');
     expect(values).toContain(`digest: sha256:${'d'.repeat(64)}`);
     expect(values).not.toContain('compartment.localhost');
+  });
+
+  it('writes public operator values with explicit ingress, storage, and certificate issuers', () => {
+    const values = renderPublicOperatorPlatformK3dValues(createTestImageDigests());
+
+    expect(values).toContain('className: traefik');
+    expect(values).toContain('storageClass: local-path');
+    expect(values).toContain('name: compartment-public-operator-test-issuer');
+    expect(values).toContain('name: compartment-registry-test-issuer');
+    expect(values).not.toContain('baseDomain:');
+    expect(values).not.toContain('hostname:');
   });
 });
