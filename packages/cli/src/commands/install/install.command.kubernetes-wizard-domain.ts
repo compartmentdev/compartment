@@ -3,16 +3,37 @@ import { promptVisibleText } from '../../prompts/prompt';
 import { assertManagedDomainOnboardingAvailable } from '../../services/managed-domain-reservation-token.service';
 import { assertMutuallyExclusiveKubernetesInstallDomains } from './install.command.input';
 import { resolveOperatorDomainTls, type OperatorDomainTlsPromptInput } from './install.command.kubernetes-wizard-tls';
-import type { KubernetesInstallWizardDomain } from './install.command.kubernetes-wizard.types';
+import type {
+  InspectKubernetesInstallIssuer,
+  KubernetesInstallWizardClusterSelection,
+  KubernetesInstallWizardDomain,
+} from './install.command.kubernetes-wizard.types';
 import type { InstallCommandOptions } from './install.command.types';
 import { normalizeInstallBaseDomain } from './install.command.validation';
 
-export async function resolveKubernetesInstallWizardDomain(
+export async function resolveKubernetesInstallWizardDomainForSelection(
+  io: CliIo,
+  options: InstallCommandOptions,
+  selection: KubernetesInstallWizardClusterSelection,
+  inspectIssuer: InspectKubernetesInstallIssuer,
+): Promise<KubernetesInstallWizardDomain> {
+  return await resolveKubernetesInstallWizardDomain(
+    io,
+    options,
+    selection.kubeContext,
+    selection.ingressClass,
+    selection.storageClass,
+    inspectIssuer,
+  );
+}
+
+async function resolveKubernetesInstallWizardDomain(
   io: CliIo,
   options: InstallCommandOptions,
   kubeContext: string,
   ingressClass: string,
   storageClass: string,
+  inspectIssuer: InspectKubernetesInstallIssuer,
 ): Promise<KubernetesInstallWizardDomain> {
   assertMutuallyExclusiveKubernetesInstallDomains(options);
   if (options.managedDomain === true) {
@@ -21,10 +42,10 @@ export async function resolveKubernetesInstallWizardDomain(
   if (options.baseDomain !== undefined) {
     return await resolveOperatorDomainTls(
       io,
-      buildTlsPromptInput(options.baseDomain, options, kubeContext, ingressClass, storageClass),
+      buildTlsPromptInput(options.baseDomain, options, kubeContext, ingressClass, storageClass, inspectIssuer),
     );
   }
-  return await promptDomainChoice(io, options, kubeContext, ingressClass, storageClass);
+  return await promptDomainChoice(io, options, kubeContext, ingressClass, storageClass, inspectIssuer);
 }
 
 async function promptDomainChoice(
@@ -33,6 +54,7 @@ async function promptDomainChoice(
   kubeContext: string,
   ingressClass: string,
   storageClass: string,
+  inspectIssuer: InspectKubernetesInstallIssuer,
 ): Promise<KubernetesInstallWizardDomain> {
   io.stderr('Domain:\n  1. Managed Compartment domain [default]\n  2. Operator-owned base domain\n');
   const mode: string = await promptVisibleText(io, 'Domain', '1');
@@ -43,7 +65,7 @@ async function promptDomainChoice(
     const baseDomain: string = await promptVisibleText(io, 'Base domain');
     return await resolveOperatorDomainTls(
       io,
-      buildTlsPromptInput(baseDomain, options, kubeContext, ingressClass, storageClass),
+      buildTlsPromptInput(baseDomain, options, kubeContext, ingressClass, storageClass, inspectIssuer),
     );
   }
   throw new Error('Domain selection must be 1 or 2.');
@@ -55,6 +77,7 @@ function buildTlsPromptInput(
   kubeContext: string,
   ingressClass: string,
   storageClass: string,
+  inspectIssuer: InspectKubernetesInstallIssuer,
 ): OperatorDomainTlsPromptInput {
   return {
     baseDomain: normalizeInstallBaseDomain(baseDomain),
@@ -63,6 +86,7 @@ function buildTlsPromptInput(
     namespace: options.namespace ?? 'compartment',
     releaseName: options.releaseName ?? 'compartment',
     storageClass,
+    inspectIssuer,
   };
 }
 

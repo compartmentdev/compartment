@@ -5,6 +5,7 @@ import {
   assertOperatorRegistryIssuer,
   assertOperatorTlsSecret,
 } from '../src/services/kubernetes-existing-cluster-preflight.cert-manager';
+import type { KubernetesOperatorIssuerAssessment } from '../src/services/kubernetes-operator-issuer-trust.service.types';
 
 vi.mock('../src/command-runner', (): object => ({
   runCommand: vi.fn(),
@@ -19,7 +20,9 @@ afterEach((): void => {
 
 describe('operator registry issuer preflight', (): void => {
   it('accepts an existing namespaced Issuer', async (): Promise<void> => {
-    mockedRunCommand.mockResolvedValue(success('issuer.cert-manager.io/customer-registry\n'));
+    mockedRunCommand.mockResolvedValue(
+      success('{"spec":{"acme":{"server":"https://acme-v02.api.letsencrypt.org/directory"}}}'),
+    );
 
     await expect(
       assertOperatorRegistryIssuer({
@@ -28,9 +31,70 @@ describe('operator registry issuer preflight', (): void => {
         namespace: 'compartment',
         registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'customer-registry' },
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ trust: 'acme' });
     expect(mockedRunCommand.mock.calls[0]?.[0]).toContain('issuers.cert-manager.io');
     expect(mockedRunCommand.mock.calls[0]?.[0]).toContain('compartment');
+  });
+
+  it('warns for a private ACME server instead of assuming public trust', async (): Promise<void> => {
+    mockedRunCommand.mockResolvedValue(
+      success('{"spec":{"acme":{"server":"https://acme.internal.example/directory"}}}'),
+    );
+
+    const assessment: KubernetesOperatorIssuerAssessment = await assertOperatorRegistryIssuer({
+      kubeContext: 'production',
+      kubeconfigPath: '/tmp/kubeconfig',
+      namespace: 'compartment',
+      registryIssuerRef: { group: 'cert-manager.io', kind: 'ClusterIssuer', name: 'private-acme' },
+    });
+
+    expect(assessment.trust).toBe('unknown');
+    expect(assessment.detail).toContain('ACME does not guarantee public trust');
+  });
+
+  it('rejects a self-signed issuer with both trust failures explained', async (): Promise<void> => {
+    mockedRunCommand.mockResolvedValue(success('{"spec":{"selfSigned":{}}}'));
+
+    await expect(
+      assertOperatorRegistryIssuer({
+        kubeContext: 'production',
+        kubeconfigPath: '/tmp/kubeconfig',
+        namespace: 'compartment',
+        registryIssuerRef: { group: 'cert-manager.io', kind: 'ClusterIssuer', name: 'self-signed' },
+      }),
+    ).rejects.toThrow(
+      'uses spec.selfSigned and cannot satisfy an operator-owned installation. The private registry must present TLS trusted by every Kubernetes node, and the CLI public HTTPS probe must trust the platform certificate.',
+    );
+  });
+
+  it('classifies a private CA issuer as a trust-distribution warning', async (): Promise<void> => {
+    mockedRunCommand.mockResolvedValue(success('{"spec":{"ca":{"secretName":"private-ca"}}}'));
+
+    const assessment: KubernetesOperatorIssuerAssessment = await assertOperatorRegistryIssuer({
+      kubeContext: 'production',
+      kubeconfigPath: '/tmp/kubeconfig',
+      namespace: 'compartment',
+      registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'private-ca' },
+    });
+    expect(assessment.trust).toBe('ca');
+    expect(assessment.detail).toContain('trust stores of every Kubernetes node and the operator machine');
+  });
+
+  it('warns instead of failing when RBAC prevents issuer inspection', async (): Promise<void> => {
+    mockedRunCommand.mockResolvedValue({
+      exitCode: 1,
+      stderr: 'Error from server (Forbidden): clusterissuers.cert-manager.io is forbidden',
+      stdout: '',
+    });
+
+    await expect(
+      assertOperatorRegistryIssuer({
+        kubeContext: 'production',
+        kubeconfigPath: '/tmp/kubeconfig',
+        namespace: 'compartment',
+        registryIssuerRef: { group: 'cert-manager.io', kind: 'ClusterIssuer', name: 'restricted' },
+      }),
+    ).resolves.toMatchObject({ trust: 'unreadable' });
   });
 
   it('rejects a missing ClusterIssuer before Helm mutation', async (): Promise<void> => {
@@ -48,7 +112,7 @@ describe('operator registry issuer preflight', (): void => {
         registryIssuerRef: { group: 'cert-manager.io', kind: 'ClusterIssuer', name: 'customer-registry' },
       }),
     ).rejects.toThrow(
-      'Private registry ClusterIssuer customer-registry is not available: clusterissuer.cert-manager.io "customer-registry" not found',
+      'Selected ClusterIssuer customer-registry is not available: clusterissuer.cert-manager.io "customer-registry" not found',
     );
   });
 

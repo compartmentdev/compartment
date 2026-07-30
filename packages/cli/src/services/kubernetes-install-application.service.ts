@@ -30,6 +30,7 @@ import {
 } from './kubernetes-install-tls.service';
 import { assertManagedDomainOnboardingAvailable } from './managed-domain-reservation-token.service';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
+import type { KubernetesOperatorIssuerAssessment } from './kubernetes-operator-issuer-trust.service.types';
 
 export async function installIntoKubernetes(
   input: KubernetesInstallApplicationInput,
@@ -48,11 +49,11 @@ async function runCanonicalPreflight(
   deploymentInput: KubernetesInstallDeploymentInput,
 ): Promise<void> {
   await runObservableInstallStep(input.progress, 'Checking existing Kubernetes cluster', async (): Promise<void> => {
+    await verifyOperatorCertificateSources(deploymentInput);
     await runKubernetesExistingClusterPreflight({
       apiHosts: readExpectedIngressHosts(input),
       install: input,
     });
-    await verifyOperatorCertificateSources(deploymentInput);
     await verifyInstallImages(deploymentInput);
   });
 }
@@ -61,7 +62,7 @@ async function verifyOperatorCertificateSources(input: KubernetesInstallDeployme
   if (input.domainMode !== 'custom') {
     return;
   }
-  await assertOperatorRegistryIssuer(input);
+  reportIssuerTrustWarning(input, await assertOperatorRegistryIssuer(input));
   if (isReservedKubernetesInstallLocalhostDomain(input.baseDomain)) {
     return;
   }
@@ -71,11 +72,24 @@ async function verifyOperatorCertificateSources(input: KubernetesInstallDeployme
   }
   const platformIssuer: DomainIssuerReference = await readKubernetesTlsIssuerReference(input.valuesPath);
   if (platformIssuer.kind !== input.registryIssuerRef.kind || platformIssuer.name !== input.registryIssuerRef.name) {
-    await assertOperatorRegistryIssuer({
-      ...input,
-      registryIssuerRef: { group: 'cert-manager.io', ...platformIssuer },
-    });
+    reportIssuerTrustWarning(
+      input,
+      await assertOperatorRegistryIssuer({
+        ...input,
+        registryIssuerRef: { group: 'cert-manager.io', ...platformIssuer },
+      }),
+    );
   }
+}
+
+function reportIssuerTrustWarning(
+  input: KubernetesInstallDeploymentInput,
+  assessment: KubernetesOperatorIssuerAssessment,
+): void {
+  if (assessment.trust === 'acme') {
+    return;
+  }
+  input.progress?.report(`TLS trust warning: ${assessment.detail}`, { renderMode: 'line' });
 }
 
 async function verifyInstallImages(input: KubernetesInstallDeploymentInput): Promise<void> {

@@ -1,16 +1,27 @@
 import type { KubernetesInstallInputValues } from './install.command.input.types';
-import type { InstallWizardRegistryValues, InstallWizardTlsValues, InstallWizardValues } from './install.command.types';
+import type {
+  InstallWizardIssuerReference,
+  InstallWizardRegistryValues,
+  InstallWizardTlsValues,
+  InstallWizardValues,
+} from './install.command.types';
 import type {
   KubernetesContextChoice,
   KubernetesInstallInventory,
   KubernetesInstallResourceInventory,
   KubernetesStorageClassChoice,
 } from '../../services/kubernetes-install-inventory.service.types';
+import type { KubernetesOperatorIssuerAssessment } from '../../services/kubernetes-operator-issuer-trust.service.types';
 
 export type KubernetesInstallWizardInventory = KubernetesInstallInventory;
 export type ReadKubernetesInstallResourceInventory = (
   contextName: string,
 ) => Promise<KubernetesInstallResourceInventory>;
+export type InspectKubernetesInstallIssuer = (
+  contextName: string,
+  namespace: string,
+  issuer: InstallWizardIssuerReference,
+) => Promise<KubernetesOperatorIssuerAssessment>;
 export type { KubernetesContextChoice, KubernetesStorageClassChoice };
 
 export interface KubernetesInstallWizardResult {
@@ -34,4 +45,10 @@ export interface KubernetesInstallWizardOwner {
 export interface ResolvedKubernetesInstallWizardReview {
   domain: KubernetesInstallWizardDomain;
   input: Omit<KubernetesInstallInputValues, 'valuesPath'>;
+}
+
+export interface KubernetesInstallWizardClusterSelection {
+  ingressClass: string;
+  kubeContext: string;
+  storageClass: string;
 }

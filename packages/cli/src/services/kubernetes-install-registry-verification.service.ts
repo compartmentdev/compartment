@@ -2,33 +2,56 @@ import type { RegistryInstallVerificationOutput } from '@compartment/contracts';
 import { runCommandWithInput, runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { buildKubectlCommand, formatKubernetesCommandFailure } from './kubernetes-command.support';
-import type { KubernetesInstallDeploymentInput } from './kubernetes-install.service.types';
+import type { KubernetesInstallDeploymentInput, KubernetesInstallState } from './kubernetes-install.service.types';
 import type {
-  KubernetesNodeList,
-  KubernetesNodeListItem,
-  KubernetesNodeStatusCondition,
+  KubernetesRegistryAcceptanceContainerStatus,
+  KubernetesRegistryAcceptanceEvent,
+  KubernetesRegistryAcceptanceEventList,
+  KubernetesRegistryAcceptancePod,
 } from './kubernetes-install-registry-verification.service.types';
+import { readReadyKubernetesNodeNames } from './kubernetes-ready-nodes.service';
+import { formatRegistryDnsRecords, readRegistryServiceAddresses } from './kubernetes-install-registry-dns.service';
+import { boundRegistryDiagnostic, readRegistryDiagnosticFailure } from './kubernetes-install-registry-diagnostics';
 
 const verificationTimeoutMs: number = 5 * 60_000;
 const verificationSecretName: string = 'compartment-registry-acceptance';
 
-export async function verifyKubernetesInstallRegistryNodePull(input: KubernetesInstallDeploymentInput): Promise<void> {
+export async function verifyKubernetesInstallRegistryNodePull(
+  input: KubernetesInstallDeploymentInput,
+  registry: Pick<KubernetesInstallState, 'registryHostname' | 'registryIssuerRef'>,
+): Promise<void> {
   const verification: RegistryInstallVerificationOutput = await pushRegistryAcceptanceImage(input);
-  const nodes: string[] = await readEligibleNodeNames(input);
+  const nodes: string[] = await readReadyKubernetesNodeNames(input);
   if (nodes.length === 0) {
     throw new Error('Registry node-pull verification found no eligible Ready nodes.');
   }
   const podNames: string[] = nodes.map(
     (_node: string, index: number): string => `registry-acceptance-${index.toString()}`,
   );
+  const serviceAddresses: string[] = await readRegistryServiceAddresses(input);
+  await runNodePullVerification(input, registry, verification, nodes, podNames, serviceAddresses);
+}
+
+async function runNodePullVerification(
+  input: KubernetesInstallDeploymentInput,
+  registry: Pick<KubernetesInstallState, 'registryHostname' | 'registryIssuerRef'>,
+  verification: RegistryInstallVerificationOutput,
+  nodes: readonly string[],
+  podNames: string[],
+  serviceAddresses: readonly string[],
+): Promise<void> {
+  let verificationFailure: Error | null = null;
   try {
     await applyVerificationSecret(input, verification.dockerConfigJson);
     for (let index: number = 0; index < nodes.length; index += 1) {
       await applyVerificationPod(input, podNames[index]!, nodes[index]!, verification.imageRef);
-      await waitForVerificationPod(input, podNames[index]!, nodes[index]!);
+      await waitForVerificationPod(input, registry, serviceAddresses, podNames[index]!, nodes[index]!);
     }
+  } catch (error) {
+    verificationFailure = error instanceof Error ? error : new Error('Registry node-pull verification failed.');
+    throw verificationFailure;
   } finally {
-    await deleteVerificationObjects(input, podNames);
+    await deleteVerificationObjects(input, podNames, verificationFailure);
   }
 }
 
@@ -65,34 +88,6 @@ function requireVerificationOutput(
     throw new Error('Invalid registry acceptance output.');
   }
   return { dockerConfigJson: output.dockerConfigJson, imageRef: output.imageRef };
-}
-
-async function readEligibleNodeNames(input: KubernetesInstallDeploymentInput): Promise<string[]> {
-  const result: CommandResult = await runCommandWithTimeout(
-    buildKubectlCommand(input, ['get', 'nodes', '--output', 'json']),
-    30_000,
-  );
-  if (result.exitCode !== 0) {
-    throw new Error(formatKubernetesCommandFailure('Registry node inventory failed', result));
-  }
-  try {
-    const nodes: KubernetesNodeList = JSON.parse(result.stdout) as KubernetesNodeList;
-    return nodes.items
-      .filter(isEligibleNode)
-      .map((node: KubernetesNodeListItem): string | undefined => node.metadata?.name)
-      .filter((name: string | undefined): name is string => name !== undefined && name !== '');
-  } catch {
-    throw new Error('Registry node inventory returned invalid JSON.');
-  }
-}
-
-function isEligibleNode(node: KubernetesNodeListItem): boolean {
-  return (
-    node.spec?.unschedulable !== true &&
-    node.status?.conditions?.some(
-      (condition: KubernetesNodeStatusCondition): boolean => condition.type === 'Ready' && condition.status === 'True',
-    ) === true
-  );
 }
 
 async function applyVerificationSecret(
@@ -138,6 +133,8 @@ async function applyVerificationPod(
 
 async function waitForVerificationPod(
   input: KubernetesInstallDeploymentInput,
+  registry: Pick<KubernetesInstallState, 'registryHostname' | 'registryIssuerRef'>,
+  serviceAddresses: readonly string[],
   podName: string,
   nodeName: string,
 ): Promise<void> {
@@ -146,7 +143,87 @@ async function waitForVerificationPod(
     verificationTimeoutMs,
   );
   if (result.exitCode !== 0) {
-    throw new Error(formatKubernetesCommandFailure(`Registry node pull failed on ${nodeName}`, result));
+    const diagnostics: string = await readVerificationPodDiagnostics(input, podName);
+    const records: string = formatRegistryDnsRecords(registry.registryHostname, serviceAddresses);
+    throw new Error(
+      `${formatKubernetesCommandFailure(`Registry node pull failed on ${nodeName}`, result)}\n${diagnostics}\nRegistry prerequisites: required DNS record ${records}; the TLS certificate issued by ${registry.registryIssuerRef.kind}/${registry.registryIssuerRef.name} must be trusted by the node container runtime.`,
+    );
+  }
+}
+
+async function readVerificationPodDiagnostics(
+  input: KubernetesInstallDeploymentInput,
+  podName: string,
+): Promise<string> {
+  const podResult: CommandResult = await runCommandWithTimeout(
+    buildKubectlCommand(input, ['get', `pod/${podName}`, '--namespace', input.namespace, '-o=json']),
+    30_000,
+  );
+  const eventResult: CommandResult = await runCommandWithTimeout(
+    buildKubectlCommand(input, [
+      'get',
+      'events',
+      '--namespace',
+      input.namespace,
+      '--field-selector',
+      `involvedObject.kind=Pod,involvedObject.name=${podName}`,
+      '-o=json',
+    ]),
+    30_000,
+  );
+  return formatVerificationDiagnostics(podResult, eventResult);
+}
+
+function formatVerificationDiagnostics(podResult: CommandResult, eventResult: CommandResult): string {
+  const waiting: string[] = readWaitingDiagnostics(podResult);
+  const events: string[] = readEventDiagnostics(eventResult);
+  const details: string[] = [...new Set([...waiting, ...events])].slice(0, 6);
+  return details.length === 0
+    ? 'Acceptance Pod diagnostics were unavailable.'
+    : `Acceptance Pod diagnostics: ${details.join(' | ')}`;
+}
+
+function readWaitingDiagnostics(result: CommandResult): string[] {
+  if (result.exitCode !== 0) {
+    return [`Pod status unavailable: ${readRegistryDiagnosticFailure(result.exitCode, result.stderr, result.stdout)}`];
+  }
+  try {
+    const pod: KubernetesRegistryAcceptancePod = JSON.parse(result.stdout) as KubernetesRegistryAcceptancePod;
+    return (pod.status?.containerStatuses ?? [])
+      .map((status: KubernetesRegistryAcceptanceContainerStatus): string | undefined => {
+        const reason: string | undefined = status.state?.waiting?.reason;
+        if (reason === undefined) {
+          return undefined;
+        }
+        const message: string | undefined = status.state?.waiting?.message;
+        return `waiting reason ${reason}${message === undefined || message === '' ? '' : `: ${boundRegistryDiagnostic(message)}`}`;
+      })
+      .filter((detail: string | undefined): detail is string => detail !== undefined);
+  } catch {
+    return ['Pod status returned invalid JSON.'];
+  }
+}
+
+function readEventDiagnostics(result: CommandResult): string[] {
+  if (result.exitCode !== 0) {
+    return [`Pod events unavailable: ${readRegistryDiagnosticFailure(result.exitCode, result.stderr, result.stdout)}`];
+  }
+  try {
+    const events: KubernetesRegistryAcceptanceEventList = JSON.parse(
+      result.stdout,
+    ) as KubernetesRegistryAcceptanceEventList;
+    return events.items
+      .slice(-5)
+      .map((event: KubernetesRegistryAcceptanceEvent): string | undefined => {
+        const message: string | undefined = event.message;
+        if (message === undefined || message === '') {
+          return undefined;
+        }
+        return `${event.reason ?? 'Event'}: ${boundRegistryDiagnostic(message)}`;
+      })
+      .filter((detail: string | undefined): detail is string => detail !== undefined);
+  } catch {
+    return ['Pod events returned invalid JSON.'];
   }
 }
 
@@ -157,7 +234,11 @@ async function runRequiredInputCommand(command: string[], manifest: string, mess
   }
 }
 
-async function deleteVerificationObjects(input: KubernetesInstallDeploymentInput, podNames: string[]): Promise<void> {
+async function deleteVerificationObjects(
+  input: KubernetesInstallDeploymentInput,
+  podNames: string[],
+  primaryFailure: Error | null,
+): Promise<void> {
   const result: CommandResult = await runCommandWithTimeout(
     buildKubectlCommand(input, [
       'delete',
@@ -169,6 +250,11 @@ async function deleteVerificationObjects(input: KubernetesInstallDeploymentInput
     30_000,
   );
   if (result.exitCode !== 0) {
-    throw new Error(formatKubernetesCommandFailure('Registry acceptance cleanup failed', result));
+    const cleanupFailure: string = formatKubernetesCommandFailure('Registry acceptance cleanup failed', result);
+    if (primaryFailure !== null) {
+      primaryFailure.message = `${primaryFailure.message}\n${cleanupFailure}`;
+      return;
+    }
+    throw new Error(cleanupFailure);
   }
 }

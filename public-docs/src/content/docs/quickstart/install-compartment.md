@@ -45,13 +45,21 @@ Before installation, also provide:
 
 - `helm` 4.0.0 or newer on `PATH` (`helm version --short`);
 - `kubectl` 1.30.0 or newer on `PATH`, compatible with the target Kubernetes server (`kubectl version --client`);
-- an Issuer or ClusterIssuer for operator-owned domains;
+- an Issuer or ClusterIssuer for operator-owned domains whose certificates are trusted by every cluster node and the
+  machine running the CLI;
+- node DNS for `registry.<base-domain>` that returns the retained registry-auth Service ClusterIP;
 - NetworkPolicy enforcement;
 - a persistent storage class;
 - credentials permitted to install the Helm release and its cluster-scoped policy resources.
 
 The installer does not install or disable an ingress controller, reserve node ports, or change node container-runtime
 configuration.
+
+The registry record deliberately maps a public DNS name to a cluster-only address. On a first install, let the
+foundation stage create the retained Service. If the CLI stops, publish the exact record it prints, for example
+`registry.apps.example.com A 10.43.251.103`, on every node resolver, then rerun the same install command to resume.
+Resolvers that block public-to-private answers as DNS rebinding must allowlist the base domain; for apps.example.com
+with dnsmasq, configure `rebind-domain-ok=/apps.example.com/`.
 
 Optional Helm values can assign platform, build, and tenant workloads to separately labeled and tainted nodes through
 `nodePools.system`, `nodePools.build`, and `nodePools.tenant`. Leave all three pools empty for single-node clusters.
@@ -118,6 +126,13 @@ for an issuer for the private registry certificate. A namespaced `Issuer` or Sec
 (`--namespace`, default `compartment`); a `ClusterIssuer` is cluster-scoped. Create the namespace first when you use
 namespaced certificate resources.
 
+Do not select an issuer with `spec.selfSigned`: node container runtimes will reject the private registry certificate,
+and the CLI will reject the public control-plane certificate. An ACME issuer backed by a publicly trusted CA is the
+usual choice; a private ACME server does not imply public trust.
+An issuer with `spec.ca` is supported only when that private CA is installed in the trust stores of every Kubernetes
+node and the machine running the CLI; the wizard requires confirmation. The same trust requirements apply when public
+TLS comes from an existing Secret and the private registry uses a separate issuer.
+
 For a clean k3s VM with Traefik and `local-path`, create a complete operator values file:
 
 ```yaml
@@ -167,8 +182,10 @@ storage:
 Use `--ingress-endpoint` only when the selected controller does not publish an address in Ingress status. It accepts
 one IPv4 address, IPv6 address, or DNS hostname.
 
-The preflight checks APIs, cert-manager, ingress, storage, Helm ownership, namespace policy labels, and permissions.
-Installation stops with remediation instructions when the existing cluster does not satisfy those requirements.
+The preflight checks APIs, cert-manager, selected issuer trust hazards, ingress, storage, Helm ownership, namespace
+policy labels, and permissions. As soon as the retained registry Service has a ClusterIP, installation also checks
+the required registry DNS record. Installation stops with remediation instructions when the existing cluster does
+not satisfy those requirements.
 
 The command installs the matching bundled chart, creates the first owner, and saves the CLI session. If it stops
 before owner creation, repair the reported cluster or Helm condition and retry with the same release coordinates.
@@ -198,6 +215,10 @@ contract. Compartment does not create or copy operator certificate material.
 The bundled registry is private. Every project receives repository-scoped registry credentials and its own image pull
 Secret. Nodes resolve the operator-provided private registry hostname through cluster infrastructure; Compartment
 does not edit node files or restart node services.
+
+The registry hostname must resolve on every eligible node to the retained registry-auth Service ClusterIP, and its
+certificate chain must be trusted by each node container runtime. The platform certificate must also be trusted by
+the machine running the CLI. A self-signed issuer does not satisfy either requirement.
 
 Dockerfile and Railpack builds continue to use BuildKit and produce OCI images. Project NetworkPolicies preserve
 tenant isolation and the configured RFC1918 egress policy.

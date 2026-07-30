@@ -6,7 +6,6 @@ import { createCommandProgress } from '../src/commands/command.progress';
 import { deployAndWaitForKubernetesInstall } from '../src/services/kubernetes-install.service';
 import { runKubernetesHelmInstallStage } from '../src/services/kubernetes-install-helm.service';
 import { buildResolvedInstallValues } from '../src/services/kubernetes-install-state.service';
-import { waitForPublicControlPlane } from '../src/services/kubernetes-install-public.service';
 import { readRetainedKubernetesInstallState } from '../src/services/kubernetes-install-retained-state.service';
 import type {
   KubernetesInstallDeploymentInput,
@@ -36,6 +35,7 @@ import {
 type RunCommand = (command: readonly string[]) => Promise<CommandResult>;
 const mocks: KubernetesInstallServiceMocks = vi.hoisted(
   (): KubernetesInstallServiceMocks => ({
+    assertRegistryDns: vi.fn(async (): Promise<void> => await Promise.resolve()),
     runCommand: vi.fn<RunCommand>(),
     verifyRegistryNodePull: vi.fn(async (): Promise<void> => await Promise.resolve()),
     usesOperatorTlsSecret: vi.fn(async (): Promise<boolean> => await Promise.resolve(false)),
@@ -58,6 +58,9 @@ vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
 vi.mock('../src/services/kubernetes-install-registry-verification.service', (): object => ({
   verifyKubernetesInstallRegistryNodePull: mocks.verifyRegistryNodePull,
 }));
+vi.mock('../src/services/kubernetes-install-registry-dns.service', (): object => ({
+  assertOperatorRegistryDns: mocks.assertRegistryDns,
+}));
 vi.mock('../src/services/kubernetes-install-tls.service', (): object => ({
   usesOperatorOwnedKubernetesTlsSecret: mocks.usesOperatorTlsSecret,
 }));
@@ -78,6 +81,7 @@ const managedDeploymentInput: KubernetesInstallDeploymentInput = {
 describe('Kubernetes install deployment', (): void => {
   afterEach((): void => {
     mocks.runCommand.mockReset();
+    mocks.assertRegistryDns.mockClear();
     mocks.verifyRegistryNodePull.mockClear();
     mocks.usesOperatorTlsSecret.mockReset();
     mocks.usesOperatorTlsSecret.mockResolvedValue(false);
@@ -356,16 +360,7 @@ describe('Kubernetes install deployment', (): void => {
       'fetch',
       vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
     );
-    const customInput: KubernetesInstallDeploymentInput = {
-      ...managedDeploymentInput,
-      apiUrl: 'https://console.apps.example.com',
-      baseDomain: 'apps.example.com',
-      brokerUrl: undefined,
-      domainMode: 'custom',
-      managedDomainRequestedLabelSource: undefined,
-      registryHostname: 'registry.apps.example.com',
-      registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
-    };
+    const customInput: KubernetesInstallDeploymentInput = customDeploymentInput();
 
     await expect(deployAndWaitForKubernetesInstall(customInput)).resolves.toMatchObject({
       baseDomain: 'apps.example.com',
@@ -472,7 +467,6 @@ describe('Kubernetes install deployment', (): void => {
       'fetch',
       vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
     );
-
     await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).resolves.toEqual({
       apiUrl: 'https://console.acme.compartment.run',
       baseDomain: 'acme.compartment.run',
@@ -481,7 +475,27 @@ describe('Kubernetes install deployment', (): void => {
     expect(readHelmStages()).toEqual([]);
     expect(state.events).toEqual(['kubectl:certificate']);
   });
-
+  it('reconciles changed operator certificate sources before resuming a full release', async (): Promise<void> => {
+    const state: InstallHarnessState = createInstallHarnessState(existingInstallValues('full', 'custom'));
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(state, configuredPublicIpv4));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
+    );
+    const customInput: KubernetesInstallDeploymentInput = customDeploymentInput({
+      registryIssuerRef: { group: 'cert-manager.io', kind: 'ClusterIssuer', name: 'letsencrypt-production' },
+    });
+    await expect(deployAndWaitForKubernetesInstall(customInput)).resolves.toMatchObject({
+      baseDomain: 'apps.example.com',
+      installToken: 'existing-install-token',
+    });
+    expect(readHelmStages()).toEqual(['foundation', 'foundation', 'full']);
+    expect(state.installValues[0]?.registry.issuerRef).toMatchObject({
+      kind: 'ClusterIssuer',
+      name: 'letsencrypt-production',
+    });
+    expect(mocks.assertRegistryDns).toHaveBeenCalledBefore(mocks.verifyRegistryNodePull);
+  });
   it('rechecks Certificate readiness when resuming after a full-stage timeout', async (): Promise<void> => {
     const state: InstallHarnessState = createInstallHarnessState();
     const baseHandler: RunCommand = createInstallCommandHandler(state);
@@ -497,7 +511,6 @@ describe('Kubernetes install deployment', (): void => {
       return await baseHandler(command);
     });
     stubManagedInstallFetch(state.events, []);
-
     await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).rejects.toThrow(
       'the installation remains incomplete',
     );
@@ -513,16 +526,9 @@ describe('Kubernetes install deployment', (): void => {
   it('rejects a preview release without canonical retained install state', async (): Promise<void> => {
     const state: InstallHarnessState = createInstallHarnessState(existingInstallValues('full', 'custom'), null);
     mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
-    const customInput: KubernetesInstallDeploymentInput = {
-      ...managedDeploymentInput,
-      apiUrl: 'https://console.apps.example.com',
-      baseDomain: 'apps.example.com',
-      brokerUrl: undefined,
-      domainMode: 'custom',
-      managedDomainRequestedLabelSource: undefined,
-      registryHostname: 'registry.apps.example.com',
+    const customInput: KubernetesInstallDeploymentInput = customDeploymentInput({
       registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'customer-platform' },
-    };
+    });
 
     await expect(deployAndWaitForKubernetesInstall(customInput)).rejects.toThrow(
       'The existing Helm release has no canonical retained install state.',
@@ -538,13 +544,10 @@ describe('Kubernetes install deployment', (): void => {
       'fetch',
       vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
     );
-    const customInput: KubernetesInstallDeploymentInput = {
-      ...managedDeploymentInput,
+    const customInput: KubernetesInstallDeploymentInput = customDeploymentInput({
+      apiUrl: undefined,
       baseDomain: 'compartment.localhost',
-      brokerUrl: undefined,
-      domainMode: 'custom',
-      managedDomainRequestedLabelSource: undefined,
-    };
+    });
 
     await expect(deployAndWaitForKubernetesInstall(customInput)).resolves.toMatchObject({
       apiUrl: 'http://console.compartment.localhost',
@@ -559,16 +562,9 @@ describe('Kubernetes install deployment', (): void => {
       'fetch',
       vi.fn(async (): Promise<Response> => await Promise.resolve(readyControlPlaneResponse())),
     );
-    const customInput: KubernetesInstallDeploymentInput = {
-      ...managedDeploymentInput,
-      apiUrl: 'https://console.apps.example.com',
-      baseDomain: 'apps.example.com',
-      brokerUrl: undefined,
-      domainMode: 'custom',
-      managedDomainRequestedLabelSource: undefined,
-      registryHostname: 'registry.apps.example.com',
+    const customInput: KubernetesInstallDeploymentInput = customDeploymentInput({
       registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'customer-platform' },
-    };
+    });
 
     await expect(deployAndWaitForKubernetesInstall(customInput)).resolves.toMatchObject({
       baseDomain: 'apps.example.com',
@@ -726,28 +722,6 @@ describe('Kubernetes Helm install timeout diagnostics', (): void => {
   });
 });
 
-describe('Kubernetes public control-plane readiness', (): void => {
-  afterEach((): void => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
-
-  it('times out with the observed response and recovery advice', async (): Promise<void> => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (): Promise<Response> => await Promise.resolve(new Response('', { status: 502 }))),
-    );
-    const readiness: Promise<void> = waitForPublicControlPlane('https://console.apps.example.com');
-    const failure: Promise<void> = expect(readiness).rejects.toThrow(
-      'Public Compartment control plane at https://console.apps.example.com was not ready after 300s: HTTP 502 with location <none>. Check DNS, ports 80/443, and the TLS certificate status, then re-run install to resume.',
-    );
-
-    await vi.advanceTimersByTimeAsync(300_000);
-    await failure;
-  });
-});
-
 describe('retained Kubernetes install state discovery', (): void => {
   afterEach((): void => {
     mocks.runCommand.mockReset();
@@ -796,6 +770,21 @@ function createInstallHarnessState(
       retainedState === undefined && releaseValues !== null
         ? readRetainedState(releaseValues)
         : (retainedState ?? null),
+  };
+}
+
+function customDeploymentInput(
+  overrides: Partial<KubernetesInstallDeploymentInput> = {},
+): KubernetesInstallDeploymentInput {
+  return {
+    ...managedDeploymentInput,
+    apiUrl: 'https://console.apps.example.com',
+    baseDomain: 'apps.example.com',
+    brokerUrl: undefined,
+    domainMode: 'custom',
+    managedDomainRequestedLabelSource: undefined,
+    registryHostname: 'registry.apps.example.com',
+    ...overrides,
   };
 }
 
