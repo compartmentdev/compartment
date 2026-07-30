@@ -18,6 +18,27 @@
 {{- dig "storage" "backend" "pvc" .Values.registry -}}
 {{- end }}
 
+{{- define "compartment.databaseSecretName" -}}
+{{- ternary .Values.postgres.external.existingSecret (include "compartment.fullname" .) .Values.postgres.external.enabled -}}
+{{- end }}
+
+{{- define "compartment.databaseUrlSecretKey" -}}
+{{- ternary .Values.postgres.external.databaseUrlKey "database-url" .Values.postgres.external.enabled -}}
+{{- end }}
+
+{{- define "compartment.postgresPasswordSecretKey" -}}
+{{- ternary .Values.postgres.external.passwordKey "postgres-password" .Values.postgres.external.enabled -}}
+{{- end }}
+
+{{- define "compartment.topologySpreadConstraint" -}}
+- maxSkew: 1
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: ScheduleAnyway
+  labelSelector:
+    matchLabels:
+      {{- include "compartment.componentLabels" (dict "root" .root "component" .component) | nindent 6 }}
+{{- end }}
+
 {{- define "compartment.managedDomainDns01GroupName" -}}
 {{- printf "%s.%s.%s" (include "compartment.fullname" .) .Release.Namespace .Values.tls.solver.groupName | lower -}}
 {{- end }}
@@ -157,6 +178,21 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- define "compartment.validateInstallValues" -}}
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
 {{- $effective := $installState.effective -}}
+{{- if and .Values.postgres.external.enabled (empty .Values.postgres.external.existingSecret) -}}
+{{- fail "postgres.external.existingSecret is required when external PostgreSQL is enabled" -}}
+{{- end -}}
+{{- if and .Values.postgres.external.enabled (empty .Values.postgres.external.databaseUrlKey) -}}
+{{- fail "postgres.external.databaseUrlKey is required when external PostgreSQL is enabled" -}}
+{{- end -}}
+{{- if and .Values.postgres.external.enabled (empty .Values.postgres.external.passwordKey) -}}
+{{- fail "postgres.external.passwordKey is required when external PostgreSQL is enabled" -}}
+{{- end -}}
+{{- if and (gt (int .Values.api.replicas) 1) .Values.platform.auditFileSinkEnabled -}}
+{{- fail "platform.auditFileSinkEnabled requires api.replicas=1 because the file sink uses package-local storage" -}}
+{{- end -}}
+{{- if and (gt (int .Values.edge.replicas) 1) .Values.edge.snapshots.enabled -}}
+{{- fail "edge.snapshots.enabled requires edge.replicas=1 because persistent snapshots use package-local storage" -}}
+{{- end -}}
 {{- if eq $effective.platform.startupStage "full" -}}
 {{- $_ := required "platform.installationId is required for a full installation" $effective.platform.installationId -}}
 {{- $_ = required "platform.baseDomain is required for a full installation" $effective.platform.baseDomain -}}

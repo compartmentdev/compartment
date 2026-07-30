@@ -1,10 +1,11 @@
 import { createHash, type Hash } from 'node:crypto';
 import { constants, createWriteStream, type WriteStream } from 'node:fs';
-import { copyFile, link, unlink } from 'node:fs/promises';
+import { copyFile, link, readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { finished } from 'node:stream/promises';
 import { isMissingFileSystemEntryError } from '@compartment/utils';
 import { getApiConfig } from '../runtime/runtime-access';
+import { readSourceUploadArchiveBase64 } from '../queries/source-uploads.query';
 import {
   assertPrivateRuntimeStoragePath,
   isPrivateRuntimeStorageEntryNotFoundError,
@@ -34,7 +35,10 @@ export async function storeSourceUploadArchive(
 
   await publishSourceUploadArchiveFile(tempPath, finalPath);
 
-  return storedArchive;
+  return {
+    ...storedArchive,
+    archiveBase64: (await readFile(finalPath)).toString('base64'),
+  };
 }
 
 async function writeSourceUploadArchiveFile(
@@ -49,6 +53,7 @@ async function writeSourceUploadArchiveFile(
     await finalizeSourceUploadWrite(writeStream);
 
     return {
+      archiveBase64: '',
       byteSize,
       sourceDigest: hash.digest('hex'),
     };
@@ -72,6 +77,10 @@ export async function readSourceUploadArchive(sourceUploadId: string): Promise<B
       error instanceof Error &&
       (isMissingFileSystemEntryError(error) || isPrivateRuntimeStorageEntryNotFoundError(error))
     ) {
+      const archiveBase64: string | null | undefined = await readSourceUploadArchiveBase64(sourceUploadId);
+      if (archiveBase64 !== undefined && archiveBase64 !== null) {
+        return Buffer.from(archiveBase64, 'base64');
+      }
       throw new SourceUploadArchiveNotFoundError(sourceUploadId);
     }
 

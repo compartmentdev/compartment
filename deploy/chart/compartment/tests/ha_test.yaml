@@ -1,0 +1,129 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/helm-unittest/helm-unittest/v1.1.1/schema/helm-testsuite.json
+suite: minimal control-plane availability
+templates:
+  - templates/*.yaml
+values:
+  - registry-values.yaml
+  - node-pools-values.yaml
+release:
+  name: compartment
+  namespace: default
+tests:
+  - it: renders two replicas rolling availability and soft node spread by default
+    set:
+      platform: &fullPlatform
+        startupStage: full
+        installationId: test-ha
+        baseDomain: apps.example.com
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].whenUnsatisfiable
+          value: ScheduleAnyway
+        template: api.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.replicas
+          value: 2
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].topologyKey
+          value: kubernetes.io/hostname
+        template: edge.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.replicas
+          value: 2
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.strategy.rollingUpdate.maxUnavailable
+          value: 0
+        template: caddy.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].maxSkew
+          value: 1
+        template: caddy.yaml
+        documentIndex: 1
+      - hasDocuments:
+          count: 3
+        template: pdb.yaml
+      - equal:
+          path: spec.minAvailable
+          value: 1
+        template: pdb.yaml
+        documentIndex: 0
+
+  - it: omits disruption budgets for single replicas
+    set:
+      platform:
+        <<: *fullPlatform
+      api:
+        replicas: 1
+      edge:
+        replicas: 1
+      caddy:
+        replicas: 1
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: pdb.yaml
+
+  - it: uses an existing external database secret and omits bundled PostgreSQL
+    set:
+      platform:
+        <<: *fullPlatform
+      postgres:
+        external:
+          enabled: true
+          existingSecret: production-postgres
+          databaseUrlKey: dsn
+          passwordKey: password
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: postgres.yaml
+      - notExists:
+          path: stringData.database-url
+        template: secret.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: production-postgres
+                key: dsn
+          any: true
+        template: api.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: production-postgres
+                key: dsn
+          any: true
+        template: api-migrate.yaml
+        documentIndex: 0
+      - hasDocuments:
+          count: 1
+        template: pvc.yaml

@@ -62,6 +62,7 @@ const edgeConfig: EdgeConfig = {
   controlPlaneHost: 'console.localhost',
   port: 9080,
   publicProtocol: 'http',
+  replicaCount: 1,
   snapshotMaxAgeMs: 86_400_000,
   snapshotPath: '/tmp/compartment-edge-test/access-state.json',
 };

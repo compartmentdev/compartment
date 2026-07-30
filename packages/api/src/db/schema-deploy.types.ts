@@ -42,6 +42,7 @@ interface SourceUploadsColumnBuilders {
   projectServiceId: OptionalTextBuilder<'project_service_id'>;
   sourceDigest: RequiredTextBuilder<'source_digest'>;
   byteSize: RequiredIntegerBuilder<'byte_size'>;
+  archiveBase64: OptionalTextBuilder<'archive_base64'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   expiresAt: RequiredTimestampBuilder<'expires_at'>;
   consumedAt: OptionalTimestampBuilder<'consumed_at'>;

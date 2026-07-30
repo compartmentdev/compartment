@@ -6,6 +6,7 @@ import type { ApiDatabaseTransaction } from './client.types';
 import { readRequiredDatabaseUrl } from './database-url';
 import { parseTenantSecretsKek, parseVariablesMasterKey } from '../lib/variables-crypto';
 import { migrateTenantSecretEnvelopes } from '../services/tenant-secret-migration.service';
+import { migrateSourceUploadArchives } from '../services/source-upload-archive-migration.service';
 import type {
   TenantSecretMigrationKeys,
   TenantSecretMigrationResult,
@@ -21,6 +22,10 @@ export async function runMigrations(
     await migrate(db, {
       migrationsFolder: resolve(__dirname, '../../drizzle'),
     });
+    const sourceArchiveMigrationCount: number = await migrateSourceUploadArchives(db, env);
+    process.stdout.write(
+      `${JSON.stringify({ event: 'source-upload-archive-migration', migrated: sourceArchiveMigrationCount })}\n`,
+    );
     const keys: TenantSecretMigrationKeys = readTenantSecretMigrationKeys(env);
     const result: TenantSecretMigrationResult = await db.transaction(
       async (tx: ApiDatabaseTransaction): Promise<TenantSecretMigrationResult> =>

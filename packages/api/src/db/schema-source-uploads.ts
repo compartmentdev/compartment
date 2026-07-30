@@ -22,6 +22,7 @@ export const sourceUploads: DeploySchemaTypes.SourceUploadsTable = pgTable(
     }),
     sourceDigest: text('source_digest').notNull(),
     byteSize: integer('byte_size').notNull(),
+    archiveBase64: text('archive_base64'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     consumedAt: timestamp('consumed_at', { withTimezone: true }),

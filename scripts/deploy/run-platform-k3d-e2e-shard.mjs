@@ -100,6 +100,8 @@ async function runShardSuites(suites, env, ownerEnvironmentPath, signal) {
       await runInterruptibleCommand(process.execPath, [lifecycleScript, 'configure'], env, signal);
     } else if (suite === 'system-user') {
       await runCliE2eSuite(env, 'test/system-user-flow.e2e.test.ts', signal);
+    } else if (suite === 'ha') {
+      await runCliE2eSuite(env, 'test/platform-k3d-ha.e2e.test.ts', signal);
     } else if (suite === 'network-policy') {
       await runInterruptibleCommand(
         'bash',

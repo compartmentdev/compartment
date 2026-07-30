@@ -109,6 +109,28 @@
         "http": { "$ref": "#/definitions/tcpPort" }
       }
     },
+    "api": { "$ref": "#/definitions/haComponent" },
+    "caddy": { "$ref": "#/definitions/haComponent" },
+    "postgres": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["database", "username", "external"],
+      "properties": {
+        "database": { "type": "string", "minLength": 1 },
+        "username": { "type": "string", "minLength": 1 },
+        "external": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "existingSecret", "databaseUrlKey", "passwordKey"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "existingSecret": { "type": "string" },
+            "databaseUrlKey": { "type": "string" },
+            "passwordKey": { "type": "string" }
+          }
+        }
+      }
+    },
     "registry": {
       "type": "object",
       "additionalProperties": false,
@@ -332,6 +354,7 @@
     "edge": {
       "type": "object",
       "properties": {
+        "replicas": { "type": "integer", "minimum": 1 },
         "snapshots": {
           "type": "object",
           "required": ["enabled", "mountPath"],
@@ -372,6 +395,14 @@
     }
   ],
   "definitions": {
+    "haComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replicas"],
+      "properties": {
+        "replicas": { "type": "integer", "minimum": 1 }
+      }
+    },
     "tcpPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
     "nodePool": {
       "type": "object",

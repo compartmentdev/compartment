@@ -22,9 +22,11 @@ metadata:
     {{- include "compartment.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
-  replicas: 1
+  replicas: {{ .Values.api.replicas }}
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
   selector:
     matchLabels:
       {{- include "compartment.componentLabels" (dict "root" . "component" "api") | nindent 6 }}
@@ -36,6 +38,8 @@ spec:
         {{- include "compartment.apiDomainRolloutAnnotations" . | nindent 8 }}
         compartment.dev/tenant-kek-values: {{ printf "%s:%s" .Values.secrets.tenantSecretsKek (.Values.secrets.tenantSecretsPreviousKek | default "") | sha256sum | quote }}
     spec:
+      topologySpreadConstraints:
+        {{- include "compartment.topologySpreadConstraint" (dict "root" . "component" "api") | nindent 8 }}
       priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
       {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
       {{- include "compartment.waiterPodSpec" . | nindent 6 }}
@@ -61,10 +65,10 @@ spec:
           env:
             - name: COMPARTMENT_DATABASE_URL
               valueFrom:
-                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: database-url}
+                secretKeyRef: {name: {{ include "compartment.databaseSecretName" . }}, key: {{ include "compartment.databaseUrlSecretKey" . }}}
             - name: COMPARTMENT_POSTGRES_PASSWORD
               valueFrom:
-                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: postgres-password}
+                secretKeyRef: {name: {{ include "compartment.databaseSecretName" . }}, key: {{ include "compartment.postgresPasswordSecretKey" . }}}
             - name: COMPARTMENT_EDGE_TOKEN
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: edge-token}
@@ -115,8 +119,12 @@ spec:
       volumes:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - name: data
+          {{- if eq (int .Values.api.replicas) 1 }}
           persistentVolumeClaim:
             claimName: {{ include "compartment.fullname" . }}-api
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
         - {name: runtime, emptyDir: {}}
         - {name: tmp, emptyDir: {}}
 {{- end }}

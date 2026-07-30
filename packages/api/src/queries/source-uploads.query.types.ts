@@ -1,7 +1,3 @@
-import type { sourceUploads } from '../db/schema';
-
-export type PersistedSourceUploadRow = typeof sourceUploads.$inferSelect;
-
 export interface SourceUploadRow {
   byteSize: number;
   consumedAt: Date | null;
@@ -17,6 +13,7 @@ export interface SourceUploadRow {
 }
 
 export interface CreateSourceUploadInput {
+  archiveBase64: string;
   byteSize: number;
   createdByPrincipalId: string;
   environmentId: string | null;

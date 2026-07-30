@@ -1,0 +1,1 @@
+ALTER TABLE "source_uploads" ADD COLUMN "archive_base64" text;

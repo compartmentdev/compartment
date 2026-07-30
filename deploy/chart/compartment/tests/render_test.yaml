@@ -944,7 +944,7 @@ tests:
         template: api.yaml
         documentIndex: 1
       - hasDocuments:
-          count: 3
+          count: 2
         template: pvc.yaml
       - equal:
           path: spec.template.spec.volumes[?(@.name == "snapshots")].emptyDir
@@ -1424,6 +1424,7 @@ tests:
         baseDomain: apps.example.com
         publicProtocol: https
       edge:
+        replicas: 1
         snapshots:
           enabled: true
       secrets: *stableSecrets

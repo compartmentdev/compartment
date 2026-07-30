@@ -8,6 +8,7 @@ export {
   compartmentCliLoginAttemptCookieName,
   compartmentInternalAppAccessExchangePathname,
   compartmentInternalAppAccessLogoutPathname,
+  compartmentInternalAppAccessSessionResolvePathname,
   compartmentInternalAppAccessSessionsRevokePathname,
   compartmentInternalAppAccessStatePathname,
   compartmentCsrfCookieName,

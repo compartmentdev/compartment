@@ -25,6 +25,7 @@ export const compartmentDomainProbePathname: string = '/_compartment/domain/prob
 export const compartmentAppLogoutPathname: string = '/_compartment/logout';
 export const compartmentInternalAppAccessExchangePathname: string = '/internal/app-access/exchange';
 export const compartmentInternalAppAccessLogoutPathname: string = '/internal/app-access/logout';
+export const compartmentInternalAppAccessSessionResolvePathname: string = '/internal/app-access/session/resolve';
 export const compartmentInternalAppAccessSessionsRevokePathname: string = '/internal/app-access/sessions/revoke';
 export const compartmentInternalAppAccessStatePathname: string = '/internal/app-access/state';
 export const compartmentIngressAuthorizePathname: string = '/internal/ingress/authorize';

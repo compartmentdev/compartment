@@ -83,7 +83,7 @@ describe('platform k3d e2e shard runner', () => {
   });
 
   it('assigns every existing e2e suite and gate to one explicit shard', () => {
-    expect(readPlatformK3dShardSuites('build-matrix-a')).toEqual(['install', 'network-policy', 'build-matrix-a']);
+    expect(readPlatformK3dShardSuites('build-matrix-a')).toEqual(['install', 'ha', 'network-policy', 'build-matrix-a']);
     expect(readPlatformK3dShardSuites('build-matrix-b')).toEqual(['install', 'build-matrix-b']);
     expect(readPlatformK3dShardSuites('user-flow')).toEqual(['install', 'system-user']);
     expect(readPlatformK3dShardSuites('console')).toEqual(['install', 'console', 'g1', 'product-log']);

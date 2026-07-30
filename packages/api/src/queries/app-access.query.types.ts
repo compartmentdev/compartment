@@ -16,6 +16,12 @@ export interface ActiveAppAccessSessionRow {
   appSessionId: string;
 }
 
+export interface ResolvedAppAccessSessionRow {
+  authSessionId: string;
+  expiresAt: Date;
+  host: string;
+}
+
 export interface CreateAppAccessCodeInput {
   authSessionId: string;
   expiresAt: Date;

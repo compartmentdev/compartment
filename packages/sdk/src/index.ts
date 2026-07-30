@@ -31,6 +31,7 @@ export { listPodMetricNamespaces } from './services/worker-list-pod-metric-names
 export { claimNextDeployment } from './services/worker-claim-deployment.service';
 export { recoverOrphanedBuildClaims } from './services/worker-recover-orphaned-build-claims.service';
 export { exchangeAppAccess } from './services/app-access-exchange.service';
+export { resolveAppAccessSession } from './services/app-access-session-resolve.service';
 export { failDeployment } from './services/worker-fail-deployment.service';
 export { getAppAccessState } from './services/app-access-state.service';
 export { getDeploymentInspect } from './services/deployment-inspect.service';

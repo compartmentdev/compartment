@@ -1,4 +1,5 @@
 {{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- $legacyApiPvc := lookup "v1" "PersistentVolumeClaim" .Release.Namespace (printf "%s-api" (include "compartment.fullname" .)) -}}
 {{- if eq $installState.effective.platform.startupStage "full" }}
 apiVersion: batch/v1
 kind: Job
@@ -14,6 +15,15 @@ spec:
       labels:
         {{- include "compartment.componentLabels" (dict "root" . "component" "api-migrate") | nindent 8 }}
     spec:
+      {{- if $legacyApiPvc }}
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- include "compartment.componentLabels" (dict "root" . "component" "api") | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+      {{- end }}
       priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
       {{- include "compartment.nodePool" .Values.nodePools.system | nindent 6 }}
       {{- include "compartment.waiterPodSpec" . | nindent 6 }}
@@ -34,11 +44,15 @@ spec:
           resources:
             {{- toYaml .Values.resources.apiMigrate | nindent 12 }}
           env:
+            {{- if $legacyApiPvc }}
+            - name: COMPARTMENT_SOURCE_ARCHIVE_DIR
+              value: /var/lib/compartment/source-archives
+            {{- end }}
             - name: COMPARTMENT_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "compartment.fullname" . }}
-                  key: database-url
+                  name: {{ include "compartment.databaseSecretName" . }}
+                  key: {{ include "compartment.databaseUrlSecretKey" . }}
             - name: COMPARTMENT_TENANT_SECRETS_KEK
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: tenant-secrets-kek}
@@ -49,10 +63,20 @@ spec:
               valueFrom:
                 secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: variables-master-key}
           volumeMounts:
+            {{- if $legacyApiPvc }}
+            - name: legacy-api-data
+              mountPath: /var/lib/compartment
+              readOnly: true
+            {{- end }}
             - name: tmp
               mountPath: /tmp
       volumes:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
         - name: tmp
           emptyDir: {}
+        {{- if $legacyApiPvc }}
+        - name: legacy-api-data
+          persistentVolumeClaim:
+            claimName: {{ include "compartment.fullname" . }}-api
+        {{- end }}
 {{- end }}

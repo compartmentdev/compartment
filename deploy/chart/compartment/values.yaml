@@ -94,6 +94,9 @@ storage:
   edgeSnapshots: 1Gi
   api: 1Gi
 
+api:
+  replicas: 2
+
 platform:
   startupStage: foundation
   domainGeneration: 0
@@ -148,6 +151,11 @@ platform:
 postgres:
   database: compartment
   username: postgres
+  external:
+    enabled: false
+    existingSecret: ''
+    databaseUrlKey: database-url
+    passwordKey: postgres-password
 
 nodePools:
   system:
@@ -184,9 +192,13 @@ buildkit:
     type: Unconfined
 
 edge:
+  replicas: 2
   snapshots:
     enabled: false
     mountPath: /var/lib/compartment/snapshots
+
+caddy:
+  replicas: 2
 
 registry:
   clusterIP: ''
