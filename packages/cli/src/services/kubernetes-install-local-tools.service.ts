@@ -11,7 +11,7 @@ const helmInstallInstruction: string =
 const kubectlInstallInstruction: string =
   'Install kubectl >= 1.30.0, then re-run install. See https://kubernetes.io/docs/tasks/tools/#kubectl.';
 
-export const kubernetesInstallLocalTools: readonly KubernetesInstallLocalToolRequirement[] = [
+const kubernetesInstallLocalTools: readonly KubernetesInstallLocalToolRequirement[] = [
   {
     binary: 'helm',
     installInstruction: helmInstallInstruction,
