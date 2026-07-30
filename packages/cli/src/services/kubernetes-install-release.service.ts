@@ -2,7 +2,12 @@ import { parseJsonWith, type JsonValue } from '@compartment/utils';
 import { z } from 'zod';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { buildHelmCommand, buildHelmGetValuesCommand, readCommandOutput } from './kubernetes-command.support';
+import {
+  buildHelmCommand,
+  buildHelmGetValuesCommand,
+  formatKubernetesCommandExecutionFailure,
+  readCommandOutput,
+} from './kubernetes-command.support';
 import { parseKubernetesIngressTargetsJson } from './kubernetes-install-ingress-targets.service';
 import type { KubernetesInstallRegistryIssuerReference } from './kubernetes-install-registry.service.types';
 import type {
@@ -57,6 +62,13 @@ async function runHelmInspection(command: readonly string[], operation: string):
   const result: CommandResult = await runCommandWithTimeout(command, kubernetesInspectionTimeoutMs);
   if (result.exitCode === 0) {
     return result;
+  }
+  const executionFailure: string | undefined = formatKubernetesCommandExecutionFailure(
+    `Helm ${operation} failed`,
+    result,
+  );
+  if (executionFailure !== undefined) {
+    throw new Error(executionFailure);
   }
   const output: string = readCommandOutput(result);
   if (result.exitCode === 124) {

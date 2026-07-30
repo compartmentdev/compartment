@@ -4,7 +4,12 @@ import { resolve } from 'node:path';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { readSeaAssetBuffer } from '../sea';
-import { buildHelmCommand, buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
+import {
+  buildHelmCommand,
+  buildKubectlCommand,
+  formatKubernetesCommandExecutionFailure,
+  readCommandOutput,
+} from './kubernetes-command.support';
 import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallStage,
@@ -130,6 +135,13 @@ async function throwHelmInstallError(
   result: CommandResult,
   startedAt: number,
 ): Promise<never> {
+  const executionFailure: string | undefined = formatKubernetesCommandExecutionFailure(
+    `Helm ${stage} install failed`,
+    result,
+  );
+  if (executionFailure !== undefined) {
+    throw new Error(executionFailure);
+  }
   const output: string = readCommandOutput(result);
   if (/timed out|deadline exceeded/u.test(output.toLowerCase())) {
     const notReadyPods: string = await readNotReadyPods(input);

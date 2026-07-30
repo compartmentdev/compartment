@@ -68,6 +68,32 @@ describe('Kubernetes platform image trust', (): void => {
     }
   });
 
+  it('reports missing Helm on the actual chart-values inspection path without status 127', async (): Promise<void> => {
+    const directory: string = await createTemporaryDirectory();
+    try {
+      const chartPath: string = resolve(directory, 'compartment-chart.tgz');
+      const operatorValuesPath: string = resolve(directory, 'values.yaml');
+      await writeFile(operatorValuesPath, '{}');
+      mocks.runCommand.mockResolvedValue({
+        exitCode: 127,
+        failure: { command: 'helm', kind: 'command-not-found' },
+        stderr: '',
+        stdout: '',
+      });
+
+      const failure: Promise<void> = writeVerifiedKubernetesInstallImageValues({
+        chartPath,
+        overrideValuesPaths: [operatorValuesPath],
+        outputPath: resolve(directory, 'verified.json'),
+      });
+
+      await expect(failure).rejects.toThrow(/helm not found on PATH.*Helm >= 4\.0\.0.*get-helm-4/su);
+      await expect(failure).rejects.not.toThrow(/status 127/u);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it('pins packaged defaults while preserving later operator image overrides', async (): Promise<void> => {
     const directory: string = await createTemporaryDirectory();
     try {
