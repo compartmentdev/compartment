@@ -109,8 +109,23 @@ describe('Kubernetes private system API transport', (): void => {
     mocks.runCommandWithInput.mockResolvedValue(failedCommand('socket unavailable'));
 
     await expect(issueKubernetesPasswordReset(target, 'owner@example.com')).rejects.toThrow(
-      'Private system API request failed: socket unavailable',
+      'Private system API request failed (command exited with status 1): socket unavailable',
     );
+  });
+
+  it('does not expose a partial password-reset response in kubectl exec failures', async (): Promise<void> => {
+    const resetToken: string = 'one-time-reset-token';
+    mocks.runCommand.mockResolvedValue(successfulCommand(deploymentListResponse()));
+    mocks.runCommandWithInput.mockResolvedValue({
+      exitCode: 1,
+      stderr: 'command terminated after response',
+      stdout: passwordResetResponseEnvelope(resetToken),
+    });
+
+    const request: Promise<IssuePasswordResetResponse> = issueKubernetesPasswordReset(target, 'owner@example.com');
+    await expect(request).rejects.toThrow('command terminated after response');
+    await expect(request).rejects.not.toThrow(resetToken);
+    await expect(request).rejects.not.toThrow('resetUrl');
   });
 
   it.each([
@@ -173,14 +188,14 @@ function deploymentListResponse(): string {
   return JSON.stringify({ items: [{ metadata: { name: 'compartment-compartment-api' } }] });
 }
 
-function passwordResetResponseEnvelope(): string {
+function passwordResetResponseEnvelope(resetToken: string = 'one-time-reset-token'): string {
   return responseEnvelope(
     200,
     JSON.stringify({
       email: 'owner@example.com',
       expiresAt: '2026-07-17T12:00:00.000Z',
-      resetToken: 'one-time-reset-token',
-      resetUrl: 'https://console.example.com/reset-password?token=one-time-reset-token',
+      resetToken,
+      resetUrl: `https://console.example.com/reset-password?token=${resetToken}`,
     }),
   );
 }

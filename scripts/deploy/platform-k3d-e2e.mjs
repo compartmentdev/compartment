@@ -45,6 +45,8 @@ const {
   platformNamespace,
   platformOwnerEnvironmentPath,
   platformValuesPath,
+  publicOperatorCaPath,
+  publicOperatorValuesPath,
   registryHostPort,
   registryName,
 } = platformEnvironment;
@@ -54,6 +56,7 @@ const registryPushHost = `localhost:${registryHostPort}`;
 const bundledRegistryClusterIp = '10.43.250.250';
 const bundledRegistryHostname = '10-43-250-250.sslip.io';
 const platformBaseDomain = 'compartment.localhost';
+const publicOperatorBaseDomain = 'apps.example.test';
 const consoleHost = `console.${platformBaseDomain}`;
 const builderName = `${clusterName}-builder`;
 const imageCacheLockOwnerToken = `e2e-${clusterName}`;
@@ -120,6 +123,16 @@ export function readPlatformK3dEnvironment(env) {
       env,
       'COMPARTMENT_E2E_PLATFORM_VALUES_PATH',
       '.compartment/platform-k3d-e2e-values.yaml',
+    ),
+    publicOperatorCaPath: readStatePathEnv(
+      env,
+      'COMPARTMENT_E2E_PUBLIC_OPERATOR_CA_PATH',
+      '.compartment/platform-k3d-public-operator-ca.crt',
+    ),
+    publicOperatorValuesPath: readStatePathEnv(
+      env,
+      'COMPARTMENT_E2E_PUBLIC_OPERATOR_VALUES_PATH',
+      '.compartment/platform-k3d-public-operator-values.yaml',
     ),
     registryHostPort: readPortEnv(env, 'COMPARTMENT_E2E_REGISTRY_PORT', 15_500),
     registryName: configuredRegistryName,
@@ -257,6 +270,13 @@ export function renderManagedPlatformK3dValues(
   return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderTenantRuntimeValues(gvisorEnabled)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
 }
 
+export function renderPublicOperatorPlatformK3dValues(
+  imageDigestsByServiceName,
+  gvisorEnabled = platformEnvironment.gvisorEnabled,
+) {
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderTenantRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\nstorage:\n  storageClass: local-path\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-public-operator-test-issuer\nbuildkit:\n  namespace: ${managedNamespace}-public-operator-build\n`;
+}
+
 function renderTenantRuntimeValues(gvisorEnabled) {
   return gvisorEnabled
     ? 'tenantRuntime:\n  runtimeClassName: gvisor\n  createRuntimeClass: true\n  runtimeHandler: runsc\n'
@@ -280,7 +300,14 @@ async function upPlatform(command) {
     cleanPlatformResources();
     recreateRegistry();
     recreateBuilder();
-    for (const statePath of [platformValuesPath, managedPlatformValuesPath, pebbleCaPath, pebbleRootPath]) {
+    for (const statePath of [
+      platformValuesPath,
+      managedPlatformValuesPath,
+      pebbleCaPath,
+      pebbleRootPath,
+      publicOperatorCaPath,
+      publicOperatorValuesPath,
+    ]) {
       mkdirSync(dirname(statePath), { recursive: true });
     }
     createRegistryTestCertificateAuthority();
@@ -294,6 +321,11 @@ async function upPlatform(command) {
     writeFileSync(managedPlatformValuesPath, renderManagedPlatformK3dValues(preparedImages.imageDigestsByServiceName), {
       mode: 0o600,
     });
+    writeFileSync(
+      publicOperatorValuesPath,
+      renderPublicOperatorPlatformK3dValues(preparedImages.imageDigestsByServiceName),
+      { mode: 0o600 },
+    );
   } catch (error) {
     if (!platformEnvironment.keepOnFailure) {
       try {
@@ -376,6 +408,9 @@ async function createCluster() {
   await waitForCertManager(prerequisiteSetupStartedAt, prerequisiteSetupDeadline);
   reportPrerequisiteSetupCost(performance.now() - prerequisiteSetupStartedAt);
   await installRegistryTestIssuer();
+  if (shouldExtractPebbleCa) {
+    await installPublicOperatorTestIssuer();
+  }
 }
 
 async function waitForCertManager(prerequisiteSetupStartedAt, prerequisiteSetupDeadline) {
@@ -514,6 +549,75 @@ async function installRegistryTestIssuer() {
   rmSync(issuerPath, { force: true });
 }
 
+async function installPublicOperatorTestIssuer() {
+  const issuerPath = join(dirname(platformValuesPath), `${clusterName}-public-operator-test-issuer.yaml`);
+  writeFileSync(
+    issuerPath,
+    `apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: compartment-public-operator-test-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: compartment-public-operator-test-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: Compartment public operator k3d test CA
+  secretName: compartment-public-operator-test-ca
+  issuerRef:
+    kind: ClusterIssuer
+    name: compartment-public-operator-test-selfsigned
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: compartment-public-operator-test-issuer
+spec:
+  ca:
+    secretName: compartment-public-operator-test-ca
+`,
+    { mode: 0o600 },
+  );
+  try {
+    runCommand('kubectl', ['--context', contextName, 'apply', '--filename', issuerPath], repositoryRoot);
+    runCommand(
+      'kubectl',
+      [
+        '--context',
+        contextName,
+        '--namespace',
+        'cert-manager',
+        'wait',
+        'certificate/compartment-public-operator-test-ca',
+        '--for=condition=Ready',
+        `--timeout=${kubernetesReadinessTimeout}`,
+      ],
+      repositoryRoot,
+    );
+    const certificate = captureCommand(
+      'kubectl',
+      [
+        '--context',
+        contextName,
+        '--namespace',
+        'cert-manager',
+        'get',
+        'secret/compartment-public-operator-test-ca',
+        '--output=jsonpath={.data.tls\\.crt}',
+      ],
+      repositoryRoot,
+    );
+    writeFileSync(publicOperatorCaPath, Buffer.from(certificate, 'base64'), { mode: 0o600 });
+  } finally {
+    rmSync(issuerPath, { force: true });
+  }
+}
+
 export async function runKubectlWithTransientApiRetry(args, options = {}) {
   const commandRunner =
     options.commandRunner ?? ((commandArgs) => captureCommandResult('kubectl', commandArgs, repositoryRoot));
@@ -614,6 +718,8 @@ export function buildPlatformK3dClusterCreateArgs() {
       : []),
     '--host-alias',
     `${bundledRegistryClusterIp}:registry.${platformBaseDomain}`,
+    '--host-alias',
+    `${bundledRegistryClusterIp}:registry.${publicOperatorBaseDomain}`,
     '--timeout',
     `${String(Math.floor(prerequisiteSetupBudgetMs / 1_000))}s`,
     '--wait',
@@ -784,6 +890,8 @@ function cleanPlatformState(cleanupErrors) {
     pebbleCaPath,
     pebbleRootPath,
     platformOwnerEnvironmentPath,
+    publicOperatorCaPath,
+    publicOperatorValuesPath,
     registryTestCaKeyPath,
     registryTestCaPath,
   ];

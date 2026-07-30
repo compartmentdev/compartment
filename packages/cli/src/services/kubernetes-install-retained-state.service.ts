@@ -3,7 +3,11 @@ import { parseJsonWith } from '@compartment/utils';
 import { z } from 'zod';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { buildKubectlCommand, formatKubernetesCommandFailure, readCommandOutput } from './kubernetes-command.support';
+import { buildKubectlCommand } from './kubernetes-command.support';
+import {
+  createRetainedStateInspectionError,
+  isMissingNamespaceFailure,
+} from './kubernetes-install-retained-state-error';
 import { parseKubernetesIngressTargetsJson } from './kubernetes-install-ingress-targets.service';
 import type {
   KubernetesInstallDeploymentInput,
@@ -86,14 +90,6 @@ function buildRetainedManagedDomainState(data: Record<string, string>): Retained
   };
 }
 
-function createRetainedStateInspectionError(result: CommandResult): Error {
-  const output: string = readCommandOutput(result);
-  return result.exitCode === 124
-    ? new Error(
-        `Timed out after 30s inspecting retained Kubernetes install state. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.${output === '' ? '' : `\n${output}`}`,
-      )
-    : new Error(formatKubernetesCommandFailure('Failed to inspect retained Kubernetes install state', result));
-}
 export function mergeRetainedKubernetesInstallState(
   existingInstall: ExistingKubernetesInstall | null,
   retainedState: RetainedKubernetesInstallState | null,
@@ -141,11 +137,6 @@ function mergeRetainedBrokerFields(merged: ExistingKubernetesInstall, current: E
 
 function preferRetainedText(retainedValue: string, currentValue: string): string {
   return retainedValue !== '' ? retainedValue : currentValue;
-}
-
-function isMissingNamespaceFailure(result: CommandResult, namespace: string): boolean {
-  const failure: string = readCommandOutput(result);
-  return failure.includes('(NotFound)') && failure.includes(`namespaces "${namespace}" not found`);
 }
 
 function buildRetainedStateSecretCommand(

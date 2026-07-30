@@ -6,7 +6,7 @@ import {
   buildHelmCommand,
   buildHelmGetValuesCommand,
   formatKubernetesCommandExecutionFailure,
-  readCommandOutput,
+  readCommandDiagnostics,
 } from './kubernetes-command.support';
 import { parseKubernetesIngressTargetsJson } from './kubernetes-install-ingress-targets.service';
 import type { KubernetesInstallRegistryIssuerReference } from './kubernetes-install-registry.service.types';
@@ -28,7 +28,7 @@ const kubernetesInspectionTimeoutMs: number = 30_000;
 export async function readExistingKubernetesInstall(
   input: KubernetesInstallDeploymentInput,
 ): Promise<ExistingKubernetesInstall | null> {
-  const listResult: CommandResult = await runHelmInspection(buildHelmReleaseListCommand(input), 'release lookup');
+  const listResult: CommandResult = await runHelmInspection(buildHelmReleaseListCommand(input), 'release lookup', true);
   const release: HelmReleaseSummary | null = readNamedHelmRelease(listResult.stdout, input.releaseName);
   if (release === null) {
     return null;
@@ -38,6 +38,7 @@ export async function readExistingKubernetesInstall(
   const valuesResult: CommandResult = await runHelmInspection(
     buildHelmReleaseValuesCommand(input),
     'release values lookup',
+    false,
   );
   return parseExistingKubernetesInstall(valuesResult.stdout);
 }
@@ -58,19 +59,20 @@ function buildHelmReleaseValuesCommand(input: KubernetesInstallDeploymentInput):
   return buildHelmGetValuesCommand(input, input.releaseName, ['--all', '--output', 'json']);
 }
 
-async function runHelmInspection(command: readonly string[], operation: string): Promise<CommandResult> {
+async function runHelmInspection(
+  command: readonly string[],
+  operation: string,
+  includeStdoutInDiagnostics: boolean,
+): Promise<CommandResult> {
   const result: CommandResult = await runCommandWithTimeout(command, kubernetesInspectionTimeoutMs);
   if (result.exitCode === 0) {
     return result;
   }
-  const executionFailure: string | undefined = formatKubernetesCommandExecutionFailure(
-    `Helm ${operation} failed`,
-    result,
-  );
+  const executionFailure: string | undefined = formatKubernetesCommandExecutionFailure(`Helm ${operation} failed`, result);
   if (executionFailure !== undefined) {
     throw new Error(executionFailure);
   }
-  const output: string = readCommandOutput(result);
+  const output: string = readCommandDiagnostics(result, { includeStdout: includeStdoutInDiagnostics });
   if (result.exitCode === 124) {
     throw new Error(
       `Timed out after 30s during Helm ${operation}. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.${output === '' ? '' : `\n${output}`}`,

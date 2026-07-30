@@ -94,6 +94,24 @@ describe('Kubernetes platform image trust', (): void => {
     }
   });
 
+  it('does not expose partial sensitive release values in Helm failures', async (): Promise<void> => {
+    const encodedSecret: string = Buffer.from('install-token').toString('base64');
+    mocks.runCommand.mockResolvedValue({
+      exitCode: 1,
+      stderr: 'Kubernetes API request failed',
+      stdout: JSON.stringify({ secrets: { installToken: encodedSecret } }),
+    });
+
+    const verification: Promise<void> = writeVerifiedKubernetesReleaseImageValues({
+      namespace: 'compartment',
+      operatorValuesPaths: [],
+      outputPath: '/tmp/unused-verified-images.json',
+      releaseName: 'compartment',
+    });
+    await expect(verification).rejects.toThrow('Kubernetes API request failed');
+    await expect(verification).rejects.not.toThrow(encodedSecret);
+  });
+
   it('pins packaged defaults while preserving later operator image overrides', async (): Promise<void> => {
     const directory: string = await createTemporaryDirectory();
     try {

@@ -10,6 +10,10 @@ interface KubernetesCommandTarget extends HelmCommandTarget {
   namespace: string;
 }
 
+export interface CommandDiagnosticsOptions {
+  includeStdout: boolean;
+}
+
 export function buildHelmGetValuesCommand(
   target: KubernetesCommandTarget,
   releaseName: string,
@@ -53,12 +57,16 @@ export function buildKubernetesReleaseSelector(releaseName: string): string {
   return `app.kubernetes.io/instance=${releaseName}`;
 }
 
-export function formatKubernetesCommandFailure(message: string, result: CommandResult): string {
+export function formatKubernetesCommandFailure(
+  message: string,
+  result: CommandResult,
+  options: CommandDiagnosticsOptions = { includeStdout: true },
+): string {
   const executionFailure: string | undefined = formatKubernetesCommandExecutionFailure(message, result);
   if (executionFailure !== undefined) {
     return executionFailure;
   }
-  const output: string = readCommandOutput(result);
+  const output: string = readCommandDiagnostics(result, options);
   const status: string =
     result.exitCode === 124 ? 'command timed out' : `command exited with status ${result.exitCode.toString()}`;
   return `${message} (${status}): ${output === '' ? 'the command produced no diagnostics' : output}`;
@@ -70,11 +78,17 @@ export function formatKubernetesCommandExecutionFailure(message: string, result:
 }
 
 export function readCommandOutput(result: CommandResult): string {
+  return readCommandDiagnostics(result, { includeStdout: true });
+}
+
+export function readCommandDiagnostics(result: CommandResult, options: CommandDiagnosticsOptions): string {
   const executionFailure: string | undefined = readKubernetesCommandExecutionFailure(result);
   if (executionFailure !== undefined) {
     return executionFailure;
   }
-  return [result.stderr.trim(), result.stdout.trim()].filter((value: string): boolean => value !== '').join('\n');
+  return [result.stderr.trim(), ...(options.includeStdout ? [result.stdout.trim()] : [])]
+    .filter((value: string): boolean => value !== '')
+    .join('\n');
 }
 
 function readKubernetesCommandExecutionFailure(result: CommandResult): string | undefined {

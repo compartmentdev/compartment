@@ -43,6 +43,8 @@ export function buildPlatformK3dShardEnvironment(shardName, baseEnv = process.en
     COMPARTMENT_E2E_OWNER_ENV_PATH: `${stateDirectory}/owner.env`,
     COMPARTMENT_E2E_PEBBLE_CA_PATH: `${stateDirectory}/pebble.minica.pem`,
     COMPARTMENT_E2E_PEBBLE_ROOT_PATH: `${stateDirectory}/pebble.root.pem`,
+    COMPARTMENT_E2E_PUBLIC_OPERATOR_CA_PATH: `${stateDirectory}/public-operator-ca.crt`,
+    COMPARTMENT_E2E_PUBLIC_OPERATOR_VALUES_PATH: `${stateDirectory}/public-operator-values.yaml`,
     COMPARTMENT_E2E_PLATFORM_MODE: 'k3d',
     COMPARTMENT_E2E_PLATFORM_NAMESPACE: baseEnv.COMPARTMENT_E2E_PLATFORM_NAMESPACE ?? `compartment-${shardName}`,
     COMPARTMENT_E2E_PLATFORM_VALUES_PATH: `${stateDirectory}/platform-values.yaml`,
