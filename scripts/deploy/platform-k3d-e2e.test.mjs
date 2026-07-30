@@ -389,6 +389,13 @@ describe('platform k3d e2e command boundary', () => {
     expect(values).not.toContain('startupStage:');
   });
 
+  it('enables the gVisor RuntimeClass only for an opted-in e2e cluster', () => {
+    expect(renderPlatformK3dValues(createTestImageDigests())).not.toContain('tenantRuntime:');
+    expect(renderPlatformK3dValues(createTestImageDigests(), true)).toContain(
+      'tenantRuntime:\n  runtimeClassName: gvisor\n  createRuntimeClass: true\n  runtimeHandler: runsc',
+    );
+  });
+
   it('writes isolated managed-install values with a typed ingress endpoint and verified digests', () => {
     const values = renderManagedPlatformK3dValues(createTestImageDigests());
 

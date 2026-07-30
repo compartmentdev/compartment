@@ -649,6 +649,25 @@ async function readK3dRuntimeCommandOutput(
   if (namespace === undefined || podName === undefined) {
     throw new Error(`Expected Kubernetes Pod for deployment ${deploymentId}.`);
   }
+  if (process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1') {
+    const versionResult: SelfHostedUserSetupCommandResult = await runCommand({
+      argv: [
+        'kubectl',
+        '--context',
+        kubeContext,
+        'exec',
+        '--namespace',
+        namespace,
+        podName,
+        '--',
+        'cat',
+        '/proc/version',
+      ],
+      timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
+    });
+    expectSuccessfulCommand(versionResult, `kubectl exec /proc/version for deployment ${deploymentId}`);
+    expect(versionResult.stdout.toLowerCase()).toContain('gvisor');
+  }
   const outputResult: SelfHostedUserSetupCommandResult = await runCommand({
     argv: [
       'kubectl',

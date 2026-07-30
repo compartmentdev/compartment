@@ -55,24 +55,27 @@ describe('tenant workload restricted Pod Security', (): void => {
     }
   });
 
-  it('projects configured tenant scheduling for application, resource, and Job Pods', (): void => {
+  it('projects configured tenant scheduling for every tenant workload class', (): void => {
     for (const podSpec of [
       applicationPodSpec(tenantScheduling),
       resourcePodSpec(undefined, tenantScheduling),
       releaseJobPodSpec(tenantScheduling),
+      provisioningJobPodSpec(tenantScheduling),
     ]) {
       expect(podSpec.nodeSelector).toEqual({ 'compartment.dev/node-pool': 'tenant' });
       expect(podSpec.priorityClassName).toBe('compartment-tenant');
+      expect(podSpec.runtimeClassName).toBe('gvisor');
       expect(podSpec.tolerations).toEqual([
         { effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'tenant' },
       ]);
     }
   });
 
-  it('omits tenant scheduling fields when no pool is configured', (): void => {
-    for (const podSpec of [applicationPodSpec(), resourcePodSpec(), releaseJobPodSpec()]) {
+  it('omits tenant scheduling fields when tenant configuration is absent', (): void => {
+    for (const podSpec of [applicationPodSpec(), resourcePodSpec(), releaseJobPodSpec(), provisioningJobPodSpec()]) {
       expect(podSpec).not.toHaveProperty('nodeSelector');
       expect(podSpec).not.toHaveProperty('priorityClassName');
+      expect(podSpec).not.toHaveProperty('runtimeClassName');
       expect(podSpec).not.toHaveProperty('tolerations');
     }
   });
@@ -80,6 +83,7 @@ describe('tenant workload restricted Pod Security', (): void => {
 
 const tenantScheduling: KubeWorkloadScheduling = {
   nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+  runtimeClassName: 'gvisor',
   tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'tenant' }],
 };
 
@@ -114,6 +118,23 @@ function releaseJobPodSpec(scheduling?: KubeWorkloadScheduling): KubeProjectedPo
     timeoutMs: 60_000,
   };
   const job: KubeJobManifest = kubeJobManifest(spec, 'release', {});
+  return job.spec!.template.spec;
+}
+
+function provisioningJobPodSpec(scheduling?: KubeWorkloadScheduling): KubeProjectedPodSpec {
+  const spec: KubeJobSpec = {
+    command: ['node'],
+    env: {},
+    id: 'provisioning',
+    image: 'node:24.15.0-bookworm',
+    jobClass: 'operation',
+    labels: { 'compartment.dev/job-class': 'project-provisioning' },
+    namespace: 'provisioning',
+    securityProfile: 'restricted',
+    ...(scheduling === undefined ? {} : { scheduling }),
+    timeoutMs: 60_000,
+  };
+  const job: KubeJobManifest = kubeJobManifest(spec, 'provisioning', {});
   return job.spec!.template.spec;
 }
 

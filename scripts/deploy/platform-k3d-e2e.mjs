@@ -28,6 +28,7 @@ import {
 } from './platform-image-cache-lock.mjs';
 
 const repositoryRoot = readRepositoryRoot(import.meta.url, 2);
+const gvisorContainerdConfigPath = join(repositoryRoot, 'scripts/deploy/fixtures/containerd-gvisor-config.toml.tmpl');
 const dockerResourceNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
 const kubernetesNamePattern = /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/u;
 const platformEnvironment = readPlatformK3dEnvironment(process.env);
@@ -98,6 +99,7 @@ export function readPlatformK3dEnvironment(env) {
     httpPort: readPortEnv(env, 'COMPARTMENT_E2E_HTTP_PORT', 18_080),
     httpsPort: readPortEnv(env, 'COMPARTMENT_E2E_HTTPS_PORT', 18_443),
     keepOnFailure: readBooleanEnv(env, 'COMPARTMENT_E2E_KEEP_ON_FAILURE'),
+    gvisorEnabled: readBooleanEnv(env, 'COMPARTMENT_E2E_GVISOR_ENABLED'),
     managedAcmeManagementPort: readPortEnv(env, 'COMPARTMENT_E2E_MANAGED_ACME_PORT', 19_500),
     managedBrokerPort: readPortEnv(env, 'COMPARTMENT_E2E_MANAGED_BROKER_PORT', 19_000),
     managedNamespace: readNameEnv(env, 'COMPARTMENT_E2E_MANAGED_NAMESPACE', 'compartment-managed-e2e'),
@@ -244,12 +246,21 @@ export function isConsoleReadyStatus(status) {
   return status === 302;
 }
 
-export function renderPlatformK3dValues(imageDigestsByServiceName) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: ${ingressClassName}\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\nedge:\n  snapshots:\n    enabled: true\n`;
+export function renderPlatformK3dValues(imageDigestsByServiceName, gvisorEnabled = platformEnvironment.gvisorEnabled) {
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderTenantRuntimeValues(gvisorEnabled)}ingress:\n  className: ${ingressClassName}\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\ntls:\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\nplatform:\n  baseDomain: ${platformBaseDomain}\n  publicProtocol: http\n  tlsMode: issuer\nbuildkit:\n  namespace: ${platformNamespace}-build\nedge:\n  snapshots:\n    enabled: true\n`;
 }
 
-export function renderManagedPlatformK3dValues(imageDigestsByServiceName) {
-  return `${renderPlatformImageValues(imageDigestsByServiceName)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
+export function renderManagedPlatformK3dValues(
+  imageDigestsByServiceName,
+  gvisorEnabled = platformEnvironment.gvisorEnabled,
+) {
+  return `${renderPlatformImageValues(imageDigestsByServiceName)}${renderTenantRuntimeValues(gvisorEnabled)}ingress:\n  className: traefik\n  endpoint:\n    type: A\n    value: 8.8.4.4\n  targetsJson: '[{"type":"A","value":"8.8.4.4"}]'\nregistry:\n  clusterIP: ${bundledRegistryClusterIp}\n  hostname: ${bundledRegistryHostname}\n  issuerRef:\n    kind: ClusterIssuer\n    name: compartment-registry-test-issuer\ntls:\n  acme:\n    environment: staging\n    stagingUrl: https://pebble.${managedNamespace}.svc.cluster.local:14000/dir\n    skipTlsVerify: true\nbuildkit:\n  namespace: ${managedNamespace}-build\n`;
+}
+
+function renderTenantRuntimeValues(gvisorEnabled) {
+  return gvisorEnabled
+    ? 'tenantRuntime:\n  runtimeClassName: gvisor\n  createRuntimeClass: true\n  runtimeHandler: runsc\n'
+    : '';
 }
 
 function renderPlatformImageValues(imageDigestsByServiceName) {
@@ -587,6 +598,20 @@ export function buildPlatformK3dClusterCreateArgs() {
     registryClusterHost,
     '--volume',
     `${registryTestCaPath}:/etc/ssl/certs/compartment-registry-test-ca.crt@server:*;agent:*`,
+    ...(platformEnvironment.gvisorEnabled
+      ? [
+          '--volume',
+          '/usr/bin/runsc:/usr/local/bin/runsc@server:*;agent:*',
+          '--volume',
+          '/usr/bin/containerd-shim-runsc-v1:/usr/local/bin/containerd-shim-runsc-v1@server:*;agent:*',
+          '--volume',
+          '/usr/bin/gvisor-bin:/usr/local/bin/gvisor-bin@server:*;agent:*',
+          '--volume',
+          `${gvisorContainerdConfigPath}:/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl@server:*;agent:*`,
+          '--volume',
+          '/etc/containerd/runsc.toml:/etc/containerd/runsc.toml@server:*;agent:*',
+        ]
+      : []),
     '--host-alias',
     `${bundledRegistryClusterIp}:registry.${platformBaseDomain}`,
     '--timeout',
@@ -1023,6 +1048,12 @@ async function readConsoleStatus() {
 function assertRequiredTools() {
   for (const tool of ['docker', 'k3d', 'kubectl', 'helm', 'openssl']) {
     assertTool(tool);
+  }
+  if (platformEnvironment.gvisorEnabled) {
+    assertTool('runsc');
+    assertTool('containerd-shim-runsc-v1');
+    captureCommand('test', ['-d', '/usr/bin/gvisor-bin'], repositoryRoot);
+    captureCommand('test', ['-f', '/etc/containerd/runsc.toml'], repositoryRoot);
   }
 }
 

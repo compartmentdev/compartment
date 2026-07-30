@@ -157,6 +157,11 @@ nodePools:
     nodeSelector: {}
     tolerations: []
 
+tenantRuntime:
+  runtimeClassName: ''
+  createRuntimeClass: false
+  runtimeHandler: runsc
+
 buildkit:
   enabled: true
   namespace: compartment-build

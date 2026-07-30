@@ -33,6 +33,7 @@ describe('readWorkerConfig', (): void => {
 
     expect(config.tenantScheduling).toEqual({
       nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+      runtimeClassName: 'gvisor',
       tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'tenant' }],
     });
     expect(
@@ -92,6 +93,7 @@ describe('readWorkerConfig', (): void => {
 
 const tenantSchedulingJson: string = JSON.stringify({
   nodeSelector: { 'compartment.dev/node-pool': 'tenant' },
+  runtimeClassName: 'gvisor',
   tolerations: [{ effect: 'NoSchedule', key: 'compartment.dev/node-pool', operator: 'Equal', value: 'tenant' }],
 });
 

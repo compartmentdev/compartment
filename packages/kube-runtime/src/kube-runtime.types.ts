@@ -130,6 +130,7 @@ export interface KubeProjectedPodSpec {
   nodeSelector?: Readonly<Record<string, string>> | undefined;
   priorityClassName?: string | undefined;
   restartPolicy?: 'Never' | 'OnFailure' | undefined;
+  runtimeClassName?: string | undefined;
   serviceAccountName?: string | undefined;
   securityContext?: KubePodSecurityContext | undefined;
   terminationGracePeriodSeconds?: number | undefined;

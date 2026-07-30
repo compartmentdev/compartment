@@ -60,6 +60,21 @@ nodePools:
 An empty build pool uses the system pool. Pass the file to `compartment install` with `--values
 compartment-values.yaml`.
 
+Tenant kernel sandboxing is optional. Before enabling it, install `runsc` on every tenant node and configure a
+matching containerd runtime handler; Compartment does not install runtimes or change node containerd configuration.
+Then add the RuntimeClass settings to the same values file:
+
+```yaml
+tenantRuntime:
+  runtimeClassName: gvisor
+  createRuntimeClass: true
+  runtimeHandler: runsc
+```
+
+Set `createRuntimeClass: false` when the cluster operator manages the `gvisor` RuntimeClass separately. The sandbox
+covers application and stateful resource Pods plus product and provisioning Jobs. Platform Pods, `api-migrate`, and
+BuildKit keep the node default runtime; use the build pool to isolate build execution.
+
 Compartment samples tenant CPU and memory usage every 60 seconds and retains hourly aggregates for 400 days by
 default. Use `platform.usageMeteringIntervalMs` and `platform.usageRetentionDays` to tune collection overhead and
 database retention. Missed samples are not reconstructed, and longer retention uses more database storage.
