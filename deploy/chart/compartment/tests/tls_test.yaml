@@ -64,10 +64,11 @@ tests:
           value: operator-platform-tls
         template: ingress.yaml
 
-  - it: creates namespaced managed Issuer and exact plus wildcard Certificates
+  - it: uses one wildcard Certificate for managed platform and default registry hosts
     set:
       platform:
         startupStage: full
+        installationId: managed-install
         publicProtocol: https
         domainMode: managed
         baseDomain: managed.example.com
@@ -81,7 +82,7 @@ tests:
             - { key: compartment.dev/node-pool, operator: Exists, effect: NoSchedule }
     asserts:
       - hasDocuments:
-          count: 2
+          count: 1
         template: platform-certificates.yaml
       - isKind:
           of: Issuer
@@ -89,14 +90,17 @@ tests:
         documentIndex: 14
       - equal:
           path: spec.dnsNames[0]
-          value: console.managed.example.com
+          value: '*.managed.example.com'
         template: platform-certificates.yaml
         documentIndex: 0
       - equal:
-          path: spec.dnsNames[0]
-          value: '*.managed.example.com'
-        template: platform-certificates.yaml
-        documentIndex: 1
+          path: spec.tls[0].secretName
+          value: compartment-compartment-wildcard-tls
+        template: ingress.yaml
+      - equal:
+          path: spec.tls[1].secretName
+          value: compartment-compartment-wildcard-tls
+        template: ingress.yaml
       - equal:
           path: spec.group
           value: compartment-compartment.platform.dns01.compartment.dev
@@ -112,6 +116,16 @@ tests:
           value: {}
         template: managed-domain-dns01.yaml
         documentIndex: 14
+      - equal:
+          path: metadata.name
+          value: compartment-compartment-custom-domains
+        template: managed-domain-dns01.yaml
+        documentIndex: 15
+      - equal:
+          path: spec.acme.solvers[0].http01.ingress.ingressClassName
+          value: traefik
+        template: managed-domain-dns01.yaml
+        documentIndex: 15
       - equal:
           path: spec.template.spec.priorityClassName
           value: compartment-platform
@@ -156,3 +170,35 @@ tests:
             value: compartment-install-state
         template: managed-domain-dns01.yaml
         documentIndex: 11
+
+  - it: reuses an existing wildcard Secret throughout managed mode
+    set:
+      platform:
+        startupStage: full
+        installationId: managed-existing-tls
+        publicProtocol: https
+        domainMode: managed
+        baseDomain: managed.example.com
+        acmeEmail: admin@example.com
+      tls:
+        existingSecret: managed-wildcard-tls
+      registry:
+        hostname: registry.managed.example.com
+        issuerRef:
+          group: cert-manager.io
+          kind: Issuer
+          name: compartment-platform
+      secrets:
+        managedDomainAcmeDnsToken: acme-dns-token
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: platform-certificates.yaml
+      - equal:
+          path: spec.tls[0].secretName
+          value: managed-wildcard-tls
+        template: ingress.yaml
+      - equal:
+          path: spec.tls[1].secretName
+          value: managed-wildcard-tls
+        template: ingress.yaml

@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { dnsRecordInstructionSchema, type DnsRecordInstruction } from './install.contract';
 import type { ContractSchema } from './schema.types';
 
 export const managedDomainRequestedLabelSourceMaxLength: number = 128;
@@ -27,13 +26,11 @@ export interface ManagedDomainAllocationOsMetadata {
 export interface ManagedDomainAllocationResponse {
   acmeDnsToken: string;
   baseDomain: string;
-  dnsRecords: DnsRecordInstruction[];
 }
 
 export const managedDomainAllocationResponseSchema: ContractSchema<ManagedDomainAllocationResponse> = z
   .object({
     acmeDnsToken: z.string().min(1),
     baseDomain: z.string().min(1),
-    dnsRecords: z.array(dnsRecordInstructionSchema).min(1),
   })
-  .strict();
+  .strip();

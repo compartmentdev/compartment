@@ -221,4 +221,23 @@ spec:
             groupName: {{ $groupName | quote }}
             solverName: managed-domain-broker
             config: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "compartment.customDomainIssuerName" . | quote }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+    app.kubernetes.io/component: custom-domain-tls
+spec:
+  acme:
+    email: {{ $installState.effective.platform.acmeEmail | quote }}
+    server: {{ ternary .Values.tls.acme.stagingUrl .Values.tls.acme.productionUrl (eq .Values.tls.acme.environment "staging") | quote }}
+    skipTLSVerify: {{ .Values.tls.acme.skipTlsVerify }}
+    privateKeySecretRef:
+      name: {{ include "compartment.fullname" . }}-custom-domains-acme-account
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: {{ $installState.effective.ingress.className | quote }}
 {{- end }}

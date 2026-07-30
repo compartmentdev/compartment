@@ -62,8 +62,8 @@ spec:
             - {name: COMPARTMENT_PLATFORM_NAMESPACE, value: {{ .Release.Namespace | quote }}}
             - {name: COMPARTMENT_CADDY_SERVICE_NAME, value: {{ printf "%s-caddy" (include "compartment.fullname" .) | quote }}}
             - {name: COMPARTMENT_INGRESS_CLASS_NAME, value: {{ $installState.effective.ingress.className | quote }}}
-            - {name: COMPARTMENT_TLS_ISSUER_KIND, value: {{ .Values.tls.issuerRef.kind | quote }}}
-            - {name: COMPARTMENT_TLS_ISSUER_NAME, value: {{ .Values.tls.issuerRef.name | quote }}}
+            - {name: COMPARTMENT_TLS_ISSUER_KIND, value: {{ include "compartment.customDomainIssuerKind" . | quote }}}
+            - {name: COMPARTMENT_TLS_ISSUER_NAME, value: {{ include "compartment.customDomainIssuerName" . | quote }}}
             - {name: COMPARTMENT_KUBE_POD_CIDR, value: {{ .Values.buildkit.podCidr | quote }}}
             - {name: COMPARTMENT_KUBE_SERVICE_CIDR, value: {{ .Values.buildkit.serviceCidr | quote }}}
             {{- with include "compartment.tenantSchedulingJson" . }}

@@ -1464,6 +1464,12 @@ tests:
         publicProtocol: https
         tlsMode: broker-dns01
         acmeEmail: admin@example.com
+      registry:
+        hostname: registry.managed.compartment.run
+        issuerRef:
+          group: cert-manager.io
+          kind: Issuer
+          name: compartment-platform
       secrets:
         <<: *stableSecrets
         managedDomainAcmeDnsToken: broker-token
@@ -1473,12 +1479,82 @@ tests:
           path: data.COMPARTMENT_TLS_MODE
           value: broker-dns01
         template: configmap.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_TLS_ISSUER_KIND
+            value: Issuer
+        template: worker.yaml
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: COMPARTMENT_TLS_ISSUER_NAME
+            value: compartment-compartment-custom-domains
+        template: worker.yaml
+        documentIndex: 0
+      - hasDocuments:
+          count: 2
+        template: registry-auth.yaml
+      - equal:
+          path: spec.template.spec.volumes[1].secret.secretName
+          value: compartment-compartment-wildcard-tls
+        template: registry-auth.yaml
+        documentIndex: 1
       - notContains:
           path: spec.template.spec.containers[0].volumeMounts
           content:
             name: active-tls
           any: true
         template: api.yaml
+        documentIndex: 1
+
+  - it: uses managed HTTP-01 for a registry host outside the wildcard depth
+    set:
+      platform:
+        <<: *managedPlatform
+      registry:
+        hostname: deep.registry.managed.compartment.run
+        issuerRef:
+          group: cert-manager.io
+          kind: Issuer
+          name: compartment-platform
+      secrets:
+        <<: *stableSecrets
+        managedDomainAcmeDnsToken: broker-token
+    asserts:
+      - hasDocuments:
+          count: 3
+        template: registry-auth.yaml
+      - equal:
+          path: spec.issuerRef
+          value:
+            group: cert-manager.io
+            kind: Issuer
+            name: compartment-compartment-custom-domains
+        template: registry-auth.yaml
+        documentIndex: 1
+
+  - it: mounts an existing managed wildcard Secret for the default registry
+    set:
+      platform:
+        <<: *managedPlatform
+      tls:
+        existingSecret: managed-wildcard-tls
+      registry:
+        hostname: registry.managed.compartment.run
+        issuerRef:
+          group: cert-manager.io
+          kind: Issuer
+          name: compartment-platform
+      secrets:
+        <<: *stableSecrets
+        managedDomainAcmeDnsToken: broker-token
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[1].secret.secretName
+          value: managed-wildcard-tls
+        template: registry-auth.yaml
         documentIndex: 1
 
   - it: applies fullname override without renaming retained install state

@@ -24,7 +24,7 @@ import {
   managedInstallValuesPath,
   prepareManagedInstallFixture,
   readManagedInstallBrokerState,
-  renewManagedInstallConsoleCertificate,
+  renewManagedInstallWildcardCertificate,
   waitForManagedDomainBrokerObservation,
   type ManagedDomainAuditObservation,
   type ManagedDomainBrokerObservation,
@@ -111,18 +111,30 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       expect(
         broker.audit.some((event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned'),
       ).toBe(true);
-      await renewManagedInstallConsoleCertificate();
+      expect(
+        broker.audit
+          .filter((event: ManagedDomainAuditObservation): boolean => event.event.startsWith('challenge_'))
+          .every(
+            (event: ManagedDomainAuditObservation): boolean =>
+              event.name === `_acme-challenge.${managedInstallBaseDomain}`,
+          ),
+      ).toBe(true);
+      await renewManagedInstallWildcardCertificate();
       const renewedBroker: ManagedDomainBrokerObservation = await waitForManagedDomainBrokerObservation();
+      const presentedChallenges: ManagedDomainAuditObservation[] = renewedBroker.audit.filter(
+        (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_presented',
+      );
+      const cleanedChallenges: ManagedDomainAuditObservation[] = renewedBroker.audit.filter(
+        (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned',
+      );
+      expect(presentedChallenges.length).toBeGreaterThanOrEqual(1);
+      expect(cleanedChallenges).toHaveLength(presentedChallenges.length);
       expect(
-        renewedBroker.audit.filter(
-          (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_presented',
-        ).length,
-      ).toBeGreaterThanOrEqual(2);
-      expect(
-        renewedBroker.audit.filter(
-          (event: ManagedDomainAuditObservation): boolean => event.event === 'challenge_cleaned',
-        ).length,
-      ).toBeGreaterThanOrEqual(2);
+        [...presentedChallenges, ...cleanedChallenges].every(
+          (event: ManagedDomainAuditObservation): boolean =>
+            event.name === `_acme-challenge.${managedInstallBaseDomain}`,
+        ),
+      ).toBe(true);
       managedInstallCompleted = true;
     },
     installTimeoutMs,

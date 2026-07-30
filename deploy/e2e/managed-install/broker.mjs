@@ -102,7 +102,8 @@ async function updateTxtRecord(request, response) {
     throw new Error('name and value are required');
   }
   const name = normalizeName(body.name);
-  if (!name.startsWith('_acme-challenge.') || !name.endsWith(`.${normalizeName(allocation.baseDomain)}`)) {
+  const expectedName = `_acme-challenge.${normalizeName(allocation.baseDomain)}`;
+  if (name !== expectedName) {
     writeJson(response, 403, { error: 'challenge name is outside the allocated zone' });
     return;
   }

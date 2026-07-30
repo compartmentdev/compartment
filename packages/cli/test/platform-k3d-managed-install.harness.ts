@@ -69,6 +69,7 @@ interface ManagedDomainTargetObservation {
 
 export interface ManagedDomainAuditObservation {
   readonly event: string;
+  readonly name?: string | undefined;
 }
 
 export async function prepareManagedInstallFixture(): Promise<void> {
@@ -320,13 +321,13 @@ export async function readManagedInstallBrokerState(): Promise<ManagedInstallBro
   };
 }
 
-export async function renewManagedInstallConsoleCertificate(): Promise<void> {
-  const certificateName: string = `${managedInstallReleaseName}-compartment-console`;
+export async function renewManagedInstallWildcardCertificate(): Promise<void> {
+  const certificateName: string = `${managedInstallReleaseName}-compartment-wildcard`;
   const secretName: string = `${certificateName}-tls`;
   const originalSerialNumber: string = await readManagedInstallCertificateSerialNumber(secretName);
   await expectSuccessfulKubectl(
     ['--namespace', managedInstallNamespace, 'delete', `secret/${secretName}`, '--wait=true'],
-    'remove the managed console TLS Secret to trigger renewal',
+    'remove the managed wildcard TLS Secret to trigger renewal',
   );
   await expectSuccessfulKubectl(
     [
@@ -337,7 +338,7 @@ export async function renewManagedInstallConsoleCertificate(): Promise<void> {
       '--for=condition=Ready',
       '--timeout=4m',
     ],
-    'wait for managed console certificate renewal',
+    'wait for managed wildcard certificate renewal',
   );
 
   const deadline: number = Date.now() + kubernetesTimeoutMs;
@@ -351,7 +352,7 @@ export async function renewManagedInstallConsoleCertificate(): Promise<void> {
       // cert-manager replaces the Secret asynchronously.
     }
     if (Date.now() >= deadline) {
-      throw new Error('Managed console certificate renewal did not replace the certificate before the timeout.');
+      throw new Error('Managed wildcard certificate renewal did not replace the certificate before the timeout.');
     }
     await delay(500);
   }

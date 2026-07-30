@@ -81,6 +81,40 @@ describe('managed-install broker contract fixture', () => {
       { body: { host: `_acme-challenge.${allocation.baseDomain}.`, value: 'proof-value' }, path: '/clear-txt' },
     ]);
   });
+
+  it('rejects a challenge below the allocated ACME challenge name', async () => {
+    const fixture = await startFixture();
+    const allocationResponse = await fetch(`${fixture.brokerUrl}/v1/managed-domains`, {
+      body: JSON.stringify({
+        installationId: 'install-deep-dns01',
+        publicIp: '1.2.3.4',
+        requestedLabelSource: 'deep-dns01',
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    const allocation = await allocationResponse.json();
+    const response = await fetch(`${fixture.brokerUrl}/v1/managed-domains/acme-dns/txt`, {
+      body: JSON.stringify({
+        name: `_acme-challenge.console.${allocation.baseDomain}`,
+        value: 'invalid-proof-value',
+      }),
+      headers: {
+        authorization: `Bearer ${allocation.acmeDnsToken}`,
+        'content-type': 'application/json',
+      },
+      method: 'PUT',
+    });
+
+    expect(response.status).toBe(403);
+    expect(fixture.dnsWrites).not.toContainEqual({
+      body: {
+        host: `_acme-challenge.console.${allocation.baseDomain}.`,
+        value: 'invalid-proof-value',
+      },
+      path: '/set-txt',
+    });
+  });
 });
 
 async function startFixture() {

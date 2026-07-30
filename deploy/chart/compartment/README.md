@@ -101,9 +101,12 @@ bundled PostgreSQL Service, Deployment, or PVC; the API and migration Job read t
 
 ## TLS
 
-Managed-domain installations use the bundled ACME DNS token-scoped solver. For an operator-owned domain, set
-`tls.issuerRef.name` and `tls.issuerRef.kind` to an existing Issuer or ClusterIssuer. `tls.existingSecret` may reference
-an existing `kubernetes.io/tls` Secret.
+Managed-domain installations use the bundled ACME DNS token-scoped solver only for one wildcard Certificate. The
+console and the default `registry.<base-domain>` host reuse that wildcard Secret. Project custom domains use a
+separate namespaced HTTP-01 Issuer, so their exact hostnames are never sent to the managed-domain broker. A managed
+registry hostname outside the wildcard depth also uses that HTTP-01 Issuer unless it has an explicit different
+issuer. For an operator-owned domain, set `tls.issuerRef.name` and `tls.issuerRef.kind` to an existing Issuer or
+ClusterIssuer. `tls.existingSecret` may reference an existing `kubernetes.io/tls` Secret.
 
 The selected Ingress and cert-manager path own public TLS. Compartment does not create, copy, or mount operator
 certificate material.

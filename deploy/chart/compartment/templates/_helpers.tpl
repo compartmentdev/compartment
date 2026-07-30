@@ -223,6 +223,24 @@ meta.helm.sh/release-namespace: {{ .Release.Namespace | quote }}
 {{- printf "%s-project-provisioning" (include "compartment.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
+{{- define "compartment.customDomainIssuerName" -}}
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if eq $installState.effective.platform.domainMode "managed" -}}
+{{- printf "%s-custom-domains" (include "compartment.fullname" .) -}}
+{{- else -}}
+{{- .Values.tls.issuerRef.name -}}
+{{- end -}}
+{{- end }}
+
+{{- define "compartment.customDomainIssuerKind" -}}
+{{- $installState := include "compartment.resolvedInstallState" . | fromYaml -}}
+{{- if eq $installState.effective.platform.domainMode "managed" -}}
+Issuer
+{{- else -}}
+{{- .Values.tls.issuerRef.kind -}}
+{{- end -}}
+{{- end }}
+
 {{- define "compartment.labels" -}}
 app.kubernetes.io/name: {{ include "compartment.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}

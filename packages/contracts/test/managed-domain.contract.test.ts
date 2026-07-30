@@ -11,11 +11,11 @@ describe('managed-domain broker contracts', (): void => {
       acmeDnsToken: 'acme-dns-token',
       baseDomain: 'acme.compartment.run',
       dnsRecords: [{ host: '*.acme.compartment.run', purpose: 'Managed ingress', type: 'A/AAAA-or-CNAME' }],
+      futureBrokerField: 'forward-compatible',
     });
     expect(response).toEqual({
       acmeDnsToken: 'acme-dns-token',
       baseDomain: 'acme.compartment.run',
-      dnsRecords: [{ host: '*.acme.compartment.run', purpose: 'Managed ingress', type: 'A/AAAA-or-CNAME' }],
     });
   });
 
@@ -29,14 +29,7 @@ describe('managed-domain broker contracts', (): void => {
     expect(request.publicIp).toBe(publicIp);
   });
 
-  it('rejects incomplete or extended allocation responses', (): void => {
+  it('rejects incomplete allocation responses', (): void => {
     expect(managedDomainAllocationResponseSchema.safeParse({ baseDomain: 'acme.compartment.run' }).success).toBe(false);
-    expect(
-      managedDomainAllocationResponseSchema.safeParse({
-        acmeDnsToken: 'token',
-        baseDomain: 'acme.compartment.run',
-        removedField: 'removed',
-      }).success,
-    ).toBe(false);
   });
 });
