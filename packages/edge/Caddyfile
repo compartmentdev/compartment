@@ -39,6 +39,33 @@
 	@application_host host *.{$COMPARTMENT_BASE_DOMAIN}
 	handle @application_host {
 		route {
+			request_header -X-Compartment-*
+
+			forward_auth {$COMPARTMENT_EDGE_INTERNAL_HOST}:{$COMPARTMENT_EDGE_PORT} {
+				uri /internal/ingress/route
+				header_up Host {host}
+				header_up X-Forwarded-Host {host}
+				header_up X-Forwarded-Proto {vars.public_scheme}
+				header_up X-Forwarded-For {client_ip}
+				copy_headers {
+					X-Compartment-Ingress-Route-Resolved
+					X-Compartment-Proxy-Path
+					X-Compartment-Upstream-Host
+					X-Compartment-Upstream-Port
+				}
+				# Older Edge replicas return 404 until a mixed-version rollout completes.
+				@legacy_edge_route status 404
+				handle_response @legacy_edge_route {
+				}
+			}
+
+			compartment_traffic_meter {
+				api_url http://{$COMPARTMENT_API_INTERNAL_HOST}:{$COMPARTMENT_API_PORT}
+				edge_token {$COMPARTMENT_EDGE_TOKEN}
+				flush_interval_ms {$COMPARTMENT_USAGE_METERING_INTERVAL_MS}
+				max_pending_batches 60
+			}
+
 			compartment_rate_limit {
 				app_requests_per_second {$COMPARTMENT_EDGE_APP_REQUESTS_PER_SECOND}
 				app_burst {$COMPARTMENT_EDGE_APP_BURST}
@@ -55,8 +82,6 @@
 					header_up X-Forwarded-For {client_ip}
 				}
 			}
-
-			request_header -X-Compartment-*
 
 			forward_auth {$COMPARTMENT_EDGE_INTERNAL_HOST}:{$COMPARTMENT_EDGE_PORT} {
 				uri /internal/ingress/authorize
@@ -80,13 +105,6 @@
 			@compartment_proxy_path header_regexp compartment_proxy_path X-Compartment-Proxy-Path ^/.*$
 			rewrite @compartment_proxy_path {header.X-Compartment-Proxy-Path}
 
-			compartment_traffic_meter {
-				api_url http://{$COMPARTMENT_API_INTERNAL_HOST}:{$COMPARTMENT_API_PORT}
-				edge_token {$COMPARTMENT_EDGE_TOKEN}
-				flush_interval_ms {$COMPARTMENT_USAGE_METERING_INTERVAL_MS}
-				max_pending_batches 60
-			}
-
 			reverse_proxy {header.X-Compartment-Upstream-Host}:{header.X-Compartment-Upstream-Port} {
 				header_up Cookie "(^|; *)(?:__Host-compartment_|__Secure-compartment_|compartment_)[^=;]+=[^;]*" "$1"
 				header_up Cookie "(; *)(; *)+" "$1"
@@ -96,6 +114,7 @@
 				header_up X-Forwarded-Host {host}
 				header_up X-Forwarded-Proto {vars.public_scheme}
 				header_up X-Forwarded-For {client_ip}
+				header_up -X-Compartment-Ingress-Route-Resolved
 				header_up -X-Compartment-Proxy-Path
 				header_up -X-Compartment-Upstream-Host
 				header_up -X-Compartment-Upstream-Port

@@ -39,7 +39,7 @@ func init() {
 	httpcaddyfile.RegisterHandlerDirective("compartment_traffic_meter", parseCaddyfile)
 }
 
-// Handler meters authorized hosted application traffic and flushes bounded batches to the API.
+// Handler meters attributed hosted application traffic and flushes bounded batches to the API.
 type Handler struct {
 	APIURL            string         `json:"api_url,omitempty"`
 	EdgeToken         string         `json:"edge_token,omitempty"`
@@ -239,7 +239,7 @@ func (h *Handler) Cleanup() error {
 	return nil
 }
 
-// ServeHTTP records one authorized hosted application request.
+// ServeHTTP records one attributed hosted application request.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	upstreamHost := r.Header.Get(upstreamHostHeader)
 	if upstreamHost == "" {

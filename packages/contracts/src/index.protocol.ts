@@ -18,6 +18,8 @@ export {
   compartmentAppSessionCookieName,
   compartmentIngressAuthorizePathname,
   compartmentIngressAuthorizeResponseHeaderNames,
+  compartmentIngressRoutePathname,
+  compartmentIngressRouteResolvedHeaderName,
   compartmentOrganizationIdHeaderName,
   compartmentOrganizationSlugHeaderName,
   compartmentPrincipalEmailHeaderName,

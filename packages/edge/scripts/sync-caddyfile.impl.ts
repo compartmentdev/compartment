@@ -5,6 +5,8 @@ import {
   compartmentAppLogoutPathname,
   compartmentIngressAuthorizePathname,
   compartmentIngressAuthorizeResponseHeaderNames,
+  compartmentIngressRoutePathname,
+  compartmentIngressRouteResolvedHeaderName,
   compartmentProxyPathHeaderName,
   compartmentUpstreamHostHeaderName,
   compartmentUpstreamPortHeaderName,
@@ -86,6 +88,33 @@ function renderCompartmentPublicRouteBlock(): string {
 function renderHostedAppRouteBlock(): string {
   return trimTemplateBlock(`
 	route {
+		request_header -X-Compartment-*
+
+		forward_auth {$COMPARTMENT_EDGE_INTERNAL_HOST}:{$COMPARTMENT_EDGE_PORT} {
+			uri ${compartmentIngressRoutePathname}
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {vars.public_scheme}
+			header_up X-Forwarded-For {client_ip}
+			copy_headers {
+				${compartmentIngressRouteResolvedHeaderName}
+				${compartmentProxyPathHeaderName}
+				${compartmentUpstreamHostHeaderName}
+				${compartmentUpstreamPortHeaderName}
+			}
+			# Older Edge replicas return 404 until a mixed-version rollout completes.
+			@legacy_edge_route status 404
+			handle_response @legacy_edge_route {
+			}
+		}
+
+		compartment_traffic_meter {
+			api_url http://{$COMPARTMENT_API_INTERNAL_HOST}:{$COMPARTMENT_API_PORT}
+			edge_token {$COMPARTMENT_EDGE_TOKEN}
+			flush_interval_ms {$COMPARTMENT_USAGE_METERING_INTERVAL_MS}
+			max_pending_batches 60
+		}
+
 		compartment_rate_limit {
 			app_requests_per_second {$COMPARTMENT_EDGE_APP_REQUESTS_PER_SECOND}
 			app_burst {$COMPARTMENT_EDGE_APP_BURST}
@@ -103,8 +132,6 @@ function renderHostedAppRouteBlock(): string {
 			}
 		}
 
-		request_header -X-Compartment-*
-
 		forward_auth {$COMPARTMENT_EDGE_INTERNAL_HOST}:{$COMPARTMENT_EDGE_PORT} {
 			uri ${compartmentIngressAuthorizePathname}
 			header_up Host {host}
@@ -119,18 +146,12 @@ ${renderIngressAuthorizeResponseHeaders()}
 		@compartment_proxy_path header_regexp compartment_proxy_path ${compartmentProxyPathHeaderName} ^/.*$
 		rewrite @compartment_proxy_path {header.${compartmentProxyPathHeaderName}}
 
-		compartment_traffic_meter {
-			api_url http://{$COMPARTMENT_API_INTERNAL_HOST}:{$COMPARTMENT_API_PORT}
-			edge_token {$COMPARTMENT_EDGE_TOKEN}
-			flush_interval_ms {$COMPARTMENT_USAGE_METERING_INTERVAL_MS}
-			max_pending_batches 60
-		}
-
 		reverse_proxy {header.${compartmentUpstreamHostHeaderName}}:{header.${compartmentUpstreamPortHeaderName}} {
 ${indentBlock(readCaddyPlatformAppCookieStripDirectives().join('\n'), '\t\t\t')}
 			header_up X-Forwarded-Host {host}
 			header_up X-Forwarded-Proto {vars.public_scheme}
 			header_up X-Forwarded-For {client_ip}
+			header_up -${compartmentIngressRouteResolvedHeaderName}
 			header_up -${compartmentProxyPathHeaderName}
 			header_up -${compartmentUpstreamHostHeaderName}
 			header_up -${compartmentUpstreamPortHeaderName}

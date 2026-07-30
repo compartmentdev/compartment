@@ -49,6 +49,72 @@ func TestCountsKnownRequestAndResponseSizes(t *testing.T) {
 	}
 }
 
+func TestCountsAppAccessRedirect(t *testing.T) {
+	handler := newTestHandler()
+	request := httptest.NewRequest(http.MethodGet, "http://app.example.com/private", nil)
+	request.Header.Set(upstreamHostHeader, "app-env-service.cpt-project.svc")
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		http.Redirect(w, r, "http://console.example.com/login", http.StatusFound)
+		return nil
+	})
+
+	if err := handler.ServeHTTP(httptest.NewRecorder(), request, next); err != nil {
+		t.Fatalf("serve gated request: %v", err)
+	}
+	metric := sealSingleBatch(t, handler).Metrics[0]
+	if metric.RequestCount != 1 || metric.RequestBytes == 0 || metric.ResponseBytes == 0 ||
+		metric.Status4xxCount != 0 || metric.Status5xxCount != 0 {
+		t.Fatalf("unexpected gated request metric: %+v", metric)
+	}
+}
+
+func TestCountsRateLimitRejections(t *testing.T) {
+	for _, status := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			handler := newTestHandler()
+			request := httptest.NewRequest(http.MethodGet, "http://app.example.com/limited", nil)
+			request.Header.Set(upstreamHostHeader, "app-env-service.cpt-project.svc")
+			next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
+				http.Error(w, http.StatusText(status), status)
+				return nil
+			})
+
+			if err := handler.ServeHTTP(httptest.NewRecorder(), request, next); err != nil {
+				t.Fatalf("serve rate-limited request: %v", err)
+			}
+			metric := sealSingleBatch(t, handler).Metrics[0]
+			expected4xx := uint64(0)
+			expected5xx := uint64(1)
+			if status == http.StatusTooManyRequests {
+				expected4xx = 1
+				expected5xx = 0
+			}
+			if metric.RequestCount != 1 || metric.RequestBytes == 0 || metric.ResponseBytes == 0 ||
+				metric.Status4xxCount != expected4xx || metric.Status5xxCount != expected5xx {
+				t.Fatalf("unexpected rate-limit rejection metric: %+v", metric)
+			}
+		})
+	}
+}
+
+func TestCountsSuccessfulRequestOnce(t *testing.T) {
+	handler := newTestHandler()
+	request := httptest.NewRequest(http.MethodGet, "http://app.example.com/", nil)
+	request.Header.Set(upstreamHostHeader, "app-env-service.cpt-project.svc")
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
+		_, err := w.Write([]byte("ok"))
+		return err
+	})
+
+	if err := handler.ServeHTTP(httptest.NewRecorder(), request, next); err != nil {
+		t.Fatalf("serve successful request: %v", err)
+	}
+	metric := sealSingleBatch(t, handler).Metrics[0]
+	if metric.RequestCount != 1 || metric.ResponseBytes != 2 || metric.Status4xxCount != 0 || metric.Status5xxCount != 0 {
+		t.Fatalf("unexpected successful request metric: %+v", metric)
+	}
+}
+
 func TestBodylessRequestDoesNotInventContentLengthOrWrapBody(t *testing.T) {
 	handler := newTestHandler()
 	request := httptest.NewRequest(http.MethodGet, "http://app.example.com/health", nil)
@@ -383,25 +449,37 @@ func TestLostAcknowledgementRetriesSameBatch(t *testing.T) {
 	}
 }
 
-func TestRequestsOutsideAuthorizedApplicationRouteAreNotCounted(t *testing.T) {
+func TestControlPlaneRequestIsNotCounted(t *testing.T) {
 	handler := newTestHandler()
 	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
 		w.WriteHeader(http.StatusOK)
 		return nil
 	})
-	for _, rawURL := range []string{
-		"http://console.example.com/projects",
-		"http://app.example.com/_compartment/callback",
-		"http://app.example.com/_compartment/logout",
-	} {
-		request := httptest.NewRequest(http.MethodGet, rawURL, nil)
-		if err := handler.ServeHTTP(httptest.NewRecorder(), request, next); err != nil {
-			t.Fatalf("serve excluded request: %v", err)
-		}
+	request := httptest.NewRequest(http.MethodGet, "http://console.example.com/projects", nil)
+
+	if err := handler.ServeHTTP(httptest.NewRecorder(), request, next); err != nil {
+		t.Fatalf("serve control-plane request: %v", err)
 	}
 	handler.enqueueCurrentMetrics()
 	if _, found := handler.peekPending(); found {
-		t.Fatal("excluded traffic was metered")
+		t.Fatal("control-plane traffic was metered")
+	}
+}
+
+func TestRequestWithoutAttributionIsNotCounted(t *testing.T) {
+	handler := newTestHandler()
+	request := httptest.NewRequest(http.MethodGet, "http://unknown.example.com/", nil)
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
+		w.WriteHeader(http.StatusNotFound)
+		return nil
+	})
+
+	if err := handler.ServeHTTP(httptest.NewRecorder(), request, next); err != nil {
+		t.Fatalf("serve unattributed request: %v", err)
+	}
+	handler.enqueueCurrentMetrics()
+	if _, found := handler.peekPending(); found {
+		t.Fatal("unattributed traffic was metered")
 	}
 }
 

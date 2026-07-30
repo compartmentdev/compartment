@@ -27,6 +27,8 @@ describe('edge route refresh', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'fresh.localhost',
+          'x-compartment-upstream-host': 'app.cpt-project.svc',
+          'x-compartment-upstream-port': '31000',
           'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/',
         },
