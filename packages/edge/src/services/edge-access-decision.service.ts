@@ -1,9 +1,4 @@
-import {
-  type AppAccessProxyRouteAvailableTargetState,
-  type AppAccessProxyRouteTargetState,
-  type AppAccessRouteAuthorizationState,
-  type AppAccessRouteState,
-} from '@compartment/contracts';
+import { type AppAccessRouteAuthorizationState, type AppAccessRouteState } from '@compartment/contracts';
 import type { EdgeAppAccessSessionEntry, EdgeAppAccessStateStore } from './app-access-state-store.service.types';
 import { authorizeRouteAccess, type EdgeAccessAuthorizationResult } from './edge-access-authorization.service';
 import type {
@@ -12,47 +7,40 @@ import type {
   EdgeAccessDecisionHeaders,
   LocalEdgeAccessInput,
 } from './edge-access-decision.service.types';
-import { matchProxyRoute, type MatchedProxyRoute } from './edge-proxy-route.service';
-
-interface AllowedEdgeAccessUpstream {
-  proxyPath: string | null;
-  upstreamHost: string;
-  upstreamPort: number;
-}
+import type { EdgeRouteUpstream, LocalEdgeRouteResolution } from './edge-route-resolution.service.types';
+import { resolveLocalEdgeRoute } from './edge-route-resolution.service';
 
 export function decideLocalEdgeAccess(store: EdgeAppAccessStateStore, input: LocalEdgeAccessInput): EdgeAccessDecision {
-  const route: AppAccessRouteState | null = store.getRoute(input.host);
-  if (route === null) {
+  const resolution: LocalEdgeRouteResolution = resolveLocalEdgeRoute(store, input);
+  if (resolution.kind === 'route_not_found') {
     return buildRouteNotFoundDecision();
   }
 
-  const matchedProxyRoute: MatchedProxyRoute | null = matchProxyRoute(route.proxyRoutes, input.method, input.path);
   const authorizationResult: EdgeAccessAuthorizationResult | EdgeAccessDecision = authorizeRouteAccess(
     store,
-    route,
-    matchedProxyRoute?.target ?? null,
+    resolution.route,
+    resolution.matchedProxyRoute?.target ?? null,
     input,
   );
   if ('kind' in authorizationResult) {
     return authorizationResult;
   }
 
-  const upstream: AllowedEdgeAccessUpstream | null = resolveAllowedAccessUpstream(route, matchedProxyRoute);
-  if (upstream === null) {
-    return buildUnavailableProxyDecision(route);
+  if (resolution.upstream === null) {
+    return buildUnavailableProxyDecision(resolution.route);
   }
 
   return buildAllowedAccessDecision(
-    route,
-    buildAccessHeaders(authorizationResult.headerAuthorizationState, route, authorizationResult.session),
-    upstream,
+    resolution.route,
+    buildAccessHeaders(authorizationResult.headerAuthorizationState, resolution.route, authorizationResult.session),
+    resolution.upstream,
   );
 }
 
 function buildAllowedAccessDecision(
   route: AppAccessRouteState,
   headers: EdgeAccessDecisionHeaders,
-  upstream: AllowedEdgeAccessUpstream,
+  upstream: EdgeRouteUpstream,
 ): AllowedEdgeAccessDecision {
   return {
     kind: 'allowed',
@@ -64,35 +52,6 @@ function buildAllowedAccessDecision(
     upstreamHost: upstream.upstreamHost,
     upstreamPort: upstream.upstreamPort,
   };
-}
-
-function resolveAllowedAccessUpstream(
-  route: AppAccessRouteState,
-  matchedProxyRoute: MatchedProxyRoute | null,
-): AllowedEdgeAccessUpstream | null {
-  if (matchedProxyRoute === null) {
-    return {
-      proxyPath: null,
-      upstreamHost: route.upstreamHost,
-      upstreamPort: route.upstreamPort,
-    };
-  }
-  const target: AppAccessProxyRouteTargetState | null = matchedProxyRoute.target;
-  if (!isAvailableProxyRouteTarget(target)) {
-    return null;
-  }
-
-  return {
-    proxyPath: matchedProxyRoute.proxyPath,
-    upstreamHost: target.upstreamHost,
-    upstreamPort: target.upstreamPort,
-  };
-}
-
-function isAvailableProxyRouteTarget(
-  target: AppAccessProxyRouteTargetState | null,
-): target is AppAccessProxyRouteAvailableTargetState {
-  return target?.upstreamHost !== undefined && target.upstreamHost !== null;
 }
 
 function buildAccessHeaders(

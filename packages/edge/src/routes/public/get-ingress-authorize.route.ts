@@ -2,6 +2,7 @@ import {
   compartmentAccessModeHeaderName,
   compartmentIngressAuthorizePathname,
   compartmentIngressAuthorizeResponseHeaderNames,
+  compartmentIngressRouteResolvedHeaderName,
   compartmentOrganizationIdHeaderName,
   compartmentOrganizationSlugHeaderName,
   compartmentPrincipalEmailHeaderName,
@@ -24,20 +25,15 @@ import type {
   EdgeAccessDecisionHeaders,
   LocalEdgeAccessInput,
 } from '../../services/edge-access-decision.service.types';
-import type { ParsedForwardedRequestPath } from '../../services/edge-forwarded-request-path.service';
 import { decideLocalEdgeAccess } from '../../services/edge-access-decision.service';
 import {
   buildClearedAppSessionCookie,
   readAppSessionToken,
   resolveAppAccessSessionWithApi,
 } from '../../services/edge-gateway.service';
-import { readAppHostOrReply } from './public-route-host.service';
-import {
-  readForwardedRequestMethod,
-  readForwardedRequestPath,
-  replyRouteNotFound,
-  setReplyCookies,
-} from './public-route.utils';
+import { readLocalEdgeRouteInputOrReply } from './public-ingress-route-input.service';
+import { replyRouteNotFound, setReplyCookies } from './public-route.utils';
+import type { LocalEdgeRouteInput } from '../../services/edge-route-resolution.service.types';
 
 export function registerGetIngressAuthorizeRoute(
   app: EdgeApp,
@@ -59,38 +55,21 @@ async function handleIngressAuthorizeRequest(
   config: EdgeConfig,
   store: EdgeAppAccessStateStore,
 ): Promise<FastifyReply> {
-  const host: string | null = await readAppHostOrReply(request, reply, config);
-  if (host === null) {
+  const routeInput: LocalEdgeRouteInput | null = await readLocalEdgeRouteInputOrReply(request, reply, config);
+  if (routeInput === null) {
     return await reply;
   }
-  const input: LocalEdgeAccessInput | null = readLocalEdgeAccessInput(request, host);
-  if (input === null) {
-    return await replyRouteNotFound(reply);
-  }
-
-  return await replyForIngressAuthorizeDecision(app, reply, config, store, input);
-}
-
-function readLocalEdgeAccessInput(request: FastifyRequest, host: string): LocalEdgeAccessInput | null {
-  const forwardedRequestPath: ParsedForwardedRequestPath | null = readForwardedRequestPath(request);
-  if (forwardedRequestPath === null) {
-    return null;
-  }
-  const forwardedRequestMethod: string | null = readForwardedRequestMethod(request);
-  if (forwardedRequestMethod === null) {
-    return null;
-  }
-
-  return {
+  const input: LocalEdgeAccessInput = {
+    ...routeInput,
     appSessionToken: readAppSessionToken(request.headers.cookie),
-    host,
-    method: forwardedRequestMethod,
-    path: forwardedRequestPath,
   };
+
+  return await replyForIngressAuthorizeDecision(app, request, reply, config, store, input);
 }
 
 async function replyForIngressAuthorizeDecision(
   app: EdgeApp,
+  request: FastifyRequest,
   reply: FastifyReply,
   config: EdgeConfig,
   store: EdgeAppAccessStateStore,
@@ -105,10 +84,36 @@ async function replyForIngressAuthorizeDecision(
   if (decision.kind !== 'allowed') {
     return await replyForDeniedIngressAccess(reply, decision);
   }
+  if (!acceptsResolvedRouteSelection(request, decision)) {
+    return await reply.code(503).send({ error: 'unavailable' });
+  }
 
   setAllowedIngressHeaders(reply, decision.headers, decision.upstreamHost, decision.upstreamPort, decision.proxyPath);
 
   return await reply.code(200).send();
+}
+
+function acceptsResolvedRouteSelection(
+  request: FastifyRequest,
+  decision: Extract<EdgeAccessDecision, { kind: 'allowed' }>,
+): boolean {
+  const routeResolved: string | string[] | undefined =
+    request.headers[compartmentIngressRouteResolvedHeaderName.toLowerCase()];
+  if (routeResolved === undefined) {
+    return true;
+  }
+  if (routeResolved !== '1') {
+    return false;
+  }
+  const upstreamHost: string | string[] | undefined = request.headers[compartmentUpstreamHostHeaderName.toLowerCase()];
+  const upstreamPort: string | string[] | undefined = request.headers[compartmentUpstreamPortHeaderName.toLowerCase()];
+  const proxyPath: string | string[] | undefined = request.headers[compartmentProxyPathHeaderName.toLowerCase()];
+
+  return (
+    upstreamHost === decision.upstreamHost &&
+    upstreamPort === decision.upstreamPort.toString() &&
+    proxyPath === (decision.proxyPath ?? undefined)
+  );
 }
 
 async function refreshAppAccessSession(

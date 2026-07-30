@@ -34,6 +34,8 @@ describe('edge session failover', (): void => {
         headers: {
           cookie: `${compartmentAppSessionCookieName}=app-session-token`,
           host: 'billing.localhost',
+          'x-compartment-upstream-host': 'app.cpt-project.svc',
+          'x-compartment-upstream-port': '31042',
           'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
@@ -67,6 +69,8 @@ describe('edge session failover', (): void => {
         headers: {
           cookie: `${compartmentAppSessionCookieName}=revoked-session-token`,
           host: 'billing.localhost',
+          'x-compartment-upstream-host': 'app.cpt-project.svc',
+          'x-compartment-upstream-port': '31000',
           'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
@@ -97,6 +101,8 @@ describe('edge session failover', (): void => {
         headers: {
           cookie: `${compartmentAppSessionCookieName}=cached-session-token`,
           host: 'billing.localhost',
+          'x-compartment-upstream-host': 'app.cpt-project.svc',
+          'x-compartment-upstream-port': '31000',
           'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },

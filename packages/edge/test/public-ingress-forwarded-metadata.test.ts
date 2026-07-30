@@ -45,6 +45,7 @@ describe('edge public ingress forwarded metadata', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'billing.localhost',
+          'x-compartment-upstream-host': 'app.cpt-project.svc',
         },
       });
 
@@ -67,6 +68,7 @@ describe('edge public ingress forwarded metadata', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'billing.localhost',
+          'x-compartment-upstream-host': 'app.cpt-project.svc',
           'x-forwarded-uri': '/dashboard',
         },
       });
@@ -160,6 +162,8 @@ describe('edge public ingress forwarded metadata', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'billing.localhost',
+          'x-compartment-upstream-host': 'app.cpt-project.svc',
+          'x-compartment-upstream-port': '31000',
           'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard,/admin',
         },
@@ -201,6 +205,9 @@ describe('edge public ingress forwarded metadata', (): void => {
         headers: {
           cookie: readAppSessionCookie('app-session-token'),
           host: 'billing.localhost',
+          'x-compartment-upstream-host': 'app.cpt-project.svc',
+          'x-compartment-upstream-port': '31042',
+          'x-compartment-proxy-path': '/app,v1.js?tag=a,b',
           'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/assets/app,v1.js?tag=a,b',
         },
@@ -228,6 +235,8 @@ describe('edge public ingress forwarded metadata', (): void => {
         url: compartmentIngressAuthorizePathname,
         headers: {
           host: 'billing.localhost',
+          'x-compartment-upstream-host': 'app.cpt-project.svc',
+          'x-compartment-upstream-port': '31000',
           'x-forwarded-method': 'GET',
           'x-forwarded-uri': '/dashboard',
         },
@@ -315,6 +324,8 @@ describe('edge public ingress forwarded metadata', (): void => {
         headers: {
           cookie: readAppSessionCookie('app-session-token'),
           host: 'billing.localhost',
+          'x-compartment-upstream-host': 'app.cpt-project.svc',
+          'x-compartment-upstream-port': '31000',
           'x-forwarded-method': 'GET,POST',
           'x-forwarded-uri': '/api/ready',
         },
