@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { CommandResult } from '../src/command-runner.types';
-import { assertOperatorRegistryDns } from '../src/services/kubernetes-install-registry-dns.service';
+import { waitForKubernetesInstallRegistryDns } from '../src/services/kubernetes-install-registry-dns-wait.service';
 import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallState,
@@ -13,6 +13,14 @@ interface RegistryDnsMocks {
   runCommandWithTimeout: Mock<(command: readonly string[], timeoutMs: number) => Promise<CommandResult>>;
 }
 
+interface RegistryDnsProbeManifest {
+  metadata: RegistryDnsProbeMetadata;
+}
+
+interface RegistryDnsProbeMetadata {
+  name: string;
+}
+
 const mocks: RegistryDnsMocks = vi.hoisted(
   (): RegistryDnsMocks => ({
     readReadyNodes: vi.fn(),
@@ -22,6 +30,7 @@ const mocks: RegistryDnsMocks = vi.hoisted(
   }),
 );
 const registryClusterIp: string = [10, 43, 251, 103].join('.');
+const registryClusterIpv6: string = ['fd00', '', '103'].join(':');
 const publicDnsAnswer: string = [159, 69, 25, 73].join('.');
 const workerImage: string = 'ghcr.io/compartmentdev/compartment-worker@sha256:signed';
 
@@ -35,6 +44,10 @@ vi.mock('../src/services/kubernetes-ready-nodes.service', (): object => ({
 }));
 
 describe('operator registry DNS prerequisite', (): void => {
+  afterEach((): void => {
+    vi.useRealTimers();
+  });
+
   beforeEach((): void => {
     mocks.readReadyNodes.mockReset().mockResolvedValue(['node-a']);
     mocks.runCommand
@@ -63,7 +76,7 @@ describe('operator registry DNS prerequisite', (): void => {
       .mockResolvedValueOnce(ok(JSON.stringify([{ address: registryClusterIp, family: 4 }])))
       .mockResolvedValueOnce(ok('deleted'));
 
-    await expect(assertOperatorRegistryDns(input(), state())).resolves.toBeUndefined();
+    await expect(waitForKubernetesInstallRegistryDns(input(), state())).resolves.toBeUndefined();
 
     const manifest: string = String(mocks.runCommandWithInput.mock.calls[0]?.[1]);
     expect(manifest).toContain('"hostNetwork":true');
@@ -77,7 +90,7 @@ describe('operator registry DNS prerequisite', (): void => {
       .mockResolvedValueOnce(ok(JSON.stringify([{ address: registryClusterIp, family: 4 }])))
       .mockResolvedValueOnce(ok('deleted'));
 
-    await expect(assertOperatorRegistryDns(input(), state())).resolves.toBeUndefined();
+    await expect(waitForKubernetesInstallRegistryDns(input(), state())).resolves.toBeUndefined();
 
     expect(mocks.runCommand).toHaveBeenCalledTimes(2);
     expect(mocks.runCommand.mock.calls[1]?.[0]).toEqual(
@@ -93,16 +106,104 @@ describe('operator registry DNS prerequisite', (): void => {
       .mockResolvedValueOnce(ok(JSON.stringify([{ address: publicDnsAnswer, family: 4 }])))
       .mockResolvedValueOnce(ok('deleted'));
 
-    const failure: Promise<void> = assertOperatorRegistryDns(input(), state());
+    const failure: Promise<void> = waitForKubernetesInstallRegistryDns(input(), state());
     await expect(failure).rejects.toThrow(`required record: registry.apps.example.com A ${registryClusterIp}`);
     await expect(failure).rejects.toThrow('rebind-domain-ok=/apps.example.com/');
   });
 
-  it('does not add registry DNS requirements to managed domains', async (): Promise<void> => {
-    await expect(assertOperatorRegistryDns(input(), { ...state(), domainMode: 'managed' })).resolves.toBeUndefined();
+  it('requires every retained registry-auth address from a dual-stack resolver', async (): Promise<void> => {
+    mocks.runCommand
+      .mockReset()
+      .mockResolvedValueOnce(ok(JSON.stringify({ spec: { clusterIPs: [registryClusterIp, registryClusterIpv6] } })))
+      .mockResolvedValueOnce(
+        ok(
+          JSON.stringify({
+            images: {
+              worker: {
+                digest: 'sha256:signed',
+                repository: 'ghcr.io/compartmentdev/compartment-worker',
+                tag: 'ignored',
+              },
+            },
+          }),
+        ),
+      );
+    mocks.runCommandWithTimeout
+      .mockResolvedValueOnce(ok('succeeded'))
+      .mockResolvedValueOnce(ok(JSON.stringify([{ address: registryClusterIp, family: 4 }])))
+      .mockResolvedValueOnce(ok('deleted'));
 
-    expect(mocks.runCommand).not.toHaveBeenCalled();
-    expect(mocks.readReadyNodes).not.toHaveBeenCalled();
+    await expect(waitForKubernetesInstallRegistryDns(input(), state())).rejects.toThrow(
+      `registry.apps.example.com AAAA ${registryClusterIpv6}`,
+    );
+  });
+
+  it('requires the retained registry-auth ClusterIP from managed-domain node resolvers', async (): Promise<void> => {
+    mocks.runCommandWithTimeout
+      .mockResolvedValueOnce(ok('succeeded'))
+      .mockResolvedValueOnce(ok(JSON.stringify([{ address: registryClusterIp, family: 4 }])))
+      .mockResolvedValueOnce(ok('deleted'));
+
+    await expect(
+      waitForKubernetesInstallRegistryDns(input(), { ...state(), domainMode: 'managed' }),
+    ).resolves.toBeUndefined();
+
+    expect(mocks.readReadyNodes).toHaveBeenCalledOnce();
+  });
+
+  it('waits for managed-domain node DNS to converge before returning', async (): Promise<void> => {
+    vi.useFakeTimers();
+    mocks.runCommand
+      .mockReset()
+      .mockResolvedValueOnce(ok(JSON.stringify({ spec: { clusterIP: registryClusterIp } })))
+      .mockResolvedValueOnce(
+        ok(
+          JSON.stringify({
+            images: {
+              worker: {
+                digest: 'sha256:signed',
+                repository: 'ghcr.io/compartmentdev/compartment-worker',
+                tag: 'ignored',
+              },
+            },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(ok(JSON.stringify({ spec: { clusterIP: registryClusterIp } })))
+      .mockResolvedValueOnce(
+        ok(
+          JSON.stringify({
+            images: {
+              worker: {
+                digest: 'sha256:signed',
+                repository: 'ghcr.io/compartmentdev/compartment-worker',
+                tag: 'ignored',
+              },
+            },
+          }),
+        ),
+      );
+    mocks.runCommandWithTimeout
+      .mockResolvedValueOnce(failed('lookup registry.apps.example.com: Try again'))
+      .mockResolvedValueOnce(ok('deleted'))
+      .mockResolvedValueOnce(ok('succeeded'))
+      .mockResolvedValueOnce(ok(JSON.stringify([{ address: registryClusterIp, family: 4 }])))
+      .mockResolvedValueOnce(ok('deleted'));
+
+    const readiness: Promise<void> = waitForKubernetesInstallRegistryDns(input(), {
+      ...state(),
+      domainMode: 'managed',
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await expect(readiness).resolves.toBeUndefined();
+    expect(mocks.runCommandWithInput).toHaveBeenCalledTimes(2);
+    expect(
+      mocks.runCommandWithInput.mock.calls.map(
+        (call: [command: readonly string[], input: string]): string =>
+          (JSON.parse(call[1]) as RegistryDnsProbeManifest).metadata.name,
+      ),
+    ).toEqual(['registry-dns-preflight-0-1', 'registry-dns-preflight-0-2']);
   });
 });
 
@@ -142,4 +243,8 @@ function state(): KubernetesInstallState {
 
 function ok(stdout: string): CommandResult {
   return { exitCode: 0, stderr: '', stdout };
+}
+
+function failed(stderr: string): CommandResult {
+  return { exitCode: 1, stderr, stdout: '' };
 }

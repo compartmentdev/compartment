@@ -1,7 +1,6 @@
 import { X509Certificate } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
-import type { ClientRequest, IncomingMessage } from 'node:http';
-import { get } from 'node:https';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -15,11 +14,13 @@ const repositoryRoot: string = resolve(__dirname, '../../..');
 const fixtureDirectory: string = resolve(repositoryRoot, 'deploy/e2e/managed-install');
 const kubernetesTimeoutMs: number = 6 * 60_000;
 const brokerStateTimeoutMs: number = 60_000;
-const managedAcmeManagementPort: number = Number(process.env.COMPARTMENT_E2E_MANAGED_ACME_PORT ?? '19500');
-const managedAcmeManagementTimeoutMs: number = 30_000;
 const managedBrokerServicePort: number = 19_000;
-
-const managedBrokerHostPort: number = Number(process.env.COMPARTMENT_E2E_MANAGED_BROKER_PORT ?? '19000');
+const managedBrokerPortForwardTimeoutMs: number = 30_000;
+const managedBrokerPortForwardTerminateTimeoutMs: number = 5_000;
+const managedBrokerPortForwardKillDelayMs: number = 3_000;
+let managedBrokerPortForward: ChildProcessWithoutNullStreams | undefined;
+type PromiseReject = (reason?: Error) => void;
+type PromiseResolveVoid = (value: void | PromiseLike<void>) => void;
 
 export const managedInstallApiUrl: string = `https://console.managed-platform-e2e.managed.compartment.localhost:${process.env.COMPARTMENT_E2E_HTTPS_PORT ?? '18443'}`;
 export const managedInstallBaseDomain: string = 'managed-platform-e2e.managed.compartment.localhost';
@@ -72,9 +73,6 @@ export interface ManagedDomainAuditObservation {
 }
 
 export async function prepareManagedInstallFixture(): Promise<void> {
-  if (managedBrokerHostPort !== managedBrokerServicePort) {
-    throw new Error('Managed install e2e requires its broker host port to match Service port 19000.');
-  }
   await cleanupManagedInstallFixture();
   await expectSuccessfulKubectl(['create', 'namespace', managedInstallNamespace], 'create managed e2e namespace');
   await expectSuccessfulKubectl(
@@ -105,6 +103,7 @@ export async function prepareManagedInstallFixture(): Promise<void> {
     ],
     'wait for managed install fixtures',
   );
+  await startManagedBrokerPortForward();
   await writeManagedInstallCertificateAuthority();
 }
 
@@ -152,6 +151,7 @@ async function configureCertManagerRecursiveDns(): Promise<void> {
 }
 
 export async function cleanupManagedInstallFixture(): Promise<void> {
+  await stopManagedBrokerPortForward();
   await runCommand({
     argv: [
       'helm',
@@ -175,6 +175,116 @@ export async function cleanupManagedInstallFixture(): Promise<void> {
     '--wait=true',
     '--timeout=4m',
   ]);
+}
+
+async function startManagedBrokerPortForward(): Promise<void> {
+  const child: ChildProcessWithoutNullStreams = spawn(
+    'kubectl',
+    [
+      '--context',
+      managedInstallKubeContext,
+      '--namespace',
+      managedInstallNamespace,
+      'port-forward',
+      'service/managed-domain-broker',
+      `${managedBrokerServicePort.toString()}:${managedBrokerServicePort.toString()}`,
+      '--address=127.0.0.1',
+    ],
+    { cwd: repositoryRoot },
+  );
+  managedBrokerPortForward = child;
+  let output: string = '';
+  await new Promise<void>((resolvePortForward: PromiseResolveVoid, rejectPortForward: PromiseReject): void => {
+    let settled: boolean = false;
+    const finish: (error?: Error) => void = (error?: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      child.stdout.off('data', readOutput);
+      child.stderr.off('data', readOutput);
+      child.off('error', handleError);
+      child.off('exit', handleExit);
+      if (error !== undefined) {
+        if (managedBrokerPortForward === child) {
+          managedBrokerPortForward = undefined;
+        }
+        void terminateManagedBrokerPortForward(child).then(
+          (): void => rejectPortForward(error),
+          (terminationError: Error): void => rejectPortForward(terminationError),
+        );
+      } else {
+        resolvePortForward();
+      }
+    };
+    const readOutput: (chunk: Buffer) => void = (chunk: Buffer): void => {
+      output += chunk.toString('utf8');
+      if (output.includes(`Forwarding from 127.0.0.1:${managedBrokerServicePort.toString()} -> `)) {
+        finish();
+      }
+    };
+    const handleError: (error: Error) => void = (error: Error): void => {
+      finish(error);
+    };
+    const handleExit: (code: number | null, signal: NodeJS.Signals | null) => void = (
+      code: number | null,
+      signal: NodeJS.Signals | null,
+    ): void => {
+      finish(
+        new Error(
+          `Managed-domain broker port-forward exited before becoming ready (code=${String(code)}, signal=${String(signal)}). kubectl output:\n${output.trim()}`,
+        ),
+      );
+    };
+    const timeout: NodeJS.Timeout = setTimeout(
+      (): void =>
+        finish(new Error(`Managed-domain broker port-forward did not become ready. kubectl output:\n${output.trim()}`)),
+      managedBrokerPortForwardTimeoutMs,
+    );
+    child.stdout.on('data', readOutput);
+    child.stderr.on('data', readOutput);
+    child.once('error', handleError);
+    child.once('exit', handleExit);
+  });
+}
+
+async function stopManagedBrokerPortForward(): Promise<void> {
+  const child: ChildProcessWithoutNullStreams | undefined = managedBrokerPortForward;
+  managedBrokerPortForward = undefined;
+  if (child === undefined) {
+    return;
+  }
+  await terminateManagedBrokerPortForward(child);
+}
+
+async function terminateManagedBrokerPortForward(child: ChildProcessWithoutNullStreams): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  await new Promise<void>((resolveExit: PromiseResolveVoid): void => {
+    let settled: boolean = false;
+    const finish: () => void = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(killTimeout);
+      clearTimeout(terminateTimeout);
+      child.off('error', finish);
+      child.off('exit', finish);
+      child.off('close', finish);
+      resolveExit();
+    };
+    child.once('error', finish);
+    child.once('exit', finish);
+    child.once('close', finish);
+    const killTimeout: NodeJS.Timeout = setTimeout((): void => {
+      child.kill('SIGKILL');
+    }, managedBrokerPortForwardKillDelayMs);
+    const terminateTimeout: NodeJS.Timeout = setTimeout(finish, managedBrokerPortForwardTerminateTimeoutMs);
+    child.kill('SIGTERM');
+  });
 }
 
 export async function readManagedInstallBrokerState(): Promise<ManagedInstallBrokerState> {
@@ -261,79 +371,51 @@ async function readManagedInstallCertificateSerialNumber(secretName: string): Pr
 }
 
 async function writeManagedInstallCertificateAuthority(): Promise<void> {
-  const managementCa: Buffer = await readFile(
-    resolve(repositoryRoot, process.env.COMPARTMENT_E2E_PEBBLE_CA_PATH ?? '.compartment/pebble.minica.pem'),
-  );
-  const rootCertificate: Buffer = await readManagedInstallCertificateAuthorityWithRetry(managementCa);
+  const result: SelfHostedUserSetupCommandResult = await runKubectl([
+    'get',
+    '--raw',
+    `/api/v1/namespaces/${managedInstallNamespace}/services/https:pebble:15000/proxy/roots/0`,
+  ]);
+  expectSuccessfulCommand(result, 'read the Pebble root certificate through the Kubernetes Service proxy');
+  const rootCertificate: Buffer = Buffer.from(result.stdout);
   const certificate: X509Certificate = new X509Certificate(rootCertificate);
   if (certificate.ca !== true || certificate.checkIssued(certificate) !== true) {
-    throw new Error('Pebble root endpoint did not return a self-issued CA certificate.');
+    throw new Error('Pebble fixture did not provide a self-issued root CA certificate.');
   }
   await writeFile(managedInstallCertificateAuthorityPath, rootCertificate, { mode: 0o600 });
 }
 
-async function readManagedInstallCertificateAuthorityWithRetry(managementCa: Buffer): Promise<Buffer> {
-  const deadline: number = Date.now() + managedAcmeManagementTimeoutMs;
-  for (;;) {
-    try {
-      return await readManagedInstallCertificateAuthority(managementCa);
-    } catch (error) {
-      if (Date.now() >= deadline) {
-        throw error;
-      }
-      await delay(500);
-    }
-  }
-}
-
-async function readManagedInstallCertificateAuthority(managementCa: Buffer): Promise<Buffer> {
-  return await new Promise<Buffer>(
-    (resolveCertificate: (certificate: Buffer) => void, rejectCertificate: (error: Error) => void): void => {
-      const request: ClientRequest = get(
-        {
-          ca: managementCa,
-          host: '127.0.0.1',
-          path: '/roots/0',
-          port: managedAcmeManagementPort,
-          rejectUnauthorized: true,
-          servername: 'localhost',
-        },
-        (response: IncomingMessage): void => {
-          const chunks: Buffer[] = [];
-          response.on('data', (chunk: Buffer): void => {
-            chunks.push(chunk);
-          });
-          response.once('end', (): void => {
-            if (response.statusCode !== 200) {
-              rejectCertificate(new Error(`Pebble root endpoint returned HTTP ${response.statusCode ?? 'unknown'}.`));
-              return;
-            }
-            resolveCertificate(Buffer.concat(chunks));
-          });
-        },
-      );
-      request.setTimeout(5_000, (): void => {
-        request.destroy(new Error('Timed out reading the Pebble root certificate.'));
-      });
-      request.once('error', rejectCertificate);
-    },
-  );
-}
-
 export async function waitForManagedDomainBrokerObservation(): Promise<ManagedDomainBrokerObservation> {
   const deadline: number = Date.now() + brokerStateTimeoutMs;
+  let lastFailure: string = '';
   for (;;) {
-    const response: Response = await fetch(`http://127.0.0.1:${managedBrokerHostPort.toString()}/__test/state`);
-    if (response.ok) {
-      const observation: ManagedDomainBrokerObservation = (await response.json()) as ManagedDomainBrokerObservation;
+    const result: SelfHostedUserSetupCommandResult = await runKubectl([
+      'get',
+      '--raw',
+      `/api/v1/namespaces/${managedInstallNamespace}/services/http:managed-domain-broker:${managedBrokerServicePort.toString()}/proxy/__test/state`,
+    ]);
+    if (result.exitCode === 0) {
+      const observation: ManagedDomainBrokerObservation = readManagedDomainBrokerObservation(result.stdout);
       if (observation.allocations.length === 1) {
         return observation;
       }
+    } else {
+      const stderr: string = result.stderr.trim();
+      lastFailure = stderr !== '' ? stderr : result.stdout.trim();
     }
     if (Date.now() >= deadline) {
-      throw new Error('Timed out waiting for managed-domain allocation.');
+      const diagnostic: string = lastFailure !== '' ? ` Last Kubernetes API error: ${lastFailure}` : '';
+      throw new Error(`Timed out waiting for managed-domain allocation.${diagnostic}`);
     }
     await delay(500);
+  }
+}
+
+function readManagedDomainBrokerObservation(output: string): ManagedDomainBrokerObservation {
+  try {
+    return JSON.parse(output) as ManagedDomainBrokerObservation;
+  } catch {
+    throw new Error('Managed-domain broker state returned invalid JSON.');
   }
 }
 

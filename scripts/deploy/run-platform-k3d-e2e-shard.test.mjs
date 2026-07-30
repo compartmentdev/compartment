@@ -24,8 +24,6 @@ describe('platform k3d e2e shard runner', () => {
       'COMPARTMENT_E2E_REGISTRY_PORT',
       'COMPARTMENT_E2E_HTTP_PORT',
       'COMPARTMENT_E2E_HTTPS_PORT',
-      'COMPARTMENT_E2E_MANAGED_ACME_PORT',
-      'COMPARTMENT_E2E_MANAGED_BROKER_PORT',
       'COMPARTMENT_E2E_PLATFORM_NAMESPACE',
       'COMPARTMENT_E2E_MANAGED_NAMESPACE',
       'COMPARTMENT_E2E_DIAGNOSTICS_PATH',
@@ -61,11 +59,11 @@ describe('platform k3d e2e shard runner', () => {
     });
   });
 
-  it('keeps managed-install host ports aligned with its fixed service ports', () => {
+  it('does not expose managed-install fixtures through host ports', () => {
     const environment = buildPlatformK3dShardEnvironment('managed-install', {});
 
-    expect(environment.COMPARTMENT_E2E_MANAGED_ACME_PORT).toBe('19500');
-    expect(environment.COMPARTMENT_E2E_MANAGED_BROKER_PORT).toBe('19000');
+    expect(environment.COMPARTMENT_E2E_MANAGED_ACME_PORT).toBeUndefined();
+    expect(environment.COMPARTMENT_E2E_MANAGED_BROKER_PORT).toBeUndefined();
   });
 
   it('assigns pinned ingress-nginx and multi-node coverage to build-matrix-b', () => {

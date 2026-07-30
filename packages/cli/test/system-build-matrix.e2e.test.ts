@@ -350,10 +350,9 @@ function hasExpectedLogTexts(response: DeploymentLogsResponse, expectedLogTexts:
 }
 
 async function expectProtectedRouteRedirect(compartmentUrl: string, routeUrl: string): Promise<void> {
-  const response: CliHttpTextResponse = await sendCliHttpTextRequestWithRetry(routeUrl);
+  const response: CliHttpTextResponse = await sendCliHttpTextRequestUntilStatus(routeUrl, 302);
 
-  expect(response.statusCode).toBeGreaterThanOrEqual(300);
-  expect(response.statusCode).toBeLessThan(400);
+  expect(response.statusCode).toBe(302);
   expect(response.headers.location).toContain(`${compartmentUrl}/login`);
 }
 
