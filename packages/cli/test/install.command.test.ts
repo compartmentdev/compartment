@@ -12,8 +12,10 @@ type DeployInstall = () => Promise<KubernetesInstallDeploymentResult>;
 type InstallOwner = () => Promise<CliInstallResult>;
 type PersistSession = () => Promise<void>;
 type ResolveIdentity = () => Promise<ResolvedInstallIdentityPrompts>;
+type AssertLocalTools = () => Promise<void>;
 
 interface InstallCommandMocks {
+  assertLocalTools: Mock<AssertLocalTools>;
   deployInstall: Mock<DeployInstall>;
   installOwner: Mock<InstallOwner>;
   persistSession: Mock<PersistSession>;
@@ -22,6 +24,7 @@ interface InstallCommandMocks {
 
 const mocks: InstallCommandMocks = vi.hoisted(
   (): InstallCommandMocks => ({
+    assertLocalTools: vi.fn<AssertLocalTools>(),
     deployInstall: vi.fn<DeployInstall>(),
     installOwner: vi.fn<InstallOwner>(),
     persistSession: vi.fn<PersistSession>(),
@@ -29,6 +32,9 @@ const mocks: InstallCommandMocks = vi.hoisted(
   }),
 );
 
+vi.mock('../src/services/kubernetes-install-local-tools.service', (): object => ({
+  assertKubernetesInstallLocalTools: mocks.assertLocalTools,
+}));
 vi.mock('../src/install', (): object => ({
   installDev: vi.fn(),
   installKubernetesOwner: mocks.installOwner,
@@ -53,6 +59,7 @@ vi.mock('../src/commands/install/install.command.session', (): object => ({
 describe('install command boundary', (): void => {
   beforeEach((): void => {
     delete process.env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN;
+    mocks.assertLocalTools.mockReset().mockResolvedValue(undefined);
     mocks.deployInstall.mockReset().mockResolvedValue(createDeploymentResult());
     mocks.installOwner.mockReset().mockResolvedValue(createInstallResult());
     mocks.persistSession.mockReset().mockResolvedValue(undefined);
@@ -63,6 +70,37 @@ describe('install command boundary', (): void => {
     });
   });
 
+  it('rejects a missing local tool before an interactive prompt starts', async (): Promise<void> => {
+    mocks.assertLocalTools.mockRejectedValueOnce(
+      new Error(
+        'helm not found on PATH. Install Helm >= 4.0.0 with `curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash`, then re-run install.',
+      ),
+    );
+    const capture: CliCommandCapture = createCliCapture({ isTTY: true });
+
+    const exitCode: number = await runCli(['install'], capture.io);
+
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toContain('helm not found on PATH');
+    expect(readCliStderr(capture)).not.toContain('Kubernetes context');
+    expect(readCliStderr(capture)).not.toContain('Domain');
+    expect(capture.stdout).toEqual([]);
+    expect(mocks.assertLocalTools).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a missing local tool before non-interactive input validation', async (): Promise<void> => {
+    mocks.assertLocalTools.mockRejectedValueOnce(
+      new Error('helm not found on PATH. Install Helm >= 4.0.0 and re-run install.'),
+    );
+    const capture: CliCommandCapture = createCliCapture();
+
+    const exitCode: number = await runCli(['install', '--output', 'json'], capture.io);
+
+    expect(exitCode).toBe(1);
+    expect(readCliStderr(capture)).toContain('helm not found on PATH');
+    expect(readCliStderr(capture)).not.toContain('Missing required install input');
+  });
+
   it('reports the first missing canonical input at the non-interactive CLI boundary', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 
@@ -70,6 +108,7 @@ describe('install command boundary', (): void => {
 
     expect(exitCode).toBe(1);
     expect(readCliStderr(capture)).toContain('Missing required install input: --managed-domain or --base-domain.');
+    expect(mocks.assertLocalTools).toHaveBeenCalledTimes(1);
   });
 
   it('fails fast with onboarding guidance for non-interactive managed-domain installs', async (): Promise<void> => {

@@ -43,6 +43,8 @@ CLI can preflight Kubernetes 1.30+ clusters, but a successful preflight does not
 
 Before installation, also provide:
 
+- `helm` 4.0.0 or newer on `PATH` (`helm version --short`);
+- `kubectl` 1.30.0 or newer on `PATH`, compatible with the target Kubernetes server (`kubectl version --client`);
 - an Issuer or ClusterIssuer for operator-owned domains;
 - NetworkPolicy enforcement;
 - a persistent storage class;

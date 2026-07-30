@@ -38,6 +38,7 @@ import {
 import { assertManagedDomainOnboardingAvailable } from '../../services/managed-domain-reservation-token.service';
 import { isReservedKubernetesInstallLocalhostDomain } from '../../kubernetes-install-domain';
 import { normalizeInstallBaseDomain } from './install.command.validation';
+import { assertKubernetesInstallLocalTools } from '../../services/kubernetes-install-local-tools.service';
 
 interface ResolvedInstallValuesPath {
   material?: MaterializedInstallWizardValues | undefined;
@@ -53,6 +54,7 @@ export async function executeCanonicalKubernetesInstallCommand(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
 ): Promise<void> {
+  await assertKubernetesInstallLocalTools();
   const boundaryValues: Omit<KubernetesInstallInputValues, 'valuesPath'> | undefined = await readBoundaryValues(
     dependencies,
     options,

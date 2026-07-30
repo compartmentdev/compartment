@@ -1,7 +1,11 @@
 import type { CommandResult } from '../command-runner.types';
-import { readCommandOutput } from './kubernetes-command.support';
+import { formatKubernetesCommandExecutionFailure, readCommandOutput } from './kubernetes-command.support';
 
 export function createImageTrustCommandError(prefix: string, result: CommandResult): Error {
+  const executionFailure: string | undefined = formatKubernetesCommandExecutionFailure(prefix, result);
+  if (executionFailure !== undefined) {
+    return new Error(executionFailure);
+  }
   const output: string = readCommandOutput(result);
   if (result.exitCode === 124) {
     return new Error(

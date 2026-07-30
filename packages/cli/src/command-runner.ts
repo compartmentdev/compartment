@@ -1,4 +1,5 @@
 import type { Result } from 'execa';
+import { basename } from 'node:path';
 import type { CommandResult } from './command-runner.types';
 
 interface CommandExecutionOptions {
@@ -46,10 +47,14 @@ async function executeCommand(
   };
   const { execa } = await import(/* webpackMode: "eager" */ 'execa');
   const result: Result<CommandExecutionOptions> = await execa(file, args, options);
-  return readCommandResult(result, timeoutMs);
+  return readCommandResult(result, file, timeoutMs);
 }
 
-function readCommandResult(result: Result<CommandExecutionOptions>, timeoutMs?: number): CommandResult {
+function readCommandResult(
+  result: Result<CommandExecutionOptions>,
+  command: string,
+  timeoutMs?: number,
+): CommandResult {
   if (result.timedOut && timeoutMs !== undefined) {
     return {
       exitCode: 124,
@@ -60,6 +65,9 @@ function readCommandResult(result: Result<CommandExecutionOptions>, timeoutMs?: 
 
   return {
     exitCode: result.exitCode ?? (result.code === 'ENOENT' ? 127 : 1),
+    ...(result.code === 'ENOENT'
+      ? { failure: { command: basename(command), kind: 'command-not-found' as const } }
+      : {}),
     stderr: result.stderr,
     stdout: result.stdout,
   };

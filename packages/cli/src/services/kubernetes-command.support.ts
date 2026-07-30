@@ -1,4 +1,5 @@
 import type { CommandResult } from '../command-runner.types';
+import { formatMissingKubernetesInstallTool } from './kubernetes-install-local-tools.service';
 
 interface HelmCommandTarget {
   kubeconfigPath?: string | undefined;
@@ -53,12 +54,31 @@ export function buildKubernetesReleaseSelector(releaseName: string): string {
 }
 
 export function formatKubernetesCommandFailure(message: string, result: CommandResult): string {
+  const executionFailure: string | undefined = formatKubernetesCommandExecutionFailure(message, result);
+  if (executionFailure !== undefined) {
+    return executionFailure;
+  }
   const output: string = readCommandOutput(result);
   const status: string =
     result.exitCode === 124 ? 'command timed out' : `command exited with status ${result.exitCode.toString()}`;
   return `${message} (${status}): ${output === '' ? 'the command produced no diagnostics' : output}`;
 }
 
+export function formatKubernetesCommandExecutionFailure(message: string, result: CommandResult): string | undefined {
+  const executionFailure: string | undefined = readKubernetesCommandExecutionFailure(result);
+  return executionFailure === undefined ? undefined : `${message}: ${executionFailure}`;
+}
+
 export function readCommandOutput(result: CommandResult): string {
+  const executionFailure: string | undefined = readKubernetesCommandExecutionFailure(result);
+  if (executionFailure !== undefined) {
+    return executionFailure;
+  }
   return [result.stderr.trim(), result.stdout.trim()].filter((value: string): boolean => value !== '').join('\n');
+}
+
+function readKubernetesCommandExecutionFailure(result: CommandResult): string | undefined {
+  return result.failure?.kind === 'command-not-found'
+    ? formatMissingKubernetesInstallTool(result.failure.command)
+    : undefined;
 }

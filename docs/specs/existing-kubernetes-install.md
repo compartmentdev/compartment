@@ -129,6 +129,8 @@ and prerequisite configuration, then call this same service.
 
 The operator must provide:
 
+- local `helm` version 4.0.0 or newer and `kubectl` version 1.30.0 or newer on `PATH`, with the `kubectl` client
+  compatible with the target Kubernetes server;
 - a supported Kubernetes version;
 - a working kube context;
 - permissions required by the Helm release and project bootstrap model;
@@ -147,6 +149,8 @@ The DNS and Service-routing requirements are recorded prerequisites, not install
 
 The installer performs non-persistent preflight checks for:
 
+- required local operator tools and their minimum versions, before collecting interactive or non-interactive install
+  input;
 - API reachability and Kubernetes version;
 - required API resources;
 - effective Kubernetes permissions;

@@ -1,5 +1,6 @@
 import type { JsonValue } from '@compartment/utils';
 import type { CommandResult } from '../command-runner.types';
+import { readCommandOutput } from './kubernetes-command.support';
 import type { KubernetesInstallInput } from './kubernetes-install-input.service.types';
 import type {
   KubernetesExistingClusterPreflightCheck,
@@ -89,6 +90,6 @@ export function isPreflightNotFound(result: CommandResult): boolean {
 }
 
 export function readCommandFailure(result: CommandResult): string {
-  const output: string = result.stderr.trim() === '' ? result.stdout.trim() : result.stderr.trim();
+  const output: string = readCommandOutput(result);
   return (output === '' ? `command exited ${String(result.exitCode)}` : output).replace(/\s+/gu, ' ');
 }
