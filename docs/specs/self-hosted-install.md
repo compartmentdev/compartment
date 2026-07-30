@@ -11,8 +11,7 @@ Run `compartment install` with a kubeconfig whose current context is the intende
 prompts for any required value that cannot be selected unambiguously. Automation supplies the same inputs explicitly:
 
 ```bash
-compartment install \
-  --kubeconfig ./kubeconfig \
+KUBECONFIG=./kubeconfig compartment install \
   --kube-context production \
   --namespace compartment \
   --release-name compartment \

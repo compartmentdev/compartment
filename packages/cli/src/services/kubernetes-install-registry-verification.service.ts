@@ -149,7 +149,7 @@ async function waitForVerificationPod(
     const message: string = `${formatKubernetesCommandFailure(
       `Registry node pull failed on ${nodeName}`,
       result,
-    )}\n${diagnostics}\nRegistry prerequisites: required DNS record ${records}; the TLS certificate issued by ${registry.registryIssuerRef.kind}/${registry.registryIssuerRef.name} must be trusted by the node container runtime.`;
+    )}\n${diagnostics}\nRegistry prerequisites: required DNS record ${records}; the TLS certificate issued by ${registry.registryIssuerRef.kind}/${registry.registryIssuerRef.name} must be trusted by the node container runtime. Install a private CA before starting the runtime; if it was added later, restart the runtime (k3s server: systemctl restart k3s; k3s agent: systemctl restart k3s-agent).`;
     throw createRegistryNodePullError(message, diagnostics);
   }
 }

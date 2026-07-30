@@ -36,7 +36,7 @@ function classifyPublicControlPlaneFailure(error: Error): string {
     return certificateFailure;
   }
   if (isTlsFailureCode(code)) {
-    return `TLS validation failed (${code}): the certificate chain is not trusted by the operator machine. Use a publicly trusted certificate or install the private CA in this machine's trust store`;
+    return `TLS validation failed (${code}): the certificate chain is not trusted by the Node.js CLI. Use a publicly trusted certificate, set NODE_EXTRA_CA_CERTS=/path/to/ca.crt, or run Node with NODE_OPTIONS=--use-openssl-ca`;
   }
   if (error.name === 'TimeoutError' || error.name === 'AbortError' || code === 'UND_ERR_CONNECT_TIMEOUT') {
     return 'network connection timed out before the public control plane responded';

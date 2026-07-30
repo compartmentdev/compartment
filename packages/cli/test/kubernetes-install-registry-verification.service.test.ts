@@ -97,6 +97,9 @@ describe('install registry node-pull verification', (): void => {
     await expect(failure).rejects.toThrow(
       'TLS certificate issued by Issuer/platform-issuer must be trusted by the node container runtime',
     );
+    await expect(failure).rejects.toThrow(
+      'if it was added later, restart the runtime (k3s server: systemctl restart k3s; k3s agent: systemctl restart k3s-agent)',
+    );
 
     expect(mocks.runCommandWithTimeout.mock.calls.at(-1)?.[0]).toEqual(
       expect.arrayContaining(['delete', 'pod/registry-acceptance-0', 'secret/compartment-registry-acceptance']),

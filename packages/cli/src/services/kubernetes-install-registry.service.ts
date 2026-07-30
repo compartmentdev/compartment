@@ -11,7 +11,7 @@ import type {
 } from './kubernetes-install-registry.service.types';
 import { formatSchemaValidationError } from './schema-validation-error';
 import { readYamlFile, type YamlFileValue } from './yaml-file';
-import { kubernetesResourceNameSchema } from './kubernetes-resource-name';
+import { kubernetesInstallRegistryIssuerValueFieldsSchema } from './kubernetes-install-registry-values.schema';
 import {
   kubernetesInstallTlsValueFieldsSchema,
   type KubernetesInstallTlsValueFields,
@@ -28,13 +28,6 @@ interface ResolveKubernetesInstallRegistryInput {
   valuesPath: string;
 }
 
-const registryIssuerSchema: z.ZodType<KubernetesInstallRegistryIssuerValueFields> = z
-  .object({
-    group: z.literal('cert-manager.io').optional(),
-    kind: z.enum(['Issuer', 'ClusterIssuer']),
-    name: kubernetesResourceNameSchema,
-  })
-  .strict();
 const defaultPlatformIssuer: KubernetesInstallRegistryIssuerReference = {
   group: 'cert-manager.io',
   kind: 'Issuer',
@@ -46,7 +39,7 @@ const registryValuesSchema: z.ZodType<KubernetesInstallRegistrySourceValues> = z
     registry: z
       .object({
         hostname: z.string().optional(),
-        issuerRef: registryIssuerSchema.optional(),
+        issuerRef: kubernetesInstallRegistryIssuerValueFieldsSchema.optional(),
       })
       .passthrough()
       .optional(),

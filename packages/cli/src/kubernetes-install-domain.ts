@@ -1,6 +1,7 @@
+import { quoteShellArgumentWhenNeeded } from '@compartment/utils';
 import type {
+  ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
-  KubernetesInstallState,
   KubernetesPublicProtocol,
 } from './services/kubernetes-install.service.types';
 
@@ -10,9 +11,14 @@ export function isReservedKubernetesInstallLocalhostDomain(hostname: string | un
 
 export function assertMatchingKubernetesInstallDomain(
   input: KubernetesInstallDeploymentInput,
-  existingInstall: KubernetesInstallState,
+  existingInstall: ExistingKubernetesInstall,
 ): void {
   if (existingInstall.domainMode !== input.domainMode) {
+    if (existingInstall.stage === 'foundation') {
+      throw new Error(
+        `The incomplete Helm release uses ${existingInstall.domainMode} domain mode, not ${input.domainMode}. Remove the incomplete installation before retrying with the new domain selection: ${formatIncompleteInstallRemoval(input)}`,
+      );
+    }
     throw new Error(
       `The existing Helm release uses ${existingInstall.domainMode} domain mode, not ${input.domainMode}. Retry with the original domain selection or use a different release name.`,
     );
@@ -22,6 +28,31 @@ export function assertMatchingKubernetesInstallDomain(
       `The existing Helm release uses base domain ${existingInstall.baseDomain}, not ${input.baseDomain ?? ''}. Retry with the installed base domain or use a different release name.`,
     );
   }
+}
+
+function formatIncompleteInstallRemoval(input: KubernetesInstallDeploymentInput): string {
+  const helmCommand: string[] = [
+    'helm',
+    'uninstall',
+    input.releaseName,
+    '-n',
+    input.namespace,
+    ...(input.kubeconfigPath === undefined ? [] : ['--kubeconfig', input.kubeconfigPath]),
+    ...(input.kubeContext === undefined ? [] : ['--kube-context', input.kubeContext]),
+  ];
+  const kubectlCommand: string[] = [
+    'kubectl',
+    ...(input.kubeconfigPath === undefined ? [] : ['--kubeconfig', input.kubeconfigPath]),
+    ...(input.kubeContext === undefined ? [] : ['--context', input.kubeContext]),
+    'delete',
+    'ns',
+    input.namespace,
+  ];
+  return `${formatShellCommand(helmCommand)} && ${formatShellCommand(kubectlCommand)}`;
+}
+
+function formatShellCommand(command: readonly string[]): string {
+  return command.map(quoteShellArgumentWhenNeeded).join(' ');
 }
 
 export function resolveKubernetesInstallControlPlaneUrl(

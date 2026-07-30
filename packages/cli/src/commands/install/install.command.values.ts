@@ -5,6 +5,8 @@ import {
   createKubernetesInstallMaterializedDirectory,
   writeKubernetesInstallValues,
 } from '../../services/kubernetes-install-helm.service';
+import { kubernetesInstallRegistryIssuerValueFieldsSchema } from '../../services/kubernetes-install-registry-values.schema';
+import type { KubernetesInstallRegistryIssuerValueFields } from '../../services/kubernetes-install-registry.service.types';
 import type { InstallWizardValues } from './install.command.types';
 import { formatSchemaValidationError } from '../../services/schema-validation-error';
 import { readYamlFile, type YamlFileObject, type YamlFileValue } from '../../services/yaml-file';
@@ -44,7 +46,7 @@ interface OperatorInstallStorageValues {
 }
 
 interface OperatorInstallRegistryValues {
-  issuerRef?: DomainIssuerReference | undefined;
+  issuerRef?: KubernetesInstallRegistryIssuerValueFields | undefined;
 }
 
 interface OperatorInstallTlsValues {
@@ -58,7 +60,6 @@ const issuerReferenceSchema: z.ZodType<DomainIssuerReference> = z
     name: kubernetesResourceNameSchema,
   })
   .strict();
-
 const operatorInstallValuesSchema: z.ZodType<OperatorInstallValuesDocument> = z
   .object({
     ingress: z
@@ -71,7 +72,10 @@ const operatorInstallValuesSchema: z.ZodType<OperatorInstallValuesDocument> = z
       })
       .passthrough()
       .optional(),
-    registry: z.object({ issuerRef: issuerReferenceSchema.optional() }).passthrough().optional(),
+    registry: z
+      .object({ issuerRef: kubernetesInstallRegistryIssuerValueFieldsSchema.optional() })
+      .passthrough()
+      .optional(),
     storage: z.object({ storageClass: z.string() }).passthrough().optional(),
     tls: z
       .object({

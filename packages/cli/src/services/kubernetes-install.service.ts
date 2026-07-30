@@ -71,7 +71,7 @@ export async function deployAndWaitForKubernetesInstall(
 
 function assertMatchingInstallState(
   input: KubernetesInstallDeploymentInput,
-  matchingState: KubernetesInstallState | null,
+  matchingState: ExistingKubernetesInstall | null,
 ): void {
   if (matchingState !== null) {
     assertMatchingKubernetesInstallDomain(input, matchingState);

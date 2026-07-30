@@ -36,7 +36,7 @@ describe('Kubernetes public control-plane readiness', (): void => {
     );
 
     await expectReadinessFailure(
-      'TLS validation failed (SELF_SIGNED_CERT_IN_CHAIN): the certificate chain is not trusted by the operator machine',
+      'TLS validation failed (SELF_SIGNED_CERT_IN_CHAIN): the certificate chain is not trusted by the Node.js CLI. Use a publicly trusted certificate, set NODE_EXTRA_CA_CERTS=/path/to/ca.crt, or run Node with NODE_OPTIONS=--use-openssl-ca',
     );
   });
 
