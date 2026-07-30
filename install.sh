@@ -32,6 +32,10 @@ install_values_path=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --channel)
+      if [ "$#" -lt 2 ]; then
+        printf 'Expected --channel <latest|main|kubernetes>.\n' >&2
+        exit 1
+      fi
       channel="$2"
       channel_argument="1"
       if [ "$version_argument" = "0" ]; then
@@ -40,6 +44,10 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     --version)
+      if [ "$#" -lt 2 ]; then
+        printf 'Expected --version <version>.\n' >&2
+        exit 1
+      fi
       version="$2"
       version_argument="1"
       if [ "$channel_argument" = "0" ]; then
@@ -118,11 +126,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ "$version_argument" = "1" ] && [ "$channel_argument" = "1" ]; then
-  printf 'Choose either --version or --channel, not both.\n' >&2
-  exit 1
-fi
-
 init_mode_count=0
 if [ "$init_install" = "1" ]; then
   init_mode_count=$((init_mode_count + 1))
@@ -181,6 +184,96 @@ case "$channel" in
     ;;
 esac
 
+validate_semantic_version() {
+  awk '
+    function identifiers_are_valid(value, reject_leading_zero, identifiers, count, identifier_index, identifier) {
+      if (value == "") {
+        return 0
+      }
+      count = split(value, identifiers, "[.]")
+      for (identifier_index = 1; identifier_index <= count; identifier_index += 1) {
+        identifier = identifiers[identifier_index]
+        if (identifier == "" || identifier !~ /^[0-9A-Za-z-]+$/) {
+          return 0
+        }
+        if (reject_leading_zero && identifier ~ /^[0-9]+$/ && length(identifier) > 1 && identifier ~ /^0/) {
+          return 0
+        }
+      }
+      return 1
+    }
+
+    {
+      version = $0
+      build_separator = index(version, "+")
+      if (build_separator > 0) {
+        build = substr(version, build_separator + 1)
+        release = substr(version, 1, build_separator - 1)
+        if (!identifiers_are_valid(build, 0)) {
+          next
+        }
+      } else {
+        release = version
+      }
+
+      prerelease_separator = index(release, "-")
+      if (prerelease_separator > 0) {
+        prerelease = substr(release, prerelease_separator + 1)
+        release = substr(release, 1, prerelease_separator - 1)
+        if (!identifiers_are_valid(prerelease, 1)) {
+          next
+        }
+      }
+
+      core_count = split(release, core, "[.]")
+      if (core_count != 3) {
+        next
+      }
+      for (core_index = 1; core_index <= core_count; core_index += 1) {
+        if (core[core_index] !~ /^[0-9]+$/ || (length(core[core_index]) > 1 && core[core_index] ~ /^0/)) {
+          next
+        }
+      }
+      print version
+    }
+  '
+}
+
+if [ -n "$version" ]; then
+  case "$channel" in
+    kubernetes)
+      validated_version="$(printf '%s\n' "$version" | sed -n 's/^sha-\([0-9a-f]\{40\}\)$/sha-\1/p')"
+      if [ "$validated_version" != "$version" ]; then
+        printf 'Invalid version for the kubernetes channel: %s. Expected sha- followed by 40 lowercase hexadecimal characters.\n' \
+          "$version" >&2
+        exit 1
+      fi
+      ;;
+    latest|main)
+      case "$version" in
+        main)
+          ;;
+        sha-*)
+          validated_version="$(printf '%s\n' "$version" | sed -n 's/^sha-\([0-9a-f]\{40\}\)$/sha-\1/p')"
+          if [ "$validated_version" != "$version" ]; then
+            printf 'Invalid version for the %s channel: %s. Expected a semantic version or sha- followed by 40 lowercase hexadecimal characters.\n' \
+              "$channel" "$version" >&2
+            exit 1
+          fi
+          ;;
+        *)
+          validated_version="$(printf '%s\n' "$version" | validate_semantic_version)"
+          if [ "$validated_version" != "$version" ]; then
+            printf 'Invalid version for the %s channel: %s. Expected a semantic version or sha- followed by 40 lowercase hexadecimal characters.\n' \
+              "$channel" "$version" >&2
+            exit 1
+          fi
+          ;;
+      esac
+      ;;
+  esac
+fi
+
 resolve_main_release_tag() {
   main_ref_url="https://api.github.com/repos/${release_repository}/git/ref/heads/main"
   main_commit_sha="$(
@@ -217,6 +310,47 @@ resolve_kubernetes_release_tag() {
   resolved_release_tag="sha-${kubernetes_commit_sha}"
   printf 'Resolved kubernetes to %s\n' "$resolved_release_tag" >&2
   printf '%s' "$resolved_release_tag"
+}
+
+resolve_last_published_kubernetes_release_tag() {
+  successful_runs_url="https://api.github.com/repos/${release_repository}/actions/workflows/publish-self-hosted-kubernetes.yml/runs?branch=kubernetes&status=success&per_page=1"
+  last_published_commit_sha="$(
+    curl -fsSL "$successful_runs_url" \
+      | tr -d '\n' \
+      | sed -n 's/.*"head_sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' \
+      | head -n 1
+  )"
+
+  if [ -z "$last_published_commit_sha" ]; then
+    return 1
+  fi
+
+  last_published_tag="sha-${last_published_commit_sha}"
+  last_published_ref="${cli_oci_repository}:${last_published_tag}"
+  last_published_error_path="${temp_directory}/oras-last-published.stderr"
+  if ! last_published_digest="$("$oras_command" resolve "$last_published_ref" 2>"$last_published_error_path")"; then
+    rm -f "$last_published_error_path"
+    return 1
+  fi
+  rm -f "$last_published_error_path"
+
+  validated_last_published_digest="$(
+    printf '%s\n' "$last_published_digest" | sed -n '/^sha256:[0-9a-f]\{64\}$/p'
+  )"
+  if [ -z "$validated_last_published_digest" ]; then
+    return 1
+  fi
+
+  if ! "$cosign_command" verify \
+    --new-bundle-format \
+    --certificate-identity "$kubernetes_cli_certificate_identity" \
+    --certificate-oidc-issuer "$kubernetes_cli_certificate_oidc_issuer" \
+    --certificate-github-workflow-sha "$last_published_commit_sha" \
+    "${cli_oci_repository}@${validated_last_published_digest}" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  printf '%s' "$last_published_tag"
 }
 
 verify_download_checksum() {
@@ -341,8 +475,19 @@ resolve_kubernetes_cli_digest_ref() {
     rm -f "$oras_resolve_error_path"
     case "$oras_resolve_error" in
       *"not found"* | *"manifest unknown"*)
-        printf 'Images for %s are still publishing (this can take a few minutes after a merge). Please retry shortly.\n' \
-          "$resolved_release_tag" >&2
+        if [ "$channel" = "kubernetes" ] && [ "$version_argument" = "0" ] \
+          && last_published_release_tag="$(resolve_last_published_kubernetes_release_tag)"; then
+          printf 'Images for %s are still publishing. Install the latest fully published kubernetes build with:\n' \
+            "$resolved_release_tag" >&2
+          printf 'curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel kubernetes --version %s\n' \
+            "$last_published_release_tag" >&2
+        else
+          printf 'Images for %s are not published, and the installer could not verify a fallback automatically.\n' \
+            "$resolved_release_tag" >&2
+          printf 'Open https://github.com/%s/actions/workflows/publish-self-hosted-kubernetes.yml, select the latest successful run, and copy its full commit SHA into:\n' \
+            "$release_repository" >&2
+          printf 'curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel kubernetes --version sha-COMMIT_SHA\n' >&2
+        fi
         ;;
       *)
         printf 'Failed to resolve Kubernetes CLI image %s. Check registry access and retry.\n' "$cli_tag_ref" >&2
@@ -870,7 +1015,11 @@ artifact_path="${temp_directory}/${artifact_name}"
 checksums_path="${temp_directory}/checksums.txt"
 
 if [ "$channel" = "kubernetes" ]; then
-  resolved_release_tag="$(resolve_kubernetes_release_tag)"
+  if [ -n "$version" ]; then
+    resolved_release_tag="$version"
+  else
+    resolved_release_tag="$(resolve_kubernetes_release_tag)"
+  fi
   resolved_kubernetes_commit_sha="${resolved_release_tag#sha-}"
   prepare_kubernetes_cli_tools "${temp_directory}/tools" "$target_os" "$target_arch"
   cli_tag_ref="${cli_oci_repository}:${resolved_release_tag}"

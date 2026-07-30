@@ -13,6 +13,22 @@ This is the supported self-hosted installation channel. The bootstrap resolves a
 current Kubernetes release line and verifies its Cosign workflow identity and commit before installing it. No channel
 flag, raw repository URL, or separate bootstrap step is required.
 
+The default command follows the tip of the `kubernetes` channel. To reproduce an installation with a specific
+published build, pin its full immutable tag:
+
+```bash
+curl -fsSL https://compartment.dev/install.sh | sh -s -- \
+  --channel kubernetes \
+  --version sha-0123456789abcdef0123456789abcdef01234567
+```
+
+`--channel` selects where the installer resolves artifacts (`latest`, `main`, or `kubernetes`), while `--version`
+selects an exact tag within that channel. Kubernetes pins must use `sha-` followed by the full 40-character lowercase
+commit SHA. The installer verifies the pinned artifact with the same digest and Cosign identity checks as the channel
+tip. If a new Kubernetes tip is still publishing, the installer prints a copyable command for the latest fully
+published and signed build after verifying it. If automatic discovery is unavailable, it links the successful
+publication runs and prints the command template to complete with that run's full commit SHA.
+
 ## Prepare the cluster
 
 Compartment installs into an existing Kubernetes cluster. The initial supported release matrix is:

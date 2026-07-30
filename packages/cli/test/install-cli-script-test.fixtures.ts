@@ -9,6 +9,10 @@ export const expectedKubernetesCommitSha: string = 'abcdef1234567890abcdef123456
 export const expectedKubernetesReleaseTag: string = `sha-${expectedKubernetesCommitSha}`;
 const expectedCliManifestDigest: string = `sha256:${'c'.repeat(64)}`;
 export const expectedCliDigestRef: string = `ghcr.io/compartmentdev/compartment-cli@${expectedCliManifestDigest}`;
+export const expectedPublishedKubernetesCommitSha: string = '9876543210abcdef9876543210abcdef98765432';
+export const expectedPublishedKubernetesReleaseTag: string = `sha-${expectedPublishedKubernetesCommitSha}`;
+const expectedPublishedCliManifestDigest: string = `sha256:${'d'.repeat(64)}`;
+export const expectedPublishedCliDigestRef: string = `ghcr.io/compartmentdev/compartment-cli@${expectedPublishedCliManifestDigest}`;
 
 interface StubCommandOptions {
   archName?: string | undefined;
@@ -119,6 +123,7 @@ function buildStubCurlScript(): string {
   return createShellScript(`
 artifact_path="\${COMPARTMENT_TEST_ARTIFACT_PATH:?}"
 checksums_path="\${COMPARTMENT_TEST_CHECKSUMS_PATH:?}"
+published_fallback_outcome="\${COMPARTMENT_TEST_PUBLISHED_FALLBACK_OUTCOME:?}"
 state_dir="\${COMPARTMENT_TEST_STATE_DIR:?}"
 
 mkdir -p "$state_dir"
@@ -149,6 +154,13 @@ case "$url" in
     ;;
   https://api.github.com/repos/example/compartment/git/ref/heads/kubernetes)
     printf '{"object":{"sha":"${expectedKubernetesCommitSha}"}}\\n'
+    ;;
+  "https://api.github.com/repos/example/compartment/actions/workflows/publish-self-hosted-kubernetes.yml/runs?branch=kubernetes&status=success&per_page=1")
+    if [ "$published_fallback_outcome" = "lookup-missing" ]; then
+      printf '{"workflow_runs":[]}\\n'
+    else
+      printf '{"workflow_runs":[{"head_sha":"${expectedPublishedKubernetesCommitSha}"}]}\\n'
+    fi
     ;;
   https://github.com/sigstore/cosign/releases/download/v2.6.1/cosign-*)
     printf 'invalid downloaded cosign fixture\\n' > "$output_path"
@@ -183,6 +195,7 @@ function buildStubCosignScript(): string {
   return createShellScript(`
 state_dir="\${COMPARTMENT_TEST_STATE_DIR:?}"
 signature_outcome="\${COMPARTMENT_TEST_SIGNATURE_OUTCOME:?}"
+published_fallback_outcome="\${COMPARTMENT_TEST_PUBLISHED_FALLBACK_OUTCOME:?}"
 tool_version_mode="\${COMPARTMENT_TEST_TOOL_VERSION_MODE:?}"
 
 if [ "$*" = "version" ]; then
@@ -197,9 +210,14 @@ fi
 mkdir -p "$state_dir"
 printf '%s\\n' "$*" >> "\${state_dir}/cosign.log"
 
-expected_args="verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedKubernetesCommitSha} ${expectedCliDigestRef}"
-if [ "$*" != "$expected_args" ]; then
+expected_tip_args="verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedKubernetesCommitSha} ${expectedCliDigestRef}"
+expected_published_args="verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedPublishedKubernetesCommitSha} ${expectedPublishedCliDigestRef}"
+if [ "$*" != "$expected_tip_args" ] && [ "$*" != "$expected_published_args" ]; then
   printf 'Unexpected cosign args: %s\\n' "$*" >&2
+  exit 1
+fi
+if [ "$*" = "$expected_published_args" ] && [ "$published_fallback_outcome" = "signature-invalid" ]; then
+  printf 'fallback signature mismatch\\n' >&2
   exit 1
 fi
 
@@ -232,6 +250,7 @@ expected_platform="\${COMPARTMENT_TEST_EXPECTED_ORAS_PLATFORM:?}"
 state_dir="\${COMPARTMENT_TEST_STATE_DIR:?}"
 tool_version_mode="\${COMPARTMENT_TEST_TOOL_VERSION_MODE:?}"
 oras_resolve_outcome="\${COMPARTMENT_TEST_ORAS_RESOLVE_OUTCOME:?}"
+published_fallback_outcome="\${COMPARTMENT_TEST_PUBLISHED_FALLBACK_OUTCOME:?}"
 
 if [ "$*" = "version" ]; then
   if [ "$tool_version_mode" = "compatible" ]; then
@@ -247,19 +266,30 @@ printf '%s\\n' "$*" >> "\${state_dir}/oras.log"
 
 case "\${1:-}" in
   resolve)
-    if [ "$*" != "resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}" ]; then
-      printf 'Unexpected oras resolve args: %s\\n' "$*" >&2
-      exit 1
-    fi
-    if [ "$oras_resolve_outcome" = "missing" ]; then
-      printf 'Error response from registry: failed to resolve digest: not found\\n' >&2
-      exit 1
-    fi
-    if [ "$oras_resolve_outcome" = "unavailable" ]; then
-      printf 'registry unavailable\\n' >&2
-      exit 1
-    fi
-    printf '${expectedCliManifestDigest}\\n'
+    case "$*" in
+      "resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}")
+        if [ "$oras_resolve_outcome" = "missing" ]; then
+          printf 'Error response from registry: failed to resolve digest: not found\\n' >&2
+          exit 1
+        fi
+        if [ "$oras_resolve_outcome" = "unavailable" ]; then
+          printf 'registry unavailable\\n' >&2
+          exit 1
+        fi
+        printf '${expectedCliManifestDigest}\\n'
+        ;;
+      "resolve ghcr.io/compartmentdev/compartment-cli:${expectedPublishedKubernetesReleaseTag}")
+        if [ "$published_fallback_outcome" = "resolve-missing" ]; then
+          printf 'Error response from registry: failed to resolve digest: not found\\n' >&2
+          exit 1
+        fi
+        printf '${expectedPublishedCliManifestDigest}\\n'
+        ;;
+      *)
+        printf 'Unexpected oras resolve args: %s\\n' "$*" >&2
+        exit 1
+        ;;
+    esac
     ;;
   pull)
     if [ ! -f "\${state_dir}/cosign-verified" ]; then
