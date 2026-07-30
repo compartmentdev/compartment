@@ -7,7 +7,7 @@ import { dirname } from 'node:path';
 const allocationPath = '/v1/managed-domains/allocations';
 const brokerBaseDomain = normalizeName(readRequiredEnvironment('MANAGED_DOMAIN_BASE_DOMAIN'));
 const challengeServerUrl = new URL(readRequiredEnvironment('MANAGED_DOMAIN_CHALLENGE_SERVER_URL'));
-const reservationToken = readRequiredEnvironment('MANAGED_DOMAIN_RESERVATION_TOKEN');
+const reservationToken = readOptionalEnvironment('MANAGED_DOMAIN_RESERVATION_TOKEN');
 const statePath = readRequiredEnvironment('MANAGED_DOMAIN_STATE_PATH');
 const port = Number(process.env.PORT ?? '3000');
 const state = await readPersistedState();
@@ -66,7 +66,7 @@ async function handleRequest(request, response) {
 }
 
 async function reserveAllocation(request, response) {
-  if (request.headers.authorization !== `Bearer ${reservationToken}`) {
+  if (reservationToken !== undefined && request.headers.authorization !== `Bearer ${reservationToken}`) {
     writeJson(response, 401, { error: 'reservation authorization is required' });
     return;
   }
@@ -352,6 +352,11 @@ function readRequiredEnvironment(name) {
     throw new Error(`${name} is required.`);
   }
   return value;
+}
+
+function readOptionalEnvironment(name) {
+  const value = process.env[name];
+  return hasText(value) ? value : undefined;
 }
 
 function normalizeName(value) {

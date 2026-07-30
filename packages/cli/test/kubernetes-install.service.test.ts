@@ -55,7 +55,6 @@ const mocks: KubernetesInstallServiceMocks = vi.hoisted(
 );
 const detectedPublicIpv4: string = [8, 8, 8, 8].join('.');
 const configuredPublicIpv4: string = [8, 8, 4, 4].join('.');
-process.env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN = 'test-reservation-token';
 let operatorValuesDirectory: string;
 
 vi.mock('../src/command-runner', (): object => ({
@@ -117,6 +116,7 @@ describe('Kubernetes install deployment', (): void => {
   });
 
   afterEach((): void => {
+    delete process.env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN;
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -156,8 +156,10 @@ describe('Kubernetes install deployment', (): void => {
       'helm:full',
       'kubectl:certificate',
     ]);
-    const brokerRequest: ManagedDomainReservationRequest = readBrokerRequest(brokerRequests);
+    const brokerRequest: ManagedDomainReservationRequest = readBrokerRequestBody(brokerRequests[0]!);
     expect(brokerRequest).toMatchObject({ requestedLabelSource: 'Acme Dev' });
+    expect(new Headers(brokerRequests[0]!.headers).get('Authorization')).toBeNull();
+    expect(new Headers(brokerRequests[1]!.headers).get('Authorization')).toBe('Bearer allocation-token');
     expect(readResolvedInstallValues(state)).toMatchObject({
       platform: {
         baseDomain: 'acme.compartment.run',
@@ -169,8 +171,15 @@ describe('Kubernetes install deployment', (): void => {
     });
     expect(state.installValueModes).toEqual([0o600, 0o600, 0o600]);
     expect(readCommandText()).not.toContain(result.installToken);
-    expect(readCommandText()).not.toContain('acme-token');
     await expect(readFile(state.installValuePaths[0]!, 'utf8')).rejects.toThrow();
+    process.env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN = 'test-reservation-token';
+    const authorizedState: InstallHarnessState = createInstallHarnessState();
+    mocks.runCommand.mockImplementation(createInstallCommandHandler(authorizedState));
+    const authorizedRequests: RequestInit[] = [];
+    stubManagedInstallFetch(authorizedState.events, authorizedRequests);
+    await deployAndWaitForKubernetesInstall(managedDeploymentInput);
+    expect(new Headers(authorizedRequests[0]!.headers).get('Authorization')).toBe('Bearer test-reservation-token');
+    expect(new Headers(authorizedRequests[1]!.headers).get('Authorization')).toBe('Bearer allocation-token');
   });
 
   it('retries transient broker failures with the same installation identity', async (): Promise<void> => {
@@ -323,8 +332,10 @@ describe('Kubernetes install deployment', (): void => {
     );
     vi.stubGlobal('fetch', brokerFetch);
 
-    await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).rejects.toThrow(
-      'Managed-domain broker POST https://broker.compartment.run/v1/managed-domains/allocations failed with status 400 (request-id: req_invalid_123) while attempting to reserve managed domain. Check the install configuration before re-running install.',
+    const expectedMessage: string =
+      'Managed-domain broker POST https://broker.compartment.run/v1/managed-domains/allocations failed with status 400 (request-id: req_invalid_123) while attempting to reserve managed domain. Check the install configuration before re-running install.';
+    await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).rejects.toSatisfy(
+      (error: Error): boolean => error.message === expectedMessage && !error.message.includes('--init-install'),
     );
     expect(brokerFetch).toHaveBeenCalledTimes(1);
   });
@@ -991,14 +1002,6 @@ function managedBrokerResponse(url: string): Response {
         baseDomain: 'acme.compartment.run',
         scopedToken: 'allocation-token',
       });
-}
-
-function readBrokerRequest(requests: RequestInit[]): ManagedDomainReservationRequest {
-  const request: RequestInit | undefined = requests[0];
-  if (request === undefined || typeof request.body !== 'string') {
-    throw new Error('Expected a JSON broker request body.');
-  }
-  return JSON.parse(request.body) as ManagedDomainReservationRequest;
 }
 
 function readBrokerRequestBody(request: RequestInit): ManagedDomainReservationRequest {

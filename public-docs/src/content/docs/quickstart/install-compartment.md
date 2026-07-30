@@ -120,6 +120,11 @@ Interactive installation discovers the cluster choices and prompts when more tha
 compartment install --kubeconfig ./kubeconfig --kube-context production
 ```
 
+The managed Compartment domain is the default domain choice and requires no prior setup or domain preparation. The
+installer reserves the domain with the managed-domain broker, binds it to the discovered Ingress endpoint, and waits
+for the resulting Certificates to become ready. Choose an operator-owned base domain only when you want to manage DNS
+and certificate sources yourself.
+
 When you select an operator-owned base domain, the wizard also asks how public TLS is provided. Choose an existing
 cert-manager `Issuer` or `ClusterIssuer`, or choose an existing `kubernetes.io/tls` Secret. The Secret option also asks
 for an issuer for the private registry certificate. A namespaced `Issuer` or Secret must exist in the release namespace

@@ -20,7 +20,7 @@ import type { CompartmentRequester } from '../http/request.types';
 
 export async function reserveManagedDomain(
   request: CompartmentRequester,
-  reservationToken: string,
+  reservationToken: string | undefined,
   body: ManagedDomainReservationRequest,
 ): Promise<ManagedDomainReservationResponse> {
   return await request<ManagedDomainReservationResponse, ManagedDomainReservationRequest>({
@@ -29,7 +29,7 @@ export async function reserveManagedDomain(
     method: 'POST',
     path: managedDomainAllocationsPathname,
     schema: managedDomainReservationResponseSchema,
-    sessionToken: reservationToken,
+    sessionToken: reservationToken ?? '',
   });
 }
 

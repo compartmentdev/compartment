@@ -141,7 +141,6 @@ spec:
           env:
             - { name: MANAGED_DOMAIN_BASE_DOMAIN, value: managed.compartment.localhost }
             - { name: MANAGED_DOMAIN_CHALLENGE_SERVER_URL, value: 'http://challtestsrv:8055' }
-            - { name: MANAGED_DOMAIN_RESERVATION_TOKEN, value: managed-install-reservation-token }
             - { name: MANAGED_DOMAIN_STATE_PATH, value: /state/broker.json }
           ports:
             - { name: http, containerPort: 3000 }
