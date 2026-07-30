@@ -27,7 +27,7 @@
     // Kept intentionally as a reference implementation for future auth loading UX work.
     "packages/console/src/features/auth/auth-loading-screen.tsx",
   ],
-  "ignoreBinaries": ["astro", "dotenv", "vite"],
+  "ignoreBinaries": ["astro", "dotenv", "go", "vite"],
   "ignoreDependencies": [
     "@compartment/eslint-config",
     "@vercel/ncc",

@@ -77,6 +77,11 @@ spec:
             - {name: COMPARTMENT_API_PORT, value: {{ .Values.ports.api | quote }}}
             - {name: COMPARTMENT_BASE_DOMAIN, value: {{ $installState.effective.platform.baseDomain | quote }}}
             - {name: COMPARTMENT_CADDY_HTTP_PORT, value: {{ .Values.ports.http | quote }}}
+            - {name: COMPARTMENT_EDGE_APP_REQUESTS_PER_SECOND, value: {{ .Values.platform.edgeTrafficLimits.app.requestsPerSecond | quote }}}
+            - {name: COMPARTMENT_EDGE_APP_BURST, value: {{ .Values.platform.edgeTrafficLimits.app.burst | quote }}}
+            - {name: COMPARTMENT_EDGE_APP_IN_FLIGHT, value: {{ .Values.platform.edgeTrafficLimits.app.inFlight | quote }}}
+            - {name: COMPARTMENT_EDGE_CLIENT_REQUESTS_PER_SECOND, value: {{ .Values.platform.edgeTrafficLimits.client.requestsPerSecond | quote }}}
+            - {name: COMPARTMENT_EDGE_CLIENT_BURST, value: {{ .Values.platform.edgeTrafficLimits.client.burst | quote }}}
             - {name: COMPARTMENT_EDGE_INTERNAL_HOST, value: {{ printf "%s-edge" (include "compartment.fullname" .) | quote }}}
             - {name: COMPARTMENT_EDGE_PORT, value: {{ .Values.ports.edge | quote }}}
           ports:

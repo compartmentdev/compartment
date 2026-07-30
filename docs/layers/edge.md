@@ -9,6 +9,8 @@ Owns:
   and snapshot observability;
 - the package-local snapshot storage requirements and workload projection used
   by the Helm chart.
+- package-local Caddy middleware that protects hosted-app transport capacity
+  without owning application routing or authorization policy.
 
 May depend on:
 

@@ -56,6 +56,25 @@ describe('edge Caddyfile', (): void => {
     expect(renderedCaddyfile).toContain('header_up Host {host}');
   });
 
+  it('limits hosted applications without limiting control-plane routes', (): void => {
+    const renderedCaddyfile: string = renderCaddyfile();
+    const controlPlaneIndex: number = renderedCaddyfile.indexOf('@compartment_host host');
+    const applicationIndex: number = renderedCaddyfile.indexOf('@application_host host');
+    const fallbackIndex: number = renderedCaddyfile.lastIndexOf('\n\thandle {');
+    const controlPlaneBlock: string = renderedCaddyfile.slice(controlPlaneIndex, applicationIndex);
+    const applicationBlock: string = renderedCaddyfile.slice(applicationIndex, fallbackIndex);
+
+    expect(controlPlaneIndex).toBeGreaterThan(-1);
+    expect(applicationIndex).toBeGreaterThan(controlPlaneIndex);
+    expect(fallbackIndex).toBeGreaterThan(applicationIndex);
+    expect(controlPlaneBlock).not.toContain('compartment_rate_limit');
+    expect(applicationBlock.match(/compartment_rate_limit \{/gu)).toHaveLength(1);
+    expect(applicationBlock).toContain('app_requests_per_second {$COMPARTMENT_EDGE_APP_REQUESTS_PER_SECOND}');
+    expect(applicationBlock).toContain('client_requests_per_second {$COMPARTMENT_EDGE_CLIENT_REQUESTS_PER_SECOND}');
+    expect(applicationBlock).toContain('app_in_flight {$COMPARTMENT_EDGE_APP_IN_FLIGHT}');
+    expect(renderedCaddyfile).toContain('\n\tmetrics\n');
+  });
+
   it('allow-lists public control-plane routes and denies internal and operator surfaces', (): void => {
     const renderedCaddyfile: string = renderCaddyfile();
     const publicPathMatchers: string[] = renderCompartmentPublicPathMatchers().split(' ');
