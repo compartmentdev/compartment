@@ -113,7 +113,8 @@ class ConsoleE2eIngressProxy {
 }
 
 const consoleE2eTempRootDirectory: string = readSocketSafeTempRootDirectory('ouce-', 'system-api.sock');
-const consoleE2eSetupCommandTimeoutMs: number = 10 * 60_000;
+const consoleE2eGvisorEnabled: boolean = process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1';
+const consoleE2eSetupCommandTimeoutMs: number = consoleE2eGvisorEnabled ? 30 * 60_000 : 10 * 60_000;
 const consoleE2ePlaywrightCommandTimeoutMs: number = 5 * 60_000;
 const consoleE2eBuildMessage: string = 'console-e2e-build-message';
 const consoleE2eProxyPath: string = '/api/ready';
@@ -136,7 +137,7 @@ const consoleE2eLoginPrincipalPermissions: string = [
   'deployment.inspect',
   'app.route.access',
 ].join(' ');
-export const consoleE2eCommandTimeoutMs: number = 18 * 60_000;
+export const consoleE2eCommandTimeoutMs: number = consoleE2eGvisorEnabled ? 90 * 60_000 : 18 * 60_000;
 
 export async function expectConsoleE2e(runtime: SelfHostedUserSetupRuntime): Promise<void> {
   const tempDirectories: string[] = [];
