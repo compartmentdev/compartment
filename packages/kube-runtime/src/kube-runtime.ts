@@ -166,7 +166,7 @@ export class KubeRuntime {
       if (!jobExists) {
         return await Promise.resolve();
       }
-      if (result.status === 'timed-out') {
+      if (result.status === 'timed-out' || spec.cleanupPolicy === 'delete') {
         await deleteObjectIgnoringNotFound(
           this.objectApi,
           { apiVersion: 'batch/v1', kind: 'Job', metadata: { name: jobName, namespace: spec.namespace } },

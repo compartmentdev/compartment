@@ -10,6 +10,10 @@
 {{- end }}
 {{- end }}
 
+{{- define "compartment.apiHost" -}}
+{{- printf "%s-api.%s.svc" (include "compartment.fullname" .) .Release.Namespace -}}
+{{- end }}
+
 {{- define "compartment.registryAuthHost" -}}
 {{- printf "%s-registry-auth.%s.svc" (include "compartment.fullname" .) .Release.Namespace -}}
 {{- end }}
@@ -313,6 +317,14 @@ tolerations:
 {{- $pool = .Values.nodePools.system -}}
 {{- end -}}
 {{- include "compartment.nodePool" $pool -}}
+{{- end }}
+
+{{- define "compartment.buildSchedulingJson" -}}
+{{- $pool := .Values.nodePools.build -}}
+{{- if and (empty $pool.nodeSelector) (empty $pool.tolerations) -}}
+{{- $pool = .Values.nodePools.system -}}
+{{- end -}}
+{{- dict "nodeSelector" $pool.nodeSelector "runtimeClassName" .Values.buildkit.runtimeClassName "tolerations" $pool.tolerations | toJson -}}
 {{- end }}
 
 {{- define "compartment.tenantSchedulingJson" -}}

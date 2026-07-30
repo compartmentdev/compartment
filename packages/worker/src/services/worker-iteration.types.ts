@@ -1,7 +1,7 @@
 import type { WorkerClaimedDeployment } from '@compartment/contracts';
-import type { CompartmentBinaryRequester, CompartmentRequester } from '@compartment/sdk';
-import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
-import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
+import type { KubeRuntime } from '@compartment/kube-runtime';
+import type { CompartmentRequester } from '@compartment/sdk';
+import type { WorkerConfig } from '../config';
 
 export interface AttemptedClaimedDeploymentResult {
   failureError?: Error;
@@ -14,9 +14,8 @@ export interface WorkerRequesterInput {
 }
 
 export interface AttemptClaimedDeploymentCompletionInput {
-  artifactRegistry: WorkerArtifactRegistryConfig;
+  config: WorkerConfig;
   deployment: WorkerClaimedDeployment;
-  releaseArchiveRequest: CompartmentBinaryRequester;
   request: CompartmentRequester;
-  tenantSecretsKek: TenantSecretsKeyring;
+  runtime: KubeRuntime;
 }

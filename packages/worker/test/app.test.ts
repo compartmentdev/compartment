@@ -4,18 +4,13 @@ import type { KubeControllerHost } from '../src/kube-controller-host';
 import { runWorker } from '../src/app';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import type { CompartmentRequester } from '@compartment/sdk';
+import type { KubeRuntime } from '@compartment/kube-runtime';
 
-type PrewarmSourceBuildToolchain = () => Promise<void>;
-type RunWorkerIteration = (
-  apiUrl: string,
-  runtimeControlToken: string,
-  artifactRegistry: WorkerArtifactRegistryConfig,
-) => Promise<boolean>;
+type RunWorkerIteration = (config: WorkerConfig, runtime: KubeRuntime) => Promise<boolean>;
 type WorkerTimeoutHandle = NodeJS.Timeout;
 type WorkerTimerHandler = string | (() => void);
 
 interface WorkerAppMocks {
-  prewarmSourceBuildToolchain: Mock<PrewarmSourceBuildToolchain>;
   reconcileKube: Mock<() => Promise<boolean>>;
   runWorkerIteration: Mock<RunWorkerIteration>;
   runKubeControllerLoop: Mock<() => Promise<void>>;
@@ -29,7 +24,6 @@ interface KubeControllerHostModuleMock {
 
 const mocks: WorkerAppMocks = vi.hoisted(
   (): WorkerAppMocks => ({
-    prewarmSourceBuildToolchain: vi.fn<PrewarmSourceBuildToolchain>(),
     reconcileKube: vi.fn<() => Promise<boolean>>(),
     recoverOrphanedBuildClaims: vi.fn<() => Promise<{ requeuedDeploymentCount: number }>>(),
     request: vi.fn() as CompartmentRequester,
@@ -50,8 +44,8 @@ vi.mock('../src/kube-controller-loop', (): { runKubeControllerLoop: Mock<() => P
   runKubeControllerLoop: mocks.runKubeControllerLoop,
 }));
 
-vi.mock('@compartment/docker', (): { prewarmSourceBuildToolchain: Mock<PrewarmSourceBuildToolchain> } => ({
-  prewarmSourceBuildToolchain: mocks.prewarmSourceBuildToolchain,
+vi.mock('@compartment/kube-runtime', (): { createKubeRuntimeFromEnvironment: () => KubeRuntime } => ({
+  createKubeRuntimeFromEnvironment: (): KubeRuntime => ({}) as KubeRuntime,
 }));
 
 vi.mock(
@@ -78,43 +72,22 @@ describe('runWorker', (): void => {
   });
 
   beforeEach((): void => {
-    mocks.prewarmSourceBuildToolchain.mockResolvedValue(undefined);
     mocks.reconcileKube.mockResolvedValue(false);
     mocks.recoverOrphanedBuildClaims.mockResolvedValue({ requeuedDeploymentCount: 0 });
     mocks.runKubeControllerLoop.mockResolvedValue(undefined);
   });
 
-  it('keeps polling the current worker path and prewarms BuildKit once', async (): Promise<void> => {
+  it('keeps polling the current worker path', async (): Promise<void> => {
     const stopLoopError: Error = new Error('stop worker loop');
     mocks.runWorkerIteration.mockResolvedValue(false);
     vi.spyOn(globalThis, 'setTimeout').mockImplementation(createSetTimeoutImplementation(stopLoopError));
 
     await expect(runWorker(createWorkerConfig())).rejects.toBe(stopLoopError);
 
-    expect(mocks.prewarmSourceBuildToolchain).toHaveBeenCalledTimes(1);
     expect(mocks.runWorkerIteration).toHaveBeenCalledTimes(2);
     expect(mocks.recoverOrphanedBuildClaims).toHaveBeenCalledTimes(1);
-    expect(mocks.runWorkerIteration).toHaveBeenCalledWith(
-      'http://127.0.0.1:9443',
-      'worker-secret',
-      createArtifactRegistryConfig(),
-      expect.any(Object),
-      { current: Buffer.alloc(32, 1) },
-    );
+    expect(mocks.runWorkerIteration).toHaveBeenCalledWith(createWorkerConfig(), expect.any(Object), expect.any(Object));
     expect(mocks.runKubeControllerLoop).toHaveBeenCalledTimes(3);
-  });
-
-  it('keeps polling when source build toolchain prewarm fails', async (): Promise<void> => {
-    const stopLoopError: Error = new Error('stop worker loop');
-    mocks.prewarmSourceBuildToolchain.mockRejectedValueOnce(new Error('registry unavailable'));
-    mocks.runWorkerIteration.mockResolvedValue(false);
-    vi.spyOn(globalThis, 'setTimeout').mockImplementation(createSetTimeoutImplementation(stopLoopError));
-
-    await expect(runWorker(createWorkerConfig())).rejects.toBe(stopLoopError);
-
-    await Promise.resolve();
-    expect(mocks.prewarmSourceBuildToolchain).toHaveBeenCalledTimes(1);
-    expect(mocks.runWorkerIteration).toHaveBeenCalledTimes(2);
   });
 
   it('retries after a transient worker iteration failure', async (): Promise<void> => {
@@ -132,7 +105,16 @@ function createWorkerConfig(): WorkerConfig {
   return {
     apiUrl: 'http://127.0.0.1:9443',
     artifactRegistry: createArtifactRegistryConfig(),
-    buildKitAddress: 'tcp://builder:1234',
+    buildSandbox: {
+      buildKitImage: 'moby/buildkit@sha256:builder',
+      buildKitResources: {},
+      gcKeepStorageMb: 2000,
+      namespace: 'compartment-build',
+      runnerImage: 'compartment-worker@sha256:runner',
+      runnerResources: {},
+      scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
+      timeoutMs: 900000,
+    },
     customDomains: {
       caddyServiceName: 'compartment-caddy',
       ingressClassName: 'traefik',

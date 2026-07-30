@@ -63,7 +63,6 @@ ports:
   edge: 39081
   registry: 5000
   registryInternal: 5001
-  buildkit: 1234
   http: 8080
 
 ingress:
@@ -90,7 +89,6 @@ storage:
   storageClass: ''
   postgres: 2Gi
   registry: 2Gi
-  buildkit: 8Gi
   edgeSnapshots: 1Gi
   api: 1Gi
 
@@ -177,19 +175,16 @@ buildkit:
   enabled: true
   namespace: compartment-build
   gcKeepStorageMb: 2000
-  pruneSchedule: '0 3 * * *'
-  pruneKeepDuration: 24h
-  workerNamespaceSelector: {}
-  workerPodSelector:
-    app.kubernetes.io/component: worker
+  runtimeClassName: gvisor
+  createRuntimeClass: true
+  runtimeHandler: runsc
+  timeoutMs: 1800000
   dnsNamespaceSelector:
     kubernetes.io/metadata.name: kube-system
   dnsPodSelector:
     k8s-app: kube-dns
   podCidr: 10.42.0.0/16
   serviceCidr: 10.43.0.0/16
-  seccompProfile:
-    type: Unconfined
 
 edge:
   replicas: 2
@@ -269,9 +264,9 @@ resources:
   buildkit:
     requests: { cpu: 250m, memory: 512Mi }
     limits: { cpu: '2', memory: 2Gi }
-  buildkitPrune:
-    requests: { cpu: 50m, memory: 64Mi }
-    limits: { cpu: 100m, memory: 128Mi }
+  buildRunner:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: '1', memory: 1Gi }
   productLogAgent:
     requests: { cpu: 50m, memory: 64Mi, ephemeral-storage: 320Mi }
     limits: { cpu: '1', memory: 256Mi, ephemeral-storage: 384Mi }

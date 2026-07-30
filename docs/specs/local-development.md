@@ -5,12 +5,13 @@ This document captures the local prerequisites and runtime behavior for reposito
 ## Prerequisites
 
 ```bash
-brew install caddy buildkit
+brew install caddy
 curl -sSL https://railpack.com/install.sh | sh
 ```
 
-- `pnpm dev` expects `caddy`, `buildctl`, `docker`, and `railpack` on `PATH`.
-- Source builds require `BUILDKIT_ADDR` to point at a reachable BuildKit daemon.
+- `pnpm dev` expects `caddy`, `docker`, and `railpack` on `PATH`.
+- Source builds require a configured Kubernetes context, build namespace, and `gvisor` RuntimeClass; each build starts
+  its own rootless BuildKit Job.
 - The `docker` CLI must reach a Docker-compatible daemon for the loopback artifact registry container.
 - Local development uses env-configured PostgreSQL, not Docker-managed infra for the control plane.
 

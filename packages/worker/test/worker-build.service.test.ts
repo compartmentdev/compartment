@@ -1,348 +1,152 @@
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type {
-  CompartmentServiceKind,
-  ResolvedCompartmentServiceBuildConfig,
   ResolvedCompartmentServiceRunConfig,
   WorkerBuildArtifactSummary,
   WorkerClaimedDeployment,
 } from '@compartment/contracts';
-import type { CompartmentBinaryRequester, CompartmentRequester } from '@compartment/sdk';
-import { buildReleaseImageFromSource as buildReleaseImageFromSourceWithKek } from '../src/services/worker-build.service';
-import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
-import type { PreparedWorkerSource } from '../src/services/worker-source.service.types';
+import type { DockerBuildImageResult } from '@compartment/docker';
+import type { KubeRuntime } from '@compartment/kube-runtime';
+import type { CompartmentRequester } from '@compartment/sdk';
+import type { WorkerConfig } from '../src/config';
+import { buildReleaseImageFromSource } from '../src/services/worker-build.service';
+import type { RunWorkerBuildJobInput, WorkerSourceBuildJobInput } from '../src/services/worker-build-job.types';
 import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
 
-interface BuildDockerImageInput {
-  appPath?: string | undefined;
-  buildAptPackages?: string[] | undefined;
-  buildCommand?: string | undefined;
-  buildEnv?: Record<string, string> | undefined;
-  contextDirectory: string;
-  dockerfilePath?: string | undefined;
-  imageTag: string;
-  labels?: Record<string, string> | undefined;
-  onProgressLine?: ((line: { message: string; stream: 'stderr' | 'stdout' }) => void | Promise<void>) | undefined;
-  packer: 'dockerfile' | 'railpack' | 'static';
-  pushImageInsecureRegistry?: boolean | undefined;
-  pushImageTag?: string | undefined;
-  runtimeAptPackages?: string[] | undefined;
-  staticOutputDirectory?: string | undefined;
-}
-
-interface DockerBuildImageResult {
+type RunWorkerBuildJob = (
+  runtime: KubeRuntime,
+  config: object,
+  input: RunWorkerBuildJobInput,
+) => Promise<{
   imageRef: string;
   pushed: boolean;
-}
-
-type BuildDockerImage = (input: BuildDockerImageInput) => Promise<DockerBuildImageResult>;
+}>;
 type ScheduleWorkerBuild = (run: () => Promise<DockerBuildImageResult>) => Promise<DockerBuildImageResult>;
-type PrepareServiceDirectory = (
-  tempDirectory: string,
-  sourceArchive: Buffer,
-  service: {
-    kind: CompartmentServiceKind;
-    name: string;
-    path: string;
-  },
-  build: ResolvedCompartmentServiceBuildConfig,
-  requireRoutesFile: boolean,
-) => Promise<PreparedWorkerSource>;
 
-interface EventRequestBody {
-  deploymentId?: string;
-  deploymentRunId?: string;
-  level?: string;
-  message?: string;
-  status?: string;
-  stepKey?: string;
-  stream?: string;
-}
-
-interface EventRequestOptions {
-  body?: EventRequestBody;
-  method: string;
-  path: string;
-  schema: object;
-}
-
-type EventRequest = (input: EventRequestOptions) => Promise<EventRequestBody | undefined>;
-
-interface WorkerBuildServiceTestMocks {
-  buildDockerImage: Mock<BuildDockerImage>;
-  prepareServiceDirectory: Mock<PrepareServiceDirectory>;
+const mocks: {
+  runWorkerBuildJob: Mock<RunWorkerBuildJob>;
   scheduleWorkerBuild: Mock<ScheduleWorkerBuild>;
-}
-
-const mocks: WorkerBuildServiceTestMocks = vi.hoisted(
-  (): WorkerBuildServiceTestMocks => ({
-    buildDockerImage: vi.fn<BuildDockerImage>(),
-    prepareServiceDirectory: vi.fn<PrepareServiceDirectory>(),
+} = vi.hoisted(
+  (): {
+    runWorkerBuildJob: Mock<RunWorkerBuildJob>;
+    scheduleWorkerBuild: Mock<ScheduleWorkerBuild>;
+  } => ({
+    runWorkerBuildJob: vi.fn<RunWorkerBuildJob>(),
     scheduleWorkerBuild: vi.fn<ScheduleWorkerBuild>(
       async (run: () => Promise<DockerBuildImageResult>): Promise<DockerBuildImageResult> => await run(),
     ),
   }),
 );
 
-vi.mock('@compartment/docker', (): { buildDockerImage: Mock<BuildDockerImage> } => ({
-  buildDockerImage: mocks.buildDockerImage,
+vi.mock('../src/services/worker-build-job.service', (): { runWorkerBuildJob: Mock<RunWorkerBuildJob> } => ({
+  runWorkerBuildJob: mocks.runWorkerBuildJob,
 }));
 
 vi.mock('../src/services/worker-build-scheduler.service', (): { scheduleWorkerBuild: Mock<ScheduleWorkerBuild> } => ({
   scheduleWorkerBuild: mocks.scheduleWorkerBuild,
 }));
 
-vi.mock('../src/services/worker-source.service', (): { prepareServiceDirectory: Mock<PrepareServiceDirectory> } => ({
-  prepareServiceDirectory: mocks.prepareServiceDirectory,
-}));
-
 afterEach((): void => {
-  mocks.buildDockerImage.mockReset();
-  mocks.prepareServiceDirectory.mockReset();
-  mocks.scheduleWorkerBuild.mockClear();
+  vi.clearAllMocks();
 });
 
-async function buildReleaseImageFromSource(
-  request: CompartmentRequester,
-  archiveRequest: CompartmentBinaryRequester,
-  deployment: WorkerClaimedDeployment,
-  artifactRegistry: WorkerArtifactRegistryConfig,
-): Promise<string> {
-  return await buildReleaseImageFromSourceWithKek(
-    request,
-    archiveRequest,
-    deployment,
-    artifactRegistry,
-    testTenantSecretsKek,
-  );
-}
-
 describe('buildReleaseImageFromSource', (): void => {
-  it('reuses an existing artifact image without downloading source', async (): Promise<void> => {
-    const eventRequestMock: Mock<EventRequest> = vi.fn<EventRequest>().mockResolvedValue(undefined);
-    const eventRequest: CompartmentRequester = (async (
-      options: EventRequestOptions,
-    ): Promise<EventRequestBody | undefined> => await eventRequestMock(options)) as CompartmentRequester;
-    const request: CompartmentBinaryRequester = async (): Promise<Buffer> => await Promise.resolve(Buffer.from('test'));
+  it('reuses an existing digest-pinned artifact without starting a build Job', async (): Promise<void> => {
+    const request: CompartmentRequester = vi.fn() as CompartmentRequester;
+    const deployment: WorkerClaimedDeployment = createClaimedDeployment({
+      artifact: {
+        id: 'art_123',
+        imageRef: `127.0.0.1:5517/projects/prj_123/services/svc_123@sha256:${'a'.repeat(64)}`,
+        sourceDigest: 'sha256:source',
+      },
+    });
 
     await expect(
-      buildReleaseImageFromSource(
-        eventRequest,
-        request,
-        createClaimedDeployment({
-          artifact: {
-            id: 'art_123',
-            imageRef: `127.0.0.1:5517/projects/prj_123/services/svc_123@sha256:${'a'.repeat(64)}`,
-            sourceDigest: 'sha256:source',
-          },
-        }),
-        createArtifactRegistryConfig(),
-      ),
-    ).resolves.toBe(`127.0.0.1:5517/projects/prj_123/services/svc_123@sha256:${'a'.repeat(64)}`);
-
-    expect(mocks.prepareServiceDirectory).not.toHaveBeenCalled();
-    expect(mocks.buildDockerImage).not.toHaveBeenCalled();
-    expect(eventRequestMock).toHaveBeenCalledTimes(1);
-    expect(eventRequestMock.mock.calls[0]?.[0]).toMatchObject({
-      body: {
-        deploymentId: 'dep_123',
-        deploymentRunId: 'drn_123',
-        level: 'info',
-        message: 'worker claimed deployment',
-        status: 'succeeded',
-        stepKey: 'queued',
-        stream: 'compartment',
-      },
-      method: 'POST',
-      path: '/internal/deployments/events',
-    });
+      buildReleaseImageFromSource(request, deployment, createWorkerConfig(), {} as KubeRuntime),
+    ).resolves.toBe(deployment.artifact.imageRef);
+    expect(mocks.runWorkerBuildJob).not.toHaveBeenCalled();
   });
 
-  it('rebuilds a legacy tagged artifact and returns the BuildKit-pushed image ref', async (): Promise<void> => {
-    const getArtifactSourceArchiveSpy: Mock<(artifactId: string) => Promise<Buffer>> = vi
-      .fn<(artifactId: string) => Promise<Buffer>>()
-      .mockResolvedValueOnce(Buffer.from('test'));
-    const eventRequest: CompartmentRequester = vi.fn() as CompartmentRequester;
-    const request: CompartmentBinaryRequester = async ({ path }: { path: string }): Promise<Buffer> => {
-      const artifactId: string = path.split('/')[3] ?? '';
-      return await getArtifactSourceArchiveSpy(artifactId);
-    };
-    mocks.prepareServiceDirectory.mockResolvedValueOnce({
-      buildContextDirectory: '/tmp/source',
-      buildAptPackages: [],
-      dockerfilePath: 'apps/web/Dockerfile',
-      packer: 'dockerfile',
-      runtimeAptPackages: [],
-      serviceRelativePath: 'apps/web',
-    });
-    mocks.buildDockerImage.mockResolvedValueOnce({
+  it('projects one tenant-scoped sandbox build with registry cache and decrypted build variables', async (): Promise<void> => {
+    mocks.runWorkerBuildJob.mockResolvedValueOnce({
       imageRef: `127.0.0.1:5517/projects/prj_123/services/svc_123@sha256:${'b'.repeat(64)}`,
       pushed: true,
     });
+    const deployment: WorkerClaimedDeployment = createClaimedDeployment({
+      buildEnv: encryptTestTenantEnvironment({ VITE_PUBLIC_GREETING: 'hello' }),
+    });
+    const runtime: KubeRuntime = {} as KubeRuntime;
 
     await expect(
-      buildReleaseImageFromSource(
-        eventRequest,
-        request,
-        createClaimedDeployment({
-          artifact: {
-            id: 'art_123',
-            imageRef: 'registry.example/web:legacy',
-            sourceDigest: 'sha256:source',
-          },
-          buildEnv: encryptTestTenantEnvironment({
-            VITE_PUBLIC_GREETING: 'hello from build env',
-          }),
-        }),
-        createArtifactRegistryConfig(),
-      ),
+      buildReleaseImageFromSource(vi.fn() as CompartmentRequester, deployment, createWorkerConfig(), runtime),
     ).resolves.toBe(`127.0.0.1:5517/projects/prj_123/services/svc_123@sha256:${'b'.repeat(64)}`);
 
-    expect(getArtifactSourceArchiveSpy).toHaveBeenCalledWith('art_123');
-    expect(mocks.prepareServiceDirectory).toHaveBeenCalled();
-    expect(mocks.buildDockerImage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        contextDirectory: '/tmp/source',
-        dockerfilePath: 'apps/web/Dockerfile',
-        imageTag: '127.0.0.1:5517/projects/prj_123/services/svc_123:art_123',
-        pushImageInsecureRegistry: true,
-        pushImageTag: 'registry:5000/projects/prj_123/services/svc_123:art_123',
-      }),
-    );
+    const call: [KubeRuntime, object, RunWorkerBuildJobInput] = mocks.runWorkerBuildJob.mock.calls[0]!;
+    const build: WorkerSourceBuildJobInput = requireSourceBuild(call[2]);
+    expect(call[0]).toBe(runtime);
+    expect(call[1]).toEqual(createWorkerConfig().buildSandbox);
+    expect(call[2].id).toBe('art_123');
+    expect(call[2].internalToken).toBe('runtime-control-token');
+    expect(build.apiUrl).toBe('http://api:39444');
+    expect(build.artifactId).toBe('art_123');
+    expect(build.docker).toMatchObject({
+      buildEnv: { VITE_PUBLIC_GREETING: 'hello' },
+      cacheImageRef: 'registry:5000/projects/prj_123/services/svc_123:build-cache',
+      imageTag: '127.0.0.1:5517/projects/prj_123/services/svc_123:art_123',
+      pushImageTag: 'registry:5000/projects/prj_123/services/svc_123:art_123',
+    });
   });
 
-  it('rejects an unpinned result and keeps node-facing registry pushes secure', async (): Promise<void> => {
-    const getArtifactSourceArchiveSpy: Mock<(artifactId: string) => Promise<Buffer>> = vi
-      .fn<(artifactId: string) => Promise<Buffer>>()
-      .mockResolvedValueOnce(Buffer.from('test'));
-    const eventRequest: CompartmentRequester = vi.fn() as CompartmentRequester;
-    const request: CompartmentBinaryRequester = async ({ path }: { path: string }): Promise<Buffer> => {
-      const artifactId: string = path.split('/')[3] ?? '';
-      return await getArtifactSourceArchiveSpy(artifactId);
-    };
-    mocks.prepareServiceDirectory.mockResolvedValueOnce({
-      buildContextDirectory: '/tmp/source',
-      buildAptPackages: [],
-      dockerfilePath: 'apps/web/Dockerfile',
-      packer: 'dockerfile',
-      runtimeAptPackages: [],
-      serviceRelativePath: 'apps/web',
-    });
-    mocks.buildDockerImage.mockResolvedValueOnce({
-      imageRef: 'sha256:local-image-id',
-      pushed: true,
-    });
+  it('rejects a build Job result that is not digest pinned', async (): Promise<void> => {
+    mocks.runWorkerBuildJob.mockResolvedValueOnce({ imageRef: 'registry:5000/web:tag', pushed: true });
 
     await expect(
       buildReleaseImageFromSource(
-        eventRequest,
-        request,
-        createClaimedDeployment({
-          artifact: {
-            id: 'art_123',
-            imageRef: null,
-            sourceDigest: 'sha256:source',
-          },
-        }),
-        createArtifactRegistryConfig(),
+        vi.fn() as CompartmentRequester,
+        createClaimedDeployment(),
+        createWorkerConfig(),
+        {} as KubeRuntime,
       ),
-    ).rejects.toThrow(
-      'Expected source image build for "127.0.0.1:5517/projects/prj_123/services/svc_123:art_123" to return a digest-pinned BuildKit push result.',
-    );
-
-    expect(mocks.buildDockerImage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        imageTag: '127.0.0.1:5517/projects/prj_123/services/svc_123:art_123',
-        pushImageInsecureRegistry: true,
-        pushImageTag: 'registry:5000/projects/prj_123/services/svc_123:art_123',
-      }),
-    );
-  });
-
-  it('rejects run commands when the prepared source resolves to Dockerfile', async (): Promise<void> => {
-    const eventRequest: CompartmentRequester = vi.fn() as CompartmentRequester;
-    const request: CompartmentBinaryRequester = async (): Promise<Buffer> => await Promise.resolve(Buffer.from('test'));
-    mocks.prepareServiceDirectory.mockResolvedValueOnce({
-      buildContextDirectory: '/tmp/source',
-      buildAptPackages: [],
-      dockerfilePath: 'apps/web/Dockerfile',
-      packer: 'dockerfile',
-      runtimeAptPackages: [],
-      serviceRelativePath: 'apps/web',
-    });
-
-    await expect(
-      buildReleaseImageFromSource(
-        eventRequest,
-        request,
-        createClaimedDeployment({
-          artifact: {
-            id: 'art_123',
-            imageRef: null,
-            sourceDigest: 'sha256:source',
-          },
-          run: {
-            command: 'node server.js',
-          },
-        }),
-        createArtifactRegistryConfig(),
-      ),
-    ).rejects.toThrow('Run command is only supported for services with an authored runtime process.');
-
-    expect(mocks.buildDockerImage).not.toHaveBeenCalled();
-  });
-
-  it('rejects static services when source preparation does not resolve build.outputDirectory', async (): Promise<void> => {
-    const eventRequest: CompartmentRequester = vi.fn() as CompartmentRequester;
-    const request: CompartmentBinaryRequester = async (): Promise<Buffer> => await Promise.resolve(Buffer.from('test'));
-    mocks.prepareServiceDirectory.mockResolvedValueOnce({
-      buildContextDirectory: '/tmp/source',
-      buildAptPackages: [],
-      packer: 'static',
-      runtimeAptPackages: [],
-      serviceRelativePath: '.',
-    });
-
-    await expect(
-      buildReleaseImageFromSource(
-        eventRequest,
-        request,
-        createClaimedDeployment({
-          artifact: {
-            id: 'art_123',
-            imageRef: null,
-            sourceDigest: 'sha256:source',
-          },
-          service: {
-            build: {
-              env: [],
-              include: [],
-              outputDirectory: 'dist',
-              packages: {
-                build: [],
-                runtime: [],
-              },
-              strategy: 'auto',
-            },
-            id: 'svc_123',
-            kind: 'static',
-            name: 'site',
-            path: '.',
-          },
-        }),
-        createArtifactRegistryConfig(),
-      ),
-    ).rejects.toThrow('Static services must resolve build.outputDirectory before image build.');
-
-    expect(mocks.buildDockerImage).not.toHaveBeenCalled();
+    ).rejects.toThrow('return a digest-pinned BuildKit push result');
   });
 });
 
-function createArtifactRegistryConfig(): WorkerArtifactRegistryConfig {
+function requireSourceBuild(input: RunWorkerBuildJobInput): WorkerSourceBuildJobInput {
+  if (input.build.kind !== 'source') {
+    throw new Error('Expected a source build Job.');
+  }
+  return input.build;
+}
+
+function createWorkerConfig(): WorkerConfig {
   return {
-    address: '127.0.0.1:5517',
-    credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
-    internalAddress: 'registry:5000',
-    internalUrl: 'http://registry:5000',
+    apiUrl: 'http://api:39444',
+    artifactRegistry: {
+      address: '127.0.0.1:5517',
+      credentialSigningKey: 'registry-signing-key-with-at-least-32-characters',
+      internalAddress: 'registry:5000',
+      internalUrl: 'http://registry:5000',
+    },
+    buildSandbox: {
+      buildKitImage: 'moby/buildkit@sha256:builder',
+      buildKitResources: {},
+      gcKeepStorageMb: 2000,
+      namespace: 'compartment-build',
+      runnerImage: 'compartment-worker@sha256:runner',
+      runnerResources: {},
+      scheduling: { nodeSelector: {}, runtimeClassName: 'gvisor', tolerations: [] },
+      timeoutMs: 900000,
+    },
+    customDomains: {
+      caddyServiceName: 'compartment-caddy',
+      ingressClassName: 'traefik',
+      issuerRef: { kind: 'Issuer', name: 'compartment-platform' },
+      namespace: 'compartment',
+    },
+    logLevel: 'silent',
+    pollIntervalMs: 1000,
+    runtimeControlToken: 'runtime-control-token',
+    tenantSecretsKek: testTenantSecretsKek,
+    usageMeteringIntervalMs: 60000,
   };
 }
 
@@ -350,11 +154,8 @@ function createClaimedDeployment(
   input: Partial<WorkerClaimedDeployment> & { artifact?: WorkerBuildArtifactSummary } = {},
 ): WorkerClaimedDeployment {
   return {
-    artifact: input.artifact ?? {
-      id: 'art_123',
-      imageRef: null,
-      sourceDigest: 'sha256:source',
-    },
+    artifact: input.artifact ?? { id: 'art_123', imageRef: null, sourceDigest: 'sha256:source' },
+    buildEnv: {},
     deploymentId: 'dep_123',
     deploymentRunId: 'drn_123',
     environmentId: 'env_123',
@@ -362,17 +163,13 @@ function createClaimedDeployment(
     projectId: 'prj_123',
     projectName: 'smoke-web',
     requiresSourceRoutesFile: false,
-    run: createRun(),
     routeHost: 'smoke-web.localhost',
-    buildEnv: {},
+    run: createRun(),
     service: {
       build: {
         env: [],
         include: [],
-        packages: {
-          build: [],
-          runtime: [],
-        },
+        packages: { build: [], runtime: [] },
         strategy: 'auto',
       },
       id: 'svc_123',

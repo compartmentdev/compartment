@@ -11,13 +11,14 @@ existing-cluster preflight before applying it.
 - cert-manager
 - NetworkPolicy enforcement
 - persistent storage
+- `runsc` configured as the `gvisor` containerd runtime handler on every build node
 - installer access to the namespaced and cluster-scoped resources rendered by the chart
 
 The chart does not install or disable cluster infrastructure and does not mutate nodes.
 
 ## Node pools and workload priority
 
-`nodePools.system` schedules platform components, `nodePools.build` schedules BuildKit and its prune Job, and
+`nodePools.system` schedules platform components, `nodePools.build` schedules ephemeral BuildKit Jobs, and
 `nodePools.tenant` schedules application, resource, product, and provisioning workloads. An empty pool adds no
 selector or toleration. An empty build pool falls back to the system pool.
 
@@ -50,7 +51,7 @@ nodePools:
       - { key: compartment.dev/node-pool, operator: Equal, value: tenant, effect: NoSchedule }
 ```
 
-Platform and BuildKit Pods use the higher `compartment-platform` PriorityClass. Configured tenant workloads use
+Platform and ephemeral BuildKit Pods use the higher `compartment-platform` PriorityClass. Configured tenant workloads use
 `compartment-tenant`, allowing a pending platform Pod to preempt lower-priority tenant Pods when both are eligible for
 the same node. Priority does not guarantee availability during node failure or kubelet node-pressure eviction.
 

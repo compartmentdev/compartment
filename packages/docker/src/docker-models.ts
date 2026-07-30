@@ -13,6 +13,7 @@ export interface DockerBuildImageInput {
   buildAptPackages?: string[] | undefined;
   buildCommand?: string | undefined;
   buildEnv?: Record<string, string> | undefined;
+  cacheImageRef?: string | undefined;
   contextDirectory: string;
   dockerfilePath?: string | undefined;
   imageTag: string;

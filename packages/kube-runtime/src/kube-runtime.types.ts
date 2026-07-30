@@ -4,11 +4,19 @@ import type {
   KubeContainerPort,
   KubeReadinessProbe,
 } from './kube-application-projection.types';
-import type { KubeJobVolumeMount, KubePodVolume, KubeVolumeMount } from './kube-volume.types';
+import type { KubePodVolume, KubeVolumeMount } from './kube-volume.types';
 import type { KubeContainerSecurityContext, KubePodSecurityContext } from './kube-security-context.types';
-import type { KubeToleration, KubeWorkloadScheduling } from './kube-workload-scheduling.types';
+import type { KubeToleration } from './kube-workload-scheduling.types';
 
 export type { KubeJobVolumeMount, KubePodVolume, KubeVolumeMount } from './kube-volume.types';
+export type {
+  KubeJobEmptyDirVolume,
+  KubeJobResult,
+  KubeJobSidecar,
+  KubeJobSpec,
+  KubeLogReference,
+  KubePersistedJobResult,
+} from './kube-job-spec.types';
 export type { ApplyBundle } from './kube-apply-bundle.types';
 
 export type KubeManifestKind =
@@ -109,6 +117,12 @@ export interface KubeSecretEnvVariable {
   value?: never;
 }
 
+export interface KubeLiteralEnvVariable {
+  name: string;
+  value: string;
+  valueFrom?: never;
+}
+
 export interface KubeProjectedContainer {
   args?: string[] | undefined;
   command?: string[] | undefined;
@@ -123,10 +137,16 @@ export interface KubeProjectedContainer {
   volumeMounts?: KubeVolumeMount[] | undefined;
 }
 
+export interface KubeProjectedSidecarContainer extends Omit<KubeProjectedContainer, 'env'> {
+  env: KubeLiteralEnvVariable[];
+  restartPolicy: 'Always';
+}
+
 export interface KubeProjectedPodSpec {
   automountServiceAccountToken: false;
   containers: KubeProjectedContainer[];
   imagePullSecrets?: KubeLocalObjectReference[] | undefined;
+  initContainers?: KubeProjectedSidecarContainer[] | undefined;
   nodeSelector?: Readonly<Record<string, string>> | undefined;
   priorityClassName?: string | undefined;
   restartPolicy?: 'Never' | 'OnFailure' | undefined;
@@ -241,47 +261,3 @@ export interface KubeObservation {
 }
 
 export type KubeObservationListener = (event: KubeObservationEvent) => Promise<void> | void;
-
-export interface KubeLogReference {
-  container?: string | undefined;
-  namespace: string;
-  podName: string;
-  tailLines?: number | undefined;
-}
-
-export interface KubeJobSpec {
-  args?: string[] | undefined;
-  command?: string[] | undefined;
-  env: Readonly<Record<string, string>>;
-  id: string;
-  image: string;
-  imagePullSecretId?: string | undefined;
-  jobClass: 'release' | 'operation';
-  labels: Readonly<Record<string, string>>;
-  namespace: string;
-  scheduling?: KubeWorkloadScheduling | undefined;
-  securityProfile?: 'project-restricted' | 'resource-restricted' | 'restricted' | undefined;
-  serviceAccountName?: string | undefined;
-  serviceAccountTokenExpirationSeconds?: number | undefined;
-  timeoutMs: number;
-  volumeMounts?: KubeJobVolumeMount[] | undefined;
-}
-
-export interface KubeJobResult {
-  completedAt: Date;
-  exitCode: number | null;
-  jobName: string;
-  logs: string;
-  podName: string | null;
-  status: 'succeeded' | 'failed' | 'timed-out';
-  finalize(): Promise<void>;
-}
-
-export interface KubePersistedJobResult {
-  completedAt: Date;
-  exitCode: number | null;
-  jobName: string;
-  logs: string;
-  podName: string | null;
-  status: 'succeeded' | 'failed' | 'timed-out';
-}

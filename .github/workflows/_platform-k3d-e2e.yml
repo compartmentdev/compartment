@@ -30,6 +30,7 @@ jobs:
           - managed-install
     env:
       COMPARTMENT_E2E_IMAGE_ARCHIVE_DIR: ./.compartment/self-hosted-image-cache
+      COMPARTMENT_E2E_GVISOR_ENABLED: '1'
       COMPARTMENT_E2E_KEEP_ON_FAILURE: ${{ vars.COMPARTMENT_E2E_KEEP_ON_FAILURE || '0' }}
       COMPARTMENT_E2E_SKIP_CLI_BUILD: '1'
       COMPARTMENT_TEST_APP_NODE_IMAGE: public.ecr.aws/docker/library/node:24.15.0-bookworm

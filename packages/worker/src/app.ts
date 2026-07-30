@@ -1,5 +1,5 @@
-import { prewarmSourceBuildToolchain } from '@compartment/docker';
 import type { WorkerRecoverOrphanedBuildClaimsResponse } from '@compartment/contracts';
+import { createKubeRuntimeFromEnvironment, type KubeRuntime } from '@compartment/kube-runtime';
 import { createCompartmentRequester, isCompartmentRequestError, recoverOrphanedBuildClaims } from '@compartment/sdk';
 import pino from 'pino';
 import { readWorkerConfig, type WorkerConfig } from './config';
@@ -23,13 +23,13 @@ interface WorkerFetchError extends Error {
 export async function runWorker(config: WorkerConfig = readWorkerConfig()): Promise<void> {
   const logger: pino.Logger<never, boolean> = createWorkerLogger(config);
   const state: WorkerState = { hasReachedApi: false, recoveredOrphanedBuildClaims: false };
-  const kubeControllers: KubeControllerHost[] = createKubeControllerHosts(config, logger);
+  const runtime: KubeRuntime = createKubeRuntimeFromEnvironment();
+  const kubeControllers: KubeControllerHost[] = createKubeControllerHosts(config, logger, runtime);
 
-  void prewarmSourceBuildToolchainAtStartup(logger);
   for (const kubeController of kubeControllers) {
     void runKubeControllerLoop(config, logger, kubeController);
   }
-  await runWorkerLoop(config, logger, state);
+  await runWorkerLoop(config, runtime, logger, state);
 }
 
 function createWorkerLogger(config: WorkerConfig): pino.Logger<never, boolean> {
@@ -41,32 +41,20 @@ function createWorkerLogger(config: WorkerConfig): pino.Logger<never, boolean> {
   });
 }
 
-async function prewarmSourceBuildToolchainAtStartup(logger: pino.Logger<never, boolean>): Promise<void> {
-  logger.info('Prewarming source build toolchain.');
-
-  try {
-    await prewarmSourceBuildToolchain();
-    logger.info('Source build toolchain prewarmed.');
-  } catch (error) {
-    logger.warn(
-      buildWorkerCaughtErrorLogPayload(error as WorkerCaughtError),
-      'Source build toolchain prewarm failed. First source deploy may be slower.',
-    );
-  }
-}
-
 async function runWorkerLoop(
   config: WorkerConfig,
+  runtime: KubeRuntime,
   logger: pino.Logger<never, boolean>,
   state: WorkerState,
 ): Promise<void> {
   for (;;) {
-    await runWorkerCycle(config, logger, state);
+    await runWorkerCycle(config, runtime, logger, state);
   }
 }
 
 async function runWorkerCycle(
   config: WorkerConfig,
+  runtime: KubeRuntime,
   logger: pino.Logger<never, boolean>,
   state: WorkerState,
 ): Promise<void> {
@@ -74,13 +62,7 @@ async function runWorkerCycle(
     if (await recoverWorkerBuildClaimsIfNeeded(config, logger, state)) {
       return;
     }
-    const claimedWork: boolean = await runWorkerIteration(
-      config.apiUrl,
-      config.runtimeControlToken,
-      config.artifactRegistry,
-      logger,
-      config.tenantSecretsKek,
-    );
+    const claimedWork: boolean = await runWorkerIteration(config, runtime, logger);
     state.hasReachedApi = true;
     if (!claimedWork) {
       await waitForNextPoll(config.pollIntervalMs);

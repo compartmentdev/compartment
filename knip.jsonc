@@ -94,6 +94,7 @@
       "entry": [
         "src/index.ts!",
         "src/server.ts!",
+        "src/build-job.ts!",
         "src/registry-auth-proxy.ts!",
         "src/registry-install-verifier.ts!",
         "src/project-provisioner-server.ts!",

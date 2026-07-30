@@ -1,8 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type * as BuildkitCommandModule from '../src/buildkit-command';
-import { buildDockerImage, prewarmSourceBuildToolchain } from '../src/docker-build';
-import type { DockerCommandResult } from '../src/docker-command.types';
+import { buildDockerImage } from '../src/docker-build';
 import type { DockerBuildImageInput, DockerProgressReporter, DockerRegistryCredentials } from '../src/docker-models';
 import type { PrepareRailpackPlanInput } from '../src/railpack-command.types';
 
@@ -11,23 +10,17 @@ type RunBuildctlCommandWithOptionalProgressReporter = (
   onProgressLine: DockerProgressReporter | undefined,
   registryCredentials?: DockerRegistryCredentials,
 ) => Promise<void>;
-type RunBuildctlCommandWithRegistryRetry = (
-  args: string[],
-  registryCredentials?: DockerRegistryCredentials,
-) => Promise<DockerCommandResult>;
 type PrepareRailpackPlan = (input: PrepareRailpackPlanInput) => Promise<void>;
 
 interface DockerBuildTestMocks {
   prepareRailpackPlan: Mock<PrepareRailpackPlan>;
   runBuildctlCommandWithOptionalProgressReporter: Mock<RunBuildctlCommandWithOptionalProgressReporter>;
-  runBuildctlCommandWithRegistryRetry: Mock<RunBuildctlCommandWithRegistryRetry>;
 }
 
 const mocks: DockerBuildTestMocks = vi.hoisted(
   (): DockerBuildTestMocks => ({
     prepareRailpackPlan: vi.fn<PrepareRailpackPlan>(),
     runBuildctlCommandWithOptionalProgressReporter: vi.fn<RunBuildctlCommandWithOptionalProgressReporter>(),
-    runBuildctlCommandWithRegistryRetry: vi.fn<RunBuildctlCommandWithRegistryRetry>(),
   }),
 );
 
@@ -39,7 +32,6 @@ vi.mock(
     return {
       ...actual,
       runBuildctlCommandWithOptionalProgressReporter: mocks.runBuildctlCommandWithOptionalProgressReporter,
-      runBuildctlCommandWithRegistryRetry: mocks.runBuildctlCommandWithRegistryRetry,
     };
   },
 );
@@ -52,7 +44,6 @@ beforeEach((): void => {
   delete process.env.BUILDKIT_ADDR;
   mocks.prepareRailpackPlan.mockReset();
   mocks.runBuildctlCommandWithOptionalProgressReporter.mockReset();
-  mocks.runBuildctlCommandWithRegistryRetry.mockReset();
 });
 
 afterEach((): void => {
@@ -83,6 +74,7 @@ describe('buildDockerImage', (): void => {
         buildEnv: {
           NEXT_PUBLIC_API_URL: 'https://api.example.com',
         },
+        cacheImageRef: 'registry:5000/compartment-web:build-cache',
         contextDirectory: '/tmp/source',
         dockerfilePath: 'apps/web/Dockerfile',
         imageTag: 'registry.example/compartment-web:art_123',
@@ -116,6 +108,10 @@ describe('buildDockerImage', (): void => {
         'build-arg:NEXT_PUBLIC_API_URL=https://api.example.com',
         '--opt',
         'label:compartment.namespace=compartment-e2e',
+        '--import-cache',
+        'type=registry,ref=registry:5000/compartment-web:build-cache,registry.insecure=true',
+        '--export-cache',
+        'type=registry,ref=registry:5000/compartment-web:build-cache,mode=max,image-manifest=true,oci-mediatypes=true,registry.insecure=true',
         '--opt',
         'attest:sbom=',
         '--output',
@@ -400,46 +396,6 @@ describe('buildDockerImage', (): void => {
       imageRef: `registry.example/compartment-web@${recoveredDigest}`,
       pushed: true,
     });
-  });
-});
-
-describe('prewarmSourceBuildToolchain', (): void => {
-  it('requires the remote BuildKit address for source build prewarm', async (): Promise<void> => {
-    await expect(prewarmSourceBuildToolchain()).rejects.toThrow(
-      'BUILDKIT_ADDR is required for remote BuildKit source builds.',
-    );
-
-    expect(mocks.runBuildctlCommandWithRegistryRetry).not.toHaveBeenCalled();
-  });
-
-  it('warms the remote BuildKit Railpack toolchain', async (): Promise<void> => {
-    process.env.BUILDKIT_ADDR = 'tcp://builder:1234';
-    mocks.prepareRailpackPlan.mockResolvedValueOnce();
-    mocks.runBuildctlCommandWithRegistryRetry.mockResolvedValueOnce({ stderr: '', stdout: '' });
-
-    await expect(prewarmSourceBuildToolchain()).resolves.toBeUndefined();
-
-    const railpackInput: PrepareRailpackPlanInput | undefined = mocks.prepareRailpackPlan.mock.calls[0]?.[0];
-    const prewarmDirectory: string = railpackInput?.contextDirectory ?? '';
-
-    expect(prewarmDirectory).toMatch(/compartment-source-build-prewarm-/);
-    expect(mocks.runBuildctlCommandWithRegistryRetry).toHaveBeenNthCalledWith(
-      1,
-      expect.arrayContaining([
-        '--addr',
-        'tcp://builder:1234',
-        'build',
-        '--frontend',
-        'gateway.v0',
-        '--local',
-        `context=${prewarmDirectory}`,
-        '--local',
-        `dockerfile=${prewarmDirectory}`,
-        '--opt',
-        expect.stringMatching(/^source=ghcr\.io\/railwayapp\/railpack-frontend@sha256:[a-f0-9]{64}$/u),
-      ]),
-    );
-    expect(mocks.runBuildctlCommandWithRegistryRetry.mock.calls[0]?.[0]).not.toContain('--output');
   });
 });
 

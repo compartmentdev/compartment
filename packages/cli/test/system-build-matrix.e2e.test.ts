@@ -45,7 +45,11 @@ import {
   type SelfHostedUserSetupRuntime,
 } from './self-hosted-user-setup.e2e.harness';
 import { readAppSessionCookieWithRetry } from './self-hosted-user-setup-app-probe.harness';
-import { readK3dPlatformSeed, reclaimK3dBuildStorage } from './self-hosted-user-setup-k3d.harness';
+import {
+  readK3dPlatformSeed,
+  reclaimK3dBuildStorage,
+  type K3dPlatformSeed,
+} from './self-hosted-user-setup-k3d.harness';
 import {
   selfHostedMultiServiceBuildFixtures,
   selfHostedSingleServiceBuildFixtures,
@@ -69,7 +73,8 @@ import {
 
 type HttpProbeErrorInput = Error | string | number | boolean | symbol | bigint | null | undefined;
 
-const selfHostedBuildMatrixTimeoutMs: number = 40 * 60_000;
+const selfHostedBuildMatrixTimeoutMs: number =
+  process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1' ? 90 * 60_000 : 40 * 60_000;
 const selfHostedBuildMatrixRuntimeCommandTimeoutMs: number = 60_000;
 const selfHostedBuildMatrixHttpProbeAttempts: number = 60;
 const selfHostedBuildMatrixHttpProbeDelayMs: number = 1_000;
@@ -86,6 +91,7 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
   let admin: SelfHostedUserSetupCli;
   let advertisedCompartmentUrl: string;
   let completedStepCount: number = 0;
+  let sandboxProofCompleted: boolean = false;
 
   it(
     'installs the system and logs in with the CLI',
@@ -126,11 +132,16 @@ describeSelfHostedUserSetupE2e('self-hosted system build matrix end-to-end', ():
           await runTimedStep(`build-matrix single-service ${fixture.name}`, async (): Promise<void> => {
             await seedBuildVariables(admin, fixture);
 
-            const deployPayload: SelfHostedDeployCommandResponse = await admin.runJson(
+            const deployPromise: Promise<SelfHostedDeployCommandResponse> = admin.runJson(
               'deploy',
               deployCommandResponseParser,
               { cwd: fixture.directory },
             );
+            if (process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1' && !sandboxProofCompleted) {
+              await expectEphemeralGVisorBuildPod(deployPromise);
+              sandboxProofCompleted = true;
+            }
+            const deployPayload: SelfHostedDeployCommandResponse = await deployPromise;
             const deployment: DeploymentReadSummary = requireSingleActiveDeployment(deployPayload, 'web');
             const routeUrl: string = requireRouteUrl(deployPayload, 'web');
 
@@ -615,6 +626,101 @@ function requireInspectRuntimeImageRef(response: DeploymentInspectResponse, serv
   }
 
   return runtime.imageRef;
+}
+
+async function expectEphemeralGVisorBuildPod(deployment: Promise<SelfHostedDeployCommandResponse>): Promise<void> {
+  const seed: K3dPlatformSeed = readK3dPlatformSeed();
+  const buildNamespace: string = `${seed.platformNamespace}-build`;
+  await expectNoLongLivedBuildKitDeployment(seed.kubeContext, buildNamespace);
+  const podName: string = await waitForBuildPod(seed.kubeContext, buildNamespace);
+  const ready: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'wait',
+      '--namespace',
+      buildNamespace,
+      `pod/${podName}`,
+      '--for=condition=Ready',
+      '--timeout=60s',
+    ],
+    timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(ready, 'wait for the ephemeral BuildKit pod');
+  const version: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      seed.kubeContext,
+      'exec',
+      '--namespace',
+      buildNamespace,
+      podName,
+      '--container',
+      'buildkit',
+      '--',
+      'cat',
+      '/proc/version',
+    ],
+    timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(version, 'kubectl exec /proc/version in ephemeral BuildKit sidecar');
+  expect(version.stdout.toLowerCase()).toContain('gvisor');
+  await deployment;
+  await waitForNoBuildPods(seed.kubeContext, buildNamespace);
+  await expectNoLongLivedBuildKitDeployment(seed.kubeContext, buildNamespace);
+}
+
+async function expectNoLongLivedBuildKitDeployment(kubeContext: string, namespace: string): Promise<void> {
+  const result: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: ['kubectl', '--context', kubeContext, 'get', 'deployments', '--namespace', namespace, '--output', 'name'],
+    timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(result, 'verify the long-lived BuildKit Deployment is absent');
+  expect(result.stdout.trim()).toBe('');
+}
+
+async function waitForBuildPod(kubeContext: string, namespace: string): Promise<string> {
+  for (let attempt: number = 0; attempt < 240; attempt += 1) {
+    const podName: string = await readBuildPodName(kubeContext, namespace);
+    if (podName !== '') {
+      return podName;
+    }
+    await sleep(250);
+  }
+  throw new Error('Expected an ephemeral build pod to appear.');
+}
+
+async function waitForNoBuildPods(kubeContext: string, namespace: string): Promise<void> {
+  for (let attempt: number = 0; attempt < 240; attempt += 1) {
+    if ((await readBuildPodName(kubeContext, namespace)) === '') {
+      return;
+    }
+    await sleep(250);
+  }
+  throw new Error('Expected the ephemeral build pod to disappear after the build.');
+}
+
+async function readBuildPodName(kubeContext: string, namespace: string): Promise<string> {
+  const result: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'kubectl',
+      '--context',
+      kubeContext,
+      'get',
+      'pods',
+      '--namespace',
+      namespace,
+      '--selector',
+      'compartment.dev/job-class=build',
+      '--output',
+      'jsonpath={range .items[*]}{.metadata.name}{"\\n"}{end}',
+    ],
+    timeoutMs: selfHostedBuildMatrixRuntimeCommandTimeoutMs,
+  });
+  expectSuccessfulCommand(result, 'read ephemeral build pod');
+  return result.stdout.trim().split('\n')[0] ?? '';
 }
 
 async function readRuntimeContainerCommandOutput(

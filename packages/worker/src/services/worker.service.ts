@@ -1,18 +1,16 @@
 import type { WorkerClaimDeploymentResponse, WorkerClaimedDeployment } from '@compartment/contracts';
 import {
   claimNextDeployment,
-  createCompartmentBinaryRequester,
   createCompartmentRawRequester,
   createCompartmentRequester,
   failDeployment,
   isCompartmentRequestError,
-  type CompartmentBinaryRequester,
   type CompartmentRawRequester,
   type CompartmentRequester,
 } from '@compartment/sdk';
 import type { Logger } from 'pino';
-import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
-import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
+import type { KubeRuntime } from '@compartment/kube-runtime';
+import type { WorkerConfig } from '../config';
 import { buildReleaseImageFromSource } from './worker-build.service';
 import { appendDeploymentStepEventSafely, buildDeploymentEventContext } from './worker-deployment-event.service';
 import { readWorkerFailureMessage } from './worker-failure-message.service';
@@ -27,30 +25,29 @@ import { handoffBuiltDeploymentToKube } from './worker-kube-deployment-handoff.s
 import { runScheduledResourceOperationIteration } from './worker-resource-operation-scheduler.service';
 
 export async function runWorkerIteration(
-  apiUrl: string,
-  internalToken: string,
-  artifactRegistry: WorkerArtifactRegistryConfig,
+  config: WorkerConfig,
+  runtime: KubeRuntime,
   logger: Logger<never, boolean>,
-  tenantSecretsKek: TenantSecretsKeyring,
 ): Promise<boolean> {
-  const requesterInput: WorkerRequesterInput = { apiUrl, internalToken };
+  const requesterInput: WorkerRequesterInput = {
+    apiUrl: config.apiUrl,
+    internalToken: config.runtimeControlToken,
+  };
   const request: CompartmentRequester = createCompartmentRequester(requesterInput);
-  const releaseArchiveRequest: CompartmentBinaryRequester = createCompartmentBinaryRequester(requesterInput);
   const rawRequest: CompartmentRawRequester = createCompartmentRawRequester(requesterInput);
 
   return (
     (await runGitSourceResolutionIteration(request, rawRequest)) ||
     (await runScheduledResourceOperationIteration(request, logger)) ||
-    (await handleClaimedDeploymentOrContinue(request, releaseArchiveRequest, artifactRegistry, tenantSecretsKek)) ||
+    (await handleClaimedDeploymentOrContinue(request, config, runtime)) ||
     (await runGitSourceSyncIteration(request))
   );
 }
 
 async function handleClaimedDeploymentOrContinue(
   request: CompartmentRequester,
-  releaseArchiveRequest: CompartmentBinaryRequester,
-  artifactRegistry: WorkerArtifactRegistryConfig,
-  tenantSecretsKek: TenantSecretsKeyring,
+  config: WorkerConfig,
+  runtime: KubeRuntime,
 ): Promise<boolean> {
   const claimed: WorkerClaimDeploymentResponse = await claimNextDeployment(request);
   if (claimed.deployment === null) {
@@ -58,11 +55,10 @@ async function handleClaimedDeploymentOrContinue(
   }
 
   return await completeAndPersistClaimedDeployment({
-    artifactRegistry,
+    config,
     deployment: claimed.deployment,
-    releaseArchiveRequest,
     request,
-    tenantSecretsKek,
+    runtime,
   });
 }
 
@@ -80,13 +76,7 @@ async function attemptClaimedDeploymentCompletion(
 ): Promise<AttemptedClaimedDeploymentResult> {
   let imageRef: string | undefined;
   try {
-    imageRef = await buildReleaseImageFromSource(
-      input.request,
-      input.releaseArchiveRequest,
-      input.deployment,
-      input.artifactRegistry,
-      input.tenantSecretsKek,
-    );
+    imageRef = await buildReleaseImageFromSource(input.request, input.deployment, input.config, input.runtime);
     await handoffBuiltDeploymentToKube(input.request, input.deployment, imageRef);
     return { imageRef };
   } catch (error) {

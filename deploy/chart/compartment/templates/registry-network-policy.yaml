@@ -42,7 +42,7 @@ spec:
               kubernetes.io/metadata.name: {{ .Values.buildkit.namespace }}
           podSelector:
             matchLabels:
-              {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit") | nindent 14 }}
+              compartment.dev/job-class: build
       ports:
         - {protocol: TCP, port: {{ .Values.ports.registryInternal }}}
     # Intentionally omits `from`: cluster nodes need direct :5000 access for kubelet image pulls; see the chart README.

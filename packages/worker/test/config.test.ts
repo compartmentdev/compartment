@@ -12,7 +12,20 @@ describe('readWorkerConfig', (): void => {
       internalAddress: 'registry.apps.example.com:443',
       internalUrl: 'https://registry.apps.example.com',
     });
-    expect(config.buildKitAddress).toBe('tcp://builder:1234');
+    expect(config.buildSandbox).toEqual({
+      buildKitImage: 'moby/buildkit@sha256:builder',
+      buildKitResources: { limits: { cpu: '2' } },
+      gcKeepStorageMb: 2000,
+      namespace: 'compartment-build',
+      runnerImage: 'compartment-worker@sha256:runner',
+      runnerResources: { limits: { cpu: '1' } },
+      scheduling: {
+        nodeSelector: { 'compartment.dev/node-pool': 'build' },
+        runtimeClassName: 'gvisor',
+        tolerations: [],
+      },
+      timeoutMs: 900000,
+    });
     expect(config.customDomains).toEqual({
       caddyServiceName: 'compartment-caddy',
       ingressClassName: 'traefik',
@@ -85,7 +98,7 @@ describe('readWorkerConfig', (): void => {
     delete environment.COMPARTMENT_PLATFORM_NAMESPACE;
 
     const config: WorkerBuildConfig = readWorkerBuildConfig(environment);
-    expect(config).toMatchObject({ buildKitAddress: 'tcp://builder:1234' });
+    expect(config.buildSandbox.namespace).toBe('compartment-build');
   });
 
   it('rejects missing required runtime env values instead of silently falling back', (): void => {
@@ -109,7 +122,15 @@ const tenantSchedulingJson: string = JSON.stringify({
 
 function validEnvironment(): NodeJS.ProcessEnv {
   return {
-    BUILDKIT_ADDR: 'tcp://builder:1234',
+    COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: '2000',
+    COMPARTMENT_BUILDKIT_IMAGE: 'moby/buildkit@sha256:builder',
+    COMPARTMENT_BUILDKIT_RESOURCES: '{"limits":{"cpu":"2"}}',
+    COMPARTMENT_BUILD_NAMESPACE: 'compartment-build',
+    COMPARTMENT_BUILD_RUNNER_IMAGE: 'compartment-worker@sha256:runner',
+    COMPARTMENT_BUILD_RUNNER_RESOURCES: '{"limits":{"cpu":"1"}}',
+    COMPARTMENT_BUILD_TIMEOUT_MS: '900000',
+    COMPARTMENT_KUBE_BUILD_SCHEDULING:
+      '{"nodeSelector":{"compartment.dev/node-pool":"build"},"runtimeClassName":"gvisor","tolerations":[]}',
     COMPARTMENT_API_INTERNAL_HOST: '127.0.0.1',
     COMPARTMENT_API_PORT: '9443',
     COMPARTMENT_ARTIFACT_REGISTRY_CREDENTIAL_SIGNING_KEY: 'registry-signing-key-with-at-least-32-characters',

@@ -5,7 +5,6 @@ import { railpackFrontendImage } from './railpack-frontend-image';
 import type {
   BuildKitDockerfileBuildctlInput,
   BuildKitDockerfilePaths,
-  BuildKitRailpackBuildctlInput,
   BuildKitRailpackImageBuildctlInput,
 } from './docker-buildkit.types';
 import type { DockerBuildImageInput } from './docker-models';
@@ -25,6 +24,7 @@ export function buildDockerfileBuildctlArgs(input: BuildKitDockerfileBuildctlInp
     `filename=${dockerfilePaths.dockerfileName}`,
     ...buildBuildKitBuildArgOpts(input.input.buildEnv),
     ...buildBuildKitLabelOpts(input.input.labels),
+    ...buildBuildKitCacheArgs(input.input),
     '--opt',
     'attest:sbom=',
     '--output',
@@ -41,6 +41,7 @@ export function buildRailpackImageBuildctlArgs(input: BuildKitRailpackImageBuild
     ...buildBuildKitLabelOpts(input.input.labels),
     ...buildRailpackSecretsHashOpt(input.railpackSecrets.railpackConfigEnv),
     ...buildRailpackSecretArgs(input.railpackSecrets.secretFiles),
+    ...buildBuildKitCacheArgs(input.input),
     '--opt',
     'attest:sbom=',
     '--output',
@@ -48,20 +49,6 @@ export function buildRailpackImageBuildctlArgs(input: BuildKitRailpackImageBuild
     '--metadata-file',
     input.metadataFile,
   ];
-}
-
-export function buildRailpackToolchainBuildctlArgs(input: BuildKitRailpackBuildctlInput): string[] {
-  return [
-    '--addr',
-    input.buildKitAddress,
-    'build',
-    ...buildRailpackFrontendArgs(input.contextDirectory, input.dockerfileDirectory),
-    ...buildOptionalOutputArgs(input.output),
-  ];
-}
-
-export function buildBuildKitPruneArgs(buildKitAddress: string): string[] {
-  return ['--addr', buildKitAddress, 'prune', '--all', '--keep-duration', '24h', '--keep-storage', '2000'];
 }
 
 function buildBuildctlPrefixArgs(buildKitAddress: string, input: DockerBuildImageInput): string[] {
@@ -107,8 +94,17 @@ function buildImageOutput(imageTag: string, insecureRegistry: boolean | undefine
   }`;
 }
 
-function buildOptionalOutputArgs(output: string | undefined): string[] {
-  return output === undefined ? [] : ['--output', output];
+function buildBuildKitCacheArgs(input: DockerBuildImageInput): string[] {
+  if (input.cacheImageRef === undefined) {
+    return [];
+  }
+  const insecure: string = input.pushImageInsecureRegistry === true ? ',registry.insecure=true' : '';
+  return [
+    '--import-cache',
+    `type=registry,ref=${input.cacheImageRef}${insecure}`,
+    '--export-cache',
+    `type=registry,ref=${input.cacheImageRef},mode=max,image-manifest=true,oci-mediatypes=true${insecure}`,
+  ];
 }
 
 function readBuildKitDockerfilePaths(input: DockerBuildImageInput): BuildKitDockerfilePaths {

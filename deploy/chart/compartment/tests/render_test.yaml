@@ -140,15 +140,9 @@ tests:
         template: registry.yaml
         documentIndex: 1
       - matchRegex:
-          path: spec.template.spec.containers[0].image
+          path: data.COMPARTMENT_BUILDKIT_IMAGE
           pattern: '^moby/buildkit@sha256:[a-f0-9]{64}$'
-        template: buildkit.yaml
-        documentIndex: 3
-      - matchRegex:
-          path: spec.jobTemplate.spec.template.spec.containers[0].image
-          pattern: '^moby/buildkit@sha256:[a-f0-9]{64}$'
-        template: buildkit.yaml
-        documentIndex: 4
+        template: configmap.yaml
       - matchRegex:
           path: spec.template.spec.initContainers[0].image
           pattern: '^registry.k8s.io/kubectl@sha256:[a-f0-9]{64}$'
@@ -176,6 +170,10 @@ tests:
       secrets: *stableSecrets
     asserts:
       - notFailedTemplate: {}
+      - equal:
+          path: data.COMPARTMENT_API_INTERNAL_HOST
+          value: compartment-compartment-api.default.svc
+        template: configmap.yaml
       - equal:
           path: metadata.annotations["helm.sh/resource-policy"]
           value: keep
@@ -362,7 +360,7 @@ tests:
         template: product-log-agent.yaml
         documentIndex: 4
       - hasDocuments:
-          count: 5
+          count: 3
         template: buildkit.yaml
       - isKind:
           of: Namespace
@@ -379,33 +377,19 @@ tests:
         template: buildkit.yaml
         documentIndex: 0
       - isKind:
-          of: Deployment
+          of: RoleBinding
         template: buildkit.yaml
-        documentIndex: 3
-      - contains:
-          path: spec.template.spec.containers[0].args
-          content: --oci-worker-no-process-sandbox
-        template: buildkit.yaml
-        documentIndex: 3
-      - contains:
-          path: spec.template.spec.containers[0].args
-          content: --oci-worker-gc-keepstorage
-        template: buildkit.yaml
-        documentIndex: 3
+        documentIndex: 2
       - equal:
           path: metadata.namespace
           value: compartment-build
         template: buildkit.yaml
-        documentIndex: 3
-      - isKind:
-          of: CronJob
-        template: buildkit.yaml
-        documentIndex: 4
+        documentIndex: 2
       - hasDocuments:
-          count: 3
+          count: 2
         template: buildkit-network-policy.yaml
       - equal:
-          path: spec.egress[2].ports[0].port
+          path: spec.egress[2].ports[1].port
           value: 5001
         template: buildkit-network-policy.yaml
         documentIndex: 1
@@ -863,8 +847,8 @@ tests:
         template: registry-network-policy.yaml
         documentIndex: 1
       - equal:
-          path: spec.ingress[0].from[1].podSelector.matchLabels["app.kubernetes.io/component"]
-          value: buildkit
+          path: spec.ingress[0].from[1].podSelector.matchLabels["compartment.dev/job-class"]
+          value: build
         template: registry-network-policy.yaml
         documentIndex: 1
       - contains:

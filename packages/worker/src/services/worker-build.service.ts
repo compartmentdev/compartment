@@ -1,103 +1,71 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import {
   buildCompartmentArtifactImageRepository,
   buildCompartmentArtifactImageTag,
-  resolveCompartmentServiceRunExecution,
   type WorkerClaimedDeployment,
 } from '@compartment/contracts';
-import { buildDockerImage, type DockerBuildImageResult } from '@compartment/docker';
-import { type CompartmentBinaryRequester, type CompartmentRequester, getArtifactSourceArchive } from '@compartment/sdk';
-import { appendDeploymentStepEventSafely, buildDeploymentEventContext } from './worker-deployment-event.service';
+import type { DockerBuildImageResult, DockerProgressLine, DockerRegistryCredentials } from '@compartment/docker';
+import type { KubeRuntime } from '@compartment/kube-runtime';
+import type { CompartmentRequester } from '@compartment/sdk';
+import {
+  appendDeploymentLogLineSafely,
+  appendDeploymentStepEventSafely,
+  buildDeploymentEventContext,
+} from './worker-deployment-event.service';
 import type { WorkerDeploymentEventContext } from './worker-deployment-event.types';
 import { readWorkerArtifactRegistryInternalHost } from '../worker-artifact-registry';
 import type { WorkerArtifactRegistryConfig } from '../worker-artifact-registry.types';
-import { buildDockerImageInput } from './worker-build-image-input.service';
+import type { WorkerConfig } from '../config';
+import { buildCacheTag, issueBuildPushCredential } from '../registry-credentials';
+import type { RegistryCredential } from '../registry-credentials.types';
+import { decryptTenantSecretEnvironment } from '../tenant-secret-environment';
+import { runWorkerBuildJob } from './worker-build-job.service';
+import type { WorkerBuildJobDockerInput, WorkerSourceBuildJobInput } from './worker-build-job.types';
 import { scheduleWorkerBuild } from './worker-build-scheduler.service';
-import { prepareServiceDirectory } from './worker-source.service';
-import type { PreparedWorkerSource, WorkerSourceServiceInput } from './worker-source.service.types';
 import { runTrackedDeploymentStep } from './worker-step-runner.service';
-import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 
 interface ReleaseImageBuildContext {
-  artifactRegistry: WorkerArtifactRegistryConfig;
+  config: WorkerConfig;
   deployment: WorkerClaimedDeployment;
   eventContext: WorkerDeploymentEventContext;
   request: CompartmentRequester;
-  tenantSecretsKek: TenantSecretsKeyring;
+  runtime: KubeRuntime;
 }
 
 interface PreparedBuildInput {
   imageTag: string;
-  preparedSource: PreparedWorkerSource;
   pushImageTag: string;
 }
 
 export async function buildReleaseImageFromSource(
   request: CompartmentRequester,
-  archiveRequest: CompartmentBinaryRequester,
   deployment: WorkerClaimedDeployment,
-  artifactRegistry: WorkerArtifactRegistryConfig,
-  tenantSecretsKek: TenantSecretsKeyring,
+  config: WorkerConfig,
+  runtime: KubeRuntime,
 ): Promise<string> {
   const eventContext: WorkerDeploymentEventContext = buildDeploymentEventContext(request, deployment);
   await appendClaimedDeploymentEvent(eventContext);
 
-  const existingImageRef: string | null = readReusableArtifactImageRef(deployment, artifactRegistry);
+  const existingImageRef: string | null = readReusableArtifactImageRef(deployment, config.artifactRegistry);
   if (existingImageRef !== null) {
     return existingImageRef;
   }
 
-  return await buildFreshReleaseImage(archiveRequest, {
-    artifactRegistry,
+  return await buildFreshReleaseImage({
+    config,
     deployment,
     eventContext,
     request,
-    tenantSecretsKek,
+    runtime,
   });
 }
 
-async function buildFreshReleaseImage(
-  archiveRequest: CompartmentBinaryRequester,
-  input: ReleaseImageBuildContext,
-): Promise<string> {
-  const imageTag: string = buildReleaseImageTag(input.deployment, input.artifactRegistry.address);
+async function buildFreshReleaseImage(input: ReleaseImageBuildContext): Promise<string> {
+  const imageTag: string = buildReleaseImageTag(input.deployment, input.config.artifactRegistry.address);
   const pushImageTag: string = buildReleaseImageTag(
     input.deployment,
-    readWorkerArtifactRegistryInternalHost(input.artifactRegistry),
+    readWorkerArtifactRegistryInternalHost(input.config.artifactRegistry),
   );
-  const tempDirectory: string = await mkdtemp(join(tmpdir(), 'compartment-worker-'));
-
-  try {
-    const preparedSource: PreparedWorkerSource = await prepareDeploymentSource(
-      input.eventContext,
-      archiveRequest,
-      input.deployment,
-      tempDirectory,
-    );
-    resolveCompartmentServiceRunExecution(input.deployment.run, preparedSource.packer, input.deployment.service.path);
-    return await buildPreparedSourceImage(input, { imageTag, preparedSource, pushImageTag });
-  } finally {
-    await rm(tempDirectory, { force: true, recursive: true });
-  }
-}
-
-async function prepareDeploymentSource(
-  eventContext: WorkerDeploymentEventContext,
-  archiveRequest: CompartmentBinaryRequester,
-  deployment: WorkerClaimedDeployment,
-  tempDirectory: string,
-): Promise<PreparedWorkerSource> {
-  return await runTrackedDeploymentStep({
-    eventContext,
-    failureSummary: 'source preparation failed',
-    run: async (): Promise<PreparedWorkerSource> =>
-      await readPreparedDeploymentSource(archiveRequest, deployment, tempDirectory),
-    startMessage: 'preparing source archive',
-    stepKey: 'preparing_source',
-    successMessage: 'source archive prepared',
-  });
+  return await buildPreparedSourceImage(input, { imageTag, pushImageTag });
 }
 
 async function appendClaimedDeploymentEvent(eventContext: WorkerDeploymentEventContext): Promise<void> {
@@ -111,23 +79,97 @@ async function buildPreparedSourceImage(input: ReleaseImageBuildContext, build: 
     run: async (): Promise<DockerBuildImageResult> =>
       await scheduleWorkerBuild(
         async (): Promise<DockerBuildImageResult> =>
-          await buildDockerImage(
-            buildDockerImageInput({
-              artifactRegistry: input.artifactRegistry,
-              deployment: input.deployment,
-              imageTag: build.imageTag,
-              preparedSource: build.preparedSource,
-              pushImageTag: build.pushImageTag,
-              request: input.request,
-              tenantSecretsKek: input.tenantSecretsKek,
-            }),
-          ),
+          await runWorkerBuildJob(input.runtime, input.config.buildSandbox, {
+            build: buildSourceJobInput(input, build),
+            id: input.deployment.artifact.id,
+            internalToken: input.config.runtimeControlToken,
+            onProgressLine: createBuildProgressReporter(input.eventContext),
+          }),
       ),
     startMessage: 'image build started',
     stepKey: 'building_image',
     successMessage: 'image build completed',
   });
   return readPushedPreparedSourceImageRef(buildResult, build.imageTag);
+}
+
+function buildSourceJobInput(input: ReleaseImageBuildContext, build: PreparedBuildInput): WorkerSourceBuildJobInput {
+  const repository: string = buildReleaseImageRepository(input.deployment);
+  const buildEnv: Record<string, string> = decryptTenantSecretEnvironment(
+    input.deployment.buildEnv,
+    input.config.tenantSecretsKek,
+  );
+  return {
+    apiUrl: input.config.apiUrl,
+    artifactId: input.deployment.artifact.id,
+    docker: buildDockerJobInput(input, build, buildEnv, repository),
+    kind: 'source',
+    service: {
+      build: input.deployment.service.build,
+      kind: input.deployment.service.kind,
+      name: input.deployment.service.name,
+      path: input.deployment.service.path,
+      requiresRoutesFile: input.deployment.requiresSourceRoutesFile,
+      run: input.deployment.run,
+    },
+  };
+}
+
+function buildDockerJobInput(
+  input: ReleaseImageBuildContext,
+  build: PreparedBuildInput,
+  buildEnv: Record<string, string>,
+  repository: string,
+): WorkerBuildJobDockerInput {
+  const registry: WorkerArtifactRegistryConfig = input.config.artifactRegistry;
+  return {
+    ...(Object.keys(buildEnv).length === 0 ? {} : { buildEnv }),
+    cacheImageRef: `${readWorkerArtifactRegistryInternalHost(registry)}/${repository}:${buildCacheTag}`,
+    imageTag: build.imageTag,
+    labels: buildReleaseImageLabels(input.deployment),
+    pushImageInsecureRegistry: new URL(registry.internalUrl).protocol === 'http:',
+    pushImageTag: build.pushImageTag,
+    pushRegistryCredentials: buildPushRegistryCredentials(
+      registry.credentialSigningKey,
+      registry.internalAddress,
+      input.deployment,
+      repository,
+    ),
+  };
+}
+
+function buildPushRegistryCredentials(
+  signingKey: string,
+  registryAddress: string,
+  deployment: WorkerClaimedDeployment,
+  repository: string,
+): DockerRegistryCredentials {
+  const credential: RegistryCredential = issueBuildPushCredential(
+    signingKey,
+    deployment.projectId,
+    repository,
+    deployment.artifact.id,
+  );
+  return {
+    password: credential.password,
+    serverAddress: registryAddress,
+    username: credential.username,
+  };
+}
+
+function createBuildProgressReporter(context: WorkerDeploymentEventContext): (line: DockerProgressLine) => void {
+  return (line: DockerProgressLine): void => {
+    void appendDeploymentLogLineSafely(context, 'building_image', line.stream, line.message, 'info');
+  };
+}
+
+function buildReleaseImageLabels(deployment: WorkerClaimedDeployment): Record<string, string> {
+  return {
+    'compartment.artifactId': deployment.artifact.id,
+    'compartment.environment': deployment.environmentName,
+    'compartment.project': deployment.projectName,
+    'compartment.service': deployment.service.name,
+  };
 }
 
 function readPushedPreparedSourceImageRef(buildResult: DockerBuildImageResult, imageTag: string): string {
@@ -163,27 +205,4 @@ function buildReleaseImageRepository(deployment: WorkerClaimedDeployment): strin
 
 function isDigestPinnedImageRef(imageRef: string): boolean {
   return /@sha256:[a-f0-9]{64}$/u.test(imageRef);
-}
-
-async function readPreparedDeploymentSource(
-  archiveRequest: CompartmentBinaryRequester,
-  deployment: WorkerClaimedDeployment,
-  tempDirectory: string,
-): Promise<PreparedWorkerSource> {
-  const sourceArchive: Buffer = await getArtifactSourceArchive(archiveRequest, deployment.artifact.id);
-  return await prepareServiceDirectory(
-    tempDirectory,
-    sourceArchive,
-    buildWorkerSourceServiceInput(deployment),
-    deployment.service.build,
-    deployment.requiresSourceRoutesFile,
-  );
-}
-
-function buildWorkerSourceServiceInput(deployment: WorkerClaimedDeployment): WorkerSourceServiceInput {
-  return {
-    kind: deployment.service.kind,
-    name: deployment.service.name,
-    path: deployment.service.path,
-  };
 }

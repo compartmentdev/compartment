@@ -1099,23 +1099,21 @@ spec:
 }
 
 function waitForPlatformDeployments() {
-  for (const namespace of [platformNamespace, `${platformNamespace}-build`]) {
-    runCommand(
-      'kubectl',
-      [
-        '--context',
-        contextName,
-        '--namespace',
-        namespace,
-        'wait',
-        'deployment',
-        '--all',
-        '--for=condition=Available',
-        `--timeout=${kubernetesReadinessTimeout}`,
-      ],
-      repositoryRoot,
-    );
-  }
+  runCommand(
+    'kubectl',
+    [
+      '--context',
+      contextName,
+      '--namespace',
+      platformNamespace,
+      'wait',
+      'deployment',
+      '--all',
+      '--for=condition=Available',
+      `--timeout=${kubernetesReadinessTimeout}`,
+    ],
+    repositoryRoot,
+  );
 }
 
 async function waitForConsole() {

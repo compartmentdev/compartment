@@ -10,154 +10,40 @@ metadata:
     pod-security.kubernetes.io/audit: baseline
     pod-security.kubernetes.io/warn: baseline
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
 metadata:
-  name: {{ include "compartment.fullname" . }}-buildkit
-  namespace: {{ .Values.buildkit.namespace }}
-spec:
-  accessModes: [ReadWriteOnce]
-  {{- include "compartment.storageClass" . | nindent 2 }}
-  resources:
-    requests:
-      storage: {{ .Values.storage.buildkit }}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ include "compartment.fullname" . }}-buildkit
+  name: {{ include "compartment.fullname" . }}-build-controller
   namespace: {{ .Values.buildkit.namespace }}
   labels:
     {{- include "compartment.labels" . | nindent 4 }}
-spec:
-  type: ClusterIP
-  selector:
-    {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit") | nindent 4 }}
-  ports:
-    - name: buildkit
-      port: {{ .Values.ports.buildkit }}
-      targetPort: buildkit
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
 ---
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
 metadata:
-  name: {{ include "compartment.fullname" . }}-buildkit
+  name: {{ include "compartment.fullname" . }}-build-controller
   namespace: {{ .Values.buildkit.namespace }}
   labels:
     {{- include "compartment.labels" . | nindent 4 }}
-    app.kubernetes.io/component: buildkit
-spec:
-  progressDeadlineSeconds: 45
-  replicas: 1
-  strategy:
-    type: Recreate
-  selector:
-    matchLabels:
-      {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit") | nindent 6 }}
-  template:
-    metadata:
-      labels:
-        {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit") | nindent 8 }}
-    spec:
-      priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
-      {{- include "compartment.buildNodePool" . | nindent 6 }}
-      automountServiceAccountToken: false
-      securityContext:
-        seccompProfile:
-          {{- toYaml .Values.buildkit.seccompProfile | nindent 10 }}
-        fsGroup: 1000
-        fsGroupChangePolicy: OnRootMismatch
-      terminationGracePeriodSeconds: 45
-      containers:
-        - name: buildkit
-          image: {{ include "compartment.image" .Values.images.buildkit }}
-          imagePullPolicy: {{ .Values.images.buildkit.pullPolicy }}
-          args:
-            - --addr
-            - tcp://0.0.0.0:{{ .Values.ports.buildkit }}
-            - --oci-worker-no-process-sandbox
-            - --oci-worker-gc-keepstorage
-            - {{ .Values.buildkit.gcKeepStorageMb | quote }}
-          securityContext:
-            allowPrivilegeEscalation: true
-            appArmorProfile:
-              type: Unconfined
-            readOnlyRootFilesystem: true
-            runAsNonRoot: true
-            runAsUser: 1000
-            runAsGroup: 1000
-          resources:
-            {{- toYaml .Values.resources.buildkit | nindent 12 }}
-          env:
-            - name: HOME
-              value: /home/user
-            - name: XDG_RUNTIME_DIR
-              value: /run/user/1000
-          ports:
-            - name: buildkit
-              containerPort: {{ .Values.ports.buildkit }}
-          readinessProbe:
-            tcpSocket:
-              port: buildkit
-            periodSeconds: 2
-          volumeMounts:
-            - name: data
-              mountPath: /home/user/.local/share/buildkit
-            - name: rootless-tmp
-              mountPath: /home/user/.local/tmp
-            - name: run
-              mountPath: /run/user/1000
-            - name: tmp
-              mountPath: /tmp
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: {{ include "compartment.fullname" . }}-buildkit
-        - name: run
-          emptyDir: {}
-        - name: rootless-tmp
-          emptyDir: {}
-        - name: tmp
-          emptyDir: {}
----
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: {{ include "compartment.fullname" . }}-buildkit-prune
-  namespace: {{ .Values.buildkit.namespace }}
-  labels:
-    {{- include "compartment.labels" . | nindent 4 }}
-spec:
-  schedule: {{ .Values.buildkit.pruneSchedule | quote }}
-  jobTemplate:
-    spec:
-      template:
-        metadata:
-          labels:
-            {{- include "compartment.componentLabels" (dict "root" . "component" "buildkit-prune") | nindent 12 }}
-        spec:
-          priorityClassName: {{ include "compartment.platformPriorityClassName" . }}
-          {{- include "compartment.buildNodePool" . | nindent 10 }}
-          automountServiceAccountToken: false
-          restartPolicy: OnFailure
-          securityContext:
-            {{- toYaml .Values.podSecurityContext | nindent 12 }}
-          containers:
-            - name: prune
-              image: {{ include "compartment.image" .Values.images.buildkit }}
-              imagePullPolicy: {{ .Values.images.buildkit.pullPolicy }}
-              command: [buildctl]
-              args:
-                - --addr
-                - tcp://{{ include "compartment.fullname" . }}-buildkit:{{ .Values.ports.buildkit }}
-                - prune
-                - --all
-                - --keep-duration
-                - {{ .Values.buildkit.pruneKeepDuration | quote }}
-                - --keep-storage
-                - {{ .Values.buildkit.gcKeepStorageMb | quote }}
-              securityContext:
-                {{- include "compartment.containerSecurityContext" . | nindent 16 }}
-              resources:
-                {{- toYaml .Values.resources.buildkitPrune | nindent 16 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "compartment.fullname" . }}-build-controller
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "compartment.fullname" . }}-worker
+    namespace: {{ .Release.Namespace }}
 {{- end }}

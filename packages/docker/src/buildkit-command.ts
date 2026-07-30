@@ -37,7 +37,7 @@ export async function runBuildctlCommandWithOptionalProgressReporter(
   });
 }
 
-export async function runBuildctlCommandWithRegistryRetry(
+async function runBuildctlCommandWithRegistryRetry(
   args: string[],
   registryCredentials?: DockerRegistryCredentials,
 ): Promise<DockerCommandResult> {

@@ -13,10 +13,14 @@ values:
   - registry-values.yaml
   - node-pools-values.yaml
 tests:
-  - it: leaves tenant runtime disabled by default
+  - it: creates only the required build sandbox runtime by default
     asserts:
       - hasDocuments:
-          count: 0
+          count: 1
+        template: runtime-class.yaml
+      - equal:
+          path: metadata.name
+          value: gvisor
         template: runtime-class.yaml
       - notContains:
           path: spec.template.spec.containers[0].env
@@ -58,7 +62,7 @@ tests:
       - notExists:
           path: spec.template.spec.runtimeClassName
         template: api-migrate.yaml
-      - notExists:
-          path: spec.template.spec.runtimeClassName
-        template: buildkit.yaml
-        documentIndex: 3
+      - equal:
+          path: data.COMPARTMENT_KUBE_BUILD_SCHEDULING
+          value: '{"nodeSelector":{},"runtimeClassName":"gvisor","tolerations":[]}'
+        template: configmap.yaml

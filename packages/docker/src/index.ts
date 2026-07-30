@@ -1,5 +1,4 @@
-export { buildDockerImage, prewarmSourceBuildToolchain } from './docker-build';
-export { pruneBuildKitCache } from './docker-buildkit-prune';
+export { buildDockerImage } from './docker-build';
 export type {
   DockerBuildImageInput,
   DockerBuildImageResult,

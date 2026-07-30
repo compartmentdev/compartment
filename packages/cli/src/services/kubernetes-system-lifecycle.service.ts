@@ -31,7 +31,7 @@ import { readKubernetesHelmReleaseStatus, readKubernetesPlatformWorkloads } from
 
 const helmUpdateTimeout: string = '15m';
 const rolloutTimeout: string = '10m';
-const restartDeploymentSelectorComponents: string = 'app.kubernetes.io/component notin (postgres,registry,buildkit)';
+const restartDeploymentSelectorComponents: string = 'app.kubernetes.io/component notin (postgres,registry)';
 
 export async function restartKubernetesSystem(
   target: KubernetesOperatorTarget,

@@ -2,6 +2,7 @@ export type RegistryCredentialAccess = 'cleanup' | 'pull' | 'push';
 
 export interface RegistryCredentialPayload {
   access: RegistryCredentialAccess;
+  cacheTag?: string | undefined;
   expiresAt?: number | undefined;
   projectId: string;
   repository?: string | undefined;

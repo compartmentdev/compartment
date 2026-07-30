@@ -69,16 +69,10 @@ spec:
             {{- with include "compartment.tenantSchedulingJson" . }}
             - {name: COMPARTMENT_KUBE_TENANT_SCHEDULING, value: {{ . | quote }}}
             {{- end }}
-            - name: DOCKER_CONFIG
-              value: /tmp/.docker
-            - name: TMPDIR
-              value: /compartment/docker-work
           volumeMounts:
-            - {name: docker-work, mountPath: /compartment/docker-work}
             - {name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
             - {name: tmp, mountPath: /tmp}
       volumes:
         {{- include "compartment.kubeApiAccessVolume" . | nindent 8 }}
-        - {name: docker-work, emptyDir: {}}
         - {name: tmp, emptyDir: {}}
 {{- end }}

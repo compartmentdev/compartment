@@ -36,7 +36,7 @@ export interface SelfHostedUserSetupHarness {
 
 const e2eEnabledEnvName: string = 'COMPARTMENT_SELF_HOSTED_USER_SETUP_E2E';
 const tempRootDirectory: string = readSocketSafeTempRootDirectory('ouse-', 'system-api.sock');
-const clientCommandTimeoutMs: number = 10 * 60_000;
+const clientCommandTimeoutMs: number = process.env.COMPARTMENT_E2E_GVISOR_ENABLED === '1' ? 30 * 60_000 : 10 * 60_000;
 export const selfHostedUserSetupTimeoutMs: number = 25 * 60_000;
 
 export function describeSelfHostedUserSetupE2e(name: string, factory: () => void): void {

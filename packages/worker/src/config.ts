@@ -7,7 +7,7 @@ import type { KubeIssuerReference, KubeWorkloadScheduling } from '@compartment/k
 import { z } from 'zod';
 import type { WorkerArtifactRegistryConfig } from './worker-artifact-registry.types';
 import type { TenantSecretsKeyring } from './tenant-secret-environment.types';
-import { readTenantWorkloadScheduling } from './tenant-workload-scheduling';
+import { readRequiredWorkloadScheduling, readTenantWorkloadScheduling } from './tenant-workload-scheduling';
 
 interface WorkerProcessConfigEnvironment {
   COMPARTMENT_API_INTERNAL_HOST: string;
@@ -25,7 +25,14 @@ interface WorkerProcessConfigEnvironment {
 }
 
 interface WorkerBuildConfigEnvironment extends WorkerProcessConfigEnvironment {
-  BUILDKIT_ADDR: string;
+  COMPARTMENT_BUILDKIT_IMAGE: string;
+  COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: number;
+  COMPARTMENT_BUILDKIT_RESOURCES: string;
+  COMPARTMENT_BUILD_NAMESPACE: string;
+  COMPARTMENT_BUILD_RUNNER_IMAGE: string;
+  COMPARTMENT_BUILD_RUNNER_RESOURCES: string;
+  COMPARTMENT_BUILD_TIMEOUT_MS: number;
+  COMPARTMENT_KUBE_BUILD_SCHEDULING: string;
 }
 
 interface WorkerConfigEnvironment extends WorkerBuildConfigEnvironment {
@@ -60,7 +67,14 @@ const workerProcessConfigSchema: z.ZodType<WorkerProcessConfigEnvironment> = z.o
 
 const workerBuildConfigSchema: z.ZodType<WorkerBuildConfigEnvironment> = workerProcessConfigSchema.and(
   z.object({
-    BUILDKIT_ADDR: z.string().trim().min(1),
+    COMPARTMENT_BUILDKIT_IMAGE: z.string().trim().min(1),
+    COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB: z.coerce.number().int().positive(),
+    COMPARTMENT_BUILDKIT_RESOURCES: z.string().trim().min(1),
+    COMPARTMENT_BUILD_NAMESPACE: z.string().trim().min(1),
+    COMPARTMENT_BUILD_RUNNER_IMAGE: z.string().trim().min(1),
+    COMPARTMENT_BUILD_RUNNER_RESOURCES: z.string().trim().min(1),
+    COMPARTMENT_BUILD_TIMEOUT_MS: z.coerce.number().int().positive(),
+    COMPARTMENT_KUBE_BUILD_SCHEDULING: z.string().trim().min(1),
   }),
 );
 
@@ -86,7 +100,18 @@ export interface WorkerProcessConfig {
 }
 
 export interface WorkerBuildConfig extends WorkerProcessConfig {
-  buildKitAddress: string;
+  buildSandbox: WorkerBuildSandboxConfig;
+}
+
+export interface WorkerBuildSandboxConfig {
+  buildKitImage: string;
+  gcKeepStorageMb: number;
+  buildKitResources: object;
+  namespace: string;
+  runnerImage: string;
+  runnerResources: object;
+  scheduling: KubeWorkloadScheduling;
+  timeoutMs: number;
 }
 
 export interface WorkerConfig extends WorkerBuildConfig {
@@ -150,8 +175,25 @@ function readTenantSecretsKeyring(parsed: WorkerConfigEnvironment): TenantSecret
 function buildWorkerBuildConfig(parsed: WorkerBuildConfigEnvironment): WorkerBuildConfig {
   return {
     ...buildWorkerProcessConfig(parsed),
-    buildKitAddress: parsed.BUILDKIT_ADDR,
+    buildSandbox: {
+      buildKitImage: parsed.COMPARTMENT_BUILDKIT_IMAGE,
+      buildKitResources: readResourceRequirements(parsed.COMPARTMENT_BUILDKIT_RESOURCES),
+      gcKeepStorageMb: parsed.COMPARTMENT_BUILDKIT_GC_KEEP_STORAGE_MB,
+      namespace: parsed.COMPARTMENT_BUILD_NAMESPACE,
+      runnerImage: parsed.COMPARTMENT_BUILD_RUNNER_IMAGE,
+      runnerResources: readResourceRequirements(parsed.COMPARTMENT_BUILD_RUNNER_RESOURCES),
+      scheduling: readRequiredWorkloadScheduling(parsed.COMPARTMENT_KUBE_BUILD_SCHEDULING),
+      timeoutMs: parsed.COMPARTMENT_BUILD_TIMEOUT_MS,
+    },
   };
+}
+
+function readResourceRequirements(value: string): object {
+  const parsed: object | null = JSON.parse(value) as object | null;
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('Build resource requirements must be a JSON object.');
+  }
+  return parsed;
 }
 
 export function readWorkerTrustedOutboundHosts(env: WorkerTrustedOutboundHostsEnvironment = process.env): string[] {

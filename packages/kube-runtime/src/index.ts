@@ -29,9 +29,11 @@ export { calculateKubeRolloutStatus, readKubeRolloutObservation } from './kube-r
 export type {
   ApplyBundle,
   KubeDeploymentManifest,
+  KubeJobEmptyDirVolume,
   KubeJobResult,
   KubePersistedJobResult,
   KubeJobSpec,
+  KubeJobSidecar,
   KubeManifest,
   KubeObservation,
   KubeObservedManifest,
