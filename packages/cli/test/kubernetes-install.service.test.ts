@@ -776,7 +776,7 @@ describe('retained Kubernetes install state discovery', (): void => {
     });
 
     await expect(readRetainedKubernetesInstallState(managedDeploymentInput)).rejects.toThrow(
-      'Failed to inspect retained Kubernetes install state',
+      'Failed to inspect retained Kubernetes install state (command exited with status 1): Error from server (Forbidden)',
     );
   });
 });

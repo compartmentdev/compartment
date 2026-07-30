@@ -87,17 +87,56 @@ Interactive installation discovers the cluster choices and prompts when more tha
 compartment install --kubeconfig ./kubeconfig --kube-context production
 ```
 
-For automation, provide the selections explicitly:
+When you select an operator-owned base domain, the wizard also asks how public TLS is provided. Choose an existing
+cert-manager `Issuer` or `ClusterIssuer`, or choose an existing `kubernetes.io/tls` Secret. The Secret option also asks
+for an issuer for the private registry certificate. A namespaced `Issuer` or Secret must exist in the release namespace
+(`--namespace`, default `compartment`); a `ClusterIssuer` is cluster-scoped. Create the namespace first when you use
+namespaced certificate resources.
+
+For a clean k3s VM with Traefik and `local-path`, create a complete operator values file:
+
+```yaml
+ingress:
+  className: traefik
+tls:
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-production
+storage:
+  storageClass: local-path
+```
+
+Then provide every non-interactive input explicitly. Set the password through the environment to keep it out of the
+command arguments:
 
 ```bash
+COMPARTMENT_ADMIN_PASSWORD='replace-with-a-strong-password' \
 compartment install \
   --kubeconfig ./kubeconfig \
   --kube-context production \
   --namespace compartment \
   --release-name compartment \
-  --ingress-class nginx \
-  --storage-class fast \
+  --base-domain apps.example.com \
+  --email owner@example.com \
+  --organization 'Example Company' \
   --values compartment-values.yaml
+```
+
+`storage.storageClass` may be empty when the cluster has one unambiguous default StorageClass. If public TLS uses an
+existing Secret instead, replace `tls.issuerRef` and add the issuer used to create the private registry certificate.
+A namespaced registry `Issuer` also belongs in the release namespace:
+
+```yaml
+ingress:
+  className: traefik
+tls:
+  existingSecret: compartment-platform-tls
+registry:
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-production
+storage:
+  storageClass: local-path
 ```
 
 Use `--ingress-endpoint` only when the selected controller does not publish an address in Ingress status. It accepts

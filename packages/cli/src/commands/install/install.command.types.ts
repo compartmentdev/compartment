@@ -1,4 +1,5 @@
 import type { OutputFormat } from '../../output/output.types';
+import type { DomainIssuerReference } from '@compartment/contracts';
 
 export interface InstallCommandOptions {
   adminPassword?: string | undefined;
@@ -29,9 +30,27 @@ export interface ResolvedInstallIdentityPrompts {
 }
 
 export interface InstallWizardValues {
+  ingress: InstallWizardIngressValues;
+  registry?: InstallWizardRegistryValues | undefined;
   storage: InstallWizardStorageValues;
+  tls?: InstallWizardTlsValues | undefined;
+}
+
+export interface InstallWizardIngressValues {
+  className: string;
+}
+
+export type InstallWizardIssuerReference = DomainIssuerReference;
+
+export interface InstallWizardRegistryValues {
+  issuerRef: InstallWizardIssuerReference;
 }
 
 export interface InstallWizardStorageValues {
   storageClass: string;
+}
+
+export interface InstallWizardTlsValues {
+  existingSecret?: string | undefined;
+  issuerRef?: InstallWizardIssuerReference | undefined;
 }

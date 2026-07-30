@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import {
   selfHostedRuntimeImageSignaturePolicy,
   type SelfHostedRuntimeImageSignaturePolicy,
@@ -9,7 +8,9 @@ import { readCosignCommand } from '../bundled-cosign';
 import { readNonCompartmentEnvironment } from '../command-environment';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { buildHelmCommand, readCommandOutput } from './kubernetes-command.support';
+import { buildHelmCommand } from './kubernetes-command.support';
+import { createImageTrustCommandError } from './kubernetes-image-trust-error';
+import { readYamlFile } from './yaml-file';
 import { kubernetesPlatformImageNames } from './kubernetes-platform-image-names';
 import type { KubernetesPlatformImageName } from './kubernetes-platform-image.types';
 import { writeKubernetesInstallValues } from './kubernetes-install-helm.service';
@@ -30,7 +31,7 @@ export async function writeVerifiedKubernetesInstallImageValues(
   input: KubernetesInstallImageTrustInput,
 ): Promise<void> {
   const chartValues: JsonValue = await readChartValues(input.chartPath);
-  const overrideValues: JsonValue[] = await Promise.all(input.overrideValuesPaths.map(readYamlFile));
+  const overrideValues: JsonValue[] = await Promise.all(input.overrideValuesPaths.map(readImageTrustValuesFile));
   await writeVerifiedPlatformImageValues(input.outputPath, chartValues, overrideValues);
 }
 
@@ -38,7 +39,7 @@ export async function writeVerifiedKubernetesReleaseImageValues(
   input: KubernetesReleaseImageTrustInput,
 ): Promise<void> {
   const releaseValues: JsonValue = await readKubernetesReleaseValues(input);
-  const overrideValues: JsonValue[] = await Promise.all(input.operatorValuesPaths.map(readYamlFile));
+  const overrideValues: JsonValue[] = await Promise.all(input.operatorValuesPaths.map(readImageTrustValuesFile));
   await writeVerifiedPlatformImageValues(input.outputPath, releaseValues, overrideValues);
 }
 
@@ -48,13 +49,16 @@ async function readChartValues(chartPath: string): Promise<JsonValue> {
     30_000,
   );
   if (result.exitCode !== 0) {
-    throw createImageTrustCommandError('Failed to read Helm chart values before platform image verification.', result);
+    throw createImageTrustCommandError(
+      `Failed to read Helm chart values from "${chartPath}" before platform image verification.`,
+      result,
+    );
   }
   return parse(result.stdout) as JsonValue;
 }
 
-async function readYamlFile(path: string): Promise<JsonValue> {
-  return parse(await readFile(path, 'utf8')) as JsonValue;
+async function readImageTrustValuesFile(path: string): Promise<JsonValue> {
+  return await readYamlFile(path, 'operator values file');
 }
 
 async function writeVerifiedPlatformImageValues(
@@ -255,14 +259,4 @@ function readImageTrustObject(value: JsonValue | undefined, label: string): Kube
     throw new Error(`Expected ${label} to be an object.`);
   }
   return value;
-}
-
-function createImageTrustCommandError(prefix: string, result: CommandResult): Error {
-  const output: string = readCommandOutput(result);
-  if (result.exitCode === 124) {
-    return new Error(
-      `${prefix} The registry or signature service did not respond before the command timeout. Check registry connectivity and re-run install to resume.${output === '' ? '' : `\n${output}`}`,
-    );
-  }
-  return new Error(output === '' ? prefix : `${prefix}\n${output}`);
 }

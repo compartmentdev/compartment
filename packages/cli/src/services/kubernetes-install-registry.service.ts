@@ -1,7 +1,5 @@
-import { readFile } from 'node:fs/promises';
 import { buildPrivateRegistryHost, type DomainIssuerReference } from '@compartment/contracts';
 import { isValidDnsHostname } from '@compartment/utils';
-import { parse } from 'yaml';
 import { z } from 'zod';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 import type { KubernetesInstallDomainMode } from './kubernetes-install.service.types';
@@ -11,15 +9,17 @@ import type {
   KubernetesInstallRegistryIssuerValueFields,
   KubernetesInstallRegistryValueFields,
 } from './kubernetes-install-registry.service.types';
+import { formatSchemaValidationError } from './schema-validation-error';
+import { readYamlFile, type YamlFileValue } from './yaml-file';
+import { kubernetesResourceNameSchema } from './kubernetes-resource-name';
+import {
+  kubernetesInstallTlsValueFieldsSchema,
+  type KubernetesInstallTlsValueFields,
+} from './kubernetes-install-tls-values.schema';
 
 interface KubernetesInstallRegistrySourceValues {
   registry?: KubernetesInstallRegistryValueFields | undefined;
   tls?: KubernetesInstallTlsValueFields | undefined;
-}
-
-interface KubernetesInstallTlsValueFields {
-  existingSecret?: string | undefined;
-  issuerRef?: DomainIssuerReference | undefined;
 }
 
 interface ResolveKubernetesInstallRegistryInput {
@@ -32,7 +32,7 @@ const registryIssuerSchema: z.ZodType<KubernetesInstallRegistryIssuerValueFields
   .object({
     group: z.literal('cert-manager.io').optional(),
     kind: z.enum(['Issuer', 'ClusterIssuer']),
-    name: z.string().trim().min(1),
+    name: kubernetesResourceNameSchema,
   })
   .strict();
 const defaultPlatformIssuer: KubernetesInstallRegistryIssuerReference = {
@@ -50,28 +50,20 @@ const registryValuesSchema: z.ZodType<KubernetesInstallRegistrySourceValues> = z
       })
       .passthrough()
       .optional(),
-    tls: z
-      .object({
-        existingSecret: z.string().optional(),
-        issuerRef: z
-          .object({
-            kind: z.enum(['Issuer', 'ClusterIssuer']),
-            name: z.string().trim().min(1),
-          })
-          .passthrough()
-          .optional(),
-      })
-      .passthrough()
-      .optional(),
+    tls: kubernetesInstallTlsValueFieldsSchema.optional(),
   })
   .passthrough();
 
 export async function resolveKubernetesInstallRegistryConfiguration(
   input: ResolveKubernetesInstallRegistryInput,
 ): Promise<KubernetesInstallRegistryConfiguration> {
-  const values: KubernetesInstallRegistrySourceValues = registryValuesSchema.parse(
-    parse(await readFile(input.valuesPath, 'utf8')) ?? {},
-  );
+  const parsed: YamlFileValue = await readYamlFile(input.valuesPath, 'operator values file');
+  const result: z.SafeParseReturnType<YamlFileValue, KubernetesInstallRegistrySourceValues> =
+    registryValuesSchema.safeParse(parsed);
+  if (!result.success) {
+    throw formatSchemaValidationError(result.error, input.valuesPath);
+  }
+  const values: KubernetesInstallRegistrySourceValues = result.data;
   if (input.domainMode === 'managed') {
     return readManagedRegistryConfiguration(values.registry);
   }

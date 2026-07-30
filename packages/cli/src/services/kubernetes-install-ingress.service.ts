@@ -3,7 +3,7 @@ import { isUnsafePublicIpAddress } from '@compartment/utils';
 import { runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
 import { waitForInstallDelay } from './kubernetes-install-delay.service';
-import { buildKubectlCommand, readCommandOutput } from './kubernetes-command.support';
+import { buildKubectlCommand, formatKubernetesCommandFailure } from './kubernetes-command.support';
 import type {
   KubernetesIngressAddress,
   KubernetesIngressEndpoint,
@@ -81,7 +81,7 @@ function readInstallationIngressResult(result: CommandResult): KubernetesIngress
         'Timed out inspecting the Compartment Ingress. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.',
       );
     }
-    throw new Error(`Failed to inspect the Compartment Ingress: ${readCommandOutput(result)}`);
+    throw new Error(formatKubernetesCommandFailure('Failed to inspect the Compartment Ingress', result));
   }
   const list: KubernetesIngressList = parseIngressList(result.stdout);
   if (list.items.length !== 1 || list.items[0] === undefined) {

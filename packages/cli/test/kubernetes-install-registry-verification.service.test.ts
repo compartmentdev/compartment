@@ -48,7 +48,7 @@ describe('install registry node-pull verification', (): void => {
       .mockResolvedValueOnce(ok('deleted'));
 
     await expect(verifyKubernetesInstallRegistryNodePull(input())).rejects.toThrow(
-      'Registry node pull failed on node-a: ImagePullBackOff',
+      'Registry node pull failed on node-a (command exited with status 1): ImagePullBackOff',
     );
 
     expect(mocks.runCommandWithTimeout.mock.calls.at(-1)?.[0]).toEqual(
@@ -83,6 +83,14 @@ describe('install registry node-pull verification', (): void => {
     expect(
       podManifests.map((manifest: string): string => (JSON.parse(manifest) as VerificationPodManifest).spec.nodeName),
     ).toEqual(['node-a', 'node-b']);
+  });
+
+  it('reports a timed-out registry command even when kubectl emits no diagnostics', async (): Promise<void> => {
+    mocks.runCommandWithTimeout.mockResolvedValue({ exitCode: 124, stderr: '', stdout: '' });
+
+    await expect(verifyKubernetesInstallRegistryNodePull(input())).rejects.toThrow(
+      'Registry acceptance image push failed (command timed out): the command produced no diagnostics',
+    );
   });
 });
 

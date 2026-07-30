@@ -24,10 +24,11 @@ import {
 import type { KubernetesInstallInputValues } from './install.command.input.types';
 import { readConfiguredInstallAdminPassword } from './install.command.identity';
 import { resolveCanonicalKubernetesInstallWizard } from './install.command.kubernetes-wizard';
+import type { KubernetesInstallWizardResult } from './install.command.kubernetes-wizard.types';
 import { resolvePreflightKubeconfig } from './install.command.preflight';
 import { renderInstallResult } from './install.command.result';
 import { persistInstallSession } from './install.command.session';
-import type { InstallCommandOptions } from './install.command.types';
+import type { InstallCommandOptions, InstallWizardValues } from './install.command.types';
 import {
   materializeInstallWizardValues,
   readOperatorInstallInputValues,
@@ -35,10 +36,17 @@ import {
   type OperatorInstallInputValues,
 } from './install.command.values';
 import { assertManagedDomainOnboardingAvailable } from '../../services/managed-domain-reservation-token.service';
+import { isReservedKubernetesInstallLocalhostDomain } from '../../kubernetes-install-domain';
+import { normalizeInstallBaseDomain } from './install.command.validation';
 
 interface ResolvedInstallValuesPath {
   material?: MaterializedInstallWizardValues | undefined;
   path: string;
+}
+
+interface ResolvedCommandInstallValues {
+  input: Omit<KubernetesInstallInputValues, 'valuesPath'>;
+  wizardValues?: InstallWizardValues | undefined;
 }
 
 export async function executeCanonicalKubernetesInstallCommand(
@@ -62,7 +70,9 @@ async function readBoundaryValues(
   }
   assertNonInteractiveDomainAvailable(options);
   const operatorValues: OperatorInstallInputValues | undefined =
-    options.values === undefined ? undefined : await readOperatorInstallInputValues(options.values);
+    options.values === undefined
+      ? undefined
+      : await readOperatorInstallInputValues(options.values, requiresPublicOperatorTls(options.baseDomain));
   const values: Omit<KubernetesInstallInputValues, 'valuesPath'> = {
     ...readNonInteractiveValues(options),
     ...(options.ingressClass === undefined && operatorValues !== undefined
@@ -74,6 +84,12 @@ async function readBoundaryValues(
   };
   resolveCanonicalKubernetesInstallInput({ ...values, valuesPath: '<pending>' }, '<pending>');
   return values;
+}
+
+function requiresPublicOperatorTls(baseDomain: string | undefined): boolean {
+  return (
+    baseDomain !== undefined && !isReservedKubernetesInstallLocalhostDomain(normalizeInstallBaseDomain(baseDomain))
+  );
 }
 
 function assertNonInteractiveDomainAvailable(options: InstallCommandOptions): void {
@@ -92,15 +108,10 @@ async function executeWithKubeconfig(
   let material: MaterializedInstallWizardValues | undefined;
   const progress: CommandProgress = createCommandProgress({ io: dependencies.io, output: options.output });
   try {
-    const values: Omit<KubernetesInstallInputValues, 'valuesPath'> = await resolveValues(
-      dependencies,
-      options,
-      kubeconfig,
-      boundaryValues,
-    );
+    const values: ResolvedCommandInstallValues = await resolveValues(dependencies, options, kubeconfig, boundaryValues);
     const resolvedValuesPath: ResolvedInstallValuesPath = await resolveInstallValuesPath(options, values);
     material = resolvedValuesPath.material;
-    await runCanonicalInstall(dependencies, options, kubeconfig, values, resolvedValuesPath.path, progress);
+    await runCanonicalInstall(dependencies, options, kubeconfig, values.input, resolvedValuesPath.path, progress);
   } finally {
     progress.stop();
     await cleanCanonicalMaterial(material, kubeconfig);
@@ -109,14 +120,15 @@ async function executeWithKubeconfig(
 
 async function resolveInstallValuesPath(
   options: InstallCommandOptions,
-  values: Omit<KubernetesInstallInputValues, 'valuesPath'>,
+  values: ResolvedCommandInstallValues,
 ): Promise<ResolvedInstallValuesPath> {
   if (options.values !== undefined) {
     return { path: options.values };
   }
-  const material: MaterializedInstallWizardValues = await materializeInstallWizardValues({
-    storage: { storageClass: values.storageClass ?? '' },
-  });
+  if (values.wizardValues === undefined) {
+    throw new Error('Interactive install values were not materialized.');
+  }
+  const material: MaterializedInstallWizardValues = await materializeInstallWizardValues(values.wizardValues);
   return { material, path: material.path };
 }
 
@@ -125,22 +137,21 @@ async function resolveValues(
   options: InstallCommandOptions,
   kubeconfig: ResolvedKubernetesKubeconfig,
   boundaryValues: Omit<KubernetesInstallInputValues, 'valuesPath'> | undefined,
-): Promise<Omit<KubernetesInstallInputValues, 'valuesPath'>> {
+): Promise<ResolvedCommandInstallValues> {
   if (boundaryValues !== undefined) {
-    return boundaryValues;
+    return { input: boundaryValues };
   }
   const inventory: KubernetesInstallInventory = await readKubernetesInstallInventory({
     resolvedKubeconfig: kubeconfig,
   });
-  return (
-    await resolveCanonicalKubernetesInstallWizard(
-      dependencies.io,
-      options,
-      inventory,
-      async (contextName: string): Promise<KubernetesInstallResourceInventory> =>
-        await readKubernetesInstallResourceInventory({ resolvedKubeconfig: kubeconfig }, contextName),
-    )
-  ).input;
+  const wizard: KubernetesInstallWizardResult = await resolveCanonicalKubernetesInstallWizard(
+    dependencies.io,
+    options,
+    inventory,
+    async (contextName: string): Promise<KubernetesInstallResourceInventory> =>
+      await readKubernetesInstallResourceInventory({ resolvedKubeconfig: kubeconfig }, contextName),
+  );
+  return { input: wizard.input, wizardValues: wizard.values };
 }
 
 async function runCanonicalInstall(

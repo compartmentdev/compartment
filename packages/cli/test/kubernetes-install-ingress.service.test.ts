@@ -75,6 +75,14 @@ describe('Kubernetes Ingress endpoint observation', (): void => {
       ingressEndpoint: { type: 'A', value: secondAddress },
     });
   });
+
+  it('reports exit status and an explicit fallback when kubectl emits no diagnostics', async (): Promise<void> => {
+    runCommand.mockResolvedValue({ exitCode: 1, stderr: '', stdout: '' });
+
+    await expect(resolveKubernetesPublicIngress(createResolutionInput())).rejects.toThrow(
+      'Failed to inspect the Compartment Ingress (command exited with status 1): the command produced no diagnostics',
+    );
+  });
 });
 
 function createResolutionInput(
