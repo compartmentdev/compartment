@@ -24,10 +24,13 @@ describe('platform k3d e2e workflow', () => {
     expect(job.env.COMPARTMENT_E2E_GVISOR_ENABLED).toBe('1');
     const toolInstallStep = job.steps.find((step) => step.name.startsWith('Install pinned k3d, kubectl, Helm'));
     expect(toolInstallStep.env.GVISOR_VERSION).toMatch(/^release\/\d{8}\.\d+$/);
-    expect(toolInstallStep.run).toContain('sudo install -m 0755 /tmp/runsc /usr/bin/runsc');
-    expect(toolInstallStep.run).toContain(
-      'sudo install -m 0755 /tmp/containerd-shim-runsc-v1 /usr/bin/containerd-shim-runsc-v1',
-    );
+    expect(toolInstallStep.run).toContain('gvisor.tar.bz2');
+    expect(toolInstallStep.run).toContain('sha512sum --check');
+    expect(toolInstallStep.run).toContain('/usr/bin/runsc');
+    expect(toolInstallStep.run).toContain('/usr/bin/containerd-shim-runsc-v1');
+    expect(toolInstallStep.run).toContain('/usr/bin/gvisor-bin');
+    expect(toolInstallStep.run).toContain('checkpointgofer');
+    expect(toolInstallStep.run).toContain('runsc-metric-server');
     expect(toolInstallStep.run).toContain('/etc/containerd/runsc.toml');
     const runStep = job.steps.find((step) => step.name === 'Run isolated k3d e2e shard');
     expect(runStep.run).toContain('run-platform-k3d-e2e-shard.mjs "${{ matrix.shard }}"');

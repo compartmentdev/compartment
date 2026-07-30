@@ -59,7 +59,7 @@ jobs:
 
       - name: Install pinned k3d, kubectl, Helm, gVisor, and helm-unittest
         env:
-          CONTAINERD_SHIM_RUNSC_SHA256: 53660a4775dba7e713fe55ca588158ef5b238fce53a27951c6e609fddc3ca91b
+          GVISOR_SHA512: 1e951f8d9dd2198e16ad66066fac0db42943ac8e8ca35c7173a20f0fbc859b8185c33c478ae0dc3c4e76b8c06d99ed118286caf43ad207c96578b42af62cae72
           GVISOR_VERSION: release/20260721.0
           HELM_DATA_HOME: ${{ runner.temp }}/helm-data
           HELM_SHA256: e9b88b4ee95b18c706839c28d3a0220e5bc470e9cd9262410c90793c45ff8b7c
@@ -69,7 +69,6 @@ jobs:
           K3D_VERSION: v5.8.3
           KUBECTL_SHA256: 33d0cdec6967817468f0a4a90f537dfef394dcf815d91966ca651cc118393eea
           KUBECTL_VERSION: v1.33.2
-          RUNSC_SHA256: d319040e8c2981c44955ae72e5e0d57aa5ef390379fbc7f58d9a68b0c86329f7
         run: |
           curl --fail --location --show-error \
             --retry 5 \
@@ -100,25 +99,27 @@ jobs:
           tar -xzf "/tmp/${helm_archive}" -C /tmp
           sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
 
-          gvisor_release_url="https://storage.googleapis.com/gvisor/releases/${GVISOR_VERSION}/x86_64"
+          gvisor_archive="/tmp/gvisor.tar.bz2"
           curl --fail --location --show-error \
             --retry 5 \
             --retry-delay 3 \
             --retry-all-errors \
-            "${gvisor_release_url}/runsc" \
-            --output /tmp/runsc
-          echo "${RUNSC_SHA256}  /tmp/runsc" | sha256sum --check
-          sudo install -m 0755 /tmp/runsc /usr/bin/runsc
-
-          curl --fail --location --show-error \
-            --retry 5 \
-            --retry-delay 3 \
-            --retry-all-errors \
-            "${gvisor_release_url}/containerd-shim-runsc-v1" \
-            --output /tmp/containerd-shim-runsc-v1
-          echo "${CONTAINERD_SHIM_RUNSC_SHA256}  /tmp/containerd-shim-runsc-v1" | sha256sum --check
-          sudo install -m 0755 /tmp/containerd-shim-runsc-v1 /usr/bin/containerd-shim-runsc-v1
+            "https://storage.googleapis.com/gvisor/releases/${GVISOR_VERSION}/x86_64/gvisor.tar.bz2" \
+            --output "${gvisor_archive}"
+          echo "${GVISOR_SHA512}  ${gvisor_archive}" | sha512sum --check
+          gvisor_extract_dir="$(mktemp -d)"
+          tar -xjf "${gvisor_archive}" -C "${gvisor_extract_dir}"
+          sudo install -m 0755 "${gvisor_extract_dir}/runsc" /usr/bin/runsc
+          sudo install -m 0755 \
+            "${gvisor_extract_dir}/containerd-shim-runsc-v1" \
+            /usr/bin/containerd-shim-runsc-v1
+          sudo install -d -m 0755 /usr/bin/gvisor-bin
+          sudo install -m 0755 \
+            "${gvisor_extract_dir}/gvisor-bin/checkpointgofer" \
+            "${gvisor_extract_dir}/gvisor-bin/runsc-metric-server" \
+            /usr/bin/gvisor-bin
           sudo install -D -m 0644 ./scripts/deploy/fixtures/runsc.toml /etc/containerd/runsc.toml
+          rm -r "${gvisor_extract_dir}"
 
           helm plugin install https://github.com/helm-unittest/helm-unittest.git \
             --version "${HELM_UNITTEST_VERSION}" \
