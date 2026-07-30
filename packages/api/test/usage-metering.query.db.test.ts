@@ -6,8 +6,10 @@ import type { ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import {
   buildArtifacts,
+  deploymentKubeReferences,
   deploymentRuns,
   deployments,
+  edgeTrafficUsageReceipts,
   environments,
   jobUsageCheckpoints,
   jobUsageHourly,
@@ -26,6 +28,8 @@ import { recordJobUsage } from '../src/queries/job-usage.query';
 import type { RecordJobUsageInput } from '../src/queries/job-usage.query.types';
 import type { ApiDatabaseTransaction } from '../src/db/client.types';
 import { deleteExpiredUsageBatch, recordPodUsage } from '../src/queries/usage-metering.query';
+import { publishEdgeTrafficMetrics } from '../src/services/usage-metering.service';
+import type { PublishEdgeTrafficMetricsInput } from '../src/services/usage-metering.service.types';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
@@ -109,6 +113,15 @@ describe('usage metering persistence', (): void => {
       resolvedRunJson: '{}',
       status: 'running',
     });
+    await db.insert(deploymentKubeReferences).values({
+      deploymentId: 'dep-usage',
+      deploymentName: 'app-dep-usage',
+      id: 'kube-ref-usage',
+      namespace: 'cpt-prj-usage',
+      networkPolicyNamesJson: '[]',
+      serviceName: 'app-env-service',
+      state: 'active',
+    });
     await db.insert(projectResources).values({
       commandJson: '[]',
       envJson: '{}',
@@ -146,6 +159,76 @@ describe('usage metering persistence', (): void => {
     await recordSample('2026-07-29T12:02:00.000Z', 90_000);
 
     expect(await db.select().from(workloadUsageHourly)).toEqual([]);
+  });
+
+  it('deduplicates one source and sums two edge replicas across hour buckets', async (): Promise<void> => {
+    const firstBatch: PublishEdgeTrafficMetricsInput = {
+      batchId: 'batch-1',
+      metrics: [
+        {
+          observedAt: new Date('2026-07-29T12:59:59.999Z'),
+          requestBytes: 100,
+          requestCount: 2,
+          responseBytes: 200,
+          status4xxCount: 1,
+          status5xxCount: 0,
+          upstreamHost: 'app-env-service.cpt-prj-usage.svc',
+        },
+      ],
+      sourceId: 'edge-replica-1',
+    };
+    expect(await publishEdgeTrafficMetrics(firstBatch)).toBe('accepted');
+    expect(await publishEdgeTrafficMetrics(firstBatch)).toBe('duplicate');
+    expect(
+      await publishEdgeTrafficMetrics({
+        batchId: 'batch-1',
+        metrics: [
+          {
+            observedAt: new Date('2026-07-29T12:59:59.999Z'),
+            requestBytes: 50,
+            requestCount: 1,
+            responseBytes: 75,
+            status4xxCount: 0,
+            status5xxCount: 1,
+            upstreamHost: 'app-env-service.cpt-prj-usage.svc',
+          },
+          {
+            observedAt: new Date('2026-07-29T13:00:00.000Z'),
+            requestBytes: 10,
+            requestCount: 1,
+            responseBytes: 20,
+            status4xxCount: 0,
+            status5xxCount: 0,
+            upstreamHost: 'app-env-service.cpt-prj-usage.svc',
+          },
+        ],
+        sourceId: 'edge-replica-2',
+      }),
+    ).toBe('accepted');
+
+    const rows: (typeof workloadUsageHourly.$inferSelect)[] = await db
+      .select()
+      .from(workloadUsageHourly)
+      .where(eq(workloadUsageHourly.serviceId, 'svc-usage'))
+      .orderBy(workloadUsageHourly.hourBucket);
+    expect(rows).toMatchObject([
+      {
+        hourBucket: new Date('2026-07-29T12:00:00.000Z'),
+        requestBytes: 150,
+        requestCount: 3,
+        responseBytes: 275,
+        status4xxCount: 1,
+        status5xxCount: 1,
+      },
+      {
+        hourBucket: new Date('2026-07-29T13:00:00.000Z'),
+        requestBytes: 10,
+        requestCount: 1,
+        responseBytes: 20,
+        status4xxCount: 0,
+        status5xxCount: 0,
+      },
+    ]);
   });
 
   it('persists resource usage under the resource identity', async (): Promise<void> => {
@@ -249,13 +332,16 @@ describe('usage metering persistence', (): void => {
     await db.update(jobUsageHourly).set({ hourBucket: expiredAt });
     await db.update(workloadUsageCheckpoints).set({ updatedAt: expiredAt });
     await db.update(jobUsageCheckpoints).set({ createdAt: expiredAt });
+    await db
+      .insert(edgeTrafficUsageReceipts)
+      .values({ batchId: 'expired', createdAt: expiredAt, sourceId: 'edge-replica' });
 
     expect(
       await deleteExpiredUsageBatch({
         before: new Date('2021-01-01T00:00:00.000Z'),
         limit: 1,
       }),
-    ).toBe(4);
+    ).toBe(5);
     expect(await db.select().from(workloadUsageHourly)).toHaveLength(1);
     expect(await db.select().from(jobUsageHourly)).toEqual([]);
     expect(await db.select().from(workloadUsageCheckpoints)).toEqual([]);

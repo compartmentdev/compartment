@@ -80,6 +80,11 @@ interface WorkloadUsageHourlyColumnBuilders {
   hourBucket: RequiredTimestampBuilder<'hour_bucket'>;
   cpuMillicoreSeconds: DefaultBigIntNumberBuilder<'cpu_millicore_seconds'>;
   memoryByteSeconds: DefaultBigIntNumberBuilder<'memory_byte_seconds'>;
+  requestBytes: DefaultBigIntNumberBuilder<'request_bytes'>;
+  responseBytes: DefaultBigIntNumberBuilder<'response_bytes'>;
+  requestCount: DefaultBigIntNumberBuilder<'request_count'>;
+  status4xxCount: DefaultBigIntNumberBuilder<'status_4xx_count'>;
+  status5xxCount: DefaultBigIntNumberBuilder<'status_5xx_count'>;
   sampleCount: DefaultIntegerBuilder<'sample_count'>;
   createdAt: DefaultTimestampBuilder<'created_at'>;
   updatedAt: DefaultTimestampBuilder<'updated_at'>;

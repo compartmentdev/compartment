@@ -75,6 +75,27 @@ describe('edge Caddyfile', (): void => {
     expect(renderedCaddyfile).toContain('\n\tmetrics\n');
   });
 
+  it('meters only authorized hosted application proxy traffic', (): void => {
+    const renderedCaddyfile: string = renderCaddyfile();
+    const controlPlaneIndex: number = renderedCaddyfile.indexOf('@compartment_host host');
+    const applicationIndex: number = renderedCaddyfile.indexOf('@application_host host');
+    const fallbackIndex: number = renderedCaddyfile.lastIndexOf('\n\thandle {');
+    const controlPlaneBlock: string = renderedCaddyfile.slice(controlPlaneIndex, applicationIndex);
+    const applicationBlock: string = renderedCaddyfile.slice(applicationIndex, fallbackIndex);
+    const authorizationIndex: number = applicationBlock.indexOf('forward_auth ');
+    const meterIndex: number = applicationBlock.indexOf('compartment_traffic_meter {');
+    const proxyIndex: number = applicationBlock.indexOf('reverse_proxy {header.X-Compartment-Upstream-Host}');
+
+    expect(controlPlaneBlock).not.toContain('compartment_traffic_meter');
+    expect(applicationBlock.match(/compartment_traffic_meter \{/gu)).toHaveLength(1);
+    expect(meterIndex).toBeGreaterThan(authorizationIndex);
+    expect(proxyIndex).toBeGreaterThan(meterIndex);
+    expect(applicationBlock).toContain('flush_interval_ms {$COMPARTMENT_USAGE_METERING_INTERVAL_MS}');
+    expect(applicationBlock).toContain('edge_token {$COMPARTMENT_EDGE_TOKEN}');
+    expect(applicationBlock).toContain('X-Compartment-Upstream-Host');
+    expect(applicationBlock).toContain('header_up -X-Compartment-Upstream-Host');
+  });
+
   it('allow-lists public control-plane routes and denies internal and operator surfaces', (): void => {
     const renderedCaddyfile: string = renderCaddyfile();
     const publicPathMatchers: string[] = renderCompartmentPublicPathMatchers().split(' ');

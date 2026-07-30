@@ -10,6 +10,7 @@ import {
 } from '../db/schema';
 import type { DeploymentRouteLookupQuery, DeploymentRouteLookupSelection } from './deployment-routes.query.types';
 import { getApiDatabase } from '../runtime/runtime-access';
+import { buildDeploymentUpstreamHostExpression } from './deployment-upstream-host.query.support';
 
 export function createDeploymentRouteLookupQuery(): DeploymentRouteLookupQuery {
   return getApiDatabase()
@@ -39,7 +40,7 @@ export function createDeploymentRouteLookupSelection(): DeploymentRouteLookupSel
     projectId: projects.id,
     projectName: projects.name,
     resolvedRoutesJson: deployments.resolvedRoutesJson,
-    upstreamHost: sql<string>`${deploymentKubeReferences.serviceName} || '.' || ${deploymentKubeReferences.namespace} || '.svc'`,
+    upstreamHost: buildDeploymentUpstreamHostExpression(),
     upstreamPort: sql<number>`80`,
     serviceId: projectServices.id,
     serviceName: projectServices.name,

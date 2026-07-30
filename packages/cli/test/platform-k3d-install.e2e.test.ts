@@ -426,6 +426,8 @@ async function expectForwardedMetadataSpoofingRejected(): Promise<void> {
         '--env=COMPARTMENT_EDGE_CLIENT_BURST=120',
         '--env=COMPARTMENT_EDGE_INTERNAL_HOST=unused-edge',
         '--env=COMPARTMENT_EDGE_PORT=39081',
+        '--env=COMPARTMENT_EDGE_TOKEN=test-edge-token',
+        '--env=COMPARTMENT_USAGE_METERING_INTERVAL_MS=60000',
       ],
       'create forwarded metadata Caddy Pod',
     );

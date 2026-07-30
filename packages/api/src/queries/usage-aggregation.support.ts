@@ -7,7 +7,7 @@ export function splitUsageIntoHours(input: UsageInterval): UsageHourSlice[] {
   let cursorMs: number = input.previousObservedAt.getTime();
   const observedAtMs: number = input.observedAt.getTime();
   while (cursorMs < observedAtMs) {
-    const bucketMs: number = Math.floor(cursorMs / hourMs) * hourMs;
+    const bucketMs: number = readUsageHourBucket(new Date(cursorMs)).getTime();
     const sliceEndMs: number = Math.min(observedAtMs, bucketMs + hourMs);
     const seconds: number = (sliceEndMs - cursorMs) / 1000;
     slices.push({
@@ -25,7 +25,7 @@ export function splitJobIntoHours(startedAt: Date, completedAt: Date): JobUsageS
   let cursorMs: number = startedAt.getTime();
   const completedAtMs: number = completedAt.getTime();
   while (cursorMs < completedAtMs) {
-    const bucketMs: number = Math.floor(cursorMs / hourMs) * hourMs;
+    const bucketMs: number = readUsageHourBucket(new Date(cursorMs)).getTime();
     const sliceEndMs: number = Math.min(completedAtMs, bucketMs + hourMs);
     slices.push({
       durationSeconds: Math.round((sliceEndMs - cursorMs) / 1000),
@@ -35,4 +35,8 @@ export function splitJobIntoHours(startedAt: Date, completedAt: Date): JobUsageS
     cursorMs = sliceEndMs;
   }
   return slices;
+}
+
+export function readUsageHourBucket(observedAt: Date): Date {
+  return new Date(Math.floor(observedAt.getTime() / hourMs) * hourMs);
 }

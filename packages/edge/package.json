@@ -16,8 +16,8 @@
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.test.json --noEmit --rootDir ../..",
     "test": "vitest run --config ../../vitest.config.mts",
-    "test:go": "cd caddy-ratelimit && go test -race ./...",
-    "vet:go": "cd caddy-ratelimit && go vet ./..."
+    "test:go": "go -C caddy-ratelimit test -race ./... && go -C caddy-traffic-metering test -race ./...",
+    "vet:go": "go -C caddy-ratelimit vet ./... && go -C caddy-traffic-metering vet ./..."
   },
   "dependencies": {
     "@compartment/contracts": "workspace:*",
