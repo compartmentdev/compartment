@@ -32,10 +32,23 @@ export function readExistingManagedAllocation(
 }
 
 export function requireManagedBrokerUrl(brokerUrl: string | undefined): string {
-  if (brokerUrl !== undefined) {
-    return brokerUrl;
+  if (brokerUrl !== undefined && brokerUrl.trim() !== '') {
+    try {
+      const resolvedBrokerUrl: URL = new URL(brokerUrl);
+      if (
+        (resolvedBrokerUrl.protocol === 'http:' || resolvedBrokerUrl.protocol === 'https:') &&
+        resolvedBrokerUrl.username === '' &&
+        resolvedBrokerUrl.password === ''
+      ) {
+        return resolvedBrokerUrl.toString().replace(/\/$/u, '');
+      }
+    } catch {
+      // Report the same actionable configuration error for malformed retained state.
+    }
   }
-  throw new Error('Managed domain install requires a broker URL.');
+  throw new Error(
+    'Managed domain broker URL is missing or invalid. Set --broker-url or COMPARTMENT_MANAGED_DOMAIN_BROKER_URL; the default https://broker.compartment.run should otherwise be applied.',
+  );
 }
 
 export function requireManagedDomainRequestedLabelSource(value: string | undefined): string {

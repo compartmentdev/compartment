@@ -43,6 +43,7 @@ import { normalizeInstallBaseDomain } from './install.command.validation';
 import { withKubernetesLocalTools } from '../../services/kubernetes-local-tools.service';
 import { inspectOperatorIssuer } from '../../services/kubernetes-operator-issuer-trust.service';
 import type { KubernetesOperatorIssuerAssessment } from '../../services/kubernetes-operator-issuer-trust.service.types';
+import { resolveInstallManagedDomainBrokerUrl } from './install.command.options';
 
 interface ResolvedInstallValuesPath {
   material?: MaterializedInstallWizardValues | undefined;
@@ -203,25 +204,17 @@ async function runCanonicalInstall(
     { ...values, valuesPath },
     kubeconfig.path,
   ).input;
-  const applicationInput: KubernetesInstallApplicationInput = buildApplicationInput(input, options, progress);
-  const result: KubernetesInstallApplicationResult = await installIntoKubernetes(applicationInput);
-  await persistInstallSession(result.install, options.remote);
-  renderInstallResult(dependencies.io, options.output, result.install, false);
-}
-
-function buildApplicationInput(
-  input: KubernetesInstallInput,
-  options: InstallCommandOptions,
-  progress: CommandProgress,
-): KubernetesInstallApplicationInput {
-  return {
+  const applicationInput: KubernetesInstallApplicationInput = {
     ...input,
     ...(options.apiUrl === undefined ? {} : { apiUrl: options.apiUrl }),
-    ...(options.brokerUrl === undefined ? {} : { brokerUrl: options.brokerUrl }),
+    ...(input.domain.mode === 'managed' ? { brokerUrl: resolveInstallManagedDomainBrokerUrl(options.brokerUrl) } : {}),
     ...(options.chart === undefined ? {} : { chartPath: options.chart }),
     ...(options.organizationSlug === undefined ? {} : { organizationSlug: options.organizationSlug }),
     progress,
   };
+  const result: KubernetesInstallApplicationResult = await installIntoKubernetes(applicationInput);
+  await persistInstallSession(result.install, options.remote);
+  renderInstallResult(dependencies.io, options.output, result.install, false);
 }
 
 async function cleanCanonicalMaterial(

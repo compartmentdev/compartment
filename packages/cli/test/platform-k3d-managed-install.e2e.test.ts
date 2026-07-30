@@ -23,10 +23,12 @@ import {
   managedInstallReleaseName,
   managedInstallValuesPath,
   prepareManagedInstallFixture,
+  readManagedInstallBrokerState,
   renewManagedInstallConsoleCertificate,
   waitForManagedDomainBrokerObservation,
   type ManagedDomainAuditObservation,
   type ManagedDomainBrokerObservation,
+  type ManagedInstallBrokerState,
 } from './platform-k3d-managed-install.harness';
 
 const platformModeEnvName: string = 'COMPARTMENT_E2E_PLATFORM_MODE';
@@ -71,13 +73,15 @@ describe.sequential('production managed-domain Kubernetes install', (): void => 
       const ownerPassword: string = `ManagedE2e-${randomBytes(24).toString('base64url')}!`;
       const installerCli: SelfHostedUserSetupCli = await createFreshCli(ownerPassword);
       const result: InstallResponse = await installerCli.runJson(
-        `install --api-url ${managedInstallApiUrl} --managed-domain --broker-url ${managedInstallBrokerUrl} --values ${managedInstallValuesPath} --kube-context ${managedInstallKubeContext} --namespace ${managedInstallNamespace} --release-name ${managedInstallReleaseName} --email ${ownerEmail} --organization "${organizationName}" --organization-slug ${organizationSlug}`,
+        `install --api-url ${managedInstallApiUrl} --managed-domain --values ${managedInstallValuesPath} --kube-context ${managedInstallKubeContext} --namespace ${managedInstallNamespace} --release-name ${managedInstallReleaseName} --email ${ownerEmail} --organization "${organizationName}" --organization-slug ${organizationSlug}`,
         installResponseSchema,
       );
 
       expect(result.adminEmail).toBe(ownerEmail);
       expect(result.compartmentUrl).toBe(`https://console.${managedInstallBaseDomain}`);
       expect(result.organization.slug).toBe(organizationSlug);
+      const brokerState: ManagedInstallBrokerState = await readManagedInstallBrokerState();
+      expect(brokerState).toEqual({ chartUrl: managedInstallBrokerUrl, retainedUrl: managedInstallBrokerUrl });
 
       const installedIdentity: WhoAmICommandResponse = await installerCli.runJson(
         'whoami',
@@ -129,6 +133,7 @@ async function createFreshCli(adminPassword?: string): Promise<SelfHostedUserSet
   const homeDirectory: string = await createTemporaryDirectory();
   const env: NodeJS.ProcessEnv = buildSelfHostedUserSetupClientEnv(homeDirectory);
   delete env.COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN;
+  env.COMPARTMENT_MANAGED_DOMAIN_BROKER_URL = managedInstallBrokerUrl;
   env.NODE_EXTRA_CA_CERTS = managedInstallCertificateAuthorityPath;
   if (adminPassword !== undefined) {
     env.COMPARTMENT_ADMIN_PASSWORD = adminPassword;

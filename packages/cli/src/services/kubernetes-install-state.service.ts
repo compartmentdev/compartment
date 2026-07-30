@@ -46,7 +46,7 @@ export function buildInitialInstallValues(
     domainGeneration: initialDomainGeneration,
     domainMode: input.domainMode,
     installationId,
-    managedDomainBrokerUrl: input.brokerUrl ?? '',
+    managedDomainBrokerUrl: input.domainMode === 'managed' ? requireManagedBrokerUrl(input.brokerUrl) : '',
     ...(input.domainMode === 'managed' ? { publicProtocol: 'http', tlsMode: 'broker-dns01' } : {}),
   };
   return buildInstallValues(input, platformValues, installToken, '');

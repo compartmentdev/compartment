@@ -4,6 +4,7 @@ import { readExistingKubernetesInstall } from './kubernetes-install-release.serv
 import { mergeRetainedKubernetesInstallState } from './kubernetes-install-retained-state.service';
 import { requireFoundationInstall } from './kubernetes-install-runtime.support';
 import { buildInitialInstallValues, buildResumableFoundationValues } from './kubernetes-install-state.service';
+import { requireManagedBrokerUrl } from './kubernetes-install-managed-state.support';
 import { applyKubernetesConfiguredIngressState } from './kubernetes-install-state-ingress.service';
 import type {
   ExistingKubernetesInstall,
@@ -76,6 +77,10 @@ function buildResumableState(
 ): KubernetesInstallState {
   return applyKubernetesConfiguredIngressState(input, {
     ...existingState,
+    brokerUrl:
+      input.domainMode === 'managed' && existingState.brokerUrl.trim() === ''
+        ? requireManagedBrokerUrl(input.brokerUrl)
+        : existingState.brokerUrl,
     ingressClassName: input.ingressClassName,
     installationId,
     registryHostname:
