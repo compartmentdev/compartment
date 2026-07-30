@@ -121,6 +121,9 @@ platform:
   auditFileSinkRotateInterval: 1d
   auditFileSinkRotateSize: 64M
   auditFileSinkRetentionFiles: 30
+  edgeTrafficLimits:
+    app: { requestsPerSecond: 300, burst: 600, inFlight: 512 }
+    client: { requestsPerSecond: 60, burst: 120 }
   rollbackRetentionLimit: ''
   sourceArchiveMaxBytes: 104857600
   sessionTtl: 7d

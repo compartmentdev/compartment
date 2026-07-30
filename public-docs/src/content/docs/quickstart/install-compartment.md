@@ -56,6 +56,13 @@ Optional Helm values can assign platform, build, and tenant workloads to separat
 When pools are enabled, a pending platform Pod can preempt lower-priority tenant Pods that are eligible for the same
 node. Priority does not guarantee availability during node failure or kubelet node-pressure eviction.
 
+Hosted application traffic is limited per application to 300 requests per second with a burst of 600, per client IP
+within an application to 60 requests per second with a burst of 120, and to 512 simultaneous in-flight requests per
+application. Override these values under `platform.edgeTrafficLimits`; set either `requestsPerSecond` or `burst` to
+`0` to disable a token bucket, or set `inFlight` to `0` to disable the connection cap. These limits are held in memory
+and apply independently to each Caddy replica. Token-bucket rejections return `429` with `Retry-After`; in-flight
+rejections return `503`.
+
 Label and taint nodes before enabling a pool, then create `compartment-values.yaml` with matching values:
 
 ```yaml

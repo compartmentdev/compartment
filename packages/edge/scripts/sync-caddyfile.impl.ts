@@ -30,6 +30,7 @@ function renderCaddyfile(): string {
 {
 	admin {$COMPARTMENT_CADDY_ADMIN_ADDR:localhost:2019}
 	auto_https off
+	metrics
 	servers {
 		trusted_proxies static private_ranges
 		trusted_proxies_strict
@@ -85,6 +86,14 @@ function renderCompartmentPublicRouteBlock(): string {
 function renderHostedAppRouteBlock(): string {
   return trimTemplateBlock(`
 	route {
+		compartment_rate_limit {
+			app_requests_per_second {$COMPARTMENT_EDGE_APP_REQUESTS_PER_SECOND}
+			app_burst {$COMPARTMENT_EDGE_APP_BURST}
+			client_requests_per_second {$COMPARTMENT_EDGE_CLIENT_REQUESTS_PER_SECOND}
+			client_burst {$COMPARTMENT_EDGE_CLIENT_BURST}
+			app_in_flight {$COMPARTMENT_EDGE_APP_IN_FLIGHT}
+		}
+
 		@compartment_edge_paths path ${compartmentAppCallbackPathname} ${compartmentAppLogoutPathname}
 		handle @compartment_edge_paths {
 			reverse_proxy {$COMPARTMENT_EDGE_INTERNAL_HOST}:{$COMPARTMENT_EDGE_PORT} {

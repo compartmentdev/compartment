@@ -2,7 +2,12 @@ suite: shared ingress topology
 templates:
   - templates/caddy.yaml
   - templates/caddy-network-policy.yaml
+  - templates/configmap.yaml
   - templates/ingress.yaml
+  - templates/install-state-secret.yaml
+  - templates/secret.yaml
+values:
+  - registry-values.yaml
 tests:
   - it: exposes Caddy only as one-port ClusterIP
     asserts:
@@ -25,6 +30,123 @@ tests:
           path: spec.ports[0].nodePort
         template: caddy.yaml
         documentIndex: 0
+
+  - it: configures default hosted application traffic limits
+    set:
+      platform:
+        startupStage: full
+        installationId: test-edge-traffic-limits
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_APP_REQUESTS_PER_SECOND, value: '300' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_APP_BURST, value: '600' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_APP_IN_FLIGHT, value: '512' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_CLIENT_REQUESTS_PER_SECOND, value: '60' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_CLIENT_BURST, value: '120' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+
+  - it: maps hosted application traffic limit overrides
+    set:
+      platform:
+        startupStage: full
+        installationId: test-overridden-edge-traffic-limits
+        edgeTrafficLimits:
+          app: { requestsPerSecond: 450, burst: 900, inFlight: 640 }
+          client: { requestsPerSecond: 75, burst: 150 }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_APP_REQUESTS_PER_SECOND, value: '450' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_APP_BURST, value: '900' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_APP_IN_FLIGHT, value: '640' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_CLIENT_REQUESTS_PER_SECOND, value: '75' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_CLIENT_BURST, value: '150' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+
+  - it: accepts disabled hosted application traffic limits
+    set:
+      platform:
+        startupStage: full
+        installationId: test-disabled-edge-traffic-limits
+        edgeTrafficLimits:
+          app: { requestsPerSecond: 0, burst: 0, inFlight: 0 }
+          client: { requestsPerSecond: 0, burst: 0 }
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_APP_REQUESTS_PER_SECOND, value: '0' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_APP_BURST, value: '0' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_APP_IN_FLIGHT, value: '0' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_CLIENT_REQUESTS_PER_SECOND, value: '0' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: COMPARTMENT_EDGE_CLIENT_BURST, value: '0' }
+          any: true
+        template: caddy.yaml
+        documentIndex: 1
 
   - it: renders exact console and canonical wildcard hosts with an explicit class
     set:

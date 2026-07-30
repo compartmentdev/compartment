@@ -214,6 +214,33 @@
           "description": "Maximum retained rollback images inherited by organizations. Leave empty for indefinite retention.",
           "oneOf": [{ "const": "" }, { "type": "integer", "minimum": 1 }]
         },
+        "edgeTrafficLimits": {
+          "description": "Per-replica hosted-application request and in-flight limits. Set a rate or burst to zero to disable that token bucket; set inFlight to zero to disable the cap.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["app", "client"],
+          "properties": {
+            "app": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["requestsPerSecond", "burst", "inFlight"],
+              "properties": {
+                "requestsPerSecond": { "type": "number", "minimum": 0 },
+                "burst": { "type": "integer", "minimum": 0 },
+                "inFlight": { "type": "integer", "minimum": 0 }
+              }
+            },
+            "client": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["requestsPerSecond", "burst"],
+              "properties": {
+                "requestsPerSecond": { "type": "number", "minimum": 0 },
+                "burst": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        },
         "authThrottle": {
           "description": "Authentication throttle windows, limits, and cooldowns.",
           "type": "object",

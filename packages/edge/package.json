@@ -15,7 +15,9 @@
     "build:test": "tsc -p tsconfig.test.json",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc -p tsconfig.json --noEmit --rootDir ../.. && tsc -p tsconfig.test.json --noEmit --rootDir ../..",
-    "test": "vitest run --config ../../vitest.config.mts"
+    "test": "vitest run --config ../../vitest.config.mts",
+    "test:go": "cd caddy-ratelimit && go test -race ./...",
+    "vet:go": "cd caddy-ratelimit && go vet ./..."
   },
   "dependencies": {
     "@compartment/contracts": "workspace:*",
