@@ -28,7 +28,37 @@ afterEach(async () => {
 });
 
 describe('managed-install broker contract fixture', () => {
-  it('enforces reservation and allocation scope before projecting and replaying typed desired DNS state', async () => {
+  it('reserves without authorization when no reservation token is configured', async () => {
+    const brokerPort = 24000 + Math.floor(Math.random() * 1000);
+    const stateDirectory = await mkdtemp(join(tmpdir(), 'managed-domain-broker-'));
+    temporaryDirectories.push(stateDirectory);
+    const brokerEnvironment = {
+      ...process.env,
+      MANAGED_DOMAIN_BASE_DOMAIN: 'managed.example.test',
+      MANAGED_DOMAIN_CHALLENGE_SERVER_URL: 'http://127.0.0.1:1',
+      MANAGED_DOMAIN_STATE_PATH: join(stateDirectory, 'broker.json'),
+      PORT: brokerPort.toString(),
+    };
+    delete brokerEnvironment.MANAGED_DOMAIN_RESERVATION_TOKEN;
+    const broker = spawn(process.execPath, [resolve('deploy/e2e/managed-install/broker.mjs')], {
+      cwd: resolve('.'),
+      env: brokerEnvironment,
+      stdio: ['ignore', 'pipe', 'inherit'],
+    });
+    processes.push(broker);
+    await once(broker.stdout, 'data');
+    const brokerUrl = `http://127.0.0.1:${brokerPort.toString()}`;
+
+    const response = await reserveResponse(brokerUrl, 'install-default', 'Default', undefined);
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      baseDomain: 'default.managed.example.test',
+      scopedToken: expect.any(String),
+    });
+  });
+
+  it('enforces configured reservation and allocation scope before projecting typed desired DNS state', async () => {
     const dnsWrites = [];
     const dnsServer = createServer(async (request, response) => {
       const chunks = [];
@@ -82,6 +112,22 @@ describe('managed-install broker contract fixture', () => {
       { type: 'AAAA', value: '2001:db8::1' },
       { type: 'hostname', value: 'Shared-LB.Example.com.' },
     ];
+    const deniedBind = await fetch(`${brokerUrl}/v1/managed-domains/allocations/${first.allocationId}/targets`, {
+      body: JSON.stringify({ targets }),
+      headers: {
+        authorization: `Bearer ${second.scopedToken}`,
+        'content-type': 'application/json',
+      },
+      method: 'PUT',
+    });
+    expect(deniedBind.status).toBe(403);
+    expect(dnsWrites).toHaveLength(0);
+    const stateAfterDeniedBind = await fetch(`${brokerUrl}/__test/state`);
+    const deniedState = await stateAfterDeniedBind.json();
+    expect(deniedState.allocations.find((allocation) => allocation.allocationId === first.allocationId)).toMatchObject({
+      targets: [],
+    });
+
     const bound = await allocationRequest(brokerUrl, first, 'targets', 'PUT', { targets });
     expect(bound.status).toBe(200);
     await expect(bound.json()).resolves.toMatchObject({
@@ -177,7 +223,7 @@ async function reserveResponse(brokerUrl, installationId, requestedLabelSource, 
   return await fetch(`${brokerUrl}/v1/managed-domains/allocations`, {
     body: JSON.stringify({ installationId, requestedLabelSource }),
     headers: {
-      authorization: `Bearer ${token}`,
+      ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
       'content-type': 'application/json',
       'idempotency-key': installationId,
     },

@@ -165,13 +165,14 @@ async function requestManagedDomainReservation(
   foundationInstall: ExistingKubernetesInstall,
   brokerUrl: string,
 ): Promise<ManagedDomainReservationResponse> {
+  const reservationToken: string | undefined = readManagedDomainReservationToken();
   return await reserveInstallManagedDomain(
     {
       brokerUrl,
       installationId: foundationInstall.installationId,
       metadata: buildManagedDomainAllocationMetadata(),
       requestedLabelSource: requireManagedDomainRequestedLabelSource(input.managedDomainRequestedLabelSource),
-      reservationToken: readManagedDomainReservationToken(),
+      ...(reservationToken === undefined ? {} : { reservationToken }),
     },
     input.progress,
   );

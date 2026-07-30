@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import { resolveCanonicalKubernetesInstallInput } from '../src/commands/install/install.command.input';
 import { resolveCanonicalKubernetesInstallWizard } from '../src/commands/install/install.command.kubernetes-wizard';
 import type { InstallCommandOptions } from '../src/commands/install/install.command.types';
@@ -15,19 +15,10 @@ import { createCliCapture, type CliCommandCapture } from './cli-test.harness';
 
 const kubeconfigPath: string = '/tmp/kubeconfig';
 const valuesPath: string = '/tmp/values.yaml';
-const managedDomainReservationTokenEnvironmentName: string = 'COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN';
 const inspectPublicAcme: InspectKubernetesInstallIssuer = async (): Promise<KubernetesOperatorIssuerAssessment> =>
   await Promise.resolve({ detail: 'Public ACME issuer.', trust: 'acme' });
 
 describe('canonical Kubernetes install input', (): void => {
-  beforeEach((): void => {
-    process.env[managedDomainReservationTokenEnvironmentName] = 'test-reservation-token';
-  });
-
-  afterEach((): void => {
-    delete process.env[managedDomainReservationTokenEnvironmentName];
-  });
-
   it('produces the same validated input from interactive answers and flags', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
     capture.stdin.end('\n\n\nowner@example.com\nAcme\ny\n');
@@ -118,10 +109,9 @@ describe('canonical Kubernetes install input', (): void => {
     ).rejects.toThrow('--managed-domain cannot be combined with --base-domain.');
   });
 
-  it('stops at managed-domain selection without onboarding authorization', async (): Promise<void> => {
-    delete process.env[managedDomainReservationTokenEnvironmentName];
+  it('uses the default managed domain without onboarding authorization', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
-    capture.stdin.end('\n\n\n');
+    capture.stdin.end('\n\n\nowner@example.com\nAcme\ny\n');
     const readResources: Mock<ReadKubernetesInstallResourceInventory> = vi.fn(
       async (): Promise<KubernetesInstallResourceInventory> => {
         return await Promise.resolve({
@@ -131,24 +121,21 @@ describe('canonical Kubernetes install input', (): void => {
       },
     );
 
-    await expect(
-      resolveCanonicalKubernetesInstallWizard(
-        capture.io,
-        { adminPassword: 'correct horse battery staple', output: 'text' },
-        { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
-        readResources,
-        inspectPublicAcme,
-      ),
-    ).rejects.toThrow('Managed Compartment domains require onboarding through the public installer.');
+    const wizard: KubernetesInstallWizardResult = await resolveCanonicalKubernetesInstallWizard(
+      capture.io,
+      { adminPassword: 'correct horse battery staple', output: 'text' },
+      { contexts: [{ apiServer: 'https://cluster.example.test', name: 'production' }] },
+      readResources,
+      inspectPublicAcme,
+    );
 
+    expect(wizard.input).toMatchObject({ managedDomain: true });
     expect(capture.stderr.join('')).toContain('Domain:');
-    expect(capture.stderr.join('')).not.toContain('Email');
-    expect(capture.stderr.join('')).not.toContain('Installation review:');
+    expect(capture.stderr.join('')).toContain('Installation review:');
     expect(readResources).toHaveBeenCalledOnce();
   });
 
   it('keeps operator-owned domain selection available without onboarding authorization', async (): Promise<void> => {
-    delete process.env[managedDomainReservationTokenEnvironmentName];
     const capture: CliCommandCapture = createCliCapture();
     capture.stdin.end('1\ny\n2\napps.example.com\n1\nClusterIssuer\nletsencrypt-production\ny\n');
 

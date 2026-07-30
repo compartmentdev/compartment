@@ -2,7 +2,7 @@ import type { ManagedDomainReservationRequest, ManagedDomainTargetBindingRequest
 
 export interface ManagedDomainReservationInput extends ManagedDomainReservationRequest {
   brokerUrl: string;
-  reservationToken: string;
+  reservationToken?: string;
 }
 
 export interface ManagedDomainBindingInput extends ManagedDomainTargetBindingRequest {

@@ -37,9 +37,12 @@ describe('managed-domain broker service', (): void => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(Response.json({ allocationId: 'allocation-1', challengeCount: 0, targetCount: 1 }));
     vi.stubGlobal('fetch', fetchMock);
-    const request: CompartmentRequester = createCompartmentRequester({ apiUrl: 'https://broker.compartment.run' });
+    const request: CompartmentRequester = createCompartmentRequester({
+      apiUrl: 'https://broker.compartment.run',
+      sessionToken: 'unrelated-default-token',
+    });
 
-    await reserveManagedDomain(request, 'reservation-token', {
+    await reserveManagedDomain(request, undefined, {
       installationId: 'installation-123',
       requestedLabelSource: 'Acme Dev',
     });
@@ -56,7 +59,7 @@ describe('managed-domain broker service', (): void => {
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://broker.compartment.run/v1/managed-domains/allocations');
     const reservationHeaders: Headers = fetchMock.mock.calls[0]?.[1].headers as Headers;
-    expect(reservationHeaders.get('Authorization')).toBe('Bearer reservation-token');
+    expect(reservationHeaders.get('Authorization')).toBeNull();
     expect(fetchMock.mock.calls[1]?.[0]).toBe(
       'https://broker.compartment.run/v1/managed-domains/allocations/allocation-1/targets',
     );

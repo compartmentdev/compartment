@@ -1,6 +1,5 @@
 import type { CliIo } from '../../app.types';
 import { promptVisibleText } from '../../prompts/prompt';
-import { assertManagedDomainOnboardingAvailable } from '../../services/managed-domain-reservation-token.service';
 import { assertMutuallyExclusiveKubernetesInstallDomains } from './install.command.input';
 import { resolveOperatorDomainTls, type OperatorDomainTlsPromptInput } from './install.command.kubernetes-wizard-tls';
 import type {
@@ -91,6 +90,5 @@ function buildTlsPromptInput(
 }
 
 function resolveManagedDomain(): KubernetesInstallWizardDomain {
-  assertManagedDomainOnboardingAvailable();
   return { input: { managedDomain: true }, tlsReview: 'managed by Compartment' };
 }

@@ -111,21 +111,19 @@ describe('install command boundary', (): void => {
     expect(mocks.assertLocalTools).toHaveBeenCalledTimes(1);
   });
 
-  it('fails fast with onboarding guidance for non-interactive managed-domain installs', async (): Promise<void> => {
+  it('accepts a managed domain without onboarding authorization', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 
     const exitCode: number = await runCli(['install', '--managed-domain', '--output', 'json'], capture.io);
 
     expect(exitCode).toBe(1);
-    expect(readCliStderr(capture)).toContain(
-      'Managed Compartment domains require onboarding through the public installer.',
-    );
-    expect(readCliStderr(capture)).toContain('curl -fsSL https://compartment.dev/install.sh | sh -s -- --init-install');
+    expect(readCliStderr(capture)).toContain('Missing required install input: --email.');
+    expect(readCliStderr(capture)).not.toContain('--init-install');
     expect(readCliStderr(capture)).not.toContain('COMPARTMENT_MANAGED_DOMAIN_RESERVATION_TOKEN');
     expect(mocks.deployInstall).not.toHaveBeenCalled();
   });
 
-  it('reports conflicting domain flags before managed-domain onboarding availability', async (): Promise<void> => {
+  it('reports conflicting domain flags at the domain boundary', async (): Promise<void> => {
     const capture: CliCommandCapture = createCliCapture();
 
     const exitCode: number = await runCli(

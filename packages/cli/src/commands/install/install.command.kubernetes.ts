@@ -38,7 +38,6 @@ import {
   type MaterializedInstallWizardValues,
   type OperatorInstallInputValues,
 } from './install.command.values';
-import { assertManagedDomainOnboardingAvailable } from '../../services/managed-domain-reservation-token.service';
 import { isReservedKubernetesInstallLocalhostDomain } from '../../kubernetes-install-domain';
 import { normalizeInstallBaseDomain } from './install.command.validation';
 import { withKubernetesLocalTools } from '../../services/kubernetes-local-tools.service';
@@ -118,9 +117,6 @@ function requiresPublicOperatorTls(baseDomain: string | undefined): boolean {
 
 function assertNonInteractiveDomainAvailable(options: InstallCommandOptions): void {
   assertCanonicalKubernetesInstallDomainChoice(options);
-  if (options.managedDomain === true) {
-    assertManagedDomainOnboardingAvailable();
-  }
 }
 
 async function executeWithKubeconfig(
