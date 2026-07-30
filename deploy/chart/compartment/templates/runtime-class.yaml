@@ -1,0 +1,9 @@
+{{- if .Values.tenantRuntime.createRuntimeClass }}
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: {{ required "tenantRuntime.runtimeClassName is required when createRuntimeClass is true" .Values.tenantRuntime.runtimeClassName }}
+  labels:
+    {{- include "compartment.labels" . | nindent 4 }}
+handler: {{ .Values.tenantRuntime.runtimeHandler }}
+{{- end }}

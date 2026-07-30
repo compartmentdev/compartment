@@ -354,6 +354,7 @@ describe('KubeRuntime Job primitive', (): void => {
       ...jobSpec('release'),
       scheduling: {
         nodeSelector: { 'compartment.dev/node-pool': 'tenant-a' },
+        runtimeClassName: 'gvisor-a',
         tolerations: [{ effect: 'NoSchedule', key: 'tenant-a', operator: 'Exists' }],
       },
     };
@@ -361,6 +362,7 @@ describe('KubeRuntime Job primitive', (): void => {
       ...originalSpec,
       scheduling: {
         nodeSelector: { 'compartment.dev/node-pool': 'tenant-b' },
+        runtimeClassName: 'gvisor-b',
         tolerations: [{ effect: 'NoSchedule', key: 'tenant-b', operator: 'Exists' }],
       },
     };
@@ -383,6 +385,7 @@ describe('KubeRuntime Job primitive', (): void => {
     expect(finalized.spec?.template.spec).toMatchObject({
       nodeSelector: { 'compartment.dev/node-pool': 'tenant-a' },
       priorityClassName: 'compartment-tenant',
+      runtimeClassName: 'gvisor-a',
       tolerations: [{ effect: 'NoSchedule', key: 'tenant-a', operator: 'Exists' }],
     });
   });

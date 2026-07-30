@@ -87,6 +87,7 @@ describe.sequential('production Kubernetes install', (): void => {
       );
 
       await expectCleanControllerStartup();
+      await expectPlatformRuntime();
       await expectOperatorRegistryInstallValues();
       await expectIngressControllerCompatibility();
       await expectRegistryPodRecovery();
@@ -219,6 +220,21 @@ async function expectCleanControllerStartup(): Promise<void> {
       await expectCleanPodStartup(podName, workload);
     }
   }
+}
+
+async function expectPlatformRuntime(): Promise<void> {
+  if (process.env.COMPARTMENT_E2E_GVISOR_ENABLED !== '1') {
+    return;
+  }
+  const version: SelfHostedUserSetupCommandResult = await runKubectl([
+    'exec',
+    'deployment/compartment-compartment-api',
+    '--',
+    'cat',
+    '/proc/version',
+  ]);
+  expectSuccessfulCommand(version, 'read the platform API kernel version');
+  expect(version.stdout.toLowerCase()).not.toContain('gvisor');
 }
 
 async function expectIngressControllerCompatibility(): Promise<void> {

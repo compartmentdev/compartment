@@ -5,13 +5,14 @@ export const tenantPriorityClassName: string = 'compartment-tenant';
 
 export function projectTenantScheduling(
   scheduling: KubeWorkloadScheduling | undefined,
-): Pick<KubeProjectedPodSpec, 'nodeSelector' | 'priorityClassName' | 'tolerations'> {
+): Pick<KubeProjectedPodSpec, 'nodeSelector' | 'priorityClassName' | 'runtimeClassName' | 'tolerations'> {
   if (scheduling === undefined) {
     return {};
   }
   return {
     ...(Object.keys(scheduling.nodeSelector).length === 0 ? {} : { nodeSelector: scheduling.nodeSelector }),
     priorityClassName: tenantPriorityClassName,
+    ...(scheduling.runtimeClassName === undefined ? {} : { runtimeClassName: scheduling.runtimeClassName }),
     ...(scheduling.tolerations.length === 0 ? {} : { tolerations: scheduling.tolerations }),
   };
 }
@@ -43,6 +44,9 @@ function projectManifestScheduling(manifest: KubeManifest, desiredPodSpec: KubeP
           ...(desiredPodSpec.priorityClassName === undefined
             ? {}
             : { priorityClassName: desiredPodSpec.priorityClassName }),
+          ...(desiredPodSpec.runtimeClassName === undefined
+            ? {}
+            : { runtimeClassName: desiredPodSpec.runtimeClassName }),
           ...(desiredPodSpec.tolerations === undefined ? {} : { tolerations: desiredPodSpec.tolerations }),
         },
       },
@@ -54,6 +58,7 @@ function withoutScheduling(spec: KubeProjectedPodSpec): KubeProjectedPodSpec {
   const result: KubeProjectedPodSpec = { ...spec };
   delete result.nodeSelector;
   delete result.priorityClassName;
+  delete result.runtimeClassName;
   delete result.tolerations;
   return result;
 }

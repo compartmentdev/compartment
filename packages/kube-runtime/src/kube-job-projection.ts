@@ -68,6 +68,9 @@ export function recoveredJobSpec(spec: KubeJobSpec, observed: KubeObservedManife
     ...finalizationSpec,
     scheduling: {
       nodeSelector: observed.spec.template.spec.nodeSelector ?? {},
+      ...(observed.spec.template.spec.runtimeClassName === undefined
+        ? {}
+        : { runtimeClassName: observed.spec.template.spec.runtimeClassName }),
       tolerations: observed.spec.template.spec.tolerations ?? [],
     },
   };

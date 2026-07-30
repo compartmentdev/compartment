@@ -11,6 +11,7 @@ const tolerationSchema: z.ZodType<KubeToleration> = z.object({
 
 const tenantWorkloadSchedulingSchema: z.ZodType<KubeWorkloadScheduling> = z.object({
   nodeSelector: z.record(z.string(), z.string()),
+  runtimeClassName: z.string().min(1).optional(),
   tolerations: z.array(tolerationSchema),
 });
 

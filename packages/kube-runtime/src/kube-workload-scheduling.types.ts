@@ -8,5 +8,6 @@ export interface KubeToleration {
 
 export interface KubeWorkloadScheduling {
   nodeSelector: Readonly<Record<string, string>>;
+  runtimeClassName?: string | undefined;
   tolerations: readonly KubeToleration[];
 }

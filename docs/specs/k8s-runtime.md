@@ -111,6 +111,13 @@ plus product and provisioning Jobs project the tenant selector, tolerations, and
 When it is absent, all three Pod fields are omitted so existing server-side-apply ownership remains unchanged.
 Platform and build scheduling remains owned by the Helm chart.
 
+Tenant kernel sandboxing is installation-owned and opt-in through `tenantRuntime.runtimeClassName`.
+The selected RuntimeClass is projected onto application Deployments, resource Deployments, product Jobs, and
+provisioning Jobs; an empty value omits `runtimeClassName` entirely. Platform workloads and `api-migrate` remain on
+the node default runtime. BuildKit is intentionally outside the sandbox because its build execution contract is
+isolated through the build node pool instead. PostgreSQL resources use the tenant RuntimeClass without a separate
+opt-out; the additional I/O cost is an accepted isolation tradeoff.
+
 Network isolation follows the T2 evidence. Application Pods and product Jobs
 carrying `compartment.dev/job-class` receive resource, kube-dns, and external
 egress; resource ingress admits those two workload classes only. Secret

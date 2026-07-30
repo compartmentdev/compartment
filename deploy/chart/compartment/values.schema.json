@@ -260,6 +260,16 @@
         "tenant": { "$ref": "#/definitions/nodePool" }
       }
     },
+    "tenantRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtimeClassName", "createRuntimeClass", "runtimeHandler"],
+      "properties": {
+        "runtimeClassName": { "type": "string" },
+        "createRuntimeClass": { "type": "boolean" },
+        "runtimeHandler": { "type": "string", "minLength": 1 }
+      }
+    },
     "buildkit": {
       "type": "object",
       "required": [
