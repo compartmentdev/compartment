@@ -89,8 +89,10 @@ describe('self-hosted publish workflows', () => {
     expect(publishJob.steps.indexOf(publicInstallerStep)).toBeGreaterThan(publishJob.steps.indexOf(promoteStep));
     expect(publicInstallerStep.if).toBe("steps.promote-kubernetes-cli.outputs.promoted == 'true'");
     expect(publicInstallerStep.run).toContain('https://compartment.dev/install.sh');
-    expect(publicInstallerStep.run).toContain('! grep --ignore-case --quiet');
+    expect(publicInstallerStep.run).toContain('received_sha256=""');
+    expect(publicInstallerStep.run).toContain('received_size=""');
     expect(publicInstallerStep.run).toContain('cmp --silent install.sh ./.compartment/public-install.sh');
+    expect(publicInstallerStep.run.trimEnd().endsWith('exit 1')).toBe(true);
   });
 
   it('publishes, signs, and verifies both registries through one channel action', async () => {

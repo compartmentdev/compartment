@@ -326,6 +326,8 @@ jobs:
           expected_size="$(wc -c < install.sh)"
           while [ "$attempt" -le "$max_attempts" ]; do
             rm -f ./.compartment/public-installer.headers ./.compartment/public-install.sh
+            received_sha256=""
+            received_size=""
             if http_status="$(
               curl \
                 --silent \
@@ -396,3 +398,4 @@ jobs:
             attempt=$((attempt + 1))
             sleep 10
           done
+          exit 1

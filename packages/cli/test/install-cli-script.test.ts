@@ -184,7 +184,7 @@ describe('render-cli-install-script', (): void => {
       `Images for ${expectedKubernetesReleaseTag} are still publishing. Install the latest fully published kubernetes build with:`,
     );
     expect(result.stderr).toContain(
-      `curl -fsSL https://raw.githubusercontent.com/example/compartment/kubernetes/install.sh | sh -s -- --channel kubernetes --version ${expectedPublishedKubernetesReleaseTag}`,
+      `sh install.sh --channel kubernetes --version ${expectedPublishedKubernetesReleaseTag}`,
     );
     expect(result.stderr).not.toContain('Error response from registry');
     expect(result.orasInvocations).toEqual([
@@ -214,9 +214,7 @@ describe('render-cli-install-script', (): void => {
       `Kubernetes CLI image tag ${expectedKubernetesReleaseTag} was not found in the registry. Check that the build was published and that the version is not mistyped.`,
     );
     expect(result.stderr).toContain('To install the current kubernetes channel tip instead, omit --version:');
-    expect(result.stderr).toContain(
-      'curl -fsSL https://raw.githubusercontent.com/example/compartment/kubernetes/install.sh | sh -s -- --channel kubernetes',
-    );
+    expect(result.stderr).toContain('sh install.sh --channel kubernetes');
     expect(result.stderr).not.toContain('fallback automatically');
     expect(result.stderr).not.toContain(`--version ${expectedKubernetesReleaseTag}`);
     expect(result.urlLog).toEqual([]);
@@ -245,9 +243,7 @@ describe('render-cli-install-script', (): void => {
       expect(result.stderr).toContain(
         'https://github.com/example/compartment/actions/workflows/publish-self-hosted-kubernetes.yml',
       );
-      expect(result.stderr).toContain(
-        'curl -fsSL https://raw.githubusercontent.com/example/compartment/kubernetes/install.sh | sh -s -- --channel kubernetes --version sha-COMMIT_SHA',
-      );
+      expect(result.stderr).toContain('sh install.sh --channel kubernetes --version sha-COMMIT_SHA');
       expect(result.stderr).not.toContain('sha-<');
       expect(result.compartmentInvocations).toEqual([]);
     },
