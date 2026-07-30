@@ -88,10 +88,21 @@ describe('self-hosted publish workflows', () => {
     expect(promoteStep.run).toContain('echo \'promoted=true\' >> "$GITHUB_OUTPUT"');
     expect(publishJob.steps.indexOf(publicInstallerStep)).toBeGreaterThan(publishJob.steps.indexOf(promoteStep));
     expect(publicInstallerStep.if).toBe("steps.promote-kubernetes-cli.outputs.promoted == 'true'");
-    expect(publicInstallerStep.run).toContain('https://compartment.dev/install.sh');
+    expect(publicInstallerStep.run).toContain('https://compartment.dev/k/install.sh');
+    expect(publicInstallerStep.run).not.toContain('https://compartment.dev/install.sh');
+    expect(publicInstallerStep.run).toMatch(
+      /curl -fsSL[\s\S]*--write-out '%\{http_code\}'[\s\S]*https:\/\/compartment\.dev\/k\/install\.sh/u,
+    );
     expect(publicInstallerStep.run).toContain('received_sha256=""');
     expect(publicInstallerStep.run).toContain('received_size=""');
-    expect(publicInstallerStep.run).toContain('cmp --silent install.sh ./.compartment/public-install.sh');
+    expect(publicInstallerStep.run).toContain('expected_sha256="$(sha256sum install.sh');
+    expect(publicInstallerStep.run).toContain('expected_size="$(wc -c < install.sh)"');
+    expect(publicInstallerStep.run).toContain('[ "$http_status" = 200 ]');
+    expect(publicInstallerStep.run).toMatch(
+      /cmp --silent install\.sh \.\/\.compartment\/public-install\.sh; then[\s\S]*expected sha256[\s\S]*received sha256[\s\S]*exit 0/u,
+    );
+    expect(publicInstallerStep.run).toContain('HTTP 200 served different content');
+    expect(publicInstallerStep.run).not.toContain('last_result=redirect');
     expect(publicInstallerStep.run.trimEnd().endsWith('exit 1')).toBe(true);
   });
 

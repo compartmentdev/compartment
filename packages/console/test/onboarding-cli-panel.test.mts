@@ -64,7 +64,7 @@ describe('CLI onboarding panel', (): void => {
     try {
       expect(mountedPanel.container.textContent).toContain('Install and log in with CLI');
       expect(mountedPanel.container.textContent).not.toContain('CLI already installed');
-      expect(readRenderedCommand(mountedPanel.container)).toContain('curl -fsSL https://compartment.dev/install.sh');
+      expect(readRenderedCommand(mountedPanel.container)).toContain('curl -fsSL https://compartment.dev/k/install.sh');
     } finally {
       await mountedPanel.unmount();
     }
@@ -94,7 +94,7 @@ describe('CLI onboarding panel', (): void => {
       await clickButton(mountedPanel.container, 'Need to install CLI');
 
       expect(mountedPanel.container.textContent).toContain('Install and log in with CLI');
-      expect(readRenderedCommand(mountedPanel.container)).toContain('curl -fsSL https://compartment.dev/install.sh');
+      expect(readRenderedCommand(mountedPanel.container)).toContain('curl -fsSL https://compartment.dev/k/install.sh');
       expect(readRenderedCommand(mountedPanel.container)).not.toContain('compartment login --api-url');
     } finally {
       await mountedPanel.unmount();

@@ -52,7 +52,7 @@ Teams use Compartment when software that started as a script, internal app, work
 Install the CLI, then connect it to a Compartment control plane installed by your operator:
 
 ```bash
-curl -fsSL https://compartment.dev/install.sh | sh
+curl -fsSL https://compartment.dev/k/install.sh | sh
 compartment login --api-url https://console.example.com --organization acme-dev
 ```
 

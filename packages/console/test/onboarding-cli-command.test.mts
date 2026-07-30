@@ -11,7 +11,7 @@ describe('browser onboarding CLI command', (): void => {
         sessionId: 'fdo_123',
       }),
     ).toBe(
-      'curl -fsSL https://compartment.dev/install.sh | sh -s -- --init-login --api-url http://127.0.0.1:38080 --email admin@example.com --organization acme-dev --onboarding-session fdo_123',
+      'curl -fsSL https://compartment.dev/k/install.sh | sh -s -- --init-login --api-url http://127.0.0.1:38080 --email admin@example.com --organization acme-dev --onboarding-session fdo_123',
     );
   });
 

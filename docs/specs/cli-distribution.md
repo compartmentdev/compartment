@@ -18,9 +18,11 @@ Stable `checksums.txt` includes the CLI archives and `install.sh`. The checksum 
 
 Releases created before repository release immutability was enabled are not retroactively attested.
 
-The public installer resolves the current `kubernetes` commit, resolves `ghcr.io/compartmentdev/compartment-cli` to
-an immutable digest, and verifies the Cosign certificate identity, GitHub OIDC issuer, and exact workflow SHA before
-pulling the platform-specific archive. Stable release installer assets remain pinned to their release version.
+The Kubernetes-line public entry at `https://compartment.dev/k/install.sh` redirects with HTTP 307 to the root
+`install.sh` on the `kubernetes` branch, which remains the sole source of truth. That installer resolves the current
+`kubernetes` commit, resolves `ghcr.io/compartmentdev/compartment-cli` to an immutable digest, and verifies the Cosign
+certificate identity, GitHub OIDC issuer, and exact workflow SHA before pulling the platform-specific archive. Stable
+release installer assets remain pinned to their release version.
 
 ## Local Smoke
 

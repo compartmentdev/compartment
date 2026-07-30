@@ -183,6 +183,7 @@ describe('Kubernetes cutover gate', () => {
   it('requires the public bootstrap to default to the signed Kubernetes artifact', () => {
     const validInstaller = renderLines([
       ['channel=', '"kubernetes"'].join(''),
+      ['https://compartment.dev', '/k/install.sh'].join(''),
       ['"', '$cosign_command', '" verify'].join(''),
       ['--certificate-', 'identity'].join(''),
       ['--certificate-', 'oidc-issuer'].join(''),
@@ -190,7 +191,7 @@ describe('Kubernetes cutover gate', () => {
     ]);
 
     expect(findPublicInstallerViolations('install.sh', validInstaller)).toEqual([]);
-    expect(findPublicInstallerViolations('install.sh', 'channel="latest"')).toHaveLength(5);
+    expect(findPublicInstallerViolations('install.sh', 'channel="latest"')).toHaveLength(6);
     expect(
       findPublicInstallerViolations(
         'install.sh',
