@@ -15,6 +15,9 @@ import {
   expectedKubernetesCommitSha,
   expectedKubernetesReleaseTag,
   expectedMainReleaseTag,
+  expectedPublishedCliDigestRef,
+  expectedPublishedKubernetesCommitSha,
+  expectedPublishedKubernetesReleaseTag,
   readExpectedArtifactName,
   readExpectedOrasPlatform,
   writeExecutableScript,
@@ -42,6 +45,7 @@ interface InstallerFixture {
 
 type InstallerSignatureOutcome = 'foreign-identity' | 'unsigned' | 'valid' | 'wrong-workflow-sha';
 type OrasResolveOutcome = 'missing' | 'unavailable' | 'valid';
+type PublishedFallbackOutcome = 'lookup-missing' | 'resolve-missing' | 'signature-invalid' | 'valid';
 
 interface InstallerScriptResult {
   cosignInvocations: string[];
@@ -67,6 +71,7 @@ interface InstallerRunOptions {
   osName?: string | undefined;
   orasResolveOutcome?: OrasResolveOutcome | undefined;
   pathEntries?: string[] | undefined;
+  publishedFallbackOutcome?: PublishedFallbackOutcome | undefined;
   shell?: string | undefined;
   signatureOutcome?: InstallerSignatureOutcome | undefined;
   toolVersionMode?: 'compatible' | 'incompatible' | undefined;
@@ -151,25 +156,75 @@ describe('render-cli-install-script', (): void => {
   });
 
   it.each([
-    ['version before channel', ['--version', 'sha-pinned', '--channel', 'kubernetes']],
-    ['channel before version', ['--channel', 'kubernetes', '--version', 'sha-pinned']],
+    ['version before channel', ['--version', expectedKubernetesReleaseTag, '--channel', 'kubernetes']],
+    ['channel before version', ['--channel', 'kubernetes', '--version', expectedKubernetesReleaseTag]],
   ] as const)(
-    'rejects explicit version with the kubernetes channel: %s',
+    'installs an explicitly pinned version from the kubernetes channel: %s',
     async (_label: string, args: readonly string[]): Promise<void> => {
       const temporaryDirectory: string = await createTemporaryDirectory();
       const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
-        allowFailure: true,
         args: [...args],
       });
 
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Choose either --version or --channel, not both.');
+      expect(result.exitCode).toBe(0);
       expect(result.urlLog).toEqual([]);
-      expect(result.compartmentInvocations).toEqual([]);
+      expect(result.orasInvocations[0]).toBe(
+        `resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}`,
+      );
+      expect(result.cosignInvocations).toEqual([
+        `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedKubernetesCommitSha} ${expectedCliDigestRef}`,
+      ]);
+      expect(result.compartmentInvocations).toEqual(['--version']);
     },
   );
 
-  it('explains when Kubernetes channel images are still publishing', async (): Promise<void> => {
+  it.each([
+    ['a short sha', 'sha-1234'],
+    ['a semantic version', '0.9.2'],
+    ['an uppercase sha', 'sha-ABCDEF1234567890ABCDEF1234567890ABCDEF12'],
+  ] as const)(
+    'rejects %s for the kubernetes channel with a human-readable format error',
+    async (_label: string, version: string): Promise<void> => {
+      const temporaryDirectory: string = await createTemporaryDirectory();
+      const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+        allowFailure: true,
+        args: ['--channel', 'kubernetes', '--version', version],
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(
+        `Invalid version for the kubernetes channel: ${version}. Expected sha- followed by 40 lowercase hexadecimal characters.`,
+      );
+      expect(result.stderr).not.toContain('Error:');
+      expect(result.urlLog).toEqual([]);
+      expect(result.orasInvocations).toEqual([]);
+    },
+  );
+
+  it.each([
+    ['an empty build suffix', '1.2.3+'],
+    ['empty build identifiers', '1.2.3+.'],
+    ['empty prerelease identifiers', '1.2.3-alpha..1'],
+    ['an empty prerelease suffix', '1.2.3-'],
+    ['leading zero core identifiers', '1.02.3'],
+  ] as const)(
+    'rejects semantic versions with %s in the latest channel',
+    async (_label: string, version: string): Promise<void> => {
+      const temporaryDirectory: string = await createTemporaryDirectory();
+      const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+        allowFailure: true,
+        args: ['--channel', 'latest', '--version', version],
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(
+        `Invalid version for the latest channel: ${version}. Expected a semantic version or sha- followed by 40 lowercase hexadecimal characters.`,
+      );
+      expect(result.urlLog).toEqual([]);
+    },
+  );
+
+  it('offers the latest fully published Kubernetes build when the channel tip is still publishing', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
     const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
       allowFailure: true,
@@ -179,15 +234,53 @@ describe('render-cli-install-script', (): void => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain(
-      `Images for ${expectedKubernetesReleaseTag} are still publishing (this can take a few minutes after a merge). Please retry shortly.`,
+      `Images for ${expectedKubernetesReleaseTag} are still publishing. Install the latest fully published kubernetes build with:`,
+    );
+    expect(result.stderr).toContain(
+      `curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel kubernetes --version ${expectedPublishedKubernetesReleaseTag}`,
     );
     expect(result.stderr).not.toContain('Error response from registry');
     expect(result.orasInvocations).toEqual([
       `resolve ghcr.io/compartmentdev/compartment-cli:${expectedKubernetesReleaseTag}`,
+      `resolve ghcr.io/compartmentdev/compartment-cli:${expectedPublishedKubernetesReleaseTag}`,
     ]);
-    expect(result.cosignInvocations).toEqual([]);
+    expect(result.urlLog).toEqual([
+      'https://api.github.com/repos/example/compartment/git/ref/heads/kubernetes',
+      'https://api.github.com/repos/example/compartment/actions/workflows/publish-self-hosted-kubernetes.yml/runs?branch=kubernetes&status=success&per_page=1',
+    ]);
+    expect(result.cosignInvocations).toEqual([
+      `verify --new-bundle-format --certificate-identity https://github.com/compartmentdev/compartment/.github/workflows/publish-self-hosted-kubernetes.yml@refs/heads/kubernetes --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha ${expectedPublishedKubernetesCommitSha} ${expectedPublishedCliDigestRef}`,
+    ]);
     expect(result.compartmentInvocations).toEqual([]);
   });
+
+  it.each([
+    ['the publication lookup has no successful run', 'lookup-missing'],
+    ['the fallback artifact is unavailable', 'resolve-missing'],
+    ['the fallback signature is invalid', 'signature-invalid'],
+  ] as const)(
+    'provides a safe manual discovery path when %s',
+    async (_label: string, publishedFallbackOutcome: PublishedFallbackOutcome): Promise<void> => {
+      const temporaryDirectory: string = await createTemporaryDirectory();
+      const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+        allowFailure: true,
+        args: ['--channel', 'kubernetes'],
+        orasResolveOutcome: 'missing',
+        publishedFallbackOutcome,
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('the installer could not verify a fallback automatically');
+      expect(result.stderr).toContain(
+        'https://github.com/example/compartment/actions/workflows/publish-self-hosted-kubernetes.yml',
+      );
+      expect(result.stderr).toContain(
+        'curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel kubernetes --version sha-COMMIT_SHA',
+      );
+      expect(result.stderr).not.toContain('sha-<');
+      expect(result.compartmentInvocations).toEqual([]);
+    },
+  );
 
   it('keeps non-publishing registry failures distinct', async (): Promise<void> => {
     const temporaryDirectory: string = await createTemporaryDirectory();
@@ -343,6 +436,22 @@ describe('render-cli-install-script', (): void => {
     expect(result.stdout).toContain(expectedInstalledVersion);
     expect(result.stdout).toContain(createCliOnlyInstallMessage());
     expect(result.compartmentInvocations).toEqual(['--version']);
+    expect(result.urlLog).toEqual([
+      `https://github.com/example/compartment/releases/download/v${explicitReleaseVersion}/${expectedArtifactName}`,
+      `https://github.com/example/compartment/releases/download/v${explicitReleaseVersion}/checksums.txt`,
+    ]);
+  });
+
+  it('accepts a semantic version with prerelease and build metadata in the latest channel', async (): Promise<void> => {
+    const temporaryDirectory: string = await createTemporaryDirectory();
+    const binDirectory: string = join(temporaryDirectory, '.local', 'bin');
+    const explicitReleaseVersion: string = '0.9.2-kubernetes+d7cea10';
+    const result: InstallerScriptResult = await runInstallerScript(temporaryDirectory, {
+      args: ['--channel', 'latest', '--version', explicitReleaseVersion],
+      pathEntries: [binDirectory],
+    });
+
+    expect(result.exitCode).toBe(0);
     expect(result.urlLog).toEqual([
       `https://github.com/example/compartment/releases/download/v${explicitReleaseVersion}/${expectedArtifactName}`,
       `https://github.com/example/compartment/releases/download/v${explicitReleaseVersion}/checksums.txt`,
@@ -812,6 +921,7 @@ async function runInstallerScript(
     COMPARTMENT_TEST_EXPECTED_ARTIFACT_NAME: fixture.artifactName,
     COMPARTMENT_TEST_EXPECTED_ORAS_PLATFORM: readExpectedOrasPlatform(options.osName, options.archName),
     COMPARTMENT_TEST_ORAS_RESOLVE_OUTCOME: options.orasResolveOutcome ?? 'valid',
+    COMPARTMENT_TEST_PUBLISHED_FALLBACK_OUTCOME: options.publishedFallbackOutcome ?? 'valid',
     COMPARTMENT_TEST_SIGNATURE_OUTCOME: options.signatureOutcome ?? 'valid',
     COMPARTMENT_TEST_STATE_DIR: stateDirectory,
     COMPARTMENT_TEST_TOOL_VERSION_MODE: options.toolVersionMode ?? 'compatible',
