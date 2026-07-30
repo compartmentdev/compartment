@@ -68,18 +68,25 @@ async function runHelmInspection(
   if (result.exitCode === 0) {
     return result;
   }
-  const executionFailure: string | undefined = formatKubernetesCommandExecutionFailure(`Helm ${operation} failed`, result);
+  const executionFailure: string | undefined = formatKubernetesCommandExecutionFailure(
+    `Helm ${operation} failed`,
+    result,
+  );
   if (executionFailure !== undefined) {
     throw new Error(executionFailure);
   }
   const output: string = readCommandDiagnostics(result, { includeStdout: includeStdoutInDiagnostics });
   if (result.exitCode === 124) {
-    throw new Error(
-      `Timed out after 30s during Helm ${operation}. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.${output === '' ? '' : `\n${output}`}`,
-    );
+    throw buildHelmInspectionTimeoutError(operation, output);
   }
   throw new Error(
     `Helm ${operation} failed with exit code ${result.exitCode.toString()}.${output === '' ? '' : `\n${output}`}`,
+  );
+}
+
+function buildHelmInspectionTimeoutError(operation: string, output: string): Error {
+  return new Error(
+    `Timed out after 30s during Helm ${operation}. Check that the Kubernetes API is reachable for the selected context, then re-run install to resume.${output === '' ? '' : `\n${output}`}`,
   );
 }
 

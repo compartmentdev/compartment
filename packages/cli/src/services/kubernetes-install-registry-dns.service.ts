@@ -3,6 +3,7 @@ import { runCommand, runCommandWithInput, runCommandWithTimeout } from '../comma
 import type { CommandResult } from '../command-runner.types';
 import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 import { buildKubectlCommand, formatKubernetesCommandFailure } from './kubernetes-command.support';
+import { readRegistryDnsProbeImage } from './kubernetes-install-registry-dns-image.service';
 import type { KubernetesInstallDeploymentInput, KubernetesInstallState } from './kubernetes-install.service.types';
 import { readReadyKubernetesNodeNames } from './kubernetes-ready-nodes.service';
 import type {
@@ -23,7 +24,7 @@ export async function assertOperatorRegistryDns(
   if (nodeNames.length === 0) {
     throw new Error('Registry DNS prerequisite found no eligible Ready nodes.');
   }
-  const workerImage: string = await readWorkerImage(input);
+  const workerImage: string = await readRegistryDnsProbeImage(input);
   for (let index: number = 0; index < nodeNames.length; index += 1) {
     await assertNodeRegistryDns(input, state.registryHostname, serviceAddresses, workerImage, nodeNames[index]!, index);
   }
@@ -67,23 +68,6 @@ function parseRegistryServiceAddresses(output: string): string[] {
   } catch {
     throw new Error('Retained registry-auth Service inspection returned invalid JSON.');
   }
-}
-
-async function readWorkerImage(input: KubernetesInstallDeploymentInput): Promise<string> {
-  const result: CommandResult = await runCommand(
-    buildKubectlCommand(input, [
-      '--request-timeout=5s',
-      'get',
-      `deployment/${input.releaseName}-compartment-worker`,
-      '--namespace',
-      input.namespace,
-      '-o=jsonpath={.spec.template.spec.containers[0].image}',
-    ]),
-  );
-  if (result.exitCode !== 0 || result.stdout.trim() === '') {
-    throw new Error(formatKubernetesCommandFailure('Cannot inspect the foundation Worker image', result));
-  }
-  return result.stdout.trim();
 }
 
 async function assertNodeRegistryDns(

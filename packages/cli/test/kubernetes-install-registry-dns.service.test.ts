@@ -8,7 +8,7 @@ import type {
 
 interface RegistryDnsMocks {
   readReadyNodes: Mock<() => Promise<string[]>>;
-  runCommand: Mock<() => Promise<CommandResult>>;
+  runCommand: Mock<(command: readonly string[]) => Promise<CommandResult>>;
   runCommandWithInput: Mock<(command: readonly string[], input: string) => Promise<CommandResult>>;
   runCommandWithTimeout: Mock<(command: readonly string[], timeoutMs: number) => Promise<CommandResult>>;
 }
@@ -23,6 +23,7 @@ const mocks: RegistryDnsMocks = vi.hoisted(
 );
 const registryClusterIp: string = [10, 43, 251, 103].join('.');
 const publicDnsAnswer: string = [159, 69, 25, 73].join('.');
+const workerImage: string = 'ghcr.io/compartmentdev/compartment-worker@sha256:signed';
 
 vi.mock('../src/command-runner', (): object => ({
   runCommand: mocks.runCommand,
@@ -39,7 +40,19 @@ describe('operator registry DNS prerequisite', (): void => {
     mocks.runCommand
       .mockReset()
       .mockResolvedValueOnce(ok(JSON.stringify({ spec: { clusterIP: registryClusterIp } })))
-      .mockResolvedValueOnce(ok('ghcr.io/compartmentdev/worker@sha256:signed'));
+      .mockResolvedValueOnce(
+        ok(
+          JSON.stringify({
+            images: {
+              worker: {
+                digest: 'sha256:signed',
+                repository: 'ghcr.io/compartmentdev/compartment-worker',
+                tag: 'ignored',
+              },
+            },
+          }),
+        ),
+      );
     mocks.runCommandWithInput.mockReset().mockResolvedValue(ok('applied'));
     mocks.runCommandWithTimeout.mockReset();
   });
@@ -56,6 +69,22 @@ describe('operator registry DNS prerequisite', (): void => {
     expect(manifest).toContain('"hostNetwork":true');
     expect(manifest).toContain('"dnsPolicy":"Default"');
     expect(manifest).toContain('"nodeName":"node-a"');
+  });
+
+  it('uses the effective Helm worker image without requiring a Worker Deployment', async (): Promise<void> => {
+    mocks.runCommandWithTimeout
+      .mockResolvedValueOnce(ok('succeeded'))
+      .mockResolvedValueOnce(ok(JSON.stringify([{ address: registryClusterIp, family: 4 }])))
+      .mockResolvedValueOnce(ok('deleted'));
+
+    await expect(assertOperatorRegistryDns(input(), state())).resolves.toBeUndefined();
+
+    expect(mocks.runCommand).toHaveBeenCalledTimes(2);
+    expect(mocks.runCommand.mock.calls[1]?.[0]).toEqual(
+      expect.arrayContaining(['helm', 'get', 'values', 'compartment', '--all', '--output', 'json']),
+    );
+    expect(mocks.runCommand.mock.calls.flat().join(' ')).not.toContain('deployment/compartment-compartment-worker');
+    expect(String(mocks.runCommandWithInput.mock.calls[0]?.[1])).toContain(`"image":"${workerImage}"`);
   });
 
   it('prints the exact required record when a node resolver points elsewhere', async (): Promise<void> => {

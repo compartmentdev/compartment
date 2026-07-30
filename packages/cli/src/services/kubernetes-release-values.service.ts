@@ -8,16 +8,12 @@ export async function readKubernetesReleaseValues(input: KubernetesReleaseValues
   const result: CommandResult = await runCommand(buildHelmGetReleaseValuesCommand(input));
   if (result.exitCode !== 0) {
     const output: string = readCommandDiagnostics(result, { includeStdout: false });
-    throw new Error(
-      `Failed to read effective Helm release values before platform image verification.${
-        output === '' ? '' : `\n${output}`
-      }`,
-    );
+    throw new Error(`Failed to read effective Helm release values.${output === '' ? '' : `\n${output}`}`);
   }
   try {
     return JSON.parse(result.stdout) as JsonValue;
   } catch {
-    throw new Error('Helm returned invalid release values before platform image verification.');
+    throw new Error('Helm returned invalid effective release values.');
   }
 }
 
