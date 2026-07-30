@@ -25,7 +25,7 @@ describe('command runner failures', (): void => {
       failure: { command: binary, kind: 'command-not-found' },
     });
     expect(formatKubernetesCommandFailure('Arbitrary command failed', result)).toBe(
-      `Arbitrary command failed: ${binary} not found on PATH. Install ${binary} and re-run install.`,
+      `Arbitrary command failed: ${binary} not found on PATH. Install ${binary} and re-run the command.`,
     );
     expect(formatKubernetesCommandFailure('Arbitrary command failed', result)).not.toContain('status 127');
   });
@@ -48,7 +48,7 @@ describe('command runner failures', (): void => {
     const result: CommandResult = await runCommand(['/tmp/private-cache/hash/cosign', 'version']);
 
     expect(formatKubernetesCommandFailure('Signature verification failed', result)).toBe(
-      'Signature verification failed: cosign not found on PATH. Install cosign and re-run install.',
+      'Signature verification failed: cosign not found on PATH. Install cosign and re-run the command.',
     );
   });
 });

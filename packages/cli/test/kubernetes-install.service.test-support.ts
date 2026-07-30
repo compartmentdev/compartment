@@ -1,9 +1,12 @@
 import type { CommandResult } from '../src/command-runner.types';
+import type { JsonValue } from '@compartment/utils';
 import type { KubernetesInstallProgressReporter } from '../src/services/kubernetes-install-progress.types';
 import type {
   KubernetesInstallDeploymentInput,
+  KubernetesInstallRegistryValues,
   KubernetesInstallSecretValues,
   KubernetesInstallState,
+  KubernetesIngressEndpoint,
 } from '../src/services/kubernetes-install.service.types';
 import type { Mock } from 'vitest';
 
@@ -11,8 +14,13 @@ export interface ImageTrustWriteInput {
   outputPath: string;
 }
 
+interface InstallValuesWithStorage extends KubernetesInstallSecretValues {
+  storage: { storageClass: string };
+}
+
 export interface KubernetesInstallServiceMocks {
   assertRegistryDns: Mock<(input: KubernetesInstallDeploymentInput, state: KubernetesInstallState) => Promise<void>>;
+  readChartValues: Mock<(chartPath: string) => Promise<JsonValue>>;
   runCommand: Mock<RunCommand>;
   usesOperatorTlsSecret: Mock<(valuesPath: string) => Promise<boolean>>;
   verifyRegistryNodePull: Mock<
@@ -87,6 +95,93 @@ export function retainedInstallStateSecretList(
 
 export function deployedReleaseList(): string {
   return helmReleaseList('deployed');
+}
+
+export function existingInstallValues(stage: 'foundation' | 'full', domainMode: 'custom' | 'managed'): string {
+  const baseDomain: string = domainMode === 'managed' ? 'acme.compartment.run' : 'apps.example.com';
+  const publicIpv4: string = [8, 8, 8, 8].join('.');
+  return JSON.stringify({
+    ingress: {
+      className: 'traefik',
+      endpoint: { type: 'A', value: publicIpv4 },
+      targetsJson: JSON.stringify([{ type: 'A', value: publicIpv4 }]),
+    },
+    platform: {
+      acmeEmail: 'admin@example.com',
+      baseDomain,
+      domainGeneration: stage === 'full' ? 1 : 0,
+      domainMode,
+      installationId: 'installation-123',
+      managedDomainAllocationId: domainMode === 'managed' ? 'allocation-1' : '',
+      managedDomainBrokerUrl: domainMode === 'managed' ? 'https://broker.compartment.run' : '',
+      publicProtocol: 'https',
+      startupStage: stage,
+      tlsMode: domainMode === 'managed' ? 'broker-dns01' : 'issuer',
+    },
+    registry: {
+      hostname: `registry.${baseDomain}`,
+      issuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
+    },
+    secrets: {
+      installToken: 'existing-install-token',
+      managedDomainBrokerToken: domainMode === 'managed' ? 'allocation-token' : '',
+    },
+  });
+}
+
+export function existingInstallValuesWithStorage(
+  stage: 'foundation' | 'full',
+  domainMode: 'custom' | 'managed',
+  storageClass: string,
+  ingressEndpoint?: KubernetesIngressEndpoint,
+): string {
+  const values: InstallValuesWithStorage = JSON.parse(
+    existingInstallValues(stage, domainMode),
+  ) as InstallValuesWithStorage;
+  values.storage = { storageClass };
+  if (ingressEndpoint !== undefined && values.ingress !== undefined) {
+    values.ingress.endpoint = ingressEndpoint;
+    values.ingress.targetsJson = JSON.stringify([ingressEndpoint]);
+  }
+  return JSON.stringify(values);
+}
+
+export function existingLocalhostInstallValues(): string {
+  return JSON.stringify({
+    ingress: { className: 'traefik', endpoint: { type: '', value: '' }, targetsJson: '[]' },
+    platform: {
+      acmeEmail: 'admin@example.com',
+      baseDomain: 'compartment.localhost',
+      domainGeneration: 1,
+      domainMode: 'custom',
+      installationId: 'installation-localhost',
+      managedDomainBrokerUrl: '',
+      publicProtocol: 'http',
+      startupStage: 'full',
+      tlsMode: 'issuer',
+    },
+    registry: {
+      hostname: 'registry.compartment.localhost',
+      issuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'compartment-platform' },
+    },
+    secrets: { installToken: 'existing-install-token', managedDomainBrokerToken: '' },
+  });
+}
+
+export function legacyOperatorFoundationValues(): string {
+  const values: KubernetesInstallSecretValues & { registry?: KubernetesInstallRegistryValues } = JSON.parse(
+    existingInstallValues('foundation', 'custom'),
+  ) as KubernetesInstallSecretValues;
+  Reflect.deleteProperty(values, 'registry');
+  return JSON.stringify(values);
+}
+
+export function managedInstallValuesWithoutIngress(): string {
+  const values: KubernetesInstallSecretValues = JSON.parse(
+    existingInstallValues('foundation', 'managed'),
+  ) as KubernetesInstallSecretValues;
+  values.ingress = { className: 'traefik', endpoint: { type: '', value: '' }, targetsJson: '[]' };
+  return JSON.stringify(values);
 }
 
 export function helmReleaseList(status: string): string {

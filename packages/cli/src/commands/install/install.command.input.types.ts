@@ -2,6 +2,7 @@ import type { KubernetesInstallInput } from '../../services/kubernetes-install-i
 
 export interface KubernetesInstallInputValues {
   baseDomain?: string | undefined;
+  clearIngressEndpoint?: boolean | undefined;
   email?: string | undefined;
   ingressClass?: string | undefined;
   ingressEndpoint?: string | undefined;

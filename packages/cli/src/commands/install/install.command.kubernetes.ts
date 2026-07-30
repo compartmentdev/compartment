@@ -41,7 +41,7 @@ import {
 import { assertManagedDomainOnboardingAvailable } from '../../services/managed-domain-reservation-token.service';
 import { isReservedKubernetesInstallLocalhostDomain } from '../../kubernetes-install-domain';
 import { normalizeInstallBaseDomain } from './install.command.validation';
-import { assertKubernetesInstallLocalTools } from '../../services/kubernetes-install-local-tools.service';
+import { withKubernetesLocalTools } from '../../services/kubernetes-local-tools.service';
 import { inspectOperatorIssuer } from '../../services/kubernetes-operator-issuer-trust.service';
 import type { KubernetesOperatorIssuerAssessment } from '../../services/kubernetes-operator-issuer-trust.service.types';
 
@@ -59,13 +59,17 @@ export async function executeCanonicalKubernetesInstallCommand(
   dependencies: CliCommandDependencies,
   options: InstallCommandOptions,
 ): Promise<void> {
-  await assertKubernetesInstallLocalTools();
-  const boundaryValues: Omit<KubernetesInstallInputValues, 'valuesPath'> | undefined = await readBoundaryValues(
-    dependencies,
-    options,
-  );
-  const kubeconfig: ResolvedKubernetesKubeconfig = await resolvePreflightKubeconfig(dependencies, options.kubeContext);
-  await executeWithKubeconfig(dependencies, options, kubeconfig, boundaryValues);
+  await withKubernetesLocalTools(async (): Promise<void> => {
+    const boundaryValues: Omit<KubernetesInstallInputValues, 'valuesPath'> | undefined = await readBoundaryValues(
+      dependencies,
+      options,
+    );
+    const kubeconfig: ResolvedKubernetesKubeconfig = await resolvePreflightKubeconfig(
+      dependencies,
+      options.kubeContext,
+    );
+    await executeWithKubeconfig(dependencies, options, kubeconfig, boundaryValues);
+  });
 }
 
 async function readBoundaryValues(
@@ -80,17 +84,30 @@ async function readBoundaryValues(
     options.values === undefined
       ? undefined
       : await readOperatorInstallInputValues(options.values, requiresPublicOperatorTls(options.baseDomain));
-  const values: Omit<KubernetesInstallInputValues, 'valuesPath'> = {
+  const values: Omit<KubernetesInstallInputValues, 'valuesPath'> = mergeOperatorBoundaryValues(options, operatorValues);
+  resolveCanonicalKubernetesInstallInput({ ...values, valuesPath: '<pending>' }, '<pending>');
+  return values;
+}
+
+function mergeOperatorBoundaryValues(
+  options: InstallCommandOptions,
+  operatorValues: OperatorInstallInputValues | undefined,
+): Omit<KubernetesInstallInputValues, 'valuesPath'> {
+  return {
     ...readNonInteractiveValues(options),
+    ...(options.ingressEndpoint === undefined && operatorValues?.clearIngressEndpoint === true
+      ? { clearIngressEndpoint: true }
+      : {}),
     ...(options.ingressClass === undefined && operatorValues !== undefined
       ? { ingressClass: operatorValues.ingressClass }
+      : {}),
+    ...(options.ingressEndpoint === undefined && operatorValues?.ingressEndpoint !== undefined
+      ? { ingressEndpoint: operatorValues.ingressEndpoint }
       : {}),
     ...(options.storageClass === undefined && operatorValues !== undefined
       ? { storageClass: operatorValues.storageClass }
       : {}),
   };
-  resolveCanonicalKubernetesInstallInput({ ...values, valuesPath: '<pending>' }, '<pending>');
-  return values;
 }
 
 function requiresPublicOperatorTls(baseDomain: string | undefined): boolean {

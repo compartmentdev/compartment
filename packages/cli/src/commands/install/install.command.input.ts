@@ -36,6 +36,7 @@ function buildInstallInput(
   kubeconfigPath: string,
 ): KubernetesInstallInput {
   return {
+    clearIngressEndpoint: values.clearIngressEndpoint === true,
     domain: readDomain(values),
     ingressClass: required.ingressClass,
     ...(values.ingressEndpoint === undefined

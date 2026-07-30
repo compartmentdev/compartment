@@ -1,4 +1,5 @@
 import { rm } from 'node:fs/promises';
+import { isIP } from 'node:net';
 import type { DomainIssuerReference } from '@compartment/contracts';
 import { installKubernetesOwner } from '../install';
 import type { CliInstallResult } from '../install.types';
@@ -18,6 +19,7 @@ import type {
   KubernetesInstallDeploymentInput,
   KubernetesInstallDeploymentResult,
   KubernetesInstallDomainMode,
+  KubernetesIngressEndpoint,
 } from './kubernetes-install.service.types';
 import type {
   KubernetesInstallApplicationInput,
@@ -124,19 +126,36 @@ function buildResolvedDeploymentInput(
     ...(input.domain.mode === 'operator' ? { baseDomain: input.domain.baseDomain } : {}),
     ...(input.brokerUrl === undefined ? {} : { brokerUrl: input.brokerUrl }),
     ...(input.chartPath === undefined ? {} : { chartPath: input.chartPath }),
+    clearConfiguredIngressEndpoint: input.clearIngressEndpoint,
+    configuredIngressEndpoint: buildConfiguredIngressEndpoint(input.ingressEndpoint),
     domainMode,
+    ingressClassName: input.ingressClass,
     kubeconfigPath: input.kubeconfigPath,
     kubeContext: input.kubeContext,
-    managedDomainRequestedLabelSource:
-      input.domain.mode === 'managed'
-        ? readManagedDomainRequestedLabelSource(input.owner.organizationName, input.organizationSlug)
-        : undefined,
+    managedDomainRequestedLabelSource: resolveManagedDomainLabel(input),
     namespace: input.namespace,
     progress: input.progress,
     ...registry,
     releaseName: input.releaseName,
     valuesPath: input.valuesPath,
   };
+}
+
+function resolveManagedDomainLabel(input: KubernetesInstallApplicationInput): string | undefined {
+  return input.domain.mode === 'managed'
+    ? readManagedDomainRequestedLabelSource(input.owner.organizationName, input.organizationSlug)
+    : undefined;
+}
+
+function buildConfiguredIngressEndpoint(value: string | undefined): KubernetesIngressEndpoint | null {
+  if (value === undefined) {
+    return null;
+  }
+  const version: number = isIP(value);
+  if (version === 4) {
+    return { type: 'A', value };
+  }
+  return { type: version === 6 ? 'AAAA' : 'hostname', value };
 }
 
 async function createOwner(

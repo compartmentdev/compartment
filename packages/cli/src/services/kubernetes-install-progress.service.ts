@@ -53,5 +53,5 @@ function reportInstallCompletion<TResult>(
 }
 
 function formatElapsed(startedAt: number): string {
-  return `${Math.max(0, Math.ceil((Date.now() - startedAt) / 1_000)).toString()}s`;
+  return `${Math.max(0, Math.floor((Date.now() - startedAt) / 1_000)).toString()}s`;
 }

@@ -2,20 +2,20 @@ import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-instal
 import { resolveKubernetesPublicIngress } from './kubernetes-install-ingress.service';
 import { runObservableInstallStep } from './kubernetes-install-progress.service';
 import type {
-  ExistingKubernetesInstall,
   KubernetesInstallDeploymentInput,
+  KubernetesInstallState,
   KubernetesPublicIngress,
 } from './kubernetes-install.service.types';
 
 export async function resolveInstallPublicIngress(
   input: KubernetesInstallDeploymentInput,
-  foundationInstall: ExistingKubernetesInstall,
+  foundationInstall: KubernetesInstallState,
 ): Promise<KubernetesPublicIngress> {
   if (input.domainMode === 'custom' && isReservedKubernetesInstallLocalhostDomain(input.baseDomain)) {
     return {
       ingressClassName: foundationInstall.ingressClassName,
-      ingressEndpoint: foundationInstall.ingressEndpoint,
-      ingressTargets: foundationInstall.ingressTargets,
+      ingressEndpoint: input.clearConfiguredIngressEndpoint ? null : foundationInstall.ingressEndpoint,
+      ingressTargets: input.clearConfiguredIngressEndpoint ? [] : foundationInstall.ingressTargets,
     };
   }
   return await runObservableInstallStep(
@@ -26,15 +26,32 @@ export async function resolveInstallPublicIngress(
   );
 }
 
+export function applyKubernetesConfiguredIngressState(
+  input: KubernetesInstallDeploymentInput,
+  state: KubernetesInstallState,
+): KubernetesInstallState {
+  if (input.clearConfiguredIngressEndpoint) {
+    return { ...state, ingressEndpoint: null, ingressTargets: [] };
+  }
+  if (input.configuredIngressEndpoint === null) {
+    return state;
+  }
+  return {
+    ...state,
+    ingressEndpoint: input.configuredIngressEndpoint,
+    ingressTargets: [input.configuredIngressEndpoint],
+  };
+}
+
 async function discoverPublicIngress(
   input: KubernetesInstallDeploymentInput,
-  foundationInstall: ExistingKubernetesInstall,
+  foundationInstall: KubernetesInstallState,
 ): Promise<KubernetesPublicIngress> {
   return await resolveKubernetesPublicIngress({
     kubeconfigPath: input.kubeconfigPath,
     kubeContext: input.kubeContext,
     namespace: input.namespace,
-    configuredEndpoint: foundationInstall.ingressEndpoint,
+    configuredEndpoint: input.clearConfiguredIngressEndpoint ? null : foundationInstall.ingressEndpoint,
     ingressClassName: foundationInstall.ingressClassName,
     releaseName: input.releaseName,
   });

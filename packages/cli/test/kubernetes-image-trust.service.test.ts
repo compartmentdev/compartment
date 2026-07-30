@@ -60,9 +60,7 @@ describe('Kubernetes platform image trust', (): void => {
           overrideValuesPaths: [operatorValuesPath],
           outputPath: resolve(directory, 'verified.json'),
         }),
-      ).rejects.toThrow(
-        `Failed to read Helm chart values from "${chartPath}" before platform image verification.\narchive has an invalid header`,
-      );
+      ).rejects.toThrow(`Failed to read Helm chart values from "${chartPath}".\narchive has an invalid header`);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -396,7 +394,10 @@ async function createInstallInput(directory: string): Promise<KubernetesInstallD
     apiUrl: 'http://console.compartment.localhost',
     baseDomain: 'compartment.localhost',
     chartPath: resolve(directory, 'chart'),
+    clearConfiguredIngressEndpoint: false,
+    configuredIngressEndpoint: null,
     domainMode: 'custom',
+    ingressClassName: 'traefik',
     namespace: 'compartment',
     registryHostname: 'registry.compartment.localhost',
     registryIssuerRef: { group: 'cert-manager.io', kind: 'Issuer', name: 'platform-issuer' },
