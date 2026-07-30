@@ -144,6 +144,7 @@ function buildApiConfig(auditFileSink: AuditFileSinkConfig): ApiConfig {
     systemToken: 'test-system-token',
     throttle: defaultApiAuthThrottleConfig,
     trustedOutboundHosts: [],
+    tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
     variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
   };
 }

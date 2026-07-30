@@ -4,10 +4,17 @@ import type {
   WorkerPersistProductJobIntentResponse,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
-import type { KubeJobResult, KubeJobSpec, KubeObservedManifest, KubeRuntime } from '@compartment/kube-runtime';
+import type {
+  KubeJobResult,
+  KubeJobSpec,
+  KubeObservedManifest,
+  KubeRuntime,
+  KubeWorkloadScheduling,
+} from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { executeProductJob } from '../src/services/worker-product-job.service';
+import { executeProductJob as executeProductJobWithKek } from '../src/services/worker-product-job.service';
+import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
 
 interface ProductJobSdkMocks {
   finalize: Mock<
@@ -22,6 +29,15 @@ interface ProductJobSdkMocks {
       result: WorkerPersistProductJobResultRequest,
     ) => Promise<WorkerPersistProductJobResultRequest>
   >;
+}
+
+async function executeProductJob(
+  request: CompartmentRequester,
+  runtime: KubeRuntime,
+  intent: ProductJobIntent,
+  scheduling?: KubeWorkloadScheduling,
+): Promise<WorkerPersistProductJobResultRequest> {
+  return await executeProductJobWithKek(request, runtime, intent, testTenantSecretsKek, scheduling);
 }
 
 const mocks: ProductJobSdkMocks = vi.hoisted(
@@ -115,6 +131,21 @@ describe('executeProductJob', (): void => {
     );
     expect((result.finalize as Mock).mock.calls).toHaveLength(1);
     expect(durable).toBe(true);
+  });
+
+  it('redacts projected tenant secret values before persisting Job logs', async (): Promise<void> => {
+    const runtime: KubeRuntime & { runJob: Mock } = runtimeWithResult({
+      ...successResult(),
+      logs: 'connecting to postgres://internal\n',
+    });
+
+    const result: WorkerPersistProductJobResultRequest = await executeProductJob(requester(), runtime, releaseIntent());
+
+    expect(result.logs).toBe('connecting to [REDACTED]\n');
+    expect(mocks.persistResult).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ logs: 'connecting to [REDACTED]\n' }),
+    );
   });
 
   it('adds configured tenant scheduling to product Jobs', async (): Promise<void> => {
@@ -281,7 +312,7 @@ function releaseIntent(): ProductJobIntent {
   return {
     command: ['bin/release'],
     deploymentId: 'dep-01jz',
-    env: { DATABASE_URL: 'postgres://internal' },
+    env: encryptTestTenantEnvironment({ DATABASE_URL: 'postgres://internal' }),
     image: 'registry.example/release@sha256:abc',
     imagePullSecretId: 'pull-01jz',
     jobClass: 'release',

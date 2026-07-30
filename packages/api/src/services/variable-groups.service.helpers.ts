@@ -1,6 +1,6 @@
 import type { VariableImportEntry } from '@compartment/contracts';
 import { createVariableCollisionError, createVariableGroupNotFoundError } from '../errors/api-business-error';
-import { decryptVariableValueFromStorage, type EncryptedVariableValue } from '../lib/variables-crypto';
+import { decryptTenantVariableValueFromStorage, type EncryptedVariableValue } from '../lib/variables-crypto';
 import { isUniqueConstraintError, readConstraintName } from '../queries/query-error';
 import type { VariableGroupRow, VariableGroupSummaryRow } from '../queries/variable-groups.query.types';
 import { findVariableGroupByName } from '../queries/variable-groups.query';
@@ -67,10 +67,11 @@ export async function loadDirectCapturedVariables(
     (variable: EnvironmentVariableValueRow): CapturedVariableValue => ({
       keyName: variable.keyName,
       sensitivity: variable.sensitivity,
-      value: decryptVariableValueFromStorage(
+      value: decryptTenantVariableValueFromStorage(
         variable.valueCiphertext,
         variable.encryptionKeyId,
-        getApiConfig().variablesMasterKey,
+        getApiConfig().tenantSecretsKek,
+        getApiConfig().tenantSecretsPreviousKek,
       ),
     }),
   );

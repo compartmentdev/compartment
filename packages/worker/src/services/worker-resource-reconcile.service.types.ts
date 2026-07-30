@@ -1,5 +1,5 @@
-import type { WorkerClaimResourceReconcileResponse } from '@compartment/contracts';
-import type { KubeManifest, ResourceProjectionRow } from '@compartment/kube-runtime';
+import type { ResourceReconcileIntent, WorkerClaimResourceReconcileResponse } from '@compartment/contracts';
+import type { KubeManifest } from '@compartment/kube-runtime';
 
 export interface ObservedClaimStatus {
   phase?: string | undefined;
@@ -16,7 +16,7 @@ export interface CompleteResourceReconcileClaim extends Omit<
   WorkerClaimResourceReconcileResponse,
   'intent' | 'leaseId' | 'operationId' | 'type'
 > {
-  intent: ResourceProjectionRow;
+  intent: ResourceReconcileIntent;
   leaseId: string;
   operationId: string;
   type: 'bootstrap' | 'reconcile';

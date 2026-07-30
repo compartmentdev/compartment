@@ -1,8 +1,8 @@
 import type { VariableSensitivity } from '@compartment/contracts';
 import { createId } from '../lib/tokens';
 import {
-  decryptVariableValueFromStorage,
-  encryptVariableValueForStorage,
+  decryptTenantVariableValueFromStorage,
+  encryptTenantVariableValueForStorage,
   type EncryptedVariableValue,
 } from '../lib/variables-crypto';
 import type { ResourceTransaction } from '../queries/resources.query.types';
@@ -106,8 +106,9 @@ function isDirectResourceVariable(variable: EffectiveVariable, resourceName: str
 }
 
 async function persistCopiedResourceVariable(input: PersistResourceVariableCopyInput): Promise<EffectiveVariable[]> {
-  const encryptedValue: EncryptedVariableValue = encryptVariableValueForStorage(
+  const encryptedValue: EncryptedVariableValue = encryptTenantVariableValueForStorage(
     input.plan.value,
+    getApiConfig().tenantSecretsKek,
     getApiConfig().variablesMasterKey,
   );
   const result: InsertEnvironmentVariableValueIfMissingResult =
@@ -176,10 +177,11 @@ function readCopiedVariablePlaintext(
 ): string {
   return result.created
     ? copiedValue
-    : decryptVariableValueFromStorage(
+    : decryptTenantVariableValueFromStorage(
         result.row.valueCiphertext,
         result.row.encryptionKeyId,
-        getApiConfig().variablesMasterKey,
+        getApiConfig().tenantSecretsKek,
+        getApiConfig().tenantSecretsPreviousKek,
       );
 }
 

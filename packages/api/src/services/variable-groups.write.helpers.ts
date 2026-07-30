@@ -1,6 +1,6 @@
 import type { VariableImportEntry, VariableSensitivity } from '@compartment/contracts';
 import { createId } from '../lib/tokens';
-import { encryptVariableValueForStorage, type EncryptedVariableValue } from '../lib/variables-crypto';
+import { encryptTenantVariableValueForStorage, type EncryptedVariableValue } from '../lib/variables-crypto';
 import type {
   CreateVariableGroupInput as CreateVariableGroupQueryInput,
   ImportVariableGroupEntriesInput,
@@ -27,7 +27,11 @@ export function buildCreateVariableGroupInput(
 }
 
 export function encryptVariableGroupValue(value: string): EncryptedVariableValue {
-  return encryptVariableValueForStorage(value, getApiConfig().variablesMasterKey);
+  return encryptTenantVariableValueForStorage(
+    value,
+    getApiConfig().tenantSecretsKek,
+    getApiConfig().variablesMasterKey,
+  );
 }
 
 export function buildVariableGroupSetChangeEventInput(
@@ -78,7 +82,11 @@ export function buildVariableGroupImportInput(
 export function encryptVariableGroupEntries(entries: readonly VariableImportEntry[]): EncryptedVariableValue[] {
   return entries.map(
     (entry: VariableImportEntry): EncryptedVariableValue =>
-      encryptVariableValueForStorage(entry.value, getApiConfig().variablesMasterKey),
+      encryptTenantVariableValueForStorage(
+        entry.value,
+        getApiConfig().tenantSecretsKek,
+        getApiConfig().variablesMasterKey,
+      ),
   );
 }
 

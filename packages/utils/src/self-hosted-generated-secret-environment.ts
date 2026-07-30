@@ -10,6 +10,7 @@ interface SelfHostedGeneratedSecretEnvironment {
   readonly COMPARTMENT_RUNTIME_CONTROL_TOKEN?: string | undefined;
   readonly COMPARTMENT_SESSION_SECRET?: string | undefined;
   readonly COMPARTMENT_SYSTEM_TOKEN?: string | undefined;
+  readonly COMPARTMENT_TENANT_SECRETS_KEK?: string | undefined;
   readonly COMPARTMENT_VARIABLES_MASTER_KEY?: string | undefined;
 }
 
@@ -52,6 +53,7 @@ export function assertSelfHostedGeneratedSecretEnvironment(
   }
 
   assertGenerated64HexSecretValue(env.COMPARTMENT_SESSION_SECRET, 'COMPARTMENT_SESSION_SECRET');
+  assertGeneratedTenantSecretsKek(env.COMPARTMENT_TENANT_SECRETS_KEK);
   assertGeneratedVariablesMasterKey(env.COMPARTMENT_VARIABLES_MASTER_KEY);
   assertDatabaseUrlPassword(env);
 }
@@ -86,6 +88,15 @@ function assertGeneratedVariablesMasterKey(value: string | undefined): void {
   if (hasOneRepeatedCharacter(masterKey)) {
     throw new Error(
       'COMPARTMENT_VARIABLES_MASTER_KEY must not use one repeated hex character for self-hosted environments.',
+    );
+  }
+}
+
+function assertGeneratedTenantSecretsKek(value: string | undefined): void {
+  const key: string = assertGenerated64HexSecretValue(value, 'COMPARTMENT_TENANT_SECRETS_KEK');
+  if (hasOneRepeatedCharacter(key)) {
+    throw new Error(
+      'COMPARTMENT_TENANT_SECRETS_KEK must not use one repeated hex character for self-hosted environments.',
     );
   }
 }

@@ -4,6 +4,7 @@ import type {
   ProductJobRuntimeIdentity,
   ProductJobStatus,
   ProductJobVolumeMount,
+  TenantSecretEnvironment,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
 
@@ -44,7 +45,7 @@ export interface PersistProductJobIntentInput {
 
 export interface ProductJobCommonSpec {
   command: string[];
-  env: Record<string, string>;
+  env: TenantSecretEnvironment;
   image: string;
   imagePullSecretId?: string | undefined;
   namespace: string;

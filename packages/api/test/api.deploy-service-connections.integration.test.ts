@@ -4,6 +4,7 @@ import {
   errorResponseSchema,
   type CompartmentAuthoredDescriptorInput,
   type InstallResponse,
+  type TenantSecretEnvelope,
 } from '@compartment/contracts';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { eq } from 'drizzle-orm';
@@ -25,6 +26,7 @@ import {
   injectDeployRequest,
   installCompartment,
   requireClaimedDeployment,
+  requireTenantSecretEnvelope,
   setVariable,
 } from './api-integration.harness';
 import {
@@ -258,9 +260,13 @@ describe('API deploy descriptor service connections integration', (): void => {
     expectSuccessfulDeploy(await deployBuildEnvDescriptor(context.installPayload));
 
     expect(await db.select().from(environmentResourceOutputVariableBindings)).toEqual([]);
-    expect(requireClaimedDeployment(await claimNextQueuedDeployment(app)).buildEnv).toEqual({
-      DATABASE_URL: 'postgres://build-time',
-    });
+    const databaseUrl: TenantSecretEnvelope = requireTenantSecretEnvelope(
+      requireClaimedDeployment(await claimNextQueuedDeployment(app)).buildEnv,
+      'DATABASE_URL',
+    );
+    expect(databaseUrl.encryptionKeyId).toMatch(/^tenant-kek-sha256:/);
+    expect(databaseUrl.valueCiphertext).toBeTypeOf('string');
+    expect(JSON.stringify(databaseUrl)).not.toContain('postgres://build-time');
   });
 });
 

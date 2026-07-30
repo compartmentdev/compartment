@@ -1,54 +1,17 @@
+import { createHmac, hkdfSync } from 'node:crypto';
 import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  createHmac,
-  hkdfSync,
-  randomBytes,
-  type CipherGCM,
-  type CipherGCMOptions,
-  type CipherGCMTypes,
-  type DecipherGCM,
-} from 'node:crypto';
-import { hasText } from '@compartment/utils';
+  createAes256GcmKeyId,
+  decryptAes256GcmEnvelope,
+  encryptAes256GcmEnvelope,
+  parseAes256GcmKey,
+  rewrapAes256GcmEnvelope,
+  type Aes256GcmEnvelopeCiphertext,
+} from '@compartment/utils';
 
 const aes256KeyBytes: number = 32;
-const aes256GcmAlgorithm: CipherGCMTypes = 'aes-256-gcm';
-const aes256GcmAuthTagBytes: number = 16;
-const aes256GcmIvBytes: number = 12;
-const aes256GcmOptions: CipherGCMOptions = {
-  authTagLength: aes256GcmAuthTagBytes,
-};
-const encryptionKeyIdPrefix: string = 'install-kek-sha256:';
+const tenantSecretKeyIdNamespace: string = 'tenant-kek';
+const legacyVariableKeyIdNamespace: string = 'install-kek';
 const fingerprintContext: string = 'compartment:variables:fingerprint:v1';
-
-interface EncryptedPayload {
-  ciphertext: Buffer;
-  iv: Buffer;
-  tag: Buffer;
-}
-
-interface ParsedVariableCiphertextEnvelope {
-  algorithm?: string;
-  ciphertext?: string;
-  dekWrapIv?: string;
-  dekWrapTag?: string;
-  valueIv?: string;
-  valueTag?: string;
-  version?: number;
-  wrappedDek?: string;
-}
-
-interface VariableCiphertextEnvelopeV1 {
-  algorithm: 'aes-256-gcm';
-  ciphertext: string;
-  dekWrapIv: string;
-  dekWrapTag: string;
-  valueIv: string;
-  valueTag: string;
-  version: 1;
-  wrappedDek: string;
-}
 
 export interface EncryptedVariableValue {
   encryptionKeyId: string;
@@ -57,31 +20,37 @@ export interface EncryptedVariableValue {
 }
 
 export function parseVariablesMasterKey(value: string): Buffer {
-  if (!hasText(value) || !/^[0-9a-fA-F]{64}$/.test(value)) {
-    throw new Error('COMPARTMENT_VARIABLES_MASTER_KEY must be exactly 64 hex characters.');
-  }
+  return parseAes256GcmKey(value, 'COMPARTMENT_VARIABLES_MASTER_KEY');
+}
 
-  return Buffer.from(value, 'hex');
+export function parseTenantSecretsKek(value: string): Buffer {
+  return parseAes256GcmKey(value, 'COMPARTMENT_TENANT_SECRETS_KEK');
 }
 
 export function encryptVariableValueForStorage(plaintext: string, masterKey: Buffer): EncryptedVariableValue {
-  const dek: Buffer = randomBytes(aes256KeyBytes);
-  const encryptedValue: EncryptedPayload = encryptBuffer(Buffer.from(plaintext, 'utf8'), dek);
-  const wrappedDek: EncryptedPayload = encryptBuffer(dek, masterKey);
+  return encryptStoredValue(plaintext, masterKey, masterKey, legacyVariableKeyIdNamespace);
+}
+
+export function encryptTenantVariableValueForStorage(
+  plaintext: string,
+  tenantSecretsKek: Buffer,
+  fingerprintKey: Buffer,
+): EncryptedVariableValue {
+  return encryptStoredValue(plaintext, tenantSecretsKek, fingerprintKey, tenantSecretKeyIdNamespace);
+}
+
+function encryptStoredValue(
+  plaintext: string,
+  encryptionKey: Buffer,
+  fingerprintKey: Buffer,
+  keyIdNamespace: string,
+): EncryptedVariableValue {
+  const encrypted: Aes256GcmEnvelopeCiphertext = encryptAes256GcmEnvelope(plaintext, encryptionKey, keyIdNamespace);
 
   return {
-    encryptionKeyId: buildVariablesEncryptionKeyId(masterKey),
-    valueCiphertext: JSON.stringify({
-      algorithm: 'aes-256-gcm',
-      ciphertext: encryptedValue.ciphertext.toString('base64'),
-      dekWrapIv: wrappedDek.iv.toString('base64'),
-      dekWrapTag: wrappedDek.tag.toString('base64'),
-      valueIv: encryptedValue.iv.toString('base64'),
-      valueTag: encryptedValue.tag.toString('base64'),
-      version: 1,
-      wrappedDek: wrappedDek.ciphertext.toString('base64'),
-    }),
-    valueFingerprint: createVariableValueFingerprint(plaintext, masterKey),
+    encryptionKeyId: encrypted.keyId,
+    valueCiphertext: encrypted.ciphertext,
+    valueFingerprint: createVariableValueFingerprint(plaintext, fingerprintKey),
   };
 }
 
@@ -90,46 +59,40 @@ export function decryptVariableValueFromStorage(
   encryptionKeyId: string,
   masterKey: Buffer,
 ): string {
-  assertSupportedEncryptionKeyId(encryptionKeyId, masterKey);
-  const envelope: VariableCiphertextEnvelopeV1 = parseVariableCiphertextEnvelope(valueCiphertext);
-  const dek: Buffer = unwrapDataEncryptionKey(envelope, masterKey);
-  return decryptEnvelopeValue(envelope, dek);
+  assertEncryptionKeyId(encryptionKeyId, masterKey, legacyVariableKeyIdNamespace);
+  return decryptAes256GcmEnvelope(valueCiphertext, masterKey);
 }
 
-function parseVariableCiphertextEnvelope(valueCiphertext: string): VariableCiphertextEnvelopeV1 {
-  let parsed: ParsedVariableCiphertextEnvelope;
-
-  try {
-    parsed = JSON.parse(valueCiphertext) as ParsedVariableCiphertextEnvelope;
-  } catch {
-    throw new Error('Encrypted variable value is not valid JSON.');
-  }
-
-  if (!isVariableCiphertextEnvelopeV1(parsed)) {
-    throw new Error('Encrypted variable value has an unsupported envelope format.');
-  }
-
-  return parsed;
-}
-
-function isVariableCiphertextEnvelopeV1(
-  parsed: ParsedVariableCiphertextEnvelope | null,
-): parsed is VariableCiphertextEnvelopeV1 {
-  return (
-    parsed !== null &&
-    parsed.version === 1 &&
-    parsed.algorithm === 'aes-256-gcm' &&
-    typeof parsed.ciphertext === 'string' &&
-    hasText(parsed.dekWrapIv) &&
-    hasText(parsed.dekWrapTag) &&
-    hasText(parsed.valueIv) &&
-    hasText(parsed.valueTag) &&
-    hasText(parsed.wrappedDek)
+export function decryptTenantVariableValueFromStorage(
+  valueCiphertext: string,
+  encryptionKeyId: string,
+  tenantSecretsKek: Buffer,
+  previousTenantSecretsKek?: Buffer,
+): string {
+  const sourceKek: Buffer | undefined = [tenantSecretsKek, previousTenantSecretsKek].find(
+    (key: Buffer | undefined): key is Buffer => key !== undefined && supportsTenantSecretKeyId(encryptionKeyId, key),
   );
+  if (sourceKek === undefined) {
+    throw new Error(`Encrypted variable value uses unsupported key id "${encryptionKeyId}".`);
+  }
+  return decryptAes256GcmEnvelope(valueCiphertext, sourceKek);
 }
 
-function assertSupportedEncryptionKeyId(encryptionKeyId: string, masterKey: Buffer): void {
-  const currentKeyId: string = buildVariablesEncryptionKeyId(masterKey);
+export function rewrapVariableValueForStorage(
+  valueCiphertext: string,
+  encryptionKeyId: string,
+  oldKek: Buffer,
+  newKek: Buffer,
+): Pick<EncryptedVariableValue, 'encryptionKeyId' | 'valueCiphertext'> {
+  assertRewrapSourceKeyId(encryptionKeyId, oldKek);
+  return {
+    encryptionKeyId: tenantVariableEncryptionKeyId(newKek),
+    valueCiphertext: rewrapAes256GcmEnvelope(valueCiphertext, oldKek, newKek),
+  };
+}
+
+function assertEncryptionKeyId(encryptionKeyId: string, key: Buffer, namespace: string): void {
+  const currentKeyId: string = createAes256GcmKeyId(key, namespace);
   if (encryptionKeyId !== currentKeyId) {
     throw new Error(
       `Encrypted variable value uses unsupported key id "${encryptionKeyId}" (current "${currentKeyId}").`,
@@ -137,45 +100,24 @@ function assertSupportedEncryptionKeyId(encryptionKeyId: string, masterKey: Buff
   }
 }
 
-function buildVariablesEncryptionKeyId(masterKey: Buffer): string {
-  return `${encryptionKeyIdPrefix}${createHash('sha256').update(masterKey).digest('hex').slice(0, 16)}`;
+function assertRewrapSourceKeyId(encryptionKeyId: string, key: Buffer): void {
+  if (!supportsTenantSecretKeyId(encryptionKeyId, key)) {
+    throw new Error(`Encrypted variable value uses unsupported key id "${encryptionKeyId}".`);
+  }
 }
 
-function unwrapDataEncryptionKey(envelope: VariableCiphertextEnvelopeV1, masterKey: Buffer): Buffer {
-  return decryptBuffer(
-    Buffer.from(envelope.wrappedDek, 'base64'),
-    masterKey,
-    Buffer.from(envelope.dekWrapIv, 'base64'),
-    Buffer.from(envelope.dekWrapTag, 'base64'),
+function supportsTenantSecretKeyId(encryptionKeyId: string, key: Buffer): boolean {
+  return (
+    encryptionKeyId === tenantVariableEncryptionKeyId(key) || encryptionKeyId === legacyVariableEncryptionKeyId(key)
   );
 }
 
-function decryptEnvelopeValue(envelope: VariableCiphertextEnvelopeV1, dek: Buffer): string {
-  return decryptBuffer(
-    Buffer.from(envelope.ciphertext, 'base64'),
-    dek,
-    Buffer.from(envelope.valueIv, 'base64'),
-    Buffer.from(envelope.valueTag, 'base64'),
-  ).toString('utf8');
+export function tenantVariableEncryptionKeyId(masterKey: Buffer): string {
+  return createAes256GcmKeyId(masterKey, tenantSecretKeyIdNamespace);
 }
 
-function encryptBuffer(plaintext: Buffer, key: Buffer): EncryptedPayload {
-  const iv: Buffer = randomBytes(aes256GcmIvBytes);
-  const cipher: CipherGCM = createCipheriv(aes256GcmAlgorithm, key, iv, aes256GcmOptions);
-  const ciphertext: Buffer = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-
-  return {
-    ciphertext,
-    iv,
-    tag: cipher.getAuthTag(),
-  };
-}
-
-function decryptBuffer(ciphertext: Buffer, key: Buffer, iv: Buffer, tag: Buffer): Buffer {
-  const decipher: DecipherGCM = createDecipheriv(aes256GcmAlgorithm, key, iv, aes256GcmOptions);
-  decipher.setAuthTag(tag);
-
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+export function legacyVariableEncryptionKeyId(masterKey: Buffer): string {
+  return createAes256GcmKeyId(masterKey, legacyVariableKeyIdNamespace);
 }
 
 export function createVariableValueFingerprint(plaintext: string, masterKey: Buffer): string {

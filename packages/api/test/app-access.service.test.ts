@@ -217,6 +217,7 @@ const apiConfig: ApiConfig = {
   systemApiSocketPath: '/tmp/compartment/compartment-app-access-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
+  tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
   variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
   runtimeControlToken: 'test-runtime-control-token',
 };

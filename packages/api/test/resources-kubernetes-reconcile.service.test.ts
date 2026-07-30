@@ -1,4 +1,4 @@
-import type { ResourceReconcileIntent } from '@compartment/contracts';
+import type { ResourceReconcileIntent, TenantSecretEnvironment } from '@compartment/contracts';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { ProjectResourceRow, ResourceTransaction } from '../src/queries/resources.query.types';
 import type { EffectiveVariable } from '../src/services/effective-variables.service.types';
@@ -9,6 +9,7 @@ import {
   reconcileKubernetesResourceReplicas,
 } from '../src/services/resources-kubernetes-reconcile.service';
 import type { ResourceEnvironmentContext } from '../src/services/resources.service.types';
+import { decryptTenantVariableValueFromStorage } from '../src/lib/variables-crypto';
 
 type LoadVariables = (
   environmentId: string,
@@ -24,6 +25,7 @@ type RequestReconcile = (
 ) => Promise<void>;
 type TestTransactionCallback = (tx: ResourceTransaction) => Promise<ProjectResourceRow>;
 type TestTransaction = (callback: TestTransactionCallback) => Promise<ProjectResourceRow>;
+type DecryptedTestEnvironment = Record<string, string>;
 
 const loadVariables: Mock<LoadVariables> = vi.hoisted((): Mock<LoadVariables> => vi.fn());
 const requestBootstrap: Mock<RequestBootstrap> = vi.hoisted((): Mock<RequestBootstrap> => vi.fn());
@@ -75,6 +77,10 @@ vi.mock('../src/services/resources-reconcile-persistence.service', (): object =>
   prepareResourceEffectiveVariables: prepareVariables,
 }));
 vi.mock('../src/runtime/runtime-access', (): object => ({
+  getApiConfig: (): object => ({
+    tenantSecretsKek: Buffer.alloc(32, 1),
+    variablesMasterKey: Buffer.alloc(32, 2),
+  }),
   getApiDatabase: (): object => ({ transaction }),
 }));
 vi.mock('../src/services/resource-operation-lock.service', (): object => ({
@@ -116,7 +122,9 @@ describe('Kubernetes resource reconcile boundary', (): void => {
     await bootstrapKubernetesResource(context(), resource());
 
     expect(loadVariables).toHaveBeenCalledWith('env_prod', 'org', 'postgres');
-    expect(requestBootstrap.mock.calls[0]?.[1].env).toEqual({
+    const encryptedEnvironment: TenantSecretEnvironment | undefined = requestBootstrap.mock.calls[0]?.[1].env;
+    const decryptedEnvironment: DecryptedTestEnvironment = decryptTestEnvironment(encryptedEnvironment);
+    expect(decryptedEnvironment).toEqual({
       POSTGRES_DB: 'app',
       POSTGRES_PASSWORD: 'generated-secret',
     });
@@ -305,6 +313,18 @@ describe('Kubernetes resource reconcile boundary', (): void => {
     expect(updateStatus).not.toHaveBeenCalled();
   });
 });
+
+function decryptTestEnvironment(environment: TenantSecretEnvironment | undefined): DecryptedTestEnvironment {
+  const decrypted: DecryptedTestEnvironment = {};
+  for (const [name, value] of Object.entries(environment ?? {})) {
+    decrypted[name] = decryptTenantVariableValueFromStorage(
+      value.valueCiphertext,
+      value.encryptionKeyId,
+      Buffer.alloc(32, 1),
+    );
+  }
+  return decrypted;
+}
 
 function effectiveVariable(keyName: string, value: string): EffectiveVariable {
   return {

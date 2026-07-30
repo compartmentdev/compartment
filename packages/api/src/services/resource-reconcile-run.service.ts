@@ -21,7 +21,7 @@ import type {
   ResourceBootstrapSettlement,
   ResourceReconcileSettlement,
 } from '../queries/resource-reconcile-runs.query.types';
-import { createInvalidDeployConfigError, createProjectArchivedError } from '../errors/api-business-error';
+import { createProjectArchivedError } from '../errors/api-business-error';
 import { archivedResourceRunFailureMessage } from '../queries/resource-reconcile-project.query';
 import { projectProvisioningAttemptLimit } from '../queries/project-provisioning-policy';
 import { resourceReconcileOperationWaitTimeoutMs } from '../queries/resource-reconcile-policy';
@@ -31,6 +31,11 @@ import type {
   ClaimedResourceReconcileResult,
   ResourceClaimIdentityWaitContext,
 } from './resource-reconcile-run.service.types';
+import {
+  decryptResourceRollbackManifest,
+  encryptResourceRollbackAcknowledgement,
+} from './resource-reconcile-rollback-crypto.service';
+import { assertExpectedResourceClaims, readExpectedResourceClaims } from './resource-reconcile-claims.service';
 
 const resourceClaimIdentityPollInitialDelayMs: number = 100;
 const resourceClaimIdentityPollMaxDelayMs: number = 5_000;
@@ -237,24 +242,13 @@ export async function claimNextResourceReconcile(): Promise<ClaimedResourceRecon
   }
   return {
     ...claimed,
+    previousManifestJson: decryptResourceRollbackManifest(claimed.previousManifestJson),
     networkPolicy: await readProjectNetworkPolicyPorts(claimed.intent.namespaceId),
   };
 }
 
 export async function acknowledgeResourceReconcile(input: WorkerAcknowledgeResourceReconcileRequest): Promise<void> {
-  await acknowledgeResourceReconcileRun(input);
-}
-
-function readExpectedResourceClaims(resource: ProjectResourceRow): ResourceClaimIdentity[] {
-  return JSON.parse(resource.expectedClaimsJson) as ResourceClaimIdentity[];
-}
-
-function assertExpectedResourceClaims(resourceName: string, expectedClaims: ResourceClaimIdentity[]): void {
-  if (expectedClaims.length === 0) {
-    throw createInvalidDeployConfigError(
-      `Resource "${resourceName}" is not bootstrapped yet. Run \`compartment resource bootstrap --resource ${resourceName}\` first.`,
-    );
-  }
+  await acknowledgeResourceReconcileRun(encryptResourceRollbackAcknowledgement(input));
 }
 
 function requireCreatedResourceRun(result: CreateResourceReconcileRunResult): void {

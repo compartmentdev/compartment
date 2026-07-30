@@ -279,6 +279,7 @@ function mockLifecycleContext(deployments: DeploymentJoinedRow[], activeDeployme
     systemApiSocketPath: '/tmp/compartment/compartment-system.sock',
     systemToken: 'system-token',
     trustedOutboundHosts: [],
+    tenantSecretsKek: Buffer.alloc(32, 1),
     variablesMasterKey: Buffer.alloc(32, 1),
     runtimeControlToken: 'worker-token',
   });

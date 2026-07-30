@@ -348,6 +348,7 @@ function buildApiConfig(url: string): ApiConfig {
     systemToken: 'system',
     throttle: defaultApiAuthThrottleConfig,
     trustedOutboundHosts: [],
+    tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
     variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
     workerImageRef: 'compartment-worker@sha256:test',
   };

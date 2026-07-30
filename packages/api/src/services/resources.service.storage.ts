@@ -22,6 +22,13 @@ import {
   parseStoredResourceDefinitionSnapshot,
   type StoredResourceDefinitionSnapshot,
 } from './resources.service.storage.snapshot';
+import {
+  decryptResourceEnv,
+  decryptResourceOperation,
+  encryptResourceEnv,
+  encryptResourceOperation,
+} from './resources.service.storage.crypto';
+import type { PersistedResourceEnvSource, PersistedResourceOperationsConfig } from './resources.service.storage.types';
 
 export interface StoredResourceEnvSource {
   keyName: string;
@@ -45,11 +52,14 @@ export interface StoredResourceOperationsConfig {
 export type { StoredResourceDefinitionSnapshot } from './resources.service.storage.snapshot';
 
 export function serializeResourceEnv(env: StoredResourceEnvSource[]): string {
-  return JSON.stringify(env);
+  return JSON.stringify(encryptResourceEnv(env));
 }
 
 export function serializeResourceOperations(operations: StoredResourceOperationsConfig): string {
-  return JSON.stringify(operations);
+  return JSON.stringify({
+    backup: encryptResourceOperation(operations.backup),
+    restore: encryptResourceOperation(operations.restore),
+  } satisfies PersistedResourceOperationsConfig);
 }
 
 export function serializeResourceOutputs(outputs: CompartmentResourceOutputs): string {
@@ -161,17 +171,17 @@ export function resolveResourceRuntimeEnv(
 }
 
 export function parseStoredResourceEnv(row: StoredProjectResourceRow): StoredResourceEnvSource[] {
-  return JSON.parse(row.envJson) as StoredResourceEnvSource[];
+  return decryptResourceEnv(JSON.parse(row.envJson) as PersistedResourceEnvSource[]);
 }
 
 export function parseStoredResourceOperations(row: StoredProjectResourceRow): StoredResourceOperationsConfig {
-  const operations: Partial<StoredResourceOperationsConfig> = JSON.parse(
+  const operations: Partial<PersistedResourceOperationsConfig> = JSON.parse(
     row.operationsJson,
-  ) as Partial<StoredResourceOperationsConfig>;
+  ) as Partial<PersistedResourceOperationsConfig>;
 
   return {
-    backup: normalizeStoredResourceOperation(operations.backup),
-    restore: normalizeStoredResourceOperation(operations.restore),
+    backup: decryptResourceOperation(operations.backup),
+    restore: decryptResourceOperation(operations.restore),
   };
 }
 
@@ -205,21 +215,6 @@ function buildStoredResourceOperation(
     command: operation.command,
     env: buildStoredResourceEnvFromEntries(Object.entries(operation.env ?? {})),
     image: operation.image ?? null,
-    schedule: operation.schedule ?? null,
-  };
-}
-
-function normalizeStoredResourceOperation(
-  operation: StoredResourceOperationConfig | null | undefined,
-): StoredResourceOperationConfig | null {
-  if (operation === null || operation === undefined) {
-    return null;
-  }
-
-  return {
-    command: operation.command,
-    env: operation.env,
-    image: operation.image,
     schedule: operation.schedule ?? null,
   };
 }

@@ -39,6 +39,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "compartment.fullname" . }}
                   key: database-url
+            - name: COMPARTMENT_TENANT_SECRETS_KEK
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: tenant-secrets-kek}
+            - name: COMPARTMENT_TENANT_SECRETS_PREVIOUS_KEK
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: tenant-secrets-previous-kek}
+            - name: COMPARTMENT_VARIABLES_MASTER_KEY
+              valueFrom:
+                secretKeyRef: {name: {{ include "compartment.fullname" . }}, key: variables-master-key}
           volumeMounts:
             - name: tmp
               mountPath: /tmp

@@ -84,12 +84,21 @@ the same key.
 - Variables are injected at runtime and must not be written into source archives, image layers, or generated files.
 - Sensitive values are hidden from general read APIs and CLI output.
 - Provenance may expose key names, scope, source, sensitivity, and fingerprints, but not sensitive plaintext.
-- The installation-wide variable master key is a control-plane secret and must never enter app runtime variables.
+- The installation-wide tenant KEK is a control-plane secret and must never enter app runtime variables.
 
 ## Encryption Direction
 
 - All runtime variables are encrypted at rest, regardless of sensitivity.
-- The intended model is envelope encryption with one installation-wide KEK and per-value DEKs.
+- Each value uses a random 256-bit DEK and AES-256-GCM.
+- The chart-generated installation KEK wraps each DEK and lives only in the platform Secret.
+- The stable version-1 envelope records the algorithm, encrypted value, wrapped DEK, nonces, tags, and KEK key ID.
+- Runtime reconciliation contracts carry envelopes; the worker decrypts secrets only for Kubernetes Secret or Job
+  projection, while validated non-sensitive build inputs are decrypted only when starting a build.
+- Owner-authorized API disclosure paths decrypt the same envelope without changing the public response contract.
+- A key-specific migration marker makes repeated backfill runs no-ops after a successful transactional scan.
+- Rotation first stages the next KEK as `tenantSecretsPreviousKek`, then promotes it through `tenantSecretsKek`.
+- API and worker rollouts accept both staged keys while the migration Job re-wraps DEKs without re-encrypting values.
+- The prior KEK remains in the chart Secret until a later clean migration run, then an operator explicitly clears it.
 - Fingerprints exist for audit and diff behavior without storing plaintext.
 - KEK rotation is a control-plane maintenance concern, not a first-class end-user workflow in v1.
 

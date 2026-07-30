@@ -6,7 +6,6 @@ import type {
   ProjectNetworkPolicyPorts,
   WorkerPersistProductJobIntentResponse,
   WorkerPersistProductJobResultRequest,
-  WorkerObserveDeploymentReconcileRequest,
 } from '@compartment/contracts';
 import {
   calculateKubeRolloutStatus,
@@ -18,10 +17,10 @@ import {
   type KubeRuntime,
   type KubeWorkloadScheduling,
 } from '@compartment/kube-runtime';
-import { observeDeploymentReconcile, persistProductJobIntent, type CompartmentRequester } from '@compartment/sdk';
+import { persistProductJobIntent, type CompartmentRequester } from '@compartment/sdk';
 import {
   deploymentFromObjects,
-  deploymentManifest,
+  persistDeploymentObservation,
   releaseIntent,
   rolloutFailureMessage,
 } from './worker-deployment-reconcile.helpers';
@@ -31,7 +30,9 @@ import {
   includeApplicationNetworkPolicyPorts,
   projectProjectNetworkPolicyManifests,
 } from './worker-network-policy.service';
-import { tenantApplicationRow } from '../tenant-workload-projections';
+import { decryptTenantProjection } from '../tenant-workload-projections';
+import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
+import { restartActiveCandidate } from './worker-deployment-restart.service';
 
 const releaseTimeoutMs: number = 600_000;
 const activeReadinessCheckCount: number = 6;
@@ -41,19 +42,20 @@ export async function reconcileDeploymentTarget(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  if (await reconcileStopState(request, runtime, target, scheduling)) {
+  if (await reconcileStopState(request, runtime, target, tenantSecretsKek, scheduling)) {
     return [];
   }
   if (target.state === 'desired') {
-    await reconcileDesiredDeployment(request, runtime, target, scheduling);
+    await reconcileDesiredDeployment(request, runtime, target, tenantSecretsKek, scheduling);
     return [];
   }
   if (target.state === 'pending') {
-    return await reconcilePendingDeployment(request, runtime, target, scheduling);
+    return await reconcilePendingDeployment(request, runtime, target, tenantSecretsKek, scheduling);
   }
-  await reconcileActiveDeployment(request, runtime, target, scheduling);
+  await reconcileActiveDeployment(request, runtime, target, tenantSecretsKek, scheduling);
   return [];
 }
 
@@ -61,14 +63,17 @@ async function reconcileStopState(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<boolean> {
   if (target.state !== 'stopping') {
     return target.state === 'stopped';
   }
-  await runtime.delete(projectApplicationManifests(tenantApplicationRow(target.candidate, scheduling)));
+  await runtime.delete(
+    projectApplicationManifests(decryptTenantProjection(target.candidate, scheduling, tenantSecretsKek)),
+  );
   await applyProjectNetworkPolicies(runtime, target.candidate.projectId, target.networkPolicy);
-  await persistObservation(request, target, 'stopped');
+  await persistDeploymentObservation(request, target, 'stopped');
   return true;
 }
 
@@ -76,11 +81,17 @@ async function reconcileActiveDeployment(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<void> {
-  const applied: KubeDeploymentManifest = await applyApplication(runtime, target, scheduling);
+  const applied: KubeDeploymentManifest = await applyApplication(runtime, target, tenantSecretsKek, scheduling);
   if (await activeDeploymentRemainsNonReady(runtime, applied, target)) {
-    await persistObservation(request, target, 'pending', 'Active Kubernetes Deployment drifted or became non-Ready.');
+    await persistDeploymentObservation(
+      request,
+      target,
+      'pending',
+      'Active Kubernetes Deployment drifted or became non-Ready.',
+    );
   }
 }
 
@@ -105,6 +116,7 @@ async function reconcileDesiredDeployment(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<void> {
   const release: ProductJobIntent | null = releaseIntent(target.candidate, releaseTimeoutMs);
@@ -116,61 +128,64 @@ async function reconcileDesiredDeployment(
     }
     const result: WorkerPersistProductJobResultRequest = persisted.result;
     if (result.status !== 'succeeded') {
-      await persistObservation(request, target, 'failed', `Release Job ${result.status}: ${result.logs}`);
+      await persistDeploymentObservation(request, target, 'failed', `Release Job ${result.status}: ${result.logs}`);
       return;
     }
   }
-  await applyApplication(runtime, target, scheduling);
-  await persistObservation(request, target, 'pending');
+  await applyApplication(runtime, target, tenantSecretsKek, scheduling);
+  await persistDeploymentObservation(request, target, 'pending');
 }
 
 async function reconcilePendingDeployment(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
-  const candidate: KubeDeploymentManifest = await applyApplication(runtime, target, scheduling);
+  const candidate: KubeDeploymentManifest = await applyApplication(runtime, target, tenantSecretsKek, scheduling);
   const rollout: KubeRolloutObservation | null = readRolloutObservation(
     await runtime.read(candidate),
     candidate,
     target,
   );
   if (rollout === null) {
-    return await handleMissingPendingDeployment(request, runtime, target, scheduling);
+    return await handleMissingPendingDeployment(request, runtime, target, tenantSecretsKek, scheduling);
   }
   const status: KubeRolloutStatus = calculateKubeRolloutStatus(rollout, new Date());
-  return await handleRolloutStatus(request, runtime, target, status, scheduling);
+  return await handleRolloutStatus(request, runtime, target, status, tenantSecretsKek, scheduling);
 }
 
 async function handleMissingPendingDeployment(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
   const deadline: number = new Date(target.rolloutStartedAt).getTime() + rolloutTimeoutMs(target.candidate);
   if (Date.now() < deadline) {
     return [];
   }
-  if (await restartActiveCandidate(request, runtime, target, scheduling)) {
+  if (await restartActiveCandidate(request, runtime, target, tenantSecretsKek, scheduling)) {
     return [];
   }
-  await recoverFailedRollout(runtime, target, scheduling);
-  await persistObservation(request, target, 'failed', 'Kubernetes rollout timed out.');
+  await recoverFailedRollout(runtime, target, tenantSecretsKek, scheduling);
+  await persistDeploymentObservation(request, target, 'failed', 'Kubernetes rollout timed out.');
   return [];
 }
 
 async function applyApplication(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<KubeDeploymentManifest> {
   return deploymentFromObjects(
     await runtime.apply({
       objects: [
         ...projectProjectNetworkPolicyManifests(target.candidate.projectId, deploymentNetworkPolicy(target)),
-        ...projectApplicationManifests(tenantApplicationRow(target.candidate, scheduling)),
+        ...projectApplicationManifests(decryptTenantProjection(target.candidate, scheduling, tenantSecretsKek)),
       ],
     }),
   );
@@ -181,52 +196,35 @@ async function handleRolloutStatus(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
   status: KubeRolloutStatus,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<DeploymentArtifactCleanupTarget[]> {
   if (status === 'ready') {
-    return await persistObservation(request, target, 'ready');
+    return await persistDeploymentObservation(request, target, 'ready');
   }
   if (status === 'progressing') {
     return [];
   }
-  if (await restartActiveCandidate(request, runtime, target, scheduling)) {
+  if (await restartActiveCandidate(request, runtime, target, tenantSecretsKek, scheduling)) {
     return [];
   }
-  await recoverFailedRollout(runtime, target, scheduling);
-  await persistObservation(request, target, 'failed', rolloutFailureMessage(status));
+  await recoverFailedRollout(runtime, target, tenantSecretsKek, scheduling);
+  await persistDeploymentObservation(request, target, 'failed', rolloutFailureMessage(status));
   return [];
-}
-
-async function restartActiveCandidate(
-  request: CompartmentRequester,
-  runtime: KubeRuntime,
-  target: DeploymentReconcileTarget,
-  scheduling: KubeWorkloadScheduling | undefined,
-): Promise<boolean> {
-  if (target.active?.deploymentId !== target.candidate.deploymentId) {
-    return false;
-  }
-  await runtime.delete([deploymentManifest(target.candidate)]);
-  await runtime.apply({
-    force: true,
-    objects: [
-      ...projectProjectNetworkPolicyManifests(target.candidate.projectId, deploymentNetworkPolicy(target)),
-      ...projectApplicationManifests(tenantApplicationRow(target.candidate, scheduling)),
-    ],
-  });
-  await persistObservation(request, target, 'pending', 'Restarting an unhealthy active Kubernetes Deployment.');
-  return true;
 }
 
 async function recoverFailedRollout(
   runtime: KubeRuntime,
   target: DeploymentReconcileTarget,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling: KubeWorkloadScheduling | undefined,
 ): Promise<void> {
   if (target.active === null) {
     return;
   }
-  const activeObjects: KubeManifest[] = projectApplicationManifests(tenantApplicationRow(target.active, scheduling));
+  const activeObjects: KubeManifest[] = projectApplicationManifests(
+    decryptTenantProjection(target.active, scheduling, tenantSecretsKek),
+  );
   await runtime.apply({
     force: true,
     objects: [
@@ -238,20 +236,4 @@ async function recoverFailedRollout(
 
 function deploymentNetworkPolicy(target: DeploymentReconcileTarget): ProjectNetworkPolicyPorts {
   return includeApplicationNetworkPolicyPorts(target.networkPolicy, target.candidate.containerPorts);
-}
-
-async function persistObservation(
-  request: CompartmentRequester,
-  target: DeploymentReconcileTarget,
-  observation: 'pending' | 'ready' | 'failed' | 'stopped',
-  message?: string,
-): Promise<DeploymentArtifactCleanupTarget[]> {
-  const input: WorkerObserveDeploymentReconcileRequest = {
-    deploymentId: target.candidate.deploymentId,
-    ...(message === undefined ? {} : { message }),
-    observation,
-    observedAt: new Date().toISOString(),
-    revision: target.revision,
-  };
-  return (await observeDeploymentReconcile(request, input)).cleanupArtifacts;
 }

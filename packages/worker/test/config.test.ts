@@ -21,8 +21,18 @@ describe('readWorkerConfig', (): void => {
     });
     expect(config.pollIntervalMs).toBe(1000);
     expect(config.runtimeControlToken).toBe('runtime-control-token');
+    expect(config.tenantSecretsKek).toEqual({ current: Buffer.from('11'.repeat(32), 'hex') });
     expect(config.usageMeteringIntervalMs).toBe(60_000);
     expect(config).not.toHaveProperty('tenantScheduling');
+  });
+
+  it('requires a canonical tenant secrets KEK', (): void => {
+    expect(
+      (): WorkerConfig => readWorkerConfig({ ...validEnvironment(), COMPARTMENT_TENANT_SECRETS_KEK: undefined }),
+    ).toThrow();
+    expect(
+      (): WorkerConfig => readWorkerConfig({ ...validEnvironment(), COMPARTMENT_TENANT_SECRETS_KEK: 'not-hex' }),
+    ).toThrow();
   });
 
   it('parses optional tenant scheduling and rejects malformed configuration', (): void => {
@@ -113,6 +123,7 @@ function validEnvironment(): NodeJS.ProcessEnv {
     COMPARTMENT_TLS_ISSUER_KIND: 'Issuer',
     COMPARTMENT_TLS_ISSUER_NAME: 'compartment-platform',
     COMPARTMENT_PLATFORM_NAMESPACE: 'compartment',
+    COMPARTMENT_TENANT_SECRETS_KEK: '11'.repeat(32),
     COMPARTMENT_WORKER_POLL_INTERVAL_MS: '1000',
     COMPARTMENT_USAGE_METERING_INTERVAL_MS: '60000',
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-token',

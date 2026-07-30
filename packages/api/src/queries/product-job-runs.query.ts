@@ -3,6 +3,7 @@ import type {
   ProductJobClass,
   ProductJobIntent,
   ProductJobVolumeMount,
+  TenantSecretEnvironment,
   ResourceOperationProductJobIntent,
   WorkerPersistProductJobResultRequest,
 } from '@compartment/contracts';
@@ -186,7 +187,7 @@ export async function persistProductJobFinalized(jobClass: ProductJobClass, iden
 function buildProductJobIntent(row: ProductJobRunRow): ProductJobIntent {
   const spec: ProductJobCommonSpec = {
     command: JSON.parse(row.commandJson) as string[],
-    env: JSON.parse(row.envJson) as Record<string, string>,
+    env: JSON.parse(row.envJson) as TenantSecretEnvironment,
     image: row.image,
     ...(row.imagePullSecretId === null ? {} : { imagePullSecretId: row.imagePullSecretId }),
     namespace: row.namespace,

@@ -1,5 +1,4 @@
 import { buildResourceOutputReference } from '@compartment/contracts';
-import { decryptVariableValueFromStorage } from '../lib/variables-crypto';
 import {
   listEnvironmentVariableSetBindings,
   listEnvironmentVariableValues,
@@ -12,7 +11,6 @@ import type {
   EnvironmentVariableSetBindingRow,
   EnvironmentVariableValueRow,
 } from '../queries/variables.query.types';
-import { getApiConfig } from '../runtime/runtime-access';
 import { findProjectResourceByName } from '../queries/resources.query';
 import type { ProjectResourceRow } from '../queries/resources.query.types';
 import { collectBoundVariableSetIds, resolveStoredEffectiveVariables } from './effective-variables-resolution.service';
@@ -29,6 +27,7 @@ import {
 } from './resource-output-resolution.service';
 import { resolveResourceOutputNamespaceId } from './resource-output-namespace.service';
 import { createInvalidDeployConfigError } from '../errors/api-business-error';
+import { decryptRequiredStoredValue } from './effective-variables.crypto';
 
 export async function loadEffectiveVariables(input: LoadEffectiveVariablesInput): Promise<EffectiveVariable[]> {
   const storedVariables: StoredEffectiveVariable[] = await loadStoredEffectiveVariables(input);
@@ -257,20 +256,4 @@ function assertNoDirectServiceOutputBindingConflict(
       `Conflicting service-scoped variable "${binding.keyName}" and resource output binding for service "${binding.targetServiceName}".`,
     );
   }
-}
-
-function decryptRequiredStoredValue(variable: StoredEffectiveVariable): string {
-  if (variable.valueCiphertext === null || variable.encryptionKeyId === null) {
-    throw createInvalidDeployConfigError(`Variable "${variable.keyName}" has no stored value.`);
-  }
-
-  try {
-    return decryptStoredValue(variable.valueCiphertext, variable.encryptionKeyId);
-  } catch (error) {
-    throw createInvalidDeployConfigError(`Variable "${variable.keyName}" cannot be decrypted.`, { cause: error });
-  }
-}
-
-function decryptStoredValue(valueCiphertext: string, encryptionKeyId: string): string {
-  return decryptVariableValueFromStorage(valueCiphertext, encryptionKeyId, getApiConfig().variablesMasterKey);
 }

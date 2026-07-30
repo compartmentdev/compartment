@@ -1,4 +1,5 @@
 import type {
+  DeploymentArtifactCleanupTarget,
   DeploymentReconcileProjection,
   DeploymentReconcileTarget,
   ProjectNetworkPolicyPorts,
@@ -10,10 +11,12 @@ import {
   type ApplyBundle,
   type KubeManifest,
   type KubeRuntime,
+  type KubeWorkloadScheduling,
 } from '@compartment/kube-runtime';
 import type { CompartmentRequester } from '@compartment/sdk';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { reconcileDeploymentTarget } from '../src/services/worker-deployment-reconcile.service';
+import { reconcileDeploymentTarget as reconcileDeploymentTargetWithKek } from '../src/services/worker-deployment-reconcile.service';
+import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
 
 interface ReconcileMocks {
   applyNetworkPolicy: Mock;
@@ -22,6 +25,21 @@ interface ReconcileMocks {
   observeDeploymentReconcile: Mock;
   persistProductJobIntent: Mock;
   projectNetworkPolicyManifests: Mock;
+}
+
+async function reconcileDeploymentTarget(
+  request: CompartmentRequester,
+  kubeRuntime: KubeRuntime,
+  reconcileTarget: DeploymentReconcileTarget,
+  scheduling?: KubeWorkloadScheduling,
+): Promise<DeploymentArtifactCleanupTarget[]> {
+  return await reconcileDeploymentTargetWithKek(
+    request,
+    kubeRuntime,
+    reconcileTarget,
+    testTenantSecretsKek,
+    scheduling,
+  );
 }
 
 const mocks: ReconcileMocks = vi.hoisted(
@@ -105,6 +123,9 @@ describe('deployment reconciliation', (): void => {
     expect(runtime.apply).toHaveBeenCalledOnce();
     const bundle: ApplyBundle = runtime.apply.mock.calls[0]?.[0] as ApplyBundle;
     expect(bundle.objects.some((object: KubeManifest): boolean => object.kind === 'Deployment')).toBe(true);
+    expect(bundle.objects.find((object: KubeManifest): boolean => object.kind === 'Secret')?.stringData).toEqual({
+      PORT: '3000',
+    });
     expect(mocks.observeDeploymentReconcile).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({ observation: 'pending', revision: 0 }),
@@ -343,7 +364,7 @@ function projection(releaseCommand: string | null): DeploymentReconcileProjectio
     deploymentId: 'dep_candidate',
     environmentId: 'env_1',
     environmentName: 'production',
-    env: { PORT: '3000' },
+    env: encryptTestTenantEnvironment({ PORT: '3000' }),
     image: 'registry.example/app@sha256:candidate',
     imagePullSecretId: 'prj_1',
     namespaceId: 'prj_1',

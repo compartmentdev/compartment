@@ -14,6 +14,7 @@ import {
 import type { ResourceBackupRow } from '../src/queries/resource-backups.query.types';
 import type { ResourceEnvironmentContext } from '../src/services/resources.service.types';
 import type { ProductJobQueueWaitState } from '../src/queries/product-job-wait.query.types';
+import { decryptTenantVariableValueFromStorage } from '../src/lib/variables-crypto';
 
 interface TestOperationInput {
   backupId: string;
@@ -31,6 +32,14 @@ interface TestVerifierInput {
   resource: ProjectResourceRow;
 }
 
+interface TestApiConfig {
+  tenantSecretsKek: Buffer;
+  variablesMasterKey: Buffer;
+  workerImageRef: string | null;
+}
+
+type DecryptedIntentEnvironment = Record<string, string>;
+
 const createIntent: Mock<
   (intent: ResourceOperationProductJobIntent) => Promise<WorkerPersistProductJobResultRequest | null>
 > = vi.hoisted(
@@ -44,9 +53,7 @@ const readQueueState: Mock<() => Promise<ProductJobQueueWaitState | null>> = vi.
   (): Mock<() => Promise<ProductJobQueueWaitState | null>> => vi.fn(),
 );
 const expireWait: Mock = vi.hoisted((): Mock => vi.fn());
-const getApiConfig: Mock<() => { workerImageRef: string | null }> = vi.hoisted(
-  (): Mock<() => { workerImageRef: string | null }> => vi.fn(),
-);
+const getApiConfig: Mock<() => TestApiConfig> = vi.hoisted((): Mock<() => TestApiConfig> => vi.fn());
 
 vi.mock('node:timers/promises', (): object => ({
   setTimeout: async (delayMs: number): Promise<void> =>
@@ -68,7 +75,11 @@ describe('Kubernetes resource backup operations', (): void => {
   beforeEach((): void => {
     vi.clearAllMocks();
     createIntent.mockResolvedValue(null);
-    getApiConfig.mockReturnValue({ workerImageRef: 'compartment-worker@sha256:abc' });
+    getApiConfig.mockReturnValue({
+      tenantSecretsKek: Buffer.alloc(32, 1),
+      variablesMasterKey: Buffer.alloc(32, 2),
+      workerImageRef: 'compartment-worker@sha256:abc',
+    });
     readQueueState.mockResolvedValue({ predecessorToken: 'initial', queueBudgetMs: 30_000 });
     expireWait.mockResolvedValue({
       completedAt: '2026-07-12T12:00:00.000Z',
@@ -101,11 +112,11 @@ describe('Kubernetes resource backup operations', (): void => {
         '-c',
         'umask 0002 && mkdir -p "$COMPARTMENT_BACKUP_DIR" && chmod g+rwx "$COMPARTMENT_BACKUP_DIR" && pg_dump',
       ],
-      env: { COMPARTMENT_BACKUP_DIR: '/backups/rbak_test' },
       jobClass: 'resource-operation',
       operationId: 'op_backup',
       runtimeIdentity: 'resource',
     });
+    expect(decryptIntentEnvironment(intent)).toMatchObject({ COMPARTMENT_BACKUP_DIR: '/backups/rbak_test' });
     expect(intent?.volumeMounts).toEqual([
       expect.objectContaining({ expectedClaimUid: 'uid-backup', mountPath: '/backups', name: 'backup-artifacts' }),
     ]);
@@ -206,7 +217,11 @@ describe('Kubernetes resource backup operations', (): void => {
   });
 
   it('fails before enqueue when the platform worker image is missing', async (): Promise<void> => {
-    getApiConfig.mockReturnValue({ workerImageRef: null });
+    getApiConfig.mockReturnValue({
+      tenantSecretsKek: Buffer.alloc(32, 1),
+      variablesMasterKey: Buffer.alloc(32, 2),
+      workerImageRef: null,
+    });
     await expect(summarizeKubernetesBackupArtifact(verifierInput())).rejects.toThrow('COMPARTMENT_WORKER_IMAGE');
     expect(createIntent).not.toHaveBeenCalled();
   });
@@ -247,8 +262,9 @@ describe('Kubernetes resource backup operations', (): void => {
     });
 
     const restoreIntent: ResourceOperationProductJobIntent | undefined = createIntent.mock.calls[1]?.[0];
-    expect(restoreIntent?.env.COMPARTMENT_RESOURCE_NAME).toBe('postgres-copy');
-    expect(restoreIntent?.env.COMPARTMENT_RESOURCE_HOST).toContain('resource-res-postgres-copy');
+    const restoreEnvironment: DecryptedIntentEnvironment = decryptIntentEnvironment(restoreIntent);
+    expect(restoreEnvironment.COMPARTMENT_RESOURCE_NAME).toBe('postgres-copy');
+    expect(restoreEnvironment.COMPARTMENT_RESOURCE_HOST).toContain('resource-res-postgres-copy');
     expect(restoreIntent?.resourceIds).toEqual([targetResource.id, artifactResource.id]);
     expect(restoreIntent?.runtimeIdentity).toBe('resource');
     expect(restoreIntent?.volumeMounts).toEqual([
@@ -316,6 +332,18 @@ describe('Kubernetes resource backup operations', (): void => {
     expect(createIntent.mock.calls[0]?.[0].operationId).not.toBe(createIntent.mock.calls[1]?.[0].operationId);
   });
 });
+
+function decryptIntentEnvironment(intent: ResourceOperationProductJobIntent | undefined): DecryptedIntentEnvironment {
+  const decrypted: DecryptedIntentEnvironment = {};
+  for (const [name, value] of Object.entries(intent?.env ?? {})) {
+    decrypted[name] = decryptTenantVariableValueFromStorage(
+      value.valueCiphertext,
+      value.encryptionKeyId,
+      Buffer.alloc(32, 1),
+    );
+  }
+  return decrypted;
+}
 
 function terminalResult(logs: string): WorkerPersistProductJobResultRequest {
   return {

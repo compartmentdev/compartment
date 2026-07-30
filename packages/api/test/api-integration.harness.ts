@@ -29,6 +29,8 @@ import {
   type InstallResponse,
   type SetVariableRequest,
   type SourceUploadSummary,
+  type TenantSecretEnvelope,
+  type TenantSecretEnvironment,
   type VariableResponse,
   type WorkerClaimDeploymentResponse,
   type WorkerClaimedDeployment,
@@ -685,6 +687,17 @@ export function requireClaimedDeployment(response: WorkerClaimDeploymentResponse
   }
 
   return response.deployment;
+}
+
+export function requireTenantSecretEnvelope(
+  environment: TenantSecretEnvironment,
+  keyName: string,
+): TenantSecretEnvelope {
+  const envelope: TenantSecretEnvelope | undefined = environment[keyName];
+  if (envelope === undefined) {
+    throw new Error(`Expected tenant secret envelope "${keyName}".`);
+  }
+  return envelope;
 }
 
 export function requireClaimedDeploymentByServiceName(

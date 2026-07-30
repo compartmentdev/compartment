@@ -7,9 +7,10 @@ import type {
   WorkerClaimedDeployment,
 } from '@compartment/contracts';
 import type { CompartmentBinaryRequester, CompartmentRequester } from '@compartment/sdk';
-import { buildReleaseImageFromSource } from '../src/services/worker-build.service';
+import { buildReleaseImageFromSource as buildReleaseImageFromSourceWithKek } from '../src/services/worker-build.service';
 import type { WorkerArtifactRegistryConfig } from '../src/worker-artifact-registry.types';
 import type { PreparedWorkerSource } from '../src/services/worker-source.service.types';
+import { encryptTestTenantEnvironment, testTenantSecretsKek } from './tenant-secret-test.fixtures';
 
 interface BuildDockerImageInput {
   appPath?: string | undefined;
@@ -100,6 +101,21 @@ afterEach((): void => {
   mocks.scheduleWorkerBuild.mockClear();
 });
 
+async function buildReleaseImageFromSource(
+  request: CompartmentRequester,
+  archiveRequest: CompartmentBinaryRequester,
+  deployment: WorkerClaimedDeployment,
+  artifactRegistry: WorkerArtifactRegistryConfig,
+): Promise<string> {
+  return await buildReleaseImageFromSourceWithKek(
+    request,
+    archiveRequest,
+    deployment,
+    artifactRegistry,
+    testTenantSecretsKek,
+  );
+}
+
 describe('buildReleaseImageFromSource', (): void => {
   it('reuses an existing artifact image without downloading source', async (): Promise<void> => {
     const eventRequestMock: Mock<EventRequest> = vi.fn<EventRequest>().mockResolvedValue(undefined);
@@ -173,9 +189,9 @@ describe('buildReleaseImageFromSource', (): void => {
             imageRef: 'registry.example/web:legacy',
             sourceDigest: 'sha256:source',
           },
-          buildEnv: {
+          buildEnv: encryptTestTenantEnvironment({
             VITE_PUBLIC_GREETING: 'hello from build env',
-          },
+          }),
         }),
         createArtifactRegistryConfig(),
       ),

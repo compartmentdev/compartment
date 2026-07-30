@@ -3,9 +3,7 @@ import {
   type ResolvedCompartmentServiceBuildConfig,
 } from '@compartment/contracts';
 import type { JsonValue } from '@compartment/utils';
-import { decryptVariableValueFromStorage } from '../lib/variables-crypto';
-import { getApiConfig } from '../runtime/runtime-access';
-import type { BuildEnvMap, BuildEnvSnapshot, BuildEnvSnapshotValue } from './deployment-build.types';
+import type { BuildEnvSnapshot, BuildEnvSnapshotValue } from './deployment-build.types';
 
 interface ParsedResolvedBuildEnvSnapshotValuePayload {
   encryptionKeyId?: JsonValue | undefined;
@@ -26,26 +24,7 @@ export function serializeResolvedBuildEnv(buildEnvSnapshot: BuildEnvSnapshot): s
   return JSON.stringify(buildEnvSnapshot);
 }
 
-export function decryptResolvedBuildEnv(serializedBuildEnv: string): BuildEnvMap {
-  const masterKey: Buffer = getApiConfig().variablesMasterKey;
-  return decryptResolvedBuildEnvSnapshot(parseResolvedBuildEnvSnapshot(serializedBuildEnv), masterKey);
-}
-
-function decryptResolvedBuildEnvSnapshot(buildEnvSnapshot: BuildEnvSnapshot, masterKey: Buffer): BuildEnvMap {
-  const buildEnv: BuildEnvMap = {};
-
-  for (const [keyName, snapshotValue] of Object.entries(buildEnvSnapshot)) {
-    buildEnv[keyName] = decryptVariableValueFromStorage(
-      snapshotValue.valueCiphertext,
-      snapshotValue.encryptionKeyId,
-      masterKey,
-    );
-  }
-
-  return buildEnv;
-}
-
-function parseResolvedBuildEnvSnapshot(serializedBuildEnv: string): BuildEnvSnapshot {
+export function parseResolvedBuildEnv(serializedBuildEnv: string): BuildEnvSnapshot {
   const parsedBuildEnv: JsonValue = JSON.parse(serializedBuildEnv) as JsonValue;
   if (typeof parsedBuildEnv !== 'object' || parsedBuildEnv === null || Array.isArray(parsedBuildEnv)) {
     throw new Error('Stored build env must be an object.');

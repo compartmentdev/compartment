@@ -17,7 +17,6 @@ import {
   buildStoredResourceOperations,
   resolveResourceOperationRuntimeEnv,
   resolveResourceRuntimeEnv,
-  serializeResourceOperations,
   type StoredResourceEnvSource,
   type StoredResourceOperationConfig,
   type StoredResourceOperationsConfig,
@@ -133,5 +132,5 @@ function createResourceRuntimeHash(parts: ResourceIntentParts): string {
 }
 
 function createResourceOperationConfigHash(operations: StoredResourceOperationsConfig): string {
-  return createHash('sha256').update(serializeResourceOperations(operations)).digest('hex');
+  return createHash('sha256').update(JSON.stringify(operations)).digest('hex');
 }

@@ -23,6 +23,7 @@ import {
   resolvedCompartmentServiceRunConfigSchema,
   type ResolvedCompartmentServiceRunConfig,
 } from './service-run.contract';
+import { tenantSecretEnvironmentSchema, type TenantSecretEnvironment } from './internal-tenant-secret.contract';
 
 export interface WorkerProjectServiceSummary {
   build: ResolvedCompartmentServiceBuildConfig;
@@ -40,7 +41,7 @@ export interface WorkerBuildArtifactSummary {
 
 export interface WorkerClaimedDeployment {
   artifact: WorkerBuildArtifactSummary;
-  buildEnv: Record<string, string>;
+  buildEnv: TenantSecretEnvironment;
   deploymentId: string;
   deploymentRunId: string;
   environmentId: string;
@@ -104,7 +105,7 @@ const workerBuildArtifactSummarySchema: ContractSchema<WorkerBuildArtifactSummar
 const workerClaimedDeploymentSchema: ContractSchema<WorkerClaimedDeployment> = z
   .object({
     artifact: workerBuildArtifactSummarySchema,
-    buildEnv: z.record(z.string(), z.string()),
+    buildEnv: tenantSecretEnvironmentSchema,
     deploymentId: z.string().min(1),
     deploymentRunId: z.string().min(1),
     environmentId: z.string().min(1),

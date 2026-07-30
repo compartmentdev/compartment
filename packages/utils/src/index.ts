@@ -39,3 +39,11 @@ export {
 export { parseJsonWith, type JsonValue } from './json';
 export { immutableKubeName, kubeResourceServiceDns } from './kube-naming';
 export { isValidEmailAddress, readNonEmptyLines, slugifyText } from './text';
+export {
+  createAes256GcmKeyId,
+  decryptAes256GcmEnvelope,
+  encryptAes256GcmEnvelope,
+  parseAes256GcmKey,
+  rewrapAes256GcmEnvelope,
+} from './aes-gcm-envelope';
+export type { Aes256GcmEnvelopeCiphertext } from './aes-gcm-envelope.types';

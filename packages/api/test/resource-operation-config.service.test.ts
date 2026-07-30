@@ -101,6 +101,23 @@ describe('resource operation config resolution', (): void => {
     expect(intent.operations.restore?.command).toContain('psql');
   });
 
+  it('keeps operation config hashes stable for identical plaintext semantics', (): void => {
+    const resource: CompartmentAuthoredResourceConfig = {
+      image: 'postgres:16',
+      operations: {
+        backup: {
+          command: 'pg_dump',
+          env: { PGPASSWORD: 'backup-secret' },
+        },
+      },
+    };
+
+    const first: ResolvedResourceIntent = resolveResourceIntent('db', resource, []);
+    const second: ResolvedResourceIntent = resolveResourceIntent('db', resource, []);
+
+    expect(first.operationConfigHash).toBe(second.operationConfigHash);
+  });
+
   it('summarizes only literal descriptor resource env sources', (): void => {
     expect(
       buildResourceEnvSummary([

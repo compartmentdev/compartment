@@ -27,6 +27,7 @@ import type { ResourceOperationDefinition, ResourceOperationResult } from './res
 import { waitForResourceOperationProductJob } from './resource-product-job-wait.service';
 import { buildResourceOperationDefinition } from './resources.service.helpers';
 import type { ResourceEnvironmentContext } from './resources.service.types';
+import { encryptTenantSecretEnvironment } from './tenant-secret-environment.service';
 
 const backupArtifactVolumeHandle: string = 'backup-artifacts';
 const backupContainerRoot: string = '/backups';
@@ -175,7 +176,7 @@ function buildProductJobIntent(input: KubernetesResourceOperationInput): Resourc
   );
   return {
     command: buildOperationCommand(definition.command, input.operationKind),
-    env: buildOperationEnvironment(input, definition.env),
+    env: encryptTenantSecretEnvironment(buildOperationEnvironment(input, definition.env)),
     image: definition.image,
     jobClass: 'resource-operation',
     namespace: immutableKubeName('cpt', input.context.project.id),

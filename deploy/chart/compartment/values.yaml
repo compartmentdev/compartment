@@ -214,6 +214,8 @@ secrets:
   runtimeControlToken: ''
   sessionSecret: ''
   systemToken: ''
+  tenantSecretsKek: ''
+  tenantSecretsPreviousKek: null
   variablesMasterKey: ''
   managedDomainBrokerToken: ''
 

@@ -1,7 +1,7 @@
 import type { VariableImportEntry, VariableSensitivity } from '@compartment/contracts';
 import { createVariableNotFoundError } from '../errors/api-business-error';
 import { createId } from '../lib/tokens';
-import { encryptVariableValueForStorage, type EncryptedVariableValue } from '../lib/variables-crypto';
+import { encryptTenantVariableValueForStorage, type EncryptedVariableValue } from '../lib/variables-crypto';
 import {
   deleteEnvironmentVariableValueWithAudit,
   importEnvironmentVariableValues,
@@ -55,8 +55,9 @@ export async function setVariableForPrincipal(input: SetVariableInput): Promise<
   }
   await assertNoResourceOutputBindingConflict(input, target);
   const sensitivity: VariableSensitivity = readVariableSensitivity(input);
-  const encryptedValue: EncryptedVariableValue = encryptVariableValueForStorage(
+  const encryptedValue: EncryptedVariableValue = encryptTenantVariableValueForStorage(
     input.value,
+    getApiConfig().tenantSecretsKek,
     getApiConfig().variablesMasterKey,
   );
 

@@ -11,6 +11,7 @@ interface SelfHostedGeneratedSecretEnvironmentFixture {
   readonly COMPARTMENT_RUNTIME_CONTROL_TOKEN?: string | undefined;
   readonly COMPARTMENT_SESSION_SECRET?: string | undefined;
   readonly COMPARTMENT_SYSTEM_TOKEN?: string | undefined;
+  readonly COMPARTMENT_TENANT_SECRETS_KEK?: string | undefined;
   readonly COMPARTMENT_VARIABLES_MASTER_KEY?: string | undefined;
 }
 
@@ -77,6 +78,16 @@ describe('assertSelfHostedGeneratedSecretEnvironment', (): void => {
     ).toThrow('COMPARTMENT_VARIABLES_MASTER_KEY must not use one repeated hex character for self-hosted environments.');
   });
 
+  it('rejects low-entropy tenant KEKs in self-hosted envs', (): void => {
+    expect((): void =>
+      assertSelfHostedGeneratedSecretEnvironment(
+        createSelfHostedEnvironment({
+          COMPARTMENT_TENANT_SECRETS_KEK: '1'.repeat(64),
+        }),
+      ),
+    ).toThrow('COMPARTMENT_TENANT_SECRETS_KEK must not use one repeated hex character for self-hosted environments.');
+  });
+
   it('allows local dev placeholder database credentials', (): void => {
     expect((): void =>
       assertSelfHostedGeneratedSecretEnvironment({
@@ -111,6 +122,7 @@ function createSelfHostedEnvironment(
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: generated24ByteSecret,
     COMPARTMENT_SESSION_SECRET: generated32ByteSecret,
     COMPARTMENT_SYSTEM_TOKEN: generated24ByteSecret,
+    COMPARTMENT_TENANT_SECRETS_KEK: generated32ByteSecret,
     COMPARTMENT_VARIABLES_MASTER_KEY: generated32ByteSecret,
     ...overrides,
   };

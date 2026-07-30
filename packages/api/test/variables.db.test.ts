@@ -1,25 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
+import type { TenantSecretEnvironment } from '@compartment/contracts';
 import type { Pool } from 'pg';
 import { deriveProcessScopedDatabaseUrl, readDatabaseTestMode } from '../../test-support/src';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { type ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
+import type { ApiDatabaseTransaction } from '../src/db/client.types';
 import {
   environmentVariableSetBindings,
   environmentVariableValues,
   environments,
+  buildArtifacts,
+  operations,
   organizationVariableSetEntries,
   organizationVariableSets,
   organizations,
   principals,
+  productJobRuns,
+  projectResources,
   projects,
   projectServices,
+  resourceBackups,
+  resourceReconcileRuns,
   variableChangeEvents,
   variableAccessEvents,
 } from '../src/db/schema';
-import { parseVariablesMasterKey } from '../src/lib/variables-crypto';
+import {
+  decryptTenantVariableValueFromStorage,
+  parseTenantSecretsKek,
+  parseVariablesMasterKey,
+} from '../src/lib/variables-crypto';
 import { useApiRuntimeDatabaseTestHarness } from './api-db-test.harness';
 import {
   deleteEnvironmentVariableValueWithAudit,
@@ -41,6 +53,11 @@ import type {
   UpsertEnvironmentVariableValueInput,
 } from '../src/queries/variables.query.types';
 import { encryptVariableValueForStorageForTests, type TestEncryptedVariableValue } from './variables-test-crypto';
+import { migrateTenantSecretEnvelopes } from '../src/services/tenant-secret-migration.service';
+import type {
+  TenantSecretMigrationKeys,
+  TenantSecretMigrationResult,
+} from '../src/services/tenant-secret-migration.service.types';
 
 const { testDatabaseUrl } = readDatabaseTestMode();
 const variablesDbDatabaseUrl: string = deriveProcessScopedDatabaseUrl(testDatabaseUrl, 'variables_db_query');
@@ -75,6 +92,7 @@ const apiConfig: ApiConfig = {
   systemApiSocketPath: '/tmp/compartment/compartment-variables-db-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
+  tenantSecretsKek: variablesMasterKey,
   variablesMasterKey,
   runtimeControlToken: 'test-runtime-control-token',
 };
@@ -128,6 +146,94 @@ describe('variables db queries', (): void => {
     ]);
     await expect(db.select().from(organizationVariableSetEntries)).resolves.toHaveLength(1);
     await expect(db.select().from(environmentVariableSetBindings)).resolves.toHaveLength(1);
+  });
+
+  it('re-wraps legacy tenant envelopes once without exposing plaintext in raw rows', async (): Promise<void> => {
+    const scope: QueryTestScope = await createQueryTestScope();
+    const variableSetId: string = 'vset_rotation';
+    const currentKek: Buffer = parseTenantSecretsKek('22'.repeat(32));
+    await insertOrganizationVariableSet(scope, variableSetId);
+    await insertOrganizationVariableSetEntry(variableSetId, 'DATABASE_URL', 'postgres://rotation-secret');
+    await insertEnvironmentVariableValue(scope.environmentId, null, 'API_TOKEN', 'tenant-rotation-secret', 'sensitive');
+    await db.insert(productJobRuns).values({
+      commandJson: '[]',
+      envJson: JSON.stringify({ BACKUP_PASSWORD: 'queued-job-secret' }),
+      id: 'pjob_rotation',
+      identityId: 'rotation',
+      image: 'example.invalid/job:latest',
+      jobClass: 'resource-operation',
+      namespace: 'project-test',
+      projectId: 'prj_variables',
+      status: 'queued',
+      timeoutMs: 60_000,
+    });
+    await insertLegacyTenantJsonRows(scope);
+
+    const migrationKeys: TenantSecretMigrationKeys = {
+      currentKek,
+      sourceKeks: [variablesMasterKey],
+    };
+    const first: TenantSecretMigrationResult = await db.transaction(
+      async (tx: ApiDatabaseTransaction): Promise<TenantSecretMigrationResult> =>
+        await migrateTenantSecretEnvelopes(tx, migrationKeys),
+    );
+    const second: TenantSecretMigrationResult = await db.transaction(
+      async (tx: ApiDatabaseTransaction): Promise<TenantSecretMigrationResult> =>
+        await migrateTenantSecretEnvelopes(tx, migrationKeys),
+    );
+    const [environmentRow] = await db.select().from(environmentVariableValues);
+    const [variableSetRow] = await db.select().from(organizationVariableSetEntries);
+    const [productJobRow] = await db.select().from(productJobRuns);
+    const [buildArtifactRow] = await db.select().from(buildArtifacts);
+    const [projectResourceRow] = await db.select().from(projectResources);
+    const [resourceBackupRow] = await db.select().from(resourceBackups);
+    const [resourceReconcileRow] = await db.select().from(resourceReconcileRuns);
+    const productJobEnvironment: TenantSecretEnvironment = JSON.parse(
+      productJobRow!.envJson,
+    ) as TenantSecretEnvironment;
+    const rawRows: string = JSON.stringify([
+      environmentRow,
+      variableSetRow,
+      productJobRow,
+      buildArtifactRow,
+      projectResourceRow,
+      resourceBackupRow,
+      resourceReconcileRow,
+    ]);
+
+    expect(first).toEqual({ migrated: true, rewrappedCount: 10 });
+    expect(second).toEqual({ migrated: false, rewrappedCount: 0 });
+    expect(rawRows).not.toContain('tenant-rotation-secret');
+    expect(rawRows).not.toContain('postgres://rotation-secret');
+    expect(rawRows).not.toContain('queued-job-secret');
+    expect(rawRows).not.toContain('build-snapshot-secret');
+    expect(rawRows).not.toContain('resource-env-secret');
+    expect(rawRows).not.toContain('resource-operation-secret');
+    expect(rawRows).not.toContain('reconcile-secret');
+    expect(rawRows).not.toContain('cm9sbGJhY2stc2VjcmV0');
+    expect(rawRows).not.toContain('backup-env-secret');
+    expect(rawRows).not.toContain('backup-operation-secret');
+    expect(
+      decryptTenantVariableValueFromStorage(
+        environmentRow!.valueCiphertext,
+        environmentRow!.encryptionKeyId,
+        currentKek,
+      ),
+    ).toBe('tenant-rotation-secret');
+    expect(
+      decryptTenantVariableValueFromStorage(
+        variableSetRow!.valueCiphertext,
+        variableSetRow!.encryptionKeyId,
+        currentKek,
+      ),
+    ).toBe('postgres://rotation-secret');
+    expect(
+      decryptTenantVariableValueFromStorage(
+        productJobEnvironment.BACKUP_PASSWORD!.valueCiphertext,
+        productJobEnvironment.BACKUP_PASSWORD!.encryptionKeyId,
+        currentKek,
+      ),
+    ).toBe('queued-job-secret');
   });
 
   it('excludes archived variable sets from bindings and entry resolution', async (): Promise<void> => {
@@ -419,6 +525,107 @@ async function createQueryTestScope(): Promise<QueryTestScope> {
     principalId,
     serviceId,
   };
+}
+
+async function insertLegacyTenantJsonRows(scope: QueryTestScope): Promise<void> {
+  await db.insert(buildArtifacts).values({
+    id: 'artifact_rotation',
+    imageRepository: 'example.invalid/billing/api',
+    projectId: 'prj_variables',
+    projectServiceId: scope.serviceId,
+    resolvedBuildEnvJson: JSON.stringify({ BUILD_TOKEN: 'build-snapshot-secret' }),
+    resolvedBuildJson: '{}',
+    sourceDigest: 'sha256:rotation',
+  });
+  await db.insert(projectResources).values({
+    commandJson: '[]',
+    envJson: JSON.stringify([
+      { keyName: 'PASSWORD', literalValue: 'resource-env-secret', sourceType: 'literal', variableName: null },
+    ]),
+    environmentId: scope.environmentId,
+    expectedClaimsJson: '[]',
+    id: 'resource_rotation',
+    image: 'postgres:16',
+    name: 'rotation-db',
+    operationConfigHash: 'operation-hash',
+    operationsJson: JSON.stringify({
+      backup: {
+        command: 'backup',
+        env: [
+          {
+            keyName: 'BACKUP_TOKEN',
+            literalValue: 'resource-operation-secret',
+            sourceType: 'literal',
+            variableName: null,
+          },
+        ],
+        image: null,
+        schedule: null,
+      },
+      restore: null,
+    }),
+    outputsJson: '{}',
+    portsJson: '[]',
+    readinessJson: 'null',
+    runtimeDefinitionHash: 'runtime-hash',
+    status: 'running',
+    volumesJson: '[]',
+  });
+  await db.insert(resourceReconcileRuns).values({
+    expectedClaimsJson: '[]',
+    id: 'reconcile_rotation',
+    intentJson: JSON.stringify({ env: { PASSWORD: 'reconcile-secret' }, operation: 'reconcile' }),
+    operationType: 'reconcile',
+    phase: 'running',
+    previousManifestJson: JSON.stringify([
+      { apiVersion: 'v1', data: { PASSWORD: 'cm9sbGJhY2stc2VjcmV0' }, kind: 'Secret', metadata: {} },
+    ]),
+    projectResourceId: 'resource_rotation',
+  });
+  await db.insert(operations).values({
+    id: 'operation_rotation',
+    status: 'succeeded',
+    summary: 'Backup completed.',
+    targetId: 'resource_rotation',
+    targetType: 'resource',
+    type: 'resource.backup',
+  });
+  await db.insert(resourceBackups).values({
+    id: 'backup_rotation',
+    operationId: 'operation_rotation',
+    projectResourceId: 'resource_rotation',
+    purpose: 'manual',
+    resourceDefinitionJson: JSON.stringify({
+      commandJson: '[]',
+      envJson: JSON.stringify([
+        { keyName: 'PASSWORD', literalValue: 'backup-env-secret', sourceType: 'literal', variableName: null },
+      ]),
+      image: 'postgres:16',
+      operationConfigHash: 'operation-hash',
+      operationsJson: JSON.stringify({
+        backup: {
+          command: 'backup',
+          env: [
+            {
+              keyName: 'TOKEN',
+              literalValue: 'backup-operation-secret',
+              sourceType: 'literal',
+              variableName: null,
+            },
+          ],
+          image: null,
+          schedule: null,
+        },
+        restore: null,
+      }),
+      portsJson: '[]',
+      readinessJson: 'null',
+      runtimeDefinitionHash: 'runtime-hash',
+      version: 1,
+      volumesJson: '[]',
+    }),
+    status: 'succeeded',
+  });
 }
 
 async function insertOrganizationVariableSet(

@@ -1,6 +1,6 @@
 import type { VariableImportEntry } from '@compartment/contracts';
 import { createVariableCollisionError } from '../errors/api-business-error';
-import { encryptVariableValueForStorage, type EncryptedVariableValue } from '../lib/variables-crypto';
+import { encryptTenantVariableValueForStorage, type EncryptedVariableValue } from '../lib/variables-crypto';
 import { getApiConfig } from '../runtime/runtime-access';
 import { loadEffectiveVariables } from './effective-variables.service';
 import type { EffectiveVariable } from './effective-variables.service.types';
@@ -29,7 +29,7 @@ export async function prepareImportedEncryptedEntries(
 
   return input.entries.map(
     (entry: VariableImportEntry): ImportedEncryptedEntry =>
-      buildImportedEncryptedEntry(entry, getApiConfig().variablesMasterKey),
+      buildImportedEncryptedEntry(entry, getApiConfig().tenantSecretsKek, getApiConfig().variablesMasterKey),
   );
 }
 
@@ -55,9 +55,13 @@ function buildImportConflictMessage(conflictingKeyNames: readonly string[]): str
   return `Variable import would overwrite existing winners for: ${conflictingKeyNames.join(', ')}. Retry with --replace.`;
 }
 
-function buildImportedEncryptedEntry(entry: VariableImportEntry, masterKey: Buffer): ImportedEncryptedEntry {
+function buildImportedEncryptedEntry(
+  entry: VariableImportEntry,
+  tenantSecretsKek: Buffer,
+  fingerprintKey: Buffer,
+): ImportedEncryptedEntry {
   return {
-    encryptedValue: encryptVariableValueForStorage(entry.value, masterKey),
+    encryptedValue: encryptTenantVariableValueForStorage(entry.value, tenantSecretsKek, fingerprintKey),
     entry,
   };
 }

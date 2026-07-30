@@ -2,7 +2,7 @@ import type { DeploymentJoinedRow } from '../queries/deployments.query.types';
 import { findJoinedDeploymentById } from '../queries/deployment-joined.query';
 import { getApiConfig } from '../runtime/runtime-access';
 import { requireJoinedDeployment } from './deployment-context.service';
-import { decryptResolvedBuildEnv } from './deployment-build.service';
+import { parseResolvedBuildEnv } from './deployment-build.service';
 import { parseResolvedRun } from './deployment-run.service';
 import { resolveDeploymentPublicRoute } from './deployment-route.service';
 import type { DeploymentPublicRoute } from './deployment-route.service.types';
@@ -15,7 +15,7 @@ export async function buildClaimedDeploymentContext(deploymentId: string): Promi
   const publicRoute: DeploymentPublicRoute = await resolveDeploymentPublicRoute({ deployment });
 
   return {
-    buildEnv: decryptResolvedBuildEnv(deployment.artifact.resolvedBuildEnvJson),
+    buildEnv: parseResolvedBuildEnv(deployment.artifact.resolvedBuildEnvJson),
     deployment,
     routeHost: publicRoute.routeHost,
     run: parseResolvedRun(deployment.deployment.resolvedRunJson),

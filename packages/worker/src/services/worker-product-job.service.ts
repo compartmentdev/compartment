@@ -25,6 +25,8 @@ import {
   type CompartmentRequester,
 } from '@compartment/sdk';
 import { tenantJobSpec } from '../tenant-workload-projections';
+import { decryptTenantSecretEnvironment, redactTenantSecretValues } from '../tenant-secret-environment';
+import type { TenantSecretsKeyring } from '../tenant-secret-environment.types';
 
 class ProductJobFailedError extends Error {
   public constructor(
@@ -59,22 +61,43 @@ export async function executeProductJob(
   request: CompartmentRequester,
   runtime: KubeRuntime,
   intent: ProductJobIntent,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<WorkerPersistProductJobResultRequest> {
   const persisted: WorkerPersistProductJobIntentResponse = await persistProductJobIntent(request, intent);
   const identityId: string = readProductJobIdentity(intent);
+  requirePendingProductJob(persisted);
+  const jobResult: KubeJobResult = await runFencedProductJob(
+    request,
+    runtime,
+    intent,
+    identityId,
+    tenantSecretsKek,
+    scheduling,
+  );
+  const result: WorkerPersistProductJobResultRequest = createJobResult(intent, identityId, jobResult, tenantSecretsKek);
+  await settleProductJob(request, intent, result, jobResult);
+  return result;
+}
+
+function requirePendingProductJob(persisted: WorkerPersistProductJobIntentResponse): void {
   if (persisted.result !== null) {
     throwProductJobFailure(persisted.result);
   }
-  const jobResult: KubeJobResult = await runFencedProductJob(request, runtime, intent, identityId, scheduling);
-  const result: WorkerPersistProductJobResultRequest = buildProductJobResult(intent, identityId, jobResult);
+}
+
+async function settleProductJob(
+  request: CompartmentRequester,
+  intent: ProductJobIntent,
+  result: WorkerPersistProductJobResultRequest,
+  jobResult: KubeJobResult,
+): Promise<void> {
   await persistProductJobResult(request, result);
   await jobResult.finalize();
-  await finalizeProductJob(request, { identityId, jobClass: intent.jobClass });
+  await finalizeProductJob(request, { identityId: result.identityId, jobClass: intent.jobClass });
   if (result.status !== 'succeeded') {
     throwProductJobFailure(result);
   }
-  return result;
 }
 
 function throwProductJobFailure(result: WorkerPersistProductJobResultRequest): never {
@@ -89,6 +112,7 @@ async function runFencedProductJob(
   runtime: KubeRuntime,
   intent: ProductJobIntent,
   identityId: string,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<KubeJobResult> {
   if (intent.volumeMounts !== undefined && intent.volumeMounts.length > 0) {
@@ -100,7 +124,7 @@ async function runFencedProductJob(
       await persistProductJobFencingFailure(request, intent, identityId, failure);
     }
   }
-  return await runtime.runJob(tenantJobSpec(buildKubeJobSpec(intent, identityId), scheduling));
+  return await runtime.runJob(tenantJobSpec(buildKubeJobSpec(intent, identityId, tenantSecretsKek), scheduling));
 }
 
 async function persistProductJobFencingFailure(
@@ -171,10 +195,11 @@ export async function finalizeRecoveredProductJob(
   runtime: KubeRuntime,
   intent: ProductJobIntent,
   persisted: WorkerPersistProductJobResultRequest,
+  tenantSecretsKek: TenantSecretsKeyring,
   scheduling?: KubeWorkloadScheduling,
 ): Promise<void> {
   const jobResult: KubeJobResult = await runtime.runJob(
-    tenantJobSpec(buildKubeJobSpec(intent, persisted.identityId), scheduling),
+    tenantJobSpec(buildKubeJobSpec(intent, persisted.identityId, tenantSecretsKek), scheduling),
     {
       completedAt: new Date(persisted.completedAt),
       exitCode: persisted.exitCode,
@@ -188,10 +213,11 @@ export async function finalizeRecoveredProductJob(
   await finalizeProductJob(request, { identityId: persisted.identityId, jobClass: persisted.jobClass });
 }
 
-function buildProductJobResult(
+function createJobResult(
   intent: ProductJobIntent,
   identityId: string,
   jobResult: KubeJobResult,
+  tenantSecretsKek: TenantSecretsKeyring,
 ): WorkerPersistProductJobResultRequest {
   return {
     completedAt: jobResult.completedAt.toISOString(),
@@ -199,16 +225,20 @@ function buildProductJobResult(
     identityId,
     jobClass: intent.jobClass,
     jobName: jobResult.jobName,
-    logs: jobResult.logs,
+    logs: redactTenantSecretValues(jobResult.logs, decryptTenantSecretEnvironment(intent.env, tenantSecretsKek)),
     podName: jobResult.podName,
     status: jobResult.status,
   };
 }
 
-function buildKubeJobSpec(intent: ProductJobIntent, identityId: string): KubeJobSpec {
+function buildKubeJobSpec(
+  intent: ProductJobIntent,
+  identityId: string,
+  tenantSecretsKek: TenantSecretsKeyring,
+): KubeJobSpec {
   return {
     command: intent.command,
-    env: intent.env,
+    env: decryptTenantSecretEnvironment(intent.env, tenantSecretsKek),
     id: productJobRuntimeId(intent.jobClass, identityId),
     image: intent.image,
     imagePullSecretId: intent.jobClass === 'release' ? intent.imagePullSecretId : undefined,

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { resourceReadinessSummarySchema, type ResourceReadinessSummary } from './resources.contract';
 import type { ContractSchema } from './schema.types';
 import { projectNetworkPolicyPortsSchema, type ProjectNetworkPolicyPorts } from './internal-network-policy.contract';
+import { tenantSecretEnvironmentSchema, type TenantSecretEnvironment } from './internal-tenant-secret.contract';
 
 export const resourceReconcileLifecycleTimeoutMs: number = 120_000;
 
@@ -20,7 +21,7 @@ export interface ResourceReconcileIntent {
   command: string[];
   deleteData: boolean;
   environmentId: string;
-  env: Record<string, string>;
+  env: TenantSecretEnvironment;
   image: string;
   namespaceId: string;
   operation: 'delete' | 'reconcile';
@@ -65,7 +66,7 @@ const resourceReconcileIntentSchema: ContractSchema<ResourceReconcileIntent> = z
     command: z.array(z.string().min(1)),
     deleteData: z.boolean(),
     environmentId: z.string().min(1),
-    env: z.record(z.string(), z.string()),
+    env: tenantSecretEnvironmentSchema,
     image: z.string().min(1),
     namespaceId: z.string().min(1),
     operation: z.enum(['delete', 'reconcile']),

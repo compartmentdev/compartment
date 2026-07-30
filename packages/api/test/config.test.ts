@@ -49,6 +49,7 @@ describe('readApiConfig', (): void => {
     expect(config.systemToken).toBe('system-secret');
     expect(config.throttle).toEqual(defaultApiAuthThrottleConfig);
     expect(config.trustedOutboundHosts).toEqual([]);
+    expect(config.tenantSecretsKek).toEqual(Buffer.from('22'.repeat(32), 'hex'));
     expect(config.variablesMasterKey).toEqual(Buffer.from('11'.repeat(32), 'hex'));
     expect(config.runtimeControlToken).toBe('runtime-control-secret');
   });
@@ -203,6 +204,13 @@ describe('readApiConfig', (): void => {
   it('rejects an invalid variables master key', (): void => {
     expect((): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_VARIABLES_MASTER_KEY: 'not-hex' }))).toThrow(
       'COMPARTMENT_VARIABLES_MASTER_KEY must be exactly 64 hex characters.',
+    );
+  });
+
+  it('requires a canonical tenant secrets KEK', (): void => {
+    expect((): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_TENANT_SECRETS_KEK: undefined }))).toThrow();
+    expect((): ApiConfig => readApiConfig(createApiConfigEnv({ COMPARTMENT_TENANT_SECRETS_KEK: 'not-hex' }))).toThrow(
+      'COMPARTMENT_TENANT_SECRETS_KEK must be exactly 64 hex characters.',
     );
   });
 
@@ -383,6 +391,7 @@ function createApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}): NodeJS.
     COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_MAX_FAILURES: '3',
     COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_WINDOW: '10m',
     COMPARTMENT_THROTTLE_AUTH_RESET_PASSWORD_SOURCE_SUBJECT_BLOCK: '30m',
+    COMPARTMENT_TENANT_SECRETS_KEK: '22'.repeat(32),
     COMPARTMENT_VARIABLES_MASTER_KEY: '11'.repeat(32),
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: 'runtime-control-secret',
     ...overrides,
@@ -399,6 +408,7 @@ function createSelfHostedApiConfigEnv(overrides: Partial<NodeJS.ProcessEnv> = {}
     COMPARTMENT_RUNTIME_CONTROL_TOKEN: generated24ByteSecret,
     COMPARTMENT_SESSION_SECRET: generated32ByteSecret,
     COMPARTMENT_SYSTEM_TOKEN: generated24ByteSecret,
+    COMPARTMENT_TENANT_SECRETS_KEK: generated32ByteSecret,
     COMPARTMENT_VARIABLES_MASTER_KEY: generated32ByteSecret,
     ...overrides,
   });

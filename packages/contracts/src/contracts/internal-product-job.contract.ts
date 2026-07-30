@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ContractSchema } from './schema.types';
+import { tenantSecretEnvironmentSchema, type TenantSecretEnvironment } from './internal-tenant-secret.contract';
 
 export type ProductJobClass = 'release' | 'resource-operation';
 export type ProductJobRuntimeIdentity = 'project' | 'resource';
@@ -7,7 +8,7 @@ export type ProductJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | '
 
 interface ProductJobSpec {
   command: string[];
-  env: Record<string, string>;
+  env: TenantSecretEnvironment;
   image: string;
   namespace: string;
   projectId: string;
@@ -71,7 +72,7 @@ export interface WorkerFinalizeProductJobRequest {
 
 interface ProductJobSpecSchemaShape {
   command: z.ZodArray<z.ZodString>;
-  env: z.ZodRecord<z.ZodString, z.ZodString>;
+  env: typeof tenantSecretEnvironmentSchema;
   image: z.ZodString;
   namespace: z.ZodString;
   projectId: z.ZodString;
@@ -90,7 +91,7 @@ export function productJobRuntimeId(jobClass: ProductJobClass, identityId: strin
 
 const productJobSpecShape: ProductJobSpecSchemaShape = {
   command: z.array(z.string()),
-  env: z.record(z.string(), z.string()),
+  env: tenantSecretEnvironmentSchema,
   image: z.string().min(1),
   namespace: z.string().min(1),
   projectId: z.string().min(1),

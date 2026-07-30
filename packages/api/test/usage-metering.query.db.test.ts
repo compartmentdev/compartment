@@ -64,6 +64,7 @@ const apiConfig: ApiConfig = {
   trustedOutboundHosts: [],
   usageMeteringIntervalMs: 60_000,
   usageRetentionDays: 400,
+  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
   variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
 };
 

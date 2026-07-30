@@ -498,6 +498,7 @@ function createApiConfig(): ApiConfig {
     systemApiSocketPath: '/tmp/compartment/compartment-test-system-api.sock',
     systemToken: 'system-token',
     trustedOutboundHosts: [],
+    tenantSecretsKek: Buffer.alloc(32, 1),
     variablesMasterKey: Buffer.alloc(32, 1),
   };
 }

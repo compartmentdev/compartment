@@ -32,7 +32,7 @@ import type { ApiApp } from '../src/app.types';
 import { type ApiConfig } from '../src/config';
 import { createDatabase, createDatabasePool, type Database } from '../src/db/client';
 import { organizationVariableSetEntries, organizationVariableSets, projects } from '../src/db/schema';
-import { decryptVariableValueFromStorage, parseVariablesMasterKey } from '../src/lib/variables-crypto';
+import { decryptTenantVariableValueFromStorage, parseVariablesMasterKey } from '../src/lib/variables-crypto';
 import { defaultApiAuthThrottleConfig } from './auth-throttle-config.fixture';
 import { defaultAuditFileSinkConfig } from './audit-file-sink-config.fixture';
 import { useApiDatabaseTestHarness } from './api-db-test.harness';
@@ -84,6 +84,7 @@ const apiConfig: ApiConfig = {
   systemApiSocketPath: '/tmp/compartment/compartment-variable-groups-system-api.sock',
   systemToken: 'test-system-token',
   trustedOutboundHosts: [],
+  tenantSecretsKek: parseVariablesMasterKey('11'.repeat(32)),
   variablesMasterKey: parseVariablesMasterKey('11'.repeat(32)),
 };
 const pool: Pool = createDatabasePool(variableGroupsDatabaseUrl);
@@ -675,7 +676,7 @@ async function readStoredVariableGroupValues(variableGroupName: string): Promise
   return Object.fromEntries(
     entries.map((entry: typeof organizationVariableSetEntries.$inferSelect): [string, string] => [
       entry.keyName,
-      decryptVariableValueFromStorage(entry.valueCiphertext, entry.encryptionKeyId, apiConfig.variablesMasterKey),
+      decryptTenantVariableValueFromStorage(entry.valueCiphertext, entry.encryptionKeyId, apiConfig.tenantSecretsKek),
     ]),
   );
 }

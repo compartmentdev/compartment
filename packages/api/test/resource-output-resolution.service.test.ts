@@ -182,6 +182,7 @@ function createApiConfig(): ApiConfig {
     systemToken: 'system-token',
     throttle: defaultApiAuthThrottleConfig,
     trustedOutboundHosts: [],
+    tenantSecretsKek: variablesMasterKey,
     variablesMasterKey,
   };
 }

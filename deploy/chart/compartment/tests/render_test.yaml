@@ -21,6 +21,7 @@ tests:
         runtimeControlToken: test-runtime-control-token
         sessionSecret: test-session-secret
         systemToken: test-system-token
+        tenantSecretsKek: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         variablesMasterKey: test-variables-master-key
         managedDomainBrokerToken: ''
     asserts:

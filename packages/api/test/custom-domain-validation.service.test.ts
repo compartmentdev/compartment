@@ -164,6 +164,7 @@ function createApiConfig(): ApiConfig {
     systemApiSocketPath: '/tmp/compartment/system-api.sock',
     systemToken: 'system-token',
     trustedOutboundHosts: [],
+    tenantSecretsKek: Buffer.from('11'.repeat(32), 'hex'),
     variablesMasterKey: Buffer.from('11'.repeat(32), 'hex'),
   };
 }
