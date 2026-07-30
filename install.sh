@@ -3,6 +3,11 @@
 set -eu
 
 release_repository="${COMPARTMENT_RELEASES_REPOSITORY:-compartmentdev/compartment}"
+if [ "$release_repository" = "compartmentdev/compartment" ]; then
+  installer_command="curl -fsSL https://compartment.dev/install.sh | sh -s --"
+else
+  installer_command="sh install.sh"
+fi
 cli_oci_repository="ghcr.io/compartmentdev/compartment-cli"
 cosign_version="2.6.1"
 oras_version="1.3.3"
@@ -475,18 +480,23 @@ resolve_kubernetes_cli_digest_ref() {
     rm -f "$oras_resolve_error_path"
     case "$oras_resolve_error" in
       *"not found"* | *"manifest unknown"*)
-        if [ "$channel" = "kubernetes" ] && [ "$version_argument" = "0" ] \
+        if [ "$channel" = "kubernetes" ] && [ "$version_argument" = "1" ]; then
+          printf 'Kubernetes CLI image tag %s was not found in the registry. Check that the build was published and that the version is not mistyped.\n' \
+            "$resolved_release_tag" >&2
+          printf 'To install the current kubernetes channel tip instead, omit --version:\n' >&2
+          printf '%s --channel kubernetes\n' "$installer_command" >&2
+        elif [ "$channel" = "kubernetes" ] \
           && last_published_release_tag="$(resolve_last_published_kubernetes_release_tag)"; then
           printf 'Images for %s are still publishing. Install the latest fully published kubernetes build with:\n' \
             "$resolved_release_tag" >&2
-          printf 'curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel kubernetes --version %s\n' \
-            "$last_published_release_tag" >&2
+          printf '%s --channel kubernetes --version %s\n' \
+            "$installer_command" "$last_published_release_tag" >&2
         else
           printf 'Images for %s are not published, and the installer could not verify a fallback automatically.\n' \
             "$resolved_release_tag" >&2
           printf 'Open https://github.com/%s/actions/workflows/publish-self-hosted-kubernetes.yml, select the latest successful run, and copy its full commit SHA into:\n' \
             "$release_repository" >&2
-          printf 'curl -fsSL https://compartment.dev/install.sh | sh -s -- --channel kubernetes --version sha-COMMIT_SHA\n' >&2
+          printf '%s --channel kubernetes --version sha-COMMIT_SHA\n' "$installer_command" >&2
         fi
         ;;
       *)
