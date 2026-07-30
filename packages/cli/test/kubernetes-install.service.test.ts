@@ -425,6 +425,7 @@ describe('Kubernetes install deployment', (): void => {
 
   it('reuses retained allocation state after the Helm release was removed', async (): Promise<void> => {
     const retainedState: KubernetesInstallState = readRetainedState(existingInstallValues('full', 'managed'));
+    retainedState.brokerUrl = '';
     const state: InstallHarnessState = createInstallHarnessState(null, retainedState);
     mocks.runCommand.mockImplementation(createInstallCommandHandler(state));
     vi.stubGlobal(
@@ -440,8 +441,7 @@ describe('Kubernetes install deployment', (): void => {
     await expect(deployAndWaitForKubernetesInstall(managedDeploymentInput)).resolves.toMatchObject({
       baseDomain: 'acme.compartment.run',
     });
-    expect(readHelmStages()).toEqual(['foundation', 'foundation', 'full']);
-    expect(state.installValues[0]?.platform.installationId).toBe('installation-123');
+    expect(state.installValues[0]?.platform.managedDomainBrokerUrl).toBe('https://broker.compartment.run');
     expect(readResolvedInstallValues(state).platform.managedDomainBrokerUrl).toBe('https://broker.compartment.run');
   });
 

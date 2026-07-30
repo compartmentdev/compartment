@@ -43,6 +43,19 @@ interface ManagedDomainAllocationObservation {
   readonly targets: readonly ManagedDomainTargetObservation[];
 }
 
+export interface ManagedInstallBrokerState {
+  chartUrl: string;
+  retainedUrl: string;
+}
+
+interface ManagedInstallHelmValues {
+  platform?: ManagedInstallHelmPlatformValues | undefined;
+}
+
+interface ManagedInstallHelmPlatformValues {
+  managedDomainBrokerUrl?: string | undefined;
+}
+
 export interface ManagedDomainBrokerObservation {
   readonly allocations: readonly ManagedDomainAllocationObservation[];
   readonly audit: readonly ManagedDomainAuditObservation[];
@@ -162,6 +175,40 @@ export async function cleanupManagedInstallFixture(): Promise<void> {
     '--wait=true',
     '--timeout=4m',
   ]);
+}
+
+export async function readManagedInstallBrokerState(): Promise<ManagedInstallBrokerState> {
+  const helmValues: SelfHostedUserSetupCommandResult = await runCommand({
+    argv: [
+      'helm',
+      'get',
+      'values',
+      managedInstallReleaseName,
+      '--kube-context',
+      managedInstallKubeContext,
+      '--namespace',
+      managedInstallNamespace,
+      '--output',
+      'json',
+    ],
+    timeoutMs: kubernetesTimeoutMs,
+  });
+  expectSuccessfulCommand(helmValues, 'read managed install Helm values');
+  const retainedUrl: SelfHostedUserSetupCommandResult = await runKubectl([
+    '--namespace',
+    managedInstallNamespace,
+    'get',
+    'secret',
+    `${managedInstallReleaseName}-install-state`,
+    '--output',
+    'jsonpath={.data.managed-domain-broker-url}',
+  ]);
+  expectSuccessfulCommand(retainedUrl, 'read retained managed-domain broker URL');
+  const values: ManagedInstallHelmValues = JSON.parse(helmValues.stdout) as ManagedInstallHelmValues;
+  return {
+    chartUrl: values.platform?.managedDomainBrokerUrl ?? '',
+    retainedUrl: Buffer.from(retainedUrl.stdout, 'base64').toString('utf8'),
+  };
 }
 
 export async function renewManagedInstallConsoleCertificate(): Promise<void> {

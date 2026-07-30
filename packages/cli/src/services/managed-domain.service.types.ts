@@ -10,3 +10,10 @@ export interface ManagedDomainBindingInput extends ManagedDomainTargetBindingReq
   brokerUrl: string;
   scopedToken: string;
 }
+
+export interface ManagedDomainRequestFailure extends Error {
+  method: string;
+  requestId?: string | undefined;
+  statusCode: number;
+  url: string;
+}

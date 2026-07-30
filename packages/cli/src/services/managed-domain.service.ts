@@ -1,5 +1,10 @@
 import { randomInt } from 'node:crypto';
-import type { ManagedDomainReservationResponse, ManagedDomainTargetBindingResponse } from '@compartment/contracts';
+import {
+  managedDomainAllocationsPathname,
+  managedDomainTargetsPathname,
+  type ManagedDomainReservationResponse,
+  type ManagedDomainTargetBindingResponse,
+} from '@compartment/contracts';
 import {
   bindManagedDomainTargets,
   isCompartmentRequestError,
@@ -9,7 +14,11 @@ import {
 import { waitForInstallDelay } from './kubernetes-install-delay.service';
 import type { KubernetesInstallProgressReporter } from './kubernetes-install-progress.types';
 import { createApiRequester } from './context.service';
-import type { ManagedDomainBindingInput, ManagedDomainReservationInput } from './managed-domain.service.types';
+import type {
+  ManagedDomainBindingInput,
+  ManagedDomainRequestFailure,
+  ManagedDomainReservationInput,
+} from './managed-domain.service.types';
 
 const brokerRequestTimeoutMs: number = 10_000;
 const brokerMaxAttempts: number = 4;
@@ -21,10 +30,13 @@ export async function reserveInstallManagedDomain(
   progress?: KubernetesInstallProgressReporter,
 ): Promise<ManagedDomainReservationResponse> {
   const { brokerUrl, reservationToken, ...request } = input;
+  const requestUrl: string = resolveManagedDomainRequestUrl(brokerUrl, managedDomainAllocationsPathname);
   return await runManagedDomainRequest(
     async (): Promise<ManagedDomainReservationResponse> =>
       await reserveManagedDomain(createApiRequester(brokerUrl, brokerRequestTimeoutMs), reservationToken, request),
     'reserve managed domain',
+    'POST',
+    requestUrl,
     progress,
   );
 }
@@ -33,6 +45,10 @@ export async function bindInstallManagedDomainTargets(
   input: ManagedDomainBindingInput,
   progress?: KubernetesInstallProgressReporter,
 ): Promise<ManagedDomainTargetBindingResponse> {
+  const requestUrl: string = resolveManagedDomainRequestUrl(
+    input.brokerUrl,
+    managedDomainTargetsPathname(input.allocationId),
+  );
   return await runManagedDomainRequest(
     async (): Promise<ManagedDomainTargetBindingResponse> =>
       await bindManagedDomainTargets(
@@ -42,6 +58,8 @@ export async function bindInstallManagedDomainTargets(
         { targets: input.targets },
       ),
     'bind managed-domain targets',
+    'PUT',
+    requestUrl,
     progress,
   );
 }
@@ -49,6 +67,8 @@ export async function bindInstallManagedDomainTargets(
 async function runManagedDomainRequest<TResult>(
   request: () => Promise<TResult>,
   operation: string,
+  method: 'POST' | 'PUT',
+  requestUrl: string,
   progress?: KubernetesInstallProgressReporter,
 ): Promise<TResult> {
   for (let attempt: number = 1; attempt <= brokerMaxAttempts; attempt += 1) {
@@ -57,7 +77,7 @@ async function runManagedDomainRequest<TResult>(
     } catch (error) {
       const failure: Error = error instanceof Error ? error : new Error('Unknown network request failure.');
       if (!isRetryableManagedDomainError(failure) || attempt === brokerMaxAttempts) {
-        throw createManagedDomainError(failure, attempt, operation);
+        throw createManagedDomainError(failure, attempt, operation, method, requestUrl);
       }
       const delayMs: number = readRetryDelayMs(attempt);
       progress?.report(
@@ -76,21 +96,70 @@ function isRetryableManagedDomainError(error: Error): boolean {
   );
 }
 
-function createManagedDomainError(error: Error, attempts: number, operation: string): Error {
+function createManagedDomainError(
+  error: Error,
+  attempts: number,
+  operation: string,
+  method: 'POST' | 'PUT',
+  requestUrl: string,
+): Error {
   if (isCompartmentRequestError(error)) {
-    const requestId: string = error.requestId === undefined ? '' : ` (request-id: ${error.requestId})`;
-    if (error.statusCode !== 429 && error.statusCode < 500) {
-      return new Error(
-        `Managed-domain broker ${error.method} ${error.url} failed with status ${error.statusCode.toString()}${requestId} while attempting to ${operation}. Check the install configuration before re-running install.`,
-      );
-    }
+    return createCompartmentManagedDomainError(error, attempts, operation, requestUrl);
+  }
+  if (!isRetryableTransportRequestError(error)) {
     return new Error(
-      `Managed-domain broker ${error.method} ${error.url} failed with status ${error.statusCode.toString()}${requestId}; transient failure after ${attempts.toString()} attempts while attempting to ${operation}. Re-run install to resume.`,
+      `Managed-domain broker ${method} ${requestUrl} request failed while attempting to ${operation}: ${error.message} Check the broker configuration and response before re-running install.`,
     );
   }
   return new Error(
-    `Managed-domain broker failed to ${operation} after ${attempts.toString()} attempts: ${error.message} This may be transient; re-run install to resume.`,
+    `Managed-domain broker ${method} ${requestUrl} failed after ${attempts.toString()} attempts while attempting to ${operation}: ${error.message} Network failure; re-run install to resume.`,
   );
+}
+
+function createCompartmentManagedDomainError(
+  error: ManagedDomainRequestFailure,
+  attempts: number,
+  operation: string,
+  requestUrl: string,
+): Error {
+  const absoluteUrl: string = resolveManagedDomainRequestUrl(requestUrl, error.url);
+  const requestId: string = error.requestId === undefined ? '' : ` (request-id: ${error.requestId})`;
+  if (error.statusCode !== 429 && error.statusCode < 500) {
+    return new Error(
+      `Managed-domain broker ${error.method} ${absoluteUrl} failed with status ${error.statusCode.toString()}${requestId} while attempting to ${operation}. Check the install configuration before re-running install.`,
+    );
+  }
+  return new Error(
+    `Managed-domain broker ${error.method} ${absoluteUrl} failed with status ${error.statusCode.toString()}${requestId}; transient failure after ${attempts.toString()} attempts while attempting to ${operation}. Re-run install to resume.`,
+  );
+}
+
+function resolveManagedDomainRequestUrl(baseUrl: string, path: string): string {
+  try {
+    const resolvedBaseUrl: URL = new URL(baseUrl);
+    if (
+      (resolvedBaseUrl.protocol !== 'http:' && resolvedBaseUrl.protocol !== 'https:') ||
+      resolvedBaseUrl.username !== '' ||
+      resolvedBaseUrl.password !== ''
+    ) {
+      throw new Error('Unsupported managed-domain broker URL protocol.');
+    }
+    const absolutePathUrl: URL | null = readAbsoluteHttpUrl(path);
+    return absolutePathUrl?.toString() ?? `${resolvedBaseUrl.toString().replace(/\/$/u, '')}${path}`;
+  } catch {
+    throw new Error(
+      'Managed-domain broker configuration is invalid. Set --broker-url or COMPARTMENT_MANAGED_DOMAIN_BROKER_URL to an absolute HTTP(S) URL without credentials.',
+    );
+  }
+}
+
+function readAbsoluteHttpUrl(value: string): URL | null {
+  try {
+    const url: URL = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 function readRetryDelayMs(attempt: number): number {
