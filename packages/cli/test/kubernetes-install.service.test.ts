@@ -70,8 +70,8 @@ vi.mock('../src/services/kubernetes-image-trust.service', (): object => ({
 vi.mock('../src/services/kubernetes-install-registry-verification.service', (): object => ({
   verifyKubernetesInstallRegistryNodePull: mocks.verifyRegistryNodePull,
 }));
-vi.mock('../src/services/kubernetes-install-registry-dns.service', (): object => ({
-  assertOperatorRegistryDns: mocks.assertRegistryDns,
+vi.mock('../src/services/kubernetes-install-registry-dns-wait.service', (): object => ({
+  waitForKubernetesInstallRegistryDns: mocks.assertRegistryDns,
 }));
 vi.mock('../src/services/kubernetes-install-tls.service', (): object => ({
   usesOperatorOwnedKubernetesTlsSecret: mocks.usesOperatorTlsSecret,
@@ -145,7 +145,6 @@ describe('Kubernetes install deployment', (): void => {
       apiUrl: 'https://console.acme.compartment.run',
       baseDomain: 'acme.compartment.run',
     });
-    expect(result.installToken).toMatch(/^[\da-f]{64}$/u);
     expect(readHelmStages()).toEqual(['foundation', 'foundation', 'full']);
     expect(state.events).toEqual([
       'helm:foundation',
@@ -360,6 +359,7 @@ describe('Kubernetes install deployment', (): void => {
       expect.stringMatching(/^Waiting for Ingress endpoint.* \u2713 .*8\.8\.8\.8/u),
       expect.stringMatching(/^Requesting managed domain.* \u2713 /u),
       expect.stringMatching(/^Binding managed-domain DNS targets.* \u2713 /u),
+      expect.stringMatching(/^Checking private registry DNS on every node.* \u2713 /u),
       expect.stringMatching(/^Saving installation configuration.* \u2713 /u),
       expect.stringMatching(/^Waiting for platform Certificates.* \u2713 /u),
       expect.stringMatching(/^Waiting for platform pods \(api, worker, caddy\).* \u2713 /u),

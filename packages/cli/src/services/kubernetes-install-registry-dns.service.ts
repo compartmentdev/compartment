@@ -1,24 +1,22 @@
 import { isIP } from 'node:net';
 import { runCommand, runCommandWithInput, runCommandWithTimeout } from '../command-runner';
 import type { CommandResult } from '../command-runner.types';
-import { isReservedKubernetesInstallLocalhostDomain } from '../kubernetes-install-domain';
 import { buildKubectlCommand, formatKubernetesCommandFailure } from './kubernetes-command.support';
 import { readRegistryDnsProbeImage } from './kubernetes-install-registry-dns-image.service';
 import type { KubernetesInstallDeploymentInput, KubernetesInstallState } from './kubernetes-install.service.types';
 import { readReadyKubernetesNodeNames } from './kubernetes-ready-nodes.service';
 import type {
   RegistryDnsAnswer,
+  RegistryDnsProbeAttempt,
   RegistryDnsProbeContainer,
   RegistryService,
 } from './kubernetes-install-registry-dns.service.types';
 
-export async function assertOperatorRegistryDns(
+export async function assertKubernetesInstallRegistryDns(
   input: KubernetesInstallDeploymentInput,
   state: KubernetesInstallState,
+  probe: RegistryDnsProbeAttempt,
 ): Promise<void> {
-  if (!requiresOperatorRegistryDns(state)) {
-    return;
-  }
   const serviceAddresses: string[] = await readRegistryServiceAddresses(input);
   const nodeNames: string[] = await readReadyKubernetesNodeNames(input);
   if (nodeNames.length === 0) {
@@ -26,7 +24,15 @@ export async function assertOperatorRegistryDns(
   }
   const workerImage: string = await readRegistryDnsProbeImage(input);
   for (let index: number = 0; index < nodeNames.length; index += 1) {
-    await assertNodeRegistryDns(input, state.registryHostname, serviceAddresses, workerImage, nodeNames[index]!, index);
+    await assertNodeRegistryDns(
+      input,
+      state.registryHostname,
+      serviceAddresses,
+      workerImage,
+      nodeNames[index]!,
+      index,
+      probe,
+    );
   }
 }
 
@@ -52,14 +58,6 @@ export async function readRegistryServiceAddresses(input: KubernetesInstallDeplo
   return addresses;
 }
 
-function requiresOperatorRegistryDns(state: KubernetesInstallState): boolean {
-  return (
-    state.domainMode === 'custom' &&
-    !isReservedKubernetesInstallLocalhostDomain(state.baseDomain) &&
-    state.registryHostname !== ''
-  );
-}
-
 function parseRegistryServiceAddresses(output: string): string[] {
   try {
     const service: RegistryService = JSON.parse(output) as RegistryService;
@@ -77,11 +75,12 @@ async function assertNodeRegistryDns(
   workerImage: string,
   nodeName: string,
   index: number,
+  probe: RegistryDnsProbeAttempt,
 ): Promise<void> {
-  const podName: string = `registry-dns-preflight-${index.toString()}`;
+  const podName: string = `registry-dns-preflight-${index.toString()}-${probe.nameSuffix}`;
   let failure: Error | null = null;
   try {
-    const observed: string[] = await runNodeDnsProbe(input, podName, nodeName, workerImage, hostname);
+    const observed: string[] = await runNodeDnsProbe(input, podName, nodeName, workerImage, hostname, probe.deadline);
     assertDnsAnswers(hostname, serviceAddresses, nodeName, observed);
   } catch (error) {
     failure = error instanceof Error ? error : new Error('Registry DNS probe failed.');
@@ -97,8 +96,21 @@ async function runNodeDnsProbe(
   nodeName: string,
   workerImage: string,
   hostname: string,
+  deadline: number,
 ): Promise<string[]> {
   await applyNodeDnsProbe(input, podName, nodeName, workerImage, hostname);
+  await waitForNodeDnsProbe(input, podName, nodeName, deadline);
+  return await readNodeDnsProbeOutput(input, podName, nodeName);
+}
+
+async function waitForNodeDnsProbe(
+  input: KubernetesInstallDeploymentInput,
+  podName: string,
+  nodeName: string,
+  deadline: number,
+): Promise<void> {
+  const commandTimeoutMs: number = readProbeCommandTimeoutMs(deadline);
+  const kubectlTimeoutSeconds: number = Math.min(30, Math.max(1, Math.floor((commandTimeoutMs - 1_000) / 1_000)));
   const waitResult: CommandResult = await runCommandWithTimeout(
     buildKubectlCommand(input, [
       'wait',
@@ -106,14 +118,20 @@ async function runNodeDnsProbe(
       '--namespace',
       input.namespace,
       '--for=jsonpath={.status.phase}=Succeeded',
-      '--timeout=30s',
+      `--timeout=${kubectlTimeoutSeconds.toString()}s`,
     ]),
-    60_000,
+    commandTimeoutMs,
   );
   if (waitResult.exitCode !== 0) {
     throw new Error(formatKubernetesCommandFailure(`Registry DNS probe failed on node ${nodeName}`, waitResult));
   }
-  return await readNodeDnsProbeOutput(input, podName, nodeName);
+}
+
+function readProbeCommandTimeoutMs(deadline: number): number {
+  if (!Number.isFinite(deadline)) {
+    return 60_000;
+  }
+  return Math.max(2_000, Math.min(60_000, deadline - Date.now()));
 }
 
 async function applyNodeDnsProbe(
@@ -195,8 +213,9 @@ function assertDnsAnswers(
   observed: readonly string[],
 ): void {
   const expected: Set<string> = new Set<string>(serviceAddresses);
+  const actual: Set<string> = new Set<string>(observed);
   const matchesExactly: boolean =
-    observed.length > 0 && observed.every((address: string): boolean => expected.has(address));
+    actual.size === expected.size && [...actual].every((address: string): boolean => expected.has(address));
   if (matchesExactly) {
     return;
   }

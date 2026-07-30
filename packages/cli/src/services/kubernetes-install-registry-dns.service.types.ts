@@ -11,6 +11,11 @@ export interface RegistryDnsAnswer {
   address?: string | undefined;
 }
 
+export interface RegistryDnsProbeAttempt {
+  deadline: number;
+  nameSuffix: string;
+}
+
 export interface RegistryDnsProbeContainer {
   args: string[];
   command: string[];

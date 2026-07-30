@@ -24,7 +24,7 @@ import {
 import { mergeRetainedKubernetesInstallState } from './kubernetes-install-retained-state.service';
 import { buildResolvedInstallValues, resolveKubernetesInstallState } from './kubernetes-install-state.service';
 import { verifyKubernetesInstallRegistryNodePull } from './kubernetes-install-registry-verification.service';
-import { assertOperatorRegistryDns } from './kubernetes-install-registry-dns.service';
+import { waitForKubernetesInstallRegistryDns } from './kubernetes-install-registry-dns-wait.service';
 import { usesOperatorOwnedKubernetesTlsSecret } from './kubernetes-install-tls.service';
 import {
   inspectKubernetesInstallResumeValues,
@@ -133,8 +133,9 @@ async function deployMaterializedKubernetesInstall(
     installToken,
     installationId,
   );
-  await checkOperatorRegistryDns(input, foundationInstall);
+  await checkRegistryDns(input, foundationInstall, 'custom');
   const state: KubernetesInstallState = await resolveKubernetesInstallState(input, foundationInstall);
+  await checkRegistryDns(input, state, 'managed');
   return await deployResolvedKubernetesInstall(input, material, installToken, state);
 }
 
@@ -214,7 +215,7 @@ async function resumeKubernetesOwnerBootstrap(
   existingInstall: ExistingKubernetesInstall,
 ): Promise<KubernetesInstallDeploymentResult> {
   const baseDomain: string = requireExistingBaseDomain(existingInstall);
-  await checkOperatorRegistryDns(input, existingInstall);
+  await checkRegistryDns(input, existingInstall, existingInstall.domainMode);
   await waitForRequiredKubernetesPlatformCertificates(input, existingInstall);
   await verifyKubernetesInstallRegistryNodePull(input, existingInstall);
   return await finishKubernetesInstall(
@@ -226,17 +227,18 @@ async function resumeKubernetesOwnerBootstrap(
   );
 }
 
-async function checkOperatorRegistryDns(
+async function checkRegistryDns(
   input: KubernetesInstallDeploymentInput,
   state: KubernetesInstallState,
+  domainMode: 'custom' | 'managed',
 ): Promise<void> {
-  if (state.domainMode !== 'custom' || isReservedKubernetesInstallLocalhostDomain(state.baseDomain)) {
+  if (state.domainMode !== domainMode || isReservedKubernetesInstallLocalhostDomain(state.baseDomain)) {
     return;
   }
   await runObservableInstallStep(
     input.progress,
     'Checking private registry DNS on every node',
-    async (): Promise<void> => await assertOperatorRegistryDns(input, state),
+    async (): Promise<void> => await waitForKubernetesInstallRegistryDns(input, state),
   );
 }
 
