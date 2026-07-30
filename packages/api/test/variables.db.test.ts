@@ -210,7 +210,7 @@ describe('variables db queries', (): void => {
     expect(rawRows).not.toContain('resource-env-secret');
     expect(rawRows).not.toContain('resource-operation-secret');
     expect(rawRows).not.toContain('reconcile-secret');
-    expect(rawRows).not.toContain('cm9sbGJhY2stc2VjcmV0');
+    expect(rawRows).not.toContain('cm9sbA==');
     expect(rawRows).not.toContain('backup-env-secret');
     expect(rawRows).not.toContain('backup-operation-secret');
     expect(
@@ -578,7 +578,7 @@ async function insertLegacyTenantJsonRows(scope: QueryTestScope): Promise<void> 
     operationType: 'reconcile',
     phase: 'running',
     previousManifestJson: JSON.stringify([
-      { apiVersion: 'v1', data: { PASSWORD: 'cm9sbGJhY2stc2VjcmV0' }, kind: 'Secret', metadata: {} },
+      { apiVersion: 'v1', data: { PASSWORD: 'cm9sbA==' }, kind: 'Secret', metadata: {} },
     ]),
     projectResourceId: 'resource_rotation',
   });
